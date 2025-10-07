@@ -334,7 +334,9 @@ function _TopBar({ preview }: TopBarProps) {
   const contextMenuProps = useContextMenu({ menu });
 
   const brand =
-    uiConfig.brand ??
+    (uiConfig.brand && Object.keys(uiConfig.brand).length > 0
+      ? uiConfig.brand
+      : undefined) ??
     appCtx.appConfig.brands?.[studioCtx.siteInfo.teamId ?? ""] ??
     appCtx.appConfig.brands?.[""];
 
