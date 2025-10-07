@@ -47,7 +47,7 @@ const whitelistedHosts = [
   "https://host.plasmic.dev",
   "https://code-components.plasmic.site",
   "https://plasmic.app",
-  "https://host.plasmicdev.com",
+  "https://host.elasticpathdev.com",
   "https://staging.plasmic.app",
   "https://staging-host.plasmic.app",
 
