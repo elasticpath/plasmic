@@ -48,3 +48,33 @@ export class DbMgrCache implements SimpleCache {
     return this.dbMgr.setKeyValue("copilot-cache", key, value);
   }
 }
+
+// Simple in-memory cache for development
+export class InMemoryCache implements SimpleCache {
+  private cache = new Map<string, { value: string; expires: number }>();
+  private ttlMs: number;
+
+  constructor(ttlMs: number = 15 * 60 * 1000) {
+    // 15 minutes default
+    this.ttlMs = ttlMs;
+  }
+
+  async get(key: string): Promise<string | undefined> {
+    const entry = this.cache.get(key);
+    if (!entry) {
+      return undefined;
+    }
+    if (Date.now() > entry.expires) {
+      this.cache.delete(key);
+      return undefined;
+    }
+    return entry.value;
+  }
+
+  async put(key: string, value: string): Promise<void> {
+    this.cache.set(key, {
+      value,
+      expires: Date.now() + this.ttlMs,
+    });
+  }
+}
