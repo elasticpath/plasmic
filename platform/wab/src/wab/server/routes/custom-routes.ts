@@ -4,6 +4,7 @@ import {
   RevalidatePlasmicHostingResponse,
 } from "@/wab/shared/ApiSchema";
 import { Application, Request, Response } from "express";
+import * as hosting from "./hosting";
 
 export const ROUTES_WITH_TIMING = [];
 
@@ -15,7 +16,34 @@ export function addInternalRoutes(app: Application) {
 export function addInternalIntegrationsRoutes(app: Application) {}
 
 function addHostingRoutes(app: Application) {
-  app.post("/api/v1/revalidate-hosting", withNext(revalidatePlasmicHosting));
+  // New hosting endpoints
+  // Domain management
+  app.get("/api/v1/check-domain", withNext(hosting.checkDomain));
+  app.get(
+    "/api/v1/domains-for-project/:projectId",
+    withNext(hosting.getDomainsForProject)
+  );
+  app.put(
+    "/api/v1/subdomain-for-project",
+    withNext(hosting.setSubdomainForProject)
+  );
+  app.put(
+    "/api/v1/custom-domain-for-project",
+    withNext(hosting.setCustomDomainForProject)
+  );
+
+  // Hosting settings
+  app.get(
+    "/api/v1/plasmic-hosting/:projectId",
+    withNext(hosting.getPlasmicHostingSettings)
+  );
+  app.put(
+    "/api/v1/plasmic-hosting/:projectId",
+    withNext(hosting.updatePlasmicHostingSettings)
+  );
+
+  // Use our new implementation for revalidate
+  app.post("/api/v1/revalidate-hosting", withNext(hosting.revalidateHosting));
 }
 
 function addPaymentRoutes(app: Application) {
