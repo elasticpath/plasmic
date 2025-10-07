@@ -2,6 +2,7 @@
 // the top so that we know if we are running production and want newrelic.
 import {
   addCodegenRoutes,
+  addCopilotRoutes,
   addMainAppServerRoutes,
   createApp,
 } from "@/wab/server/AppServer";
@@ -58,6 +59,7 @@ export async function runAppServer(config: Config) {
         // protected against.
         logger().info("Adding codegen routes");
         addCodegenRoutes(application);
+        addCopilotRoutes(application);
       }
     },
     (application) => {
