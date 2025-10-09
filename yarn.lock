@@ -5753,15 +5753,6 @@
     picocolors "^1.0.0"
     tslib "^2.6.0"
 
-"@plasmicapp/host@1.0.224":
-  version "1.0.224"
-  resolved "https://registry.yarnpkg.com/@plasmicapp/host/-/host-1.0.224.tgz#e37ac84107ca786a266dcbb495127c59e8448c75"
-  integrity sha512-vvyTVIPUjjfG148RyKuRYylpzpJPb0YNdlYNlaQGoxIdO3xjTGSS1v0ouI9zG80CKI3MqtYRgfoCFQ1RycbSUg==
-  dependencies:
-    "@plasmicapp/query" "0.1.80"
-    csstype "^3.1.2"
-    window-or-global "^1.0.1"
-
 "@plasmicapp/isomorphic-unfetch@1.0.3":
   version "1.0.3"
   resolved "https://registry.yarnpkg.com/@plasmicapp/isomorphic-unfetch/-/isomorphic-unfetch-1.0.3.tgz#baa334f5190d49461c26b1aa3fda073f5cfa7e33"
@@ -5773,19 +5764,6 @@
   version "2.0.9"
   resolved "https://registry.yarnpkg.com/@plasmicapp/react-ssr-prepass/-/react-ssr-prepass-2.0.9.tgz#1cfdd8d4c0e90fd4fed7d7204f70c44914871d31"
   integrity sha512-HO932uH/Y4otaDmjwzJbCLlokxNAdtU9VhDVUZUuVbzh0DhWaNyn/MINCu1oeZ4a6MIjdXFIm/U2VaxNxHYdsw==
-
-"@plasmicpkgs/commerce@0.0.222":
-  version "0.0.222"
-  resolved "https://registry.yarnpkg.com/@plasmicpkgs/commerce/-/commerce-0.0.222.tgz#cec6594f9372e5ddc1fc3eba235d96065edcd73f"
-  integrity sha512-M7IntttVyqiT8P2CWy2n8pkBScuoUsNJXnXtkJjKPvyigEcekeNoO04SR9sEb0KD3uXLhc8AnUs1oVSEHum4PA==
-  dependencies:
-    "@types/react" "^18.0.27"
-    "@vercel/fetch" "^6.2.0"
-    debounce "^1.2.1"
-    js-cookie "^3.0.1"
-    lodash.debounce "^4.0.8"
-    react-hook-form "^7.28.0"
-    swr "^1.2.2"
 
 "@plasmicpkgs/luxon-parser@^3.4.4":
   version "3.4.4"

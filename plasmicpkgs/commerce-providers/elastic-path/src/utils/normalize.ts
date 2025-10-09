@@ -2,6 +2,7 @@ import type {
   CartEntityResponse,
   CartIncluded,
   Node,
+  Product as ElasticPathProduct,
   ProductData,
 } from "@epcc-sdk/sdks-shopper";
 import { Cart, LineItem } from "../types/cart";
@@ -213,5 +214,80 @@ export const normalizeCategory = (category: Node, locale: string): Category => {
     name,
     slug,
     path: `/${slug}`,
+  };
+};
+
+/**
+ * Normalize a product from the ProductListData response (from getByContextAllProducts)
+ * This handles the direct Product type from the list, which has a different structure
+ * than ProductData which wraps a single product.
+ */
+export const normalizeProductFromList = (
+  product: ElasticPathProduct,
+  locale: string,
+  included?: { main_images?: Array<{ id?: string; link?: { href?: string } }> }
+): Product => {
+  const name = product.attributes?.name || "";
+  const slug = product.attributes?.slug || "";
+  const description = product.attributes?.description || "";
+  const sku = product.attributes?.sku || "";
+
+  // For list products, price info is in meta.display_price
+  const price = product.meta?.display_price?.without_tax
+    ? money(
+        product.meta.display_price.without_tax.amount,
+        product.meta.display_price.without_tax.currency
+      )
+    : money(0);
+
+  // Build options from variations metadata
+  const options: ProductOption[] = [];
+  if (product.meta?.variations) {
+    product.meta.variations.forEach((variation) => {
+      options.push({
+        __typename: "MultipleChoiceOption",
+        id: variation.id!,
+        displayName: variation.name!,
+        values:
+          variation.options?.map((opt) => ({
+            label: opt.name!,
+          })) ?? ([] as ProductOptionValues[]),
+      });
+    });
+  }
+
+  // For list products, we need to handle images from the included data
+  const images: Array<{ url: string; alt?: string }> = [];
+  
+  // Check if product has a main_image relationship and if the image is in included
+  if (product.relationships?.main_image?.data?.id && included?.main_images) {
+    const mainImageId = product.relationships.main_image.data.id;
+    const mainImage = included.main_images.find(img => img.id === mainImageId);
+    
+    if (mainImage?.link?.href) {
+      images.push({
+        url: mainImage.link.href,
+        alt: name,
+      });
+    }
+  }
+
+  return {
+    id: product.id!,
+    name,
+    slug,
+    path: `/${slug}`,
+    description,
+    price,
+    images,
+    variants: [
+      {
+        id: product.id!,
+        name: name,
+        price: price.value,
+        options: [],
+      },
+    ],
+    options,
   };
 };

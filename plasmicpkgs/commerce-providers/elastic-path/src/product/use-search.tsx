@@ -1,6 +1,6 @@
-import { getByContextAllProducts } from "@epcc-sdk/sdks-shopper";
+import { Client, getByContextAllProducts } from "@epcc-sdk/sdks-shopper";
 import { useSearch } from "@plasmicpkgs/commerce";
-import { getSortVariables, normalizeProduct } from "../utils";
+import { getSortVariables, normalizeProductFromList } from "../utils";
 
 import type {
   SearchProductsHook,
@@ -40,7 +40,7 @@ export const handler: SWRHook<SearchProductsHook> = {
 
       // Add search filter
       if (search) {
-        params.query["filter"] = `name=like=*${search}*`;
+        params.query["filter"] = `eq(name,${search})`;
       }
 
       // Add category filter
@@ -59,15 +59,27 @@ export const handler: SWRHook<SearchProductsHook> = {
         }
       }
 
-      const response = await getByContextAllProducts(params);
+      params.query["include"] = ["main_image", "files", "component_products"];
+
+      const response = await getByContextAllProducts({
+        client: (provider as any)!.client! as Client,
+        ...params,
+      });
+
+      const products = response.data
+        ? response.data?.data?.map((product) =>
+            normalizeProductFromList(
+              product,
+              provider!.locale,
+              response.data?.included
+            )
+          )
+        : [];
 
       return {
-        products: response.data
-          ? response.data?.data?.map((product: any) =>
-              normalizeProduct(product, provider!.locale)
-            )
-          : [],
-        found: response.data && (response.data.data?.length || 0) > 0,
+        products: products || [],
+        found:
+          (response.data && (response.data.data?.length || 0) > 0) || false,
       };
     } catch (error) {
       console.error("Error searching products:", error);

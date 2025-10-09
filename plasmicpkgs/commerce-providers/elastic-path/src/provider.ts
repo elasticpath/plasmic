@@ -161,7 +161,7 @@ export const getElasticPathProvider = (
     },
     fetcher: createFetcher(creds), // Required by commerce package interface
     client, // Pass the Elastic Path client for direct SDK usage
-    products: { useProduct, useSearch: mockUseSearch },
+    products: { useProduct, useSearch },
     site: { useCategories, useBrands },
   };
 };
