@@ -15,4 +15,4 @@ export const useCommerce = () => useCoreCommerce<ElasticPathProvider>();
 export const getCommerceProvider = (
   creds: ElasticPathCredentials,
   locale: string
-) => getCoreCommerceProvider(getElasticPathProvider(creds, locale) as any);
+) => getCoreCommerceProvider(getElasticPathProvider(creds, locale));

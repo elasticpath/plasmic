@@ -18,7 +18,7 @@
     "analyze": "size-limit --why"
   },
   "devDependencies": {
-    "@plasmicapp/host": "1.0.224",
+    "@plasmicapp/host": "1.0.226",
     "@plasmicapp/query": "0.1.80",
     "@size-limit/preset-small-lib": "^4.11.0",
     "@types/debounce": "^1.2.4",
@@ -36,7 +36,7 @@
   },
   "dependencies": {
     "@epcc-sdk/sdks-shopper": "^0.0.40",
-    "@plasmicpkgs/commerce": "0.0.222",
+    "@plasmicpkgs/commerce": "0.0.225",
     "@types/react": "^18.0.27",
     "debounce": "^2.0.0",
     "js-cookie": "^3.0.5",
