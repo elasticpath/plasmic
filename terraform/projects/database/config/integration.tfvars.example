@@ -1,0 +1,13 @@
+environment = "integration"
+aws_region  = "us-east-2"
+
+db_instance_class       = "db.t3.small" 
+db_allocated_storage    = 20
+db_max_allocated_storage = 0 
+
+db_name     = "" 
+db_username = "<DB_USERNAME>"
+
+multi_az                = false
+backup_retention_period = 1 
+skip_final_snapshot     = true  # For dev, no final snapshot needed

@@ -1,0 +1,4 @@
+environment = "integration"
+aws_region  = "us-east-2"
+
+enable_container_insights = true

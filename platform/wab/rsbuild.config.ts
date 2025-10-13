@@ -233,6 +233,8 @@ export default defineConfig({
             SENTRY_ORG_ID: OPTIONAL_VAR,
             SENTRY_PROJECT_ID: OPTIONAL_VAR,
             STRIPE_PUBLISHABLE_KEY: OPTIONAL_VAR,
+
+            REACT_APP_DEFAULT_HOST_URL: REQUIRED_VAR,
           })
         ),
         new MonacoWebpackPlugin(),
