@@ -122,9 +122,9 @@ const normalizeProductImages = (product: ProductData) => {
       (img) => img.id === product.data?.relationships?.main_image?.data?.id
     );
 
-    if (imageObj) {
+    if (imageObj && imageObj.link?.href) {
       images.push({
-        url: imageObj.link?.href || "",
+        url: imageObj.link.href,
         alt: product.data?.attributes?.name || "",
       });
     }
