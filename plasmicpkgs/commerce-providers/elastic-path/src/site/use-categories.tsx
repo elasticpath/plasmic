@@ -12,7 +12,6 @@ export const handler: SWRHook<GetCategoriesHook> = {
     method: "get",
   },
   async fetcher({ input, options, fetch, provider }) {
-    console.log("useCategories fetcher", input, options, fetch, provider);
     const { categoryId } = input;
     if (!categoryId) {
       const categoriesResponse = await getByContextAllNodes({
