@@ -3,12 +3,13 @@ import registerComponent, {
   ComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import type { Product, ProductOption } from "@plasmicpkgs/commerce";
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Controller, useForm, useFormContext } from "react-hook-form";
 import { Registerable } from "./registerable";
 
 interface EPProductVariantPickerProps {
   className?: string;
+  defaultVariantId?: string; // Pre-select a specific variant (e.g., from URL params)
 }
 
 export const epProductVariantPickerMeta: ComponentMeta<EPProductVariantPickerProps> =
@@ -17,13 +18,18 @@ export const epProductVariantPickerMeta: ComponentMeta<EPProductVariantPickerPro
     displayName: "EP Product Variant Picker",
     description:
       "Elastic Path variant picker supporting multiple variation dimensions",
-    props: {},
+    props: {
+      defaultVariantId: {
+        type: "string",
+        description: "Pre-select a specific variant by ID (e.g., from URL query params)",
+      },
+    },
     importPath: "@plasmicpkgs/commerce",
     importName: "EPProductVariantPicker",
   };
 
 export function EPProductVariantPicker(props: EPProductVariantPickerProps) {
-  const { className } = props;
+  const { className, defaultVariantId } = props;
 
   // Access product from Plasmic's data context
   const product = useSelector("currentProduct") as Product | undefined;
@@ -31,6 +37,26 @@ export function EPProductVariantPicker(props: EPProductVariantPickerProps) {
 
   // Extract variations from the product
   const variations: ProductOption[] = product?.options || [];
+
+  // Track if we've initialized from defaultVariantId to avoid repeated updates
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // Set initial values based on defaultVariantId (only once)
+  useEffect(() => {
+    if (!isInitialized && defaultVariantId && product?.variants && form) {
+      const targetVariant = product.variants.find(v => v.id === defaultVariantId);
+      if (targetVariant) {
+        // Set form values for each variation based on the target variant's options
+        targetVariant.options?.forEach((option) => {
+          const value = option.values?.[0]?.label;
+          if (value) {
+            form.setValue(`variation_${option.id}`, value);
+          }
+        });
+        setIsInitialized(true);
+      }
+    }
+  }, [isInitialized, defaultVariantId, product, form]);
 
   // Watch all variation selections
   const watchedValues = variations.map((v) => form?.watch(`variation_${v.id}`));

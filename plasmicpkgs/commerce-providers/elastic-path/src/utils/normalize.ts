@@ -197,11 +197,14 @@ export const normalizeProduct = (
   }
 
   // Build variants from child products if available
+  const parentPrice = getProductPrice(product);
+  
   let variants: ProductVariant[] = [
     {
       id: product.data!.id!,
       name: name,
-      price: getProductPrice(product).value,
+      price: parentPrice.value,
+      availableForSale: false, // Parent products are never available for sale
       options: [],
     },
   ];
@@ -252,10 +255,15 @@ export const normalizeProduct = (
       const rawPrice = childProduct.meta?.display_price?.without_tax?.amount || 0;
       const formattedPrice = typeof rawPrice === 'number' ? rawPrice / 100 : parseFloat(rawPrice) || 0;
       
+      // Determine availability based on status and price
+      const isLive = childProduct.attributes?.status === 'live';
+      const hasPrice = formattedPrice > 0;
+      
       return {
         id: childProduct.id!,
         name: childProduct.attributes?.name || "",
         price: formattedPrice,
+        availableForSale: isLive && hasPrice,
         options: variantOptions,
       };
     });
