@@ -65,6 +65,7 @@ describe('normalize utilities', () => {
           attributes: {
             name: 'Test Product - Small Red',
             slug: 'test-product-small-red',
+            status: 'live',
           },
           meta: {
             display_price: {
@@ -81,6 +82,7 @@ describe('normalize utilities', () => {
           attributes: {
             name: 'Test Product - Small Blue',
             slug: 'test-product-small-blue',
+            status: 'live',
           },
           meta: {
             display_price: {
@@ -97,6 +99,7 @@ describe('normalize utilities', () => {
           attributes: {
             name: 'Test Product - Medium Red',
             slug: 'test-product-medium-red',
+            status: 'live',
           },
           meta: {
             display_price: {
@@ -119,6 +122,7 @@ describe('normalize utilities', () => {
             name: 'Simple Product',
             slug: 'simple-product',
             description: 'A simple product',
+            status: 'live',
           },
           meta: {
             display_price: {
@@ -139,6 +143,7 @@ describe('normalize utilities', () => {
       expect(result.price.value).toBe(50); // 5000 cents = $50
       expect(result.price.currencyCode).toBe('USD');
       expect(result.variants).toHaveLength(1);
+      expect(result.variants[0].availableForSale).toBe(false); // Parent products never available for sale
       expect(result.options).toHaveLength(0);
     });
 
@@ -229,6 +234,77 @@ describe('normalize utilities', () => {
       expect(result.variants).toHaveLength(1);
       expect(result.variants[0].id).toBe('');
       expect(result.variants[0].options).toHaveLength(0);
+    });
+
+    it('should set availableForSale based on status and price', () => {
+      const childProductsWithVariousStates: ProductListData = {
+        data: [
+          {
+            id: 'live-with-price',
+            type: 'product',
+            attributes: {
+              name: 'Available Product',
+              status: 'live',
+            },
+            meta: {
+              display_price: {
+                without_tax: {
+                  amount: 10000,
+                  currency: 'USD',
+                },
+              },
+            },
+          },
+          {
+            id: 'live-no-price',
+            type: 'product',
+            attributes: {
+              name: 'No Price Product',
+              status: 'live',
+            },
+            meta: {
+              display_price: {
+                without_tax: {
+                  amount: 0,
+                  currency: 'USD',
+                },
+              },
+            },
+          },
+          {
+            id: 'draft-with-price',
+            type: 'product',
+            attributes: {
+              name: 'Draft Product',
+              status: 'draft',
+            },
+            meta: {
+              display_price: {
+                without_tax: {
+                  amount: 5000,
+                  currency: 'USD',
+                },
+              },
+            },
+          },
+        ],
+      };
+
+      const result = normalizeProduct(mockProductData, 'en-US', childProductsWithVariousStates);
+
+      expect(result.variants).toHaveLength(3);
+      
+      // Live with price should be available
+      const availableVariant = result.variants.find(v => v.id === 'live-with-price');
+      expect(availableVariant?.availableForSale).toBe(true);
+      
+      // Live with no price should not be available
+      const noPriceVariant = result.variants.find(v => v.id === 'live-no-price');
+      expect(noPriceVariant?.availableForSale).toBe(false);
+      
+      // Draft with price should not be available
+      const draftVariant = result.variants.find(v => v.id === 'draft-with-price');
+      expect(draftVariant?.availableForSale).toBe(false);
     });
   });
 });
