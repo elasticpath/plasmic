@@ -10,6 +10,7 @@ import { Registerable } from "./registerable";
 interface EPProductVariantPickerProps {
   className?: string;
   defaultVariantId?: string; // Pre-select a specific variant (e.g., from URL params)
+  updateUrlOnChange?: boolean; // Whether to update the URL when variant changes
 }
 
 export const epProductVariantPickerMeta: ComponentMeta<EPProductVariantPickerProps> =
@@ -21,7 +22,14 @@ export const epProductVariantPickerMeta: ComponentMeta<EPProductVariantPickerPro
     props: {
       defaultVariantId: {
         type: "string",
-        description: "Pre-select a specific variant by ID (e.g., from URL query params)",
+        description:
+          "Pre-select a specific variant by ID (e.g., from URL query params)",
+      },
+      updateUrlOnChange: {
+        type: "boolean",
+        description:
+          "Update the URL query parameter when variant selection changes",
+        defaultValue: true,
       },
     },
     importPath: "@plasmicpkgs/commerce",
@@ -29,7 +37,7 @@ export const epProductVariantPickerMeta: ComponentMeta<EPProductVariantPickerPro
   };
 
 export function EPProductVariantPicker(props: EPProductVariantPickerProps) {
-  const { className, defaultVariantId } = props;
+  const { className, defaultVariantId, updateUrlOnChange } = props;
 
   // Access product from Plasmic's data context
   const product = useSelector("currentProduct") as Product | undefined;
@@ -38,13 +46,15 @@ export function EPProductVariantPicker(props: EPProductVariantPickerProps) {
   // Extract variations from the product
   const variations: ProductOption[] = product?.options || [];
 
-  // Track if we've initialized from defaultVariantId to avoid repeated updates
-  const [isInitialized, setIsInitialized] = useState(false);
+  // Track the last initialized variant ID
+  const [lastInitializedVariantId, setLastInitializedVariantId] = useState<string | undefined>(undefined);
 
-  // Set initial values based on defaultVariantId (only once)
+  // Set initial values based on defaultVariantId
   useEffect(() => {
-    if (!isInitialized && defaultVariantId && product?.variants && form) {
-      const targetVariant = product.variants.find(v => v.id === defaultVariantId);
+    if (defaultVariantId && defaultVariantId !== lastInitializedVariantId && product?.variants && form) {
+      const targetVariant = product.variants.find(
+        (v) => v.id === defaultVariantId
+      );
       if (targetVariant) {
         // Set form values for each variation based on the target variant's options
         targetVariant.options?.forEach((option) => {
@@ -53,10 +63,10 @@ export function EPProductVariantPicker(props: EPProductVariantPickerProps) {
             form.setValue(`variation_${option.id}`, value);
           }
         });
-        setIsInitialized(true);
+        setLastInitializedVariantId(defaultVariantId);
       }
     }
-  }, [isInitialized, defaultVariantId, product, form]);
+  }, [defaultVariantId, product, form, lastInitializedVariantId]);
 
   // Watch all variation selections
   const watchedValues = variations.map((v) => form?.watch(`variation_${v.id}`));
@@ -116,9 +126,20 @@ export function EPProductVariantPicker(props: EPProductVariantPickerProps) {
       // Only update if the value actually changed to prevent infinite loops
       if (currentValue !== selectedVariant.id) {
         form.setValue("ProductVariant", selectedVariant.id);
+        
+        // Update URL if enabled and we're in a browser environment
+        if (updateUrlOnChange && typeof window !== 'undefined') {
+          try {
+            const url = new URL(window.location.href);
+            url.searchParams.set('variant', String(selectedVariant.id));
+            window.history.replaceState({}, '', url.toString());
+          } catch (error) {
+            console.error('Failed to update URL:', error);
+          }
+        }
       }
     }
-  }, [selectedVariant?.id, variationValues]); // form is stable from useFormContext
+  }, [selectedVariant?.id, variationValues, updateUrlOnChange]); // form is stable from useFormContext
 
   // If no variations, return null
   if (!variations || variations.length === 0) {
