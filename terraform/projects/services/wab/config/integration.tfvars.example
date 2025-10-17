@@ -1,0 +1,28 @@
+environment = "integration"
+aws_region  = "us-east-2"
+
+# Container Configuration
+wab_container_image = "<AWS_ACCOUNT_ID>.dkr.ecr.us-east-2.amazonaws.com/plasmic/wab:integration-latest"
+wab_container_port  = 3004
+
+# ECS Configuration - Fargate minimum for 512 CPU is 1024 memory
+wab_cpu    = 512
+wab_memory = 1024
+
+# Scaling
+wab_desired_count = 1
+
+# Health Check
+health_check_path = "/healthcheck"
+
+# S3 Configuration
+# Set to CloudFront distribution URL for site assets, or leave empty to use S3 direct URL
+site_assets_base_url = ""
+
+# Application Configuration
+# Get the ALB DNS after deployment: terraform output -raw alb_dns_name
+host_url = "http://<ALB_DNS_NAME>.us-east-2.elb.amazonaws.com"
+
+# Worker Pool Sizes
+generic_worker_pool_size = 2
+loader_worker_pool_size  = 2

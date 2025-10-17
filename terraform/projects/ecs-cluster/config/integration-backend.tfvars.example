@@ -1,0 +1,4 @@
+bucket         = "<TERRAFORM_STATE_BUCKET>"
+key            = "integration/ecs-cluster/terraform.tfstate"
+dynamodb_table = "<TERRAFORM_LOCKS_TABLE>"
+region         = "us-east-2"

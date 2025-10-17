@@ -1,0 +1,4 @@
+bucket         = "<TERRAFORM_STATE_BUCKET>"
+key            = "integration/s3-clips/terraform.tfstate"
+dynamodb_table = "<TERRAFORM_LOCKS_TABLE>"
+region         = "us-east-2"

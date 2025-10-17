@@ -1,0 +1,5 @@
+# ECR is shared across all environments in same account
+environment = "shared"
+aws_region  = "us-east-2"
+
+image_retention_count = 30

@@ -1,0 +1,4 @@
+bucket         = "<TERRAFORM_STATE_BUCKET>"
+key            = "integration/frontend/terraform.tfstate"
+region         = "us-east-2"
+dynamodb_table = "<TERRAFORM_LOCKS_TABLE>"
