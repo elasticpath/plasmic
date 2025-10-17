@@ -28,11 +28,7 @@ const getOptionsFromSkuId = (
 
   let acc: string[] | undefined;
   Object.keys(entry).every((key) => {
-    const result = getOptionsFromSkuId(
-      skuId,
-      entry[key],
-      [...options, key]
-    );
+    const result = getOptionsFromSkuId(skuId, entry[key], [...options, key]);
     if (result) {
       acc = result;
       return false;
@@ -48,7 +44,7 @@ const buildVariantOptions = (
   variations: any[]
 ): ProductOption[] => {
   const variantOptions: ProductOption[] = [];
-  
+
   // Build a map of option IDs to their variations for quick lookup
   const optionToVariation = new Map<string, { variation: any; option: any }>();
   variations.forEach((variation) => {
@@ -58,7 +54,7 @@ const buildVariantOptions = (
       }
     });
   });
-  
+
   // Convert option IDs to variant options
   optionIds.forEach((optionId) => {
     const optionData = optionToVariation.get(optionId);
@@ -71,7 +67,7 @@ const buildVariantOptions = (
       });
     }
   });
-  
+
   return variantOptions;
 };
 
@@ -198,7 +194,7 @@ export const normalizeProduct = (
 
   // Build variants from child products if available
   const parentPrice = getProductPrice(product);
-  
+
   let variants: ProductVariant[] = [
     {
       id: product.data!.id!,
@@ -219,13 +215,12 @@ export const normalizeProduct = (
           )
         : money(0);
 
-
       // Map variation values from child product
       const variantOptions: ProductOption[] = [];
 
       // The variation_matrix is on the parent product, not the child
       // It maps variation combinations to child product IDs
-      
+
       if (
         product.data?.meta?.variation_matrix &&
         product.data?.meta?.variations
@@ -233,7 +228,7 @@ export const normalizeProduct = (
         // Find the variation combination for this child product
         // The variation_matrix maps combinations like "size:small,color:brown" to child IDs
         const childId = childProduct.id;
-        
+
         if (!childId) {
           return {
             id: "",
@@ -244,21 +239,34 @@ export const normalizeProduct = (
         }
 
         // Find the option IDs for this child product
-        const optionIds = getOptionsFromSkuId(childId, product.data.meta.variation_matrix);
-        
-        if (optionIds && optionIds.length > 0 && product.data?.meta?.variations) {
-          variantOptions.push(...buildVariantOptions(optionIds, product.data.meta.variations));
+        const optionIds = getOptionsFromSkuId(
+          childId,
+          product.data.meta.variation_matrix
+        );
+
+        if (
+          optionIds &&
+          optionIds.length > 0 &&
+          product.data?.meta?.variations
+        ) {
+          variantOptions.push(
+            ...buildVariantOptions(optionIds, product.data.meta.variations)
+          );
         }
       }
 
       // Use the raw amount value directly if display_price is already formatted
-      const rawPrice = childProduct.meta?.display_price?.without_tax?.amount || 0;
-      const formattedPrice = typeof rawPrice === 'number' ? rawPrice / 100 : parseFloat(rawPrice) || 0;
-      
+      const rawPrice =
+        childProduct.meta?.display_price?.without_tax?.amount || 0;
+      const formattedPrice =
+        typeof rawPrice === "number"
+          ? rawPrice / 100
+          : parseFloat(rawPrice) || 0;
+
       // Determine availability based on status and price
-      const isLive = childProduct.attributes?.status === 'live';
+      const isLive = childProduct.attributes?.status === "live";
       const hasPrice = formattedPrice > 0;
-      
+
       return {
         id: childProduct.id!,
         name: childProduct.attributes?.name || "",
@@ -315,7 +323,8 @@ const normalizeLineItem = (
 };
 
 export const normalizeCart = (
-  cart: CartEntityResponse
+  cart: CartEntityResponse,
+  locale?: string
 ): Cart => {
   const cartTotal =
     cart.data?.meta?.display_price?.with_tax ||

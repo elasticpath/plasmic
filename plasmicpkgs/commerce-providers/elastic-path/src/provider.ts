@@ -29,107 +29,7 @@ export interface ElasticPathCredentials {
   host?: string;
 }
 
-const mockUseCart: SWRHook<GetCartHook> = {
-  fetchOptions: {
-    url: "",
-  },
-  async fetcher(_options) {
-    console.log("mockUseCart fetcher");
-    return null;
-  },
-  useHook:
-    ({ useData }) =>
-    (input) => {
-      const response = useData({
-        swrOptions: { revalidateOnFocus: false, ...input?.swrOptions },
-      });
-      return useMemo(
-        () =>
-          Object.create(response, {
-            isEmpty: {
-              get() {
-                return false;
-              },
-              enumerable: true,
-            },
-          }),
-        [response]
-      );
-    },
-};
 
-const mockUseAddItem: MutationHook<AddItemHook> = {
-  useHook: () => () => (input) => {
-    console.log("mockUseAddItem", input);
-    return undefined;
-  },
-  fetchOptions: {
-    url: "",
-  },
-  fetcher: (input) => {
-    console.log("mockUseAddItem fetcher", input);
-    return undefined;
-  },
-};
-
-const mockUseRemoveItem: MutationHook<RemoveItemHook> = {
-  fetchOptions: {
-    url: "",
-  },
-  fetcher: (input) => {
-    console.log("mockUseRemoveItem fetcher", input);
-    return undefined;
-  },
-  useHook: () => () => (input) => {
-    console.log("mockUseRemoveItem", input);
-    return undefined;
-  },
-};
-
-const mockUseUpdateItem: MutationHook<UpdateItemHook> = {
-  fetchOptions: {
-    url: "",
-  },
-  fetcher: (input) => {
-    console.log("mockUseUpdateItem fetcher", input);
-    return undefined;
-  },
-  useHook: () => () => (input) => {
-    console.log("mockUseUpdateItem", input);
-    return undefined;
-  },
-};
-
-const mockUseSearch: SWRHook<SearchProductsHook> = {
-  fetchOptions: {
-    url: "",
-  },
-  fetcher: (input) => {
-    console.log("mockUseSearch fetcher", input);
-    return {
-      products: [],
-      found: false,
-    };
-  },
-  useHook:
-    ({ useData }) =>
-    (input = {}) => {
-      return useData({
-        input: [
-          ["search", input.search],
-          ["categoryId", input.categoryId],
-          ["brandId", input.brandId],
-          ["sort", input.sort],
-          ["locale", input.locale],
-          ["count", input.count],
-        ],
-        swrOptions: {
-          revalidateOnFocus: false,
-          ...input.swrOptions,
-        },
-      });
-    },
-};
 
 // Create a minimal fetcher to satisfy the commerce package interface
 // Note: This is not used by the hooks as they call the SDK directly
@@ -154,10 +54,10 @@ export const getElasticPathProvider = (
     locale,
     cartCookie: ELASTICPATH_CART_COOKIE,
     cart: {
-      useCart: mockUseCart,
-      useAddItem: mockUseAddItem,
-      useRemoveItem: mockUseRemoveItem,
-      useUpdateItem: mockUseUpdateItem,
+      useCart,
+      useAddItem,
+      useRemoveItem,
+      useUpdateItem,
     },
     fetcher: createFetcher(creds), // Required by commerce package interface
     client, // Pass the Elastic Path client for direct SDK usage

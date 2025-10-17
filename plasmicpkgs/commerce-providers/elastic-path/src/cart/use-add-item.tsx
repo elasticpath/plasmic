@@ -20,6 +20,10 @@ export const handler: MutationHook<AddItemHook> = {
       return undefined;
     }
 
+    // For products with variants, we need a variantId
+    // For simple products without variants, we use the productId
+    const cartItemId = item.variantId || item.productId;
+
     let cartId = getCartId();
 
     try {
@@ -45,16 +49,15 @@ export const handler: MutationHook<AddItemHook> = {
       }
 
       // Add item to cart using manageCarts
-      const response = await manageCarts({
+      // Use variantId if provided (for products with variants), otherwise use productId (for simple products)
+      await manageCarts({
         client: (provider as any)!.client!,
         path: { cartID: cartId },
         body: {
           data: {
             type: "cart_item",
-            id: item.productId,
+            id: cartItemId,
             quantity: item.quantity ?? 1,
-            // If variantId is provided, use it as sku
-            ...(item.variantId && { sku: item.variantId }),
           },
         },
       });
@@ -68,9 +71,8 @@ export const handler: MutationHook<AddItemHook> = {
         },
       });
 
-      const items = cartResponse.data?.included?.items || [];
       return cartResponse.data
-        ? normalizeCart(cartResponse.data, provider!.locale)
+        ? normalizeCart(cartResponse.data)
         : undefined;
     } catch (error) {
       console.error("Error adding item to cart:", error);
