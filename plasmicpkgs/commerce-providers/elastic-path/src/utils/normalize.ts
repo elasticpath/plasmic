@@ -287,6 +287,8 @@ export const normalizeProduct = (
     images: normalizeProductImages(product),
     variants,
     options,
+    // Store raw product data for components that need it (like bundle configurator)
+    rawData: product,
   };
 };
 

@@ -1,4 +1,5 @@
 import { ProductTypes as Core } from '@plasmicpkgs/commerce'
+import type { ProductData } from '@epcc-sdk/sdks-shopper'
 
 export type ProductImage = Core.ProductImage;
 
@@ -10,7 +11,9 @@ export type ProductOptionValues = Core.ProductOptionValues;
 
 export type ProductVariant = Core.ProductVariant;
 
-export type Product = Core.Product;
+export type Product = Core.Product & {
+  rawData?: ProductData;
+};
 
 export type SearchProductsBody = Core.SearchProductsBody;
 
