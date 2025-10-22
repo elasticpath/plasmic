@@ -1,10 +1,18 @@
-import { createACart, getACart, manageCarts } from "@epcc-sdk/sdks-shopper";
+import { createACart, getACart, manageCarts, BundleConfiguration } from "@epcc-sdk/sdks-shopper";
 import type { MutationHook } from "@plasmicpkgs/commerce";
 import { useAddItem, UseAddItem } from "@plasmicpkgs/commerce";
 import { useCallback } from "react";
 import type { AddItemHook } from "../types/cart";
 import { getCartId, normalizeCart, setCartId } from "../utils";
 import useCart from "./use-cart";
+
+// Extend the item type to include bundle configuration
+interface ExtendedCartItem {
+  productId: string;
+  variantId?: string;
+  quantity?: number;
+  bundleConfiguration?: BundleConfiguration;
+}
 
 export default useAddItem as UseAddItem<typeof handler>;
 
@@ -13,6 +21,8 @@ export const handler: MutationHook<AddItemHook> = {
     url: "",
   },
   async fetcher({ input: item, options, fetch, provider }) {
+    // Cast item to our extended type
+    const extendedItem = item as ExtendedCartItem;
     if (
       item.quantity &&
       (!Number.isInteger(item.quantity) || item.quantity! < 1)
@@ -50,15 +60,21 @@ export const handler: MutationHook<AddItemHook> = {
 
       // Add item to cart using manageCarts
       // Use variantId if provided (for products with variants), otherwise use productId (for simple products)
+      
+      // The manageCarts SDK accepts bundle_configuration directly
+      const cartData = {
+        type: "cart_item" as const,
+        id: cartItemId,
+        quantity: item.quantity ?? 1,
+        // Add bundle_configuration if provided in the item
+        ...(extendedItem.bundleConfiguration && { bundle_configuration: extendedItem.bundleConfiguration }),
+      };
+
       await manageCarts({
         client: (provider as any)!.client!,
         path: { cartID: cartId },
         body: {
-          data: {
-            type: "cart_item",
-            id: cartItemId,
-            quantity: item.quantity ?? 1,
-          },
+          data: cartData,
         },
       });
 
