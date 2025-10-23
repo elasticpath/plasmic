@@ -14,24 +14,6 @@ resource "aws_lb" "main" {
   }
 }
 
-# HTTP Listener with default 404 response
-# Services will add their own listener rules
-resource "aws_lb_listener" "http" {
-  load_balancer_arn = aws_lb.main.arn
-  port              = "80"
-  protocol          = "HTTP"
-
-  default_action {
-    type = "fixed-response"
-
-    fixed_response {
-      content_type = "text/plain"
-      message_body = "Service not found"
-      status_code  = "404"
-    }
-  }
-}
-
 # Self-signed certificate for HTTPS listener (integration environment)
 resource "tls_private_key" "alb" {
   algorithm = "RSA"

@@ -171,11 +171,11 @@ terraform apply -var-file=config/${ENVIRONMENT}.tfvars -auto-approve -lock=false
 echo "✅ WAB Service deployed"
 
 # 12. Deploy Codegen Service
-#step "Step 12: Deploying Codegen Service"
-#cd ../codegen
-#terraform init -backend-config=config/${ENVIRONMENT}-backend.tfvars -reconfigure
-#terraform apply -var-file=config/${ENVIRONMENT}.tfvars -auto-approve
-#echo "✅ Codegen Service deployed"
+step "Step 12: Deploying Codegen Service"
+cd ../codegen
+terraform init -backend-config=config/${ENVIRONMENT}-backend.tfvars -reconfigure
+terraform apply -var-file=config/${ENVIRONMENT}.tfvars -auto-approve
+echo "✅ Codegen Service deployed"
 
 # 13. Deploy Copilot Service - DISABLED for cost savings
 # step "Step 13: Deploying Copilot Service"
@@ -185,11 +185,11 @@ echo "✅ WAB Service deployed"
 # echo "✅ Copilot Service deployed"
 
 # 14. Deploy Data Service
-#step "Step 14: Deploying Data Service"
-#cd ../data
-#terraform init -backend-config=config/${ENVIRONMENT}-backend.tfvars -reconfigure
-#terraform apply -var-file=config/${ENVIRONMENT}.tfvars -auto-approve
-#echo "✅ Data Service deployed"
+step "Step 14: Deploying Data Service"
+cd ../data
+terraform init -backend-config=config/${ENVIRONMENT}-backend.tfvars -reconfigure
+terraform apply -var-file=config/${ENVIRONMENT}.tfvars -auto-approve
+echo "✅ Data Service deployed"
 
 # 15. Get outputs
 step "Step 15: Deployment Summary"

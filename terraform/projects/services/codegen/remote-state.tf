@@ -39,7 +39,7 @@ locals {
   cluster_id            = data.terraform_remote_state.ecs_cluster.outputs.cluster_id
   cluster_name          = data.terraform_remote_state.ecs_cluster.outputs.cluster_name
   alb_arn               = data.terraform_remote_state.ecs_cluster.outputs.alb_arn
-  alb_listener_arn      = data.terraform_remote_state.ecs_cluster.outputs.alb_listener_arn
+  alb_listener_arn      = data.terraform_remote_state.ecs_cluster.outputs.alb_https_listener_arn
   alb_security_group_id = data.terraform_remote_state.ecs_cluster.outputs.alb_security_group_id
   ecs_security_group_id = data.terraform_remote_state.ecs_cluster.outputs.ecs_security_group_id
   execution_role_arn    = data.terraform_remote_state.ecs_cluster.outputs.execution_role_arn
