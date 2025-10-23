@@ -39,6 +39,7 @@ export interface ComponentProductOption {
   min?: number | null;
   max?: number | null;
   sort_order?: number | null;
+  default?: boolean | null;
 }
 
 // Validation types
