@@ -1,3 +1,8 @@
+# Get CloudFront managed prefix list for origin-facing IPs
+data "aws_ec2_managed_prefix_list" "cloudfront" {
+  name = "com.amazonaws.global.cloudfront.origin-facing"
+}
+
 # ALB Security Group
 resource "aws_security_group" "alb" {
   name_prefix = "${local.cluster_name}-alb-"
@@ -15,11 +20,11 @@ resource "aws_security_group" "alb" {
 
 resource "aws_vpc_security_group_ingress_rule" "alb_https" {
   security_group_id = aws_security_group.alb.id
-  description       = "HTTPS from internet"
+  description       = "HTTPS from CloudFront"
   from_port         = 443
   to_port           = 443
   ip_protocol       = "tcp"
-  cidr_ipv4         = "0.0.0.0/0"
+  prefix_list_id    = data.aws_ec2_managed_prefix_list.cloudfront.id
 }
 
 resource "aws_vpc_security_group_egress_rule" "alb_to_ecs" {
