@@ -10,11 +10,15 @@ export function useBundleValidation(
     
     Object.entries(components).forEach(([componentKey, component]) => {
       const selections = selectedOptions[componentKey] || {};
+      
+      // For parent products, count each parent:child selection as one selection
+      // but multiple variations of the same parent should count as separate selections
       const selectedCount = Object.values(selections).reduce(
         (sum, quantity) => sum + quantity,
         0
       );
 
+      // Component-level validation
       if (component.min !== undefined && component.min !== null && selectedCount < component.min) {
         const componentName = component.name || componentKey;
         if (component.min === component.max) {
@@ -42,6 +46,24 @@ export function useBundleValidation(
           errors.push(`Please remove ${excess} options from ${componentName} (maximum: ${component.max})`);
         }
       }
+
+      // Option-level quantity validation
+      component.options?.forEach((option) => {
+        if (option.id && selections[option.id]) {
+          const quantity = selections[option.id];
+          const minQty = option.min;
+          const maxQty = option.max;
+          const optionName = option.id;
+
+          if (minQty !== null && minQty !== undefined && quantity < minQty) {
+            errors.push(`${optionName} requires at least ${minQty} (currently: ${quantity})`);
+          }
+
+          if (maxQty !== null && maxQty !== undefined && quantity > maxQty) {
+            errors.push(`${optionName} allows maximum ${maxQty} (currently: ${quantity})`);
+          }
+        }
+      });
     });
 
     return {
