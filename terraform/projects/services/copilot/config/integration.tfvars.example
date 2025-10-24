@@ -1,0 +1,26 @@
+environment = "integration"
+aws_region  = "us-east-2"
+
+# Container Configuration
+copilot_container_image = "<AWS_ACCOUNT_ID>.dkr.ecr.us-east-2.amazonaws.com/plasmic/wab:integration-latest"
+
+# ECS Configuration - Copilot needs more resources
+copilot_cpu    = 2048
+copilot_memory = 4096
+
+# Scaling
+copilot_desired_count = 0  # Disabled until copilot-backend.ts is merged from feat/copilot-placeholder branch
+
+# Worker Pool Sizes
+generic_worker_pool_size = 2
+
+# DynamoDB
+dynamodb_region = "us-west-2"
+
+# Networking
+assign_public_ip = false
+
+# Application Configuration
+log_level        = "debug"
+host_url         = "https://<CLOUDFRONT_DISTRIBUTION_URL>"
+codegen_host_url = "https://codegen.<INTERNAL_DOMAIN>"
