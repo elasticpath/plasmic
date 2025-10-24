@@ -46,7 +46,7 @@ jobs:
             --platform linux/arm64 \
             -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
             -f platform/wab/Dockerfile \
-            platform/wab
+            platform/
 
           # Push to ECR
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
