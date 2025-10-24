@@ -2,7 +2,6 @@ environment = "integration"
 aws_region  = "us-east-2"
 
 # Container Configuration
-wab_container_image = "<AWS_ACCOUNT_ID>.dkr.ecr.us-east-2.amazonaws.com/plasmic/wab:integration-latest"
 wab_container_port  = 3004
 
 # ECS Configuration - Fargate minimum for 512 CPU is 1024 memory

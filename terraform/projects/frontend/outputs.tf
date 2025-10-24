@@ -15,7 +15,12 @@ output "frontend_cloudfront_domain" {
 
 output "frontend_url" {
   description = "Frontend URL"
-  value       = "https://${aws_cloudfront_distribution.frontend.domain_name}"
+  value       = local.use_custom_domain ? "https://${local.frontend_domain}" : "https://${aws_cloudfront_distribution.frontend.domain_name}"
+}
+
+output "frontend_custom_domain" {
+  description = "Custom domain name for frontend (if configured)"
+  value       = local.frontend_domain
 }
 
 output "host_bucket_name" {

@@ -11,7 +11,7 @@ module "copilot_service" {
   service_name = "copilot"
 
   # Container configuration
-  container_image = var.copilot_container_image
+  container_image = var.container_image
   container_port  = 3009
   container_command = [
     "node",

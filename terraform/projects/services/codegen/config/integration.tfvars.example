@@ -1,10 +1,6 @@
 environment = "integration"
 aws_region  = "us-east-2"
 
-# Container Configuration
-# This will be updated by deploy-all.sh with the actual ECR URL
-codegen_container_image = "<AWS_ACCOUNT_ID>.dkr.ecr.us-east-2.amazonaws.com/plasmic/wab:integration-latest"
-
 # ECS Configuration - Fargate minimum for 512 CPU is 1024 memory
 codegen_cpu    = 512
 codegen_memory = 1024

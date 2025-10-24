@@ -11,7 +11,7 @@ module "data_service" {
   service_name = "data"
 
   # Container configuration
-  container_image = var.data_container_image
+  container_image = var.container_image
   container_port  = 3004
   container_command = [
     "node",

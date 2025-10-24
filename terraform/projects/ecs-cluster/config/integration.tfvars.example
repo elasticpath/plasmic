@@ -2,3 +2,6 @@ environment = "integration"
 aws_region  = "us-east-2"
 
 enable_container_insights = true
+
+# Custom domain configuration
+hosted_zone_id = "<HOSTED_ZONE_ID>"  # Route53 hosted zone ID for storefront.elasticpath.com
