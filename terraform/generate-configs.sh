@@ -21,7 +21,6 @@ REQUIRED_VARS=(
 : "${INTERNAL_DOMAIN:=example.com}"
 : "${LOADER_ASSETS_BUCKET:=placeholder-bucket}"
 : "${DB_USERNAME:=plasmicadmin}"
-: "${GIT_SHA:=dev-local}"
 
 # Check required variables
 missing=()
