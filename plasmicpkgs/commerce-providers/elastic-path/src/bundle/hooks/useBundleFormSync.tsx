@@ -1,12 +1,13 @@
 import { useEffect } from "react";
-import { UseFormReturn } from "react-hook-form";
+import { UseFormReturn, useFormContext } from "react-hook-form";
 import { convertSelectionsForAPI } from "../utils/bundleSelectionUtils";
+import { BundleFormData } from "../schemas/bundleSchema";
 
 interface UseBundleFormSyncProps {
-  selectedOptions: Record<string, Record<string, number>>;
+  selectedOptions: BundleFormData;
   updateUrlOnChange?: boolean;
   isInitialized: boolean;
-  form?: UseFormReturn<any>;
+  form?: UseFormReturn<BundleFormData>;
   configuredBundle?: any;
 }
 
@@ -17,9 +18,11 @@ export function useBundleFormSync({
   form,
   configuredBundle,
 }: UseBundleFormSyncProps) {
-  // Update form when bundle configuration is received from API
+  // Get parent form context if available
+  const parentForm = useFormContext();
+  // Update both internal and parent forms when bundle configuration is received from API
   useEffect(() => {
-    if (form && configuredBundle?.data?.meta?.bundle_configuration) {
+    if (configuredBundle?.data?.meta?.bundle_configuration) {
       // Convert BigInt to serializable format before storing in form
       const serializableConfig = {
         selected_options: Object.fromEntries(
@@ -33,14 +36,40 @@ export function useBundleFormSync({
           )
         )
       };
-      form.setValue("BundleConfiguration", serializableConfig);
       
-      // Also update the configured bundle ID if it's different
-      if (configuredBundle.data.id) {
-        form.setValue("ConfiguredBundleId", configuredBundle.data.id);
+      // Update internal form if available
+      if (form) {
+        form.setValue("BundleConfiguration", serializableConfig);
+        if (configuredBundle.data.id) {
+          form.setValue("ConfiguredBundleId", configuredBundle.data.id);
+        }
+      }
+      
+      // IMPORTANT: Also update parent form context for cart integration
+      if (parentForm) {
+        parentForm.setValue("BundleConfiguration", serializableConfig);
+        if (configuredBundle.data.id) {
+          parentForm.setValue("ConfiguredBundleId", configuredBundle.data.id);
+        }
       }
     }
-  }, [form, configuredBundle]);
+  }, [form, parentForm, configuredBundle]);
+
+  // Sync selected options to parent form for cart integration
+  useEffect(() => {
+    if (parentForm && isInitialized) {
+      // Convert selections to API format
+      const apiFormattedSelections = convertSelectionsForAPI(selectedOptions);
+      
+      // Only update if we have actual component selections (not just form fields)
+      const hasComponentSelections = Object.keys(apiFormattedSelections).length > 0;
+      if (hasComponentSelections) {
+        parentForm.setValue("BundleConfiguration", {
+          selected_options: apiFormattedSelections
+        });
+      }
+    }
+  }, [parentForm, selectedOptions, isInitialized]);
 
   // Update URL when configuration changes
   useEffect(() => {
