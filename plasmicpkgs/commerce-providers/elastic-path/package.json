@@ -36,11 +36,13 @@
   },
   "dependencies": {
     "@epcc-sdk/sdks-shopper": "^0.0.40",
+    "@hookform/resolvers": "^3.3.2",
     "@plasmicpkgs/commerce": "0.0.225",
     "@types/react": "^18.0.27",
     "debounce": "^2.0.0",
     "js-cookie": "^3.0.5",
-    "qs": "^6.11.0"
+    "qs": "^6.11.0",
+    "zod": "^3.22.4"
   },
   "publishConfig": {
     "access": "public"

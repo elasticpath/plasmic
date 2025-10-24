@@ -20,7 +20,15 @@ export const convertSelectionsForAPI = (
 ): Record<string, Record<string, number>> => {
   const apiSelections: Record<string, Record<string, number>> = {};
   
+  // Special form fields to exclude from API calls
+  const excludedFields = ['BundleConfiguration', 'ConfiguredBundleId'];
+  
   Object.entries(selections).forEach(([componentKey, options]) => {
+    // Skip excluded form fields
+    if (excludedFields.includes(componentKey)) {
+      return;
+    }
+    
     apiSelections[componentKey] = {};
     
     Object.entries(options).forEach(([selectionKey, quantity]) => {

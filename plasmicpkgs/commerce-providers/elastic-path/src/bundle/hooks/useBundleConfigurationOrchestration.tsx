@@ -9,7 +9,7 @@ interface UseBundleConfigurationOrchestrationProps {
   isInitialized: boolean;
   isValid: boolean;
   bundleProduct?: ElasticPathBundleProduct;
-  configureBundleSelection: (options: Record<string, Record<string, number>>) => Promise<void>;
+  configureBundleSelection: (options: Record<string, Record<string, number>>) => Promise<any>;
   debounceMs?: number;
 }
 

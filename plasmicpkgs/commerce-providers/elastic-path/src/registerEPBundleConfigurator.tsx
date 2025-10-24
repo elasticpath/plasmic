@@ -2,23 +2,20 @@ import { useSelector } from "@plasmicapp/host";
 import registerComponent, {
   ComponentMeta,
 } from "@plasmicapp/host/registerComponent";
-import React, { useEffect, useMemo } from "react";
-import { useFormContext } from "react-hook-form";
-import debounce from "debounce";
+import React from "react";
 import { Registerable } from "./registerable";
 import { useBundleConfiguration } from "./bundle/use-bundle-configuration";
-import { useBundleValidation } from "./bundle/use-bundle-validation";
 import { useBundleOptionProducts } from "./bundle/use-bundle-option-products";
 import { useParentProducts } from "./bundle/use-parent-products";
-import { useBundleState } from "./bundle/hooks/useBundleState";
+import { useBundleForm, useApiFormattedSelections } from "./bundle/hooks/useBundleForm";
 import { useBundleFormSync } from "./bundle/hooks/useBundleFormSync";
+import { useBundleConfigurationOrchestration } from "./bundle/hooks/useBundleConfigurationOrchestration";
 import { BundlePrice } from "./bundle/components/BundlePrice";
 import { ValidationErrors } from "./bundle/components/ValidationErrors";
 import { ComponentSelector } from "./bundle/components/ComponentSelector";
-import { 
-  ElasticPathBundleProduct 
-} from "./bundle/types";
-import { convertSelectionsForAPI, sortByOrder } from "./bundle/utils/bundleSelectionUtils";
+import { sortByOrder } from "./bundle/utils/bundleSelectionUtils";
+import { validateBundleProduct } from "./bundle/utils/productValidation";
+import { calculateBundlePrice } from "./bundle/utils/priceCalculation";
 import { Product } from "./types/product";
 
 interface EPBundleConfiguratorProps {
@@ -79,31 +76,36 @@ export function EPBundleConfigurator(props: EPBundleConfiguratorProps) {
 
   // Access product from Plasmic's data context
   const normalizedProduct = useSelector("currentProduct") as Product | undefined;
-  const form = useFormContext();
 
-  // Get the raw EP product data
-  const rawProduct = normalizedProduct?.rawData?.data;
+  // Validate and extract bundle product information
+  const productValidation = validateBundleProduct(normalizedProduct);
+  
+  // Early returns for invalid states
+  if (!productValidation.isValid) {
+    return <div className={className}>{productValidation.errorMessage}</div>;
+  }
 
-  // Check if this is a bundle product
-  const isBundle = rawProduct?.meta?.product_types?.[0] === "bundle";
-  const bundleProduct = rawProduct as ElasticPathBundleProduct;
-  const components = bundleProduct?.attributes?.components || {};
+  const { bundleProduct, components } = productValidation;
 
-  // Bundle state management
+  // Bundle form management with Zod validation
   const {
+    form,
     selectedOptions,
-    isInitialized,
+    isValid,
+    errors,
     handleComponentSelection,
-  } = useBundleState({
+  } = useBundleForm({
     components,
     bundleProduct,
     defaultConfiguration,
   });
 
+  // Get API-formatted selections for backend calls
+  const apiFormattedSelections = useApiFormattedSelections(selectedOptions);
+
   // Bundle configuration hook
   const {
     configureBundleSelection,
-    isConfiguring,
     configuredBundle,
   } = useBundleConfiguration({
     bundleId: bundleProduct?.id || "",
@@ -112,123 +114,47 @@ export function EPBundleConfigurator(props: EPBundleConfiguratorProps) {
     },
   });
 
+  // Bundle configuration orchestration
+  const { isConfiguring } = useBundleConfigurationOrchestration({
+    selectedOptions: apiFormattedSelections,
+    isInitialized: true, // Form is always initialized when mounted
+    isValid,
+    bundleProduct,
+    configureBundleSelection,
+    debounceMs,
+  });
+
   // Form and URL synchronization
   useBundleFormSync({
     selectedOptions,
     updateUrlOnChange,
-    isInitialized,
+    isInitialized: true,
     form,
     configuredBundle,
   });
 
-  // Validation hook
-  const validation = useBundleValidation(components, selectedOptions);
-
   // Fetch parent product information and child variations
   const { parentProducts } = useParentProducts({
     components,
-    enabled: isBundle && isInitialized,
+    enabled: productValidation.isBundle,
   });
 
   // Fetch product details for options (including child products)
   const { products: optionProducts, loading: productsLoading } = useBundleOptionProducts({
     components,
     parentProducts,
-    enabled: isBundle && isInitialized,
+    enabled: productValidation.isBundle,
   });
 
-  // Track last configured state to avoid duplicate API calls
-  const [lastConfigured, setLastConfigured] = React.useState<string>("");
-
-  // Debounced configuration function
-  const debouncedConfigure = useMemo(
-    () =>
-      debounce(async (options: Record<string, Record<string, number>>) => {
-        try {
-          const optionsString = JSON.stringify(options);
-          if (optionsString !== lastConfigured && Object.keys(options).length > 0) {
-            await configureBundleSelection(options);
-            setLastConfigured(optionsString);
-          }
-        } catch (error) {
-          console.error("Failed to process bundle configuration:", error);
-        }
-      }, debounceMs),
-    [configureBundleSelection, debounceMs, lastConfigured]
+  // Calculate price and display information
+  const priceInfo = calculateBundlePrice(
+    bundleProduct, 
+    configuredBundle ? { data: configuredBundle as any } : undefined
   );
+  const { currentPrice, isFixedPrice, displayComponents } = priceInfo;
 
-  // Configure bundle when selections change (but not during initialization)
-  useEffect(() => {
-    // Skip configuration if not initialized, not valid, or no selections
-    if (!isInitialized || !validation.isValid || Object.keys(selectedOptions).length === 0) {
-      return;
-    }
-    
-    // Convert selections to API format for comparison
-    const apiFormattedSelections = convertSelectionsForAPI(selectedOptions);
-    
-    // Skip if this looks like the initial default configuration
-    const isDefaultConfig = bundleProduct?.meta?.bundle_configuration?.selected_options && 
-      (() => {
-        const apiSelections = bundleProduct.meta.bundle_configuration.selected_options;
-        
-        // Check if the keys match
-        const apiKeys = Object.keys(apiSelections);
-        const selectedKeys = Object.keys(apiFormattedSelections);
-        if (apiKeys.length !== selectedKeys.length) return false;
-        
-        // Check each component and option
-        for (const componentKey of apiKeys) {
-          if (!apiFormattedSelections[componentKey]) return false;
-          
-          const apiOptions = apiSelections[componentKey];
-          const selectedOptionsForComponent = apiFormattedSelections[componentKey];
-          
-          const apiOptionKeys = Object.keys(apiOptions);
-          const selectedOptionKeys = Object.keys(selectedOptionsForComponent);
-          
-          if (apiOptionKeys.length !== selectedOptionKeys.length) return false;
-          
-          for (const optionId of apiOptionKeys) {
-            const apiQty = Number(apiOptions[optionId]); // Convert BigInt to number
-            const selectedQty = selectedOptionsForComponent[optionId];
-            
-            if (apiQty !== selectedQty) return false;
-          }
-        }
-        
-        return true;
-      })();
-    
-    if (isDefaultConfig) {
-      return;
-    }
-    
-    debouncedConfigure(apiFormattedSelections);
-  }, [selectedOptions, validation.isValid, debouncedConfigure, isInitialized, bundleProduct?.meta?.bundle_configuration]);
-
-  // Calculate current price and use configured bundle data when available
-  const currentPrice = configuredBundle?.data?.meta?.display_price?.without_tax?.formatted
-    || bundleProduct?.meta?.display_price?.without_tax?.formatted;
-  
-  // Detect bundle pricing type (fixed price has SKU, cumulative doesn't)
-  const isFixedPrice = bundleProduct?.attributes?.sku !== undefined;
-  
-  // Use configured bundle product data when available
-  const displayProduct = configuredBundle?.data || bundleProduct;
-  const displayComponents = displayProduct?.attributes?.components || components;
-
-  if (!normalizedProduct) {
-    return <div className={className}>No product selected</div>;
-  }
-
-  if (!rawProduct) {
-    return <div className={className}>Product data not available</div>;
-  }
-
-  if (!isBundle) {
-    return <div className={className}>This product is not a bundle</div>;
-  }
+  // Convert Zod errors to legacy format for ValidationErrors component
+  const validationErrors = Object.values(errors);
 
   return (
     <div className={className}>
@@ -241,7 +167,7 @@ export function EPBundleConfigurator(props: EPBundleConfiguratorProps) {
       )}
 
       {showValidationErrors && (
-        <ValidationErrors errors={validation.errors} />
+        <ValidationErrors errors={validationErrors} />
       )}
 
       {sortByOrder(Object.entries(displayComponents).map(([key, component]) => ({ 

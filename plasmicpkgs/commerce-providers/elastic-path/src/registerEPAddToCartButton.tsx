@@ -4,7 +4,8 @@ import registerComponent, {
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { useFormContext } from "react-hook-form";
-import { useAddItem, CommerceError, Product } from "@plasmicpkgs/commerce";
+import { CommerceError, Product } from "@plasmicpkgs/commerce";
+import useAddItem from "./cart/use-add-item";
 import { Registerable } from "./registerable";
 
 interface EPAddToCartButtonProps {
@@ -38,6 +39,10 @@ export function EPAddToCartButton(props: EPAddToCartButtonProps) {
   const addItem = useAddItem();
 
   const addToCart = async () => {
+    if (!form) {
+      throw new Error("EPAddToCartButton must be used within a ProductProvider that provides a form context");
+    }
+    
     const quantity = +(form.getValues()["ProductQuantity"] ?? 1);
     if (isNaN(quantity) || quantity < 1) {
       throw new CommerceError({
@@ -45,8 +50,7 @@ export function EPAddToCartButton(props: EPAddToCartButtonProps) {
       });
     }
     if (product) {
-      const variantId =
-        form.getValues()["ProductVariant"] ?? product.variants[0].id;
+      const variantId = form.getValues()["ProductVariant"] ?? product.variants[0]?.id;
       const bundleConfiguration = form.getValues()["BundleConfiguration"];
       
       await addItem({
