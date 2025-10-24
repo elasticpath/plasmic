@@ -61,7 +61,6 @@ find projects -name "*.tfvars.example" -type f | while read -r example_file; do
       -e "s|<LOADER_ASSETS_BUCKET>|${LOADER_ASSETS_BUCKET}|g" \
       -e "s|<DB_USERNAME>|${DB_USERNAME}|g" \
       -e "s|<HOSTED_ZONE_ID>|${HOSTED_ZONE_ID}|g" \
-      -e "s|<GIT_SHA>|${GIT_SHA}|g" \
       "$example_file" > "$output_file"
 
   echo "Generated: $output_file"
