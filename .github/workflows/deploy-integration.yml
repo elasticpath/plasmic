@@ -3,7 +3,7 @@ name: Deploy to Integration
 on:
   push:
     branches:
-      - main
+      - master
     paths:
       - 'platform/wab/**'
       - 'terraform/**'
