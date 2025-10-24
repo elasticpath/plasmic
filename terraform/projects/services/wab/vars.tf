@@ -10,9 +10,10 @@ variable "aws_region" {
 }
 
 # Container Configuration
-variable "wab_container_image" {
+variable "container_image" {
   type        = string
-  description = "Docker image URL for WAB container"
+  description = "Docker image URL for container"
+  default     = ""
 }
 
 variable "wab_container_port" {

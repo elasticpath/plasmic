@@ -23,7 +23,7 @@ module "wab_service" {
   service_name = local.service_name
 
   # Container configuration
-  container_image   = var.wab_container_image
+  container_image   = var.container_image
   container_port    = var.wab_container_port
   container_command = []
 

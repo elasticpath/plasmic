@@ -9,9 +9,10 @@ variable "aws_region" {
   default     = "us-east-1"
 }
 
-variable "codegen_container_image" {
+variable "container_image" {
   type        = string
-  description = "Docker image URL for codegen container"
+  description = "Docker image URL for container"
+  default     = ""
 }
 
 variable "codegen_cpu" {

@@ -12,6 +12,7 @@ REQUIRED_VARS=(
   "AWS_ACCOUNT_ID"
   "TERRAFORM_STATE_BUCKET"
   "TERRAFORM_LOCKS_TABLE"
+  "HOSTED_ZONE_ID"
 )
 
 # Optional variables with defaults
@@ -20,6 +21,7 @@ REQUIRED_VARS=(
 : "${INTERNAL_DOMAIN:=example.com}"
 : "${LOADER_ASSETS_BUCKET:=placeholder-bucket}"
 : "${DB_USERNAME:=plasmicadmin}"
+: "${GIT_SHA:=dev-local}"
 
 # Check required variables
 missing=()
@@ -37,6 +39,7 @@ if [ ${#missing[@]} -gt 0 ]; then
   echo "  export AWS_ACCOUNT_ID=123456789012"
   echo "  export TERRAFORM_STATE_BUCKET=my-terraform-state"
   echo "  export TERRAFORM_LOCKS_TABLE=my-terraform-locks"
+  echo "  export HOSTED_ZONE_ID=Z1234567890ABC"
   echo "  ./generate-configs.sh"
   exit 1
 fi
@@ -58,6 +61,8 @@ find projects -name "*.tfvars.example" -type f | while read -r example_file; do
       -e "s|<INTERNAL_DOMAIN>|${INTERNAL_DOMAIN}|g" \
       -e "s|<LOADER_ASSETS_BUCKET>|${LOADER_ASSETS_BUCKET}|g" \
       -e "s|<DB_USERNAME>|${DB_USERNAME}|g" \
+      -e "s|<HOSTED_ZONE_ID>|${HOSTED_ZONE_ID}|g" \
+      -e "s|<GIT_SHA>|${GIT_SHA}|g" \
       "$example_file" > "$output_file"
 
   echo "Generated: $output_file"

@@ -11,7 +11,7 @@ module "codegen_service" {
   service_name = "codegen"
 
   # Container configuration
-  container_image = var.codegen_container_image
+  container_image = var.container_image
   container_port  = 3008
   container_command = [
     "node",

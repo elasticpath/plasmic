@@ -9,9 +9,10 @@ variable "aws_region" {
   default     = "us-east-1"
 }
 
-variable "data_container_image" {
+variable "container_image" {
   type        = string
-  description = "Docker image URL for data container"
+  description = "Docker image URL for container"
+  default     = ""
 }
 
 variable "data_cpu" {

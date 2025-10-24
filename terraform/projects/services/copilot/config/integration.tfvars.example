@@ -1,9 +1,6 @@
 environment = "integration"
 aws_region  = "us-east-2"
 
-# Container Configuration
-copilot_container_image = "<AWS_ACCOUNT_ID>.dkr.ecr.us-east-2.amazonaws.com/plasmic/wab:integration-latest"
-
 # ECS Configuration - Copilot needs more resources
 copilot_cpu    = 2048
 copilot_memory = 4096

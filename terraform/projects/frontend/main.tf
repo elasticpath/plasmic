@@ -53,7 +53,54 @@ data "terraform_remote_state" "ecs_cluster" {
 }
 
 locals {
-  alb_dns_name = data.terraform_remote_state.ecs_cluster.outputs.alb_dns_name
+  alb_dns_name      = data.terraform_remote_state.ecs_cluster.outputs.alb_dns_name
+  use_custom_domain = var.hosted_zone_id != null
+  frontend_domain   = local.use_custom_domain ? "${var.environment}.${var.parent_domain}" : null
+  alb_origin_domain = local.use_custom_domain ? "alb-${var.environment}.${var.parent_domain}" : local.alb_dns_name
+}
+
+# ACM Certificate for CloudFront (must be in us-east-1)
+resource "aws_acm_certificate" "cloudfront" {
+  count    = local.use_custom_domain ? 1 : 0
+  provider = aws.us_east_1
+
+  domain_name       = local.frontend_domain
+  validation_method = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = {
+    Name        = "plasmic-cloudfront-${var.environment}"
+    Environment = var.environment
+  }
+}
+
+# DNS validation records for ACM certificate
+resource "aws_route53_record" "cert_validation" {
+  for_each = local.use_custom_domain ? {
+    for dvo in aws_acm_certificate.cloudfront[0].domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  } : {}
+
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = var.hosted_zone_id
+}
+
+# Wait for certificate validation to complete
+resource "aws_acm_certificate_validation" "cloudfront" {
+  count                   = local.use_custom_domain ? 1 : 0
+  provider                = aws.us_east_1
+  certificate_arn         = aws_acm_certificate.cloudfront[0].arn
+  validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
 }
 
 # CloudFront distribution for frontend
@@ -76,7 +123,7 @@ resource "aws_cloudfront_distribution" "frontend" {
 
   # ALB origin for backend API
   origin {
-    domain_name = local.alb_dns_name
+    domain_name = local.alb_origin_domain
     origin_id   = "ALB-plasmic-backend"
 
     custom_origin_config {
@@ -120,6 +167,23 @@ resource "aws_cloudfront_distribution" "frontend" {
     viewer_protocol_policy = "redirect-to-https"
     compress               = false
   }
+  # Custom domain aliases (only if custom domain is configured)
+  aliases = local.use_custom_domain ? [local.frontend_domain] : []
+
+  # Custom error responses for SPA routing
+  # When user navigates to /projects, S3 returns 403/404, so redirect to index.html
+  custom_error_response {
+    error_code         = 403
+    response_code      = 200
+    response_page_path = "/index.html"
+  }
+
+  custom_error_response {
+    error_code         = 404
+    response_code      = 200
+    response_page_path = "/index.html"
+  }
+
   restrictions {
     geo_restriction {
       restriction_type = "none"
@@ -127,12 +191,29 @@ resource "aws_cloudfront_distribution" "frontend" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = true
+    cloudfront_default_certificate = !local.use_custom_domain
+    acm_certificate_arn            = local.use_custom_domain ? aws_acm_certificate_validation.cloudfront[0].certificate_arn : null
+    ssl_support_method             = local.use_custom_domain ? "sni-only" : null
+    minimum_protocol_version       = local.use_custom_domain ? "TLSv1.2_2021" : null
   }
 
   tags = {
     Name        = "plasmic-frontend-${var.environment}"
     Environment = var.environment
+  }
+}
+
+# Route53 alias record for CloudFront distribution
+resource "aws_route53_record" "frontend" {
+  count   = local.use_custom_domain ? 1 : 0
+  zone_id = var.hosted_zone_id
+  name    = local.frontend_domain
+  type    = "A"
+
+  alias {
+    name                   = aws_cloudfront_distribution.frontend.domain_name
+    zone_id                = aws_cloudfront_distribution.frontend.hosted_zone_id
+    evaluate_target_health = false
   }
 }
 
