@@ -1,0 +1,58 @@
+name: PR Docker Build Test
+
+on:
+  pull_request:
+    branches:
+      - master
+    paths:
+      - 'platform/wab/**'
+      - 'platform/loader-bundle-env/**'
+      - 'platform/loader-html-hydrate/**'
+      - '.github/workflows/pr-docker-build.yml'
+
+jobs:
+  build:
+    name: Test Docker Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        run: |
+          echo "🔨 Building Docker image for PR validation..."
+          docker build \
+            --platform linux/arm64 \
+            -t plasmic-wab:pr-${{ github.event.pull_request.number }} \
+            -f platform/wab/Dockerfile \
+            platform/
+
+          echo "✅ Docker build completed successfully!"
+
+      - name: Build summary
+        if: success()
+        run: |
+          echo "### ✅ Docker Build Successful" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**PR:** #${{ github.event.pull_request.number }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Platform:** linux/arm64" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The Docker image built successfully and is ready for deployment." >> $GITHUB_STEP_SUMMARY
+
+      - name: Build failure
+        if: failure()
+        run: |
+          echo "### ❌ Docker Build Failed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**PR:** #${{ github.event.pull_request.number }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Check the workflow logs for build errors." >> $GITHUB_STEP_SUMMARY
