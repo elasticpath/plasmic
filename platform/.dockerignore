@@ -30,6 +30,21 @@
 # Testing
 **/coverage
 **/.nyc_output
+**/__tests__
+**/*.test.ts
+**/*.test.tsx
+**/*.test.js
+**/*.spec.ts
+**/*.spec.tsx
+**/*.spec.js
+
+# Documentation
+**/*.md
+!**/README.md
+
+# CI/CD
+**/.github
+**/.circleci
 
 # Temp files
 **/tmp
