@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getByContextProduct } from "@epcc-sdk/sdks-shopper";
+import { getByContextAllProducts } from "@epcc-sdk/sdks-shopper";
 import { useCommerce } from "../elastic-path";
 import { ComponentProduct } from "./types";
 import { Product } from "../types/product";
@@ -64,43 +64,52 @@ export function useBundleOptionProducts({
           return;
         }
 
-        // Fetch products individually (could be optimized with batch endpoint if available)
-        const productPromises = Array.from(productIds).map(async (productId) => {
-          try {
-            const response = await getByContextProduct({
+        // Fetch all products in a single request using bulk fetching
+        const productMap: Record<string, OptionProduct> = {};
+        
+        try {
+          const productIdsArray = Array.from(productIds);
+          
+          // Elastic Path supports up to ~200 IDs in the in filter
+          // If we have more, we'll need to batch them
+          const batchSize = 100;
+          const batches = [];
+          
+          for (let i = 0; i < productIdsArray.length; i += batchSize) {
+            batches.push(productIdsArray.slice(i, i + batchSize));
+          }
+          
+          const batchPromises = batches.map(async (batchIds) => {
+            const response = await getByContextAllProducts({
               client: commerce.providerRef.current.client,
-              path: { product_id: productId },
+              query: {
+                filter: `in(id,${batchIds.join(',')})`,
+                include: ["main_image"],
+                "page[limit]": BigInt(batchIds.length),
+              },
             });
-
-            const product = response.data?.data;
-            if (product) {
-              return {
-                id: productId,
-                product: {
-                  id: productId,
-                  name: product.attributes?.name,
-                  description: product.attributes?.description,
-                  image: product.relationships?.main_image?.data?.id,
-                  price: product.meta?.display_price?.without_tax?.formatted,
-                  sku: product.attributes?.sku,
-                } as OptionProduct,
+            
+            return response.data?.data || [];
+          });
+          
+          const batchResults = await Promise.all(batchPromises);
+          const allProducts = batchResults.flat();
+          
+          allProducts.forEach((product) => {
+            if (product && product.id) {
+              productMap[product.id] = {
+                id: product.id,
+                name: product.attributes?.name,
+                description: product.attributes?.description,
+                image: product.relationships?.main_image?.data?.id,
+                price: product.meta?.display_price?.without_tax?.formatted,
+                sku: product.attributes?.sku,
               };
             }
-            return null;
-          } catch (err) {
-            console.warn(`Failed to fetch product ${productId}:`, err);
-            return null;
-          }
-        });
-
-        const results = await Promise.all(productPromises);
-        const productMap: Record<string, OptionProduct> = {};
-
-        results.forEach((result) => {
-          if (result) {
-            productMap[result.id] = result.product;
-          }
-        });
+          });
+        } catch (err) {
+          console.error("Failed to fetch products in bulk:", err);
+        }
 
         setProducts(productMap);
       } catch (err) {
