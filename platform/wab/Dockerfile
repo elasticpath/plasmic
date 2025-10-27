@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # See https://hub.docker.com/_/node/
 FROM node:24-alpine AS builder
 
@@ -8,7 +9,8 @@ RUN yarn config set network-timeout 600000
 WORKDIR /app/wab
 COPY wab/package.json wab/yarn.lock ./
 COPY wab/patches/ ./patches/
-RUN yarn install --frozen-lockfile && yarn cache clean
+RUN --mount=type=cache,target=/usr/local/share/.cache/yarn,sharing=locked \
+    yarn install --frozen-lockfile
 COPY wab/ .
 RUN mkdir -p src/wab/gen && make
 RUN rm -rf node_modules/
@@ -23,12 +25,14 @@ RUN yarn config set network-timeout 600000
 WORKDIR /app/loader-bundle-env
 COPY loader-bundle-env/package.json loader-bundle-env/yarn.lock ./
 COPY loader-bundle-env/patches/ ./patches/
-RUN yarn install --frozen-lockfile && yarn cache clean
+RUN --mount=type=cache,target=/usr/local/share/.cache/yarn,sharing=locked \
+    yarn install --frozen-lockfile
 
 # loader-html-hydrate is expected to be a peer folder to wab, so we copy it there
 WORKDIR /app/loader-html-hydrate
 COPY loader-html-hydrate/package.json loader-html-hydrate/yarn.lock ./
-RUN yarn install --frozen-lockfile && yarn cache clean
+RUN --mount=type=cache,target=/usr/local/share/.cache/yarn,sharing=locked \
+    yarn install --frozen-lockfile
 
 WORKDIR /app/loader-bundle-env
 COPY loader-bundle-env/ .
@@ -46,7 +50,8 @@ EXPOSE 3004
 WORKDIR /app/wab
 COPY wab/package.json wab/yarn.lock ./
 COPY wab/patches/ ./patches/
-RUN yarn install --production --frozen-lockfile && yarn cache clean
+RUN --mount=type=cache,target=/usr/local/share/.cache/yarn,sharing=locked \
+    yarn install --production --frozen-lockfile
 COPY wab/ .
 COPY --from=builder /app/wab/ .
 
