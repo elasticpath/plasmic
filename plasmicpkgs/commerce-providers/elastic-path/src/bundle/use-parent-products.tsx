@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getByContextProduct, getByContextChildProducts } from "@epcc-sdk/sdks-shopper";
+import { getByContextAllProducts, getByContextChildProducts } from "@epcc-sdk/sdks-shopper";
 import { useCommerce } from "../elastic-path";
 import { ComponentProduct } from "./types";
 
@@ -69,34 +69,47 @@ export function useParentProducts({
         }
 
         const initialParentInfo: Record<string, ParentProductInfo> = {};
+        const parentProductResults: Array<{ productId: string; product: any; isParent: boolean } | null> = [];
         
-        // First, fetch all products to determine which are parents
-        const productPromises = Array.from(productIds).map(async (productId) => {
-          try {
-            const response = await getByContextProduct({
+        // Fetch all products in bulk to determine which are parents
+        try {
+          const productIdsArray = Array.from(productIds);
+          
+          // Batch products if needed (Elastic Path supports ~200 IDs per request)
+          const batchSize = 100;
+          const batches = [];
+          
+          for (let i = 0; i < productIdsArray.length; i += batchSize) {
+            batches.push(productIdsArray.slice(i, i + batchSize));
+          }
+          
+          const batchPromises = batches.map(async (batchIds) => {
+            const response = await getByContextAllProducts({
               client: commerce.providerRef.current.client,
-              path: { product_id: productId },
+              query: {
+                filter: `in(id,${batchIds.join(',')})`,
+                include: ["main_image"],
+                "page[limit]": BigInt(batchIds.length),
+              },
             });
-
-            const product = response.data?.data;
-            if (product) {
+            
+            return response.data?.data || [];
+          });
+          
+          const batchResults = await Promise.all(batchPromises);
+          const allProducts = batchResults.flat();
+          
+          // Process each product to determine if it's a parent
+          allProducts.forEach((product) => {
+            if (product && product.id) {
               // Check if product is a parent by looking for child relationships
               const hasChildren = product.relationships?.children?.data && 
                                  product.relationships.children.data.length > 0;
               
               const isParent = hasChildren || product.attributes?.base_product === true;
 
-              // Uncomment for debugging parent product detection
-              // console.log(`Product ${productId}:`, {
-              //   hasChildren,
-              //   childrenCount: product.relationships?.children?.data?.length || 0,
-              //   baseProduct: product.attributes?.base_product,
-              //   isParent: Boolean(isParent),
-              //   relationships: product.relationships
-              // });
-
-              initialParentInfo[productId] = {
-                id: productId,
+              initialParentInfo[product.id] = {
+                id: product.id,
                 isParent: Boolean(isParent),
                 loading: Boolean(isParent), // Will fetch children if parent
                 children: [],
@@ -113,26 +126,43 @@ export function useParentProducts({
                 variationMatrix: product.meta?.variation_matrix,
               };
 
-              return { productId, product, isParent: Boolean(isParent) };
+              parentProductResults.push({ 
+                productId: product.id, 
+                product, 
+                isParent: Boolean(isParent) 
+              });
             }
-            return null;
-          } catch (err) {
-            console.warn(`Failed to fetch product ${productId}:`, err);
+          });
+          
+          // Handle any products that weren't returned (e.g., deleted products)
+          productIds.forEach((productId) => {
+            if (!initialParentInfo[productId]) {
+              initialParentInfo[productId] = {
+                id: productId,
+                isParent: false,
+                loading: false,
+                error: new Error(`Product ${productId} not found`),
+              };
+            }
+          });
+          
+        } catch (err) {
+          console.error("Failed to fetch products in bulk:", err);
+          // Fall back to marking all as non-parent on error
+          productIds.forEach((productId) => {
             initialParentInfo[productId] = {
               id: productId,
               isParent: false,
               loading: false,
-              error: err instanceof Error ? err : new Error(`Failed to fetch ${productId}`),
+              error: err instanceof Error ? err : new Error("Failed to fetch products"),
             };
-            return null;
-          }
-        });
-
-        const productResults = await Promise.all(productPromises);
+          });
+        }
+        
         setParentProducts(initialParentInfo);
 
         // Now fetch children for parent products
-        const childPromises = productResults
+        const childPromises = parentProductResults
           .filter((result) => result && result.isParent)
           .map(async (result) => {
             if (!result) return null;
