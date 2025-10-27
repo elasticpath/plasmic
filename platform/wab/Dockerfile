@@ -2,6 +2,8 @@
 FROM node:24-alpine AS builder
 
 RUN apk add --no-cache make~=4 bubblewrap~=0.11 python3 build-base bash
+# Configure yarn for slower ARM64 emulated builds
+RUN yarn config set network-timeout 600000
 # Switch workdir back to wab
 WORKDIR /app/wab
 COPY wab/package.json wab/yarn.lock ./
@@ -14,6 +16,8 @@ RUN rm -rf node_modules/
 FROM node:24-alpine AS runner
 # System setup
 RUN apk add --no-cache make~=4 bubblewrap~=0.11 python3 build-base bash
+# Configure yarn for slower ARM64 emulated builds
+RUN yarn config set network-timeout 600000
 
 # loader-bundle-env is expected to be a peer folder to wab, so we copy it there
 WORKDIR /app/loader-bundle-env
