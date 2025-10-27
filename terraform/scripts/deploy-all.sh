@@ -41,7 +41,7 @@ echo "✅ All prerequisites met"
 
 # 1. VPC
 step "Step 1: Deploying VPC"
-cd ../projects/vpc
+cd projects/vpc
 terraform init -backend-config=config/${ENVIRONMENT}-backend.tfvars -reconfigure
 terraform apply -var-file=config/${ENVIRONMENT}.tfvars -auto-approve
 echo "✅ VPC deployed"
@@ -153,7 +153,7 @@ fi
 
 # 10. Update config with ECR URL
 step "Step 10: Updating config with ECR URL"
-cd ../services/wab
+cd ../../services/wab
 
 # Backup original config
 cp config/${ENVIRONMENT}.tfvars config/${ENVIRONMENT}.tfvars.bak 2>/dev/null || true

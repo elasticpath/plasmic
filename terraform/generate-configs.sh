@@ -37,9 +37,6 @@ if [ ${#missing[@]} -gt 0 ]; then
 fi
 
 echo "Generating config files from examples..."
-echo " AWS Account: ${AWS_ACCOUNT_ID}"
-echo " Region: us-east-2"
-echo ""
 
 count=0
 find projects -name "*.tfvars.example" -type f | while read -r example_file; do
