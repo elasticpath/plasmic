@@ -22,10 +22,10 @@ resource "aws_ecs_task_definition" "service" {
   execution_role_arn       = var.execution_role_arn
   task_role_arn            = var.create_task_role ? aws_iam_role.task[0].arn : null
 
-  # Use ARM64 (Graviton) for ~20% cost savings
+  # Use AMD64 (X86_64) for better compatibility
   runtime_platform {
     operating_system_family = "LINUX"
-    cpu_architecture        = "ARM64"
+    cpu_architecture        = "X86_64"
   }
 
   container_definitions = jsonencode([{

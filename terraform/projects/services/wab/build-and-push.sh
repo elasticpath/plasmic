@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build and push ARM64 Docker image to ECR for Fargate
+# Build and push AMD64 Docker image to ECR for Fargate
 # Usage: ./build-and-push.sh [environment] [aws-region]
 
 set -e
@@ -7,7 +7,7 @@ set -e
 ENVIRONMENT="${1:-integration}"
 AWS_REGION="${2:-us-east-2}"
 
-echo "🐳 Building and pushing ARM64 Docker image"
+echo "🐳 Building and pushing AMD64 Docker image"
 echo "Environment: $ENVIRONMENT"
 echo "Region: $AWS_REGION"
 echo ""
@@ -30,20 +30,20 @@ aws ecr get-login-password --region ${AWS_REGION} | \
     docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
 echo "✅ Logged in to ECR"
 
-step "2. Building ARM64 image"
+step "2. Building AMD64 image"
 
 # Check if buildx builder exists, create if not
-if ! docker buildx inspect arm64-builder >/dev/null 2>&1; then
+if ! docker buildx inspect amd64-builder >/dev/null 2>&1; then
     echo "Creating buildx builder..."
-    docker buildx create --name arm64-builder --use
+    docker buildx create --name amd64-builder --use
 else
-    docker buildx use arm64-builder
+    docker buildx use amd64-builder
 fi
 
-# Build for ARM64 platform
-echo "Building for linux/arm64..."
+# Build for AMD64 platform
+echo "Building for linux/amd64..."
 docker buildx build \
-    --platform linux/arm64 \
+    --platform linux/amd64 \
     --load \
     -t plasmic-wab:latest \
     -t ${ECR_REPO}:${ENVIRONMENT}-latest \
