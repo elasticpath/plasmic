@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { getByContextAllProducts } from "@epcc-sdk/sdks-shopper";
 import { useCommerce } from "../elastic-path";
 import { ComponentProduct } from "./types";
@@ -29,8 +29,12 @@ export function useBundleOptionProducts({
   const [error, setError] = useState<Error | null>(null);
   const commerce = useCommerce();
 
+  // Memoize objects to prevent infinite re-renders
+  const memoizedComponents = useMemo(() => components, [JSON.stringify(components)]);
+  const memoizedParentProducts = useMemo(() => parentProducts, [JSON.stringify(parentProducts)]);
+
   useEffect(() => {
-    if (!enabled || !components || Object.keys(components).length === 0) {
+    if (!enabled || !memoizedComponents || Object.keys(memoizedComponents).length === 0) {
       return;
     }
 
@@ -41,13 +45,13 @@ export function useBundleOptionProducts({
       try {
         // Extract all unique product IDs from component options
         const productIds = new Set<string>();
-        Object.values(components).forEach((component) => {
+        Object.values(memoizedComponents).forEach((component) => {
           component.options?.forEach((option) => {
             if (option.id && option.type === "product") {
               productIds.add(option.id);
               
               // Also add child product IDs if this is a parent product
-              const parentInfo = parentProducts[option.id];
+              const parentInfo = memoizedParentProducts[option.id];
               if (parentInfo?.children) {
                 parentInfo.children.forEach((child) => {
                   if (child.id) {
@@ -122,7 +126,7 @@ export function useBundleOptionProducts({
     };
 
     fetchProducts();
-  }, [components, parentProducts, enabled, commerce]);
+  }, [memoizedComponents, memoizedParentProducts, enabled, commerce]);
 
   return {
     products,
