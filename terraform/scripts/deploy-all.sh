@@ -153,7 +153,7 @@ fi
 
 # 10. Update config with ECR URL
 step "Step 10: Updating config with ECR URL"
-cd ../../services/wab
+cd ../services/wab
 
 # Backup original config
 cp config/${ENVIRONMENT}.tfvars config/${ENVIRONMENT}.tfvars.bak 2>/dev/null || true
