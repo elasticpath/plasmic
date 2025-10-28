@@ -173,10 +173,24 @@ export function StudioFrame({
           ...whitelistedHosts,
           ...appCtx.appConfig.globalTrustedHosts,
         ];
+
+        // Check if the host matches trusted domain patterns
+        const isTrustedPattern = (url: string): boolean => {
+          try {
+            const hostname = new URL(url).hostname;
+            // Allow *.host.elasticpathdev.com pattern
+            return hostname.endsWith('.host.elasticpathdev.com') ||
+                   hostname === 'host.elasticpathdev.com';
+          } catch {
+            return false;
+          }
+        };
+
         if (
           (proj.hostUrl || DEVFLAGS.hostUrl) &&
           !urlsOrDomains.includes(hostUrl) &&
-          !urlsOrDomains.includes(new URL(hostUrl).origin)
+          !urlsOrDomains.includes(new URL(hostUrl).origin) &&
+          !isTrustedPattern(hostUrl)
         ) {
           setUntrustedHost(true);
         }

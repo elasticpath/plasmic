@@ -1,6 +1,6 @@
 #!/bin/bash
 # Frontend build and deployment script for Plasmic
-# Usage: ./deploy-frontend.sh [environment] [aws-region]
+# Usage (from terraform directory): ./scripts/deploy-frontend.sh [environment] [aws-region]
 
 set -e
 
@@ -34,7 +34,7 @@ error() {
 
 # Get CloudFront distribution IDs and URLs from Terraform
 step "Step 1: Getting infrastructure details"
-cd ../projects/frontend
+cd projects/frontend
 terraform init -backend-config=config/${ENVIRONMENT}-backend.tfvars -reconfigure >/dev/null 2>&1
 
 FRONTEND_URL=$(terraform output -raw frontend_url)
@@ -44,15 +44,9 @@ HOST_CF_ID=$(terraform output -raw host_cloudfront_distribution_id)
 FRONTEND_BUCKET=$(terraform output -raw frontend_bucket_name)
 HOST_BUCKET=$(terraform output -raw host_bucket_name)
 
-echo "✅ Frontend URL: $FRONTEND_URL"
-echo "✅ Host URL: $HOST_URL"
-echo "✅ Frontend S3 Bucket: $FRONTEND_BUCKET"
-echo "✅ Host S3 Bucket: $HOST_BUCKET"
-
 # Get backend API URL
 cd ../services/wab
 APP_URL=$(terraform output -raw application_url)
-echo "✅ Backend API: $APP_URL"
 
 # Navigate to platform directory (from terraform/projects/services/wab to platform/wab)
 cd ../../../../platform/wab
