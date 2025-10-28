@@ -1,0 +1,140 @@
+name: Build and Push to ECR
+
+on:
+  push:
+    branches:
+      - feat/actions-pipeline
+  workflow_dispatch: # Allows manual triggering
+
+permissions:
+  id-token: write # This is required for OIDC
+  contents: read # This is required for actions/checkout
+
+env:
+  AWS_REGION: eu-west-1
+  ECR_REPOSITORY: plasmic-wab
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest # This is AMD64
+    outputs:
+      image-tag: ${{ steps.meta.outputs.image-tag }}
+      image-uri: ${{ steps.meta.outputs.image-uri }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Modify Dockerfile for optimized yarn builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp platform/wab/Dockerfile platform/wab/Dockerfile.modified
+
+          # Insert after the builder stage
+          awk '1; /^FROM node:24-alpine AS builder$/ {
+            print "RUN yarn config set network-timeout 300000 && yarn config set network-concurrency 2 && yarn config set registry https://registry.npmjs.org"
+          }' platform/wab/Dockerfile.modified > platform/wab/Dockerfile.tmp && mv platform/wab/Dockerfile.tmp platform/wab/Dockerfile.modified
+
+          # Insert after the runner stage
+          awk '1; /^FROM node:24-alpine AS runner$/ {
+            print "RUN yarn config set network-timeout 300000 && yarn config set network-concurrency 2 && yarn config set registry https://registry.npmjs.org"
+          }' platform/wab/Dockerfile.modified > platform/wab/Dockerfile.tmp && mv platform/wab/Dockerfile.tmp platform/wab/Dockerfile.modified
+
+          echo "✅ Modified Dockerfile for optimized builds"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT }}:role/${{ secrets.AWS_ROLE }}
+          role-session-name: GitHubActions
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set build metadata
+        id: meta
+        run: |
+          echo "image-tag=${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "image-uri=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ./platform
+          file: ./platform/wab/Dockerfile.modified
+          platforms: linux/amd64
+          push: true
+          no-cache: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.meta.outputs.image-tag }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+
+  deploy-to-ecs:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: production # This requires manual approval
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT }}:role/${{ secrets.AWS_ROLE }}
+          role-session-name: GitHubActions-Deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update task definition and deploy
+        run: |
+          echo "🚀 Deploying image: ${{ needs.build-and-push.outputs.image-uri }}"
+
+          # Download current task definition
+          aws ecs describe-task-definition \
+            --task-definition plasmic-wab \
+            --query taskDefinition > task-definition.json
+
+          # Update the image in the task definition
+          jq --arg IMAGE "${{ needs.build-and-push.outputs.image-uri }}" \
+            '.containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn) | del(.revision) | del(.status) | del(.requiresAttributes) | del(.compatibilities) | del(.registeredAt) | del(.registeredBy)' \
+            task-definition.json > new-task-definition.json
+
+          # Register the new task definition
+          TASK_REVISION=$(aws ecs register-task-definition \
+            --cli-input-json file://new-task-definition.json \
+            --query 'taskDefinition.revision' \
+            --output text)
+
+          echo "✅ Registered new task definition revision: $TASK_REVISION"
+
+          # Update service with new task definition
+          aws ecs update-service \
+            --cluster plasmic-test-cluster \
+            --service plasmic-wab-service \
+            --task-definition plasmic-wab:$TASK_REVISION \
+            --region ${{ env.AWS_REGION }}
+
+          echo "⏳ Waiting for service to stabilize..."
+          aws ecs wait services-stable \
+            --cluster plasmic-test-cluster \
+            --services plasmic-wab-service \
+            --region ${{ env.AWS_REGION }}
+
+          echo "✅ Deployment complete!"
+
+      - name: Get deployment info
+        run: |
+          echo "📊 Deployment Summary:"
+          aws ecs describe-services \
+            --cluster plasmic-test-cluster \
+            --services plasmic-wab-service \
+            --query 'services[0].{Status:status,RunningCount:runningCount,DesiredCount:desiredCount,TaskDefinition:taskDefinition,Deployments:deployments[*].{Status:status,TaskDef:taskDefinition,RunningCount:runningCount}}' \
+            --output table

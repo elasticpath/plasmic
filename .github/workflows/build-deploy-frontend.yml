@@ -1,0 +1,252 @@
+name: Build and Deploy Frontend
+
+on:
+  push:
+    branches:
+      - feat/actions-pipeline
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Deployment environment"
+        required: true
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - production
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: eu-west-1
+  S3_BUCKET: plasmic-frontend-${{ github.event.inputs.environment || 'staging' }}
+  CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
+  HOST_S3_BUCKET: plasmic-host-static
+  HOST_CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.HOST_CLOUDFRONT_DISTRIBUTION_ID }}
+  REACT_APP_DEFAULT_HOST_URL: https://host.plasmicdev.rcf.dev/static/host.html
+
+jobs:
+  build-and-deploy-frontend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y make
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "yarn"
+          cache-dependency-path: platform/wab/yarn.lock
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT }}:role/${{ secrets.AWS_ROLE }}
+          role-session-name: GitHubActions-Deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get CloudFront URL
+        id: get-cf-url
+        run: |
+          # Get CloudFront distribution domain name
+          CF_DOMAIN=$(aws cloudfront get-distribution --id ${{ env.CLOUDFRONT_DISTRIBUTION_ID }} \
+            --query 'Distribution.DomainName' --output text)
+          echo "cloudfront-url=https://${CF_DOMAIN}" >> $GITHUB_OUTPUT
+
+      - name: Install root dependencies
+        run: |
+          yarn install --frozen-lockfile
+
+      - name: Setup monorepo packages
+        run: |
+          echo "Setting up all packages..."
+          yarn setup
+          yarn setup:canvas-packages
+          echo "✅ Setup complete"
+
+      - name: Install wab dependencies
+        working-directory: platform/wab
+        run: |
+          yarn install --frozen-lockfile
+          # Install missing raw-loader
+          yarn add --dev raw-loader
+
+      - name: Generate required files
+        working-directory: platform/wab
+        run: |
+          echo "Generating model classes and parsers..."
+          make
+          echo "✅ Generated required files"
+
+      - name: Build CSS files
+        working-directory: platform/wab
+        run: |
+          echo "Building CSS files..."
+          yarn build-css
+          echo "✅ CSS files built"
+
+      - name: Create .env file with environment variables
+        working-directory: platform/wab
+        run: |
+          # Create .env file with required environment variables
+          cat > .env << EOF
+          REACT_APP_DEFAULT_HOST_URL=https://host.plasmicdev.rcf.dev/static/host.html
+          AMPLITUDE_API_KEY=123
+          INTERCOM_APP_ID=123
+          POSTHOG_API_KEY=123
+          POSTHOG_HOST=123
+          POSTHOG_REVERSE_PROXY_HOST=123
+          SENTRY_DSN=123
+          SENTRY_ORG_ID=123
+          SENTRY_PROJECT_ID=123
+          STRIPE_PUBLISHABLE_KEY=123
+          EOF
+
+          echo "✅ Created .env file with environment variables"
+          echo "Contents of .env:"
+          cat .env
+
+      - name: Patch rsbuild.config.ts to include REACT_APP_DEFAULT_HOST_URL
+        working-directory: platform/wab
+        run: |
+          # Create a patch script that adds REACT_APP_DEFAULT_HOST_URL with REQUIRED_VAR
+          cat > patch-rsbuild.js << 'EOF'
+          const fs = require('fs');
+          const content = fs.readFileSync('rsbuild.config.ts', 'utf8');
+
+          // Add REACT_APP_DEFAULT_HOST_URL after STRIPE_PUBLISHABLE_KEY
+          const patched = content.replace(
+            /(\s*)(STRIPE_PUBLISHABLE_KEY: OPTIONAL_VAR,)/,
+            '$1$2\n$1REACT_APP_DEFAULT_HOST_URL: REQUIRED_VAR,'
+          );
+
+          if (patched === content) {
+            console.error('Failed to patch rsbuild.config.ts - pattern not found');
+            process.exit(1);
+          }
+
+          fs.writeFileSync('rsbuild.config.ts', patched);
+          console.log('✅ Patched rsbuild.config.ts to include REACT_APP_DEFAULT_HOST_URL');
+
+          // Verify the syntax is correct
+          try {
+            require('typescript');
+            const ts = require('typescript');
+            const result = ts.transpileModule(patched, {
+              compilerOptions: { module: ts.ModuleKind.CommonJS }
+            });
+            console.log('✅ TypeScript syntax check passed');
+          } catch (e) {
+            console.log('⚠️  Could not verify TypeScript syntax');
+          }
+          EOF
+
+          node patch-rsbuild.js
+
+          echo "Showing the patched DefinePlugin section:"
+          grep -B2 -A10 "STRIPE_PUBLISHABLE_KEY" rsbuild.config.ts || true
+
+      - name: Build frontend
+        working-directory: platform/wab
+        env:
+          NODE_ENV: production
+          PUBLIC_URL: ${{ steps.get-cf-url.outputs.cloudfront-url }}
+        run: |
+          echo "Building with environment from .env file"
+          yarn build
+          echo "✅ Frontend built successfully"
+          ls -la build/
+
+      - name: Deploy to S3
+        working-directory: platform/wab
+        run: |
+          # Sync all assets with cache headers
+          aws s3 sync build/ s3://${{ env.S3_BUCKET }}/ \
+            --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "index.html" \
+            --exclude "*.map" \
+            --exclude "static/js/*.js" \
+            --exclude "static/css/*.css"
+
+          # Upload JS and CSS with specific cache headers
+          aws s3 sync build/static/js s3://${{ env.S3_BUCKET }}/static/js \
+            --cache-control "public, max-age=31536000, immutable" \
+            --content-type "application/javascript"
+
+          aws s3 sync build/static/css s3://${{ env.S3_BUCKET }}/static/css \
+            --cache-control "public, max-age=31536000, immutable" \
+            --content-type "text/css"
+
+          # Upload index.html with no-cache
+          aws s3 cp build/index.html s3://${{ env.S3_BUCKET }}/ \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --content-type "text/html"
+
+          echo "✅ Deployed to S3"
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ env.CLOUDFRONT_DISTRIBUTION_ID }} \
+            --paths "/index.html" "/*"
+          echo "✅ CloudFront invalidation created"
+
+      - name: Deploy Host Files to S3
+        working-directory: platform/wab
+        run: |
+          echo "Deploying host files to separate S3 bucket..."
+
+          # Create deployment directory
+          mkdir -p ../../host-deploy/static
+
+          # Copy host files - maintaining the /static/ structure
+          cp build/static/host.html ../../host-deploy/static/
+          cp -r build/static/sub ../../host-deploy/static/
+          cp build/static/popup.html ../../host-deploy/static/
+          mkdir -p ../../host-deploy/static/styles
+          cp -r build/static/styles/* ../../host-deploy/static/styles/ || true
+
+          # Deploy to Host S3 bucket
+          aws s3 sync ../../host-deploy/ s3://${{ env.HOST_S3_BUCKET }}/ \
+            --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "*.html"
+
+          # Upload HTML files with shorter cache
+          aws s3 cp ../../host-deploy/static/host.html s3://${{ env.HOST_S3_BUCKET }}/static/host.html \
+            --cache-control "public, max-age=300" \
+            --content-type "text/html"
+
+          aws s3 cp ../../host-deploy/static/popup.html s3://${{ env.HOST_S3_BUCKET }}/static/popup.html \
+            --cache-control "public, max-age=300" \
+            --content-type "text/html"
+
+          echo "✅ Host files deployed to S3"
+
+      - name: Invalidate Host CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ env.HOST_CLOUDFRONT_DISTRIBUTION_ID }} \
+            --paths "/*"
+          echo "✅ Host CloudFront invalidation created"
+
+      - name: Summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Frontend URL**: ${{ steps.get-cf-url.outputs.cloudfront-url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Host URL**: https://host.plasmicdev.rcf.dev/static/host.html" >> $GITHUB_STEP_SUMMARY
+          echo "- **Backend API**: https://plasmic-test-alb-59233773.eu-west-1.elb.amazonaws.com" >> $GITHUB_STEP_SUMMARY
+          echo "- **S3 Bucket**: ${{ env.S3_BUCKET }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Host S3 Bucket**: ${{ env.HOST_S3_BUCKET }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **CloudFront Distribution**: ${{ env.CLOUDFRONT_DISTRIBUTION_ID }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Host CloudFront Distribution**: ${{ env.HOST_CLOUDFRONT_DISTRIBUTION_ID }}" >> $GITHUB_STEP_SUMMARY
