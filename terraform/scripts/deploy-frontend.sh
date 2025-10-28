@@ -1,6 +1,6 @@
 #!/bin/bash
 # Frontend build and deployment script for Plasmic
-# Usage: ./deploy-frontend.sh [environment] [aws-region]
+# Usage (from terraform directory): ./scripts/deploy-frontend.sh [environment] [aws-region]
 
 set -e
 
@@ -34,7 +34,7 @@ error() {
 
 # Get CloudFront distribution IDs and URLs from Terraform
 step "Step 1: Getting infrastructure details"
-cd ../projects/frontend
+cd projects/frontend
 terraform init -backend-config=config/${ENVIRONMENT}-backend.tfvars -reconfigure >/dev/null 2>&1
 
 FRONTEND_URL=$(terraform output -raw frontend_url)
