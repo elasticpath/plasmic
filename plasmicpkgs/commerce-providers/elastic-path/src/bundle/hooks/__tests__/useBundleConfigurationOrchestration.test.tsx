@@ -5,13 +5,6 @@ import { renderHook, act } from "@testing-library/react";
 import { useBundleConfigurationOrchestration } from "../useBundleConfigurationOrchestration";
 import { ElasticPathBundleProduct } from "../../types";
 
-// Mock debounce to run immediately
-jest.mock("debounce", () => (fn: Function) => {
-  const debouncedFn = (...args: any[]) => fn(...args);
-  debouncedFn.clear = jest.fn();
-  return debouncedFn;
-});
-
 describe("useBundleConfigurationOrchestration", () => {
   const mockConfigureBundleSelection = jest.fn().mockResolvedValue(undefined);
   
@@ -25,7 +18,12 @@ describe("useBundleConfigurationOrchestration", () => {
   };
 
   beforeEach(() => {
+    jest.useFakeTimers();
     jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it("does not trigger configuration when not initialized", () => {
@@ -64,13 +62,21 @@ describe("useBundleConfigurationOrchestration", () => {
   });
 
   it("triggers configuration when conditions are met", async () => {
+    renderHook(() =>
+      useBundleConfigurationOrchestration({
+        ...defaultProps,
+        selectedOptions: { component1: { option1: 1 } },
+      })
+    );
+
+    // Advance timers to trigger debounced function
+    act(() => {
+      jest.advanceTimersByTime(100);
+    });
+
+    // Wait for async operations
     await act(async () => {
-      renderHook(() =>
-        useBundleConfigurationOrchestration({
-          ...defaultProps,
-          selectedOptions: { component1: { option1: 1 } },
-        })
-      );
+      await Promise.resolve();
     });
 
     expect(mockConfigureBundleSelection).toHaveBeenCalledWith({
@@ -111,14 +117,22 @@ describe("useBundleConfigurationOrchestration", () => {
       }
     } as ElasticPathBundleProduct;
 
+    renderHook(() =>
+      useBundleConfigurationOrchestration({
+        ...defaultProps,
+        bundleProduct,
+        selectedOptions: { component1: { option1: 2 } }, // different from default
+      })
+    );
+
+    // Advance timers to trigger debounced function
+    act(() => {
+      jest.advanceTimersByTime(100);
+    });
+
+    // Wait for async operations
     await act(async () => {
-      renderHook(() =>
-        useBundleConfigurationOrchestration({
-          ...defaultProps,
-          bundleProduct,
-          selectedOptions: { component1: { option1: 2 } }, // different from default
-        })
-      );
+      await Promise.resolve();
     });
 
     expect(mockConfigureBundleSelection).toHaveBeenCalledWith({
@@ -137,9 +151,13 @@ describe("useBundleConfigurationOrchestration", () => {
       }
     );
 
+    // Trigger first call
+    act(() => {
+      jest.advanceTimersByTime(100);
+    });
+
     await act(async () => {
-      // First render should trigger call
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await Promise.resolve();
     });
 
     expect(mockConfigureBundleSelection).toHaveBeenCalledTimes(1);
@@ -150,8 +168,12 @@ describe("useBundleConfigurationOrchestration", () => {
       selectedOptions: { component1: { option1: 1 } }, // same selections
     });
 
+    act(() => {
+      jest.advanceTimersByTime(100);
+    });
+
     await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await Promise.resolve();
     });
 
     expect(mockConfigureBundleSelection).toHaveBeenCalledTimes(1);
@@ -168,8 +190,13 @@ describe("useBundleConfigurationOrchestration", () => {
       }
     );
 
+    // Trigger first call
+    act(() => {
+      jest.advanceTimersByTime(100);
+    });
+
     await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await Promise.resolve();
     });
 
     expect(mockConfigureBundleSelection).toHaveBeenCalledTimes(1);
@@ -178,11 +205,17 @@ describe("useBundleConfigurationOrchestration", () => {
     });
 
     // Re-render with different selections should trigger another call
+    rerender({
+      ...defaultProps,
+      selectedOptions: { component1: { option1: 2 } }, // different selections
+    });
+
+    act(() => {
+      jest.advanceTimersByTime(100);
+    });
+
     await act(async () => {
-      rerender({
-        ...defaultProps,
-        selectedOptions: { component1: { option1: 2 } }, // different selections
-      });
+      await Promise.resolve();
     });
 
     expect(mockConfigureBundleSelection).toHaveBeenCalledTimes(2);
@@ -195,14 +228,22 @@ describe("useBundleConfigurationOrchestration", () => {
     const mockConfigureWithError = jest.fn().mockRejectedValue(new Error("API Error"));
     const consoleSpy = jest.spyOn(console, "error").mockImplementation();
 
+    renderHook(() =>
+      useBundleConfigurationOrchestration({
+        ...defaultProps,
+        configureBundleSelection: mockConfigureWithError,
+        selectedOptions: { component1: { option1: 1 } },
+      })
+    );
+
+    // Advance timers to trigger debounced function
+    act(() => {
+      jest.advanceTimersByTime(100);
+    });
+
+    // Wait for async operations and error handling
     await act(async () => {
-      renderHook(() =>
-        useBundleConfigurationOrchestration({
-          ...defaultProps,
-          configureBundleSelection: mockConfigureWithError,
-          selectedOptions: { component1: { option1: 1 } },
-        })
-      );
+      await Promise.resolve();
     });
 
     expect(mockConfigureWithError).toHaveBeenCalled();
@@ -215,10 +256,12 @@ describe("useBundleConfigurationOrchestration", () => {
   });
 
   it("tracks configuration state correctly", async () => {
-    let isConfiguring = false;
-    
+    let promiseResolver: any;
     const slowConfigureFunction = jest.fn().mockImplementation(async () => {
-      await new Promise(resolve => setTimeout(resolve, 50));
+      return new Promise(resolve => {
+        promiseResolver = resolve;
+        setTimeout(() => resolve(undefined), 50);
+      });
     });
 
     const { result } = renderHook(() =>
@@ -232,9 +275,18 @@ describe("useBundleConfigurationOrchestration", () => {
     // Should not be configuring initially
     expect(result.current.isConfiguring).toBe(false);
 
+    // Advance timers to trigger debounced function
+    act(() => {
+      jest.advanceTimersByTime(100);
+    });
+
+    // Check that it's now configuring
+    expect(result.current.isConfiguring).toBe(true);
+
+    // Advance the internal setTimeout and resolve the promise
     await act(async () => {
-      // Start async operation
-      await new Promise(resolve => setTimeout(resolve, 10));
+      jest.advanceTimersByTime(50);
+      await Promise.resolve(); // Let the promise chain resolve
     });
 
     // Configuration should complete
@@ -250,8 +302,14 @@ describe("useBundleConfigurationOrchestration", () => {
       })
     );
 
+    // Advance timers to trigger debounced function
+    act(() => {
+      jest.advanceTimersByTime(100);
+    });
+
+    // Wait for async operations
     await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await Promise.resolve();
     });
 
     expect(result.current.lastConfigured).toBe(JSON.stringify({ component1: { option1: 1 } }));

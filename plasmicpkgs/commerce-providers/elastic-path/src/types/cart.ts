@@ -6,7 +6,7 @@ export type ProductVariant = Core.ProductVariant;
 export type CartItemBody = Core.CartItemBody;
 
 /**
- * Extend core cart types
+ * Extend core cart types for EP-specific functionality
  */
 
 export type Cart = Core.Cart & {
@@ -14,6 +14,7 @@ export type Cart = Core.Cart & {
   url?: string
 }
 
+// Use the core CartTypes directly for compatibility
 export type CartTypes = Core.CartTypes
 
 export type CartHooks = Core.CartHooks<CartTypes>

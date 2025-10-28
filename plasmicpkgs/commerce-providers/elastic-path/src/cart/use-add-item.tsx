@@ -5,15 +5,11 @@ import { useCallback } from "react";
 import type { AddItemHook } from "../types/cart";
 import { getCartId, normalizeCart, setCartId } from "../utils";
 import useCart from "./use-cart";
+import { buildCartItemData, validateCartItem } from "./utils/cartDataBuilder";
+import type { ExtendedCartItem } from "./utils/cartDataBuilder";
+import { handleAPIError } from "../utils/errorHandling";
 
-// Extend the item type to include bundle configuration and location
-interface ExtendedCartItem {
-  productId: string;
-  variantId?: string;
-  quantity?: number;
-  bundleConfiguration?: BundleConfiguration;
-  locationId?: string;
-}
+// Note: ExtendedCartItem is now imported from cartDataBuilder utils
 
 export default useAddItem as UseAddItem<typeof handler>;
 
@@ -25,21 +21,12 @@ export const handler: MutationHook<AddItemHook> = {
     // Cast item to our extended type
     const extendedItem = item as ExtendedCartItem;
     
-    // Debug logging
-    console.log("use-add-item received item:", item);
-    console.log("Extended item:", extendedItem);
-    console.log("Location ID:", extendedItem.locationId);
-    
-    if (
-      item.quantity &&
-      (!Number.isInteger(item.quantity) || item.quantity! < 1)
-    ) {
+    // Validate cart item using pure function
+    const validation = validateCartItem(extendedItem);
+    if (!validation.isValid) {
+      console.error("Cart item validation failed:", validation.errorMessage);
       return undefined;
     }
-
-    // For products with variants, we need a variantId
-    // For simple products without variants, we use the productId
-    const cartItemId = item.variantId || item.productId;
 
     let cartId = getCartId();
 
@@ -65,21 +52,8 @@ export const handler: MutationHook<AddItemHook> = {
         return undefined;
       }
 
-      // Add item to cart using manageCarts
-      // Use variantId if provided (for products with variants), otherwise use productId (for simple products)
-      
-      // The manageCarts SDK accepts bundle_configuration and location directly
-      const cartData = {
-        type: "cart_item" as const,
-        id: cartItemId,
-        quantity: item.quantity ?? 1,
-        // Add bundle_configuration if provided in the item
-        ...(extendedItem.bundleConfiguration && { bundle_configuration: extendedItem.bundleConfiguration }),
-        // Add location if provided in the item
-        ...(extendedItem.locationId && { location: extendedItem.locationId }),
-      };
-      
-      console.log("Cart data being sent:", cartData);
+      // Build cart item data using pure function
+      const cartData = buildCartItemData(extendedItem);
 
       await manageCarts({
         client: (provider as any)!.client!,
@@ -102,7 +76,8 @@ export const handler: MutationHook<AddItemHook> = {
         ? normalizeCart(cartResponse.data)
         : undefined;
     } catch (error) {
-      console.error("Error adding item to cart:", error);
+      const standardError = handleAPIError(error, "adding item to cart");
+      console.error("Error adding item to cart:", standardError);
       return undefined;
     }
   },

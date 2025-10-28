@@ -2,6 +2,8 @@ import { useEffect, useState, useMemo } from "react";
 import { getStock } from "@epcc-sdk/sdks-shopper";
 import { useCommerce } from "../elastic-path";
 import type { ProductStock, LocationStock, UseStockOptions } from "./types";
+import { createProductStock } from "./utils/stockCalculations";
+import { handleAPIError } from "../utils/errorHandling";
 
 export function useStock({
   productIds,
@@ -40,48 +42,15 @@ export function useStock({
             });
 
             const stockData = response.data?.data;
-            const locations = stockData?.attributes?.locations || {};
-            
-            // Convert the locations object into LocationStock array
-            const locationStocks: LocationStock[] = Object.entries(locations)
-              .map(([locationSlug, locationData]: [string, any]) => ({
-                location: {
-                  id: locationSlug,
-                  slug: locationSlug,
-                  name: locationSlug, // We can enhance this with actual location names later
-                } as any,
-                stock: {
-                  productId,
-                  available: BigInt(locationData.available || 0),
-                  allocated: BigInt(locationData.allocated || 0),
-                  total: BigInt(locationData.total || 0),
-                },
-                lastUpdated: undefined, // lastModified not available in StockResponseAttributes
-              }))
-              .filter(locationStock => {
-                // Filter by location IDs/slugs if specified
-                if (!memoizedLocationIds || memoizedLocationIds.length === 0) return true;
-                return memoizedLocationIds.includes(locationStock.location.id) || 
-                       memoizedLocationIds.includes(locationStock.location.slug);
-              });
-
-            // Calculate totals
-            const totalAllocated = locationStocks.reduce((sum, ls) => sum + Number(ls.stock.allocated || 0), 0);
-            const totalAvailable = locationStocks.reduce((sum, ls) => sum + Number(ls.stock.available || 0), 0);
-            const totalStock = locationStocks.reduce((sum, ls) => sum + Number(ls.stock.total || 0), 0);
+            const productStock = createProductStock(productId, stockData, memoizedLocationIds);
 
             return {
               productId,
-              productStock: {
-                productId,
-                locations: locationStocks,
-                totalStock,
-                totalAllocated,
-                totalAvailable,
-              },
+              productStock,
             };
           } catch (err) {
-            console.warn(`Failed to fetch stock for product ${productId}:`, err);
+            const error = handleAPIError(err, `fetching stock for product ${productId}`);
+            console.warn(`Failed to fetch stock for product ${productId}:`, error);
             return {
               productId,
               productStock: {
