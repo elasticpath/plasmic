@@ -9,7 +9,11 @@ import {
   getDynamoDbSecrets,
   getOpenaiApiKey,
 } from "@/wab/server/secrets";
-import { DynamoDbCache, SimpleCache } from "@/wab/server/simple-cache";
+import {
+  DynamoDbCache,
+  InMemoryCache,
+  SimpleCache,
+} from "@/wab/server/simple-cache";
 import { last, mkShortId } from "@/wab/shared/common";
 import {
   ChatCompletionRequestMessageRoleEnum,
@@ -42,9 +46,6 @@ export class OpenAIWrapper {
     createChatCompletionRequest: CreateChatCompletionRequest,
     options?: CreateChatCompletionRequestOptions
   ) => {
-    if (verbose) {
-      logger().debug(showCompletionRequest(createChatCompletionRequest));
-    }
     const key = hash(
       JSON.stringify([
         "OpenAI.createChatCompletion",
@@ -178,35 +179,34 @@ export function getOpenAI() {
   return new OpenAI({ apiKey: openaiApiKey });
 }
 
+function createCache(): SimpleCache {
+  // Only use DynamoDB if we have valid credentials
+  if (
+    dynamoDbCredentials?.accessKeyId &&
+    dynamoDbCredentials?.secretAccessKey
+  ) {
+    try {
+      return new DynamoDbCache(
+        new DynamoDBClient({
+          credentials: {
+            ...dynamoDbCredentials,
+          },
+          region: "us-west-2",
+        })
+      );
+    } catch (error) {
+      console.warn(
+        "Failed to create DynamoDB cache, falling back to in-memory cache:",
+        error
+      );
+    }
+  }
+  // Use in-memory cache as fallback
+  return new InMemoryCache();
+}
+
 export const createOpenAIClient = (_?: DbMgr) =>
-  new OpenAIWrapper(
-    getOpenAI(),
-    new DynamoDbCache(
-      new DynamoDBClient({
-        ...(dynamoDbCredentials
-          ? {
-              credentials: {
-                ...dynamoDbCredentials,
-              },
-            }
-          : {}),
-        region: "us-west-2",
-      })
-    )
-  );
+  new OpenAIWrapper(getOpenAI(), createCache());
 
 export const createAnthropicClient = (_?: DbMgr) =>
-  new AnthropicWrapper(
-    new DynamoDbCache(
-      new DynamoDBClient({
-        ...(dynamoDbCredentials
-          ? {
-              credentials: {
-                ...dynamoDbCredentials,
-              },
-            }
-          : {}),
-        region: "us-west-2",
-      })
-    )
-  );
+  new AnthropicWrapper(createCache());
