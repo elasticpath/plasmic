@@ -1,8 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import debounce from "debounce";
 import { ElasticPathBundleProduct } from "../types";
 import { convertSelectionsForAPI } from "../utils/bundleSelectionUtils";
 import { shouldTriggerConfiguration } from "../utils/configurationComparison";
+
+// Type for debounced function with clear method
+interface DebouncedFunction {
+  (options: Record<string, Record<string, number>>): Promise<void> | undefined;
+  clear(): void;
+}
 
 interface UseBundleConfigurationOrchestrationProps {
   selectedOptions: Record<string, Record<string, number>>;
@@ -33,25 +39,39 @@ export function useBundleConfigurationOrchestration({
   const [lastConfigured, setLastConfigured] = useState<string>("");
   const [isConfiguring, setIsConfiguring] = useState(false);
 
-  // Debounced configuration function
-  const debouncedConfigure = useMemo(
-    () =>
-      debounce(async (options: Record<string, Record<string, number>>) => {
-        try {
-          setIsConfiguring(true);
-          const optionsString = JSON.stringify(options);
-          if (optionsString !== lastConfigured && Object.keys(options).length > 0) {
-            await configureBundleSelection(options);
-            setLastConfigured(optionsString);
-          }
-        } catch (error) {
-          console.error("Failed to process bundle configuration:", error);
-        } finally {
-          setIsConfiguring(false);
+  // Create a ref to hold the latest lastConfigured value
+  const lastConfiguredRef = useRef(lastConfigured);
+  
+  // Update the ref whenever lastConfigured changes
+  useEffect(() => {
+    lastConfiguredRef.current = lastConfigured;
+  }, [lastConfigured]);
+
+  // Configuration function with debouncing
+  const configureFunction = useRef<DebouncedFunction | null>(null);
+  
+  useEffect(() => {
+    configureFunction.current = debounce(async (options: Record<string, Record<string, number>>) => {
+      try {
+        setIsConfiguring(true);
+        const optionsString = JSON.stringify(options);
+        if (optionsString !== lastConfiguredRef.current && Object.keys(options).length > 0) {
+          await configureBundleSelection(options);
+          setLastConfigured(optionsString);
         }
-      }, debounceMs),
-    [configureBundleSelection, debounceMs, lastConfigured]
-  );
+      } catch (error) {
+        console.error("Failed to process bundle configuration:", error);
+      } finally {
+        setIsConfiguring(false);
+      }
+    }, debounceMs);
+    
+    return () => {
+      if (configureFunction.current) {
+        configureFunction.current.clear();
+      }
+    };
+  }, [configureBundleSelection, debounceMs]);
 
   // Configure bundle when selections change (but not during initialization)
   useEffect(() => {
@@ -63,15 +83,11 @@ export function useBundleConfigurationOrchestration({
       return;
     }
     
-    debouncedConfigure(apiFormattedSelections);
-  }, [selectedOptions, isValid, debouncedConfigure, isInitialized, bundleProduct?.meta?.bundle_configuration]);
+    if (configureFunction.current) {
+      configureFunction.current(apiFormattedSelections);
+    }
+  }, [selectedOptions, isValid, isInitialized, bundleProduct?.meta?.bundle_configuration]);
 
-  // Cleanup debounced function on unmount
-  useEffect(() => {
-    return () => {
-      debouncedConfigure.clear();
-    };
-  }, [debouncedConfigure]);
 
   return {
     isConfiguring,

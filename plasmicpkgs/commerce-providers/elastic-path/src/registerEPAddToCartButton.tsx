@@ -8,6 +8,19 @@ import { CommerceError, Product } from "@plasmicpkgs/commerce";
 import useAddItem from "./cart/use-add-item";
 import { useProductStock } from "./inventory/use-stock";
 import { Registerable } from "./registerable";
+import {
+  extractCartItemFromForm,
+  validateAndParseQuantity,
+  resolveLocationSlug,
+  toCartItemBody,
+} from "./cart/utils/cartDataBuilder";
+import {
+  validateStockAvailability,
+  getStockStatusInfo,
+  shouldPerformStockCheck,
+} from "./inventory/utils/stockValidation";
+import { getAvailableStockForLocation } from "./inventory/utils/stockCalculations";
+import { createFormContextError, formatUserErrorMessage } from "./utils/errorHandling";
 
 interface EPAddToCartButtonProps {
   children?: React.ReactNode;
@@ -66,80 +79,61 @@ export function EPAddToCartButton(props: EPAddToCartButtonProps) {
   const addItem = useAddItem();
 
   // Hook for stock checking when enabled
-  // For stock checking, we'll get the location dynamically
   const { stock, loading: stockLoading } = useProductStock(
     product?.id || "",
-    undefined, // Don't filter by location in stock hook - we'll filter in getAvailableStock
-    enableStockCheck && !!product?.id
+    undefined, // Don't filter by location in stock hook - we'll filter when needed
+    enableStockCheck && !!product?.id // Simple condition to avoid circular dependency
   );
 
   // Helper to get current target location slug
   const getTargetLocationSlug = () => {
     const formValues = form?.getValues();
-    const formSelectedLocationSlug = formValues ? formValues["SelectedLocationSlug"] : undefined;
-    return formSelectedLocationSlug || locationSlug || locationId;
+    return resolveLocationSlug(
+      formValues || {},
+      { locationSlug, locationId }
+    );
   };
 
   const getAvailableStock = (): number => {
     if (!enableStockCheck || !stock) return Infinity;
     
     const targetLocationSlug = getTargetLocationSlug();
-    if (targetLocationSlug) {
-      const locationStock = stock.locations.find(ls => 
-        ls.location.id === targetLocationSlug || 
-        (ls.location as any).slug === targetLocationSlug
-      );
-      return Number(locationStock?.stock.available || 0);
-    }
-    
-    return Number(stock.totalAvailable);
+    return getAvailableStockForLocation(stock, targetLocationSlug);
   };
 
   const addToCart = async () => {
     if (!form) {
-      throw new Error("EPAddToCartButton must be used within a ProductProvider that provides a form context");
+      const error = createFormContextError("EPAddToCartButton");
+      throw new CommerceError({ message: formatUserErrorMessage(error) });
     }
-    
-    const quantity = +(form.getValues()["ProductQuantity"] ?? 1);
-    if (isNaN(quantity) || quantity < 1) {
-      throw new CommerceError({
-        message: "The item quantity has to be a valid integer greater than 0",
-      });
+
+    // Validate quantity
+    const quantityValidation = validateAndParseQuantity(form.getValues()["ProductQuantity"] ?? 1);
+    if (!quantityValidation.isValid) {
+      throw new CommerceError({ message: quantityValidation.errorMessage || "Invalid quantity" });
     }
 
     // Stock validation when enabled
-    if (enableStockCheck) {
-      const availableStock = getAvailableStock();
-      if (availableStock < quantity) {
-        throw new CommerceError({
-          message: availableStock === 0 
-            ? "This item is out of stock" 
-            : `Only ${availableStock} items available`,
-        });
+    if (shouldPerformStockCheck(product?.id || "", stock, enableStockCheck)) {
+      const targetLocationSlug = getTargetLocationSlug();
+      const stockValidation = validateStockAvailability(
+        stock!,
+        quantityValidation.quantity,
+        targetLocationSlug
+      );
+
+      if (!stockValidation.isValid) {
+        throw new CommerceError({ message: stockValidation.errorMessage || "Insufficient stock" });
       }
     }
 
     if (product) {
-      const variantId = form.getValues()["ProductVariant"] ?? product.variants[0]?.id;
-      const bundleConfiguration = form.getValues()["BundleConfiguration"];
-      const targetLocationSlug = getTargetLocationSlug(); // Get fresh location slug
-      
-      // Debug logging
-      console.log("Form values:", form.getValues());
-      console.log("Target location slug:", targetLocationSlug);
-      console.log("Props - locationId:", locationId, "locationSlug:", locationSlug);
-      
-      const addItemData = {
-        productId: product.id,
-        variantId: variantId,
-        quantity: quantity,
-        ...(bundleConfiguration && { bundleConfiguration }),
-        ...(targetLocationSlug && { locationId: targetLocationSlug }),
-      };
-      
-      console.log("Add item data:", addItemData);
-      
-      await addItem(addItemData);
+      const cartItem = extractCartItemFromForm(
+        form.getValues(),
+        product,
+        { locationSlug, locationId }
+      );
+      await addItem(cartItem);
     }
   };
 
@@ -149,18 +143,24 @@ export function EPAddToCartButton(props: EPAddToCartButtonProps) {
 
   // If showing stock status, wrap in container
   if (showStockStatus && enableStockCheck) {
+    const stockStatusInfo = getStockStatusInfo(availableStock);
+    
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
         {/* Stock Status Display */}
         <div style={{ fontSize: "0.875rem" }}>
           {stockLoading ? (
             <span style={{ color: "#666" }}>Checking stock...</span>
-          ) : isOutOfStock ? (
-            <span style={{ color: "#d32f2f", fontWeight: "500" }}>❌ Out of stock</span>
-          ) : availableStock < 10 ? (
-            <span style={{ color: "#f57c00", fontWeight: "500" }}>⚠️ Only {availableStock} left</span>
           ) : (
-            <span style={{ color: "#388e3c" }}>✅ In stock</span>
+            <span 
+              style={{ 
+                color: stockStatusInfo.status === 'out-of-stock' ? "#d32f2f" :
+                       stockStatusInfo.status === 'low' ? "#f57c00" : "#388e3c",
+                fontWeight: "500"
+              }}
+            >
+              {stockStatusInfo.message}
+            </span>
           )}
         </div>
         

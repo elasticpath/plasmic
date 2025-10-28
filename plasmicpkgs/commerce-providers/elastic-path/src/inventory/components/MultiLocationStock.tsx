@@ -5,6 +5,16 @@ import { useLocations } from "../use-locations";
 import { StockIndicator } from "./StockIndicator";
 import { LocationSelector } from "./LocationSelector";
 import type { MultiLocationStockProps } from "../types";
+import {
+  filterStockByLocation,
+  calculateTotalStock,
+} from "../utils/stockCalculations";
+import {
+  getLocationDisplayName,
+  createStockSummaryMessage,
+  shouldShowMoreLocationsIndicator,
+  createMoreLocationsText,
+} from "../utils/displayHelpers";
 
 export function MultiLocationStock({
   productId,
@@ -20,17 +30,11 @@ export function MultiLocationStock({
   
   // Update form context when location changes to pass slug to add to cart
   useEffect(() => {
-    console.log("MultiLocationStock - form available:", !!form);
-    console.log("MultiLocationStock - selectedLocationId:", selectedLocationId);
-    console.log("MultiLocationStock - locations:", locations);
-    
     if (selectedLocationId && form) {
       const selectedLocation = locations.find(loc => loc.id === selectedLocationId);
       const locationSlug = (selectedLocation?.attributes as any)?.slug || selectedLocationId;
-      console.log("MultiLocationStock - setting location slug:", locationSlug);
       form.setValue("SelectedLocationSlug", locationSlug);
     } else if (form) {
-      console.log("MultiLocationStock - clearing location slug");
       form.setValue("SelectedLocationSlug", undefined);
     }
   }, [selectedLocationId, locations, form]);
@@ -72,22 +76,29 @@ export function MultiLocationStock({
     );
   }
 
-  // Filter locations if a specific location is selected
-  const displayLocations = selectedLocationId
-    ? stock.locations.filter(ls => {
-        // The stock API returns locations with slug as key, which we set as both id and slug
-        // The LocationSelector uses location.id from the locations API
-        // We need to match the selected location ID with the stock location slug
+  // Filter and display locations
+  const filteredStock = selectedLocationId
+    ? (() => {
+        // Find the matching location slug for the selected location ID
         const matchingLocation = locations.find(loc => loc.id === selectedLocationId);
         const locationSlug = (matchingLocation?.attributes as any)?.slug;
-        
-        // Match by direct ID or by slug mapping
-        return ls.location.id === selectedLocationId || 
-               (locationSlug && ls.location.id === locationSlug);
-      })
-    : stock.locations.slice(0, maxLocationsDisplay);
+        const filterIds = [selectedLocationId];
+        if (locationSlug && locationSlug !== selectedLocationId) {
+          filterIds.push(locationSlug);
+        }
+        return filterStockByLocation(stock, filterIds);
+      })()
+    : stock;
 
-  const hasMoreLocations = !selectedLocationId && stock.locations.length > maxLocationsDisplay;
+  const displayLocations = selectedLocationId
+    ? filteredStock.locations
+    : filteredStock.locations.slice(0, maxLocationsDisplay);
+
+  const hasMoreLocations = shouldShowMoreLocationsIndicator(
+    stock.locations.length,
+    maxLocationsDisplay,
+    selectedLocationId
+  );
 
   return (
     <div style={{ 
@@ -122,11 +133,10 @@ export function MultiLocationStock({
             marginBottom: "12px"
           }}>
             <div style={{ fontSize: "0.875rem", fontWeight: "500" }}>
-              Total Available: {stock.totalAvailable} units
-              {stock.totalAllocated > 0 && (
-                <span style={{ color: "#666", marginLeft: "8px" }}>
-                  ({stock.totalAllocated} allocated)
-                </span>
+              {createStockSummaryMessage(
+                stock.totalAvailable,
+                stock.totalAllocated,
+                stock.locations.length
               )}
             </div>
           </div>
@@ -154,14 +164,7 @@ export function MultiLocationStock({
             >
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: "500", fontSize: "0.875rem" }}>
-                  {(() => {
-                    // Try to find the location name from the locations list
-                    const matchingLocation = locations.find(loc => 
-                      loc.id === locationStock.location.id || 
-                      (loc.attributes as any)?.slug === locationStock.location.id
-                    );
-                    return matchingLocation?.attributes?.name || locationStock.location.id;
-                  })()}
+                  {getLocationDisplayName(locationStock.location, locations)}
                 </div>
                 {allocatedStock > 0 && (
                   <div style={{ fontSize: "0.75rem", color: "#666" }}>
@@ -189,7 +192,7 @@ export function MultiLocationStock({
             fontSize: "0.75rem",
             fontStyle: "italic"
           }}>
-            +{stock.locations.length - maxLocationsDisplay} more locations available
+            {createMoreLocationsText(stock.locations.length, maxLocationsDisplay)}
           </div>
         )}
 
