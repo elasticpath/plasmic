@@ -44,15 +44,9 @@ HOST_CF_ID=$(terraform output -raw host_cloudfront_distribution_id)
 FRONTEND_BUCKET=$(terraform output -raw frontend_bucket_name)
 HOST_BUCKET=$(terraform output -raw host_bucket_name)
 
-echo "✅ Frontend URL: $FRONTEND_URL"
-echo "✅ Host URL: $HOST_URL"
-echo "✅ Frontend S3 Bucket: $FRONTEND_BUCKET"
-echo "✅ Host S3 Bucket: $HOST_BUCKET"
-
 # Get backend API URL
 cd ../services/wab
 APP_URL=$(terraform output -raw application_url)
-echo "✅ Backend API: $APP_URL"
 
 # Navigate to platform directory (from terraform/projects/services/wab to platform/wab)
 cd ../../../../platform/wab

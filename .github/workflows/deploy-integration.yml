@@ -73,6 +73,7 @@ jobs:
           TERRAFORM_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
           TERRAFORM_LOCKS_TABLE: ${{ vars.TERRAFORM_LOCKS_TABLE }}
           HOSTED_ZONE_ID: ${{ vars.HOSTED_ZONE_ID }}
+          HOSTED_ZONE_ID_HOST: ${{ vars.HOSTED_ZONE_ID_HOST }}
           DB_USERNAME: ${{ vars.DB_USERNAME }}
         run: |
           # Mask sensitive values
@@ -80,6 +81,7 @@ jobs:
           echo "::add-mask::$TERRAFORM_STATE_BUCKET"
           echo "::add-mask::$TERRAFORM_LOCKS_TABLE"
           echo "::add-mask::$HOSTED_ZONE_ID"
+          echo "::add-mask::$HOSTED_ZONE_ID_HOST"
           echo "::add-mask::$DB_USERNAME"
 
           chmod +x generate-configs.sh
@@ -116,6 +118,46 @@ jobs:
 
           echo "✅ Infrastructure deployed successfully!"
 
+      - name: Deploy frontend application
+        working-directory: terraform
+        env:
+          ENVIRONMENT: ${{ vars.ENVIRONMENT }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+        run: |
+          # Get sensitive values from Terraform outputs and mask them
+          cd projects/frontend
+          terraform init -backend-config=config/${ENVIRONMENT}-backend.tfvars -reconfigure >/dev/null 2>&1
+
+          FRONTEND_BUCKET=$(terraform output -raw frontend_bucket_name 2>/dev/null || echo "")
+          HOST_BUCKET=$(terraform output -raw host_bucket_name 2>/dev/null || echo "")
+          FRONTEND_CF_ID=$(terraform output -raw frontend_cloudfront_distribution_id 2>/dev/null || echo "")
+          HOST_CF_ID=$(terraform output -raw host_cloudfront_distribution_id 2>/dev/null || echo "")
+          FRONTEND_URL=$(terraform output -raw frontend_url 2>/dev/null || echo "")
+          HOST_URL=$(terraform output -raw host_url 2>/dev/null || echo "")
+
+          # Mask sensitive values
+          [ -n "$FRONTEND_BUCKET" ] && echo "::add-mask::$FRONTEND_BUCKET"
+          [ -n "$HOST_BUCKET" ] && echo "::add-mask::$HOST_BUCKET"
+          [ -n "$FRONTEND_CF_ID" ] && echo "::add-mask::$FRONTEND_CF_ID"
+          [ -n "$HOST_CF_ID" ] && echo "::add-mask::$HOST_CF_ID"
+          [ -n "$FRONTEND_URL" ] && echo "::add-mask::$FRONTEND_URL"
+          [ -n "$HOST_URL" ] && echo "::add-mask::$HOST_URL"
+
+          cd ../..
+
+          # Make script executable
+          chmod +x scripts/deploy-frontend.sh
+
+          echo "🎨 Deploying frontend application"
+          echo "Environment: $ENVIRONMENT"
+          echo "Region: $AWS_REGION"
+          echo ""
+
+          # Run the deploy-frontend script
+          ./scripts/deploy-frontend.sh $ENVIRONMENT $AWS_REGION
+
+          echo "✅ Frontend deployed successfully!"
+
       - name: Deployment summary
         if: success()
         run: |
@@ -128,6 +170,7 @@ jobs:
           echo "**Deployed Infrastructure:**" >> $GITHUB_STEP_SUMMARY
           echo "- All Terraform projects via deploy-all.sh" >> $GITHUB_STEP_SUMMARY
           echo "- Services: WAB, Data, Codegen, Copilot" >> $GITHUB_STEP_SUMMARY
+          echo "- Frontend application (React Studio + Host files)" >> $GITHUB_STEP_SUMMARY
 
       - name: Notify on failure
         if: failure()

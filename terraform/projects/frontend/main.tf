@@ -53,10 +53,12 @@ data "terraform_remote_state" "ecs_cluster" {
 }
 
 locals {
-  alb_dns_name      = data.terraform_remote_state.ecs_cluster.outputs.alb_dns_name
-  use_custom_domain = var.hosted_zone_id != null
-  frontend_domain   = local.use_custom_domain ? "${var.environment}.${var.parent_domain}" : null
-  alb_origin_domain = local.use_custom_domain ? "alb-${var.environment}.${var.parent_domain}" : local.alb_dns_name
+  alb_dns_name          = data.terraform_remote_state.ecs_cluster.outputs.alb_dns_name
+  use_custom_domain     = var.hosted_zone_id != null
+  use_custom_host       = var.hosted_zone_id_host != null
+  frontend_domain       = local.use_custom_domain ? "${var.environment}.${var.parent_domain}" : null
+  host_domain           = local.use_custom_host ? "${var.environment}.host.${var.host_parent_domain}" : null
+  alb_origin_domain     = local.use_custom_domain ? "alb-${var.environment}.${var.parent_domain}" : local.alb_dns_name
 }
 
 # ACM Certificate for CloudFront (must be in us-east-1)
@@ -261,12 +263,59 @@ resource "aws_s3_bucket_policy" "host" {
   })
 }
 
+# ACM Certificate for Host CloudFront (must be in us-east-1)
+resource "aws_acm_certificate" "host" {
+  count    = local.use_custom_host ? 1 : 0
+  provider = aws.us_east_1
+
+  domain_name       = local.host_domain
+  validation_method = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = {
+    Name        = "plasmic-host-cloudfront-${var.environment}"
+    Environment = var.environment
+  }
+}
+
+# DNS validation records for Host ACM certificate
+resource "aws_route53_record" "host_cert_validation" {
+  for_each = local.use_custom_host ? {
+    for dvo in aws_acm_certificate.host[0].domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  } : {}
+
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = var.hosted_zone_id_host
+}
+
+# Wait for Host certificate validation to complete
+resource "aws_acm_certificate_validation" "host" {
+  count                   = local.use_custom_host ? 1 : 0
+  provider                = aws.us_east_1
+  certificate_arn         = aws_acm_certificate.host[0].arn
+  validation_record_fqdns = [for record in aws_route53_record.host_cert_validation : record.fqdn]
+}
+
 # CloudFront distribution for host files
 resource "aws_cloudfront_distribution" "host" {
   enabled         = true
   is_ipv6_enabled = true
   comment         = "Plasmic host static ${var.environment}"
   price_class     = "PriceClass_100"
+
+  # Custom domain aliases (only if custom domain is configured)
+  aliases = local.use_custom_host ? [local.host_domain] : []
 
   origin {
     domain_name = aws_s3_bucket.host.bucket_regional_domain_name
@@ -303,11 +352,28 @@ resource "aws_cloudfront_distribution" "host" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = true
+    cloudfront_default_certificate = !local.use_custom_host
+    acm_certificate_arn            = local.use_custom_host ? aws_acm_certificate_validation.host[0].certificate_arn : null
+    ssl_support_method             = local.use_custom_host ? "sni-only" : null
+    minimum_protocol_version       = local.use_custom_host ? "TLSv1.2_2021" : null
   }
 
   tags = {
     Name        = "plasmic-host-static-${var.environment}"
     Environment = var.environment
+  }
+}
+
+# Route53 alias record for Host CloudFront distribution
+resource "aws_route53_record" "host" {
+  count   = local.use_custom_host ? 1 : 0
+  zone_id = var.hosted_zone_id_host
+  name    = local.host_domain
+  type    = "A"
+
+  alias {
+    name                   = aws_cloudfront_distribution.host.domain_name
+    zone_id                = aws_cloudfront_distribution.host.hosted_zone_id
+    evaluate_target_health = false
   }
 }

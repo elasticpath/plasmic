@@ -40,5 +40,10 @@ output "host_cloudfront_domain" {
 
 output "host_url" {
   description = "Host static files URL"
-  value       = "https://${aws_cloudfront_distribution.host.domain_name}/static/host.html"
+  value       = local.use_custom_host ? "https://${local.host_domain}/static/host.html" : "https://${aws_cloudfront_distribution.host.domain_name}/static/host.html"
+}
+
+output "host_custom_domain" {
+  description = "Custom domain name for host (if configured)"
+  value       = local.host_domain
 }

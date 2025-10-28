@@ -45,6 +45,7 @@ if [ -n "$GITHUB_ACTIONS" ]; then
   echo "::add-mask::${TERRAFORM_LOCKS_TABLE}"
   echo "::add-mask::${HOSTED_ZONE_ID}"
   echo "::add-mask::${DB_USERNAME}"
+  echo "::add-mask::${HOSTED_ZONE_ID_HOST}"
 fi
 
 echo "Generating config files from examples..."
@@ -57,6 +58,7 @@ find projects -name "*.tfvars.example" -type f | while read -r example_file; do
       -e "s|<TERRAFORM_STATE_BUCKET>|${TERRAFORM_STATE_BUCKET}|g" \
       -e "s|<TERRAFORM_LOCKS_TABLE>|${TERRAFORM_LOCKS_TABLE}|g" \
       -e "s|<HOSTED_ZONE_ID>|${HOSTED_ZONE_ID}|g" \
+      -e "s|<HOSTED_ZONE_ID_HOST>|${HOSTED_ZONE_ID_HOST:-}|g" \
       -e "s|<DB_USERNAME>|${DB_USERNAME}|g" \
       "$example_file" > "$output_file"
 
