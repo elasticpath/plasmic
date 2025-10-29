@@ -1,0 +1,52 @@
+name: 'Generate Terraform Configurations'
+description: 'Generates Terraform configuration files including backend configs'
+
+inputs:
+  aws_account_id:
+    description: 'AWS Account ID'
+    required: true
+  terraform_state_bucket:
+    description: 'Terraform state S3 bucket name'
+    required: true
+  terraform_locks_table:
+    description: 'Terraform state lock DynamoDB table name'
+    required: true
+  hosted_zone_id:
+    description: 'Route53 hosted zone ID for main domain'
+    required: true
+  hosted_zone_id_host:
+    description: 'Route53 hosted zone ID for host domain'
+    required: true
+  db_username:
+    description: 'Database username'
+    required: true
+  working_directory:
+    description: 'Working directory (default: terraform)'
+    required: false
+    default: 'terraform'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Generate Terraform configuration files
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      env:
+        AWS_ACCOUNT_ID: ${{ inputs.aws_account_id }}
+        TERRAFORM_STATE_BUCKET: ${{ inputs.terraform_state_bucket }}
+        TERRAFORM_LOCKS_TABLE: ${{ inputs.terraform_locks_table }}
+        HOSTED_ZONE_ID: ${{ inputs.hosted_zone_id }}
+        HOSTED_ZONE_ID_HOST: ${{ inputs.hosted_zone_id_host }}
+        DB_USERNAME: ${{ inputs.db_username }}
+      run: |
+        # Mask sensitive values
+        echo "::add-mask::$AWS_ACCOUNT_ID"
+        echo "::add-mask::$TERRAFORM_STATE_BUCKET"
+        echo "::add-mask::$TERRAFORM_LOCKS_TABLE"
+        echo "::add-mask::$HOSTED_ZONE_ID"
+        echo "::add-mask::$HOSTED_ZONE_ID_HOST"
+        echo "::add-mask::$DB_USERNAME"
+
+        chmod +x generate-configs.sh
+        ./generate-configs.sh
+        echo "✅ Configuration files generated"

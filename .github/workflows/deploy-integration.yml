@@ -67,26 +67,14 @@ jobs:
           terraform_version: 1.13.4
 
       - name: Generate Terraform configuration files
-        working-directory: terraform
-        env:
-          AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-          TERRAFORM_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
-          TERRAFORM_LOCKS_TABLE: ${{ vars.TERRAFORM_LOCKS_TABLE }}
-          HOSTED_ZONE_ID: ${{ vars.HOSTED_ZONE_ID }}
-          HOSTED_ZONE_ID_HOST: ${{ vars.HOSTED_ZONE_ID_HOST }}
-          DB_USERNAME: ${{ vars.DB_USERNAME }}
-        run: |
-          # Mask sensitive values
-          echo "::add-mask::$AWS_ACCOUNT_ID"
-          echo "::add-mask::$TERRAFORM_STATE_BUCKET"
-          echo "::add-mask::$TERRAFORM_LOCKS_TABLE"
-          echo "::add-mask::$HOSTED_ZONE_ID"
-          echo "::add-mask::$HOSTED_ZONE_ID_HOST"
-          echo "::add-mask::$DB_USERNAME"
-
-          chmod +x generate-configs.sh
-          ./generate-configs.sh
-          echo "✅ Configuration files generated"
+        uses: ./.github/actions/generate-terraform-configs
+        with:
+          aws_account_id: ${{ vars.AWS_ACCOUNT_ID }}
+          terraform_state_bucket: ${{ vars.TERRAFORM_STATE_BUCKET }}
+          terraform_locks_table: ${{ vars.TERRAFORM_LOCKS_TABLE }}
+          hosted_zone_id: ${{ vars.HOSTED_ZONE_ID }}
+          hosted_zone_id_host: ${{ vars.HOSTED_ZONE_ID_HOST }}
+          db_username: ${{ vars.DB_USERNAME }}
 
       - name: Deploy infrastructure with deploy-all.sh
         working-directory: terraform
