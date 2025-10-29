@@ -8,6 +8,7 @@ on:
       - 'platform/wab/**'
       - 'terraform/**'
       - '.github/workflows/deploy-integration.yml'
+      - '.github/workflows/deploy-frontend.yml'
 
 jobs:
   build-and-deploy:
