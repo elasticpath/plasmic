@@ -56,6 +56,13 @@ jobs:
           hosted_zone_id_host: ${{ vars.HOSTED_ZONE_ID_HOST }}
           db_username: ${{ vars.DB_USERNAME }}
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "yarn"
+          cache-dependency-path: platform/wab/yarn.lock
+
       - name: Deploy frontend application
         working-directory: terraform
         env:
