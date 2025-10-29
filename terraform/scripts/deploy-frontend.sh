@@ -46,6 +46,7 @@ HOST_BUCKET=$(terraform output -raw host_bucket_name)
 
 # Get backend API URL
 cd ../services/wab
+terraform init -backend-config=config/${ENVIRONMENT}-backend.tfvars -reconfigure >/dev/null 2>&1
 APP_URL=$(terraform output -raw application_url)
 
 # Navigate to platform directory (from terraform/projects/services/wab to platform/wab)
