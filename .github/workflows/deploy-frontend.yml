@@ -41,6 +41,21 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.4
+
+      - name: Generate Terraform configuration files
+        uses: ./.github/actions/generate-terraform-configs
+        with:
+          aws_account_id: ${{ vars.AWS_ACCOUNT_ID }}
+          terraform_state_bucket: ${{ vars.TERRAFORM_STATE_BUCKET }}
+          terraform_locks_table: ${{ vars.TERRAFORM_LOCKS_TABLE }}
+          hosted_zone_id: ${{ vars.HOSTED_ZONE_ID }}
+          hosted_zone_id_host: ${{ vars.HOSTED_ZONE_ID_HOST }}
+          db_username: ${{ vars.DB_USERNAME }}
+
       - name: Deploy frontend application
         working-directory: terraform
         env:
