@@ -22,9 +22,9 @@ module "vpc" {
   enable_nat_gateway = var.enable_nat_gateway
   single_nat_gateway = var.single_nat_gateway
 
-  # Allow database subnets to be publicly accessible
+  # Database subnets should be private (no internet gateway route)
   create_database_subnet_route_table     = true
-  create_database_internet_gateway_route = true
+  create_database_internet_gateway_route = false
 
   enable_dns_hostnames = true
   enable_dns_support   = true

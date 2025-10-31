@@ -42,15 +42,16 @@ module "wab_service" {
 
   # Environment variables - using WAB's expected variable names
   environment_variables = {
-    NODE_ENV                  = "production"  # Always use production mode for deployed environments
-    PORT                      = tostring(var.wab_container_port)
-    HOST                      = var.host_url
-    AWS_REGION                = var.aws_region
-    SITE_ASSETS_BUCKET        = local.site_assets_bucket_name
-    SITE_ASSETS_BASE_URL      = var.site_assets_base_url
-    CLIP_BUCKET               = local.clips_bucket_name
-    GENERIC_WORKER_POOL_SIZE  = tostring(var.generic_worker_pool_size)
-    LOADER_WORKER_POOL_SIZE   = tostring(var.loader_worker_pool_size)
+    NODE_ENV                     = "production"  # Always use production mode for deployed environments
+    PORT                         = tostring(var.wab_container_port)
+    HOST                         = local.frontend_url
+    AWS_REGION                   = var.aws_region
+    SITE_ASSETS_BUCKET           = local.site_assets_bucket_name
+    SITE_ASSETS_BASE_URL         = var.site_assets_base_url
+    CLIP_BUCKET                  = local.clips_bucket_name
+    GENERIC_WORKER_POOL_SIZE     = tostring(var.generic_worker_pool_size)
+    LOADER_WORKER_POOL_SIZE      = tostring(var.loader_worker_pool_size)
+    REACT_APP_DEFAULT_HOST_URL   = local.react_app_default_host_url
   }
 
   # Secrets - DATABASE_URI contains the full PostgreSQL connection string

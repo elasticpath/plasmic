@@ -105,6 +105,44 @@ resource "aws_acm_certificate_validation" "cloudfront" {
   validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
 }
 
+# Response headers policy for CORS and security headers
+resource "aws_cloudfront_response_headers_policy" "plasmic_cors" {
+  name    = "plasmic-host-cors-policy-${var.environment}"
+  comment = "CORS and security headers policy for Plasmic ${var.environment}"
+
+  cors_config {
+    access_control_allow_credentials = false
+
+    access_control_allow_headers {
+      items = ["*"]
+    }
+
+    access_control_allow_methods {
+      items = ["ALL"]
+    }
+
+    access_control_allow_origins {
+      items = ["*"]
+    }
+
+    access_control_max_age_sec = 86400
+    origin_override            = true
+  }
+
+  security_headers_config {
+    content_type_options {
+      override = true
+    }
+
+    strict_transport_security {
+      access_control_max_age_sec = 31536000
+      include_subdomains         = false
+      preload                    = false
+      override                   = true
+    }
+  }
+}
+
 # CloudFront distribution for frontend
 resource "aws_cloudfront_distribution" "frontend" {
   enabled             = true
@@ -142,17 +180,14 @@ resource "aws_cloudfront_distribution" "frontend" {
     cached_methods   = ["GET", "HEAD"]
     target_origin_id = "S3-plasmic-frontend"
 
-    forwarded_values {
-      query_string = false
-      cookies {
-        forward = "none"
-      }
-    }
+    cache_policy_id            = "658327ea-f89d-4fab-a63d-7e88639e58f6"  # Managed-CachingOptimized
+    origin_request_policy_id   = "88a5eaf4-2fd4-4709-b370-b4c650ea3fcf"  # Managed-CORS-S3Origin
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.plasmic_cors.id
 
     viewer_protocol_policy = "redirect-to-https"
     min_ttl                = 0
-    default_ttl            = 3600
-    max_ttl                = 86400
+    default_ttl            = 0
+    max_ttl                = 0
     compress               = true
   }
 
@@ -331,17 +366,13 @@ resource "aws_cloudfront_distribution" "host" {
     cached_methods   = ["GET", "HEAD"]
     target_origin_id = "S3-plasmic-host"
 
-    forwarded_values {
-      query_string = false
-      cookies {
-        forward = "none"
-      }
-    }
+    cache_policy_id            = "658327ea-f89d-4fab-a63d-7e88639e58f6"  # Managed-CachingOptimized
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.plasmic_cors.id
 
     viewer_protocol_policy = "redirect-to-https"
     min_ttl                = 0
-    default_ttl            = 300
-    max_ttl                = 31536000
+    default_ttl            = 0
+    max_ttl                = 0
     compress               = true
   }
 

@@ -52,11 +52,7 @@ variable "site_assets_base_url" {
   default     = ""
 }
 
-# Application Configuration
-variable "host_url" {
-  type        = string
-  description = "Main application host URL"
-}
+# NOTE: host_url and react_app_default_host_url are automatically pulled from frontend CloudFront via remote state
 
 variable "generic_worker_pool_size" {
   type        = number

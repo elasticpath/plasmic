@@ -43,6 +43,15 @@ data "terraform_remote_state" "s3_clips" {
   }
 }
 
+data "terraform_remote_state" "frontend" {
+  backend = "s3"
+  config = {
+    bucket = "plasmic-terraform-state-${var.environment}-${var.aws_region}"
+    key    = "${var.environment}/frontend/terraform.tfstate"
+    region = var.aws_region
+  }
+}
+
 locals {
   # VPC
   vpc_id             = data.terraform_remote_state.vpc.outputs.vpc_id
@@ -63,4 +72,8 @@ locals {
   site_assets_bucket_arn  = data.terraform_remote_state.s3_site_assets.outputs.bucket_arn
   clips_bucket_name       = data.terraform_remote_state.s3_clips.outputs.bucket_name
   clips_bucket_arn        = data.terraform_remote_state.s3_clips.outputs.bucket_arn
+
+  # Frontend URLs (from CloudFront distributions)
+  frontend_url                 = data.terraform_remote_state.frontend.outputs.frontend_url
+  react_app_default_host_url   = data.terraform_remote_state.frontend.outputs.host_url
 }
