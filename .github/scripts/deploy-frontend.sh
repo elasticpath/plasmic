@@ -1,11 +1,18 @@
 #!/bin/bash
 # Frontend build and deployment script for Plasmic
-# Usage (from terraform directory): ./scripts/deploy-frontend.sh [environment] [aws-region]
+# Usage: ./deploy-frontend.sh [environment]
+#
+# Required environment variables:
+#   AWS_REGION - AWS region
+#   TERRAFORM_STATE_BUCKET - S3 bucket for terraform state
+#   TERRAFORM_LOCKS_TABLE - DynamoDB table for state locks
 
 set -e
 
-ENVIRONMENT="${1:-integration}"
-AWS_REGION="${2:-us-east-2}"
+ENVIRONMENT="${1:-${TF_VAR_environment:-integration}}"
+AWS_REGION="${AWS_REGION:-us-east-2}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TERRAFORM_ROOT="$(cd "$SCRIPT_DIR/../../terraform" && pwd)"
 
 echo "🎨 Building and deploying Plasmic frontend to: $ENVIRONMENT"
 echo "Region: $AWS_REGION"
@@ -34,8 +41,13 @@ error() {
 
 # Get CloudFront distribution IDs and URLs from Terraform
 step "Step 1: Getting infrastructure details"
-cd projects/frontend
-terraform init -backend-config=config/${ENVIRONMENT}-backend.tfvars -reconfigure >/dev/null 2>&1
+cd "$TERRAFORM_ROOT/projects/frontend"
+terraform init \
+    -backend-config="bucket=${TERRAFORM_STATE_BUCKET}" \
+    -backend-config="key=${ENVIRONMENT}/frontend/terraform.tfstate" \
+    -backend-config="dynamodb_table=${TERRAFORM_LOCKS_TABLE}" \
+    -backend-config="region=${AWS_REGION}" \
+    -reconfigure >/dev/null 2>&1
 
 FRONTEND_URL=$(terraform output -raw frontend_url)
 HOST_URL=$(terraform output -raw host_url)
@@ -45,12 +57,17 @@ FRONTEND_BUCKET=$(terraform output -raw frontend_bucket_name)
 HOST_BUCKET=$(terraform output -raw host_bucket_name)
 
 # Get backend API URL
-cd ../../services/wab
-terraform init -backend-config=config/${ENVIRONMENT}-backend.tfvars -reconfigure >/dev/null 2>&1
+cd "$TERRAFORM_ROOT/services/wab"
+terraform init \
+    -backend-config="bucket=${TERRAFORM_STATE_BUCKET}" \
+    -backend-config="key=${ENVIRONMENT}/services/wab/terraform.tfstate" \
+    -backend-config="dynamodb_table=${TERRAFORM_LOCKS_TABLE}" \
+    -backend-config="region=${AWS_REGION}" \
+    -reconfigure >/dev/null 2>&1
 APP_URL=$(terraform output -raw application_url)
 
-# Navigate to platform directory (from terraform/services/wab to platform/wab)
-cd ../../../platform/wab
+# Navigate to platform directory (from repo root to platform/wab)
+cd "$SCRIPT_DIR/../../platform/wab"
 
 # Install dependencies
 step "Step 2: Installing dependencies"

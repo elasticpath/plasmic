@@ -77,35 +77,32 @@ jobs:
         with:
           terraform_version: 1.13.4
 
-      - name: Generate Terraform configuration files
-        uses: ./.github/actions/generate-terraform-configs
-        with:
-          aws_account_id: ${{ vars.AWS_ACCOUNT_ID }}
-          terraform_state_bucket: ${{ vars.TERRAFORM_STATE_BUCKET }}
-          terraform_locks_table: ${{ vars.TERRAFORM_LOCKS_TABLE }}
-          hosted_zone_id: ${{ vars.HOSTED_ZONE_ID }}
-          hosted_zone_id_host: ${{ vars.HOSTED_ZONE_ID_HOST }}
-          db_username: ${{ vars.DB_USERNAME }}
-
       - name: Plan infrastructure changes
         id: plan
-        working-directory: terraform
         env:
-          ENVIRONMENT: ${{ vars.ENVIRONMENT }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          TERRAFORM_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
+          TERRAFORM_LOCKS_TABLE: ${{ vars.TERRAFORM_LOCKS_TABLE }}
+          TF_VAR_environment: ${{ vars.ENVIRONMENT }}
+          TF_VAR_aws_region: ${{ vars.AWS_REGION }}
         continue-on-error: true
         run: |
+          # Mask sensitive values
+          echo "::add-mask::$TERRAFORM_STATE_BUCKET"
+          echo "::add-mask::$TERRAFORM_LOCKS_TABLE"
+
           # Make script executable
-          chmod +x scripts/plan-infrastructure.sh
+          chmod +x .github/scripts/plan-infrastructure.sh
 
           echo "📋 Planning infrastructure changes..."
-          echo "Environment: $ENVIRONMENT"
+          echo "Environment: $TF_VAR_environment"
           echo ""
 
           # Run the plan script (exits with code 1 if changes detected)
-          ./scripts/plan-infrastructure.sh $ENVIRONMENT || true
+          ./.github/scripts/plan-infrastructure.sh $TF_VAR_environment || true
 
           # Check if plan files were created
-          if [ -d "plans/$ENVIRONMENT" ]; then
+          if [ -d "terraform/plans/$TF_VAR_environment" ]; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
           else
             echo "has_changes=false" >> $GITHUB_OUTPUT
@@ -163,41 +160,30 @@ jobs:
         with:
           terraform_version: 1.13.4
 
-      - name: Generate Terraform configuration files
-        uses: ./.github/actions/generate-terraform-configs
-        with:
-          aws_account_id: ${{ vars.AWS_ACCOUNT_ID }}
-          terraform_state_bucket: ${{ vars.TERRAFORM_STATE_BUCKET }}
-          terraform_locks_table: ${{ vars.TERRAFORM_LOCKS_TABLE }}
-          hosted_zone_id: ${{ vars.HOSTED_ZONE_ID }}
-          hosted_zone_id_host: ${{ vars.HOSTED_ZONE_ID_HOST }}
-          db_username: ${{ vars.DB_USERNAME }}
-
       - name: Deploy services
-        working-directory: terraform
         env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
-          IMAGE_TAG: ${{ github.sha }}
-          ENVIRONMENT: ${{ vars.ENVIRONMENT }}
-          # Pass image tag via TF_VAR environment variable
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          TERRAFORM_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
+          TERRAFORM_LOCKS_TABLE: ${{ vars.TERRAFORM_LOCKS_TABLE }}
+          TF_VAR_environment: ${{ vars.ENVIRONMENT }}
+          TF_VAR_aws_region: ${{ vars.AWS_REGION }}
           TF_VAR_container_image: ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ github.sha }}
         run: |
           # Mask sensitive values
-          echo "::add-mask::$ECR_REGISTRY"
-          echo "::add-mask::$ECR_REPOSITORY"
+          echo "::add-mask::$TERRAFORM_STATE_BUCKET"
+          echo "::add-mask::$TERRAFORM_LOCKS_TABLE"
           echo "::add-mask::$TF_VAR_container_image"
 
           # Make script executable
-          chmod +x scripts/deploy-services.sh
+          chmod +x .github/scripts/deploy-services.sh
 
-          echo "🚀 Deploying services with image tag: $IMAGE_TAG"
-          echo "Environment: $ENVIRONMENT"
+          echo "🚀 Deploying services with image tag: ${{ github.sha }}"
+          echo "Environment: $TF_VAR_environment"
           echo "Container image: $TF_VAR_container_image"
           echo ""
 
           # Run the deploy-services script
-          ./scripts/deploy-services.sh $ENVIRONMENT
+          ./.github/scripts/deploy-services.sh $TF_VAR_environment
 
           echo "✅ Services deployed successfully!"
 
@@ -252,16 +238,6 @@ jobs:
         with:
           terraform_version: 1.13.4
 
-      - name: Generate Terraform configuration files
-        uses: ./.github/actions/generate-terraform-configs
-        with:
-          aws_account_id: ${{ vars.AWS_ACCOUNT_ID }}
-          terraform_state_bucket: ${{ vars.TERRAFORM_STATE_BUCKET }}
-          terraform_locks_table: ${{ vars.TERRAFORM_LOCKS_TABLE }}
-          hosted_zone_id: ${{ vars.HOSTED_ZONE_ID }}
-          hosted_zone_id_host: ${{ vars.HOSTED_ZONE_ID_HOST }}
-          db_username: ${{ vars.DB_USERNAME }}
-
       - name: Download terraform plans
         uses: actions/download-artifact@v4
         with:
@@ -269,19 +245,26 @@ jobs:
           path: terraform/plans/${{ vars.ENVIRONMENT }}/
 
       - name: Apply infrastructure changes
-        working-directory: terraform
         env:
-          ENVIRONMENT: ${{ vars.ENVIRONMENT }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          TERRAFORM_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
+          TERRAFORM_LOCKS_TABLE: ${{ vars.TERRAFORM_LOCKS_TABLE }}
+          TF_VAR_environment: ${{ vars.ENVIRONMENT }}
+          TF_VAR_aws_region: ${{ vars.AWS_REGION }}
         run: |
+          # Mask sensitive values
+          echo "::add-mask::$TERRAFORM_STATE_BUCKET"
+          echo "::add-mask::$TERRAFORM_LOCKS_TABLE"
+
           # Make script executable
-          chmod +x scripts/apply-infrastructure.sh
+          chmod +x .github/scripts/apply-infrastructure.sh
 
           echo "🚀 Applying infrastructure changes..."
-          echo "Environment: $ENVIRONMENT"
+          echo "Environment: $TF_VAR_environment"
           echo ""
 
           # Run the apply script
-          ./scripts/apply-infrastructure.sh $ENVIRONMENT
+          ./.github/scripts/apply-infrastructure.sh $TF_VAR_environment
 
           echo "✅ Infrastructure applied successfully!"
 

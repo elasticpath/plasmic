@@ -1,6 +1,0 @@
-environment = "integration"
-aws_region  = "us-east-2"
-
-# Custom domain configuration
-hosted_zone_id = "<HOSTED_ZONE_ID>"  # Route53 hosted zone ID for storefront.elasticpath.com
-hosted_zone_id_host = "<HOSTED_ZONE_ID_HOST>"  # Route53 hosted zone ID for elasticpathdev.com

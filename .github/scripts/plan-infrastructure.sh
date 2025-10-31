@@ -4,13 +4,19 @@
 #
 # This script runs terraform plan for all infrastructure components
 # and saves the plans for later manual approval and application.
+#
+# Required environment variables:
+#   AWS_REGION - AWS region
+#   TERRAFORM_STATE_BUCKET - S3 bucket for terraform state
+#   TERRAFORM_LOCKS_TABLE - DynamoDB table for state locks
+#   TF_VAR_* - All terraform variables as needed
 
 set -e
 
-ENVIRONMENT="${1:-integration}"
-AWS_REGION="${2:-us-east-2}"
+ENVIRONMENT="${1:-${TF_VAR_environment:-integration}}"
+AWS_REGION="${AWS_REGION:-us-east-2}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TERRAFORM_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+TERRAFORM_ROOT="$(cd "$SCRIPT_DIR/../../terraform" && pwd)"
 PLANS_DIR="${TERRAFORM_ROOT}/plans/${ENVIRONMENT}"
 
 echo "📋 Planning Plasmic infrastructure for: $ENVIRONMENT"
@@ -65,21 +71,25 @@ PLAN_SUMMARY=""
 plan_project() {
     local project_name="$1"
     local project_path="$2"
-    local backend_config="$3"
-    local var_file="$4"
+    local state_key="$3"
 
     echo ""
     info "Planning: $project_name"
     cd "$TERRAFORM_ROOT/$project_path"
 
-    # Initialize terraform
-    terraform init -backend-config="$backend_config" -reconfigure >/dev/null 2>&1
+    # Initialize terraform with backend config
+    terraform init \
+        -backend-config="bucket=${TERRAFORM_STATE_BUCKET}" \
+        -backend-config="key=${state_key}" \
+        -backend-config="dynamodb_table=${TERRAFORM_LOCKS_TABLE}" \
+        -backend-config="region=${AWS_REGION}" \
+        -reconfigure >/dev/null 2>&1
 
-    # Run plan and save to file
+    # Run plan and save to file (variables come from TF_VAR_* environment variables)
     local plan_file="$PLANS_DIR/${project_name}.tfplan"
     local plan_output="$PLANS_DIR/${project_name}.txt"
 
-    if terraform plan -var-file="$var_file" -out="$plan_file" | tee "$plan_output"; then
+    if terraform plan -out="$plan_file" | tee "$plan_output"; then
         echo "✅ Plan saved: $plan_file"
 
         # Check if plan has changes
@@ -98,62 +108,52 @@ plan_project() {
 # 1. VPC
 step "Step 1: Planning VPC"
 plan_project "vpc" "projects/vpc" \
-    "config/${ENVIRONMENT}-backend.tfvars" \
-    "config/${ENVIRONMENT}.tfvars"
+    "${ENVIRONMENT}/vpc/terraform.tfstate"
 
 # 2. ECR (shared)
 step "Step 2: Planning ECR"
 plan_project "ecr" "projects/ecr" \
-    "config/shared-backend.tfvars" \
-    "config/shared.tfvars"
+    "shared/ecr/terraform.tfstate"
 
 # 3. Secrets
 step "Step 3: Planning Secrets"
 plan_project "secrets" "projects/secrets" \
-    "config/${ENVIRONMENT}-backend.tfvars" \
-    "config/${ENVIRONMENT}.tfvars"
+    "${ENVIRONMENT}/secrets/terraform.tfstate"
 
 # 4. Database
 step "Step 4: Planning Database"
 plan_project "database" "projects/database" \
-    "config/${ENVIRONMENT}-backend.tfvars" \
-    "config/${ENVIRONMENT}.tfvars"
+    "${ENVIRONMENT}/database/terraform.tfstate"
 
 # 5. S3 Buckets
 step "Step 5: Planning S3 Buckets"
 
 echo "  → Planning site-assets bucket..."
 plan_project "s3-site-assets" "projects/s3-site-assets" \
-    "config/${ENVIRONMENT}-backend.tfvars" \
-    "config/${ENVIRONMENT}.tfvars"
+    "${ENVIRONMENT}/s3-site-assets/terraform.tfstate"
 
 echo "  → Planning clips bucket..."
 plan_project "s3-clips" "projects/s3-clips" \
-    "config/${ENVIRONMENT}-backend.tfvars" \
-    "config/${ENVIRONMENT}.tfvars"
+    "${ENVIRONMENT}/s3-clips/terraform.tfstate"
 
 echo "  → Planning assets bucket..."
 plan_project "s3-assets" "projects/s3-assets" \
-    "config/${ENVIRONMENT}-backend.tfvars" \
-    "config/${ENVIRONMENT}.tfvars"
+    "${ENVIRONMENT}/s3-assets/terraform.tfstate"
 
 # 6. DynamoDB
 step "Step 6: Planning DynamoDB"
 plan_project "dynamodb" "projects/dynamodb" \
-    "config/${ENVIRONMENT}-backend.tfvars" \
-    "config/${ENVIRONMENT}.tfvars"
+    "${ENVIRONMENT}/dynamodb/terraform.tfstate"
 
 # 7. Frontend (S3 + CloudFront)
 step "Step 7: Planning Frontend Infrastructure"
 plan_project "frontend" "projects/frontend" \
-    "config/${ENVIRONMENT}-backend.tfvars" \
-    "config/${ENVIRONMENT}.tfvars"
+    "${ENVIRONMENT}/frontend/terraform.tfstate"
 
 # 8. ECS Cluster
 step "Step 8: Planning ECS Cluster"
 plan_project "ecs-cluster" "projects/ecs-cluster" \
-    "config/${ENVIRONMENT}-backend.tfvars" \
-    "config/${ENVIRONMENT}.tfvars"
+    "${ENVIRONMENT}/ecs-cluster/terraform.tfstate"
 
 # Summary
 echo ""

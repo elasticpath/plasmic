@@ -1,9 +1,0 @@
-environment = "integration"
-aws_region  = "us-east-2"
-
-# CORS configuration for loader access
-allowed_origins = [
-  "https://<CLOUDFRONT_DISTRIBUTION_URL>",
-  "https://*.<INTERNAL_DOMAIN>",
-  "https://*.plasmic.app"
-]

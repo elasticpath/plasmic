@@ -1,16 +1,25 @@
 #!/bin/bash
 # Services deployment script for Plasmic
-# Usage: ./deploy-services.sh [environment] [aws-region]
+# Usage: ./deploy-services.sh [environment]
 #
 # This script deploys all ECS services with terraform apply -auto-approve.
 # Services are always auto-deployed without manual approval.
+#
+# Required environment variables:
+#   AWS_REGION - AWS region
+#   TERRAFORM_STATE_BUCKET - S3 bucket for terraform state
+#   TERRAFORM_LOCKS_TABLE - DynamoDB table for state locks
+#   TF_VAR_environment - Environment name
+#   TF_VAR_aws_region - AWS region for terraform
+#   TF_VAR_container_image - Docker image URL (for wab service)
+#   TF_VAR_* - Other terraform variables as needed
 
 set -e
 
-ENVIRONMENT="${1:-integration}"
-AWS_REGION="${2:-us-east-2}"
+ENVIRONMENT="${1:-${TF_VAR_environment:-integration}}"
+AWS_REGION="${AWS_REGION:-us-east-2}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TERRAFORM_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+TERRAFORM_ROOT="$(cd "$SCRIPT_DIR/../../terraform" && pwd)"
 
 echo "🚀 Deploying Plasmic services to: $ENVIRONMENT"
 echo "Region: $AWS_REGION"
@@ -57,19 +66,23 @@ echo "✅ All prerequisites met"
 deploy_service() {
     local service_name="$1"
     local service_path="$2"
-    local backend_config="$3"
-    local var_file="$4"
-    local extra_flags="$5"
+    local state_key="$3"
+    local extra_flags="$4"
 
     echo ""
     info "Deploying service: $service_name"
     cd "$TERRAFORM_ROOT/$service_path"
 
-    # Initialize terraform
-    terraform init -backend-config="$backend_config" -reconfigure >/dev/null 2>&1
+    # Initialize terraform with backend config
+    terraform init \
+        -backend-config="bucket=${TERRAFORM_STATE_BUCKET}" \
+        -backend-config="key=${state_key}" \
+        -backend-config="dynamodb_table=${TERRAFORM_LOCKS_TABLE}" \
+        -backend-config="region=${AWS_REGION}" \
+        -reconfigure >/dev/null 2>&1
 
-    # Apply with auto-approve
-    if terraform apply -var-file="$var_file" -auto-approve $extra_flags; then
+    # Apply with auto-approve (variables come from TF_VAR_* environment variables)
+    if terraform apply -auto-approve $extra_flags; then
         echo "✅ Deployed: $service_name"
     else
         error "Deployment failed for $service_name"
@@ -80,8 +93,7 @@ deploy_service() {
 # 1. Deploy WAB Service
 step "Step 1: Deploying WAB Service"
 deploy_service "wab" "services/wab" \
-    "config/${ENVIRONMENT}-backend.tfvars" \
-    "config/${ENVIRONMENT}.tfvars" \
+    "${ENVIRONMENT}/services/wab/terraform.tfstate" \
     "-lock=false"
 
 # Save WAB URL for summary
@@ -92,22 +104,19 @@ LOG_GROUP=$(terraform output -raw log_group_name 2>/dev/null || echo "N/A")
 # 2. Deploy Codegen Service
 step "Step 2: Deploying Codegen Service"
 deploy_service "codegen" "services/codegen" \
-    "config/${ENVIRONMENT}-backend.tfvars" \
-    "config/${ENVIRONMENT}.tfvars"
+    "${ENVIRONMENT}/services/codegen/terraform.tfstate"
 
 # 3. Deploy Copilot Service - DISABLED for cost savings
 # Uncomment to enable
 # step "Step 3: Deploying Copilot Service"
 # deploy_service "copilot" "services/copilot" \
-#     "config/${ENVIRONMENT}-backend.tfvars" \
-#     "config/${ENVIRONMENT}.tfvars"
+#     "${ENVIRONMENT}/services/copilot/terraform.tfstate"
 info "Copilot service deployment skipped (disabled for cost savings)"
 
 # 4. Deploy Data Service
 step "Step 4: Deploying Data Service"
 deploy_service "data" "services/data" \
-    "config/${ENVIRONMENT}-backend.tfvars" \
-    "config/${ENVIRONMENT}.tfvars"
+    "${ENVIRONMENT}/services/data/terraform.tfstate"
 
 # Summary
 echo ""
