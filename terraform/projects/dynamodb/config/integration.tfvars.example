@@ -1,5 +1,0 @@
-environment = "integration"
-aws_region  = "us-east-2"
-
-# Disable point-in-time recovery for dev to save costs
-enable_point_in_time_recovery = false

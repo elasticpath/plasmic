@@ -5,13 +5,18 @@
 # This script applies previously saved terraform plans for infrastructure.
 # Plans must be generated first using plan-infrastructure.sh
 # This script should only be run after manual approval.
+#
+# Required environment variables:
+#   AWS_REGION - AWS region
+#   TERRAFORM_STATE_BUCKET - S3 bucket for terraform state
+#   TERRAFORM_LOCKS_TABLE - DynamoDB table for state locks
 
 set -e
 
-ENVIRONMENT="${1:-integration}"
-AWS_REGION="${2:-us-east-2}"
+ENVIRONMENT="${1:-${TF_VAR_environment:-integration}}"
+AWS_REGION="${AWS_REGION:-us-east-2}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TERRAFORM_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+TERRAFORM_ROOT="$(cd "$SCRIPT_DIR/../../terraform" && pwd)"
 PLANS_DIR="${TERRAFORM_ROOT}/plans/${ENVIRONMENT}"
 
 echo "🚀 Applying Plasmic infrastructure for: $ENVIRONMENT"
@@ -66,7 +71,7 @@ echo "✅ All prerequisites met"
 apply_project() {
     local project_name="$1"
     local project_path="$2"
-    local backend_config="$3"
+    local state_key="$3"
     local plan_file="$PLANS_DIR/${project_name}.tfplan"
 
     echo ""
@@ -79,8 +84,13 @@ apply_project() {
 
     cd "$TERRAFORM_ROOT/$project_path"
 
-    # Initialize terraform (must match the init from plan)
-    terraform init -backend-config="$backend_config" -reconfigure >/dev/null 2>&1
+    # Initialize terraform with backend config (must match the init from plan)
+    terraform init \
+        -backend-config="bucket=${TERRAFORM_STATE_BUCKET}" \
+        -backend-config="key=${state_key}" \
+        -backend-config="dynamodb_table=${TERRAFORM_LOCKS_TABLE}" \
+        -backend-config="region=${AWS_REGION}" \
+        -reconfigure >/dev/null 2>&1
 
     # Apply the saved plan
     if terraform apply "$plan_file"; then
@@ -93,19 +103,23 @@ apply_project() {
 
 # 1. VPC
 step "Step 1: Applying VPC"
-apply_project "vpc" "projects/vpc" "config/${ENVIRONMENT}-backend.tfvars"
+apply_project "vpc" "projects/vpc" \
+    "${ENVIRONMENT}/vpc/terraform.tfstate"
 
 # 2. ECR (shared)
 step "Step 2: Applying ECR"
-apply_project "ecr" "projects/ecr" "config/shared-backend.tfvars"
+apply_project "ecr" "projects/ecr" \
+    "shared/ecr/terraform.tfstate"
 
 # 3. Secrets
 step "Step 3: Applying Secrets"
-apply_project "secrets" "projects/secrets" "config/${ENVIRONMENT}-backend.tfvars"
+apply_project "secrets" "projects/secrets" \
+    "${ENVIRONMENT}/secrets/terraform.tfstate"
 
 # 4. Database
 step "Step 4: Applying Database"
-apply_project "database" "projects/database" "config/${ENVIRONMENT}-backend.tfvars"
+apply_project "database" "projects/database" \
+    "${ENVIRONMENT}/database/terraform.tfstate"
 
 # Save database endpoint for summary
 cd "$TERRAFORM_ROOT/projects/database"
@@ -115,21 +129,26 @@ DB_ENDPOINT=$(terraform output -raw db_endpoint 2>/dev/null || echo "N/A")
 step "Step 5: Applying S3 Buckets"
 
 echo "  → Applying site-assets bucket..."
-apply_project "s3-site-assets" "projects/s3-site-assets" "config/${ENVIRONMENT}-backend.tfvars"
+apply_project "s3-site-assets" "projects/s3-site-assets" \
+    "${ENVIRONMENT}/s3-site-assets/terraform.tfstate"
 
 echo "  → Applying clips bucket..."
-apply_project "s3-clips" "projects/s3-clips" "config/${ENVIRONMENT}-backend.tfvars"
+apply_project "s3-clips" "projects/s3-clips" \
+    "${ENVIRONMENT}/s3-clips/terraform.tfstate"
 
 echo "  → Applying assets bucket..."
-apply_project "s3-assets" "projects/s3-assets" "config/${ENVIRONMENT}-backend.tfvars"
+apply_project "s3-assets" "projects/s3-assets" \
+    "${ENVIRONMENT}/s3-assets/terraform.tfstate"
 
 # 6. DynamoDB
 step "Step 6: Applying DynamoDB"
-apply_project "dynamodb" "projects/dynamodb" "config/${ENVIRONMENT}-backend.tfvars"
+apply_project "dynamodb" "projects/dynamodb" \
+    "${ENVIRONMENT}/dynamodb/terraform.tfstate"
 
 # 7. Frontend (S3 + CloudFront)
 step "Step 7: Applying Frontend Infrastructure"
-apply_project "frontend" "projects/frontend" "config/${ENVIRONMENT}-backend.tfvars"
+apply_project "frontend" "projects/frontend" \
+    "${ENVIRONMENT}/frontend/terraform.tfstate"
 
 # Save frontend URLs for summary
 cd "$TERRAFORM_ROOT/projects/frontend"
@@ -140,7 +159,8 @@ HOST_CF_ID=$(terraform output -raw host_cloudfront_distribution_id 2>/dev/null |
 
 # 8. ECS Cluster
 step "Step 8: Applying ECS Cluster"
-apply_project "ecs-cluster" "projects/ecs-cluster" "config/${ENVIRONMENT}-backend.tfvars"
+apply_project "ecs-cluster" "projects/ecs-cluster" \
+    "${ENVIRONMENT}/ecs-cluster/terraform.tfstate"
 
 # Summary
 echo ""
