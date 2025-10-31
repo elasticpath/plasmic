@@ -10,6 +10,7 @@ if (!projectId || !projectToken) {
 
 export const PLASMIC = initPlasmicLoader({
   nextNavigation: NextNavigation,
+  host: "http://localhost:3003",
   projects: [
     {
       id: projectId,

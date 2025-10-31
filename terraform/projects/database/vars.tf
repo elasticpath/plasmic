@@ -12,16 +12,19 @@ variable "aws_region" {
 variable "db_instance_class" {
   type        = string
   description = "RDS instance class"
+  default     = "db.t3.small"
 }
 
 variable "db_allocated_storage" {
   type        = number
   description = "Allocated storage in GB"
+  default     = 20
 }
 
 variable "db_max_allocated_storage" {
   type        = number
   description = "Maximum storage for autoscaling"
+  default     = 0
 }
 
 variable "db_name" {
@@ -39,11 +42,13 @@ variable "db_username" {
 variable "multi_az" {
   type        = bool
   description = "Enable multi-AZ"
+  default     = false
 }
 
 variable "backup_retention_period" {
   type        = number
   description = "Backup retention in days"
+  default     = 1
 }
 
 variable "skip_final_snapshot" {
