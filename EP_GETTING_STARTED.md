@@ -14,16 +14,14 @@ cd platform/host-test && yarn install && cd ../..
 docker-compose up -d --no-deps plasmic-db
 
 # 3. Create .env files (see Step 3 for content)
-cp .env.example .env  # or create manually
-cp .env platform/wab/.env
+cp platform/wab/.env.example platform/wab/.env
 
 # 4. Setup and run
 yarn setup-all
-yarn bootstrap:platform
 yarn dev
 
 # 5. Component development (new terminal)
-cd plasmicpkgs-dev && yarn dev
+cd plasmicpkgs-dev && yarn dev     
 ```
 
 http://localhost:3003 • Login: `user@example.com` / `!53kr3tz!`
@@ -61,13 +59,17 @@ Verify with `docker ps`
 
 ### Step 3: Configure Environment
 
-Create `.env` in root `/` and `/platform/wab/`:
+Create `.env` in `/platform/wab/`:
 
 ```bash
 DATABASE_URI=postgres://wab:SEKRET@localhost:5432/wab
 WAB_DBNAME=plasmic-db
 WAB_DBPASSWORD=SEKRET
 NODE_ENV=development
+OPENAI_API_KEY=123
+ANTHROPIC_API_KEY=123
+DYNAMODB_ACCESS_KEY=123
+DYNAMODB_SECRET_KEY=123
 ```
 
 Required in both directories.
