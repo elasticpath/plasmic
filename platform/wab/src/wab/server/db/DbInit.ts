@@ -106,6 +106,13 @@ export async function seedTestDb(em: EntityManager) {
   await db.setDevFlagOverrides(
     JSON.stringify(
       {
+        brands: {
+          "": {
+            logoHref: "/",
+            logoImgSrc: "https://developer.elasticpath.com/logo/light.svg",
+            logoTooltip: "Elastic Path",
+          },
+        },
         plexus: true,
         installables: ensureType<Installable[] | undefined>([
           {
