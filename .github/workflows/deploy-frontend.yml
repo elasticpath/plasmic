@@ -1,7 +1,6 @@
 name: Deploy Frontend to Integration
 
 on:
-  # Trigger after infrastructure deployment completes
   workflow_run:
     workflows: ["Deploy to Integration"]
     types:
