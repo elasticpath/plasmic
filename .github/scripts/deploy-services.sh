@@ -74,14 +74,19 @@ deploy_service() {
     cd "$TERRAFORM_ROOT/$service_path"
 
     # Initialize terraform with backend config
-    terraform init \
+    echo "Initializing terraform..."
+    if ! terraform init \
         -backend-config="bucket=${TERRAFORM_STATE_BUCKET}" \
         -backend-config="key=${state_key}" \
         -backend-config="dynamodb_table=${TERRAFORM_LOCKS_TABLE}" \
         -backend-config="region=${AWS_REGION}" \
-        -reconfigure >/dev/null 2>&1
+        -reconfigure; then
+        error "Terraform init failed for $service_name"
+        exit 1
+    fi
 
     # Apply with auto-approve (variables come from TF_VAR_* environment variables)
+    echo "Applying terraform changes..."
     if terraform apply -auto-approve $extra_flags; then
         echo "✅ Deployed: $service_name"
     else
