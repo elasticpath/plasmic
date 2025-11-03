@@ -23,8 +23,8 @@ on:
 jobs:
   deploy-frontend:
     name: Build and Deploy Frontend
-    # Only run if the infrastructure deployment succeeded or if manually triggered
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    # Run if infrastructure deployment succeeded, manually triggered, or on pull request
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     environment: integration
     permissions:
@@ -58,16 +58,6 @@ jobs:
         with:
           terraform_version: 1.13.4
 
-      - name: Generate Terraform configuration files
-        uses: ./.github/actions/generate-terraform-configs
-        with:
-          aws_account_id: ${{ vars.AWS_ACCOUNT_ID }}
-          terraform_state_bucket: ${{ vars.TERRAFORM_STATE_BUCKET }}
-          terraform_locks_table: ${{ vars.TERRAFORM_LOCKS_TABLE }}
-          hosted_zone_id: ${{ vars.HOSTED_ZONE_ID }}
-          hosted_zone_id_host: ${{ vars.HOSTED_ZONE_ID_HOST }}
-          db_username: ${{ vars.DB_USERNAME }}
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -76,42 +66,27 @@ jobs:
           cache-dependency-path: platform/wab/yarn.lock
 
       - name: Deploy frontend application
-        working-directory: terraform
         env:
-          ENVIRONMENT: ${{ github.event.inputs.environment || vars.ENVIRONMENT }}
           AWS_REGION: ${{ vars.AWS_REGION }}
+          TERRAFORM_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
+          TERRAFORM_LOCKS_TABLE: ${{ vars.TERRAFORM_LOCKS_TABLE }}
+          TF_VAR_environment: ${{ github.event.inputs.environment || vars.ENVIRONMENT }}
+          TF_VAR_aws_region: ${{ vars.AWS_REGION }}
         run: |
-          # Get sensitive values from Terraform outputs and mask them
-          cd projects/frontend
-          terraform init -backend-config=config/${ENVIRONMENT}-backend.tfvars -reconfigure >/dev/null 2>&1
-
-          FRONTEND_BUCKET=$(terraform output -raw frontend_bucket_name 2>/dev/null || echo "")
-          HOST_BUCKET=$(terraform output -raw host_bucket_name 2>/dev/null || echo "")
-          FRONTEND_CF_ID=$(terraform output -raw frontend_cloudfront_distribution_id 2>/dev/null || echo "")
-          HOST_CF_ID=$(terraform output -raw host_cloudfront_distribution_id 2>/dev/null || echo "")
-          FRONTEND_URL=$(terraform output -raw frontend_url 2>/dev/null || echo "")
-          HOST_URL=$(terraform output -raw host_url 2>/dev/null || echo "")
-
           # Mask sensitive values
-          [ -n "$FRONTEND_BUCKET" ] && echo "::add-mask::$FRONTEND_BUCKET"
-          [ -n "$HOST_BUCKET" ] && echo "::add-mask::$HOST_BUCKET"
-          [ -n "$FRONTEND_CF_ID" ] && echo "::add-mask::$FRONTEND_CF_ID"
-          [ -n "$HOST_CF_ID" ] && echo "::add-mask::$HOST_CF_ID"
-          [ -n "$FRONTEND_URL" ] && echo "::add-mask::$FRONTEND_URL"
-          [ -n "$HOST_URL" ] && echo "::add-mask::$HOST_URL"
-
-          cd ../..
+          echo "::add-mask::$TERRAFORM_STATE_BUCKET"
+          echo "::add-mask::$TERRAFORM_LOCKS_TABLE"
 
           # Make script executable
-          chmod +x scripts/deploy-frontend.sh
+          chmod +x .github/scripts/deploy-frontend.sh
 
           echo "🎨 Deploying frontend application"
-          echo "Environment: $ENVIRONMENT"
+          echo "Environment: $TF_VAR_environment"
           echo "Region: $AWS_REGION"
           echo ""
 
           # Run the deploy-frontend script
-          ./scripts/deploy-frontend.sh $ENVIRONMENT $AWS_REGION
+          ./.github/scripts/deploy-frontend.sh $TF_VAR_environment
 
           echo "✅ Frontend deployed successfully!"
 

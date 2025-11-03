@@ -9,9 +9,9 @@
 crash.log
 crash.*.log
 
-# Exclude all plan files
+# Exclude all plan files and plans directory
 *.tfplan
-plans/*.tfplan
+plans/
 
 # Ignore override files
 override.tf
