@@ -17,6 +17,14 @@ on:
         required: true
         type: boolean
         default: false
+      commit_sha:
+        description: 'Commit SHA of the plan to apply (from the push event)'
+        required: true
+        type: string
+      run_id:
+        description: 'Workflow run ID that created the plan (from the push event)'
+        required: true
+        type: string
 
 jobs:
   build-and-plan:
@@ -123,14 +131,17 @@ jobs:
           echo "### ⚠️ Infrastructure Changes Detected" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Environment:** ${{ vars.ENVIRONMENT }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Commit:** \`${GITHUB_SHA:0:8}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit SHA:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Run ID:** \`${{ github.run_id }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Terraform plans have been saved as artifacts." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**To apply these changes:**" >> $GITHUB_STEP_SUMMARY
           echo "1. Review the plan files in the workflow artifacts" >> $GITHUB_STEP_SUMMARY
           echo "2. Go to Actions → Deploy to Integration → Run workflow" >> $GITHUB_STEP_SUMMARY
-          echo "3. Check 'Apply infrastructure changes' and run" >> $GITHUB_STEP_SUMMARY
+          echo "3. Check 'Apply infrastructure changes'" >> $GITHUB_STEP_SUMMARY
+          echo "4. Enter the Commit SHA and Run ID from above" >> $GITHUB_STEP_SUMMARY
+          echo "5. Click 'Run workflow'" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
   deploy-services:
@@ -228,6 +239,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.commit_sha }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -243,8 +256,10 @@ jobs:
       - name: Download terraform plans
         uses: actions/download-artifact@v4
         with:
-          name: terraform-plans-${{ github.sha }}
+          name: terraform-plans-${{ github.event.inputs.commit_sha }}
           path: terraform/plans/${{ vars.ENVIRONMENT }}/
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.inputs.run_id }}
 
       - name: Apply infrastructure changes
         env:
@@ -277,7 +292,7 @@ jobs:
           echo "### ✅ Infrastructure Apply Successful" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Environment:** ${{ vars.ENVIRONMENT }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Commit:** \`${GITHUB_SHA:0:8}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit SHA:** \`${{ github.event.inputs.commit_sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
       - name: Notify on failure
@@ -286,6 +301,6 @@ jobs:
           echo "### ❌ Infrastructure Apply Failed" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Environment:** ${{ vars.ENVIRONMENT }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Commit:** \`${GITHUB_SHA:0:8}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit SHA:** \`${{ github.event.inputs.commit_sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Check the workflow logs for details."
