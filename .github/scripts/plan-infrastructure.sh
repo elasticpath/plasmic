@@ -133,10 +133,10 @@ step "Step 1: Planning VPC"
 plan_project "vpc" "projects/vpc" \
     "${ENVIRONMENT}/vpc/terraform.tfstate"
 
-# 2. ECR (shared)
+# 2. ECR
 step "Step 2: Planning ECR"
 plan_project "ecr" "projects/ecr" \
-    "shared/ecr/terraform.tfstate"
+    "${ENVIRONMENT}/ecr/terraform.tfstate"
 
 # 3. Secrets
 step "Step 3: Planning Secrets"
