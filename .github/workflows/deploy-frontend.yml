@@ -8,13 +8,6 @@ on:
       - completed
     branches:
       - master
-  # Trigger on pull requests
-  pull_request:
-    branches:
-      - master
-    paths:
-      - 'platform/wab/**'
-      - '.github/workflows/deploy-frontend.yml'
   # Allow manual trigger
   workflow_dispatch:
     inputs:
