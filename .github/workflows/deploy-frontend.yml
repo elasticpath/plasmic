@@ -8,6 +8,13 @@ on:
       - completed
     branches:
       - master
+  # Trigger on pull requests
+  pull_request:
+    branches:
+      - master
+    paths:
+      - 'platform/wab/**'
+      - '.github/workflows/deploy-frontend.yml'
   # Allow manual trigger
   workflow_dispatch:
     inputs:
@@ -23,8 +30,8 @@ on:
 jobs:
   deploy-frontend:
     name: Build and Deploy Frontend
-    # Only run if the infrastructure deployment succeeded or if manually triggered
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    # Run if infrastructure deployment succeeded, manually triggered, or on pull request
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     environment: integration
     permissions:

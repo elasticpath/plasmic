@@ -9,6 +9,14 @@ on:
       - 'terraform/**'
       - '.github/workflows/deploy-integration.yml'
       - '.github/workflows/deploy-frontend.yml'
+  pull_request:
+    branches:
+      - master
+    paths:
+      - 'platform/wab/**'
+      - 'terraform/**'
+      - '.github/workflows/deploy-integration.yml'
+      - '.github/workflows/deploy-frontend.yml'
   # Allow manual trigger for infrastructure apply
   workflow_dispatch:
     inputs:
@@ -22,8 +30,8 @@ jobs:
   build-and-plan:
     name: Build Docker Image and Plan Infrastructure
     runs-on: ubuntu-latest
-    # Only run on push events (not manual workflow_dispatch for apply)
-    if: github.event_name == 'push'
+    # Run on push and pull_request events (not manual workflow_dispatch for apply)
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
     environment: integration
     permissions:
       contents: read   # Read repo contents
