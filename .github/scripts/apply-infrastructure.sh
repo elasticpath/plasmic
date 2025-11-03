@@ -20,7 +20,8 @@ TERRAFORM_ROOT="$(cd "$SCRIPT_DIR/../../terraform" && pwd)"
 PLANS_DIR="${TERRAFORM_ROOT}/plans/${ENVIRONMENT}"
 
 echo "🚀 Applying Plasmic infrastructure for: $ENVIRONMENT"
-echo "Region: $AWS_REGION"
+# Mask region for public repo security
+echo "::add-mask::$AWS_REGION"
 echo ""
 
 # Colors for output
@@ -49,6 +50,26 @@ info() {
     echo -e "${BLUE}ℹ️  $1${NC}"
 }
 
+# Function to mask sensitive AWS identifiers in output
+mask_sensitive_output() {
+    sed -E \
+        -e 's/arn:aws:[a-zA-Z0-9_-]+:[a-z0-9-]*:[0-9]{12}:[^ "]+/[ARN-MASKED]/g' \
+        -e 's/vpc-[a-f0-9]{8,17}/[VPC-ID]/g' \
+        -e 's/subnet-[a-f0-9]{8,17}/[SUBNET-ID]/g' \
+        -e 's/sg-[a-f0-9]{8,17}/[SG-ID]/g' \
+        -e 's/eni-[a-f0-9]{8,17}/[ENI-ID]/g' \
+        -e 's/igw-[a-f0-9]{8,17}/[IGW-ID]/g' \
+        -e 's/nat-[a-f0-9]{8,17}/[NAT-ID]/g' \
+        -e 's/rtb-[a-f0-9]{8,17}/[RTB-ID]/g' \
+        -e 's/i-[a-f0-9]{8,17}/[INSTANCE-ID]/g' \
+        -e 's/vol-[a-f0-9]{8,17}/[VOLUME-ID]/g' \
+        -e 's/snap-[a-f0-9]{8,17}/[SNAPSHOT-ID]/g' \
+        -e 's/ami-[a-f0-9]{8,17}/[AMI-ID]/g' \
+        -e 's/eipalloc-[a-f0-9]{8,17}/[EIP-ID]/g' \
+        -e 's/[A-Z0-9]{20,}/[ACCESS-KEY]/g' \
+        -e 's/[0-9]{12}/[ACCOUNT-ID]/g'
+}
+
 # Check if plans directory exists
 if [ ! -d "$PLANS_DIR" ]; then
     error "Plans directory not found: $PLANS_DIR"
@@ -64,7 +85,8 @@ command -v terraform >/dev/null 2>&1 || { error "Terraform not found. Install it
 aws sts get-caller-identity >/dev/null 2>&1 || { error "AWS credentials not configured."; exit 1; }
 
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-echo "✅ AWS Account: $ACCOUNT_ID"
+# Mask account ID for public repo security
+echo "::add-mask::$ACCOUNT_ID"
 echo "✅ All prerequisites met"
 
 # Function to apply terraform plan for a project
@@ -92,8 +114,8 @@ apply_project() {
         -backend-config="region=${AWS_REGION}" \
         -reconfigure >/dev/null 2>&1
 
-    # Apply the saved plan
-    if terraform apply "$plan_file"; then
+    # Apply the saved plan with masked output
+    if terraform apply "$plan_file" 2>&1 | mask_sensitive_output; then
         echo "✅ Applied: $project_name"
     else
         error "Apply failed for $project_name"
@@ -121,10 +143,6 @@ step "Step 4: Applying Database"
 apply_project "database" "projects/database" \
     "${ENVIRONMENT}/database/terraform.tfstate"
 
-# Save database endpoint for summary
-cd "$TERRAFORM_ROOT/projects/database"
-DB_ENDPOINT=$(terraform output -raw db_endpoint 2>/dev/null || echo "N/A")
-
 # 5. S3 Buckets
 step "Step 5: Applying S3 Buckets"
 
@@ -150,13 +168,6 @@ step "Step 7: Applying Frontend Infrastructure"
 apply_project "frontend" "projects/frontend" \
     "${ENVIRONMENT}/frontend/terraform.tfstate"
 
-# Save frontend URLs for summary
-cd "$TERRAFORM_ROOT/projects/frontend"
-FRONTEND_URL=$(terraform output -raw frontend_url 2>/dev/null || echo "N/A")
-HOST_URL=$(terraform output -raw host_url 2>/dev/null || echo "N/A")
-FRONTEND_CF_ID=$(terraform output -raw frontend_cloudfront_distribution_id 2>/dev/null || echo "N/A")
-HOST_CF_ID=$(terraform output -raw host_cloudfront_distribution_id 2>/dev/null || echo "N/A")
-
 # 8. ECS Cluster
 step "Step 8: Applying ECS Cluster"
 apply_project "ecs-cluster" "projects/ecs-cluster" \
@@ -169,24 +180,8 @@ echo "🎉 Infrastructure Apply Complete!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "Environment: $ENVIRONMENT"
-echo "Region: $AWS_REGION"
 echo ""
-echo "📍 URLs:"
-echo "   Frontend: $FRONTEND_URL"
-echo "   Host URL: $HOST_URL"
-echo ""
-echo "📊 Resources:"
-echo "   VPC: plasmic-${ENVIRONMENT}"
-echo "   Database: $DB_ENDPOINT"
-echo "   ECS Cluster: plasmic-${ENVIRONMENT}"
-echo ""
-echo "📝 CloudFront Distributions:"
-echo "   Frontend CF ID: $FRONTEND_CF_ID"
-echo "   Host CF ID: $HOST_CF_ID"
-echo ""
-echo "🔄 Next steps:"
-echo "   1. Services can be deployed using: ./scripts/deploy-services.sh $ENVIRONMENT"
-echo "   2. Frontend can be deployed using: ./scripts/deploy-frontend.sh $ENVIRONMENT"
+echo "✅ All infrastructure components applied successfully"
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""

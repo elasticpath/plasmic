@@ -95,7 +95,8 @@ jobs:
           TF_VAR_aws_region: ${{ vars.AWS_REGION }}
         continue-on-error: true
         run: |
-          # Mask sensitive values
+          # Mask sensitive values for public repo security
+          echo "::add-mask::$AWS_REGION"
           echo "::add-mask::$TERRAFORM_STATE_BUCKET"
           echo "::add-mask::$TERRAFORM_LOCKS_TABLE"
 
@@ -177,7 +178,8 @@ jobs:
           TF_VAR_aws_region: ${{ vars.AWS_REGION }}
           TF_VAR_container_image: ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ github.sha }}
         run: |
-          # Mask sensitive values
+          # Mask sensitive values for public repo security
+          echo "::add-mask::$AWS_REGION"
           echo "::add-mask::$TERRAFORM_STATE_BUCKET"
           echo "::add-mask::$TERRAFORM_LOCKS_TABLE"
           echo "::add-mask::$TF_VAR_container_image"
@@ -224,7 +226,7 @@ jobs:
   apply-infrastructure:
     name: Apply Infrastructure Changes
     runs-on: ubuntu-latest
-    # Only run on manual workflow_dispatch with apply_infrastructure=true
+  # Only run on manual workflow_dispatch with apply_infrastructure=true
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.apply_infrastructure == 'true'
     environment: integration
     permissions:
@@ -260,7 +262,8 @@ jobs:
           TF_VAR_environment: ${{ vars.ENVIRONMENT }}
           TF_VAR_aws_region: ${{ vars.AWS_REGION }}
         run: |
-          # Mask sensitive values
+          # Mask sensitive values for public repo security
+          echo "::add-mask::$AWS_REGION"
           echo "::add-mask::$TERRAFORM_STATE_BUCKET"
           echo "::add-mask::$TERRAFORM_LOCKS_TABLE"
 
