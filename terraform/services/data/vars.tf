@@ -18,13 +18,13 @@ variable "container_image" {
 variable "data_cpu" {
   type        = number
   description = "Task CPU units"
-  default     = 1024
+  default     = 512
 }
 
 variable "data_memory" {
   type        = number
   description = "Task memory in MB"
-  default     = 2048
+  default     = 1024
 }
 
 variable "data_desired_count" {
