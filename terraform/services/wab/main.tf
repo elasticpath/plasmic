@@ -16,7 +16,7 @@ data "aws_secretsmanager_secret" "session_secret" {
 }
 
 module "wab_service" {
-  source = "../../../modules/backend-service"
+  source = "../../modules/backend-service"
 
   environment  = var.environment
   aws_region   = var.aws_region
