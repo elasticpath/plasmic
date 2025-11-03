@@ -57,17 +57,3 @@ variable "log_level" {
   default     = "info"
 }
 
-variable "host_url" {
-  type        = string
-  description = "Main application host URL"
-}
-
-variable "codegen_host_url" {
-  type        = string
-  description = "Codegen service host URL"
-}
-
-variable "loader_assets_bucket" {
-  type        = string
-  description = "S3 bucket for loader assets"
-}
