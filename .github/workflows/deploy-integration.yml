@@ -7,8 +7,7 @@ on:
     paths:
       - 'platform/wab/**'
       - 'terraform/**'
-      - '.github/workflows/deploy-integration.yml'
-      - '.github/workflows/deploy-frontend.yml'
+      - '.github/**'
   # Allow manual trigger for infrastructure apply
   workflow_dispatch:
     inputs:
