@@ -25,6 +25,15 @@ data "terraform_remote_state" "database" {
   }
 }
 
+data "terraform_remote_state" "frontend" {
+  backend = "s3"
+  config = {
+    bucket = "plasmic-terraform-state-${var.environment}-${var.aws_region}"
+    key    = "${var.environment}/frontend/terraform.tfstate"
+    region = var.aws_region
+  }
+}
+
 # Secrets
 data "aws_secretsmanager_secret" "session_secret" {
   name = "plasmic/${var.environment}/app/session-secret"
@@ -51,4 +60,7 @@ locals {
   alb_security_group_id  = data.terraform_remote_state.ecs_cluster.outputs.alb_security_group_id
   ecs_security_group_id  = data.terraform_remote_state.ecs_cluster.outputs.ecs_security_group_id
   execution_role_arn     = data.terraform_remote_state.ecs_cluster.outputs.execution_role_arn
+
+  # Frontend URLs
+  host_url = data.terraform_remote_state.frontend.outputs.host_url
 }

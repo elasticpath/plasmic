@@ -41,7 +41,7 @@ module "data_service" {
     LOADER_WORKER_POOL_SIZE  = tostring(var.loader_worker_pool_size)
     BACKEND_PORT             = "3004"
     NODE_OPTIONS             = "--max-old-space-size=1536"
-    HOST                     = var.host_url
+    HOST                     = local.host_url
     GENERIC_WORKER_POOL_SIZE = tostring(var.generic_worker_pool_size)
   }
 

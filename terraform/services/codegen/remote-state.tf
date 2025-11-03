@@ -25,6 +25,24 @@ data "terraform_remote_state" "database" {
   }
 }
 
+data "terraform_remote_state" "frontend" {
+  backend = "s3"
+  config = {
+    bucket = "plasmic-terraform-state-${var.environment}-${var.aws_region}"
+    key    = "${var.environment}/frontend/terraform.tfstate"
+    region = var.aws_region
+  }
+}
+
+data "terraform_remote_state" "s3_site_assets" {
+  backend = "s3"
+  config = {
+    bucket = "plasmic-terraform-state-${var.environment}-${var.aws_region}"
+    key    = "${var.environment}/s3-site-assets/terraform.tfstate"
+    region = var.aws_region
+  }
+}
+
 # Secrets
 data "aws_secretsmanager_secret" "session_secret" {
   name = "plasmic/${var.environment}/app/session-secret"
@@ -49,4 +67,11 @@ locals {
   db_port     = data.terraform_remote_state.database.outputs.db_port
   db_name     = data.terraform_remote_state.database.outputs.db_name
   db_username = data.terraform_remote_state.database.outputs.db_username
+
+  # Frontend URLs
+  host_url        = data.terraform_remote_state.frontend.outputs.host_url
+  codegen_host_url = "https://codegen.${data.terraform_remote_state.frontend.outputs.domain_name}"
+
+  # S3 Buckets
+  loader_assets_bucket = data.terraform_remote_state.s3_site_assets.outputs.bucket_name
 }

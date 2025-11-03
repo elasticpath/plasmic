@@ -40,10 +40,10 @@ module "codegen_service" {
     PINO_LOGGER_LEVEL        = var.log_level
     LOADER_WORKER_POOL_SIZE  = tostring(var.loader_worker_pool_size)
     BACKEND_PORT             = "3008"
-    CODEGEN_HOST             = var.codegen_host_url
-    HOST                     = var.host_url
+    CODEGEN_HOST             = local.codegen_host_url
+    HOST                     = local.host_url
     GENERIC_WORKER_POOL_SIZE = tostring(var.generic_worker_pool_size)
-    LOADER_ASSETS_BUCKET     = var.loader_assets_bucket
+    LOADER_ASSETS_BUCKET     = local.loader_assets_bucket
     DEBUG                    = "connect:typeorm"
   }
 
@@ -86,7 +86,7 @@ module "codegen_service" {
               "s3:GetObject",
               "s3:PutObject"
             ]
-            Resource = "arn:aws:s3:::${var.loader_assets_bucket}/*"
+            Resource = "arn:aws:s3:::${local.loader_assets_bucket}/*"
           }
         ]
       })
