@@ -26,16 +26,19 @@ variable "wab_container_port" {
 variable "wab_cpu" {
   type        = number
   description = "Task CPU units"
+  default     = 1024
 }
 
 variable "wab_memory" {
   type        = number
   description = "Task memory in MB"
+  default     = 2048
 }
 
 variable "wab_desired_count" {
   type        = number
   description = "Desired number of tasks"
+  default     = 1
 }
 
 # Health Check
