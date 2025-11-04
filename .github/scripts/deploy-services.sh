@@ -8,7 +8,6 @@
 # Required environment variables:
 #   AWS_REGION - AWS region
 #   TERRAFORM_STATE_BUCKET - S3 bucket for terraform state
-#   TERRAFORM_LOCKS_TABLE - DynamoDB table for state locks
 #   TF_VAR_environment - Environment name
 #   TF_VAR_aws_region - AWS region for terraform
 #   TF_VAR_container_image - Docker image URL (for wab service)
@@ -99,7 +98,7 @@ deploy_service() {
     if ! terraform init \
         -backend-config="bucket=${TERRAFORM_STATE_BUCKET}" \
         -backend-config="key=${state_key}" \
-        -backend-config="dynamodb_table=${TERRAFORM_LOCKS_TABLE}" \
+        -backend-config="use_lockfile=true" \
         -backend-config="region=${AWS_REGION}" \
         -reconfigure 2>&1 | mask_sensitive_output; then
         error "Terraform init failed for $service_name"

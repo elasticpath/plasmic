@@ -9,7 +9,6 @@
 # Required environment variables:
 #   AWS_REGION - AWS region
 #   TERRAFORM_STATE_BUCKET - S3 bucket for terraform state
-#   TERRAFORM_LOCKS_TABLE - DynamoDB table for state locks
 
 set -e
 
@@ -110,7 +109,7 @@ apply_project() {
     terraform init \
         -backend-config="bucket=${TERRAFORM_STATE_BUCKET}" \
         -backend-config="key=${state_key}" \
-        -backend-config="dynamodb_table=${TERRAFORM_LOCKS_TABLE}" \
+        -backend-config="use_lockfile=true" \
         -backend-config="region=${AWS_REGION}" \
         -reconfigure >/dev/null 2>&1
 

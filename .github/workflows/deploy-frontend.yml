@@ -68,7 +68,6 @@ jobs:
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
           TERRAFORM_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
-          TERRAFORM_LOCKS_TABLE: ${{ vars.TERRAFORM_LOCKS_TABLE }}
           TF_VAR_environment: ${{ github.event.inputs.environment || vars.ENVIRONMENT }}
           TF_VAR_aws_region: ${{ vars.AWS_REGION }}
           TF_VAR_hosted_zone_id: ${{ vars.HOSTED_ZONE_ID }}
@@ -78,7 +77,6 @@ jobs:
         run: |
           # Mask sensitive values
           echo "::add-mask::$TERRAFORM_STATE_BUCKET"
-          echo "::add-mask::$TERRAFORM_LOCKS_TABLE"
 
           # Make script executable
           chmod +x .github/scripts/deploy-frontend.sh
