@@ -63,14 +63,7 @@ export const productBoxMeta: ComponentMeta<ProductBoxProps> = {
           imgUrl: product.images?.[0]?.url,
           value: product.id,
           label: product.slug ?? product.name,
-          footer: (
-            <div>
-              <div>
-                <strong>{product.name}</strong>
-              </div>
-              <div>{product.slug}</div>
-            </div>
-          ),
+          footer: `${product.name}\n${product.slug || ''}`,
         })) ?? [],
     },
   },
@@ -88,9 +81,12 @@ export function ProductBox(props: ProductBoxProps) {
     search: productSearch !== "" ? productSearch : undefined,
   });
   const onSearch = React.useCallback(
-    debounce((value: string) => setProductSearch(value), 300),
+    debounce((value: string) => {
+      setProductSearch(value);
+    }, 300),
     []
   );
+  
   if (allProducts) {
     setControlContextData?.({
       products: allProducts.products,
