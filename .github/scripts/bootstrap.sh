@@ -21,10 +21,6 @@ check_bucket_exists() {
   aws s3 ls "s3://$1" &>/dev/null 2>&1
 }
 
-check_table_exists() {
-  aws dynamodb describe-table --table-name "$1" --region "${AWS_REGION}" &>/dev/null 2>&1
-}
-
 # Create S3 bucket
 BUCKET_NAME="plasmic-terraform-state-${ENVIRONMENT}-${AWS_REGION}"
 echo "📦 Creating S3 bucket: ${BUCKET_NAME}..."
@@ -65,28 +61,10 @@ PID_PUBLIC_BLOCK=$!
 wait $PID_VERSIONING $PID_ENCRYPTION $PID_PUBLIC_BLOCK
 echo "✅ Bucket configured"
 
-# Create DynamoDB table
-TABLE_NAME="plasmic-terraform-locks-${ENVIRONMENT}"
-echo "📦 Creating DynamoDB table: ${TABLE_NAME}..."
-
-if check_table_exists "${TABLE_NAME}"; then
-  echo "⏭️  Table already exists"
-else
-  aws dynamodb create-table \
-    --table-name "${TABLE_NAME}" \
-    --attribute-definitions AttributeName=LockID,AttributeType=S \
-    --key-schema AttributeName=LockID,KeyType=HASH \
-    --billing-mode PAY_PER_REQUEST \
-    --region ${AWS_REGION} \
-    --no-cli-pager > /dev/null
-  echo "✅ Created table"
-fi
-
 echo ""
 echo "🎉 Bootstrap complete for ${ENVIRONMENT}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  Environment:  ${ENVIRONMENT}"
 echo "  Region:       ${AWS_REGION}"
 echo "  State bucket: ${BUCKET_NAME}"
-echo "  Lock table:   ${TABLE_NAME}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

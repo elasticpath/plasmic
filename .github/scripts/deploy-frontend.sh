@@ -5,7 +5,6 @@
 # Required environment variables:
 #   AWS_REGION - AWS region
 #   TERRAFORM_STATE_BUCKET - S3 bucket for terraform state
-#   TERRAFORM_LOCKS_TABLE - DynamoDB table for state locks
 
 set -e
 
@@ -46,7 +45,7 @@ cd "$TERRAFORM_ROOT/projects/frontend"
 terraform init \
     -backend-config="bucket=${TERRAFORM_STATE_BUCKET}" \
     -backend-config="key=${ENVIRONMENT}/frontend/terraform.tfstate" \
-    -backend-config="dynamodb_table=${TERRAFORM_LOCKS_TABLE}" \
+    -backend-config="use_lockfile=true" \
     -backend-config="region=${AWS_REGION}" \
     -reconfigure >/dev/null 2>&1
 
@@ -62,7 +61,7 @@ cd "$TERRAFORM_ROOT/services/wab"
 terraform init \
     -backend-config="bucket=${TERRAFORM_STATE_BUCKET}" \
     -backend-config="key=${ENVIRONMENT}/services/wab/terraform.tfstate" \
-    -backend-config="dynamodb_table=${TERRAFORM_LOCKS_TABLE}" \
+    -backend-config="use_lockfile=true" \
     -backend-config="region=${AWS_REGION}" \
     -reconfigure >/dev/null 2>&1
 APP_URL=$(terraform output -raw application_url)

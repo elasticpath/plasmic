@@ -89,7 +89,6 @@ jobs:
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
           TERRAFORM_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
-          TERRAFORM_LOCKS_TABLE: ${{ vars.TERRAFORM_LOCKS_TABLE }}
           TF_VAR_environment: ${{ vars.ENVIRONMENT }}
           TF_VAR_aws_region: ${{ vars.AWS_REGION }}
           TF_VAR_hosted_zone_id: ${{ vars.HOSTED_ZONE_ID }}
@@ -101,7 +100,6 @@ jobs:
           # Mask sensitive values for public repo security
           echo "::add-mask::$AWS_REGION"
           echo "::add-mask::$TERRAFORM_STATE_BUCKET"
-          echo "::add-mask::$TERRAFORM_LOCKS_TABLE"
 
           # Make script executable
           chmod +x .github/scripts/plan-infrastructure.sh
@@ -179,7 +177,6 @@ jobs:
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
           TERRAFORM_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
-          TERRAFORM_LOCKS_TABLE: ${{ vars.TERRAFORM_LOCKS_TABLE }}
           TF_VAR_environment: ${{ vars.ENVIRONMENT }}
           TF_VAR_aws_region: ${{ vars.AWS_REGION }}
           TF_VAR_container_image: ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ github.sha }}
@@ -187,7 +184,6 @@ jobs:
           # Mask sensitive values for public repo security
           echo "::add-mask::$AWS_REGION"
           echo "::add-mask::$TERRAFORM_STATE_BUCKET"
-          echo "::add-mask::$TERRAFORM_LOCKS_TABLE"
           echo "::add-mask::$TF_VAR_container_image"
 
           # Make script executable
@@ -268,14 +264,12 @@ jobs:
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
           TERRAFORM_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
-          TERRAFORM_LOCKS_TABLE: ${{ vars.TERRAFORM_LOCKS_TABLE }}
           TF_VAR_environment: ${{ vars.ENVIRONMENT }}
           TF_VAR_aws_region: ${{ vars.AWS_REGION }}
         run: |
           # Mask sensitive values for public repo security
           echo "::add-mask::$AWS_REGION"
           echo "::add-mask::$TERRAFORM_STATE_BUCKET"
-          echo "::add-mask::$TERRAFORM_LOCKS_TABLE"
 
           # Make script executable
           chmod +x .github/scripts/apply-infrastructure.sh
