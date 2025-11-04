@@ -27,8 +27,3 @@ output "database_subnet_group_name" {
   description = "Database subnet group name"
   value       = module.vpc.database_subnet_group_name
 }
-
-output "nat_gateway_ips" {
-  description = "NAT Gateway public IPs"
-  value       = module.vpc.nat_public_ips
-}

@@ -1,9 +1,2 @@
-output "bucket_name" {
-  description = "Name of the S3 bucket"
-  value       = aws_s3_bucket.loader_assets.id
-}
-
-output "bucket_arn" {
-  description = "ARN of the S3 bucket"
-  value       = aws_s3_bucket.loader_assets.arn
-}
+# No outputs - This S3 bucket appears unused
+# Only s3-site-assets is actively referenced by services
