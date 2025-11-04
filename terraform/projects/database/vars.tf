@@ -27,16 +27,10 @@ variable "db_max_allocated_storage" {
   default     = 0
 }
 
-variable "db_name" {
-  type        = string
-  description = "Database name"
-  default     = "wab"
-}
-
 variable "db_username" {
   type        = string
   description = "Master username"
-  default     = "postgres"
+  default     = "plasmicadmin"
 }
 
 variable "multi_az" {

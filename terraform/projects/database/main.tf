@@ -43,7 +43,6 @@ resource "aws_db_instance" "main" {
   storage_type         = "gp3"
   storage_encrypted    = false  # Match existing unencrypted database
 
-  db_name  = var.db_name != "" ? var.db_name : null  # Handle empty string
   username = var.db_username
   password = data.aws_secretsmanager_secret_version.db_password.secret_string
 
