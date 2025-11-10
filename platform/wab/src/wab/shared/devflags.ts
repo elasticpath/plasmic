@@ -285,10 +285,10 @@ const DEFAULT_DEVFLAGS = {
     process.env.CODEGEN_ORIGIN_HOST ||
     process.env.CODEGEN_HOST ||
     "http://codegen-origin.plasmic.app",
-  adminTeamDomain: production ? "plasmic.app" : "admin.example.com",
+  adminTeamDomain: production ? "elasticpath.com" : "admin.example.com",
   defaultHostUrl:
     process.env.REACT_APP_DEFAULT_HOST_URL ||
-    "https://host.plasmicdev.com/static/host.html",
+    "https://host.elasticpathdev.com/static/host.html",
   dynamicPages: true,
   enablePlasmicHosting: true,
   // Used to invalidate etag cacheing mechanism altogether
@@ -458,7 +458,7 @@ const DEFAULT_DEVFLAGS = {
   spacing: true,
   spacingArea: true,
   setHostLessProject: false,
-  plasmicHostingSubdomainSuffix: "plasmic.run",
+  plasmicHostingSubdomainSuffix: "elasticpath.run",
   splits: true,
   refActions: false,
   multiSelect: false,
