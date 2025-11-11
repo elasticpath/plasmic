@@ -27,6 +27,16 @@ resource "aws_vpc_security_group_ingress_rule" "alb_https" {
   prefix_list_id    = data.aws_ec2_managed_prefix_list.cloudfront.id
 }
 
+# Allow HTTPS from ECS tasks for inter-service communication
+resource "aws_vpc_security_group_ingress_rule" "alb_from_ecs" {
+  security_group_id            = aws_security_group.alb.id
+  description                  = "HTTPS from ECS tasks for inter-service communication"
+  from_port                    = 443
+  to_port                      = 443
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.ecs_tasks.id
+}
+
 resource "aws_vpc_security_group_egress_rule" "alb_to_ecs" {
   security_group_id            = aws_security_group.alb.id
   description                  = "To ECS tasks"
