@@ -44,7 +44,7 @@ variable "wab_desired_count" {
 # Health Check
 variable "health_check_path" {
   type        = string
-  default     = "/api/v1/health"
+  default     = "/healthcheck"
   description = "Health check endpoint"
 }
 
