@@ -18,11 +18,11 @@ variable "vpc_cidr" {
 variable "enable_nat_gateway" {
   type        = bool
   description = "Enable NAT Gateway for private subnets"
-  default     = false
+  default     = true
 }
 
 variable "single_nat_gateway" {
   type        = bool
   description = "Use a single NAT Gateway (cost savings for non-prod)"
-  default     = false
+  default     = true
 }
