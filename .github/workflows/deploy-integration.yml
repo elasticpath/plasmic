@@ -180,6 +180,8 @@ jobs:
           TF_VAR_environment: ${{ vars.ENVIRONMENT }}
           TF_VAR_aws_region: ${{ vars.AWS_REGION }}
           TF_VAR_container_image: ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ github.sha }}
+          TF_VAR_log_level: ${{ vars.LOG_LEVEL || 'info' }}
+          TF_VAR_admin_emails: ${{ vars.ADMIN_EMAILS || '[]' }}
         run: |
           # Mask sensitive values for public repo security
           echo "::add-mask::$AWS_REGION"
