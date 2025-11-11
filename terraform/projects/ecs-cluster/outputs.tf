@@ -38,3 +38,14 @@ output "execution_role_arn" {
   description = "ECS task execution role ARN"
   value       = aws_iam_role.ecs_task_execution.arn
 }
+
+# Service URLs for host-based routing
+output "codegen_url" {
+  description = "Codegen service URL"
+  value       = local.use_custom_domain ? "https://${local.codegen_domain}" : null
+}
+
+output "data_url" {
+  description = "Data service URL"
+  value       = local.use_custom_domain ? "https://${local.data_domain}" : null
+}

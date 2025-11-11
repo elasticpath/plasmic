@@ -63,4 +63,5 @@ locals {
 
   # Frontend URLs
   host_url = data.terraform_remote_state.frontend.outputs.host_url
+  data_url = data.terraform_remote_state.ecs_cluster.outputs.data_url
 }

@@ -57,16 +57,6 @@ variable "log_level" {
   default     = "info"
 }
 
-variable "host_url" {
-  type        = string
-  description = "Main application host URL"
-}
-
-variable "codegen_host_url" {
-  type        = string
-  description = "Codegen service host URL"
-}
-
 variable "enable_ai_features" {
   type        = bool
   description = "Enable AI features (requires OpenAI and Anthropic API keys)"
