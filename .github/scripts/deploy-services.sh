@@ -107,9 +107,19 @@ deploy_service() {
 
     # Apply with auto-approve (variables come from TF_VAR_* environment variables)
     echo "Applying terraform changes..."
-    if terraform apply -auto-approve $extra_flags 2>&1 | mask_sensitive_output; then
+    # Capture terraform output in a temp file to preserve exit code
+    local temp_output=$(mktemp)
+    if terraform apply -auto-approve $extra_flags 2>&1 | tee "$temp_output" | mask_sensitive_output; then
+        # Check if terraform actually succeeded (exit code can be masked by pipe)
+        if grep -q "Error:" "$temp_output"; then
+            rm -f "$temp_output"
+            error "Deployment failed for $service_name"
+            exit 1
+        fi
+        rm -f "$temp_output"
         echo "✅ Deployed: $service_name"
     else
+        rm -f "$temp_output"
         error "Deployment failed for $service_name"
         exit 1
     fi
