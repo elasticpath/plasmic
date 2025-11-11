@@ -93,7 +93,7 @@ module "codegen_service" {
     }
   ]
 
-  # ALB routing
-  path_pattern           = "/api/v1/code/*"
-  listener_rule_priority = 100
+  # ALB routing - use host-based routing for codegen service
+  host_header            = "codegen.${var.environment}.storefront.elasticpath.com"
+  listener_rule_priority = 101
 }

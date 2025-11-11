@@ -17,13 +17,20 @@ resource "aws_lb" "main" {
 locals {
   use_custom_domain = var.hosted_zone_id != null
   alb_domain        = local.use_custom_domain ? "alb-${var.environment}.${var.parent_domain}" : null
+  codegen_domain    = local.use_custom_domain ? "codegen.${var.environment}.${var.parent_domain}" : null
+  data_domain       = local.use_custom_domain ? "data.${var.environment}.${var.parent_domain}" : null
 }
 
 # ACM Certificate for ALB (real certificate)
+# Includes all service domains: ALB, Codegen, and Data
 resource "aws_acm_certificate" "alb" {
   count = local.use_custom_domain ? 1 : 0
 
-  domain_name       = local.alb_domain
+  domain_name = local.alb_domain
+  subject_alternative_names = [
+    local.codegen_domain,
+    local.data_domain
+  ]
   validation_method = "DNS"
 
   lifecycle {
@@ -66,6 +73,34 @@ resource "aws_route53_record" "alb" {
   count   = local.use_custom_domain ? 1 : 0
   zone_id = var.hosted_zone_id
   name    = local.alb_domain
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.main.dns_name
+    zone_id                = aws_lb.main.zone_id
+    evaluate_target_health = false
+  }
+}
+
+# Route53 A record for Codegen service
+resource "aws_route53_record" "codegen" {
+  count   = local.use_custom_domain ? 1 : 0
+  zone_id = var.hosted_zone_id
+  name    = local.codegen_domain
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.main.dns_name
+    zone_id                = aws_lb.main.zone_id
+    evaluate_target_health = false
+  }
+}
+
+# Route53 A record for Data service
+resource "aws_route53_record" "data" {
+  count   = local.use_custom_domain ? 1 : 0
+  zone_id = var.hosted_zone_id
+  name    = local.data_domain
   type    = "A"
 
   alias {

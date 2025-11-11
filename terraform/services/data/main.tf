@@ -72,7 +72,7 @@ module "data_service" {
   execution_role_arn = local.execution_role_arn
   create_task_role   = true
 
-  # ALB routing
-  path_pattern           = "/api/v1/data/*"
-  listener_rule_priority = 101
+  # ALB routing - use host-based routing for data service
+  host_header            = "data.${var.environment}.storefront.elasticpath.com"
+  listener_rule_priority = 100
 }

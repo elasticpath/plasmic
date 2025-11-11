@@ -39,8 +39,8 @@ module "copilot_service" {
     AWS_REGION               = var.aws_region
     PINO_LOGGER_LEVEL        = var.log_level
     BACKEND_PORT             = "3009"
-    CODEGEN_HOST             = var.codegen_host_url
-    HOST                     = var.host_url
+    CODEGEN_HOST             = local.codegen_host_url
+    HOST                     = local.host_url
     GENERIC_WORKER_POOL_SIZE = tostring(var.generic_worker_pool_size)
     DEBUG                    = "connect:typeorm"
     DYNAMODB_REGION          = var.dynamodb_region
