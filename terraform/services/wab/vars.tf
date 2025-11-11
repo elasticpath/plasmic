@@ -68,3 +68,21 @@ variable "loader_worker_pool_size" {
   description = "Loader worker pool size"
   default     = 2
 }
+
+variable "log_level" {
+  type        = string
+  description = "Pino logger level (trace, debug, info, warn, error, fatal)"
+  default     = "info"
+}
+
+variable "mail_config" {
+  type        = string
+  description = "Mail configuration JSON"
+  default     = "{\"mailFrom\":\"Plasmic <noreply@yourdomain.com>\",\"mailUserOps\":\"ops@yourdomain.com\"}"
+}
+
+variable "admin_emails" {
+  type        = string
+  description = "Admin emails JSON array"
+  default     = "[]"
+}

@@ -76,4 +76,8 @@ locals {
   # Frontend URLs (from CloudFront distributions)
   frontend_url                 = data.terraform_remote_state.frontend.outputs.frontend_url
   react_app_default_host_url   = data.terraform_remote_state.frontend.outputs.host_url
+
+  # Service URLs for internal routing
+  codegen_url = data.terraform_remote_state.ecs_cluster.outputs.codegen_url
+  data_url    = data.terraform_remote_state.ecs_cluster.outputs.data_url
 }

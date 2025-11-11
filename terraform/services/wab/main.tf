@@ -52,6 +52,12 @@ module "wab_service" {
     GENERIC_WORKER_POOL_SIZE     = tostring(var.generic_worker_pool_size)
     LOADER_WORKER_POOL_SIZE      = tostring(var.loader_worker_pool_size)
     REACT_APP_DEFAULT_HOST_URL   = local.react_app_default_host_url
+    CODEGEN_HOST                 = local.codegen_url != null ? local.codegen_url : ""
+    DATA_URL                     = local.data_url != null ? local.data_url : ""
+    PINO_LOGGER_LEVEL            = var.log_level
+    MAIL_CONFIG                  = var.mail_config
+    ADMIN_EMAILS                 = var.admin_emails
+    DEBUG                        = "connect:typeorm"
   }
 
   # Secrets - DATABASE_URI contains the full PostgreSQL connection string
