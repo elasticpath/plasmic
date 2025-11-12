@@ -10,7 +10,7 @@ if (!projectId || !projectToken) {
 
 export const PLASMIC = initPlasmicLoader({
   nextNavigation: NextNavigation,
-  host: "http://localhost:3003",
+  host: "https://codegen.integration.storefront.elasticpath.com",
   projects: [
     {
       id: projectId,
