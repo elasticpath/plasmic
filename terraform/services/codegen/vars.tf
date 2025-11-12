@@ -18,13 +18,13 @@ variable "container_image" {
 variable "codegen_cpu" {
   type        = number
   description = "Task CPU units"
-  default     = 1024
+  default     = 2048
 }
 
 variable "codegen_memory" {
   type        = number
   description = "Task memory in MB"
-  default     = 2048
+  default     = 3072
 }
 
 variable "codegen_desired_count" {

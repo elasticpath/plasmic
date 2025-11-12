@@ -27,3 +27,13 @@ output "host_url" {
   description = "Host static files URL"
   value       = local.use_custom_host ? "https://${local.host_domain}/static/host.html" : "https://${aws_cloudfront_distribution.host.domain_name}/static/host.html"
 }
+
+output "codegen_cloudfront_distribution_id" {
+  description = "Codegen CloudFront distribution ID"
+  value       = aws_cloudfront_distribution.codegen.id
+}
+
+output "codegen_url" {
+  description = "Codegen API URL"
+  value       = local.use_codegen_domain ? "https://${local.codegen_domain}" : "https://${aws_cloudfront_distribution.codegen.domain_name}"
+}

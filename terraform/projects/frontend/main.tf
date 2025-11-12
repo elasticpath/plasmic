@@ -408,3 +408,160 @@ resource "aws_route53_record" "host" {
     evaluate_target_health = false
   }
 }
+
+# ============================================================================
+# Codegen CloudFront Distribution
+# ============================================================================
+
+locals {
+  use_codegen_domain = var.hosted_zone_id != null
+  codegen_domain     = local.use_codegen_domain ? "codegen.${var.environment}.${var.parent_domain}" : null
+}
+
+# ACM Certificate for Codegen CloudFront (must be in us-east-1)
+resource "aws_acm_certificate" "codegen" {
+  count    = local.use_codegen_domain ? 1 : 0
+  provider = aws.us_east_1
+
+  domain_name       = local.codegen_domain
+  validation_method = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = {
+    Name        = "plasmic-codegen-cloudfront-${var.environment}"
+    Environment = var.environment
+  }
+}
+
+# DNS validation records for Codegen ACM certificate
+resource "aws_route53_record" "codegen_cert_validation" {
+  for_each = local.use_codegen_domain ? {
+    for dvo in aws_acm_certificate.codegen[0].domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  } : {}
+
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = var.hosted_zone_id
+}
+
+# Wait for Codegen certificate validation to complete
+resource "aws_acm_certificate_validation" "codegen" {
+  count                   = local.use_codegen_domain ? 1 : 0
+  provider                = aws.us_east_1
+  certificate_arn         = aws_acm_certificate.codegen[0].arn
+  validation_record_fqdns = [for record in aws_route53_record.codegen_cert_validation : record.fqdn]
+}
+
+# Response headers policy for Codegen CORS
+resource "aws_cloudfront_response_headers_policy" "codegen_cors" {
+  name    = "plasmic-codegen-cors-policy-${var.environment}"
+  comment = "CORS policy for Plasmic codegen ${var.environment}"
+
+  cors_config {
+    access_control_allow_credentials = false
+
+    access_control_allow_headers {
+      items = ["*"]
+    }
+
+    access_control_allow_methods {
+      items = ["GET", "HEAD", "OPTIONS", "POST"]
+    }
+
+    access_control_allow_origins {
+      items = ["*"]
+    }
+
+    access_control_max_age_sec = 86400
+    origin_override            = true
+  }
+}
+
+# CloudFront distribution for codegen
+resource "aws_cloudfront_distribution" "codegen" {
+  enabled         = true
+  is_ipv6_enabled = true
+  comment         = "Plasmic codegen API ${var.environment}"
+  price_class     = "PriceClass_100"
+
+  # Custom domain alias
+  aliases = local.use_codegen_domain ? [local.codegen_domain] : []
+
+  # ALB origin
+  origin {
+    domain_name = local.alb_dns_name
+    origin_id   = "ALB-codegen"
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "https-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+
+    # Forward the codegen Host header to ALB for proper routing
+    custom_header {
+      name  = "X-Forwarded-Host"
+      value = local.codegen_domain
+    }
+  }
+
+  default_cache_behavior {
+    allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods   = ["GET", "HEAD"]
+    target_origin_id = "ALB-codegen"
+
+    # Use CachingDisabled policy for API requests
+    cache_policy_id = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" # Managed-CachingDisabled
+
+    # Forward all headers, query strings, and cookies to origin
+    origin_request_policy_id = "216adef6-5c7f-47e4-b989-5492eafa07d3" # Managed-AllViewer
+
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.codegen_cors.id
+
+    viewer_protocol_policy = "redirect-to-https"
+    compress               = false
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    cloudfront_default_certificate = !local.use_codegen_domain
+    acm_certificate_arn            = local.use_codegen_domain ? aws_acm_certificate_validation.codegen[0].certificate_arn : null
+    ssl_support_method             = local.use_codegen_domain ? "sni-only" : null
+    minimum_protocol_version       = local.use_codegen_domain ? "TLSv1.2_2021" : null
+  }
+
+  tags = {
+    Name        = "plasmic-codegen-cdn-${var.environment}"
+    Environment = var.environment
+  }
+}
+
+# Route53 alias record for Codegen CloudFront distribution
+resource "aws_route53_record" "codegen" {
+  count   = local.use_codegen_domain ? 1 : 0
+  zone_id = var.hosted_zone_id
+  name    = local.codegen_domain
+  type    = "A"
+
+  alias {
+    name                   = aws_cloudfront_distribution.codegen.domain_name
+    zone_id                = aws_cloudfront_distribution.codegen.hosted_zone_id
+    evaluate_target_health = false
+  }
+}
