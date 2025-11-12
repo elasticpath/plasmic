@@ -47,7 +47,7 @@ module "wab_service" {
     HOST                         = local.frontend_url
     AWS_REGION                   = var.aws_region
     SITE_ASSETS_BUCKET           = local.site_assets_bucket_name
-    SITE_ASSETS_BASE_URL         = var.site_assets_base_url
+    SITE_ASSETS_BASE_URL         = local.site_assets_base_url
     CLIP_BUCKET                  = local.clips_bucket_name
     GENERIC_WORKER_POOL_SIZE     = tostring(var.generic_worker_pool_size)
     LOADER_WORKER_POOL_SIZE      = tostring(var.loader_worker_pool_size)
