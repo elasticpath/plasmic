@@ -18,9 +18,10 @@ data "terraform_remote_state" "database" {
 
 locals {
   # VPC
-  vpc_id             = data.terraform_remote_state.vpc.outputs.vpc_id
-  public_subnet_ids  = data.terraform_remote_state.vpc.outputs.public_subnet_ids
-  private_subnet_ids = data.terraform_remote_state.vpc.outputs.private_subnet_ids
+  vpc_id                 = data.terraform_remote_state.vpc.outputs.vpc_id
+  public_subnet_ids      = data.terraform_remote_state.vpc.outputs.public_subnet_ids
+  private_subnet_ids     = data.terraform_remote_state.vpc.outputs.private_subnet_ids
+  nat_gateway_public_ips = data.terraform_remote_state.vpc.outputs.nat_gateway_public_ips
 
   # Database
   db_address           = data.terraform_remote_state.database.outputs.db_address

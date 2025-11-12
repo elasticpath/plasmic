@@ -37,6 +37,18 @@ resource "aws_vpc_security_group_ingress_rule" "alb_from_ecs" {
   referenced_security_group_id = aws_security_group.ecs_tasks.id
 }
 
+# Allow HTTPS from NAT Gateway for ECS inter-service communication
+resource "aws_vpc_security_group_ingress_rule" "alb_from_nat" {
+  count = length(local.nat_gateway_public_ips) > 0 ? 1 : 0
+
+  security_group_id = aws_security_group.alb.id
+  description       = "HTTPS from NAT Gateway for ECS inter-service communication"
+  from_port         = 443
+  to_port           = 443
+  ip_protocol       = "tcp"
+  cidr_ipv4         = "${local.nat_gateway_public_ips[0]}/32"
+}
+
 resource "aws_vpc_security_group_egress_rule" "alb_to_ecs" {
   security_group_id            = aws_security_group.alb.id
   description                  = "To ECS tasks"
