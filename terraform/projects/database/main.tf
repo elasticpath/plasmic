@@ -56,7 +56,7 @@ resource "aws_db_instance" "main" {
   maintenance_window     = "mon:04:00-mon:05:00"  # UTC
 
   skip_final_snapshot       = var.skip_final_snapshot
-  final_snapshot_identifier = var.skip_final_snapshot ? null : "${local.identifier}-final-${formatdate("YYYY-MM-DD-hhmm", timestamp())}"
+  final_snapshot_identifier = var.skip_final_snapshot ? null : "${local.identifier}-final"
 
   deletion_protection = var.environment == "prod" ? true : false
 
