@@ -94,6 +94,10 @@ module "codegen_service" {
   ]
 
   # ALB routing - use host-based routing for codegen service
-  host_header            = "codegen.${var.environment}.storefront.elasticpath.com"
+  # Accept both direct codegen domain and ALB domain (for CloudFront routing)
+  host_header = [
+    "codegen.${var.environment}.storefront.elasticpath.com",
+    "alb-${var.environment}.storefront.elasticpath.com"
+  ]
   listener_rule_priority = 110
 }

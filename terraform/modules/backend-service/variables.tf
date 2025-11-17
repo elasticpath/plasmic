@@ -143,8 +143,8 @@ variable "task_role_inline_policies" {
 
 # Listener rules
 variable "host_header" {
-  type        = string
-  description = "Host header for ALB listener rule"
+  type        = list(string)
+  description = "Host headers for ALB listener rule (supports multiple domains)"
   default     = null
 }
 

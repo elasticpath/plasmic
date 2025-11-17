@@ -73,6 +73,8 @@ module "data_service" {
   create_task_role   = true
 
   # ALB routing - use host-based routing for data service
-  host_header            = "data.${var.environment}.storefront.elasticpath.com"
+  host_header = [
+    "data.${var.environment}.storefront.elasticpath.com"
+  ]
   listener_rule_priority = 100
 }
