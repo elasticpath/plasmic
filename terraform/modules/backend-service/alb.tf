@@ -38,7 +38,7 @@ resource "aws_lb_listener_rule" "service" {
     for_each = var.host_header != null ? [1] : []
     content {
       host_header {
-        values = [var.host_header]
+        values = var.host_header
       }
     }
   }

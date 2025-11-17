@@ -497,9 +497,9 @@ resource "aws_cloudfront_distribution" "codegen" {
   # Custom domain alias
   aliases = local.use_codegen_domain ? [local.codegen_domain] : []
 
-  # ALB origin
+  # ALB origin - use the alb-integration domain so CloudFront sends correct Host header
   origin {
-    domain_name = local.alb_dns_name
+    domain_name = local.alb_origin_domain
     origin_id   = "ALB-codegen"
 
     custom_origin_config {
@@ -507,12 +507,6 @@ resource "aws_cloudfront_distribution" "codegen" {
       https_port             = 443
       origin_protocol_policy = "https-only"
       origin_ssl_protocols   = ["TLSv1.2"]
-    }
-
-    # Forward the codegen Host header to ALB for proper routing
-    custom_header {
-      name  = "X-Forwarded-Host"
-      value = local.codegen_domain
     }
   }
 
