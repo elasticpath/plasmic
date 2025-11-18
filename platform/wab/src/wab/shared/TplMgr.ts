@@ -211,6 +211,7 @@ import {
   ComponentDataQuery,
   ComponentServerQuery,
   ComponentVariantGroup,
+  DataToken,
   Expr,
   GlobalVariantGroup,
   ImageAsset,
@@ -267,7 +268,7 @@ import {
   isInvisible,
   setTplVisibility,
 } from "@/wab/shared/visibility-utils";
-import { isString, memoize, pickBy, uniqBy } from "lodash";
+import L, { isString, memoize, pickBy, uniqBy } from "lodash";
 import flatten from "lodash/flatten";
 import has from "lodash/has";
 import kebabCase from "lodash/kebabCase";
@@ -1874,14 +1875,14 @@ export class TplMgr {
     });
   }
 
-  addToken(opts: {
+  addStyleToken(opts: {
     name?: string;
     prefix?: string;
     tokenType: StyleTokenType;
     value?: string;
   }) {
     const token = new StyleToken({
-      name: this.getUniqueTokenName(opts.name, opts.prefix),
+      name: this.getUniqueStyleTokenName(opts.name, opts.prefix),
       type: opts.tokenType,
       value: opts.value || "",
       uuid: mkShortId(),
@@ -1893,9 +1894,9 @@ export class TplMgr {
     return token;
   }
 
-  renameToken(token: StyleToken, name: string) {
+  renameStyleToken(token: StyleToken, name: string) {
     if (toVarName(name) !== toVarName(token.name)) {
-      token.name = this.getUniqueTokenName(name);
+      token.name = this.getUniqueStyleTokenName(name);
     } else {
       token.name = name;
     }
@@ -2140,17 +2141,57 @@ export class TplMgr {
     return uniqueName(existingNames, name, { normalize: toVarName });
   }
 
-  duplicateToken(token: StyleToken) {
+  duplicateStyleToken(token: StyleToken) {
     const newToken = cloneToken(token);
-    newToken.name = this.getUniqueTokenName(token.name);
+    newToken.name = this.getUniqueStyleTokenName(token.name);
     newToken.isRegistered = false;
     this.site().styleTokens.push(newToken);
     return newToken;
   }
 
-  getUniqueTokenName(name?: string, prefix = "") {
+  getUniqueStyleTokenName(name?: string, prefix = "") {
     const existingNames = this.site().styleTokens.map((t) => t.name);
     const base = `${prefix}${name ?? "Unnamed Style Token"}`;
+
+    return uniqueName(existingNames, base, {
+      separator: " ",
+      normalize: toVarName,
+    });
+  }
+
+  addDataToken(opts: { name?: string; prefix?: string; value?: string }) {
+    const token = new DataToken({
+      name: this.getUniqueDataTokenName(opts.name, opts.prefix),
+      type: "Data",
+      value: opts.value || "null",
+      uuid: mkShortId(),
+      variantedValues: [],
+      isRegistered: false,
+      regKey: undefined,
+    });
+    this.site().dataTokens.push(token);
+    return token;
+  }
+
+  renameDataToken(token: DataToken, name: string) {
+    if (toVarName(name) !== toVarName(token.name)) {
+      token.name = this.getUniqueDataTokenName(name);
+    } else {
+      token.name = name;
+    }
+  }
+
+  duplicateDataToken(token: DataToken) {
+    const newToken = cloneToken(token);
+    newToken.name = this.getUniqueDataTokenName(token.name);
+    newToken.isRegistered = false;
+    this.site().dataTokens.push(newToken);
+    return newToken;
+  }
+
+  getUniqueDataTokenName(name?: string, prefix = "") {
+    const existingNames = this.site().dataTokens.map((t) => t.name);
+    const base = `${prefix}${name ?? "Unnamed Data Token"}`;
 
     return uniqueName(existingNames, base, {
       separator: " ",
@@ -2441,10 +2482,14 @@ export class TplMgr {
           ...existingVs.rs.mixins,
           ...newVs.rs.mixins,
         ]);
-        existingVs.rs.animations = uniq([
-          ...existingVs.rs.animations,
-          ...newVs.rs.animations,
-        ]);
+
+        existingVs.rs.animations =
+          L.isNil(existingVs.rs.animations) && L.isNil(newVs.rs.animations)
+            ? null
+            : uniq([
+                ...(existingVs.rs.animations ?? []),
+                ...(newVs.rs.animations ?? []),
+              ]);
         const fromExp = RSH(newVs.rs, tpl);
         const toExp = RSH(existingVs.rs, tpl);
         for (const prop of fromExp.props()) {

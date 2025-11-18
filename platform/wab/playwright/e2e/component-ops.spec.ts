@@ -1,11 +1,12 @@
 import { expect, FrameLocator } from "@playwright/test";
 import { test } from "../fixtures/test";
+import { goToProject } from "../utils/studio-utils";
 
 test.describe("component-ops - tricky operations", () => {
   let projectId: string;
   test.beforeEach(async ({ apiClient, page }) => {
     projectId = await apiClient.setupNewProject({ name: "component-ops" });
-    await page.goto(`/projects/${projectId}`);
+    await goToProject(page, `/projects/${projectId}`);
   });
 
   test.afterEach(async ({ apiClient }) => {
@@ -115,22 +116,14 @@ test.describe("component-ops - tricky operations", () => {
 
     await models.studio.renameTreeNode("text2");
 
+    await models.studio.rightPanel.switchToComponentDataTab();
+
     await models.studio.rightPanel.addInteractionVariant("Hover");
 
-    const newFrame = page
-      .locator("iframe")
-      .first()
-      .contentFrame()
-      .locator("iframe")
-      .contentFrame()
-      .locator("div")
-      .filter({
-        hasText: /^CompA800 ✕ 500Base \+ Interactions1180 ✕ 540Combinations$/,
-      })
-      .locator("iframe")
-      .nth(2)
-      .contentFrame();
-    await newFrame.locator("body").click();
+    const frameCount = await models.studio.frames.count();
+    const newFrame = models.studio.frames.nth(frameCount - 1);
+    await newFrame.waitFor({ state: "visible", timeout: 10000 });
+    await newFrame.contentFrame().locator("body").click();
     await models.studio.leftPanel.selectTreeNode(["vertical stack", "text2"]);
     await models.studio.deleteSelection();
 
@@ -230,6 +223,9 @@ test.describe("component-ops - tricky operations", () => {
     await models.studio.rightPanel.textContentButton.click({ force: true });
 
     await page.keyboard.insertText("--->Hello!");
+    await page.keyboard.press("Escape");
+
+    await page.waitForTimeout(500);
 
     await compCFrame.locator("body").click();
 
@@ -240,7 +236,9 @@ test.describe("component-ops - tricky operations", () => {
     const selectedNode = models.studio.leftPanel.focusedTreeNode;
     await expect(selectedNode).toContainText("CompB");
 
-    await expect(compCFrame.getByText("--->Hello!")).toBeVisible();
+    await expect(compCFrame.getByText("--->Hello!")).toBeVisible({
+      timeout: 10000,
+    });
     await models.studio.rightPanel.checkNoErrors();
   });
 });

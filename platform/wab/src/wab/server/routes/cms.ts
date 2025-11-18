@@ -1,5 +1,4 @@
 import { toOpaque } from "@/wab/commons/types";
-import { DbMgr } from "@/wab/server/db/DbMgr";
 import { CmsRow } from "@/wab/server/entities/Entities";
 import { makeApiDatabase } from "@/wab/server/routes/cmse";
 import { userDbMgr } from "@/wab/server/routes/util";
@@ -42,13 +41,6 @@ function toApiCmsRow(
   };
 }
 
-async function getTableByIdentifier(mgr: DbMgr, req: Request) {
-  return await mgr.getCmsTableByIdentifier(
-    req.params.dbId as CmsDatabaseId,
-    req.params.tableIdentifier
-  );
-}
-
 const s = initServer();
 export const publicCmsReadsServer = s.router(publicCmsReadsContract, {
   queryTable: async ({ params, query, req }) => {
@@ -63,7 +55,6 @@ export const publicCmsReadsServer = s.router(publicCmsReadsContract, {
     const useDraft = query.draft === "1";
     const rows = await dbMgr.queryCmsRows(table.id, cmsQuery, { useDraft });
     const metaMap = makeFieldMetaMap(table.schema, cmsQuery.fields);
-    await req.resolveTransaction(); // normally handled by `withNext`
     return {
       status: 200,
       body: {
@@ -81,7 +72,6 @@ export const publicCmsReadsServer = s.router(publicCmsReadsContract, {
     const cmsQuery = query.q || {};
     const useDraft = query.draft === "1";
     const count = await dbMgr.countCmsRows(table.id, cmsQuery, { useDraft });
-    await req.resolveTransaction(); // normally handled by `withNext`
     return {
       status: 200,
       body: {
@@ -93,7 +83,6 @@ export const publicCmsReadsServer = s.router(publicCmsReadsContract, {
     const mgr = userDbMgr(req);
     const database = await mgr.getCmsDatabaseById(params.dbId);
     const apiDatabase = await makeApiDatabase(mgr, database);
-    await req.resolveTransaction(); // normally handled by `withNext`
     return {
       status: 200,
       body: apiDatabase,
@@ -205,8 +194,11 @@ export async function publicUpdateRow(req: Request, res: Response) {
 
 export async function publicCreateRows(req: Request, res: Response) {
   const mgr = userDbMgr(req);
-  const table = await getTableByIdentifier(mgr, req);
-  const db = await mgr.getCmsDatabaseById(table.databaseId);
+  const dbId = req.params.dbId as CmsDatabaseId;
+  const tableIdentifier = req.params.tableIdentifier;
+
+  const table = await mgr.getCmsTableByIdentifier(dbId, tableIdentifier);
+  const db = await mgr.getCmsDatabaseById(dbId);
   ensure(req.body.rows, "'rows' should exist to create rows");
   const rows = await mgr.createCmsRows(
     table.id,

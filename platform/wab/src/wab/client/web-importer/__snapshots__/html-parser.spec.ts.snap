@@ -2,6 +2,27 @@
 
 exports[`snapshot tests parse landing page html properly 1`] = `
 {
+  "animationSequences": [
+    {
+      "keyframes": [
+        {
+          "percentage": 0,
+          "safeStyles": {
+            "opacity": "0",
+          },
+          "unsafeStyles": {},
+        },
+        {
+          "percentage": 100,
+          "safeStyles": {
+            "opacity": "100",
+          },
+          "unsafeStyles": {},
+        },
+      ],
+      "name": "fadeIn",
+    },
+  ],
   "fontDefinitions": [
     "@font-face {
 	font-family: "Roboto";
@@ -56,11 +77,10 @@ exports[`snapshot tests parse landing page html properly 1`] = `
               {
                 "attrs": {
                   "__name": "",
-                  "style": "font-size: 1.8rem; font-weight: bold; color: #fff5cc;",
+                  "style": "font-size: 1.8rem; font-weight: bold; color: #fff5cc; transform: rotate(45deg);",
                 },
                 "children": [
                   {
-                    "fillColor": "currentColor",
                     "height": "32px",
                     "outerHtml": "<svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 2L2 7v10c0 5.55 3.84 9.74 9 11 5.16-1.26 9-5.45 9-11V7l-10-5z"></path>
@@ -133,6 +153,7 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                       "paddingLeft": "0",
                       "paddingRight": "0",
                       "paddingTop": "0",
+                      "transform": "rotate3d(0, 0, 1, 45deg)",
                     },
                     "unsafeStyles": {
                       "color": "rgb(255, 245, 204)",
@@ -146,6 +167,7 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                       "font-weight": "bold",
                       "margin": "0",
                       "padding": "0",
+                      "transform": "rotate(45deg)",
                     },
                     "variantCombo": [
                       {
@@ -702,10 +724,22 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                       {
                         "safeStyles": {
                           "background": "linear-gradient(#e74c3c, #e74c3c)",
+                          "borderBottomColor": "#c0392b",
                           "borderBottomLeftRadius": "25px",
                           "borderBottomRightRadius": "25px",
+                          "borderBottomStyle": "solid",
+                          "borderBottomWidth": "1.5px",
+                          "borderLeftColor": "#c0392b",
+                          "borderLeftStyle": "solid",
+                          "borderLeftWidth": "1.5px",
+                          "borderRightColor": "#c0392b",
+                          "borderRightStyle": "solid",
+                          "borderRightWidth": "1.5px",
+                          "borderTopColor": "#c0392b",
                           "borderTopLeftRadius": "25px",
                           "borderTopRightRadius": "25px",
+                          "borderTopStyle": "solid",
+                          "borderTopWidth": "1.5px",
                           "marginBottom": "0",
                           "marginLeft": "0",
                           "marginRight": "0",
@@ -722,6 +756,7 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                         },
                         "unsanitizedStyles": {
                           "background": "#e74c3c",
+                          "border": "solid #c0392b",
                           "border-radius": "25px",
                           "box-sizing": "border-box",
                           "color": "white",
@@ -740,10 +775,23 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                       {
                         "safeStyles": {
                           "background": "linear-gradient(#c0392b, #c0392b)",
+                          "borderBottomColor": "#e74c3c",
+                          "borderBottomStyle": "solid",
+                          "borderBottomWidth": "1.5px",
+                          "borderLeftColor": "#e74c3c",
+                          "borderLeftStyle": "solid",
+                          "borderLeftWidth": "1.5px",
+                          "borderRightColor": "#e74c3c",
+                          "borderRightStyle": "solid",
+                          "borderRightWidth": "1.5px",
+                          "borderTopColor": "#e74c3c",
+                          "borderTopStyle": "solid",
+                          "borderTopWidth": "1.5px",
                         },
                         "unsafeStyles": {},
                         "unsanitizedStyles": {
                           "background": "#c0392b",
+                          "border": "solid #e74c3c",
                         },
                         "variantCombo": [
                           {
@@ -813,7 +861,7 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                   "paddingLeft": "20px",
                   "paddingRight": "20px",
                   "paddingTop": "0",
-                  "width": "100%",
+                  "width": "calc(100% - 20px)",
                 },
                 "unsafeStyles": {},
                 "unsanitizedStyles": {
@@ -825,7 +873,7 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                   "margin": "0 auto",
                   "max-width": "1200px",
                   "padding": "0 20px",
-                  "width": "100%",
+                  "width": "calc(100% - 20px)",
                 },
                 "variantCombo": [
                   {
@@ -1048,6 +1096,7 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                 "variantSettings": [
                   {
                     "safeStyles": {
+                      "animation": "fadeIn 0.3s ease",
                       "background": "linear-gradient(#e74c3c, #e74c3c)",
                       "borderBottomLeftRadius": "30px",
                       "borderBottomRightRadius": "30px",
@@ -1069,6 +1118,7 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                       "fontWeight": "bold",
                     },
                     "unsanitizedStyles": {
+                      "animation": "fadeIn 0.3s ease",
                       "background": "#e74c3c",
                       "border-radius": "30px",
                       "box-sizing": "border-box",
@@ -1088,11 +1138,15 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                   },
                   {
                     "safeStyles": {
+                      "animation": "none",
                       "background": "linear-gradient(#c0392b, #c0392b)",
+                      "transform": "translate3d(0px, 20px, 0px)",
                     },
                     "unsafeStyles": {},
                     "unsanitizedStyles": {
+                      "animation": "none",
                       "background": "#c0392b",
+                      "transform": "translateY(20px)",
                     },
                     "variantCombo": [
                       {
@@ -1120,7 +1174,7 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                   "paddingLeft": "20px",
                   "paddingRight": "20px",
                   "paddingTop": "0",
-                  "width": "100%",
+                  "width": "calc(100% - 20px)",
                 },
                 "unsafeStyles": {},
                 "unsanitizedStyles": {
@@ -1128,7 +1182,7 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                   "margin": "0 auto",
                   "max-width": "1200px",
                   "padding": "0 20px",
-                  "width": "100%",
+                  "width": "calc(100% - 20px)",
                 },
                 "variantCombo": [
                   {
@@ -1238,7 +1292,6 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                     },
                     "children": [
                       {
-                        "fillColor": "#667eea",
                         "height": "64px",
                         "outerHtml": "<svg width="64" height="64" viewBox="0 0 24 24" fill="#667eea">
           <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"></path>
@@ -1347,12 +1400,12 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                     "variantSettings": [
                       {
                         "safeStyles": {
-                          "background": "radial-gradient(ellipse 50% 50% at 0% 0%, #ffffff 0%, #f8f9fa 100%)",
+                          "background": "radial-gradient(ellipse 50% 50% at 0% 0%, #ffffff 0%, #f8f9fa 100%) 0% 0% / min(100%,500px) min(80%,400px)",
                           "borderBottomLeftRadius": "10px",
                           "borderBottomRightRadius": "10px",
                           "borderTopLeftRadius": "10px",
                           "borderTopRightRadius": "10px",
-                          "boxShadow": "0 5px 15px 0px rgba(0,0,0,0.1)",
+                          "boxShadow": "0 5px min(15px,10%) 0px rgba(0,0,0,0.1)",
                           "marginBottom": "0",
                           "marginLeft": "0",
                           "marginRight": "0",
@@ -1369,9 +1422,9 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                           "textAlign": "center",
                         },
                         "unsanitizedStyles": {
-                          "background": "radial-gradient(circle at top left,#ffffff 0%,#f8f9fa 100%)",
+                          "background": "radial-gradient(circle at top left,#ffffff 0%,#f8f9fa 100%)/min(100%,500px) min(80%,400px)",
                           "border-radius": "10px",
-                          "box-shadow": "0 5px 15px rgba(0,0,0,0.1)",
+                          "box-shadow": "0 5px min(15px,10%) rgba(0,0,0,0.1)",
                           "box-sizing": "border-box",
                           "flex": "1",
                           "margin": "0",
@@ -1395,7 +1448,6 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                     },
                     "children": [
                       {
-                        "fillColor": "#667eea",
                         "height": "64px",
                         "outerHtml": "<svg width="64" height="64" viewBox="0 0 24 24" fill="#667eea">
           <path d="M20 4H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z"></path>
@@ -1504,12 +1556,12 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                     "variantSettings": [
                       {
                         "safeStyles": {
-                          "background": "radial-gradient(ellipse 50% 50% at 0% 0%, #ffffff 0%, #f8f9fa 100%)",
+                          "background": "radial-gradient(ellipse 50% 50% at 0% 0%, #ffffff 0%, #f8f9fa 100%) 0% 0% / min(100%,500px) min(80%,400px)",
                           "borderBottomLeftRadius": "10px",
                           "borderBottomRightRadius": "10px",
                           "borderTopLeftRadius": "10px",
                           "borderTopRightRadius": "10px",
-                          "boxShadow": "0 5px 15px 0px rgba(0,0,0,0.1)",
+                          "boxShadow": "0 5px min(15px,10%) 0px rgba(0,0,0,0.1)",
                           "marginBottom": "0",
                           "marginLeft": "0",
                           "marginRight": "0",
@@ -1526,9 +1578,9 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                           "textAlign": "center",
                         },
                         "unsanitizedStyles": {
-                          "background": "radial-gradient(circle at top left,#ffffff 0%,#f8f9fa 100%)",
+                          "background": "radial-gradient(circle at top left,#ffffff 0%,#f8f9fa 100%)/min(100%,500px) min(80%,400px)",
                           "border-radius": "10px",
-                          "box-shadow": "0 5px 15px rgba(0,0,0,0.1)",
+                          "box-shadow": "0 5px min(15px,10%) rgba(0,0,0,0.1)",
                           "box-sizing": "border-box",
                           "flex": "1",
                           "margin": "0",
@@ -1552,7 +1604,6 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                     },
                     "children": [
                       {
-                        "fillColor": "#667eea",
                         "height": "64px",
                         "outerHtml": "<svg width="64" height="64" viewBox="0 0 24 24" fill="#667eea">
           <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
@@ -1661,12 +1712,12 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                     "variantSettings": [
                       {
                         "safeStyles": {
-                          "background": "radial-gradient(ellipse 50% 50% at 0% 0%, #ffffff 0%, #f8f9fa 100%)",
+                          "background": "radial-gradient(ellipse 50% 50% at 0% 0%, #ffffff 0%, #f8f9fa 100%) 0% 0% / min(100%,500px) min(80%,400px)",
                           "borderBottomLeftRadius": "10px",
                           "borderBottomRightRadius": "10px",
                           "borderTopLeftRadius": "10px",
                           "borderTopRightRadius": "10px",
-                          "boxShadow": "0 5px 15px 0px rgba(0,0,0,0.1)",
+                          "boxShadow": "0 5px min(15px,10%) 0px rgba(0,0,0,0.1)",
                           "marginBottom": "0",
                           "marginLeft": "0",
                           "marginRight": "0",
@@ -1683,9 +1734,9 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                           "textAlign": "center",
                         },
                         "unsanitizedStyles": {
-                          "background": "radial-gradient(circle at top left,#ffffff 0%,#f8f9fa 100%)",
+                          "background": "radial-gradient(circle at top left,#ffffff 0%,#f8f9fa 100%)/min(100%,500px) min(80%,400px)",
                           "border-radius": "10px",
-                          "box-shadow": "0 5px 15px rgba(0,0,0,0.1)",
+                          "box-shadow": "0 5px min(15px,10%) rgba(0,0,0,0.1)",
                           "box-sizing": "border-box",
                           "flex": "1",
                           "margin": "0",
@@ -1757,7 +1808,7 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                   "paddingLeft": "20px",
                   "paddingRight": "20px",
                   "paddingTop": "0",
-                  "width": "100%",
+                  "width": "calc(100% - 20px)",
                 },
                 "unsafeStyles": {},
                 "unsanitizedStyles": {
@@ -1765,7 +1816,7 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                   "margin": "0 auto",
                   "max-width": "1200px",
                   "padding": "0 20px",
-                  "width": "100%",
+                  "width": "calc(100% - 20px)",
                 },
                 "variantCombo": [
                   {
@@ -1905,8 +1956,12 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                         "safeStyles": {
                           "borderBottomLeftRadius": "25px",
                           "borderBottomRightRadius": "25px",
+                          "borderBottomStyle": "none",
+                          "borderLeftStyle": "none",
+                          "borderRightStyle": "none",
                           "borderTopLeftRadius": "25px",
                           "borderTopRightRadius": "25px",
+                          "borderTopStyle": "none",
                           "marginBottom": "0",
                           "marginLeft": "0",
                           "marginRight": "0",
@@ -1917,7 +1972,6 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                           "paddingTop": "0.8rem",
                         },
                         "unsafeStyles": {
-                          "border": "none",
                           "flex": "1",
                         },
                         "unsanitizedStyles": {
@@ -1974,8 +2028,12 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                           "background": "linear-gradient(#e74c3c, #e74c3c)",
                           "borderBottomLeftRadius": "25px",
                           "borderBottomRightRadius": "25px",
+                          "borderBottomStyle": "none",
+                          "borderLeftStyle": "none",
+                          "borderRightStyle": "none",
                           "borderTopLeftRadius": "25px",
                           "borderTopRightRadius": "25px",
+                          "borderTopStyle": "none",
                           "cursor": "pointer",
                           "marginBottom": "0",
                           "marginLeft": "0",
@@ -1987,7 +2045,6 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                           "paddingTop": "0.8rem",
                         },
                         "unsafeStyles": {
-                          "border": "none",
                           "color": "white",
                           "fontWeight": "bold",
                         },
@@ -2102,7 +2159,7 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                   "paddingLeft": "20px",
                   "paddingRight": "20px",
                   "paddingTop": "0",
-                  "width": "100%",
+                  "width": "calc(100% - 20px)",
                 },
                 "unsafeStyles": {},
                 "unsanitizedStyles": {
@@ -2110,7 +2167,7 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                   "margin": "0 auto",
                   "max-width": "1200px",
                   "padding": "0 20px",
-                  "width": "100%",
+                  "width": "calc(100% - 20px)",
                 },
                 "variantCombo": [
                   {
@@ -3716,7 +3773,7 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                   "paddingLeft": "20px",
                   "paddingRight": "20px",
                   "paddingTop": "0",
-                  "width": "100%",
+                  "width": "calc(100% - 20px)",
                 },
                 "unsafeStyles": {},
                 "unsanitizedStyles": {
@@ -3724,7 +3781,7 @@ exports[`snapshot tests parse landing page html properly 1`] = `
                   "margin": "0 auto",
                   "max-width": "1200px",
                   "padding": "0 20px",
-                  "width": "100%",
+                  "width": "calc(100% - 20px)",
                 },
                 "variantCombo": [
                   {

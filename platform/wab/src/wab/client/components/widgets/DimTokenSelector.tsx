@@ -56,6 +56,12 @@ import {
   isValidUnit,
   showSizeCss,
 } from "@/wab/shared/css-size";
+import {
+  checkAllowedUnits,
+  isDimCssFunction,
+  validateDimCssFunction,
+} from "@/wab/shared/css/css-tree-utils";
+import { LengthUnit } from "@/wab/shared/css/types";
 import { StyleToken } from "@/wab/shared/model/classes";
 import { naturalSort } from "@/wab/shared/sort";
 import { canCreateAlias } from "@/wab/shared/ui-config-utils";
@@ -292,6 +298,8 @@ export const DimTokenSpinner = observer(
       }));
     };
 
+    const resolver = useClientTokenResolver();
+
     const makeTokenOptions = (): (
       | AddTokenItem
       | EditTokenItem
@@ -318,12 +326,17 @@ export const DimTokenSpinner = observer(
           ) && // the token is editable
           ({ type: "edit-token", token: selectedToken } as const),
 
-        // show tokens that match name or value
+        // show tokens that match name or value and have allowed units
         ...naturalSort(
           tokens
             .filter(
               (t) =>
-                (t.value && matcher.matches(t.value)) || matcher.matches(t.name)
+                ((t.value && matcher.matches(t.value)) ||
+                  matcher.matches(t.name)) &&
+                checkAllowedUnits(
+                  resolver(t, vsh),
+                  allowedUnits as LengthUnit[]
+                )
             )
             .map((token) => ({ type: "token", token } as const)),
           (item) => item.token.name
@@ -484,7 +497,7 @@ export const DimTokenSpinner = observer(
                     : tokenTypeDefaults(
                         ensure(
                           tokenType,
-                          "tokenType must not be nullwhen adding token"
+                          "tokenType must not be null when adding token"
                         )
                       );
                   const _newToken = ensure(
@@ -492,7 +505,7 @@ export const DimTokenSpinner = observer(
                     "DimTokenSelector expects to have studioCtx if adding token"
                   )
                     .tplMgr()
-                    .addToken({
+                    .addStyleToken({
                       tokenType: ensure(
                         tokenType,
                         "tokenType must not be null when adding token"
@@ -525,8 +538,6 @@ export const DimTokenSpinner = observer(
       offset: 5,
       isOpen: isOpen,
     });
-
-    const resolver = useClientTokenResolver();
 
     useOnContainerScroll({
       ref: rootRef,
@@ -620,6 +631,18 @@ export const DimTokenSpinner = observer(
                       closeMenu();
                       onEscape && onEscape(e);
                     }
+                  } else if (e.key === "Enter") {
+                    skipChangeOnBlur.current = true;
+                    const isValidInput =
+                      isNumberMode ||
+                      isDimCssFunction(inputValue) ||
+                      extraOptions.some(
+                        (option) => option.value === inputValue
+                      );
+                    if (isValidInput && tryOnChange(inputValue, "raw")) {
+                      resetState();
+                      closeMenu();
+                    }
                   } else if (isNumberMode) {
                     (e.nativeEvent as any).preventDownshiftDefault = true;
                     if (e.key === "ArrowUp") {
@@ -630,20 +653,6 @@ export const DimTokenSpinner = observer(
                       e.preventDefault();
                       spin("down", e.shiftKey);
                       resetState();
-                    } else if (e.key === "Enter") {
-                      skipChangeOnBlur.current = true;
-                      tryOnChange(inputValue, "raw");
-                      resetState();
-                      closeMenu();
-                    }
-                  } else if (e.key === "Enter") {
-                    skipChangeOnBlur.current = true;
-                    if (
-                      extraOptions.some((option) => option.value === inputValue)
-                    ) {
-                      tryOnChange(inputValue, "raw");
-                      resetState();
-                      closeMenu();
                     }
                   }
                 },
@@ -1013,6 +1022,7 @@ export interface DimValueOpts {
   fractionDigits?: number;
   displayedFractionDigits?: number;
   vsh?: VariantedStylesHelper;
+  dimsFunctionAllowed?: boolean;
 }
 
 function useDimValue(opts: DimValueOpts) {
@@ -1028,6 +1038,7 @@ function useDimValue(opts: DimValueOpts) {
     delta = 1,
     fractionDigits = 3,
     displayedFractionDigits = 3,
+    dimsFunctionAllowed = true,
   } = opts;
 
   const allowedUnitsSet = new Set(allowedUnits);
@@ -1048,7 +1059,15 @@ function useDimValue(opts: DimValueOpts) {
 
     const newValues = shorthand ? css.parseCssShorthand(val) : [val];
     for (const newValue of newValues) {
-      if (extraOptions.some((it) => it.value === newValue)) {
+      if (dimsFunctionAllowed && isDimCssFunction(newValue)) {
+        const result = validateDimCssFunction(newValue, allowedUnits);
+        if (!result.valid) {
+          notification.error({
+            message: `Invalid CSS function "${newValue}"`,
+            description: result.error,
+          });
+          return false;
+        }
         continue;
       }
       const parsed = parseCssNumericNew(newValue);
@@ -1088,6 +1107,7 @@ function useDimValue(opts: DimValueOpts) {
         return false;
       }
     }
+
     return true;
   }
 
@@ -1149,7 +1169,9 @@ function useDimValue(opts: DimValueOpts) {
     }
   }
 
-  const displayValue = css.roundedCssNumeric(value, displayedFractionDigits);
+  const displayValue = isDimCssFunction(value)
+    ? value
+    : css.roundedCssNumeric(value, displayedFractionDigits);
 
   function spin(dir: "up" | "down", large?: boolean) {
     if (!value || isNaN(parseFloat(value))) {

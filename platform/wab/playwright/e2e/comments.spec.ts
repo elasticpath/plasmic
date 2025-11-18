@@ -1,15 +1,18 @@
 import { expect } from "@playwright/test";
 import { test } from "../fixtures/test";
-import { getComponentUuid } from "../utils/studio-utils";
+import {
+  getComponentUuid,
+  goToProject,
+  waitForFrameToLoad,
+} from "../utils/studio-utils";
 
 test.describe("comments", () => {
   let projectId: string;
   test.beforeEach(async ({ apiClient, page }) => {
     projectId = await apiClient.setupNewProject({
       name: "comment-navigation",
-      devFlags: { comments: true },
     });
-    await page.goto(`/projects/${projectId}?comments=true`);
+    await goToProject(page, `/projects/${projectId}?comments=true`);
   });
 
   test.afterEach(async ({ apiClient }) => {
@@ -29,7 +32,7 @@ test.describe("comments", () => {
     const commentText: string = "Test Comment";
 
     await models.studio.leftPanel.addComponent(componentName);
-    await models.studio.waitForFrameToLoad();
+    await waitForFrameToLoad(page);
     await models.studio.leftPanel.insertNode("Text");
     await models.studio.addCommentToSelection(commentText);
 
@@ -41,11 +44,7 @@ test.describe("comments", () => {
     const threadId = await firstMarker.getAttribute("data-test-id");
     expect(threadId).toBeDefined();
 
-    if (!threadId) {
-      return;
-    }
-
-    const threadIdValue = threadId.replace("comment-marker-", "");
+    const threadIdValue = threadId!.replace("comment-marker-", "");
 
     const url = page.url();
     expect(url).not.toContain(`comment=${threadIdValue}`);
@@ -63,7 +62,8 @@ test.describe("comments", () => {
     const urlAfterClose = page.url();
     expect(urlAfterClose).not.toContain(`comment=${threadIdValue}`);
 
-    await page.goto(
+    await goToProject(
+      page,
       `projects/${projectId}?comment=${threadIdValue}&comments=true`,
       { timeout: 10000 }
     );
@@ -113,7 +113,7 @@ test.describe("comments", () => {
     const commentText: string = "Test Comment";
 
     await models.studio.leftPanel.addComponent(componentName);
-    await models.studio.waitForFrameToLoad();
+    await waitForFrameToLoad(page);
     await models.studio.leftPanel.insertNode("Text");
     await models.studio.addCommentToSelection(commentText);
 
@@ -151,7 +151,8 @@ test.describe("comments", () => {
     const urlAfterClose = page.url();
     expect(urlAfterClose).not.toContain(`comment=${threadIdValue}`);
 
-    await page.goto(
+    await goToProject(
+      page,
       `projects/${projectId}?comment=${threadIdValue}&comments=true`,
       { timeout: 10000 }
     );

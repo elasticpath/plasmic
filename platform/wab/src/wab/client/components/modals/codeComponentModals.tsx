@@ -401,6 +401,7 @@ export async function showModalToRefreshCodeComponentProps(
           <Button
             className="mr-sm"
             type="primary"
+            data-test-id="confirm"
             onClick={() => onSubmit(true)}
           >
             Confirm
@@ -724,6 +725,7 @@ function HostLessPackageForm({
             className="mr-sm"
             htmlType="submit"
             data-test-id="hostless-prompt-submit"
+            disabled={!!initialValue}
           >
             {"Submit (yes I'm sure!)"}
           </Button>

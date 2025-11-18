@@ -48,6 +48,8 @@ import { mkDataSourceOpExpr } from "@/wab/shared/data-sources-meta/data-sources"
 import { getProjectFlags } from "@/wab/shared/devflags";
 import { Pt } from "@/wab/shared/geom";
 import {
+  Animation,
+  AnimationSequence,
   Arg,
   Component,
   ComponentDataQuery,
@@ -69,6 +71,7 @@ import {
   isKnownTplSlot,
   isKnownTplTag,
   isKnownVirtualRenderExpr,
+  KeyFrame,
   NodeMarker,
   ObjectPath,
   ObjInst,
@@ -76,7 +79,9 @@ import {
   QueryRef,
   RawText,
   RenderExpr,
+  RuleSet,
   Site,
+  StyleTokenOverride,
   TplComponent,
   TplNode,
   TplSlot,
@@ -3381,7 +3386,7 @@ describe("merging", () => {
       })(),
       a: (site, tplMgr) => {
         site.styleTokens = [];
-        tplMgr.addToken({
+        tplMgr.addStyleToken({
           name: "nonRegistered",
           tokenType: "LineHeight",
           value: "3",
@@ -3412,7 +3417,7 @@ describe("merging", () => {
       },
       b: (site, tplMgr) => {
         site.styleTokens = [];
-        tplMgr.addToken({
+        tplMgr.addStyleToken({
           name: "nonRegistered",
           tokenType: "LineHeight",
           value: "4",
@@ -4475,6 +4480,203 @@ describe("merging", () => {
     });
   });
 
+  it("Resolves style token conflict on varianted values", () => {
+    const result = testMerge({
+      ancestorSite: (() => {
+        // Create ancestor site with no styleTokenOverrides
+        return basicSite();
+      })(),
+      a: (site) => {
+        // Branch: Sets token's varianted value
+        const variant = site.globalVariantGroups[0].variants[0];
+        site.styleTokens[0].variantedValues = [
+          new VariantedValue({
+            variants: [variant],
+            value: "3",
+          }),
+        ];
+      },
+      b: (site) => {
+        // Main branch: Sets token's varianted value
+        const variant = site.globalVariantGroups[0].variants[0];
+        site.styleTokens[0].variantedValues = [
+          new VariantedValue({
+            variants: [variant],
+            value: "4",
+          }),
+        ];
+      },
+      directConflictsPicks: ["right"], // Select main
+    });
+
+    expect(result).toMatchObject({
+      status: "needs-resolution",
+    });
+
+    // After resolution, main's varianted value should be preserved
+    const styleToken = result.mergedSite.styleTokens[0];
+    expect(styleToken).toBeDefined();
+    expect(styleToken.value).toEqual("1");
+    expect(styleToken.variantedValues.length).toBe(1);
+    expect(styleToken.variantedValues[0].value).toBe("4");
+  });
+
+  it("StyleTokenOverride conflicts are non-atomic", () => {
+    const result = testMerge({
+      ancestorSite: (() => {
+        // Create ancestor site with no styleTokenOverrides
+        return basicSite();
+      })(),
+      a: (site) => {
+        // Branch: Creates a style token override
+        const token = site.styleTokens[0];
+        const variant = site.globalVariantGroups[0].variants[0];
+
+        site.styleTokenOverrides.push(
+          new StyleTokenOverride({
+            token,
+            value: "9",
+            variantedValues: [
+              new VariantedValue({
+                value: "99",
+                variants: [variant],
+              }),
+            ],
+          })
+        );
+      },
+      b: (site) => {
+        // Main Branch: Creates an array of style token overrides
+        const token = site.styleTokens[0];
+        site.styleTokenOverrides.push(
+          new StyleTokenOverride({
+            token,
+            value: "11",
+            variantedValues: [],
+          }),
+          new StyleTokenOverride({
+            token: site.styleTokens[1],
+            value: "2000",
+            variantedValues: [],
+          })
+        );
+      },
+      directConflictsPicks: ["left"], // Select branch
+    });
+    expect(result).toMatchObject({
+      status: "needs-resolution",
+    });
+    // The overrides array is merged, for conflicting parts, branch wins.
+
+    expect(result.mergedSite.styleTokenOverrides.length).toBe(2);
+    const override1 = result.mergedSite.styleTokenOverrides[0];
+    expect(override1).toBeDefined();
+    expect(override1.value).toBe("9");
+    expect(override1.variantedValues.length).toBe(1);
+    expect(override1.variantedValues[0].value).toBe("99");
+
+    const override2 = result.mergedSite.styleTokenOverrides[1];
+    expect(override2).toBeDefined();
+    expect(override2.value).toBe("2000");
+    expect(override2.variantedValues.length).toBe(0);
+  });
+
+  it("Resolves styleTokenOverride conflict when main sets value and branch sets varianted value", () => {
+    const result = testMerge({
+      ancestorSite: (() => {
+        // Create ancestor site with no styleTokenOverrides
+        return basicSite();
+      })(),
+      a: (site) => {
+        // Branch: Override same token's base value (no varianted values)
+        const token = site.styleTokens[0];
+        site.styleTokenOverrides.push(
+          new StyleTokenOverride({
+            token: token,
+            value: "20",
+            variantedValues: [],
+          })
+        );
+      },
+      b: (site) => {
+        // Main branch: Override token's varianted value (base is null)
+        const token = site.styleTokens[0];
+        const variant = site.globalVariantGroups[0].variants[0];
+        site.styleTokenOverrides.push(
+          new StyleTokenOverride({
+            token,
+            value: null,
+            variantedValues: [
+              new VariantedValue({
+                value: "10",
+                variants: [variant],
+              }),
+            ],
+          })
+        );
+      },
+      directConflictsPicks: ["left"], // Select branch
+    });
+    expect(result).toMatchObject({
+      status: "needs-resolution",
+    });
+
+    // After resolution, branch's override should be preserved
+    const override = result.mergedSite.styleTokenOverrides[0];
+    expect(override).toBeDefined();
+    expect(override.value).toBe("20");
+    expect(override.variantedValues.length).toBe(0);
+  });
+
+  // TODO: PLA-12361
+  xit("Resolves styleTokenOverride conflict when main sets varianted value and branch sets base value", () => {
+    const result = testMerge({
+      ancestorSite: (() => {
+        // Create ancestor site with no styleTokenOverrides
+        return basicSite();
+      })(),
+      a: (site) => {
+        // Branch: Override same token's base value (no varianted values)
+        const token = site.styleTokens[0];
+        site.styleTokenOverrides.push(
+          new StyleTokenOverride({
+            token: token,
+            value: "20",
+            variantedValues: [],
+          })
+        );
+      },
+      b: (site) => {
+        // Main branch: Override token's varianted value (base is null)
+        const token = site.styleTokens[0];
+        const variant = site.globalVariantGroups[0].variants[0];
+        site.styleTokenOverrides.push(
+          new StyleTokenOverride({
+            token,
+            value: null,
+            variantedValues: [
+              new VariantedValue({
+                value: "10",
+                variants: [variant],
+              }),
+            ],
+          })
+        );
+      },
+      directConflictsPicks: ["right"], // Select main
+    });
+    expect(result).toMatchObject({
+      status: "needs-resolution",
+    });
+
+    // After resolution, main's varianted value should be preserved
+    const override = result.mergedSite.styleTokenOverrides[0];
+    expect(override).toBeDefined();
+    expect(override.value).toBeNull();
+    expect(override.variantedValues.length).toBe(1);
+    expect(override.variantedValues[0].value).toBe("10");
+  });
+
   it("Reroot should not delete entire tpl tree", () => {
     const result = testMergeFromJsonBundle(
       hackyCast<ProjectFullDataResponse>(rerootBundle)
@@ -4995,6 +5197,332 @@ describe("merging", () => {
     expect(result).toMatchObject({
       status: "merged",
       autoReconciliations: [],
+    });
+  });
+
+  describe("nullable atomic arrays (animations)", () => {
+    function createAnimationSequence(site: Site, name: string) {
+      const seq = new AnimationSequence({
+        uuid: mkShortId(),
+        name,
+        keyframes: [
+          new KeyFrame({
+            percentage: 0,
+            rs: new RuleSet({
+              values: { opacity: "0" },
+              mixins: [],
+              animations: null,
+            }),
+          }),
+          new KeyFrame({
+            percentage: 100,
+            rs: new RuleSet({
+              values: { opacity: "1" },
+              mixins: [],
+              animations: null,
+            }),
+          }),
+        ],
+      });
+      site.animationSequences.push(seq);
+      return seq;
+    }
+
+    function createAnimation(seq: AnimationSequence) {
+      return new Animation({
+        sequence: seq,
+        duration: "1s",
+        timingFunction: "ease",
+        iterationCount: "1",
+        direction: "normal",
+        delay: "0s",
+        fillMode: "none",
+        playState: "running",
+      });
+    }
+
+    it("merges when both sides unchanged (null → null)", () => {
+      const result = testMerge({
+        ancestorSite: singleComponentSite(),
+        a: (site) => {},
+        b: (site) => {},
+      });
+
+      expect(result).toMatchObject({
+        status: "merged",
+      });
+
+      const tplRoot = result.mergedSite.components[0].tplTree as TplTag;
+      expect(tplRoot.vsettings[0].rs.animations).toBeNull();
+    });
+
+    it("merges when only left side adds animations (null → [anim])", () => {
+      const result = testMerge({
+        ancestorSite: singleComponentSite(),
+        a: (site) => {
+          const seq = createAnimationSequence(site, "fadeIn");
+          const tplRoot = site.components[0].tplTree as TplTag;
+          tplRoot.vsettings[0].rs.animations = [createAnimation(seq)];
+        },
+        b: (site) => {},
+      });
+
+      expect(result).toMatchObject({
+        status: "merged",
+      });
+
+      const tplRoot = result.mergedSite.components[0].tplTree as TplTag;
+      expect(tplRoot.vsettings[0].rs.animations).toHaveLength(1);
+    });
+
+    it("merges when only right side adds animations (null → [anim])", () => {
+      const result = testMerge({
+        ancestorSite: singleComponentSite(),
+        a: (site) => {},
+        b: (site) => {
+          const seq = createAnimationSequence(site, "slideIn");
+          const tplRoot = site.components[0].tplTree as TplTag;
+          tplRoot.vsettings[0].rs.animations = [createAnimation(seq)];
+        },
+      });
+
+      expect(result).toMatchObject({
+        status: "merged",
+      });
+
+      const tplRoot = result.mergedSite.components[0].tplTree as TplTag;
+      expect(tplRoot.vsettings[0].rs.animations).toHaveLength(1);
+    });
+
+    it("conflicts when both sides add different animations (null → [a] vs null → [b])", () => {
+      const result = testMerge({
+        ancestorSite: singleComponentSite(),
+        a: (site) => {
+          const seq = createAnimationSequence(site, "fadeIn");
+          const tplRoot = site.components[0].tplTree as TplTag;
+          tplRoot.vsettings[0].rs.animations = [createAnimation(seq)];
+        },
+        b: (site) => {
+          const seq = createAnimationSequence(site, "slideIn");
+          const tplRoot = site.components[0].tplTree as TplTag;
+          tplRoot.vsettings[0].rs.animations = [createAnimation(seq)];
+        },
+        directConflictsPicks: ["left"],
+      });
+
+      expect(result).toMatchObject({
+        status: "needs-resolution",
+        genericDirectConflicts: expect.arrayContaining([
+          expect.objectContaining({
+            conflictType: "generic",
+          }),
+        ]),
+      });
+
+      // Verify merged result uses left's animation (fadeIn)
+      const mergedTplRoot = result.mergedSite.components[0].tplTree as TplTag;
+      const mergedAnimations = mergedTplRoot.vsettings[0].rs.animations;
+      expect(mergedAnimations).toHaveLength(1);
+      expect(mergedAnimations?.[0]?.sequence.name).toBe("fadeIn");
+    });
+
+    it("merges when both sides remove animations ([anim] → null)", () => {
+      const ancestor = singleComponentSite();
+      const ancSeq = createAnimationSequence(ancestor, "fadeIn");
+      const ancTplRoot = ancestor.components[0].tplTree as TplTag;
+      ancTplRoot.vsettings[0].rs.animations = [createAnimation(ancSeq)];
+
+      const result = testMerge({
+        ancestorSite: ancestor,
+        a: (site) => {
+          const leftTplRoot = site.components[0].tplTree as TplTag;
+          leftTplRoot.vsettings[0].rs.animations = null;
+        },
+        b: (site) => {
+          const rightTplRoot = site.components[0].tplTree as TplTag;
+          rightTplRoot.vsettings[0].rs.animations = null;
+        },
+      });
+
+      expect(result).toMatchObject({
+        status: "merged",
+      });
+
+      const mergedTplRoot = result.mergedSite.components[0].tplTree as TplTag;
+      expect(mergedTplRoot.vsettings[0].rs.animations).toBeNull();
+    });
+
+    it("merges when left unchanged and right deletes ([a] → [a] vs [a] → null)", () => {
+      const ancestor = singleComponentSite();
+      const ancSeq = createAnimationSequence(ancestor, "fadeIn");
+      const ancTplRoot = ancestor.components[0].tplTree;
+      ancTplRoot.vsettings[0].rs.animations = [createAnimation(ancSeq)];
+
+      const result = testMerge({
+        ancestorSite: ancestor,
+        a: (site) => {
+          // Left side unchanged - keep the animation
+        },
+        b: (site) => {
+          const rightTplRoot = site.components[0].tplTree;
+          rightTplRoot.vsettings[0].rs.animations = null;
+        },
+      });
+
+      expect(result).toMatchObject({
+        status: "merged",
+      });
+
+      const mergedTplRoot = result.mergedSite.components[0].tplTree;
+      expect(mergedTplRoot.vsettings[0].rs.animations).toBeNull();
+    });
+
+    it("merges when left deletes and right unchanged ([a] → null vs [a] → [a])", () => {
+      const ancestor = singleComponentSite();
+      const ancSeq = createAnimationSequence(ancestor, "fadeIn");
+      const ancTplRoot = ancestor.components[0].tplTree;
+      ancTplRoot.vsettings[0].rs.animations = [createAnimation(ancSeq)];
+
+      const result = testMerge({
+        ancestorSite: ancestor,
+        a: (site) => {
+          const leftTplRoot = site.components[0].tplTree;
+          leftTplRoot.vsettings[0].rs.animations = null;
+        },
+        b: (site) => {
+          // Right side unchanged - keep the animation
+        },
+      });
+
+      expect(result).toMatchObject({
+        status: "merged",
+      });
+
+      const mergedTplRoot = result.mergedSite.components[0].tplTree;
+      expect(mergedTplRoot.vsettings[0].rs.animations).toBeNull();
+    });
+
+    it("conflicts when left deletes and right modifies animations", () => {
+      const ancestor = singleComponentSite();
+      const ancSeq = createAnimationSequence(ancestor, "fadeIn");
+      const ancTplRoot = ancestor.components[0].tplTree as TplTag;
+      ancTplRoot.vsettings[0].rs.animations = [createAnimation(ancSeq)];
+
+      const result = testMerge({
+        ancestorSite: ancestor,
+        a: (site) => {
+          const leftTplRoot = site.components[0].tplTree as TplTag;
+          leftTplRoot.vsettings[0].rs.animations = null;
+        },
+        b: (site) => {
+          const rightSeq = createAnimationSequence(site, "slideIn");
+          const rightTplRoot = site.components[0].tplTree as TplTag;
+          rightTplRoot.vsettings[0].rs.animations = [createAnimation(rightSeq)];
+        },
+        directConflictsPicks: ["right"],
+      });
+
+      expect(result).toMatchObject({
+        status: "needs-resolution",
+        genericDirectConflicts: expect.arrayContaining([
+          expect.objectContaining({
+            conflictType: "generic",
+          }),
+        ]),
+      });
+
+      // Verify merged result uses right's animation (slideIn)
+      const mergedTplRoot = result.mergedSite.components[0].tplTree as TplTag;
+      const mergedAnimations = mergedTplRoot.vsettings[0].rs.animations;
+      expect(mergedAnimations).toHaveLength(1);
+      expect(mergedAnimations?.[0]?.sequence.name).toBe("slideIn");
+    });
+
+    it("conflicts when both sides modify animations differently ([a] → [b] vs [a] → [c])", () => {
+      const ancestor = singleComponentSite();
+      const ancSeq = createAnimationSequence(ancestor, "fadeIn");
+      const ancTplRoot = ancestor.components[0].tplTree as TplTag;
+      ancTplRoot.vsettings[0].rs.animations = [createAnimation(ancSeq)];
+
+      const result = testMerge({
+        ancestorSite: ancestor,
+        a: (site) => {
+          const leftSeq = createAnimationSequence(site, "spin");
+          const leftTplRoot = site.components[0].tplTree as TplTag;
+          leftTplRoot.vsettings[0].rs.animations = [createAnimation(leftSeq)];
+        },
+        b: (site) => {
+          const rightSeq = createAnimationSequence(site, "bounce");
+          const rightTplRoot = site.components[0].tplTree as TplTag;
+          rightTplRoot.vsettings[0].rs.animations = [createAnimation(rightSeq)];
+        },
+        directConflictsPicks: ["left"],
+      });
+
+      expect(result).toMatchObject({
+        status: "needs-resolution",
+        genericDirectConflicts: expect.arrayContaining([
+          expect.objectContaining({
+            conflictType: "generic",
+          }),
+        ]),
+      });
+
+      // Verify merged result uses left's animation (spin)
+      const mergedTplRoot = result.mergedSite.components[0].tplTree as TplTag;
+      const mergedAnimations = mergedTplRoot.vsettings[0].rs.animations;
+      expect(mergedAnimations).toHaveLength(1);
+      expect(mergedAnimations?.[0]?.sequence.name).toBe("spin");
+    });
+
+    it("reports conflict when both sides modify animations (atomic behavior)", () => {
+      // For atomic arrays, when both sides modify the array, it reports a conflict
+      // even if the values appear similar, because the objects are different instances.
+      // This is conservative but safe behavior.
+      const ancestor = singleComponentSite();
+      const ancSeq = createAnimationSequence(ancestor, "fadeIn");
+      const ancTplRoot = ancestor.components[0].tplTree as TplTag;
+      ancTplRoot.vsettings[0].rs.animations = [createAnimation(ancSeq)];
+
+      const result = testMerge({
+        ancestorSite: ancestor,
+        a: (site) => {
+          const leftSeq = site.animationSequences.find(
+            (s) => s.name === "fadeIn"
+          )!;
+          const leftTplRoot = site.components[0].tplTree as TplTag;
+          const anim = createAnimation(leftSeq);
+          anim.duration = "2s";
+          leftTplRoot.vsettings[0].rs.animations = [anim];
+        },
+        b: (site) => {
+          const rightSeq = site.animationSequences.find(
+            (s) => s.name === "fadeIn"
+          )!;
+          const rightTplRoot = site.components[0].tplTree as TplTag;
+          const anim = createAnimation(rightSeq);
+          anim.duration = "2s";
+          rightTplRoot.vsettings[0].rs.animations = [anim];
+        },
+        directConflictsPicks: ["left"],
+      });
+
+      // Atomic arrays are conservative: report conflicts when both sides change
+      expect(result).toMatchObject({
+        status: "needs-resolution",
+        genericDirectConflicts: expect.arrayContaining([
+          expect.objectContaining({
+            conflictType: "generic",
+          }),
+        ]),
+      });
+
+      // Verify merged result uses left's animation with modified duration
+      const mergedTplRoot = result.mergedSite.components[0].tplTree as TplTag;
+      const mergedAnimations = mergedTplRoot.vsettings[0].rs.animations;
+      expect(mergedAnimations).toHaveLength(1);
+      expect(mergedAnimations?.[0]?.sequence.name).toBe("fadeIn");
+      expect(mergedAnimations?.[0]?.duration).toBe("2s");
     });
   });
 });

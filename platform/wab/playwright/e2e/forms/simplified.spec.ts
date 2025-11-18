@@ -1,6 +1,10 @@
 import { cloneDeep } from "lodash";
 import { test } from "../../fixtures/test";
-import { checkFormValues } from "../../utils/studio-utils";
+import {
+  checkFormValues,
+  goToProject,
+  waitForFrameToLoad,
+} from "../../utils/studio-utils";
 
 function getFormValue(expectedFormItems: any[]): string {
   const values = Object.fromEntries(
@@ -21,8 +25,7 @@ test.describe("simplified", () => {
         npmPkg: ["@plasmicpkgs/antd5"],
       },
     });
-    await page.goto(`/projects/${projectId}`);
-    await page.waitForLoadState("networkidle");
+    await goToProject(page, `/projects/${projectId}`);
   });
 
   test.afterEach(async ({ apiClient }) => {
@@ -34,10 +37,11 @@ test.describe("simplified", () => {
   });
 
   test("can create/add/remove form items in simplified mode", async ({
+    page,
     models,
   }) => {
     await models.studio.leftPanel.addComponent("Simplified Form");
-    await models.studio.waitForFrameToLoad();
+    await waitForFrameToLoad(page);
 
     const outlineButton = (models.studio as any).studioFrame.locator(
       'button[data-test-tabkey="outline"]'

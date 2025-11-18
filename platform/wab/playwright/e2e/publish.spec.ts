@@ -1,10 +1,11 @@
 import { test } from "../fixtures/test";
+import { goToProject, waitForFrameToLoad } from "../utils/studio-utils";
 
 test.describe("publish", () => {
   let projectId: string;
   test.beforeEach(async ({ apiClient, page }) => {
     projectId = await apiClient.setupNewProject({ name: "publish" });
-    await page.goto(`/projects/${projectId}`);
+    await goToProject(page, `/projects/${projectId}`);
   });
 
   test.afterEach(async ({ apiClient }) => {
@@ -27,6 +28,7 @@ test.describe("publish", () => {
 
     await models.studio.insertTextNodeWithContent("hello");
     await models.studio.waitStudioLoaded();
+    await models.studio.waitForSave();
     await models.studio.publishVersion("first version");
 
     await models.studio.leftPanel.switchToTreeTab();
@@ -34,10 +36,15 @@ test.describe("publish", () => {
 
     const selectedElt = await models.studio.getSelectedElt();
     await selectedElt.dblclick({ force: true });
-    await page.waitForTimeout(500);
 
-    await page.keyboard.press("Control+a");
+    const isMac = process.platform === "darwin";
+    const cmdKey = isMac ? "Meta" : "Control";
+
+    await page.waitForTimeout(500);
+    await page.keyboard.press(`${cmdKey}+a`);
+    await page.waitForTimeout(100);
     await page.keyboard.type("goodbye");
+    await page.waitForTimeout(100);
     await page.keyboard.press("Escape");
     await page.waitForTimeout(500);
 
@@ -45,7 +52,7 @@ test.describe("publish", () => {
       .locator('text="goodbye"')
       .waitFor({ state: "visible", timeout: 5000 });
 
-    await artboardFrame.locator('body').click();
+    await artboardFrame.locator("body").click();
     await models.studio.waitForSave();
 
     await artboardFrame
@@ -79,9 +86,8 @@ test.describe("publish", () => {
       .waitFor({ state: "hidden", timeout: 1000 });
 
     await page.reload();
+    await waitForFrameToLoad(page);
     await models.studio.leftPanel.switchToTreeTab();
-    await page.waitForTimeout(200);
-    await models.studio.waitForFrameToLoad();
     const reloadedFrame = models.studio.componentFrame;
     await reloadedFrame
       .locator('text="hello"')

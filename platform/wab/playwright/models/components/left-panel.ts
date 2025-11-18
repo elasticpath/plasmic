@@ -16,9 +16,6 @@ export class LeftPanel extends BaseModel {
 
   readonly addSearchInput: Locator = this.addContainer.locator("input");
 
-  readonly componentNameInput: Locator = this.frame.locator(
-    '[data-test-id="prompt"]'
-  );
   readonly componentNameSubmit: Locator = this.frame.locator(
     '[data-test-id="prompt-submit"]'
   );
@@ -61,53 +58,70 @@ export class LeftPanel extends BaseModel {
   readonly leftPanelIndicator: Locator = this.frame.locator(
     '[data-test-class="left-panel-indicator"] > div'
   );
-  readonly indicatorClear: Locator = this.frame.locator(
-    '[data-test-class="indicator-clear"]'
-  );
 
   constructor(page: Page) {
     super(page);
   }
 
   async insertNode(node: string) {
-    try {
-      await this.addButton.click({ timeout: 10000 });
-    } catch (error) {
-      await this.addButton.click({ force: true });
+    const addMenuOpen = await this.addContainer.isVisible();
+    if (!addMenuOpen) {
+      await this.addButton.click({ timeout: 30000 });
+      await this.page.waitForTimeout(500);
     }
+    await this.addSearchInput.waitFor({ state: "visible", timeout: 10000 });
+    await this.page.waitForTimeout(200);
 
-    await this.page.waitForTimeout(500);
     await this.addSearchInput.fill(node);
-    await this.page.waitForTimeout(500);
 
     const item = this.frame
       .locator(`li[data-plasmic-add-item-name="${node}"]`)
       .first();
     await item.waitFor({ state: "visible", timeout: 10000 });
 
-    try {
-      await item.click({ timeout: 10000 });
-    } catch (error) {
-      await item.click({ force: true });
+    await item.scrollIntoViewIfNeeded();
+    await this.page.waitForTimeout(200);
+
+    let itemClicked = false;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await item.click({ timeout: 5000 });
+        itemClicked = true;
+        break;
+      } catch (error) {
+        console.error(`Failed to insert ${node}:`, error);
+        await this.page.waitForTimeout(300);
+        if (!(await this.addContainer.isVisible())) {
+          // TODO - it is possible for the click to go through but still throw an error,
+          // need to investigate further how this happens.
+          itemClicked = true;
+          break;
+        }
+        if (attempt === 2) {
+          await item.click({ force: true });
+          itemClicked = true;
+          break;
+        }
+      }
+    }
+
+    if (!itemClicked) {
+      throw new Error(`Failed to click item "${node}"`);
     }
   }
 
   async setComponentName(name: string) {
-    await this.componentNameInput.waitFor({ state: "visible", timeout: 5000 });
-    await this.componentNameInput.fill(name);
-    await this.page.waitForTimeout(1000);
+    const componentNameInput = this.frame.locator('[data-test-id="prompt"]');
+    await componentNameInput.click({ trial: true });
+    await componentNameInput.fill(name);
+    await this.page.waitForTimeout(300);
 
-    await this.componentNameSubmit.waitFor({ state: "visible", timeout: 5000 });
+    await this.componentNameSubmit.click({ trial: true });
     await this.componentNameSubmit.click();
   }
 
   async addComponent(name: string) {
     await this.insertNode("New component");
-    await this.setComponentName(name);
-  }
-
-  async addPage(name: string) {
-    await this.insertNode("New page");
     await this.setComponentName(name);
   }
 
@@ -118,6 +132,21 @@ export class LeftPanel extends BaseModel {
 
   async addNewFrame() {
     await this.insertNode("New scratch artboard");
+  }
+
+  async addAndSelectNewArtboard() {
+    await this.addNewFrame();
+    const artboardFrame = this.page
+      .locator("iframe")
+      .first()
+      .contentFrame()
+      .locator("iframe")
+      .contentFrame()
+      .locator("iframe")
+      .first()
+      .contentFrame();
+    const artboardBody = artboardFrame.locator("body");
+    await artboardBody.click();
   }
 
   async setBreakpointWidth(width: string) {
@@ -169,7 +198,6 @@ export class LeftPanel extends BaseModel {
   }
 
   async switchToTreeTab() {
-    // Check if the tree tab is already active by looking at the aria-selected attribute
     const isActive =
       (await this.treeTabButton.getAttribute("data-state-isselected")) ===
       "true";
@@ -179,30 +207,29 @@ export class LeftPanel extends BaseModel {
   }
 
   async switchToVersionsTab() {
-    // Check if the versions tab is already active by looking at the aria-selected attribute
     const isActive =
       (await this.versionsTabButton.getAttribute("data-state-isselected")) ===
       "true";
     if (!isActive) {
+      await this.versionsTabButton.scrollIntoViewIfNeeded();
       await this.versionsTabButton.click();
     }
   }
 
   async switchToImportsTab() {
+    const moreTab = this.frame.locator('[data-test-tabkey="more"]');
+    await moreTab.hover();
+    await this.page.waitForTimeout(500);
+
     const importsTab = this.frame.locator('button[data-test-tabkey="imports"]');
-    // Check if the imports tab is already active by looking at the aria-selected attribute
-    const isActive =
-      (await importsTab.getAttribute("data-state-isselected")) === "true";
-    if (!isActive) {
-      await importsTab.click();
-    }
+    await importsTab.click();
   }
 
   async selectTreeNode(names: string[]): Promise<Locator> {
     for (let i = 0; i < names.length; i++) {
       const name = names[i];
       const label = this.treeLabels.filter({ hasText: name }).first();
-      await label.waitFor();
+      await label.waitFor({ timeout: 5000 });
 
       if (i < names.length - 1) {
         const expander = label.locator(
@@ -224,13 +251,5 @@ export class LeftPanel extends BaseModel {
 
   async hoverLeftPanelIndicator() {
     await this.leftPanelIndicator.hover();
-  }
-
-  async clearAllIndicators() {
-    const indicators = this.indicatorClear;
-    const count = await indicators.count();
-    for (let i = 0; i < count; i++) {
-      await indicators.nth(i).click({ force: true });
-    }
   }
 }

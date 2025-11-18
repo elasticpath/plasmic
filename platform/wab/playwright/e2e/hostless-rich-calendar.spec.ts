@@ -1,5 +1,6 @@
-import { expect } from "@playwright/test";
-import { test } from "../fixtures/test";
+import { expect, Page } from "@playwright/test";
+import { PageModels, test } from "../fixtures/test";
+import { goToProject } from "../utils/studio-utils";
 
 /**
  * Adds a calendar and sets its default value.
@@ -13,7 +14,11 @@ import { test } from "../fixtures/test";
  * So it's also not recommended to get playwright to click on the items in virtual list and reach the desired date in the calendar.
  * @param defaultValue
  */
-async function addCalendar(models: any, page: any, defaultValue?: string) {
+async function addCalendar(
+  models: PageModels,
+  page: Page,
+  defaultValue?: string
+) {
   await models.studio.leftPanel.insertNode("hostless-rich-calendar");
 
   if (!defaultValue) {
@@ -90,7 +95,7 @@ test.describe("hostless-rich-calendar", () => {
   });
 
   test("calendar states work", async ({ page, models }) => {
-    await page.goto(`/projects/${projectId}`);
+    await goToProject(page, `/projects/${projectId}`);
 
     await models.studio.createNewPageInOwnArena("Homepage");
     await models.studio.frames
@@ -146,7 +151,7 @@ test.describe("hostless-rich-calendar", () => {
     const saveButton2 = dataPicker2.locator('button:has-text("Save")');
     await saveButton2.click();
 
-    await models.studio.withinLiveMode(async (liveFrame: any) => {
+    await models.studio.withinLiveMode(async (liveFrame) => {
       await expect(liveFrame.locator("body")).not.toContainText(
         /2022-08-2[456]T\d{2}:\d{2}:\d{2}\.\d{3}Z/
       );
@@ -176,7 +181,7 @@ test.describe("hostless-rich-calendar", () => {
   });
 
   test("calendar valid range works", async ({ page, models }) => {
-    await page.goto(`/projects/${projectId}`);
+    await goToProject(page, `/projects/${projectId}`);
 
     await models.studio.createNewPageInOwnArena("Homepage");
     await models.studio.frames
@@ -237,7 +242,7 @@ test.describe("hostless-rich-calendar", () => {
         return page.keyboard.press("Escape");
       });
 
-    await models.studio.withinLiveMode(async (liveFrame: any) => {
+    await models.studio.withinLiveMode(async (liveFrame) => {
       await liveFrame.locator(".ant-radio-button-wrapper").nth(1).click();
 
       await liveFrame.locator(".ant-select-selector").first().click();
@@ -262,7 +267,7 @@ test.describe("hostless-rich-calendar", () => {
   });
 
   test("calendar events are rendered", async ({ page, models }) => {
-    await page.goto(`/projects/${projectId}`);
+    await goToProject(page, `/projects/${projectId}`);
 
     await models.studio.createNewPageInOwnArena("Homepage");
     await models.studio.frames
@@ -306,44 +311,7 @@ test.describe("hostless-rich-calendar", () => {
     await page.keyboard.press("Control+a");
     await page.keyboard.press("Delete");
 
-    const eventsData = `[
-      {
-          "date": "2023-05-10 09:24:15",
-          "name": "Mustafa Birthday",
-          "color": "gold",
-          "image": "https://www.one-stop-party-ideas.com/images/First-Outfit-Boy.jpg"
-      },
-      {
-          "date": "2023-05-15 09:24:15",
-          "name": "Affan Birthday",
-          "color": "red",
-          "image": "https://aspenjay.com/wp-content/uploads/2021/08/baby-1st-birthday-photos.jpg"
-      },
-      {
-          "date": "2023-01-02T22:30:00.000+00:00",
-          "name": "Usman Birthday",
-          "color": "blue",
-          "image": "https://www.bakingo.com/blog/wp-content/uploads/2023/02/vanilla.jpg"
-      },
-      {
-          "date": "Sun, 25 Apr 2021 13:23:12 +0630",
-          "name": "Sarah Birthday",
-          "color": "purple",
-          "image": "https://www.bakingo.com/blog/wp-content/uploads/2023/02/vanilla.jpg"
-      },
-      {
-          "date": "2023-01-13T22:30:00.000+00:00",
-          "name": "Jaweria Birthday",
-          "color": "pink",
-          "image": "https://www.bakingo.com/blog/wp-content/uploads/2023/02/vanilla.jpg"
-      },
-      {
-          "date": "2023-11-26T22:30:00.000+00:00",
-          "name": "Safi Birthday",
-          "color": "silver",
-          "image": "https://www.bakingo.com/blog/wp-content/uploads/2023/02/vanilla.jpg"
-      }
-  ]`;
+    const eventsData = `[{"date":"2023-05-10 09:24:15","name":"Mustafa Birthday","color":"gold","image":"https://www.one-stop-party-ideas.com/images/First-Outfit-Boy.jpg"},{"date":"2023-05-15 09:24:15","name":"Affan Birthday","color":"red","image":"https://aspenjay.com/wp-content/uploads/2021/08/baby-1st-birthday-photos.jpg"},{"date":"2023-01-02T22:30:00.000+00:00","name":"Usman Birthday","color":"blue","image":"https://www.bakingo.com/blog/wp-content/uploads/2023/02/vanilla.jpg"},{"date":"Sun, 25 Apr 2021 13:23:12 +0630","name":"Sarah Birthday","color":"purple","image":"https://www.bakingo.com/blog/wp-content/uploads/2023/02/vanilla.jpg"},{"date":"2023-01-13T22:30:00.000+00:00","name":"Jaweria Birthday","color":"pink","image":"https://www.bakingo.com/blog/wp-content/uploads/2023/02/vanilla.jpg"},{"date":"2023-11-26T22:30:00.000+00:00","name":"Safi Birthday","color":"silver","image":"https://www.bakingo.com/blog/wp-content/uploads/2023/02/vanilla.jpg"}]`;
 
     await page.keyboard.insertText(eventsData);
     await page.waitForTimeout(1000);
@@ -355,9 +323,12 @@ test.describe("hostless-rich-calendar", () => {
 
     await models.studio.rightPanel.frame
       .locator('[data-test-id="data-picker"]')
-      .waitFor({ state: "hidden", timeout: 5000 });
+      .waitFor({ state: "hidden", timeout: 5000 })
+      .catch(() => {
+        return page.keyboard.press("Escape");
+      });
 
-    await models.studio.withinLiveMode(async (liveFrame: any) => {
+    await models.studio.withinLiveMode(async (liveFrame) => {
       await liveFrame.locator(".ant-radio-button-wrapper").nth(1).click();
       const may2023Cell = liveFrame.locator(
         '.ant-picker-month-panel table td[title="2023-05"]'

@@ -8,17 +8,16 @@ import {
 } from "@/wab/client/components/grouping/VirtualTree";
 import { promptDeleteFolder } from "@/wab/client/components/modals/folderDeletionModal";
 import MultiAssetsActions from "@/wab/client/components/sidebar/MultiAssetsActions";
+import StyleTokenRow from "@/wab/client/components/sidebar/StyleTokenRow";
 import { TokenEditModal } from "@/wab/client/components/sidebar/TokenEditModal";
+import { StyleTokenFolderRow } from "@/wab/client/components/sidebar/TokenFolderRow";
 import TokenTypeHeader from "@/wab/client/components/sidebar/TokenTypeHeader";
 import {
+  StyleTokenFolder,
+  StyleTokenFolderActions,
+  StyleTokenPanelRow,
   TOKEN_ROW_HEIGHT,
-  TokenControlsContext,
-  TokenFolder,
-  TokenFolderActions,
-  TokenFolderRow,
-  TokenPanelRow,
-  TokenRow,
-} from "@/wab/client/components/sidebar/token-controls";
+} from "@/wab/client/components/sidebar/token-utils";
 import { Matcher } from "@/wab/client/components/view-common";
 import { useClientTokenResolver } from "@/wab/client/components/widgets/ColorPicker/client-token-resolver";
 import Select from "@/wab/client/components/widgets/Select";
@@ -26,14 +25,16 @@ import { PlasmicLeftGeneralTokensPanel } from "@/wab/client/plasmic/plasmic_kit_
 import { useStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import {
   StyleTokenType,
-  TokenValue,
+  StyleTokenValue,
   tokenTypeDefaults,
   tokenTypeLabel,
   tokenTypes,
 } from "@/wab/commons/StyleToken";
 import { VariantedStylesHelper } from "@/wab/shared/VariantedStylesHelper";
+import { isScreenVariant } from "@/wab/shared/Variants";
 import { ensure, spawn, unexpected, unreachable } from "@/wab/shared/common";
 import {
+  TokenValueResolver,
   finalStyleTokensForDep,
   siteFinalStyleTokens,
 } from "@/wab/shared/core/site-style-tokens";
@@ -58,11 +59,35 @@ import { debounce, groupBy, partition } from "lodash";
 import { observer } from "mobx-react";
 import * as React from "react";
 
+// Style Token Controls Context
+type StyleTokenControlsContextValue = {
+  vsh: VariantedStylesHelper | undefined;
+  resolver: TokenValueResolver;
+  onDuplicate: (token: StyleToken) => Promise<void>;
+  onSelect: (
+    token: MutableToken<StyleToken> | OverrideableToken<StyleToken>
+  ) => void;
+  onDeleteOverride: (token: OverrideableToken<StyleToken>) => void;
+  onAdd: (tokenType: StyleTokenType, folderName?: string) => Promise<void>;
+  expandedHeaders: Set<StyleTokenType>;
+  setExpandedHeaders: React.Dispatch<React.SetStateAction<Set<StyleTokenType>>>;
+};
+
+export const StyleTokenControlsContext =
+  React.createContext<StyleTokenControlsContextValue | null>(null);
+
+export function useStyleTokenControls() {
+  return ensure(
+    React.useContext(StyleTokenControlsContext),
+    "useStyleTokenControls must be used within a StyleTokenControlsContext.Provider"
+  );
+}
+
 interface TokenToPanelRowProps {
   item: FinalToken<StyleToken> | InternalFolder<FinalToken<StyleToken>>;
   tokenType: StyleTokenType;
-  getTokenValue: (token: FinalToken<StyleToken>) => TokenValue;
-  actions: TokenFolderActions;
+  getTokenValue: (token: FinalToken<StyleToken>) => StyleTokenValue;
+  actions?: StyleTokenFolderActions;
   dep?: ProjectDependency;
 }
 
@@ -72,7 +97,7 @@ function mapToTokenPanelRow({
   getTokenValue,
   actions,
   dep,
-}: TokenToPanelRowProps): TokenPanelRow {
+}: TokenToPanelRowProps): StyleTokenPanelRow {
   if (!isFolder(item)) {
     return {
       type: "token" as const,
@@ -130,23 +155,23 @@ const LeftGeneralTokensPanel = observer(function LeftGeneralTokensPanel() {
     (token: FinalToken<StyleToken>) => {
       let value = resolver(token, vsh);
       if (token.type === "Color") {
-        value = Chroma.stringify(value) as TokenValue;
+        value = Chroma.stringify(value) as StyleTokenValue;
       }
       return value;
     },
     [resolver, vsh]
   );
 
-  const getRowKey = React.useCallback((row: TokenPanelRow) => {
+  const getRowKey = React.useCallback((row: StyleTokenPanelRow) => {
     return row.key;
   }, []);
-  const getRowChildren = React.useCallback((row: TokenPanelRow) => {
+  const getRowChildren = React.useCallback((row: StyleTokenPanelRow) => {
     if (row.type === "token") {
       return [];
     }
     return row.items;
   }, []);
-  const getRowSearchText = React.useCallback((row: TokenPanelRow) => {
+  const getRowSearchText = React.useCallback((row: StyleTokenPanelRow) => {
     switch (row.type) {
       case "header":
         return tokenTypeLabel(row.tokenType);
@@ -159,7 +184,7 @@ const LeftGeneralTokensPanel = observer(function LeftGeneralTokensPanel() {
         unexpected();
     }
   }, []);
-  const getRowHeight = React.useCallback((row: TokenPanelRow) => {
+  const getRowHeight = React.useCallback((row: StyleTokenPanelRow) => {
     if (row.type === "header") {
       return 42;
     }
@@ -172,7 +197,7 @@ const LeftGeneralTokensPanel = observer(function LeftGeneralTokensPanel() {
 
       await studioCtx.change(({ success }) => {
         const initialValue = tokenTypeDefaults(type);
-        const token = studioCtx.tplMgr().addToken({
+        const token = studioCtx.tplMgr().addStyleToken({
           prefix: folderPath,
           tokenType: type,
           value: initialValue,
@@ -186,10 +211,13 @@ const LeftGeneralTokensPanel = observer(function LeftGeneralTokensPanel() {
   );
 
   const getFolderTokens = (
-    items: TokenPanelRow[]
-  ): { tokens: StyleToken[]; folders: TokenFolder[] } => {
+    items: StyleTokenPanelRow[]
+  ): {
+    tokens: StyleToken[];
+    folders: StyleTokenFolder[];
+  } => {
     const tokens: StyleToken[] = [];
-    const folders: TokenFolder[] = [];
+    const folders: StyleTokenFolder[] = [];
 
     for (const item of items) {
       switch (item.type) {
@@ -212,7 +240,7 @@ const LeftGeneralTokensPanel = observer(function LeftGeneralTokensPanel() {
   };
 
   const onDeleteFolder = React.useCallback(
-    async (folder: TokenFolder) => {
+    async (folder: StyleTokenFolder) => {
       const confirmation = await promptDeleteFolder(
         "token",
         getFolderWithSlash(folder.name),
@@ -227,7 +255,7 @@ const LeftGeneralTokensPanel = observer(function LeftGeneralTokensPanel() {
   );
 
   const onFolderRenamed = React.useCallback(
-    async (folder: TokenFolder, newName: string) => {
+    async (folder: StyleTokenFolder, newName: string) => {
       const pathData = replaceFolderName(folder.key, newName);
       const { tokens, folders } = getFolderTokens([folder]);
 
@@ -236,7 +264,7 @@ const LeftGeneralTokensPanel = observer(function LeftGeneralTokensPanel() {
         for (const token of tokens) {
           const oldTokenName = token.name;
           const newTokenName = oldTokenName.replace(oldPath, newPath);
-          studioCtx.tplMgr().renameToken(token, newTokenName);
+          studioCtx.tplMgr().renameStyleToken(token, newTokenName);
         }
       });
       const keyChanges = getFolderKeyChanges(folders, pathData);
@@ -245,7 +273,7 @@ const LeftGeneralTokensPanel = observer(function LeftGeneralTokensPanel() {
     [studioCtx]
   );
 
-  const actions: TokenFolderActions = React.useMemo(
+  const actions: StyleTokenFolderActions = React.useMemo(
     () => ({
       onAddToken,
       onDeleteFolder,
@@ -257,7 +285,7 @@ const LeftGeneralTokensPanel = observer(function LeftGeneralTokensPanel() {
   const onDuplicate = React.useCallback(
     async (token: StyleToken) => {
       await studioCtx.change(({ success }) => {
-        const newToken = studioCtx.tplMgr().duplicateToken(token);
+        const newToken = studioCtx.tplMgr().duplicateStyleToken(token);
         setJustAdded(newToken);
         setEditToken(new MutableToken(newToken));
         return success();
@@ -289,9 +317,15 @@ const LeftGeneralTokensPanel = observer(function LeftGeneralTokensPanel() {
     [vsh]
   );
 
-  const contextGlobalVariants = allGlobalVariants(studioCtx.site, {
-    excludeMediaQuery: true,
+  const availableTargets = allGlobalVariants(studioCtx.site, {
+    includeDeps: "direct",
+    excludeInactiveScreenVariants: true,
   });
+
+  const [screenGlobalVariants, contextGlobalVariants] = partition(
+    availableTargets,
+    (v) => isScreenVariant(v)
+  );
 
   const handleGlobalVariantChange = (variantId) => {
     if (variantId === "base") {
@@ -299,17 +333,10 @@ const LeftGeneralTokensPanel = observer(function LeftGeneralTokensPanel() {
       setIsTargeting(false);
     } else {
       const globalVariants = [
-        contextGlobalVariants.some((v) => v.uuid === variantId)
-          ? ensure(
-              contextGlobalVariants.find((v) => v.uuid === variantId),
-              () => `Picked unknown screen variant`
-            )
-          : ensure(
-              studioCtx.site.activeScreenVariantGroup?.variants.find(
-                (v) => v.uuid === variantId
-              ),
-              () => `Picked unknown global variant`
-            ),
+        ensure(
+          availableTargets.find((v) => v.uuid === variantId),
+          () => `Picked unknown global variant`
+        ),
       ];
       setVsh(
         new VariantedStylesHelper(
@@ -330,11 +357,20 @@ const LeftGeneralTokensPanel = observer(function LeftGeneralTokensPanel() {
   const tokenSectionItems = (tokenType: StyleTokenType) => {
     const makeTokensItems = (
       tokens: FinalToken<StyleToken>[],
-      dep?: ProjectDependency
+      dep?: ProjectDependency,
+      isRegistered = false
     ) => {
       tokens = naturalSort(tokens, (token) => getFolderTrimmed(token.name));
+      const depPrefix = dep ? `_${dep.name}` : "";
+
+      const regPrefix = tokens.some((t) => t.isRegistered) ? "_registered" : "";
+
+      const pathPrefix = `${tokenType}${depPrefix}${regPrefix}`;
+
+      // dep and registered token folders are not editable
+      const hasActions = !dep && !isRegistered;
       const tokenTree = createFolderTreeStructure(tokens, {
-        pathPrefix: tokenType,
+        pathPrefix,
         getName: (item) => item.name,
         mapper: (item) =>
           mapToTokenPanelRow({
@@ -342,13 +378,13 @@ const LeftGeneralTokensPanel = observer(function LeftGeneralTokensPanel() {
             tokenType,
             getTokenValue,
             dep,
-            actions,
+            actions: hasActions ? actions : undefined,
           }),
       });
       return { items: tokenTree, count: tokens.length };
     };
 
-    const makeDepsItems = (deps: ProjectDependency[]): TokenPanelRow[] => {
+    const makeDepsItems = (deps: ProjectDependency[]): StyleTokenPanelRow[] => {
       deps = naturalSort(deps, (dep) =>
         studioCtx.projectDependencyManager.getNiceDepName(dep)
       );
@@ -371,7 +407,6 @@ const LeftGeneralTokensPanel = observer(function LeftGeneralTokensPanel() {
               ).filter((t) => t.type === tokenType),
               dep
             ),
-            actions,
           };
         })
         .filter((dep) => dep.count > 0);
@@ -384,8 +419,8 @@ const LeftGeneralTokensPanel = observer(function LeftGeneralTokensPanel() {
       (t) => !t.isRegistered
     );
 
-    const items: TokenPanelRow[] = [
-      ...makeTokensItems(normalTokens).items,
+    const items: StyleTokenPanelRow[] = [
+      ...makeTokensItems(normalTokens, undefined, false).items,
       ...(registeredTokens.length > 0
         ? [
             {
@@ -393,8 +428,7 @@ const LeftGeneralTokensPanel = observer(function LeftGeneralTokensPanel() {
               tokenType,
               name: "Registered tokens",
               key: `$${tokenType}-registered-folder`,
-              actions,
-              ...makeTokensItems(registeredTokens),
+              ...makeTokensItems(registeredTokens, undefined, true),
             },
           ]
         : []),
@@ -421,7 +455,7 @@ const LeftGeneralTokensPanel = observer(function LeftGeneralTokensPanel() {
       .filter((t) => {
         let resolved = resolver(t, vsh);
         if (t.type === "Color") {
-          resolved = Chroma.stringify(resolved) as TokenValue;
+          resolved = Chroma.stringify(resolved) as StyleTokenValue;
         }
         return (
           (matcher.matches(t.name) ||
@@ -432,7 +466,7 @@ const LeftGeneralTokensPanel = observer(function LeftGeneralTokensPanel() {
       })
       .map((t) => t.uuid);
 
-    const items = tokenTypes.map((tokenType): TokenPanelRow => {
+    const items = tokenTypes.map((tokenType): StyleTokenPanelRow => {
       return {
         type: "header" as const,
         tokenType: tokenType,
@@ -440,6 +474,22 @@ const LeftGeneralTokensPanel = observer(function LeftGeneralTokensPanel() {
         ...tokenSectionItems(tokenType),
       };
     });
+
+    // Reset vsh if the currently selected variant has been deleted
+    React.useEffect(() => {
+      const selectedVariants = vsh?.globalVariants();
+      if (!selectedVariants || selectedVariants.length === 0) {
+        return;
+      }
+      const hasDeletedVariant = selectedVariants.some(
+        (selectedVariant) =>
+          !availableTargets.some((v) => v.uuid === selectedVariant.uuid)
+      );
+      if (hasDeletedVariant) {
+        setVsh(undefined);
+        setIsTargeting(false);
+      }
+    }, [vsh, JSON.stringify(availableTargets.map((t) => t.uuid).sort())]);
 
     return (
       <MultiAssetsActions
@@ -452,7 +502,7 @@ const LeftGeneralTokensPanel = observer(function LeftGeneralTokensPanel() {
           return await studioCtx.siteOps().tryDeleteTokens(selectedTokens);
         }}
       >
-        <TokenControlsContext.Provider
+        <StyleTokenControlsContext.Provider
           value={{
             vsh,
             resolver,
@@ -473,13 +523,13 @@ const LeftGeneralTokensPanel = observer(function LeftGeneralTokensPanel() {
             expandAll={expandAll}
             collapseAll={collapseAll}
           />
-        </TokenControlsContext.Provider>
+        </StyleTokenControlsContext.Provider>
       </MultiAssetsActions>
     );
   };
 
   const treeItems = React.useMemo(
-    (): TokenPanelRow[] =>
+    (): StyleTokenPanelRow[] =>
       tokenTypes.map((tt) => {
         const { items: section, count } = tokenSectionItems(tt);
         return {
@@ -500,7 +550,7 @@ const LeftGeneralTokensPanel = observer(function LeftGeneralTokensPanel() {
     renameGroup,
     expandAll,
     collapseAll,
-  } = useTreeData<TokenPanelRow>({
+  } = useTreeData<StyleTokenPanelRow>({
     nodes: treeItems,
     query: debouncedQuery,
     renderElement: TokenTreeRow,
@@ -534,6 +584,7 @@ const LeftGeneralTokensPanel = observer(function LeftGeneralTokensPanel() {
         }}
         isTargeting={isTargeting}
         globalVariantSelect={{
+          value: vsh?.globalVariants()?.[0]?.uuid ?? "base",
           onChange: (e) => handleGlobalVariantChange(e),
           "data-test-id": "global-variant-select",
           children: (
@@ -585,7 +636,7 @@ const LeftGeneralTokensPanel = observer(function LeftGeneralTokensPanel() {
   );
 });
 
-const TokenTreeRow = (props: RenderElementProps<TokenPanelRow>) => {
+const TokenTreeRow = (props: RenderElementProps<StyleTokenPanelRow>) => {
   const { value, treeState } = props;
   switch (value.type) {
     case "header":
@@ -600,7 +651,7 @@ const TokenTreeRow = (props: RenderElementProps<TokenPanelRow>) => {
     case "folder":
     case "folder-token":
       return (
-        <TokenFolderRow
+        <StyleTokenFolderRow
           folder={value}
           matcher={treeState.matcher}
           isOpen={treeState.isOpen}
@@ -610,7 +661,7 @@ const TokenTreeRow = (props: RenderElementProps<TokenPanelRow>) => {
       );
     case "token":
       return (
-        <TokenRow
+        <StyleTokenRow
           token={value.token}
           tokenValue={value.value}
           matcher={treeState.matcher}

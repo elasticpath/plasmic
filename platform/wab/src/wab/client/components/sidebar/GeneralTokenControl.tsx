@@ -4,7 +4,7 @@ import { Matcher } from "@/wab/client/components/view-common";
 import Checkbox from "@/wab/client/components/widgets/Checkbox";
 import PlasmicGeneralTokenControl from "@/wab/client/plasmic/plasmic_kit_left_pane/PlasmicGeneralTokenControl";
 import { useStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
-import { TokenValue } from "@/wab/commons/StyleToken";
+import { StyleTokenValue } from "@/wab/commons/StyleToken";
 import { VariantedStylesHelper } from "@/wab/shared/VariantedStylesHelper";
 import { FinalToken, MutableToken } from "@/wab/shared/core/tokens";
 import { getFolderDisplayName } from "@/wab/shared/folders/folders-util";
@@ -16,7 +16,7 @@ import * as React from "react";
 interface GeneralTokenControlProps {
   style?: React.CSSProperties;
   token: FinalToken<StyleToken>;
-  tokenValue: TokenValue;
+  tokenValue: StyleTokenValue;
   matcher: Matcher;
   menu: () => React.ReactElement;
   onClick?: () => void;

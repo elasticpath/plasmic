@@ -1,18 +1,22 @@
-import { test as base } from "@playwright/test";
+import { APIRequestContext, test as base } from "@playwright/test";
 
 import { AuthPage } from "../models/auth-page";
 import { StudioModel } from "../models/studio-model";
 import { ApiClient } from "../utils/api-client";
 
-export interface TestFixtures {
-  models: {
-    studio: StudioModel;
-    auth: AuthPage;
-  };
+export interface PageModels {
+  studio: StudioModel;
+  auth: AuthPage;
+}
+
+export interface TestModels {
+  models: PageModels;
+}
+export interface TestFixtures extends TestModels {
   apiClient: ApiClient;
 }
 
-export const test = base.extend<TestFixtures>({
+export const testModels = base.extend<TestFixtures>({
   models: async ({ page }, use) => {
     const models = {
       studio: new StudioModel(page),
@@ -20,8 +24,18 @@ export const test = base.extend<TestFixtures>({
     };
     await use(models);
   },
-  apiClient: async ({ request, context }, use) => {
-    const client = new ApiClient(request, "http://localhost:3003");
+});
+
+export function makeApiClient(
+  request: APIRequestContext,
+  baseURL: string | undefined
+) {
+  return new ApiClient(request, baseURL || "http://localhost:3003");
+}
+
+export const test = testModels.extend<TestFixtures>({
+  apiClient: async ({ request, context, baseURL }, use) => {
+    const client = makeApiClient(request, baseURL);
     await client.login("user2@example.com", "!53kr3tz!");
     const cookies = await request.storageState();
 

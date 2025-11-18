@@ -88,6 +88,7 @@ import {
 } from "@/wab/shared/core/image-assets";
 import { walkDependencyTree } from "@/wab/shared/core/project-deps";
 import {
+  TokenRefResolver,
   makeTokenRefResolver,
   siteFinalStyleTokensAllDepsDict,
   siteFinalStyleTokensDirectDeps,
@@ -128,7 +129,6 @@ import {
   isTplTextBlock,
   tryGetOwnerSite,
 } from "@/wab/shared/core/tpls";
-import { has3dComponent } from "@/wab/shared/core/transform-utils";
 import * as css from "@/wab/shared/css";
 import {
   getCssOverrides,
@@ -137,7 +137,9 @@ import {
   parseCss,
   showCssShorthand,
 } from "@/wab/shared/css";
+import { showCssAnimations } from "@/wab/shared/css/animations";
 import { splitCssValue } from "@/wab/shared/css/parse";
+import { has3dComponent } from "@/wab/shared/css/transforms";
 import { imageDataUriToBlob } from "@/wab/shared/data-urls";
 import { ThemeTagSource } from "@/wab/shared/defined-indicator";
 import { getProjectFlags } from "@/wab/shared/devflags";
@@ -633,17 +635,22 @@ function deriveCssRuleSetStyles(
     )
   );
   // Process animations
-  if (rs.animations && rs.animations.length > 0) {
-    const animationPropVal = generateAnimationPropValue(rs.animations);
-    if (animationPropVal) {
-      m.set(
-        "animation",
-        resolver
-          ? resolver.tryResolveTokenRefs(animationPropVal)
-          : animationPropVal
-      );
+  if (rs.animations) {
+    if (rs.animations.length > 0) {
+      const animationPropVal = generateAnimationPropValue(rs.animations);
+      if (animationPropVal) {
+        m.set(
+          "animation",
+          resolver
+            ? resolver.tryResolveTokenRefs(animationPropVal)
+            : animationPropVal
+        );
+      }
+    } else {
+      m.set("animation", "none");
     }
   }
+
   Object.entries(makeLayoutAwareRuleSet(rs, forBaseVariant).values).forEach(
     ([name, val]) => {
       if (!isStylePropApplicable(tpl, name)) {
@@ -668,9 +675,7 @@ function deriveCssRuleSetStyles(
   if (
     childPerspective !== "0px" ||
     (effectiveExpr.has("transform") &&
-      splitCssValue("transform", effectiveExpr.get("transform")).some((val) =>
-        has3dComponent(val)
-      ))
+      has3dComponent(effectiveExpr.get("transform")))
   ) {
     m.set("transform-style", "preserve-3d");
   }
@@ -692,6 +697,7 @@ function deriveCssRuleSetStyles(
   postProcessStyles(m, {
     isStudio: ctx.isStudio,
     whitespaceNormal: opts.whitespaceNormal,
+    tokenRefResolver: ctx.siteHelper.makeTokenRefResolver(),
   });
 
   return m;
@@ -715,12 +721,21 @@ function preNormalizeWhitespace(val: string) {
   return val;
 }
 
+type PostProcessStylesOpts = {
+  whitespaceNormal?: boolean;
+} & (
+  | {
+      isStudio: true;
+      tokenRefResolver: TokenRefResolver;
+    }
+  | {
+      isStudio?: false;
+    }
+);
+
 function postProcessStyles(
   m: Map<string, string>,
-  opts: {
-    isStudio?: boolean;
-    whitespaceNormal?: boolean;
-  }
+  opts: PostProcessStylesOpts
 ) {
   if (m.has("background")) {
     deriveBackgroundStyles(
@@ -752,9 +767,8 @@ function postProcessStyles(
   // Usually RuleSet.values store valid css values. But for some props,
   // we store special encoding within the css values. So here we make
   // sure we transform them into the proper css values, using showCssValues.
-  // - "transform" is delimited with fake delimiter "###"
   // - filter and backdrop-filter may have "#hidden" tags
-  for (const prop of ["transform", "filter", "backdrop-filter"]) {
+  for (const prop of ["filter", "backdrop-filter"]) {
     if (m.has(prop)) {
       const val = m.get(prop)!;
       m.set(prop, css.showCssValues(prop, splitCssValue(prop, val)));
@@ -782,7 +796,9 @@ function postProcessStyles(
   if (opts.isStudio) {
     ["height", "min-height"].forEach((prop) => {
       if (m.has(prop)) {
-        m.set(prop, getViewportAwareHeight(m.get(prop)!));
+        const val = m.get(prop)!;
+        const resolvedVal = opts.tokenRefResolver(val) ?? val;
+        m.set(prop, getViewportAwareHeight(resolvedVal));
       }
     });
   }
@@ -1014,24 +1030,12 @@ export function generateAnimationPropValue(animations: Animation[]) {
     return null;
   }
 
-  // Generate shorthand animation values for each animation
-  const animationValues = animations.map((anim) => {
-    const parts = [
-      anim.duration, // animation-duration (required)
-      anim.timingFunction, // animation-timing-function
-      anim.delay, // animation-delay
-      anim.iterationCount, // animation-iteration-count
-      anim.direction, // animation-direction
-      anim.fillMode, // animation-fill-mode
-      anim.playState, // animation-play-state
-      getAnimationSequenceIdentifier(anim.sequence), // animation-name (required, goes last)
-    ];
-
-    return parts.join(" ");
-  });
-
-  // Return the shorthand animation property with comma-separated values
-  return animationValues.join(", ");
+  return showCssAnimations(
+    animations.map((anim) => ({
+      name: getAnimationSequenceIdentifier(anim.sequence),
+      ...anim,
+    }))
+  );
 }
 
 /**
@@ -1133,6 +1137,7 @@ function hasOutlineStyle(m: Map<string, string>) {
 function showSelectorRuleSet(
   ruleName: string,
   srs: SelectorRuleSet,
+  tokenRefResolver: TokenRefResolver,
   resolver?: CssVarResolver,
   isStudio?: boolean
 ) {
@@ -1159,7 +1164,10 @@ function showSelectorRuleSet(
     m.set("outline", "none");
   }
 
-  postProcessStyles(m, { isStudio });
+  postProcessStyles(
+    m,
+    isStudio ? { isStudio: true, tokenRefResolver } : { isStudio: false }
+  );
 
   const ruleContent = showStyles(m);
   return ruleContent ? `${ruleName} { ${ruleContent} }` : undefined;
@@ -1276,6 +1284,7 @@ function showClassPropRuleSets(
           const rule = showSelectorRuleSet(
             makeRuleName(arg.expr, sty),
             sty,
+            makeTokenRefResolver(site),
             opts?.resolver,
             opts?.isStudio
           );
@@ -2267,6 +2276,9 @@ export const makeCssTokenVarsRuleSets = (
         const vsh = groupedTokenVars[key][0].vsh;
 
         const globalVariants = vsh.globalVariants() ?? [];
+        // Only generate external token once (ie. for base variant) to avoid redundant declarations
+        const shouldGenerateExternalToken =
+          opts.generateExternalToken && vsh.isActiveBaseVariant();
         const nonScreenGlobalVariants = globalVariants.filter(
           (v) => !isScreenVariant(v)
         );
@@ -2296,7 +2308,9 @@ export const makeCssTokenVarsRuleSets = (
           ${groupedTokenVars[key]
             .flatMap((t) => [
               t.varRule,
-              ...(opts.generateExternalToken ? [t.plasmicExternalVarRule] : []),
+              ...(shouldGenerateExternalToken
+                ? [t.plasmicExternalVarRule]
+                : []),
               ...(t.userExternalVarRule ? [t.userExternalVarRule] : []),
             ])
             .join("; ")}
@@ -2558,7 +2572,7 @@ export const cloneRuleSet = (rs: RuleSet) => {
   return new RuleSet({
     values: { ...rs.values },
     mixins: [...rs.mixins],
-    animations: rs.animations.map(cloneAnimation),
+    animations: rs.animations ? rs.animations.map(cloneAnimation) : null,
   });
 };
 
@@ -2570,7 +2584,7 @@ export function mkRuleSet(
   return new RuleSet({
     values: obj.values ?? {},
     mixins: [],
-    animations: [],
+    animations: null,
   });
 }
 
@@ -3017,7 +3031,7 @@ export function extractAnimationSequenceUsages(
   const traverseTpl = (tplRoot: TplNode, component: Component) => {
     for (const [vs, _tpl] of findVariantSettingsUnderTpl(tplRoot)) {
       if (
-        vs.rs.animations.find((anim) => anim.sequence === animationSequence)
+        vs.rs.animations?.find((anim) => anim.sequence === animationSequence)
       ) {
         usages.add(vs.rs);
         usingComponents.add(component);

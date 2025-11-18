@@ -1,4 +1,5 @@
 import { expect, FrameLocator, Locator, Page } from "playwright/test";
+import { waitForFrameToLoad } from "../utils/studio-utils";
 import { BaseModel } from "./BaseModel";
 import { LeftPanel } from "./components/left-panel";
 import { RightPanel } from "./components/right-panel";
@@ -61,7 +62,7 @@ export class StudioModel extends BaseModel {
   );
 
   readonly newDropdownItem = this.frame.locator(".ant-dropdown-menu-item");
-  readonly newPageInput = this.frame.locator('[data-test-id="prompt"]');
+  readonly newArenaInput = this.frame.locator('[data-test-id="prompt"]');
   readonly commentsTab = this.frame.locator(".comments-tab");
   readonly modal = this.frame.locator(".ant-modal");
   readonly confirmButton = this.frame.locator('[data-test-id="confirm"]');
@@ -106,7 +107,6 @@ export class StudioModel extends BaseModel {
   readonly frames: Locator = this.frame.locator(
     ".canvas-editor__frames .canvas-editor__viewport[data-test-frame-uid]"
   );
-  readonly frameLabels: Locator = this.frame.locator(".CanvasFrame__Label");
   readonly deslotButton: Locator = this.frame.getByText("De-slot");
   readonly deleteInsteadButton: Locator =
     this.frame.getByText("Delete instead");
@@ -163,8 +163,10 @@ export class StudioModel extends BaseModel {
 
     await this.projectNavSearchInput.fill(name);
 
+    await this.page.waitForTimeout(1000);
+
     const arenaItem = this.frame
-      .locator(`div.flex-col`, { hasText: name })
+      .locator(`.ant-popover-content div.flex-col`, { hasText: name })
       .first();
     await arenaItem.waitFor({ state: "visible", timeout: 10000 });
 
@@ -172,7 +174,7 @@ export class StudioModel extends BaseModel {
 
     await expect(this.projectNavButton).toBeVisible();
 
-    await this.waitForFrameToLoad();
+    await waitForFrameToLoad(this.page);
 
     const viewportFrame = this.frame.frameLocator(
       ".canvas-editor__viewport[data-test-frame-uid]"
@@ -182,15 +184,14 @@ export class StudioModel extends BaseModel {
   }
 
   async withinLiveMode(fn: (liveFrame: FrameLocator) => Promise<void>) {
-    await this.enterLiveModeButton.waitFor({
-      state: "visible",
-      timeout: 10000,
-    });
     await this.enterLiveModeButton.click();
+    await this.frame
+      .frameLocator(`[data-test-id="live-frame"]`)
+      .locator(".live-root-container")
+      .waitFor({ state: "visible", timeout: 20000 });
 
     await fn(this.liveFrame);
 
-    await this.exitLiveModeButton.waitFor({ state: "visible", timeout: 5000 });
     await this.exitLiveModeButton.click();
     await this.page.waitForTimeout(1000);
   }
@@ -255,15 +256,30 @@ export class StudioModel extends BaseModel {
     await this.leftPanel.createNewPage(name);
   }
 
+  async createComponentFromNav(name: string) {
+    await this.projectNavButton.click();
+    await this.newDropdownButton.click();
+    const menuItem = await this.newDropdownItem.nth(1);
+    await menuItem.click();
+
+    await this.newArenaInput.waitFor({ state: "visible" });
+    await this.newArenaInput.clear();
+    await this.newArenaInput.fill(name);
+
+    const createButton = this.frame.getByText("Create component");
+    await createButton.waitFor({ state: "visible" });
+    await createButton.click();
+  }
+
   async createNewPageInOwnArena(name: string) {
     await this.projectNavButton.click();
     await this.newDropdownButton.click();
     const menuItem = this.newDropdownItem.first();
     await menuItem.click();
 
-    await this.newPageInput.waitFor({ state: "visible" });
-    await this.newPageInput.clear({ force: true });
-    await this.newPageInput.fill(name, { force: true });
+    await this.newArenaInput.waitFor({ state: "visible" });
+    await this.newArenaInput.clear({ force: true });
+    await this.newArenaInput.fill(name, { force: true });
 
     const createButton = this.frame.getByText("Create page");
     await createButton.waitFor({ state: "visible" });
@@ -282,9 +298,9 @@ export class StudioModel extends BaseModel {
     const menuItem = this.newDropdownItem.first();
     await menuItem.click();
 
-    await this.newPageInput.waitFor({ state: "visible" });
-    await this.newPageInput.clear({ force: true });
-    await this.newPageInput.fill(name, { force: true });
+    await this.newArenaInput.waitFor({ state: "visible" });
+    await this.newArenaInput.clear({ force: true });
+    await this.newArenaInput.fill(name, { force: true });
 
     if (template) {
       await this.frame.getByText(template).click();
@@ -342,10 +358,12 @@ export class StudioModel extends BaseModel {
     await this.commentsTab.waitFor({ timeout: 10000 });
   }
 
+  getCommentPost(threadId: string) {
+    return this.frame.locator(`[data-test-id='comment-post-${threadId}']`);
+  }
+
   async clickCommentPost(threadId: string) {
-    const commentPost = this.frame.locator(
-      `[data-test-id='comment-post-${threadId}']`
-    );
+    const commentPost = this.getCommentPost(threadId);
     await commentPost.click();
 
     await this.commentsTab.waitFor({ timeout: 10000 });
@@ -369,21 +387,13 @@ export class StudioModel extends BaseModel {
     return this.frame.locator(`[data-test-id='comment-marker-${id}']`);
   }
 
-  async waitForNewFrame() {
-    await this.canvasEditor.waitFor();
-    const frameCount = await this.frames.count();
-
-    await this.frames.nth(frameCount).waitFor({ timeout: 60000 });
-    const frame = this.frames.nth(frameCount);
-    return frame;
-  }
-
   async createNewFrame() {
+    const framesBefore = await this.frames.count();
     await this.leftPanel.addNewFrame();
-    const frameCount = await this.frames.count();
 
-    await this.frames.nth(frameCount - 1).waitFor({ timeout: 60000 });
-    const frame = this.frames.nth(frameCount - 1);
+    await expect(this.frames).toHaveCount(framesBefore + 1);
+    await this.frames.nth(framesBefore).waitFor({ timeout: 60000 });
+    const frame = this.frames.nth(framesBefore);
     return frame;
   }
 
@@ -393,13 +403,11 @@ export class StudioModel extends BaseModel {
     } else {
       await frame.locator("body").click();
     }
+    // It is possible for Shift+Enter to fail if pressed too quickly after selecting an element
+    // in the artboard. It's difficult to wait on a locator because an artboard or Tpl element
+    // could be selected. It may be more efficient to click the root in the outline tab.
+    await this.page.waitForTimeout(500);
     await this.page.keyboard.press("Shift+Enter");
-    return frame;
-  }
-
-  async focusFrame(frame: Locator | FrameLocator) {
-    await this.focusFrameRoot(frame);
-    return frame;
   }
 
   async waitAllEval() {
@@ -414,10 +422,13 @@ export class StudioModel extends BaseModel {
   }
 
   async renameTreeNode(name: string) {
+    await this.page.waitForTimeout(200);
     await this.page.keyboard.press("Control+r");
+    await this.page.waitForTimeout(200);
     await this.page.keyboard.type(name);
+    await this.page.waitForTimeout(200);
     await this.page.keyboard.press("Enter");
-    await this.page.waitForTimeout(100);
+    await this.page.waitForTimeout(200);
   }
 
   async convertToSlot(slotName?: string) {
@@ -506,9 +517,17 @@ export class StudioModel extends BaseModel {
   async turnOffDesignMode() {
     const viewMenu = this.frame.locator("#view-menu");
     await viewMenu.click();
+    await this.page.waitForTimeout(200);
     const turnOffOption = this.frame.getByText("Turn off design mode");
-    if ((await turnOffOption.count()) > 0) {
+    const isVisible = await turnOffOption
+      .isVisible({ timeout: 1000 })
+      .catch(() => false);
+    if (isVisible) {
       await turnOffOption.click();
+      await this.page.waitForTimeout(200);
+    } else {
+      await this.page.keyboard.press("Escape");
+      await this.page.waitForTimeout(200);
     }
   }
 
@@ -516,7 +535,7 @@ export class StudioModel extends BaseModel {
     const canvasFrame = this.frame
       .locator(".canvas-editor__viewport[data-test-frame-uid]")
       .first();
-    if ((await canvasFrame.count()) > 0) {
+    if ((await canvasFrame.count()) > 0 && (await canvasFrame.isVisible())) {
       await canvasFrame.click();
       return;
     }
@@ -683,29 +702,74 @@ export class StudioModel extends BaseModel {
       .waitFor({ timeout: 120000 });
   }
 
-  async getFramedByName(name: string) {
-    const label = this.frameLabels.filter({ hasText: name }).first();
-    await label.waitFor();
-    const frameContainer = label
-      .locator("..")
-      .locator(".CanvasFrame__Container");
-    const frame = frameContainer.locator(
-      ".canvas-editor__viewport[data-test-frame-uid]"
-    );
-    await frame.waitFor();
-    return frame;
-  }
-
   async publishVersion(description: string) {
     await this.leftPanel.moreTabButton.hover();
+    await this.page.waitForTimeout(500);
     await this.leftPanel.switchToVersionsTab();
-    const selector =
-      ".SidebarSectionListItem:not(#publishing-version-spinner-item)";
+
+    const changesNotPublishedBanner = this.frame.getByText(
+      "Newest changes haven't been published"
+    );
+    const hasUnpublishedChanges = await changesNotPublishedBanner
+      .isVisible({ timeout: 3000 })
+      .catch(() => false);
+
+    if (!hasUnpublishedChanges) {
+      await this.page.waitForTimeout(1000);
+    }
+
+    const selector = '[data-test-id="publish-version-item"]';
     const countBefore = await this.frame.locator(selector).count();
     await this.publishProjectButton.click();
+
+    const noChangesMessage = this.frame.getByText(
+      "There have been no new changes since your last published version"
+    );
+    const hasNoChanges = await noChangesMessage
+      .isVisible({ timeout: 1000 })
+      .catch(() => false);
+
+    if (hasNoChanges) {
+      const closeButton = this.frame.locator(".ant-modal-close");
+      await closeButton.click();
+      await this.page.waitForTimeout(2000);
+      await this.publishProjectButton.click();
+    }
+
     await this.versionDescriptionInput.fill(description);
     await this.confirmPublishButton.click();
-    await this.frame.locator(selector).waitFor({ state: "visible" });
+    await this.frame
+      .locator("#publishing-version-spinner-item")
+      .waitFor({ state: "hidden", timeout: 10000 })
+      .catch(() => {});
+
+    const errorMessage = this.page.getByText(
+      "Unexpected error when publishing"
+    );
+    const isErrorVisible = await errorMessage
+      .isVisible({ timeout: 1000 })
+      .catch(() => false);
+    if (isErrorVisible) {
+      const closeButton = this.page
+        .locator(".ant-notification-notice-close")
+        .first();
+      if (await closeButton.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await closeButton.click();
+      }
+      await this.page.waitForTimeout(500);
+      await this.publishProjectButton.click();
+      await this.versionDescriptionInput.fill(description);
+      await this.confirmPublishButton.click();
+      await this.frame
+        .locator("#publishing-version-spinner-item")
+        .waitFor({ state: "hidden", timeout: 10000 })
+        .catch(() => {});
+    }
+
+    await this.frame
+      .locator(selector)
+      .first()
+      .waitFor({ state: "visible", timeout: 5000 });
     await this.page.waitForTimeout(500);
     const countAfter = await this.frame.locator(selector).count();
     expect(countAfter).toBe(countBefore + 1);
@@ -715,7 +779,7 @@ export class StudioModel extends BaseModel {
     await this.leftPanel.moreTabButton.hover();
     await this.leftPanel.switchToVersionsTab();
     await this.frame.getByText(version).click();
-    await this.waitForFrameToLoad();
+    await waitForFrameToLoad(this.page);
   }
 
   async revertToVersion(version: string) {
@@ -739,25 +803,11 @@ export class StudioModel extends BaseModel {
 
     await this.frame.getByText("Revert to this version").click();
     await this.revertButton.click();
-    await this.waitForFrameToLoad();
+    await waitForFrameToLoad(this.page);
   }
 
   async backToCurrentVersion() {
     await this.backToCurrentVersionButton.click();
-  }
-
-  async waitForFrameToLoad() {
-    await this.page.waitForSelector("iframe.studio-frame", { timeout: 30000 });
-
-    await this.page.waitForTimeout(3000);
-
-    try {
-      const overlay = this.page.locator(".rsbuild-error-overlay").first();
-      if (await overlay.isVisible({ timeout: 500 })) {
-        await this.page.keyboard.press("Escape");
-        await this.page.waitForTimeout(500);
-      }
-    } catch (e) {}
   }
 
   async expectDebugTplTree(_expected: string) {}
@@ -775,7 +825,14 @@ export class StudioModel extends BaseModel {
   }
 
   async selectTreeNode(path: string[]) {
-    await this.leftPanel.switchToTreeTab();
+    const isLeftPanelVisible = await this.leftPanel.frame
+      .locator(".tpltree__root")
+      .isVisible();
+
+    if (!isLeftPanelVisible) {
+      await this.leftPanel.switchToTreeTab();
+    }
+
     let currentLocator = this.leftPanel.treeRoot;
 
     for (const nodeNameOrSlot of path) {
@@ -797,7 +854,7 @@ export class StudioModel extends BaseModel {
   async createNewComponent(name: string) {
     await this.leftPanel.addComponent(name);
     const frame = await this.createNewFrame();
-    await this.waitForFrameToLoad();
+    await waitForFrameToLoad(this.page);
     return frame;
   }
 
@@ -869,5 +926,51 @@ export class StudioModel extends BaseModel {
         await this.page.waitForTimeout(500);
       }
     }
+  }
+
+  async checkSelectedPropNodeAs(expectedType: "default" | "forked") {
+    const selectedNode = this.leftPanel.focusedTreeNode;
+    await selectedNode.click({ button: "right", force: true });
+
+    const revertToItem = this.page.locator("text=/^revert to/i");
+
+    if (expectedType === "default") {
+      await expect(revertToItem).not.toBeVisible();
+    } else {
+      await expect(revertToItem).toBeVisible();
+    }
+
+    await selectedNode.click({ force: true });
+  }
+
+  async clickSelectedTreeNodeContextMenu(menuItem: string) {
+    const selectedNode = this.leftPanel.focusedTreeNode;
+    await selectedNode.click({ button: "right" });
+
+    const contextMenu = this.frame.locator(".ant-dropdown-menu");
+    await contextMenu.waitFor({ state: "visible", timeout: 5000 });
+
+    const menuItemLocator = contextMenu.getByText(menuItem);
+    await menuItemLocator.click();
+  }
+
+  async clearNotifications() {
+    const closeButton = this.frame.locator(".ant-notification-notice-close");
+    const count = await closeButton.count();
+    for (let i = count - 1; i >= 0; i -= 1) {
+      await closeButton.nth(i).click();
+    }
+  }
+
+  async deleteDataSource(name: string): Promise<void> {
+    await this.page.getByText(name).first().click({ button: "right" });
+    await this.page.waitForTimeout(500);
+    const deleteMenuItem = this.page
+      .locator(".ant-dropdown-menu")
+      .getByText("Delete");
+    await deleteMenuItem.waitFor({ state: "visible" });
+    await deleteMenuItem.click();
+    await this.page.locator(`[data-test-id="confirm"]`).click();
+    await this.page.getByRole("dialog").waitFor({ state: "hidden" });
   }
 }

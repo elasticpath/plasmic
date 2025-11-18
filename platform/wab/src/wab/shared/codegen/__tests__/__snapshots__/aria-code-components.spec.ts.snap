@@ -6080,25 +6080,25 @@ border-radius: var(--token-hI_1KF0x1IC1);
           color: var(--token-i3U49r6ROHvf);
 filter: drop-shadow(0px 0px 10px #00000080);
 object-fit: cover;
-transform: translateX(-50%) translateY(0px) translateZ(0px);
+transform: translate3d(-50%, 0px, 0px);
 left: 50%;
 top: -11px;
 position: absolute;
 height: 1em;  
       } 
   .Popover__root__v9B4R[data-placement=top] .Popover__svg___50Dg {
-          transform: rotateX(0deg) rotateY(0deg) rotateZ(60deg) translateX(-50%) translateY(0%) translateZ(0px);
+          transform: rotate3d(0, 0, 1, 60deg) translate3d(-50%, 0%, 0px);
 bottom: -16px;
 left: 50%;
 top: auto;  
       } 
   .Popover__root__v9B4R[data-placement=right] .Popover__svg___50Dg {
-          transform: rotateX(0deg) rotateY(0deg) rotateZ(30deg) translateX(0%) translateY(-50%) translateZ(0px);
+          transform: rotate3d(0, 0, 1, 30deg) translate3d(0%, -50%, 0px);
 left: -14px;
 top: 50%;  
       } 
   .Popover__root__v9B4R[data-placement=left] .Popover__svg___50Dg {
-          transform: rotateX(0deg) rotateY(0deg) rotateZ(-30deg) translateX(0px) translateY(-50%) translateZ(0px);
+          transform: rotate3d(0, 0, 1, -30deg) translate3d(0px, -50%, 0px);
 right: -14px;
 left: auto;
 top: 50%;  
@@ -7258,7 +7258,7 @@ max-width: 100%;
 position: absolute;
 left: 50%;
 color: var(--token-SX0Pi19x0IVO);
-transform: translateX(-50%) translateY(0px) translateZ(0px);
+transform: translate3d(-50%, 0px, 0px);
 width: auto;
 height: 1em;
 bottom: 1px;  
@@ -7267,17 +7267,17 @@ bottom: 1px;
           bottom: auto;
 left: 50%;
 top: 10px;
-transform: rotateX(0deg) rotateY(0deg) rotateZ(60deg) translateX(-50%) translateY(0px) translateZ(0px);  
+transform: rotate3d(0, 0, 1, 60deg) translate3d(-50%, 0px, 0px);  
       } 
   .Tooltip__ariaTooltip__ry2S4[data-placement=left] .Tooltip__svg___3Q8Bc {
-          transform: rotateX(0deg) rotateY(0deg) rotateZ(30deg) translateX(0%) translateY(-50%) translateZ(0px);
+          transform: rotate3d(0, 0, 1, 30deg) translate3d(0%, -50%, 0px);
 bottom: auto;
 left: auto;
 top: 50%;
 right: 6px;  
       } 
   .Tooltip__ariaTooltip__ry2S4[data-placement=right] .Tooltip__svg___3Q8Bc {
-          transform: rotateX(0deg) rotateY(0deg) rotateZ(-30deg) translateX(0%) translateY(-50%) translateZ(0px);
+          transform: rotate3d(0, 0, 1, -30deg) translate3d(0%, -50%, 0px);
 bottom: auto;
 left: 6px;
 top: 50%;  
@@ -14817,25 +14817,25 @@ border-radius: var(--token-hI_1KF0x1IC1);
           color: var(--token-i3U49r6ROHvf);
 filter: drop-shadow(0px 0px 10px #00000080);
 object-fit: cover;
-transform: translateX(-50%) translateY(0px) translateZ(0px);
+transform: translate3d(-50%, 0px, 0px);
 left: 50%;
 top: -11px;
 position: absolute;
 height: 1em;  
       } 
   .root[data-placement=top] .svg {
-          transform: rotateX(0deg) rotateY(0deg) rotateZ(60deg) translateX(-50%) translateY(0%) translateZ(0px);
+          transform: rotate3d(0, 0, 1, 60deg) translate3d(-50%, 0%, 0px);
 bottom: -16px;
 left: 50%;
 top: auto;  
       } 
   .root[data-placement=right] .svg {
-          transform: rotateX(0deg) rotateY(0deg) rotateZ(30deg) translateX(0%) translateY(-50%) translateZ(0px);
+          transform: rotate3d(0, 0, 1, 30deg) translate3d(0%, -50%, 0px);
 left: -14px;
 top: 50%;  
       } 
   .root[data-placement=left] .svg {
-          transform: rotateX(0deg) rotateY(0deg) rotateZ(-30deg) translateX(0px) translateY(-50%) translateZ(0px);
+          transform: rotate3d(0, 0, 1, -30deg) translate3d(0px, -50%, 0px);
 right: -14px;
 left: auto;
 top: 50%;  
@@ -16059,7 +16059,7 @@ max-width: 100%;
 position: absolute;
 left: 50%;
 color: var(--token-SX0Pi19x0IVO);
-transform: translateX(-50%) translateY(0px) translateZ(0px);
+transform: translate3d(-50%, 0px, 0px);
 width: auto;
 height: 1em;
 bottom: 1px;  
@@ -16068,17 +16068,17 @@ bottom: 1px;
           bottom: auto;
 left: 50%;
 top: 10px;
-transform: rotateX(0deg) rotateY(0deg) rotateZ(60deg) translateX(-50%) translateY(0px) translateZ(0px);  
+transform: rotate3d(0, 0, 1, 60deg) translate3d(-50%, 0px, 0px);  
       } 
   .ariaTooltip[data-placement=left] .svg {
-          transform: rotateX(0deg) rotateY(0deg) rotateZ(30deg) translateX(0%) translateY(-50%) translateZ(0px);
+          transform: rotate3d(0, 0, 1, 30deg) translate3d(0%, -50%, 0px);
 bottom: auto;
 left: auto;
 top: 50%;
 right: 6px;  
       } 
   .ariaTooltip[data-placement=right] .svg {
-          transform: rotateX(0deg) rotateY(0deg) rotateZ(-30deg) translateX(0%) translateY(-50%) translateZ(0px);
+          transform: rotate3d(0, 0, 1, -30deg) translate3d(0%, -50%, 0px);
 bottom: auto;
 left: 6px;
 top: 50%;  

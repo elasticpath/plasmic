@@ -103,6 +103,7 @@ import isEqual from "lodash/isEqual";
 // keeping these imports last seems to make sure everything works properly
 import {
   fixDuplicatedCodeComponents,
+  fixPageArenaFramesOrderingAndScreenVariants,
   fixPagePaths,
   fixSwappedTplComponents,
   fixVirtualSlotArgs,
@@ -1217,8 +1218,7 @@ export function getDirectConflicts({
               break;
             default: {
               let hasConflict: boolean;
-              // TODO Do we need to handle duplicates?!
-              // They must all be arrays; if any are nil, then no conflicts!
+
               if (
                 (ancVal === undefined || Array.isArray(ancVal)) &&
                 Array.isArray(leftVal) &&
@@ -1910,6 +1910,8 @@ function runMergeFnAndApplyFixes(
       );
 
       autoReconciliations.push(...fixPagePaths(mergedSite));
+
+      fixPageArenaFramesOrderingAndScreenVariants(mergedSite);
     });
   });
 

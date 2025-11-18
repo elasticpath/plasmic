@@ -10,7 +10,6 @@ import SlackIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__Slack";
 import TreeIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__Tree";
 import WandIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__Wand";
 import KeyboardIcon from "@/wab/client/plasmic/plasmic_kit_design_system/PlasmicIcon__Keyboard";
-import AnimationEnterSvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__AnimationEnterSvg";
 import BooksvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__BookSvg";
 import ChatDocssvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__ChatDocsSvg";
 import ClocksvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__ClockSvg";
@@ -24,6 +23,7 @@ import FigmasvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIc
 import FontFamily2SvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__FontFamily2Svg";
 import HelpCirclesvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__HelpCircleSvg";
 import HelpsvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__HelpSvg";
+import KeyframesIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__Keyframes";
 import MessagesvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__MessageSvg";
 import Paintbrush2SvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__Paintbrush2Svg";
 import PhotosvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__PhotoSvg";
@@ -109,6 +109,7 @@ Issues
 
 Assets
   Tokens
+  Data Tokens
   Mixins
   Components
   Images
@@ -142,6 +143,14 @@ Help
           label: "Style tokens",
           cond: canViewTab("tokens"),
         },
+        dataTokens: {
+          type: "item",
+          tabKey: "dataTokens",
+          // TODO: Add a new icon for Data Token
+          icon: <DiamondsIcon />,
+          label: "Data tokens",
+          cond: DEVFLAGS.dataTokens && canViewTab("dataTokens"),
+        },
         mixins: {
           type: "item",
           tabKey: "mixins",
@@ -152,7 +161,7 @@ Help
         animationSequences: {
           type: "item",
           tabKey: "animationSequences",
-          icon: <AnimationEnterSvgIcon />,
+          icon: <KeyframesIcon />,
           label: ANIMATION_SEQUENCES_CAP,
           cond: DEVFLAGS.showAnimations && canViewTab("animationSequences"),
         },
@@ -452,7 +461,10 @@ Help
   return (
     <PlasmicLeftTabStrip
       showAvatar
-      activeTab={studioCtx.leftTabKey}
+      // TODO: Add dataTokens variant to PlasmicLeftTabStrip in Plasmic Studio
+      activeTab={
+        studioCtx.leftTabKey === "dataTokens" ? "tokens" : studioCtx.leftTabKey
+      }
       insert={{
         props: {
           onClick: () => {

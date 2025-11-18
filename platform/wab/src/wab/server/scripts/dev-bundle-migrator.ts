@@ -28,6 +28,7 @@ const paths = [
   "src/wab/shared/codegen/__tests__/bundles/aria-code-components.json",
   "src/wab/shared/codegen/__tests__/bundles/custom-functions-test.json",
   "src/wab/shared/codegen/__tests__/bundles/global-variant-test.json",
+  "src/wab/shared/codegen/__tests__/bundles/style-token-overrides.json",
   "src/wab/server/pkg-mgr/data/plume-master-pkg.json",
   "src/wab/server/pkg-mgr/data/plexus-master-pkg.json",
   "cypress/bundles/state-management.json",
@@ -58,6 +59,7 @@ const paths = [
   "../loader-tests/data/plasmic-cms.json",
   "../loader-tests/data/dynamic-pages.json",
   "../loader-tests/data/plasmic-antd.json",
+  "../loader-tests/data/plasmic-wordpress.json",
   "../loader-tests/data/auth-e2e.json",
   "../loader-tests/data/simpler-auth.json",
   "../loader-tests/data/react-quill.json",
@@ -65,6 +67,7 @@ const paths = [
   "../loader-tests/data/plasmic-antd5.json",
   "../loader-tests/data/data-source-basic.json",
   "../loader-tests/data/react-aria.json",
+  "../loader-tests/data/wordpress.json",
   "src/wab/shared/site-diffs/_tests_/bundles/code-components-with-same-name.json",
   "src/wab/shared/site-diffs/_tests_/bundles/rich-text-conflict.json",
   "src/wab/shared/site-diffs/_tests_/bundles/test-tpl-merge.json",
@@ -87,6 +90,7 @@ const paths = [
   "src/wab/server/__tests__/bundle-migrations/fixtures/duplicate-variants.migrated.json",
   "src/wab/server/__tests__/bundle-migrations/fixtures/merge-duplicate-variants.migrated.json",
   "src/wab/server/__tests__/bundle-migrations/fixtures/flex-gap-bundle.migrated.json",
+  "src/wab/server/__tests__/bundle-migrations/fixtures/transform-format-migration.json",
 ];
 
 async function migrate() {
