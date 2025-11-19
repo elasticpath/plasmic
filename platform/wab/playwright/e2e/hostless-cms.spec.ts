@@ -1,18 +1,17 @@
 import { expect } from "@playwright/test";
 import { v4 } from "uuid";
 import { test } from "../fixtures/test";
+import { goToProject } from "../utils/studio-utils";
 
 test.describe("hostless-cms", () => {
   let projectId: string;
 
   test.afterEach(async ({ apiClient }) => {
-    if (projectId) {
-      await apiClient.removeProjectAfterTest(
-        projectId,
-        "user2@example.com",
-        "!53kr3tz!"
-      );
-    }
+    await apiClient.removeProjectAfterTest(
+      projectId,
+      "user2@example.com",
+      "!53kr3tz!"
+    );
   });
 
   test("can create cms with data, fetch using hostless package, change model", async ({
@@ -105,8 +104,7 @@ test.describe("hostless-cms", () => {
         npmPkg: ["@plasmicpkgs/plasmic-cms"],
       },
     });
-    await page.goto(`/projects/${projectId}`);
-    await models.studio.waitForFrameToLoad();
+    await goToProject(page, `/projects/${projectId}`);
     const settingsGroupButton = models.studio.leftPanel.frame.locator(
       '[data-test-tabkey="settingsGroup"]'
     );
@@ -202,8 +200,9 @@ test.describe("hostless-cms", () => {
     await page.waitForTimeout(2000);
     await page.keyboard.press("Enter");
     await page.keyboard.press("Enter");
+    await page.waitForTimeout(500);
     const cmsDataFetcherLabel2 = models.studio.leftPanel.frame
-      .locator('.tpltree__nodeLabel__summary:has-text("CMS Data Fetcher")')
+      .locator('.tpltree__label:has-text("CMS Data Fetcher")')
       .first();
     await cmsDataFetcherLabel2.click();
     await page.waitForTimeout(500);

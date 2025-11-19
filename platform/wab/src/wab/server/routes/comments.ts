@@ -1,5 +1,10 @@
 import { toOpaque } from "@/wab/commons/types";
-import { getUser, userDbMgr, withNext } from "@/wab/server/routes/util";
+import {
+  commitTransaction,
+  getUser,
+  startTransaction,
+  userDbMgr,
+} from "@/wab/server/routes/util";
 import { getUniqueUsersWithCommentAccess } from "@/wab/server/scripts/send-comments-notifications";
 import { broadcastProjectsMessage } from "@/wab/server/socket-util";
 import {
@@ -21,42 +26,36 @@ import { Request, Response } from "express-serve-static-core";
 import { uniq } from "lodash";
 
 export function addCommentsRoutes(app: express.Application) {
-  app.get("/api/v1/comments/:projectBranchId", withNext(getCommentsForProject));
-  app.post(
-    "/api/v1/comments/:projectBranchId",
-    withNext(postRootCommentInProject)
-  );
+  app.get("/api/v1/comments/:projectBranchId", getCommentsForProject);
+  app.post("/api/v1/comments/:projectBranchId", postRootCommentInProject);
   app.post(
     "/api/v1/comments/:projectBranchId/thread/:threadId",
-    withNext(postCommentInThread)
+    postCommentInThread
   );
-  app.put(
-    "/api/v1/comments/:projectBranchId/comment/:commentId",
-    withNext(editComment)
-  );
+  app.put("/api/v1/comments/:projectBranchId/comment/:commentId", editComment);
   app.put(
     "/api/v1/comments/:projectBranchId/thread/:commentThreadId",
-    withNext(editThread)
+    editThread
   );
   app.delete(
     "/api/v1/comments/:projectBranchId/comment/:commentId",
-    withNext(deleteCommentInProject)
+    deleteCommentInProject
   );
   app.delete(
     "/api/v1/comments/:projectBranchId/thread/:threadId",
-    withNext(deleteThreadInProject)
+    deleteThreadInProject
   );
   app.post(
     "/api/v1/comments/:projectBranchId/comment/:commentId/reactions",
-    withNext(addReactionToComment)
+    addReactionToComment
   );
   app.delete(
     "/api/v1/comments/:projectBranchId/reactions/:reactionId",
-    withNext(removeReactionFromComment)
+    removeReactionFromComment
   );
   app.put(
     "/api/v1/comments/:projectBranchId/notification-settings",
-    withNext(updateNotificationSettings)
+    updateNotificationSettings
   );
 }
 
@@ -97,27 +96,31 @@ async function getCommentsForProject(req: Request, res: Response) {
 }
 
 async function postRootCommentInProject(req: Request, res: Response) {
-  const mgr = userDbMgr(req);
   const { projectId, branchId } = parseProjectBranchId(
     req.params.projectBranchId
   );
 
-  // Ensure the user has access to the project
-  await mgr.getProjectById(projectId);
+  await startTransaction(req, async () => {
+    const mgr = userDbMgr(req);
 
-  const { commentId, commentThreadId, location, body } =
-    uncheckedCast<RootCommentData>(req.body);
-  await mgr.postRootCommentInProject(
-    { projectId, branchId },
-    {
-      commentId,
-      commentThreadId,
-      location,
-      body,
-    }
-  );
+    // Ensure the user has access to the project
+    await mgr.getProjectById(projectId);
 
-  await req.resolveTransaction();
+    const { commentId, commentThreadId, location, body } =
+      uncheckedCast<RootCommentData>(req.body);
+    await mgr.postRootCommentInProject(
+      { projectId, branchId },
+      {
+        commentId,
+        commentThreadId,
+        location,
+        body,
+      }
+    );
+
+    return commitTransaction();
+  });
+
   res.json(ensureType<PostCommentResponse>({}));
 
   await broadcastProjectsMessage({
@@ -128,26 +131,30 @@ async function postRootCommentInProject(req: Request, res: Response) {
 }
 
 async function postCommentInThread(req: Request, res: Response) {
-  const mgr = userDbMgr(req);
   const { projectId, branchId } = parseProjectBranchId(
     req.params.projectBranchId
   );
   const threadId = req.params.threadId as CommentThreadId;
 
-  // Ensure the user has access to the project
-  await mgr.getProjectById(projectId);
+  await startTransaction(req, async () => {
+    const mgr = userDbMgr(req);
 
-  const { id, body } = uncheckedCast<ThreadCommentData>(req.body);
-  await mgr.postCommentInThread(
-    { projectId, branchId },
-    {
-      id,
-      threadId,
-      body,
-    }
-  );
+    // Ensure the user has access to the project
+    await mgr.getProjectById(projectId);
 
-  await req.resolveTransaction();
+    const { id, body } = uncheckedCast<ThreadCommentData>(req.body);
+    await mgr.postCommentInThread(
+      { projectId, branchId },
+      {
+        id,
+        threadId,
+        body,
+      }
+    );
+
+    return commitTransaction();
+  });
+
   res.json(ensureType<PostCommentResponse>({}));
 
   await broadcastProjectsMessage({
@@ -158,18 +165,22 @@ async function postCommentInThread(req: Request, res: Response) {
 }
 
 async function deleteCommentInProject(req: Request, res: Response) {
-  const mgr = userDbMgr(req);
   const { projectId, branchId } = parseProjectBranchId(
     req.params.projectBranchId
   );
-
-  // Ensure the user has access to the project
-  await mgr.getProjectById(projectId);
-
   const commentId = req.params.commentId as CommentId;
-  await mgr.deleteCommentInProject({ projectId, branchId }, commentId);
 
-  await req.resolveTransaction();
+  await startTransaction(req, async () => {
+    const mgr = userDbMgr(req);
+
+    // Ensure the user has access to the project
+    await mgr.getProjectById(projectId);
+
+    await mgr.deleteCommentInProject({ projectId, branchId }, commentId);
+
+    return commitTransaction();
+  });
+
   res.json({});
 
   await broadcastProjectsMessage({
@@ -180,18 +191,22 @@ async function deleteCommentInProject(req: Request, res: Response) {
 }
 
 async function deleteThreadInProject(req: Request, res: Response) {
-  const mgr = userDbMgr(req);
   const { projectId, branchId } = parseProjectBranchId(
     req.params.projectBranchId
   );
-
-  // Ensure the user has access to the project
-  await mgr.getProjectById(projectId);
-
   const threadId = req.params.threadId as CommentThreadId;
-  await mgr.deleteThreadInProject({ projectId, branchId }, threadId);
 
-  await req.resolveTransaction();
+  await startTransaction(req, async () => {
+    const mgr = userDbMgr(req);
+
+    // Ensure the user has access to the project
+    await mgr.getProjectById(projectId);
+
+    await mgr.deleteThreadInProject({ projectId, branchId }, threadId);
+
+    return commitTransaction();
+  });
+
   res.json({});
 
   await broadcastProjectsMessage({
@@ -202,17 +217,20 @@ async function deleteThreadInProject(req: Request, res: Response) {
 }
 
 async function addReactionToComment(req: Request, res: Response) {
-  const mgr = userDbMgr(req);
-  const { projectId, branchId } = parseProjectBranchId(
-    req.params.projectBranchId
-  );
-
-  // Ensure the user has access to the project
-  await mgr.getProjectById(projectId);
+  const { projectId } = parseProjectBranchId(req.params.projectBranchId);
   const { data, id } = uncheckedCast<AddCommentReactionRequest>(req.body);
-  await mgr.addCommentReaction(id, toOpaque(req.params.commentId), data);
 
-  await req.resolveTransaction();
+  await startTransaction(req, async () => {
+    const mgr = userDbMgr(req);
+
+    // Ensure the user has access to the project
+    await mgr.getProjectById(projectId);
+
+    await mgr.addCommentReaction(id, toOpaque(req.params.commentId), data);
+
+    return commitTransaction();
+  });
+
   res.json({});
 
   await broadcastProjectsMessage({
@@ -223,18 +241,19 @@ async function addReactionToComment(req: Request, res: Response) {
 }
 
 async function removeReactionFromComment(req: Request, res: Response) {
-  const mgr = userDbMgr(req);
+  const { projectId } = parseProjectBranchId(req.params.projectBranchId);
 
-  const { projectId, branchId } = parseProjectBranchId(
-    req.params.projectBranchId
-  );
+  await startTransaction(req, async () => {
+    const mgr = userDbMgr(req);
 
-  // Ensure the user has access to the project
-  await mgr.getProjectById(projectId);
+    // Ensure the user has access to the project
+    await mgr.getProjectById(projectId);
 
-  await mgr.removeCommentReaction(toOpaque(req.params.reactionId));
+    await mgr.removeCommentReaction(toOpaque(req.params.reactionId));
 
-  await req.resolveTransaction();
+    return commitTransaction();
+  });
+
   res.json({});
 
   await broadcastProjectsMessage({
@@ -245,19 +264,21 @@ async function removeReactionFromComment(req: Request, res: Response) {
 }
 
 async function editComment(req: Request, res: Response) {
-  const mgr = userDbMgr(req);
-  const { projectId, branchId } = parseProjectBranchId(
-    req.params.projectBranchId
-  );
-
-  // Ensure the user has access to the project
-  await mgr.getProjectById(projectId);
+  const { projectId } = parseProjectBranchId(req.params.projectBranchId);
   const commentId = req.params.commentId as CommentId;
-
   const { body } = uncheckedCast<EditCommentRequest>(req.body);
-  await mgr.editCommentInProject(commentId, body);
 
-  await req.resolveTransaction();
+  await startTransaction(req, async () => {
+    const mgr = userDbMgr(req);
+
+    // Ensure the user has access to the project
+    await mgr.getProjectById(projectId);
+
+    await mgr.editCommentInProject(commentId, body);
+
+    return commitTransaction();
+  });
+
   res.json({});
 
   await broadcastProjectsMessage({
@@ -268,19 +289,21 @@ async function editComment(req: Request, res: Response) {
 }
 
 async function editThread(req: Request, res: Response) {
-  const mgr = userDbMgr(req);
-  const { projectId, branchId } = parseProjectBranchId(
-    req.params.projectBranchId
-  );
-
-  // Ensure the user has access to the project
-  await mgr.getProjectById(projectId);
+  const { projectId } = parseProjectBranchId(req.params.projectBranchId);
   const commentThreadId = req.params.commentThreadId as CommentThreadId;
-
   const { resolved, id } = uncheckedCast<ResolveThreadRequest>(req.body);
-  await mgr.resolveThreadInProject(id, commentThreadId, resolved);
 
-  await req.resolveTransaction();
+  await startTransaction(req, async () => {
+    const mgr = userDbMgr(req);
+
+    // Ensure the user has access to the project
+    await mgr.getProjectById(projectId);
+
+    await mgr.resolveThreadInProject(id, commentThreadId, resolved);
+
+    return commitTransaction();
+  });
+
   res.json({});
 
   await broadcastProjectsMessage({
@@ -291,19 +314,23 @@ async function editThread(req: Request, res: Response) {
 }
 
 async function updateNotificationSettings(req: Request, res: Response) {
-  const mgr = userDbMgr(req);
-  const { projectId, branchId } = parseProjectBranchId(
-    req.params.projectBranchId
-  );
-
-  // Ensure the user has access to the project
-  await mgr.getProjectById(projectId);
-
+  const { projectId } = parseProjectBranchId(req.params.projectBranchId);
   const settings: ApiNotificationSettings = req.body;
-  await mgr.updateNotificationSettings(
-    getUser(req).id,
-    toOpaque(projectId),
-    settings
-  );
+
+  await startTransaction(req, async () => {
+    const mgr = userDbMgr(req);
+
+    // Ensure the user has access to the project
+    await mgr.getProjectById(projectId);
+
+    await mgr.updateNotificationSettings(
+      getUser(req).id,
+      toOpaque(projectId),
+      settings
+    );
+
+    return commitTransaction();
+  });
+
   res.json({});
 }

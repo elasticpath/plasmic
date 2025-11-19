@@ -53,7 +53,7 @@
       }
 
       .container {
-          width: 100%;
+          width: calc(100% - 20px);
           max-width: 1200px;
           margin: 0 auto;
           padding: 0 20px;
@@ -102,6 +102,7 @@
           color: white;
           padding: 0.5rem 1rem;
           border-radius: 25px;
+          border: solid #c0392b;
           text-decoration: none;
           font-weight: bold;
           font-family: Arial, 'Helvetica Neue', sans-serif;
@@ -109,6 +110,7 @@
 
       .contact-button:hover {
           background: #c0392b;
+          border: solid #e74c3c;
       }
 
       /* Hero Section */
@@ -144,10 +146,22 @@
           border-radius: 30px;
           font-weight: bold;
           font-size: 1.1rem;
+          animation: fadeIn 0.3s ease;
       }
 
       .cta-button:hover {
           background: #c0392b;
+          animation: none;
+          transform: translateY(20px);
+      }
+
+      @keyframes fadeIn {
+          from {
+              opacity: 0;
+          }
+          to {
+              opacity: 100;
+          }
       }
 
       /* Features Section */
@@ -172,10 +186,10 @@
       }
 
       .feature-card {
-          background: radial-gradient(circle at top left, #ffffff 0%, #f8f9fa 100%);
+          background: radial-gradient(circle at top left, #ffffff 0%, #f8f9fa 100%) / min(100%, 500px) min(80%, 400px);
           padding: 2rem;
           border-radius: 10px;
-          box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+          box-shadow: 0 5px min(15px, 10%) rgba(0,0,0,0.1);
           text-align: center;
           flex: 1;
           min-width: 250px;
@@ -308,7 +322,7 @@
 <body>
 <header>
   <nav class="container">
-    <div style="font-size: 1.8rem; font-weight: bold; color: #fff5cc;">
+    <div style="font-size: 1.8rem; font-weight: bold; color: #fff5cc; transform: rotate(45deg);">
       <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 2L2 7v10c0 5.55 3.84 9.74 9 11 5.16-1.26 9-5.45 9-11V7l-10-5z"></path>
       </svg>

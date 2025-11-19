@@ -1,5 +1,6 @@
 import { expect } from "@playwright/test";
 import { test } from "../fixtures/test";
+import { goToProject, waitForFrameToLoad } from "../utils/studio-utils";
 
 test.describe.skip("routing - branch UI not appearing", () => {
   let projectId: string;
@@ -13,13 +14,11 @@ test.describe.skip("routing - branch UI not appearing", () => {
   test("should switch branches", async ({ models, page, apiClient }) => {
     projectId = await apiClient.setupNewProject({
       name: "routing-branches",
-      devFlags: { branching: true },
     });
 
-    await page.goto(`/projects/${projectId}?devFlags=branching`);
-    await models.studio.waitForFrameToLoad();
+    await goToProject(page, `/projects/${projectId}?devFlags=branching`);
 
-    await expect(page).not.toHaveURL(/branch=/);
+    await expect(page).not.toHaveURL(/branch=/, { timeout: 15_000 });
 
     const mainFrame = await models.studio.createNewComponent("DisplayBranch");
     await models.studio.focusFrameRoot(mainFrame);
@@ -60,9 +59,11 @@ test.describe.skip("routing - branch UI not appearing", () => {
       await page.keyboard.press("Enter");
 
       await page.waitForTimeout(2000);
-      await models.studio.waitForFrameToLoad();
+      await waitForFrameToLoad(page);
 
-      await expect(page).toHaveURL(new RegExp(`branch=${branchName}`));
+      await expect(page).toHaveURL(new RegExp(`branch=${branchName}`), {
+        timeout: 15_000,
+      });
 
       await models.studio.leftPanel.selectTreeNode(["text"]);
 
@@ -100,12 +101,14 @@ test.describe.skip("routing - branch UI not appearing", () => {
       await branchItem.click({ force: true });
 
       await page.waitForTimeout(2000);
-      await models.studio.waitForFrameToLoad();
+      await waitForFrameToLoad(page);
 
       if (branchName === "main") {
-        await expect(page).not.toHaveURL(/branch=/);
+        await expect(page).not.toHaveURL(/branch=/, { timeout: 15_000 });
       } else {
-        await expect(page).toHaveURL(new RegExp(`branch=${branchName}`));
+        await expect(page).toHaveURL(new RegExp(`branch=${branchName}`), {
+          timeout: 15_000,
+        });
       }
     }
 
@@ -127,8 +130,7 @@ test.describe.skip("routing - branch UI not appearing", () => {
       .first();
     await expect(textInFeatureBranch).toContainText("Feature");
 
-    await page.goto(`/projects/${projectId}?branch=main`);
-    await models.studio.waitForFrameToLoad();
+    await goToProject(page, `/projects/${projectId}?branch=main`);
     await models.studio.leftPanel.selectTreeNode(["text"]);
     let textAfterUrlSwitch = models.studio.frames
       .first()
@@ -136,8 +138,7 @@ test.describe.skip("routing - branch UI not appearing", () => {
       .first();
     await expect(textAfterUrlSwitch).toContainText("Main");
 
-    await page.goto(`/projects/${projectId}?branch=Feature`);
-    await models.studio.waitForFrameToLoad();
+    await goToProject(page, `/projects/${projectId}?branch=Feature`);
     await models.studio.leftPanel.selectTreeNode(["text"]);
     textAfterUrlSwitch = models.studio.frames
       .first()
@@ -145,8 +146,7 @@ test.describe.skip("routing - branch UI not appearing", () => {
       .first();
     await expect(textAfterUrlSwitch).toContainText("Feature");
 
-    await page.goto(`/projects/${projectId}?branch=main`);
-    await models.studio.waitForFrameToLoad();
+    await goToProject(page, `/projects/${projectId}?branch=main`);
     await models.studio.leftPanel.selectTreeNode(["text"]);
     textAfterUrlSwitch = models.studio.frames
       .first()
@@ -154,9 +154,8 @@ test.describe.skip("routing - branch UI not appearing", () => {
       .first();
     await expect(textAfterUrlSwitch).toContainText("Main");
 
-    await page.goto(`/projects/${projectId}?branch=NonExistentBranch`);
-    await models.studio.waitForFrameToLoad();
-    await expect(page).not.toHaveURL(/branch=/);
+    await goToProject(page, `/projects/${projectId}?branch=NonExistentBranch`);
+    await expect(page).not.toHaveURL(/branch=/, { timeout: 15_000 });
     await models.studio.leftPanel.selectTreeNode(["text"]);
     const textInNonExistent = models.studio.frames
       .first()

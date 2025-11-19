@@ -116,7 +116,9 @@
     "plasmicpkgs/antd",
     "plasmicpkgs/antd5",
     "plasmicpkgs/chakra-ui",
+    "plasmicpkgs/cms",
     "plasmicpkgs/commerce-providers/*",
+    "plasmicpkgs/contentful",
     "plasmicpkgs/dnd-kit",
     "plasmicpkgs/fetch",
     "plasmicpkgs/framer-motion",
@@ -162,7 +164,9 @@
     "plasmicpkgs/react-youtube",
     "plasmicpkgs/rive",
     "plasmicpkgs/spotify",
+    "plasmicpkgs/strapi",
     "plasmicpkgs/tiptap",
+    "plasmicpkgs/wordpress",
     "plasmicpkgs-dev"
   ]
 }

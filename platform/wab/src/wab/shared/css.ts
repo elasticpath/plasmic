@@ -26,7 +26,7 @@ import {
 } from "@/wab/shared/geom";
 import { RuleSet } from "@/wab/shared/model/classes";
 import CssInitials from "css-initials";
-import { generate, Value } from "css-tree";
+import { Value, generate, parse } from "css-tree";
 import {
   camelCase,
   flatten,
@@ -351,8 +351,6 @@ export const showCssValues = (name: string, vals: /*TWZ*/ string[]) => {
         return val.startsWith("var(") ? val : `"${val}"`;
       })
       .join(", ");
-  } else if (name === "transform") {
-    return vals.join(" ");
   } else if (["filter", "backdrop-filter"].includes(name)) {
     const values = vals.filter((s) => !s.startsWith("hidden#"));
     return values.length === 0 ? "unset" : values.join(" ");
@@ -440,9 +438,30 @@ export function markAllImportant(props: CSSProperties): CSSProperties {
   return mapValues(props, (str) => `${str} !important`) as any;
 }
 
+export function splitCssValueIntoParts(val: string): string[] {
+  let ast: Value;
+  try {
+    ast = parse(val, { context: "value" }) as Value;
+  } catch (error) {
+    // If parsing fails, treat the entire value as a single part
+    return [val];
+  }
+
+  const parts: string[] = [];
+
+  for (const node of ast.children) {
+    if (node.type === "WhiteSpace") {
+      continue;
+    }
+    parts.push(generate(node));
+  }
+
+  return parts;
+}
+
 export function parseCssShorthand(val: string) {
   val = val.trim();
-  const vals = val.trim().split(/\s+/);
+  const vals = splitCssValueIntoParts(val);
   if (vals.length === 1) {
     return [vals[0], vals[0], vals[0], vals[0]];
   } else if (vals.length === 2) {

@@ -6,10 +6,10 @@ import {
   useSelector,
 } from "@plasmicapp/host";
 import { usePlasmicQueryData } from "@plasmicapp/query";
+import { queryWordpress } from "@plasmicpkgs/wordpress";
 import get from "dlv";
 import React, { ReactNode, useContext } from "react";
-import { queryWordpress } from "./custom-functions";
-import { ensure, QueryOperator, queryOperators } from "./utils";
+import { ensure, queryOperators, type QueryOperator } from "./utils";
 
 const modulePath = "@plasmicpkgs/plasmic-wordpress";
 
@@ -160,7 +160,7 @@ export function WordpressFetcher({
     wordpressUrl,
   });
 
-  const { data: data } = usePlasmicQueryData<any | null>(
+  const { data } = usePlasmicQueryData<any | null>(
     queryType && wordpressUrl ? cacheKey : null,
     async () => {
       return queryWordpress(
@@ -185,7 +185,7 @@ export function WordpressFetcher({
   if (!queryOperator && filterValue) {
     return <div>Please specify Query Operator</div>;
   }
-  if (hasFilter && data.length === 0) {
+  if (hasFilter && data?.length === 0) {
     return <div>No published {queryType} found</div>;
   }
 

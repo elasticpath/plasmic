@@ -1,16 +1,7 @@
-import { ALL_CONTAINER_TAGS } from "@/wab/client/components/sidebar-tabs/HTMLAttributesSection";
+import { animationStyleKeys } from "@/wab/shared/css/animations";
 
 export const BASE_VARIANT = "base";
 export const SELF_SELECTOR = "self";
-
-/**
- * Import these tags as the same tag. Everything else is imported as a div.
- */
-export const tagsToImportAsSameTag = new Set([
-  ...ALL_CONTAINER_TAGS,
-  "img",
-  "svg",
-]);
 
 /**
  * Skip these tags.
@@ -123,6 +114,9 @@ export const recognizedStylesKeys = new Set<string>([
   "left",
   "bottom",
   "right",
+  "transform",
+  "transformOrigin",
+  ...animationStyleKeys,
   ...textStylesKeys.values(),
   ...containerStylesKeys.values(),
 ]);
@@ -141,10 +135,8 @@ export const ignoredStyles = new Set<string>([
   "webkitBoxPack",
   "webkitBoxFlex",
   "transition",
-  "transformOrigin",
   "transitionProperty",
   "transitionDuration",
-  "transform",
   "willChange",
   "objectPosition",
   "listStyle",

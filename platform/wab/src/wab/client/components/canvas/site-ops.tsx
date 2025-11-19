@@ -105,6 +105,7 @@ import {
 } from "@/wab/shared/core/components";
 import { ImageAssetType } from "@/wab/shared/core/image-asset-type";
 import { extractTransitiveDepsFromComponents } from "@/wab/shared/core/project-deps";
+import { siteFinalStyleTokensDirectDeps } from "@/wab/shared/core/site-style-tokens";
 import {
   ensureScreenVariantsOrderOnMatrices,
   getComponentArena,
@@ -128,6 +129,7 @@ import {
   extractMixinUsages,
   extractTokenUsages,
 } from "@/wab/shared/core/styles";
+import { MutableToken, OverrideableToken } from "@/wab/shared/core/tokens";
 import {
   ExprReference,
   findExprsInComponent,
@@ -153,6 +155,7 @@ import {
   ComponentDataQuery,
   ComponentServerQuery,
   ComponentVariantGroup,
+  DataToken,
   GlobalVariantGroup,
   ImageAsset,
   Mixin,
@@ -238,6 +241,16 @@ export class SiteOps {
             }
           }
         }
+
+        // remove varianted style token values from previous active screen variant group
+        siteFinalStyleTokensDirectDeps(this.site).forEach((token) => {
+          if (
+            token instanceof MutableToken ||
+            token instanceof OverrideableToken
+          ) {
+            prevGroup?.variants.forEach((v) => token.removeVariantedValue([v]));
+          }
+        });
 
         for (const arena of getSiteArenas(this.site)) {
           if (isComponentArena(arena)) {
@@ -1838,6 +1851,20 @@ export class SiteOps {
     return true;
   }
 
+  async tryDeleteDataTokens(tokens: DataToken[]) {
+    await this.studioCtx.changeObserved(
+      // PLA-12625: Add using components in the array here
+      () => [],
+      ({ success }) => {
+        tokens.forEach((token) => {
+          // PLA-12625: Flatten usages before deletion
+          arrayRemove(this.site.dataTokens, token);
+        });
+        return success();
+      }
+    );
+  }
+
   async tryDeleteMixins(mixins: Mixin[]) {
     const mixinsUsages = mixins
       .map((m) => ({
@@ -1918,7 +1945,7 @@ export class SiteOps {
           );
           usages.forEach((usage) =>
             removeWhere(
-              usage.animations,
+              usage.animations ?? [],
               (a) => a.sequence === animationSequence
             )
           );

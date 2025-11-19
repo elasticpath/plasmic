@@ -102,6 +102,15 @@ describe("tests codegen for global variants", () => {
   const compRootSelector = "#comp-root";
   const compRootClass = "Comp__root__v6FN";
 
+  // Both the Dep project and Main project have screen variants.
+  // The Main project's screen variants are active.
+  // I wanted to add a test case where the Dep project's screen variants are active instead,
+  // but it was not possible here, due to a limitation: the generated code uses relative imports (`./`) to
+  // reference files (which are later resolved by the CLI), so the codegen test utility must write
+  // all files (from both dependencies and the main project) directly to the same directory instead
+  // of using subdirectories, so that it may work without the CLI.
+  // This causes the Dep project's PlasmicGlobalVariant__Screen.tsx to be overwritten by the Main project's file with the same name.
+
   describe("platform: react, codegen: blackbox, styles: css", () => {
     beforeAll(() => {
       platform = "react";
@@ -186,21 +195,21 @@ describe("tests codegen for global variants", () => {
           `--token-${primaryTokenId}`
         )
       ).toEqual(null);
-      // TODO: remove redundant declarations (https://linear.app/plasmic/issue/PLA-12247)
+      // assert that redundant external tokens are not generated for varianted global tokens
       expect(
         findRuleDecl(
           plasmicCss,
           `.${baseClass}.${darkClass}.${darkClass}`,
           `--plasmic-token-${bgTokenName}`
         )
-      ).toEqual(`var(--token-${bgTokenId})`);
+      ).toEqual(null);
       expect(
         findRuleDecl(
           plasmicCss,
           `.${baseClass}.${darkClass}.${darkClass}`,
           `--plasmic-token-${fgTokenName}`
         )
-      ).toEqual(`var(--token-${fgTokenId})`);
+      ).toEqual(null);
     });
 
     it("codegens component CSS with correct variantable tokens", async () => {
@@ -488,21 +497,21 @@ describe("tests codegen for global variants", () => {
           `--token-${fgTokenId}`
         )
       ).toEqual("#FFFFFF");
-      // TODO: remove redundant declarations (https://linear.app/plasmic/issue/PLA-12247)
+      // assert that redundant external tokens are not generated for varianted global tokens
       expect(
         findRuleDecl(
           plasmicCss,
           `.plasmic_tokens.${darkClass}.${darkClass}`,
           `--plasmic-token-${bgTokenName}`
         )
-      ).toEqual(`var(--token-${bgTokenId})`);
+      ).toEqual(null);
       expect(
         findRuleDecl(
           plasmicCss,
           `.plasmic_tokens.${darkClass}.${darkClass}`,
           `--plasmic-token-${fgTokenName}`
         )
-      ).toEqual(`var(--token-${fgTokenId})`);
+      ).toEqual(null);
     });
 
     it("codegens component CSS with correct variantable tokens", async () => {

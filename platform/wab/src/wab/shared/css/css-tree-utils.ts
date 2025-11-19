@@ -3,13 +3,19 @@ import {
   CSS_NAMED_COLORS_IDENTIFIERS,
   isColorFunction,
 } from "@/wab/shared/css/colors";
+import { LengthUnit } from "@/wab/shared/css/types";
 import {
   CssNode,
+  Dimension,
   FunctionNode,
-  generate,
+  NumberNode,
+  Percentage,
   Raw,
   StringNode,
   Url,
+  generate,
+  parse,
+  walk,
 } from "css-tree";
 /**
  * Splits a collection of CSS nodes by comma operators
@@ -131,16 +137,28 @@ export function extractColorFromNode(node: CssNode) {
 /**
  * Extracts dimension information from a CSS AST node and convert it to Dim instance
  *
- * @param node The CSS AST node to extract color from
+ * @param node The CSS AST node to extract dimension from
  * @returns Dim instance if found, null otherwise
  */
-export function extractDimensionFromNode(node: CssNode) {
+export function extractDimensionFromNode(
+  node: Extract<CssNode, { type: "Dimension" | "Percentage" | "Number" }>
+): Dim;
+export function extractDimensionFromNode(node: CssNode): Dim | null;
+export function extractDimensionFromNode(node: CssNode): Dim | null {
   switch (node.type) {
     // Dimension nodes represent values with units like 50px, 25em
     case "Dimension":
     case "Percentage":
     case "Number":
       return Dim.fromCss(generate(node));
+    case "Function": {
+      const funcValue = generate(node);
+      if (validateDimCssFunction(funcValue).valid) {
+        return Dim.fromCss(funcValue);
+      }
+      return null;
+    }
+
     default:
       return null;
   }
@@ -200,16 +218,30 @@ export function findAllAndMap<T>(
 /**
  * Checks if a node represents a dimension value
  */
-export function isDimensionNode(node: CssNode) {
-  return (
+export function isDimensionNode(
+  node: CssNode
+): node is Dimension | Percentage | NumberNode | FunctionNode {
+  if (
     node.type === "Dimension" ||
     node.type === "Percentage" ||
     node.type === "Number"
-  );
+  ) {
+    return true;
+  }
+
+  // Check for CSS dimension functions
+  if (
+    node.type === "Function" &&
+    validateDimCssFunction(generate(node)).valid
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 /**
- * Checks if a node represents a dimension value
+ * Checks if a node represents a variable function
  */
 export function isVarFunctionNode(node: CssNode): node is FunctionNode {
   return node.type === "Function" && node.name === "var";
@@ -235,4 +267,162 @@ export function isRadialGradientFunction(node: CssNode): node is FunctionNode {
     (node.name === "radial-gradient" ||
       node.name === "repeating-radial-gradient")
   );
+}
+
+const dimCssFunctionsChecked = ["calc", "min", "max", "clamp"] as const;
+
+const dimCssFunctions = dimCssFunctionsChecked as readonly string[];
+
+const DIM_CSS_IDENTIFIER_KEYWORDS = ["auto", "inherit", "initial", "unset"];
+
+const dimCssFunctionsReg = new RegExp(
+  `^(${dimCssFunctions.join("|")})\\s*\\(`,
+  "i"
+);
+
+export function isDimCssFunction(value: string): boolean {
+  const trimmed = value.trim();
+  return dimCssFunctionsReg.test(trimmed);
+}
+
+type DimCssFunctionValidationResult =
+  | { valid: true }
+  | { valid: false; error: string };
+
+/**
+ * Validates a CSS dimension function (calc, min, max, clamp) and returns detailed error information
+ *
+ * @param value - The CSS value to validate
+ * @param allowedUnits - Optional array of allowed units (e.g., ['px', '%', 'em'])
+ * @returns Validation result with error message if invalid
+ */
+export function validateDimCssFunction(
+  value: string,
+  allowedUnits?: readonly string[]
+): DimCssFunctionValidationResult {
+  const invalidFunctionError = `Not a valid CSS dimension function. Must be one of these: ${dimCssFunctions.join(
+    ", "
+  )}`;
+  if (!isDimCssFunction(value)) {
+    return {
+      valid: false,
+      error: invalidFunctionError,
+    };
+  }
+
+  let ast: CssNode;
+  try {
+    // Parsing can fail if the input has incomplete characters or invalid format
+    ast = parse(value, { context: "value" });
+  } catch (e) {
+    return {
+      valid: false,
+      error: e.message ?? "Invalid CSS syntax",
+    };
+  }
+
+  let error: string | null = null;
+
+  walk(ast, (node) => {
+    switch (node.type) {
+      case "Dimension":
+      case "Percentage":
+      case "Number": {
+        const dim = extractDimensionFromNode(node);
+        if (allowedUnits && !allowedUnits.includes(dim.unit)) {
+          error = `The unit '${
+            dim.unit
+          }' isn't supported here. Please use one of: ${allowedUnits.join(
+            ", "
+          )}`;
+          return walk.break;
+        }
+        return;
+      }
+      case "Identifier": {
+        if (!DIM_CSS_IDENTIFIER_KEYWORDS.includes(node.name.toLowerCase())) {
+          error = `'${
+            node.name
+          }' isn't a valid keyword here. Please use one of: ${DIM_CSS_IDENTIFIER_KEYWORDS.join(
+            ", "
+          )}`;
+          return walk.break;
+        }
+        return;
+      }
+      case "Function": {
+        const funcName = node.name.toLowerCase();
+
+        // Allow var() function - skip validation of its children
+        if (funcName === "var") {
+          return walk.skip; // Don't walk into var() children
+        }
+
+        // Check if it's a valid dimension function
+        if (!isDimCssFunction(generate(node))) {
+          error = invalidFunctionError;
+          return walk.break;
+        }
+
+        // Nested function is valid, continue walking its children
+        return;
+      }
+      case "Value":
+      case "Operator": {
+        return;
+      }
+      default: {
+        error = `This part of your CSS function isn't valid. Found unexpected '${node.type}'`;
+        return walk.break;
+      }
+    }
+  });
+
+  if (error) {
+    return { valid: false, error };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Checks if a dimension value contains only allowed units.
+ *
+ * @param value The CSS dimension value to check
+ * @param allowedUnits Array of allowed unit strings
+ * @returns true if all units in the value are allowed, false otherwise
+ */
+export function checkAllowedUnits(
+  value: string,
+  allowedUnits: LengthUnit[]
+): boolean {
+  if (!value || value.trim().length === 0) {
+    return true;
+  }
+
+  let ast: CssNode;
+  try {
+    ast = parse(value, { context: "value" });
+  } catch (e) {
+    return false;
+  }
+
+  let isValid = true;
+
+  walk(ast, (node) => {
+    if (
+      node.type === "Dimension" ||
+      node.type === "Percentage" ||
+      node.type === "Number"
+    ) {
+      const dim = extractDimensionFromNode(node);
+      if (!allowedUnits.includes(dim.unit as LengthUnit)) {
+        isValid = false;
+        return walk.break;
+      }
+    }
+    return;
+  });
+
+  return isValid;
 }

@@ -7,9 +7,11 @@ import { Bundle } from "@/wab/shared/bundles";
 import { Dict } from "@/wab/shared/collections";
 import {
   CopilotUiActions,
+  CopilotUiProps,
   CopilotUiResponse,
   WholeChatCompletionResponse,
 } from "@/wab/shared/copilot/prompt-utils";
+import { ModelProviderOpts } from "@/wab/shared/copilot/provider";
 import { DataSourceType } from "@/wab/shared/data-sources-meta/data-source-registry";
 import {
   LabeledValue,
@@ -22,7 +24,12 @@ import {
   InsertableTemplateTokenResolution,
 } from "@/wab/shared/devflags";
 import { AccessLevel, GrantableAccessLevel } from "@/wab/shared/EntUtil";
-import { PkgVersionInfo, RevInfo, SiteInfo } from "@/wab/shared/SharedApi";
+import {
+  PkgVersionInfo,
+  PkgVersionInfoMeta,
+  RevInfo,
+  SiteInfo,
+} from "@/wab/shared/SharedApi";
 import { ChangeLogEntry, SemVerReleaseType } from "@/wab/shared/site-diffs";
 import {
   DirectConflictPickMap,
@@ -56,10 +63,6 @@ export type SsoConfigId = Opaque<string, "SsoConfigId">;
 export type TutorialDbId = Opaque<string, "TutorialDbId">;
 export type DataSourceId = Opaque<string, "DataSourceId">;
 export type CopilotInteractionId = Opaque<string, "CopilotInteractionId">;
-export type PublicCopilotInteractionId = Opaque<
-  string,
-  "PublicCopilotInteractionId"
->;
 export type CommentThreadId = Opaque<string, "CommentThreadId">;
 
 export type MainBranchId = Opaque<string, "MainBranchId">;
@@ -282,7 +285,6 @@ export enum PublicStyleSection {
   HTMLAttributes = "htmlAttributes",
   ElementStates = "elementStates",
   Mixins = "mixins",
-  ArbitrayCssSelectors = "arbitraryCssSelectors",
 
   // component-level features
   States = "states",
@@ -1869,7 +1871,9 @@ export interface PublishProjectRequest {
   waitPrefill: boolean;
 }
 
-export type PublishProjectResponse = MayTriggerPaywall<{ pkg: PkgVersionInfo }>;
+export type PublishProjectResponse = MayTriggerPaywall<{
+  pkg: PkgVersionInfoMeta;
+}>;
 
 export type AppEndUserAccessIdentifier =
   | { externalId: string }
@@ -2026,12 +2030,12 @@ export type CopilotToken = {
   value: string;
 };
 
-export interface QueryCopilotUiRequest extends QueryCopilotResquestBase {
+export type QueryCopilotUiRequest = {
   type: "ui";
-  images: Array<CopilotImage>;
-  goal: string;
-  tokens?: CopilotToken[];
-}
+  projectId: ProjectId;
+  modelProviderOverride?: ModelProviderOpts;
+  copilotSystemPromptOverride?: string;
+} & CopilotUiProps;
 
 export type QueryCopilotRequest =
   | QueryCopilotChatRequest

@@ -131,6 +131,7 @@ describe("parseHtmlToWebImporterTree", () => {
   display: flex;
   margin: 10px;
   color: #0000ff;
+  padding: min(5%, 10px);
 }
 
 .heading {
@@ -176,6 +177,7 @@ describe("parseHtmlToWebImporterTree", () => {
                 display: "flex",
                 "flex-direction": "row",
                 margin: "10px",
+                padding: "min(5%,10px)",
               },
               safeStyles: {
                 display: "flex",
@@ -184,6 +186,10 @@ describe("parseHtmlToWebImporterTree", () => {
                 marginBottom: "10px",
                 marginLeft: "10px",
                 marginRight: "10px",
+                paddingTop: "min(5%,10px)",
+                paddingRight: "min(5%,10px)",
+                paddingBottom: "min(5%,10px)",
+                paddingLeft: "min(5%,10px)",
               },
               unsafeStyles: {},
               variantCombo: [{ type: "base" }],
@@ -231,7 +237,6 @@ describe("parseHtmlToWebImporterTree", () => {
               variantSettings: [],
               width: "32px",
               height: "32px",
-              fillColor: "#f3f3f3",
             },
           ],
           variantSettings: [],
@@ -610,9 +615,12 @@ describe("parseHtmlToWebImporterTree", () => {
                 borderTopRightRadius: "4px",
                 borderBottomRightRadius: "4px",
                 borderBottomLeftRadius: "4px",
+                borderTopStyle: "none",
+                borderBottomStyle: "none",
+                borderRightStyle: "none",
+                borderLeftStyle: "none",
               },
               unsafeStyles: {
-                border: "none",
                 color: "white",
               },
               variantCombo: [{ type: "base" }],
@@ -695,6 +703,18 @@ describe("parseHtmlToWebImporterTree", () => {
                 "border-radius": "4px",
               },
               safeStyles: {
+                borderTopStyle: "solid",
+                borderRightStyle: "solid",
+                borderBottomStyle: "solid",
+                borderLeftStyle: "solid",
+                borderTopWidth: "2px",
+                borderRightWidth: "2px",
+                borderBottomWidth: "2px",
+                borderLeftWidth: "2px",
+                borderTopColor: "gray",
+                borderRightColor: "gray",
+                borderBottomColor: "gray",
+                borderLeftColor: "gray",
                 borderTopLeftRadius: "4px",
                 borderTopRightRadius: "4px",
                 borderBottomRightRadius: "4px",
@@ -704,9 +724,7 @@ describe("parseHtmlToWebImporterTree", () => {
                 paddingBottom: "8px",
                 paddingLeft: "8px",
               },
-              unsafeStyles: {
-                border: "2px solid gray",
-              },
+              unsafeStyles: {},
               variantCombo: [{ type: "base" }],
             },
             {
@@ -888,17 +906,102 @@ describe("parseHtmlToWebImporterTree", () => {
       attrs: { style: "width: 100%;", __name: "" },
     });
   });
+  it("Parses border mixed properties", async () => {
+    const html = `<!DOCTYPE html>
+      <html lang="en">
+        <head>
+          <style>
+            .mixed-properties {
+              border: 2px solid black;
+              border-top: thick dashed purple;
+              border-color: yellow;
+            }
+          </style>
+        </head>
+        <body>
+        <div>
+        <div class="mixed-properties">Mixed Properties</div>  
+      </div>
+        </body>
+    </html>
+`;
+
+    const { wiTree: rootEl } = await parseHtmlToWebImporterTree(html, site);
+    assert(rootEl, "rootEl should not be null");
+
+    expect(rootEl).toMatchObject<Partial<WIElement>>({
+      type: "container",
+      tag: "div",
+      variantSettings: [
+        {
+          unsanitizedStyles: { width: "100%" },
+          safeStyles: { width: "100%" },
+          unsafeStyles: {},
+          variantCombo: [{ type: "base" }],
+        },
+      ],
+      children: [
+        {
+          type: "container",
+          tag: "div",
+          variantSettings: [],
+          children: [
+            {
+              type: "container",
+              tag: "div",
+              variantSettings: [
+                {
+                  unsanitizedStyles: {
+                    border: "2px solid black",
+                    "border-top": "thick dashed purple",
+                    "border-color": "yellow",
+                  },
+                  safeStyles: {
+                    borderTopStyle: "dashed",
+                    borderRightStyle: "solid",
+                    borderBottomStyle: "solid",
+                    borderLeftStyle: "solid",
+                    borderTopWidth: "5px",
+                    borderRightWidth: "2px",
+                    borderBottomWidth: "2px",
+                    borderLeftWidth: "2px",
+                    borderTopColor: "yellow",
+                    borderRightColor: "yellow",
+                    borderBottomColor: "yellow",
+                    borderLeftColor: "yellow",
+                  },
+                  unsafeStyles: {},
+                  variantCombo: [{ type: "base" }],
+                },
+              ],
+              children: [
+                {
+                  type: "text",
+                  text: "Mixed Properties",
+                  tag: "span",
+                  variantSettings: [],
+                },
+              ],
+              attrs: { class: "mixed-properties", __name: "" },
+            },
+          ],
+          attrs: { __name: "" },
+        },
+      ],
+      attrs: { style: "width: 100%;", __name: "" },
+    });
+  });
 });
 
 describe("renameTokenVarNameToUuid", () => {
   const site = createSite();
   const tplMgr = new TplMgr({ site });
-  const colorPrimaryToken = tplMgr.addToken({
+  const colorPrimaryToken = tplMgr.addStyleToken({
     tokenType: "Color",
     name: "Brand/Brand",
     value: "#3594F0",
   });
-  const colorPrimaryForegroundToken = tplMgr.addToken({
+  const colorPrimaryForegroundToken = tplMgr.addStyleToken({
     tokenType: "Color",
     name: "Neutral/Neutral",
     value: "#374151",
@@ -955,29 +1058,60 @@ describe("fixCSSValue", () => {
     expect(fixCSSValue("content", "some text")).toEqual({});
   });
 
-  it("extracts vh term from calc expression when present", () => {
+  it("parses calc expressions as-is", () => {
     const res = fixCSSValue("width", "calc(10px + 2vh + 5vw)");
-    expect(res).toEqual({ width: "2vh" });
+    expect(res).toEqual({ width: "calc(10px + 2vh + 5vw)" });
   });
 
-  it("extracts vw term from calc expression when no vh", () => {
+  it("parses calc expressions with vw", () => {
     const res = fixCSSValue("height", "calc(10px + 3vw)");
-    expect(res).toEqual({ height: "3vw" });
+    expect(res).toEqual({ height: "calc(10px + 3vw)" });
   });
 
-  it("extracts px term from calc expression when no vh or vw", () => {
+  it("parses calc expressions and expands shorthand properties", () => {
     const res = fixCSSValue("margin", "calc(4px + 5rem)");
     expect(res).toEqual({
-      marginTop: "4px",
-      marginRight: "4px",
-      marginBottom: "4px",
-      marginLeft: "4px",
+      marginTop: "calc(4px + 5rem)",
+      marginRight: "calc(4px + 5rem)",
+      marginBottom: "calc(4px + 5rem)",
+      marginLeft: "calc(4px + 5rem)",
     });
   });
 
-  it("falls back to first term when calc has no px/vh/vw", () => {
-    const res = fixCSSValue("height", "calc(5em*2)");
-    expect(res).toEqual({ height: "5em" });
+  it("parses calc expressions with complex nested operations", () => {
+    const res = fixCSSValue("width", "calc((100% - 40px) / 2)");
+    expect(res).toEqual({ width: "calc((100% - 40px) / 2)" });
+  });
+
+  it("parses min() function", () => {
+    const res = fixCSSValue("width", "min(100%, 500px)");
+    expect(res).toEqual({ width: "min(100%, 500px)" });
+  });
+
+  it("parses max() function", () => {
+    const res = fixCSSValue("height", "max(200px, 50vh)");
+    expect(res).toEqual({ height: "max(200px, 50vh)" });
+  });
+
+  it("parses clamp() function", () => {
+    const res = fixCSSValue("font-size", "clamp(12px, 2vw, 24px)");
+    expect(res).toEqual({ fontSize: "clamp(12px, 2vw, 24px)" });
+  });
+
+  it("parses nested calc in min function", () => {
+    const res = fixCSSValue("width", "min(calc(100% - 20px), 800px)");
+    expect(res).toEqual({ width: "min(calc(100% - 20px), 800px)" });
+  });
+
+  it("parses nested calc in clamp function", () => {
+    const res = fixCSSValue("width", "clamp(200px, calc(50% - 20px), 600px)");
+    expect(res).toEqual({ width: "clamp(200px, calc(50% - 20px), 600px)" });
+  });
+
+  it("parses calc expressions with variable", () => {
+    const token = "var(--token-abc)";
+    const res = fixCSSValue("width", `calc(10px + 2vh + ${token})`);
+    expect(res).toEqual({ width: `calc(10px + 2vh + ${token})` });
   });
 
   it("handles env(...) by taking fallback value", () => {
@@ -1119,7 +1253,7 @@ describe("fixCSSValue", () => {
 
     const token = "var(--token-abc)";
     expect(fixCSSValue("background", token)).toEqual({
-      background: token,
+      background: `linear-gradient(${token}, ${token})`,
     });
   });
 
@@ -1140,6 +1274,14 @@ describe("fixCSSValue", () => {
       fixCSSValue("box-shadow", "5px 10px 15px 20px rgba(0,0,0,0.5)")
     ).toEqual({
       boxShadow: "5px 10px 15px 20px rgba(0,0,0,0.5)",
+    });
+    expect(
+      fixCSSValue(
+        "box-shadow",
+        "calc(100% - 5px) 10px 15px calc(20% - 20px) rgba(0,0,0,0.5)"
+      )
+    ).toEqual({
+      boxShadow: "calc(100% - 5px) 10px 15px calc(20% - 20px) rgba(0,0,0,0.5)",
     });
 
     // convert multiple box shadow properly
@@ -1212,5 +1354,186 @@ describe("snapshot tests", () => {
     const output = await parseHtmlToWebImporterTree(landingPageHtml, site);
 
     expect(output).toMatchSnapshot();
+  });
+});
+
+describe("keyframes and animations parsing", () => {
+  const site = createSite();
+
+  it("parses basic @keyframes rule with from/to", async () => {
+    const html = `
+      <div class="animated-div">Test</div>
+      <style>
+        @keyframes fadeIn {
+          from { opacity: 0; background: #0000ff; }
+          to { opacity: 1; background: #ff0000;}
+        }
+        .animated-div {
+          animation: fadeIn 2s ease-in-out;
+        }
+      </style>
+    `;
+
+    const { wiTree: rootEl, animationSequences } =
+      await parseHtmlToWebImporterTree(html, site);
+
+    expect(animationSequences).toMatchObject([
+      {
+        name: "fadeIn",
+        keyframes: [
+          {
+            percentage: 0,
+            safeStyles: {
+              opacity: "0",
+              background: "linear-gradient(#0000ff, #0000ff)",
+            },
+            unsafeStyles: {},
+          },
+          {
+            percentage: 100,
+            safeStyles: {
+              opacity: "1",
+              background: "linear-gradient(#ff0000, #ff0000)",
+            },
+            unsafeStyles: {},
+          },
+        ],
+      },
+    ]);
+
+    // Check that animation property is parsed on the element
+    expect(rootEl).toMatchObject<Partial<WIElement>>({
+      type: "container",
+      tag: "div",
+      children: [
+        {
+          type: "container",
+          tag: "div",
+          children: [
+            {
+              type: "text",
+              tag: "span",
+              text: "Test",
+              variantSettings: [],
+            },
+          ],
+          attrs: {},
+          variantSettings: [
+            {
+              unsanitizedStyles: {
+                animation: "fadeIn 2s ease-in-out",
+              },
+              safeStyles: {
+                animation: "fadeIn 2s ease-in-out",
+              },
+              unsafeStyles: {},
+              variantCombo: [{ type: "base" }],
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("parses multiple @keyframes rules", async () => {
+    const html = `
+      <div>Test</div>
+      <style>
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @-webkit-keyframes slideUp {
+          0% { transform: translateY(20px); }
+          100% { transform: translateY(0); }
+        }
+        
+      </style>
+    `;
+
+    const { animationSequences } = await parseHtmlToWebImporterTree(html, site);
+    expect(animationSequences).toMatchObject([
+      {
+        name: "fadeIn",
+        keyframes: [
+          { percentage: 0, safeStyles: { opacity: "0" }, unsafeStyles: {} },
+          { percentage: 100, safeStyles: { opacity: "1" }, unsafeStyles: {} },
+        ],
+      },
+      {
+        name: "slideUp",
+        keyframes: [
+          { percentage: 0, safeStyles: {}, unsafeStyles: {} },
+          { percentage: 100, safeStyles: {}, unsafeStyles: {} },
+        ],
+      },
+    ]);
+  });
+
+  it("sorts keyframes by percentage", async () => {
+    const html = `
+      <div>Test</div>
+      <style>
+        @keyframes unorderedAnimation {
+          100% { opacity: 1; }
+          25% { opacity: 0.25; }
+          75% { opacity: 0.75; }
+          0% { opacity: 0; }
+          50% { opacity: 0.5; }
+        }
+      </style>
+    `;
+
+    const { animationSequences } = await parseHtmlToWebImporterTree(html, site);
+
+    expect(animationSequences).toMatchObject([
+      {
+        name: "unorderedAnimation",
+        keyframes: [
+          { percentage: 0, safeStyles: { opacity: "0" }, unsafeStyles: {} },
+          { percentage: 25, safeStyles: { opacity: "0.25" }, unsafeStyles: {} },
+          { percentage: 50, safeStyles: { opacity: "0.5" }, unsafeStyles: {} },
+          { percentage: 75, safeStyles: { opacity: "0.75" }, unsafeStyles: {} },
+          { percentage: 100, safeStyles: { opacity: "1" }, unsafeStyles: {} },
+        ],
+      },
+    ]);
+  });
+
+  it("handles empty keyframes gracefully", async () => {
+    const html = `
+      <div>Test</div>
+      <style>
+        @keyframes emptyAnimation {
+          /* no keyframes defined */
+        }
+      </style>
+    `;
+
+    const { animationSequences } = await parseHtmlToWebImporterTree(html, site);
+    expect(animationSequences[0]).toMatchObject({
+      name: "emptyAnimation",
+      keyframes: [],
+    });
+  });
+
+  it("skips invalid keyframe selectors", async () => {
+    const html = `
+      <div>Test</div>
+      <style>
+        @keyframes mixedAnimation {
+          0% { opacity: 0; }
+          invalid { opacity: 0.5; }
+          100% { opacity: 1; }
+        }
+      </style>
+    `;
+
+    const { animationSequences } = await parseHtmlToWebImporterTree(html, site);
+
+    expect(animationSequences[0].keyframes).toEqual([
+      { percentage: 0, safeStyles: { opacity: "0" }, unsafeStyles: {} },
+      { percentage: 100, safeStyles: { opacity: "1" }, unsafeStyles: {} },
+    ]);
   });
 });

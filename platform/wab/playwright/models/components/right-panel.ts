@@ -1,4 +1,4 @@
-import { FrameLocator, Locator, Page } from "playwright/test";
+import { expect, FrameLocator, Locator, Page } from "playwright/test";
 import { modifierKey } from "../../utils/modifier-key";
 import { updateFormValuesInLiveMode } from "../../utils/studio-utils";
 import { BaseModel } from "../BaseModel";
@@ -33,7 +33,7 @@ export class RightPanel extends BaseModel {
     '[data-test-id="close-sidebar-modal"]'
   );
   readonly designTabButton: Locator = this.frame.locator(
-    "button#nav-tab-style"
+    'button[data-test-tabkey="style"]'
   );
   readonly componentNameInput: Locator = this.frame.locator(
     'input[data-test-class="simple-text-box"]'
@@ -154,7 +154,7 @@ export class RightPanel extends BaseModel {
     'button[data-test-tabkey="settings"]'
   );
   readonly addInteractionVariantButton: Locator = this.frame.locator(
-    '[data-event="component-arena-add-interaction-variant"]'
+    '[data-event="variantspanel-section-add-variant-to-group"]'
   );
   readonly variantSelectorInput: Locator = this.frame.locator(
     'input[placeholder="e.g. :hover, :focus, :nth-child(odd)"]'
@@ -207,12 +207,6 @@ export class RightPanel extends BaseModel {
   readonly yearButton: Locator = this.frame.locator('button:has-text("2023")');
   readonly yearOption2020: Locator = this.frame.locator(
     'div[role="option"]:has-text("2020")'
-  );
-  readonly notificationWarning: Locator = this.frame.locator(
-    '.ant-notification-notice-warning:has(.ant-notification-notice-message:contains("Unsupported host app detected"))'
-  );
-  readonly notificationCloseButton: Locator = this.frame.locator(
-    ".ant-notification-notice-close"
   );
 
   readonly addHtmlAttributeButton: Locator = this.frame.locator(
@@ -273,7 +267,7 @@ export class RightPanel extends BaseModel {
     return dropdownElement;
   }
 
-  async getStateVariable(stateVar: string): Promise<Locator> {
+  getStateVariable(stateVar: string): Locator {
     const stateVariable = this.frame
       .locator(`[data-test-id="0-${stateVar}"]`)
       .first();
@@ -360,8 +354,34 @@ export class RightPanel extends BaseModel {
   async chooseFontSize(fontSize: string) {
     await this.designTabButton.click();
     await this.fontSizeInput.first().click();
-    await this.fontSizeInput.first().fill(fontSize);
-    await this.page.keyboard.press("Enter");
+    await this.page.waitForTimeout(500);
+
+    const isNumeric = /^\d+(\.\d+)?(px|em|rem|%)?$/.test(fontSize);
+
+    if (isNumeric) {
+      await this.fontSizeInput.first().fill(fontSize);
+      await this.page.waitForTimeout(500);
+      await this.page.keyboard.press("Enter");
+    } else {
+      const searchInput = this.frame.locator(
+        'input[placeholder="Search for token"]'
+      );
+      const searchInputVisible = await searchInput
+        .isVisible({ timeout: 1000 })
+        .catch(() => false);
+
+      if (searchInputVisible) {
+        await this.page.waitForTimeout(100);
+        await searchInput.fill(fontSize);
+        await this.page.waitForTimeout(100);
+        await this.page.keyboard.press("Enter");
+        await this.page.waitForTimeout(100);
+      } else {
+        await this.page.keyboard.type(fontSize);
+        await this.page.waitForTimeout(500);
+        await this.page.keyboard.press("Enter");
+      }
+    }
   }
 
   async switchToComponentDataTab() {
@@ -383,7 +403,6 @@ export class RightPanel extends BaseModel {
   }
 
   async selectVariant(variantName: string) {
-    await this.switchToComponentDataTab();
     const variantRow = this.frame
       .locator(`[data-test-class="variant-row"]`)
       .getByText(variantName);
@@ -491,6 +510,7 @@ export class RightPanel extends BaseModel {
 
   async removePropValue(propName: string) {
     const propRow = await this.getPropEditorRow(propName);
+    await propRow.first().waitFor({ state: "visible", timeout: 10000 });
     await propRow.click({ button: "right" });
     await this.frame.getByText(`Remove ${propName} prop`).click();
   }
@@ -518,7 +538,7 @@ export class RightPanel extends BaseModel {
     }
 
     await this.page.keyboard.type(value);
-    await this.page.waitForTimeout(200);
+    await this.page.waitForTimeout(2000);
     await this.page.keyboard.press("Enter");
   }
 
@@ -587,6 +607,8 @@ export class RightPanel extends BaseModel {
   async addVariantGroup(groupName: string) {
     await this.addVariantGroupButton.click();
 
+    await this.page.waitForTimeout(500);
+
     const singleOption = this.frame
       .locator(".ant-dropdown-menu")
       .getByText("single");
@@ -610,8 +632,8 @@ export class RightPanel extends BaseModel {
   }
 
   async configureProjectAppHost(page: string) {
-    await this.projectMenuButton.click({ force: true });
-    await this.configureProjectButton.click({ force: true });
+    await this.projectMenuButton.click({ timeout: 10000 });
+    await this.configureProjectButton.click();
 
     const plasmicHost = `http://localhost:${
       process.env.CUSTOM_HOST_PORT || 3000
@@ -621,20 +643,13 @@ export class RightPanel extends BaseModel {
     await this.hostUrlInput.fill(plasmicHost);
     await this.hostConfirmButton.click();
 
-    const hostFrame = this.page
-      .locator("iframe")
-      .first()
-      .contentFrame()
-      .locator("iframe")
-      .contentFrame()
-      .locator(
-        `iframe[src^="http://localhost:${
-          process.env.CUSTOM_HOST_PORT || 3000
-        }/${page}"]`
-      );
+    const hostFrame = this.page.locator(
+      `iframe[src^="http://localhost:${
+        process.env.CUSTOM_HOST_PORT || 3000
+      }/${page}"]`
+    );
 
     await hostFrame.waitFor({ timeout: 60000 });
-    await this.page.reload({ timeout: 120000 });
   }
 
   async setWidth(value: string) {
@@ -665,9 +680,14 @@ export class RightPanel extends BaseModel {
   }
 
   async closeNotificationWarning() {
-    await this.notificationWarning
-      .locator(this.notificationCloseButton)
-      .click();
+    await this.frame
+      .locator(".ant-notification-notice-message")
+      .filter({ hasText: "Unsupported host app detected" })
+      .waitFor();
+    await this.frame.locator(".ant-notification-notice-close").click();
+    await this.frame
+      .locator(".ant-notification-topRight")
+      .waitFor({ state: "hidden" });
   }
 
   async addComplexInteraction(
@@ -712,10 +732,8 @@ export class RightPanel extends BaseModel {
 
       if (interaction.args.variable) {
         await this.stateButton.click();
-        await (
-          await this.getStateVariable(interaction.args.variable[0])
-        ).click();
-        await this.windowSaveButton.click();
+        await this.getStateVariable(interaction.args.variable[0]).click();
+        await this.saveDataPicker();
       }
 
       if (interaction.args.operation) {
@@ -837,10 +855,15 @@ export class RightPanel extends BaseModel {
   async addHtmlAttribute(attr: string, value: string) {
     await this.addHtmlAttributeButton.click();
 
+    await this.page.waitForTimeout(200);
     await this.page.keyboard.type(attr);
+    await this.page.waitForTimeout(200);
     await this.page.keyboard.press("Enter");
-
+    await this.page.waitForTimeout(200);
+    await this.frame.locator(`[data-plasmic-prop="${attr}"]`).click();
+    await this.page.waitForTimeout(200);
     await this.page.keyboard.type(value);
+    await this.page.waitForTimeout(200);
     await this.page.keyboard.press("Enter");
   }
 
@@ -964,6 +987,7 @@ export class RightPanel extends BaseModel {
     }
 
     const select = this.frame.locator(`[data-plasmic-prop="${label}"]`);
+    await expect(select).toBeVisible({ timeout: 10000 });
     await select.click();
 
     const optionWithQuotes = this.frame.locator(`[data-key="'${value}'"]`);
@@ -994,8 +1018,8 @@ export class RightPanel extends BaseModel {
     await this.setSelectByLabel(selectName, value);
   }
 
-  async updateFormValuesLiveMode(newValues: any, liveFrame: any) {
-    await updateFormValuesInLiveMode(newValues, liveFrame, this.page);
+  async updateFormValuesLiveMode(newValues: any, liveFrame: FrameLocator) {
+    await updateFormValuesInLiveMode(newValues, liveFrame);
   }
 
   async bindTextContentToCustomCode(code: string) {
@@ -1021,7 +1045,7 @@ export class RightPanel extends BaseModel {
     name: string;
     variableType: string;
     accessType?: string;
-    initialValue?: any;
+    initialValue?: string;
     isInitValDynamicValue?: boolean;
   }) {
     const existingStates = await this.frame
@@ -1091,9 +1115,11 @@ export class RightPanel extends BaseModel {
       await propEditorRow.click({ button: "right" });
       await this.frame.getByText("Use dynamic value").click();
       await this.ensureDataPickerInCustomCodeMode();
+      await this.page.waitForTimeout(200);
       await this.insertMonacoCode(
         state.initialValue != null ? state.initialValue : "undefined"
       );
+      await this.page.waitForTimeout(200);
     } else {
       if (state.variableType === "number") {
         const initValInput = this.frame.locator(
@@ -1269,9 +1295,11 @@ export class RightPanel extends BaseModel {
     await closeBtn.click();
   }
 
-  async closeDataPicker() {
-    const closeBtn = this.frame.locator('[data-test-id="data-picker-close"]');
-    await closeBtn.click();
+  async saveDataPicker() {
+    await this.windowSaveButton.click();
+    await this.frame
+      .locator('[data-test-id="data-picker"]')
+      .waitFor({ state: "detached", timeout: 2000 });
   }
 
   async clickDataPlasmicProp(propName: string) {
@@ -1343,11 +1371,8 @@ export class RightPanel extends BaseModel {
 
     const confirmBtn = this.page.locator('[data-test-id="prompt-submit"]');
     await confirmBtn.first().click();
-    await this.page.waitForTimeout(2000);
-
-    await this.page.waitForTimeout(2000);
     const unsetButton = this.frame.getByRole("button", { name: "unset" });
-    await unsetButton.click();
+    await unsetButton.click({ timeout: 20000 });
     await this.page.waitForTimeout(500);
 
     const tableOption = this.frame.locator(`option[value*="${tableName}"]`);
@@ -1427,5 +1452,32 @@ export class RightPanel extends BaseModel {
     );
 
     return results.every((count) => count > 0);
+  }
+
+  async checkNumberOfStatesInComponent(explicit: number, implicit: number) {
+    await this.switchToComponentDataTab();
+
+    const explicitStateRows = this.frame.locator(
+      '[data-test-type="variable-row"]'
+    );
+    await expect(explicitStateRows).toHaveCount(explicit);
+
+    if (!implicit) {
+      const showExtraContentButton = this.frame.locator(
+        '[data-test-id="variables-section"] [data-test-id="show-extra-content"]'
+      );
+      await expect(showExtraContentButton).not.toBeVisible();
+    } else {
+      // Expand the variables section to show implicit states
+      const showExtraContentButton = this.frame.locator(
+        '[data-test-id="variables-section"] [data-test-id="show-extra-content"]'
+      );
+      await showExtraContentButton.click();
+
+      const implicitStateRows = this.frame.locator(
+        '[data-test-type="implicit-variable-row"]'
+      );
+      await expect(implicitStateRows).toHaveCount(implicit);
+    }
   }
 }

@@ -8,7 +8,10 @@ import {
 import { ProjectDependencyManager } from "@/wab/client/ProjectDependencyManager";
 import { zoomJump } from "@/wab/client/Zoom";
 import { invalidationKey } from "@/wab/client/api";
-import { getProjectReleases } from "@/wab/client/api-hooks";
+import {
+  getProjectReleases,
+  listUnpublishedProjectRevisions,
+} from "@/wab/client/api-hooks";
 import { storageViewAsKey } from "@/wab/client/app-auth/constants";
 import { parseProjectLocation, parseRoute } from "@/wab/client/cli-routes";
 import { LocalClipboard } from "@/wab/client/clipboard/local";
@@ -113,6 +116,7 @@ import { safeCallbackify } from "@/wab/commons/control";
 import { unwrap } from "@/wab/commons/failable-utils";
 import { isLatest, latestTag, lt } from "@/wab/commons/semver";
 import { DeepReadonly } from "@/wab/commons/types";
+import type { ProjectRevision } from "@/wab/server/entities/Entities";
 import { UnauthorizedError } from "@/wab/shared/ApiErrors/errors";
 import {
   ApiBranch,
@@ -156,9 +160,12 @@ import {
 import {
   AccessLevel,
   accessLevelRank,
+  isPkgVersionInfoMeta,
+  isProjectRevision,
   isUnownedProject,
 } from "@/wab/shared/EntUtil";
 import {
+  MinimalRevisionInfo,
   PkgVersionInfo,
   PkgVersionInfoMeta,
   SiteInfo,
@@ -175,7 +182,7 @@ import {
   checkBundleFields,
   checkRefsInBundle,
 } from "@/wab/shared/bundler";
-import { UnsafeBundle, getBundle } from "@/wab/shared/bundles";
+import { UnsafeBundle, getBundle, parseBundle } from "@/wab/shared/bundles";
 import {
   allCodeLibraries,
   allCustomFunctions,
@@ -310,6 +317,7 @@ import {
   Component,
   ComponentArena,
   DataSourceTemplate,
+  DataToken,
   ObjInst,
   PageArena,
   ProjectDependency,
@@ -721,7 +729,13 @@ export class StudioCtx extends WithDbCtx {
 
     spawn(
       this.getProjectReleases().then((releases) =>
-        this.releases.push(...releases)
+        this.releases.replace(releases)
+      )
+    );
+
+    spawn(
+      this.listUnpublishedProjectRevisions().then((revision) =>
+        this.revisions.replace(revision)
       )
     );
 
@@ -1840,6 +1854,16 @@ export class StudioCtx extends WithDbCtx {
     );
   }
 
+  switchToRevision(revisionId: string, opts?: { replace?: boolean }) {
+    this.switchRoute({
+      branch: this.dbCtx().branchInfo,
+      branchRevision: revisionId,
+      pkgVersionInfoMeta: undefined,
+      arena: this.currentArena,
+      ...opts,
+    });
+  }
+
   refreshFocusedFrameArena() {
     assert(
       isDedicatedArena(this.currentArena) && this.currentArena._focusedFrame,
@@ -1889,6 +1913,7 @@ export class StudioCtx extends WithDbCtx {
     this.switchRoute({
       branch: this.dbCtx().branchInfo,
       pkgVersionInfoMeta: this.dbCtx().pkgVersionInfoMeta,
+      branchRevision: this.dbCtx().revisionInfo?.id,
       arena: arena ?? null,
       replace: opts?.replace,
       stopWatching: opts?.stopWatching,
@@ -1907,6 +1932,7 @@ export class StudioCtx extends WithDbCtx {
   private switchRoute({
     branch,
     pkgVersionInfoMeta,
+    branchRevision,
     arena,
     threadId,
     replace,
@@ -1914,6 +1940,7 @@ export class StudioCtx extends WithDbCtx {
   }: {
     branch: ApiBranch | undefined;
     pkgVersionInfoMeta: PkgVersionInfoMeta | undefined;
+    branchRevision?: string | undefined;
     arena: AnyArena | null;
     threadId?: string;
     replace?: boolean;
@@ -1936,6 +1963,7 @@ export class StudioCtx extends WithDbCtx {
       this.switchRouteRaw({
         branchName,
         branchVersion,
+        branchRevision,
         arenaType,
         arenaUuidOrName,
         threadId,
@@ -1948,6 +1976,7 @@ export class StudioCtx extends WithDbCtx {
       this.switchRouteRaw({
         branchName,
         branchVersion,
+        branchRevision: undefined,
         arenaType: undefined,
         arenaUuidOrName: undefined,
         threadId: undefined,
@@ -1966,6 +1995,7 @@ export class StudioCtx extends WithDbCtx {
   private switchRouteRaw({
     branchName,
     branchVersion,
+    branchRevision,
     arenaType,
     arenaUuidOrName,
     threadId,
@@ -1975,6 +2005,7 @@ export class StudioCtx extends WithDbCtx {
   }: {
     branchName: string;
     branchVersion: string;
+    branchRevision: string | undefined;
     arenaType: ArenaType | undefined;
     arenaUuidOrName: string | undefined;
     threadId: string | undefined;
@@ -1991,6 +2022,7 @@ export class StudioCtx extends WithDbCtx {
       slug,
       branchName,
       branchVersion,
+      branchRevision,
       arenaType,
       arenaUuidOrNameOrPath: arenaUuidOrName,
       threadId,
@@ -2032,8 +2064,9 @@ export class StudioCtx extends WithDbCtx {
         arenaUuidOrNameOrPath,
         isPreview,
         threadId,
+        branchRevision,
       } = match;
-      await this.handleBranchChange(branchName, branchVersion);
+      await this.handleBranchChange(branchName, branchVersion, branchRevision);
       if (!isPreview) {
         // We don't want to render the arenas in preview mode, for performance
         // and to avoid setting the zoom level when the arena is not rendered.
@@ -2051,13 +2084,20 @@ export class StudioCtx extends WithDbCtx {
     }
   }
 
-  private async handleBranchChange(branchName: string, branchVersion: string) {
+  private async handleBranchChange(
+    branchName: string,
+    branchVersion: string,
+    branchRevision?: string
+  ) {
     const currentBranchName = this.dbCtx().branchInfo?.name ?? MainBranchId;
     const currentBranchVersion =
       this.dbCtx().pkgVersionInfoMeta?.version ?? latestTag;
+    const currentRevisionId = this.dbCtx().revisionInfo?.id;
+
     if (
       branchName === currentBranchName &&
-      branchVersion === currentBranchVersion
+      branchVersion === currentBranchVersion &&
+      branchRevision === currentRevisionId
     ) {
       return;
     }
@@ -2075,10 +2115,19 @@ export class StudioCtx extends WithDbCtx {
       }
     }
 
-    // Given branch version, look up pkg version
-    let pkgVersionInfoMeta: PkgVersionInfoMeta | undefined = undefined;
+    let versionOrRevision: PkgVersionInfoMeta | ProjectRevision | undefined =
+      undefined;
     let editMode = true;
-    if (branchVersion !== "latest") {
+
+    if (branchRevision) {
+      const { rev } = await this.appCtx.api.getProjectRevision(
+        this.siteInfo.id,
+        branchRevision
+      );
+      versionOrRevision = rev;
+      editMode = false;
+    } else if (branchVersion !== "latest") {
+      // Load a specific published version
       const { pkg } = await this.appCtx.api.getPkgByProjectId(this.siteInfo.id);
       if (!pkg) {
         this.switchToBranch(branch, undefined, { replace: true });
@@ -2090,7 +2139,7 @@ export class StudioCtx extends WithDbCtx {
           branchVersion,
           branch?.id
         );
-        pkgVersionInfoMeta = resp.pkg;
+        versionOrRevision = resp.pkg;
         editMode = false; // cannot edit when viewing previous pkg version
       } catch (e) {
         if (e.name === "NotFoundError") {
@@ -2101,7 +2150,8 @@ export class StudioCtx extends WithDbCtx {
         }
       }
     }
-    await this.loadVersion(pkgVersionInfoMeta, editMode, branch);
+
+    await this.loadVersion(versionOrRevision, editMode, branch);
     this.handleBranchProtectionAlert();
   }
 
@@ -2637,7 +2687,10 @@ export class StudioCtx extends WithDbCtx {
         (v) => v.uuid
       );
       const allGlobalVariantsMap = keyBy(
-        allGlobalVariants(this.site, { includeDeps: "direct" }),
+        allGlobalVariants(this.site, {
+          includeDeps: "direct",
+          excludeInactiveScreenVariants: true,
+        }),
         (v) => v.uuid
       );
 
@@ -2667,7 +2720,10 @@ export class StudioCtx extends WithDbCtx {
       (v) => v.uuid
     );
     const allGlobalVariantsMap = keyBy(
-      allGlobalVariants(this.site, { includeDeps: "direct" }),
+      allGlobalVariants(this.site, {
+        includeDeps: "direct",
+        excludeInactiveScreenVariants: true,
+      }),
       (v) => v.uuid
     );
     const customArenas = this.getSortedMixedArenas();
@@ -4078,9 +4134,18 @@ export class StudioCtx extends WithDbCtx {
       },
       update: async (data) => {
         // Just run syncProjects() for now when any project has been updated
+        const revisionNum = data.rev.revision;
+        const revisionBranchId = data.rev.branchId;
+        const currentBranchId = this.branchInfo()?.id ?? null;
+
         console.log(
-          `Project ${data.projectId} updated to revision ${data.revisionNum}`
+          `Project ${data.projectId} updated to revision ${revisionNum}`
         );
+
+        // Append revision to the list if it's from the current branch
+        if (revisionBranchId === currentBranchId) {
+          this.revisions.unshift(data.rev);
+        }
 
         if (!this.editMode) {
           return;
@@ -4088,7 +4153,7 @@ export class StudioCtx extends WithDbCtx {
 
         if (
           this.pendingSavedRevisionNum === undefined ||
-          this.pendingSavedRevisionNum < data.revisionNum
+          this.pendingSavedRevisionNum < revisionNum
         ) {
           if (this.shouldSyncWithOtherPlayers()) {
             if (this.isAtTip) {
@@ -4099,13 +4164,13 @@ export class StudioCtx extends WithDbCtx {
               await this.fetchUpdatesWatch();
             } else if (this.isAtTip) {
               console.log(
-                `Edit lock stolen.  pendingSavedRevisionNum is ${this.pendingSavedRevisionNum} but got ${data.revisionNum}`
+                `Edit lock stolen.  pendingSavedRevisionNum is ${this.pendingSavedRevisionNum} but got ${revisionNum}`
               );
               this.alertBannerState.set(AlertSpec.ConcurrentEdit);
               await this.changeUnsafe(() => (this.isAtTip = false));
             }
           }
-        } else if (this.pendingSavedRevisionNum === data.revisionNum) {
+        } else if (this.pendingSavedRevisionNum === revisionNum) {
           // The ACKs have now caught up to the latest pending save.
           this.pendingSavedRevisionNum = undefined;
         }
@@ -4118,9 +4183,12 @@ export class StudioCtx extends WithDbCtx {
       disconnect: async () => {
         await this.multiplayerCtx.updateSessions([]);
       },
-      publish: (data: PkgVersionInfoMeta) =>
-        (this.releases.length === 0 || this.releases[0].id !== data.id) &&
-        this.releases.unshift(data),
+      publish: async (data: PkgVersionInfoMeta) => {
+        if (this.releases.length === 0 || this.releases[0].id !== data.id) {
+          this.releases.unshift(data);
+        }
+        await this.refreshRevisions();
+      },
       hostlessDataVersionUpdate: (data: any) => {
         if (data.hostlessDataVersion !== this.dbCtx().hostlessDataVersion) {
           this.alertBannerState.set(AlertSpec.OutOfDate);
@@ -5264,7 +5332,10 @@ export class StudioCtx extends WithDbCtx {
           return await withTimeout(
             this.fetchUpdates(),
             "Sync with latest updates timed out"
-          ).then(() => this.trySave(preferIncremental));
+          ).then(async () => {
+            await this.refreshRevisions();
+            return this.trySave(preferIncremental);
+          });
         } else if (e.name === "ForbiddenError") {
           showForbiddenError();
           this.alertBannerState.set(AlertSpec.PermError);
@@ -5581,28 +5652,54 @@ export class StudioCtx extends WithDbCtx {
   //
   projectDependencyManager: ProjectDependencyManager;
   releases = observable.array<PkgVersionInfoMeta>([], { deep: false });
+  revisions = observable.array<MinimalRevisionInfo>([], { deep: false });
 
-  /** Reverts the current branch to the given version and switches to the latest version. */
-  async revertToVersion(pkgVersion: PkgVersionInfoMeta) {
+  async refreshRevisions(revisionNumGt?: number) {
+    const newRevisions = await this.listUnpublishedProjectRevisions(
+      revisionNumGt
+    );
+
+    if (revisionNumGt) {
+      // Prepend only new revisions to existing ones
+      this.revisions.replace([...newRevisions, ...this.revisions]);
+    } else {
+      // Full load, replace all
+      this.revisions.replace(newRevisions);
+    }
+  }
+
+  /** Reverts the current branch to the given version or revision and switches to the latest. */
+  async revertTo(versionOrRevision: PkgVersionInfoMeta | MinimalRevisionInfo) {
     this.setWatchPlayerId(null);
 
-    assert(
-      (pkgVersion.branchId ?? null) === (this.branchInfo()?.id ?? null),
-      () => `Can only revert to a version of the same branch`
-    );
-    await this.appCtx.api.revertToVersion(this.siteInfo.id, {
-      branchId: this.branchInfo()?.id,
-      pkgId: pkgVersion.pkgId,
-      version: pkgVersion.version,
-    });
-
+    const branch = this.branchInfo();
     const prevArenaName = this.currentArena
       ? getArenaName(this.currentArena)
       : undefined;
-    const version = this.dbCtx().pkgVersionInfoMeta?.version ?? latestTag;
-    if (version === latestTag) {
-      // Already viewing latest version of branch. Reload and switch arena.
-      await this.loadVersion(undefined, true, this.branchInfo());
+    assert(
+      (versionOrRevision.branchId ?? null) === (branch?.id ?? null),
+      () => `Can only revert to a version of the same branch`
+    );
+
+    if (isPkgVersionInfoMeta(versionOrRevision)) {
+      await this.appCtx.api.revertToVersion(this.siteInfo.id, {
+        branchId: branch?.id,
+        pkgId: versionOrRevision.pkgId,
+        version: versionOrRevision.version,
+      });
+    } else {
+      await this.appCtx.api.revertProjectToRevision(
+        this.siteInfo.id,
+        versionOrRevision.id,
+        branch?.id
+      );
+    }
+
+    // Check if we're already viewing latest
+    const currentVersionInfo = this.dbCtx().projectVersionInfo;
+    if (!currentVersionInfo) {
+      // Already viewing latest. Reload and switch arena.
+      await this.loadVersion(undefined, true, branch);
       const prevArena = prevArenaName
         ? getArenaByNameOrUuidOrPath(this.site, prevArenaName, undefined)
         : undefined;
@@ -5627,13 +5724,13 @@ export class StudioCtx extends WithDbCtx {
    * Note just calling this function will not cause the arena to be loaded in the canvas.
    * The arena's view state must be set to `isAlive` via `switchToArena`/`changeArena`.
    *
-   * @param pkgVersion - if unspecified, get latest revision
+   * @param versionOrRevision - version/revision to load, or undefined for latest
    * @param editMode - if falsey, stops saves and shows AlertBanner. If truthy,
    *   will autosave as normal
    * @param branch - branch to load
    **/
   private async loadVersion(
-    pkgVersion?: PkgVersionInfoMeta,
+    versionOrRevision?: PkgVersionInfoMeta | ProjectRevision,
     editMode?: boolean,
     branch?: ApiBranch
   ) {
@@ -5648,18 +5745,38 @@ export class StudioCtx extends WithDbCtx {
         this.alertBannerState.set(editMode ? null : AlertSpec.ViewOld);
         this.setHighLevelFocusOnly(undefined, undefined); // Hide the focused box
       });
-      const { bundle, depPkgs, revisionNum } = await (async () => {
-        if (pkgVersion) {
+      const {
+        rev: currRev,
+        bundle,
+        depPkgs,
+        revisionNum,
+      } = await (async () => {
+        if (versionOrRevision && isPkgVersionInfoMeta(versionOrRevision)) {
           const { pkg, depPkgs: _depPkgs } =
             await this.appCtx.api.getPkgVersion(
-              pkgVersion.pkgId,
-              pkgVersion.version,
+              versionOrRevision.pkgId,
+              versionOrRevision.version,
               branch?.id
             );
           return {
             bundle: pkg.model,
             depPkgs: _depPkgs,
             revisionNum: undefined,
+          };
+        } else if (versionOrRevision && isProjectRevision(versionOrRevision)) {
+          const { rev, depPkgs: _depPkgs } =
+            await this.appCtx.api.getProjectRevision(
+              this.siteInfo.id,
+              versionOrRevision.id
+            );
+          return {
+            rev,
+            bundle: getBundle(
+              rev,
+              parseBundle(rev).version ?? this.appCtx.lastBundleVersion
+            ),
+            depPkgs: _depPkgs,
+            revisionNum: rev.revision,
           };
         } else {
           const { rev, depPkgs: _depPkgs } = await this.appCtx.api.getSiteInfo(
@@ -5684,7 +5801,7 @@ export class StudioCtx extends WithDbCtx {
           depPkgs
         );
         this.appCtx.bundler = newBundler;
-        this.dbCtx().setSite(site, branch, pkgVersion);
+        this.dbCtx().setSite(site, branch, versionOrRevision);
         spawn(
           checkDepPkgHosts(
             this.appCtx,
@@ -5710,7 +5827,7 @@ export class StudioCtx extends WithDbCtx {
         if (editMode) {
           this.editMode = true;
 
-          if (pkgVersion) {
+          if (versionOrRevision) {
             // Mark for saving
             this._changeCounter += 1;
             this._changeRecords.push(emptyRecordedChanges());
@@ -5732,7 +5849,8 @@ export class StudioCtx extends WithDbCtx {
         }
       });
       if (branchChanged) {
-        this.releases.replace([...(await this.getProjectReleases())]);
+        await this.refreshRevisions();
+        this.releases.replace(await this.getProjectReleases());
       }
     } finally {
       this._isRestoring = false;
@@ -5802,6 +5920,25 @@ export class StudioCtx extends WithDbCtx {
     const appCtx = this.appCtx;
     const branchId = opts.mainBranchOnly ? undefined : this.branchInfo()?.id;
     return await getProjectReleases(appCtx, projectId, branchId);
+  }
+
+  /**
+   * For this projectId, fetch unpublished revisions,
+   * sorted by [latest => oldest]
+   *
+   **/
+  async listUnpublishedProjectRevisions(
+    revisionNumGt?: number
+  ): Promise<ProjectRevision[]> {
+    const projectId = this.siteInfo.id;
+    const appCtx = this.appCtx;
+    const branchId = this.branchInfo()?.id;
+    return await listUnpublishedProjectRevisions(
+      appCtx,
+      projectId,
+      branchId,
+      revisionNumGt
+    );
   }
 
   async hasChangesSinceLastPublish() {
@@ -6065,7 +6202,10 @@ export class StudioCtx extends WithDbCtx {
   }
 
   ensureGlobalStackFramesHasOnlyValidVariants() {
-    const allVariants = allGlobalVariants(this.site, { includeDeps: "direct" });
+    const allVariants = allGlobalVariants(this.site, {
+      includeDeps: "direct",
+      excludeInactiveScreenVariants: true,
+    });
     for (const vc of this.viewCtxs) {
       vc.globalFrame.keepOnlyVariants(allVariants);
     }
@@ -6677,16 +6817,29 @@ export class StudioCtx extends WithDbCtx {
       this.leftTabKey = "components";
     }
   }
-  private _findReferencesToken = observable.box<StyleToken | undefined>(
+  private _findReferencesStyleToken = observable.box<StyleToken | undefined>(
     undefined
   );
-  get findReferencesToken() {
-    return this._findReferencesToken.get();
+  get findReferencesStyleToken() {
+    return this._findReferencesStyleToken.get();
   }
-  set findReferencesToken(c: StyleToken | undefined) {
-    this._findReferencesToken.set(c);
+  set findReferencesStyleToken(c: StyleToken | undefined) {
+    this._findReferencesStyleToken.set(c);
     if (!this.leftTabKey) {
       this.leftTabKey = "tokens";
+    }
+  }
+
+  private _findReferencesDataToken = observable.box<DataToken | undefined>(
+    undefined
+  );
+  get findReferencesDataToken() {
+    return this._findReferencesDataToken.get();
+  }
+  set findReferencesDataToken(c: DataToken | undefined) {
+    this._findReferencesDataToken.set(c);
+    if (!this.leftTabKey) {
+      this.leftTabKey = "dataTokens";
     }
   }
 
@@ -7229,6 +7382,8 @@ export type CopilotType = "ui" | "code" | "sql";
 export type CopilotPrompt = {
   prompt: string;
   images: CopilotImage[];
+  modelProviderOverride?: string;
+  copilotSystemPromptOverride?: string;
 };
 
 export interface CopilotInteraction<T = unknown> {

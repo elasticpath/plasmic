@@ -110,7 +110,7 @@ export type FieldConflictDescriptorMeta<
       conflictType: "contents";
       excludeFromClone: (v: Cls[P]) => boolean;
     }
-  | (Cls[P] extends Array<infer E>
+  | (NonNullable<Cls[P]> extends Array<infer E>
       ?
           | { arrayType: "atomic" }
           | ({
@@ -168,6 +168,9 @@ export type FieldConflictDescriptorMeta<
                     }
                 ))
             ))
+          | "generic"
+          | "contents"
+          | "special"
       : "generic" | "contents" | "special");
 
 const immutableClass = <T>() =>
@@ -535,9 +538,13 @@ export const modelConflictsMeta: ModelConflictsMeta = {
   },
   ArenaFrameRow: {
     cols: {
-      arrayType: "ordered",
+      arrayType: "unordered",
       conflictType: "merge",
-      mergeKeyIsIdentity: true,
+      mergeKey: "frame.uuid",
+      handleUpdatedValues: (cells, parent, bundler) =>
+        shallowCloneArrayValuesAndAddToBundle(cells, parent, bundler, [
+          classes.ArenaFrameCell,
+        ]),
     },
     rowKey: "generic",
   },

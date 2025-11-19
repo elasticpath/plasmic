@@ -75,7 +75,6 @@ import {
   ProjectWebhook,
   ProjectWebhookEvent,
   PromotionCode,
-  PublicCopilotInteraction,
   ResetPassword,
   SignUpAttempt,
   SsoConfig,
@@ -94,6 +93,7 @@ import {
 } from "@/wab/server/entities/Entities";
 import { logger } from "@/wab/server/observability";
 import { REAL_PLUME_VERSION } from "@/wab/server/pkg-mgr/plume-pkg-mgr";
+import { CompatRequest } from "@/wab/server/routes/util";
 import {
   TutorialType,
   createTutorialDb,
@@ -694,14 +694,25 @@ export const SkipSafeDelete: ProofSafeDelete = toOpaque({
  * Mgr classes.
  */
 export class DbMgr implements MigrationDbMgr {
-  protected readonly entMgr: EntityManager;
+  protected get entMgr(): EntityManager {
+    if (this.entMgrOrReq instanceof EntityManager) {
+      return this.entMgrOrReq;
+    } else {
+      // We dynamically get the EntityManager from the request to avoid a bug
+      // when DbMgr is created before startTransaction. After startTransaction,
+      // txMgr will be set, which needs to be used to ensure we rollback data.
+      return this.entMgrOrReq.txMgr || this.entMgrOrReq.noTxMgr;
+    }
+  }
+  private readonly entMgrOrReq: EntityManager | CompatRequest;
+
   public readonly actor: Actor;
   public readonly projectIdsAndTokens?: ProjectIdAndToken[];
   public readonly cmsIdsAndTokens?: CmsIdAndToken[];
   public readonly teamApiToken?: string;
   public readonly temporaryTeamApiToken?: string;
   constructor(
-    entMgr: EntityManager,
+    entMgrOrReq: EntityManager | CompatRequest,
     actor: Actor,
     public opts?: {
       projectIdsAndTokens?: ProjectIdAndToken[];
@@ -711,9 +722,9 @@ export class DbMgr implements MigrationDbMgr {
       workspaceApiToken?: string;
     }
   ) {
-    this.entMgr = ensure(
-      entMgr,
-      "Please pass an entity manager object to use DbMgr!"
+    this.entMgrOrReq = ensure(
+      entMgrOrReq,
+      "Please pass an entity manager object or request to use DbMgr!"
     );
     this.actor = ensure(actor, "Please pass an actor object to use DbMgr!");
     this.projectIdsAndTokens = opts?.projectIdsAndTokens;
@@ -1027,10 +1038,6 @@ export class DbMgr implements MigrationDbMgr {
 
   private copilotInteractions() {
     return this.entMgr.getRepository(CopilotInteraction);
-  }
-
-  private publicCopilotInteractions() {
-    return this.entMgr.getRepository(PublicCopilotInteraction);
   }
 
   private promotioCodes() {
@@ -3073,7 +3080,7 @@ export class DbMgr implements MigrationDbMgr {
             pkgVersions.find((_pkgVersion) => _pkgVersion.id === version),
             `Couldn't find pkgVersion with ID ${version}`
           );
-          return this.getProjectRevisionById(
+          return this.getProjectRevision(
             projectId,
             pkgVersion.revisionId,
             branchId
@@ -3201,22 +3208,100 @@ export class DbMgr implements MigrationDbMgr {
     return await this.projectRevs().find({ select: ["id"] });
   }
 
-  async getProjectRevById(id: string) {
-    this.checkSuperUser();
-    return ensureFound(
-      await this.projectRevs().findOne(id),
-      `Project revision ${id}`
-    );
-  }
-
   async tryGetProjectRevById(projectId: string, revId: string) {
     await this.checkProjectPerms(projectId, "viewer", "get");
     return await this.projectRevs().findOne({ id: revId });
   }
 
-  async listProjectRevs(projectId: string) {
-    await this.checkProjectPerms(projectId, "viewer", "get");
-    return await this.projectRevs().find({ where: { projectId } });
+  async getProjectRevision(
+    projectId: string,
+    revisionNumOrId: number | string,
+    branchId?: BranchId
+  ) {
+    await this.checkProjectPerms(projectId, "viewer", "get revision for");
+
+    const isRevisionId = typeof revisionNumOrId === "string";
+    const conditionalWhereClause = isRevisionId
+      ? `id=:revisionNumOrId`
+      : `revision=:revisionNumOrId`;
+
+    return ensureFound<ProjectRevision>(
+      await getOneOrFailIfTooMany(
+        this.projectRevs()
+          .createQueryBuilder("rev")
+          .where(
+            `${conditionalWhereClause} AND "projectId"=:projectId AND (:branchId::text is null AND "branchId" is null OR "branchId" = :branchId::text)`,
+            {
+              projectId,
+              branchId,
+              revisionNumOrId,
+            }
+          )
+          .printSql()
+      ),
+      `Project revision with id ${projectId}, branch ID ${branchId}, and ${
+        isRevisionId ? "revision id" : "revision"
+      } ${revisionNumOrId}`
+    );
+  }
+
+  async listProjectRevisions(
+    projectId: string,
+    opts: {
+      includeData?: boolean;
+      branchId?: BranchId;
+      createdAtGt?: Date;
+      revisionNumGt?: number;
+      limit?: number;
+    } = {}
+  ) {
+    await this.checkProjectPerms(
+      projectId,
+      "viewer",
+      "list revisions for project"
+    );
+    const { branchId, createdAtGt, includeData, revisionNumGt, limit } = opts;
+    const columns = this.entMgr.connection
+      .getMetadata(ProjectRevision)
+      .columns.map((c) => `rev.${c.databaseName}`);
+
+    if (!includeData) {
+      arrayRemove(columns, "rev.data");
+    }
+
+    const qb = this.projectRevs()
+      .createQueryBuilder("rev")
+      .select(columns)
+      .leftJoinAndSelect("rev.createdBy", "createdBy")
+      .where(
+        `"projectId" = :projectId AND (:branchId::text is null AND "branchId" is null OR "branchId" = :branchId::text)`,
+        {
+          projectId,
+          branchId,
+        }
+      );
+    if (createdAtGt) {
+      qb.andWhere(`"rev"."createdAt" > :createdAtGt`, {
+        createdAtGt,
+      });
+    }
+    if (revisionNumGt !== undefined) {
+      qb.andWhere(`"rev"."revision" > :revisionNumGt`, {
+        revisionNumGt,
+      });
+    }
+    qb.orderBy("rev.revision", "DESC");
+    if (limit !== undefined) {
+      qb.limit(limit);
+    }
+    return await qb.getMany();
+  }
+
+  async deleteRevision(rev: ProjectRevision) {
+    this.checkSuperUser();
+    // XXX: ensure not already deleted?
+    Object.assign(rev, this.stampDelete());
+    await this.entMgr.save(rev);
   }
 
   async listLatestProjectAndBranchRevisions(
@@ -3324,19 +3409,33 @@ export class DbMgr implements MigrationDbMgr {
   }
 
   /**
-   * Creates a new revision with the same data as the argument `revisionNum`.
+   * Creates a new revision with the same data as the argument `revisionNum` or `revisionId`.
    */
-  async revertProjectRev(projectId: string, revisionNum: number) {
+  async revertProjectRev(
+    projectId: string,
+    revisionNumOrId: number | string,
+    branchId?: BranchId
+  ) {
     await this.checkProjectPerms(
       projectId,
       "editor",
       "revert project revision"
     );
-    const rev = await this.getProjectRevision(projectId, revisionNum);
-    const latest = await this.getLatestProjectRev(projectId);
+
+    const rev = await this.getProjectRevision(
+      projectId,
+      revisionNumOrId,
+      branchId
+    );
+
+    const latest = await this.getLatestProjectRev(projectId, {
+      branchId,
+      revisionNumOnly: true,
+    });
     const newRev = await this.saveProjectRev({
       projectId,
       data: rev.data,
+      branchId,
       revisionNum: latest.revision + 1,
     });
     return newRev;
@@ -3770,61 +3869,6 @@ export class DbMgr implements MigrationDbMgr {
       .where(`"projectRevId" = :projectRevId`)
       .setParameter("projectRevId", projectRevId)
       .execute();
-  }
-
-  async getProjectRevisionById(
-    projectId: string,
-    revisionId: string,
-    branchId?: string
-  ) {
-    await this.checkProjectPerms(projectId, "viewer", "get revision for");
-    return ensureFound<ProjectRevision>(
-      await getOneOrFailIfTooMany(
-        this.projectRevs()
-          .createQueryBuilder("rev")
-          .where(
-            `id=:revisionId AND "projectId"=:projectId AND (:branchId::text is null AND "branchId" is null OR "branchId" = :branchId::text)`,
-            {
-              revisionId,
-              projectId,
-              branchId,
-            }
-          )
-          .printSql()
-      ),
-      `Project revision with id ${projectId} and revision id ${revisionId}`
-    );
-  }
-
-  async getProjectRevision(
-    projectId: string,
-    revisionNum: number,
-    branchId?: BranchId
-  ) {
-    await this.checkProjectPerms(projectId, "viewer", "get revision for");
-    return ensureFound<ProjectRevision>(
-      await getOneOrFailIfTooMany(
-        this.projectRevs()
-          .createQueryBuilder("rev")
-          .where(
-            `"projectId" = :projectId AND revision=:revisionNum AND (:branchId::text is null AND "branchId" is null OR "branchId" = :branchId::text)`,
-            {
-              projectId,
-              branchId,
-              revisionNum,
-            }
-          )
-          .printSql()
-      ),
-      `Project revision with id ${projectId}, branch ID ${branchId}, and revision ${revisionNum}`
-    );
-  }
-
-  async deleteRevision(rev: ProjectRevision) {
-    this.checkSuperUser();
-    // XXX: ensure not already deleted?
-    Object.assign(rev, this.stampDelete());
-    await this.entMgr.save(rev);
   }
 
   /**
@@ -4300,6 +4344,7 @@ export class DbMgr implements MigrationDbMgr {
       }${tag ? ", tag=" + tag : ""}`
     );
   }
+
   async tryGetPkgVersion(
     pkgId: string,
     versionRange?: string,
@@ -6011,28 +6056,6 @@ export class DbMgr implements MigrationDbMgr {
     return copilotInteraction;
   }
 
-  async createPublicCopilotInteraction({
-    model,
-    request,
-    response,
-    userPrompt,
-  }: {
-    userPrompt: string;
-    response: string;
-    model: "gpt" | "claude";
-    request: CreateChatCompletionRequest | LanguageModelRequestMetadata;
-  }) {
-    const publicCopilotInteraction = this.publicCopilotInteractions().create({
-      ...this.stampNew(),
-      fullPromptSnapshot: JSON.stringify(request),
-      model,
-      response,
-      userPrompt,
-    });
-    await this.publicCopilotInteractions().save(publicCopilotInteraction);
-    return publicCopilotInteraction;
-  }
-
   async saveCopilotFeedback({
     copilotInteractionId,
     projectId,
@@ -7101,16 +7124,26 @@ export class DbMgr implements MigrationDbMgr {
     return table;
   }
 
+  /**
+   * Gets CMS table by table identifier.
+   *
+   * Note that table identifiers are not currently enforced to be unique.
+   * For consistency, we always return the most oldest table that has not been
+   * deleted nor archived.
+   */
   async getCmsTableByIdentifier(dbId: CmsDatabaseId, identifier: string) {
     await this.checkCmsDatabasePerms(dbId, "viewer");
     return ensureFound(
       await this.cmsTables()
         .createQueryBuilder("t")
         .innerJoin("t.database", "d")
-        .where(
-          "d.deletedAt is null AND t.deletedAt is null AND d.id = :dbId AND t.identifier = :identifier"
-        )
+        .where("d.deletedAt IS NULL")
+        .andWhere("t.deletedAt IS NULL")
+        .andWhere("t.isArchived IS NOT TRUE")
+        .andWhere("d.id = :dbId")
+        .andWhere("t.identifier = :identifier")
         .setParameters({ dbId, identifier })
+        .orderBy("t.createdAt", "ASC")
         .getOne(),
       `Table for database ${dbId} and identifier ${identifier}`
     );

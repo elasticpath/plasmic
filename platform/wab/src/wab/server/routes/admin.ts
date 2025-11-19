@@ -15,8 +15,15 @@ import {
 import {
   doSafelyDeleteProject,
   mkApiProject,
+  mkRevisionBroadcastData,
 } from "@/wab/server/routes/projects";
-import { getUser, superDbMgr, userDbMgr } from "@/wab/server/routes/util";
+import {
+  commitTransaction,
+  getUser,
+  startTransaction,
+  superDbMgr,
+  userDbMgr,
+} from "@/wab/server/routes/util";
 import {
   TutorialType,
   resetTutorialDb as doResetTutorialDb,
@@ -280,34 +287,43 @@ export async function getLatestProjectRevision(req: Request, res: Response) {
 }
 
 export async function saveProjectRevisionData(req: Request, res: Response) {
-  const mgr = superDbMgr(req);
   const projectId = req.params.projectId as ProjectId;
   const branchId = req.body.branchId as BranchId;
 
-  const rev = await mgr.getLatestProjectRev(projectId, { branchId });
+  const { commit } = await startTransaction(req, async () => {
+    const mgr = superDbMgr(req);
 
-  if (rev.revision !== req.body.revision) {
-    throw new BadRequestError(
-      `Revision has since been updated from ${req.body.revision} to ${rev.revision}`
-    );
-  }
+    const rev = await mgr.getLatestProjectRev(projectId, { branchId });
 
-  // Make sure it's valid JSON
-  JSON.parse(req.body.data);
+    if (rev.revision !== req.body.revision) {
+      throw new BadRequestError(
+        `Revision has since been updated from ${req.body.revision} to ${rev.revision}`
+      );
+    }
 
-  const newRev = await mgr.saveProjectRev({
-    projectId: projectId,
-    branchId,
-    data: req.body.data,
-    revisionNum: rev.revision + 1,
+    // Make sure it's valid JSON
+    JSON.parse(req.body.data);
+
+    const newRev = await mgr.saveProjectRev({
+      projectId: projectId,
+      branchId,
+      data: req.body.data,
+      revisionNum: rev.revision + 1,
+    });
+    await mgr.clearPartialRevisionsCacheForProject(projectId, undefined);
+
+    return commitTransaction({ newRev });
   });
-  await mgr.clearPartialRevisionsCacheForProject(projectId, undefined);
-  res.json({ rev: omit(newRev, "data") });
-  await req.resolveTransaction();
+
+  res.json({ rev: omit(commit.newRev, "data") });
+
   await broadcastProjectsMessage({
     room: `projects/${projectId}`,
     type: "update",
-    message: { projectId, revisionNum: newRev.revision },
+    message: {
+      projectId,
+      rev: mkRevisionBroadcastData(commit.newRev),
+    },
   });
 }
 

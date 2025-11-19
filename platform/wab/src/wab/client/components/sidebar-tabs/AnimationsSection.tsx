@@ -4,7 +4,6 @@ import { AnimationControls } from "@/wab/client/components/style-controls/Animat
 import {
   ExpsProvider,
   StylePanelSection,
-  TplExpsProvider,
   useStyleComponent,
 } from "@/wab/client/components/style-controls/StyleComponent";
 import { StyleWrapper } from "@/wab/client/components/style-controls/StyleWrapper";
@@ -21,6 +20,7 @@ import { ANIMATION_SEQUENCES_CAP } from "@/wab/shared/Labels";
 import { VariantedStylesHelper } from "@/wab/shared/VariantedStylesHelper";
 import { arrayMoveIndex, arrayRemove } from "@/wab/shared/collections";
 import { spawn } from "@/wab/shared/common";
+import { getAnimationsFromDefinedIndicatorType } from "@/wab/shared/core/animations";
 import { allAnimationSequences } from "@/wab/shared/core/sites";
 import { cloneAnimation } from "@/wab/shared/core/styles";
 import { Animation } from "@/wab/shared/model/classes";
@@ -38,20 +38,7 @@ export const AnimationsSection = observer(function AnimationsSection(
 ) {
   const { expsProvider } = props;
   const { studioCtx } = expsProvider;
-
-  // Determine which animations to show:
-  // - If target variant has animations, show only target animations (override exists)
-  // - Otherwise, show merged animations (including inherited from base)
-  const targetAnimations = expsProvider.targetRs().animations;
-  const hasTargetAnimations = targetAnimations.length > 0;
-  const inheritedAnimations =
-    expsProvider instanceof TplExpsProvider
-      ? expsProvider.effectiveVs().rs.animations
-      : [];
-
-  const animations = hasTargetAnimations
-    ? targetAnimations
-    : inheritedAnimations;
+  const targetRs = expsProvider.targetRs();
 
   const allAnimSequences = allAnimationSequences(studioCtx.site, {
     includeDeps: "direct",
@@ -62,38 +49,38 @@ export const AnimationsSection = observer(function AnimationsSection(
   >();
   const [index, setIndex] = React.useState<number | undefined>();
   const sc = useStyleComponent();
+  const definedIndicator = sc.definedIndicator("animation");
+  const animations = getAnimationsFromDefinedIndicatorType(definedIndicator);
 
   const vsh = props.vsh ?? makeVariantedStylesHelperFromCurrentCtx(studioCtx);
 
   const updateAnimations = (newAnimations: Animation[]) => {
     spawn(
       studioCtx.change(({ success }) => {
-        const targetRs = expsProvider.targetRs();
-        if (newAnimations.length > 0) {
-          targetRs.animations = [...newAnimations];
-        } else {
-          targetRs.animations = [];
-        }
-
+        // Doing a shallow copy here.
+        targetRs.animations = [...newAnimations];
         return success();
       })
     );
   };
 
   const maybeCloneInheritedAnimations = () => {
-    if (!hasTargetAnimations) {
+    if (definedIndicator.source === "otherVariants") {
       // At this point, the target variant has no overrides for Animations section, so we are displaying animations
-      // inherited from base variant. When user inspects it to override the animation value in a target variant, we will clone
+      // inherited from other variants. When user inspects it to override the animation value in a target variant, we will clone
       // the inherited animations for overrides.
-      const targetRs = expsProvider.targetRs();
-      targetRs.animations = inheritedAnimations.map((anim) =>
-        cloneAnimation(anim)
-      );
+      targetRs.animations = animations.map((anim) => cloneAnimation(anim));
+      return targetRs.animations;
     }
+
+    return animations;
   };
 
-  const inspectAnimation = (animationIndex: number) => {
-    const animation = expsProvider.targetRs().animations[animationIndex];
+  const inspectAnimation = (
+    newAnimations: Animation[],
+    animationIndex: number
+  ) => {
+    const animation = newAnimations[animationIndex];
     setInspectedAnimation(animation);
     setIndex(animationIndex);
   };
@@ -114,12 +101,11 @@ export const AnimationsSection = observer(function AnimationsSection(
         const defaultSequence = allAnimSequences[0];
         const newAnimation = studioCtx.tplMgr().addAnimation(defaultSequence);
 
-        maybeCloneInheritedAnimations();
-        const targetRs = expsProvider.targetRs();
-        targetRs.animations = [...targetRs.animations, newAnimation];
+        const targetAnimations = maybeCloneInheritedAnimations();
+        const newAnimations = [...targetAnimations, newAnimation];
 
-        const newAnimations = targetRs.animations;
-        inspectAnimation(newAnimations.length - 1);
+        targetRs.animations = newAnimations;
+        inspectAnimation(newAnimations, newAnimations.length - 1);
 
         return success();
       })
@@ -215,8 +201,9 @@ export const AnimationsSection = observer(function AnimationsSection(
                       if (!isDisabled) {
                         spawn(
                           studioCtx.change(({ success }) => {
-                            maybeCloneInheritedAnimations();
-                            inspectAnimation(i);
+                            const targetAnimations =
+                              maybeCloneInheritedAnimations();
+                            inspectAnimation(targetAnimations, i);
 
                             return success();
                           })

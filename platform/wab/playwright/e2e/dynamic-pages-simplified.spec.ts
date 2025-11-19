@@ -1,5 +1,6 @@
 import { expect } from "@playwright/test";
 import { test } from "../fixtures/test";
+import { goToProject } from "../utils/studio-utils";
 
 test.describe("dynamic-pages-simplified", () => {
   let projectId: string;
@@ -10,12 +11,15 @@ test.describe("dynamic-pages-simplified", () => {
 
     await apiClient.createTutorialDataSource("northwind", dsname);
 
-    await apiClient.login("user2@example.com", "!53kr3tz!");
-    const cookies = await request.storageState();
-    await context.addCookies(cookies.cookies);
+    await apiClient.makeApiClient(
+      request,
+      context,
+      "user2@example.com",
+      "!53kr3tz!"
+    );
 
     projectId = await apiClient.setupNewProject({ name: "dynamic-pages" });
-    await page.goto(`/projects/${projectId}`);
+    await goToProject(page, `/projects/${projectId}`);
 
     await page.waitForTimeout(5000);
   });

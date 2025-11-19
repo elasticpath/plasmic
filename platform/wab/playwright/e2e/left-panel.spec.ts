@@ -1,12 +1,13 @@
-import { expect } from "@playwright/test";
+import { expect, Locator } from "@playwright/test";
 import { test } from "../fixtures/test";
 import { modifierKey } from "../utils/modifier-key";
+import { goToProject } from "../utils/studio-utils";
 
 test.describe("left-panel", () => {
   let projectId: string;
   test.beforeEach(async ({ apiClient, page }) => {
     projectId = await apiClient.setupNewProject({ name: "left-panel" });
-    await page.goto(`/projects/${projectId}`);
+    await goToProject(page, `/projects/${projectId}`);
   });
 
   test.afterEach(async ({ apiClient }) => {
@@ -18,21 +19,9 @@ test.describe("left-panel", () => {
   });
 
   test("shows a blue indicator and popover to the left of an element if any non-default property", async ({
-    page,
     models,
   }) => {
-    await models.studio.leftPanel.addNewFrame();
-    const artboardFrame = page
-      .locator("iframe")
-      .first()
-      .contentFrame()
-      .locator("iframe")
-      .contentFrame()
-      .locator("iframe")
-      .first()
-      .contentFrame();
-    const artboardBody = artboardFrame.locator("body");
-    await artboardBody.click();
+    await models.studio.leftPanel.addAndSelectNewArtboard();
 
     await models.studio.leftPanel.insertNode("Text");
 
@@ -42,7 +31,13 @@ test.describe("left-panel", () => {
       .locator('[data-test-class="left-panel-indicator"] > div')
       .hover();
 
-    await models.studio.leftPanel.clearAllIndicators();
+    const indicators = models.studio.frame.locator(
+      '[data-test-class="indicator-clear"]'
+    );
+    const count = await indicators.count();
+    for (let i = count - 1; i >= 0; i -= 1) {
+      await indicators.nth(i).click();
+    }
 
     await expect(
       selectedNode.locator('[data-test-class="left-panel-indicator"] > div')
@@ -50,39 +45,31 @@ test.describe("left-panel", () => {
   });
 
   test("should allow copy and paste from outline", async ({ page, models }) => {
-    await models.studio.leftPanel.addNewFrame();
-    const artboardFrame = page
-      .locator("iframe")
-      .first()
-      .contentFrame()
-      .locator("iframe")
-      .contentFrame()
-      .locator("iframe")
-      .first()
-      .contentFrame();
-    const artboardBody = artboardFrame.locator("body");
-    await artboardBody.click();
+    // Click a Tpl element selector `el`, wait for it to be selected, and press a key
+    const selectElementAndPress = async (el: Locator, key: string) => {
+      await el.click();
+      await models.studio.frame
+        .locator(".HoverBox__Dims")
+        .waitFor({ state: "visible" });
+      await page.keyboard.press(key);
+    };
+
+    await models.studio.leftPanel.addAndSelectNewArtboard();
 
     await models.studio.leftPanel.insertNode("Vertical stack");
 
     await models.studio.leftPanel.switchToTreeTab();
     const selectedNode = models.studio.leftPanel.focusedTreeNode;
 
-    await selectedNode.click();
-    await page.waitForTimeout(500); // When running headed, the copy instruction wil occur before actually selecting if there is no waiting
-    await page.keyboard.press(`${modifierKey}+c`);
+    await selectElementAndPress(selectedNode, `${modifierKey}+c`);
 
     const PASTES_COUNT = 10;
-
     for (let i = 0; i < PASTES_COUNT; i++) {
-      await selectedNode.click();
-      await page.keyboard.press(`${modifierKey}+v`);
+      await selectElementAndPress(selectedNode, `${modifierKey}+v`);
     }
 
-    await selectedNode.click();
+    await selectElementAndPress(selectedNode, `${modifierKey}+c`);
 
-    await page.keyboard.press(`${modifierKey}+c`);
-    await selectedNode.click();
     await page.keyboard.press(`${modifierKey}+v`);
     const treeLabels = models.studio.leftPanel.treeLabels;
     const labelCount = await treeLabels.count();

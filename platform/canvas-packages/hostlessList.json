@@ -60,5 +60,9 @@
   "dayjs",
   "react-aria",
   "rive",
-  "fetch"
+  "fetch",
+  "graphql",
+  "vanilla-cookieconsent",
+  "wordpress",
+  "strapi"
 ]
