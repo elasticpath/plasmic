@@ -159,26 +159,16 @@ export async function getMigratedBundle(
 ): Promise<Bundle> {
   return await withSpan("getMigratedBundle", async () => {
     const serializedSize = getSerializedBundleSize(entity);
-    const entityType = entity.constructor.name;
-    const entityId = entity.id;
-
-    // Migration context for error reporting
-    const migrationContext = {
-      entityType,
-      entityId,
-      entityName: entity instanceof PkgVersion
-        ? `${(entity as any).pkg?.name || 'unknown'}@${entity.version}`
-        : `project-${entity.projectId}`,
-      bundleSize: serializedSize,
-      bundleSizeMB: (serializedSize / (1024 * 1024)).toFixed(2),
-    };
+    if (serializedSize > TEN_MB) {
+      logger().info(
+        `Get migrated bundle ${entity.constructor.name} ${entity.id} ${(
+          serializedSize /
+          (1024 * 1024)
+        ).toFixed(2)} MB`
+      );
+    }
 
     const bundle = parseBundle(entity);
-    const currentVersion = bundle.version || "0-new-version";
-
-    migrationContext.currentBundleVersion = currentVersion;
-    migrationContext.objectCount = Object.keys(bundle.map).length;
-    migrationContext.dependencyCount = bundle.deps?.length || 0;
 
     if (
       (!DEVFLAGS.autoUpgradeHostless || !DEVFLAGS.hostLessWorkspaceId) &&
@@ -188,8 +178,13 @@ export async function getMigratedBundle(
     }
 
     if (isEmptyBundle(bundle)) {
+      logger().info(
+        `Detected empty bundle in ${entity.constructor.name} ${entity.id}. Will update to latest version and skip migrations.`
+      );
       bundle.version = lastBundleVersion;
     }
+
+    const currentVersion = bundle.version || "0-new-version";
 
     const conn = await getMigrationConnection();
     const fixedBundle = await conn.transaction(async (txMgr) => {
@@ -203,155 +198,54 @@ export async function getMigratedBundle(
       }
 
       if (migrationSorter.compare(currentVersion, lastBundleVersion) == 1) {
-        logger().warn(
-          `[MIGRATION] Bundle version ahead of current`,
-          {
-            ...migrationContext,
-            bundleVersion: currentVersion,
-            latestVersion: lastBundleVersion,
-            action: 'rollback',
-          }
+        // Bundle version is higher than the current version. Rollback the bundle!
+        logger().info(
+          `Bundle in ${entity.constructor.name} ${entity.id} has version ${currentVersion} which is ahead of the last version ${lastBundleVersion}!`
         );
       }
 
       const migrations = await getMigrationsToExecute(currentVersion);
 
-      for (let i = 0; i < migrations.length; i++) {
-        const migration = migrations[i];
-        const migrationStartTime = Date.now();
+      // Sequencially apply migrations
+      logger().info(
+        `Migrating bundle in ${entity.constructor.name} ${entity.id} from version ${currentVersion} to ${lastBundleVersion}.`
+      );
 
-        try {
-          await db.saveBundleBackupForEntity(
-            migration.name,
-            entity,
-            JSON.stringify(bundle)
-          );
+      for (const migration of migrations) {
+        await db.saveBundleBackupForEntity(
+          migration.name,
+          entity,
+          JSON.stringify(bundle)
+        );
 
-          if (migration.type === "bundled") {
-            await migration.migrate(bundle, entity);
-          } else {
-            await migration.migrate(bundle, db, entity);
-          }
-
-          bundle.version = migration.name;
-
-        } catch (error) {
-          const migrationDuration = Date.now() - migrationStartTime;
-          logger().error(
-            `[MIGRATION] Migration failed`,
-            {
-              ...migrationContext,
-              migrationName: migration.name,
-              migrationType: migration.type,
-              durationMs: migrationDuration,
-              error: error.message,
-              errorStack: error.stack,
-              errorName: error.name,
-              bundleState: {
-                version: bundle.version,
-                rootType: bundle.map[bundle.root]?.__type,
-                objectCount: Object.keys(bundle.map).length,
-                hasRoot: !!bundle.map[bundle.root],
-              },
-            }
-          );
-          throw error;
+        if (migration.type === "bundled") {
+          await migration.migrate(bundle, entity);
+        } else {
+          await migration.migrate(bundle, db, entity);
         }
+        bundle.version = migration.name;
       }
 
       if (DEVFLAGS.autoUpgradeHostless) {
         if (await bundleHasStaleHostlessDeps(bundle, db)) {
-          try {
-            await db.saveBundleBackupForEntity(
-              `hostless-auto-upgrade-${mkShortId()}`,
-              entity,
-              JSON.stringify(bundle)
-            );
-            await upgradeHostlessProject(bundle, entity, db);
-          } catch (error) {
-            logger().error(
-              `[MIGRATION] Hostless upgrade failed`,
-              {
-                ...migrationContext,
-                dependencies: bundle.deps,
-                error: error.message,
-                errorStack: error.stack,
-                errorName: error.name,
-              }
-            );
-            throw error;
-          }
+          logger().info(
+            `Upgrading hostless dependencies in ${entity.constructor.name} ${entity.id}`
+          );
+          await db.saveBundleBackupForEntity(
+            `hostless-auto-upgrade-${mkShortId()}`,
+            entity,
+            JSON.stringify(bundle)
+          );
+          await upgradeHostlessProject(bundle, entity, db);
         }
       }
 
       bundle.version = lastBundleVersion;
-
-      // Enhanced validation with detailed error reporting
-      try {
-        checkExistingReferences(bundle as Bundle);
-      } catch (error) {
-        logger().error(
-          `[MIGRATION] Reference validation failed`,
-          {
-            ...migrationContext,
-            validationPhase: 'checkExistingReferences',
-            error: error.message,
-            bundleInfo: {
-              version: bundle.version,
-              objectCount: Object.keys(bundle.map).length,
-              dependencies: bundle.deps,
-            },
-          }
-        );
-        throw error;
-      }
-
-      try {
-        checkBundleFields(bundle as Bundle);
-      } catch (error) {
-        logger().error(
-          `[MIGRATION] Field validation failed`,
-          {
-            ...migrationContext,
-            validationPhase: 'checkBundleFields',
-            error: error.message,
-            bundleInfo: {
-              version: bundle.version,
-              objectCount: Object.keys(bundle.map).length,
-            },
-          }
-        );
-        throw error;
-      }
-
-      try {
-        checkRefsInBundle(bundle as Bundle);
-      } catch (error) {
-        logger().error(
-          `[MIGRATION] Bundle reference integrity check failed`,
-          {
-            ...migrationContext,
-            validationPhase: 'checkRefsInBundle',
-            error: error.message,
-            bundleInfo: {
-              version: bundle.version,
-              objectCount: Object.keys(bundle.map).length,
-              dependencies: bundle.deps,
-            },
-          }
-        );
-        throw error;
-      }
+      checkExistingReferences(bundle as Bundle);
+      checkBundleFields(bundle as Bundle);
+      checkRefsInBundle(bundle as Bundle);
 
       if (!isExpectedBundleVersion(bundle, await getLastBundleVersion())) {
-        logger().error(
-          `[MIGRATION] Bundle version mismatch after migration`,
-          {
-            ...migrationContext,
-            actualVersion: bundle.version,
-            expectedVersion: lastBundleVersion,
-          }
-        );
         unexpected();
       }
 
@@ -359,20 +253,10 @@ export async function getMigratedBundle(
         assert(
           isEmptyBundle(bundle as any) ||
             bundle.map[bundle.root].__type === "ProjectDependency",
-          () => {
-            const rootType = bundle.map[bundle.root]?.__type || 'missing';
-            logger().error(
-              `[MIGRATION] Invalid root type for PkgVersion`,
-              {
-                ...migrationContext,
-                expectedRootType: 'ProjectDependency',
-                actualRootType: rootType,
-                rootId: bundle.root,
-                hasRoot: !!bundle.map[bundle.root],
-              }
-            );
-            return `The root of a PkgVersion bundle must be ProjectDependency, but got ${rootType}`;
-          }
+          () =>
+            `The root of a PkgVersion bundle must be ProjectDependency, but got ${
+              bundle.map[bundle.root].__type
+            }`
         );
         await db.updatePkgVersion(
           entity.pkgId,
@@ -386,20 +270,10 @@ export async function getMigratedBundle(
         assert(
           isEmptyBundle(bundle as any) ||
             bundle.map[bundle.root].__type === "Site",
-          () => {
-            const rootType = bundle.map[bundle.root]?.__type || 'missing';
-            logger().error(
-              `[MIGRATION] Invalid root type for ProjectRevision`,
-              {
-                ...migrationContext,
-                expectedRootType: 'Site',
-                actualRootType: rootType,
-                rootId: bundle.root,
-                hasRoot: !!bundle.map[bundle.root],
-              }
-            );
-            return `The root of a ProjectRevision bundle must be Site, but got ${rootType}`;
-          }
+          () =>
+            `The root of a ProjectRevision bundle must be Site, but got ${
+              bundle.map[bundle.root].__type
+            }`
         );
         await db.updateProjectRev({
           projectId: entity.projectId,
@@ -410,7 +284,6 @@ export async function getMigratedBundle(
       }
 
       setBundle(entity, bundle);
-
       return bundle;
     });
 
