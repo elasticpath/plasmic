@@ -356,11 +356,11 @@ export async function getMigratedBundle(
       }
 
       if (entity instanceof PkgVersion) {
+        const rootType = bundle.map[bundle.root]?.__type || 'missing';
         assert(
           isEmptyBundle(bundle as any) ||
             bundle.map[bundle.root].__type === "ProjectDependency",
           () => {
-            const rootType = bundle.map[bundle.root]?.__type || 'missing';
             logger().error(
               `[MIGRATION] Invalid root type for PkgVersion`,
               {
@@ -383,11 +383,11 @@ export async function getMigratedBundle(
           }
         );
       } else {
+        const rootType = bundle.map[bundle.root]?.__type || 'missing';
         assert(
           isEmptyBundle(bundle as any) ||
             bundle.map[bundle.root].__type === "Site",
           () => {
-            const rootType = bundle.map[bundle.root]?.__type || 'missing';
             logger().error(
               `[MIGRATION] Invalid root type for ProjectRevision`,
               {
