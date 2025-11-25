@@ -182,6 +182,19 @@ export async function signUp(req: Request, res: Response, next: NextFunction) {
     uncheckedCast<SignUpRequest>(req.body);
   const mgr = superDbMgr(req);
 
+  // Only allow signup if user has pending invitations
+  const hasPendingInvitations = await mgr.hasPendingPermissionsForEmail(email);
+  
+  if (!hasPendingInvitations) {
+    res.json(
+      ensureType<SignUpResponse>({
+        status: false,
+        reason: "BadEmailError", // No pending invitations - signup not allowed
+      })
+    );
+    return;
+  }
+
   await mgr.logSignUpAttempt(email);
 
   if (isGoogleAuthRequiredEmailDomain(email, req.devflags)) {
