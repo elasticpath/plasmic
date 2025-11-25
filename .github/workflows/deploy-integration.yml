@@ -181,7 +181,7 @@ jobs:
           TF_VAR_aws_region: ${{ vars.AWS_REGION }}
           TF_VAR_container_image: ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ github.sha }}
           TF_VAR_log_level: ${{ vars.LOG_LEVEL || 'info' }}
-          TF_VAR_admin_emails: ${{ vars.ADMIN_EMAILS || '[]' }}
+          TF_VAR_admin_emails: ${{ secrets.ADMIN_EMAILS || '[]' }}
           TF_VAR_skip_grant_revoke_emails: ${{ vars.SKIP_GRANT_REVOKE_EMAILS || 'true' }}
         run: |
           # Mask sensitive values for public repo security
