@@ -23,6 +23,7 @@
     "@plasmicpkgs/antd5": "^0.0.308",
     "@plasmicpkgs/commerce": "^0.0.226",
     "@plasmicpkgs/commerce-commercetools": "^0.0.176",
+    "@elasticpath/plasmic-ep-commerce-elastic-path": "^0.0.1",
     "@plasmicpkgs/commerce-local": "^0.0.226",
     "@plasmicpkgs/commerce-saleor": "^0.0.190",
     "@plasmicpkgs/commerce-shopify": "^0.0.234",
