@@ -1,5 +1,5 @@
 {
-  "name": "@plasmicpkgs/commerce-elastic-path",
+  "name": "@elasticpath/plasmic-ep-commerce-elastic-path",
   "version": "0.0.1",
   "description": "Plasmic registration calls for elastic path commerce provider",
   "main": "dist/index.js",

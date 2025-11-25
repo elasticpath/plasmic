@@ -33,7 +33,7 @@ export const commerceProviderMeta: GlobalContextMeta<CommerceProviderProps> = {
     },
   },
   ...{ globalActions: globalActionsRegistrations },
-  importPath: "@plasmicpkgs/commerce-elastic-path",
+  importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
   importName: "CommerceProviderComponent",
 };
 

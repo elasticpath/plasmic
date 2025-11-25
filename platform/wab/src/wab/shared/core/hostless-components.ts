@@ -18,6 +18,7 @@ export const fstPartyHostLessComponents = [
   "plasmic-embed-css",
   "commerce",
   "commerce-commercetools",
+  "commerce-elastic-path",
   "commerce-local",
   "commerce-saleor",
   "commerce-shopify",
