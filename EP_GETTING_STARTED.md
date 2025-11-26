@@ -150,6 +150,35 @@ This command will:
 - Testing migration scripts
 - Clearing out test data
 
+## Worker Pool Configuration
+
+Code generation runs in worker threads to avoid blocking the main server. Two pools handle different stages:
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `GENERIC_WORKER_POOL_SIZE` | Generates React code per project (CPU-intensive: parses site model, exports components/assets/tokens to TypeScript/CSS) | `1` |
+| `LOADER_WORKER_POOL_SIZE` | Bundles generated code from multiple projects using esbuild into final output for the loader SDK | `1` |
+
+**Service architecture:**
+
+- **Development**: The wab server handles everything, so both pools are used locally.
+- **Production**: Codegen routes are split to a separate service for security (SSR sandboxing). The wab service still needs workers for CLI sync (`plasmic sync`) and localization. The codegen service handles high-volume loader API requests.
+
+**Production defaults** (configurable via GitHub Actions or Terraform):
+
+| Service | Generic | Loader |
+|---------|---------|--------|
+| codegen | 2 | 4 |
+| wab | 2 | 2 |
+
+```bash
+# .env example for local development
+GENERIC_WORKER_POOL_SIZE=2
+LOADER_WORKER_POOL_SIZE=4
+```
+
+Workers timeout after 6 minutes. Higher values improve parallel request throughput but increase memory usage.
+
 ## Resources
 
 - Original docs - `docs/contributing/platform/00-getting-started.md`
