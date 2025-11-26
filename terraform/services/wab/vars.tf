@@ -86,3 +86,9 @@ variable "admin_emails" {
   description = "Admin emails JSON array"
   default     = "[]"
 }
+
+variable "skip_grant_revoke_emails" {
+  type        = bool
+  description = "Skip sending emails for grant/revoke operations (temporary workaround)"
+  default     = false
+}

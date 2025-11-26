@@ -143,7 +143,7 @@ export function AdminImportProjectsFromProd() {
         width={800}
       >
         <iframe
-          src="https://studio.plasmic.app/import-projects-from-prod"
+          src="https://integration.storefront.elasticpath.com/import-projects-from-prod"
           width={760}
           height={500}
           ref={ref}
@@ -151,7 +151,7 @@ export function AdminImportProjectsFromProd() {
       </Modal>
       <Button
         disabled={window.location.hostname.startsWith(
-          "https://studio.plasmic.app"
+          "https://integration.storefront.elasticpath.com"
         )}
         onClick={() => setModalVisible((v) => !v)}
       >

@@ -57,6 +57,7 @@ module "wab_service" {
     PINO_LOGGER_LEVEL            = var.log_level
     MAIL_CONFIG                  = var.mail_config
     ADMIN_EMAILS                 = var.admin_emails
+    SKIP_GRANT_REVOKE_EMAILS     = tostring(var.skip_grant_revoke_emails)
     DEBUG                        = "connect:typeorm"
   }
 

@@ -1,0 +1,557 @@
+/* Elastic Path Checkout Components Styles */
+
+/* Base checkout styling */
+.ep-checkout-section {
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  border: 1px solid #e1e5e9;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.ep-checkout-section h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.ep-checkout-section h4 {
+  margin: 0 0 0.75rem 0;
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: #4a5568;
+}
+
+/* Form styling */
+.ep-form-group {
+  margin-bottom: 1rem;
+}
+
+.ep-form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #374151;
+  font-size: 0.875rem;
+}
+
+.ep-form-group input,
+.ep-form-group select {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 1rem;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.ep-form-group input:focus,
+.ep-form-group select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.ep-form-group input.error,
+.ep-form-group select.error {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+}
+
+.ep-form-group input:disabled,
+.ep-form-group select:disabled {
+  background-color: #f9fafb;
+  color: #6b7280;
+  cursor: not-allowed;
+}
+
+.ep-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 640px) {
+  .ep-form-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Error messages */
+.error-message {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+  color: #ef4444;
+}
+
+.ep-error-message {
+  padding: 1rem;
+  margin-bottom: 1rem;
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  color: #dc2626;
+  font-size: 0.875rem;
+}
+
+/* Action buttons */
+.ep-checkout-actions {
+  margin-top: 2rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+}
+
+.ep-submit-button,
+.ep-pay-button {
+  padding: 0.75rem 2rem;
+  background-color: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease-in-out;
+}
+
+.ep-submit-button:hover,
+.ep-pay-button:hover {
+  background-color: #2563eb;
+}
+
+.ep-submit-button:disabled,
+.ep-pay-button:disabled {
+  background-color: #9ca3af;
+  cursor: not-allowed;
+}
+
+/* Payment form specific */
+.ep-payment-section {
+  margin-bottom: 2rem;
+}
+
+.ep-payment-element {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  border: 1px solid #e1e5e9;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.ep-order-summary {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  background-color: #f9fafb;
+  border-radius: 6px;
+}
+
+.ep-summary-line {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.ep-summary-line.ep-total {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #d1d5db;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+/* Order summary component */
+.ep-order-summary {
+  border: 1px solid #e1e5e9;
+  border-radius: 8px;
+  padding: 1.5rem;
+  background: #ffffff;
+}
+
+.ep-order-summary.compact {
+  padding: 1rem;
+}
+
+.ep-order-header {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e1e5e9;
+}
+
+.ep-order-header h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.ep-order-id {
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.ep-order-items {
+  margin-bottom: 1.5rem;
+}
+
+.ep-items-list {
+  margin-top: 0.75rem;
+}
+
+.ep-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.ep-item:last-child {
+  border-bottom: none;
+}
+
+.ep-item-details {
+  flex: 1;
+}
+
+.ep-item-name {
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+}
+
+.ep-item-sku,
+.ep-item-quantity {
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.ep-item-price {
+  font-weight: 500;
+  margin-left: 1rem;
+}
+
+.ep-price-breakdown {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  background-color: #f9fafb;
+  border-radius: 6px;
+}
+
+.ep-price-line {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.ep-price-line.ep-total {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #d1d5db;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.ep-customer-info,
+.ep-addresses {
+  margin-bottom: 1.5rem;
+}
+
+.ep-address-section {
+  margin-bottom: 1rem;
+}
+
+.ep-address {
+  font-size: 0.875rem;
+  color: #4b5563;
+  line-height: 1.5;
+}
+
+.ep-order-status {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e1e5e9;
+}
+
+.ep-status-line {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.ep-status,
+.ep-payment-status {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.ep-status-complete,
+.ep-payment-paid {
+  background-color: #d1fae5;
+  color: #065f46;
+}
+
+.ep-status-processing,
+.ep-payment-authorized {
+  background-color: #dbeafe;
+  color: #1e40af;
+}
+
+.ep-status-pending,
+.ep-payment-pending {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+.ep-status-cancelled,
+.ep-payment-failed {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+/* Confirmation page */
+.ep-checkout-confirmation {
+  max-width: 600px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.ep-confirmation-header {
+  margin-bottom: 2rem;
+  padding: 2rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 12px;
+}
+
+.ep-success-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.ep-success-title {
+  margin: 0 0 1rem 0;
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.ep-success-message {
+  margin: 0;
+  font-size: 1.1rem;
+  opacity: 0.9;
+}
+
+.ep-confirmation-details {
+  text-align: left;
+  margin-bottom: 2rem;
+}
+
+.ep-order-reference {
+  text-align: center;
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  background-color: #f8fafc;
+  border-radius: 8px;
+}
+
+.ep-reference-number {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #2d3748;
+  margin-bottom: 0.5rem;
+}
+
+.ep-order-date {
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.ep-email-confirmation {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background-color: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 6px;
+  color: #065f46;
+  font-size: 0.875rem;
+}
+
+.ep-payment-details,
+.ep-shipping-info,
+.ep-next-steps {
+  margin-bottom: 1.5rem;
+}
+
+.ep-payment-note {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-top: 0.5rem;
+}
+
+.ep-steps-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.75rem 0 0 0;
+}
+
+.ep-steps-list li {
+  padding: 0.5rem 0;
+  padding-left: 1.5rem;
+  position: relative;
+  font-size: 0.875rem;
+  color: #4b5563;
+}
+
+.ep-steps-list li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  color: #10b981;
+  font-weight: bold;
+}
+
+.ep-confirmation-actions {
+  margin: 2rem 0;
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.ep-print-button,
+.ep-continue-button {
+  padding: 0.75rem 1.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+}
+
+.ep-print-button {
+  background-color: white;
+  color: #4b5563;
+}
+
+.ep-print-button:hover {
+  background-color: #f9fafb;
+  border-color: #9ca3af;
+}
+
+.ep-continue-button {
+  background-color: #3b82f6;
+  color: white;
+  border-color: #3b82f6;
+}
+
+.ep-continue-button:hover {
+  background-color: #2563eb;
+  border-color: #2563eb;
+}
+
+.ep-support-info {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e1e5e9;
+  font-size: 0.875rem;
+  color: #6b7280;
+  text-align: center;
+}
+
+/* Address display */
+.ep-address-display {
+  line-height: 1.5;
+}
+
+.ep-address-name {
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+}
+
+.ep-address-line {
+  margin-bottom: 0.25rem;
+}
+
+/* Loading states */
+.ep-loading-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
+.ep-loading-message::before {
+  content: "";
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  margin-right: 0.5rem;
+  border: 2px solid #e5e7eb;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .ep-checkout-section {
+    padding: 1rem;
+  }
+  
+  .ep-confirmation-header {
+    padding: 1.5rem;
+  }
+  
+  .ep-success-title {
+    font-size: 1.5rem;
+  }
+  
+  .ep-confirmation-actions {
+    flex-direction: column;
+  }
+  
+  .ep-print-button,
+  .ep-continue-button {
+    width: 100%;
+  }
+}
+
+/* Utility classes */
+.ep-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.ep-text-center {
+  text-align: center;
+}
+
+.ep-text-left {
+  text-align: left;
+}
+
+.ep-text-right {
+  text-align: right;
+}

@@ -1219,17 +1219,18 @@ export function addMainAppServerRoutes(
     "/api/v1/auth/getEmailVerificationToken",
     authRoutes.getEmailVerificationToken
   );
-  app.get("/api/v1/auth/google", authRoutes.googleLogin);
-  app.get(
-    "/api/v1/oauth2/google/callback",
-    withNext(authRoutes.googleCallback)
-  );
-  app.get("/api/v1/auth/sso/test", authRoutes.isValidSsoEmail);
-  app.get("/api/v1/auth/sso/:tenantId/login", authRoutes.ssoLogin);
-  app.get(
-    "/api/v1/auth/sso/:tenantId/consume",
-    withNext(authRoutes.ssoCallback)
-  );
+  // OAuth signup routes disabled - no new user registration via OAuth
+  // app.get("/api/v1/auth/google", authRoutes.googleLogin);
+  // app.get(
+  //   "/api/v1/oauth2/google/callback",
+  //   withNext(authRoutes.googleCallback)
+  // );
+  // app.get("/api/v1/auth/sso/test", authRoutes.isValidSsoEmail);
+  // app.get("/api/v1/auth/sso/:tenantId/login", authRoutes.ssoLogin);
+  // app.get(
+  //   "/api/v1/auth/sso/:tenantId/consume",
+  //   withNext(authRoutes.ssoCallback)
+  // );
   app.get("/api/v1/auth/airtable", authRoutes.airtableLogin);
   app.get("/api/v1/auth/google-sheets", authRoutes.googleSheetsLogin);
   app.get(

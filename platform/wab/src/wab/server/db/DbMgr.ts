@@ -5700,6 +5700,17 @@ export class DbMgr implements MigrationDbMgr {
       .getMany();
   }
 
+  async hasPendingPermissionsForEmail(email: string) {
+    this.checkSuperUser();
+    const perms = await this.permissions()
+      .createQueryBuilder("permissions")
+      .where(`lower(permissions.email) = lower(:email)`, { email })
+      .andWhere("permissions.user_id IS NULL") // Only pending permissions
+      .andWhere("permissions.deletedAt is null")
+      .getMany();
+    return perms.length > 0;
+  }
+
   async revokeProjectPermissionsByEmails(
     projectId: string,
     emails: string[],
