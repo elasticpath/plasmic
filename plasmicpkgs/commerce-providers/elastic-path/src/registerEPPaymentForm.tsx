@@ -8,7 +8,7 @@ export const epPaymentFormMeta = {
   displayName: "Elastic Path Payment Form",
   description: "Stripe payment form for Elastic Path orders with secure payment processing",
   importName: "EPPaymentForm",
-  importPath: "@plasmicpkgs/commerce-providers/elastic-path",
+  importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
   props: {
     order: {
       type: "object" as const,

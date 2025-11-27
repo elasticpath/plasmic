@@ -32,7 +32,7 @@ export const epProductVariantPickerMeta: ComponentMeta<EPProductVariantPickerPro
         defaultValue: true,
       },
     },
-    importPath: "@plasmicpkgs/commerce",
+    importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
     importName: "EPProductVariantPicker",
   };
 

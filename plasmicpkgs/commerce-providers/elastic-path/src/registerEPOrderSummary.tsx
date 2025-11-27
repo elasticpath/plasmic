@@ -8,7 +8,7 @@ export const epOrderSummaryMeta = {
   displayName: "Elastic Path Order Summary",
   description: "Displays order details including items, pricing, and customer information",
   importName: "EPOrderSummary",
-  importPath: "@plasmicpkgs/commerce-providers/elastic-path",
+  importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
   props: {
     order: {
       type: "object" as const,

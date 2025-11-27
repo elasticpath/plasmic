@@ -60,7 +60,7 @@ export const epBundleConfiguratorMeta: ComponentMeta<EPBundleConfiguratorProps> 
       defaultValue: 500,
     },
   },
-  importPath: "@plasmicpkgs/commerce",
+  importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
   importName: "EPBundleConfigurator",
 };
 
