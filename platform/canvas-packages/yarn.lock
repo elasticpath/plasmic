@@ -1385,10 +1385,10 @@
   dependencies:
     tslib "^2.0.0"
 
-"@elasticpath/plasmic-ep-commerce-elastic-path@^0.0.1":
-  version "0.0.1"
-  resolved "https://registry.yarnpkg.com/@elasticpath/plasmic-ep-commerce-elastic-path/-/plasmic-ep-commerce-elastic-path-0.0.1.tgz#83ad3756b32fe761e476b346f66866a061fd0469"
-  integrity sha512-UcMKbgwANvHQAP7q+NXMhSYsm4V0GRMzSoq+JpXruLdgeWRrEdBc04uRNmeLbwZ1n7A0J+5ZMR6VtQAA8YDFZw==
+"@elasticpath/plasmic-ep-commerce-elastic-path@^0.0.2":
+  version "0.0.2"
+  resolved "https://registry.yarnpkg.com/@elasticpath/plasmic-ep-commerce-elastic-path/-/plasmic-ep-commerce-elastic-path-0.0.2.tgz#a04e3b70ffb0bc45e2ea611ab8a0ceea7115bc28"
+  integrity sha512-F5fKXCSzeSTa0/RBECTRgEmOV3EdYRR3gXgF3qhXw+I+0ORnk1fEkJk7leB0PtMLYI3AjwW1/D28kh+qPKIYow==
   dependencies:
     "@epcc-sdk/sdks-shopper" "^0.0.40"
     "@hookform/resolvers" "^3.3.2"
