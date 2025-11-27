@@ -74,7 +74,7 @@ locals {
   clips_bucket_arn        = data.terraform_remote_state.s3_clips.outputs.bucket_arn
 
   # CloudFront CDN for site assets
-  site_assets_base_url = "https://${data.terraform_remote_state.s3_site_assets.outputs.cloudfront_domain_name}"
+  site_assets_base_url = "https://${data.terraform_remote_state.s3_site_assets.outputs.cloudfront_domain_name}/"
 
   # Frontend URLs (from CloudFront distributions)
   frontend_url                 = data.terraform_remote_state.frontend.outputs.frontend_url
