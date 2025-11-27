@@ -42,7 +42,7 @@ export const epMultiLocationStockMeta: ComponentMeta<EPMultiLocationStockProps> 
       defaultValue: 5,
     },
   },
-  importPath: "@plasmicpkgs/commerce",
+  importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
   importName: "EPMultiLocationStock",
 };
 

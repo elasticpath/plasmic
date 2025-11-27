@@ -8,7 +8,7 @@ export const epCheckoutFormMeta = {
   displayName: "Elastic Path Checkout Form",
   description: "Customer information and address collection form for Elastic Path checkout",
   importName: "EPCheckoutForm",
-  importPath: "@plasmicpkgs/commerce-providers/elastic-path",
+  importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
   props: {
     cartId: {
       type: "string" as const,

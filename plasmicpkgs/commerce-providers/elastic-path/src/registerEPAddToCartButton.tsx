@@ -67,7 +67,7 @@ export const epAddToCartButtonMeta: ComponentMeta<EPAddToCartButtonProps> = {
       defaultValue: false,
     },
   },
-  importPath: "@plasmicpkgs/commerce",
+  importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
   importName: "EPAddToCartButton",
 };
 

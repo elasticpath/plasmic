@@ -8,7 +8,7 @@ export const epCheckoutConfirmationMeta = {
   displayName: "Elastic Path Checkout Confirmation",
   description: "Order confirmation page with success message and order details",
   importName: "EPCheckoutConfirmation",
-  importPath: "@plasmicpkgs/commerce-providers/elastic-path",
+  importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
   props: {
     order: {
       type: "object" as const,
