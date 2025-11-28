@@ -353,11 +353,9 @@ import {
 import { JsIdentifier } from "@/wab/shared/utils/regex-js-identifier";
 import { makeVariantComboSorter } from "@/wab/shared/variant-sort";
 import L, { repeat } from "lodash";
-import {
-  createCustomImageLoaderString,
-  shouldUsePlasmicImg,
-} from "src/wab/shared/codegen/react-p/image";
+import { shouldUsePlasmicImg } from "src/wab/shared/codegen/react-p/image";
 import type { SetRequired } from "type-fest";
+import { generateImageLoaderCode } from "./image/custom-loader";
 
 export function exportStyleConfig(
   opts: SetRequired<Partial<ExportOpts>, "targetEnv">
@@ -1567,9 +1565,7 @@ export function serializeTplTagBase(
         }
       });
       if (ctx.exportOpts.imageOpts.scheme === "cdn") {
-        attrs["loader"] = createCustomImageLoaderString(
-          DEVFLAGS.imgOptimizerHost
-        );
+        attrs["loader"] = generateImageLoaderCode(DEVFLAGS.imgOptimizerHost);
       }
     }
   }

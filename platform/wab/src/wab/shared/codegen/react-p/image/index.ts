@@ -7,7 +7,6 @@ import { ASPECT_RATIO_SCALE_FACTOR } from "@/wab/shared/core/tpls";
 import { DEVFLAGS, DevFlagsType } from "@/wab/shared/devflags";
 import { ImageAsset, TplTag } from "@/wab/shared/model/classes";
 import { last } from "lodash";
-import { generateImageLoaderCode } from "./custom-loader";
 
 export function shouldUsePlasmicImg(node: TplTag, projectFlags: DevFlagsType) {
   return node.tag === "img" && projectFlags.usePlasmicImg;
@@ -60,24 +59,6 @@ export function maybeMakePlasmicImgSrc(asset: ImageAsset, exprCtx: ExprCtx) {
       (aspectRatio) => aspectRatio / ASPECT_RATIO_SCALE_FACTOR
     ),
   };
-}
-
-/**
- * Creates a custom image loader object
- */
-export function createCustomImageLoader(imgOptimizerHost: string) {
-  // Use eval to create the actual object from the generated code string
-  // This ensures the object and string versions are always in sync
-  const loaderCode = generateImageLoaderCode(imgOptimizerHost);
-  // eslint-disable-next-line no-eval
-  return eval(`(${loaderCode})`);
-}
-
-/**
- * Creates a string literal representation of the custom image loader for code generation
- */
-export function createCustomImageLoaderString(imgOptimizerHost: string) {
-  return generateImageLoaderCode(imgOptimizerHost);
 }
 
 export function getSerializedImgSrcForAsset(
