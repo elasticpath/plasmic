@@ -353,7 +353,10 @@ import {
 import { JsIdentifier } from "@/wab/shared/utils/regex-js-identifier";
 import { makeVariantComboSorter } from "@/wab/shared/variant-sort";
 import L, { repeat } from "lodash";
-import { shouldUsePlasmicImg } from "src/wab/shared/codegen/react-p/image";
+import {
+  createCustomImageLoaderString,
+  shouldUsePlasmicImg,
+} from "src/wab/shared/codegen/react-p/image";
 import type { SetRequired } from "type-fest";
 
 export function exportStyleConfig(
@@ -1564,20 +1567,9 @@ export function serializeTplTagBase(
         }
       });
       if (ctx.exportOpts.imageOpts.scheme === "cdn") {
-        attrs["loader"] = `{
-    supportsUrl: (src) => {
-      return (src.startsWith("http") || /^([a-f0-9]{32})\\..{1,16}$/i.test(src)) && !(src.endsWith(".svg") || src.startsWith("data:image/svg"));
-    },
-    transformUrl: (opts) => {
-      const params = [
-        \`src=\${encodeURIComponent(opts.src)}\`,
-        opts.width ? \`w=\${opts.width}\` : undefined,
-        \`q=\${opts.quality ?? 75}\`,
-        opts.format ? \`f=\${opts.format}\` : undefined,
-      ].filter((x) => !!x);
-      return \`${DEVFLAGS.imgOptimizerHost}/img-optimizer/v1/img?\${params.join("&")}\`;
-    }
-  }`;
+        attrs["loader"] = createCustomImageLoaderString(
+          DEVFLAGS.imgOptimizerHost
+        );
       }
     }
   }

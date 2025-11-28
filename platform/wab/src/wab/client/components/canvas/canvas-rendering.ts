@@ -305,7 +305,10 @@ import {
 import { IObservableValue, comparer, computed, observable } from "mobx";
 import { computedFn } from "mobx-utils";
 import type React from "react";
-import { maybeMakePlasmicImgSrc } from "src/wab/shared/codegen/react-p/image";
+import {
+  createCustomImageLoader,
+  maybeMakePlasmicImgSrc,
+} from "src/wab/shared/codegen/react-p/image";
 import defer = setTimeout;
 
 export const hasLoadingBoundaryKey = "plasmicInternalHasLoadingBoundary";
@@ -2419,7 +2422,7 @@ function renderTplTag(
         }
       }
     });
-    attrs["loader"] = "plasmic";
+    attrs["loader"] = createCustomImageLoader(DEVFLAGS.imgOptimizerHost);
   }
   const state = ctx.ownerComponent?.states.find(
     (istate) => istate.tplNode === node
