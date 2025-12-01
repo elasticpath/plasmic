@@ -19,12 +19,12 @@ function createS3Client() {
   const s3Config: any = {
     endpoint: process.env.S3_ENDPOINT,
   };
-  
+
   // Use path-style URLs only for LocalStack (when endpoint contains localhost)
   if (process.env.S3_ENDPOINT && process.env.S3_ENDPOINT.includes('localhost')) {
     s3Config.s3ForcePathStyle = true;
   }
-  
+
   return new S3(s3Config);
 }
 
@@ -212,21 +212,21 @@ async function optimizeImage(
   const metadata = await sharpInstance.metadata();
 
   // Apply resize transformation
-  if ((width && metadata.width && width < metadata.width) || 
+  if ((width && metadata.width && width < metadata.width) ||
       (height && metadata.height && height < metadata.height) ||
       (width && height)) {
-    
+
     // Determine resize dimensions
     let resizeWidth = width;
     let resizeHeight = height;
-    
+
     // If only one dimension is provided, set the other to null for aspect ratio preservation
     if (width && !height) {
       resizeHeight = null;
     } else if (height && !width) {
       resizeWidth = null;
     }
-    
+
     sharpInstance = sharpInstance.resize(resizeWidth, resizeHeight, {
       fit: "inside",
       withoutEnlargement: true,
@@ -234,12 +234,15 @@ async function optimizeImage(
   }
 
   // Apply format transformation
+  let outputFormat: SupportedFormat = "jpeg";
   let contentType = "image/jpeg";
 
   if (format === "webp") {
+    outputFormat = "webp";
     contentType = "image/webp";
     sharpInstance = sharpInstance.webp({ quality });
   } else if (metadata.format === "png") {
+    outputFormat = "png";
     contentType = "image/png";
     sharpInstance = sharpInstance.png({ quality, progressive: true });
   } else {
@@ -306,7 +309,7 @@ export async function optimizeImageHandler(req: Request, res: Response) {
       try {
         const originalBuffer = await fetchImageBuffer(src as string);
         const contentType = src.toString().toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
-        
+
         res.set({
           "Content-Type": contentType,
           "Cache-Control": "public, max-age=300", // 5 minutes for errors
