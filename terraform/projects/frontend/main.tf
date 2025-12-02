@@ -663,7 +663,7 @@ resource "aws_cloudfront_distribution" "img_optimizer" {
     # Custom headers to route requests to img-optimizer service
     custom_header {
       name  = "X-Forwarded-Host"
-      value = local.img_optimizer_domain != null ? local.img_optimizer_domain : aws_cloudfront_distribution.img_optimizer.domain_name
+      value = local.img_optimizer_domain
     }
   }
 
