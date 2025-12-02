@@ -35,7 +35,7 @@ module "copilot_service" {
 
   # Environment variables - using production mode to ensure DATABASE_URI is used
   environment_variables = {
-    NODE_ENV                 = "production"  # Always use production mode for deployed environments
+    NODE_ENV                 = "production" # Always use production mode for deployed environments
     AWS_REGION               = var.aws_region
     PINO_LOGGER_LEVEL        = var.log_level
     BACKEND_PORT             = "3009"
@@ -81,15 +81,15 @@ module "copilot_service" {
   )
 
   # Networking
-  cluster_id             = local.cluster_id
-  cluster_name           = local.cluster_name
-  vpc_id                 = local.vpc_id
-  private_subnet_ids     = local.private_subnet_ids
-  alb_arn                = local.alb_arn
-  alb_listener_arn       = local.alb_listener_arn
-  alb_security_group_id  = local.alb_security_group_id
-  ecs_security_group_id  = local.ecs_security_group_id
-  assign_public_ip       = var.assign_public_ip
+  cluster_id            = local.cluster_id
+  cluster_name          = local.cluster_name
+  vpc_id                = local.vpc_id
+  private_subnet_ids    = local.private_subnet_ids
+  alb_arn               = local.alb_arn
+  alb_listener_arn      = local.alb_listener_arn
+  alb_security_group_id = local.alb_security_group_id
+  ecs_security_group_id = local.ecs_security_group_id
+  assign_public_ip      = var.assign_public_ip
 
   # IAM
   execution_role_arn = local.execution_role_arn

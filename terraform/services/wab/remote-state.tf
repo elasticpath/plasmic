@@ -77,8 +77,8 @@ locals {
   site_assets_base_url = "https://${data.terraform_remote_state.s3_site_assets.outputs.cloudfront_domain_name}/"
 
   # Frontend URLs (from CloudFront distributions)
-  frontend_url                 = data.terraform_remote_state.frontend.outputs.frontend_url
-  react_app_default_host_url   = data.terraform_remote_state.frontend.outputs.host_url
+  frontend_url               = data.terraform_remote_state.frontend.outputs.frontend_url
+  react_app_default_host_url = data.terraform_remote_state.frontend.outputs.host_url
 
   # Service URLs for internal routing
   codegen_url = data.terraform_remote_state.ecs_cluster.outputs.codegen_url

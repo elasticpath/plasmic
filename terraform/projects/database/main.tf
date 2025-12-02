@@ -35,13 +35,13 @@ resource "aws_security_group" "rds" {
 resource "aws_db_instance" "main" {
   identifier = local.identifier
 
-  engine               = "postgres"
-  engine_version       = "15.14"
-  instance_class       = var.db_instance_class
-  allocated_storage    = var.db_allocated_storage
+  engine                = "postgres"
+  engine_version        = "15.14"
+  instance_class        = var.db_instance_class
+  allocated_storage     = var.db_allocated_storage
   max_allocated_storage = var.db_max_allocated_storage
-  storage_type         = "gp3"
-  storage_encrypted    = false  # Match existing unencrypted database
+  storage_type          = "gp3"
+  storage_encrypted     = false # Match existing unencrypted database
 
   username = var.db_username
   password = data.aws_secretsmanager_secret_version.db_password.secret_string
@@ -52,8 +52,8 @@ resource "aws_db_instance" "main" {
   publicly_accessible    = false
 
   backup_retention_period = var.backup_retention_period
-  backup_window          = "03:00-04:00"  # UTC
-  maintenance_window     = "mon:04:00-mon:05:00"  # UTC
+  backup_window           = "03:00-04:00"         # UTC
+  maintenance_window      = "mon:04:00-mon:05:00" # UTC
 
   skip_final_snapshot       = var.skip_final_snapshot
   final_snapshot_identifier = var.skip_final_snapshot ? null : "${local.identifier}-final"

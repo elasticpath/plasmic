@@ -1,0 +1,89 @@
+name: Terraform Validate
+
+on:
+  pull_request:
+    paths:
+      - 'terraform/**'
+
+jobs:
+  validate:
+    name: Validate Terraform
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Validate terraform projects
+        env:
+          TERRAFORM_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
+          TF_VAR_environment: ${{ vars.ENVIRONMENT }}
+          TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+        run: |
+          failed=0
+
+          # Validate projects
+          echo "📦 Validating projects..."
+          for dir in terraform/projects/*/; do
+            project=$(basename "$dir")
+            echo "🔍 projects/$project"
+            cd "$dir"
+            terraform init \
+              -backend-config="bucket=$TERRAFORM_STATE_BUCKET" \
+              -backend-config="key=$TF_VAR_environment/$project/terraform.tfstate" \
+              -backend-config="region=$TF_VAR_aws_region" \
+              -input=false
+            if ! terraform validate; then
+              echo "❌ projects/$project failed"
+              failed=1
+            fi
+            cd - > /dev/null
+          done
+
+          # Validate services
+          echo ""
+          echo "🚀 Validating services..."
+          for dir in terraform/services/*/; do
+            service=$(basename "$dir")
+            echo "🔍 services/$service"
+            cd "$dir"
+            terraform init \
+              -backend-config="bucket=$TERRAFORM_STATE_BUCKET" \
+              -backend-config="key=$TF_VAR_environment/services/$service/terraform.tfstate" \
+              -backend-config="region=$TF_VAR_aws_region" \
+              -input=false
+            if ! terraform validate; then
+              echo "❌ services/$service failed"
+              failed=1
+            fi
+            cd - > /dev/null
+          done
+
+          if [ $failed -eq 1 ]; then
+            echo ""
+            echo "❌ Validation failed"
+            exit 1
+          fi
+          echo ""
+          echo "✅ All terraform configurations valid"
+
+      - name: Check terraform formatting
+        run: |
+          if ! terraform fmt -check -recursive terraform/; then
+            echo "❌ Run 'terraform fmt -recursive terraform/' to fix formatting"
+            exit 1
+          fi

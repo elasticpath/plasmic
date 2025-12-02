@@ -64,15 +64,15 @@ module "img_optimizer_service" {
   ]
 
   # Networking
-  cluster_id             = local.cluster_id
-  cluster_name           = local.cluster_name
-  vpc_id                 = local.vpc_id
-  private_subnet_ids     = local.private_subnet_ids
-  alb_arn                = local.alb_arn
-  alb_listener_arn       = local.alb_listener_arn
-  alb_security_group_id  = local.alb_security_group_id
-  ecs_security_group_id  = local.ecs_security_group_id
-  assign_public_ip       = false
+  cluster_id            = local.cluster_id
+  cluster_name          = local.cluster_name
+  vpc_id                = local.vpc_id
+  private_subnet_ids    = local.private_subnet_ids
+  alb_arn               = local.alb_arn
+  alb_listener_arn      = local.alb_listener_arn
+  alb_security_group_id = local.alb_security_group_id
+  ecs_security_group_id = local.ecs_security_group_id
+  assign_public_ip      = false
 
   # IAM
   execution_role_arn = local.execution_role_arn
@@ -107,5 +107,5 @@ module "img_optimizer_service" {
 
   # ALB routing - path-based routing for image optimizer
   path_pattern           = "/img-optimizer/*"
-  listener_rule_priority = 200  # Between codegen (110) and wab (1000)
+  listener_rule_priority = 200 # Between codegen (110) and wab (1000)
 }
