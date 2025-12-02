@@ -217,6 +217,7 @@ jobs:
           echo "- WAB" >> $GITHUB_STEP_SUMMARY
           echo "- Data" >> $GITHUB_STEP_SUMMARY
           echo "- Codegen" >> $GITHUB_STEP_SUMMARY
+          echo "- Image Optimizer" >> $GITHUB_STEP_SUMMARY
           echo "- Copilot (disabled)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
