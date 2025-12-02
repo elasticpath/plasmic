@@ -8,7 +8,7 @@ module "img_optimizer_service" {
 
   environment  = var.environment
   aws_region   = var.aws_region
-  service_name = "img-optimizer"
+  service_name = "imgopt"
 
   # Container configuration
   container_image = var.container_image
