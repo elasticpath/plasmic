@@ -162,6 +162,10 @@ import {
   getTrustedHostsForSelf,
 } from "@/wab/server/routes/hosts";
 import { uploadImage } from "@/wab/server/routes/image";
+import { 
+  optimizeImageHandler, 
+  optimizeImageStaticHandler 
+} from "@/wab/server/routes/img-optimizer";
 import {
   buildLatestLoaderAssets,
   buildLatestLoaderHtml,
@@ -1141,6 +1145,12 @@ export function addCodegenRoutes(app: express.Application) {
 
   app.get("/static/js/loader-hydrate.js", getHydrationScript);
   app.get("/static/js/loader-hydrate.:hash.js", getHydrationScriptVersioned);
+}
+
+export function addImgOptimizerRoutes(app: express.Application) {
+  // Image optimization endpoints
+  app.get("/img-optimizer/v1/img", optimizeImageHandler);
+  app.get("/img-optimizer/v1/img/:imageId", optimizeImageStaticHandler);
 }
 
 export function addMainAppServerRoutes(
