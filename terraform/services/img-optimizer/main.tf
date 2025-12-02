@@ -1,6 +1,10 @@
-# Get shared DATABASE_URI secret (if needed)
+# Get shared secrets
 data "aws_secretsmanager_secret" "database_uri" {
   name = "plasmic/${var.environment}/app/database-uri"
+}
+
+data "aws_secretsmanager_secret" "session_secret" {
+  name = "plasmic/${var.environment}/app/session-secret"
 }
 
 module "img_optimizer_service" {
@@ -47,11 +51,15 @@ module "img_optimizer_service" {
     DEBUG                    = "connect:typeorm"
   }
 
-  # Secrets - DATABASE_URI for potential shared connections
+  # Secrets - Required for application startup
   secrets = [
     {
       name      = "DATABASE_URI"
       valueFrom = data.aws_secretsmanager_secret.database_uri.arn
+    },
+    {
+      name      = "SESSION_SECRET"
+      valueFrom = data.aws_secretsmanager_secret.session_secret.arn
     }
   ]
 
