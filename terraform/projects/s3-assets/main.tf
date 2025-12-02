@@ -39,10 +39,10 @@ resource "aws_s3_bucket_policy" "loader_assets" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "AllowSSLRequestsOnly"
-        Effect = "Deny"
+        Sid       = "AllowSSLRequestsOnly"
+        Effect    = "Deny"
         Principal = "*"
-        Action = "s3:*"
+        Action    = "s3:*"
         Resource = [
           aws_s3_bucket.loader_assets.arn,
           "${aws_s3_bucket.loader_assets.arn}/*"

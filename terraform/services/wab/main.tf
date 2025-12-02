@@ -42,24 +42,24 @@ module "wab_service" {
 
   # Environment variables - using WAB's expected variable names
   environment_variables = {
-    NODE_ENV                     = "production"  # Always use production mode for deployed environments
-    PORT                         = tostring(var.wab_container_port)
-    HOST                         = local.frontend_url
-    AWS_REGION                   = var.aws_region
-    SITE_ASSETS_BUCKET           = local.site_assets_bucket_name
-    SITE_ASSETS_BASE_URL         = local.site_assets_base_url
-    CLIP_BUCKET                  = local.clips_bucket_name
-    S3_ENDPOINT                  = "https://s3.${var.aws_region}.amazonaws.com"  # Fixes ACL issues with modern S3 buckets
-    GENERIC_WORKER_POOL_SIZE     = tostring(var.generic_worker_pool_size)
-    LOADER_WORKER_POOL_SIZE      = tostring(var.loader_worker_pool_size)
-    REACT_APP_DEFAULT_HOST_URL   = local.react_app_default_host_url
-    CODEGEN_HOST                 = local.codegen_url != null ? local.codegen_url : ""
-    DATA_URL                     = local.data_url != null ? local.data_url : ""
-    PINO_LOGGER_LEVEL            = var.log_level
-    MAIL_CONFIG                  = var.mail_config
-    ADMIN_EMAILS                 = var.admin_emails
-    SKIP_GRANT_REVOKE_EMAILS     = tostring(var.skip_grant_revoke_emails)
-    DEBUG                        = "connect:typeorm"
+    NODE_ENV                   = "production" # Always use production mode for deployed environments
+    PORT                       = tostring(var.wab_container_port)
+    HOST                       = local.frontend_url
+    AWS_REGION                 = var.aws_region
+    SITE_ASSETS_BUCKET         = local.site_assets_bucket_name
+    SITE_ASSETS_BASE_URL       = local.site_assets_base_url
+    CLIP_BUCKET                = local.clips_bucket_name
+    S3_ENDPOINT                = "https://s3.${var.aws_region}.amazonaws.com" # Fixes ACL issues with modern S3 buckets
+    GENERIC_WORKER_POOL_SIZE   = tostring(var.generic_worker_pool_size)
+    LOADER_WORKER_POOL_SIZE    = tostring(var.loader_worker_pool_size)
+    REACT_APP_DEFAULT_HOST_URL = local.react_app_default_host_url
+    CODEGEN_HOST               = local.codegen_url != null ? local.codegen_url : ""
+    DATA_URL                   = local.data_url != null ? local.data_url : ""
+    PINO_LOGGER_LEVEL          = var.log_level
+    MAIL_CONFIG                = var.mail_config
+    ADMIN_EMAILS               = var.admin_emails
+    SKIP_GRANT_REVOKE_EMAILS   = tostring(var.skip_grant_revoke_emails)
+    DEBUG                      = "connect:typeorm"
   }
 
   # Secrets - DATABASE_URI contains the full PostgreSQL connection string
@@ -124,5 +124,5 @@ module "wab_service" {
 
   # ALB routing - WAB gets the default route (lowest priority / catch-all)
   path_pattern           = "/*"
-  listener_rule_priority = 1000  # Lowest priority = catch-all
+  listener_rule_priority = 1000 # Lowest priority = catch-all
 }

@@ -70,7 +70,7 @@ resource "aws_cloudfront_distribution" "site_assets" {
 
     viewer_protocol_policy = "redirect-to-https"
     min_ttl                = 0
-    default_ttl            = 86400   # 1 day
+    default_ttl            = 86400    # 1 day
     max_ttl                = 31536000 # 1 year
     compress               = true
   }
@@ -113,10 +113,10 @@ resource "aws_s3_bucket_policy" "site_assets" {
         }
       },
       {
-        Sid    = "AllowSSLRequestsOnly"
-        Effect = "Deny"
+        Sid       = "AllowSSLRequestsOnly"
+        Effect    = "Deny"
         Principal = "*"
-        Action = "s3:*"
+        Action    = "s3:*"
         Resource = [
           aws_s3_bucket.site_assets.arn,
           "${aws_s3_bucket.site_assets.arn}/*"

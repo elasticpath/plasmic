@@ -58,7 +58,7 @@ variable "enable_circuit_breaker" {
 
 # Environment variables
 variable "environment_variables" {
-  type = map(string)
+  type        = map(string)
   description = "Environment variables for the container"
   default     = {}
 }

@@ -53,12 +53,12 @@ data "terraform_remote_state" "ecs_cluster" {
 }
 
 locals {
-  alb_dns_name          = data.terraform_remote_state.ecs_cluster.outputs.alb_dns_name
-  use_custom_domain     = var.hosted_zone_id != null
-  use_custom_host       = var.hosted_zone_id_host != null
-  frontend_domain       = local.use_custom_domain ? "${var.environment}.${var.parent_domain}" : null
-  host_domain           = local.use_custom_host ? "${var.environment}.host.${var.host_parent_domain}" : null
-  alb_origin_domain     = local.use_custom_domain ? "alb-${var.environment}.${var.parent_domain}" : local.alb_dns_name
+  alb_dns_name      = data.terraform_remote_state.ecs_cluster.outputs.alb_dns_name
+  use_custom_domain = var.hosted_zone_id != null
+  use_custom_host   = var.hosted_zone_id_host != null
+  frontend_domain   = local.use_custom_domain ? "${var.environment}.${var.parent_domain}" : null
+  host_domain       = local.use_custom_host ? "${var.environment}.host.${var.host_parent_domain}" : null
+  alb_origin_domain = local.use_custom_domain ? "alb-${var.environment}.${var.parent_domain}" : local.alb_dns_name
 }
 
 # ACM Certificate for CloudFront (must be in us-east-1)
@@ -180,8 +180,8 @@ resource "aws_cloudfront_distribution" "frontend" {
     cached_methods   = ["GET", "HEAD"]
     target_origin_id = "S3-plasmic-frontend"
 
-    cache_policy_id            = "658327ea-f89d-4fab-a63d-7e88639e58f6"  # Managed-CachingOptimized
-    origin_request_policy_id   = "88a5eaf4-2fd4-4709-b370-b4c650ea3fcf"  # Managed-CORS-S3Origin
+    cache_policy_id            = "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
+    origin_request_policy_id   = "88a5eaf4-2fd4-4709-b370-b4c650ea3fcf" # Managed-CORS-S3Origin
     response_headers_policy_id = aws_cloudfront_response_headers_policy.plasmic_cors.id
 
     viewer_protocol_policy = "redirect-to-https"
@@ -198,8 +198,8 @@ resource "aws_cloudfront_distribution" "frontend" {
     cached_methods   = ["GET", "HEAD"]
     target_origin_id = "ALB-plasmic-backend"
 
-    cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"  # Managed-CachingDisabled
-    origin_request_policy_id = "33f36d7e-f396-46d9-90e0-52428a34d9dc"  # Managed-AllViewerAndCloudFrontHeaders-2022-06
+    cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" # Managed-CachingDisabled
+    origin_request_policy_id = "33f36d7e-f396-46d9-90e0-52428a34d9dc" # Managed-AllViewerAndCloudFrontHeaders-2022-06
 
     viewer_protocol_policy = "redirect-to-https"
     compress               = false
@@ -366,7 +366,7 @@ resource "aws_cloudfront_distribution" "host" {
     cached_methods   = ["GET", "HEAD"]
     target_origin_id = "S3-plasmic-host"
 
-    cache_policy_id            = "658327ea-f89d-4fab-a63d-7e88639e58f6"  # Managed-CachingOptimized
+    cache_policy_id            = "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
     response_headers_policy_id = aws_cloudfront_response_headers_policy.plasmic_cors.id
 
     viewer_protocol_policy = "redirect-to-https"
