@@ -15,11 +15,25 @@ type SupportedFormat = (typeof SUPPORTED_FORMATS)[number];
 const siteAssetsBucket = process.env.SITE_ASSETS_BUCKET as string;
 const siteAssetsBaseUrl = process.env.SITE_ASSETS_BASE_URL as string;
 
+function createS3Client() {
+  const s3Config: any = {
+    endpoint: process.env.S3_ENDPOINT,
+  };
+  
+  // Use path-style URLs only for LocalStack (when endpoint contains localhost)
+  if (process.env.S3_ENDPOINT && process.env.S3_ENDPOINT.includes('localhost')) {
+    s3Config.s3ForcePathStyle = true;
+  }
+  
+  return new S3(s3Config);
+}
+
 function generateCacheKey(params: OptimizeParams): string {
   // Create a deterministic cache key from optimization parameters
   const keyData = {
     src: params.src,
     width: params.width,
+    height: params.height,
     quality: params.quality,
     format: params.format,
   };
@@ -27,22 +41,25 @@ function generateCacheKey(params: OptimizeParams): string {
   return `img-opt/${md5(keyString)}`;
 }
 
-async function getCachedImageUrl(cacheKey: string): Promise<string | null> {
+async function getCachedImage(cacheKey: string): Promise<{ buffer: Buffer; contentType: string } | null> {
   try {
-    const s3 = new S3({
-      endpoint: process.env.S3_ENDPOINT,
-    });
+    const s3 = createS3Client();
 
-    // Check if the optimized image already exists in S3
-    await s3
-      .headObject({
+    // Try to get the cached optimized image
+    const response = await s3
+      .getObject({
         Bucket: siteAssetsBucket,
         Key: cacheKey,
       })
       .promise();
 
-    // If we get here, the object exists
-    return `${siteAssetsBaseUrl}${cacheKey}`;
+    if (response.Body) {
+      return {
+        buffer: response.Body as Buffer,
+        contentType: response.ContentType || "image/jpeg",
+      };
+    }
+    return null;
   } catch (error) {
     // Object doesn't exist or other error - we'll need to create it
     return null;
@@ -54,9 +71,7 @@ async function uploadOptimizedImage(
   buffer: Buffer,
   contentType: string
 ): Promise<string> {
-  const s3 = new S3({
-    endpoint: process.env.S3_ENDPOINT,
-  });
+  const s3 = createS3Client();
 
   const { Location } = await s3
     .upload({
@@ -77,12 +92,13 @@ async function uploadOptimizedImage(
 interface OptimizeParams {
   src: string;
   width?: number;
+  height?: number;
   quality?: number;
   format?: "webp";
 }
 
 function validateParams(query: any): OptimizeParams {
-  const { src, w, q, f } = query;
+  const { src, w, h, q, f } = query;
 
   if (!src) {
     throw new BadRequestError("Missing required parameter: src");
@@ -102,6 +118,13 @@ function validateParams(query: any): OptimizeParams {
     );
   }
 
+  const height = h ? parseInt(h, 10) : undefined;
+  if (height && (isNaN(height) || height <= 0 || height > MAX_HEIGHT)) {
+    throw new BadRequestError(
+      `Invalid height. Must be between 1 and ${MAX_HEIGHT}`
+    );
+  }
+
   const quality = q ? parseInt(q, 10) : DEFAULT_QUALITY;
   if (isNaN(quality) || quality < 1 || quality > 100) {
     throw new BadRequestError("Invalid quality. Must be between 1 and 100");
@@ -109,7 +132,7 @@ function validateParams(query: any): OptimizeParams {
 
   const format = f === "webp" ? "webp" : undefined;
 
-  return { src, width, quality, format };
+  return { src, width, height, quality, format };
 }
 
 function extractS3Key(url: string): string | null {
@@ -149,9 +172,7 @@ async function fetchImageBuffer(url: string): Promise<Buffer> {
   }
 
   try {
-    const s3 = new S3({
-      endpoint: process.env.S3_ENDPOINT,
-    });
+    const s3 = createS3Client();
 
     const result = await s3
       .getObject({
@@ -175,7 +196,7 @@ async function fetchImageBuffer(url: string): Promise<Buffer> {
 
 async function optimizeImage(
   buffer: Buffer,
-  { width, quality, format }: Omit<OptimizeParams, "src">
+  { width, height, quality, format }: Omit<OptimizeParams, "src">
 ): Promise<{ buffer: Buffer; contentType: string }> {
   // Skip processing for SVGs
   if (isSVG(buffer)) {
@@ -190,24 +211,35 @@ async function optimizeImage(
   // Get original metadata
   const metadata = await sharpInstance.metadata();
 
-  // Apply width transformation
-  if (width && metadata.width && width < metadata.width) {
-    sharpInstance = sharpInstance.resize(width, null, {
+  // Apply resize transformation
+  if ((width && metadata.width && width < metadata.width) || 
+      (height && metadata.height && height < metadata.height) ||
+      (width && height)) {
+    
+    // Determine resize dimensions
+    let resizeWidth = width;
+    let resizeHeight = height;
+    
+    // If only one dimension is provided, set the other to null for aspect ratio preservation
+    if (width && !height) {
+      resizeHeight = null;
+    } else if (height && !width) {
+      resizeWidth = null;
+    }
+    
+    sharpInstance = sharpInstance.resize(resizeWidth, resizeHeight, {
       fit: "inside",
       withoutEnlargement: true,
     });
   }
 
   // Apply format transformation
-  let outputFormat: SupportedFormat = "jpeg";
   let contentType = "image/jpeg";
 
   if (format === "webp") {
-    outputFormat = "webp";
     contentType = "image/webp";
     sharpInstance = sharpInstance.webp({ quality });
   } else if (metadata.format === "png") {
-    outputFormat = "png";
     contentType = "image/png";
     sharpInstance = sharpInstance.png({ quality, progressive: true });
   } else {
@@ -233,10 +265,15 @@ export async function optimizeImageHandler(req: Request, res: Response) {
     const cacheKey = generateCacheKey(params);
 
     // Check if we already have this optimized image cached in S3
-    const cachedUrl = await getCachedImageUrl(cacheKey);
-    if (cachedUrl) {
-      // Redirect to the cached version
-      res.redirect(301, cachedUrl);
+    const cachedImage = await getCachedImage(cacheKey);
+    if (cachedImage) {
+      // Serve the cached image directly
+      res.set({
+        "Content-Type": cachedImage.contentType,
+        "Cache-Control": "public, max-age=31536000", // 1 year
+        "X-Cache": "HIT",
+      });
+      res.send(cachedImage.buffer);
       return;
     }
 
@@ -246,24 +283,39 @@ export async function optimizeImageHandler(req: Request, res: Response) {
     // Optimize the image
     const { buffer, contentType } = await optimizeImage(imageBuffer, params);
 
-    // Upload optimized image to S3 for caching
-    const optimizedUrl = await uploadOptimizedImage(
-      cacheKey,
-      buffer,
-      contentType
-    );
+    // Upload optimized image to S3 for caching (don't wait for it)
+    uploadOptimizedImage(cacheKey, buffer, contentType).catch((error) => {
+      console.error("[IMG-OPTIMIZER] Failed to cache image:", error);
+    });
 
-    // Redirect to the cached version
-    res.redirect(301, optimizedUrl);
+    // Serve the optimized image directly
+    res.set({
+      "Content-Type": contentType,
+      "Cache-Control": "public, max-age=31536000", // 1 year
+      "X-Cache": "MISS",
+    });
+    res.send(buffer);
   } catch (error) {
     if (error instanceof BadRequestError || error instanceof NotFoundError) {
       throw error;
     }
 
-    // For other errors, try to redirect to original image
+    // For other errors, try to serve the original image
     const { src } = req.query;
     if (src) {
-      res.redirect(302, src as string);
+      try {
+        const originalBuffer = await fetchImageBuffer(src as string);
+        const contentType = src.toString().toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+        
+        res.set({
+          "Content-Type": contentType,
+          "Cache-Control": "public, max-age=300", // 5 minutes for errors
+          "X-Cache": "ERROR",
+        });
+        res.send(originalBuffer);
+      } catch (fetchError) {
+        throw new BadRequestError("Image processing failed");
+      }
     } else {
       throw new BadRequestError("Image processing failed");
     }
@@ -273,24 +325,27 @@ export async function optimizeImageHandler(req: Request, res: Response) {
 // Handler for static image optimization (/{imageId} format)
 export async function optimizeImageStaticHandler(req: Request, res: Response) {
   const { imageId } = req.params;
-  const { w, q, f } = req.query;
+  const { w, h, q, f } = req.query;
 
   if (!imageId) {
     throw new BadRequestError("Missing image ID");
   }
 
-  // Construct the full URL based on your image storage pattern
-  // This assumes images are stored with the pattern used in the existing system
-  const baseUrl = process.env.IMG_BASE_URL || "https://img.plasmic.app";
-  const src = `${baseUrl}/${imageId}`;
+  // For S3-based images, the imageId is the S3 key
+  // Construct the S3 URL using the base URL
+  const src = `${siteAssetsBaseUrl}${imageId}`;
 
-  // Redirect to the main optimization handler
-  const queryString = new URLSearchParams({
-    src,
-    ...(w && { w: w as string }),
-    ...(q && { q: q as string }),
-    ...(f && { f: f as string }),
-  }).toString();
+  // Create a fake request object to reuse the main handler logic
+  const fakeReq = {
+    query: {
+      src,
+      ...(w && { w }),
+      ...(h && { h }),
+      ...(q && { q }),
+      ...(f && { f }),
+    },
+  } as Request;
 
-  res.redirect(`/img-optimizer/v1/img?${queryString}`);
+  // Call the main handler directly
+  return optimizeImageHandler(fakeReq, res);
 }

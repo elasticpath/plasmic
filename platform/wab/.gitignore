@@ -34,3 +34,6 @@ to-import-into-substack.csv
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+
+# LocalStack cache and data  
+src/wab/server/test/img-optimizer/tmp/

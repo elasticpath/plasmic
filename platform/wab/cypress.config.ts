@@ -74,6 +74,7 @@ export default defineConfig({
       "cypress/e2e/text-slots.spec.ts",
       "cypress/e2e/variants.spec.ts",
       "cypress/e2e/virtual-slots.spec.ts",
+      "cypress/e2e/img-optimizer/**/*.spec.ts",
     ],
     // We've imported your old cypress plugins here.
     // You may want to clean this up later by importing these.
