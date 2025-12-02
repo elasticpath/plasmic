@@ -30,7 +30,7 @@ variable "img_optimizer_memory" {
 variable "img_optimizer_desired_count" {
   type        = number
   description = "Desired number of image optimizer tasks"
-  default     = 2
+  default     = 1
 }
 
 variable "loader_worker_pool_size" {
