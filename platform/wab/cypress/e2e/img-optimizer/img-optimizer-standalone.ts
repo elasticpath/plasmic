@@ -7,7 +7,7 @@
 
 import 'express-async-errors'; // Must be first to catch async errors
 import express, { Request, Response, NextFunction } from 'express';
-import { optimizeImageHandler, optimizeImageStaticHandler } from '../../routes/img-optimizer';
+import { optimizeImageHandler, optimizeImageStaticHandler } from '../../../src/wab/server/routes/img-optimizer';
 
 // Load environment variables
 import 'dotenv/config';
