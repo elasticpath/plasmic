@@ -25,6 +25,15 @@ data "terraform_remote_state" "s3_site_assets" {
   }
 }
 
+data "terraform_remote_state" "frontend" {
+  backend = "s3"
+  config = {
+    bucket = "plasmic-terraform-state-${var.environment}-${var.aws_region}"
+    key    = "${var.environment}/frontend/terraform.tfstate"
+    region = var.aws_region
+  }
+}
+
 locals {
   # VPC
   vpc_id             = data.terraform_remote_state.vpc.outputs.vpc_id
@@ -43,4 +52,7 @@ locals {
   site_assets_bucket_name = data.terraform_remote_state.s3_site_assets.outputs.bucket_name
   site_assets_bucket_arn  = data.terraform_remote_state.s3_site_assets.outputs.bucket_arn
   site_assets_base_url    = "https://${data.terraform_remote_state.s3_site_assets.outputs.cloudfront_domain_name}/"
+  
+  # Frontend URLs
+  host_url = data.terraform_remote_state.frontend.outputs.host_url
 }
