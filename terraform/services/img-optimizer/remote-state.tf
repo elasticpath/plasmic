@@ -42,5 +42,5 @@ locals {
   # S3 Assets for image optimization
   site_assets_bucket_name = data.terraform_remote_state.s3_site_assets.outputs.bucket_name
   site_assets_bucket_arn  = data.terraform_remote_state.s3_site_assets.outputs.bucket_arn
-  site_assets_base_url    = data.terraform_remote_state.s3_site_assets.outputs.base_url
+  site_assets_base_url    = "https://${data.terraform_remote_state.s3_site_assets.outputs.cloudfront_domain_name}/"
 }
