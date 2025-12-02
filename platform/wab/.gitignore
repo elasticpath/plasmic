@@ -36,4 +36,4 @@ to-import-into-substack.csv
 *.tsbuildinfo
 
 # LocalStack cache and data  
-src/wab/server/test/img-optimizer/tmp/
+cypress/e2e/img-optimizer/tmp/

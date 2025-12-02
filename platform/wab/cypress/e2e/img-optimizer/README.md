@@ -43,22 +43,22 @@ These tests must be run in isolation following the setup instructions below.
 
 ```bash
 # From platform/wab directory
-cd src/wab/server/test/img-optimizer
-docker-compose -f docker-compose.localstack.yml up -d
+docker-compose -f cypress/e2e/img-optimizer/docker-compose.localstack.yml up -d
 ```
 
 ### Step 2: Set up test environment
 
 ```bash
-# Setup S3 bucket and upload test images
+# From platform/wab directory
+cd cypress/e2e/img-optimizer
 ./setup-img-optimizer-test.sh
 ```
 
 ### Step 3: Start the standalone img-optimizer server
 
 ```bash
-# In the platform/wab directory
-npm run run-ts -- src/wab/server/test/img-optimizer/img-optimizer-standalone.ts
+# From platform/wab directory
+npm run run-ts -- cypress/e2e/img-optimizer/img-optimizer-standalone.ts
 ```
 
 The server will start on port 3005 by default.

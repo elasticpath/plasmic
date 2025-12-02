@@ -18,7 +18,7 @@ if curl -s http://localhost:4566/health > /dev/null 2>&1; then
     echo "✅ LocalStack is running"
 else
     echo "❌ LocalStack not running. Start it with:"
-    echo "   docker-compose -f src/wab/server/test/img-optimizer/docker-compose.localstack.yml up -d"
+    echo "   docker-compose -f cypress/e2e/img-optimizer/docker-compose.localstack.yml up -d"
     exit 1
 fi
 
@@ -92,7 +92,7 @@ echo "✅ Test environment setup complete!"
 echo ""
 echo "🧪 Next steps:"
 echo "1. Start standalone server:"
-echo "   npm run run-ts -- src/wab/server/test/img-optimizer/img-optimizer-standalone.ts"
+echo "   npm run run-ts -- cypress/e2e/img-optimizer/img-optimizer-standalone.ts"
 echo ""
 echo "2. Run E2E tests with Cypress:"
 echo "   yarn cypress run --spec \"cypress/e2e/img-optimizer/img-optimizer.spec.ts\" --config baseUrl=http://localhost:3005"
