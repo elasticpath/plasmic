@@ -354,6 +354,7 @@
     "parse-data-url": "^2.0.0",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
+    "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
     "passport-oauth2": "^1.8.0",
     "passport-oauth2-refresh": "^2.2.0",

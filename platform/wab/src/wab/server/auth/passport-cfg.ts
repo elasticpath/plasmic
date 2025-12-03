@@ -39,6 +39,7 @@ import OAuth2Strategy from "passport-oauth2";
 import refresh from "passport-oauth2-refresh";
 import { getManager } from "typeorm";
 import * as util from "util";
+import { Strategy as JwtStrategy, ExtractJwt } from "passport-jwt";
 
 const LocalStrategy = passportLocal.Strategy;
 
@@ -88,6 +89,34 @@ export async function setupPassport(
           } else {
             return false;
           }
+        });
+      }
+    )
+  );
+
+  passport.use(
+    "provision-jwt",
+    new JwtStrategy(
+      {
+        jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+        secretOrKey:
+          "-----BEGIN PUBLIC KEY-----\n" +
+          "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEvAnj5ENp4CVKULbrSPD36WZyeOZV\n" +
+          "+J0SMo6743PmcvvZkjmm6SXLmV0Dv8HqOXDA1c7YkuRFp7QueT5RZEz4oQ==\n" +
+          "-----END PUBLIC KEY-----",
+        algorithms: ["ES256"],
+        passReqToCallback: true,
+      },
+      (req, jwt_payload, done) => {
+        asyncToCallback(done, async () => {
+          const mgr = superDbMgr(req);
+          const user = await mgr.tryGetUserByEmail(jwt_payload.sub);
+
+          if (!user) {
+            return false;
+          }
+
+          return user;
         });
       }
     )
