@@ -40,7 +40,7 @@ module "img_optimizer_service" {
   # Environment variables
   environment_variables = {
     NODE_ENV                 = "production"
-    PORT                     = "3009"
+    BACKEND_PORT             = "3009"
     HOST                     = local.host_url
     AWS_REGION               = var.aws_region
     SITE_ASSETS_BUCKET       = local.site_assets_bucket_name
