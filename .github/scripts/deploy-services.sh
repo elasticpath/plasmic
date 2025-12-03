@@ -150,7 +150,7 @@ deploy_service "data" "services/data" \
 
 # 5. Deploy Image Optimizer Service
 step "Step 5: Deploying Image Optimizer Service"
-deploy_service "img-optimizer" "services/img-optimizer" \
+deploy_service "imgopt" "services/img-optimizer" \
     "${ENVIRONMENT}/services/img-optimizer/terraform.tfstate"
 
 # Summary
@@ -165,7 +165,7 @@ echo "📊 Deployed Services:"
 echo "   ✓ wab"
 echo "   ✓ codegen"
 echo "   ✓ data"
-echo "   ✓ img-optimizer"
+echo "   ✓ imgopt"
 echo "   ✗ copilot (disabled)"
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -175,7 +175,7 @@ echo ""
 info "Waiting for services to stabilize (this may take 2-3 minutes)..."
 aws ecs wait services-stable \
     --cluster plasmic-${ENVIRONMENT} \
-    --services plasmic-${ENVIRONMENT}-wab plasmic-${ENVIRONMENT}-codegen plasmic-${ENVIRONMENT}-data plasmic-${ENVIRONMENT}-img-optimizer \
+    --services plasmic-${ENVIRONMENT}-wab plasmic-${ENVIRONMENT}-codegen plasmic-${ENVIRONMENT}-data plasmic-${ENVIRONMENT}-imgopt \
     --region ${AWS_REGION}
 
 echo ""
