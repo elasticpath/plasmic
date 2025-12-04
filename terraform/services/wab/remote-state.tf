@@ -52,7 +52,7 @@ data "terraform_remote_state" "frontend" {
   }
 }
 
-# Socket backend remote state - gracefully handles missing state on first deployment
+# Socket backend remote state - only read if state exists
 data "terraform_remote_state" "socket_backend" {
   backend = "s3"
   config = {
@@ -95,6 +95,5 @@ locals {
   data_url    = data.terraform_remote_state.ecs_cluster.outputs.data_url
 
   # Socket backend internal hostname (for WebSocket communication)
-  # Uses try() to gracefully handle missing state on first deployment
-  socket_host = try(data.terraform_remote_state.socket_backend.outputs.internal_hostname, null)
+  socket_host = data.terraform_remote_state.socket_backend.outputs.internal_hostname
 }
