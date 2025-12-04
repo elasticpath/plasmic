@@ -57,7 +57,7 @@ data "terraform_remote_state" "socket_backend" {
   backend = "s3"
   config = {
     bucket = "plasmic-terraform-state-${var.environment}-${var.aws_region}"
-    key    = "${var.environment}/socket-backend/terraform.tfstate"
+    key    = "${var.environment}/services/socket-backend/terraform.tfstate"
     region = var.aws_region
   }
 }

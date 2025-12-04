@@ -130,6 +130,10 @@ step "Step 1: Deploying Socket Service"
 deploy_service "socket" "services/socket-backend" \
     "${ENVIRONMENT}/services/socket-backend/terraform.tfstate"
 
+# Wait for S3 eventual consistency - socket backend state needs to be readable
+info "Waiting 30 seconds for S3 state file propagation..."
+sleep 30
+
 # 2. Deploy WAB Service (after socket backend is available)
 step "Step 2: Deploying WAB Service"
 deploy_service "wab" "services/wab" \
