@@ -99,6 +99,12 @@ variable "alb_arn" {
   description = "Application Load Balancer ARN"
 }
 
+variable "alb_dns_name" {
+  type        = string
+  description = "Application Load Balancer DNS name"
+  default     = null
+}
+
 variable "alb_listener_arn" {
   type        = string
   description = "ALB Listener ARN"
@@ -148,9 +154,9 @@ variable "host_header" {
   default     = null
 }
 
-variable "path_pattern" {
-  type        = string
-  description = "Path pattern for ALB listener rule"
+variable "path_patterns" {
+  type        = list(string)
+  description = "Path patterns for ALB listener rule (supports single or multiple patterns)"
   default     = null
 }
 

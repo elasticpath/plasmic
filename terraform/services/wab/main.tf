@@ -55,6 +55,7 @@ module "wab_service" {
     REACT_APP_DEFAULT_HOST_URL = local.react_app_default_host_url
     CODEGEN_HOST               = local.codegen_url != null ? local.codegen_url : ""
     DATA_URL                   = local.data_url != null ? local.data_url : ""
+    SOCKET_HOST                = local.socket_host != null ? local.socket_host : ""
     PINO_LOGGER_LEVEL          = var.log_level
     MAIL_CONFIG                = var.mail_config
     ADMIN_EMAILS               = var.admin_emails
@@ -123,6 +124,6 @@ module "wab_service" {
   ]
 
   # ALB routing - WAB gets the default route (lowest priority / catch-all)
-  path_pattern           = "/*"
+  path_patterns          = ["/*"]
   listener_rule_priority = 1000 # Lowest priority = catch-all
 }

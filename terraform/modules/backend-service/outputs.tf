@@ -32,3 +32,8 @@ output "cloudwatch_log_group" {
   description = "CloudWatch log group name"
   value       = aws_cloudwatch_log_group.service.name
 }
+
+output "internal_hostname" {
+  description = "Internal hostname for service access via ALB"
+  value       = var.alb_dns_name != null ? "https://${var.alb_dns_name}" : "http://localhost:${var.container_port}"
+}
