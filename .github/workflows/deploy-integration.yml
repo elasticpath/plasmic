@@ -214,9 +214,10 @@ jobs:
           echo "**Full SHA:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Deployed Services:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Socket Backend" >> $GITHUB_STEP_SUMMARY
           echo "- WAB" >> $GITHUB_STEP_SUMMARY
-          echo "- Data" >> $GITHUB_STEP_SUMMARY
           echo "- Codegen" >> $GITHUB_STEP_SUMMARY
+          echo "- Data" >> $GITHUB_STEP_SUMMARY
           echo "- Image Optimizer" >> $GITHUB_STEP_SUMMARY
           echo "- Copilot (disabled)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

@@ -125,33 +125,33 @@ deploy_service() {
     fi
 }
 
-# 1. Deploy WAB Service
-step "Step 1: Deploying WAB Service"
+# 1. Deploy Socket Service (first - WAB depends on socket backend state)
+step "Step 1: Deploying Socket Service"
+deploy_service "socket" "services/socket-backend" \
+    "${ENVIRONMENT}/services/socket-backend/terraform.tfstate"
+
+# 2. Deploy WAB Service (after socket backend is available)
+step "Step 2: Deploying WAB Service"
 deploy_service "wab" "services/wab" \
     "${ENVIRONMENT}/services/wab/terraform.tfstate" \
     "-lock=false"
 
-# 2. Deploy Codegen Service
-step "Step 2: Deploying Codegen Service"
+# 3. Deploy Codegen Service
+step "Step 3: Deploying Codegen Service"
 deploy_service "codegen" "services/codegen" \
     "${ENVIRONMENT}/services/codegen/terraform.tfstate"
 
-# 3. Deploy Copilot Service - DISABLED for cost savings
+# 4. Deploy Copilot Service - DISABLED for cost savings
 # Uncomment to enable
-# step "Step 3: Deploying Copilot Service"
+# step "Step 4: Deploying Copilot Service"
 # deploy_service "copilot" "services/copilot" \
 #     "${ENVIRONMENT}/services/copilot/terraform.tfstate"
 info "Copilot service deployment skipped (disabled for cost savings)"
 
-# 4. Deploy Data Service
-step "Step 4: Deploying Data Service"
+# 5. Deploy Data Service
+step "Step 5: Deploying Data Service"
 deploy_service "data" "services/data" \
     "${ENVIRONMENT}/services/data/terraform.tfstate"
-
-# 5. Deploy Socket Service 
-step "Step 5: Deploying Socket Service"
-deploy_service "socket" "services/socket-backend" \
-    "${ENVIRONMENT}/services/socket-backend/terraform.tfstate"
 
 # 6. Deploy Image Optimizer Service
 step "Step 6: Deploying Image Optimizer Service"
@@ -167,10 +167,10 @@ echo ""
 echo "Environment: $ENVIRONMENT"
 echo ""
 echo "📊 Deployed Services:"
+echo "   ✓ socket"
 echo "   ✓ wab"
 echo "   ✓ codegen"
 echo "   ✓ data"
-echo "   ✓ socket"
 echo "   ✓ imgopt"
 echo "   ✗ copilot (disabled)"
 echo ""
@@ -181,7 +181,7 @@ echo ""
 info "Waiting for services to stabilize (this may take 2-3 minutes)..."
 aws ecs wait services-stable \
     --cluster plasmic-${ENVIRONMENT} \
-    --services plasmic-${ENVIRONMENT}-wab plasmic-${ENVIRONMENT}-codegen plasmic-${ENVIRONMENT}-data plasmic-${ENVIRONMENT}-socket plasmic-${ENVIRONMENT}-imgopt \
+    --services plasmic-${ENVIRONMENT}-socket plasmic-${ENVIRONMENT}-wab plasmic-${ENVIRONMENT}-codegen plasmic-${ENVIRONMENT}-data plasmic-${ENVIRONMENT}-imgopt \
     --region ${AWS_REGION}
 
 echo ""
