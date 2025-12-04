@@ -672,8 +672,8 @@ resource "aws_cloudfront_distribution" "img_optimizer" {
     cached_methods   = ["GET", "HEAD"]
     target_origin_id = "ALB-img-optimizer"
 
-    # Use standard caching for optimized images with longer TTL
-    cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
+    # Use image optimization caching policy that includes query strings in cache key
+    cache_policy_id = "766eb028-1aff-4eb2-a5a4-2674e1538f26" # Managed-Amplify-ImageOptimization-V2
 
     # Forward query parameters for image optimization
     origin_request_policy_id = "216adef6-5c7f-47e4-b989-5492eafa07d3" # Managed-AllViewer
