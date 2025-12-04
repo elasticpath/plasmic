@@ -80,9 +80,9 @@ module "socket_backend_service" {
   # ALB routing - Route actual socket backend API endpoints
   path_patterns = [
     "/api/v1/disconnect",
-    "/api/v1/projects/broadcast", 
+    "/api/v1/projects/broadcast",
     "/api/v1/cli/emit-token",
-    "/api/v1/socket*"  # Covers WebSocket endpoint and socket.io paths
+    "/api/v1/socket*" # Covers WebSocket endpoint and socket.io paths
   ]
   listener_rule_priority = 150 # Between codegen (110) and img-optimizer (200)
 }
