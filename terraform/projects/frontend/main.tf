@@ -709,8 +709,8 @@ resource "aws_cloudfront_cache_policy" "img_optimizer" {
   comment = "Cache policy for Plasmic image optimizer service - includes query strings for image parameters"
 
   # Match the Cache-Control headers sent by the service (1 year)
-  default_ttl = 86400      # 1 day default
-  max_ttl     = 31536000   # 1 year - matches service Cache-Control
+  default_ttl = 86400    # 1 day default
+  max_ttl     = 31536000 # 1 year - matches service Cache-Control
   min_ttl     = 0
 
   parameters_in_cache_key_and_forwarded_to_origin {
