@@ -43,5 +43,5 @@ locals {
   execution_role_arn    = data.terraform_remote_state.ecs_cluster.outputs.execution_role_arn
 
   # Frontend URL for HOST environment variable
-  frontend_url = data.terraform_remote_state.frontend.outputs.cloudfront_domain_name != null ? "https://${data.terraform_remote_state.frontend.outputs.cloudfront_domain_name}" : "https://localhost:3003"
+  frontend_url = data.terraform_remote_state.frontend.outputs.frontend_url
 }
