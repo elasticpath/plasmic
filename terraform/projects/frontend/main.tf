@@ -672,8 +672,8 @@ resource "aws_cloudfront_distribution" "img_optimizer" {
     cached_methods   = ["GET", "HEAD"]
     target_origin_id = "ALB-img-optimizer"
 
-    # Use image optimization caching policy that includes query strings in cache key
-    cache_policy_id = "766eb028-1aff-4eb2-a5a4-2674e1538f26" # Managed-Amplify-ImageOptimization-V2
+    # Use custom image optimization caching policy that includes query strings in cache key
+    cache_policy_id = aws_cloudfront_cache_policy.img_optimizer.id
 
     # Forward query parameters for image optimization
     origin_request_policy_id = "216adef6-5c7f-47e4-b989-5492eafa07d3" # Managed-AllViewer
@@ -700,6 +700,38 @@ resource "aws_cloudfront_distribution" "img_optimizer" {
   tags = {
     Name        = "plasmic-img-optimizer-cdn-${var.environment}"
     Environment = var.environment
+  }
+}
+
+# Custom cache policy for image optimization
+resource "aws_cloudfront_cache_policy" "img_optimizer" {
+  name    = "plasmic-img-optimizer-cache-policy-${var.environment}"
+  comment = "Cache policy for Plasmic image optimizer service - includes query strings for image parameters"
+
+  # Match the Cache-Control headers sent by the service (1 year)
+  default_ttl = 86400      # 1 day default
+  max_ttl     = 31536000   # 1 year - matches service Cache-Control
+  min_ttl     = 0
+
+  parameters_in_cache_key_and_forwarded_to_origin {
+    # Keep compression settings from original policy
+    enable_accept_encoding_brotli = true
+    enable_accept_encoding_gzip   = true
+
+    # Include ALL query strings for image optimization parameters (src, w, h, q, f)
+    query_strings_config {
+      query_string_behavior = "all"
+    }
+
+    # No headers needed - keep minimal like original policy
+    headers_config {
+      header_behavior = "none"
+    }
+
+    # No cookies needed for image optimization - same as original policy
+    cookies_config {
+      cookie_behavior = "none"
+    }
   }
 }
 
