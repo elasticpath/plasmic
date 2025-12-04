@@ -7,32 +7,32 @@ data "aws_secretsmanager_secret" "session_secret" {
   name = "plasmic/${var.environment}/app/session-secret"
 }
 
-module "img_optimizer_service" {
+module "socket_backend_service" {
   source = "../../modules/backend-service"
 
   environment  = var.environment
   aws_region   = var.aws_region
-  service_name = "imgopt"
+  service_name = "socket"
 
   # Container configuration
   container_image = var.container_image
-  container_port  = 3009
+  container_port  = var.socket_container_port
   container_command = [
     "node",
     "-r",
     "esbuild-register",
-    "src/wab/server/img-optimizer-backend.ts"
+    "src/wab/server/app-socket-backend-real.ts"
   ]
 
-  # Resources - optimized for image processing
-  cpu    = var.img_optimizer_cpu
-  memory = var.img_optimizer_memory
+  # Resources - lightweight service for WebSocket management
+  cpu    = var.socket_cpu
+  memory = var.socket_memory
 
-  # Scaling
-  desired_count = var.img_optimizer_desired_count
+  # Scaling - MUST be 1 for current architecture (single instance requirement)
+  desired_count = var.socket_desired_count
 
   # Health check
-  health_check_path = "/healthcheck"
+  health_check_path = var.health_check_path
 
   # Deployment
   enable_circuit_breaker = true
@@ -40,19 +40,16 @@ module "img_optimizer_service" {
   # Environment variables
   environment_variables = {
     NODE_ENV                 = "production"
-    BACKEND_PORT             = "3009"
-    HOST                     = local.host_url
+    SOCKET_PORT              = tostring(var.socket_container_port)
+    HOST                     = local.frontend_url
     AWS_REGION               = var.aws_region
-    SITE_ASSETS_BUCKET       = local.site_assets_bucket_name
-    SITE_ASSETS_BASE_URL     = local.site_assets_base_url
-    S3_ENDPOINT              = "https://s3.${var.aws_region}.amazonaws.com"
     PINO_LOGGER_LEVEL        = var.log_level
     GENERIC_WORKER_POOL_SIZE = tostring(var.generic_worker_pool_size)
     LOADER_WORKER_POOL_SIZE  = tostring(var.loader_worker_pool_size)
     DEBUG                    = "connect:typeorm"
   }
 
-  # Secrets - Required for application startup
+  # Secrets - Required for database connectivity and session validation
   secrets = [
     {
       name      = "DATABASE_URI"
@@ -70,6 +67,7 @@ module "img_optimizer_service" {
   vpc_id                = local.vpc_id
   private_subnet_ids    = local.private_subnet_ids
   alb_arn               = local.alb_arn
+  alb_dns_name          = local.alb_dns_name
   alb_listener_arn      = local.alb_listener_arn
   alb_security_group_id = local.alb_security_group_id
   ecs_security_group_id = local.ecs_security_group_id
@@ -77,36 +75,14 @@ module "img_optimizer_service" {
 
   # IAM
   execution_role_arn = local.execution_role_arn
-  create_task_role   = true
+  create_task_role   = false # Socket service doesn't need additional permissions beyond execution
 
-  task_role_inline_policies = [
-    {
-      name = "S3Access"
-      policy = jsonencode({
-        Version = "2012-10-17"
-        Statement = [
-          {
-            Effect = "Allow"
-            Action = [
-              "s3:GetObject",
-              "s3:PutObject",
-              "s3:HeadObject"
-            ]
-            Resource = "${local.site_assets_bucket_arn}/*"
-          },
-          {
-            Effect = "Allow"
-            Action = [
-              "s3:ListBucket"
-            ]
-            Resource = local.site_assets_bucket_arn
-          }
-        ]
-      })
-    }
+  # ALB routing - Route actual socket backend API endpoints
+  path_patterns = [
+    "/api/v1/disconnect",
+    "/api/v1/projects/broadcast", 
+    "/api/v1/cli/emit-token",
+    "/api/v1/socket*"  # Covers WebSocket endpoint and socket.io paths
   ]
-
-  # ALB routing - path-based routing for image optimizer
-  path_patterns          = ["/img-optimizer/*"]
-  listener_rule_priority = 200 # Between codegen (110) and wab (1000)
+  listener_rule_priority = 150 # Between codegen (110) and img-optimizer (200)
 }

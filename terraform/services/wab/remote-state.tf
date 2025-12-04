@@ -52,6 +52,16 @@ data "terraform_remote_state" "frontend" {
   }
 }
 
+# Socket backend remote state - gracefully handles missing state on first deployment
+data "terraform_remote_state" "socket_backend" {
+  backend = "s3"
+  config = {
+    bucket = "plasmic-terraform-state-${var.environment}-${var.aws_region}"
+    key    = "${var.environment}/socket-backend/terraform.tfstate"
+    region = var.aws_region
+  }
+}
+
 locals {
   # VPC
   vpc_id             = data.terraform_remote_state.vpc.outputs.vpc_id
@@ -83,4 +93,8 @@ locals {
   # Service URLs for internal routing
   codegen_url = data.terraform_remote_state.ecs_cluster.outputs.codegen_url
   data_url    = data.terraform_remote_state.ecs_cluster.outputs.data_url
+  
+  # Socket backend internal hostname (for WebSocket communication)
+  # Uses try() to gracefully handle missing state on first deployment
+  socket_host = try(data.terraform_remote_state.socket_backend.outputs.internal_hostname, null)
 }

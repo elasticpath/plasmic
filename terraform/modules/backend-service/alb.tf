@@ -44,10 +44,10 @@ resource "aws_lb_listener_rule" "service" {
   }
 
   dynamic "condition" {
-    for_each = var.path_pattern != null ? [1] : []
+    for_each = var.path_patterns != null ? [1] : []
     content {
       path_pattern {
-        values = [var.path_pattern]
+        values = var.path_patterns
       }
     }
   }

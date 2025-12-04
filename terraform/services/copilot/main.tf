@@ -118,6 +118,6 @@ module "copilot_service" {
   ]
 
   # ALB routing
-  path_pattern           = "/api/v1/copilot/*"
+  path_patterns          = ["/api/v1/copilot/*"]
   listener_rule_priority = 102
 }
