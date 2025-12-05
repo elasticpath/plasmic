@@ -52,15 +52,6 @@ data "terraform_remote_state" "frontend" {
   }
 }
 
-# Socket backend remote state - only read if state exists
-data "terraform_remote_state" "socket_backend" {
-  backend = "s3"
-  config = {
-    bucket = "plasmic-terraform-state-${var.environment}-${var.aws_region}"
-    key    = "${var.environment}/services/socket-backend/terraform.tfstate"
-    region = var.aws_region
-  }
-}
 
 locals {
   # VPC
@@ -97,6 +88,6 @@ locals {
   # Service Discovery for Service Connect
   service_discovery_namespace_arn = data.terraform_remote_state.ecs_cluster.outputs.service_discovery_namespace_arn
 
-  # Socket backend internal hostname via Service Connect (for internal API calls)
-  socket_host = try(data.terraform_remote_state.socket_backend.outputs.internal_service_url, "http://socket-backend-internal:3020")
+  # Socket backend internal hostname via Service Connect (stable service contract)
+  socket_host = "http://socket:3020"
 }

@@ -60,3 +60,8 @@ output "service_discovery_namespace_id" {
   description = "Service Discovery namespace ID for Service Connect"
   value       = aws_service_discovery_private_dns_namespace.internal.id
 }
+
+output "service_discovery_namespace_name" {
+  description = "Service Discovery namespace name for Service Connect"
+  value       = aws_service_discovery_private_dns_namespace.internal.name
+}

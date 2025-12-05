@@ -80,7 +80,7 @@ module "socket_backend_service" {
   # Service Connect configuration for internal communication
   enable_service_connect         = true
   service_connect_namespace_arn  = local.service_discovery_namespace_arn
-  service_connect_discovery_name = "socket-backend-internal"
+  service_connect_discovery_name = "socket"
   service_connect_port_name      = "socket-api"
 
   # ALB routing - Only expose WebSocket endpoints publicly
