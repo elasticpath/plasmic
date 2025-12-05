@@ -1,0 +1,4 @@
+# Terraform refresh marker
+# Updated: 2025-12-05 16:30 UTC
+# Purpose: Force fresh terraform plans after partial infrastructure apply
+# This file triggers new plan generation to resolve stale plan issue
