@@ -94,8 +94,8 @@ locals {
   codegen_url = data.terraform_remote_state.ecs_cluster.outputs.codegen_url
   data_url    = data.terraform_remote_state.ecs_cluster.outputs.data_url
 
-  # Service Discovery for Service Connect
-  service_discovery_namespace_arn = data.terraform_remote_state.ecs_cluster.outputs.service_discovery_namespace_arn
+  # Service Discovery for Service Connect (fallback to null if not deployed yet)
+  service_discovery_namespace_arn = try(data.terraform_remote_state.ecs_cluster.outputs.service_discovery_namespace_arn, null)
 
   # Socket backend internal hostname via Service Connect (for internal API calls)
   socket_host = try(data.terraform_remote_state.socket_backend.outputs.internal_service_url, "http://socket-backend-internal:3020")
