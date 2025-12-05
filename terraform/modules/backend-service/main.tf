@@ -37,6 +37,7 @@ resource "aws_ecs_task_definition" "service" {
     portMappings = [{
       containerPort = var.container_port
       protocol      = "tcp"
+      name          = var.service_connect_port_name
     }]
 
     environment = [
@@ -100,6 +101,31 @@ resource "aws_ecs_service" "service" {
   deployment_circuit_breaker {
     enable   = var.enable_circuit_breaker
     rollback = var.enable_circuit_breaker
+  }
+
+  # Service Connect configuration for internal service-to-service communication
+  dynamic "service_connect_configuration" {
+    for_each = var.enable_service_connect ? [1] : []
+
+    content {
+      enabled   = true
+      namespace = var.service_connect_namespace_arn
+
+      # Only include service block if this service provides an endpoint
+      dynamic "service" {
+        for_each = var.service_connect_discovery_name != null ? [1] : []
+
+        content {
+          port_name      = var.service_connect_port_name
+          discovery_name = var.service_connect_discovery_name
+
+          client_alias {
+            dns_name = var.service_connect_discovery_name
+            port     = var.container_port
+          }
+        }
+      }
+    }
   }
 
   enable_ecs_managed_tags = true

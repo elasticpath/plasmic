@@ -77,11 +77,15 @@ module "socket_backend_service" {
   execution_role_arn = local.execution_role_arn
   create_task_role   = false # Socket service doesn't need additional permissions beyond execution
 
-  # ALB routing - Route actual socket backend API endpoints
+  # Service Connect configuration for internal communication
+  enable_service_connect         = true
+  service_connect_namespace_arn  = local.service_discovery_namespace_arn
+  service_connect_discovery_name = "socket-backend-internal"
+  service_connect_port_name      = "socket-api"
+
+  # ALB routing - Only expose WebSocket endpoints publicly
+  # Server-to-server endpoints (disconnect, broadcast, cli/emit-token) should be internal-only
   path_patterns = [
-    "/api/v1/disconnect",
-    "/api/v1/projects/broadcast",
-    "/api/v1/cli/emit-token",
     "/api/v1/socket*" # Covers WebSocket endpoint and socket.io paths
   ]
   listener_rule_priority = 150 # Between codegen (110) and img-optimizer (200)

@@ -94,6 +94,9 @@ locals {
   codegen_url = data.terraform_remote_state.ecs_cluster.outputs.codegen_url
   data_url    = data.terraform_remote_state.ecs_cluster.outputs.data_url
 
-  # Socket backend internal hostname (for WebSocket communication)
-  socket_host = data.terraform_remote_state.socket_backend.outputs.internal_hostname
+  # Service Discovery for Service Connect
+  service_discovery_namespace_arn = data.terraform_remote_state.ecs_cluster.outputs.service_discovery_namespace_arn
+
+  # Socket backend internal hostname via Service Connect (for internal API calls)
+  socket_host = try(data.terraform_remote_state.socket_backend.outputs.internal_service_url, "http://socket-backend-internal:3020")
 }

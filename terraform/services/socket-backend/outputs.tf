@@ -13,12 +13,12 @@ output "target_group_arn" {
   value       = module.socket_backend_service.target_group_arn
 }
 
-output "internal_hostname" {
-  description = "Internal hostname for socket service (used by main WAB service)"
-  value       = module.socket_backend_service.internal_hostname
-}
-
 output "service_port" {
   description = "Socket service port"
   value       = var.socket_container_port
+}
+
+output "internal_service_url" {
+  description = "Internal Service Connect URL for server-to-server communication"
+  value       = "http://socket-backend-internal:${var.socket_container_port}"
 }

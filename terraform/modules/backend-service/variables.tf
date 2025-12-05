@@ -177,3 +177,28 @@ variable "log_retention_days" {
   default     = 7
   description = "CloudWatch Logs retention in days"
 }
+
+# Service Connect Configuration
+variable "enable_service_connect" {
+  type        = bool
+  default     = false
+  description = "Enable ECS Service Connect for internal service discovery"
+}
+
+variable "service_connect_namespace_arn" {
+  type        = string
+  default     = null
+  description = "Service Connect namespace ARN"
+}
+
+variable "service_connect_discovery_name" {
+  type        = string
+  default     = null
+  description = "Service Connect discovery name for internal communication"
+}
+
+variable "service_connect_port_name" {
+  type        = string
+  default     = "api"
+  description = "Port name for Service Connect"
+}

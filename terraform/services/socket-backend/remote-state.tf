@@ -44,4 +44,7 @@ locals {
 
   # Frontend URL for HOST environment variable
   frontend_url = data.terraform_remote_state.frontend.outputs.frontend_url
+
+  # Service Discovery for Service Connect
+  service_discovery_namespace_arn = data.terraform_remote_state.ecs_cluster.outputs.service_discovery_namespace_arn
 }
