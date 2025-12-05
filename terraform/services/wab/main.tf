@@ -86,6 +86,10 @@ module "wab_service" {
   ecs_security_group_id = local.ecs_security_group_id
   assign_public_ip      = false
 
+  # Service Connect client configuration for internal communication
+  enable_service_connect        = true
+  service_connect_namespace_arn = local.service_discovery_namespace_arn
+
   # IAM
   execution_role_arn = local.execution_role_arn
   create_task_role   = true

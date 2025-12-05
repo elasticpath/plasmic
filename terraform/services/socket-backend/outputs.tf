@@ -13,12 +13,6 @@ output "target_group_arn" {
   value       = module.socket_backend_service.target_group_arn
 }
 
-output "internal_hostname" {
-  description = "Internal hostname for socket service (used by main WAB service)"
-  # Use the ALB's custom domain that has valid SSL certificate
-  # The ALB will route to socket backend based on path patterns (/api/v1/projects/broadcast, etc.)
-  value       = "https://alb-${var.environment}.storefront.elasticpath.com"
-}
 
 output "service_port" {
   description = "Socket service port"

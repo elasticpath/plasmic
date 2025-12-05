@@ -49,3 +49,14 @@ output "data_url" {
   description = "Data service URL"
   value       = local.use_custom_domain ? "https://${local.data_domain}" : null
 }
+
+# Service Discovery namespace for internal communication
+output "service_discovery_namespace_arn" {
+  description = "Service Discovery namespace ARN for Service Connect"
+  value       = aws_service_discovery_private_dns_namespace.internal.arn
+}
+
+output "service_discovery_namespace_id" {
+  description = "Service Discovery namespace ID for Service Connect"
+  value       = aws_service_discovery_private_dns_namespace.internal.id
+}
