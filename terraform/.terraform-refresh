@@ -1,4 +1,5 @@
 # Terraform refresh marker
-# Updated: 2025-12-05 16:30 UTC
-# Purpose: Force fresh terraform plans after partial infrastructure apply
+# Updated: 2025-12-05 16:35 UTC
+# Purpose: Force fresh terraform plans after adding complete Service Discovery permissions
+# Added servicediscovery:* and route53:* permissions to IAM policy
 # This file triggers new plan generation to resolve stale plan issue
