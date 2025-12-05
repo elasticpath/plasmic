@@ -13,7 +13,6 @@ output "target_group_arn" {
   value       = module.socket_backend_service.target_group_arn
 }
 
-
 output "service_port" {
   description = "Socket service port"
   value       = var.socket_container_port

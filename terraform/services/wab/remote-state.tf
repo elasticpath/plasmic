@@ -98,5 +98,6 @@ locals {
   service_discovery_namespace_arn = data.terraform_remote_state.ecs_cluster.outputs.service_discovery_namespace_arn
 
   # Socket backend internal hostname via Service Connect (for internal API calls)
+  # Port should match socket backend container port (default 3020)
   socket_host = "http://socket-backend-internal:3020"
 }
