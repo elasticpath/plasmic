@@ -101,3 +101,88 @@ module "codegen_service" {
   ]
   listener_rule_priority = 110
 }
+
+# Additional ALB rules to route codegen endpoints from main domain
+# These have higher priority than the host-based rule above
+
+# Core code endpoints
+resource "aws_lb_listener_rule" "main_domain_code_api" {
+  listener_arn = local.alb_listener_arn
+  priority     = 105 # Higher priority than host-based rule
+
+  action {
+    type             = "forward"
+    target_group_arn = module.codegen_service.target_group_arn
+  }
+
+  condition {
+    host_header {
+      values = ["${var.environment}.storefront.elasticpath.com"]
+    }
+  }
+
+  condition {
+    path_pattern {
+      values = ["/api/v1/code/*"]
+    }
+  }
+
+  tags = {
+    Name = "plasmic-${var.environment}-main-to-codegen-code"
+  }
+}
+
+# Project-specific code endpoints
+resource "aws_lb_listener_rule" "main_domain_project_code" {
+  listener_arn = local.alb_listener_arn
+  priority     = 106
+
+  action {
+    type             = "forward"
+    target_group_arn = module.codegen_service.target_group_arn
+  }
+
+  condition {
+    host_header {
+      values = ["${var.environment}.storefront.elasticpath.com"]
+    }
+  }
+
+  condition {
+    path_pattern {
+      values = ["/api/v1/projects/*/code/*"]
+    }
+  }
+
+  tags = {
+    Name = "plasmic-${var.environment}-main-to-codegen-projects"
+  }
+}
+
+# Localization endpoints
+resource "aws_lb_listener_rule" "main_domain_localization" {
+  listener_arn = local.alb_listener_arn
+  priority     = 107
+
+  action {
+    type             = "forward"
+    target_group_arn = module.codegen_service.target_group_arn
+  }
+
+  condition {
+    host_header {
+      values = ["${var.environment}.storefront.elasticpath.com"]
+    }
+  }
+
+  condition {
+    path_pattern {
+      values = ["/api/v1/localization/gen-texts"]
+    }
+  }
+
+  tags = {
+    Name = "plasmic-${var.environment}-main-to-codegen-localization"
+  }
+}
+
