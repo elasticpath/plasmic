@@ -14,10 +14,10 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Environment = var.environment
-      Project     = "plasmic"
-      Service     = "socket-backend"
-      Terraform   = "true"
+      created-by      = "paragon"
+      project-name    = "plasmic"
+      component       = "socket-backend"
+      meaningful-name = "plasmic-${var.environment}"
     }
   }
 }

@@ -18,9 +18,10 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Project     = "plasmic"
-      Environment = var.environment
-      ManagedBy   = "terraform"
+      created-by      = "paragon"
+      project-name    = "plasmic"
+      component       = "frontend"
+      meaningful-name = "plasmic-${var.environment}"
     }
   }
 }
@@ -32,9 +33,10 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Project     = "plasmic"
-      Environment = var.environment
-      ManagedBy   = "terraform"
+      created-by      = "paragon"
+      project-name    = "plasmic"
+      component       = "frontend"
+      meaningful-name = "plasmic-${var.environment}"
     }
   }
 }

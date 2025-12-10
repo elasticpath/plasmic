@@ -18,10 +18,10 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Environment = var.environment
-      Project     = "plasmic"
-      Service     = "img-optimizer"
-      ManagedBy   = "terraform"
+      created-by      = "paragon"
+      project-name    = "plasmic"
+      component       = "img-optimizer"
+      meaningful-name = "plasmic-${var.environment}"
     }
   }
 }

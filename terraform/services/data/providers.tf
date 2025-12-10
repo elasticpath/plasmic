@@ -18,10 +18,10 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Environment = var.environment
-      Project     = "plasmic"
-      Service     = "data"
-      ManagedBy   = "terraform"
+      created-by      = "paragon"
+      project-name    = "plasmic"
+      component       = "data"
+      meaningful-name = "plasmic-${var.environment}"
     }
   }
 }
