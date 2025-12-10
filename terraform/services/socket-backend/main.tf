@@ -88,5 +88,5 @@ module "socket_backend_service" {
   path_patterns = [
     "/api/v1/socket*" # Covers WebSocket endpoint and socket.io paths
   ]
-  listener_rule_priority = 150 # Between codegen (110) and img-optimizer (200)
+  listener_rule_priority = 108 # Higher priority than codegen host rules to ensure socket paths route correctly
 }
