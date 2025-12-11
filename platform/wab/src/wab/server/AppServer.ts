@@ -31,6 +31,7 @@ import { initAnalyticsFactory, logger } from "@/wab/server/observability";
 import { WabPromStats, trackPostgresPool } from "@/wab/server/promstats";
 import { createRateLimiter } from "@/wab/server/rate-limit";
 import * as adminRoutes from "@/wab/server/routes/admin";
+import * as provisioningRoutes from "@/wab/server/routes/provisioning";
 import {
   getAnalyticsBillingInfoForTeam,
   getAnalyticsForProject,
@@ -348,6 +349,7 @@ const isCsrfFreeRoute = (pathname: string, config: Config) => {
     pathname.includes("/api/v1/app-auth/userinfo") ||
     pathname.includes("/api/v1/app-auth/token") ||
     pathname.includes("/api/v1/copilot/ui/public") ||
+    pathname.includes("/api/v1/provision") ||
     (!config.production &&
       (pathname === "/api/v1/projects/import" ||
         pathname.includes("/api/v1/cmse/")))
@@ -1810,6 +1812,32 @@ export function addMainAppServerRoutes(
       },
     }),
     withNext(uploadImage)
+  );
+
+  app.post(
+    "/api/v1/provision/users",
+    passport.authenticate('provision-jwt', { session: false }),
+    withNext(provisioningRoutes.provisionUser)
+  );
+  app.post(
+    "/api/v1/provision/teams",
+    passport.authenticate('provision-jwt', { session: false }),
+    withNext(provisioningRoutes.provisionTeam)
+  );
+  app.post(
+    "/api/v1/provision/workspaces",
+    passport.authenticate('provision-jwt', { session: false }),
+    withNext(provisioningRoutes.provisionWorkspace)
+  );
+  app.post(
+    "/api/v1/provision/teams/:teamId/users",
+    passport.authenticate('provision-jwt', { session: false }),
+    withNext(provisioningRoutes.grantTeamUserPermissions)
+  );
+  app.post(
+    "/api/v1/provision/workspaces/:workspaceId/users",
+    passport.authenticate('provision-jwt', { session: false }),
+    withNext(provisioningRoutes.grantWorkspaceUserPermissions)
   );
 
   /**

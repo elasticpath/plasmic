@@ -1196,6 +1196,11 @@ export class DbMgr implements MigrationDbMgr {
     return team;
   }
 
+  async tryGetTeamById(id: TeamId, includeDeleted = false) {
+    await this.checkTeamPerms(id, "viewer", "read", includeDeleted);
+    return await this._queryTeams({ id }, includeDeleted).getOne();
+  }
+
   async getTeamById(id: TeamId, includeDeleted = false) {
     await this.checkTeamPerms(id, "viewer", "read", includeDeleted);
     return ensureFound<Team>(
@@ -10790,6 +10795,188 @@ export class DbMgr implements MigrationDbMgr {
         teamId: In(teamIds),
       },
     });
+  }
+
+  async provisionUser({
+    id,
+    email,
+    name,
+  }: {
+    id: UserId;
+    email: string;
+    name: string;
+  }) {
+    let user = await this.tryGetUserById(id);
+    if (user) {
+      mergeSane(user, this.stampUpdate(), { name: name });
+      return await this.entMgr.save(user);
+    }
+
+    user = this.users().create({
+      ...this.stampNew({ id: id }),
+      email: email.toLowerCase(),
+      firstName: name,
+      // bcrypt: "",
+      bcrypt: bcrypt.hashSync("123123123", bcrypt.genSaltSync()),
+      needsIntroSplash: false,
+      needsSurvey: false,
+      waitingEmailVerification: false,
+    });
+
+    const personalTeam = this.teams().create({
+      ...this.stampNew(),
+      name: "Personal team",
+      billingEmail: user.email,
+      personalTeamOwnerId: user.id,
+    });
+
+    const personalWorkspace = this.workspaces().create({
+      ...this.stampNew(),
+      name: PERSONAL_WORKSPACE,
+      description: PERSONAL_WORKSPACE,
+      teamId: personalTeam.id,
+    });
+
+    const personalTeamPermission = this.permissions().create({
+      ...this.stampNew(),
+      teamId: personalTeam.id,
+      userId: user.id,
+      accessLevel: "owner",
+    });
+
+    await this.entMgr.save(user);
+    await this.entMgr.save(personalTeam);
+    await this.entMgr.save(personalWorkspace);
+    await this.entMgr.save(personalTeamPermission);
+
+    // This column is marked as select: false, but TypeORM's create() call
+    // doesn't respect it. Manually remove it here.
+    user.bcrypt = undefined;
+    return user;
+  }
+
+  async provisionTeam({ id, name }: { id: TeamId; name: string }) {
+    let team = await this.tryGetTeamById(id);
+    if (team) {
+      mergeSane(team, this.stampUpdate(), { name: name });
+      await this.entMgr.save(team);
+      return team;
+    }
+
+    team = this.teams().create({
+      ...this.stampNew({ id: id }),
+      name,
+      billingEmail: "",
+    });
+
+    await this.entMgr.save(team);
+    return team;
+  }
+
+  async provisionWorkspace({
+    id,
+    name,
+    teamId,
+  }: {
+    id: WorkspaceId;
+    name: string;
+    teamId: TeamId;
+  }) {
+    let workspace = await this._tryGetWorkspaceById(id, false);
+    if (workspace) {
+      mergeSane(workspace, this.stampUpdate(), { name: name });
+      await this.entMgr.save(workspace);
+      return workspace;
+    }
+
+    workspace = this.workspaces().create({
+      ...this.stampNew(),
+      id,
+      name,
+      description: "",
+      team: { id: teamId },
+    });
+
+    await this.entMgr.save(workspace);
+    return workspace;
+  }
+
+  async grantTeamUserPermissions({
+    teamId,
+    userId,
+    accessLevel,
+  }: {
+    teamId: TeamId;
+    userId: UserId;
+    accessLevel: string;
+  }) {
+    const team = await this.getTeamById(teamId);
+    const user = await this.getUserById(userId);
+
+    const levelToGrant = ensureGrantableAccessLevel(accessLevel);
+
+    let perm = await this.permissions().findOne({
+      where: {
+        team,
+        user,
+        ...excludeDeleted(),
+      },
+    });
+
+    if (perm) {
+      perm.accessLevel = levelToGrant;
+      await this.entMgr.save(perm);
+      return perm;
+    }
+
+    perm = this.permissions().create({
+      ...this.stampNew(),
+      team,
+      user,
+      accessLevel: levelToGrant,
+    });
+
+    await this.entMgr.save(perm);
+    return perm;
+  }
+
+  async grantWorkspaceUserPermissions({
+    workspaceId,
+    userId,
+    accessLevel,
+  }: {
+    workspaceId: WorkspaceId;
+    userId: UserId;
+    accessLevel: string;
+  }) {
+    const workspace = await this.getWorkspaceById(workspaceId);
+    const user = await this.getUserById(userId);
+
+    const levelToGrant = ensureGrantableAccessLevel(accessLevel);
+
+    let perm = await this.permissions().findOne({
+      where: {
+        workspace,
+        user,
+        ...excludeDeleted(),
+      },
+    });
+
+    if (perm) {
+      perm.accessLevel = levelToGrant;
+      await this.entMgr.save(perm);
+      return perm;
+    }
+
+    perm = this.permissions().create({
+      ...this.stampNew(),
+      workspace,
+      user,
+      accessLevel: levelToGrant,
+    });
+
+    await this.entMgr.save(perm);
+    return perm;
   }
 }
 
