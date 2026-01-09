@@ -6,6 +6,7 @@ on:
       - master
     paths:
       - 'platform/wab/**'
+      - 'platform/loader-bundle-env/**'
       - 'terraform/**'
       - '.github/**'
   # Allow manual trigger for infrastructure apply
