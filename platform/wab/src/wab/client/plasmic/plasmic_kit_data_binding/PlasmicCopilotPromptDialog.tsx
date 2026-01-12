@@ -675,6 +675,12 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
                         "withAdminOverrides",
                         "withAdminOverrides"
                       ),
+                    [sty.modelProviderOverrideInputwithAdminOverrides_type_ui]:
+                      hasVariant(
+                        $state,
+                        "withAdminOverrides",
+                        "withAdminOverrides"
+                      ) && hasVariant($state, "type", "ui"),
                   }
                 )}
                 isLoading={
@@ -715,6 +721,12 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
                     "withAdminOverrides",
                     "withAdminOverrides"
                   ),
+                  [sty.systemPromptInputwithAdminOverrides_type_ui]:
+                    hasVariant(
+                      $state,
+                      "withAdminOverrides",
+                      "withAdminOverrides"
+                    ) && hasVariant($state, "type", "ui"),
                 })}
                 isLoading={
                   hasVariant($state, "state", "loading") ? true : undefined

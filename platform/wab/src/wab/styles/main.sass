@@ -1384,6 +1384,9 @@ a.btn-link
 .plain-active-context .icon-button--active
   color: $brightfg
 
+.button--active
+  @include outset-button--active
+
 .toggle-button
   display: inline-block
   input
@@ -1483,6 +1486,9 @@ a.btn-link
 
 .dropdown-container-vstack
   flex-direction: column
+
+.xmultiselect-arrow
+  color: $sand11
 
 .dropdown-input-container
   flex: 1
@@ -1633,6 +1639,9 @@ a.btn-link
   cursor: pointer
   &:hover
     background-color: color.adjust($btn-color, $lightness: 5%)
+
+.list-box-item--highlighted
+  @include list-box-item--highlighted
 
 .list-box-item__img
   width: 48px
@@ -2865,6 +2874,8 @@ input[type="checkbox"]:checked + .checkbox__repr
   min-height: 32px !important
   max-height: 100px
   overflow-wrap: break-word
+  &.templated-string-input--multiLine
+    min-height: 64px !important
   &:hover
     background: $sand4
   .code-chip
@@ -4992,6 +5003,11 @@ $resizer_size: 8px
 .SidebarSection__Body__NoBottomPadding
   padding-bottom: 0
 
+.SidebarSection__Header__ZeroHPadding
+  padding-left: 0
+  padding-right: 0
+  min-height: 40px
+
 .SidebarSectionListItem
   @extend .flex
   @extend .flex-vcenter
@@ -5374,7 +5390,7 @@ $size-controls-width: $spacing-control-width - 2 * ($spacing-control-x-thickness
 
 .defined-indicator__popover
   min-width: 200px
-  max-width: 300px
+  max-width: 50vw
   .ant-popover-title
     min-height: auto
     border-bottom: none
@@ -5631,14 +5647,22 @@ a, button.link-like
     content: " "
     width: 9px
     height: 20px
-    opacity: 0.2
     border-width: 0px 0px 1px 1px
     border-radius: 0px 0px 0px 3px
     border-style: solid
-    border-color: #908F8C
+    border-color: $sand5
     position: absolute
     left: 7px
     top: -10px
+
+.property-connector-vertical-line
+  position: absolute
+  left: -9px
+  top: 10px
+  width: 0
+  bottom: -$space-m
+  border-left: 1px solid $sand5
+  pointer-events: none
 
 .property-editor
   border-radius: 6px

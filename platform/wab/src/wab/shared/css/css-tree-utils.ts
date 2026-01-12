@@ -3,7 +3,11 @@ import {
   CSS_NAMED_COLORS_IDENTIFIERS,
   isColorFunction,
 } from "@/wab/shared/css/colors";
-import { LengthUnit } from "@/wab/shared/css/types";
+import {
+  DIM_CSS_FUNCTIONS,
+  LengthUnit,
+  isDimCssFunction,
+} from "@/wab/shared/css/types";
 import {
   CssNode,
   Dimension,
@@ -17,6 +21,7 @@ import {
   parse,
   walk,
 } from "css-tree";
+import { regex } from "regex";
 /**
  * Splits a collection of CSS nodes by comma operators
  *
@@ -269,21 +274,7 @@ export function isRadialGradientFunction(node: CssNode): node is FunctionNode {
   );
 }
 
-const dimCssFunctionsChecked = ["calc", "min", "max", "clamp"] as const;
-
-const dimCssFunctions = dimCssFunctionsChecked as readonly string[];
-
 const DIM_CSS_IDENTIFIER_KEYWORDS = ["auto", "inherit", "initial", "unset"];
-
-const dimCssFunctionsReg = new RegExp(
-  `^(${dimCssFunctions.join("|")})\\s*\\(`,
-  "i"
-);
-
-export function isDimCssFunction(value: string): boolean {
-  const trimmed = value.trim();
-  return dimCssFunctionsReg.test(trimmed);
-}
 
 type DimCssFunctionValidationResult =
   | { valid: true }
@@ -300,7 +291,7 @@ export function validateDimCssFunction(
   value: string,
   allowedUnits?: readonly string[]
 ): DimCssFunctionValidationResult {
-  const invalidFunctionError = `Not a valid CSS dimension function. Must be one of these: ${dimCssFunctions.join(
+  const invalidFunctionError = `Not a valid CSS dimension function. Must be one of these: ${DIM_CSS_FUNCTIONS.join(
     ", "
   )}`;
   if (!isDimCssFunction(value)) {
@@ -329,7 +320,7 @@ export function validateDimCssFunction(
       case "Percentage":
       case "Number": {
         const dim = extractDimensionFromNode(node);
-        if (allowedUnits && !allowedUnits.includes(dim.unit)) {
+        if (allowedUnits && dim.unit && !allowedUnits.includes(dim.unit)) {
           error = `The unit '${
             dim.unit
           }' isn't supported here. Please use one of: ${allowedUnits.join(
@@ -425,4 +416,61 @@ export function checkAllowedUnits(
   });
 
   return isValid;
+}
+
+/**
+ * Formats CSS dimension functions by adding spaces around operators and after commas.
+ */
+export function formatDimCssFunction(value: string): string {
+  if (!isDimCssFunction(value)) {
+    return value;
+  }
+
+  const operatorSpacingRegex = regex({
+    flags: "g",
+  })`
+    # Match what comes BEFORE the operator (lookbehind):
+    # - A number with optional unit (e.g., 10px, 50%, 2)
+    # - OR a closing parenthesis
+    (?<=
+      \d+                 # One or more digits
+      (?:%|[a-z]+)?       # Optional unit (% or letters like px, em, etc.)
+      |                   # OR
+      \)                  # Closing parenthesis
+    )
+
+    # The operator itself (with optional whitespace around it):
+    \s*                   # Optional leading whitespace
+    (?<operator>[+\-*\/]) # Capture the operator: +, -, *, /
+    \s*                   # Optional trailing whitespace
+
+    # Match what comes AFTER the operator (lookahead):
+    # - A number (possibly negative) with optional decimal and unit
+    # - OR a function name followed by opening paren
+    # - OR an opening parenthesis
+    (?=
+      -?                  # Optional negative sign
+      \d*\.?\d+           # Number (with optional decimal)
+      (?:%|[a-z]+)?       # Optional unit
+      |                   # OR
+      [a-z]+\(            # Function name + opening paren (e.g., min(, calc()
+      |                   # OR
+      \(                  # Opening parenthesis (for grouping)
+    )
+  `;
+
+  return (
+    value
+      // Normalize all whitespace to single spaces first (e.g., "100%  -  20px" => "100% - 20px")
+      .replace(/\s+/g, " ")
+      // Add spaces around operators only between numbers/functions (e.g., "100%-20px" => "100% - 20px")
+      .replace(operatorSpacingRegex, " $<operator> ")
+      // Add space after commas (e.g., "min(10px,20px)" => "min(10px, 20px)")
+      .replace(/,(\S)/g, ", $1")
+      // Remove spaces after opening parentheses (e.g., "calc( 100%" => "calc(100%")
+      .replace(/\( /g, "(")
+      // Remove spaces before closing parentheses (e.g., "100% )" => "100%)")
+      .replace(/ \)/g, ")")
+      .trim()
+  );
 }

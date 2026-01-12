@@ -5,6 +5,15 @@ import {
 } from "@plasmicapp/host/registerComponent";
 import { GlobalContextMeta } from "@plasmicapp/host/registerGlobalContext";
 import { usePlasmicQueryData } from "@plasmicapp/query";
+import {
+  _ApiCmsRow as ApiCmsRow,
+  _ApiCmsTable as ApiCmsTable,
+  _CmsFieldMeta as CmsFieldMeta,
+  _CmsMetaType as CmsMetaType,
+  _CmsType as CmsType,
+  _mkFieldOptions as mkFieldOptions,
+  _mkTableOptions as mkTableOptions,
+} from "@plasmicpkgs/cms";
 import dayjs from "dayjs";
 import React from "react";
 import { DatabaseConfig, HttpError, QueryParams, mkApi } from "./api";
@@ -23,14 +32,6 @@ import {
   useTables,
   useTablesWithDataLoaded,
 } from "./context";
-import {
-  ApiCmsRow,
-  ApiCmsTable,
-  CmsFieldMeta,
-  CmsMetaType,
-  CmsType,
-} from "./schema";
-import { mkFieldOptions, mkTableOptions } from "./util";
 
 const modulePath = "@plasmicpkgs/plasmic-cms";
 const componentPrefix = "hostless-plasmic-cms";
@@ -257,13 +258,20 @@ export const cmsQueryRepeaterMeta: ComponentMeta<CmsQueryRepeaterProps> = {
       displayName: "Filter field",
       description: "Field (from model schema) to filter by",
       options: ({ table }, ctx) =>
-        mkFieldOptions(ctx?.tables, ctx?.table ?? table, [
-          CmsMetaType.NUMBER,
-          CmsMetaType.BOOLEAN,
-          CmsMetaType.TEXT,
-          CmsMetaType.LONG_TEXT,
-          CmsMetaType.REF,
-        ]),
+        mkFieldOptions(
+          ctx?.tables,
+          ctx?.table ?? table,
+          [
+            CmsMetaType.NUMBER,
+            CmsMetaType.BOOLEAN,
+            CmsMetaType.TEXT,
+            CmsMetaType.LONG_TEXT,
+            CmsMetaType.REF,
+          ],
+          {
+            includeSystemId: true,
+          }
+        ),
     },
     filterValue: {
       type: "string",
@@ -275,13 +283,20 @@ export const cmsQueryRepeaterMeta: ComponentMeta<CmsQueryRepeaterProps> = {
       displayName: "Order by",
       description: "Field to order by.",
       options: (_, ctx) =>
-        mkFieldOptions(ctx?.tables, ctx?.table, [
-          CmsMetaType.NUMBER,
-          CmsMetaType.BOOLEAN,
-          CmsMetaType.DATE_TIME,
-          CmsMetaType.LONG_TEXT,
-          CmsMetaType.TEXT,
-        ]),
+        mkFieldOptions(
+          ctx?.tables,
+          ctx?.table,
+          [
+            CmsMetaType.NUMBER,
+            CmsMetaType.BOOLEAN,
+            CmsMetaType.DATE_TIME,
+            CmsMetaType.LONG_TEXT,
+            CmsMetaType.TEXT,
+          ],
+          {
+            includeSystemId: true,
+          }
+        ),
       hidden: (ps) => ps.mode === "count",
     },
     desc: {
@@ -314,7 +329,9 @@ export const cmsQueryRepeaterMeta: ComponentMeta<CmsQueryRepeaterProps> = {
       description:
         "Fields from the CMS model to include with each row; by default, all fields are included",
       options: ({ table }, ctx) =>
-        mkFieldOptions(ctx?.tables, ctx?.table ?? table),
+        mkFieldOptions(ctx?.tables, ctx?.table ?? table, undefined, {
+          includeRefStars: true,
+        }),
       hidden: (ps) => ps.mode === "count",
     },
     emptyMessage: {
@@ -523,7 +540,7 @@ export const cmsRowFieldMeta: ComponentMeta<CmsRowFieldProps> = {
           CmsMetaType.ENUM,
         ]),
       defaultValueHint: (_, ctx) =>
-        ctx?.fieldMeta?.name || ctx?.fieldMeta?.identifier,
+        ctx?.fieldMeta?.label || ctx?.fieldMeta?.identifier,
     },
     dateFormat: {
       type: "choice",
@@ -744,7 +761,9 @@ function deriveInferredTableField(opts: {
   typeFilters?: CmsType[];
 }) {
   const { table, tables, field, typeFilters } = opts;
-  if (!table) return undefined;
+  if (!table) {
+    return undefined;
+  }
   const schema = tables?.find((t) => t.identifier === table)?.schema;
   const fieldMeta = field
     ? schema?.fields.find((f) => f.identifier === field)
@@ -767,6 +786,7 @@ function renderValue(value: any, type: CmsType, props: { className?: string }) {
     case CmsMetaType.DATE_TIME:
     case CmsMetaType.ENUM:
     case CmsMetaType.REF:
+    case CmsMetaType.COLOR:
       return <div {...props}>{value}</div>;
     case CmsMetaType.RICH_TEXT:
       return (
@@ -796,6 +816,9 @@ function renderValue(value: any, type: CmsType, props: { className?: string }) {
           </a>
         );
       }
+      return null;
+    case CmsMetaType.LIST:
+    case CmsMetaType.OBJECT:
       return null;
     default:
       assertNever(type);
@@ -844,7 +867,7 @@ export const cmsRowLinkMeta: ComponentMeta<CmsRowLinkProps> = {
       options: ({ table }: CmsRowLinkProps, ctx: TableContextData | null) =>
         mkFieldOptions(ctx?.tables, ctx?.table ?? table),
       defaultValueHint: (_, ctx) =>
-        ctx?.fieldMeta?.name || ctx?.fieldMeta?.identifier,
+        ctx?.fieldMeta?.label || ctx?.fieldMeta?.identifier,
     },
     hrefProp: {
       type: "string",
@@ -964,7 +987,7 @@ export const cmsRowImageMeta: ComponentMeta<CmsRowImageProps> = {
       options: ({ table }: CmsRowImageProps, ctx: TableContextData | null) =>
         mkFieldOptions(ctx?.tables, ctx?.table ?? table, [CmsMetaType.IMAGE]),
       defaultValueHint: (_, ctx) =>
-        ctx?.fieldMeta?.name || ctx?.fieldMeta?.identifier,
+        ctx?.fieldMeta?.label || ctx?.fieldMeta?.identifier,
     },
     srcProp: {
       type: "string",
@@ -1067,7 +1090,7 @@ export const cmsRowFieldValueMeta: ComponentMeta<CmsRowFieldValueProps> = {
         ctx: TableContextData | null
       ) => mkFieldOptions(ctx?.tables, ctx?.table ?? table),
       defaultValueHint: (_, ctx) =>
-        ctx?.fieldMeta?.name || ctx?.fieldMeta?.identifier,
+        ctx?.fieldMeta?.label || ctx?.fieldMeta?.identifier,
     },
     valueProp: {
       type: "string",

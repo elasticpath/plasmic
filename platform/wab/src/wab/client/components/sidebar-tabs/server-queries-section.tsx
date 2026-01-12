@@ -3,19 +3,27 @@ import {
   CustomFunctionExprPreview,
   CustomFunctionExprSummary,
 } from "@/wab/client/components/sidebar-tabs/ServerQuery/CustomFunctionExprPreview";
-import { useServerQueryBottomModal } from "@/wab/client/components/sidebar-tabs/ServerQuery/ServerQueryBottomModal";
+import {
+  omitQueryFromEnv,
+  useServerQueryBottomModal,
+} from "@/wab/client/components/sidebar-tabs/ServerQuery/ServerQueryBottomModal";
 import { SidebarSection } from "@/wab/client/components/sidebar/SidebarSection";
 import { IconLinkButton } from "@/wab/client/components/widgets";
 import { DataQueriesTooltip } from "@/wab/client/components/widgets/DetailedTooltips";
 import { Icon } from "@/wab/client/components/widgets/Icon";
-import LabeledListItem from "@/wab/client/components/widgets/LabeledListItem";
 import { LabelWithDetailedTooltip } from "@/wab/client/components/widgets/LabelWithDetailedTooltip";
+import LabeledListItem from "@/wab/client/components/widgets/LabeledListItem";
 import PlusIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__Plus";
 import { useStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import { ViewCtx } from "@/wab/client/studio-ctx/view-ctx";
+import {
+  SERVER_QUERY_LOWER,
+  SERVER_QUERY_PLURAL_CAP,
+} from "@/wab/shared/Labels";
 import { toVarName } from "@/wab/shared/codegen/util";
 import { mkShortId, spawn, uniqueName } from "@/wab/shared/common";
 import { isPageComponent } from "@/wab/shared/core/components";
+import { ExprCtx } from "@/wab/shared/core/exprs";
 import {
   Component,
   ComponentServerQuery,
@@ -34,31 +42,24 @@ const ServerQueryRow = observer(
   }) => {
     const { component, query, viewCtx } = props;
     const studioCtx = viewCtx.studioCtx;
-    const exprCtx = {
+    const exprCtx: ExprCtx = {
       projectFlags: studioCtx.projectFlags(),
       component,
       inStudio: true,
     };
-    // For some reason calling `omit` tries to read from the query data,
-    // throwing `PlasmicUndefinedDataError`
-    const env = {
-      ...viewCtx.getCanvasEnvForTpl(viewCtx.currentCtxTplRoot(), {
-        forDataRepCollection: true,
-      }),
-    };
-    if (env.$queries) {
-      env.$queries = { ...env.$queries };
-      delete env.$queries[toVarName(query.name)];
-    }
     const schema = viewCtx.customFunctionsSchema();
+    const tpl = viewCtx.currentCtxTplRoot();
 
     const serverQueryModal = useServerQueryBottomModal(query.uuid);
     const openServerQueryModal = () => {
+      // Pass viewCtx and tpl instead of a static env so the modal can reactively
+      // compute the environment, including newly created data tokens
       serverQueryModal.open({
         value: query.op ?? undefined,
         onSave: handleCustomFunctionExprChange,
         onCancel: serverQueryModal.close,
-        env,
+        viewCtx,
+        tpl,
         schema,
         exprCtx,
         parent: query,
@@ -83,7 +84,7 @@ const ServerQueryRow = observer(
       return (
         <Menu>
           <Menu.Item onClick={() => openServerQueryModal()}>
-            Configure server query
+            Configure {SERVER_QUERY_LOWER}
           </Menu.Item>
           <Menu.Divider />
           <Menu.Item
@@ -91,7 +92,7 @@ const ServerQueryRow = observer(
               studioCtx.siteOps().removeComponentServerQuery(component, query)
             }
           >
-            Remove server query
+            Remove {SERVER_QUERY_LOWER}
           </Menu.Item>
         </Menu>
       );
@@ -109,7 +110,12 @@ const ServerQueryRow = observer(
               <CustomFunctionExprSummary expr={query.op} />
               <CustomFunctionExprPreview
                 expr={query.op}
-                env={env}
+                env={omitQueryFromEnv(
+                  viewCtx.getCanvasEnvForTpl(tpl, {
+                    forDataRepCollection: true,
+                  }),
+                  query
+                )}
                 title={`Query data results for "${query.name}"`}
                 exprCtx={exprCtx}
               />
@@ -163,7 +169,7 @@ function ServerQueriesSection_(props: {
       id="server-queries-section"
       title={
         <LabelWithDetailedTooltip tooltip={DataQueriesTooltip}>
-          Server queries
+          {SERVER_QUERY_PLURAL_CAP}
         </LabelWithDetailedTooltip>
       }
       emptyBody={component.serverQueries.length === 0}
@@ -171,7 +177,7 @@ function ServerQueriesSection_(props: {
       controls={
         <IconLinkButton
           id="server-queries-add-btn"
-          tooltip={`Add server query to ${componentType}`}
+          tooltip={`Add ${SERVER_QUERY_LOWER} to ${componentType}`}
           onClick={handleAddDataQuery}
         >
           <Icon icon={PlusIcon} />

@@ -19,6 +19,7 @@ import {
   ensureUnit,
   showSizeCss,
 } from "@/wab/shared/css-size";
+import { CSS_UNITS } from "@/wab/shared/css/types";
 import {
   horizontalSides,
   standardSides,
@@ -61,6 +62,7 @@ const browserCssInitialsOverrides = {
   "justify-items": "stretch", // was just missing
   "row-gap": "0px", // was just missing
   "column-gap": "0px", // was just missing
+  "aspect-ratio": "auto",
   "user-select": "text",
   "backdrop-filter": "initial",
   "transition-property": "all",
@@ -104,25 +106,25 @@ export const cssInitialsOverrides = {
   // For these form elements, need to override their text properties to `inherit` so
   // that they can take their styles from the component root
   "font-family": {
-    "input textarea button code pre span p": "inherit",
+    "input textarea button code pre span p i em strong": "inherit",
   },
   "line-height": {
-    "input textarea button code pre span p": "inherit",
+    "input textarea button code pre span p i em strong": "inherit",
   },
   "font-size": {
-    "input textarea button h1 h2 h3 h4 h5 h6 span p": "inherit",
+    "input textarea button h1 h2 h3 h4 h5 h6 span p i em strong": "inherit",
   },
   "font-style": {
     "address button input textarea span p": "inherit",
   },
   "font-weight": {
-    "h1 h2 h3 h4 h5 h6 button input textarea span p": "inherit",
+    "h1 h2 h3 h4 h5 h6 button input textarea span p i em": "inherit",
   },
   color: {
-    "a input textarea button span p": "inherit",
+    "a input textarea button span p i em strong": "inherit",
   },
   "text-transform": {
-    "input textarea button span p": "inherit",
+    "input textarea button span p i em strong": "inherit",
   },
   "background-image": {
     button: "none",
@@ -359,46 +361,9 @@ export const showCssValues = (name: string, vals: /*TWZ*/ string[]) => {
   }
 };
 
-const lengthCssUnitsChecked = [
-  "ch",
-  "cm",
-  "em",
-  "ex",
-  "in",
-  "mm",
-  "pc",
-  "pt",
-  "px",
-  "rem",
-  "vh",
-  "vw",
-  "vmax",
-  "vmin",
-  "%",
-] as const;
-
-export const lengthCssUnits = lengthCssUnitsChecked as readonly string[];
-
-export function getLengthUnits(defaultUnit: string) {
-  return [...new Set([defaultUnit, ...lengthCssUnits]).values()];
-}
-
-export const cssUnitsChecked = [
-  ...lengthCssUnitsChecked,
-  "deg",
-  "grad",
-  "turn",
-  "rad",
-] as const;
-
-export const cssUnits = cssUnitsChecked as readonly string[];
-
 export const typicalCssLengthUnits = new Set(["px", "%", "em"]);
 
-export const isValidCssValue = (prop: /*TWZ*/ string, val: /*TWZ*/ string) =>
-  // TODO
-  ![...cssUnits].includes(val);
-
+export const VALID_UNITS = new Set([...CSS_UNITS, "fr", ""]);
 export function asValidCssTime(x: string) {
   const res = parseCssNumericNew(x);
   if (!res) {
@@ -522,8 +487,6 @@ export function fontWeightNumber(val: string) {
 export function uniqifyClassName(className: string) {
   return uniq(className.split(/\s+/).filter((s) => s.length > 0)).join(" ");
 }
-
-export const VALID_UNITS = new Set([...cssUnits, "fr", ""]);
 
 export function camelCssPropsToKebab(props: CSSProperties) {
   return Object.fromEntries(

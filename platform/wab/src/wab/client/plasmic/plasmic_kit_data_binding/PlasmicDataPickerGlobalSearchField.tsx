@@ -133,8 +133,7 @@ type NodeComponentProps<T extends NodeNameType> =
     variants?: PlasmicDataPickerGlobalSearchField__VariantsArgs;
     args?: PlasmicDataPickerGlobalSearchField__ArgsType;
     overrides?: NodeOverridesType<T>;
-  } & Omit<
-    // Specify variants directly as props
+  } & Omit< // Specify variants directly as props
     PlasmicDataPickerGlobalSearchField__VariantsArgs,
     ReservedPropsType
   > &

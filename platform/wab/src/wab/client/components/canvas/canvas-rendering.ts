@@ -35,6 +35,7 @@ import { buildViewCtxPinMaps } from "@/wab/client/cseval";
 import { globalHookCtx } from "@/wab/client/react-global-hook/globalHook";
 import { StudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import { EditingTextContext, ViewCtx } from "@/wab/client/studio-ctx/view-ctx";
+import { computeDataTokens } from "@/wab/commons/DataToken";
 import { mkTokenRef } from "@/wab/commons/StyleToken";
 import { DeepReadonly } from "@/wab/commons/types";
 import {
@@ -302,7 +303,13 @@ import {
   without,
   zipObject,
 } from "lodash";
-import { IObservableValue, comparer, computed, observable } from "mobx";
+import {
+  IObservableValue,
+  comparer,
+  computed,
+  observable,
+  reaction,
+} from "mobx";
 import { computedFn } from "mobx-utils";
 import type React from "react";
 import { maybeMakePlasmicImgSrc } from "src/wab/shared/codegen/react-p/image";
@@ -943,6 +950,19 @@ function useCtxFromInternalComponentProps(
   );
 
   const $globalActions = sub.useGlobalActions?.();
+  const [evaluatedDataTokens, setEvaluatedDataTokens] = sub.React.useState(
+    computeDataTokens(viewCtx.site, viewCtx.studioCtx.siteInfo.id, {})
+  );
+
+  sub.React.useEffect(() => {
+    const dispose = reaction(
+      () => computeDataTokens(viewCtx.site, viewCtx.studioCtx.siteInfo.id, {}),
+      (computedDataTokens) => {
+        setEvaluatedDataTokens(computedDataTokens);
+      }
+    );
+    return () => dispose();
+  }, [viewCtx.site]);
 
   const env = {
     $props,
@@ -952,6 +972,8 @@ function useCtxFromInternalComponentProps(
     dataSourcesCtx,
     $globalActions,
     $queries,
+    ...evaluatedDataTokens?.$dataTokens,
+    dataTokensEnv: evaluatedDataTokens?.pickerEnv,
     ...(viewCtx.studioCtx.siteInfo.hasAppAuth
       ? { currentUser: viewCtx.studioCtx.currentAppUser }
       : {}),
@@ -1005,7 +1027,6 @@ function useCtxFromInternalComponentProps(
       inCanvas: true,
     }
   );
-
   const activeVariants = deriveActiveVariants(
     component,
     $state,
@@ -1218,6 +1239,7 @@ function makeEmptyRenderingCtx(viewCtx: ViewCtx, valKey: string): RenderingCtx {
       $refs: {},
       $$: {},
       currentUser: {},
+      $dataTokens: {},
     },
     wrappingEnv: {
       $ctx: {},
@@ -1227,6 +1249,7 @@ function makeEmptyRenderingCtx(viewCtx: ViewCtx, valKey: string): RenderingCtx {
       $refs: {},
       $$: {},
       currentUser: {},
+      $dataTokens: {},
     },
     ownersStack: [],
     reactHookSpecs: [],
@@ -1888,7 +1911,7 @@ function computeTplComponentArgs(
   ctx: RenderingCtx
 ) {
   const ofCodeComponent = isCodeComponent(tpl.component);
-  const exprCtx = {
+  const exprCtx: ExprCtx = {
     component: ctx.ownerComponent ?? null,
     projectFlags: ctx.projectFlags,
     inStudio: true,
@@ -2604,7 +2627,7 @@ function evalTagAttrExprToString(
   expr: Expr,
   ctx: RenderingCtx
 ): string {
-  const exprCtx = {
+  const exprCtx: ExprCtx = {
     component: ctx.ownerComponent ?? null,
     projectFlags: ctx.projectFlags,
     inStudio: true,

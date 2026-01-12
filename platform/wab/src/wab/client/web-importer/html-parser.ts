@@ -3,10 +3,10 @@ import {
   BASE_VARIANT,
   ignoredStyles,
   ignoredTags,
+  layoutStyleKeys,
   paragraphTags,
   recognizedStylesKeys,
   SELF_SELECTOR,
-  textStylesKeys,
   translationTable,
 } from "@/wab/client/web-importer/constants";
 import {
@@ -14,8 +14,6 @@ import {
   getSpecificity,
 } from "@/wab/client/web-importer/specificity";
 import {
-  getWIVariantComboKey,
-  hasStyleVariant,
   WIAnimationSequence,
   WIContainer,
   WIElement,
@@ -28,13 +26,7 @@ import {
   WIVariantSettings,
 } from "@/wab/client/web-importer/types";
 import { findTokenByNameOrUuid } from "@/wab/commons/StyleToken";
-import {
-  assert,
-  ensure,
-  ensureType,
-  withoutNils,
-  xDifference,
-} from "@/wab/shared/common";
+import { assert, ensure, ensureType, withoutNils } from "@/wab/shared/common";
 import {
   expandGapProperty,
   parseCss,
@@ -44,8 +36,10 @@ import {
   ShorthandProperty,
 } from "@/wab/shared/css";
 import { parseScreenSpec } from "@/wab/shared/css-size";
+import { parseAspectRatioFromValueNode } from "@/wab/shared/css/aspect-ratio";
 import { isBorderProp, parseBorderShorthand } from "@/wab/shared/css/border";
 import { findAllAndMap } from "@/wab/shared/css/css-tree-utils";
+import { parseFlexShorthand } from "@/wab/shared/css/flex";
 import { splitCssValue } from "@/wab/shared/css/parse";
 import { CssTransforms } from "@/wab/shared/css/transforms";
 import { Site } from "@/wab/shared/model/classes";
@@ -56,13 +50,78 @@ import {
   parse as cssParse,
   Declaration,
   generate,
+  List,
   Rule,
   Selector,
   walk,
 } from "css-tree";
 import { camelCase, isElement } from "lodash";
 
-const PSEUDO_SELECTOR_SPLIT_REGEX = /:([\s\S]*)/;
+/**
+ * Splits a CSS selector into base selector and pseudo-selector parts using AST.
+ * Returns null if the selector contains pseudo-elements (::before, ::after, etc.)
+ * which cannot be targeted in the DOM.
+ *
+ * @param selectorNode - The css-tree Selector node to process
+ * @returns Object with baseSelector and pseudoSelector, or null if contains PseudoElementSelector
+ *
+ * Examples:
+ * - ".container .a" → { baseSelector: ".container .a", pseudoSelector: null }
+ * - ".container .a:hover" → { baseSelector: ".container .a", pseudoSelector: "hover" }
+ * - ".container .a:hover h2" → { baseSelector: ".container .a", pseudoSelector: "hover h2" }
+ * - ".container::before" → null
+ * - ".container:hover::before" → null
+ */
+function splitSelectorByPseudo(selectorNode: Selector): {
+  baseSelector: string;
+  pseudoSelector: string | null;
+} | null {
+  const children = selectorNode.children.toArray();
+
+  // If any PseudoElementSelector exists, return null (we don't process pseudo-elements)
+  if (children.some((child) => child.type === "PseudoElementSelector")) {
+    return null;
+  }
+
+  // Find the first PseudoClassSelector
+  const pseudoClassIndex = children.findIndex(
+    (child) => child.type === "PseudoClassSelector"
+  );
+
+  // No pseudo-class found - return full selector as base
+  if (pseudoClassIndex === -1) {
+    return {
+      baseSelector: generate(selectorNode),
+      pseudoSelector: null,
+    };
+  }
+
+  // Split children at the pseudo-class
+  const baseChildren = children.slice(0, pseudoClassIndex);
+  const pseudoChildren = children.slice(pseudoClassIndex);
+
+  // Generate base selector string
+  const baseSelector = generate({
+    type: "Selector",
+    children: new List<CssNode>().fromArray(baseChildren),
+  });
+
+  // Generate pseudo selector string and strip the leading colon
+  // e.g., ":hover h2" → "hover h2"
+  const pseudoSelector = generate({
+    type: "Selector",
+    children: new List<CssNode>().fromArray(pseudoChildren),
+  }).replace(/^:/, "");
+
+  return {
+    baseSelector,
+    pseudoSelector,
+  };
+}
+
+// Delimiter for joining/splitting context strings with pseudo-selectors
+// e.g., "base--hover", "GlobalScreen__768--hover"
+const CONTEXT_PSEUDO_DELIMITER = "--";
 
 export function generateId() {
   return Math.random().toString(36).substr(2, 9);
@@ -241,6 +300,14 @@ function fixCSSValue(key: string, value: string) {
     return parseBorderShorthand(fixedKey, valueNode);
   }
 
+  if (fixedKey === "flex") {
+    return parseFlexShorthand(valueNode);
+  }
+
+  if (fixedKey === "aspectRatio") {
+    return parseAspectRatioFromValueNode(valueNode);
+  }
+
   if (fixedKey === "backgroundColor") {
     return {
       background: parseCss(fixedValue, {
@@ -285,24 +352,17 @@ function fixCSSValue(key: string, value: string) {
   };
 }
 
-function splitStylesBySafety(
-  styles: Record<string, string>,
-  type?: WIElement["type"]
-): { safe: WISafeStyles; unsafe: WIUnsafeStyles } {
+function splitStylesBySafety(styles: Record<string, string>): {
+  safe: WISafeStyles;
+  unsafe: WIUnsafeStyles;
+} {
   const entries = Object.entries(styles);
-  // Currently, we do not support adding textStyle properties on container elements in Studio Design such as 'color' on div
-  // which can be used to child elements to inherit styles from using 'currentcolor' value. To support such use cases,
-  // we will consider textStyles to be unsafe for container elements so they can be applied by as style attribute in Studio by WebImporter
-  const safeStyleKeys =
-    type === "container"
-      ? xDifference(recognizedStylesKeys, textStylesKeys)
-      : recognizedStylesKeys;
 
   const safe = Object.fromEntries(
-    entries.filter(([k, _v]) => safeStyleKeys.has(k))
+    entries.filter(([k, _v]) => recognizedStylesKeys.has(k))
   );
   const unsafe = Object.fromEntries(
-    entries.filter(([k, _v]) => !safeStyleKeys.has(k))
+    entries.filter(([k, _v]) => !recognizedStylesKeys.has(k))
   );
   return {
     safe,
@@ -311,21 +371,16 @@ function splitStylesBySafety(
 }
 
 function renameTokenVarNameToUuid(value: string, site: Site) {
-  let unmatchedTokenFound = false;
-  const fixedValue = value.replaceAll(
+  return value.replaceAll(
     /var\(--token-([^)]+)\)/g,
-    (_match, tokenIdentifier) => {
+    (match, tokenIdentifier) => {
       const token = findTokenByNameOrUuid(tokenIdentifier, { site });
       if (token) {
         return `var(--token-${token.uuid})`;
       }
-
-      unmatchedTokenFound = true;
-      return "";
+      return match;
     }
   );
-
-  return unmatchedTokenFound ? null : fixedValue;
 }
 
 /**
@@ -365,9 +420,9 @@ function parseContextToVariantCombo(context: string): WIVariant[] {
   const variantCombo: WIVariant[] = [];
 
   if (context.startsWith(`${VariantGroupType.GlobalScreen}__`)) {
-    // Split by : first to separate screen part from pseudo-selector
+    // Split to separate screen part from pseudo-selector
     const [screenPart, pseudoSelector] = context.split(
-      PSEUDO_SELECTOR_SPLIT_REGEX
+      CONTEXT_PSEUDO_DELIMITER
     );
 
     const screenWidth = parseInt(screenPart.split("__")[1], 10);
@@ -382,10 +437,10 @@ function parseContextToVariantCombo(context: string): WIVariant[] {
         selectors: [pseudoSelector],
       });
     }
-  } else if (context.includes(":")) {
-    // In case of (base:hover) we only care about the pseudo selector since we
+  } else if (context.includes(CONTEXT_PSEUDO_DELIMITER)) {
+    // In case of (base--hover) we only care about the pseudo selector since we
     // do not create combination with base variant, it's styles are considered implicitly in all variants.
-    const pseudoSelector = context.split(PSEUDO_SELECTOR_SPLIT_REGEX)[1];
+    const pseudoSelector = context.split(CONTEXT_PSEUDO_DELIMITER)[1];
     if (pseudoSelector) {
       variantCombo.push({
         type: "style",
@@ -402,7 +457,7 @@ function getVariantSettingsForNode(
   defaultStyles: CSSStyleDeclaration,
   site: Site
 ): WIVariantSettings[] {
-  const wiID = ensure(getInternalId(node), "Expected node to have wiID");
+  ensure(getInternalId(node), "Expected node to have wiID");
 
   const rules = ensureType<Record<string, WIRule[]>>((node as any).__wi_rules);
   const baseRules = rules[BASE_VARIANT] ?? [];
@@ -432,22 +487,14 @@ function getVariantSettingsForNode(
     }
   }
 
-  // Ensure token values exist in the project
-  for (const [key, value] of Object.entries(processedBaseStyles)) {
-    const fixedValue = renameTokenVarNameToUuid(value, site);
-    if (fixedValue === null) {
-      delete processedBaseStyles[key];
-    } else {
-      processedBaseStyles[key] = fixedValue;
-    }
-  }
-
   // Only create base variant settings if there are meaningful styles
   if (Object.keys(processedBaseStyles).length > 0) {
+    const sanitizedStyles = processUnsanitizedStyles(processedBaseStyles);
+
     const baseVariantSettings: WIVariantSettings = {
       unsanitizedStyles: processedBaseStyles,
-      safeStyles: {},
-      unsafeStyles: {},
+      safeStyles: sanitizedStyles.safe,
+      unsafeStyles: sanitizedStyles.unsafe,
       variantCombo: [{ type: "base" }],
     };
 
@@ -470,16 +517,6 @@ function getVariantSettingsForNode(
       continue;
     }
 
-    // Ensure token values exist in the project
-    for (const [key, value] of Object.entries(contextStyles)) {
-      const fixedValue = renameTokenVarNameToUuid(value, site);
-      if (fixedValue === null) {
-        delete contextStyles[key];
-      } else {
-        contextStyles[key] = fixedValue;
-      }
-    }
-
     // Remove styles that are the same as base variant
     for (const key of Object.keys(contextStyles)) {
       if (processedBaseStyles[key] === contextStyles[key]) {
@@ -495,10 +532,11 @@ function getVariantSettingsForNode(
     // Create variant settings with appropriate variant combo
     const variantCombo = parseContextToVariantCombo(context);
     if (variantCombo.length > 0) {
+      const sanitizedStyles = processUnsanitizedStyles(contextStyles);
       const contextVariantSettings: WIVariantSettings = {
         unsanitizedStyles: contextStyles,
-        safeStyles: {},
-        unsafeStyles: {},
+        safeStyles: sanitizedStyles.safe,
+        unsafeStyles: sanitizedStyles.unsafe,
         variantCombo,
       };
 
@@ -509,10 +547,10 @@ function getVariantSettingsForNode(
   return variantSettings;
 }
 
-function processUnsanitizedStyles(
-  unsanitizedStyles: WIUnsanitizedStyles,
-  type?: WIElement["type"]
-): { safe: WISafeStyles; unsafe: WIUnsafeStyles } {
+function processUnsanitizedStyles(unsanitizedStyles: WIUnsanitizedStyles): {
+  safe: WISafeStyles;
+  unsafe: WIUnsafeStyles;
+} {
   const newStyles = Object.entries(unsanitizedStyles).reduce(
     (acc, [key, value]) => {
       return {
@@ -536,113 +574,18 @@ function processUnsanitizedStyles(
     Object.assign(newStyles, expandedGapProperties);
   }
 
-  return splitStylesBySafety(newStyles, type);
+  return splitStylesBySafety(newStyles);
 }
 
-function sanitizeVariantSettings(
-  variantSettings: WIVariantSettings[],
-  type?: WIElement["type"]
-): void {
+function hasLayoutStyleKeys(variantSettings: WIVariantSettings[]): boolean {
   for (const variantSetting of variantSettings) {
-    const { safe, unsafe } = processUnsanitizedStyles(
-      variantSetting.unsanitizedStyles,
-      type
-    );
-    variantSetting.safeStyles = safe;
-    variantSetting.unsafeStyles = unsafe;
-  }
-}
-
-function extractTextStylesFromVariantSettings(
-  variantSettings: WIVariantSettings[]
-) {
-  const nonTextVariantSettings: WIVariantSettings[] = [];
-  const textVariantSettings: WIVariantSettings[] = [];
-
-  for (const variantSetting of variantSettings) {
-    const nonTextStyles = Object.fromEntries(
-      Object.entries(variantSetting.unsanitizedStyles).filter(
-        ([key, value]) => {
-          return !textStylesKeys.has(camelCase(key));
-        }
-      )
-    );
-
-    const textStyles = Object.fromEntries(
-      Object.entries(variantSetting.unsanitizedStyles).filter(
-        ([key, _value]) => {
-          return textStylesKeys.has(camelCase(key));
-        }
-      )
-    );
-
-    if (Object.keys(nonTextStyles).length > 0) {
-      const nonTextVariantSetting: WIVariantSettings = {
-        ...variantSetting,
-        unsanitizedStyles: nonTextStyles,
-        safeStyles: {},
-        unsafeStyles: {},
-      };
-      nonTextVariantSettings.push(nonTextVariantSetting);
-    }
-
-    if (Object.keys(textStyles).length > 0) {
-      const textVariantSetting: WIVariantSettings = {
-        ...variantSetting,
-        unsanitizedStyles: textStyles,
-        safeStyles: {},
-        unsafeStyles: {},
-      };
-      textVariantSettings.push(textVariantSetting);
+    for (const key of Object.keys(variantSetting.unsanitizedStyles)) {
+      if (layoutStyleKeys.includes(camelCase(key))) {
+        return true;
+      }
     }
   }
-
-  return {
-    nonTextVariantSettings,
-    textVariantSettings,
-  };
-}
-
-function mergeWIVariantSettings(
-  oldVariantSettings: WIVariantSettings[],
-  newVariantSettings: WIVariantSettings[]
-): WIVariantSettings[] {
-  const variantSettingsMap = new Map<string, WIVariantSettings>();
-
-  for (const variantSetting of oldVariantSettings) {
-    const key = getWIVariantComboKey(variantSetting.variantCombo);
-    variantSettingsMap.set(key, variantSetting);
-  }
-
-  // Merge or add new variant settings
-  for (const newVs of newVariantSettings) {
-    const key = getWIVariantComboKey(newVs.variantCombo);
-    const existingVs = variantSettingsMap.get(key);
-
-    if (existingVs) {
-      // Merge styles and animations
-      const mergedVariantSetting: WIVariantSettings = {
-        ...existingVs,
-        unsanitizedStyles: {
-          ...existingVs.unsanitizedStyles,
-          ...newVs.unsanitizedStyles,
-        },
-        safeStyles: {
-          ...existingVs.safeStyles,
-          ...newVs.safeStyles,
-        },
-        unsafeStyles: {
-          ...existingVs.unsafeStyles,
-          ...newVs.unsafeStyles,
-        },
-      };
-      variantSettingsMap.set(key, mergedVariantSetting);
-    } else {
-      variantSettingsMap.set(key, newVs);
-    }
-  }
-
-  return Array.from(variantSettingsMap.values());
+  return false;
 }
 
 function isProbablyEmptyVariantSettings(variantSettings: WIVariantSettings[]) {
@@ -688,92 +631,23 @@ function getElementsWITree(
   defaultStyles: CSSStyleDeclaration,
   site: Site
 ) {
-  /**
-   * Filters text variant settings to ensure interaction variants like "hover" work correctly on parent containers.
-   *
-   * Problem: Text styles on container elements go into the 'style' attribute, but if the same text style
-   * is also applied on the text node, the text node value takes precedence and the 'style' attribute
-   * doesn't apply. This breaks interaction variants like :hover because the text node already has a
-   * fixed value that can't be overridden.
-   *
-   * Example: A button with color: yellow (base) and color: red (hover). Without this filtering:
-   * - Container gets: style="color: yellow" and :hover { color: red }
-   * - Text node gets: color: yellow (fixed)
-   * - Result: Hover doesn't work because text node's color: yellow takes precedence because hover variant has to be on the parent
-   * container and not on the text node itself so it doesn't inherit the color red because it has it's own color value.
-   *
-   * Solution: If there are text styles on style variants (hover, focus, etc.), remove the same
-   * CSS properties from the base variant applied to text nodes. This allows parent interaction
-   * variants to control text appearance through CSS inheritance.
-   *
-   * @param ancestorTextInheritanceVariantSettings Text styles inherited from parent containers
-   * @returns Filtered variant settings with overriden properties removed
-   */
-  function updateTextInheritancePropsForInteractionVariants(
-    parentTextInheritanceVariantSettings: WIVariantSettings[]
-  ): WIVariantSettings[] {
-    const styleVariants =
-      parentTextInheritanceVariantSettings.filter(hasStyleVariant);
-
-    // Collect all text properties used in interaction (style) variants
-    const styleVariantTextProps = new Set<string>();
-    styleVariants.forEach((vs) => {
-      Object.keys(vs.unsanitizedStyles).forEach((key) => {
-        styleVariantTextProps.add(key);
-      });
-    });
-
-    return withoutNils(
-      parentTextInheritanceVariantSettings.map((vs) => {
-        if (hasStyleVariant(vs)) {
-          return null;
-        }
-
-        // If there are interaction variants with text properties, remove those properties from other variants
-        if (styleVariantTextProps.size > 0) {
-          const nonOverridenTextStyles = Object.fromEntries(
-            Object.entries(vs.unsanitizedStyles).filter(([key]) => {
-              return !styleVariantTextProps.has(key);
-            })
-          );
-
-          // Only return variant settings if there are still styles left after filtering out the one exists in style variant
-          if (Object.keys(nonOverridenTextStyles).length === 0) {
-            return null;
-          }
-
-          return {
-            ...vs,
-            unsanitizedStyles: nonOverridenTextStyles,
-          };
-        }
-
-        return vs;
-      })
-    );
-  }
-
-  function rec(
-    elt: Node,
-    parentTextInheritanceVariantSettings: WIVariantSettings[]
-  ): WIElement | null {
+  function rec(elt: Node): WIElement | null {
     if (elt.nodeType === Node.TEXT_NODE) {
       const text = (elt.textContent ?? "").trim();
       if (!text) {
         return null;
       }
 
-      const textVariantSettings =
-        updateTextInheritancePropsForInteractionVariants(
-          parentTextInheritanceVariantSettings
-        );
-      sanitizeVariantSettings(textVariantSettings);
-
       return {
         type: "text",
         text: text,
         tag: "span",
-        variantSettings: textVariantSettings,
+        // When Node type is TEXT_NODE, it's the leaf node so it will always get
+        // it's text styles from the parent element such as div, button etc
+        // <div>Hello</div>, <button>Click</button>
+        // In above examples, "Hello" or "Click" cannot be styled, the styles will only
+        // exists on div or button elements, hence variantSettings will always be empty.
+        variantSettings: [],
       };
     }
 
@@ -796,18 +670,13 @@ function getElementsWITree(
       defaultStyles,
       site
     );
-    const { nonTextVariantSettings: variantSettings, textVariantSettings } =
-      extractTextStylesFromVariantSettings(allVariantSettings);
 
     if ((elt as any).__wi_component) {
-      const componentVariantSettings = [...variantSettings];
-      sanitizeVariantSettings(componentVariantSettings);
-
       return {
         type: "component",
         tag,
         component: (elt as any).__wi_component,
-        variantSettings: componentVariantSettings,
+        variantSettings: allVariantSettings,
       };
     }
 
@@ -824,21 +693,17 @@ function getElementsWITree(
       );
       assert(width, "'width' expected on SVG element but found undefined");
       assert(height, "'height' expected on SVG element but found undefined");
-
-      const svgVariantSettings = [...variantSettings];
-      sanitizeVariantSettings(svgVariantSettings);
-
       return {
         type: "svg",
         tag,
         outerHtml: elt.outerHTML,
         width: `${width.num}${width.units || "px"}`,
         height: `${height.num}${height.units || "px"}`,
-        variantSettings: svgVariantSettings,
+        variantSettings: allVariantSettings,
       };
     }
 
-    if (paragraphTags.has(tag)) {
+    if (paragraphTags.has(tag) && !hasLayoutStyleKeys(allVariantSettings)) {
       /* elt.innerText is undefined in jsdom environment, so we won't be able to test it.
          https://github.com/testing-library/dom-testing-library/issues/853
        */
@@ -847,23 +712,11 @@ function getElementsWITree(
         return null;
       }
 
-      const updatedTextVariantSettings =
-        updateTextInheritancePropsForInteractionVariants(
-          parentTextInheritanceVariantSettings
-        );
-
-      const mergedVariantSettings = mergeWIVariantSettings(
-        updatedTextVariantSettings,
-        allVariantSettings
-      );
-
-      sanitizeVariantSettings(mergedVariantSettings);
-
       return {
         type: "text",
         tag,
         text,
-        variantSettings: mergedVariantSettings,
+        variantSettings: allVariantSettings,
       };
     }
 
@@ -872,16 +725,11 @@ function getElementsWITree(
       return acc;
     }, {} as Record<string, string>);
 
-    const containerVariantSettings = [...allVariantSettings];
-    sanitizeVariantSettings(containerVariantSettings, "container");
-
     const containerNode: WIContainer = {
       type: "container",
-      tag: [...ALL_CONTAINER_TAGS, "img", "svg"].includes(tag) ? tag : "div",
-      variantSettings: containerVariantSettings,
-      children: withoutNils(
-        [...elt.childNodes].map((e) => rec(e, textVariantSettings))
-      ),
+      tag: [...ALL_CONTAINER_TAGS, "img"].includes(tag) ? tag : "div",
+      variantSettings: allVariantSettings,
+      children: withoutNils([...elt.childNodes].map((e) => rec(e))),
       attrs: {
         ...attrs,
         __name: "",
@@ -894,7 +742,7 @@ function getElementsWITree(
 
     return containerNode;
   }
-  return rec(node, []);
+  return rec(node);
 }
 
 export async function parseHtmlToWebImporterTree(
@@ -902,7 +750,8 @@ export async function parseHtmlToWebImporterTree(
   site: Site
 ) {
   const parser = new DOMParser();
-  const document = parser.parseFromString(htmlString, "text/html");
+  const renamedHtmlString = renameTokenVarNameToUuid(htmlString, site);
+  const document = parser.parseFromString(renamedHtmlString, "text/html");
 
   const root = document.body;
   /* document.body is the root element that translates to a vertical stack and wraps the rest of the design
@@ -928,16 +777,17 @@ export async function parseHtmlToWebImporterTree(
   ) {
     for (const selectorNode of selectors) {
       const selector = generate(selectorNode);
-      // Split selector at first colon to separate base selector from complex pseudo-selectors
-      // Examples: .class:hover -> [".class", "hover"], .product:hover:not(:focus-visible) -> [".product", "hover:not(:focus-visible)"]
-      // Complex pseudo-selectors such as :hover:not(:focus-visible) would be applied as custom css private style variants in Studio.
-      const [baseSelector, pseudoSelector] = selector.split(
-        PSEUDO_SELECTOR_SPLIT_REGEX
-      );
 
-      if (!baseSelector) {
+      // Use AST to split selector into base and pseudo parts
+      // Returns null if selector contains pseudo-elements (::before, ::after, etc.)
+      const parsedSelector = splitSelectorByPseudo(selectorNode);
+
+      // Skip if selector contains pseudo-elements or has no base selector
+      if (!parsedSelector || !parsedSelector.baseSelector) {
         continue;
       }
+
+      const { baseSelector, pseudoSelector } = parsedSelector;
 
       let nodes: NodeListOf<Element>;
       try {
@@ -969,7 +819,7 @@ export async function parseHtmlToWebImporterTree(
         }
 
         const nodeContext = pseudoSelector
-          ? `${context}:${pseudoSelector}`
+          ? `${context}${CONTEXT_PSEUDO_DELIMITER}${pseudoSelector}`
           : context;
         addNodeWIRule(nodeContext, selector, declarations, node);
       }

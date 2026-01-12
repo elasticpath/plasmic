@@ -20,11 +20,13 @@ import {
   mkBaseVariant,
 } from "@/wab/shared/Variants";
 import {
+  cachedExprsInSite,
   componentToReferencers,
   componentsReferencerToPageHref,
   findAllDataSourceOpExprForComponent,
   flattenComponent,
 } from "@/wab/shared/cached-selectors";
+import { makeShortProjectId } from "@/wab/shared/codegen/util";
 import { Dict } from "@/wab/shared/collections";
 import {
   assert,
@@ -93,8 +95,14 @@ import {
   isTplVariantable,
   tryGetTplOwnerComponent,
 } from "@/wab/shared/core/tpls";
-import { getCssInitial } from "@/wab/shared/css";
+import { camelProp, getCssInitial } from "@/wab/shared/css";
 import { parseScreenSpec } from "@/wab/shared/css-size";
+import {
+  isPathDataToken,
+  replaceMemberExpression,
+  transformDataTokensInExpr,
+} from "@/wab/shared/eval/expression-parser";
+import { makeTplAnimationsFixer } from "@/wab/shared/insertable-templates/fixers";
 import { getRshContainerType } from "@/wab/shared/layoututils";
 import { maybeComputedFn } from "@/wab/shared/mobx-util";
 import {
@@ -165,11 +173,14 @@ import {
   isKnownExprText,
   isKnownFunctionType,
   isKnownImageAsset,
+  isKnownImageAssetRef,
   isKnownMixin,
+  isKnownObjectPath,
   isKnownPageArena,
   isKnownPageHref,
   isKnownRenderExpr,
   isKnownStrongFunctionArg,
+  isKnownTemplatedString,
   isKnownTplComponent,
   isKnownTplNode,
   isKnownTplRef,
@@ -188,6 +199,7 @@ import {
 } from "@/wab/shared/responsiveness";
 import { naturalSort } from "@/wab/shared/sort";
 import { getMatchingPagePathParams } from "@/wab/shared/utils/url-utils";
+import escapeRegExp from "lodash/escapeRegExp";
 import keys from "lodash/keys";
 import orderBy from "lodash/orderBy";
 import pick from "lodash/pick";
@@ -710,6 +722,18 @@ export function cloneSite(fromSite: Site) {
     );
   });
 
+  // Style Token overrides have weak refs to the tokens they're overriding.
+  // When the site is cloned, the overrides of registered (local) tokens continue to point to the token from the original site.
+  // They must be updated to point to the cloned token instead.
+  site.styleTokenOverrides.forEach((override) => {
+    const oldToken = override.token;
+    const newToken = oldToNewToken.get(oldToken);
+    if (newToken) {
+      // override.token is a weak ref to a local (registered) token. Update the ref to point to the cloned token.
+      override.token = newToken;
+    }
+  });
+
   // fix token ref from mixin
   site.mixins.forEach((mixin) => fixRefsForMixin(mixin));
   // fix token ref from theme
@@ -782,11 +806,8 @@ export function cloneSite(fromSite: Site) {
       })
       .when(PageHref, (pageHref) => {
         pageHref.page = oldToNewComponent.get(pageHref.page) ?? pageHref.page;
-        for (const param of pageHref.page.params) {
-          if (param.defaultExpr) {
-            fixGlobalRefForExpr(param.defaultExpr);
-          }
-        }
+        // pageHref.page.params defaultExprs are fixed separately while
+        // looping over component params
       })
       .when(StyleTokenRef, (tokenRef) => {
         // Either the token has been cloned, or the token belongs to an
@@ -1029,6 +1050,9 @@ export function cloneSite(fromSite: Site) {
     }
   };
 
+  // Create animation fixer to remap animation sequences
+  const animationsFixer = makeTplAnimationsFixer(site);
+
   // fix following references in each component
   //   - var ref
   //   - global variants
@@ -1036,6 +1060,7 @@ export function cloneSite(fromSite: Site) {
   //   - component ref
   //   - token ref
   //   - mixin ref
+  //   - animation ref
   for (const c of site.components) {
     for (const param of c.params) {
       if (param.defaultExpr) {
@@ -1057,12 +1082,17 @@ export function cloneSite(fromSite: Site) {
       fixComponentRef(tpl);
     });
 
+    // Fix animation sequence refs
+    animationsFixer(c.tplTree);
+
     if (
       c.pageMeta &&
       c.pageMeta.openGraphImage &&
-      isKnownImageAsset(c.pageMeta.openGraphImage)
+      isKnownImageAssetRef(c.pageMeta.openGraphImage)
     ) {
-      c.pageMeta.openGraphImage = getNewImageAsset(c.pageMeta.openGraphImage);
+      c.pageMeta.openGraphImage.asset = getNewImageAsset(
+        c.pageMeta.openGraphImage.asset
+      );
     }
   }
 
@@ -1187,6 +1217,72 @@ export function cloneSite(fromSite: Site) {
   );
 
   return site;
+}
+
+function replaceDataTokenProjectId(
+  token: string,
+  oldId: string,
+  newId: string
+) {
+  return token.replace(
+    new RegExp(`\\$dataTokens_${escapeRegExp(oldId)}_`, "g"),
+    `$dataTokens_${newId}_`
+  );
+}
+
+export function fixDataTokenProjectRefs(
+  site: Site,
+  oldProjectId: string,
+  newProjectId: string
+) {
+  const oldShortId = makeShortProjectId(oldProjectId);
+  const newShortId = makeShortProjectId(newProjectId);
+
+  const fixExpr = (expr: Expr) => {
+    // Fix ObjectPath expressions (e.g., ["$dataTokens_projId_tokenName", "nestedProp"])
+    if (isKnownObjectPath(expr)) {
+      const path = expr.path;
+      if (isPathDataToken(path) && path[0].includes(oldShortId)) {
+        expr.path[0] = replaceDataTokenProjectId(
+          path[0],
+          oldShortId,
+          newShortId
+        );
+      }
+    } else if (isKnownCustomCode(expr) && expr.code.includes(oldShortId)) {
+      transformDataTokensInExpr(expr, (node, token, nestedProps) => {
+        // Check if this token uses the old project ID
+        if (!token.identifier.includes(oldShortId)) {
+          return;
+        }
+        // Create new identifier with the new project ID
+        const newIdentifier = replaceDataTokenProjectId(
+          token.identifier,
+          oldShortId,
+          newShortId
+        );
+
+        if (node.type === "MemberExpression") {
+          // $dataTokens_oldProjId_name.a.b → $dataTokens_newProjId_name.a.b
+          replaceMemberExpression(node, [newIdentifier, ...nestedProps]);
+        } else if (node.type === "Identifier") {
+          // $dataTokens_oldProjId_name → $dataTokens_newProjId_name
+          node.name = newIdentifier;
+        }
+      });
+    } else if (isKnownTemplatedString(expr)) {
+      expr.text.forEach((part) => {
+        if (isKnownExpr(part)) {
+          fixExpr(part);
+        }
+      });
+    }
+  };
+  cachedExprsInSite(site).forEach(({ exprRefs }) => {
+    exprRefs.forEach((ref) => {
+      fixExpr(ref.expr);
+    });
+  });
 }
 
 export function fixAppAuthRefs(
@@ -1655,20 +1751,16 @@ export function visitComponentRefs(
   }
 }
 
-export const DEFAULT_THEME_TYPOGRAPHY = {
-  "font-family": "Roboto",
-  "font-size": "16px",
-  "font-weight": "400",
-  color: "#535353",
-  "text-align": "left",
-  "line-height": "1.5",
+const DEFAULT_THEME_TYPOGRAPHY: CSSProperties = {
+  fontFamily: "Roboto",
+  fontSize: "16px",
+  fontWeight: "400",
+  color: "#000000",
+  textAlign: "left",
+  lineHeight: "1.5",
 };
 
 const DEFAULT_STYLE_BUNDLES: Dict<CSSProperties> = {
-  heading: {
-    fontFamily: "Inter",
-    color: "#000000",
-  },
   list: {
     display: "flex",
     flexDirection: "column",
@@ -1702,44 +1794,38 @@ const DEFAULT_STYLE_BUNDLES: Dict<CSSProperties> = {
 
 // These defaults are based in part on the Vercel design system.
 
-export const DEFAULT_THEME_STYLES: Dict<CSSProperties> = {
+const DEFAULT_THEME_STYLES: Dict<CSSProperties> = {
   h1: {
-    ...DEFAULT_STYLE_BUNDLES.heading,
     fontSize: "72px",
     fontWeight: 900,
     letterSpacing: "-4px",
     lineHeight: "1",
   },
   h2: {
-    ...DEFAULT_STYLE_BUNDLES.heading,
     fontSize: "48px",
     fontWeight: 700,
     letterSpacing: "-1px",
     lineHeight: "1.1",
   },
   h3: {
-    ...DEFAULT_STYLE_BUNDLES.heading,
     fontSize: "32px",
     fontWeight: 600,
     letterSpacing: "-0.8px",
     lineHeight: "1.2",
   },
   h4: {
-    ...DEFAULT_STYLE_BUNDLES.heading,
     fontSize: "24px",
     fontWeight: 600,
     letterSpacing: "-0.5px",
     lineHeight: "1.3",
   },
   h5: {
-    ...DEFAULT_STYLE_BUNDLES.heading,
     fontSize: "20px",
     fontWeight: 600,
     letterSpacing: "-0.3px",
     lineHeight: "1.5",
   },
   h6: {
-    ...DEFAULT_STYLE_BUNDLES.heading,
     fontSize: "16px",
     fontWeight: 600,
     lineHeight: "1.5",
@@ -1790,7 +1876,8 @@ export function createDefaultTheme() {
         values: Object.fromEntries(
           typographyCssProps.map((p) => [
             p,
-            DEFAULT_THEME_TYPOGRAPHY[p] || getCssInitial(p, undefined),
+            DEFAULT_THEME_TYPOGRAPHY[camelProp(p)] ||
+              getCssInitial(p, undefined),
           ])
         ),
       }),
@@ -2082,7 +2169,9 @@ export function getSiteArenas(
   opts?: { noSorting?: boolean }
 ): AnyArena[] {
   return [
-    ...site.arenas,
+    ...(opts?.noSorting
+      ? site.arenas
+      : naturalSort(site.arenas, (it) => it.name)),
     ...(opts?.noSorting
       ? site.pageArenas
       : naturalSort(site.pageArenas, (it) => it.component.name)),

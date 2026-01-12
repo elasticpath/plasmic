@@ -1,29 +1,54 @@
 import { CodeEditor } from "@/wab/client/components/sidebar-tabs/ComponentProps/CodeEditor";
+import { PropValuePath } from "@/wab/client/components/sidebar-tabs/PropEditorRow";
+import { PopoverFrame } from "@/wab/client/components/sidebar/PopoverFrame";
 import { SidebarModal } from "@/wab/client/components/sidebar/SidebarModal";
 import { LabeledItemRow } from "@/wab/client/components/sidebar/sidebar-helpers";
 import { Icon } from "@/wab/client/components/widgets/Icon";
 import Select from "@/wab/client/components/widgets/Select";
 import { SimpleTextbox } from "@/wab/client/components/widgets/SimpleTextbox";
 import Textbox from "@/wab/client/components/widgets/Textbox";
-import TokenIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__Token";
+import CurlyBracesIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__CurlyBraces";
 import { StudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import {
   DataTokenType,
   dataTypes,
   getDataTokenType,
 } from "@/wab/commons/DataToken";
+import { componentsReferencingDataToken } from "@/wab/shared/cached-selectors";
+import { customCode, stripParens } from "@/wab/shared/core/exprs";
 import { DataToken } from "@/wab/shared/model/classes";
 import { isNil } from "lodash";
 import { observer } from "mobx-react";
 import * as React from "react";
+
+/**
+ * Prettifies a modal title for consistent styling across different modal types.
+ * Centers the title content and applies consistent typography.
+ */
+export function prettifyModalTitle(content: React.ReactNode): React.ReactNode {
+  return (
+    <div className="flex flex-vcenter strong text-xlg tight-line-height list-item-height fill-width">
+      {content}
+    </div>
+  );
+}
 
 export const DataTokenEditModal = observer(function DataTokenEditModal(props: {
   token: DataToken;
   studioCtx: StudioCtx;
   defaultEditingName?: boolean;
   onClose: () => void;
+  triggerElement?: HTMLElement;
+  popoverFrameValuePath?: PropValuePath;
 }) {
-  const { token, studioCtx, defaultEditingName, onClose } = props;
+  const {
+    token,
+    studioCtx,
+    defaultEditingName,
+    onClose,
+    triggerElement,
+    popoverFrameValuePath,
+  } = props;
 
   const [selectedTokenType, setSelectedTokenType] =
     React.useState<DataTokenType>(getDataTokenType(token.value));
@@ -72,86 +97,118 @@ export const DataTokenEditModal = observer(function DataTokenEditModal(props: {
     [value, storeValue]
   );
 
-  return (
-    <SidebarModal
-      show={true}
-      title={
-        <>
-          <Icon
-            icon={TokenIcon}
-            className="token-fg custom-svg-icon--lg monochrome-exempt"
-          />
-          <SimpleTextbox
-            defaultValue={token.name}
-            onValueChange={(name) =>
-              studioCtx.changeUnsafe(() => {
-                studioCtx.tplMgr().renameDataToken(token, name);
-              })
+  const titleContent = (
+    <>
+      <Icon
+        icon={CurlyBracesIcon}
+        className="data-token-fg custom-svg-icon--lg monochrome-exempt"
+      />
+      <SimpleTextbox
+        defaultValue={token.name}
+        onValueChange={(name) => {
+          const projectId = studioCtx.siteInfo.id;
+          return studioCtx.changeObserved(
+            () => [
+              ...componentsReferencingDataToken(
+                projectId,
+                studioCtx.site,
+                token
+              ),
+            ],
+            ({ success }) => {
+              studioCtx.tplMgr().renameDataToken(projectId, token, name);
+              return success();
             }
-            placeholder={"(unnamed token)"}
-            autoFocus={defaultEditingName}
-            selectAllOnFocus={true}
-            fontSize="xlarge"
-            fontStyle="bold"
-          />
-        </>
-      }
-      onClose={() => onClose()}
-    >
-      <div className="p-xlg">
-        <div className="flex-col gap-m">
-          <LabeledItemRow label="Type">
-            <Select
-              value={selectedTokenType}
-              onChange={(val) => val && onTypeChange(val as DataTokenType)}
-              type="bordered"
-              className="flex-fill"
-            >
-              {Object.keys(dataTypes).map((dataType) => (
-                <Select.Option value={dataType}>
-                  {dataTypes[dataType].label}
-                </Select.Option>
-              ))}
-            </Select>
-          </LabeledItemRow>
+          );
+        }}
+        placeholder={"(unnamed token)"}
+        autoFocus={defaultEditingName}
+        selectAllOnFocus={true}
+        fontSize="xlarge"
+        fontStyle="bold"
+      />
+    </>
+  );
 
-          <LabeledItemRow label="Value">
-            {selectedTokenType === "code" ? (
-              <CodeEditor
-                title={token.name || "Data Token Value"}
-                value={value}
-                onChange={(val) => {
-                  if (!isNil(val)) {
-                    void onChange(val, true);
-                  }
-                }}
-                lang="javascript"
-                fileName={`data-token-${token.uuid}-code`}
-              />
-            ) : (
-              <Textbox
-                value={value}
-                onChange={(e) => onChange(e.target.value, false)}
-                onBlur={() => onChange(value, true)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    onChange(value, true);
-                    onClose();
-                  }
-                }}
-                placeholder={
-                  selectedTokenType === "string"
-                    ? "Enter text here..."
-                    : dataTypes[selectedTokenType].defaultSerializedValue
+  // Prettify title for consistent styling across different modal types
+  const title = prettifyModalTitle(titleContent);
+
+  const content = (
+    <div className="p-xlg">
+      <div className="flex-col gap-m">
+        <LabeledItemRow label="Type">
+          <Select
+            value={selectedTokenType}
+            onChange={(val) => val && onTypeChange(val as DataTokenType)}
+            type="bordered"
+            className="flex-fill"
+          >
+            {Object.keys(dataTypes).map((dataType) => (
+              <Select.Option value={dataType}>
+                {dataTypes[dataType].label}
+              </Select.Option>
+            ))}
+          </Select>
+        </LabeledItemRow>
+
+        <LabeledItemRow label="Value">
+          {selectedTokenType === "code" ? (
+            <CodeEditor
+              title={token.name || "Data Token Value"}
+              value={value}
+              onChange={(val) => {
+                if (!isNil(val)) {
+                  void onChange(val, true);
                 }
-                autoFocus={!defaultEditingName}
-                isDelayedFocus
-                styleType={["bordered"]}
-              />
-            )}
-          </LabeledItemRow>
-        </div>
+              }}
+              lang="javascript"
+              fileName={`data-token-${token.uuid}-code`}
+            />
+          ) : (
+            <Textbox
+              value={value}
+              onChange={(e) => onChange(e.target.value, false)}
+              onBlur={() => onChange(value, true)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  onChange(value, true);
+                  onClose();
+                }
+              }}
+              placeholder={
+                selectedTokenType === "string"
+                  ? "Enter text here..."
+                  : dataTypes[selectedTokenType].defaultSerializedValue
+              }
+              autoFocus={!defaultEditingName}
+              isDelayedFocus
+              styleType={["bordered"]}
+            />
+          )}
+        </LabeledItemRow>
       </div>
+    </div>
+  );
+
+  // Use PopoverFrame when available (e.g., in server query modal)
+  if (popoverFrameValuePath) {
+    return (
+      <PopoverFrame
+        show={true}
+        title={title}
+        valuePath={popoverFrameValuePath}
+        onClose={onClose}
+        dismissOnEnter={true}
+        triggerElement={triggerElement}
+      >
+        {content}
+      </PopoverFrame>
+    );
+  }
+
+  return (
+    <SidebarModal show={true} title={title} onClose={onClose}>
+      {content}
     </SidebarModal>
   );
 });
@@ -167,12 +224,16 @@ function getDisplayValue(storedValue: string, type: DataTokenType) {
       // If it's not valid JSON, return as-is
     }
   }
-  return storedValue;
+  return stripParens(storedValue);
 }
 
 function getStoredValue(displayValue: string, type: DataTokenType) {
   if (type === "string") {
     return JSON.stringify(displayValue);
+  }
+  if (type === "code") {
+    //  Store the code inside parentheses so `tryEvalExpr` can evaluate it correctly.
+    return customCode(displayValue).code;
   }
   return displayValue;
 }

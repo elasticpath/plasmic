@@ -31,7 +31,7 @@ export const DATA_SOURCE_OPERATION_PLURAL_LOWER =
 
 export const SERVER_QUERY_CAP = "Server query";
 export const SERVER_QUERY_PLURAL_CAP = "Server queries";
-export const A_SERVER_QUERY_LOWER = "an " + SERVER_QUERY_CAP.toLowerCase();
+export const A_SERVER_QUERY_LOWER = "a " + SERVER_QUERY_CAP.toLowerCase();
 export const SERVER_QUERY_LOWER = SERVER_QUERY_CAP.toLowerCase();
 export const SERVER_QUERY_PLURAL_LOWER = SERVER_QUERY_PLURAL_CAP.toLowerCase();
 
@@ -86,6 +86,9 @@ export const SLOT_CAP = "Slot";
 export const TOKENS_CAP = "Tokens";
 export const TOKEN_CAP = "Token";
 export const TOKEN_LOWER = "token";
+
+export const DATA_TOKEN_CAP = "Data Token";
+export const DATA_TOKEN_LOWER = DATA_TOKEN_CAP.toLowerCase();
 
 export const VARIANTS_CAP = "Variants";
 export const VARIANTS_LOWER = VARIANTS_CAP.toLowerCase();

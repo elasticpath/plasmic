@@ -1,3 +1,25 @@
+import { isTokenRef } from "@/wab/commons/StyleToken";
+
+/**
+ * Extracts and removes color from <svg> element in browser's precedence:
+ * 1. inline style color
+ * 2. attribute color
+ * 3. undefined
+ * <svg style="color: 1" color="2"></svg>
+ */
+export function extractAndRemoveColorProperty(svg: SVGSVGElement) {
+  // Extract color from both attribute and inline style
+  const colorFromAttr = svg.attributes.getNamedItem("color")?.value;
+  const colorFromStyle = svg.style.color || undefined;
+
+  // Remove from both places
+  svg.removeAttribute("color");
+  svg.style.removeProperty("color");
+
+  // Inline style takes precedence over attribute
+  return colorFromStyle || colorFromAttr;
+}
+
 /**
  * Extracts and removes color from <svg> element in browser's precedence:
  * 1. inline style color
@@ -56,7 +78,8 @@ export function gatherSvgColors(elt: SVGSVGElement) {
     for (const prop of ["fill", "stroke"]) {
       const attr = sub.attributes.getNamedItem(prop);
       if (attr) {
-        const value = attr.value.toLowerCase().trim();
+        const rawValue = attr.value.trim();
+        const value = isTokenRef(rawValue) ? rawValue : rawValue.toLowerCase();
         if (value.length > 0 && value !== "none") {
           colors.add(value);
         }

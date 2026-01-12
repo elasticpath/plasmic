@@ -4,21 +4,24 @@ import { FieldPicker } from "@/wab/client/components/QueryBuilder/Components/Fie
 import { GroupHeader } from "@/wab/client/components/QueryBuilder/Components/GroupHeader";
 import { OperatorPicker } from "@/wab/client/components/QueryBuilder/Components/OperatorPicker";
 import { RowActionsGroup } from "@/wab/client/components/QueryBuilder/Components/RowActionsGroup";
+import { mergeSane } from "@/wab/shared/common";
 import {
   AntdConfig,
+  BasicConfig,
   Builder,
   BuilderProps,
+  Config,
 } from "@react-awesome-query-builder/antd";
 import L from "lodash";
 import React from "react";
+import type { PartialDeep } from "type-fest";
 
-// https://github.com/ukrbublik/react-awesome-query-builder/blob/master/modules/config/default.js
-// https://github.com/ukrbublik/react-awesome-query-builder/blob/master/modules/config/basic.js
-
-const BASE_CONFIG = AntdConfig; // BasicConfig; // AntdConfig;
-const isReadOnlyMode = false;
-
-export const QueryBuilderConfig = L.merge({}, BASE_CONFIG, {
+// See config docs here: https://github.com/ukrbublik/react-awesome-query-builder/blob/master/CONFIG.adoc
+// See base configs here:
+// - https://github.com/ukrbublik/react-awesome-query-builder/blob/master/packages/core/modules/config/default.js
+// - https://github.com/ukrbublik/react-awesome-query-builder/blob/master/packages/core/modules/config/index.js
+// - https://github.com/ukrbublik/react-awesome-query-builder/blob/master/packages/antd/modules/config/index.jsx
+export const QueryBuilderConfig = L.merge({}, AntdConfig, {
   conjunctions: {
     AND: { label: "all" },
     OR: { label: "any" },
@@ -36,9 +39,8 @@ export const QueryBuilderConfig = L.merge({}, BASE_CONFIG, {
     select_any_in: { label: "is any of" },
     select_not_any_in: { label: "is not any of" },
   },
-  settings: {
-    // Settings - https://github.com/ukrbublik/react-awesome-query-builder/blob/master/CONFIG.adoc
 
+  settings: {
     // Override the react components
     renderField: (props) => (!props ? <></> : <FieldPicker {...props} />),
     renderOperator: (props) => (!props ? <></> : <OperatorPicker {...props} />),
@@ -58,17 +60,6 @@ export const QueryBuilderConfig = L.merge({}, BASE_CONFIG, {
 
     // Ant Design Components size
     renderSize: "small",
-
-    ...(isReadOnlyMode
-      ? {
-          immutableGroupsMode: true,
-          immutableFieldsMode: true,
-          immutableOpsMode: true,
-          immutableValuesMode: true,
-          canReorder: false,
-          canRegroup: false,
-        }
-      : {}),
   },
 
   widgets: {
@@ -78,7 +69,64 @@ export const QueryBuilderConfig = L.merge({}, BASE_CONFIG, {
       hideOperator: true,
     },
   },
-} as typeof BASE_CONFIG);
+} as BasicConfig);
+
+export function createQueryBuilderConfig(
+  overrideConfig?: PartialDeep<Config>,
+  opts?: {
+    readonly?: boolean;
+  }
+): Config {
+  const base = mergeSane({}, QueryBuilderConfig, {
+    // Add custom operators.
+    // Note an operator like `any_in` doesn't seem easy to build,
+    // since react-awesome-query-builder doesn't have a built-in array widget.
+    operators: {
+      regex: {
+        label: "matches regex",
+        jsonLogic: "regex",
+      },
+    },
+    // Add custom operators to their expected respective types.
+    types: {
+      text: {
+        widgets: {
+          text: {
+            operators: [
+              ...(QueryBuilderConfig.types.text.widgets.text.operators ?? []),
+              "regex",
+            ],
+          },
+        },
+      },
+    },
+  } as PartialDeep<Config>);
+
+  // Override base default valueSourcesInfo manually because L.merge won't.
+  // The new default for is values only.
+  base.settings.valueSourcesInfo = {
+    value: { label: "Value" }, // ALLOW literal values
+    // field: { label: "Field" }, // DISALLOW field references
+    // func: { label: "Function" }, // DISALLOW functions
+  };
+
+  return L.merge(
+    base,
+    overrideConfig as Config,
+    opts?.readonly
+      ? {
+          settings: {
+            immutableGroupsMode: true,
+            immutableFieldsMode: true,
+            immutableOpsMode: true,
+            immutableValuesMode: true,
+            canReorder: false,
+            canRegroup: false,
+          },
+        }
+      : undefined
+  );
+}
 
 export function AwesomeBuilder(props: BuilderProps) {
   return (

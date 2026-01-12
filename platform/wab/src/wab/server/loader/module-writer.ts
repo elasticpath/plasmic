@@ -62,6 +62,17 @@ ${outputs
   )
   .join("\n")}
 ${outputs
+  .map((output) =>
+    output.projectConfig.dataTokensBundle
+      ? `export const datatokens__${toVarName(
+          output.projectConfig.projectId
+        )} = import("./${stripExtension(
+          output.projectConfig.dataTokensBundle.fileName
+        )}");`
+      : ""
+  )
+  .join("\n")}
+${outputs
   .flatMap((output) =>
     output.components.map(
       (comp) =>
@@ -136,6 +147,13 @@ async function writeCodeBundleToDisk(
         comp.rscMetadata!.serverQueriesExecFunc.module
       );
     }
+
+    if (comp.rscMetadata?.generateMetadataFunc) {
+      await fs.writeFile(
+        path.join(dir, comp.rscMetadata!.generateMetadataFunc.fileName),
+        comp.rscMetadata!.generateMetadataFunc.module
+      );
+    }
   }
 
   for (const icon of output.iconAssets) {
@@ -174,6 +192,12 @@ async function writeCodeBundleToDisk(
     await fs.writeFile(
       path.join(dir, output.projectConfig.styleTokensProviderBundle.fileName),
       output.projectConfig.styleTokensProviderBundle.module
+    );
+  }
+  if (output.projectConfig.dataTokensBundle) {
+    await fs.writeFile(
+      path.join(dir, output.projectConfig.dataTokensBundle.fileName),
+      output.projectConfig.dataTokensBundle.module
     );
   }
   if (output.projectConfig.globalContextBundle) {

@@ -13,9 +13,9 @@ import KeyboardIcon from "@/wab/client/plasmic/plasmic_kit_design_system/Plasmic
 import BooksvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__BookSvg";
 import ChatDocssvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__ChatDocsSvg";
 import ClocksvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__ClockSvg";
-import CodeSvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__CodeSvg";
 import ComponentsvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__ComponentSvg";
 import ComponentssvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__ComponentsSvg";
+import CurlyBracesIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__CurlyBraces";
 import DevicessvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__DevicesSvg";
 import DotsHorizontalCirclesvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__DotsHorizontalCircleSvg";
 import DownloadsvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__DownloadSvg";
@@ -27,6 +27,7 @@ import KeyframesIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicI
 import MessagesvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__MessageSvg";
 import Paintbrush2SvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__Paintbrush2Svg";
 import PhotosvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__PhotoSvg";
+import SearchSvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__SearchSvg";
 import WarningTrianglesvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__WarningTriangleSvg";
 import {
   DefaultLeftTabStripProps,
@@ -38,7 +39,7 @@ import { StudioCtx, useStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import { PlayerData } from "@/wab/client/studio-ctx/multiplayer-ctx";
 import { TutorialEventsType } from "@/wab/client/tours/tutorials/tutorials-events";
 import { Stated } from "@/wab/commons/components/Stated";
-import { ANIMATION_SEQUENCES_CAP, MIXINS_CAP } from "@/wab/shared/Labels";
+import { ANIMATIONS_CAP, MIXINS_CAP } from "@/wab/shared/Labels";
 import { spawn, unexpected } from "@/wab/shared/common";
 import { DEVFLAGS } from "@/wab/shared/devflags";
 import { BASE_URL } from "@/wab/shared/discourse/config";
@@ -146,10 +147,9 @@ Help
         dataTokens: {
           type: "item",
           tabKey: "dataTokens",
-          // TODO: Add a new icon for Data Token
-          icon: <DiamondsIcon />,
+          icon: <CurlyBracesIcon />,
           label: "Data tokens",
-          cond: DEVFLAGS.dataTokens && canViewTab("dataTokens"),
+          cond: studioCtx.showDataTokens() && canViewTab("dataTokens"),
         },
         mixins: {
           type: "item",
@@ -162,7 +162,7 @@ Help
           type: "item",
           tabKey: "animationSequences",
           icon: <KeyframesIcon />,
-          label: ANIMATION_SEQUENCES_CAP,
+          label: ANIMATIONS_CAP,
           cond: DEVFLAGS.showAnimations && canViewTab("animationSequences"),
         },
         components: {
@@ -171,13 +171,6 @@ Help
           icon: <ComponentsvgIcon />,
           label: "Components",
           cond: canViewTab("components"),
-        },
-        expressions: {
-          type: "item",
-          tabKey: "expressions",
-          icon: <CodeSvgIcon />,
-          label: "Expressions",
-          cond: canViewTab("expressions"),
         },
         images: {
           type: "item",
@@ -254,6 +247,13 @@ Help
           label: "Published versions",
           cond: isLoggedIn && canViewTab("versions"),
           showAlert: props.useVersionsCTA ? "showYellowCircle" : undefined,
+        },
+        expressions: {
+          type: "item",
+          tabKey: "expressions",
+          icon: <SearchSvgIcon />,
+          label: "Expressions",
+          cond: canViewTab("expressions"),
         },
         figma: {
           type: "item",
@@ -461,10 +461,6 @@ Help
   return (
     <PlasmicLeftTabStrip
       showAvatar
-      // TODO: Add dataTokens variant to PlasmicLeftTabStrip in Plasmic Studio
-      activeTab={
-        studioCtx.leftTabKey === "dataTokens" ? "tokens" : studioCtx.leftTabKey
-      }
       insert={{
         props: {
           onClick: () => {

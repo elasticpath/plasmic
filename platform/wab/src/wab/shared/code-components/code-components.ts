@@ -225,6 +225,7 @@ import type {
   PropTypeBaseDefault,
 } from "@plasmicapp/host/dist/prop-types";
 import { RefActionRegistration } from "@plasmicapp/host/registerComponent";
+import type { Config } from "@react-awesome-query-builder/antd";
 import {
   assign,
   clone,
@@ -251,7 +252,7 @@ import {
   failableAsync,
   mapMultiple,
 } from "ts-failable";
-import type { Opaque } from "type-fest";
+import type { Opaque, PartialDeep } from "type-fest";
 
 export type VariablePropType<P> = PropTypeBaseDefault<P, VarRef> & {
   type: "variable";
@@ -437,6 +438,11 @@ export type FormDataConnectionPropType<P> = PropTypeBase<
   type: "formDataConnection";
 };
 
+export type QueryBuilderPropType<P> = PropTypeBaseDefault<P, any> & {
+  type: "queryBuilder";
+  config: ComponentContextConfig<P, PartialDeep<Config>>;
+};
+
 export type AnyPropType<P> = PropTypeBaseDefault<P, any> & {
   type: "any";
 };
@@ -467,6 +473,7 @@ export type StudioPropType<P> =
   | TargetPropType<P>
   | ControlModePropType<P>
   | FormDataConnectionPropType<P>
+  | QueryBuilderPropType<P>
   | DynamicPropType<P>;
 
 type ExtractType<T> = T extends { type: string }
@@ -2652,7 +2659,7 @@ function mapParamTypeToArgType(paramReg: CustomFunctionParam): ArgType["type"] {
   return convertTsToWabType(paramReg.type ?? "string") as ArgType["type"];
 }
 
-function createCustomFunctionFromRegistration(
+export function createCustomFunctionFromRegistration(
   functionReg: CustomFunctionRegistration,
   existingFunction?: CustomFunction
 ) {
@@ -2672,7 +2679,8 @@ function createCustomFunctionFromRegistration(
         if (existingParam && existingParam.type.name === argType.name) {
           return existingParam;
         }
-        return typeFactory.arg(name, argType);
+
+        return typeFactory.arg(name, argType, undefined);
       }) ?? [],
     isQuery: functionReg.meta.isQuery ?? false,
   });
@@ -3707,6 +3715,7 @@ export function isExprValuePropType(
   ].includes(type);
 }
 
+/** Whether a prop type should NOT allow dynamic values. */
 export function isDynamicValueDisabledInPropType(
   propType: StudioPropType<any> | undefined
 ) {
@@ -3739,6 +3748,16 @@ export function getPropTypeType(
   }
 }
 
+export function isFlattenedObjectPropType(
+  propType: StudioPropType<any> | undefined
+): propType is ObjectStudioPropType<any> {
+  return (
+    isPlainObjectPropType(propType) &&
+    propType.type === "object" &&
+    propType.display === "flatten"
+  );
+}
+
 export function getPropTypeLayout(propType: StudioPropType<any> | undefined) {
   if (
     isPlainObjectPropType(propType) &&
@@ -3746,6 +3765,13 @@ export function getPropTypeLayout(propType: StudioPropType<any> | undefined) {
     propType.control
   ) {
     return getPropTypeLayout(propType.control);
+  }
+  if (
+    isPlainObjectPropType(propType) &&
+    propType.type === "object" &&
+    propType.display === "inline"
+  ) {
+    return "vertical";
   }
   return ["richText"].includes(getPropTypeType(propType) ?? "")
     ? "vertical"
@@ -4199,6 +4225,7 @@ export function propTypeToWabType(
             case "variantGroup":
             case "dataSelector":
             case "dataSourceOp":
+            case "queryBuilder":
             case "customFunctionOp":
             case "functionArgs":
             case "varRef":
@@ -4701,6 +4728,7 @@ async function upsertRegisteredFunctions(
             "null",
             "array",
             "void",
+            "queryBuilder",
           ].some((t) => t === type)
         ) {
           return true;

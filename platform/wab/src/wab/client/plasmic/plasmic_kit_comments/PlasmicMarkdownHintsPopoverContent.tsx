@@ -190,8 +190,7 @@ type NodeComponentProps<T extends NodeNameType> =
     variants?: PlasmicMarkdownHintsPopoverContent__VariantsArgs;
     args?: PlasmicMarkdownHintsPopoverContent__ArgsType;
     overrides?: NodeOverridesType<T>;
-  } & Omit<
-    // Specify variants directly as props
+  } & Omit< // Specify variants directly as props
     PlasmicMarkdownHintsPopoverContent__VariantsArgs,
     ReservedPropsType
   > &

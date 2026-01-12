@@ -80,6 +80,10 @@ import { allMixins } from "@/wab/shared/core/sites";
 import { CssVarResolver } from "@/wab/shared/core/styles";
 import * as css from "@/wab/shared/css";
 import { parseCss } from "@/wab/shared/css";
+import {
+  LENGTH_PERCENTAGE_UNITS,
+  PERCENTAGE_UNITS,
+} from "@/wab/shared/css/types";
 import { isStandardSide, oppSides } from "@/wab/shared/geom";
 import { Site, isKnownImageAsset } from "@/wab/shared/model/classes";
 import { userImgUrl } from "@/wab/shared/urls";
@@ -128,12 +132,13 @@ function mkEmptyLayer() {
 interface BackgroundProps {
   expsProvider: ExpsProvider;
   vsh?: VariantedStylesHelper;
+  animatableOnly?: boolean;
 }
 
 export const BackgroundSection = observer(function BackgroundSection(
   props: BackgroundProps
 ) {
-  const { expsProvider } = props;
+  const { expsProvider, animatableOnly } = props;
   const { studioCtx } = expsProvider;
   const exp = expsProvider.mergedExp();
   const bg = parseCss(exp.getRaw("background") ?? "", {
@@ -219,27 +224,31 @@ export const BackgroundSection = observer(function BackgroundSection(
           >
             <Icon icon={PaintBucketFillIcon} />
           </IconButton>
-          <IconButton
-            tooltip="Add background image"
-            onClick={() => addBackgroundLayer("image")}
-            disabled={isDisabled}
-          >
-            <Icon icon={ImageBlockIcon} />
-          </IconButton>
-          <IconButton
-            tooltip="Add linear gradient background"
-            onClick={() => addBackgroundLayer("linear")}
-            disabled={isDisabled}
-          >
-            <Icon icon={LinearIcon} />
-          </IconButton>
-          <IconButton
-            tooltip="Add radial gradient background"
-            onClick={() => addBackgroundLayer("radial")}
-            disabled={isDisabled}
-          >
-            <Icon icon={RadialIcon} />
-          </IconButton>
+          {!animatableOnly && (
+            <>
+              <IconButton
+                tooltip="Add background image"
+                onClick={() => addBackgroundLayer("image")}
+                disabled={isDisabled}
+              >
+                <Icon icon={ImageBlockIcon} />
+              </IconButton>
+              <IconButton
+                tooltip="Add linear gradient background"
+                onClick={() => addBackgroundLayer("linear")}
+                disabled={isDisabled}
+              >
+                <Icon icon={LinearIcon} />
+              </IconButton>
+              <IconButton
+                tooltip="Add radial gradient background"
+                onClick={() => addBackgroundLayer("radial")}
+                disabled={isDisabled}
+              >
+                <Icon icon={RadialIcon} />
+              </IconButton>
+            </>
+          )}
         </>
       }
     >
@@ -258,6 +267,7 @@ export const BackgroundSection = observer(function BackgroundSection(
                   updateLayers();
                 }}
                 vsh={vsh}
+                animatableOnly={animatableOnly}
               />
             )}
           </SidebarModal>
@@ -359,6 +369,7 @@ interface BackgroundLayerPanelProps {
   expsProvider: ExpsProvider;
   onUpdated: (layer: BackgroundLayer) => void;
   vsh: VariantedStylesHelper;
+  animatableOnly?: boolean;
 }
 
 const BackgroundLayerPanel = observer(function BackgroundLayerPanel({
@@ -366,6 +377,7 @@ const BackgroundLayerPanel = observer(function BackgroundLayerPanel({
   layer,
   onUpdated,
   vsh,
+  animatableOnly,
 }: BackgroundLayerPanelProps) {
   const { studioCtx } = expsProvider;
   const [cachedValuesByBgType] = React.useState({});
@@ -456,7 +468,7 @@ const BackgroundLayerPanel = observer(function BackgroundLayerPanel({
               });
             }}
             allowedUnits={["deg"]}
-            dimsFunctionAllowed={false}
+            allowFunctions={false}
           />
           <div
             className={"ml-sm mr-sm overflow-hidden"}
@@ -500,9 +512,9 @@ const BackgroundLayerPanel = observer(function BackgroundLayerPanel({
         <DimTokenSpinner
           value={value}
           onChange={onChange}
-          allowedUnits={["%"]}
+          allowedUnits={PERCENTAGE_UNITS}
           noClear={true}
-          dimsFunctionAllowed={false}
+          allowFunctions={false}
         />
       );
     };
@@ -677,9 +689,10 @@ const BackgroundLayerPanel = observer(function BackgroundLayerPanel({
                     })
                   }
                   extraOptions={["auto"]}
-                  allowedUnits={["%", "px", "em"]}
                   minDropdownWidth={200}
                   hideArrow
+                  allowedUnits={LENGTH_PERCENTAGE_UNITS}
+                  allowFunctions
                 />
               </LabeledItem>
               <LabeledItem label="Height" labelSize="small">
@@ -694,9 +707,10 @@ const BackgroundLayerPanel = observer(function BackgroundLayerPanel({
                     })
                   }
                   extraOptions={["auto"]}
-                  allowedUnits={["%", "px", "em"]}
                   minDropdownWidth={200}
                   hideArrow
+                  allowedUnits={LENGTH_PERCENTAGE_UNITS}
+                  allowFunctions
                 />
               </LabeledItem>
             </FullRow>
@@ -845,41 +859,43 @@ const BackgroundLayerPanel = observer(function BackgroundLayerPanel({
 
   return (
     <div>
-      <FullRow className="panel-content">
-        <StyleToggleButtonGroup
-          value={modelType}
-          onChange={(bgType) => {
-            updateImg(
-              ensure(
-                parseCss(
-                  cachedValuesByBgType[
-                    ensure(bgType, "Must not be undefined")
-                  ] ??
-                    defaultValuesByBgType[
+      {!animatableOnly && (
+        <FullRow className="panel-content">
+          <StyleToggleButtonGroup
+            value={modelType}
+            onChange={(bgType) => {
+              updateImg(
+                ensure(
+                  parseCss(
+                    cachedValuesByBgType[
                       ensure(bgType, "Must not be undefined")
-                    ],
-                  { startRule: "backgroundImage" }
+                    ] ??
+                      defaultValuesByBgType[
+                        ensure(bgType, "Must not be undefined")
+                      ],
+                    { startRule: "backgroundImage" }
+                  ),
+                  "backgroundImage shouldn't be null"
                 ),
-                "backgroundImage shouldn't be null"
-              ),
-              () => {}
-            );
-          }}
-        >
-          <StyleToggleButton className="flex-fill" value="fill">
-            <Icon icon={PaintBucketFillIcon} />
-          </StyleToggleButton>
-          <StyleToggleButton className="flex-fill" value="image">
-            <Icon icon={ImageBlockIcon} />
-          </StyleToggleButton>
-          <StyleToggleButton className="flex-fill" value="linear">
-            <Icon icon={LinearIcon} />
-          </StyleToggleButton>
-          <StyleToggleButton className="flex-fill" value="radial">
-            <Icon icon={RadialIcon} />
-          </StyleToggleButton>
-        </StyleToggleButtonGroup>
-      </FullRow>
+                () => {}
+              );
+            }}
+          >
+            <StyleToggleButton className="flex-fill" value="fill">
+              <Icon icon={PaintBucketFillIcon} />
+            </StyleToggleButton>
+            <StyleToggleButton className="flex-fill" value="image">
+              <Icon icon={ImageBlockIcon} />
+            </StyleToggleButton>
+            <StyleToggleButton className="flex-fill" value="linear">
+              <Icon icon={LinearIcon} />
+            </StyleToggleButton>
+            <StyleToggleButton className="flex-fill" value="radial">
+              <Icon icon={RadialIcon} />
+            </StyleToggleButton>
+          </StyleToggleButtonGroup>
+        </FullRow>
+      )}
       {tabContent}
       {modelType !== "fill" && (
         <>

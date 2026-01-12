@@ -13,6 +13,7 @@ import MinusIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__Minus";
 import PlusIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__Plus";
 import { StandardMarkdown } from "@/wab/client/utils/StandardMarkdown";
 import { isStyleOrCodeComponentVariant } from "@/wab/shared/Variants";
+import { LENGTH_PERCENTAGE_UNITS } from "@/wab/shared/css/types";
 import { Alert } from "antd";
 import { observer } from "mobx-react";
 import React from "react";
@@ -24,7 +25,7 @@ enum OutlineProps {
   color = "outline-color",
 }
 
-const OUTLINE_PROPS = [
+export const outlineStyleProps = [
   OutlineProps.style,
   OutlineProps.width,
   OutlineProps.offset,
@@ -39,7 +40,9 @@ export const OutlinePanelSection = observer(function OutlinePanelSection() {
   const exp = sc.exp();
 
   const [isOpen, setIsOpen] = React.useState(false);
-  const hasOutlineProps = OUTLINE_PROPS.some((prop) => sc.hasTargetProp(prop));
+  const hasOutlineProps = outlineStyleProps.some((prop) =>
+    sc.hasTargetProp(prop)
+  );
   const isVisible = isOpen || hasOutlineProps;
 
   // When editing/creating a Mixin, the focusedViewCtx can be undefined
@@ -52,7 +55,7 @@ export const OutlinePanelSection = observer(function OutlinePanelSection() {
   const onClick = async () => {
     if (isVisible) {
       await studioCtx.change(({ success }) => {
-        OUTLINE_PROPS.forEach((prop) => {
+        outlineStyleProps.forEach((prop) => {
           if (sc.hasTargetProp(prop)) {
             exp.clear(prop);
           }
@@ -70,7 +73,7 @@ export const OutlinePanelSection = observer(function OutlinePanelSection() {
       key={String(isVisible)}
       title="Outline"
       expsProvider={sc.props.expsProvider}
-      styleProps={OUTLINE_PROPS}
+      styleProps={outlineStyleProps}
       onHeaderClick={!isVisible ? onClick : undefined}
       controls={
         <IconLinkButton onClick={onClick}>
@@ -106,6 +109,8 @@ export const OutlinePanelSection = observer(function OutlinePanelSection() {
                 { value: "thick", label: "Thick" },
               ],
               min: 0,
+              allowedUnits: LENGTH_PERCENTAGE_UNITS,
+              allowFunctions: true,
             }}
           />
           <LabeledLineStyleToggleButtonGroupItemRow
@@ -121,6 +126,10 @@ export const OutlinePanelSection = observer(function OutlinePanelSection() {
             label="Offset"
             styleName={[OutlineProps.offset]}
             tokenType={"Spacing"}
+            dimOpts={{
+              allowedUnits: LENGTH_PERCENTAGE_UNITS,
+              allowFunctions: true,
+            }}
           />
         </>
       )}
