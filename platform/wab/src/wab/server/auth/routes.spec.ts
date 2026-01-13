@@ -1,5 +1,6 @@
 /** @jest-environment node */
 import { DbMgr, SUPER_USER } from "@/wab/server/db/DbMgr";
+import { Permission, Team } from "@/wab/server/entities/Entities";
 import { SharedApiTester } from "@/wab/server/test/api-tester";
 import { createBackend, createDatabase } from "@/wab/server/test/backend-util";
 import {
@@ -7,15 +8,49 @@ import {
   PreconditionFailedError,
   UnauthorizedError,
 } from "@/wab/shared/ApiErrors/errors";
+import type { DataSource } from "typeorm";
+import * as uuid from "uuid";
 
 describe("auth", () => {
   let api: SharedApiTester;
   let sudoDbMgr: DbMgr;
   let baseURL: string;
   let cleanup: () => Promise<void>;
+  let con: DataSource;
+
+  // Helper to create a pending invitation for an email
+  // This is required because signup is invitation-only
+  // Uses entity manager directly since SUPER_USER cannot create teams via DbMgr
+  // Returns the team ID so it can be cleaned up if needed
+  async function createPendingInvitation(email: string): Promise<string> {
+    const em = con.createEntityManager();
+    const now = new Date();
+
+    const team = em.create(Team, {
+      id: uuid.v4(),
+      name: `Inviting Team ${Date.now()}`,
+      billingEmail: "test@test.com",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await em.save(team);
+
+    const permission = em.create(Permission, {
+      id: uuid.v4(),
+      email: email,
+      teamId: team.id,
+      accessLevel: "editor",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await em.save(permission);
+
+    return team.id;
+  }
 
   beforeAll(async () => {
-    const { dburi, con, cleanup: cleanupDatabase } = await createDatabase();
+    const { dburi, con: connection, cleanup: cleanupDatabase } = await createDatabase();
+    con = connection;
     sudoDbMgr = new DbMgr(con.createEntityManager(), SUPER_USER);
     await sudoDbMgr.setDevFlagOverrides(
       JSON.stringify({ blockedSignupDomains: ["bad.com", "bad.good.com"] })
@@ -43,8 +78,24 @@ describe("auth", () => {
     await cleanup();
   });
 
-  it("can signup, logout, login", async () => {
+  it("rejects signup without invitation", async () => {
     const email = `${Date.now()}@example.com`;
+    expect(
+      await api.signUp({
+        email,
+        password: "SuperStrongPassword!!",
+        firstName: "GivenName",
+        lastName: "FamilyName",
+      })
+    ).toEqual({
+      status: false,
+      reason: "BadEmailError",
+    });
+  });
+
+  it("can signup, logout, login with invitation", async () => {
+    const email = `${Date.now()}@example.com`;
+    await createPendingInvitation(email);
     expect(
       await api.signUp({
         email,
@@ -77,6 +128,7 @@ describe("auth", () => {
   describe("signup", () => {
     it("rejects weak passwords", async () => {
       const email = `${Date.now()}@example.com`;
+      await createPendingInvitation(email);
       expect(
         await api.signUp({
           email,
@@ -92,6 +144,7 @@ describe("auth", () => {
 
     it("rejects if email already used", async () => {
       const email = `${Date.now()}@example.com`;
+      await createPendingInvitation(email);
       const data = {
         email,
         password: "SuperStrongPassword!!",
@@ -101,6 +154,8 @@ describe("auth", () => {
       expect(await api.signUp(data)).toMatchObject({
         status: true,
       });
+      // Create another invitation for the same email before second signup attempt
+      await createPendingInvitation(email);
       expect(await api.signUp(data)).toMatchObject({
         status: false,
         reason: "EmailSent",
@@ -115,6 +170,7 @@ describe("auth", () => {
         `${Date.now()}@bad.good.com`,
       ];
       for (const email of badEmails) {
+        await createPendingInvitation(email);
         await expect(
           api.signUp({
             email,
@@ -131,6 +187,7 @@ describe("auth", () => {
         `bad.com.${Date.now()}@good.com`,
       ];
       for (const email of goodEmails) {
+        await createPendingInvitation(email);
         await expect(
           api.signUp({
             email,
@@ -175,6 +232,7 @@ describe("auth", () => {
   describe("deleteSelf", () => {
     it("works", async () => {
       const email = `${Date.now()}@example.com`;
+      const invitingTeamId = await createPendingInvitation(email);
       await api.signUp({
         email,
         password: "SuperStrongPassword!!",
@@ -213,6 +271,11 @@ describe("auth", () => {
 
       // Delete the non-personal team.
       await api.deleteTeam(team.id);
+
+      // Clean up the inviting team (user only has editor access, so delete directly)
+      const em = con.createEntityManager();
+      await em.delete(Permission, { teamId: invitingTeamId });
+      await em.delete(Team, { id: invitingTeamId });
 
       // User should be able to delete themselves now.
       await api.deleteSelf();
