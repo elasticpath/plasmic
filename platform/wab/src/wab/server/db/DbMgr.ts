@@ -5713,7 +5713,7 @@ export class DbMgr implements MigrationDbMgr {
     const perms = await this.permissions()
       .createQueryBuilder("permissions")
       .where(`lower(permissions.email) = lower(:email)`, { email })
-      .andWhere("permissions.user_id IS NULL") // Only pending permissions
+      .andWhere("permissions.userId IS NULL") // Only pending permissions
       .andWhere("permissions.deletedAt is null")
       .getMany();
     return perms.length > 0;
