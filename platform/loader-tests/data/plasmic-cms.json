@@ -2228,7 +2228,7 @@
         }
       },
       "deps": [],
-      "version": "255-wrap-page-meta-og-image-in-ref"
+      "version": "256-wrap-page-meta-og-image-in-ref"
     }
   ],
   [
@@ -4740,7 +4740,7 @@
         }
       },
       "deps": ["7349d209-ded6-417a-aa97-05311f8b93c4"],
-      "version": "255-wrap-page-meta-og-image-in-ref"
+      "version": "256-wrap-page-meta-og-image-in-ref"
     }
   ]
 ]
