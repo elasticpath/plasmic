@@ -354,10 +354,10 @@ test.describe("data token usages", () => {
           editDataTokenValue: "output value",
         },
         {
-          displayName: "Initial value",
-          jsName: "initialValue",
+          displayName: "Value",
+          jsName: "value",
           type: "Number",
-          initialValue: "50",
+          initialValue: "0",
         },
         {
           displayName: "Show label",
