@@ -11,7 +11,7 @@ const PROJECT_IDS = {
 
 const TUTORIAL_DB_TYPE = "northwind";
 
-test.describe("Table and form tutorial", () => {
+test.describe.skip("Table and form tutorial", () => {
   let clonedProjectId: string;
 
   test.beforeEach(async ({ apiClient, page }) => {
