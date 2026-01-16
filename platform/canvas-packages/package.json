@@ -24,6 +24,7 @@
     "@plasmicpkgs/cms": "^0.0.10",
     "@plasmicpkgs/commerce": "^0.0.232",
     "@plasmicpkgs/commerce-commercetools": "^0.0.182",
+    "@elasticpath/plasmic-ep-commerce-elastic-path": "^0.0.3",
     "@plasmicpkgs/commerce-local": "^0.0.232",
     "@plasmicpkgs/commerce-saleor": "^0.0.196",
     "@plasmicpkgs/commerce-shopify": "^0.0.240",
