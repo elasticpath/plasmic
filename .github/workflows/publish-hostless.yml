@@ -1,0 +1,93 @@
+name: Publish Hostless Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - integration
+          - production
+        default: integration
+
+jobs:
+  publish-hostless:
+    name: Trigger Hostless Publishing Task
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Run ECS Task
+        id: run-task
+        env:
+          CLUSTER_NAME: plasmic-${{ inputs.environment }}
+          TASK_DEFINITION: plasmic-${{ inputs.environment }}-publish-hostless
+          SUBNETS: ${{ vars.PRIVATE_SUBNETS }}
+          SECURITY_GROUP: ${{ vars.ECS_SECURITY_GROUP }}
+        run: |
+          # Mask infrastructure details
+          echo "::add-mask::$SUBNETS"
+          echo "::add-mask::$SECURITY_GROUP"
+
+          echo "Starting PublishHostless ECS task..."
+          echo "Cluster: $CLUSTER_NAME"
+          echo "Task Definition: $TASK_DEFINITION"
+
+          TASK_ARN=$(aws ecs run-task \
+            --cluster "$CLUSTER_NAME" \
+            --task-definition "$TASK_DEFINITION" \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SECURITY_GROUP],assignPublicIp=DISABLED}" \
+            --query 'tasks[0].taskArn' \
+            --output text)
+
+          echo "task_arn=$TASK_ARN" >> $GITHUB_OUTPUT
+          echo "Task started: $TASK_ARN"
+
+      - name: Wait for task completion
+        env:
+          CLUSTER_NAME: plasmic-${{ inputs.environment }}
+          TASK_ARN: ${{ steps.run-task.outputs.task_arn }}
+        run: |
+          echo "Waiting for task to complete..."
+
+          aws ecs wait tasks-stopped \
+            --cluster "$CLUSTER_NAME" \
+            --tasks "$TASK_ARN"
+
+          # Check exit code
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster "$CLUSTER_NAME" \
+            --tasks "$TASK_ARN" \
+            --query 'tasks[0].containers[0].exitCode' \
+            --output text)
+
+          if [ "$EXIT_CODE" = "0" ]; then
+            echo "Task completed successfully!"
+          else
+            echo "Task failed with exit code: $EXIT_CODE"
+            exit 1
+          fi
+
+      - name: Task summary
+        if: always()
+        env:
+          TASK_ARN: ${{ steps.run-task.outputs.task_arn }}
+        run: |
+          echo "### Publish Hostless Task" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Task ARN:** \`$TASK_ARN\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "View logs in CloudWatch: \`/ecs/plasmic-${{ inputs.environment }}-publish-hostless\`" >> $GITHUB_STEP_SUMMARY
