@@ -47,21 +47,16 @@ import {
 } from "@/wab/shared/core/tokens";
 import * as css from "@/wab/shared/css";
 import {
-  lengthCssUnits,
-  parseCssNumericNew,
-  toShorthandVals,
-} from "@/wab/shared/css";
-import {
   createNumericSize,
   isValidUnit,
   showSizeCss,
 } from "@/wab/shared/css-size";
 import {
   checkAllowedUnits,
-  isDimCssFunction,
+  formatDimCssFunction,
   validateDimCssFunction,
 } from "@/wab/shared/css/css-tree-utils";
-import { LengthUnit } from "@/wab/shared/css/types";
+import { isDimCssFunction, LengthUnit } from "@/wab/shared/css/types";
 import { StyleToken } from "@/wab/shared/model/classes";
 import { naturalSort } from "@/wab/shared/sort";
 import { canCreateAlias } from "@/wab/shared/ui-config-utils";
@@ -153,6 +148,7 @@ export const DimTokenSpinner = observer(
       "data-plasmic-prop"?: string;
       onFocus?: () => void;
       onBlur?: () => void;
+      disableSpin?: boolean;
     } & DimValueOpts,
     ref: React.Ref<DimTokenSpinnerRef>
   ) {
@@ -160,7 +156,7 @@ export const DimTokenSpinner = observer(
       value,
       tokenType,
       noClear,
-      allowedUnits = css.lengthCssUnits,
+      allowedUnits,
       extraOptions: _extraOptions = [],
       onChange,
       fieldAriaProps,
@@ -179,6 +175,7 @@ export const DimTokenSpinner = observer(
       placeholder,
       onEscape,
       vsh,
+      disableSpin,
     } = props;
 
     const extraOptions = _extraOptions.map((it) =>
@@ -200,7 +197,7 @@ export const DimTokenSpinner = observer(
       );
 
     const { displayValue, tryOnChange, spin, values } = useDimValue(props);
-    const shorthandVals = shorthand ? toShorthandVals(values) : values;
+    const shorthandVals = shorthand ? css.toShorthandVals(values) : values;
     const parsedValues = tokens
       ? shorthandVals.map((v) => tryParseTokenRef(v, tokens) || v)
       : shorthandVals;
@@ -258,7 +255,7 @@ export const DimTokenSpinner = observer(
       if (typedInputValue && typedInputValue.length > 0) {
         return [];
       }
-      const parsed = values.map((val) => parseCssNumericNew(val))[0];
+      const parsed = values.map((val) => css.parseCssNumericNew(val))[0];
       if (!parsed || parsed.num === undefined) {
         return [];
       }
@@ -492,7 +489,7 @@ export const DimTokenSpinner = observer(
                   studioCtx,
                   "DimTokenSelector expects to have studioCtx if adding token"
                 ).changeUnsafe(() => {
-                  const startValue = parseCssNumericNew(inputValue)
+                  const startValue = css.parseCssNumericNew(inputValue)
                     ? css.autoUnit(inputValue, [...allowedUnits][0], value)
                     : tokenTypeDefaults(
                         ensure(
@@ -643,7 +640,7 @@ export const DimTokenSpinner = observer(
                       resetState();
                       closeMenu();
                     }
-                  } else if (isNumberMode) {
+                  } else if (isNumberMode && !disableSpin) {
                     (e.nativeEvent as any).preventDownshiftDefault = true;
                     if (e.key === "ArrowUp") {
                       e.preventDefault();
@@ -1015,14 +1012,26 @@ export interface DimValueOpts {
   )[];
   shorthand?: boolean;
   noClear?: boolean;
-  allowedUnits?: readonly string[];
+  allowedUnits: readonly string[];
+  allowFunctions: boolean;
   min?: number;
   max?: number;
   delta?: number;
   fractionDigits?: number;
   displayedFractionDigits?: number;
   vsh?: VariantedStylesHelper;
-  dimsFunctionAllowed?: boolean;
+
+  /**
+   * Custom validation function. If provided, overrides default dimension validation.
+   * Return { valid: true } if valid, or { valid: false, error: "message" } if invalid.
+   */
+  validate?: (value: string) => { valid: boolean; error?: string };
+
+  /**
+   * Custom transformation/normalization function.
+   * Applied before saving the value.
+   */
+  transform?: (value: string) => string;
 }
 
 function useDimValue(opts: DimValueOpts) {
@@ -1032,13 +1041,15 @@ function useDimValue(opts: DimValueOpts) {
     extraOptions: _extraOptions = [],
     shorthand,
     noClear,
-    allowedUnits = [...lengthCssUnits],
+    allowedUnits,
+    allowFunctions,
     min = Number.NEGATIVE_INFINITY,
     max = Infinity,
     delta = 1,
     fractionDigits = 3,
     displayedFractionDigits = 3,
-    dimsFunctionAllowed = true,
+    validate: customValidate,
+    transform: customTransform,
   } = opts;
 
   const allowedUnitsSet = new Set(allowedUnits);
@@ -1057,10 +1068,23 @@ function useDimValue(opts: DimValueOpts) {
       return true;
     }
 
+    if (customValidate) {
+      const result = customValidate(val);
+      if (result.valid) {
+        return true;
+      }
+      notification.error({
+        message: `Invalid value "${val}"`,
+        description: result.error || "Invalid value",
+      });
+      return false;
+    }
+
     const newValues = shorthand ? css.parseCssShorthand(val) : [val];
     for (const newValue of newValues) {
-      if (dimsFunctionAllowed && isDimCssFunction(newValue)) {
-        const result = validateDimCssFunction(newValue, allowedUnits);
+      const formattedValue = formatDimCssFunction(newValue);
+      if (allowFunctions && isDimCssFunction(formattedValue)) {
+        const result = validateDimCssFunction(formattedValue, allowedUnits);
         if (!result.valid) {
           notification.error({
             message: `Invalid CSS function "${newValue}"`,
@@ -1070,7 +1094,7 @@ function useDimValue(opts: DimValueOpts) {
         }
         continue;
       }
-      const parsed = parseCssNumericNew(newValue);
+      const parsed = css.parseCssNumericNew(newValue);
 
       if (!parsed) {
         notification.error({
@@ -1112,7 +1136,7 @@ function useDimValue(opts: DimValueOpts) {
   }
 
   function roundValue(val: string) {
-    const parsed = parseCssNumericNew(val);
+    const parsed = css.parseCssNumericNew(val);
     if (parsed) {
       parsed.num = precisionRound(parsed.num, Math.min(fractionDigits, 4));
       return css.showCssNumericNew(parsed);
@@ -1120,6 +1144,10 @@ function useDimValue(opts: DimValueOpts) {
       return val;
     }
   }
+
+  const formatFunctionOrRoundValue = (val: string) => {
+    return isDimCssFunction(val) ? formatDimCssFunction(val) : roundValue(val);
+  };
 
   function showUnitError(newValue: string) {
     notification.error({
@@ -1138,13 +1166,19 @@ function useDimValue(opts: DimValueOpts) {
     if (!checkValidValue(newValue)) {
       return false;
     }
-    if (shorthand) {
+
+    if (customTransform) {
+      newValue = customTransform(newValue);
+    } else if (shorthand) {
       newValue = css.showCssShorthand(
-        css.parseCssShorthand(newValue).map((val) => roundValue(val))
+        css
+          .parseCssShorthand(newValue)
+          .map((val) => formatFunctionOrRoundValue(val))
       );
     } else {
-      newValue = roundValue(newValue);
+      newValue = formatFunctionOrRoundValue(newValue);
     }
+
     onChange(newValue, type);
     return true;
   }
@@ -1177,7 +1211,7 @@ function useDimValue(opts: DimValueOpts) {
     if (!value || isNaN(parseFloat(value))) {
       return;
     }
-    const curParsed = parseCssNumericNew(value);
+    const curParsed = css.parseCssNumericNew(value);
     const { num, units } = curParsed || {
       num: 0,
       units: preferredUnit,

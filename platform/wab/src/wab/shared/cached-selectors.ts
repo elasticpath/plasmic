@@ -88,6 +88,7 @@ import {
   ComponentVariantSplitContent,
   CustomFunction,
   DataSourceOpExpr,
+  DataToken,
   Expr,
   GlobalVariantSplitContent,
   ImageAsset,
@@ -113,6 +114,7 @@ import {
   isKnownTplRef,
   isKnownVarRef,
 } from "@/wab/shared/model/classes";
+import { isDataTokenUsedInExpr } from "@/wab/shared/refactoring";
 import { parse$$PropertyAccesses } from "@/wab/shared/utils/regex-dollardollar";
 import {
   makeVariantComboSorter,
@@ -491,6 +493,33 @@ const _componentToDeepReferenced = maybeComputedFn(
 
     extract(component);
     return seen;
+  }
+);
+
+/**
+ * Searches through all expressions in each component to find references to the data token.
+ *
+ * @param site - The site containing the data token
+ * @param token - The data token to extract usages for
+ * @returns The set of all components in the site that reference the given data token
+ */
+export const componentsReferencingDataToken = maybeComputedFn(
+  function componentsReferencingDataToken(
+    projectId: string,
+    site: Site,
+    token: DataToken
+  ) {
+    const referencingComponents = new Set<Component>();
+
+    for (const component of site.components) {
+      for (const { expr } of findExprsInComponent(component)) {
+        if (isDataTokenUsedInExpr(token, expr, projectId)) {
+          referencingComponents.add(component);
+          break;
+        }
+      }
+    }
+    return referencingComponents;
   }
 );
 

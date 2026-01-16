@@ -332,9 +332,6 @@ const styleSections = new Set([
 ]);
 
 const isSectionActive = (section: Section, devflags: DevFlagsType) => {
-  if (section === Section.TextContentOnly) {
-    return devflags.rightTabs;
-  }
   if (section === Section.SlotSettings) {
     return devflags.focusable;
   }
@@ -739,14 +736,15 @@ export function getRenderBySection(
     [
       Section.Typography,
       () =>
-        isTypographyTpl &&
+        (isTypographyTpl || isContainer) &&
         !isIcon &&
         showSection(Section.Typography) && (
           <TypographySection
+            title={isContainer ? "Typography" : "Text"}
             key={`${tpl.uuid}-typography`}
             expsProvider={sc.props.expsProvider}
             ancestorSlot={styleAncestorSlot}
-            inheritableOnly={false}
+            inheritableOnly={isContainer && !isTypographyTpl}
             viewCtx={viewCtx}
           />
         ),
@@ -1025,9 +1023,7 @@ function getOrderedSections(tpl: TplNode, viewCtx: ViewCtx): Set<Section> {
   }
   if (isTypographyNode(tpl)) {
     pushIfNew(Section.Typography);
-    if (viewCtx.appCtx.appConfig.rightTabs) {
-      pushIfNew(Section.TextContentOnly);
-    }
+    pushIfNew(Section.TextContentOnly);
   }
   if (isTplContainer(tpl)) {
     pushIfNew(
@@ -1076,10 +1072,10 @@ function getOrderedSections(tpl: TplNode, viewCtx: ViewCtx): Set<Section> {
   pushIfNew(Section.ImageCodeComponent);
   pushIfNew(Section.Image);
   pushIfNew(Section.ListStyle);
-  pushIfNew(Section.Typography);
-  if (viewCtx.appCtx.appConfig.rightTabs) {
-    pushIfNew(Section.TextContentOnly);
+  if (!isTplContainer(tpl)) {
+    pushIfNew(Section.Typography);
   }
+  pushIfNew(Section.TextContentOnly);
   pushIfNew(Section.Layout);
   pushIfNew(Section.Overflow);
   pushIfNew(Section.Background);
@@ -1092,6 +1088,9 @@ function getOrderedSections(tpl: TplNode, viewCtx: ViewCtx): Set<Section> {
   pushIfNew(Section.TransformPanel);
   pushIfNew(Section.Tag);
   pushIfNew(Section.HTMLAttributes);
+  if (isTplContainer(tpl)) {
+    pushIfNew(Section.Typography);
+  }
 
   pushIfNew(Section.CustomBehaviors);
   if (viewCtx.appCtx.appConfig.focusable) {

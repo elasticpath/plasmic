@@ -1,4 +1,11 @@
-import { ApiCmsTable, CmsType } from "./schema";
+import {
+  ApiCmsTable,
+  CmsFieldMeta,
+  CmsList,
+  CmsMetaType,
+  CmsObject,
+  CmsType,
+} from "./schema";
 
 type ValueLabelPair = {
   value: string;
@@ -21,7 +28,11 @@ export function mkTableOptions(
 export function mkFieldOptions(
   tables: ApiCmsTable[] | undefined,
   tableIdentifier: string | undefined,
-  types?: CmsType[]
+  types?: CmsType[],
+  opts?: {
+    includeSystemId?: boolean;
+    includeRefStars?: boolean;
+  }
 ): ValueLabelPair[] {
   if (!tables) {
     return [];
@@ -36,16 +47,57 @@ export function mkFieldOptions(
   if (types) {
     fields = fields.filter((f) => types.includes(f.type));
   }
-  const options = fields.map((f) => ({
-    value: f.identifier,
-    label: f.name || f.identifier,
-  }));
-  if (!options.some((option) => option.value === "_id")) {
+
+  const options = [
+    // single fields
+    ...fields.map((f) => ({
+      value: f.identifier,
+      label: f.label || f.identifier,
+    })),
+
+    // ref star fields
+    ...(opts?.includeRefStars ? mkRefStarFieldOptions([], fields) : []),
+  ];
+
+  options.sort((a, b) => a.label.localeCompare(b.label));
+
+  if (
+    opts?.includeSystemId &&
+    !options.some((option) => option.value === "_id")
+  ) {
     options.push({
-      label: "System-assigned ID",
+      label: "System ID",
       value: "_id",
     });
   }
 
   return options;
+}
+
+function mkRefStarFieldOptions(
+  fieldPath: (CmsList | CmsObject)[],
+  nextFields: CmsFieldMeta[]
+): ValueLabelPair[] {
+  return nextFields.flatMap((nestedField) => {
+    if (nestedField.type === CmsMetaType.REF) {
+      const fieldPathToRef = [...fieldPath, nestedField];
+      return [
+        {
+          value: fieldPathToRef.map((f) => f.identifier).join(".") + ".*",
+          label:
+            fieldPathToRef.map((f) => f.label || f.identifier).join(".") + ".*",
+        },
+      ];
+    } else if (
+      nestedField.type === CmsMetaType.LIST ||
+      nestedField.type === CmsMetaType.OBJECT
+    ) {
+      return mkRefStarFieldOptions(
+        [...fieldPath, nestedField],
+        nestedField.fields
+      );
+    } else {
+      return [];
+    }
+  });
 }

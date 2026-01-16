@@ -426,13 +426,9 @@ const DEFAULT_DEVFLAGS = {
   writeApiExcludedProjectIds: [] as string[],
 
   // Disabled by default
-  runningInCypress: false,
   posthog: true,
   copilotTab: false,
   copilotClaude: false,
-  comments: false,
-  commentsTeamIds: [] as TeamId[],
-  rightTabs: true,
   codePreview: false,
   demo: false,
   enableReactDevTools: false, // used in studio.js
@@ -475,7 +471,6 @@ const DEFAULT_DEVFLAGS = {
   previewSteps: false,
 
   // Permanently disabled, just internal tools/scripts.
-  autoInitEmptyThemeStyles: false,
   allowPlasmicTeamEdits: false,
 
   // variant experiments
@@ -508,6 +503,7 @@ const DEFAULT_DEVFLAGS = {
   branching: false,
   disableBranching: false,
   branchingTeamIds: [] as TeamId[],
+  dataTokenTeamIds: [] as TeamId[],
   commitsOnBranches: false,
   serverPublishProjectIds: [] as ProjectId[],
   focusable: false,
@@ -640,11 +636,9 @@ export function applyPlasmicUserDevFlagOverrides(target: DevFlagsType) {
     plexus: true,
     incrementalObservables: true,
     branching: true,
-    comments: true,
     pageLayout: true,
     refActions: true,
     logToConsole: true,
-    rightTabs: true,
     focusable: true,
     envPanel: true,
     interactiveCanvas: true,
@@ -657,7 +651,6 @@ export function applyPlasmicUserDevFlagOverrides(target: DevFlagsType) {
     simplifiedForms: true,
     schemaDrivenForms: true,
     onboardingTours: true,
-    showInsertableTemplateComponents: true,
     posthog: true,
     linting: true,
     componentThumbnails: false,

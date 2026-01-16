@@ -1,5 +1,10 @@
+import { computeDataTokenValue } from "@/wab/commons/DataToken";
 import { customFunctionId } from "@/wab/shared/code-components/code-components";
-import { toVarName } from "@/wab/shared/codegen/util";
+import {
+  jsLiteral,
+  makeShortProjectId,
+  toVarName,
+} from "@/wab/shared/codegen/util";
 import { assert, isPrefixArray, uniqueName } from "@/wab/shared/common";
 import * as Exprs from "@/wab/shared/core/exprs";
 import {
@@ -9,26 +14,37 @@ import {
 } from "@/wab/shared/core/states";
 import * as Tpls from "@/wab/shared/core/tpls";
 import {
+  extractDataTokenIdentifiersFromCode,
+  isPathDataToken,
+  makeDataTokenIdentifier,
+  parseCode,
   parseExpr,
   renameObjectKey,
+  replaceMemberExpression,
   replaceVarWithProp,
+  transformDataTokensInExpr,
 } from "@/wab/shared/eval/expression-parser";
 import {
   Component,
   ComponentDataQuery,
   ComponentServerQuery,
+  CustomCode,
   CustomFunction,
+  DataToken,
   Expr,
   Interaction,
-  isKnownCustomCode,
-  isKnownFunctionExpr,
-  isKnownObjectPath,
-  isKnownVariantsRef,
-  isKnownVarRef,
+  ObjectPath,
   Param,
   Site,
   TplNode,
+  isKnownCustomCode,
+  isKnownFunctionExpr,
+  isKnownObjectPath,
+  isKnownVarRef,
+  isKnownVariantsRef,
 } from "@/wab/shared/model/classes";
+import type * as ast from "estree";
+import { get } from "lodash";
 
 /**
  * Returns boolean indicating whether `expr` is referencing `param`.
@@ -71,6 +87,35 @@ export function isQueryUsedInExpr(
     return info.usedDollarVarKeys.$queries.has(varName);
   }
   return false;
+}
+
+/**
+ * Returns boolean indicating whether `expr` is referencing a data token.
+ */
+export function isDataTokenUsedInExpr(
+  token: DataToken,
+  expr: Expr | null | undefined,
+  projectId: string
+): expr is CustomCode | ObjectPath {
+  if (!expr || !Exprs.isRealCodeExprEnsuringType(expr)) {
+    return false;
+  }
+  const tokenVarName = toVarName(token.name);
+
+  if (isKnownObjectPath(expr)) {
+    const path = expr.path;
+    if (!isPathDataToken(path)) {
+      return false;
+    }
+    const shortId = makeShortProjectId(projectId);
+    const expectedIdentifier = makeDataTokenIdentifier(shortId, tokenVarName);
+    return path[0] === expectedIdentifier;
+  } else {
+    const identifiers = extractDataTokenIdentifiersFromCode(expr.code);
+    const shortId = makeShortProjectId(projectId);
+    const expectedIdentifier = makeDataTokenIdentifier(shortId, tokenVarName);
+    return identifiers.includes(expectedIdentifier);
+  }
 }
 
 /**
@@ -364,5 +409,110 @@ export function renameDollarFunctions(
     const oldName = customFunctionId(oldFunction);
     const newName = customFunctionId(newFunction);
     renameObjectInExpr(expr, "$$", "$$", oldName, newName);
+  }
+}
+
+export function renameDataTokenInExpr(
+  expr: Expr,
+  oldIdentifier: string,
+  newIdentifier: string
+) {
+  if (isKnownObjectPath(expr)) {
+    if (expr.path[0] === oldIdentifier) {
+      expr.path[0] = newIdentifier;
+    }
+  } else if (isKnownCustomCode(expr)) {
+    transformDataTokensInExpr(expr, (node, token, nestedProps) => {
+      if (token.identifier !== oldIdentifier) {
+        return;
+      }
+      if (node.type === "MemberExpression") {
+        // $dataTokens_projId_name.a.b
+        replaceMemberExpression(node, [newIdentifier, ...nestedProps]);
+      } else if (node.type === "Identifier") {
+        // $dataTokens_projId_name
+        node.name = newIdentifier;
+      }
+    });
+  }
+}
+
+/**
+ * Renames a data token and updates all expressions that reference it.
+ */
+export function renameDataTokenAndFixExprs(
+  projectId: string,
+  site: Site,
+  dataToken: DataToken,
+  newName: string
+) {
+  const oldVarName = toVarName(dataToken.name);
+  const newVarName = toVarName(newName);
+  const shortId = makeShortProjectId(projectId);
+  const oldIdentifier = makeDataTokenIdentifier(shortId, oldVarName);
+  const newIdentifier = makeDataTokenIdentifier(shortId, newVarName);
+
+  for (const component of site.components) {
+    const refs = Tpls.findExprsInComponent(component);
+    for (const { expr } of refs) {
+      renameDataTokenInExpr(expr, oldIdentifier, newIdentifier);
+    }
+  }
+}
+
+function createAstNodeFromValue(value: any): ast.Expression {
+  const literalCode = JSON.stringify(value);
+  const parsed = parseCode(`(${literalCode})`);
+  if (
+    parsed.body.length === 1 &&
+    parsed.body[0].type === "ExpressionStatement"
+  ) {
+    return parsed.body[0].expression;
+  }
+  return { type: "Literal", value: value, raw: literalCode };
+}
+
+/**
+ * Flattens a data token usage by replacing the data token reference with its literal value.
+ * Similar to changeTokenUsage for style tokens, but for data tokens in expressions.
+ */
+export function flattenDataTokenUsage(
+  token: DataToken,
+  exprRef: Tpls.ExprReference,
+  projectId: string,
+  component?: Component
+) {
+  const { expr } = exprRef;
+  const tokenValue = computeDataTokenValue(token);
+  const tokenVarName = toVarName(token.name);
+  const shortId = makeShortProjectId(projectId);
+  const identifier = makeDataTokenIdentifier(shortId, tokenVarName);
+
+  if (isKnownObjectPath(expr)) {
+    if (expr.path[0] === identifier) {
+      const propertyPath = expr.path.slice(1);
+      let resolvedValue = tokenValue;
+      if (propertyPath.length > 0) {
+        resolvedValue = get(tokenValue, propertyPath);
+      }
+      const newExpr = Exprs.customCode(jsLiteral(resolvedValue), expr.fallback);
+
+      if (exprRef.node) {
+        Tpls.replaceExprInNode(exprRef.node, expr, newExpr);
+      } else if (component) {
+        Tpls.replaceExprInComponent(component, expr, newExpr);
+      }
+    }
+  } else if (isKnownCustomCode(expr)) {
+    transformDataTokensInExpr(expr, (node, parsedToken) => {
+      if (parsedToken.identifier === identifier) {
+        const astNode = createAstNodeFromValue(tokenValue);
+        if (node.type === "MemberExpression") {
+          node.object = astNode;
+        } else {
+          Object.assign(node, astNode);
+        }
+      }
+    });
   }
 }

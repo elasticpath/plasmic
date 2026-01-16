@@ -65,6 +65,7 @@ import {
   ensureArray,
   ensureInstance,
   hackyCast,
+  last,
   maybe,
   mkShortId,
   only,
@@ -84,7 +85,11 @@ import {
   serializeActionFunction,
 } from "@/wab/shared/core/states";
 import { cloneRuleSet, makeStyleExprClassName } from "@/wab/shared/core/styles";
-import { clone as cloneTpl, cloneType } from "@/wab/shared/core/tpls";
+import {
+  clone as cloneTpl,
+  cloneType,
+  tryGetOwnerSite,
+} from "@/wab/shared/core/tpls";
 import {
   dataSourceTemplateToString,
   exprToDataSourceString,
@@ -99,15 +104,27 @@ import {
   getDynamicSnippetsForJsonExpr,
 } from "@/wab/shared/dynamic-bindings";
 import { tryEvalExpr } from "@/wab/shared/eval";
-import { pathToString } from "@/wab/shared/eval/expression-parser";
+import {
+  pathToString,
+  transformDataTokenPathToDisplay,
+  transformDataTokensToDisplay,
+} from "@/wab/shared/eval/expression-parser";
 import { maybeComputedFn } from "@/wab/shared/mobx-util";
 import { maybeConvertToIife } from "@/wab/shared/parser-utils";
 import { pageHrefPathToCode } from "@/wab/shared/utils/url-utils";
-import L, { escapeRegExp, groupBy, isString, mapValues, set } from "lodash";
+import L, {
+  escapeRegExp,
+  groupBy,
+  isString,
+  mapValues,
+  set,
+  toPath,
+} from "lodash";
 
 export interface ExprCtx {
   component: Component | null;
   projectFlags: DevFlagsType;
+  projectId?: string;
   inStudio: boolean | undefined;
 }
 
@@ -116,7 +133,15 @@ export type FallbackableExpr = CustomCode | ObjectPath;
 export const summarizeExpr = (expr: Expr, exprCtx: ExprCtx): string =>
   switchType(expr)
     .when(CustomCode, (customCode: CustomCode) => {
-      return stripParens(customCode.code);
+      let code = stripParens(customCode.code);
+      const { component, projectId } = exprCtx;
+      if (component && projectId && exprCtx.inStudio) {
+        const site = tryGetOwnerSite(component);
+        if (site) {
+          code = transformDataTokensToDisplay(code, site, projectId);
+        }
+      }
+      return code;
     })
     .when(DataSourceOpExpr, (opExpr) => `(${opExpr.opName})`)
     .when(RenderExpr, () => {
@@ -138,6 +163,18 @@ export const summarizeExpr = (expr: Expr, exprCtx: ExprCtx): string =>
         .join(", ")})`;
     })
     .when(ObjectPath, (objPath) => {
+      const { component, projectId } = exprCtx;
+      if (component && projectId && exprCtx.inStudio) {
+        const site = tryGetOwnerSite(component);
+        if (site) {
+          const displayPath = transformDataTokenPathToDisplay(
+            objPath.path,
+            site,
+            projectId
+          );
+          return summarizePathParts(displayPath);
+        }
+      }
       return summarizePath(objPath);
     })
     .when(EventHandler, (_handler) => `(event handler)`)
@@ -149,10 +186,9 @@ export const summarizeExpr = (expr: Expr, exprCtx: ExprCtx): string =>
       StyleTokenRef,
       (_expr) => `(reference to token "${_expr.token.name}")`
     )
-    .when(
-      TemplatedString,
-      (templatedString) => `${asCode(templatedString, exprCtx).code}`
-    )
+    .when(TemplatedString, (templatedString) => {
+      return `${asCode(templatedString, exprCtx).code}`;
+    })
     .when(FunctionExpr, (_expr) => summarizeExpr(_expr.bodyExpr, exprCtx))
     .when(
       TplRef,
@@ -721,6 +757,7 @@ const _asCode = maybeComputedFn(
       )
       .when(CompositeExpr, (expr) => {
         // We hope there are no collisions with the symbol "__composite"!
+        // The substitution paths are Lodash path strings.
         return code(
           `
 ((() => {
@@ -728,9 +765,8 @@ const _asCode = maybeComputedFn(
   ${Object.entries(expr.substitutions)
     .map(
       ([path, subexpr]) =>
-        `__composite${path
-          .split(".")
-          .map((key) => `[${JSON.stringify(key)}]`)
+        `__composite${toPath(path)
+          .map((key) => `[${jsLiteral(key)}]`)
           .join("")} = (${asCode(subexpr, exprCtx).code});`
     )
     .join("\n")}
@@ -782,6 +818,26 @@ export function tryExtractJson(_expr: Expr): JsonValue | undefined {
         ? expr.text[0]
         : undefined
     )
+    .when(CompositeExpr, (expr): JsonValue | undefined => {
+      try {
+        const base = jsonParse(expr.hostLiteral);
+        // Only proceed if base is an object or array (not null or primitive)
+        if (typeof base !== "object" || base === null) {
+          return undefined;
+        }
+        // Check if all substitutions can be extracted as JSON
+        for (const [path, subexpr] of Object.entries(expr.substitutions)) {
+          const extracted = tryExtractJson(subexpr);
+          if (extracted === undefined) {
+            return undefined;
+          }
+          set(base, path, extracted);
+        }
+        return base;
+      } catch {
+        return undefined;
+      }
+    })
     .elseUnsafe(() => undefined);
 }
 
@@ -797,6 +853,13 @@ export function isDynamicExpr(expr: Expr) {
 
 export function hasDynamicParts(text: TemplatedString) {
   return !text.text.every((part) => typeof part === "string");
+}
+
+export function hasOnlyDynamicValues(expr: TemplatedString) {
+  const hasNonEmptyStatic = expr.text.some(
+    (x) => typeof x === "string" && x !== ""
+  );
+  return !hasNonEmptyStatic && hasDynamicParts(expr);
 }
 
 /**
@@ -1073,7 +1136,11 @@ export function summarizePath(variablePath: ObjectPath) {
 }
 
 export const flattenedKeys = new Set(["$ctx", "$props", "$state", "$queries"]);
-export const omittedKeysIfEmpty = new Set(["$ctx.params", "$ctx.query"]);
+export const omittedKeysIfEmpty = new Set([
+  "$ctx.params",
+  "$ctx.query",
+  "$dataTokens",
+]);
 export const alwaysOmitKeys = new Set([
   "$state.registerInitFunc",
   "$state.eagerInitializeStates",
@@ -1139,42 +1206,74 @@ export function isValidCurrentUserPropsExpr(
   return exprSnippets.length === 0;
 }
 
-export function serCompositeExprMaybe(value: any) {
+/**
+ * Converts a JSON object with nested Exprs into a CompositeExpr.
+ * If no Exprs are found, returns a CustomCode.
+ * If already an Expr, returns it as is.
+ */
+export function serCompositeExprMaybe<T = any>(
+  value: T
+): CustomCode | CompositeExpr | (T extends Expr ? T : never) {
+  if (isKnownExpr(value as any)) {
+    return value as T extends Expr ? T : never;
+  }
+
   const hoistedSerExprs: Record<string, Expr> = {};
 
-  function hoist(path: string, x: Expr) {
-    hoistedSerExprs[path] = x;
+  function hoist(path: (string | number)[], x: Expr) {
+    // Lodash path strings for set() is a dot-separated string like "foo.bar".
+    // However, this is ambiguous for an object like
+    //  { "foo": { "bar: 1 }, "foo.bar": 2 }
+    //
+    // To resolve this, use an alternative syntax like:
+    //  ["foo"]["bar"]
+    //  ["foo.bar"]
+    //
+    // This is not documented by Lodash, but here's a discussion about this:
+    // https://github.com/lodash/lodash/issues/3529#issuecomment-448586433
+    const pathStr = path.map((key) => `[${jsLiteral(key)}]`).join("");
+    hoistedSerExprs[pathStr] = x;
     return null;
   }
 
   function hoistExprs(x: any, path: (string | number)[]): any {
     return isKnownExpr(x)
-      ? hoist(path.join("."), x)
+      ? hoist(path, x)
       : Array.isArray(x)
       ? x.map((e, i) => hoistExprs(e, [...path, i]))
-      : typeof x === "object"
+      : typeof x === "object" && x !== null
       ? mapValues(x, (v, k) => hoistExprs(v, [...path, k]))
       : x;
   }
 
   const withNulls = hoistExprs(value, []);
   return Object.keys(hoistedSerExprs).length === 0
-    ? codeLit(value)
+    ? codeLit(value as JsonValue)
     : new CompositeExpr({
         hostLiteral: JSON.stringify(withNulls),
         substitutions: hoistedSerExprs,
       });
 }
 
-export function deserCompositeExprMaybe(fieldsExpr: any) {
-  if (!isKnownCompositeExpr(fieldsExpr)) {
-    return fieldsExpr;
+/** @deprecated, use {@link deserCompositeExpr} for type-safety */
+export function deserCompositeExprMaybe(expr: any): any {
+  if (isKnownCompositeExpr(expr)) {
+    return deserCompositeExpr(expr);
+  } else {
+    return expr;
   }
-  const fields = JSON.parse(fieldsExpr.hostLiteral);
-  for (const [path, serExpr] of Object.entries(fieldsExpr.substitutions)) {
-    set(fields, path, serExpr);
+}
+
+export function deserCompositeExpr<T extends JsonValue = JsonValue>(
+  expr: CompositeExpr
+): T {
+  const literalJson = jsonParse<T>(expr.hostLiteral);
+  if (typeof literalJson === "object" && literalJson) {
+    for (const [path, serExpr] of Object.entries(expr.substitutions)) {
+      set(literalJson, path, serExpr);
+    }
   }
-  return fields;
+  return literalJson;
 }
 
 export function isAllowedDefaultExpr(expr: Expr) {
@@ -1260,9 +1359,42 @@ export function mkTemplatedStringOfOneDynExpr(expr: CustomCode | ObjectPath) {
   });
 }
 
+export function convertExprToStringOrTemplatedString(
+  expr: Expr | null | undefined
+): TemplatedString | string | null {
+  if (!expr) {
+    return null;
+  }
+  if (isKnownTemplatedString(expr)) {
+    return hasDynamicParts(expr) ? expr : expr.text.join("");
+  }
+  if (isKnownObjectPath(expr) || isKnownCustomCode(expr)) {
+    return mkTemplatedStringOfOneDynExpr(expr);
+  }
+  return null;
+}
+
+export function convertTemplatedStringToExpr(
+  value: TemplatedString | string | null | undefined
+): Expr | undefined {
+  if (value == null) {
+    return undefined;
+  }
+  if (isKnownExpr(value)) {
+    return value;
+  }
+  return codeLit(value);
+}
+
 export function getSingleDynExprFromTemplatedString(expr: TemplatedString) {
   const single = only(expr.text.filter((x) => x !== ""));
   const typed = ensureInstance(single, CustomCode, ObjectPath);
+  return typed;
+}
+
+export function getLastDynExprFromTemplatedString(expr: TemplatedString) {
+  const lastExpr = last(expr.text.filter((x) => x !== ""));
+  const typed = ensureInstance(lastExpr, CustomCode, ObjectPath);
   return typed;
 }
 

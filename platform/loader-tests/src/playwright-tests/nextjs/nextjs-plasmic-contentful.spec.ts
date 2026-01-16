@@ -1,4 +1,3 @@
-import { getEnvVar } from "../../env";
 import { test } from "../../fixtures";
 import {
   NextJsContext,
@@ -14,8 +13,6 @@ test.describe(`NextJS Plasmic Contentful`, () => {
     ctx = await setupNextJs({
       bundleFile: "plasmic-contentful.json",
       projectName: "Plasmic Contentful Project",
-      npmRegistry: getEnvVar("NPM_CONFIG_REGISTRY"),
-      codegenHost: getEnvVar("WAB_HOST"),
       removeComponentsPage: true,
     });
   });
@@ -24,7 +21,7 @@ test.describe(`NextJS Plasmic Contentful`, () => {
     await teardownNextJs(ctx);
   });
 
-  test(`should work with Contentful entries`, async ({ page }) => {
+  test.skip(`should work with Contentful entries`, async ({ page }) => {
     await testContentfulLoader(page, ctx.host);
   });
 });

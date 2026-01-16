@@ -7,19 +7,15 @@ import {
   useSelector,
 } from "@plasmicapp/host";
 import { usePlasmicQueryData } from "@plasmicapp/query";
+import {
+  _denormalizeData as denormalizeData,
+  _ensure as ensure,
+  _uniq as uniq,
+} from "@plasmicpkgs/contentful";
 import { pascalCase } from "change-case";
 import get from "dlv";
 import React, { ReactNode, useContext } from "react";
-import { Entry } from "./types";
-import { searchParameters, uniq } from "./utils";
-
-export function ensure<T>(x: T | null | undefined, msg?: string): T {
-  if (x === null || x === undefined) {
-    throw new Error(msg ?? `Value must not be undefined or null`);
-  } else {
-    return x;
-  }
-}
+import { searchParameters } from "./utils";
 
 const modulePath = "@plasmicpkgs/plasmic-contentful";
 
@@ -132,7 +128,7 @@ export const ContentfulFetcherMeta: ComponentMeta<ContentfulFetcherProps> = {
     },
     contentType: {
       type: "choice",
-      options: (props, ctx) =>
+      options: (_props, ctx) =>
         ctx?.types?.map((type: any) => ({
           label: type?.name,
           value: type?.sys?.id,
@@ -145,7 +141,7 @@ export const ContentfulFetcherMeta: ComponentMeta<ContentfulFetcherProps> = {
       type: "choice",
       displayName: "Filter field",
       description: "Field (from Collection) to filter by.",
-      options: (props, ctx) => ctx?.fields ?? [],
+      options: (_props, ctx) => ctx?.fields ?? [],
       hidden: (props) => !props.contentType,
     },
     searchParameter: {
@@ -153,7 +149,7 @@ export const ContentfulFetcherMeta: ComponentMeta<ContentfulFetcherProps> = {
       displayName: "Search Parameter",
       description:
         "Search Parameter to filter by (see Contentful Content Delivery API documentation for details).",
-      options: (props, ctx) => ctx?.queryOptions ?? [],
+      options: (_props, ctx) => ctx?.queryOptions ?? [],
       hidden: (props) => !props.filterField,
     },
     filterValue: {
@@ -166,7 +162,7 @@ export const ContentfulFetcherMeta: ComponentMeta<ContentfulFetcherProps> = {
       type: "choice",
       displayName: "Order",
       description: "Field that the entries should be ordered by.",
-      options: (props, ctx) => [
+      options: (_props, ctx) => [
         ...(ctx?.fields ?? []),
         "sys.createdAt",
         "sys.updatedAt",
@@ -385,110 +381,6 @@ export function ContentfulFetcher({
     }
   }
 
-  function denormalizeData(data: any | null) {
-    if (!data?.items || !data?.includes) {
-      return data;
-    }
-
-    const entryMap: { [id: string]: any } = {};
-
-    if (data.includes.Entry) {
-      data.includes.Entry.forEach((entry: any) => {
-        entryMap[entry.sys.id] = entry;
-      });
-    }
-
-    // Track processed fields to avoid following circular references
-    const processedFields = new Set<string>();
-
-    const denormalizeField = (fieldValue: any) => {
-      if (Array.isArray(fieldValue)) {
-        const updatedArray: any[] = fieldValue.map((arrayItem) => {
-          return denormalizeField(arrayItem);
-        });
-        return updatedArray;
-      } else if (fieldValue && typeof fieldValue === "object") {
-        if (
-          data.includes.Asset &&
-          "sys" in fieldValue &&
-          fieldValue.sys.linkType === "Asset"
-        ) {
-          const fieldId = fieldValue.sys.id;
-          const asset = data.includes.Asset.find(
-            (a: any) => a.sys.id === fieldId
-          );
-          if (asset) {
-            fieldValue = {
-              ...fieldValue,
-              url: "https:" + asset.fields?.file?.url,
-            };
-          } else {
-            console.log(`Asset URL not found for ID: ${fieldId}`);
-          }
-        } else if (
-          data.includes.Entry &&
-          "sys" in fieldValue &&
-          fieldValue.sys.linkType === "Entry"
-        ) {
-          const fieldId = fieldValue.sys.id;
-          if (entryMap[fieldId]) {
-            if (processedFields.has(fieldId)) {
-              console.warn(
-                `Circular reference detected for Entry ID: ${fieldId}.`
-              );
-            } else {
-              fieldValue = {
-                ...fieldValue,
-                fields: denormalizeItem(entryMap[fieldId]).fields,
-              };
-            }
-          } else {
-            console.log(`Entry not found for ID: ${fieldId}`);
-          }
-        }
-        fieldValue = Object.entries(fieldValue).reduce((obj, [key, value]) => {
-          if (key === "sys" || key === "fields") {
-            obj[key] = value;
-          } else {
-            obj[key] = denormalizeField(value);
-          }
-          return obj;
-        }, {} as Record<string, any>);
-      }
-
-      return fieldValue;
-    };
-
-    const denormalizeItem = (item: any) => {
-      const itemId = item.sys?.id;
-      if (itemId) {
-        processedFields.add(itemId);
-      }
-
-      const updatedFields: { [fieldName: string]: unknown | unknown[] } = {};
-      for (const fieldName in item.fields) {
-        updatedFields[fieldName] = denormalizeField(item.fields[fieldName]);
-      }
-
-      if (itemId) {
-        processedFields.delete(itemId);
-      }
-
-      return {
-        ...item,
-        fields: updatedFields ?? undefined,
-      };
-    };
-
-    const itemsWithDenormalizedFields: Entry[] = data.items.map((item: any) => {
-      return denormalizeItem(item);
-    });
-    return {
-      ...data,
-      items: itemsWithDenormalizedFields,
-    };
-  }
-
   let renderedData;
 
   const fixedData = entriesData ? denormalizeData(entriesData) : undefined;
@@ -561,7 +453,7 @@ export const ContentfulFieldMeta: ComponentMeta<ContentfulFieldProps> = {
   props: {
     objectPath: {
       type: "dataSelector",
-      data: (props, ctx) => ctx?.data ?? {},
+      data: (_props, ctx) => ctx?.data ?? {},
       displayName: "Field",
       description: "Field to be displayed.",
     },

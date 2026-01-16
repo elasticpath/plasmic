@@ -1,5 +1,4 @@
 import * as Sentry from "@sentry/node";
-import * as Tracing from "@sentry/tracing";
 import * as bodyParser from "body-parser";
 import cookieParser from "cookie-parser";
 import cors from "cors";
@@ -28,7 +27,11 @@ import { createMailer } from "@/wab/server/emails/Mailer";
 import { ExpressSession } from "@/wab/server/entities/Entities";
 import "@/wab/server/extensions";
 import { initAnalyticsFactory, logger } from "@/wab/server/observability";
-import { WabPromStats, trackPostgresPool } from "@/wab/server/promstats";
+import {
+  DEFAULT_HISTOGRAM_BUCKETS,
+  WabPromLiveRequestsGauge,
+  trackPostgresPool,
+} from "@/wab/server/promstats";
 import { createRateLimiter } from "@/wab/server/rate-limit";
 import * as adminRoutes from "@/wab/server/routes/admin";
 import * as provisioningRoutes from "@/wab/server/routes/provisioning";
@@ -163,9 +166,9 @@ import {
   getTrustedHostsForSelf,
 } from "@/wab/server/routes/hosts";
 import { uploadImage } from "@/wab/server/routes/image";
-import { 
-  optimizeImageHandler, 
-  optimizeImageStaticHandler 
+import {
+  optimizeImageHandler,
+  optimizeImageStaticHandler
 } from "@/wab/server/routes/img-optimizer";
 import {
   buildLatestLoaderAssets,
@@ -376,18 +379,6 @@ function addSentry(app: express.Application, config: Config) {
   logger().debug(`Initializing Sentry with DSN: ${config.sentryDSN}`);
   Sentry.init({
     dsn: config.sentryDSN,
-    integrations: [
-      // enable HTTP calls tracing
-      new Sentry.Integrations.Http({ tracing: true }),
-      // enable Express.js middleware tracing
-      // to trace all requests to the default router
-      new Tracing.Integrations.Express({
-        app,
-      }),
-    ],
-    // We recommend adjusting this value in production, or using tracesSampler
-    // for finer control
-    tracesSampleRate: 0,
     // We need beforeSend because errors don't necessarily make their way through the Express pipeline - they can be
     // thrown from anywhere, in Express or outside (or from random async event loop iterations).
     async beforeSend(event: Sentry.Event): Promise<Sentry.Event | null> {
@@ -489,22 +480,79 @@ export function addLoggingMiddleware(app: express.Application) {
   });
 }
 
+/**
+ * Handles /metrics route and sets up the live request gauge.
+ *
+ * Call `app.set("name", <app-name>)` to set the `app` label on the gauge.
+ */
+export function addPromMetricsMiddleware(app: express.Application) {
+  const name = app.get("name");
+
+  app.use(
+    safeCast<RequestHandler>(async (req: Request, res, next) => {
+      // Live requests for all routes after this middleware will be tracked.
+      const liveRequestsGauge = new WabPromLiveRequestsGauge(app.get("name"));
+      liveRequestsGauge.onReqStart(req);
+      // 'close' event is emitted in all HTTP request scenarios
+      // https://nodejs.org/api/http.html#httprequesturl-options-callback
+      res.on("close", () => {
+        liveRequestsGauge.onReqEnd(req, res);
+      });
+
+      // Initialize req.promLabels, used in various routes to add custom labels.
+      req.promLabels = {};
+
+      next();
+    })
+  );
+
+  // Handles /metrics
+  app.use(
+    promMetrics({
+      customLabels: {
+        route: null,
+        projectId: null,
+        // Also keep track of url for codegen, as the set of
+        // urls codegen uses is reasonably small
+        ...(name === "codegen" && {
+          url: null,
+        }),
+      },
+      includeMethod: true,
+      includeStatusCode: true,
+      includePath: true,
+      transformLabels: (labels, req, _res) => {
+        labels.route = req.route?.path;
+        if (name === "codegen") {
+          labels.url = req.originalUrl;
+        }
+        Object.assign(labels, req.promLabels ?? {});
+      },
+      promClient: {
+        collectDefaultMetrics: {},
+      },
+      buckets: DEFAULT_HISTOGRAM_BUCKETS,
+    })
+  );
+}
+
 function addMiddlewares(
   app: express.Application,
-  name: string,
   config: Config,
-  expressSessionMiddleware: express.RequestHandler,
   opts?: {
     skipSession?: boolean;
   }
 ) {
-  const connectionPool = getConnection();
-
+  addPromMetricsMiddleware(app);
   addLoggingMiddleware(app);
   app.use(cookieParser());
 
+  // Our OPTIONS requests return fixed responses that don't depend on other
+  // middleware, so handle them before session middleware and others.
+  addOptionsRoutes(app);
+
   if (!opts?.skipSession) {
-    app.use(expressSessionMiddleware as express.Handler);
+    app.use(makeExpressSessionMiddleware(config));
     app.use(passport.initialize());
     app.use(passport.session());
   } else {
@@ -569,67 +617,17 @@ function addMiddlewares(
     next();
   });
 
-  // Initialize some book-keeping stuff
-  app.use(
-    safeCast<RequestHandler>(async (req: Request, res, next) => {
-      req.statsd = new WabPromStats(name);
-      req.statsd.onReqStart(req);
-      res.on("finish", () => {
-        req.statsd.onReqEnd(req, res);
-      });
-      req.promLabels = {};
-      next();
-    })
-  );
-
-  app.use(
-    promMetrics({
-      customLabels: {
-        route: null,
-        projectId: null,
-        // Also keep track of url for codegen, as the set of
-        // urls codegen uses is reasonably small
-        ...(name === "codegen" && {
-          url: null,
-        }),
-      },
-      includeMethod: true,
-      includeStatusCode: true,
-      includePath: true,
-      transformLabels: (labels, req, _res) => {
-        labels.route = req.route?.path;
-        if (name === "codegen") {
-          labels.url = req.originalUrl;
-        }
-        Object.assign(labels, req.promLabels ?? {});
-      },
-      promClient: {
-        collectDefaultMetrics: {},
-      },
-      buckets: [
-        0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 15, 20, 30, 40, 65, 80, 100, 130,
-        160, 180,
-      ],
-    })
-  );
-
   // Set up basic request configuration without universal transaction
   app.use(
     safeCast<RequestHandler>(async (req, res, next) => {
+      const connectionPool = getConnection();
       req.config = config;
       req.con = connectionPool;
       req.noTxMgr = connectionPool.createEntityManager();
       req.mailer = createMailer();
+      req.bundler = new Bundler();
       next();
     })
-  );
-  app.use(
-    safeCast<RequestHandler>(
-      async (req: Request, res: Response, next: NextFunction) => {
-        req.bundler = new Bundler();
-        next();
-      }
-    )
   );
   app.use(
     safeCast<ErrorRequestHandler>(
@@ -804,7 +802,7 @@ export function addIntegrationsRoutes(app: express.Application) {
   app.post(
     "/api/v1/server-data/sources/:dataSourceId/execute",
     cors(),
-    withNext(executeDataSourceOperationHandler)
+    executeDataSourceOperationHandler
   );
 }
 
@@ -1966,13 +1964,9 @@ export async function createApp(
     app.enable("trust proxy");
   }
 
-  addOptionsRoutes(app);
-
-  const expressSessionMiddleware = makeExpressSessionMiddleware(config);
-
   addCleanRoutes?.(app);
 
-  addMiddlewares(app, name, config, expressSessionMiddleware, opts);
+  addMiddlewares(app, config, opts);
 
   if (!config.production) {
     addStaticRoutes(app);

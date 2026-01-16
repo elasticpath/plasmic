@@ -100,9 +100,16 @@ export function LabeledItem(props: {
     indicators.length == 1 &&
     indicators[0].source === "setNonVariable" &&
     indicators[0].isDefaultTheme;
+
+  const hasParentTplStyle = indicators.some(
+    (ind) =>
+      ind.source === "theme" &&
+      (ind as any).stack?.some((s: any) => s.type === "parentTplStyle")
+  );
+
   const showIndicator =
     indicators.length > 0 &&
-    !["theme", "none"].includes(mergedSource) &&
+    (!["theme", "none"].includes(mergedSource) || hasParentTplStyle) &&
     !isDefaultTheme;
 
   const hasLabel = typeof label === "string" ? !!label.trim() : !!label;
@@ -255,6 +262,7 @@ export const DraggableDimLabel = observer(function DraggableDimLabel(props: {
   max?: number;
   dragScale?: "0.1" | "1" | "10" | "100";
   fractionDigits?: number;
+  disabledDragging?: boolean;
   onChange?: (val: string) => void;
 }) {
   const {
@@ -267,13 +275,14 @@ export const DraggableDimLabel = observer(function DraggableDimLabel(props: {
     max,
     dragScale,
     fractionDigits,
+    disabledDragging,
     onChange,
   } = props;
   const axis = props.axis ?? "x";
   const exp = props.exp || expsProvider.mergedExp();
   const [init, setInit] = React.useState<string[] | undefined>(undefined);
   const ref = React.useRef<HTMLDivElement | null>(null);
-  const isDraggingDisabled = React.useMemo(() => {
+  const isDraggingDisabledFromStyles = React.useMemo(() => {
     let isDisabled = false;
     styleNames.forEach((styleName) => {
       const rawValue = exp.get(styleName);
@@ -287,6 +296,7 @@ export const DraggableDimLabel = observer(function DraggableDimLabel(props: {
     });
     return isDisabled;
   }, [styleNames]);
+  const isDraggingDisabled = disabledDragging || isDraggingDisabledFromStyles;
   return (
     <XDraggable
       useMovement={true}
@@ -372,22 +382,24 @@ export const DraggableDimLabel = observer(function DraggableDimLabel(props: {
 
 export const LabeledStyleDimItem = observer(function LabeledStyleDimItem(
   props: Omit<React.ComponentProps<typeof LabeledStyleItem>, "children"> & {
-    dimOpts?: SetOptional<
+    dimOpts: SetOptional<
       Omit<React.ComponentProps<typeof DimTokenSpinner>, "studioCtx">,
       "value" | "onChange"
     > &
       Pick<React.ComponentProps<typeof DraggableDimLabel>, "dragScale">;
     tokenType?: StyleTokenType;
     vsh?: VariantedStylesHelper;
+    disabledDragging?: boolean;
   }
 ) {
   const { labelProps, fieldProps } = useLabel(props);
   const sc = useStyleComponent();
   const {
-    dimOpts = {},
+    dimOpts,
     label,
     tokenType,
     vsh = new VariantedStylesHelper(),
+    disabledDragging,
     ...rest
   } = props;
 
@@ -439,6 +451,7 @@ export const LabeledStyleDimItem = observer(function LabeledStyleDimItem(
         max={dimOpts.max}
         fractionDigits={dimOpts.fractionDigits ?? 0}
         dragScale={dimOpts.dragScale}
+        disabledDragging={disabledDragging}
       />
     ) : (
       label
@@ -460,8 +473,8 @@ export const LabeledStyleDimItem = observer(function LabeledStyleDimItem(
         value={value}
         onChange={onChange}
         minDropdownWidth={200}
-        {...(dimOpts || {})}
-        noClear={dimOpts?.noClear || valueSetState !== "isSet"}
+        {...dimOpts}
+        noClear={dimOpts.noClear || valueSetState !== "isSet"}
         fieldAriaProps={fieldProps}
         studioCtx={studioCtx}
         tokenType={tokenType}
@@ -481,7 +494,7 @@ export const VerticalLabeledStyleDimItem = observer(
     expsProvider: ExpsProvider;
     styleName: string;
     label: string;
-    dimOpts?: Omit<DimValueOpts, "onChange" | "value">;
+    dimOpts: Omit<DimValueOpts, "onChange" | "value">;
     isDisabled?: boolean;
   }) {
     const { expsProvider, styleName, label } = props;
@@ -851,9 +864,10 @@ export const LabeledStyleSwitchItem = observer(function LabeledStyleSwitchItem(
     value: boolean;
     onChange: (isSelected: boolean) => void;
     "data-plasmic-prop"?: string;
+    valueSlot?: React.ReactNode;
   }
 ) {
-  const { label, value, onChange, tooltip, ...rest } = props;
+  const { label, value, onChange, tooltip, valueSlot, ...rest } = props;
   const { labelProps, fieldProps } = useLabel(props);
   const sc = useStyleComponent();
   const styleName = ensureArray(props.styleName);
@@ -865,6 +879,22 @@ export const LabeledStyleSwitchItem = observer(function LabeledStyleSwitchItem(
     label: props.label,
     indicators,
   });
+
+  const switchElement = (
+    <StyleSwitch
+      isChecked={value}
+      onChange={onChange}
+      valueSetState={undefined}
+      tooltip={tooltip}
+      isDisabled={isDisabled}
+      disabledTooltip={disabledTooltip}
+      data-plasmic-prop={props["data-plasmic-prop"]}
+      {...fieldProps}
+    >
+      {null}
+    </StyleSwitch>
+  );
+
   return (
     <LabeledStyleItem
       {...rest}
@@ -873,18 +903,14 @@ export const LabeledStyleSwitchItem = observer(function LabeledStyleSwitchItem(
       isDisabled={isDisabled}
       labelAriaProps={labelProps}
     >
-      <StyleSwitch
-        isChecked={value}
-        onChange={onChange}
-        valueSetState={undefined}
-        tooltip={tooltip}
-        isDisabled={isDisabled}
-        disabledTooltip={disabledTooltip}
-        data-plasmic-prop={props["data-plasmic-prop"]}
-        {...fieldProps}
-      >
-        {null}
-      </StyleSwitch>
+      {valueSlot ? (
+        <div className="flex flex-vcenter gap-m fill-width">
+          {switchElement}
+          {valueSlot}
+        </div>
+      ) : (
+        switchElement
+      )}
     </LabeledStyleItem>
   );
 });
@@ -1223,7 +1249,7 @@ export function getValueSetState(
   } else if (
     source === "none" ||
     source === "theme" ||
-    source === "slot" ||
+    source === "parentTplStyle" ||
     source === "derived"
   ) {
     return "isUnset";

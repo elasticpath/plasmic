@@ -1,6 +1,7 @@
 import { initPlasmicLoader } from "@plasmicapp/loader-nextjs/react-server-conditional";
 import * as NextNavigation from "next/navigation";
 
+const host = "https://codegen.integration.storefront.elasticpath.com";
 const projectId = process.env.NEXT_PUBLIC_PROJECT_ID;
 const projectToken = process.env.NEXT_PUBLIC_PROJECT_TOKEN;
 
@@ -9,8 +10,7 @@ if (!projectId || !projectToken) {
 }
 
 export const PLASMIC = initPlasmicLoader({
-  nextNavigation: NextNavigation,
-  host: "https://codegen.integration.storefront.elasticpath.com",
+  host,
   projects: [
     {
       id: projectId,
@@ -23,4 +23,7 @@ export const PLASMIC = initPlasmicLoader({
   // project, allowing you to see your designs without publishing.  Please
   // only use this for development, as this is significantly slower.
   preview: true,
+
+  // Needed for Next.js app router support.
+  nextNavigation: NextNavigation,
 });

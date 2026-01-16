@@ -22,6 +22,7 @@ import {
   TplExpsProvider,
   useStyleComponent,
 } from "@/wab/client/components/style-controls/StyleComponent";
+import { EditableLabel } from "@/wab/client/components/widgets/EditableLabel";
 import { Icon as IconComponent } from "@/wab/client/components/widgets/Icon";
 import IconButton from "@/wab/client/components/widgets/IconButton";
 import { DimManip } from "@/wab/client/DimManip";
@@ -49,7 +50,12 @@ import {
   isTplComponent,
   isTplImage,
 } from "@/wab/shared/core/tpls";
-import { getLengthUnits } from "@/wab/shared/css";
+import { parseAspectRatio } from "@/wab/shared/css/aspect-ratio";
+import {
+  LENGTH_PERCENTAGE_UNITS,
+  LENGTH_UNITS,
+  NUMBER_UNITS,
+} from "@/wab/shared/css/types";
 import { parseDataUrl, SVG_MEDIA_TYPE } from "@/wab/shared/data-urls";
 import { isContentLayoutTpl } from "@/wab/shared/layoututils";
 import { isKnownImageAssetRef } from "@/wab/shared/model/classes";
@@ -70,6 +76,18 @@ import React from "react";
 interface SizePanelSectionState {
   showMore: boolean;
 }
+export const sizeStyleProps = [
+  "width",
+  "height",
+  "min-width",
+  "min-height",
+  "max-width",
+  "max-height",
+  "aspect-ratio",
+  "flex-grow",
+  "flex-shrink",
+  "flex-basis",
+];
 
 class SizeSection_ extends StyleComponent<
   StyleComponentProps,
@@ -111,17 +129,7 @@ class SizeSection_ extends StyleComponent<
     return (
       <StylePanelSection
         expsProvider={this.props.expsProvider}
-        styleProps={[
-          "width",
-          "height",
-          "min-width",
-          "min-height",
-          "max-width",
-          "max-height",
-          "flex-grow",
-          "flex-shrink",
-          "flex-basis",
-        ]}
+        styleProps={sizeStyleProps}
         title={"Size"}
         hasMore
         data-test-id="size-section"
@@ -254,6 +262,45 @@ class SizeSection_ extends StyleComponent<
                         extraOptions: ["none"],
                       }}
                       tokenType={"Spacing"}
+                      vsh={vsh}
+                    />
+                  </FullRow>
+                ),
+              },
+              {
+                collapsible: !isSetOrInherited(
+                  getValueSetState(...this.definedIndicators("aspect-ratio"))
+                ),
+                content: (
+                  <FullRow>
+                    <LabeledStyleDimItem
+                      label="Aspect Ratio"
+                      styleName="aspect-ratio"
+                      disabledDragging
+                      dimOpts={{
+                        allowedUnits: NUMBER_UNITS,
+                        extraOptions: ["auto"],
+                        disableSpin: true,
+                        hideArrow: true,
+                        allowFunctions: false,
+                        validate: (val) => {
+                          const result = parseAspectRatio(val);
+                          if ("aspectRatio" in result) {
+                            return { valid: true };
+                          }
+                          return {
+                            valid: false,
+                            error:
+                              'Must be "auto", a decimal (1.5), or fraction (16/9)',
+                          };
+                        },
+                        transform: (val) => {
+                          const result = parseAspectRatio(val);
+                          return "aspectRatio" in result
+                            ? result.aspectRatio
+                            : val;
+                        },
+                      }}
                       vsh={vsh}
                     />
                   </FullRow>
@@ -557,9 +604,8 @@ const SizeControl = observer(function SizeRow(props: {
         onChange: (val) => setProp(val),
         min: 0,
         // Cannot specify a root in %
-        allowedUnits: isRoot
-          ? getLengthUnits("px").filter((x) => x !== "%")
-          : getLengthUnits("px"),
+        allowedUnits: isRoot ? LENGTH_UNITS : LENGTH_PERCENTAGE_UNITS,
+        allowFunctions: true,
         hideArrow: true,
       }}
       tokenType={"Spacing"}
@@ -618,6 +664,7 @@ const FlexGrowControls = observer(function FlexGrowControls(props: {
   ) => {
     const val = prop == "flex-grow" ? exp().get(prop) : getFlexShrinkVal(prop);
     const isNonzero = +val > 0;
+    const strVal = `${+val}`;
 
     return (
       <LabeledStyleSwitchItem
@@ -636,6 +683,38 @@ const FlexGrowControls = observer(function FlexGrowControls(props: {
             })
           );
         }}
+        valueSlot={
+          <EditableLabel
+            value={strVal}
+            labelFactory={({ className, ...restProps }) => (
+              <div
+                className={cn(
+                  { dimfg: +val === 0 || +val === 1 },
+                  "code",
+                  "pointer",
+                  className
+                )}
+                {...restProps}
+              />
+            )}
+            disabled={isDisabled}
+            inputBoxFactory={(inputProps) => (
+              <input {...inputProps} autoFocus type="number" min="0" />
+            )}
+            onEdit={(value) => {
+              const num = parseFloat(value);
+              if (!isNaN(num) && num >= 0) {
+                spawn(
+                  expsProvider.studioCtx.changeUnsafe(() => {
+                    exp().set(prop, String(num));
+                  })
+                );
+                return true;
+              }
+              return false;
+            }}
+          />
+        }
       />
     );
   };

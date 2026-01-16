@@ -20,18 +20,26 @@ import { StudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import { ViewCtx } from "@/wab/client/studio-ctx/view-ctx";
 import { PublicStyleSection } from "@/wab/shared/ApiSchema";
 import { PageComponent } from "@/wab/shared/core/components";
+import { ExprCtx } from "@/wab/shared/core/exprs";
 import { canEditStyleSection } from "@/wab/shared/ui-config-utils";
 import { observer } from "mobx-react";
 import React from "react";
 import { useLocalStorage } from "react-use";
 
 export const PageTab = observer(function PageTab(props: {
-  viewCtx?: ViewCtx | null;
+  viewCtx: ViewCtx;
   studioCtx: StudioCtx;
   page: PageComponent;
   isHalf?: boolean;
 }) {
   const { studioCtx, page, viewCtx, isHalf = false } = props;
+
+  const focusedOrFirstViewCtx = studioCtx.focusedOrFirstViewCtx();
+  const exprCtx: ExprCtx = {
+    projectFlags: studioCtx.projectFlags(),
+    component: focusedOrFirstViewCtx?.component ?? null,
+    inStudio: true,
+  };
 
   const appConfig = studioCtx.appCtx.appConfig;
   const [showSettings, setShowSettings] = React.useState(false);
@@ -40,11 +48,10 @@ export const PageTab = observer(function PageTab(props: {
     false
   );
 
-  if (!viewCtx) {
-    return null;
-  }
-
   const uiConfig = studioCtx.getCurrentUiConfig();
+
+  const env: Record<string, any> =
+    viewCtx.getCanvasEnvForTpl(page.tplTree) ?? {};
 
   const canEdit = (section: PublicStyleSection) => {
     return canEditStyleSection(uiConfig, section, {
@@ -86,7 +93,7 @@ export const PageTab = observer(function PageTab(props: {
     <>
       {showSettings && (
         <TopModal title="Page Settings" onClose={() => setShowSettings(false)}>
-          <PageSettings page={page} />
+          <PageSettings page={page} viewCtx={viewCtx} exprCtx={exprCtx} />
         </TopModal>
       )}
       <SidebarSection
@@ -96,8 +103,8 @@ export const PageTab = observer(function PageTab(props: {
         defaultExtraContentExpanded={isExpanded}
         onExtraContentCollapsed={() => setExpanded(false)}
         onExtraContentExpanded={() => setExpanded(true)}
-        title={appConfig.rightTabs ? undefined : headerTitle}
-        controls={appConfig.rightTabs ? undefined : headerControls}
+        title={undefined}
+        controls={undefined}
       >
         {(renderMaybeCollapsibleRows) => {
           return (
@@ -108,17 +115,19 @@ export const PageTab = observer(function PageTab(props: {
                     isHalf && !!studioCtx.focusedViewCtx()?.focusedTpl(),
                   content: (
                     <>
-                      {appConfig.rightTabs && (
-                        <SidebarSection>
-                          <div className={S.componentTabHeaderContainer}>
-                            {headerTitle}
-                            {headerControls}
-                          </div>
-                        </SidebarSection>
-                      )}
+                      <SidebarSection>
+                        <div className={S.componentTabHeaderContainer}>
+                          {headerTitle}
+                          {headerControls}
+                        </div>
+                      </SidebarSection>
                       {canEdit(PublicStyleSection.PageMeta) && (
                         <>
-                          <PageMetaPanel page={page} viewCtx={viewCtx} />
+                          <PageMetaPanel
+                            page={page}
+                            viewCtx={viewCtx}
+                            env={env}
+                          />
                           <PageURLParametersSection page={page} />
                           <PageMinRoleSection page={page} />
                         </>

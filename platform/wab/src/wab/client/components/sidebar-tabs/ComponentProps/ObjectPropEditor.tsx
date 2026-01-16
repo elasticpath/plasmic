@@ -5,7 +5,7 @@ import {
   PropValueEditorContext,
   usePropValueEditorContext,
 } from "@/wab/client/components/sidebar-tabs/PropEditorRow";
-import { SidebarModal } from "@/wab/client/components/sidebar/SidebarModal";
+import { PopoverFrame } from "@/wab/client/components/sidebar/PopoverFrame";
 import { SidebarSection } from "@/wab/client/components/sidebar/SidebarSection";
 import Button from "@/wab/client/components/widgets/Button";
 import { useStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
@@ -19,11 +19,11 @@ import {
 } from "@/wab/shared/code-components/code-components";
 import { assert, uncheckedCast, withoutNils } from "@/wab/shared/common";
 import { codeLit, summarizeExpr } from "@/wab/shared/core/exprs";
-import { summarizeVal } from "@/wab/shared/core/vals";
 import { DefinedIndicatorType } from "@/wab/shared/defined-indicator";
 import { isKnownExpr, TemplatedString } from "@/wab/shared/model/classes";
 import { smartHumanize } from "@/wab/shared/strs";
 import { PropType } from "@plasmicapp/host";
+import { ObjectType } from "@plasmicapp/host/dist/registerFunction";
 import { isString } from "lodash";
 import { observer } from "mobx-react";
 import React from "react";
@@ -53,6 +53,7 @@ export const ObjectPropEditor = observer(function ObjectPropEditor<
   controlExtras: ControlExtras;
   propType: StudioPropType<any>;
   disabled?: boolean;
+  display?: ObjectType<any, any>["display"];
 }) {
   const {
     compositeValue,
@@ -69,11 +70,9 @@ export const ObjectPropEditor = observer(function ObjectPropEditor<
     controlExtras,
     propType,
     disabled,
+    display = "popup",
   } = props;
   const sc = useStudioCtx();
-  const [showModal, setShowModal] = React.useState(defaultShowModal);
-  const keepOpen =
-    !!sc.onboardingTourState.flags.keepInspectObjectPropEditorOpen;
 
   const valueEditorCtx = usePropValueEditorContext();
   const exprCtx = valueEditorCtx.exprCtx;
@@ -85,153 +84,248 @@ export const ObjectPropEditor = observer(function ObjectPropEditor<
   } else {
     defaultValue = usePropValueEditorContext().defaultValue ?? {};
   }
-  return (
-    <>
-      <Button
-        type={
-          withoutNils(["leftAligned", buttonType]) as React.ComponentProps<
-            typeof Button
-          >["type"]
+
+  const [showModal, setShowModal] = React.useState(false);
+  const keepOpen =
+    !!sc.onboardingTourState.flags.keepInspectObjectPropEditorOpen;
+  const buttonRef = React.useRef<HTMLButtonElement>(null);
+  const shouldShowModal = showModal || !!(defaultShowModal && keepOpen);
+
+  // Defer showing modal until the next frame so the button ref is available for positioning
+  React.useEffect(() => {
+    if (defaultShowModal && !showModal) {
+      requestAnimationFrame(() => setShowModal(true));
+    }
+  }, [defaultShowModal]);
+
+  const getFieldItemMeta = (
+    fieldName: string,
+    fieldPropType: PropType<unknown>
+  ) => {
+    const nextControlExtras: ControlExtras = {
+      path: [...controlExtras.path, fieldName],
+      item: evaluatedValue,
+    };
+    const fieldValue =
+      compositeValue && fieldName in compositeValue
+        ? compositeValue[fieldName]
+        : undefined;
+    const fieldValueExpr = isKnownExpr(fieldValue)
+      ? fieldValue
+      : getPropTypeType(fieldPropType) === "string" && isString(fieldValue)
+      ? new TemplatedString({ text: [fieldValue] })
+      : codeLit(fieldValue);
+
+    const definedIndicator: DefinedIndicatorType = isKnownExpr(fieldValue)
+      ? {
+          source: "setNonVariable",
+          prop: fieldName,
+          value: summarizeExpr(fieldValue, exprCtx),
         }
-        size="stretch"
-        onClick={() => {
-          setShowModal(true);
-        }}
-        disabled={disabled}
-        data-plasmic-prop={props["data-plasmic-prop"]}
-      >
-        {objectNameFunc?.(evaluatedValue, componentPropValues, ccContextData, {
-          ...controlExtras,
-          item: evaluatedValue,
-        }) ?? "Configure..."}
-      </Button>
-      <SidebarModal
-        show={showModal || (defaultShowModal && keepOpen)}
-        persistOnInteractOutside={keepOpen}
-        title={`Edit ${
-          objectNameFunc?.(
-            evaluatedValue,
-            componentPropValues,
-            ccContextData,
-            controlExtras
-          ) ?? "Object"
-        }`}
-        onClose={() => {
-          setShowModal(false);
-          onClose?.();
-          sc.tourActionEvents.dispatch({
-            type: TutorialEventsType.ClosedPropEditor,
-          });
-        }}
-      >
-        <div className="pt-xxlg pb-xsm">
-          <SidebarSection id="object-prop-editor-modal" key={modalKey} noBorder>
-            {(renderMaybeCollapsibleRows) =>
-              renderMaybeCollapsibleRows(
-                Object.entries(fields).map(([fieldName, fieldPropType]) => {
-                  const nextControlExtras: ControlExtras = {
-                    path: [...controlExtras.path, fieldName],
-                    item: evaluatedValue,
-                  };
-                  if (
-                    !isPropShown(
-                      fieldPropType,
-                      componentPropValues,
-                      ccContextData,
-                      nextControlExtras
-                    )
-                  ) {
-                    return null;
-                  }
-                  const fieldValue =
-                    compositeValue && fieldName in compositeValue
-                      ? compositeValue[fieldName]
-                      : undefined;
-                  const fieldValueExpr = isKnownExpr(fieldValue)
-                    ? fieldValue
-                    : getPropTypeType(fieldPropType) === "string" &&
-                      isString(fieldValue)
-                    ? new TemplatedString({ text: [fieldValue] })
-                    : codeLit(fieldValue);
+      : { source: "none" };
+    return {
+      label:
+        maybePropTypeToDisplayName(fieldPropType) ?? smartHumanize(fieldName),
+      fieldValueExpr,
+      definedIndicator,
+      onChangeItem: (newFieldValue) => {
+        const newValue = { ...compositeValue };
+        if (!newFieldValue) {
+          delete newValue[fieldName];
+        } else {
+          newValue[fieldName] = newFieldValue;
+        }
+        onChange(uncheckedCast(newValue));
+      },
+      onDeleteItem: () => {
+        if (compositeValue) {
+          if (fieldName in defaultValue) {
+            compositeValue[fieldName] = defaultValue[fieldName];
+          } else {
+            delete compositeValue[fieldName];
+          }
+          onChange(compositeValue);
+        }
+      },
+      fieldPropType,
+      nextControlExtras,
+      isHidden: !isPropShown(
+        fieldPropType,
+        componentPropValues,
+        ccContextData,
+        nextControlExtras
+      ),
+      isCollapsible: !!isAdvancedProp(fieldPropType, undefined) && !fieldValue,
+    };
+  };
 
-                  const definedIndicator: DefinedIndicatorType = isKnownExpr(
-                    fieldValue
-                  )
-                    ? {
-                        source: "setNonVariable",
-                        prop: fieldName,
-                        value: summarizeExpr(fieldValue, exprCtx),
-                      }
-                    : { source: "none" };
+  const renderItem = (
+    fieldName,
+    fieldPropType,
+    opts = {
+      showConnectors: false,
+      isLastItem: false,
+    }
+  ) => {
+    const {
+      label,
+      onChangeItem,
+      onDeleteItem,
+      fieldValueExpr,
+      definedIndicator,
+      nextControlExtras,
+      isHidden,
+    } = getFieldItemMeta(fieldName, fieldPropType);
 
-                  return {
-                    collapsible:
-                      !!isAdvancedProp(fieldPropType, undefined) && !fieldValue,
-                    content: (
-                      <PropValueEditorContext.Provider
-                        value={{
-                          ...valueEditorCtx,
-                          defaultValue: defaultValue[fieldName],
-                        }}
-                      >
-                        <InnerPropEditorRow
-                          key={fieldName}
-                          controlExtras={nextControlExtras}
-                          propType={fieldPropType}
-                          attr={fieldName}
-                          label={
-                            maybePropTypeToDisplayName(fieldPropType) ??
-                            smartHumanize(fieldName)
-                          }
-                          onChange={(newFieldValue) => {
-                            const newValue = { ...compositeValue };
-                            if (!newFieldValue) {
-                              delete newValue[fieldName];
-                            } else {
-                              newValue[fieldName] = newFieldValue;
-                            }
-                            onChange(uncheckedCast(newValue));
-                          }}
-                          onDelete={() => {
-                            if (compositeValue) {
-                              if (fieldName in defaultValue) {
-                                compositeValue[fieldName] =
-                                  defaultValue[fieldName];
-                              } else {
-                                delete compositeValue[fieldName];
-                              }
-                              onChange(compositeValue);
-                            }
-                          }}
-                          expr={fieldValueExpr}
-                          disableLinkToProp={true}
-                          definedIndicator={definedIndicator}
-                        />
-                      </PropValueEditorContext.Provider>
-                    ),
-                  };
-                })
-              )
-            }
-          </SidebarSection>
-        </div>
-      </SidebarModal>
-    </>
-  );
-});
+    if (isHidden) {
+      return null;
+    }
 
-function _summarizeObject(obj: object) {
-  const keys = Object.keys(obj);
-  if (keys.length === 0) {
-    return "(empty)";
-  } else {
-    return (
-      <div className="text-ellipsis fill-width">
-        {keys
-          .slice(0, 5)
-          .map((key) => `${key}=${summarizeVal(obj[key])}`)
-          .join(", ")}
-      </div>
+    const innerRow = (
+      <InnerPropEditorRow
+        controlExtras={nextControlExtras}
+        propType={fieldPropType}
+        attr={fieldName}
+        label={label}
+        icon={
+          opts.showConnectors ? (
+            <div
+              className="property-connector-line-icon"
+              style={{ left: "-16px", position: "absolute" }}
+            />
+          ) : undefined
+        }
+        onChange={onChangeItem}
+        onDelete={onDeleteItem}
+        expr={fieldValueExpr}
+        disableLinkToProp={true}
+        definedIndicator={definedIndicator}
+      />
     );
+
+    return (
+      <PropValueEditorContext.Provider
+        key={fieldName}
+        value={{
+          ...valueEditorCtx,
+          defaultValue: defaultValue[fieldName],
+        }}
+      >
+        {opts.showConnectors ? (
+          <div className="mb-m rel">
+            {innerRow}
+            {!opts.isLastItem && (
+              <div className="property-connector-vertical-line" />
+            )}
+          </div>
+        ) : (
+          innerRow
+        )}
+      </PropValueEditorContext.Provider>
+    );
+  };
+
+  switch (display) {
+    case "popup":
+    case undefined:
+      return (
+        <>
+          <Button
+            ref={buttonRef}
+            type={
+              withoutNils(["leftAligned", buttonType]) as React.ComponentProps<
+                typeof Button
+              >["type"]
+            }
+            size="stretch"
+            onClick={() => setShowModal(true)}
+            disabled={disabled}
+            data-plasmic-prop={props["data-plasmic-prop"]}
+            className={shouldShowModal ? "button--active" : undefined}
+          >
+            {objectNameFunc?.(
+              evaluatedValue,
+              componentPropValues,
+              ccContextData,
+              {
+                ...controlExtras,
+                item: evaluatedValue,
+              }
+            ) ?? "Configure..."}
+          </Button>
+          <PopoverFrame
+            show={shouldShowModal}
+            title={`Edit ${
+              objectNameFunc?.(
+                evaluatedValue,
+                componentPropValues,
+                ccContextData,
+                controlExtras
+              ) ?? "Object"
+            }`}
+            valuePath={controlExtras.path}
+            onClose={() => {
+              setShowModal(false);
+              onClose?.();
+              sc.tourActionEvents.dispatch({
+                type: TutorialEventsType.ClosedPropEditor,
+              });
+            }}
+            persistOnInteractOutside={keepOpen}
+            triggerElement={buttonRef.current ?? undefined}
+          >
+            <div className="pt-xxlg pb-xsm">
+              <SidebarSection
+                id="object-prop-editor-popover"
+                key={modalKey}
+                noBorder
+              >
+                {(renderMaybeCollapsibleRows) =>
+                  renderMaybeCollapsibleRows(
+                    Object.entries(fields).map(([fieldName, fieldPropType]) => {
+                      const { isHidden, isCollapsible } = getFieldItemMeta(
+                        fieldName,
+                        fieldPropType
+                      );
+                      if (isHidden) {
+                        return null;
+                      }
+                      return {
+                        collapsible: isCollapsible,
+                        content: renderItem(fieldName, fieldPropType),
+                      };
+                    })
+                  )
+                }
+              </SidebarSection>
+            </div>
+          </PopoverFrame>
+        </>
+      );
+    case "inline": {
+      const fieldEntries = Object.entries(fields);
+      return (
+        <div className="pl-xxlg">
+          {fieldEntries.map(([fieldName, fieldPropType], index) =>
+            renderItem(fieldName, fieldPropType, {
+              showConnectors: true,
+              isLastItem: index === fieldEntries.length - 1,
+            })
+          )}
+        </div>
+      );
+    }
+    case "flatten":
+      return (
+        <>
+          {Object.entries(fields).map(([fieldName, fieldPropType]) =>
+            renderItem(fieldName, fieldPropType)
+          )}
+        </>
+      );
+    default: {
+      const _exhaustive: never = display as never;
+      throw new Error(`Unexpected display value: ${_exhaustive}`);
+    }
   }
-}
+});

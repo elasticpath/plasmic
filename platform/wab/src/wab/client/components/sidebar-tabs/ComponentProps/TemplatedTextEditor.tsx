@@ -1,5 +1,5 @@
-import { resetNodes as doResetNodes } from "@/wab/client/components/canvas/slate";
 import { ContextMenuContext } from "@/wab/client/components/ContextMenuIndicator/ContextMenuIndicator";
+import { resetNodes as doResetNodes } from "@/wab/client/components/canvas/slate";
 import { CopilotCodePrompt } from "@/wab/client/components/copilot/CopilotCodePrompt";
 import styles from "@/wab/client/components/sidebar-tabs/ComponentProps/TemplatedTextEditor.module.scss";
 import DataPicker, {
@@ -7,6 +7,7 @@ import DataPicker, {
 } from "@/wab/client/components/sidebar-tabs/DataBinding/DataPicker";
 import { PropEditorRef } from "@/wab/client/components/sidebar-tabs/PropEditorRow";
 import { useStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
+import { zIndex } from "@/wab/client/z-index";
 import { useSignalListener } from "@/wab/commons/components/use-signal-listener";
 import { DropFirst } from "@/wab/commons/types";
 import {
@@ -18,12 +19,12 @@ import {
   xSetDefault,
 } from "@/wab/shared/common";
 import {
+  ExprCtx,
   asCode,
   clone,
   codeLit,
   createExprForDataPickerValue,
   customCode,
-  ExprCtx,
   extractValueSavedFromDataPicker,
   isRealCodeExpr,
   summarizeExpr,
@@ -36,10 +37,10 @@ import { tryEvalExpr } from "@/wab/shared/eval";
 import {
   Component,
   CustomCode,
-  isKnownCustomCode,
-  isKnownObjectPath,
   ObjectPath,
   TemplatedString,
+  isKnownCustomCode,
+  isKnownObjectPath,
 } from "@/wab/shared/model/classes";
 import { DataSourceSchema } from "@plasmicapp/data-sources";
 import { Popover, Tooltip } from "antd";
@@ -58,7 +59,6 @@ import ReactDOM from "react-dom";
 import { usePrevious } from "react-use";
 import {
   BasePoint,
-  createEditor,
   Editor,
   Node,
   Range,
@@ -66,6 +66,7 @@ import {
   Element as SlateElement,
   Text,
   Transforms,
+  createEditor,
 } from "slate";
 import { withHistory } from "slate-history";
 import {
@@ -190,6 +191,7 @@ export const TemplatedTextEditor = React.forwardRef<
 
     const [validSqlString, setValidSqlString] = React.useState(true);
     const studioCtx = useStudioCtx();
+    const viewCtx = studioCtx.focusedViewCtx();
 
     const slateContainerRef = React.useRef<HTMLDivElement>(null);
 
@@ -206,27 +208,26 @@ export const TemplatedTextEditor = React.forwardRef<
       [slateContainerRef, editor]
     );
 
+    const exprCtx = React.useMemo(
+      () => ({
+        projectFlags: studioCtx.projectFlags(),
+        component: component ?? null,
+        projectId: viewCtx?.siteInfo.id,
+        inStudio: true,
+      }),
+      [component, studioCtx]
+    );
+
     const value = React.useMemo(
-      () =>
-        parseTemplatedStringToSlateNodes(templatedString, {
-          projectFlags: studioCtx.projectFlags(),
-          component: component ?? null,
-          inStudio: true,
-        }),
-      [templatedString, component, studioCtx]
+      () => parseTemplatedStringToSlateNodes(templatedString, exprCtx),
+      [templatedString, exprCtx]
     );
 
     const isEmptyTextSlateDescendant = (descendants: Descendant[]) => {
       if (descendants.length !== 1) {
         return false;
       }
-      return (
-        getTextFromDescendents(descendants, {
-          projectFlags: studioCtx.projectFlags(),
-          component: component ?? null,
-          inStudio: true,
-        }) === "``"
-      );
+      return getTextFromDescendents(descendants, exprCtx) === "``";
     };
 
     const onSlateChange = React.useCallback(
@@ -266,6 +267,7 @@ export const TemplatedTextEditor = React.forwardRef<
           data,
           schema,
           showExpressionAsPreviewValue,
+          exprCtx,
           prefix,
           disabled
         ),
@@ -299,6 +301,7 @@ export const TemplatedTextEditor = React.forwardRef<
     }, []);
 
     const [moved, setMoved] = useState(false);
+    const ctx = useContext(ContextMenuContext);
 
     const previousValue = React.useRef(value);
     // Slate doesn't support changing the values externally, so we need to keep
@@ -306,21 +309,21 @@ export const TemplatedTextEditor = React.forwardRef<
     useLayoutEffect(() => {
       if (
         previousValue.current !== value &&
-        getTextFromDescendents(editor.children, {
-          projectFlags: studioCtx.projectFlags(),
-          component: component ?? null,
-          inStudio: true,
-        }) !==
-          getTextFromDescendents(value, {
-            projectFlags: studioCtx.projectFlags(),
-            component: component ?? null,
-            inStudio: true,
-          })
+        getTextFromDescendents(editor.children, exprCtx) !==
+          getTextFromDescendents(value, exprCtx)
       ) {
         resetNodes(editor, { nodes: value as SlateDescendant[] });
       }
       previousValue.current = value;
     }, [value, component, studioCtx]);
+
+    const insertDynamicValue = React.useCallback(() => {
+      if (!templatedString) {
+        ctx.useDynamicValue();
+      } else {
+        insertCodeTag(editor);
+      }
+    }, [templatedString, editor, ctx]);
 
     return (
       <div className="flex-col fill-width">
@@ -338,11 +341,13 @@ export const TemplatedTextEditor = React.forwardRef<
             <CustomCaret
               slateContainerRef={slateContainerRef}
               scrollerContainerClassName={scrollerContainerClassName}
+              onCaretClick={insertDynamicValue}
             />
             <Editable
               className={cx(
                 {
                   "templated-string-input": true,
+                  "templated-string-input--multiLine": multiLine === "always",
                   "templated-string-input--moved": moved,
                   "fill-width": true,
                   code: !!sql,
@@ -378,11 +383,7 @@ export const TemplatedTextEditor = React.forwardRef<
                 resetNodes(editor, {
                   nodes: parseTemplatedStringToSlateNodes(
                     interpolatedStringToTemplatedString(str),
-                    {
-                      projectFlags: studioCtx.projectFlags(),
-                      component: component ?? null,
-                      inStudio: true,
-                    }
+                    exprCtx
                   ) as SlateDescendant[],
                 });
               }}
@@ -390,15 +391,7 @@ export const TemplatedTextEditor = React.forwardRef<
               dataSourceSchema={dataSourceSchema}
               currentValue={templatedString?.text
                 .map((v) =>
-                  typeof v === "string"
-                    ? v
-                    : `{{ ${
-                        asCode(v, {
-                          projectFlags: studioCtx.projectFlags(),
-                          component: component ?? null,
-                          inStudio: true,
-                        }).code
-                      } }}`
+                  typeof v === "string" ? v : `{{ ${asCode(v, exprCtx).code} }}`
                 )
                 .join("")}
             />
@@ -524,6 +517,7 @@ function renderElement(
   data: Record<string, any> | undefined,
   schema: DataPickerTypesSchema | undefined,
   showExpressionAsPreviewValue: boolean | undefined,
+  exprCtx: ExprCtx | undefined,
   prefix: string | undefined,
   disabled: boolean | undefined
 ) {
@@ -534,6 +528,7 @@ function renderElement(
           {...(props as any)}
           data={data}
           schema={schema}
+          exprCtx={exprCtx}
           showExpressionAsPreviewValue={showExpressionAsPreviewValue}
           disabled={disabled}
         />
@@ -800,6 +795,7 @@ function CodeTag({
 
   return (
     <Popover
+      zIndex={zIndex.dataPicker}
       content={
         <DataPicker
           value={value}
@@ -906,11 +902,13 @@ function DefaultElement({
 interface CustomCaretProps {
   slateContainerRef: React.RefObject<HTMLDivElement>;
   scrollerContainerClassName?: string;
+  onCaretClick: () => void;
 }
 
 function CustomCaret({
   slateContainerRef,
   scrollerContainerClassName,
+  onCaretClick,
 }: CustomCaretProps) {
   const editor = useSlate();
   const { selection } = editor;
@@ -990,7 +988,7 @@ function CustomCaret({
       } else {
         Transforms.select(editor, cachedAnchor);
       }
-      insertCodeTag(editor);
+      onCaretClick();
     },
     [
       editor,
@@ -998,6 +996,7 @@ function CustomCaret({
       cachedAnchor,
       boundingClientRect,
       slateContainerRef.current,
+      onCaretClick,
     ]
   );
 

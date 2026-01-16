@@ -164,9 +164,9 @@ export function getSupportedObjectKeys(
         .map((key) => {
           const meta: DataMeta | undefined = object[mkMetaName(key)];
           if (isNonNil(meta)) {
-            return { key: key, label: meta.label };
+            return { key, label: meta.label };
           }
-          return { key: key };
+          return { key };
         })
     : [];
 }
@@ -294,7 +294,8 @@ export function prepareEnvForDataPicker(
   if (!data || !component) {
     return data;
   }
-  const fixedData = { ...data };
+  const { dataTokensEnv, ...fixedData } = data;
+
   const isFocusedTplInTplSlot = tpl ? getAncestorTplSlot(tpl, true) : false;
   if (!isFocusedTplInTplSlot) {
     if ("$props" in fixedData) {
@@ -323,6 +324,10 @@ export function prepareEnvForDataPicker(
         }
       }
     }
+  }
+  if (dataTokensEnv) {
+    fixedData[mkMetaName("$dataTokens")] = { label: "Data Tokens" };
+    fixedData.$dataTokens = dataTokensEnv;
   }
   return fixedData;
 }

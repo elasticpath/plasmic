@@ -216,6 +216,7 @@ import { CreateChatCompletionRequest } from "@/wab/shared/copilot/prompt-utils";
 import {
   cloneSite,
   fixAppAuthRefs,
+  fixDataTokenProjectRefs,
   getAllOpExprSourceIdsUsedInSite,
 } from "@/wab/shared/core/sites";
 import { SplitStatus } from "@/wab/shared/core/splits";
@@ -4006,6 +4007,8 @@ export class DbMgr implements MigrationDbMgr {
     // Get the workspaceId from the project as the project may have went to the playground workspace
     const projectWorkspaceId = project.workspaceId;
 
+    fixDataTokenProjectRefs(clonedSite, fromProject.id, project.id);
+
     const fromAppAuthConfig = await this.getAppAuthConfig(fromProject.id, true);
     let oldToNewSourceIds: Record<string, string> = {};
     let oldToNewRoleIds: Record<string, string> = {};
@@ -5710,7 +5713,7 @@ export class DbMgr implements MigrationDbMgr {
     const perms = await this.permissions()
       .createQueryBuilder("permissions")
       .where(`lower(permissions.email) = lower(:email)`, { email })
-      .andWhere("permissions.user_id IS NULL") // Only pending permissions
+      .andWhere("permissions.userId IS NULL") // Only pending permissions
       .andWhere("permissions.deletedAt is null")
       .getMany();
     return perms.length > 0;

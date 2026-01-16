@@ -13,10 +13,14 @@ import {
   ListBoxItem,
 } from "@/wab/client/components/widgets";
 import { Icon } from "@/wab/client/components/widgets/Icon";
+import PlayIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__PlaySvg";
 import PlusIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__Plus";
+import StopIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__Stop";
+import { useForceUpdate } from "@/wab/client/useForceUpdate";
 import { makeVariantedStylesHelperFromCurrentCtx } from "@/wab/client/utils/style-utils";
 import { MaybeWrap } from "@/wab/commons/components/ReactUtil";
-import { ANIMATION_SEQUENCES_CAP } from "@/wab/shared/Labels";
+import { useSignalListener } from "@/wab/commons/components/use-signal-listener";
+import { ANIMATIONS_LOWER } from "@/wab/shared/Labels";
 import { VariantedStylesHelper } from "@/wab/shared/VariantedStylesHelper";
 import { arrayMoveIndex, arrayRemove } from "@/wab/shared/collections";
 import { spawn } from "@/wab/shared/common";
@@ -54,6 +58,10 @@ export const AnimationsSection = observer(function AnimationsSection(
 
   const vsh = props.vsh ?? makeVariantedStylesHelperFromCurrentCtx(studioCtx);
 
+  const focusedTpl = studioCtx.focusedViewCtx()?.focusedTpl();
+  const forceUpdate = useForceUpdate();
+  useSignalListener(studioCtx.animationChanged, forceUpdate, [studioCtx]);
+
   const updateAnimations = (newAnimations: Animation[]) => {
     spawn(
       studioCtx.change(({ success }) => {
@@ -62,6 +70,7 @@ export const AnimationsSection = observer(function AnimationsSection(
         return success();
       })
     );
+    triggerAnimationPreviewOnUpdate(newAnimations);
   };
 
   const maybeCloneInheritedAnimations = () => {
@@ -90,7 +99,7 @@ export const AnimationsSection = observer(function AnimationsSection(
     if (allAnimSequences.length === 0) {
       studioCtx.switchLeftTab("animationSequences", { highlight: true });
       notification.warn({
-        message: `Please add ${ANIMATION_SEQUENCES_CAP} in your project.`,
+        message: `Please add ${ANIMATIONS_LOWER} in your project.`,
       });
       return;
     }
@@ -118,6 +127,38 @@ export const AnimationsSection = observer(function AnimationsSection(
     indicators: sc.definedIndicators("animation"),
   });
 
+  const playAnimations = (previewAnimations: Animation[]) => {
+    if (previewAnimations.length === 0 || isDisabled || !focusedTpl) {
+      return;
+    }
+
+    spawn(
+      studioCtx.styleMgrBcast.playAnimationPreview(
+        focusedTpl,
+        targetRs,
+        previewAnimations
+      )
+    );
+  };
+
+  const stopAnimations = () => {
+    if (focusedTpl) {
+      studioCtx.styleMgrBcast.stopAnimationPreview(focusedTpl, targetRs);
+    }
+  };
+
+  const isAnimationPlaying =
+    focusedTpl &&
+    studioCtx.styleMgrBcast.hasActiveAnimationPreview(focusedTpl, targetRs);
+
+  function triggerAnimationPreviewOnUpdate(previewAnimations: Animation[]) {
+    if (isAnimationPlaying) {
+      stopAnimations();
+    }
+
+    playAnimations(previewAnimations);
+  }
+
   return (
     <StylePanelSection
       key={String(animations.length > 0)}
@@ -131,14 +172,39 @@ export const AnimationsSection = observer(function AnimationsSection(
       }}
       onHeaderClick={animations.length === 0 ? addAnimationLayer : undefined}
       controls={
-        <MaybeWrap
-          cond={!!disabledTooltip && !!isDisabled}
-          wrapper={(e) => <Tooltip title={disabledTooltip}>{e}</Tooltip>}
-        >
-          <IconLinkButton onClick={addAnimationLayer} disabled={isDisabled}>
-            <Icon icon={PlusIcon} />
-          </IconLinkButton>
-        </MaybeWrap>
+        <>
+          {animations.length > 0 && (
+            <>
+              {isAnimationPlaying ? (
+                <Tooltip title="Stop animation">
+                  <IconLinkButton
+                    onClick={stopAnimations}
+                    disabled={isDisabled}
+                  >
+                    <Icon icon={StopIcon} />
+                  </IconLinkButton>
+                </Tooltip>
+              ) : (
+                <Tooltip title="Play animation">
+                  <IconLinkButton
+                    onClick={() => playAnimations(animations)}
+                    disabled={isDisabled}
+                  >
+                    <Icon icon={PlayIcon} />
+                  </IconLinkButton>
+                </Tooltip>
+              )}
+            </>
+          )}
+          <MaybeWrap
+            cond={!!disabledTooltip && !!isDisabled}
+            wrapper={(e) => <Tooltip title={disabledTooltip}>{e}</Tooltip>}
+          >
+            <IconLinkButton onClick={addAnimationLayer} disabled={isDisabled}>
+              <Icon icon={PlusIcon} />
+            </IconLinkButton>
+          </MaybeWrap>
+        </>
       }
       defaultHeaderAction={() => !isDisabled && addAnimationLayer()}
     >
@@ -149,8 +215,9 @@ export const AnimationsSection = observer(function AnimationsSection(
             onClose={() => {
               setInspectedAnimation(undefined);
               setIndex(undefined);
+              stopAnimations();
             }}
-            title="Animation"
+            title="Apply Animation"
           >
             {inspectedAnimation && index !== undefined && (
               <div className="panel-content">
@@ -158,15 +225,14 @@ export const AnimationsSection = observer(function AnimationsSection(
                   expsProvider={expsProvider}
                   animation={inspectedAnimation}
                   vsh={vsh}
+                  onUpdated={() => {
+                    triggerAnimationPreviewOnUpdate(animations);
+                  }}
                 />
               </div>
             )}
           </SidebarModal>
-          <StyleWrapper
-            styleName={["animation"]}
-            className="flex-fill"
-            showDefinedIndicator={true}
-          >
+          <StyleWrapper styleName={["animation"]} className="flex-fill">
             <ListBox
               appendPrepend={"append"}
               {...(isDisabled

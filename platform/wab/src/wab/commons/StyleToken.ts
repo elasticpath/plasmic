@@ -20,7 +20,12 @@ import {
   MutableToken,
   OverrideableToken,
 } from "@/wab/shared/core/tokens";
-import { getLengthUnits, parseCss } from "@/wab/shared/css";
+import { parseCss } from "@/wab/shared/css";
+import {
+  LENGTH_PERCENTAGE_UNITS,
+  NUMBER_LENGTH_PERCENTAGE_UNITS,
+  NUMBER_UNITS,
+} from "@/wab/shared/css/types";
 import { DEVFLAGS } from "@/wab/shared/devflags";
 import {
   Mixin,
@@ -124,11 +129,13 @@ export function tokenTypeDimOpts(type: StyleTokenType) {
   switch (type) {
     case "Spacing":
       return {
-        allowedUnits: getLengthUnits("px"),
+        allowedUnits: LENGTH_PERCENTAGE_UNITS,
+        allowFunctions: true,
       };
     case "LineHeight":
       return {
-        allowedUnits: getLengthUnits(""),
+        allowedUnits: NUMBER_LENGTH_PERCENTAGE_UNITS,
+        allowFunctions: true,
         fractionDigits: 2,
         displayedFractionDigits: 2,
         min: 0,
@@ -136,11 +143,13 @@ export function tokenTypeDimOpts(type: StyleTokenType) {
       };
     case "FontSize":
       return {
-        allowedUnits: getLengthUnits("px"),
+        allowedUnits: LENGTH_PERCENTAGE_UNITS,
+        allowFunctions: true,
       };
     case "Opacity":
       return {
-        allowedUnits: [""],
+        allowedUnits: NUMBER_UNITS,
+        allowFunctions: true,
         min: 0,
         max: 1,
         delta: 0.1,
@@ -303,9 +312,6 @@ export const extractAllReferencedTokens = (
 export function extractAllReferencedTokenIds(str: string) {
   return [...str.matchAll(RE_TOKENREF_ALL)].map((r) => r[1]);
 }
-
-export const getThemePropVarName = (p: string) => `--mixin-default_${p}`;
-export const mkThemePropRef = (p: string) => `var(${getThemePropVarName(p)})`;
 
 export const getExternalMixinPropVarName = (mixin: Mixin, p: string) =>
   `--plasmic-mixin-${L.kebabCase(mixin.name)}_${p}`;

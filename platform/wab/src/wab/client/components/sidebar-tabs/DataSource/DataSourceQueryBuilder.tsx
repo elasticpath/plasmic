@@ -1,11 +1,12 @@
+import { DataPickerWidgetFactory } from "@/wab/client/components/QueryBuilder/Components/DataPickerWidgetFactory";
 import S from "@/wab/client/components/QueryBuilder/QueryBuilder.module.scss";
 import "@/wab/client/components/QueryBuilder/QueryBuilder.scss";
 import {
   AwesomeBuilder,
   QueryBuilderConfig,
 } from "@/wab/client/components/QueryBuilder/QueryBuilderConfig";
+import { getEmptyTree } from "@/wab/client/components/QueryBuilder/query-builder-utils";
 import { DataPickerTypesSchema } from "@/wab/client/components/sidebar-tabs/DataBinding/DataPicker";
-import { DataPickerWidgetFactory } from "@/wab/client/components/sidebar-tabs/DataSource/DataPickerWidgetFactory";
 import { mkBindingId } from "@/wab/client/components/sidebar-tabs/DataSource/DataSourceOpPicker";
 import { TemplatedTextWidget } from "@/wab/client/components/sidebar-tabs/DataSource/TemplatedTextWidget";
 import { arrayEq, ensure } from "@/wab/shared/common";
@@ -14,18 +15,15 @@ import { Filters } from "@/wab/shared/data-sources-meta/data-sources";
 import { isDynamicValue } from "@/wab/shared/dynamic-bindings";
 import {
   CustomCode,
-  isKnownTemplatedString,
   ObjectPath,
   TemplatedString,
+  isKnownTemplatedString,
 } from "@/wab/shared/model/classes";
 import {
   BaseWidgetProps,
   Config,
-  Field,
   Fields,
   ImmutableTree,
-  JsonGroup,
-  JsonItem,
   JsonTree,
   Utils as QbUtils,
   Query,
@@ -40,41 +38,6 @@ const InitialConfig = QueryBuilderConfig;
 const baseConfig: Config = {
   ...InitialConfig,
 };
-
-function getFirstAvailableField(config: Config) {
-  const firstField = config.fields?.[Object.keys(config.fields)[0]] as
-    | Field
-    | undefined;
-
-  return firstField?.fieldName;
-}
-
-function getEmptyTree(config: Config) {
-  const group: JsonGroup = {
-    id: QbUtils.uuid(),
-    type: "group",
-    properties: {
-      conjunction: "AND",
-    },
-  };
-
-  const child = {
-    id: QbUtils.uuid(),
-    type: "rule",
-    properties: {
-      field: getFirstAvailableField(config),
-      operator: null,
-      value: [],
-      valueSrc: [],
-    },
-  } as JsonItem & { id: string };
-
-  group.children1 = {
-    [child.id]: child,
-  };
-
-  return group;
-}
 
 interface DataSourceQueryBuilderProps {
   saveTree: (
@@ -108,7 +71,7 @@ function DataSourceQueryBuilder_(
   } = props;
 
   const fields = Object.entries(defaultFields)
-    .filter(([key, field]) => field.type !== "json")
+    .filter(([_key, field]) => field.type !== "json")
     .reduce((acum, [key, value]) => {
       acum[key] = value;
       if (acum[key].type === "string") {
@@ -181,6 +144,14 @@ function DataSourceQueryBuilder_(
             {
               type: `${widgetType}-custom`,
               factory: (widgetProps: BaseWidgetProps) => {
+                const bindingId = widgetProps.value;
+                const realValue =
+                  typeof bindingId === "string" &&
+                  isDynamicValue(bindingId) &&
+                  bindings.current[bindingId]
+                    ? bindings.current[bindingId]
+                    : undefined;
+
                 const setValue = (
                   expr: CustomCode | ObjectPath | null | undefined
                 ) => {
@@ -197,9 +168,11 @@ function DataSourceQueryBuilder_(
                 };
                 return (
                   <DataPickerWidgetFactory
-                    widgetProps={widgetProps}
+                    widgetProps={{
+                      ...widgetProps,
+                      value: realValue,
+                    }}
                     setValue={setValue}
-                    bindings={bindings.current}
                     data={curData.current}
                     schema={schema}
                     originalFactory={ensure(
@@ -273,7 +246,11 @@ function DataSourceQueryBuilder_(
               logic,
               merge({}, config, initialWidgetsConfig)
             )) ??
-        QbUtils.loadTree(getEmptyTree(merge({}, config, initialWidgetsConfig))),
+        QbUtils.loadTree(
+          getEmptyTree(merge({}, config, initialWidgetsConfig), {
+            appendFirstField: true,
+          })
+        ),
       config: merge({}, config, initialWidgetsConfig),
     };
   });
