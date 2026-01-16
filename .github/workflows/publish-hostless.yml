@@ -15,6 +15,7 @@ on:
 jobs:
   publish-hostless:
     name: Trigger Hostless Publishing Task
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     permissions:
