@@ -23,24 +23,59 @@ jobs:
       id-token: write
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.4
+          terraform_wrapper: false
+
+      - name: Get network config from Terraform
+        id: terraform
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          TERRAFORM_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          # Mask sensitive values
+          echo "::add-mask::$TERRAFORM_STATE_BUCKET"
+
+          cd terraform/services/publish-hostless
+
+          terraform init \
+            -backend-config="bucket=${TERRAFORM_STATE_BUCKET}" \
+            -backend-config="key=${ENVIRONMENT}/services/publish-hostless/terraform.tfstate" \
+            -backend-config="use_lockfile=true" \
+            -backend-config="region=${AWS_REGION}" \
+            -reconfigure
+
+          # Get outputs
+          SUBNETS=$(terraform output -raw private_subnet_ids 2>/dev/null || terraform output -json private_subnet_ids | jq -r 'join(",")')
+          SECURITY_GROUP=$(terraform output -raw ecs_security_group_id)
+
+          # Mask and export
+          echo "::add-mask::$SUBNETS"
+          echo "::add-mask::$SECURITY_GROUP"
+
+          echo "subnets=$SUBNETS" >> $GITHUB_OUTPUT
+          echo "security_group=$SECURITY_GROUP" >> $GITHUB_OUTPUT
+
       - name: Run ECS Task
         id: run-task
         env:
           CLUSTER_NAME: plasmic-${{ inputs.environment }}
           TASK_DEFINITION: plasmic-${{ inputs.environment }}-publish-hostless
-          SUBNETS: ${{ vars.PRIVATE_SUBNETS }}
-          SECURITY_GROUP: ${{ vars.ECS_SECURITY_GROUP }}
+          SUBNETS: ${{ steps.terraform.outputs.subnets }}
+          SECURITY_GROUP: ${{ steps.terraform.outputs.security_group }}
         run: |
-          # Mask infrastructure details
-          echo "::add-mask::$SUBNETS"
-          echo "::add-mask::$SECURITY_GROUP"
-
           echo "Starting PublishHostless ECS task..."
           echo "Cluster: $CLUSTER_NAME"
           echo "Task Definition: $TASK_DEFINITION"
