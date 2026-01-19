@@ -308,6 +308,7 @@ import { isAdminTeamEmail } from "@/wab/shared/devflag-utils";
 import { DEVFLAGS } from "@/wab/shared/devflags";
 import { isStampedIgnoreError } from "@/wab/shared/error-handling";
 import fileUpload from "express-fileupload";
+import { customEPCCCookieAuth } from "./auth/custom-api-auth";
 
 const csrfFreeStaticRoutes = [
   "/api/v1/admin/user",
@@ -581,6 +582,8 @@ function addMiddlewares(
       next();
     })
   );
+
+  app.use(customEPCCCookieAuth);
 
   app.use((req, res, next) => {
     // For Plasmic users, let's instrument the DbMgr and track their call durations.
