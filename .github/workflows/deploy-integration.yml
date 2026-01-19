@@ -7,7 +7,6 @@ on:
     paths:
       - 'platform/wab/**'
       - 'platform/loader-bundle-env/**'
-      - 'platform/canvas-packages/**'
       - 'terraform/**'
       - '.github/**'
   # Allow manual trigger for infrastructure apply
@@ -28,39 +27,9 @@ on:
         type: string
 
 jobs:
-  build-canvas-packages:
-    name: Build Canvas Packages
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push'
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: 'yarn'
-          cache-dependency-path: platform/canvas-packages/yarn.lock
-
-      - name: Build canvas-packages
-        run: |
-          cd platform/canvas-packages
-          yarn install --frozen-lockfile
-          yarn build
-
-      - name: Upload build-server artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: canvas-packages-build-server
-          path: platform/canvas-packages/build-server/
-          retention-days: 7
-
   build-and-plan:
     name: Build Docker Image and Plan Infrastructure
     runs-on: ubuntu-latest
-    needs: build-canvas-packages
     # Run on push events only (not manual workflow_dispatch for apply)
     if: github.event_name == 'push'
     environment: integration
@@ -71,12 +40,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Download canvas-packages artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: canvas-packages-build-server
-          path: platform/canvas-packages/build-server/
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4

@@ -14,8 +14,8 @@ on:
 
 jobs:
   publish-hostless:
-    name: Trigger Hostless Publishing Task
-    timeout-minutes: 30
+    name: Build and Run PublishHostless
+    timeout-minutes: 45
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     permissions:
@@ -32,6 +32,80 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Get currently deployed WAB image
+        id: deployed-image
+        env:
+          CLUSTER_NAME: plasmic-${{ inputs.environment }}
+          SERVICE_NAME: plasmic-${{ inputs.environment }}-wab
+        run: |
+          echo "::add-mask::$CLUSTER_NAME"
+          echo "::add-mask::$SERVICE_NAME"
+
+          # Get task definition from running service
+          TASK_DEF_ARN=$(aws ecs describe-services \
+            --cluster "$CLUSTER_NAME" \
+            --services "$SERVICE_NAME" \
+            --query 'services[0].taskDefinition' \
+            --output text)
+
+          if [ "$TASK_DEF_ARN" = "None" ] || [ -z "$TASK_DEF_ARN" ]; then
+            echo "Error: Could not find running WAB service. Deploy first, then run publish-hostless."
+            exit 1
+          fi
+
+          # Get image from task definition
+          DEPLOYED_IMAGE=$(aws ecs describe-task-definition \
+            --task-definition "$TASK_DEF_ARN" \
+            --query 'taskDefinition.containerDefinitions[0].image' \
+            --output text)
+
+          echo "::add-mask::$DEPLOYED_IMAGE"
+          echo "deployed_image=$DEPLOYED_IMAGE" >> $GITHUB_OUTPUT
+          echo "Using deployed WAB image as base"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'yarn'
+          cache-dependency-path: platform/canvas-packages/yarn.lock
+
+      - name: Build canvas-packages
+        run: |
+          cd platform/canvas-packages
+          yarn install --frozen-lockfile
+          yarn build
+
+      - name: Build and push publish-hostless image
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          IMAGE_TAG: publish-hostless-${{ github.run_id }}
+          BASE_IMAGE: ${{ steps.deployed-image.outputs.deployed_image }}
+        run: |
+          echo "::add-mask::$ECR_REGISTRY"
+          echo "::add-mask::$ECR_REPOSITORY"
+
+          echo "Building publish-hostless image..."
+          echo "Base image: (deployed WAB image)"
+
+          docker build \
+            --platform linux/amd64 \
+            --build-arg BASE_IMAGE=$BASE_IMAGE \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            -f platform/wab/Dockerfile.publish-hostless \
+            platform/
+
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "Pushed publish-hostless image"
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -45,7 +119,6 @@ jobs:
           TERRAFORM_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
           ENVIRONMENT: ${{ inputs.environment }}
         run: |
-          # Mask sensitive values
           echo "::add-mask::$TERRAFORM_STATE_BUCKET"
 
           cd terraform/services/publish-hostless
@@ -57,28 +130,55 @@ jobs:
             -backend-config="region=${AWS_REGION}" \
             -reconfigure
 
-          # Get outputs
           SUBNETS=$(terraform output -raw private_subnet_ids 2>/dev/null || terraform output -json private_subnet_ids | jq -r 'join(",")')
           SECURITY_GROUP=$(terraform output -raw ecs_security_group_id)
 
-          # Mask and export
           echo "::add-mask::$SUBNETS"
           echo "::add-mask::$SECURITY_GROUP"
 
           echo "subnets=$SUBNETS" >> $GITHUB_OUTPUT
           echo "security_group=$SECURITY_GROUP" >> $GITHUB_OUTPUT
 
+      - name: Register task definition with new image
+        id: register-task
+        env:
+          TASK_FAMILY: plasmic-${{ inputs.environment }}-publish-hostless
+          NEW_IMAGE: ${{ steps.build-image.outputs.image }}
+        run: |
+          echo "::add-mask::$TASK_FAMILY"
+          echo "::add-mask::$NEW_IMAGE"
+
+          # Get current task definition
+          TASK_DEF=$(aws ecs describe-task-definition \
+            --task-definition "$TASK_FAMILY" \
+            --query 'taskDefinition')
+
+          # Update image and remove read-only fields
+          NEW_TASK_DEF=$(echo "$TASK_DEF" | jq \
+            --arg IMAGE "$NEW_IMAGE" \
+            '.containerDefinitions[0].image = $IMAGE |
+             del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                 .compatibilities, .registeredAt, .registeredBy)')
+
+          # Register new revision
+          NEW_ARN=$(aws ecs register-task-definition \
+            --cli-input-json "$NEW_TASK_DEF" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          echo "::add-mask::$NEW_ARN"
+          echo "task_definition_arn=$NEW_ARN" >> $GITHUB_OUTPUT
+          echo "Registered new task definition revision"
+
       - name: Run ECS Task
         id: run-task
         env:
           CLUSTER_NAME: plasmic-${{ inputs.environment }}
-          TASK_DEFINITION: plasmic-${{ inputs.environment }}-publish-hostless
+          TASK_DEFINITION: ${{ steps.register-task.outputs.task_definition_arn }}
           SUBNETS: ${{ steps.terraform.outputs.subnets }}
           SECURITY_GROUP: ${{ steps.terraform.outputs.security_group }}
         run: |
           echo "Starting PublishHostless ECS task..."
-          echo "Cluster: $CLUSTER_NAME"
-          echo "Task Definition: $TASK_DEFINITION"
 
           TASK_ARN=$(aws ecs run-task \
             --cluster "$CLUSTER_NAME" \
