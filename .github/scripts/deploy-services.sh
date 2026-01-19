@@ -162,11 +162,8 @@ step "Step 6: Deploying Image Optimizer Service"
 deploy_service "imgopt" "services/img-optimizer" \
     "${ENVIRONMENT}/services/img-optimizer/terraform.tfstate"
 
-# 7. Deploy Publish Hostless Task Definition (one-off task, not a service)
-step "Step 7: Deploying Publish Hostless Task Definition"
-info "Note: This creates the task definition only. Trigger via GitHub Actions workflow."
-deploy_service "publish-hostless" "services/publish-hostless" \
-    "${ENVIRONMENT}/services/publish-hostless/terraform.tfstate"
+# Note: publish-hostless task definition is managed by its own workflow
+# (publish-hostless.yml) which builds a custom image with canvas-packages
 
 # Summary
 echo ""
@@ -182,7 +179,6 @@ echo "   ✓ wab"
 echo "   ✓ codegen"
 echo "   ✓ data"
 echo "   ✓ imgopt"
-echo "   ✓ publish-hostless (task definition only)"
 echo "   ✗ copilot (disabled)"
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

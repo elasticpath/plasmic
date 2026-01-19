@@ -46,9 +46,6 @@ RUN yarn install --production --frozen-lockfile && yarn cache clean
 COPY wab/ .
 COPY --from=builder /app/wab/ .
 
-# Copy pre-built canvas-packages for hostless publishing
-COPY canvas-packages/build-server/ /app/canvas-packages/build-server/
-
 USER node
 
 CMD ["node", "-r", "esbuild-register", "src/wab/server/main.ts"]
