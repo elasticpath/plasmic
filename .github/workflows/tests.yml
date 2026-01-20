@@ -1,0 +1,215 @@
+name: Tests
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'platform/wab/**'
+      - 'packages/**'
+      - 'plasmicpkgs/**'
+      - '.github/workflows/tests.yml'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'platform/wab/**'
+      - 'packages/**'
+      - 'plasmicpkgs/**'
+      - '.github/workflows/tests.yml'
+
+jobs:
+  setup:
+    name: Setup & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'yarn'
+
+      - name: Install root dependencies (includes packages/* and plasmicpkgs/*)
+        run: yarn install --frozen-lockfile
+
+      - name: Install platform/wab dependencies
+        working-directory: platform/wab
+        run: yarn install --frozen-lockfile
+
+      - name: Generate required files (PEG parsers, model classes)
+        working-directory: platform/wab
+        run: make
+
+      - name: Upload dependencies artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deps
+          retention-days: 1
+          path: |
+            node_modules
+            packages/*/node_modules
+            plasmicpkgs/*/node_modules
+            plasmicpkgs/commerce-providers/*/node_modules
+            platform/wab/node_modules
+
+      - name: Upload generated files artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated
+          retention-days: 1
+          path: |
+            platform/wab/src/wab/gen
+            platform/wab/src/wab/shared/model/classes.ts
+            platform/wab/src/wab/shared/model/classes-metas.ts
+            platform/wab/src/wab/styles/_tokens.sass
+            platform/wab/src/wab/styles/_tokens.ts
+            platform/wab/src/wab/styles/css-variables.ts
+            platform/wab/src/wab/styles/css-variables.scss
+
+  test-wab:
+    name: WAB Tests
+    needs: setup
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download dependencies
+        uses: actions/download-artifact@v4
+        with:
+          name: deps
+
+      - name: Download generated files
+        uses: actions/download-artifact@v4
+        with:
+          name: generated
+          path: platform/wab
+
+      - name: Setup PostgreSQL users and extensions
+        env:
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGUSER: postgres
+        run: |
+          psql -c "CREATE USER wab PASSWORD 'SEKRET';"
+          psql -c "CREATE USER superwab PASSWORD 'SEKRET' CREATEDB CREATEROLE IN GROUP wab;"
+          psql -c "GRANT pg_signal_backend TO superwab;"
+          psql -c "CREATE DATABASE wab OWNER wab;"
+          psql -c "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"
+          psql -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+
+      - name: Run WAB Jest tests
+        working-directory: platform/wab
+        env:
+          CI: true
+          NODE_OPTIONS: '--max-old-space-size=8192'
+        run: yarn test
+
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "### WAB Test Results" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "All tests passed." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Some tests failed." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  test-packages:
+    name: SDK Packages Tests
+    needs: setup
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download dependencies
+        uses: actions/download-artifact@v4
+        with:
+          name: deps
+
+      - name: Run SDK packages Jest tests
+        env:
+          CI: true
+          NODE_OPTIONS: '--max-old-space-size=4096'
+        run: yarn jest --testPathPattern='packages/' --passWithNoTests
+
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "### SDK Packages Test Results" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "All tests passed." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Some tests failed." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  test-plasmicpkgs:
+    name: Plasmic Packages Tests
+    needs: setup
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download dependencies
+        uses: actions/download-artifact@v4
+        with:
+          name: deps
+
+      - name: Run plasmicpkgs Jest tests
+        env:
+          CI: true
+          NODE_OPTIONS: '--max-old-space-size=4096'
+        run: yarn jest --testPathPattern='plasmicpkgs/' --testPathIgnorePatterns='plasmicpkgs/contentful' --passWithNoTests
+
+      - name: Run contentful Vitest tests
+        working-directory: plasmicpkgs/contentful
+        env:
+          CI: true
+        run: yarn test
+
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "### Plasmic Packages Test Results" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "All tests passed." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Some tests failed." >> $GITHUB_STEP_SUMMARY
+          fi
