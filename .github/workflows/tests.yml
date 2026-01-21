@@ -175,6 +175,9 @@ jobs:
           key: deps-v2-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
           fail-on-cache-miss: true
 
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
       - name: Debug environment
         run: |
           echo "Node version: $(node -v)"
