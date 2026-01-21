@@ -41,7 +41,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Cache dependencies and generated files
         id: cache
@@ -100,7 +100,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Restore cache
         uses: actions/cache@v4
@@ -160,7 +160,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Restore cache
         uses: actions/cache@v4
@@ -178,8 +178,15 @@ jobs:
           key: deps-v2-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
           fail-on-cache-miss: true
 
+      - name: Debug environment
+        run: |
+          echo "Node version: $(node -v)"
+          echo "npm version: $(npm -v)"
+          echo "TypeScript version: $(npx tsc --version)"
+          echo "SWR version: $(cat node_modules/swr/package.json | grep version)"
+
       - name: Build SDK packages
-        run: yarn lerna run build --scope '@plasmicapp/*'
+        run: yarn lerna run build --scope '@plasmicapp/*' --verbose
 
       - name: Run SDK packages Jest tests
         env:
@@ -209,7 +216,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Restore cache
         uses: actions/cache@v4
