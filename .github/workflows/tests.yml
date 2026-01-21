@@ -57,7 +57,7 @@ jobs:
             platform/wab/src/wab/styles/_tokens.ts
             platform/wab/src/wab/styles/css-variables.ts
             platform/wab/src/wab/styles/css-variables.scss
-          key: deps-v2-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
+          key: deps-v3-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
 
       - name: Install root dependencies
         run: yarn install --frozen-lockfile
@@ -112,7 +112,7 @@ jobs:
             platform/wab/src/wab/styles/_tokens.ts
             platform/wab/src/wab/styles/css-variables.ts
             platform/wab/src/wab/styles/css-variables.scss
-          key: deps-v2-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
+          key: deps-v3-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
           fail-on-cache-miss: true
 
       - name: Setup PostgreSQL users and extensions
@@ -172,7 +172,7 @@ jobs:
             platform/wab/src/wab/styles/_tokens.ts
             platform/wab/src/wab/styles/css-variables.ts
             platform/wab/src/wab/styles/css-variables.scss
-          key: deps-v2-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
+          key: deps-v3-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
           fail-on-cache-miss: true
 
       - name: Install dependencies
@@ -183,7 +183,8 @@ jobs:
           echo "Node version: $(node -v)"
           echo "npm version: $(npm -v)"
           echo "TypeScript version: $(npx tsc --version)"
-          echo "SWR version: $(cat node_modules/swr/package.json | grep version)"
+          echo "Root SWR version: $(cat node_modules/swr/package.json | grep version)"
+          echo "packages/query SWR exists: $(ls packages/query/node_modules/swr/package.json 2>/dev/null && cat packages/query/node_modules/swr/package.json | grep version || echo 'NOT FOUND')"
 
       - name: Build SDK packages
         run: yarn lerna run build --scope '@plasmicapp/*' --verbose
@@ -231,7 +232,7 @@ jobs:
             platform/wab/src/wab/styles/_tokens.ts
             platform/wab/src/wab/styles/css-variables.ts
             platform/wab/src/wab/styles/css-variables.scss
-          key: deps-v2-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
+          key: deps-v3-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
           fail-on-cache-miss: true
 
       - name: Build @plasmicapp/host
