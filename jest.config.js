@@ -12,6 +12,7 @@ module.exports = {
     "<rootDir>/platform/loader-tests",
     "<rootDir>/platform/wab",
     "<rootDir>/packages/plume-stories",
+    "<rootDir>/plasmicpkgs/wordpress", // Uses Vitest, not Jest
     "/node_modules/",
   ],
   transform: {
