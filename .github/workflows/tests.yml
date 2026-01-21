@@ -227,6 +227,9 @@ jobs:
           key: deps-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
           fail-on-cache-miss: true
 
+      - name: Build @plasmicapp/host
+        run: yarn lerna run build --scope '@plasmicapp/host'
+
       - name: Run plasmicpkgs Jest tests
         env:
           CI: true
