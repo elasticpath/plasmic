@@ -57,7 +57,7 @@ jobs:
             platform/wab/src/wab/styles/_tokens.ts
             platform/wab/src/wab/styles/css-variables.ts
             platform/wab/src/wab/styles/css-variables.scss
-          key: deps-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
+          key: deps-v2-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
 
       - name: Install root dependencies
         if: steps.cache.outputs.cache-hit != 'true'
@@ -115,7 +115,7 @@ jobs:
             platform/wab/src/wab/styles/_tokens.ts
             platform/wab/src/wab/styles/css-variables.ts
             platform/wab/src/wab/styles/css-variables.scss
-          key: deps-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
+          key: deps-v2-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
           fail-on-cache-miss: true
 
       - name: Setup PostgreSQL users and extensions
@@ -175,7 +175,7 @@ jobs:
             platform/wab/src/wab/styles/_tokens.ts
             platform/wab/src/wab/styles/css-variables.ts
             platform/wab/src/wab/styles/css-variables.scss
-          key: deps-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
+          key: deps-v2-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
           fail-on-cache-miss: true
 
       - name: Build SDK packages
@@ -224,7 +224,7 @@ jobs:
             platform/wab/src/wab/styles/_tokens.ts
             platform/wab/src/wab/styles/css-variables.ts
             platform/wab/src/wab/styles/css-variables.scss
-          key: deps-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
+          key: deps-v2-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
           fail-on-cache-miss: true
 
       - name: Build @plasmicapp/host
