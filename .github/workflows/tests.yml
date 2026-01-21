@@ -60,16 +60,13 @@ jobs:
           key: deps-v2-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
 
       - name: Install root dependencies
-        if: steps.cache.outputs.cache-hit != 'true'
         run: yarn install --frozen-lockfile
 
       - name: Install platform/wab dependencies
-        if: steps.cache.outputs.cache-hit != 'true'
         working-directory: platform/wab
         run: yarn install --frozen-lockfile
 
       - name: Generate required files (PEG parsers, model classes)
-        if: steps.cache.outputs.cache-hit != 'true'
         working-directory: platform/wab
         run: make
 
