@@ -16,6 +16,19 @@ on:
       - 'plasmicpkgs/**'
       - '.github/workflows/tests.yml'
 
+# Shared cache configuration as YAML anchor
+env:
+  CACHE_PATHS: |
+    node_modules
+    platform/wab/node_modules
+    platform/wab/src/wab/gen
+    platform/wab/src/wab/shared/model/classes.ts
+    platform/wab/src/wab/shared/model/classes-metas.ts
+    platform/wab/src/wab/styles/_tokens.sass
+    platform/wab/src/wab/styles/_tokens.ts
+    platform/wab/src/wab/styles/css-variables.ts
+    platform/wab/src/wab/styles/css-variables.scss
+
 jobs:
   setup:
     name: Setup & Build
@@ -29,37 +42,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'yarn'
 
-      - name: Install root dependencies (includes packages/* and plasmicpkgs/*)
-        run: yarn install --frozen-lockfile
-
-      - name: Install platform/wab dependencies
-        working-directory: platform/wab
-        run: yarn install --frozen-lockfile
-
-      - name: Generate required files (PEG parsers, model classes)
-        working-directory: platform/wab
-        run: make
-
-      - name: Upload dependencies artifact
-        uses: actions/upload-artifact@v4
+      - name: Cache dependencies and generated files
+        id: cache
+        uses: actions/cache@v4
         with:
-          name: deps
-          retention-days: 1
           path: |
             node_modules
-            packages/*/node_modules
-            plasmicpkgs/*/node_modules
-            plasmicpkgs/commerce-providers/*/node_modules
             platform/wab/node_modules
-
-      - name: Upload generated files artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: generated
-          retention-days: 1
-          path: |
             platform/wab/src/wab/gen
             platform/wab/src/wab/shared/model/classes.ts
             platform/wab/src/wab/shared/model/classes-metas.ts
@@ -67,6 +57,21 @@ jobs:
             platform/wab/src/wab/styles/_tokens.ts
             platform/wab/src/wab/styles/css-variables.ts
             platform/wab/src/wab/styles/css-variables.scss
+          key: deps-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
+
+      - name: Install root dependencies
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: yarn install --frozen-lockfile
+
+      - name: Install platform/wab dependencies
+        if: steps.cache.outputs.cache-hit != 'true'
+        working-directory: platform/wab
+        run: yarn install --frozen-lockfile
+
+      - name: Generate required files (PEG parsers, model classes)
+        if: steps.cache.outputs.cache-hit != 'true'
+        working-directory: platform/wab
+        run: make
 
   test-wab:
     name: WAB Tests
@@ -97,16 +102,21 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Download dependencies
-        uses: actions/download-artifact@v4
+      - name: Restore cache
+        uses: actions/cache@v4
         with:
-          name: deps
-
-      - name: Download generated files
-        uses: actions/download-artifact@v4
-        with:
-          name: generated
-          path: platform/wab
+          path: |
+            node_modules
+            platform/wab/node_modules
+            platform/wab/src/wab/gen
+            platform/wab/src/wab/shared/model/classes.ts
+            platform/wab/src/wab/shared/model/classes-metas.ts
+            platform/wab/src/wab/styles/_tokens.sass
+            platform/wab/src/wab/styles/_tokens.ts
+            platform/wab/src/wab/styles/css-variables.ts
+            platform/wab/src/wab/styles/css-variables.scss
+          key: deps-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
+          fail-on-cache-miss: true
 
       - name: Setup PostgreSQL users and extensions
         env:
@@ -152,10 +162,21 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Download dependencies
-        uses: actions/download-artifact@v4
+      - name: Restore cache
+        uses: actions/cache@v4
         with:
-          name: deps
+          path: |
+            node_modules
+            platform/wab/node_modules
+            platform/wab/src/wab/gen
+            platform/wab/src/wab/shared/model/classes.ts
+            platform/wab/src/wab/shared/model/classes-metas.ts
+            platform/wab/src/wab/styles/_tokens.sass
+            platform/wab/src/wab/styles/_tokens.ts
+            platform/wab/src/wab/styles/css-variables.ts
+            platform/wab/src/wab/styles/css-variables.scss
+          key: deps-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
+          fail-on-cache-miss: true
 
       - name: Run SDK packages Jest tests
         env:
@@ -187,10 +208,21 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Download dependencies
-        uses: actions/download-artifact@v4
+      - name: Restore cache
+        uses: actions/cache@v4
         with:
-          name: deps
+          path: |
+            node_modules
+            platform/wab/node_modules
+            platform/wab/src/wab/gen
+            platform/wab/src/wab/shared/model/classes.ts
+            platform/wab/src/wab/shared/model/classes-metas.ts
+            platform/wab/src/wab/styles/_tokens.sass
+            platform/wab/src/wab/styles/_tokens.ts
+            platform/wab/src/wab/styles/css-variables.ts
+            platform/wab/src/wab/styles/css-variables.scss
+          key: deps-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
+          fail-on-cache-miss: true
 
       - name: Run plasmicpkgs Jest tests
         env:
