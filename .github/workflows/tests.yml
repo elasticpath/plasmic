@@ -231,10 +231,16 @@ jobs:
         env:
           CI: true
           NODE_OPTIONS: '--max-old-space-size=4096'
-        run: yarn jest --testPathPattern='plasmicpkgs/' --testPathIgnorePatterns='plasmicpkgs/contentful' --passWithNoTests
+        run: yarn jest --testPathPattern='plasmicpkgs/' --testPathIgnorePatterns='plasmicpkgs/contentful|plasmicpkgs/wordpress' --passWithNoTests
 
       - name: Run contentful Vitest tests
         working-directory: plasmicpkgs/contentful
+        env:
+          CI: true
+        run: yarn test
+
+      - name: Run wordpress Vitest tests
+        working-directory: plasmicpkgs/wordpress
         env:
           CI: true
         run: yarn test
