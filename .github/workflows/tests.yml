@@ -71,9 +71,13 @@ jobs:
         run: make
 
   test-wab:
-    name: WAB Tests
+    name: WAB Tests (Shard ${{ matrix.shard }}/4)
     needs: setup
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
 
     services:
       postgres:
@@ -128,17 +132,17 @@ jobs:
           psql -c "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"
           psql -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
 
-      - name: Run WAB Jest tests
+      - name: Run WAB Jest tests (Shard ${{ matrix.shard }}/4)
         working-directory: platform/wab
         env:
           CI: true
           NODE_OPTIONS: '--max-old-space-size=8192'
-        run: yarn test
+        run: yarn test --shard=${{ matrix.shard }}/4
 
       - name: Test Summary
         if: always()
         run: |
-          echo "### WAB Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "### WAB Test Results (Shard ${{ matrix.shard }}/4)" >> $GITHUB_STEP_SUMMARY
           if [ "${{ job.status }}" == "success" ]; then
             echo "All tests passed." >> $GITHUB_STEP_SUMMARY
           else
