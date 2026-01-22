@@ -238,8 +238,8 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Build @plasmicapp/host
-        run: yarn lerna run build --scope '@plasmicapp/host'
+      - name: Build @plasmicapp/host and @plasmicpkgs/commerce
+        run: yarn lerna run build --scope '@plasmicapp/host' --scope '@plasmicpkgs/commerce'
 
       - name: Run plasmicpkgs Jest tests
         env:
