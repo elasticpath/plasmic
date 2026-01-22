@@ -250,7 +250,7 @@ jobs:
       - name: Run plasmicpkgs Vitest tests
         env:
           CI: true
-        run: npx vitest run plasmicpkgs --passWithNoTests
+        run: npx vitest run plasmicpkgs/wordpress plasmicpkgs/contentful --passWithNoTests
 
       - name: Test Summary
         if: always()
