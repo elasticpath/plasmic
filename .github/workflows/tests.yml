@@ -1,0 +1,242 @@
+name: Tests
+
+on:
+  workflow_dispatch:  # Allow manual trigger from GitHub UI
+  push:
+    branches: [master]
+    paths:
+      - 'platform/wab/**'
+      - 'packages/**'
+      - 'plasmicpkgs/**'
+      - '.github/workflows/tests.yml'
+      - '.github/actions/setup-env/**'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'platform/wab/**'
+      - 'packages/**'
+      - 'plasmicpkgs/**'
+      - '.github/workflows/tests.yml'
+      - '.github/actions/setup-env/**'
+
+jobs:
+  setup:
+    name: Setup & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        uses: ./.github/actions/setup-env
+
+      - name: Install root dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Install platform/wab dependencies
+        working-directory: platform/wab
+        run: yarn install --frozen-lockfile
+
+      - name: Generate required files (PEG parsers, model classes)
+        working-directory: platform/wab
+        run: make
+
+  test-wab:
+    name: WAB Tests (Shard ${{ matrix.shard }}/4)
+    needs: setup
+    runs-on: ubuntu-latest
+    # Only run if manually triggered or PR has 'run-wab-tests' label
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      contains(github.event.pull_request.labels.*.name, 'run-wab-tests')
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        uses: ./.github/actions/setup-env
+        with:
+          fail-on-cache-miss: 'true'
+
+      - name: Setup PostgreSQL users and extensions
+        env:
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGUSER: postgres
+        run: |
+          psql -c "CREATE USER wab PASSWORD 'SEKRET';"
+          psql -c "CREATE USER superwab PASSWORD 'SEKRET' CREATEDB CREATEROLE IN GROUP wab;"
+          psql -c "GRANT pg_signal_backend TO superwab;"
+          psql -c "CREATE DATABASE wab OWNER wab;"
+          psql -c "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"
+          psql -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+
+      - name: Run WAB Jest tests (Shard ${{ matrix.shard }}/4)
+        working-directory: platform/wab
+        env:
+          CI: true
+          NODE_OPTIONS: '--max-old-space-size=8192'
+        run: yarn test --shard=${{ matrix.shard }}/4
+
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "### WAB Test Results (Shard ${{ matrix.shard }}/4)" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "All tests passed." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Some tests failed." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  test-packages:
+    name: SDK Packages Tests
+    # No needs: runs in parallel with setup (doesn't need generated files)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        uses: ./.github/actions/setup-env
+        # Cache speeds up yarn install but isn't required
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Debug environment
+        run: |
+          echo "Node version: $(node -v)"
+          echo "npm version: $(npm -v)"
+          echo "TypeScript version: $(npx tsc --version)"
+          echo "Root SWR version: $(cat node_modules/swr/package.json | grep version)"
+          echo "packages/query SWR exists: $(ls packages/query/node_modules/swr/package.json 2>/dev/null && cat packages/query/node_modules/swr/package.json | grep version || echo 'NOT FOUND')"
+
+      - name: Build SDK packages
+        run: yarn lerna run build --scope '@plasmicapp/*' --verbose
+
+      - name: Run SDK packages Jest tests
+        env:
+          CI: true
+          NODE_OPTIONS: '--max-old-space-size=4096 --experimental-vm-modules'
+        run: yarn jest --testPathPattern='packages/' --passWithNoTests
+
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "### SDK Packages Test Results" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "All tests passed." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Some tests failed." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  test-plasmicpkgs:
+    name: Plasmic Packages Tests
+    # No needs: runs in parallel with setup (doesn't need generated files)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        uses: ./.github/actions/setup-env
+        # Cache speeds up yarn install but isn't required
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build @plasmicapp/host and @plasmicpkgs/commerce
+        run: yarn lerna run build --scope '@plasmicapp/host' --scope '@plasmicpkgs/commerce'
+
+      - name: Run plasmicpkgs Jest tests
+        env:
+          CI: true
+          NODE_OPTIONS: '--max-old-space-size=4096 --experimental-vm-modules'
+        run: yarn jest --testPathPattern='plasmicpkgs/' --testPathIgnorePatterns='plasmicpkgs/wordpress' --passWithNoTests
+
+      - name: Run plasmicpkgs Vitest tests
+        env:
+          CI: true
+        run: npx vitest run plasmicpkgs/wordpress plasmicpkgs/contentful --passWithNoTests
+
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "### Plasmic Packages Test Results" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "All tests passed." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Some tests failed." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  all-tests:
+    name: All Tests
+    needs: [setup, test-wab, test-packages, test-plasmicpkgs]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check test results
+        run: |
+          echo "### Test Results Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          setup_result="${{ needs.setup.result }}"
+          wab_result="${{ needs.test-wab.result }}"
+          packages_result="${{ needs.test-packages.result }}"
+          plasmicpkgs_result="${{ needs.test-plasmicpkgs.result }}"
+
+          echo "| Job | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Setup | ${setup_result} |" >> $GITHUB_STEP_SUMMARY
+          echo "| WAB Tests | ${wab_result} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SDK Packages | ${packages_result} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Plasmic Packages | ${plasmicpkgs_result} |" >> $GITHUB_STEP_SUMMARY
+
+          # Fail if setup failed (required for WAB tests)
+          if [[ "${setup_result}" == "failure" ]]; then
+            echo ""
+            echo "Setup job failed."
+            exit 1
+          fi
+
+          # Fail if any required job failed
+          if [[ "${packages_result}" == "failure" ]] || [[ "${plasmicpkgs_result}" == "failure" ]]; then
+            echo ""
+            echo "One or more required test jobs failed."
+            exit 1
+          fi
+
+          # WAB tests are optional (can be skipped on PRs without label)
+          if [[ "${wab_result}" == "failure" ]]; then
+            echo ""
+            echo "WAB tests failed."
+            exit 1
+          fi
+
+          echo ""
+          echo "All tests passed!"

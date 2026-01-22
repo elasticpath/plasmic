@@ -1,0 +1,36 @@
+name: 'Setup Environment'
+description: 'Setup Node.js and restore dependency cache (requires checkout first)'
+
+inputs:
+  node-version:
+    description: 'Node.js version to use'
+    required: false
+    default: '22'
+  fail-on-cache-miss:
+    description: 'Fail if cache is not found'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Restore cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          node_modules
+          platform/wab/node_modules
+          platform/wab/src/wab/gen
+          platform/wab/src/wab/shared/model/classes.ts
+          platform/wab/src/wab/shared/model/classes-metas.ts
+          platform/wab/src/wab/styles/_tokens.sass
+          platform/wab/src/wab/styles/_tokens.ts
+          platform/wab/src/wab/styles/css-variables.ts
+          platform/wab/src/wab/styles/css-variables.scss
+        key: deps-v3-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
+        fail-on-cache-miss: ${{ inputs.fail-on-cache-miss }}
