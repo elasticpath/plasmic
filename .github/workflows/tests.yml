@@ -192,7 +192,7 @@ jobs:
       - name: Run SDK packages Jest tests
         env:
           CI: true
-          NODE_OPTIONS: '--max-old-space-size=4096'
+          NODE_OPTIONS: '--max-old-space-size=4096 --experimental-vm-modules'
         run: yarn jest --testPathPattern='packages/' --passWithNoTests
 
       - name: Test Summary
