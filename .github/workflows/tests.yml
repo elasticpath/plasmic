@@ -235,13 +235,16 @@ jobs:
           key: deps-v3-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
           fail-on-cache-miss: true
 
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
       - name: Build @plasmicapp/host
         run: yarn lerna run build --scope '@plasmicapp/host'
 
       - name: Run plasmicpkgs Jest tests
         env:
           CI: true
-          NODE_OPTIONS: '--max-old-space-size=4096'
+          NODE_OPTIONS: '--max-old-space-size=4096 --experimental-vm-modules'
         run: yarn jest --testPathPattern='plasmicpkgs/' --testPathIgnorePatterns='plasmicpkgs/contentful|plasmicpkgs/wordpress' --passWithNoTests
 
       - name: Run contentful Vitest tests
