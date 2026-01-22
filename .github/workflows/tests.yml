@@ -9,6 +9,7 @@ on:
       - 'packages/**'
       - 'plasmicpkgs/**'
       - '.github/workflows/tests.yml'
+      - '.github/actions/setup-env/**'
   pull_request:
     branches: [master]
     paths:
@@ -16,19 +17,7 @@ on:
       - 'packages/**'
       - 'plasmicpkgs/**'
       - '.github/workflows/tests.yml'
-
-# Shared cache configuration as YAML anchor
-env:
-  CACHE_PATHS: |
-    node_modules
-    platform/wab/node_modules
-    platform/wab/src/wab/gen
-    platform/wab/src/wab/shared/model/classes.ts
-    platform/wab/src/wab/shared/model/classes-metas.ts
-    platform/wab/src/wab/styles/_tokens.sass
-    platform/wab/src/wab/styles/_tokens.ts
-    platform/wab/src/wab/styles/css-variables.ts
-    platform/wab/src/wab/styles/css-variables.scss
+      - '.github/actions/setup-env/**'
 
 jobs:
   setup:
@@ -39,26 +28,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Cache dependencies and generated files
-        id: cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            node_modules
-            platform/wab/node_modules
-            platform/wab/src/wab/gen
-            platform/wab/src/wab/shared/model/classes.ts
-            platform/wab/src/wab/shared/model/classes-metas.ts
-            platform/wab/src/wab/styles/_tokens.sass
-            platform/wab/src/wab/styles/_tokens.ts
-            platform/wab/src/wab/styles/css-variables.ts
-            platform/wab/src/wab/styles/css-variables.scss
-          key: deps-v3-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
+      - name: Setup environment
+        uses: ./.github/actions/setup-env
 
       - name: Install root dependencies
         run: yarn install --frozen-lockfile
@@ -104,26 +75,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup environment
+        uses: ./.github/actions/setup-env
         with:
-          node-version: '22'
-
-      - name: Restore cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            node_modules
-            platform/wab/node_modules
-            platform/wab/src/wab/gen
-            platform/wab/src/wab/shared/model/classes.ts
-            platform/wab/src/wab/shared/model/classes-metas.ts
-            platform/wab/src/wab/styles/_tokens.sass
-            platform/wab/src/wab/styles/_tokens.ts
-            platform/wab/src/wab/styles/css-variables.ts
-            platform/wab/src/wab/styles/css-variables.scss
-          key: deps-v3-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
-          fail-on-cache-miss: true
+          fail-on-cache-miss: 'true'
 
       - name: Setup PostgreSQL users and extensions
         env:
@@ -157,33 +112,16 @@ jobs:
 
   test-packages:
     name: SDK Packages Tests
-    needs: setup
+    # No needs: runs in parallel with setup (doesn't need generated files)
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Restore cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            node_modules
-            platform/wab/node_modules
-            platform/wab/src/wab/gen
-            platform/wab/src/wab/shared/model/classes.ts
-            platform/wab/src/wab/shared/model/classes-metas.ts
-            platform/wab/src/wab/styles/_tokens.sass
-            platform/wab/src/wab/styles/_tokens.ts
-            platform/wab/src/wab/styles/css-variables.ts
-            platform/wab/src/wab/styles/css-variables.scss
-          key: deps-v3-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
-          fail-on-cache-miss: true
+      - name: Setup environment
+        uses: ./.github/actions/setup-env
+        # Cache speeds up yarn install but isn't required
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
@@ -217,33 +155,16 @@ jobs:
 
   test-plasmicpkgs:
     name: Plasmic Packages Tests
-    needs: setup
+    # No needs: runs in parallel with setup (doesn't need generated files)
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Restore cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            node_modules
-            platform/wab/node_modules
-            platform/wab/src/wab/gen
-            platform/wab/src/wab/shared/model/classes.ts
-            platform/wab/src/wab/shared/model/classes-metas.ts
-            platform/wab/src/wab/styles/_tokens.sass
-            platform/wab/src/wab/styles/_tokens.ts
-            platform/wab/src/wab/styles/css-variables.ts
-            platform/wab/src/wab/styles/css-variables.scss
-          key: deps-v3-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
-          fail-on-cache-miss: true
+      - name: Setup environment
+        uses: ./.github/actions/setup-env
+        # Cache speeds up yarn install but isn't required
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
@@ -271,3 +192,51 @@ jobs:
           else
             echo "Some tests failed." >> $GITHUB_STEP_SUMMARY
           fi
+
+  all-tests:
+    name: All Tests
+    needs: [setup, test-wab, test-packages, test-plasmicpkgs]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check test results
+        run: |
+          echo "### Test Results Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          setup_result="${{ needs.setup.result }}"
+          wab_result="${{ needs.test-wab.result }}"
+          packages_result="${{ needs.test-packages.result }}"
+          plasmicpkgs_result="${{ needs.test-plasmicpkgs.result }}"
+
+          echo "| Job | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Setup | ${setup_result} |" >> $GITHUB_STEP_SUMMARY
+          echo "| WAB Tests | ${wab_result} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SDK Packages | ${packages_result} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Plasmic Packages | ${plasmicpkgs_result} |" >> $GITHUB_STEP_SUMMARY
+
+          # Fail if setup failed (required for WAB tests)
+          if [[ "${setup_result}" == "failure" ]]; then
+            echo ""
+            echo "Setup job failed."
+            exit 1
+          fi
+
+          # Fail if any required job failed
+          if [[ "${packages_result}" == "failure" ]] || [[ "${plasmicpkgs_result}" == "failure" ]]; then
+            echo ""
+            echo "One or more required test jobs failed."
+            exit 1
+          fi
+
+          # WAB tests are optional (can be skipped on PRs without label)
+          if [[ "${wab_result}" == "failure" ]]; then
+            echo ""
+            echo "WAB tests failed."
+            exit 1
+          fi
+
+          echo ""
+          echo "All tests passed!"
