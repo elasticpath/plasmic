@@ -88,15 +88,17 @@ export async function getTeamAndWorkspace(db1: DbMgr) {
 export async function createDatabase(name = "test") {
   const isCI = !!process.env.CI;
   const dbname = isCI ? dbNameGen(name) : `wab_dev_${name}`;
+  const password = process.env.WAB_DBPASSWORD;
+  const passwordPart = password ? `:${password}` : "";
   const sucon = await ensureDbConnection(
-    "postgresql://superwab@localhost/postgres",
+    `postgresql://superwab${passwordPart}@localhost/postgres`,
     "super"
   );
   await sucon.query("select 1");
   await sucon.query(`drop database if exists ${dbname} with (force);`);
   await sucon.query(`create database ${dbname} owner wab;`);
   await sucon.query(`grant pg_signal_backend to wab;`);
-  const dburi = `postgresql://wab@localhost/${dbname}`;
+  const dburi = `postgresql://wab${passwordPart}@localhost/${dbname}`;
   const con = await ensureDbConnection(dburi, dbname);
   await con.synchronize();
   await con.transaction(async (em) => {

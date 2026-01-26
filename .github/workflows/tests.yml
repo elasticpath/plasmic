@@ -109,6 +109,7 @@ jobs:
         env:
           CI: true
           NODE_OPTIONS: '--max-old-space-size=8192'
+          WAB_DBPASSWORD: 'SEKRET'
         run: yarn test --shard=${{ matrix.shard }}/4
 
       - name: Test Summary
