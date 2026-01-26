@@ -43,6 +43,7 @@ import {
   passPaywall,
 } from "@/wab/server/routes/team-plans";
 import { mkApiTeam } from "@/wab/server/routes/teams";
+import { applyGlobalContextUpdates } from "@/wab/server/routes/global-context-utils";
 import {
   commitTransaction,
   parseMetadata,
@@ -2955,6 +2956,14 @@ export async function updateProjectData(req: Request, res: Response) {
       logger().info(
         `Update project data: no tokens to update (body.tokens = ${data.tokens})`
       );
+    }
+
+    if (data.updateGlobalContexts && data.updateGlobalContexts.length > 0) {
+      const contexts = data.updateGlobalContexts.map((c) => c.name).join(", ");
+      logger().info(`Update project data: Updating global contexts ${contexts}`);
+
+      const gcWarnings = applyGlobalContextUpdates(site, data.updateGlobalContexts);
+      gcWarnings.forEach((message) => warnings.push({ message }));
     }
 
     if (data.regenerateSecretApiToken) {

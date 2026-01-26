@@ -955,10 +955,18 @@ export interface UpsertTokenReq {
   type: StyleTokenType | "BoxShadow";
 }
 
+export interface UpdateGlobalContextReq {
+  /** Global context component name (e.g., "plasmic-commerce-elastic-path-provider") */
+  name: string;
+  /** Props to update on the global context */
+  props: Record<string, string | number | boolean | null>;
+}
+
 export interface UpdateProjectReq {
   newComponents?: NewComponentReq[];
   updateComponents?: NewComponentReq[];
   tokens?: UpsertTokenReq[];
+  updateGlobalContexts?: UpdateGlobalContextReq[];
   regenerateSecretApiToken?: boolean;
   branchId?: string;
 }
