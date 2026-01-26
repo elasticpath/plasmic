@@ -255,14 +255,17 @@ jobs:
         env:
           PGPASSWORD: postgres
           PGHOST: localhost
-          PGUSER: postgres
         run: |
-          psql -c "CREATE USER wab PASSWORD 'SEKRET';"
-          psql -c "CREATE USER superwab PASSWORD 'SEKRET' CREATEDB CREATEROLE IN GROUP wab;"
-          psql -c "GRANT pg_signal_backend TO superwab;"
-          psql -c "CREATE DATABASE wab OWNER wab;"
-          psql -c "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"
-          psql -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+          psql -U postgres -c "CREATE USER wab PASSWORD 'SEKRET';"
+          psql -U postgres -c "CREATE USER superwab PASSWORD 'SEKRET' CREATEDB CREATEROLE IN GROUP wab;"
+          psql -U postgres -c "GRANT pg_signal_backend TO superwab;"
+          psql -U postgres -c "CREATE DATABASE wab OWNER wab;"
+          psql -U postgres -d wab -c "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"
+          psql -U postgres -d wab -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+
+      - name: Run database migrations
+        working-directory: platform/wab
+        run: yarn typeorm migration:run
 
       - name: Seed database
         working-directory: platform/wab
