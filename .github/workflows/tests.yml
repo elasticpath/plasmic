@@ -273,6 +273,8 @@ jobs:
 
       - name: Build frontend
         working-directory: platform/wab
+        env:
+          NODE_ENV: development
         run: yarn build
 
       - name: Install Playwright browsers
