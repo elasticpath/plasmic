@@ -80,6 +80,13 @@ jobs:
         with:
           fail-on-cache-miss: 'true'
 
+      - name: Install root dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Install platform/wab dependencies
+        working-directory: platform/wab
+        run: yarn install --frozen-lockfile
+
       - name: Setup PostgreSQL users and extensions
         env:
           PGPASSWORD: postgres
