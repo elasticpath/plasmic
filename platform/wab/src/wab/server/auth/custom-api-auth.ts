@@ -1,10 +1,9 @@
 import { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
+import { UnauthorizedError } from "@/wab/shared/ApiErrors/errors";
 import { getUser, superDbMgr } from "@/wab/server/routes/util";
 import { doLogin } from "@/wab/server/auth/util";
 import { logger } from "@/wab/server/observability";
-import { ensureType } from "@/wab/shared/common";
-import { LoginResponse } from "@/wab/shared/ApiSchema";
 import { DbMgr, SUPER_USER } from "@/wab/server/db/DbMgr";
 import { getManager } from "typeorm";
 
@@ -50,38 +49,45 @@ export async function customEPCCCookieAuth(
 
   const cookieAuthPublicKey =
     "-----BEGIN PUBLIC KEY-----\n" +
-    "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEcAGT3GFmG0zKsklK2LGaJMRmd+MJ\n" +
-    "e5JRbEppIloKrZ22/IxiAFzscmzBER6F7vNNO5hYxKO1ISB+IXmC+OsTqQ==\n" +
+    "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEDOiz4gNCAgA6mlvpIx5aLFtsI0zl\n" +
+    "D+x6433sySW5w2CGGSy1HVuOpdksNN/3kgsy77YL1QghUjZ+WEJZx0K2QQ==\n" +
     "-----END PUBLIC KEY-----";
 
-  const payload = jwt.verify(token, cookieAuthPublicKey, {
-    algorithms: ["ES256"],
-    issuer: "cm.elasticpath.com",
-    audience: "cms.elasticpath.com",
-  }) as jwt.JwtPayload;
+  try {
+    const payload = jwt.verify(token, cookieAuthPublicKey, {
+      algorithms: ["ES256"],
+      issuer: "cm.elasticpath.com",
+      audience: "cms.elasticpath.com",
+    }) as jwt.JwtPayload;
 
-  if (!payload.sub) {
-    return next();
-  }
-
-  const mgr = new DbMgr(getManager(), SUPER_USER);
-  const user = await mgr.tryGetUserById(payload.sub);
-
-  if (!user) {
-    return next();
-  }
-
-  doLogin(req, user, (err2) => {
-    if (err2) {
-      return next(err2);
+    if (!payload.sub) {
+      return next();
     }
-    logger().info(
-      `logged in as ${getUser(req, { allowUnverifiedEmail: true }).email}`
+
+    const mgr = new DbMgr(getManager(), SUPER_USER);
+    const user = await mgr.tryGetUserById(payload.sub);
+
+    if (!user) {
+      return next();
+    }
+
+    doLogin(req, user, (err2) => {
+      if (err2) {
+        return next(err2);
+      }
+      logger().info(
+        `logged in as ${getUser(req, { allowUnverifiedEmail: true }).email}`
+      );
+
+      // One-time use: clear it after session mint
+      res.clearCookie("cms_auth_token", { path: "/" });
+
+      next();
+    });
+  } catch (err) {
+    logger().error(
+      `Failed to verify JWT in cookie: ${err}`
     );
-
-    // One-time use: clear it after session mint
-    res.clearCookie("cms_auth_token", { path: "/" });
-
-    next();
-  });
+    throw new UnauthorizedError(`Invalid authentication token`);
+  }
 }
