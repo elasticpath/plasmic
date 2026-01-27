@@ -273,16 +273,27 @@ jobs:
 
       - name: Build sibling packages and CSS
         run: |
-          # Build all sibling packages in parallel (they don't depend on each other)
-          (cd platform/sub && yarn install --frozen-lockfile && yarn build-dev) &
-          (cd platform/live-frame && yarn install --frozen-lockfile && yarn build) &
-          (cd platform/react-web-bundle && yarn install --frozen-lockfile && yarn build) &
-          (cd platform/canvas-packages && yarn install --frozen-lockfile && yarn build) &
-          (cd platform/loader-html-hydrate && yarn install --frozen-lockfile && yarn build) &
-          (cd platform/wab && yarn build-css) &
+          set -e  # Exit on first error
 
-          # Wait for all background builds to complete
-          wait
+          echo "Building platform/sub..."
+          (cd platform/sub && yarn && yarn build-dev)
+
+          echo "Building platform/live-frame..."
+          (cd platform/live-frame && yarn && yarn build)
+
+          echo "Building platform/react-web-bundle..."
+          (cd platform/react-web-bundle && yarn && yarn build)
+
+          echo "Building platform/canvas-packages..."
+          (cd platform/canvas-packages && yarn && yarn build)
+
+          echo "Building platform/loader-html-hydrate..."
+          (cd platform/loader-html-hydrate && yarn && yarn build)
+
+          echo "Building CSS..."
+          (cd platform/wab && yarn build-css)
+
+          echo "All sibling packages built successfully"
 
       - name: Free disk space
         run: |
