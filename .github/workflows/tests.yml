@@ -271,12 +271,6 @@ jobs:
         working-directory: platform/wab
         run: yarn seed
 
-      - name: Build frontend
-        working-directory: platform/wab
-        env:
-          NODE_ENV: development
-        run: yarn build
-
       - name: Install Playwright browsers
         working-directory: platform/wab
         run: npx playwright install chromium --with-deps
@@ -293,12 +287,11 @@ jobs:
           # Start host server in background
           yarn host-server &
 
-          # Wait for backend to be ready, then start serving built frontend
-          npx wait-on http://localhost:3004 --timeout 120000
-          npx http-server build -p 3003 --cors &
+          # Start frontend dev server in background
+          yarn start &
 
-          # Wait for all servers to be ready
-          npx wait-on http://localhost:3003 http://localhost:3004 http://localhost:3005 --timeout 180000
+          # Wait for all servers to be ready (longer timeout for dev server startup)
+          npx wait-on http://localhost:3003 http://localhost:3004 http://localhost:3005 --timeout 300000
 
       - name: Run Playwright tests
         working-directory: platform/wab/playwright
