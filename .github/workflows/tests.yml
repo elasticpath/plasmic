@@ -284,6 +284,21 @@ jobs:
           # Wait for all background builds to complete
           wait
 
+      - name: Free disk space
+        run: |
+          # Clean up node_modules from sibling packages (only build outputs needed)
+          rm -rf platform/sub/node_modules
+          rm -rf platform/live-frame/node_modules
+          rm -rf platform/react-web-bundle/node_modules
+          rm -rf platform/canvas-packages/node_modules
+          rm -rf platform/loader-html-hydrate/node_modules
+
+          # Clean yarn cache
+          yarn cache clean
+
+          # Show available disk space
+          df -h
+
       - name: Install Playwright dependencies
         working-directory: platform/wab/playwright
         run: yarn install --frozen-lockfile
