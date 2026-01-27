@@ -271,8 +271,12 @@ jobs:
         working-directory: platform/wab
         run: yarn seed
 
+      - name: Install Playwright dependencies
+        working-directory: platform/wab/playwright
+        run: yarn install --frozen-lockfile
+
       - name: Install Playwright browsers
-        working-directory: platform/wab
+        working-directory: platform/wab/playwright
         run: npx playwright install chromium
 
       - name: Start application servers
