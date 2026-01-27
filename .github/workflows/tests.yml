@@ -273,7 +273,7 @@ jobs:
 
       - name: Install Playwright browsers
         working-directory: platform/wab
-        run: npx playwright install chromium --with-deps
+        run: npx playwright install chromium
 
       - name: Start application servers
         working-directory: platform/wab
