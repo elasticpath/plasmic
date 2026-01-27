@@ -2050,7 +2050,7 @@ function corsPreflight() {
 export function makeExpressSessionMiddleware(config: Config) {
   return session({
     cookie: {
-      maxAge: 30 * 24 * 60 * 60 * 1000, // 30-day sessions
+      maxAge: 24 * 60 * 60 * 1000, // 24-hour sessions
       ...(config.production && {
         // Allow to be embedded into an iframe in prod.
         // It's also possible to do this in dev, but it's
