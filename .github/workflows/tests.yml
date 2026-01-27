@@ -271,6 +271,19 @@ jobs:
         working-directory: platform/wab
         run: yarn seed
 
+      - name: Build sibling packages and CSS
+        run: |
+          # Build all sibling packages in parallel (they don't depend on each other)
+          (cd platform/sub && yarn install --frozen-lockfile && yarn build-dev) &
+          (cd platform/live-frame && yarn install --frozen-lockfile && yarn build) &
+          (cd platform/react-web-bundle && yarn install --frozen-lockfile && yarn build) &
+          (cd platform/canvas-packages && yarn install --frozen-lockfile && yarn build) &
+          (cd platform/loader-html-hydrate && yarn install --frozen-lockfile && yarn build) &
+          (cd platform/wab && yarn build-css) &
+
+          # Wait for all background builds to complete
+          wait
+
       - name: Install Playwright dependencies
         working-directory: platform/wab/playwright
         run: yarn install --frozen-lockfile
