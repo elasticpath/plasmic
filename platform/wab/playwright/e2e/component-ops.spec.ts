@@ -138,6 +138,10 @@ test.describe("component-ops - tricky operations", () => {
     await models.studio.leftPanel.addComponent("CompB");
     await models.studio.leftPanel.addComponent("CompC");
 
+    // Wait for all frames to be ready after component creation
+    await models.studio.waitAllEval();
+    await page.waitForTimeout(1000);
+
     const compAFrame = page
       .locator("iframe")
       .first()
@@ -217,6 +221,10 @@ test.describe("component-ops - tricky operations", () => {
     ]);
     await childrenLocator.click({ button: "right" });
     await models.studio.deslotButton.click();
+
+    // Wait for de-slot operation to complete
+    await page.waitForTimeout(500);
+    await models.studio.waitAllEval();
 
     await models.studio.leftPanel.selectTreeNode(["vertical stack"]);
     await page.keyboard.press("Enter");
