@@ -258,6 +258,7 @@ jobs:
         run: |
           psql -U postgres -c "CREATE USER wab PASSWORD 'SEKRET';"
           psql -U postgres -c "CREATE USER superwab PASSWORD 'SEKRET' CREATEDB CREATEROLE IN GROUP wab;"
+          psql -U postgres -c "CREATE USER cypress PASSWORD 'SEKRET';"
           psql -U postgres -c "GRANT pg_signal_backend TO superwab;"
           psql -U postgres -c "CREATE DATABASE wab OWNER wab;"
           psql -U postgres -d wab -c "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"
@@ -313,6 +314,20 @@ jobs:
           df -h
 
           echo "All sibling packages built successfully"
+
+      - name: Build and start host-test server
+        run: |
+          echo "Building host-test Next.js app..."
+          cd platform/host-test
+          yarn install
+          yarn build
+
+          echo "Starting host-test server on port 3000..."
+          yarn start &
+
+          # Wait for it to be ready
+          npx wait-on http://localhost:3000/plasmic-host --timeout 60000
+          echo "Host-test server is ready"
 
       - name: Install Playwright dependencies
         working-directory: platform/wab/playwright
