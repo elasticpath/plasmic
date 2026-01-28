@@ -375,19 +375,11 @@ test.describe("data token usages", () => {
       await models.studio.leftPanel.createNewPage("TestPage");
       await models.studio.leftPanel.insertNode("Slider");
 
-      // Wait for right panel to populate with Slider properties
-      await waitForFrameToLoad(page);
-      await models.studio.rightPanel.frame
-        .locator('[data-test-id="prop-editor-row-ARIA label"]')
-        .waitFor({ state: "visible", timeout: 10000 });
-
       for (const propInfo of PROP_INFO) {
         const propRow = models.studio.rightPanel.frame.locator(
           `[data-test-id="prop-editor-row-${propInfo.displayName}"]`
         );
 
-        // Wait for property row to be visible before interacting
-        await propRow.waitFor({ state: "visible", timeout: 5000 });
         await propRow.scrollIntoViewIfNeeded();
 
         const prefilledValue = propInfo.initialValue ?? propInfo.newTextValue;
@@ -400,12 +392,6 @@ test.describe("data token usages", () => {
         }
         // right-click on the text content to create a data token
         await propRow.locator("label").nth(0).click({ button: "right" });
-
-        // Wait for context menu to appear
-        await models.studio.frame
-          .locator(".ant-dropdown-menu")
-          .waitFor({ state: "visible", timeout: 5000 });
-
         await models.studio.createDataTokenButton.click();
         const dataTokenPopover =
           await models.studio.getDataTokenPopoverForTarget(propRow);

@@ -29,10 +29,7 @@ export function getAutoOpenBanner(models: PageModels) {
 export async function turnOffAutoOpenMode(models: PageModels) {
   const viewMenu = models.studio.frame.locator("#view-menu");
   await viewMenu.click();
-  // Wait for menu item to appear instead of fixed timeout
-  await models.studio.frame
-    .getByText("Turn off auto-open mode")
-    .waitFor({ state: "visible", timeout: 5000 });
+  await models.studio.page.waitForTimeout(500);
   await models.studio.frame.getByText("Turn off auto-open mode").click();
   await models.studio.page.waitForTimeout(500);
 }
@@ -42,10 +39,7 @@ export async function turnOnAutoOpenMode(models: PageModels) {
   if (!(await banner.isVisible())) {
     const viewMenu = models.studio.frame.locator("#view-menu");
     await viewMenu.click();
-    // Wait for menu item to appear instead of fixed timeout
-    await models.studio.frame
-      .getByText("Turn on auto-open mode")
-      .waitFor({ state: "visible", timeout: 5000 });
+    await models.studio.page.waitForTimeout(500);
     await models.studio.frame.getByText("Turn on auto-open mode").click();
     await models.studio.page.waitForTimeout(500);
   }
@@ -95,10 +89,6 @@ export async function setNotRendered(models: PageModels) {
 
 export async function setDisplayNone(models: PageModels) {
   await models.studio.rightPanel.switchToDesignTab();
-  // Wait for element to be visible before clicking
-  await models.studio.rightPanel.frame
-    .locator('[data-plasmic-prop="display-not-visible"]')
-    .waitFor({ state: "visible", timeout: 5000 });
   await models.studio.rightPanel.frame
     .locator('[data-plasmic-prop="display-not-visible"]')
     .click();
@@ -106,10 +96,6 @@ export async function setDisplayNone(models: PageModels) {
 
 export async function setVisible(models: PageModels) {
   await models.studio.rightPanel.switchToDesignTab();
-  // Wait for element to be visible before clicking
-  await models.studio.rightPanel.frame
-    .locator('[data-plasmic-prop="display-visible"]')
-    .waitFor({ state: "visible", timeout: 5000 });
   await models.studio.rightPanel.frame
     .locator('[data-plasmic-prop="display-visible"]')
     .click();
@@ -129,33 +115,25 @@ export async function setDynamicVisibility(
     .waitFor({ state: "visible" });
   await models.studio.rightPanel.frame.getByText("Switch to Code").click();
   await models.studio.rightPanel.frame.locator(".monaco-editor").waitFor();
-  // Increase timeout for Monaco editor initialization
-  await models.studio.page.waitForTimeout(500);
+  await models.studio.page.waitForTimeout(100);
 
   await models.studio.page.keyboard.press(`${modifierKey}+a`);
-  await models.studio.page.waitForTimeout(200);
+  await models.studio.page.waitForTimeout(100);
   await models.studio.page.keyboard.press("Delete");
-  await models.studio.page.waitForTimeout(200);
+  await models.studio.page.waitForTimeout(100);
   await models.studio.page.keyboard.type(expression);
 
-  // Wait for content to settle before saving
-  await models.studio.page.waitForTimeout(300);
   await models.studio.rightPanel.saveDataPicker();
-  await models.studio.page.waitForTimeout(500);
 }
 
 export async function toggleVisiblity(models: PageModels, nodeName: string) {
-  const treeLabel = models.studio.leftPanel.frame
+  await models.studio.leftPanel.frame
     .locator(".tpltree__label", { hasText: nodeName })
-    .first();
-
-  await treeLabel.hover();
-  // Add settle time for hover animation
-  await models.studio.page.waitForTimeout(200);
-
-  const visibilityIcon = treeLabel.locator(".tpltree__label__visibility");
-  await visibilityIcon.waitFor({ state: "visible", timeout: 5000 });
-  await visibilityIcon.click();
+    .hover();
+  await models.studio.leftPanel.frame
+    .locator(".tpltree__label", { hasText: nodeName })
+    .locator(".tpltree__label__visibility")
+    .click();
 }
 
 export async function assertHidden(

@@ -66,8 +66,7 @@ testMultiplayer.describe("multiplayer comments", () => {
         const marker = await session.models.studio.getCommentMarketById(
           threadIdValue
         );
-        // Increase timeout for real-time updates in CI
-        await expect(marker).toBeVisible({ timeout: 20000 });
+        await expect(marker).toBeVisible({ timeout: 10000 });
 
         // Each user opens the comment thread
         await session.models.studio.openCommentThread(threadIdValue);
@@ -102,8 +101,7 @@ testMultiplayer.describe("multiplayer comments", () => {
           const replyLoc = s.models.studio
             .getCommentPost(threadIdValue)
             .getByText(replyText);
-          // Increase timeout for real-time updates in CI
-          await expect(replyLoc).toBeVisible({ timeout: 15000 });
+          await expect(replyLoc).toBeVisible({ timeout: 5000 });
         });
       });
 
@@ -122,8 +120,7 @@ testMultiplayer.describe("multiplayer comments", () => {
       // Verify all users can see the new comment marker
       await forEachAsync(sessions, async (session) => {
         const allMarkers = session.models.studio.commentMarkers;
-        // Increase timeout for real-time updates in CI
-        await expect(allMarkers).toHaveCount(2, { timeout: 15000 });
+        await expect(allMarkers).toHaveCount(2, { timeout: 5000 });
         await session.models.studio.openCommentThread(threadId2Value);
       });
 
@@ -137,8 +134,7 @@ testMultiplayer.describe("multiplayer comments", () => {
         const resolvedLoc = session.models.studio.frame
           .locator(".CommentDialogContainer")
           .getByText("Comment thread resolved.");
-        // Increase timeout for real-time updates in CI
-        await expect(resolvedLoc).toBeVisible({ timeout: 15000 });
+        await expect(resolvedLoc).toBeVisible({ timeout: 5000 });
       });
 
       // Test comment tab navigation
@@ -166,8 +162,7 @@ testMultiplayer.describe("multiplayer comments", () => {
         const deletedMarker = await session.models.studio.getCommentMarketById(
           threadIdValue
         );
-        // Increase timeout for real-time deletion propagation in CI
-        await expect(deletedMarker).not.toBeVisible({ timeout: 20000 });
+        await expect(deletedMarker).not.toBeVisible({ timeout: 10000 });
 
         // But the comment should still exist in the comments tab
         const commentInTab = session.models.studio.frame.locator(

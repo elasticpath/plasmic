@@ -68,17 +68,12 @@ test.describe("hostless-code-libs", () => {
     const canvasIframe = models.studio.frame
       .locator("iframe.canvas-editor__viewport")
       .first();
-    await canvasIframe.waitFor({ state: "visible", timeout: 20000 });
+    await canvasIframe.waitFor({ state: "visible" });
     const frameContent = canvasIframe.contentFrame();
 
-    // Wait for frame content to fully load
-    await frameContent.locator("html").waitFor({ timeout: 20000 });
     await frameContent
       .locator("body")
-      .waitFor({ state: "visible", timeout: 20000 });
-
-    // Allow time for code libs to execute
-    await page.waitForTimeout(2000);
+      .waitFor({ state: "visible", timeout: 10000 });
 
     const checkContents = async (content: FrameLocator) => {
       await expect(content.locator("body")).toContainText(

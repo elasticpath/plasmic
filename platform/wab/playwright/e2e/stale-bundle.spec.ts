@@ -45,27 +45,25 @@ test.describe("Can use stale bundle", () => {
     await page.keyboard.press("Enter");
 
     await frameContent.getByText("Button").click();
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(100);
     await page.keyboard.press(`${modifierKey}+a`);
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(100);
     await page.keyboard.press("Delete");
-    await page.waitForTimeout(300);
-    await page.keyboard.type("AntdBtn", { delay: 50 });
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(100);
+    await page.keyboard.type("AntdBtn");
+    await page.waitForTimeout(100);
     await page.keyboard.press("Escape");
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(100);
 
     await models.studio.leftPanel.frame
       .getByText("vertical stack")
       .first()
       .click();
 
-    // Wait for renamed component to appear in outline
-    await models.studio.leftPanel.frame
-      .getByText("AntdBtn")
-      .waitFor({ state: "visible", timeout: 5000 });
     await models.studio.leftPanel.frame.getByText("AntdBtn").click();
 
     await models.studio.rightPanel.checkNoErrors();
+
+    await page.waitForTimeout(2000);
   });
 });
