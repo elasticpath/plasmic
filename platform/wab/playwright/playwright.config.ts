@@ -13,8 +13,9 @@ export default defineConfig({
   use: {
     actionTimeout: 10_000,
     baseURL: "http://localhost:3003",
-    trace: "retain-on-failure",
-    video: "retain-on-failure",
+    trace: process.env.CI ? "off" : "retain-on-failure",
+    video: process.env.CI ? "off" : "retain-on-failure",
+    screenshot: "only-on-failure",
   },
   projects: [
     {
