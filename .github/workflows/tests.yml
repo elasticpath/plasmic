@@ -259,6 +259,7 @@ jobs:
           psql -U postgres -c "CREATE USER wab PASSWORD 'SEKRET';"
           psql -U postgres -c "CREATE USER superwab PASSWORD 'SEKRET' CREATEDB CREATEROLE IN GROUP wab;"
           psql -U postgres -c "CREATE USER cypress PASSWORD 'SEKRET';"
+          psql -U postgres -c "CREATE USER supertdbwab PASSWORD 'SEKRET' CREATEDB CREATEROLE IN GROUP wab;"
           psql -U postgres -c "GRANT pg_signal_backend TO superwab;"
           psql -U postgres -c "CREATE DATABASE wab OWNER wab;"
           psql -U postgres -d wab -c "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"
@@ -342,6 +343,7 @@ jobs:
         env:
           NODE_ENV: development
           CI: true
+          TUTORIAL_DB_SUPER_PASSSWORD: SEKRET
         run: |
           # Start backend server in background
           yarn dev:backend &
