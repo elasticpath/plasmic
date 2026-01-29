@@ -11,6 +11,7 @@ import {
 import { initObservability } from "@/wab/client/observability";
 import { isLiteralObject, swallow, tuple } from "@/wab/shared/common";
 import { DEVFLAGS, applyDevFlagOverrides } from "@/wab/shared/devflags";
+import { applyEpBrandTokens } from "@/wab/styles/ep-brand-tokens";
 import * as Sentry from "@sentry/browser";
 import { createBrowserHistory } from "history";
 import * as React from "react";
@@ -86,6 +87,9 @@ export function main() {
   applyDevFlagOverrides(initClientFlags(DEVFLAGS));
 
   initObservability();
+
+  // Apply Elastic Path brand color overrides
+  applyEpBrandTokens();
 
   (window as any).commithash = ENV.COMMITHASH;
 
