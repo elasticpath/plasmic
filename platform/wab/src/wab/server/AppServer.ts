@@ -1607,7 +1607,7 @@ export function addMainAppServerRoutes(
   );
   app.post(
     "/api/v1/projects/:projectId",
-    cors(),
+    cors({ origin: true, credentials: true }),
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
     apiAuth,
     updateProjectData
