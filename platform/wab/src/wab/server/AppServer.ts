@@ -33,6 +33,7 @@ import {
   trackPostgresPool,
 } from "@/wab/server/promstats";
 import { createRateLimiter } from "@/wab/server/rate-limit";
+import { cmCors, cmCorsPreflight } from "@/wab/server/cm-cors";
 import * as adminRoutes from "@/wab/server/routes/admin";
 import * as provisioningRoutes from "@/wab/server/routes/provisioning";
 import {
@@ -714,6 +715,14 @@ function addOptionsRoutes(app: express.Application) {
   // For mailing list subscriptions
   // allow subscription requests from anywhere (e.g. localhost or www.plasmic.app)
   app.options("/api/v1/mail/subscribe", cors());
+
+  // Commerce Manager CORS preflight handlers (restricted origins)
+  app.options("/api/v1/auth/self", cmCorsPreflight());
+  app.options("/api/v1/auth/csrf", cmCorsPreflight());
+  app.options("/api/v1/app-config", cmCorsPreflight());
+  app.options("/api/v1/projects", cmCorsPreflight());
+  app.options("/api/v1/projects/*", cmCorsPreflight());
+  app.options("/api/v1/cmse/*", cmCorsPreflight());
 }
 
 export function addCmsPublicRoutes(app: express.Application) {
@@ -739,14 +748,14 @@ export function addCmsPublicRoutes(app: express.Application) {
 
 export function addCmsEditorRoutes(app: express.Application) {
   // CMS API for use by studio to crud; access by usual browser login
-  app.get("/api/v1/cmse/databases", listDatabases);
-  app.post("/api/v1/cmse/databases", withNext(createDatabase));
-  app.post("/api/v1/cmse/databases/:dbId/clone", withNext(cloneDatabase));
+  app.get("/api/v1/cmse/databases", cmCors, listDatabases);
+  app.post("/api/v1/cmse/databases", cmCors, withNext(createDatabase));
+  app.post("/api/v1/cmse/databases/:dbId/clone", cmCors, withNext(cloneDatabase));
   app.get("/api/v1/cmse/databases/:dbId", getCmsDatabaseAndSecretTokenById);
   app.get("/api/v1/cmse/databases-meta/:dbId", getDatabaseMeta);
   app.get("/api/v1/cmse/databases-meta", listDatabasesMeta);
   app.put("/api/v1/cmse/databases/:dbId", withNext(updateDatabase));
-  app.delete("/api/v1/cmse/databases/:dbId", withNext(deleteDatabase));
+  app.delete("/api/v1/cmse/databases/:dbId", cmCors, withNext(deleteDatabase));
 
   app.post("/api/v1/cmse/databases/:dbId/tables", withNext(createTable));
   app.put("/api/v1/cmse/tables/:tableId", withNext(updateTable));
@@ -1188,7 +1197,7 @@ export function addMainAppServerRoutes(
   /**
    * Auth Routes
    */
-  app.get("/api/v1/auth/csrf", authRoutes.csrf);
+  app.get("/api/v1/auth/csrf", cmCors, authRoutes.csrf);
   app.post(
     "/api/v1/auth/login",
     sensitiveRateLimiter,
@@ -1199,9 +1208,9 @@ export function addMainAppServerRoutes(
     sensitiveRateLimiter,
     withNext(authRoutes.signUp)
   );
-  app.get("/api/v1/auth/self", authRoutes.self);
-  app.post("/api/v1/auth/self", withNext(authRoutes.updateSelf));
-  app.delete("/api/v1/auth/self", withNext(authRoutes.deleteSelf));
+  app.get("/api/v1/auth/self", cmCors, authRoutes.self);
+  app.post("/api/v1/auth/self", cmCors, withNext(authRoutes.updateSelf));
+  app.delete("/api/v1/auth/self", cmCors, withNext(authRoutes.deleteSelf));
   app.post(
     "/api/v1/auth/self/password",
     sensitiveRateLimiter,
@@ -1457,7 +1466,7 @@ export function addMainAppServerRoutes(
   /**
    * Self routes
    */
-  app.get("/api/v1/app-config", getAppConfig);
+  app.get("/api/v1/app-config", cmCors, getAppConfig);
   app.get("/api/v1/app-ctx", withNext(getAppCtx));
 
   /**
@@ -1489,15 +1498,16 @@ export function addMainAppServerRoutes(
    */
   app.get(
     "/api/v1/projects",
+    cmCors,
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
     withNext(listProjects)
   );
-  app.post("/api/v1/projects", withNext(createProject));
+  app.post("/api/v1/projects", cmCors, withNext(createProject));
   app.post(
     "/api/v1/projects/create-project-with-hostless-packages",
     withNext(createProjectWithHostlessPackages)
   );
-  app.post("/api/v1/projects/:projectId/clone", withNext(cloneProject));
+  app.post("/api/v1/projects/:projectId/clone", cmCors, withNext(cloneProject));
   app.post(
     "/api/v1/templates/:projectId/clone",
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
@@ -1517,6 +1527,7 @@ export function addMainAppServerRoutes(
   );
   app.put(
     "/api/v1/projects/:projectId/meta",
+    cmCors,
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
     updateProjectMeta
   );
@@ -1546,14 +1557,15 @@ export function addMainAppServerRoutes(
     getProjectRevWithoutData
   );
   app.get("/api/v1/project-data/:projectId", adminOnly, getFullProjectData);
-  app.put("/api/v1/projects/:projectId", updateProject);
+  app.put("/api/v1/projects/:projectId", cmCors, updateProject);
   app.delete(
     "/api/v1/projects/:projectId",
+    cmCors,
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
     withNext(deleteProject)
   );
   app.put("/api/v1/projects/:projectId/revert-to-version", revertToVersion);
-  app.put("/api/v1/projects/:projectId/update-host", withNext(updateHostUrl));
+  app.put("/api/v1/projects/:projectId/update-host", cmCors, withNext(updateHostUrl));
   app.delete("/api/v1/projects/:projectId/perm", withNext(removeSelfPerm));
   app.get("/api/v1/projects/:projectId/updates", getModelUpdates);
   app.post(
