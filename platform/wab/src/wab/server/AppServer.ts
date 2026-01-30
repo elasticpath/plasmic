@@ -751,10 +751,10 @@ export function addCmsEditorRoutes(app: express.Application) {
   app.get("/api/v1/cmse/databases", cmCors, listDatabases);
   app.post("/api/v1/cmse/databases", cmCors, withNext(createDatabase));
   app.post("/api/v1/cmse/databases/:dbId/clone", cmCors, withNext(cloneDatabase));
-  app.get("/api/v1/cmse/databases/:dbId", getCmsDatabaseAndSecretTokenById);
+  app.get("/api/v1/cmse/databases/:dbId", cmCors, getCmsDatabaseAndSecretTokenById);
   app.get("/api/v1/cmse/databases-meta/:dbId", getDatabaseMeta);
   app.get("/api/v1/cmse/databases-meta", listDatabasesMeta);
-  app.put("/api/v1/cmse/databases/:dbId", withNext(updateDatabase));
+  app.put("/api/v1/cmse/databases/:dbId", cmCors, withNext(updateDatabase));
   app.delete("/api/v1/cmse/databases/:dbId", cmCors, withNext(deleteDatabase));
 
   app.post("/api/v1/cmse/databases/:dbId/tables", withNext(createTable));
