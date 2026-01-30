@@ -3,21 +3,21 @@ import express, { RequestHandler } from "express";
 import { safeCast } from "@/wab/shared/common";
 
 // CORS configuration restricted to Commerce Manager origins
-const cmAllowedOrigins = [
-  "https://integration.cm.elasticpath.com",
-  "https://staging.cm.elasticpath.com",
-  "https://useast.cm.elasticpath.com",
-  "https://euwest.cm.elasticpath.com",
-  "http://localhost:3000",
-];
+
+// Regex for *.cm.elasticpath.com (any subdomain)
+const cmOriginPattern = /^https:\/\/[\w-]+\.cm\.elasticpath\.com$/;
 
 // Regex for Vercel preview deployments: {MR_NUMBER}--{env}-commerce-manager.vercel.app
 const cmPreviewOriginPattern =
-  /^https:\/\/\d+--\w+-commerce-manager\.vercel\.app$/;
+  /^https:\/\/\d+--[\w-]+-commerce-manager\.vercel\.app$/;
+
+// localhost for development
+const cmLocalOrigin = "http://localhost:3000";
 
 function isCmOriginAllowed(origin: string | undefined): boolean {
   if (!origin) return false;
-  if (cmAllowedOrigins.includes(origin)) return true;
+  if (origin === cmLocalOrigin) return true;
+  if (cmOriginPattern.test(origin)) return true;
   if (cmPreviewOriginPattern.test(origin)) return true;
   return false;
 }
