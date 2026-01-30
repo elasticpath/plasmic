@@ -727,6 +727,10 @@ function addOptionsRoutes(app: express.Application) {
   app.options("/api/v1/settings/apitokens/*", cmCorsPreflight());
   app.options("/api/v1/hosts", cmCorsPreflight());
   app.options("/api/v1/hosts/*", cmCorsPreflight());
+  app.options("/api/v1/templates/*", cmCorsPreflight());
+  app.options("/api/v1/workspaces", cmCorsPreflight());
+  app.options("/api/v1/workspaces/*", cmCorsPreflight());
+  app.options("/api/v1/personal-workspace", cmCorsPreflight());
 }
 
 export function addCmsPublicRoutes(app: express.Application) {
@@ -1514,6 +1518,7 @@ export function addMainAppServerRoutes(
   app.post("/api/v1/projects/:projectId/clone", cmCors, withNext(cloneProject));
   app.post(
     "/api/v1/templates/:projectId/clone",
+    cmCors,
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
     withNext(clonePublishedTemplate)
   );
@@ -1680,20 +1685,23 @@ export function addMainAppServerRoutes(
    */
   app.post(
     "/api/v1/workspaces",
+    cmCors,
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
     createWorkspace
   );
-  app.get("/api/v1/workspaces/:workspaceId", getWorkspace);
-  app.get("/api/v1/personal-workspace", getPersonalWorkspace);
-  app.put("/api/v1/workspaces/:workspaceId", updateWorkspace);
+  app.get("/api/v1/workspaces/:workspaceId", cmCors, getWorkspace);
+  app.get("/api/v1/personal-workspace", cmCors, getPersonalWorkspace);
+  app.put("/api/v1/workspaces/:workspaceId", cmCors, updateWorkspace);
   app.delete(
     "/api/v1/workspaces/:workspaceId",
+    cmCors,
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
     withNext(deleteWorkspace)
   );
 
   app.get(
     "/api/v1/workspaces",
+    cmCors,
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
     withNext(getWorkspaces)
   );
