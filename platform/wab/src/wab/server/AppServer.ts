@@ -723,6 +723,10 @@ function addOptionsRoutes(app: express.Application) {
   app.options("/api/v1/projects", cmCorsPreflight());
   app.options("/api/v1/projects/*", cmCorsPreflight());
   app.options("/api/v1/cmse/*", cmCorsPreflight());
+  app.options("/api/v1/settings/apitokens", cmCorsPreflight());
+  app.options("/api/v1/settings/apitokens/*", cmCorsPreflight());
+  app.options("/api/v1/hosts", cmCorsPreflight());
+  app.options("/api/v1/hosts/*", cmCorsPreflight());
 }
 
 export function addCmsPublicRoutes(app: express.Application) {
@@ -1726,14 +1730,20 @@ export function addMainAppServerRoutes(
   app.get("/api/v1/clip/:clipId", getClip);
   app.put("/api/v1/clip/:clipId", withNext(putClip));
 
-  app.get("/api/v1/settings/apitokens", apiTokenRoutes.listTokens);
-  app.put("/api/v1/settings/apitokens", withNext(apiTokenRoutes.createToken));
+  app.get("/api/v1/settings/apitokens", cmCors, apiTokenRoutes.listTokens);
+  app.put(
+    "/api/v1/settings/apitokens",
+    cmCors,
+    withNext(apiTokenRoutes.createToken)
+  );
   app.delete(
     "/api/v1/settings/apitokens/:token",
+    cmCors,
     withNext(apiTokenRoutes.revokeToken)
   );
   app.put(
     "/api/v1/settings/apitokens/emit/:initToken",
+    cmCors,
     withNext(apiTokenRoutes.emitToken)
   );
 
@@ -1806,15 +1816,17 @@ export function addMainAppServerRoutes(
    */
   app.get(
     "/api/v1/hosts",
+    cmCors,
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
     getTrustedHostsForSelf
   );
   app.post(
     "/api/v1/hosts",
+    cmCors,
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
     withNext(addTrustedHost)
   );
-  app.delete("/api/v1/hosts/:trustedHostId", withNext(deleteTrustedHost));
+  app.delete("/api/v1/hosts/:trustedHostId", cmCors, withNext(deleteTrustedHost));
 
   app.post(
     "/api/v1/image/upload",

@@ -41,7 +41,17 @@ export function cmCorsPreflight() {
   const corsHandler = cors({
     ...cmCorsOptions,
     maxAge: 30 * 24 * 60 * 60,
-    allowedHeaders: "*",
+    // Must explicitly list headers - wildcards don't work with credentials: true
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-CSRF-Token",
+      "X-Requested-With",
+      "Accept",
+      "Origin",
+      "Cache-Control",
+      "Pragma",
+    ],
   });
 
   const handler: express.RequestHandler = safeCast<RequestHandler>(
