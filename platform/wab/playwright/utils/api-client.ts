@@ -421,6 +421,7 @@ export class ApiClient {
           migrationsStrict: true,
           dataSourceReplacement: options?.dataSourceReplacement,
         },
+        timeout: 60000, // 60s for large bundle imports
       }
     );
 

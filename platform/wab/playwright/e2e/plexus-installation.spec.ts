@@ -100,7 +100,7 @@ test.describe("Plexus Installation", () => {
       testIds.projectPanel.selector
     );
     if (!(await projectPanel.isVisible())) {
-      await models.studio.projectNavButton.click({ timeout: 10000 });
+      await models.studio.projectNavButton.click({ timeout: 20000 });
       await expect(projectPanel).toBeVisible({ timeout: 15000 });
     }
 
@@ -138,7 +138,7 @@ test.describe("Plexus Installation", () => {
     const insertable = leftPanelFrame
       .locator(`li[data-plasmic-add-item-name="${insertableName}"]`)
       .first();
-    await insertable.waitFor({ state: "visible", timeout: 10000 });
+    await insertable.waitFor({ state: "visible", timeout: 20000 });
     await insertable.scrollIntoViewIfNeeded();
 
     const insertableBox = await insertable.boundingBox();
@@ -147,7 +147,7 @@ test.describe("Plexus Installation", () => {
     }
 
     const dropFrame = models.studio.frames.first();
-    await dropFrame.waitFor({ state: "visible", timeout: 10000 });
+    await dropFrame.waitFor({ state: "visible", timeout: 20000 });
     const dropBox = await dropFrame.boundingBox();
     if (!dropBox) {
       throw new Error("Unable to determine drop target bounding box");

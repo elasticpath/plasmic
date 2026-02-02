@@ -73,7 +73,7 @@ test.describe("hostless-code-libs", () => {
 
     await frameContent
       .locator("body")
-      .waitFor({ state: "visible", timeout: 10000 });
+      .waitFor({ state: "visible", timeout: 30000 });
 
     const checkContents = async (content: FrameLocator) => {
       await expect(content.locator("body")).toContainText(

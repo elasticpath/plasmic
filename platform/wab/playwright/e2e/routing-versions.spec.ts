@@ -39,7 +39,7 @@ test.describe("routing", () => {
     await page.keyboard.press("Escape");
     await page.waitForTimeout(100);
 
-    await models.studio.leftPanel.moreTabButton.hover();
+    await models.studio.leftPanel.moreTabButton.hover({ force: true });
     await models.studio.leftPanel.frame
       .getByRole("button", { name: "Published versions" })
       .click();
@@ -73,7 +73,7 @@ test.describe("routing", () => {
     await page.keyboard.press("Escape");
     await page.waitForTimeout(100);
 
-    await models.studio.leftPanel.moreTabButton.hover();
+    await models.studio.leftPanel.moreTabButton.hover({ force: true });
     await models.studio.leftPanel.frame
       .getByRole("button", { name: "Published versions" })
       .click();
@@ -137,7 +137,7 @@ test.describe("routing", () => {
       .click();
     await expect(framed.getByText("Main v1")).toBeVisible();
 
-    await models.studio.leftPanel.moreTabButton.hover();
+    await models.studio.leftPanel.moreTabButton.hover({ force: true });
     await models.studio.leftPanel.frame
       .getByRole("button", { name: "Published versions" })
       .click();

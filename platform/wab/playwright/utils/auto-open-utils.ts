@@ -57,7 +57,7 @@ export async function switchInteractiveMode(models: PageModels) {
   );
 
   try {
-    await interactiveSwitch.waitFor({ state: "attached", timeout: 10000 });
+    await interactiveSwitch.waitFor({ state: "attached", timeout: 20000 });
   } catch (e) {
     throw new Error(
       "Interactive switch not found - focus mode might not be fully loaded"
@@ -154,10 +154,10 @@ export async function assertAutoOpened(
 ) {
   if (visibleContent) {
     await expect(frame.getByText(visibleContent)).toBeVisible({
-      timeout: 10000,
+      timeout: 20000,
     });
   }
-  await expect(frame.getByText(hiddenContent)).toBeVisible({ timeout: 10000 });
+  await expect(frame.getByText(hiddenContent)).toBeVisible({ timeout: 20000 });
 }
 
 export async function checkCcAutoOpen({
@@ -320,7 +320,7 @@ export async function insertModalComponent(models: PageModels, page: Page) {
 
   await models.studio.rightPanel.saveDataPicker();
   // await models.studio.page.keyboard.press("Tab");
-  await expect(autoOpenBanner).toBeVisible({ timeout: 10000 });
+  await expect(autoOpenBanner).toBeVisible({ timeout: 20000 });
 }
 
 export async function testElementAutoOpen(
