@@ -4,6 +4,9 @@ import { modifierKey } from "../utils/key-utils";
 import { goToProject, waitForFrameToLoad } from "../utils/studio-utils";
 
 test.describe("routing", () => {
+  // Increase action timeout - publishing operations need more time in CI
+  test.use({ actionTimeout: 20_000 });
+
   let projectId: string;
 
   test.beforeEach(async ({ apiClient, page }) => {

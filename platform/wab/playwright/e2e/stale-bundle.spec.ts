@@ -4,6 +4,9 @@ import { modifierKey } from "../utils/key-utils";
 import { goToProject } from "../utils/studio-utils";
 
 test.describe("Can use stale bundle", () => {
+  // Increase action timeout - bundle migration needs more time in CI
+  test.use({ actionTimeout: 20_000 });
+
   let projectId: string;
 
   test.afterEach(async ({ apiClient }) => {

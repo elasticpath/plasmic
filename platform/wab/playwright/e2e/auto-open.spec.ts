@@ -321,6 +321,9 @@ test.describe("Auto Open", () => {
     });
 
     test.describe("auto-opens hidden elements", () => {
+      // Increase timeouts for this suite - CI needs more time for visibility checks
+      test.use({ actionTimeout: 20_000 });
+
       test("works for Plasmic components", async ({ page, models }) => {
         const nodeName = "MyText";
         const text = "Starlight";

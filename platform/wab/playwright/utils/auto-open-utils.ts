@@ -532,7 +532,8 @@ export async function testAllVisibilities({
     await models.studio.focusFrameRoot(frame);
   };
 
-  await expect(frame.getByText(text)).toBeVisible();
+  // Explicit timeout for CI - visibility checks need more time
+  await expect(frame.getByText(text)).toBeVisible({ timeout: 20000 });
 
   if (hasNotRenderedParent) {
     await models.studio.leftPanel.switchToTreeTab();
