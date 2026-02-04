@@ -731,6 +731,11 @@ function addOptionsRoutes(app: express.Application) {
   app.options("/api/v1/workspaces", cmCorsPreflight());
   app.options("/api/v1/workspaces/*", cmCorsPreflight());
   app.options("/api/v1/personal-workspace", cmCorsPreflight());
+
+  // Data sources CORS preflight handlers for Commerce Manager
+  app.options("/api/v1/data-source/sources", cmCorsPreflight());
+  app.options("/api/v1/data-source/sources/test", cmCorsPreflight());
+  app.options("/api/v1/data-source/sources/*", cmCorsPreflight());
 }
 
 export function addCmsPublicRoutes(app: express.Application) {
@@ -827,19 +832,22 @@ export function addIntegrationsRoutes(app: express.Application) {
 }
 
 export function addDataSourceRoutes(app: express.Application) {
-  app.get("/api/v1/data-source/sources", listDataSources);
-  app.get("/api/v1/data-source/sources/:dataSourceId", getDataSourceById);
-  app.post("/api/v1/data-source/sources", withNext(createDataSource));
+  app.get("/api/v1/data-source/sources", cmCors, listDataSources);
+  app.get("/api/v1/data-source/sources/:dataSourceId", cmCors, getDataSourceById);
+  app.post("/api/v1/data-source/sources", cmCors, withNext(createDataSource));
   app.post(
     "/api/v1/data-source/sources/test",
+    cmCors,
     withNext(testDataSourceConnection)
   );
   app.put(
     "/api/v1/data-source/sources/:dataSourceId",
+    cmCors,
     withNext(updateDataSource)
   );
   app.delete(
     "/api/v1/data-source/sources/:dataSourceId",
+    cmCors,
     withNext(deleteDataSource)
   );
   app.post(
