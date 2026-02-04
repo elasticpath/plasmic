@@ -1216,7 +1216,7 @@ export function addMainAppServerRoutes(
     sensitiveRateLimiter,
     withNext(authRoutes.signUp)
   );
-  app.get("/api/v1/auth/self", cmCors, authRoutes.self);
+  app.get("/api/v1/auth/self", cmCors, withNext(authRoutes.self));
   app.post("/api/v1/auth/self", cmCors, withNext(authRoutes.updateSelf));
   app.delete("/api/v1/auth/self", cmCors, withNext(authRoutes.deleteSelf));
   app.post(
