@@ -708,7 +708,6 @@ function addOptionsRoutes(app: express.Application) {
     "/api/v1/server-data/sources/:dataSourceId/execute",
     corsPreflight()
   );
-  app.options("/api/v1/data-source/sources/:dataSourceId", corsPreflight());
   app.options("/api/v1/app-auth/token", corsPreflight());
   app.options("/api/v1/app-auth/userinfo", corsPreflight());
   app.options("/api/v1/loader/*", corsPreflight());
