@@ -29,6 +29,21 @@ describe("isCmOriginAllowed", () => {
         isCmOriginAllowed("https://99999--prod-commerce-manager.vercel.app")
       ).toBe(true);
     });
+
+    it("should allow Vercel production deployments", () => {
+      expect(
+        isCmOriginAllowed("https://integration-commerce-manager.vercel.app")
+      ).toBe(true);
+      expect(
+        isCmOriginAllowed("https://staging-commerce-manager.vercel.app")
+      ).toBe(true);
+      expect(
+        isCmOriginAllowed("https://euwest-commerce-manager.vercel.app")
+      ).toBe(true);
+      expect(
+        isCmOriginAllowed("https://useast-commerce-manager.vercel.app")
+      ).toBe(true);
+    });
   });
 
   describe("invalid origins", () => {
@@ -76,6 +91,17 @@ describe("isCmOriginAllowed", () => {
       expect(
         isCmOriginAllowed("https://123--other-app.vercel.app")
       ).toBe(false);
+    });
+
+    it("should reject invalid Vercel production URLs", () => {
+      // Must end with -commerce-manager.vercel.app
+      expect(isCmOriginAllowed("https://integration-other-app.vercel.app")).toBe(
+        false
+      );
+      // Must start with alphanumeric, not hyphen
+      expect(isCmOriginAllowed("https://-commerce-manager.vercel.app")).toBe(
+        false
+      );
     });
 
     it("should reject origins with ports for production domains", () => {

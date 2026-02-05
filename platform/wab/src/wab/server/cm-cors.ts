@@ -12,6 +12,11 @@ const cmOriginPattern = /^https:\/\/[a-zA-Z0-9-]+\.cm\.elasticpath\.com$/;
 const cmPreviewOriginPattern =
   /^https:\/\/\d+--[a-zA-Z0-9-]+-commerce-manager\.vercel\.app$/;
 
+// Regex for Vercel production deployments: {env}-commerce-manager.vercel.app
+// Used by main branch CI pipelines that test against Vercel URLs directly
+const cmVercelProdOriginPattern =
+  /^https:\/\/[a-zA-Z0-9]+-commerce-manager\.vercel\.app$/;
+
 // localhost for development
 const cmLocalOrigin = "http://localhost:3000";
 
@@ -20,6 +25,7 @@ export function isCmOriginAllowed(origin: string | undefined): boolean {
   if (origin === cmLocalOrigin) return true;
   if (cmOriginPattern.test(origin)) return true;
   if (cmPreviewOriginPattern.test(origin)) return true;
+  if (cmVercelProdOriginPattern.test(origin)) return true;
   logger().warn(`CM CORS rejected origin: ${origin}`);
   return false;
 }
