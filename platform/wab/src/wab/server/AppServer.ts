@@ -33,7 +33,7 @@ import {
   trackPostgresPool,
 } from "@/wab/server/promstats";
 import { createRateLimiter } from "@/wab/server/rate-limit";
-import { cmCors, cmCorsPreflight } from "@/wab/server/cm-cors";
+import { cmCors, cmCorsPreflight, isCmOriginAllowed } from "@/wab/server/cm-cors";
 import * as adminRoutes from "@/wab/server/routes/admin";
 import * as provisioningRoutes from "@/wab/server/routes/provisioning";
 import {
@@ -1961,6 +1961,15 @@ function addEndErrorHandlers(app: express.Application) {
           logError(origErr, "Tried to edit closed response");
           return;
         }
+
+        // Ensure CORS headers are set on error responses for CM origins
+        // This prevents CORS errors from masking the actual error
+        const origin = req.get("origin");
+        if (origin && isCmOriginAllowed(origin)) {
+          res.set("Access-Control-Allow-Origin", origin);
+          res.set("Access-Control-Allow-Credentials", "true");
+        }
+
         const err = isApiError(origErr) ? origErr : transformErrors(origErr);
         if (isApiError(err)) {
           res
