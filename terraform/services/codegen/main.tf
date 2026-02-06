@@ -45,6 +45,7 @@ module "codegen_service" {
     GENERIC_WORKER_POOL_SIZE = tostring(var.generic_worker_pool_size)
     LOADER_ASSETS_BUCKET     = local.loader_assets_bucket
     DEBUG                    = "connect:typeorm"
+    DISABLE_BWRAP            = "1" # Disable bubblewrap sandboxing (not supported on Fargate)
   }
 
   # Secrets - DATABASE_URI contains the full PostgreSQL connection string
