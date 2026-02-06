@@ -718,6 +718,7 @@ function addOptionsRoutes(app: express.Application) {
   // Commerce Manager CORS preflight handlers (restricted origins)
   app.options("/api/v1/auth/self", cmCorsPreflight());
   app.options("/api/v1/auth/csrf", cmCorsPreflight());
+  app.options("/api/v1/auth/logout", cmCorsPreflight());
   app.options("/api/v1/app-config", cmCorsPreflight());
   app.options("/api/v1/projects", cmCorsPreflight());
   app.options("/api/v1/projects/*", cmCorsPreflight());
@@ -1231,7 +1232,7 @@ export function addMainAppServerRoutes(
     sensitiveRateLimiter,
     withNext(authRoutes.updateSelfPassword)
   );
-  app.post("/api/v1/auth/logout", withNext(authRoutes.logout));
+  app.post("/api/v1/auth/logout", cmCors, withNext(authRoutes.logout));
   app.post(
     "/api/v1/auth/forgotPassword",
     sensitiveRateLimiter,
