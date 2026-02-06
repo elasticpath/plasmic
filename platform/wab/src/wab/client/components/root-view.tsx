@@ -8,6 +8,10 @@ import {
   withHostFrameCache,
 } from "@/wab/client/app-ctx";
 import {
+  isDashboardRestricted,
+  redirectToDashboard,
+} from "@/wab/client/ep/dashboard-restriction";
+import {
   getLoginRouteWithContinuation,
   getRouteContinuation,
   isProjectPath,
@@ -140,6 +144,34 @@ function LoggedInContainer(props: LoggedInContainerProps) {
       ) : isWhiteLabeled ? (
         // White-labeled users only get projectRoute()
         <Switch>{projectRoute()}</Switch>
+      ) : isDashboardRestricted(
+          appCtx.appConfig,
+          selfInfo.email,
+          currentLocation.search
+        ) ? (
+        // EP: Dashboard-restricted users get project and CMS routes only
+        <Switch>
+          {projectRoute()}
+          {routerRoute({
+            path: APP_ROUTES.cmsRoot,
+            render: ({ match }) => (
+              <widgets.ObserverLoadable
+                loader={() => import("./cms/CmsRoot")}
+                contents={(CmsRoot) => (
+                  <CmsRoot.default
+                    databaseId={match.params.databaseId as CmsDatabaseId}
+                  />
+                )}
+              />
+            ),
+          })}
+          <Route
+            render={() => {
+              redirectToDashboard(appCtx.appConfig);
+              return <widgets.Spinner />;
+            }}
+          />
+        </Switch>
       ) : (
         // Normal logged in users
         <Switch>

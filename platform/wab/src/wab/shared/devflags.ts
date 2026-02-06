@@ -291,6 +291,10 @@ const DEFAULT_DEVFLAGS = {
     "https://host.plasmicdev.com/static/host.html",
   dynamicPages: true,
   enablePlasmicHosting: true,
+  // Dashboard restriction settings - hide dashboard views and redirect to external URL
+  hideDashboardViews: false,
+  dashboardRedirectUrl: "",
+  adminDashboardOverrideParam: "adminDashboard",
   // Used to invalidate etag cacheing mechanism altogether
   disableETagCaching: false,
   // Used to invalidate etags that use it
