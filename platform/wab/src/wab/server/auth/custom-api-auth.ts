@@ -80,7 +80,14 @@ export async function customEPCCCookieAuth(
       );
 
       // One-time use: clear it after session mint
-      res.clearCookie("cms_auth_token", { path: "/" });
+      // Must match all cookie attributes from external-provisioner for browser to delete it
+      res.clearCookie("cms_auth_token", {
+        domain: "elasticpath.com",
+        path: "/",
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+      });
 
       next();
     });
