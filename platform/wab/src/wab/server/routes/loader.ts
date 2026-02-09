@@ -41,12 +41,33 @@ import { tplToPlasmicElements } from "@/wab/shared/element-repr/gen-element-repr
 import { LocalizationKeyScheme } from "@/wab/shared/localization";
 import { toJson } from "@/wab/shared/model/model-tree-util";
 import { getCodegenUrl } from "@/wab/shared/urls";
+import { Semaphore } from "async-mutex";
 import S3 from "aws-sdk/clients/s3";
 import execa from "execa";
 import { Request, Response } from "express-serve-static-core";
 import fs from "fs";
 import { isString } from "lodash";
 import path from "path";
+
+// Semaphore to limit concurrent HTML preview subprocess spawning.
+// Each subprocess uses ~500MB-1GB memory, so we limit concurrency to prevent OOM.
+// Configurable via HTML_PREVIEW_POOL_SIZE env var (default: 2).
+const DEFAULT_HTML_PREVIEW_POOL_SIZE = 2;
+
+export function parseHtmlPreviewPoolSize(envValue: string | undefined): number {
+  if (envValue == null || envValue === "") {
+    return DEFAULT_HTML_PREVIEW_POOL_SIZE;
+  }
+  const parsed = parseInt(envValue, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return DEFAULT_HTML_PREVIEW_POOL_SIZE;
+  }
+  return parsed;
+}
+
+const htmlPreviewSemaphore = new Semaphore(
+  parseHtmlPreviewPoolSize(process.env.HTML_PREVIEW_POOL_SIZE)
+);
 
 /**
  * Loader version is used for backwards compatibility (otherwise we could
@@ -597,34 +618,40 @@ async function buildLoader(
 export async function genLoaderHtmlBundleSandboxed(
   args: Parameters<typeof genLoaderHtmlBundle>[0]
 ) {
-  const cmd = `node -r esbuild-register src/wab/server/loader/gen-html-bundle.ts`;
-  const { stdout, stderr, exitCode } =
-    process.env.DISABLE_BWRAP === "1"
-      ? await execa(
-          "node",
-          [...cmd.split(/\s+/g).slice(1), JSON.stringify(args)],
-          { reject: false }
-        )
-      : await execa(
-          `bwrap`,
-          [
-            ...`--clearenv --setenv CODEGEN_HOST ${getCodegenUrl()} --unshare-user --unshare-pid --unshare-ipc --unshare-uts --unshare-cgroup --ro-bind /lib /lib --ro-bind /usr /usr --ro-bind /etc /etc --ro-bind /run /run ${
-              process.env.BWRAP_ARGS || ""
-            } --chdir ${process.cwd()} ${cmd}`.split(/\s+/g),
-            JSON.stringify(args),
-          ],
-          { reject: false }
-        );
-  if (stderr.trim().length > 0 && exitCode === 0) {
-    logger().error(
-      `Sandboxed loader subprocess succeeded with exit code 0 but got unexpected stderr ${stderr}`
-    );
-  } else if (exitCode !== 0) {
-    logger().error(
-      `Sandboxed loader subprocess failed with exit code ${exitCode} with stderr: ${stderr}`
-    );
+  // Acquire semaphore permit to limit concurrent subprocess spawning
+  const [, release] = await htmlPreviewSemaphore.acquire();
+  try {
+    const cmd = `node -r esbuild-register src/wab/server/loader/gen-html-bundle.ts`;
+    const { stdout, stderr, exitCode } =
+      process.env.DISABLE_BWRAP === "1"
+        ? await execa(
+            "node",
+            [...cmd.split(/\s+/g).slice(1), JSON.stringify(args)],
+            { reject: false }
+          )
+        : await execa(
+            `bwrap`,
+            [
+              ...`--clearenv --setenv CODEGEN_HOST ${getCodegenUrl()} --unshare-user --unshare-pid --unshare-ipc --unshare-uts --unshare-cgroup --ro-bind /lib /lib --ro-bind /usr /usr --ro-bind /etc /etc --ro-bind /run /run ${
+                process.env.BWRAP_ARGS || ""
+              } --chdir ${process.cwd()} ${cmd}`.split(/\s+/g),
+              JSON.stringify(args),
+            ],
+            { reject: false }
+          );
+    if (stderr.trim().length > 0 && exitCode === 0) {
+      logger().error(
+        `Sandboxed loader subprocess succeeded with exit code 0 but got unexpected stderr ${stderr}`
+      );
+    } else if (exitCode !== 0) {
+      logger().error(
+        `Sandboxed loader subprocess failed with exit code ${exitCode} with stderr: ${stderr}`
+      );
+    }
+    return { html: stdout };
+  } finally {
+    release();
   }
-  return { html: stdout };
 }
 
 export async function buildVersionedLoaderHtml(req: Request, res: Response) {

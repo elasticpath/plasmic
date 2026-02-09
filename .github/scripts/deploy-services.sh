@@ -145,6 +145,16 @@ step "Step 3: Deploying Codegen Service"
 deploy_service "codegen" "services/codegen" \
     "${ENVIRONMENT}/services/codegen/terraform.tfstate"
 
+# 3a. Deploy Loader Service
+step "Step 3a: Deploying Loader Service"
+deploy_service "loader" "services/loader" \
+    "${ENVIRONMENT}/services/loader/terraform.tfstate"
+
+# 3b. Deploy Loader-HTML Service
+step "Step 3b: Deploying Loader-HTML Service"
+deploy_service "loader-html" "services/loader-html" \
+    "${ENVIRONMENT}/services/loader-html/terraform.tfstate"
+
 # 4. Deploy Copilot Service - DISABLED for cost savings
 # Uncomment to enable
 # step "Step 4: Deploying Copilot Service"
@@ -177,6 +187,8 @@ echo "📊 Deployed Services:"
 echo "   ✓ socket"
 echo "   ✓ wab"
 echo "   ✓ codegen"
+echo "   ✓ loader"
+echo "   ✓ loaderhtml"
 echo "   ✓ data"
 echo "   ✓ imgopt"
 echo "   ✗ copilot (disabled)"
@@ -188,7 +200,7 @@ echo ""
 info "Waiting for services to stabilize (this may take 2-3 minutes)..."
 aws ecs wait services-stable \
     --cluster plasmic-${ENVIRONMENT} \
-    --services plasmic-${ENVIRONMENT}-socket plasmic-${ENVIRONMENT}-wab plasmic-${ENVIRONMENT}-codegen plasmic-${ENVIRONMENT}-data plasmic-${ENVIRONMENT}-imgopt \
+    --services plasmic-${ENVIRONMENT}-socket plasmic-${ENVIRONMENT}-wab plasmic-${ENVIRONMENT}-codegen plasmic-${ENVIRONMENT}-loader plasmic-${ENVIRONMENT}-loaderhtml plasmic-${ENVIRONMENT}-data plasmic-${ENVIRONMENT}-imgopt \
     --region ${AWS_REGION}
 
 echo ""

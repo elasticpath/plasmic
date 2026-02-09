@@ -1057,7 +1057,8 @@ export function addEndUserManagementRoutes(app: express.Application) {
   );
 }
 
-export function addCodegenRoutes(app: express.Application) {
+// Codegen-only routes: CLI/developer workloads
+export function addCodegenOnlyRoutes(app: express.Application) {
   app.post("/api/v1/code/resolve-sync", apiAuth, withNext(resolveSync));
   app.post("/api/v1/code/style-config", apiAuth, withNext(genStyleConfig));
   app.post("/api/v1/code/required-packages", withNext(requiredPackages));
@@ -1065,8 +1066,6 @@ export function addCodegenRoutes(app: express.Application) {
     "/api/v1/code/latest-codegen-version",
     withNext(latestCodegenVersion)
   );
-
-  // All project endpoints that are related to code generation
   app.post(
     "/api/v1/projects/:projectId/code/components",
     apiAuth,
@@ -1088,8 +1087,15 @@ export function addCodegenRoutes(app: express.Application) {
     withNext(getProjectMeta)
   );
   app.get("/api/v1/localization/gen-texts", genTranslatableStrings);
+  app.post(
+    "/api/v1/loader/code/prefill/:pkgVersionId",
+    cors(),
+    withNext(prefillPublishedLoader)
+  );
+}
 
-  // All endpoints under /loader are cors-enabled
+// Loader routes: Production SDK traffic (high volume)
+export function addLoaderRoutes(app: express.Application) {
   app.get(
     "/api/v1/loader/code/published",
     cors(),
@@ -1109,24 +1115,6 @@ export function addCodegenRoutes(app: express.Application) {
     withNext(buildLatestLoaderAssets)
   );
   app.get("/api/v1/loader/chunks", cors(), getLoaderChunk);
-  app.get(
-    "/api/v1/loader/html/published/:projectId/:component",
-    cors(),
-    apiAuth,
-    withNext(buildPublishedLoaderHtml)
-  );
-  app.get(
-    "/api/v1/loader/html/versioned/:projectId/:component",
-    cors(),
-    apiAuth,
-    withNext(buildVersionedLoaderHtml)
-  );
-  app.get(
-    "/api/v1/loader/html/preview/:projectId/:component",
-    cors(),
-    apiAuth,
-    buildLatestLoaderHtml
-  );
   app.get(
     "/api/v1/loader/repr-v2/published/:projectId",
     cors(),
@@ -1163,16 +1151,37 @@ export function addCodegenRoutes(app: express.Application) {
     apiAuth,
     withNext(buildLatestLoaderReprV3)
   );
-
-  app.post(
-    "/api/v1/loader/code/prefill/:pkgVersionId",
-    cors(),
-    // intentionally no apiAuth()
-    withNext(prefillPublishedLoader)
-  );
-
   app.get("/static/js/loader-hydrate.js", getHydrationScript);
   app.get("/static/js/loader-hydrate.:hash.js", getHydrationScriptVersioned);
+}
+
+// Loader HTML routes: REST API SSR (subprocess-based)
+export function addLoaderHtmlRoutes(app: express.Application) {
+  app.get(
+    "/api/v1/loader/html/published/:projectId/:component",
+    cors(),
+    apiAuth,
+    withNext(buildPublishedLoaderHtml)
+  );
+  app.get(
+    "/api/v1/loader/html/versioned/:projectId/:component",
+    cors(),
+    apiAuth,
+    withNext(buildVersionedLoaderHtml)
+  );
+  app.get(
+    "/api/v1/loader/html/preview/:projectId/:component",
+    cors(),
+    apiAuth,
+    buildLatestLoaderHtml
+  );
+}
+
+// Combined routes for backwards compatibility
+export function addCodegenRoutes(app: express.Application) {
+  addCodegenOnlyRoutes(app);
+  addLoaderRoutes(app);
+  addLoaderHtmlRoutes(app);
 }
 
 export function addImgOptimizerRoutes(app: express.Application) {
