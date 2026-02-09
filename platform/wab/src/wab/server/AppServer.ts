@@ -1177,7 +1177,11 @@ export function addLoaderHtmlRoutes(app: express.Application) {
   );
 }
 
-// Combined routes for backwards compatibility
+// Combined routes for LOCAL DEVELOPMENT only.
+// In production, these are split across separate services:
+// - codegen service: addCodegenOnlyRoutes
+// - loader service: addLoaderRoutes
+// - loader-html service: addLoaderHtmlRoutes
 export function addCodegenRoutes(app: express.Application) {
   addCodegenOnlyRoutes(app);
   addLoaderRoutes(app);
