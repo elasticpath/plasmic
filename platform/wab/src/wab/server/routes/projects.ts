@@ -168,7 +168,7 @@ import { createTaggedResourceId } from "@/wab/shared/perms";
 import { requiredPackageVersions } from "@/wab/shared/required-versions";
 import { assertSiteInvariants } from "@/wab/shared/site-invariants";
 import { mergeUiConfigs } from "@/wab/shared/ui-config-utils";
-import { getCodegenUrl } from "@/wab/shared/urls";
+import { getLoaderInternalUrl } from "@/wab/shared/urls";
 import * as Sentry from "@sentry/node";
 import { Request, Response } from "express-serve-static-core";
 import {
@@ -2205,7 +2205,7 @@ export async function getPkgVersionPublishStatus(req: Request, res: Response) {
     // version of `pkgVersion`, if we aren't than we consider that the prefilling
     // is not finished yet
     const redirectRes = await fetch(
-      `${getCodegenUrl()}/api/v1/loader/code/published?projectId=${projectId}`,
+      `${getLoaderInternalUrl()}/api/v1/loader/code/published?projectId=${projectId}`,
       {
         redirect: "manual",
         headers: {

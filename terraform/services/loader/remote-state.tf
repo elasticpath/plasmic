@@ -54,4 +54,7 @@ locals {
   codegen_host_url = data.terraform_remote_state.ecs_cluster.outputs.codegen_url
 
   loader_assets_bucket = data.terraform_remote_state.s3_site_assets.outputs.bucket_name
+
+  # Service Discovery for Service Connect
+  service_discovery_namespace_arn = data.terraform_remote_state.ecs_cluster.outputs.service_discovery_namespace_arn
 }

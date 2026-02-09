@@ -1,4 +1,7 @@
-import { getCodegenUrl } from "@/wab/shared/urls";
+import {
+  getCodegenPublicUrl,
+  getLoaderInternalUrl,
+} from "@/wab/shared/urls";
 import {
   extractPlasmicQueryDataFromElement,
   GlobalVariantSpec,
@@ -40,7 +43,7 @@ export async function genLoaderHtmlBundle(opts: {
       },
     ],
     preview: !version,
-    host: getCodegenUrl(),
+    host: getLoaderInternalUrl(),
   });
 
   const data = await loader.fetchComponentData({
@@ -93,7 +96,7 @@ export async function genLoaderHtmlBundle(opts: {
     hydrate &&
       React.createElement("script", {
         async: true,
-        src: `${getCodegenUrl()}/static/js/loader-hydrate.js`,
+        src: `${getCodegenPublicUrl()}/static/js/loader-hydrate.js`,
       })
   );
 

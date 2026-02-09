@@ -31,11 +31,19 @@ module "loader_html_service" {
     AWS_REGION             = var.aws_region
     PINO_LOGGER_LEVEL      = var.log_level
     BACKEND_PORT           = "3008"
-    CODEGEN_HOST           = local.alb_url
     HOST                   = local.host_url
     DEBUG                  = "connect:typeorm"
     DISABLE_BWRAP          = "1"
     HTML_PREVIEW_POOL_SIZE = tostring(var.html_preview_pool_size)
+
+    # Internal service-to-service calls via Service Connect
+    LOADER_HOST = "http://loader:3008"
+
+    # Browser-facing URLs embedded in HTML responses
+    CODEGEN_PUBLIC_HOST = local.codegen_host_url
+
+    # Keep CODEGEN_HOST for backwards compatibility (fallback)
+    CODEGEN_HOST = local.codegen_host_url
   }
 
   secrets = [
@@ -61,6 +69,10 @@ module "loader_html_service" {
 
   execution_role_arn = local.execution_role_arn
   create_task_role   = true
+
+  # Service Connect client configuration for calling loader service
+  enable_service_connect        = true
+  service_connect_namespace_arn = local.service_discovery_namespace_arn
 
   # Codegen subdomain + loader/html path (highest priority for loader paths)
   host_header = [
