@@ -188,7 +188,7 @@ echo "   ✓ socket"
 echo "   ✓ wab"
 echo "   ✓ codegen"
 echo "   ✓ loader"
-echo "   ✓ loaderhtml"
+echo "   ✓ ldrhtml"
 echo "   ✓ data"
 echo "   ✓ imgopt"
 echo "   ✗ copilot (disabled)"
@@ -200,7 +200,7 @@ echo ""
 info "Waiting for services to stabilize (this may take 2-3 minutes)..."
 aws ecs wait services-stable \
     --cluster plasmic-${ENVIRONMENT} \
-    --services plasmic-${ENVIRONMENT}-socket plasmic-${ENVIRONMENT}-wab plasmic-${ENVIRONMENT}-codegen plasmic-${ENVIRONMENT}-loader plasmic-${ENVIRONMENT}-loaderhtml plasmic-${ENVIRONMENT}-data plasmic-${ENVIRONMENT}-imgopt \
+    --services plasmic-${ENVIRONMENT}-socket plasmic-${ENVIRONMENT}-wab plasmic-${ENVIRONMENT}-codegen plasmic-${ENVIRONMENT}-loader plasmic-${ENVIRONMENT}-ldrhtml plasmic-${ENVIRONMENT}-data plasmic-${ENVIRONMENT}-imgopt \
     --region ${AWS_REGION}
 
 echo ""

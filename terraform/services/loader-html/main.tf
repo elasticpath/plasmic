@@ -7,7 +7,7 @@ module "loader_html_service" {
 
   environment  = var.environment
   aws_region   = var.aws_region
-  service_name = "loaderhtml"
+  service_name = "ldrhtml"
 
   container_image = var.container_image
   container_port  = 3008
