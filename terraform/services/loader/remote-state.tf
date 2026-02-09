@@ -16,15 +16,6 @@ data "terraform_remote_state" "ecs_cluster" {
   }
 }
 
-data "terraform_remote_state" "database" {
-  backend = "s3"
-  config = {
-    bucket = "plasmic-terraform-state-${var.environment}-${var.aws_region}"
-    key    = "${var.environment}/database/terraform.tfstate"
-    region = var.aws_region
-  }
-}
-
 data "terraform_remote_state" "frontend" {
   backend = "s3"
   config = {

@@ -52,8 +52,21 @@ import path from "path";
 // Semaphore to limit concurrent HTML preview subprocess spawning.
 // Each subprocess uses ~500MB-1GB memory, so we limit concurrency to prevent OOM.
 // Configurable via HTML_PREVIEW_POOL_SIZE env var (default: 2).
+const DEFAULT_HTML_PREVIEW_POOL_SIZE = 2;
+
+export function parseHtmlPreviewPoolSize(envValue: string | undefined): number {
+  if (envValue == null || envValue === "") {
+    return DEFAULT_HTML_PREVIEW_POOL_SIZE;
+  }
+  const parsed = parseInt(envValue, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return DEFAULT_HTML_PREVIEW_POOL_SIZE;
+  }
+  return parsed;
+}
+
 const htmlPreviewSemaphore = new Semaphore(
-  parseInt(process.env.HTML_PREVIEW_POOL_SIZE || "2", 10)
+  parseHtmlPreviewPoolSize(process.env.HTML_PREVIEW_POOL_SIZE)
 );
 
 /**

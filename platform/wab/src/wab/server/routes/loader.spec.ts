@@ -3,8 +3,39 @@ import { ensureDbConnection } from "@/wab/server/db/DbCon";
 import { seedTestUserAndProjects } from "@/wab/server/db/DbInit";
 import { DbMgr, normalActor } from "@/wab/server/db/DbMgr";
 import { Project, User } from "@/wab/server/entities/Entities";
+import { parseHtmlPreviewPoolSize } from "@/wab/server/routes/loader";
 import { PublicApiTester } from "@/wab/server/test/api-tester";
 import { createBackend, createDatabase } from "@/wab/server/test/backend-util";
+
+describe("parseHtmlPreviewPoolSize", () => {
+  it("returns default for undefined", () => {
+    expect(parseHtmlPreviewPoolSize(undefined)).toBe(2);
+  });
+
+  it("returns default for empty string", () => {
+    expect(parseHtmlPreviewPoolSize("")).toBe(2);
+  });
+
+  it("returns default for non-numeric string", () => {
+    expect(parseHtmlPreviewPoolSize("abc")).toBe(2);
+  });
+
+  it("returns default for zero", () => {
+    expect(parseHtmlPreviewPoolSize("0")).toBe(2);
+  });
+
+  it("returns default for negative number", () => {
+    expect(parseHtmlPreviewPoolSize("-1")).toBe(2);
+  });
+
+  it("parses valid positive integer", () => {
+    expect(parseHtmlPreviewPoolSize("3")).toBe(3);
+  });
+
+  it("parses and floors decimal", () => {
+    expect(parseHtmlPreviewPoolSize("2.9")).toBe(2);
+  });
+});
 
 describe("loader", () => {
   let publicApi: PublicApiTester;
