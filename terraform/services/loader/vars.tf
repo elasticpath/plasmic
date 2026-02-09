@@ -24,7 +24,7 @@ variable "loader_cpu" {
 variable "loader_memory" {
   type        = number
   description = "Task memory in MB"
-  default     = 3072
+  default     = 4096
 }
 
 variable "loader_desired_count" {
