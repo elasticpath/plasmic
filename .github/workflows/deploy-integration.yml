@@ -186,6 +186,7 @@ jobs:
           TF_VAR_skip_grant_revoke_emails: ${{ vars.SKIP_GRANT_REVOKE_EMAILS || 'true' }}
           TF_VAR_generic_worker_pool_size: ${{ vars.GENERIC_WORKER_POOL_SIZE || '2' }}
           TF_VAR_loader_worker_pool_size: ${{ vars.LOADER_WORKER_POOL_SIZE || '4' }}
+          TF_VAR_loader_desired_count: ${{ vars.LOADER_DESIRED_COUNT || '1' }}
         run: |
           # Mask sensitive values for public repo security
           echo "::add-mask::$AWS_REGION"
