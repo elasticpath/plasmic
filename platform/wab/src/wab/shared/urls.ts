@@ -63,6 +63,22 @@ export function getCodegenUrl() {
   return process.env.CODEGEN_HOST || getPublicUrl();
 }
 
+/**
+ * URL for internal service-to-service calls to the loader service.
+ * Uses Service Connect when available, falls back to CODEGEN_HOST.
+ */
+export function getLoaderInternalUrl() {
+  return process.env.LOADER_HOST || getCodegenUrl();
+}
+
+/**
+ * URL for browser-facing content embedded in HTML responses.
+ * Always uses the public URL that browsers can reach.
+ */
+export function getCodegenPublicUrl() {
+  return process.env.CODEGEN_PUBLIC_HOST || getCodegenUrl();
+}
+
 export function getIntegrationsUrl() {
   return process.env.INTEGRATIONS_HOST || getPublicUrl();
 }

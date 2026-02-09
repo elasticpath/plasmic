@@ -64,6 +64,12 @@ module "loader_service" {
   execution_role_arn = local.execution_role_arn
   create_task_role   = true
 
+  # Service Connect configuration for internal communication
+  enable_service_connect         = true
+  service_connect_namespace_arn  = local.service_discovery_namespace_arn
+  service_connect_discovery_name = "loader"
+  service_connect_port_name      = "loader-api"
+
   task_role_inline_policies = [
     {
       name = "S3Access"
