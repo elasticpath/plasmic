@@ -171,6 +171,7 @@ resource "aws_cloudfront_distribution" "frontend" {
       https_port             = 443
       origin_protocol_policy = "https-only"
       origin_ssl_protocols   = ["TLSv1.2"]
+      origin_read_timeout    = 60 # Increase from 30s default (max allowed)
     }
   }
 
@@ -507,6 +508,7 @@ resource "aws_cloudfront_distribution" "codegen" {
       https_port             = 443
       origin_protocol_policy = "https-only"
       origin_ssl_protocols   = ["TLSv1.2"]
+      origin_read_timeout    = 60 # Increase from 30s default (max allowed)
     }
   }
 
@@ -658,6 +660,7 @@ resource "aws_cloudfront_distribution" "img_optimizer" {
       https_port             = 443
       origin_protocol_policy = "https-only"
       origin_ssl_protocols   = ["TLSv1.2"]
+      origin_read_timeout    = 60 # Increase from 30s default (max allowed)
     }
 
     # Custom headers to route requests to img-optimizer service
