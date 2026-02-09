@@ -31,7 +31,7 @@ module "loader_html_service" {
     AWS_REGION             = var.aws_region
     PINO_LOGGER_LEVEL      = var.log_level
     BACKEND_PORT           = "3008"
-    CODEGEN_HOST           = local.codegen_host_url
+    CODEGEN_HOST           = local.alb_url
     HOST                   = local.host_url
     DEBUG                  = "connect:typeorm"
     DISABLE_BWRAP          = "1"

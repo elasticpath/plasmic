@@ -50,6 +50,11 @@ output "data_url" {
   value       = local.use_custom_domain ? "https://${local.data_domain}" : null
 }
 
+output "alb_url" {
+  description = "ALB URL for internal service communication (bypasses CloudFront)"
+  value       = local.use_custom_domain ? "https://${local.alb_domain}" : null
+}
+
 # Service Discovery namespace for internal communication
 output "service_discovery_namespace_arn" {
   description = "Service Discovery namespace ARN for Service Connect"

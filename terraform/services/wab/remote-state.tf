@@ -90,4 +90,7 @@ locals {
 
   # Socket backend internal hostname via Service Connect (stable service contract)
   socket_host = "http://socket:3020"
+
+  # ALB URL for internal service-to-service communication (bypasses CloudFront)
+  alb_url = data.terraform_remote_state.ecs_cluster.outputs.alb_url
 }
