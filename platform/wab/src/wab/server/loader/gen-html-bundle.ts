@@ -1,5 +1,6 @@
 import {
   getCodegenPublicUrl,
+  getDataUrl,
   getLoaderInternalUrl,
 } from "@/wab/shared/urls";
 import {
@@ -10,6 +11,12 @@ import {
 } from "@plasmicapp/loader-react";
 import React from "react";
 import ReactDOMServer from "react-dom/server";
+
+// Set the data host for data source operations during SSR prepass.
+// This ensures data queries hit the self-hosted integration service
+// instead of the default data.plasmic.app.
+// Fallback to codegen URL for local dev where all services run on same host.
+(globalThis as any).__PLASMIC_DATA_HOST = getDataUrl();
 
 export async function genLoaderHtmlBundle(opts: {
   projectId: string;

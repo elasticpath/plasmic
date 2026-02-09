@@ -41,6 +41,7 @@ module "codegen_service" {
     LOADER_WORKER_POOL_SIZE  = tostring(var.loader_worker_pool_size)
     BACKEND_PORT             = "3008"
     CODEGEN_HOST             = local.codegen_host_url
+    DATA_HOST                = local.data_host_url # Data service URL for SSR prepass data queries
     HOST                     = local.host_url
     GENERIC_WORKER_POOL_SIZE = tostring(var.generic_worker_pool_size)
     LOADER_ASSETS_BUCKET     = local.loader_assets_bucket
