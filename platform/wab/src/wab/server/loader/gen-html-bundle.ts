@@ -12,12 +12,6 @@ import {
 import React from "react";
 import ReactDOMServer from "react-dom/server";
 
-// Set the data host for data source operations during SSR prepass.
-// This ensures data queries hit the self-hosted integration service
-// instead of the default data.plasmic.app.
-// Fallback to codegen URL for local dev where all services run on same host.
-(globalThis as any).__PLASMIC_DATA_HOST = getDataUrl();
-
 export async function genLoaderHtmlBundle(opts: {
   projectId: string;
   component: string;
@@ -40,6 +34,11 @@ export async function genLoaderHtmlBundle(opts: {
     globalVariants,
     prepass,
   } = opts;
+
+  // Set the data host for data source operations during SSR prepass.
+  // This ensures data queries hit the self-hosted integration service
+  // instead of the default data.plasmic.app.
+  (globalThis as any).__PLASMIC_DATA_HOST = getDataUrl();
 
   const loader = initPlasmicLoader({
     projects: [
