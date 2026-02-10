@@ -83,6 +83,15 @@ export function getIntegrationsUrl() {
   return process.env.INTEGRATIONS_HOST || getPublicUrl();
 }
 
+/**
+ * URL for data service (integrations, data source operations).
+ * Used during SSR prepass to execute data queries.
+ * Falls back to codegen URL for local dev where all services run on same host.
+ */
+export function getDataUrl() {
+  return process.env.DATA_HOST || getCodegenUrl();
+}
+
 export function extractProjectIdFromUrlOrId(rawProjectUrlOrId: string) {
   const trimmedUrlOrId = rawProjectUrlOrId.trim();
   const match = new RegExp(

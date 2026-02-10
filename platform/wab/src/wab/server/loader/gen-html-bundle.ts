@@ -1,5 +1,6 @@
 import {
   getCodegenPublicUrl,
+  getDataUrl,
   getLoaderInternalUrl,
 } from "@/wab/shared/urls";
 import {
@@ -33,6 +34,11 @@ export async function genLoaderHtmlBundle(opts: {
     globalVariants,
     prepass,
   } = opts;
+
+  // Set the data host for data source operations during SSR prepass.
+  // This ensures data queries hit the self-hosted integration service
+  // instead of the default data.plasmic.app.
+  (globalThis as any).__PLASMIC_DATA_HOST = getDataUrl();
 
   const loader = initPlasmicLoader({
     projects: [

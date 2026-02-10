@@ -71,6 +71,7 @@ locals {
   # Frontend URLs
   host_url         = data.terraform_remote_state.frontend.outputs.host_url
   codegen_host_url = data.terraform_remote_state.ecs_cluster.outputs.codegen_url
+  data_host_url    = data.terraform_remote_state.ecs_cluster.outputs.data_url
 
   # S3 Buckets
   loader_assets_bucket = data.terraform_remote_state.s3_site_assets.outputs.bucket_name

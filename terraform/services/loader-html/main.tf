@@ -44,6 +44,9 @@ module "loader_html_service" {
 
     # Keep CODEGEN_HOST for backwards compatibility (fallback)
     CODEGEN_HOST = local.codegen_host_url
+
+    # Data service URL for SSR prepass data queries
+    DATA_HOST = local.data_host_url
   }
 
   secrets = [
