@@ -145,12 +145,17 @@ step "Step 3: Deploying Codegen Service"
 deploy_service "codegen" "services/codegen" \
     "${ENVIRONMENT}/services/codegen/terraform.tfstate"
 
-# 3a. Deploy Loader Service
+# 3a. Deploy Loader Service (PROVIDER - must be ready before loader-html)
 step "Step 3a: Deploying Loader Service"
 deploy_service "loader" "services/loader" \
     "${ENVIRONMENT}/services/loader/terraform.tfstate"
 
-# 3b. Deploy Loader-HTML Service
+# Wait for Loader Service Connect registration to propagate
+# loader-html depends on loader via Service Connect (http://loader:3008)
+info "Waiting 30 seconds for Loader Service Connect registration..."
+sleep 30
+
+# 3b. Deploy Loader-HTML Service (CONSUMER - depends on loader)
 step "Step 3b: Deploying Loader-HTML Service"
 deploy_service "loader-html" "services/loader-html" \
     "${ENVIRONMENT}/services/loader-html/terraform.tfstate"
