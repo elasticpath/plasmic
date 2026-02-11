@@ -892,10 +892,11 @@ resource "aws_cloudfront_distribution" "data" {
 
 # Route53 alias record for Data CloudFront distribution
 resource "aws_route53_record" "data" {
-  count   = local.use_data_domain ? 1 : 0
-  zone_id = var.hosted_zone_id
-  name    = local.data_domain
-  type    = "A"
+  count           = local.use_data_domain ? 1 : 0
+  zone_id         = var.hosted_zone_id
+  name            = local.data_domain
+  type            = "A"
+  allow_overwrite = true
 
   alias {
     name                   = aws_cloudfront_distribution.data.domain_name
