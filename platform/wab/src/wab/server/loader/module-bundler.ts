@@ -209,6 +209,44 @@ async function bundleModulesEsbuild(
       preserveSymlinks: true,
       plugins: withoutNils([
         fixAntdPathPlugin,
+        // Replace hardcoded data.plasmic.app URL in @plasmicapp/data-sources
+        // with DATA_HOST env var for self-hosted deployments
+        {
+          name: "replace-data-plasmic-host",
+          setup(build) {
+            build.onLoad(
+              {
+                filter: /@plasmicapp\/data-sources.*\.(js|tsx?)$/,
+              },
+              async (args) => {
+                const text = await fs.readFile(args.path, "utf8");
+
+                // Only process if file contains the URL we want to replace
+                if (!text.includes("data.plasmic.app")) {
+                  return undefined; // Let esbuild handle normally
+                }
+
+                // Use DATA_HOST env var, fall back to original if not set
+                const dataHost =
+                  process.env.DATA_HOST || "https://data.plasmic.app";
+
+                const contents = text.replace(
+                  /https:\/\/data\.plasmic\.app/g,
+                  dataHost
+                );
+
+                // Determine loader based on file extension
+                const loader = args.path.endsWith(".tsx")
+                  ? "tsx"
+                  : args.path.endsWith(".ts")
+                  ? "ts"
+                  : "js";
+
+                return { contents, loader };
+              }
+            );
+          },
+        },
         // Handle newer antd4 whose transpiled code triggers this limitation (so we don't have to somehow pin antd4 version in our monorepo)
         // https://github.com/evanw/esbuild/issues/1941
         {
