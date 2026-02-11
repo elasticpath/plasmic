@@ -85,19 +85,8 @@ resource "aws_route53_record" "alb" {
 # NOTE: Codegen DNS record moved to frontend project (CloudFront distribution)
 # The codegen service is now accessed via CloudFront instead of direct ALB access
 
-# Route53 A record for Data service
-resource "aws_route53_record" "data" {
-  count   = local.use_custom_domain ? 1 : 0
-  zone_id = var.hosted_zone_id
-  name    = local.data_domain
-  type    = "A"
-
-  alias {
-    name                   = aws_lb.main.dns_name
-    zone_id                = aws_lb.main.zone_id
-    evaluate_target_health = false
-  }
-}
+# NOTE: Data DNS record moved to frontend project (CloudFront distribution)
+# The data service is now accessed via CloudFront instead of direct ALB access
 
 # Self-signed certificate for HTTPS listener (fallback when no custom domain)
 resource "tls_private_key" "alb_self_signed" {
