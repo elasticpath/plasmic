@@ -27,6 +27,10 @@ import { promises as fs } from "fs";
 import { glob } from "glob";
 import { flatMap, kebabCase, sortBy } from "lodash";
 import path from "path";
+import {
+  getLoaderForPath,
+  replaceDataPlasmicHost,
+} from "@/wab/server/loader/bundle-utils";
 
 export interface ComponentMeta {
   id: string;
@@ -220,29 +224,13 @@ async function bundleModulesEsbuild(
               },
               async (args) => {
                 const text = await fs.readFile(args.path, "utf8");
+                const contents = replaceDataPlasmicHost(text);
 
-                // Only process if file contains the URL we want to replace
-                if (!text.includes("data.plasmic.app")) {
+                if (contents === null) {
                   return undefined; // Let esbuild handle normally
                 }
 
-                // Use DATA_HOST env var, fall back to original if not set
-                const dataHost =
-                  process.env.DATA_HOST || "https://data.plasmic.app";
-
-                const contents = text.replace(
-                  /https:\/\/data\.plasmic\.app/g,
-                  dataHost
-                );
-
-                // Determine loader based on file extension
-                const loader = args.path.endsWith(".tsx")
-                  ? "tsx"
-                  : args.path.endsWith(".ts")
-                  ? "ts"
-                  : "js";
-
-                return { contents, loader };
+                return { contents, loader: getLoaderForPath(args.path) };
               }
             );
           },
