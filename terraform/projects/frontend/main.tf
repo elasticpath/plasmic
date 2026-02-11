@@ -751,3 +751,155 @@ resource "aws_route53_record" "img_optimizer" {
     evaluate_target_health = false
   }
 }
+
+# ============================================================================
+# Data Service CloudFront Distribution
+# ============================================================================
+
+locals {
+  use_data_domain = var.hosted_zone_id != null
+  data_domain     = local.use_data_domain ? "data.${var.environment}.${var.parent_domain}" : null
+}
+
+# ACM Certificate for Data CloudFront (must be in us-east-1)
+resource "aws_acm_certificate" "data" {
+  count    = local.use_data_domain ? 1 : 0
+  provider = aws.us_east_1
+
+  domain_name       = local.data_domain
+  validation_method = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = {
+    Name        = "plasmic-data-cloudfront-${var.environment}"
+    Environment = var.environment
+  }
+}
+
+# DNS validation records for Data ACM certificate
+resource "aws_route53_record" "data_cert_validation" {
+  for_each = local.use_data_domain ? {
+    for dvo in aws_acm_certificate.data[0].domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  } : {}
+
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = var.hosted_zone_id
+}
+
+# Wait for Data certificate validation to complete
+resource "aws_acm_certificate_validation" "data" {
+  count                   = local.use_data_domain ? 1 : 0
+  provider                = aws.us_east_1
+  certificate_arn         = aws_acm_certificate.data[0].arn
+  validation_record_fqdns = [for record in aws_route53_record.data_cert_validation : record.fqdn]
+}
+
+# Response headers policy for Data CORS
+resource "aws_cloudfront_response_headers_policy" "data_cors" {
+  name    = "plasmic-data-cors-policy-${var.environment}"
+  comment = "CORS policy for Plasmic data service ${var.environment}"
+
+  cors_config {
+    access_control_allow_credentials = false
+
+    access_control_allow_headers {
+      items = ["*"]
+    }
+
+    access_control_allow_methods {
+      items = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    }
+
+    access_control_allow_origins {
+      items = ["*"]
+    }
+
+    access_control_max_age_sec = 86400
+    origin_override            = true
+  }
+}
+
+# CloudFront distribution for data service
+resource "aws_cloudfront_distribution" "data" {
+  enabled         = true
+  is_ipv6_enabled = true
+  comment         = "Plasmic data service ${var.environment}"
+  price_class     = "PriceClass_100"
+
+  # Custom domain alias
+  aliases = local.use_data_domain ? [local.data_domain] : []
+
+  # ALB origin - use the alb-integration domain so CloudFront sends correct Host header
+  origin {
+    domain_name = local.alb_origin_domain
+    origin_id   = "ALB-data"
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "https-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+      origin_read_timeout    = 60 # Increase from 30s default (max allowed)
+    }
+  }
+
+  default_cache_behavior {
+    allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods   = ["GET", "HEAD"]
+    target_origin_id = "ALB-data"
+
+    # Use CachingDisabled policy for API requests
+    cache_policy_id = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" # Managed-CachingDisabled
+
+    # Forward all headers, query strings, and cookies to origin
+    origin_request_policy_id = "216adef6-5c7f-47e4-b989-5492eafa07d3" # Managed-AllViewer
+
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.data_cors.id
+
+    viewer_protocol_policy = "redirect-to-https"
+    compress               = false
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    cloudfront_default_certificate = !local.use_data_domain
+    acm_certificate_arn            = local.use_data_domain ? aws_acm_certificate_validation.data[0].certificate_arn : null
+    ssl_support_method             = local.use_data_domain ? "sni-only" : null
+    minimum_protocol_version       = local.use_data_domain ? "TLSv1.2_2021" : null
+  }
+
+  tags = {
+    Name        = "plasmic-data-cdn-${var.environment}"
+    Environment = var.environment
+  }
+}
+
+# Route53 alias record for Data CloudFront distribution
+resource "aws_route53_record" "data" {
+  count   = local.use_data_domain ? 1 : 0
+  zone_id = var.hosted_zone_id
+  name    = local.data_domain
+  type    = "A"
+
+  alias {
+    name                   = aws_cloudfront_distribution.data.domain_name
+    zone_id                = aws_cloudfront_distribution.data.hosted_zone_id
+    evaluate_target_health = false
+  }
+}
