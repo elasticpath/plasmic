@@ -115,6 +115,25 @@ resource "aws_vpc_security_group_egress_rule" "ecs_service_connect_3020" {
   referenced_security_group_id = aws_security_group.ecs_tasks.id
 }
 
+# Allow Service Connect traffic between ECS tasks on port 3008 (loader service)
+resource "aws_vpc_security_group_ingress_rule" "ecs_service_connect_3008" {
+  security_group_id            = aws_security_group.ecs_tasks.id
+  description                  = "Service Connect traffic between ECS tasks on port 3008 (loader)"
+  from_port                    = 3008
+  to_port                      = 3008
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.ecs_tasks.id
+}
+
+resource "aws_vpc_security_group_egress_rule" "ecs_service_connect_3008" {
+  security_group_id            = aws_security_group.ecs_tasks.id
+  description                  = "Service Connect traffic to ECS tasks on port 3008 (loader)"
+  from_port                    = 3008
+  to_port                      = 3008
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.ecs_tasks.id
+}
+
 # Allow ECS to reach RDS (add rule to RDS security group)
 resource "aws_vpc_security_group_ingress_rule" "rds_from_ecs" {
   security_group_id            = local.db_security_group_id
