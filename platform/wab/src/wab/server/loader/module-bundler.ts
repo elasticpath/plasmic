@@ -27,6 +27,10 @@ import { promises as fs } from "fs";
 import { glob } from "glob";
 import { flatMap, kebabCase, sortBy } from "lodash";
 import path from "path";
+import {
+  getLoaderForPath,
+  replaceDataPlasmicHost,
+} from "@/wab/server/loader/bundle-utils";
 
 export interface ComponentMeta {
   id: string;
@@ -209,6 +213,28 @@ async function bundleModulesEsbuild(
       preserveSymlinks: true,
       plugins: withoutNils([
         fixAntdPathPlugin,
+        // Replace hardcoded data.plasmic.app URL in @plasmicapp/data-sources
+        // with DATA_HOST env var for self-hosted deployments
+        {
+          name: "replace-data-plasmic-host",
+          setup(build) {
+            build.onLoad(
+              {
+                filter: /@plasmicapp\/data-sources.*\.(js|tsx?)$/,
+              },
+              async (args) => {
+                const text = await fs.readFile(args.path, "utf8");
+                const contents = replaceDataPlasmicHost(text);
+
+                if (contents === null) {
+                  return undefined; // Let esbuild handle normally
+                }
+
+                return { contents, loader: getLoaderForPath(args.path) };
+              }
+            );
+          },
+        },
         // Handle newer antd4 whose transpiled code triggers this limitation (so we don't have to somehow pin antd4 version in our monorepo)
         // https://github.com/evanw/esbuild/issues/1941
         {
