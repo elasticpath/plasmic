@@ -29,6 +29,20 @@ export class PlasmicHtmlHydrater {
       element.getAttribute("data-plasmic-prefetched-query-data") || "{}"
     );
 
+    // Read page params data attributes for dynamic route support.
+    // Note: pageRoute is read but not passed to hydrateFromElement because
+    // the loader-react package doesn't support it in the hydration flow.
+    // This means $ctx.params and $ctx.query will work, but $ctx.pageRoute
+    // and $ctx.pagePath won't be available after hydration.
+    const _pageRoute =
+      element.getAttribute("data-plasmic-page-route") || undefined;
+    const pageParams = JSON.parse(
+      element.getAttribute("data-plasmic-page-params") || "{}"
+    );
+    const pageQuery = JSON.parse(
+      element.getAttribute("data-plasmic-page-query") || "{}"
+    );
+
     const loader = initPlasmicLoader({
       projects: [
         {
@@ -52,7 +66,10 @@ export class PlasmicHtmlHydrater {
         globalVariants,
         componentProps,
         prefetchedQueryData,
-      }
+        // Pass page params if present (for dynamic route support)
+        ...(Object.keys(pageParams).length > 0 && { pageParams }),
+        ...(Object.keys(pageQuery).length > 0 && { pageQuery }),
+      } as any // Type assertion needed - npm package types don't include pageParams/pageQuery
     );
     element.setAttribute("data-plasmic-hydrating", "false");
     element.setAttribute("data-plasmic-hydrated", "true");

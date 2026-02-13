@@ -13,6 +13,11 @@ import {
   LoaderBundleOutput,
 } from "@/wab/server/loader/module-bundler";
 import {
+  parsePageParams,
+  parsePageQuery,
+  parsePageRoute,
+} from "@/wab/server/loader/page-params";
+import {
   parseComponentProps,
   parseGlobalVariants,
 } from "@/wab/server/loader/parse-query-params";
@@ -672,6 +677,9 @@ export async function buildVersionedLoaderHtml(req: Request, res: Response) {
       projectToken: props.token,
       componentProps: parseComponentProps(req.query.componentProps),
       globalVariants: parseGlobalVariants(req.query.globalVariants),
+      pageRoute: parsePageRoute(req.query.pageRoute),
+      pageParams: parsePageParams(req.query.pageParams),
+      pageQuery: parsePageQuery(req.query.pageQuery),
     });
 
     await props.mgr.upsertLoaderPublishmentEntities({
@@ -702,6 +710,9 @@ export async function buildLatestLoaderHtml(req: Request, res: Response) {
       projectToken: props.token,
       componentProps: parseComponentProps(req.query.componentProps),
       globalVariants: parseGlobalVariants(req.query.globalVariants),
+      pageRoute: parsePageRoute(req.query.pageRoute),
+      pageParams: parsePageParams(req.query.pageParams),
+      pageQuery: parsePageQuery(req.query.pageQuery),
     });
     res.json(result);
   });
