@@ -162,6 +162,10 @@ echo "  → Planning assets bucket..."
 plan_project "s3-assets" "projects/s3-assets" \
     "${ENVIRONMENT}/s3-assets/terraform.tfstate"
 
+echo "  → Planning errors bucket..."
+plan_project "s3-errors" "projects/s3-errors" \
+    "${ENVIRONMENT}/s3-errors/terraform.tfstate"
+
 # 6. DynamoDB
 step "Step 6: Planning DynamoDB"
 plan_project "dynamodb" "projects/dynamodb" \
