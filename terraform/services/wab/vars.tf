@@ -33,7 +33,7 @@ variable "wab_cpu" {
 variable "wab_memory" {
   type        = number
   description = "Task memory in MB"
-  default     = 1024
+  default     = 2048
 }
 
 variable "wab_desired_count" {
