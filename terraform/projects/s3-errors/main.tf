@@ -8,6 +8,24 @@ resource "aws_s3_bucket" "errors" {
   }
 }
 
+# Expire error files after 30 days
+resource "aws_s3_bucket_lifecycle_configuration" "errors" {
+  bucket = aws_s3_bucket.errors.id
+
+  rule {
+    id     = "expire-bundling-errors"
+    status = "Enabled"
+
+    filter {
+      prefix = "bundling-errors/"
+    }
+
+    expiration {
+      days = 30
+    }
+  }
+}
+
 # Block all public access
 resource "aws_s3_bucket_public_access_block" "errors" {
   bucket = aws_s3_bucket.errors.id
