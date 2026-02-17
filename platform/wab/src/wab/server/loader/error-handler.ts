@@ -15,6 +15,9 @@ import { promises as fs } from "fs";
 import { uniq, uniqBy } from "lodash";
 import path from "path";
 
+const LOADER_ERRORS_BUCKET =
+  process.env.LOADER_ERRORS_BUCKET ?? "plasmic-errors";
+
 /**
 If some of the components in the build are missing from the bundle, esbuild
 will throw an error message that looks like this:
@@ -138,7 +141,7 @@ export async function uploadErrorFiles(err: Error, dir: string) {
   }
   const prefix = `bundling-errors/${mkShortUuid()}`;
   await uploadFilesToS3({
-    bucket: "plasmic-errors",
+    bucket: LOADER_ERRORS_BUCKET,
     key: prefix,
     files: filesDict,
   });
@@ -147,7 +150,7 @@ export async function uploadErrorFiles(err: Error, dir: string) {
     `Error files: ${Object.keys(filesDict)
       .map(
         (f) =>
-          `https://plasmic-errors.s3-us-west-2.amazonaws.com/${prefix}/${f}`
+          `s3://${LOADER_ERRORS_BUCKET}/${prefix}/${f}`
       )
       .join(" , ")}`
   );
