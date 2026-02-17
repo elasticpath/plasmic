@@ -147,7 +147,7 @@ export async function uploadErrorFiles(err: Error, dir: string) {
     `Error files: ${Object.keys(filesDict)
       .map(
         (f) =>
-          `https://plasmic-errors.s3-us-west-2.amazonaws.com/${prefix}/${f}`
+          `https://plasmic-errors.s3.${process.env.AWS_REGION || "us-east-2"}.amazonaws.com/${prefix}/${f}`
       )
       .join(" , ")}`
   );

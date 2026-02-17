@@ -34,6 +34,15 @@ data "terraform_remote_state" "s3_site_assets" {
   }
 }
 
+data "terraform_remote_state" "s3_errors" {
+  backend = "s3"
+  config = {
+    bucket = "plasmic-terraform-state-${var.environment}-${var.aws_region}"
+    key    = "${var.environment}/s3-errors/terraform.tfstate"
+    region = var.aws_region
+  }
+}
+
 data "aws_secretsmanager_secret" "session_secret" {
   name = "plasmic/${var.environment}/app/session-secret"
 }
@@ -54,6 +63,7 @@ locals {
   codegen_host_url = data.terraform_remote_state.ecs_cluster.outputs.codegen_url
 
   loader_assets_bucket = data.terraform_remote_state.s3_site_assets.outputs.bucket_name
+  errors_bucket        = data.terraform_remote_state.s3_errors.outputs.bucket_name
 
   # Service Discovery for Service Connect
   service_discovery_namespace_arn = data.terraform_remote_state.ecs_cluster.outputs.service_discovery_namespace_arn
