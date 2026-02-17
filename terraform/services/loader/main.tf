@@ -36,6 +36,7 @@ module "loader_service" {
     HOST                     = local.host_url
     GENERIC_WORKER_POOL_SIZE = tostring(var.generic_worker_pool_size)
     LOADER_ASSETS_BUCKET     = local.loader_assets_bucket
+    LOADER_ERRORS_BUCKET     = local.errors_bucket
     S3_ENDPOINT              = "https://s3.${var.aws_region}.amazonaws.com"
     DEBUG                    = "connect:typeorm"
     DISABLE_BWRAP            = "1"

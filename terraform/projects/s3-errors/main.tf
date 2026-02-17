@@ -1,10 +1,9 @@
 # S3 bucket for loader error diagnostics
-# Bucket name matches the hardcoded name in error-handler.ts
 resource "aws_s3_bucket" "errors" {
-  bucket = "plasmic-errors"
+  bucket = "plasmic-errors-${var.environment}"
 
   tags = {
-    Name        = "plasmic-errors"
+    Name        = "plasmic-errors-${var.environment}"
     Environment = var.environment
   }
 }
