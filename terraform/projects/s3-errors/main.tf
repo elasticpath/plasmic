@@ -38,7 +38,8 @@ resource "aws_s3_bucket_public_access_block" "errors" {
 
 # Bucket policy for SSL-only
 resource "aws_s3_bucket_policy" "errors" {
-  bucket = aws_s3_bucket.errors.id
+  bucket     = aws_s3_bucket.errors.id
+  depends_on = [aws_s3_bucket_public_access_block.errors]
 
   policy = jsonencode({
     Version = "2012-10-17"
