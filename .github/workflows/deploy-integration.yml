@@ -95,27 +95,6 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "GitLab has been notified to deploy this image." >> $GITHUB_STEP_SUMMARY
 
-      - name: Update GitLab image tag
-        if: success()
-        env:
-          GITLAB_TOKEN: ${{ secrets.GITLAB_API_TOKEN }}
-          GITLAB_PROJECT_ID: ${{ secrets.GITLAB_PROJECT_ID }}
-          IMAGE_URL: ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ github.sha }}
-        run: |
-          curl --fail --request POST \
-            "https://gitlab.elasticpath.com/api/v4/projects/${GITLAB_PROJECT_ID}/repository/commits" \
-            --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
-            --header "Content-Type: application/json" \
-            --data "{
-              \"branch\": \"main\",
-              \"commit_message\": \"chore: update integration image to ${GITHUB_SHA::8}\",
-              \"actions\": [{
-                \"action\": \"update\",
-                \"file_path\": \"image-tags.yaml\",
-                \"content\": \"# image-tags.yaml\n# Updated automatically by GitHub Actions after ECR push.\n# Do not edit manually — changes will be overwritten on next deploy.\nintegration:\n  container_image: \\\"${IMAGE_URL}\\\"\n\"
-              }]
-            }"
-
       - name: Notify on failure
         if: failure()
         run: |
