@@ -157,6 +157,10 @@ echo "  → Applying assets bucket..."
 apply_project "s3-assets" "projects/s3-assets" \
     "${ENVIRONMENT}/s3-assets/terraform.tfstate"
 
+echo "  → Applying errors bucket..."
+apply_project "s3-errors" "projects/s3-errors" \
+    "${ENVIRONMENT}/s3-errors/terraform.tfstate"
+
 # 6. DynamoDB
 step "Step 6: Applying DynamoDB"
 apply_project "dynamodb" "projects/dynamodb" \
