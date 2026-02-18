@@ -22,7 +22,7 @@ COPY wab/src/wab/shared/register-library/ /app/wab/src/wab/shared/register-libra
 
 # Install and build canvas-packages
 WORKDIR /app/canvas-packages
-COPY canvas-packages/package.json canvas-packages/yarn.lock ./
+COPY canvas-packages/package.json canvas-packages/yarn.lock canvas-packages/makePkgTypes.js canvas-packages/typedPkgsList.json ./
 COPY canvas-packages/internal_pkgs/ ./internal_pkgs/
 RUN yarn install --frozen-lockfile && yarn cache clean
 COPY canvas-packages/ .
