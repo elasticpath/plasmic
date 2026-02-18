@@ -1,6 +1,0 @@
-# Terraform refresh marker
-# Updated: 2025-12-05 16:45 UTC
-# Purpose: Force fresh terraform plans after cleaning up orphaned Service Discovery resources
-# Cleaned up namespace ns-yf25ya6doksgwikm and associated Route53 hosted zone
-# All ECS services have Service Connect disabled - ready for clean deployment
-# This file triggers new plan generation for successful infrastructure deployment

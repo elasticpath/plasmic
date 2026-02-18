@@ -4,19 +4,31 @@
 #
 # Required environment variables:
 #   AWS_REGION - AWS region
-#   TERRAFORM_STATE_BUCKET - S3 bucket for terraform state
+#   FRONTEND_URL - CloudFront URL for frontend
+#   HOST_URL - CloudFront URL for host
+#   FRONTEND_CF_ID - CloudFront distribution ID for frontend
+#   HOST_CF_ID - CloudFront distribution ID for host
+#   FRONTEND_BUCKET - S3 bucket name for frontend
+#   HOST_BUCKET - S3 bucket name for host
 
 set -e
 
-ENVIRONMENT="${1:-${TF_VAR_environment:-integration}}"
+ENVIRONMENT="${1:-${ENVIRONMENT:-integration}}"
 AWS_REGION="${AWS_REGION:-us-east-2}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TERRAFORM_ROOT="$(cd "$SCRIPT_DIR/../../terraform" && pwd)"
 
 echo "🎨 Building and deploying Plasmic frontend to: $ENVIRONMENT"
 # Mask region for public repo security
 echo "::add-mask::$AWS_REGION"
 echo ""
+
+# Validate required environment variables
+for var in FRONTEND_URL HOST_URL FRONTEND_CF_ID HOST_CF_ID FRONTEND_BUCKET HOST_BUCKET; do
+  if [ -z "${!var}" ]; then
+    echo "❌ Required environment variable $var is not set"
+    exit 1
+  fi
+done
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -39,38 +51,11 @@ error() {
     echo -e "${RED}❌ $1${NC}"
 }
 
-# Get CloudFront distribution IDs and URLs from Terraform
-step "Step 1: Getting infrastructure details"
-cd "$TERRAFORM_ROOT/projects/frontend"
-terraform init \
-    -backend-config="bucket=${TERRAFORM_STATE_BUCKET}" \
-    -backend-config="key=${ENVIRONMENT}/frontend/terraform.tfstate" \
-    -backend-config="use_lockfile=true" \
-    -backend-config="region=${AWS_REGION}" \
-    -reconfigure >/dev/null 2>&1
-
-FRONTEND_URL=$(terraform output -raw frontend_url)
-HOST_URL=$(terraform output -raw host_url)
-FRONTEND_CF_ID=$(terraform output -raw frontend_cloudfront_distribution_id)
-HOST_CF_ID=$(terraform output -raw host_cloudfront_distribution_id)
-FRONTEND_BUCKET=$(terraform output -raw frontend_bucket_name)
-HOST_BUCKET=$(terraform output -raw host_bucket_name)
-
-# Get backend API URL
-cd "$TERRAFORM_ROOT/services/wab"
-terraform init \
-    -backend-config="bucket=${TERRAFORM_STATE_BUCKET}" \
-    -backend-config="key=${ENVIRONMENT}/services/wab/terraform.tfstate" \
-    -backend-config="use_lockfile=true" \
-    -backend-config="region=${AWS_REGION}" \
-    -reconfigure >/dev/null 2>&1
-APP_URL=$(terraform output -raw application_url)
-
 # Navigate to platform directory (from repo root to platform/wab)
 cd "$SCRIPT_DIR/../../platform/wab"
 
 # Install dependencies
-step "Step 2: Installing dependencies"
+step "Step 1: Installing dependencies"
 echo "Installing root dependencies..."
 cd ../..
 yarn install --frozen-lockfile
@@ -89,18 +74,18 @@ yarn add --dev raw-loader 2>/dev/null || true
 echo "✅ Dependencies installed"
 
 # Generate required files
-step "Step 3: Generating required files"
+step "Step 2: Generating required files"
 echo "Generating model classes and parsers..."
 make
 echo "✅ Generated required files"
 
 # Build CSS files
-step "Step 4: Building CSS files"
+step "Step 3: Building CSS files"
 yarn build-css
 echo "✅ CSS files built"
 
 # Create .env file
-step "Step 5: Creating environment configuration"
+step "Step 4: Creating environment configuration"
 cat > .env << EOF
 REACT_APP_DEFAULT_HOST_URL=${HOST_URL}
 AMPLITUDE_API_KEY=placeholder
@@ -117,7 +102,7 @@ EOF
 echo "✅ Environment configuration created"
 
 # Patch rsbuild.config.ts
-step "Step 6: Patching build configuration"
+step "Step 5: Patching build configuration"
 cat > patch-rsbuild.js << 'PATCH_EOF'
 const fs = require('fs');
 const content = fs.readFileSync('rsbuild.config.ts', 'utf8');
@@ -142,13 +127,13 @@ rm patch-rsbuild.js
 echo "✅ Build configuration patched"
 
 # Build frontend
-step "Step 7: Building frontend"
+step "Step 6: Building frontend"
 NODE_ENV=production PUBLIC_URL=${FRONTEND_URL} yarn build
 echo "✅ Frontend built successfully"
 ls -lh build/
 
 # Deploy to S3
-step "Step 8: Deploying to S3"
+step "Step 7: Deploying to S3"
 
 # Sync all assets with cache headers (excluding HTML files)
 echo "Uploading static assets..."
@@ -187,7 +172,7 @@ aws s3 cp build/index.html s3://${FRONTEND_BUCKET}/ \
 echo "✅ Frontend deployed to S3"
 
 # Deploy Host Files
-step "Step 9: Deploying host files"
+step "Step 8: Deploying host files"
 
 # Create deployment directory
 mkdir -p ../../host-deploy/static
@@ -243,7 +228,7 @@ rm -rf ../../host-deploy
 echo "✅ Host files deployed"
 
 # Invalidate CloudFront
-step "Step 10: Invalidating CloudFront caches"
+step "Step 9: Invalidating CloudFront caches"
 
 echo "Invalidating frontend CloudFront..."
 aws cloudfront create-invalidation \

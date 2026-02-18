@@ -1,1 +1,0 @@
-# No outputs - Service outputs are not consumed by other modules or scripts
