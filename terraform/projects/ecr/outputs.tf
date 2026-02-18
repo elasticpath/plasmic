@@ -1,1 +1,0 @@
-# No outputs - ECR repository is referenced via GitHub variables, not Terraform outputs
