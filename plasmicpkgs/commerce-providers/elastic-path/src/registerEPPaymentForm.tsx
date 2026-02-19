@@ -1,6 +1,7 @@
 import React from "react";
 import registerComponent from "@plasmicapp/host/registerComponent";
 import { EPPaymentForm } from "./checkout/components/EPPaymentForm";
+import { Registerable } from "./registerable";
 
 
 export const epPaymentFormMeta = {
@@ -65,6 +66,8 @@ export const epPaymentFormMeta = {
   trapsFocus: true,
 };
 
-export function registerEPPaymentForm() {
-  registerComponent(EPPaymentForm, epPaymentFormMeta);
+export function registerEPPaymentForm(loader?: Registerable) {
+  const doRegisterComponent: typeof registerComponent = (...args) =>
+    loader ? loader.registerComponent(...args) : registerComponent(...args);
+  doRegisterComponent(EPPaymentForm, epPaymentFormMeta);
 }

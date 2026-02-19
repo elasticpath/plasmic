@@ -1,6 +1,7 @@
 import React from "react";
 import registerComponent from "@plasmicapp/host/registerComponent";
 import { EPCheckoutForm } from "./checkout/components/EPCheckoutForm";
+import { Registerable } from "./registerable";
 
 
 export const epCheckoutFormMeta = {
@@ -53,6 +54,8 @@ export const epCheckoutFormMeta = {
   trapsFocus: true,
 };
 
-export function registerEPCheckoutForm() {
-  registerComponent(EPCheckoutForm, epCheckoutFormMeta);
+export function registerEPCheckoutForm(loader?: Registerable) {
+  const doRegisterComponent: typeof registerComponent = (...args) =>
+    loader ? loader.registerComponent(...args) : registerComponent(...args);
+  doRegisterComponent(EPCheckoutForm, epCheckoutFormMeta);
 }

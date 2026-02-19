@@ -2,12 +2,13 @@ import { registerEPCheckoutForm } from "./registerEPCheckoutForm";
 import { registerEPPaymentForm } from "./registerEPPaymentForm";
 import { registerEPOrderSummary } from "./registerEPOrderSummary";
 import { registerEPCheckoutConfirmation } from "./registerEPCheckoutConfirmation";
+import { Registerable } from "./registerable";
 
-export function registerEPCheckout() {
-  registerEPCheckoutForm();
-  registerEPPaymentForm();
-  registerEPOrderSummary();
-  registerEPCheckoutConfirmation();
+export function registerEPCheckout(loader?: Registerable) {
+  registerEPCheckoutForm(loader);
+  registerEPPaymentForm(loader);
+  registerEPOrderSummary(loader);
+  registerEPCheckoutConfirmation(loader);
 }
 
 // Export individual registration functions
