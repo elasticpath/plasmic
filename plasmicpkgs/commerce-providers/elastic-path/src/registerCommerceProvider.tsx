@@ -1,6 +1,5 @@
 import { GlobalContextMeta } from "@plasmicapp/host";
 import registerGlobalContext from "@plasmicapp/host/registerGlobalContext";
-import { usePlasmicQueryData } from "@plasmicapp/query";
 import {
   CartActionsProvider,
   globalActionsRegistrations,
@@ -12,6 +11,8 @@ import { Registerable } from "./registerable";
 
 interface CommerceProviderProps extends ElasticPathCredentials {
   children?: React.ReactNode;
+  locale?: string;
+  customHost?: string;
 }
 
 const globalContextName = "plasmic-commerce-elastic-path-provider";
@@ -26,10 +27,26 @@ export const commerceProviderMeta: GlobalContextMeta<CommerceProviderProps> = {
       description: "Your Elastic Path client ID (public key)",
     },
     host: {
-      type: "string",
+      type: "choice",
+      options: [
+        { label: "EU West", value: "https://euwest.api.elasticpath.com" },
+        { label: "US East", value: "https://useast.api.elasticpath.com" },
+        { label: "Custom", value: "custom" },
+      ],
       defaultValue: "https://euwest.api.elasticpath.com",
-      description:
-        "Elastic Path API endpoint (e.g., https://euwest.api.elasticpath.com)",
+      description: "Elastic Path API region",
+    },
+    customHost: {
+      type: "string",
+      displayName: "Custom API Host",
+      description: "Custom Elastic Path API endpoint URL",
+      hidden: (props: any) => props.host !== "custom",
+    },
+    locale: {
+      type: "choice",
+      options: ["en-US", "en-GB", "fr-FR", "de-DE", "es-ES"],
+      defaultValue: "en-US",
+      description: "Locale for currency formatting and localization",
     },
   },
   ...{ globalActions: globalActionsRegistrations },
@@ -38,30 +55,28 @@ export const commerceProviderMeta: GlobalContextMeta<CommerceProviderProps> = {
 };
 
 export function CommerceProviderComponent(props: CommerceProviderProps) {
-  const { children, clientId, host } = props;
+  const { children, clientId, host, customHost, locale = "en-US" } = props;
 
-  const creds = React.useMemo(() => ({ clientId, host }), [clientId, host]);
+  if (!clientId) {
+    return (
+      <div>
+        Please set your Elastic Path Client ID in the Elastic Path Provider
+        settings.
+      </div>
+    );
+  }
 
-  const {
-    data: locale,
-    error,
-    isLoading,
-  } = usePlasmicQueryData(JSON.stringify({ creds }) + "locale", async () => {
-    // Elastic Path doesn't have a project concept like Commercetools
-    // Default to en-US, but this could be made configurable
-    return "en-US";
-  });
+  const resolvedHost = host === "custom" ? customHost : host;
 
-  const CommerceProvider = React.useMemo(
-    () => getCommerceProvider(creds, locale ?? "en-US"),
-    [creds, locale]
+  const creds = React.useMemo(
+    () => ({ clientId, host: resolvedHost }),
+    [clientId, resolvedHost]
   );
 
-  if (isLoading) {
-    return null;
-  } else if (error) {
-    throw new Error(error.message);
-  }
+  const CommerceProvider = React.useMemo(
+    () => getCommerceProvider(creds, locale),
+    [creds, locale]
+  );
 
   return (
     <CommerceProvider>
