@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { getByContextAllProducts, getByContextChildProducts } from "@epcc-sdk/sdks-shopper";
 import { useCommerce } from "../elastic-path";
 import { ComponentProduct } from "./types";
+import { createLogger } from "../utils/logger";
+
+const log = createLogger("useParentProducts");
 
 interface ParentProductInfo {
   id: string;
@@ -147,7 +150,7 @@ export function useParentProducts({
           });
           
         } catch (err) {
-          console.error("Failed to fetch products in bulk:", err);
+          log.error("Failed to fetch products in bulk", { error: err instanceof Error ? err.message : String(err) } as Record<string, unknown>);
           // Fall back to marking all as non-parent on error
           productIds.forEach((productId) => {
             initialParentInfo[productId] = {
@@ -190,11 +193,11 @@ export function useParentProducts({
                           (child.attributes as any)?.bundle_excluded === true,
               })) || [];
 
-              console.log(`Found ${children.length} children for parent ${result.productId}`);
+              log.debug(`Found ${children.length} children for parent ${result.productId}`);
 
               return { productId: result.productId, children };
             } catch (err) {
-              console.warn(`Failed to fetch children for ${result.productId}:`, err);
+              log.warn(`Failed to fetch children for ${result.productId}`, { error: err instanceof Error ? err.message : String(err) } as Record<string, unknown>);
               return { 
                 productId: result.productId, 
                 children: [], 
@@ -224,7 +227,7 @@ export function useParentProducts({
       } catch (err) {
         const error = err instanceof Error ? err : new Error("Failed to fetch parent products");
         setError(error);
-        console.error("Error fetching parent products:", error);
+        log.error("Error fetching parent products", { error: error.message } as Record<string, unknown>);
       } finally {
         setLoading(false);
       }

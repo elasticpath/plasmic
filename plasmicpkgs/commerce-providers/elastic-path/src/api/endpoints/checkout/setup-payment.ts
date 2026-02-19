@@ -1,6 +1,9 @@
 import { paymentSetup } from "@epcc-sdk/sdks-shopper";
 import Stripe from "stripe";
 import type { SetupPaymentAPI } from "../../schemas/checkout";
+import { createLogger } from "../../../utils/logger";
+
+const log = createLogger("setupPayment");
 import { 
   createSuccessResponse, 
   createErrorResponse, 
@@ -126,7 +129,7 @@ export default async function setupPaymentHandler(req: any, res: any) {
       try {
         await stripe.paymentIntents.cancel(paymentIntent.id);
       } catch (cancelError) {
-        console.error('Failed to cancel Stripe payment intent:', cancelError);
+        log.error("Failed to cancel Stripe payment intent", { error: cancelError instanceof Error ? cancelError.message : String(cancelError) } as Record<string, unknown>);
       }
       
       throw new PaymentError('Failed to setup payment with Elastic Path');
@@ -135,7 +138,7 @@ export default async function setupPaymentHandler(req: any, res: any) {
     const transaction = paymentResponse.data.data;
 
     // Log successful payment setup
-    console.log(`Payment setup successful for order: ${orderId}, transaction: ${transaction.id}`);
+    log.info(`Payment setup successful for order: ${orderId}, transaction: ${transaction.id}`);
 
     return res.status(200).json(createSuccessResponse<SetupPaymentAPI['data']>({
       clientSecret: paymentIntent.client_secret,
@@ -144,7 +147,7 @@ export default async function setupPaymentHandler(req: any, res: any) {
     }));
 
   } catch (error) {
-    console.error('Setup payment error:', error);
+    log.error("Setup payment error", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
 
     let checkoutError: CheckoutError;
 

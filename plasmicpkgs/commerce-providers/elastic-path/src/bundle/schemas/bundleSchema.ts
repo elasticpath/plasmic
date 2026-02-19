@@ -1,5 +1,8 @@
 import { z } from 'zod';
 import { ComponentProduct, ComponentProductOption } from '../types';
+import { createLogger } from "../../utils/logger";
+
+const log = createLogger("bundleSchema");
 
 /**
  * Creates a dynamic Zod schema based on bundle components
@@ -132,7 +135,7 @@ export function createBundleDefaultValues(
       const decoded = JSON.parse(atob(defaultConfiguration));
       Object.assign(defaults, decoded);
     } catch (error) {
-      console.error("Failed to parse default configuration:", error);
+      log.error("Failed to parse default configuration", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
     }
   }
   

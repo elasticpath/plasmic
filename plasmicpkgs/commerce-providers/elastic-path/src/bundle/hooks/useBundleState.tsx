@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { ComponentProduct, ElasticPathBundleProduct } from "../types";
 import { getDefaultSelections } from "../utils/bundleSelectionUtils";
+import { createLogger } from "../../utils/logger";
+
+const log = createLogger("useBundleState");
 
 interface UseBundleStateProps {
   components: Record<string, ComponentProduct>;
@@ -39,7 +42,7 @@ export function useBundleState({
           const decoded = JSON.parse(atob(defaultConfiguration));
           initialSelections = getDefaultSelections(components, decoded);
         } catch (error) {
-          console.error("Failed to parse default configuration:", error);
+          log.error("Failed to parse default configuration", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
           initialSelections = getDefaultSelections(components);
         }
       } else {

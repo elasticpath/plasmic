@@ -7,6 +7,9 @@ import type {
   SWRHook,
   UseSearch,
 } from "@plasmicpkgs/commerce";
+import { createLogger } from "../utils/logger";
+
+const log = createLogger("useSearch");
 
 export type SearchProductsInput = {
   search?: string;
@@ -82,7 +85,7 @@ export const handler: SWRHook<SearchProductsHook> = {
           (response.data && (response.data.data?.length || 0) > 0) || false,
       };
     } catch (error) {
-      console.error("Error searching products:", error);
+      log.error("Error searching products", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
       return {
         products: [],
         found: false,

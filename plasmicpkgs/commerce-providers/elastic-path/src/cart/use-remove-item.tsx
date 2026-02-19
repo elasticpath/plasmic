@@ -13,6 +13,9 @@ import { useCallback } from "react";
 import type { Cart, LineItem, RemoveItemHook } from "../types/cart";
 import { getCartId, normalizeCart, removeCartCookie } from "../utils";
 import useCart from "./use-cart";
+import { createLogger } from "../utils/logger";
+
+const log = createLogger("useRemoveItem");
 
 export type RemoveItemFn<T = any> = T extends LineItem
   ? (input?: RemoveItemActionInput<T>) => Promise<Cart | null | undefined>
@@ -72,7 +75,7 @@ export const handler: MutationHook<RemoveItemHook> = {
         return undefined;
       }
     } catch (error) {
-      console.error("Error removing item from cart:", error);
+      log.error("Error removing item from cart", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
       // If cart not found, clear cookie
       if ((error as any)?.status === 404) {
         removeCartCookie();

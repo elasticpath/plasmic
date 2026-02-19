@@ -1,6 +1,9 @@
 import { checkoutApi } from "@epcc-sdk/sdks-shopper";
 import type { CreateOrderAPI } from "../../schemas/checkout";
 import type { ElasticPathOrder } from "../../../checkout/types";
+import { createLogger } from "../../../utils/logger";
+
+const log = createLogger("createOrder");
 import { 
   createSuccessResponse, 
   createErrorResponse, 
@@ -125,14 +128,14 @@ export default async function createOrderHandler(req: any, res: any) {
     const order: ElasticPathOrder = transformElasticPathOrder(orderResponse.data.data);
 
     // Log successful order creation
-    console.log(`Order created successfully: ${order.id}`);
+    log.info(`Order created successfully: ${order.id}`);
 
     return res.status(201).json(createSuccessResponse<CreateOrderAPI['data']>({
       order
     }));
 
   } catch (error) {
-    console.error('Create order error:', error);
+    log.error("Create order error", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
 
     let checkoutError: CheckoutError;
 

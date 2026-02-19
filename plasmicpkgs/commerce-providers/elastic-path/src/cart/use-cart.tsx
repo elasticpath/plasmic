@@ -8,6 +8,9 @@ import { useMemo } from "react";
 import { GetCartHook } from "../types/cart";
 import { normalizeCart } from "../utils";
 import { getCartId, setCartId } from "../utils/cart-cookie";
+import { createLogger } from "../utils/logger";
+
+const log = createLogger("useCart");
 
 export default useCommerceCart as UseCart<typeof handler>;
 
@@ -55,7 +58,7 @@ export const handler: SWRHook<GetCartHook> = {
       }
     } catch (error) {
       // If cart not found or error, clear cookie and create new cart
-      console.error("Error getting cart:", error);
+      log.error("Error getting cart", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
       return undefined;
     }
 

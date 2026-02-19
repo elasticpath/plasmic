@@ -4,6 +4,9 @@ import { useCommerce } from "../elastic-path";
 import type { ProductStock, LocationStock, UseStockOptions } from "./types";
 import { createProductStock } from "./utils/stockCalculations";
 import { handleAPIError } from "../utils/errorHandling";
+import { createLogger } from "../utils/logger";
+
+const log = createLogger("useStock");
 
 export function useStock({
   productIds,
@@ -50,7 +53,7 @@ export function useStock({
             };
           } catch (err) {
             const error = handleAPIError(err, `fetching stock for product ${productId}`);
-            console.warn(`Failed to fetch stock for product ${productId}:`, error);
+            log.warn(`Failed to fetch stock for product ${productId}`, { error: error.message } as Record<string, unknown>);
             return {
               productId,
               productStock: {
@@ -74,7 +77,7 @@ export function useStock({
       } catch (err) {
         const error = err instanceof Error ? err : new Error("Failed to fetch stock data");
         setError(error);
-        console.error("Error fetching stock:", error);
+        log.error("Error fetching stock", { error: error.message } as Record<string, unknown>);
       } finally {
         setLoading(false);
       }

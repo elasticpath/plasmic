@@ -1,10 +1,13 @@
 import type { AddressData } from "../../../checkout/types";
-import { 
-  createSuccessResponse, 
-  createErrorResponse, 
-  validateMethod, 
-  validateRequestBody 
+import { createLogger } from "../../../utils/logger";
+import {
+  createSuccessResponse,
+  createErrorResponse,
+  validateMethod,
+  validateRequestBody
 } from "../../utils/api-helpers";
+
+const log = createLogger("validateAddress");
 import { 
   validateBillingAddress,
   validateShippingAddress 
@@ -66,12 +69,12 @@ export default async function validateAddressHandler(req: any, res: any) {
         suggestions = normalizationResult.suggestions;
       } catch (error) {
         // Normalization failure doesn't make the address invalid
-        console.warn('Address normalization failed:', error);
+        log.warn("Address normalization failed", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
       }
     }
 
     // Log validation attempt
-    console.log(`Address validation completed: ${validation.isValid ? 'valid' : 'invalid'}`);
+    log.info(`Address validation completed: ${validation.isValid ? 'valid' : 'invalid'}`);
 
     return res.status(200).json(createSuccessResponse<ValidateAddressAPI['data']>({
       isValid: validation.isValid,
@@ -81,7 +84,7 @@ export default async function validateAddressHandler(req: any, res: any) {
     }));
 
   } catch (error) {
-    console.error('Address validation error:', error);
+    log.error("Address validation error", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
 
     const checkoutError = error instanceof ValidationError 
       ? error 
@@ -137,7 +140,7 @@ async function normalizeAddress(address: AddressData): Promise<{
     return { normalized };
 
   } catch (error) {
-    console.error('Address normalization error:', error);
+    log.error("Address normalization error", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
     throw error;
   }
 }

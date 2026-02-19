@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { listLocations } from "@epcc-sdk/sdks-shopper";
 import { useCommerce } from "../elastic-path";
 import type { Location, UseLocationsOptions } from "./types";
+import { createLogger } from "../utils/logger";
+
+const log = createLogger("useLocations");
 
 export function useLocations({
   type,
@@ -32,7 +35,7 @@ export function useLocations({
       } catch (err) {
         const error = err instanceof Error ? err : new Error("Failed to fetch locations");
         setError(error);
-        console.error("Error fetching locations:", error);
+        log.error("Error fetching locations", { error: error.message } as Record<string, unknown>);
       } finally {
         setLoading(false);
       }

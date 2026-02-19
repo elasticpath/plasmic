@@ -3,6 +3,9 @@ import debounce from "debounce";
 import { ElasticPathBundleProduct } from "../types";
 import { convertSelectionsForAPI } from "../utils/bundleSelectionUtils";
 import { shouldTriggerConfiguration } from "../utils/configurationComparison";
+import { createLogger } from "../../utils/logger";
+
+const log = createLogger("useBundleConfigOrchestration");
 
 // Type for debounced function with clear method
 interface DebouncedFunction {
@@ -60,7 +63,7 @@ export function useBundleConfigurationOrchestration({
           setLastConfigured(optionsString);
         }
       } catch (error) {
-        console.error("Failed to process bundle configuration:", error);
+        log.error("Failed to process bundle configuration", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
       } finally {
         setIsConfiguring(false);
       }

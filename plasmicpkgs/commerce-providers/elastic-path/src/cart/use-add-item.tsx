@@ -8,6 +8,9 @@ import useCart from "./use-cart";
 import { buildCartItemData, validateCartItem } from "./utils/cartDataBuilder";
 import type { ExtendedCartItem } from "./utils/cartDataBuilder";
 import { handleAPIError } from "../utils/errorHandling";
+import { createLogger } from "../utils/logger";
+
+const log = createLogger("useAddItem");
 
 // Note: ExtendedCartItem is now imported from cartDataBuilder utils
 
@@ -24,7 +27,7 @@ export const handler: MutationHook<AddItemHook> = {
     // Validate cart item using pure function
     const validation = validateCartItem(extendedItem);
     if (!validation.isValid) {
-      console.error("Cart item validation failed:", validation.errorMessage);
+      log.error("Cart item validation failed", { errorMessage: validation.errorMessage } as Record<string, unknown>);
       return undefined;
     }
 
@@ -77,7 +80,7 @@ export const handler: MutationHook<AddItemHook> = {
         : undefined;
     } catch (error) {
       const standardError = handleAPIError(error, "adding item to cart");
-      console.error("Error adding item to cart:", standardError);
+      log.error("Error adding item to cart", { error: standardError.message } as Record<string, unknown>);
       return undefined;
     }
   },

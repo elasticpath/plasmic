@@ -2,6 +2,9 @@ import { useEffect } from "react";
 import { UseFormReturn, useFormContext } from "react-hook-form";
 import { convertSelectionsForAPI } from "../utils/bundleSelectionUtils";
 import { BundleFormData } from "../schemas/bundleSchema";
+import { createLogger } from "../../utils/logger";
+
+const log = createLogger("useBundleFormSync");
 
 interface UseBundleFormSyncProps {
   selectedOptions: BundleFormData;
@@ -80,7 +83,7 @@ export function useBundleFormSync({
         url.searchParams.set("bundle_config", encoded);
         window.history.replaceState({}, "", url.toString());
       } catch (error) {
-        console.error("Failed to update URL:", error);
+        log.error("Failed to update URL", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
       }
     }
   }, [selectedOptions, updateUrlOnChange, isInitialized]);

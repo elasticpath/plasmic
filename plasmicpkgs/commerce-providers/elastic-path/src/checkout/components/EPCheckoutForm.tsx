@@ -1,6 +1,9 @@
 import React, { useState, useCallback } from 'react';
 import { useCheckout } from '../hooks/use-checkout';
 import type { CheckoutFormData, CustomerData, AddressData, CheckoutStep } from '../types';
+import { createLogger } from "../../utils/logger";
+
+const log = createLogger("EPCheckoutForm");
 
 interface EPCheckoutFormProps {
   cartId: string;
@@ -180,7 +183,7 @@ export function EPCheckoutForm({
     try {
       await checkout.submitCustomerInfo(formData);
     } catch (error) {
-      console.error('Form submission error:', error);
+      log.error("Form submission error", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
     } finally {
       setIsSubmitting(false);
     }

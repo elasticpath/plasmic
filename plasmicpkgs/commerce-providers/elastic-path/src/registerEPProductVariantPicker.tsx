@@ -6,6 +6,9 @@ import type { Product, ProductOption } from "@plasmicpkgs/commerce";
 import React, { useEffect, useMemo, useState } from "react";
 import { Controller, useForm, useFormContext } from "react-hook-form";
 import { Registerable } from "./registerable";
+import { createLogger } from "./utils/logger";
+
+const log = createLogger("EPProductVariantPicker");
 
 interface EPProductVariantPickerProps {
   className?: string;
@@ -134,7 +137,7 @@ export function EPProductVariantPicker(props: EPProductVariantPickerProps) {
             url.searchParams.set('variant', String(selectedVariant.id));
             window.history.replaceState({}, '', url.toString());
           } catch (error) {
-            console.error('Failed to update URL:', error);
+            log.error("Failed to update URL", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
           }
         }
       }

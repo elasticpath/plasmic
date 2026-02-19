@@ -11,6 +11,9 @@ import type { LineItem, UpdateItemHook } from "../types/cart";
 import { getCartId, normalizeCart, removeCartCookie } from "../utils";
 import useCart from "./use-cart";
 import { handler as removeItemHandler } from "./use-remove-item";
+import { createLogger } from "../utils/logger";
+
+const log = createLogger("useUpdateItem");
 
 export type UpdateItemActionInput<T = any> = T extends LineItem
   ? Partial<UpdateItemHook["actionInput"]>
@@ -77,7 +80,7 @@ export const handler: MutationHook<UpdateItemHook> = {
         return undefined;
       }
     } catch (error) {
-      console.error("Error updating cart item:", error);
+      log.error("Error updating cart item", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
       // If cart not found, clear cookie
       if ((error as any)?.status === 404) {
         removeCartCookie();

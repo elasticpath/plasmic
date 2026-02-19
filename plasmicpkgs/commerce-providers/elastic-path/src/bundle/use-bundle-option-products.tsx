@@ -3,6 +3,9 @@ import { getByContextAllProducts } from "@epcc-sdk/sdks-shopper";
 import { useCommerce } from "../elastic-path";
 import { ComponentProduct } from "./types";
 import { Product } from "../types/product";
+import { createLogger } from "../utils/logger";
+
+const log = createLogger("useBundleOptionProducts");
 
 interface UseBundleOptionProductsOptions {
   components: Record<string, ComponentProduct>;
@@ -112,14 +115,14 @@ export function useBundleOptionProducts({
             }
           });
         } catch (err) {
-          console.error("Failed to fetch products in bulk:", err);
+          log.error("Failed to fetch products in bulk", { error: err instanceof Error ? err.message : String(err) } as Record<string, unknown>);
         }
 
         setProducts(productMap);
       } catch (err) {
         const error = err instanceof Error ? err : new Error("Failed to fetch option products");
         setError(error);
-        console.error("Error fetching bundle option products:", error);
+        log.error("Error fetching bundle option products", { error: error.message } as Record<string, unknown>);
       } finally {
         setLoading(false);
       }
