@@ -1,3 +1,7 @@
+import { createLogger } from "../../utils/logger";
+
+const log = createLogger("CheckoutErrors");
+
 /**
  * Custom error classes for checkout API
  */
@@ -57,7 +61,7 @@ export class StripeError extends CheckoutError {
  * Handles Elastic Path API errors
  */
 export function handleElasticPathError(error: any): CheckoutError {
-  console.error('Elastic Path API Error:', error);
+  log.error("Elastic Path API Error", { error: error?.message || String(error) } as Record<string, unknown>);
 
   if (error.response?.data?.errors) {
     const epErrors = error.response.data.errors;
@@ -87,7 +91,7 @@ export function handleElasticPathError(error: any): CheckoutError {
  * Handles Stripe API errors
  */
 export function handleStripeError(error: any): CheckoutError {
-  console.error('Stripe API Error:', error);
+  log.error("Stripe API Error", { error: error?.message || String(error) } as Record<string, unknown>);
 
   const stripeErrorType = error.type;
   const stripeErrorCode = error.code;
@@ -149,8 +153,7 @@ export function logError(error: CheckoutError, context: Record<string, any> = {}
     stack: error.stack
   };
 
-  // In production, you would send this to your logging service
-  console.error('Checkout Error:', JSON.stringify(logData, null, 2));
+  log.error("Checkout Error", logData as Record<string, unknown>);
 }
 
 /**

@@ -1,3 +1,7 @@
+import { createLogger } from "./logger";
+
+const log = createLogger("ErrorHandling");
+
 /**
  * Standard error codes for the EP package
  */
@@ -182,14 +186,11 @@ export function isRecoverableError(error: EPError): boolean {
  * @param context Additional context for logging
  */
 export function logError(error: EPError, context?: string): void {
-  const logMessage = `[EP Error] ${error.code}: ${error.message}`;
-  const logData = {
+  log.error(`${error.code}: ${error.message}`, {
     error,
     context,
     timestamp: error.timestamp,
-  };
-
-  console.error(logMessage, logData);
+  } as Record<string, unknown>);
 }
 
 /**
