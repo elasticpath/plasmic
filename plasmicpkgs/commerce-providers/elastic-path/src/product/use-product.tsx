@@ -2,6 +2,9 @@ import { getByContextProduct, getByContextChildProducts } from "@epcc-sdk/sdks-s
 import type { GetProductHook } from "@plasmicpkgs/commerce";
 import { SWRHook, useProduct, UseProduct } from "@plasmicpkgs/commerce";
 import { normalizeProduct } from "../utils";
+import { createLogger } from "../utils/logger";
+
+const log = createLogger("useProduct");
 
 export type GetProductInput = {
   id?: string;
@@ -20,7 +23,6 @@ export const handler: SWRHook<GetProductHook> = {
     }
 
     try {
-      // First fetch the product
       const response = await getByContextProduct({
         client: (provider as any)!.client!,
         path: {
@@ -35,19 +37,49 @@ export const handler: SWRHook<GetProductHook> = {
         return null;
       }
 
-      const productData = response.data;
+      let productData = response.data;
       let childProducts = null;
-      
+      let initialVariantId: string | undefined;
+
+      // If this is a child product (variant), fetch the parent to get variation metadata
+      const isChildProduct =
+        productData.data?.meta?.product_types?.includes("child");
+      const parentId = isChildProduct
+        ? (productData.data?.attributes as any)?.base_product_id ||
+          (productData.data?.relationships as any)?.parent?.data?.id
+        : null;
+
+      if (isChildProduct && parentId) {
+        log.debug("Child product detected, fetching parent", { childId: id, parentId } as Record<string, unknown>);
+        initialVariantId = id;
+
+        const parentResponse = await getByContextProduct({
+          client: (provider as any)!.client!,
+          path: {
+            product_id: parentId,
+          },
+          query: {
+            include: ["main_image", "files", "component_products"],
+          },
+        });
+
+        if (parentResponse.data?.data) {
+          productData = parentResponse.data;
+        }
+      }
+
       // Check if this is a parent product with variations
-      const hasVariations = productData.data?.meta?.variations && productData.data.meta.variations.length > 0;
-      
+      const hasVariations =
+        productData.data?.meta?.variations &&
+        productData.data.meta.variations.length > 0;
+      const baseProductId = isChildProduct && parentId ? parentId : id;
+
       if (hasVariations) {
-        // Fetch child products
         try {
           const childProductsResponse = await getByContextChildProducts({
             client: (provider as any)!.client!,
             path: {
-              product_id: id,
+              product_id: baseProductId,
             },
             query: {
               include: ["main_image", "files"],
@@ -60,9 +92,21 @@ export const handler: SWRHook<GetProductHook> = {
         }
       }
 
-      return normalizeProduct(response.data, provider!.locale, childProducts || undefined);
+      const product = normalizeProduct(
+        productData,
+        provider!.locale,
+        childProducts || undefined
+      );
+
+      // Attach the originally-requested child ID so the variation picker
+      // can pre-select the correct variant
+      if (initialVariantId) {
+        (product as any).__initialVariantId = initialVariantId;
+      }
+
+      return product;
     } catch (error) {
-      console.error("Error fetching product:", error);
+      log.error("Error fetching product", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
       return null;
     }
   },
