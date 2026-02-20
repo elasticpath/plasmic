@@ -63,32 +63,24 @@ jobs:
 
           echo "Pushed image: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
 
-      - name: Update GitLab image tag
+      - name: Trigger GitLab image tag update
         if: success()
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_API_TOKEN }}
           GITLAB_PROJECT_ID: ${{ secrets.GITLAB_PROJECT_ID }}
           IMAGE_URL: ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ github.sha }}
         run: |
-          # Fetch current prod-eu image to preserve it
-          PROD_EU_IMAGE=$(curl -s \
-            --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
-            "https://gitlab.elasticpath.com/api/v4/projects/${GITLAB_PROJECT_ID}/repository/files/image-tags.yaml/raw?ref=main" \
-            | grep -A1 '^prod-eu:' | grep container_image | sed 's/.*container_image: //;s/"//g;s/[[:space:]]*$//')
-
           curl --fail --request POST \
-            "https://gitlab.elasticpath.com/api/v4/projects/${GITLAB_PROJECT_ID}/repository/commits" \
+            "https://gitlab.elasticpath.com/api/v4/projects/${GITLAB_PROJECT_ID}/pipeline" \
             --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
             --header "Content-Type: application/json" \
-            --data "{
-              \"branch\": \"main\",
-              \"commit_message\": \"chore: update integration image to ${GITHUB_SHA::8}\",
-              \"actions\": [{
-                \"action\": \"update\",
-                \"file_path\": \"image-tags.yaml\",
-                \"content\": \"# image-tags.yaml\n# Updated automatically by GitHub Actions after ECR push.\n# Do not edit manually — changes will be overwritten on next deploy.\nintegration:\n  container_image: \\\"${IMAGE_URL}\\\"\n\nprod-eu:\n  # Updated automatically by GitHub Actions after ECR push on release tag\n  container_image: \\\"${PROD_EU_IMAGE}\\\"\n\"
-              }]
-            }"
+            --data "$(jq -cn \
+              --arg image "${IMAGE_URL}" \
+              '{ref: "main", variables: [
+                {key: "UPDATE_IMAGE_TAGS", value: "true"},
+                {key: "TARGET_ENV",        value: "integration"},
+                {key: "CONTAINER_IMAGE",   value: $image}
+              ]}')"
 
       - name: Build summary
         if: success()
