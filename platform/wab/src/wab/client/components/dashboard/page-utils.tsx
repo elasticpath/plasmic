@@ -5,7 +5,7 @@ export function documentTitle(title: string) {
   return (
     // @ts-ignore
     <Helmet>
-      <title>{title ? `${title} - Plasmic` : `Plasmic`}</title>
+      <title>{title ? `${title} - Visual Builder` : `Visual Builder`}</title>
     </Helmet>
   );
 }
