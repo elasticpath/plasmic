@@ -285,6 +285,34 @@ function ProjectListItem(props: ProjectListItemProps) {
                     as workspace starter
                   </Menu.Item>
                 )}
+                {project.teamId &&
+                  perms.some(
+                    (p) =>
+                      p.teamId === project.teamId &&
+                      p.userId === appCtx.selfInfo?.id &&
+                      accessLevelRank(p.accessLevel) >=
+                        accessLevelRank("editor")
+                  ) && (
+                    <Menu.Item
+                      onClick={async () => {
+                        await appCtx.api.setSiteInfo(project.id, {
+                          isOrgStarter: !project.isOrgStarter,
+                        });
+                        notification.success({
+                          message: `Project "${project.name}" ${
+                            project.isOrgStarter ? "unset" : "set"
+                          } as organization starter.`,
+                        });
+
+                        await onUpdate?.();
+                      }}
+                    >
+                      <strong>
+                        {!project.isOrgStarter ? "Set" : "Unset"}
+                      </strong>{" "}
+                      as organization starter
+                    </Menu.Item>
+                  )}
                 {!(
                   accessLevelRank(workspaceAccessLevel) >=
                   accessLevelRank("viewer")

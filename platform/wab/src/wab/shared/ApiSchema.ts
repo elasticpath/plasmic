@@ -502,6 +502,7 @@ export interface ApiProject extends ApiEntityBase {
   extraData: ProjectExtraData | null;
   readableByPublic: boolean;
   isUserStarter?: boolean;
+  isOrgStarter?: boolean;
 }
 
 export interface ApiProjectMeta
@@ -981,6 +982,7 @@ export interface SetSiteInfoReq
       | "defaultAccessLevel"
       | "readableByPublic"
       | "isUserStarter"
+      | "isOrgStarter"
     >
   > {
   regenerateSecretApiToken?: boolean;

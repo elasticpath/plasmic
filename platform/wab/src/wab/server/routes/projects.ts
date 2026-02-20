@@ -207,6 +207,7 @@ export function mkApiProject(project: Project): ApiProject {
       ? project.workspace?.contentCreatorConfig
       : null,
     isUserStarter: project.isUserStarter ?? false,
+    isOrgStarter: project.isOrgStarter ?? false,
   };
 }
 
