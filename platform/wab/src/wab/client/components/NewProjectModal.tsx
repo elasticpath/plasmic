@@ -103,13 +103,24 @@ const NewProjectModal = observer(function NewProjectModal({
   const appCtx = useAppCtx();
   const { data: projectsData } = useAllProjectsData();
 
-  const workspaceStarters = React.useMemo(() => {
+  const { workspaceStarters, orgStarters } = React.useMemo(() => {
     if (!projectsData || !workspaceId) {
-      return [];
+      return { workspaceStarters: [], orgStarters: [] };
     }
-    return projectsData.projects.filter(
-      (project) => project.workspaceId === workspaceId && project.isUserStarter
-    );
+    const teamId = projectsData.projects.find(
+      (p) => p.workspaceId === workspaceId
+    )?.teamId;
+    return {
+      workspaceStarters: projectsData.projects.filter(
+        (project) =>
+          project.workspaceId === workspaceId && project.isUserStarter
+      ),
+      orgStarters: teamId
+        ? projectsData.projects.filter(
+            (project) => project.isOrgStarter && project.teamId === teamId
+          )
+        : [],
+    };
   }, [projectsData, workspaceId]);
 
   return (
@@ -132,6 +143,21 @@ const NewProjectModal = observer(function NewProjectModal({
                 title="Workspace starters"
                 tag="workspace-starters"
                 projects={workspaceStarters.map((project) => ({
+                  name: project.name,
+                  projectId: project.id,
+                  tag: project.id,
+                  description: "",
+                  withDropShadow: true,
+                  cloneWithoutName: true,
+                }))}
+                workspaceId={workspaceId}
+              />
+            )}
+            {orgStarters.length > 0 && (
+              <StarterGroup
+                title="Organization starters"
+                tag="org-starters"
+                projects={orgStarters.map((project) => ({
                   name: project.name,
                   projectId: project.id,
                   tag: project.id,

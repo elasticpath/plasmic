@@ -337,6 +337,7 @@ export const updatableProjectFields = [
   "extraData",
   "isMainBranchProtected",
   "isUserStarter",
+  "isOrgStarter",
   "uiConfig",
 ] as const;
 
@@ -2756,6 +2757,13 @@ export class DbMgr implements MigrationDbMgr {
         fields.workspaceId,
         "editor",
         "change workspace starters"
+      );
+    }
+    if ("isOrgStarter" in fields && project.workspace?.teamId) {
+      await this.checkTeamPerms(
+        project.workspace.teamId,
+        "editor",
+        "change organization starters"
       );
     }
     assignAllowEmpty(project, this.stampUpdate(), fields);

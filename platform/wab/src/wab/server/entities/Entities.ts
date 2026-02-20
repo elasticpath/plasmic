@@ -336,6 +336,11 @@ export class Project extends Base<"ProjectId"> {
   @Column("boolean", { nullable: true })
   isUserStarter?: boolean;
 
+  // Whether this project is a starter configured by an org admin
+  // It will be available as starter in all workspaces within the team
+  @Column("boolean", { nullable: true })
+  isOrgStarter?: boolean;
+
   toJSON() {
     return normalizeJson(_.omit(this, "secretApiToken"));
   }
