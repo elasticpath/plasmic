@@ -136,7 +136,7 @@ export function TopFrameChrome({
   );
 
   React.useEffect(() => {
-    document.title = `${project.name} - Plasmic`;
+    document.title = `${project.name} - Visual Builder`;
   }, [project.name]);
 
   React.useEffect(() => {

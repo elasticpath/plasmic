@@ -775,14 +775,14 @@ export class StudioCtx extends WithDbCtx {
             ? getArenaName(this.currentArena)
             : undefined;
 
-          let title = `${projectName} - Plasmic`;
+          let title = `${projectName} - Visual Builder`;
           if (arenaName) {
             if (version && !isLatest(version)) {
-              title = `${arenaName} (${branchName}@${version}) - ${projectName} - Plasmic`;
+              title = `${arenaName} (${branchName}@${version}) - ${projectName} - Visual Builder`;
             } else if (branch) {
-              title = `${arenaName} (${branchName}) - ${projectName} - Plasmic`;
+              title = `${arenaName} (${branchName}) - ${projectName} - Visual Builder`;
             } else {
-              title = `${arenaName} - ${projectName} - Plasmic`;
+              title = `${arenaName} - ${projectName} - Visual Builder`;
             }
           }
           await this.appCtx.topFrameApi?.setDocumentTitle(title);
