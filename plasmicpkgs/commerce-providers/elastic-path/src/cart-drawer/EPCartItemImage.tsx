@@ -72,13 +72,50 @@ export function EPCartItemImage(props: EPCartItemImageProps) {
 
   const effectiveItem = useMock ? MOCK_CART_LINE_ITEMS[0] : currentItem;
 
-  if (!effectiveItem?.imageUrl) return null;
+  const imageUrl = effectiveItem?.imageUrl;
+  const imageAlt = effectiveItem?.imageAlt || "";
+
+  if (!imageUrl) {
+    return (
+      <div
+        className={className}
+        role="img"
+        aria-label={imageAlt || "No product image"}
+        style={{
+          width,
+          height,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: "#f3f4f6",
+          color: "#9ca3af",
+          borderRadius: 4,
+          flexShrink: 0,
+        }}
+      >
+        <svg
+          width={Math.round(width * 0.4)}
+          height={Math.round(height * 0.4)}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+          <circle cx="8.5" cy="8.5" r="1.5" />
+          <path d="M21 15l-5-5L5 21" />
+        </svg>
+      </div>
+    );
+  }
 
   return (
     <img
       className={className}
-      src={effectiveItem.imageUrl}
-      alt={effectiveItem.imageAlt || ""}
+      src={imageUrl}
+      alt={imageAlt}
       width={width}
       height={height}
       loading={loading}
