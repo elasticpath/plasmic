@@ -186,6 +186,7 @@ These are lower priority but improve maintainability and align with established 
   - `use-bundle-configuration.tsx`: Used `unknown as Record<string, Record<string, BigInt>>` (SDK expects BigInt but JSON requires number)
   - `EPCartDrawer.tsx`: Used `type: "eventHandler" as const` (matching pattern from other components); typed reduce callback
   - **Bug fix:** `EPBundleProvider.tsx` and `registerEPBundleConfigurator.tsx` — Fixed `configuredBundle as any` by extracting `.data` from `ProductData`. Previously passed `ProductData` wrapper where `ElasticPathBundleProduct` was expected, causing configured bundle price to silently fall back to unconfigured price.
+  - **Bug fix:** `use-add-item.tsx` — Fixed missing `provider!.locale` parameter in `normalizeCart()` call. All other cart hooks (`useCart`, `useUpdateItem`, `useRemoveItem`) already passed locale; `useAddItem` was the only one missing it. Without locale, cart normalization could produce incorrect currency/price formatting for non-default locales.
 
 ### P2b — Error Handling Standardization
 
@@ -221,7 +222,7 @@ These are lower priority but improve maintainability and align with established 
 
 ## P3 — Test Coverage
 
-### Current Coverage (18 test suites, 354 tests, all passing)
+### Current Coverage (22 test suites, 403 tests, all passing)
 
 - [x] `bundle/composable/__tests__/composable-bundle-components.test.tsx` (79 tests) — Field rendering, option triggers (click/keyboard/ARIA), quantity button bounds enforcement, quantity control DataProvider shape, component/option/variation list iteration, child variant metadata display, design-time mock data validation
 - [x] `bundle/hooks/__tests__/useBundleConfigurationOrchestration.test.tsx` (14 tests)
@@ -241,6 +242,10 @@ These are lower priority but improve maintainability and align with established 
 - [x] `inventory/utils/__tests__/stockCalculations.test.ts` (23 tests)
 - [x] `inventory/utils/__tests__/stockValidation.test.ts` (20 tests)
 - [x] `test/normalize.spec.ts` (10 tests)
+- [x] `cart/__tests__/use-cart.test.tsx` (9 tests) — Cart retrieval, creation, cookie management, locale passthrough, error recovery
+- [x] `cart/__tests__/use-add-item.test.tsx` (12 tests) — Item validation, cart auto-creation, manageCarts API call, locale passthrough (bug fix verified), error handling
+- [x] `cart/__tests__/use-update-item.test.tsx` (15 tests) — Quantity update, removal delegation (qty < 1), ValidationError for non-integers, location passthrough for multi-location inventory, 404 cookie cleanup
+- [x] `cart/__tests__/use-remove-item.test.tsx` (12 tests) — deleteACartItem API call (not qty-to-zero), cart refresh after deletion, cookie cleanup on 404, guard conditions
 
 ### Missing Test Coverage (by priority)
 
@@ -248,7 +253,7 @@ These are lower priority but improve maintainability and align with established 
 - [x] **Tests for bundle form hooks** — `useBundleForm` (17 tests), `useBundleFormSync` (12 tests), `useVariationSelection` (9 tests) — form state, selection handling, parent form sync, URL sync, variation resolution
 - [x] **Tests for bundle schemas** — `bundleSchema` (16 tests) — Zod schema creation, validation, default value computation with priority chain
 - [x] **Tests for bundle utils** — `bundleSelectionUtils` (24 tests), `variationMatching` (13 tests) — sorting, API conversion, equality checks, default selections, variation matrix traversal
-- [ ] **Tests for cart hooks** — `use-add-item`, `use-cart`, `use-remove-item`, `use-update-item`
+- [x] **Tests for cart hooks** — 49 tests across 4 hooks: `use-cart` (9), `use-add-item` (12), `use-update-item` (15), `use-remove-item` (12). Covers cart lifecycle, error handling, cookie management, locale passthrough, removal delegation, and multi-location inventory support.
 - [ ] **Tests for inventory hooks** — `use-stock`, `use-locations`
 - [ ] **Tests for checkout API endpoints** — `calculate-shipping`, `create-order`, `setup-payment`, `confirm-payment`
 - [ ] **Tests for cart drawer components** — 10 components with no test coverage

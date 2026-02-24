@@ -77,7 +77,7 @@ export const handler: MutationHook<AddItemHook> = {
       });
 
       return cartResponse.data
-        ? normalizeCart(cartResponse.data)
+        ? normalizeCart(cartResponse.data, provider!.locale)
         : undefined;
     } catch (error) {
       const standardError = handleAPIError(error, "adding item to cart");
