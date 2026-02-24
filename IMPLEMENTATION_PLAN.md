@@ -49,9 +49,10 @@ Create Claude Code skills and workflows that interact with Plasmic Studio progra
 - Bundle: 1313 KB CJS, 54 external npm packages
 - TypeScript: `tsc --noEmit` passes with zero errors
 - Runtime: Module loads and starts successfully, authenticates from .plasmic.auth
+- Tests: 64 tests, 6 suites, all passing (`npm test` in `packages/plasmic-mcp/`)
 
 ### What remains
-- Phase 6: Unit tests (api-client, model-loader, integration)
+- Phase 6: Manual end-to-end test with Claude Code (requires self-hosted Plasmic instance)
 - Phase 7: Nice-to-haves (get-tokens tool, pattern library, CI pipeline, npm publishing)
 
 ### Key findings from codebase analysis
@@ -313,19 +314,67 @@ Wire the MCP server into Claude Code and create skill files.
 
 ## Phase 6: Testing and Validation
 
-- [ ] **Unit tests for API client**
-  - Files: `packages/plasmic-mcp/src/__tests__/api-client.test.ts`
-  - Depends on: API client
+### What has been implemented
 
-- [ ] **Unit tests for model loader**
-  - Requires a real bundle fixture from a test Plasmic project.
-  - Files: `packages/plasmic-mcp/src/__tests__/model-loader.test.ts`, `packages/plasmic-mcp/src/__tests__/fixtures/`
-  - Depends on: Model loader
+Test infrastructure and unit tests for all MCP server modules (64 tests, 6 suites).
 
-- [ ] **Integration test: MCP server round-trip**
-  - Full flow: `set-project` → `list-components` → `get-component-tree`.
-  - Files: `packages/plasmic-mcp/src/__tests__/integration.test.ts`
-  - Depends on: All tools
+- [x] **Jest configuration** ✓ COMPLETE
+  - `packages/plasmic-mcp/jest.config.cjs` — `.cjs` extension required because package has `"type": "module"`
+  - `moduleNameMapper` strips `.js` from ESM imports and maps `@/wab/` path aliases to test mocks
+  - Root `jest.config.js` excludes `packages/plasmic-mcp` (has its own config with `@/wab/` mocks)
+  - `tsconfig.json` excludes `src/__tests__` and `src/__mocks__` from type checking
+  - `package.json` has `"test": "jest --config jest.config.cjs"` script
+
+- [x] **Mock modules for @/wab/ path aliases** ✓ COMPLETE
+  - `src/__mocks__/wab-classes.ts` — type guard functions (`isKnownTplTag` etc.) check `_type` property; `Site` and `ProjectDependency` classes with `isKnown()` static methods
+  - `src/__mocks__/wab-classes-metas.ts` — empty `meta` and `CLASSES` objects
+  - `src/__mocks__/wab-bundler.ts` — `FastBundler` class with `mockUnbundle` jest.fn() for per-test control
+
+- [x] **Unit tests for auth.ts** ✓ COMPLETE (9 tests)
+  - Env var auth (all present, trailing slashes, basic auth)
+  - Validation (missing host, partial vars)
+  - `.plasmic.auth` file fallback (complete, incomplete, trailing slashes)
+  - Error messages are descriptive and actionable
+  - Key pattern: `jest.resetModules()` + dynamic `require()` because esbuild transform doesn't hoist `jest.mock` calls
+
+- [x] **Unit tests for api-client.ts** ✓ COMPLETE (10 tests)
+  - Correct URL construction for all 3 endpoints
+  - Auth headers (`x-plasmic-api-user`, `x-plasmic-api-token`, optional Basic auth)
+  - Request body serialization (POST)
+  - URL encoding of project IDs
+  - Error handling: 403 auth failure, server error message, HTTP status fallback, network errors
+
+- [x] **Unit tests for session.ts** ✓ COMPLETE (6 tests)
+  - Singleton get/set/clear lifecycle
+  - `requireSession()` throws actionable error when no project loaded
+  - Session replacement on project switch
+
+- [x] **Unit tests for model-loader.ts** ✓ COMPLETE (6 tests)
+  - MobX initialization with `enforceActions: "never"`
+  - Bundle fetch → parse → unbundle → narrowToSite pipeline
+  - Site extraction from `ProjectDependency` result
+  - Error on unexpected unbundle result type
+  - Project name fallback when API response is incomplete
+
+- [x] **Unit tests for tree-reader.ts** ✓ COMPLETE (21 tests)
+  - TplTag: tag, uuid, name, nodeType, styles, layoutType, text, attrs, children
+  - TplComponent: component name/uuid, props from args
+  - TplSlot: slot name, default contents
+  - Expression types: CustomCode (JSON + raw), RawText, ImageAssetRef (dataUri + url), StyleTokenRef, VarRef, RenderExpr
+  - Layout derivation: vbox (column), hbox (row/default flex), box (non-flex)
+  - Edge cases: null tplTree, empty styles, empty children, unknown node types
+
+- [x] **Integration smoke test for server.ts** ✓ COMPLETE (2 tests)
+  - `createServer()` succeeds with valid auth and registers all tools
+  - `createServer()` throws descriptive error when auth is not configured
+
+### Test findings
+
+1. **esbuild jest transform doesn't hoist `jest.mock` calls**: Unlike babel-jest or ts-jest, the esbuild transform only does TS→JS conversion. `jest.mock("fs")` at module level runs AFTER imports are resolved, so the mock isn't applied. Fix: use `jest.resetModules()` + `jest.mock()` + dynamic `require()` per test.
+2. **Jest config must be `.cjs`**: Package has `"type": "module"` so `.js` files are ESM. Jest config uses `module.exports` (CJS), so it needs `.cjs` extension.
+3. **`@/wab/` mocks need explicit `moduleNameMapper`**: The root jest config doesn't know about `@/wab/` path aliases. A package-level jest config maps these to mock files.
+
+### What remains
 
 - [ ] **Manual end-to-end test with Claude Code**
   - Requires self-hosted Plasmic instance with valid credentials.

@@ -8,11 +8,14 @@ yarn setup                    # Full monorepo setup (all packages)
 # Validation
 
 ```bash
-jest                          # Jest unit tests
+jest                          # Jest unit tests (root — excludes plasmic-mcp)
+cd packages/plasmic-mcp && npm test  # plasmic-mcp tests (own jest config with @/wab/ mocks)
 tsc --noEmit                  # TypeScript type checking
 yarn prettier --write         # Prettier formatting
 yarn eslint --fix             # ESLint linting
 ```
+
+`packages/plasmic-mcp` has its own `jest.config.cjs` (`.cjs` because `"type": "module"`) with `moduleNameMapper` for `@/wab/` path aliases. Root jest config excludes it.
 
 E2E tests (`cd platform/wab && yarn cypress open`) require environment setup — do not run in the loop.
 
