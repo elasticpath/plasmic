@@ -15,6 +15,7 @@ import { useProductStock } from "../inventory/use-stock";
 import { useLocations } from "../inventory/use-locations";
 import { getLocationDisplayName } from "../inventory/utils/displayHelpers";
 import { isLowStock, isOutOfStock } from "../inventory/utils/stockCalculations";
+import { getLocationSlug } from "../utils/getLocationSlug";
 import { useRovingTabIndex } from "../utils/useRovingTabIndex";
 import { createLogger } from "../utils/logger";
 import {
@@ -194,7 +195,7 @@ export function EPStockProvider(props: EPStockProviderProps) {
       const allocated = Number(ls.stock.allocated || 0);
       return {
         name: getLocationDisplayName(ls.location, locations),
-        slug: ls.location.id || (ls.location as any).slug || "",
+        slug: getLocationSlug(ls.location),
         available,
         allocated,
         total: Number(ls.stock.total || 0),

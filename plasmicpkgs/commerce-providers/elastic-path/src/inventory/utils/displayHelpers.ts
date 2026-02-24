@@ -17,7 +17,7 @@ export interface StockIndicatorStyle {
  * @returns User-friendly location name
  */
 export function getLocationDisplayName(
-  location: any,
+  location: Location,
   locations: Location[] = [],
   fallback?: string
 ): string {
@@ -27,9 +27,9 @@ export function getLocationDisplayName(
   }
 
   // Try to find matching location by ID or slug
-  const matchingLocation = locations.find(loc => 
-    loc.id === location.id || 
-    (loc.attributes as any)?.slug === location.id
+  const matchingLocation = locations.find(loc =>
+    loc.id === location.id ||
+    loc.attributes?.slug === location.id
   );
 
   if (matchingLocation?.attributes?.name) {

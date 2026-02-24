@@ -16,6 +16,7 @@ import {
   MOCK_CART_LINE_ITEMS,
   MockCartItemData,
 } from "../utils/design-time-data";
+import { getLocationSlug } from "../utils/getLocationSlug";
 
 const log = createLogger("EPCartItemList");
 
@@ -197,7 +198,7 @@ export function EPCartItemList(props: EPCartItemListProps) {
     const slugs = new Set<string>();
     const ids = new Set<string>();
     for (const item of cartData.lineItems) {
-      const slug = (item as any).locationSlug;
+      const slug = item.locationSlug;
       if (slug) {
         slugs.add(slug);
         const productId = item.variantId ?? item.productId;
@@ -236,7 +237,7 @@ export function EPCartItemList(props: EPCartItemListProps) {
     for (const [productId, stock] of Object.entries(productStock)) {
       map[productId] = {};
       for (const ls of stock.locations) {
-        const slug = (ls.location as any).slug ?? ls.location.id;
+        const slug = getLocationSlug(ls.location);
         if (slug) {
           map[productId][slug] = Number(ls.stock.available ?? 0);
         }

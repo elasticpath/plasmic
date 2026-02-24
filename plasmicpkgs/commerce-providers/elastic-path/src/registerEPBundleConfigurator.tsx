@@ -16,6 +16,7 @@ import { ComponentSelector } from "./bundle/components/ComponentSelector";
 import { sortByOrder } from "./bundle/utils/bundleSelectionUtils";
 import { validateBundleProduct } from "./bundle/utils/productValidation";
 import { calculateBundlePrice } from "./bundle/utils/priceCalculation";
+import { ElasticPathBundleProduct } from "./bundle/types";
 import { Product } from "./types/product";
 
 interface EPBundleConfiguratorProps {
@@ -149,7 +150,7 @@ export function EPBundleConfigurator(props: EPBundleConfiguratorProps) {
   // Calculate price and display information
   const priceInfo = calculateBundlePrice(
     bundleProduct, 
-    configuredBundle ? { data: configuredBundle as any } : undefined
+    configuredBundle ? { data: configuredBundle.data as ElasticPathBundleProduct | undefined } : undefined
   );
   const { currentPrice, isFixedPrice, displayComponents } = priceInfo;
 

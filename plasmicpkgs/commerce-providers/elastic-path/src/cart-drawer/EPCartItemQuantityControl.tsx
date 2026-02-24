@@ -135,7 +135,7 @@ export function EPCartItemQuantityControl(
           id: currentItem.id,
           quantity: newQuantity,
           ...(currentItem.locationSlug && { location: currentItem.locationSlug }),
-        } as any);
+        } as { id: string; quantity: number; location?: string });
       } catch (err) {
         // Revert optimistic update on error
         setLocalQuantity(serverQuantity);

@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useMutablePlasmicQueryData } from "@plasmicapp/query";
 import { getByContextAllProducts, getByContextChildProducts } from "@epcc-sdk/sdks-shopper";
+import type { ProductAttributes, Variation, VariationOption } from "@epcc-sdk/sdks-shopper";
 import { useCommerce } from "../elastic-path";
 import { ComponentProduct } from "./types";
 import { handleAPIError } from "../utils/errorHandling";
@@ -20,7 +21,7 @@ interface ParentProductInfo {
       name: string;
     }>;
   }>;
-  variationMatrix?: any;
+  variationMatrix?: Record<string, unknown>;
   loading: boolean;
   error?: Error;
 }
@@ -30,7 +31,7 @@ interface ChildProduct {
   name?: string;
   sku?: string;
   price?: string;
-  attributes?: Record<string, any>;
+  attributes?: ProductAttributes;
   excluded?: boolean; // Whether this variation is excluded from bundle
 }
 
@@ -118,13 +119,13 @@ export function useParentProducts({
             loading: false,
             children: [],
             variations: (product.meta?.variations || [])
-              .filter((v: any) => v.id && v.name)
-              .map((v: any) => ({
+              .filter((v: Variation) => v.id && v.name)
+              .map((v: Variation) => ({
                 id: v.id!,
                 name: v.name!,
                 options: v.options
-                  ?.filter((o: any) => o.id && o.name)
-                  .map((o: any) => ({ id: o.id!, name: o.name! })),
+                  ?.filter((o: VariationOption) => o.id && o.name)
+                  .map((o: VariationOption) => ({ id: o.id!, name: o.name! })),
               })),
             variationMatrix: product.meta?.variation_matrix,
           };
@@ -164,9 +165,10 @@ export function useParentProducts({
                 sku: child.attributes?.sku,
                 price: child.meta?.display_price?.without_tax?.formatted,
                 attributes: child.attributes,
+                // bundle_excluded is an EP custom field not in the SDK types
                 excluded:
-                  (child.meta as any)?.bundle_excluded === true ||
-                  (child.attributes as any)?.bundle_excluded === true,
+                  (child.meta as Record<string, unknown> | undefined)?.bundle_excluded === true ||
+                  (child.attributes as Record<string, unknown> | undefined)?.bundle_excluded === true,
               })) || [];
 
             log.debug(`Found ${children.length} children for parent ${productId}`);

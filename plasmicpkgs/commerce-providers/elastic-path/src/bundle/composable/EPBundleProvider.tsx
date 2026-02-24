@@ -22,6 +22,7 @@ import {
   getBundlePricingType,
 } from "../utils/productValidation";
 import { calculateBundlePrice } from "../utils/priceCalculation";
+import { ElasticPathBundleProduct } from "../types";
 import { Product } from "../../types/product";
 import { BundleFormContext, BundleFormContextValue } from "./BundleContext";
 import { MOCK_BUNDLE_DATA, MockBundleData } from "./design-time-data";
@@ -272,7 +273,7 @@ function EPBundleProviderInner({
   // Pricing
   const priceInfo = calculateBundlePrice(
     bundleProduct,
-    configuredBundle ? { data: configuredBundle as any } : undefined
+    configuredBundle ? { data: configuredBundle.data as ElasticPathBundleProduct | undefined } : undefined
   );
 
   // Validation errors as string array

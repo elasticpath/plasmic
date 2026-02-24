@@ -1,10 +1,13 @@
 import type {
   CartEntityResponse,
   CartIncluded,
+  CartItemObject,
   Product as ElasticPathProduct,
   Node,
   ProductData,
   ProductListData,
+  Variation,
+  VariationOption,
 } from "@epcc-sdk/sdks-shopper";
 import { Cart, LineItem } from "../types/cart";
 import {
@@ -16,10 +19,13 @@ import {
 import { Category } from "../types/site";
 import { dedup } from "./common";
 
+// Variation matrix is a nested object mapping option IDs to child product IDs
+type VariationMatrixEntry = string | { [key: string]: VariationMatrixEntry };
+
 // Helper function to find option IDs for a given child product ID in the variation matrix
 const getOptionsFromSkuId = (
   skuId: string,
-  entry: any,
+  entry: VariationMatrixEntry,
   options: string[] = []
 ): string[] | undefined => {
   if (typeof entry === "string") {
@@ -41,14 +47,14 @@ const getOptionsFromSkuId = (
 // Build variant options from option IDs and variation metadata
 const buildVariantOptions = (
   optionIds: string[],
-  variations: any[]
+  variations: Variation[]
 ): ProductOption[] => {
   const variantOptions: ProductOption[] = [];
 
   // Build a map of option IDs to their variations for quick lookup
-  const optionToVariation = new Map<string, { variation: any; option: any }>();
+  const optionToVariation = new Map<string, { variation: Variation; option: VariationOption }>();
   variations.forEach((variation) => {
-    variation.options?.forEach((option: any) => {
+    variation.options?.forEach((option) => {
       if (option.id) {
         optionToVariation.set(option.id, { variation, option });
       }
@@ -241,7 +247,7 @@ export const normalizeProduct = (
         // Find the option IDs for this child product
         const optionIds = getOptionsFromSkuId(
           childId,
-          product.data.meta.variation_matrix
+          product.data.meta.variation_matrix as VariationMatrixEntry
         );
 
         if (
@@ -320,9 +326,9 @@ const normalizeLineItem = (
     ? money(item.unit_price.amount, item.unit_price.currency)
     : money(0);
 
-  const options = extractOptionsFromCustomInputs(
-    (item as any).custom_inputs
-  );
+  // CartItemObject and CustomItemCartObject have custom_inputs; narrow the union
+  const epItem = item as CartItemObject;
+  const options = extractOptionsFromCustomInputs(epItem.custom_inputs);
 
   const lineItem: LineItem & { locationSlug?: string } = {
     id: item.id!,
@@ -344,7 +350,7 @@ const normalizeLineItem = (
   };
 
   // Carry through the location slug from the EP cart item response
-  const locationSlug = (item as any).location;
+  const locationSlug = epItem.location;
   if (locationSlug) {
     lineItem.locationSlug = locationSlug;
   }

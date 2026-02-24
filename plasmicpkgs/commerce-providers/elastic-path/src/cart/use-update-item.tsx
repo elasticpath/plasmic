@@ -7,7 +7,7 @@ import {
 } from "@plasmicpkgs/commerce";
 import debounce from "debounce";
 import { useCallback } from "react";
-import type { LineItem, UpdateItemHook } from "../types/cart";
+import type { CartItemBody, LineItem, UpdateItemHook } from "../types/cart";
 import { getCartId, normalizeCart, removeCartCookie } from "../utils";
 import useCart from "./use-cart";
 import { handler as removeItemHandler } from "./use-remove-item";
@@ -52,12 +52,14 @@ export const handler: MutationHook<UpdateItemHook> = {
     try {
       // Build update data — include location if present so EP validates
       // stock against the correct inventory pool
-      const updateData: Record<string, any> = {
+      const updateData: Record<string, unknown> = {
         id: itemId,
         quantity: item.quantity,
       };
-      if ((item as any).location) {
-        updateData.location = (item as any).location;
+      // EP uses location slug for multi-location inventory validation
+      const itemWithLocation = item as { quantity?: number; location?: string };
+      if (itemWithLocation.location) {
+        updateData.location = itemWithLocation.location;
       }
 
       await updateACartItem({
@@ -105,7 +107,7 @@ export const handler: MutationHook<UpdateItemHook> = {
       } = {}
     ) => {
       const { item } = ctx;
-      const { mutate } = useCart() as any;
+      const { mutate } = useCart() as { mutate: (data: unknown, revalidate: boolean) => Promise<unknown> };
 
       return useCallback(
         debounce(async (input: UpdateItemActionInput<T>) => {
@@ -116,14 +118,15 @@ export const handler: MutationHook<UpdateItemHook> = {
             });
           }
 
+          const inputWithLocation = input as UpdateItemActionInput<T> & { location?: string };
           const data = await fetch({
             input: {
               item: {
                 quantity: input.quantity,
-                ...((input as any).location && {
-                  location: (input as any).location,
+                ...(inputWithLocation.location && {
+                  location: inputWithLocation.location,
                 }),
-              } as any,
+              } as Partial<CartItemBody>,
               itemId,
             },
           });

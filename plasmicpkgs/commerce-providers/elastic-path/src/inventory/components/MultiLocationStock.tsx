@@ -32,7 +32,7 @@ export function MultiLocationStock({
   useEffect(() => {
     if (selectedLocationId && form) {
       const selectedLocation = locations.find(loc => loc.id === selectedLocationId);
-      const locationSlug = (selectedLocation?.attributes as any)?.slug || selectedLocationId;
+      const locationSlug = selectedLocation?.attributes?.slug || selectedLocationId;
       form.setValue("SelectedLocationSlug", locationSlug);
     } else if (form) {
       form.setValue("SelectedLocationSlug", undefined);
@@ -81,7 +81,7 @@ export function MultiLocationStock({
     ? (() => {
         // Find the matching location slug for the selected location ID
         const matchingLocation = locations.find(loc => loc.id === selectedLocationId);
-        const locationSlug = (matchingLocation?.attributes as any)?.slug;
+        const locationSlug = matchingLocation?.attributes?.slug;
         const filterIds = [selectedLocationId];
         if (locationSlug && locationSlug !== selectedLocationId) {
           filterIds.push(locationSlug);

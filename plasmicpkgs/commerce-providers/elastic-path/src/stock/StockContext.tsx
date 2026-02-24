@@ -33,12 +33,14 @@ export interface StockContextValue {
 // or webpack resolving the package through different paths).
 const STOCK_CTX_KEY = Symbol.for("@elasticpath/ep-stock-context");
 
+type SymbolRecord = Record<symbol, React.Context<StockContextValue | null> | undefined>;
+
 function getStockContext(): React.Context<StockContextValue | null> {
-  const g = globalThis as any;
+  const g = globalThis as unknown as SymbolRecord;
   if (!g[STOCK_CTX_KEY]) {
     g[STOCK_CTX_KEY] = React.createContext<StockContextValue | null>(null);
   }
-  return g[STOCK_CTX_KEY];
+  return g[STOCK_CTX_KEY]!;
 }
 
 const StockContext = getStockContext();

@@ -88,9 +88,9 @@ export const epCartDrawerMeta: ComponentMeta<EPCartDrawerProps> = {
         "Controls whether the drawer is open. Bind to a Plasmic state variable for two-way control.",
     },
     onOpenChange: {
-      type: "eventHandler",
+      type: "eventHandler" as const,
       argTypes: [{ name: "isOpen", type: "boolean" }],
-    } as any,
+    },
     side: {
       type: "choice",
       options: ["right", "left"],
@@ -288,7 +288,7 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
       id: cart.id,
       lineItems: cart.lineItems,
       itemCount: cart.lineItems.reduce(
-        (sum: number, item: any) => sum + (item.quantity ?? 1),
+        (sum, item) => sum + (item.quantity ?? 1),
         0
       ),
       isEmpty: cart.lineItems.length === 0,

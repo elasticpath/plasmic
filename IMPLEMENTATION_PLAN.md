@@ -1,7 +1,7 @@
 # Implementation Plan — EP Components Cart Work
 
 > Auto-generated from analysis of `specs/*` vs `plasmicpkgs/commerce-providers/elastic-path/src/*`
-> Last updated: 2026-02-25
+> Last updated: 2026-02-24
 
 ---
 
@@ -174,12 +174,18 @@ These are lower priority but improve maintainability and align with established 
 
 - [x] **Eliminate `(provider as any)` casts** — Done. Created `utils/getEPClient.ts` utility that centralizes the single type assertion (`provider` → `{ client: Client }`). Replaced 15 occurrences across 7 files. Typed `ElasticPathProvider.client` as `Client` (from `@epcc-sdk/sdks-shopper`) instead of `any`. Removed unused `auth: any` from `ElasticPathProvider` type.
 
-- [ ] **Eliminate other `as any` casts**
-  - `(item as any).location` in cart hooks
-  - `(item as any).custom_inputs` in normalize.ts
-  - `(product as any)?.__initialVariantId` in variant picker
-  - `(child.meta as any)?.bundle_excluded` in parent products hook
-  - `globalThis as any` in StockContext.tsx
+- [x] **Eliminate other `as any` casts** — Done. Reduced production `as any` from 53 to 0 (1 remains only in a code comment). Changes across 13 files:
+  - Created `utils/getLocationSlug.ts` utility (see P2c below)
+  - `normalize.ts`: Imported `CartItemObject`, `Variation`, `VariationOption` from SDK; created `VariationMatrixEntry` recursive type; narrowed cart item union type
+  - `use-product.tsx`: Created `ProductWithInitialVariant` interface; accessed `base_product_id` from typed `ProductAttributes`
+  - `EPVariationPicker.tsx`: Used `Product & { __initialVariantId?: string }` instead of `as any`
+  - `use-update-item.tsx`: Typed location access via `{ quantity?: number; location?: string }`, typed mutate return, used `Partial<CartItemBody>` for fetcher item
+  - `EPCartItemQuantityControl.tsx`: Used `{ id: string; quantity: number; location?: string }` instead of `as any`
+  - `use-parent-products.tsx`: Imported `Variation`, `VariationOption`, `ProductAttributes` from SDK; typed variationMatrix as `Record<string, unknown>`; typed `bundle_excluded` access via `Record<string, unknown>`
+  - `StockContext.tsx`: Created `SymbolRecord` type alias for `globalThis` cast
+  - `use-bundle-configuration.tsx`: Used `unknown as Record<string, Record<string, BigInt>>` (SDK expects BigInt but JSON requires number)
+  - `EPCartDrawer.tsx`: Used `type: "eventHandler" as const` (matching pattern from other components); typed reduce callback
+  - **Bug fix:** `EPBundleProvider.tsx` and `registerEPBundleConfigurator.tsx` — Fixed `configuredBundle as any` by extracting `.data` from `ProductData`. Previously passed `ProductData` wrapper where `ElasticPathBundleProduct` was expected, causing configured bundle price to silently fall back to unconfigured price.
 
 ### P2b — Error Handling Standardization
 
@@ -189,10 +195,12 @@ These are lower priority but improve maintainability and align with established 
 
 ### P2c — Utility Consolidation
 
-- [ ] **Create `getLocationSlug(location)` utility**
-  - Duplicated pattern: `(ls.location as any).slug ?? ls.location.id` in 5+ files
-  - Files: `EPCartItemList.tsx`, `EPStockProvider.tsx`, `stockCalculations.ts`, `displayHelpers.ts`, `MultiLocationStock.tsx`
-  - Place in `inventory/utils/displayHelpers.ts` or `utils/`
+- [x] **Create `getLocationSlug(location)` utility** — Done. Created `utils/getLocationSlug.ts` that extracts `location.attributes?.slug || location.id || ""`. Fixed 10 `as any` casts across 5 files:
+  - `stockCalculations.ts` (4 casts): Fixed synthetic location shape to match SDK `Location` type with `type: "inventory_location"` and `attributes: { name, slug }`
+  - `displayHelpers.ts` (1 cast): Typed `location` parameter as `Location`, replaced `(loc.attributes as any)?.slug`
+  - `EPStockProvider.tsx` (1 cast): Replaced `(ls.location as any).slug`
+  - `EPCartItemList.tsx` (2 casts): Replaced `(item as any).locationSlug` and `(ls.location as any).slug`
+  - `MultiLocationStock.tsx` (2 casts): Replaced `(location?.attributes as any)?.slug`
 
 - [ ] **Centralize hardcoded configuration values**
   - Debounce timeout: `500` ms in cart update, bundle orchestration

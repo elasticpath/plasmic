@@ -1,4 +1,5 @@
-import type { LocationStock, ProductStock } from "../types";
+import type { Location, LocationStock, ProductStock } from "../types";
+import { getLocationSlug } from "../../utils/getLocationSlug";
 
 /**
  * Stock totals aggregated across all locations
@@ -32,9 +33,12 @@ export function mapStockResponseToLocationStock(
   return Object.entries(locations).map(([locationSlug, locationData]: [string, any]) => ({
     location: {
       id: locationSlug,
-      slug: locationSlug,
-      name: locationSlug, // Will be enhanced with actual names elsewhere
-    } as any,
+      type: "inventory_location",
+      attributes: {
+        name: locationSlug, // Will be enhanced with actual names elsewhere
+        slug: locationSlug,
+      },
+    } as Location,
     stock: {
       productId,
       available: BigInt(locationData.available || 0),
@@ -75,10 +79,11 @@ export function filterStockByLocation(
     return stock;
   }
 
-  const filteredLocations = stock.locations.filter(locationStock => 
-    locationIds.includes(locationStock.location.id) || 
-    locationIds.includes((locationStock.location as any).slug)
-  );
+  const filteredLocations = stock.locations.filter(locationStock => {
+    const slug = getLocationSlug(locationStock.location);
+    return locationIds.includes(locationStock.location.id) ||
+      (slug && locationIds.includes(slug));
+  });
 
   const totals = calculateTotalStock(filteredLocations);
 
@@ -104,8 +109,8 @@ export function getAvailableStockForLocation(
   }
 
   const locationStock = stock.locations.find(ls =>
-    ls.location.id === locationSlug || 
-    (ls.location as any).slug === locationSlug
+    ls.location.id === locationSlug ||
+    getLocationSlug(ls.location) === locationSlug
   );
 
   return Number(locationStock?.stock.available || 0);
@@ -125,10 +130,11 @@ export function createProductStock(
 ): ProductStock {
   const locationStocks = mapStockResponseToLocationStock(stockResponse, productId);
   const filteredLocations = locationIds && locationIds.length > 0
-    ? locationStocks.filter(ls => 
-        locationIds.includes(ls.location.id) || 
-        locationIds.includes((ls.location as any).slug)
-      )
+    ? locationStocks.filter(ls => {
+        const slug = getLocationSlug(ls.location);
+        return locationIds.includes(ls.location.id) ||
+          (slug && locationIds.includes(slug));
+      })
     : locationStocks;
 
   const totals = calculateTotalStock(filteredLocations);

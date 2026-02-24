@@ -5,6 +5,16 @@ import { normalizeProduct } from "../utils";
 import { handleAPIError } from "../utils/errorHandling";
 import { getEPClient } from "../utils/getEPClient";
 import { createLogger } from "../utils/logger";
+import type { Product } from "../types/product";
+
+/**
+ * Extends the normalized Product type with the initial variant ID.
+ * Attached by the fetcher when a child product URL is visited so the
+ * variation picker can pre-select the correct variant.
+ */
+interface ProductWithInitialVariant extends Product {
+  __initialVariantId?: string;
+}
 
 const log = createLogger("useProduct");
 
@@ -46,9 +56,13 @@ export const handler: SWRHook<GetProductHook> = {
       // If this is a child product (variant), fetch the parent to get variation metadata
       const isChildProduct =
         productData.data?.meta?.product_types?.includes("child");
+      // base_product_id is on ProductAttributes; parent relationship provides a fallback
+      const parentRelationship = productData.data?.relationships as
+        | { parent?: { data?: { id?: string } } }
+        | undefined;
       const parentId = isChildProduct
-        ? (productData.data?.attributes as any)?.base_product_id ||
-          (productData.data?.relationships as any)?.parent?.data?.id
+        ? productData.data?.attributes?.base_product_id ||
+          parentRelationship?.parent?.data?.id
         : null;
 
       if (isChildProduct && parentId) {
@@ -103,7 +117,7 @@ export const handler: SWRHook<GetProductHook> = {
       // Attach the originally-requested child ID so the variation picker
       // can pre-select the correct variant
       if (initialVariantId) {
-        (product as any).__initialVariantId = initialVariantId;
+        (product as ProductWithInitialVariant).__initialVariantId = initialVariantId;
       }
 
       return product;

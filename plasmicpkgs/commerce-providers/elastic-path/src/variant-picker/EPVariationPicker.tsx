@@ -102,7 +102,7 @@ function resolveInitialVariantId(
     }
   }
 
-  return (product as any)?.__initialVariantId;
+  return (product as Product & { __initialVariantId?: string })?.__initialVariantId;
 }
 
 export function EPVariationPicker(props: EPVariationPickerProps) {
