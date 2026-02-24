@@ -1,0 +1,244 @@
+# Plasmic MCP Server — Embedded Editing Engine
+
+## Jobs to Be Done
+- As a developer or designer using Claude Code, I want an MCP server that loads Plasmic projects into memory so that I can read component trees, understand page structure, and make targeted changes without losing variant settings or responsive styles.
+- As a team member, I want to iterate on Plasmic pages from the terminal while others work in Plasmic Studio, so that CLI and visual workflows coexist safely.
+
+## Architecture
+
+### Package
+`@elasticpath/plasmic-mcp` at `packages/plasmic-mcp/` in the monorepo. Published as a standalone npm package with the Plasmic editing engine bundled in via esbuild (see `specs/plasmic-esbuild-bundling.md`).
+
+### Core Concept: Headless Studio Client
+Unlike a thin REST API wrapper, this MCP server embeds the same editing engine that Plasmic Studio uses. It loads the project's Bundle into a live in-memory model (Site → Components → TplNodes) using the `FastBundler` from `platform/wab/src/wab/shared/bundler.ts`. This means:
+- **Reads are instant** — component trees, tokens, metadata all come from the in-memory model
+- **Tree structure is lossless** — reads via `tplToPlasmicElements()` convert real Tpl nodes, preserving awareness of variant settings
+- **Writes (future)** — direct model mutations tracked by MobX, saved via incremental bundling
+
+### How it connects to Claude Code
+```bash
+claude mcp add plasmic -- npx @elasticpath/plasmic-mcp
+```
+
+Or in `.claude/mcp.json`:
+```json
+{
+  "mcpServers": {
+    "plasmic": {
+      "command": "npx",
+      "args": ["@elasticpath/plasmic-mcp"],
+      "env": {
+        "PLASMIC_AUTH_HOST": "https://your-plasmic-instance.example.com",
+        "PLASMIC_AUTH_USER": "<api-user-id>",
+        "PLASMIC_AUTH_TOKEN": "<api-token>"
+      }
+    }
+  }
+}
+```
+
+During development from the monorepo:
+```json
+{
+  "mcpServers": {
+    "plasmic": {
+      "command": "tsx",
+      "args": ["packages/plasmic-mcp/src/index.ts"],
+      "env": {
+        "PLASMIC_AUTH_HOST": "https://your-plasmic-instance.example.com",
+        "PLASMIC_AUTH_USER": "<api-user-id>",
+        "PLASMIC_AUTH_TOKEN": "<api-token>"
+      }
+    }
+  }
+}
+```
+
+### Upstream Merge Constraint
+This monorepo is a fork that regularly pulls from upstream Plasmic. All new functionality must live in new files/packages — never add code inline to existing upstream files. The entire MCP server lives in `packages/plasmic-mcp/` (a new package, zero merge conflict risk). If platform/wab changes are ever needed (future milestones), they must be isolated into new modules that are imported with minimal one-line changes to existing files.
+
+### Self-Hosted Plasmic
+Designed for self-hosted Plasmic instances. `PLASMIC_AUTH_HOST` must point to your own deployment — no default fallback to `studio.plasmic.app`.
+
+### Auth
+- Via environment variables: `PLASMIC_AUTH_HOST`, `PLASMIC_AUTH_USER`, `PLASMIC_AUTH_TOKEN`
+- Same env vars used by `@plasmicapp/cli`
+- All API requests include headers: `x-plasmic-api-user` and `x-plasmic-api-token`
+- Optional: read from `.plasmic.auth` file as fallback
+
+### Session Context
+The MCP server maintains session state:
+- **Active project** — set via `set-project`, used as default for all subsequent tool calls
+- **Live model** — the unbundled Site object graph for the active project, held in memory
+- **Bundler instance** — `FastBundler` that maps between IIDs and live objects
+
+When `set-project` is called:
+1. Fetch project bundle via `GET /api/v1/projects/:projectId`
+2. `FastBundler.unbundle(bundle)` → live Site model in memory
+3. All read tools operate on the in-memory model (no HTTP calls)
+
+## Acceptance Criteria (Milestone 1: Read-Only + Basic Write)
+
+### Must Have
+- [ ] esbuild bundles `platform/wab/src/wab/shared/` code into standalone package (see `specs/plasmic-esbuild-bundling.md`)
+- [ ] MCP server starts via stdio and registers tools with Claude Code
+- [ ] Auth via env vars works
+- [ ] Tool: `set-project` — fetch project bundle, unbundle into live model, store as session state
+- [ ] Tool: `list-projects` — list projects the user has access to (HTTP call)
+- [ ] Tool: `list-components` — list pages/components with metadata from in-memory model
+- [ ] Tool: `get-component-tree` — read a component's tree as PlasmicElement via `tplToPlasmicElements()`
+- [ ] Tool: `get-project-meta` — read project metadata from in-memory model
+- [ ] Tool: `create-page` — create a page with PlasmicElement tree via REST API (`POST /api/v1/projects/:id` with `newComponents`)
+- [ ] All errors return clear, actionable messages
+- [ ] Package can be installed via npm and run via `npx`
+
+### Nice to Have (Milestone 1)
+- [ ] Tool: `get-tokens` — read design tokens from in-memory model
+- [ ] Model reload after `create-page` (re-fetch bundle to see new page in model)
+
+## Happy Path
+1. Developer adds MCP server to Claude Code config (once)
+2. Developer sets env vars pointing to self-hosted Plasmic (once)
+3. In Claude Code: "work on project 'My Store'"
+4. Claude calls `set-project` → fetches bundle, unbundles into live model
+5. Developer: "what pages exist?"
+6. Claude calls `list-components` → reads from in-memory model, returns page names/paths/UUIDs instantly
+7. Developer: "show me the structure of the homepage"
+8. Claude calls `get-component-tree` with homepage UUID → `tplToPlasmicElements()` converts Tpl to PlasmicElement JSON
+9. Developer: "create a new product page at /products with a hero and grid"
+10. Claude builds PlasmicElement tree, calls `create-page` → `POST /api/v1/projects/:id` with `newComponents`
+11. API returns UUID of the new page
+
+## Edge Cases
+| Scenario | Expected behaviour |
+|----------|-------------------|
+| Missing env vars | Error on startup: "PLASMIC_AUTH_HOST, PLASMIC_AUTH_USER, and PLASMIC_AUTH_TOKEN required." |
+| Invalid/expired token | "Authentication failed. Check your Plasmic API token." |
+| `set-project` with invalid ID | "Project not found. Check the project ID." |
+| Tool called before `set-project` | "No active project. Use set-project first." |
+| Bundle too large for memory | Report size and suggest checking Node.js memory limits |
+| `get-component-tree` for unknown UUID | "Component UUID not found in project." |
+| `tplToPlasmicElements()` returns undefined | "Could not convert component tree. It may use unsupported element types." |
+| Network timeout during bundle fetch | "Could not reach Plasmic API at {host}. Check your network." |
+| `create-page` path conflict | Surface API warning: "Path /products adjusted to /products-1." |
+| Model stale after external edit | Milestone 1: model is a snapshot from `set-project` time. Future: socket.io sync. |
+
+## Out of Scope (Milestone 1)
+- Incremental writes via `fastBundle()` (future milestone)
+- Socket.io real-time sync with Studio (future milestone)
+- MobX change tracking and model mutation (future milestone)
+- Variant-aware editing (future milestone)
+- Design token management (nice-to-have for M1)
+- Code component wiring
+- Visual preview/rendering in terminal
+- Code generation or export
+- Remote/hosted MCP transport
+
+## Future Vision
+
+### Milestone 2: Incremental Writes
+- Set up MobX `observeModel()` on the live Site model
+- Implement targeted model mutations (add child, update styles, change text)
+- Use `fastBundle()` to serialize only changed IIDs
+- Save via `POST /projects/:id/revisions` with `incremental: true`
+- Reload model is no longer needed — model stays in sync with server
+
+### Milestone 3: Real-Time Collaboration
+- Connect via socket.io to receive `update` events
+- Fetch deltas via `getModelUpdates()` and merge with `unbundlePartial()`
+- MCP server participates in same multiplayer protocol as Studio
+- Concurrent editing between CLI and browser is safe
+
+## Technical Notes
+
+### Model Loading Flow
+```
+GET /api/v1/projects/:projectId
+  → response.rev.data (JSON string)
+  → JSON.parse() → Bundle { root, map, deps, version }
+  → FastBundler.unbundle(bundle, projectId)
+  → Live Site object graph:
+      Site
+        └─ components: Component[]
+            └─ tplTree: TplNode (TplTag | TplComponent | TplSlot)
+                └─ vsettings: VariantSetting[]
+                    └─ rs: RuleSet { values: Map<string, string> }
+```
+
+### Reading Component Trees
+```
+tplToPlasmicElements(component.tplTree)
+  → PlasmicElement (recursive JSON structure)
+  → Same format used by the write API's PlasmicElement body
+```
+
+Located at: `platform/wab/src/wab/shared/element-repr/gen-element-repr-v2.ts:51`
+- Takes a single `TplNode` — does NOT need the full Site model
+- Returns `PlasmicElement | undefined`
+
+### Writing Pages (Milestone 1 — REST API)
+Uses the existing `POST /api/v1/projects/:projectId` endpoint with `UpdateProjectReq`:
+```typescript
+{
+  newComponents: [{
+    name: "PageName",
+    path: "/page-path",  // presence of path makes it a Page
+    body: PlasmicElement  // the component tree
+  }]
+}
+```
+
+### API Endpoints Used
+| Tool | Method | Endpoint | Source |
+|------|--------|----------|--------|
+| set-project | GET | `/api/v1/projects/:projectId` | Bundle fetch |
+| list-projects | GET | `/api/v1/projects` | HTTP |
+| list-components | — | In-memory model | `site.components` |
+| get-component-tree | — | In-memory model | `tplToPlasmicElements()` |
+| get-project-meta | — | In-memory model | `site` properties |
+| create-page | POST | `/api/v1/projects/:projectId` | REST API |
+
+### Key Dependencies
+- `@modelcontextprotocol/sdk` — MCP protocol (stdio transport)
+- `mobx` — Required by the model classes and bundler
+- Bundled from `platform/wab/src/wab/shared/`:
+  - `bundler.ts` (FastBundler)
+  - `model/classes.ts` (Site, Component, TplTag, TplNode, etc.)
+  - `model/classes-metas.ts` (model metadata)
+  - `element-repr/gen-element-repr-v2.ts` (`tplToPlasmicElements`)
+  - `core/tagged-unbundle.ts` (`unbundleSite`)
+
+### Reference Files
+- `platform/wab/src/wab/shared/bundler.ts` — FastBundler, Bundle format
+- `platform/wab/src/wab/shared/model/classes.ts` — generated model classes
+- `platform/wab/src/wab/shared/model/model-schema.ts` — schema (source of truth)
+- `platform/wab/src/wab/shared/element-repr/gen-element-repr-v2.ts` — `tplToPlasmicElements()`
+- `platform/wab/src/wab/shared/core/tagged-unbundle.ts` — `unbundleSite()`
+- `platform/wab/src/wab/shared/ApiSchema.ts` — API request/response types
+- `platform/wab/src/wab/server/routes/projects.ts` — server handlers
+- `packages/cli/src/api.ts` — reference HTTP client (auth headers, error handling)
+- `packages/cli/src/utils/auth-utils.ts` — env var auth pattern
+- `packages/host/src/element-types.ts` — PlasmicElement type definitions
+
+### Package Structure
+```
+packages/plasmic-mcp/
+├── package.json
+├── tsconfig.json
+├── build.mjs                    # esbuild config (see plasmic-esbuild-bundling.md)
+├── src/
+│   ├── index.ts                 # Entry point — starts MCP server
+│   ├── server.ts                # MCP server setup, tool registration
+│   ├── api-client.ts            # Plasmic HTTP client (auth, fetch bundle, REST writes)
+│   ├── model-loader.ts          # Bundle fetch → FastBundler.unbundle() → live model
+│   ├── tree-reader.ts           # tplToPlasmicElements() wrapper, component listing
+│   ├── tools/
+│   │   ├── set-project.ts       # Load model, store session state
+│   │   ├── list-projects.ts     # HTTP: list accessible projects
+│   │   ├── list-components.ts   # In-memory: list pages/components
+│   │   ├── get-component-tree.ts # In-memory: read PlasmicElement tree
+│   │   ├── get-project-meta.ts  # In-memory: project metadata
+│   │   └── create-page.ts       # HTTP: POST newComponents
+│   └── types.ts                 # API types (from ApiSchema.ts)
+└── README.md
+```
