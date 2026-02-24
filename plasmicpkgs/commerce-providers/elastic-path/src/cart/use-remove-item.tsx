@@ -1,4 +1,4 @@
-import { getACart, updateACartItem } from "@epcc-sdk/sdks-shopper";
+import { getACart, deleteACartItem } from "@epcc-sdk/sdks-shopper";
 import type {
   HookFetcherContext,
   MutationHook,
@@ -43,19 +43,11 @@ export const handler: MutationHook<RemoveItemHook> = {
     }
 
     try {
-      // Remove item by setting quantity to 0 (as per Elastic Path docs)
-      // This approach is more reliable than deleteACartItem
-      await updateACartItem({
+      await deleteACartItem({
+        client: (provider as any)!.client!,
         path: {
           cartID: cartId,
           cartitemID: itemId,
-        },
-        body: {
-          data: {
-            type: "cart_item",
-            id: itemId,
-            quantity: 0,
-          },
         },
       });
 

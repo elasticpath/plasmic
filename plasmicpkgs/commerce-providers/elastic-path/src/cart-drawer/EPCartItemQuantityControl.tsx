@@ -92,7 +92,7 @@ export function EPCartItemQuantityControl(
   } = props;
 
   const currentItem = useSelector("currentCartItem") as
-    | { id: string; quantity: number }
+    | { id: string; quantity: number; locationSlug?: string }
     | undefined;
   const inEditor = !!usePlasmicCanvasContext();
   const updateItem = useUpdateItem();
@@ -131,7 +131,11 @@ export function EPCartItemQuantityControl(
       if (!currentItem?.id || useMock) return;
       setIsLoading(true);
       try {
-        await updateItem({ id: currentItem.id, quantity: newQuantity });
+        await updateItem({
+          id: currentItem.id,
+          quantity: newQuantity,
+          ...(currentItem.locationSlug && { location: currentItem.locationSlug }),
+        } as any);
       } catch (err) {
         // Revert optimistic update on error
         setLocalQuantity(serverQuantity);

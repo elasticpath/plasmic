@@ -48,19 +48,24 @@ export const handler: MutationHook<UpdateItemHook> = {
     }
 
     try {
-      // Update cart item quantity
-      // Update the item
+      // Build update data — include location if present so EP validates
+      // stock against the correct inventory pool
+      const updateData: Record<string, any> = {
+        id: itemId,
+        quantity: item.quantity,
+      };
+      if ((item as any).location) {
+        updateData.location = (item as any).location;
+      }
+
       await updateACartItem({
+        client: (provider as any)!.client!,
         path: {
           cartID: cartId,
           cartitemID: itemId,
         },
         body: {
-          data: {
-            type: "cart_item",
-            id: itemId,
-            quantity: item.quantity,
-          },
+          data: updateData,
         },
       });
 
@@ -112,7 +117,10 @@ export const handler: MutationHook<UpdateItemHook> = {
             input: {
               item: {
                 quantity: input.quantity,
-              },
+                ...((input as any).location && {
+                  location: (input as any).location,
+                }),
+              } as any,
               itemId,
             },
           });
