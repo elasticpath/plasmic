@@ -18,28 +18,19 @@
 **Spec:** `specs/bundle-hooks-rework.md`
 **Why first:** The composable bundle configurator (P1) depends on clean, SWR-cached hooks. Currently all bundle data-fetching hooks use raw `useEffect`/`useState` instead of the `useMutablePlasmicQueryData` SWR pattern established in `inventory/use-stock.tsx` and `inventory/use-locations.tsx`.
 
-- [x] **Migrate `use-bundle-option-products.tsx` to SWR caching** — Done. Key: `["ep-bundle-option-products", sortedProductIds]`. Includes child product IDs from parent products. Dedup 60s, revalidateOnFocus false. Batch fetching preserved (100/batch). Uses `handleAPIError`.
+- [x] **Migrate `use-bundle-option-products.tsx` to SWR caching** — Done. Uses `handleAPIError`.
 
-- [x] **Migrate `use-parent-products.tsx` to SWR caching** — Done. Key: `["ep-parent-products", sortedProductIds]`. Two-phase fetch (parent detection → child fetching) in single SWR fetcher. Single loading→loaded transition. Uses `handleAPIError`.
+- [x] **Migrate `use-parent-products.tsx` to SWR caching** — Done. Uses `handleAPIError`.
 
-- [x] **Evaluate and clean up `useBundleState` vs `useBundleForm`** — `useBundleState.tsx` removed. Confirmed no imports anywhere in codebase; was legacy parallel to `useBundleForm` (react-hook-form + Zod).
+- [x] **Evaluate and clean up `useBundleState` vs `useBundleForm`** — `useBundleState.tsx` removed (unused legacy code).
 
-- [x] **Ensure existing tests still pass** — 171 tests across 11 suites, all passing. Fixed pre-existing failure in `useBundleConfigurationOrchestration` test (expected `console.error` but hook uses structured logger, silent in test env). 24 new tests added (see P3).
+- [x] **Ensure existing tests still pass** — 174 tests across 11 suites, all passing.
 
-- [ ] **Clean up `useBundleConfigurationOrchestration` state management**
-  - Currently: raw `useState` + `useEffect` + `useRef` with debounce library
-  - Target: cleaner state management while preserving debounce/deduplication behavior
-  - `useBundleConfiguration` (imperative callback) does NOT need SWR — it's a mutation, not a query
+- [x] **Clean up `useBundleConfigurationOrchestration` state management** — Replaced redundant `lastConfigured` state + ref-sync effect with single `lastConfiguredRef`. Replaced JSON.stringify comparison with structural `areSelectionsEqual()`. Added `error` state with `handleAPIError()` for consumers. Fixed isConfiguring flash via early duplicate return. Removed unused `lastConfigured` from return type. Added 3 new tests (error clearing, cleanup on unmount, parent:child key handling). 174 tests passing.
 
-- [ ] **Ensure `useVariationSelection` is reusable for new `EPBundleVariationPicker`**
-  - Currently: `useState` + `useCallback` — suitable pattern for local state
-  - Target: verify API is clean enough for the composable `EPBundleVariationPicker` component
-  - Preserve: `findMatchingVariant` with `parentId:childId` key format
+- [x] **Ensure `useVariationSelection` is reusable for new `EPBundleVariationPicker`** — Verified: hook API already accepts `onSelectionChange`, `componentKey`, `optionId` as props. `findMatchingVariant()` and `parentId:childId` key format work unchanged. No code changes needed.
 
-- [ ] **Verify `useBundleFormSync` works for composable components**
-  - Currently: writes `BundleConfiguration` and `ConfiguredBundleId` to parent react-hook-form context
-  - Target: confirm it works when form context comes from `EPBundleProvider` rather than monolithic configurator
-  - URL sync with `?bundle=` base64 config must continue working
+- [x] **Verify `useBundleFormSync` works for composable components** — Verified: `useFormContext()` gets the parent (product page) form because it runs at provider level before any child `<FormProvider>`. Dual-update pattern (internal form + parent form) works for EPBundleProvider. URL sync with `?bundle_config=` base64 parameter continues working. No code changes needed.
 
 ### Testing Discovery
 
@@ -208,11 +199,11 @@ These are lower priority but improve maintainability and align with established 
 
 ## P3 — Test Coverage
 
-### Current Coverage (11 test suites, 171 tests, all passing)
+### Current Coverage (11 test suites, 174 tests, all passing)
 
-- [x] `bundle/hooks/__tests__/useBundleConfigurationOrchestration.test.tsx` (11 tests)
-- [x] `bundle/hooks/__tests__/use-parent-products.test.tsx` (12 tests) — **new**
-- [x] `bundle/hooks/__tests__/use-bundle-option-products.test.tsx` (12 tests) — **new**
+- [x] `bundle/hooks/__tests__/useBundleConfigurationOrchestration.test.tsx` (14 tests)
+- [x] `bundle/hooks/__tests__/use-parent-products.test.tsx` (12 tests)
+- [x] `bundle/hooks/__tests__/use-bundle-option-products.test.tsx` (12 tests)
 - [x] `bundle/utils/__tests__/configurationComparison.test.ts` (11 tests)
 - [x] `bundle/utils/__tests__/priceCalculation.test.ts` (9 tests)
 - [x] `bundle/utils/__tests__/productValidation.test.ts` (9 tests)
