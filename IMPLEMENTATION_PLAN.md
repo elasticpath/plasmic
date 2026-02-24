@@ -224,7 +224,7 @@ These are lower priority but improve maintainability and align with established 
 
 ## P3 — Test Coverage
 
-### Current Coverage (28 test suites, 555 tests, all passing)
+### Current Coverage (33 test suites, 715 tests, all passing)
 
 - [x] `bundle/composable/__tests__/composable-bundle-components.test.tsx` (79 tests) — Field rendering, option triggers (click/keyboard/ARIA), quantity button bounds enforcement, quantity control DataProvider shape, component/option/variation list iteration, child variant metadata display, design-time mock data validation
 - [x] `bundle/hooks/__tests__/useBundleConfigurationOrchestration.test.tsx` (14 tests)
@@ -254,6 +254,11 @@ These are lower priority but improve maintainability and align with established 
 - [x] `utils/__tests__/logger.test.ts` (35 tests) — Default silent behavior, "*" wildcard, level-only config, "level:modules" format, module filtering, console method mapping, data parameter passthrough, tag format, resetLogConfig cache clearing, SSR fallback, localStorage errors
 - [x] `utils/__tests__/cookies.test.ts` (10 tests) — getCookies JSON parsing, undefined for missing cookies, setCookies with options (expires, sameSite, secure), removeCookies delegation
 - [x] `utils/__tests__/cart-cookie.test.ts` (8 tests) — getCartId/setCartId/removeCartCookie delegation to cookies module with correct ELASTICPATH_CART_COOKIE constant
+- [x] `api/endpoints/checkout/__tests__/calculate-shipping.test.ts` (32 tests) — Environment validation, HTTP method validation, request body/address validation, successful rate calculation, EP response field mapping with defaults, EP API error handling, shipping address passthrough
+- [x] `api/endpoints/checkout/__tests__/create-order.test.ts` (34 tests) — Method/body validation, checkout form validation, data sanitization, successful order creation with 201, EP order transformation (total/subtotal/tax/shipping/customer/relationships), status mapping (6 known + unknown fallback), EP error handling
+- [x] `api/endpoints/checkout/__tests__/setup-payment.test.ts` (25 tests) — Method/body/amount validation, gateway validation, minimum amount ($0.50), Stripe PaymentIntent creation, EP paymentSetup call, success response with clientSecret/transactionId, EP failure rollback (cancels Stripe intent), missing client_secret handling
+- [x] `api/endpoints/checkout/__tests__/confirm-payment.test.ts` (36 tests) — ID format validation (pi_ prefix), Stripe PaymentIntent retrieval/status check, metadata order_id matching, EP confirmPayment call, order transformation, payment status mapping (7 values), order status mapping (5 values), post-payment actions
+- [x] `inventory/components/__tests__/inventory-components.test.tsx` (33 tests) — StockIndicator (14): stock levels/messages/colors/ARIA, LocationSelector (8): loading/empty/select/callback, MultiLocationStock (11): all states/ARIA roles/location list/summary
 
 ### Missing Test Coverage (by priority)
 
@@ -263,9 +268,9 @@ These are lower priority but improve maintainability and align with established 
 - [x] **Tests for bundle utils** — `bundleSelectionUtils` (24 tests), `variationMatching` (13 tests) — sorting, API conversion, equality checks, default selections, variation matrix traversal
 - [x] **Tests for cart hooks** — 49 tests across 4 hooks: `use-cart` (9), `use-add-item` (12), `use-update-item` (15), `use-remove-item` (12). Covers cart lifecycle, error handling, cookie management, locale passthrough, removal delegation, and multi-location inventory support.
 - [x] **Tests for inventory hooks** — `use-stock` (25 tests), `use-locations` (19 tests). Covers SWR caching, query key stability, multi-product fetching, per-product error graceful degradation, type filtering, useProductStock convenience wrapper, refetch/mutate, disabled state.
-- [ ] **Tests for checkout API endpoints** — `calculate-shipping`, `create-order`, `setup-payment`, `confirm-payment`
+- [x] **Tests for checkout API endpoints** — `calculate-shipping` (32 tests), `create-order` (34 tests), `setup-payment` (25 tests), `confirm-payment` (36 tests). Covers all 4 handlers end-to-end: validation, SDK calls, Stripe integration, error handling, response transformation.
 - [ ] **Tests for cart drawer components** — 10 components with no test coverage
-- [ ] **Tests for inventory components** — `LocationSelector`, `MultiLocationStock`, `StockIndicator`
+- [x] **Tests for inventory components** — `LocationSelector` (8 tests), `MultiLocationStock` (11 tests), `StockIndicator` (14 tests). Covers rendering states, ARIA roles, hook mocking, user interaction.
 - [x] **Tests for utils** — `errorHandling.ts` (51 tests), `logger.ts` (35 tests), `cookies.ts` (10 tests), `cart-cookie.ts` (8 tests). Covers all exported functions, config parsing, localStorage mocking, SSR fallback, cache lifecycle, cookie options passthrough.
 
 ---
