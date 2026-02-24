@@ -3,7 +3,7 @@
 ## Status Summary
 
 - **Milestone 1 (Read-Only + Basic Write): COMPLETE** — 7 MCP tools, 4 skills, esbuild bundling, CI pipeline
-- **Milestone 2 (Incremental Writes + Edit Skills): P0+P1+P2 COMPLETE, P3 NEXT** — P0 foundation + P1 edit tools + P2 workflow tools done with 176 tests; P3 skills layer next
+- **Milestone 2 (Incremental Writes + Edit Skills): COMPLETE** — P0 foundation + P1 edit tools + P2 workflow tools + P3 skills layer done; 176 tests, 14 MCP tools, 5 skills
 
 ## Milestone 1 — Completed Items
 
@@ -77,10 +77,10 @@ All upstream modules exist at `platform/wab/src/wab/shared/`, have zero runtime 
 - [x] **Unit tests for undo-manager** — 12 tests: push/pop operations, `undoChanges()` invocation, empty stack error, multiple sequential undos (LIFO), undo-of-undo not pushed, revision increment, stack depth tracking, clear stack.
 - [x] **Total: 176 tests across 13 files, 14 MCP tools registered.**
 
-### P3: Skills Layer (prompt orchestration for natural language editing)
+### P3: Skills Layer — COMPLETE
 
-- [ ] **Create `.claude/commands/plasmic-edit.md`** — Natural language editing workflow skill. Calls `get-component-tree` before editing, identifies nodes, maps descriptions to tool calls, uses batch for 3+ edits, reports results. Spec: `specs/plasmic-edit-skills.md` § /plasmic-edit
-- [ ] **Update `.claude/commands/plasmic.md`** — Add edit intent routing: "change X to Y", "update the heading", "make it bigger" → delegate to `/plasmic-edit`. Add "undo" → call `undo()`, "refresh" → call `refresh-project()`. Spec: `specs/plasmic-edit-skills.md` § /plasmic Updated Router
+- [x] **Create `.claude/commands/plasmic-edit.md`** — Natural language editing workflow skill. Editing workflow (inspect → identify → edit → verify), node reference docs (UUID/name/path), style property reference (camelCase CSS), PlasmicElement reference for add-child, edge case handling (ambiguity, non-existent nodes, variant limitations), batch guidance for 3+ edits.
+- [x] **Update `.claude/commands/plasmic.md`** — Added all M2 edit tools to available tools list. Added edit intent routing ("change X to Y" → `/plasmic-edit`), add/insert routing, remove/delete routing, undo routing (direct `undo()` call), refresh routing (direct `refresh-project()` call).
 
 ### P5: Nice-to-Have
 
