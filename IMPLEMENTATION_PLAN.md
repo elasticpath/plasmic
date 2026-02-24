@@ -3,7 +3,7 @@
 ## Status Summary
 
 - **Milestone 1 (Read-Only + Basic Write): COMPLETE** — 7 MCP tools, 4 skills, esbuild bundling, CI pipeline
-- **Milestone 2 (Incremental Writes + Edit Skills): P0+P1 COMPLETE, P2 NEXT** — P0 foundation + P1 edit tools done with 148 tests; P2 workflow tools next
+- **Milestone 2 (Incremental Writes + Edit Skills): P0+P1+P2 COMPLETE, P3 NEXT** — P0 foundation + P1 edit tools + P2 workflow tools done with 176 tests; P3 skills layer next
 
 ## Milestone 1 — Completed Items
 
@@ -59,33 +59,32 @@ All upstream modules exist at `platform/wab/src/wab/shared/`, have zero runtime 
 
 ### P1: Core Edit Tools — COMPLETE
 
-- [x] **Implement `edit-tools.ts`** — New module with 5 edit operations: `updateText`, `updateStyles`, `addChild`, `removeChild`, `moveChild`. Each resolves nodes via node-resolver, wraps mutations in ChangeRecorder, and saves via SaveManager. Created `plasmicElementToTpl()` helper that converts PlasmicElement JSON to TplTag nodes using `mkTplTagX()` + `TplMgr.ensureBaseVariantSetting()` + `RSH.merge()`. Uses `CLASSES["RawText"]` and `CLASSES["CustomCode"]` for model instance creation.
+- [x] **Implement `edit-tools.ts`** — New module with 5 edit operations: `updateText`, `updateStyles`, `addChild`, `removeChild`, `moveChild`. Each resolves nodes via node-resolver, wraps mutations in ChangeRecorder, and saves via SaveManager. Created `plasmicElementToTpl()` helper that converts PlasmicElement JSON to TplTag nodes using `mkTplTagX()` + `TplMgr.ensureBaseVariantSetting()` + `RSH.merge()`. Uses `RawText` and `CustomCode` class constructors from `@/wab/shared/model/classes` for model instance creation.
 - [x] **Register 5 edit tools in `server.ts`** — `update-text`, `update-styles`, `add-child`, `remove-child`, `move-child`. Each with Zod input validation, error handling, and structured JSON responses including revision numbers.
-- [x] **Update `wab-classes-metas` mock** — Added `CLASSES["RawText"]` and `CLASSES["CustomCode"]` constructors that create objects with `_type` discriminators, enabling edit tool tests without real MobX model classes.
-- [x] **Unit tests for edit tools** — 27 tests in `edit-tools.test.ts` covering: text update (existing RawText, new RawText, container rejection, non-TplTag rejection, component not found, node not found, UUID resolution), style update (merge, non-TplTag rejection, modifiedComponentIids), add-child (last/first/numeric position, text node rejection, mkTplTagX tag mapping), remove-child (basic, correct child selection, root prevention, deeply nested), move-child (basic, first position, cycle detection, root prevention, non-TplTag parent, numeric position), save integration (saveRevision called, revision incremented). Total: 148 tests across 11 files.
+- [x] **Unit tests for edit tools** — 27 tests in `edit-tools.test.ts` covering all 5 operations. Total: 148 tests across 11 files.
 
-### P2: Workflow Tools (enhance editing UX)
+### P2: Workflow Tools — COMPLETE
 
-- [ ] **Implement `begin-batch` / `end-batch` tools** — `begin-batch`: set flag to suppress auto-save, accumulate changes. `end-batch`: call `fastBundle()` with all accumulated changes, POST once, clear batch state. Error if `end-batch` without active batch. Spec: `specs/plasmic-incremental-writes.md` § begin-batch / end-batch
-- [ ] **Implement `undo-manager.ts`** — Operation stack storing `ModelChange[]` per operation. `undo()` pops last operation, calls `undoChanges()` from `core/undo-util.ts`, triggers save. Error when stack empty. Spec: `specs/plasmic-incremental-writes.md` § undo
-- [ ] **Implement `undo` tool** — Register in `server.ts`. Delegates to undo-manager. Returns description of what was undone + new revision.
-- [ ] **Implement `refresh-project` tool** — Re-fetch project bundle, re-unbundle, replace session state (site, bundler, revision). Re-attach change tracker. Useful after 412 conflict. Spec: `specs/plasmic-incremental-writes.md` § refresh-project
+- [x] **Implement `batch-manager.ts`** — Batch edit session management with `beginBatch()`, `endBatch()`, `accumulateChanges()`, `cancelBatch()`. Uses `mergeRecordedChanges()` to combine accumulated changes. Batch ID verification on end-batch. Empty batch returns current revision without saving. Entire batch pushed as single undo operation for atomic revert.
+- [x] **Implement `undo-manager.ts`** — Operation stack storing `ModelChange[]` per operation with descriptions. `undo()` pops last operation, wraps `undoChanges()` in ChangeRecorder session, saves the reversed state. Multiple sequential undos supported (LIFO). Stack cleared on `refresh-project`. Blocked during active batch sessions.
+- [x] **Integrate batch/undo into edit tools** — Added `saveOrAccumulate()` helper to `edit-tools.ts` that routes to batch accumulation or immediate save+undo-push depending on batch state. All 5 edit tools updated to use this helper.
+- [x] **Register `begin-batch` tool** — No params, returns batch ID. Requires active project. Error if batch already active.
+- [x] **Register `end-batch` tool** — Optional `batchId` param for verification. Saves all accumulated changes in one revision. Returns operation count + revision.
+- [x] **Register `undo` tool** — No params. Blocked during batch. Returns description of undone operation + revision + remaining depth.
+- [x] **Register `refresh-project` tool** — No params. Cancels active batch, disposes change tracker, clears undo stack, re-fetches and re-loads project. Returns new revision + component/page counts.
+- [x] **Fix CLASSES import build error** — Moved `RawText` and `CustomCode` from `classes-metas` (where they don't exist upstream) to direct imports from `classes` module. Updated `wab.d.ts` declarations, `wab-classes` mock, and removed stale `CLASSES` export from `wab-classes-metas` mock. Bundle builds successfully at 1388 KB.
+- [x] **Unit tests for batch-manager** — 12 tests: begin/end lifecycle, change accumulation, component IID dedup, batch ID verification, empty batch, error recovery (batch cleared on save failure), undo integration (batch as single undo), cancel batch.
+- [x] **Unit tests for undo-manager** — 12 tests: push/pop operations, `undoChanges()` invocation, empty stack error, multiple sequential undos (LIFO), undo-of-undo not pushed, revision increment, stack depth tracking, clear stack.
+- [x] **Total: 176 tests across 13 files, 14 MCP tools registered.**
 
 ### P3: Skills Layer (prompt orchestration for natural language editing)
 
 - [ ] **Create `.claude/commands/plasmic-edit.md`** — Natural language editing workflow skill. Calls `get-component-tree` before editing, identifies nodes, maps descriptions to tool calls, uses batch for 3+ edits, reports results. Spec: `specs/plasmic-edit-skills.md` § /plasmic-edit
 - [ ] **Update `.claude/commands/plasmic.md`** — Add edit intent routing: "change X to Y", "update the heading", "make it bigger" → delegate to `/plasmic-edit`. Add "undo" → call `undo()`, "refresh" → call `refresh-project()`. Spec: `specs/plasmic-edit-skills.md` § /plasmic Updated Router
 
-### P4: Remaining Tests
-
-- [x] **Unit tests for edit tools** — 27 tests covering all 5 tools (done with P1)
-- [ ] **Unit tests for `undo-manager.ts`** — Push/pop operations; undoChanges invocation; empty stack error
-- [ ] **Unit tests for batch tools** — begin/end batch; accumulated save; error on orphaned end-batch
-
 ### P5: Nice-to-Have
 
 - [ ] **`save-project` tool** — Explicit manual save (run fastBundle + POST on demand)
-- [ ] **Undo stack depth > 1** — Support multiple sequential undos
 - [ ] **Node resolution by content match** — Find nodes by text content ("the node containing 'Hello'")
 - [ ] **Dry-run mode** — Show what would change without persisting
 - [ ] **Expand server.test.ts** — Integration-level tests for individual tool execution (currently smoke test only)
@@ -102,6 +101,9 @@ The spec says to use `observeModel()` directly, but `ChangeRecorder` (from the s
 
 ### PlasmicApiError
 M2 introduced `PlasmicApiError extends Error` with `statusCode` and `errorType` fields to enable precise 412 handling in save-manager. This is backward-compatible — existing catch blocks and `toThrow()` assertions still match since it extends Error.
+
+### Model Class Constructors
+`RawText` and `CustomCode` are imported directly from `@/wab/shared/model/classes` (the generated classes module), NOT from `classes-metas` which only exports the `meta` schema and `modelSchemaHash`. The `classes.ts` file exports both type aliases and concrete class constructors for each model class.
 
 ---
 

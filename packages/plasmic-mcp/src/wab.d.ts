@@ -27,7 +27,6 @@ declare module "@/wab/shared/bundler" {
 
 declare module "@/wab/shared/model/classes-metas" {
   export const meta: any;
-  export const CLASSES: Record<string, any>;
   export const modelSchemaHash: string;
 }
 
@@ -47,6 +46,20 @@ declare module "@/wab/shared/model/classes" {
   export class ProjectDependency {
     static isKnown(obj: unknown): obj is ProjectDependency;
     site: Site;
+  }
+
+  /** Model class for raw text content. Constructable with { text, markers }. */
+  export class RawText {
+    constructor(args: { text: string; markers: any[] });
+    text: string;
+    markers: any[];
+  }
+
+  /** Model class for dynamic code expressions. Constructable with { code, fallback }. */
+  export class CustomCode {
+    constructor(args: { code: string; fallback: any });
+    code: string;
+    fallback: any;
   }
 
   export function isKnownTplTag(x: any): boolean;

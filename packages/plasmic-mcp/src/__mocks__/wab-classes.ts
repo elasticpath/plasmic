@@ -24,6 +24,27 @@ export const isKnownImageAssetRef = (obj: any): boolean =>
 export const isKnownStyleTokenRef = (obj: any): boolean =>
   obj?._type === "StyleTokenRef";
 
+/** Mock constructors for model classes used by edit-tools.ts */
+export class RawText {
+  _type = "RawText";
+  text: string;
+  markers: any[];
+  constructor(args: { text: string; markers: any[] }) {
+    this.text = args.text;
+    this.markers = args.markers;
+  }
+}
+
+export class CustomCode {
+  _type = "CustomCode";
+  code: string;
+  fallback: any;
+  constructor(args: { code: string; fallback: any }) {
+    this.code = args.code;
+    this.fallback = args.fallback;
+  }
+}
+
 export class Site {
   static isKnown(obj: any): boolean {
     return obj?._type === "Site";

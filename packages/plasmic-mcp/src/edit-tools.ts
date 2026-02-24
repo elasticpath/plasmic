@@ -12,14 +12,19 @@
  * Reference: specs/plasmic-incremental-writes.md § Edit Tools
  */
 
-import { isKnownTplTag, isKnownRawText } from "@/wab/shared/model/classes";
-import { CLASSES } from "@/wab/shared/model/classes-metas";
+import {
+  isKnownTplTag,
+  isKnownRawText,
+  RawText,
+  CustomCode,
+} from "@/wab/shared/model/classes";
 import { RSH } from "@/wab/shared/RuleSetHelpers";
 import { TplMgr } from "@/wab/shared/TplMgr";
 import { mkTplTagX } from "@/wab/shared/core/tpls";
 import { flattenTpls } from "@/wab/shared/core/tpls";
 import { requireSession } from "./session.js";
 import { getChangeTracker } from "./change-tracker.js";
+import type { RecordedChanges } from "./change-tracker.js";
 import { SaveManager, type SaveResult } from "./save-manager.js";
 import { PlasmicApiClient } from "./api-client.js";
 import {
@@ -28,6 +33,8 @@ import {
   type ResolvedNode,
 } from "./node-resolver.js";
 import type { PlasmicElement } from "./types.js";
+import { isBatchActive, accumulateChanges } from "./batch-manager.js";
+import { pushUndoOperation } from "./undo-manager.js";
 
 // --- Helpers ---
 
@@ -117,6 +124,29 @@ function insertChild(
   }
 }
 
+/**
+ * Save or accumulate changes depending on batch mode.
+ * In batch mode: accumulates changes for a single save at end-batch.
+ * In normal mode: saves immediately and pushes to undo stack.
+ */
+async function saveOrAccumulate(
+  apiClient: PlasmicApiClient,
+  changes: RecordedChanges,
+  description: string,
+  modifiedComponentIids?: string[]
+): Promise<SaveResult> {
+  if (isBatchActive()) {
+    accumulateChanges(changes, modifiedComponentIids);
+    const session = requireSession();
+    return { revisionNum: session.revisionNum, incremental: true };
+  }
+
+  const saveManager = new SaveManager(apiClient);
+  const save = await saveManager.saveChanges(changes, modifiedComponentIids);
+  pushUndoOperation(description, changes);
+  return save;
+}
+
 // --- update-text ---
 
 export interface UpdateTextResult {
@@ -180,14 +210,15 @@ export async function updateText(
     } else {
       // Create a new RawText instance
       previousText = undefined;
-      vs.text = new CLASSES["RawText"]({ text, markers: [] });
+      vs.text = new RawText({ text, markers: [] });
     }
   });
 
   const componentIid = getComponentIid(component);
-  const saveManager = new SaveManager(apiClient);
-  const save = await saveManager.saveChanges(
+  const save = await saveOrAccumulate(
+    apiClient,
     changes,
+    `update-text: "${text}" on ${resolved.name ?? nodeRef}`,
     componentIid ? [componentIid] : []
   );
 
@@ -245,9 +276,10 @@ export async function updateStyles(
   });
 
   const componentIid = getComponentIid(component);
-  const saveManager = new SaveManager(apiClient);
-  const save = await saveManager.saveChanges(
+  const save = await saveOrAccumulate(
+    apiClient,
     changes,
+    `update-styles: [${updatedProperties.join(", ")}] on ${resolved.name ?? nodeRef}`,
     componentIid ? [componentIid] : []
   );
 
@@ -285,7 +317,7 @@ function plasmicElementToTpl(
   if (typeof element === "string") {
     const tpl = mkTplTagX("div", {});
     const vs = tplMgr.ensureBaseVariantSetting(tpl);
-    vs.text = new CLASSES["RawText"]({ text: element, markers: [] });
+    vs.text = new RawText({ text: element, markers: [] });
     return tpl;
   }
 
@@ -351,12 +383,12 @@ function plasmicElementToTpl(
 
   // Set text content
   if (element.type === "text" && "value" in element) {
-    vs.text = new CLASSES["RawText"]({
+    vs.text = new RawText({
       text: (element as any).value,
       markers: [],
     });
   } else if (element.type === "button" && "value" in element && (element as any).value) {
-    vs.text = new CLASSES["RawText"]({
+    vs.text = new RawText({
       text: (element as any).value,
       markers: [],
     });
@@ -365,7 +397,7 @@ function plasmicElementToTpl(
   // Set image src
   if (element.type === "img" && "src" in element) {
     if (!vs.attrs) vs.attrs = {};
-    vs.attrs.src = new CLASSES["CustomCode"]({
+    vs.attrs.src = new CustomCode({
       code: JSON.stringify((element as any).src),
       fallback: null,
     });
@@ -421,9 +453,10 @@ export async function addChild(
   });
 
   const componentIid = getComponentIid(component);
-  const saveManager = new SaveManager(apiClient);
-  const save = await saveManager.saveChanges(
+  const save = await saveOrAccumulate(
+    apiClient,
     changes,
+    `add-child: ${typeof child === "string" ? "text" : child.type} to ${resolved.name ?? parentRef}`,
     componentIid ? [componentIid] : []
   );
 
@@ -481,9 +514,10 @@ export async function removeChild(
   });
 
   const componentIid = getComponentIid(component);
-  const saveManager = new SaveManager(apiClient);
-  const save = await saveManager.saveChanges(
+  const save = await saveOrAccumulate(
+    apiClient,
     changes,
+    `remove-child: ${resolved.name ?? nodeRef}`,
     componentIid ? [componentIid] : []
   );
 
@@ -568,9 +602,10 @@ export async function moveChild(
   });
 
   const componentIid = getComponentIid(component);
-  const saveManager = new SaveManager(apiClient);
-  const save = await saveManager.saveChanges(
+  const save = await saveOrAccumulate(
+    apiClient,
     changes,
+    `move-child: ${resolved.name ?? nodeRef} to ${newParent.name ?? newParentRef}`,
     componentIid ? [componentIid] : []
   );
 

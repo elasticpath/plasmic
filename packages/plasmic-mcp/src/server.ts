@@ -30,6 +30,8 @@ import {
   removeChild,
   moveChild,
 } from "./edit-tools.js";
+import { beginBatch, endBatch, isBatchActive, cancelBatch } from "./batch-manager.js";
+import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
 
 export function createServer(): McpServer {
   const server = new McpServer({
@@ -706,6 +708,218 @@ export function createServer(): McpServer {
             {
               type: "text" as const,
               text: `Error moving child: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // --- begin-batch ---
+  // Starts a batch edit session. Subsequent edit operations accumulate changes
+  // without saving. Use end-batch to save all changes in a single revision.
+  server.tool(
+    "begin-batch",
+    "Start a batch edit session. Edits will be accumulated and saved together when end-batch is called.",
+    {},
+    async () => {
+      try {
+        requireSession();
+        const batchId = beginBatch();
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  batchId,
+                  message:
+                    "Batch session started. Edits will accumulate until end-batch is called.",
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error starting batch: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // --- end-batch ---
+  // Saves all accumulated changes from a batch session in a single revision.
+  server.tool(
+    "end-batch",
+    "End a batch edit session and save all accumulated changes in a single revision.",
+    {
+      batchId: z
+        .string()
+        .optional()
+        .describe("Optional batch ID for verification"),
+    },
+    async ({ batchId }) => {
+      try {
+        const result = await endBatch(apiClient, batchId);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  operationCount: result.operationCount,
+                  revision: result.save.revisionNum,
+                  message: `Batch saved: ${result.operationCount} operations in revision ${result.save.revisionNum}`,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error ending batch: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // --- undo ---
+  // Reverts the most recent edit operation by applying inverse mutations.
+  server.tool(
+    "undo",
+    "Undo the most recent edit operation. Reverts the model change and saves.",
+    {},
+    async () => {
+      try {
+        if (isBatchActive()) {
+          throw new Error(
+            "Cannot undo during a batch session. Call end-batch first, then undo."
+          );
+        }
+        const result = await undoOperation(apiClient);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  undone: result.undone,
+                  revision: result.save.revisionNum,
+                  remainingUndos: getUndoDepth(),
+                  message: `Undone: ${result.undone}`,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error undoing: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // --- refresh-project ---
+  // Re-fetches the project bundle to sync with server state.
+  // Useful after 412 conflicts or when another user has made changes.
+  server.tool(
+    "refresh-project",
+    "Reload the project from the server to sync with latest changes. Clears undo history.",
+    {},
+    async () => {
+      try {
+        const session = requireSession();
+
+        // Cancel any active batch (changes are discarded)
+        cancelBatch();
+
+        // Dispose current change tracker
+        disposeChangeTracker();
+
+        // Clear undo stack (model state is being replaced)
+        clearUndoStack();
+
+        const {
+          site,
+          bundler,
+          projectName,
+          revisionNum,
+          modelVersion,
+          hostlessDataVersion,
+        } = await loadProject(apiClient, session.projectId);
+
+        setSession({
+          projectId: session.projectId,
+          projectName,
+          site,
+          bundler,
+          revisionNum,
+          modelVersion,
+          hostlessDataVersion,
+          projectUuid: session.projectId,
+        });
+
+        // Re-initialize change tracking
+        initChangeTracker(site);
+
+        const components = site.components ?? [];
+        const pages = components.filter((c: any) => c.pageMeta?.path);
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  projectName,
+                  revisionNum,
+                  componentCount: components.length,
+                  pageCount: pages.length,
+                  message: `Project refreshed at revision ${revisionNum}`,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error refreshing project: ${err.message}`,
             },
           ],
           isError: true,
