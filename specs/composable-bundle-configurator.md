@@ -54,57 +54,57 @@ Following the pattern of `CartItemQuantityContext` and `VariationPickerContext`:
 ## Acceptance Criteria
 
 ### Provider & State
-- [ ] EPBundleProvider reads `currentProduct` from ancestor Product Box via `useSelector`
-- [ ] EPBundleProvider validates the product is a bundle and extracts components
-- [ ] EPBundleProvider manages bundle form state (selected options, quantities)
-- [ ] EPBundleProvider orchestrates debounced EP `configureByContextProduct` API calls
-- [ ] EPBundleProvider writes `BundleConfiguration` and `ConfiguredBundleId` to parent react-hook-form context (for EPAddToCartButton integration)
-- [ ] EPBundleProvider syncs state to/from URL params when `updateUrlOnChange` is true
-- [ ] EPBundleProvider restores default configuration from: URL param > API config > auto-select defaults (in priority order)
+- [x] EPBundleProvider reads `currentProduct` from ancestor Product Box via `useSelector`
+- [x] EPBundleProvider validates the product is a bundle and extracts components
+- [x] EPBundleProvider manages bundle form state (selected options, quantities)
+- [x] EPBundleProvider orchestrates debounced EP `configureByContextProduct` API calls
+- [x] EPBundleProvider writes `BundleConfiguration` and `ConfiguredBundleId` to parent react-hook-form context (for EPAddToCartButton integration)
+- [x] EPBundleProvider syncs state to/from URL params when `updateUrlOnChange` is true
+- [x] EPBundleProvider restores default configuration from: URL param > API config > auto-select defaults (in priority order)
 
 ### Component List
-- [ ] EPBundleComponentList iterates over bundle components sorted by `sort_order`
-- [ ] EPBundleComponentField displays: `name`, `min`, `max`, `selectedCount`, `isValid`
+- [x] EPBundleComponentList iterates over bundle components sorted by `sort_order`
+- [x] EPBundleComponentField displays: `name`, `min`, `max`, `selectedCount`, `isValid`
 
 ### Option List & Selection
-- [ ] EPBundleOptionList iterates over options within the current component
-- [ ] EPBundleOptionField displays: `name`, `price`, `imageUrl`, `isSelected`, `quantity`
-- [ ] EPBundleOptionTrigger toggles option selection on click (checkbox-like for multi-select, radio-like for single-select components)
-- [ ] EPBundleOptionTrigger exposes `data-selected` attribute for CSS styling
-- [ ] EPBundleOptionTrigger uses `role="checkbox"` or `role="radio"` with `aria-checked` based on component min/max (single vs multi-select)
+- [x] EPBundleOptionList iterates over options within the current component
+- [x] EPBundleOptionField displays: `name`, `price`, `imageUrl`, `isSelected`, `quantity`
+- [x] EPBundleOptionTrigger toggles option selection on click (checkbox-like for multi-select, radio-like for single-select components)
+- [x] EPBundleOptionTrigger exposes `data-selected` attribute for CSS styling
+- [x] EPBundleOptionTrigger uses `role="checkbox"` or `role="radio"` with `aria-checked` based on component min/max (single vs multi-select)
 
 ### Quantity Controls
-- [ ] EPBundleOptionQuantityControl manages quantity state for the current option
-- [ ] EPBundleOptionQuantityControl respects option-level `min` and `max` constraints
-- [ ] EPBundleOptionQuantityButton increments/decrements via React Context
-- [ ] Quantity changes trigger bundle reconfiguration (debounced)
+- [x] EPBundleOptionQuantityControl manages quantity state for the current option
+- [x] EPBundleOptionQuantityControl respects option-level `min` and `max` constraints
+- [x] EPBundleOptionQuantityButton increments/decrements via React Context
+- [x] Quantity changes trigger bundle reconfiguration (debounced)
 
 ### Parent Product Variations
-- [ ] EPBundleVariationPicker detects when a bundle option is a parent product and fetches child products
-- [ ] EPBundleVariationPicker iterates over variation axes of the parent product
-- [ ] EPBundleVariationOptionList iterates over values for each variation axis
-- [ ] EPBundleVariationOptionTrigger selects a variation value and resolves the matching child variant
-- [ ] Selected child variant ID replaces the parent ID in the bundle selection (using `parentId:childId` key format)
+- [x] EPBundleVariationPicker detects when a bundle option is a parent product and fetches child products
+- [x] EPBundleVariationPicker iterates over variation axes of the parent product
+- [x] EPBundleVariationOptionList iterates over values for each variation axis
+- [x] EPBundleVariationOptionTrigger selects a variation value and resolves the matching child variant
+- [x] Selected child variant ID replaces the parent ID in the bundle selection (using `parentId:childId` key format)
 
 ### Price
-- [ ] EPBundlePriceField displays the current bundle price
-- [ ] EPBundlePriceField handles both fixed and cumulative pricing types
-- [ ] Price updates after each successful `configureByContextProduct` call
+- [x] EPBundlePriceField displays the current bundle price
+- [x] EPBundlePriceField handles both fixed and cumulative pricing types
+- [x] Price updates after each successful `configureByContextProduct` call
 
 ### Validation
-- [ ] EPBundleValidationErrors renders current validation errors
-- [ ] Validation uses Zod schema generated from component min/max and option min/max constraints
-- [ ] Validation runs on every selection change (client-side, no API call)
+- [x] EPBundleValidationErrors renders current validation errors
+- [x] Validation uses Zod schema generated from component min/max and option min/max constraints
+- [x] Validation runs on every selection change (client-side, no API call)
 
 ### Design-Time Preview
-- [ ] Every component has a `previewState` prop for design-time editing in Plasmic Studio
-- [ ] Mock data in `design-time-data.ts` covers: multi-component bundle, single-select component, multi-select component, parent product with variations, fixed pricing, cumulative pricing
+- [x] Every component has a `previewState` prop for design-time editing in Plasmic Studio
+- [x] Mock data in `design-time-data.ts` covers: multi-component bundle, single-select component, multi-select component, parent product with variations, fixed pricing, cumulative pricing
 
 ### Registration
-- [ ] All components registered via `register*` functions following existing pattern
-- [ ] All components registered in `registerAll()` in `index.tsx`
-- [ ] Each component has `providesData: true` where applicable
-- [ ] Meta objects include accurate `parentComponentName` hints for Plasmic Studio nesting guidance
+- [x] All components registered via `register*` functions following existing pattern
+- [x] All components registered in `registerAll()` in `index.tsx`
+- [x] Each component has `providesData: true` where applicable
+- [x] Meta objects include accurate `parentComponentName` hints for Plasmic Studio nesting guidance
 
 ## Happy Path
 

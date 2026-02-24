@@ -20,32 +20,32 @@ The existing bundle hooks were written for the monolithic `EPBundleConfigurator`
 ## Acceptance Criteria
 
 ### Caching
-- [ ] Product fetching hooks (`useBundleOptionProducts`, `useParentProducts`) use `useMutablePlasmicQueryData` for SWR-style caching and deduplication
-- [ ] Stable query keys based on bundle product ID and component option IDs
-- [ ] `revalidateOnFocus: false` with appropriate `dedupingInterval`
+- [x] Product fetching hooks (`useBundleOptionProducts`, `useParentProducts`) use `useMutablePlasmicQueryData` for SWR-style caching and deduplication
+- [x] Stable query keys based on bundle product ID and component option IDs
+- [x] `revalidateOnFocus: false` with appropriate `dedupingInterval`
 
 ### Hook Consolidation
-- [ ] Evaluate whether `useBundleState` is still needed or can be removed in favour of `useBundleForm`
-- [ ] `useBundleForm` API is clean enough for composable components to consume (returns selections, handlers, validation state)
-- [ ] `useBundleConfigurationOrchestration` continues to debounce and deduplicate API calls but uses cleaner state management
-- [ ] `useBundleFormSync` continues to write `BundleConfiguration` and `ConfiguredBundleId` to parent react-hook-form context
+- [x] Evaluate whether `useBundleState` is still needed or can be removed in favour of `useBundleForm` — Removed (unused legacy code)
+- [x] `useBundleForm` API is clean enough for composable components to consume (returns selections, handlers, validation state)
+- [x] `useBundleConfigurationOrchestration` continues to debounce and deduplicate API calls but uses cleaner state management
+- [x] `useBundleFormSync` continues to write `BundleConfiguration` and `ConfiguredBundleId` to parent react-hook-form context
 
 ### Variation Selection
-- [ ] `useVariationSelection` is refactored to be reusable by the new `EPBundleVariationPicker` component
-- [ ] Child variant resolution (via `findMatchingVariant`) continues to work with the variation matrix
-- [ ] Selected child variant ID is properly formatted as `parentId:childId` key in bundle selections
+- [x] `useVariationSelection` is refactored to be reusable by the new `EPBundleVariationPicker` component
+- [x] Child variant resolution (via `findMatchingVariant`) continues to work with the variation matrix
+- [x] Selected child variant ID is properly formatted as `parentId:childId` key in bundle selections
 
 ### Testing
-- [ ] Existing tests in `bundle/hooks/__tests__/` and `bundle/utils/__tests__/` continue to pass
-- [ ] New tests added for any refactored hook interfaces
+- [x] Existing tests in `bundle/hooks/__tests__/` and `bundle/utils/__tests__/` continue to pass
+- [x] New tests added for any refactored hook interfaces
 
 ### Utilities Preserved
-- [ ] `bundleSelectionUtils.ts` — `sortByOrder`, `convertSelectionsForAPI`, `areSelectionsEqual`, `getDefaultSelections` — unchanged or minimally modified
-- [ ] `priceCalculation.ts` — `calculateBundlePrice`, `formatPriceDisplay` — unchanged
-- [ ] `productValidation.ts` — `validateBundleProduct`, `getBundlePricingType` — unchanged
-- [ ] `configurationComparison.ts` — unchanged
-- [ ] `variationMatching.ts` — `findMatchingVariant` — unchanged
-- [ ] `bundleSchema.ts` — Zod schema generation — unchanged
+- [x] `bundleSelectionUtils.ts` — `sortByOrder`, `convertSelectionsForAPI`, `areSelectionsEqual`, `getDefaultSelections` — unchanged or minimally modified
+- [x] `priceCalculation.ts` — `calculateBundlePrice`, `formatPriceDisplay` — unchanged
+- [x] `productValidation.ts` — `validateBundleProduct`, `getBundlePricingType` — unchanged
+- [x] `configurationComparison.ts` — unchanged
+- [x] `variationMatching.ts` — `findMatchingVariant` — unchanged
+- [x] `bundleSchema.ts` — Zod schema generation — unchanged
 
 ## Edge Cases
 
