@@ -34,6 +34,13 @@ export interface ApiPermission {
   accessLevel: string;
 }
 
+export interface DepPkgInfo {
+  id: string;
+  pkgId: string;
+  version: string;
+  model: string; // JSON-stringified Bundle (or already-parsed Bundle object)
+}
+
 export interface ProjectBundleResponse {
   rev: {
     data: string; // JSON-stringified Bundle
@@ -43,6 +50,7 @@ export interface ProjectBundleResponse {
     id: string;
     name: string;
   };
+  depPkgs: DepPkgInfo[];
 }
 
 export interface ListProjectsResponse {

@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "plasmic": {
-      "command": "tsx",
-      "args": ["packages/plasmic-mcp/src/index.ts"],
+      "command": "node",
+      "args": ["packages/plasmic-mcp/dist/index.cjs"],
       "env": {
         "PLASMIC_AUTH_HOST": "${PLASMIC_AUTH_HOST}",
         "PLASMIC_AUTH_USER": "${PLASMIC_AUTH_USER}",

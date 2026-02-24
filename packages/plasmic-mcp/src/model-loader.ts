@@ -5,8 +5,8 @@
  * Key design decisions:
  * - Uses FastBundler.unbundle() directly (NOT tagged-unbundle.ts) to avoid
  *   importing SharedApi.ts which pulls in stripe, data-sources, and window APIs.
- * - Skips dependency package loading for MVP. Cross-project component references
- *   will be unresolved — acceptable limitation for Milestone 1.
+ * - Loads dependency packages (depPkgs) before unbundling the main project so
+ *   that cross-project component references resolve correctly.
  * - Initializes MobX with enforceActions: "never" before first unbundle, since
  *   the model classes use MobX observables internally.
  *
@@ -39,6 +39,16 @@ export interface LoadedModel {
   projectName: string;
 }
 
+/**
+ * Parse a dep package's model field, which may be a string or already-parsed object.
+ */
+function parseDepModel(model: unknown): any {
+  if (typeof model === "string") {
+    return JSON.parse(model);
+  }
+  return model;
+}
+
 export async function loadProject(
   apiClient: PlasmicApiClient,
   projectId: string
@@ -51,8 +61,24 @@ export async function loadProject(
   const bundleJson = JSON.parse(response.rev.data);
   const projectName = response.project?.name ?? projectId;
 
-  console.error(`[plasmic-mcp] Unbundling project "${projectName}"...`);
   const bundler = new FastBundler(meta, classesModule);
+
+  // Unbundle dependency packages first so cross-project xrefs resolve
+  const depPkgs = response.depPkgs ?? [];
+  if (depPkgs.length > 0) {
+    console.error(
+      `[plasmic-mcp] Loading ${depPkgs.length} dependency package(s)...`
+    );
+    for (const depPkg of depPkgs) {
+      const depBundle = parseDepModel(depPkg.model);
+      bundler.unbundle(depBundle, depPkg.id);
+    }
+    console.error(
+      `[plasmic-mcp] All dependencies loaded.`
+    );
+  }
+
+  console.error(`[plasmic-mcp] Unbundling project "${projectName}"...`);
   const result = bundler.unbundle(bundleJson, projectId);
 
   const site = narrowToSite(result);
