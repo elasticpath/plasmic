@@ -1,0 +1,422 @@
+/**
+ * @jest-environment jsdom
+ */
+import { renderHook, act } from "@testing-library/react";
+
+// Mock react-hook-form
+const mockSetValue = jest.fn();
+const mockWatch = jest.fn().mockReturnValue({});
+const mockReset = jest.fn();
+const mockHandleSubmit = jest.fn(
+  (successHandler: any) => (e?: any) => {
+    e?.preventDefault?.();
+    return Promise.resolve(successHandler(mockWatch()));
+  }
+);
+
+jest.mock("react-hook-form", () => ({
+  useForm: jest.fn(() => ({
+    handleSubmit: mockHandleSubmit,
+    watch: mockWatch,
+    setValue: mockSetValue,
+    formState: { errors: {}, isValid: true },
+    reset: mockReset,
+    register: jest.fn(),
+    getValues: jest.fn(),
+  })),
+}));
+
+// Mock zod resolver
+jest.mock("@hookform/resolvers/zod", () => ({
+  zodResolver: jest.fn(() => jest.fn()),
+}));
+
+// Mock the schema module
+jest.mock("../../schemas/bundleSchema", () => ({
+  createBundleSchema: jest.fn(() => ({
+    // Minimal Zod-like schema shape
+    parse: jest.fn(),
+    safeParse: jest.fn(),
+  })),
+  createBundleDefaultValues: jest.fn(
+    (components: Record<string, any>) => {
+      const defaults: Record<string, Record<string, number>> = {};
+      Object.keys(components).forEach((key) => {
+        defaults[key] = {};
+      });
+      return defaults;
+    }
+  ),
+}));
+
+// Mock the selection utils
+jest.mock("../../utils/bundleSelectionUtils", () => ({
+  convertSelectionsForAPI: jest.fn((selections) => {
+    const result: Record<string, Record<string, number>> = {};
+    Object.entries(selections).forEach(([compKey, options]: [string, any]) => {
+      if (compKey === "BundleConfiguration" || compKey === "ConfiguredBundleId")
+        return;
+      result[compKey] = {};
+      Object.entries(options).forEach(([key, qty]: [string, any]) => {
+        if (key.includes(":")) {
+          const childId = key.split(":")[1];
+          result[compKey][childId] = qty;
+        } else {
+          result[compKey][key] = qty;
+        }
+      });
+    });
+    return result;
+  }),
+}));
+
+// Import after mocks are set up
+const { useBundleForm, useApiFormattedSelections } = require("../useBundleForm");
+const { createBundleDefaultValues } = require("../../schemas/bundleSchema");
+const { useForm } = require("react-hook-form");
+
+describe("useBundleForm", () => {
+  const singleSelectComponent = {
+    name: "Processor",
+    min: 1,
+    max: 1,
+    sort_order: 1,
+    options: [
+      { id: "opt-1", type: "product" as const, quantity: 1, default: true },
+      { id: "opt-2", type: "product" as const, quantity: 1, default: false },
+    ],
+  };
+
+  const multiSelectComponent = {
+    name: "Memory",
+    min: 1,
+    max: 3,
+    sort_order: 2,
+    options: [
+      {
+        id: "mem-1",
+        type: "product" as const,
+        quantity: 1,
+        min: 1,
+        max: 4,
+        default: true,
+      },
+      {
+        id: "mem-2",
+        type: "product" as const,
+        quantity: 1,
+        min: 1,
+        max: 2,
+        default: false,
+      },
+    ],
+  };
+
+  const defaultComponents = {
+    processor: singleSelectComponent,
+    memory: multiSelectComponent,
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockWatch.mockReturnValue({
+      processor: {},
+      memory: {},
+    });
+  });
+
+  it("initializes with components and creates form", () => {
+    renderHook(() =>
+      useBundleForm({
+        components: defaultComponents,
+      })
+    );
+
+    expect(useForm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: "onChange",
+      })
+    );
+  });
+
+  it("returns all expected properties", () => {
+    const { result } = renderHook(() =>
+      useBundleForm({
+        components: defaultComponents,
+      })
+    );
+
+    expect(result.current).toHaveProperty("form");
+    expect(result.current).toHaveProperty("selectedOptions");
+    expect(result.current).toHaveProperty("isValid");
+    expect(result.current).toHaveProperty("errors");
+    expect(result.current).toHaveProperty("handleComponentSelection");
+    expect(result.current).toHaveProperty("handleSubmit");
+    expect(result.current).toHaveProperty("reset");
+  });
+
+  it("reports isValid from form state", () => {
+    const { result } = renderHook(() =>
+      useBundleForm({
+        components: defaultComponents,
+      })
+    );
+
+    expect(result.current.isValid).toBe(true);
+  });
+
+  describe("handleComponentSelection", () => {
+    it("calls setValue with correct path and quantity", () => {
+      const { result } = renderHook(() =>
+        useBundleForm({ components: defaultComponents })
+      );
+
+      act(() => {
+        result.current.handleComponentSelection("processor", "opt-1", 1);
+      });
+
+      expect(mockSetValue).toHaveBeenCalledWith("processor.opt-1", 1, {
+        shouldValidate: true,
+        shouldDirty: true,
+      });
+    });
+
+    it("builds parentId:childId key when variationId is provided", () => {
+      const { result } = renderHook(() =>
+        useBundleForm({ components: defaultComponents })
+      );
+
+      act(() => {
+        result.current.handleComponentSelection(
+          "processor",
+          "parent-1",
+          1,
+          "child-1"
+        );
+      });
+
+      expect(mockSetValue).toHaveBeenCalledWith(
+        "processor.parent-1:child-1",
+        1,
+        expect.objectContaining({ shouldValidate: true })
+      );
+    });
+
+    it("clears other selections for single-select components (max=1)", () => {
+      mockWatch.mockReturnValue({
+        processor: { "opt-1": 1 },
+        memory: {},
+      });
+
+      const { result } = renderHook(() =>
+        useBundleForm({ components: defaultComponents })
+      );
+
+      act(() => {
+        result.current.handleComponentSelection("processor", "opt-2", 1);
+      });
+
+      // Should set new selection
+      expect(mockSetValue).toHaveBeenCalledWith("processor.opt-2", 1, {
+        shouldValidate: true,
+        shouldDirty: true,
+      });
+      // Should clear old selection
+      expect(mockSetValue).toHaveBeenCalledWith("processor.opt-1", 0, {
+        shouldValidate: true,
+        shouldDirty: true,
+      });
+    });
+
+    it("does not clear other selections for multi-select components", () => {
+      mockWatch.mockReturnValue({
+        processor: {},
+        memory: { "mem-1": 1 },
+      });
+
+      const { result } = renderHook(() =>
+        useBundleForm({ components: defaultComponents })
+      );
+
+      act(() => {
+        result.current.handleComponentSelection("memory", "mem-2", 1);
+      });
+
+      // Should set new selection
+      expect(mockSetValue).toHaveBeenCalledWith("memory.mem-2", 1, {
+        shouldValidate: true,
+        shouldDirty: true,
+      });
+      // Should NOT clear mem-1
+      const clearCalls = mockSetValue.mock.calls.filter(
+        (call: any[]) => call[0] === "memory.mem-1" && call[1] === 0
+      );
+      expect(clearCalls).toHaveLength(0);
+    });
+
+    it("removes zero quantities by setting component-level value", () => {
+      mockWatch.mockReturnValue({
+        processor: { "opt-1": 1 },
+        memory: { "mem-1": 1 },
+      });
+
+      const { result } = renderHook(() =>
+        useBundleForm({ components: defaultComponents })
+      );
+
+      act(() => {
+        result.current.handleComponentSelection("memory", "mem-1", 0);
+      });
+
+      // Should set the option to 0 first
+      expect(mockSetValue).toHaveBeenCalledWith("memory.mem-1", 0, {
+        shouldValidate: true,
+        shouldDirty: true,
+      });
+      // Should update the entire component object without the key
+      expect(mockSetValue).toHaveBeenCalledWith(
+        "memory",
+        {},
+        { shouldValidate: true, shouldDirty: true }
+      );
+    });
+
+    it("does nothing for unknown component key", () => {
+      const { result } = renderHook(() =>
+        useBundleForm({ components: defaultComponents })
+      );
+
+      act(() => {
+        result.current.handleComponentSelection("unknown", "opt-1", 1);
+      });
+
+      expect(mockSetValue).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("handleSubmit", () => {
+    it("wraps react-hook-form handleSubmit", () => {
+      const { result } = renderHook(() =>
+        useBundleForm({ components: defaultComponents })
+      );
+
+      const submitFn = result.current.handleSubmit();
+      expect(typeof submitFn).toBe("function");
+    });
+
+    it("calls provided callback on submit", async () => {
+      const callback = jest.fn();
+      const { result } = renderHook(() =>
+        useBundleForm({ components: defaultComponents })
+      );
+
+      await act(async () => {
+        await result.current.handleSubmit(callback)();
+      });
+
+      expect(callback).toHaveBeenCalled();
+    });
+
+    it("falls back to onSubmit prop when no callback is provided", async () => {
+      const onSubmit = jest.fn();
+      const { result } = renderHook(() =>
+        useBundleForm({ components: defaultComponents, onSubmit })
+      );
+
+      await act(async () => {
+        await result.current.handleSubmit()();
+      });
+
+      expect(onSubmit).toHaveBeenCalled();
+    });
+  });
+
+  describe("reset", () => {
+    it("calls rhfReset with freshly computed default values", () => {
+      const { result } = renderHook(() =>
+        useBundleForm({ components: defaultComponents })
+      );
+
+      act(() => {
+        result.current.reset();
+      });
+
+      expect(createBundleDefaultValues).toHaveBeenCalled();
+      expect(mockReset).toHaveBeenCalled();
+    });
+  });
+
+  describe("errors", () => {
+    it("converts form errors to simple string format", () => {
+      (useForm as jest.Mock).mockReturnValueOnce({
+        handleSubmit: mockHandleSubmit,
+        watch: mockWatch,
+        setValue: mockSetValue,
+        formState: {
+          errors: {
+            processor: { message: "Please select one option for Processor" },
+          },
+          isValid: false,
+        },
+        reset: mockReset,
+      });
+
+      const { result } = renderHook(() =>
+        useBundleForm({ components: defaultComponents })
+      );
+
+      expect(result.current.isValid).toBe(false);
+      expect(result.current.errors.processor).toBe(
+        "Please select one option for Processor"
+      );
+    });
+
+    it("returns empty errors object when no form errors", () => {
+      const { result } = renderHook(() =>
+        useBundleForm({ components: defaultComponents })
+      );
+
+      expect(result.current.errors).toEqual({});
+    });
+  });
+});
+
+describe("useApiFormattedSelections", () => {
+  it("converts parentId:childId keys to child-only keys", () => {
+    const { result } = renderHook(() =>
+      useApiFormattedSelections({
+        component1: { "parent-1:child-1": 1 },
+      })
+    );
+
+    expect(result.current).toEqual({
+      component1: { "child-1": 1 },
+    });
+  });
+
+  it("passes through simple keys unchanged", () => {
+    const { result } = renderHook(() =>
+      useApiFormattedSelections({
+        component1: { "option-1": 1 },
+      })
+    );
+
+    expect(result.current).toEqual({
+      component1: { "option-1": 1 },
+    });
+  });
+
+  it("excludes BundleConfiguration and ConfiguredBundleId fields", () => {
+    const { result } = renderHook(() =>
+      useApiFormattedSelections({
+        component1: { "option-1": 1 },
+        BundleConfiguration: { some: 1 } as any,
+        ConfiguredBundleId: { some: 1 } as any,
+      })
+    );
+
+    expect(result.current).toEqual({
+      component1: { "option-1": 1 },
+    });
+  });
+});

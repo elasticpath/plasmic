@@ -221,10 +221,16 @@ These are lower priority but improve maintainability and align with established 
 
 ## P3 — Test Coverage
 
-### Current Coverage (12 test suites, 253 tests, all passing)
+### Current Coverage (18 test suites, 354 tests, all passing)
 
 - [x] `bundle/composable/__tests__/composable-bundle-components.test.tsx` (79 tests) — Field rendering, option triggers (click/keyboard/ARIA), quantity button bounds enforcement, quantity control DataProvider shape, component/option/variation list iteration, child variant metadata display, design-time mock data validation
 - [x] `bundle/hooks/__tests__/useBundleConfigurationOrchestration.test.tsx` (14 tests)
+- [x] `bundle/hooks/__tests__/useBundleForm.test.tsx` (17 tests) — Form initialization, handleComponentSelection (set/clear/parent:child keys/single-select clearing/zero removal), handleSubmit, reset, error conversion, useApiFormattedSelections
+- [x] `bundle/hooks/__tests__/useVariationSelection.test.tsx` (9 tests) — Variation state management, matching variant resolution, clear-old/select-new variant, no-match handling, direct setVariationSelections
+- [x] `bundle/hooks/__tests__/useBundleFormSync.test.tsx` (12 tests) — ConfiguredBundle sync to internal/parent forms, BigInt conversion, selected options sync, URL update with base64 bundle_config, guard conditions (not initialized, no parent form, empty selections)
+- [x] `bundle/schemas/__tests__/bundleSchema.test.ts` (16 tests) — createBundleSchema (required/optional components, min/max validation, option-level quantity constraints, null defaults, parent:child keys), createOptionQuantitySchema, createBundleDefaultValues (priority: defaultConfiguration > API config > auto-select, BigInt conversion, invalid base64 handling)
+- [x] `bundle/utils/__tests__/bundleSelectionUtils.test.ts` (24 tests) — sortByOrder (ascending, null/undefined at end, immutability), convertSelectionsForAPI (simple/parent:child/mixed keys, excluded fields), areSelectionsEqual (equal/unequal/missing components/different quantities), getDefaultSelections (default option, first fallback, optional skip, preserve existing, quantity defaults)
+- [x] `bundle/utils/__tests__/variationMatching.test.ts` (13 tests) — getOptionsFromSkuId (flat/nested/deeply nested matrix, non-matching, empty), findMatchingVariant (complete/partial/empty selections, no children/matrix/variations, non-matching combination)
 - [x] `bundle/__tests__/use-parent-products.test.tsx` (12 tests)
 - [x] `bundle/__tests__/use-bundle-option-products.test.tsx` (12 tests)
 - [x] `bundle/utils/__tests__/configurationComparison.test.ts` (11 tests)
@@ -239,9 +245,11 @@ These are lower priority but improve maintainability and align with established 
 ### Missing Test Coverage (by priority)
 
 - [x] **Tests for new composable bundle components** (P1 deliverables) — 79 tests covering field components, interactive triggers, quantity controls, list iteration, child variant metadata, and design-time preview
+- [x] **Tests for bundle form hooks** — `useBundleForm` (17 tests), `useBundleFormSync` (12 tests), `useVariationSelection` (9 tests) — form state, selection handling, parent form sync, URL sync, variation resolution
+- [x] **Tests for bundle schemas** — `bundleSchema` (16 tests) — Zod schema creation, validation, default value computation with priority chain
+- [x] **Tests for bundle utils** — `bundleSelectionUtils` (24 tests), `variationMatching` (13 tests) — sorting, API conversion, equality checks, default selections, variation matrix traversal
 - [ ] **Tests for cart hooks** — `use-add-item`, `use-cart`, `use-remove-item`, `use-update-item`
 - [ ] **Tests for inventory hooks** — `use-stock`, `use-locations`
-- [ ] **Tests for bundle form hooks** — `useBundleForm`, `useBundleFormSync`, `useVariationSelection`
 - [ ] **Tests for checkout API endpoints** — `calculate-shipping`, `create-order`, `setup-payment`, `confirm-payment`
 - [ ] **Tests for cart drawer components** — 10 components with no test coverage
 - [ ] **Tests for inventory components** — `LocationSelector`, `MultiLocationStock`, `StockIndicator`
