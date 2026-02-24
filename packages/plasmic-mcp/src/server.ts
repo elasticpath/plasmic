@@ -22,6 +22,7 @@ import { requireSession, setSession } from "./session.js";
 import { loadProject } from "./model-loader.js";
 import { readComponentTree } from "./tree-reader.js";
 import { readTokens } from "./token-reader.js";
+import { initChangeTracker, disposeChangeTracker } from "./change-tracker.js";
 
 export function createServer(): McpServer {
   const server = new McpServer({
@@ -44,12 +45,31 @@ export function createServer(): McpServer {
     { projectId: z.string().describe("The Plasmic project ID") },
     async ({ projectId }) => {
       try {
-        const { site, bundler, projectName } = await loadProject(
-          apiClient,
-          projectId
-        );
+        // Dispose previous change tracker if switching projects
+        disposeChangeTracker();
 
-        setSession({ projectId, projectName, site, bundler });
+        const {
+          site,
+          bundler,
+          projectName,
+          revisionNum,
+          modelVersion,
+          hostlessDataVersion,
+        } = await loadProject(apiClient, projectId);
+
+        setSession({
+          projectId,
+          projectName,
+          site,
+          bundler,
+          revisionNum,
+          modelVersion,
+          hostlessDataVersion,
+          projectUuid: projectId,
+        });
+
+        // Initialize change tracking for incremental saves (M2)
+        initChangeTracker(site);
 
         const components = site.components ?? [];
         const pages = components.filter((c: any) => c.pageMeta?.path);
@@ -345,16 +365,26 @@ export function createServer(): McpServer {
 
         // Reload model so the new page is visible in subsequent queries
         try {
-          const { site, bundler, projectName } = await loadProject(
-            apiClient,
-            session.projectId
-          );
+          disposeChangeTracker();
+          const {
+            site,
+            bundler,
+            projectName,
+            revisionNum: newRevisionNum,
+            modelVersion: newModelVersion,
+            hostlessDataVersion: newHostlessDataVersion,
+          } = await loadProject(apiClient, session.projectId);
           setSession({
             projectId: session.projectId,
             projectName,
             site,
             bundler,
+            revisionNum: newRevisionNum,
+            modelVersion: newModelVersion,
+            hostlessDataVersion: newHostlessDataVersion,
+            projectUuid: session.projectId,
           });
+          initChangeTracker(site);
           console.error(
             "[plasmic-mcp] Model reloaded after page creation"
           );

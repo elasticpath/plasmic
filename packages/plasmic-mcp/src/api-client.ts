@@ -9,8 +9,24 @@ import type {
   AuthConfig,
   ListProjectsResponse,
   ProjectBundleResponse,
+  SaveRevisionReq,
   UpdateProjectReq,
 } from "./types.js";
+
+/**
+ * Structured API error with HTTP status code for precise error handling.
+ * Extends Error so existing catch blocks and toThrow() assertions still work.
+ */
+export class PlasmicApiError extends Error {
+  constructor(
+    message: string,
+    public readonly statusCode: number,
+    public readonly errorType?: string
+  ) {
+    super(message);
+    this.name = "PlasmicApiError";
+  }
+}
 
 export class PlasmicApiClient {
   private auth: AuthConfig;
@@ -62,24 +78,27 @@ export class PlasmicApiClient {
 
     if (!response.ok) {
       if (response.status === 403) {
-        throw new Error(
+        throw new PlasmicApiError(
           "Authentication failed. Check your Plasmic API credentials " +
-            "(PLASMIC_AUTH_USER and PLASMIC_AUTH_TOKEN)."
+            "(PLASMIC_AUTH_USER and PLASMIC_AUTH_TOKEN).",
+          403
         );
       }
 
       let errorMessage: string;
+      let errorType: string | undefined;
       try {
         const errorBody = (await response.json()) as {
-          error?: { message?: string };
+          error?: { message?: string; type?: string };
         };
         errorMessage =
           errorBody?.error?.message ??
           `HTTP ${response.status}: ${response.statusText}`;
+        errorType = errorBody?.error?.type;
       } catch {
         errorMessage = `HTTP ${response.status}: ${response.statusText}`;
       }
-      throw new Error(errorMessage);
+      throw new PlasmicApiError(errorMessage, response.status, errorType);
     }
 
     return response.json() as Promise<T>;
@@ -106,6 +125,22 @@ export class PlasmicApiClient {
     return this.request<unknown>(
       "POST",
       `/api/v1/projects/${encodeURIComponent(projectId)}`,
+      body
+    );
+  }
+
+  /**
+   * Save an incremental or full revision to the Plasmic server.
+   * URL: POST /api/v1/projects/{projectId}/revisions/{revisionNum}
+   */
+  async saveRevision(
+    projectId: string,
+    revisionNum: number,
+    body: SaveRevisionReq
+  ): Promise<unknown> {
+    return this.request<unknown>(
+      "POST",
+      `/api/v1/projects/${encodeURIComponent(projectId)}/revisions/${revisionNum}`,
       body
     );
   }

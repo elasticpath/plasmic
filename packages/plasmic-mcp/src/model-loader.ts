@@ -37,6 +37,12 @@ export interface LoadedModel {
   site: any;
   bundler: FastBundler;
   projectName: string;
+  /** Current revision number from the API response. */
+  revisionNum: number;
+  /** Server model version for incremental save requests. */
+  modelVersion: number;
+  /** Server hostless data version for incremental save requests. */
+  hostlessDataVersion: number;
 }
 
 /**
@@ -60,6 +66,9 @@ export async function loadProject(
 
   const bundleJson = JSON.parse(response.rev.data);
   const projectName = response.project?.name ?? projectId;
+  const revisionNum = response.rev.revision;
+  const modelVersion = response.modelVersion ?? 0;
+  const hostlessDataVersion = response.hostlessDataVersion ?? 0;
 
   const bundler = new FastBundler(meta, classesModule);
 
@@ -88,7 +97,7 @@ export async function loadProject(
     `[plasmic-mcp] Project loaded: ${componentCount} components`
   );
 
-  return { site, bundler, projectName };
+  return { site, bundler, projectName, revisionNum, modelVersion, hostlessDataVersion };
 }
 
 /**

@@ -51,6 +51,9 @@ export interface ProjectBundleResponse {
     name: string;
   };
   depPkgs: DepPkgInfo[];
+  // M2: needed for incremental saves (populated from server response)
+  modelVersion?: number;
+  hostlessDataVersion?: number;
 }
 
 export interface ListProjectsResponse {
@@ -135,6 +138,18 @@ export interface DefaultComponentElement {
   kind: string;
   props?: Record<string, unknown>;
   styles?: Record<string, string>;
+}
+
+// --- Save revision request (M2: incremental writes) ---
+
+export interface SaveRevisionReq {
+  data: string;
+  modelVersion: number;
+  hostlessDataVersion: number;
+  incremental: boolean;
+  toDeleteIids: string[];
+  modifiedComponentIids: string[];
+  modelSchemaHash: string;
 }
 
 // --- Token output ---

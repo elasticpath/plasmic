@@ -5,6 +5,9 @@
  * It must correctly parse bundles, narrow the unbundled result to a Site,
  * and initialize MobX before any model interaction. Failures here would make
  * every read tool return garbage, so these tests verify the core data pipeline.
+ *
+ * M2: loadProject now also returns revisionNum, modelVersion, and
+ * hostlessDataVersion from the API response for incremental save support.
  */
 
 jest.mock("mobx", () => ({
@@ -125,5 +128,53 @@ describe("loadProject", () => {
     await loadProject(mockApiClient, "proj1");
 
     expect(mockUnbundle).toHaveBeenCalledWith(bundleData, "proj1");
+  });
+
+  // M2: revision tracking fields
+  it("returns revisionNum from API response", async () => {
+    const mockSite = { _type: "Site", components: [] };
+
+    mockGetProjectBundle.mockResolvedValue({
+      rev: { data: JSON.stringify({}), revision: 42 },
+      project: { id: "proj1", name: "Test" },
+    });
+    mockUnbundle.mockReturnValue(mockSite);
+
+    const result = await loadProject(mockApiClient, "proj1");
+
+    expect(result.revisionNum).toBe(42);
+  });
+
+  it("returns modelVersion and hostlessDataVersion from API response", async () => {
+    const mockSite = { _type: "Site", components: [] };
+
+    mockGetProjectBundle.mockResolvedValue({
+      rev: { data: JSON.stringify({}), revision: 1 },
+      project: { id: "proj1", name: "Test" },
+      modelVersion: 7,
+      hostlessDataVersion: 3,
+    });
+    mockUnbundle.mockReturnValue(mockSite);
+
+    const result = await loadProject(mockApiClient, "proj1");
+
+    expect(result.modelVersion).toBe(7);
+    expect(result.hostlessDataVersion).toBe(3);
+  });
+
+  it("defaults modelVersion and hostlessDataVersion to 0 when missing", async () => {
+    const mockSite = { _type: "Site", components: [] };
+
+    mockGetProjectBundle.mockResolvedValue({
+      rev: { data: JSON.stringify({}), revision: 1 },
+      project: { id: "proj1", name: "Test" },
+      // modelVersion and hostlessDataVersion not present
+    });
+    mockUnbundle.mockReturnValue(mockSite);
+
+    const result = await loadProject(mockApiClient, "proj1");
+
+    expect(result.modelVersion).toBe(0);
+    expect(result.hostlessDataVersion).toBe(0);
   });
 });
