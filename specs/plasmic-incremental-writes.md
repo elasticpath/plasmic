@@ -54,18 +54,36 @@ The server enforces strict sequential revision numbers:
 - If another user saved in between, server returns HTTP 412 `ProjectRevisionError`
 - MCP detects this, reloads the project bundle, and warns the developer
 
+### Reusing Studio's Editing Engine
+
+M2 uses the **same code** as Plasmic Studio for all edit operations — not reimplementations:
+
+| Concern | Studio uses | MCP uses (same code) |
+|---------|------------|---------------------|
+| Edit operations | `TplMgr` (children, args, variants, components) | `TplMgr` — imported directly from `@/wab/shared/TplMgr` |
+| Node creation | `mkTplTagX()`, `mkTplComponent()` from `core/tpls.ts` | Same — imported from `@/wab/shared/core/tpls` |
+| Style manipulation | `RuleSetHelpers`, `core/styles.ts` | Same — imported from `@/wab/shared/` |
+| Change tracking | `observeModel()`, `ChangeRecorder` from `core/observable-model.ts` | Same |
+| Incremental save | `FastBundler.fastBundle()` from `bundler.ts` | Same |
+| Undo | `undoChanges()` from `core/undo-util.ts` | Same |
+
+**Bundling feasibility confirmed**: `TplMgr` constructor requires only `{ site: Site }` (already in session). All its imports are from `@/wab/shared/` or are type-only client imports (erased at compile time). Zero runtime dependencies on `@/wab/client/` or `@/wab/server/`.
+
 ### New Module Structure
 
-All new code in new files within `packages/plasmic-mcp/src/` (upstream merge safety):
+All new code in new files within `packages/plasmic-mcp/src/` (upstream merge safety). These are thin wrappers that wire Studio's editing engine to MCP tool calls:
 
 ```
 packages/plasmic-mcp/src/
-├── change-tracker.ts      # MobX observation setup, change collection
-├── model-editor.ts        # High-level edit operations on Tpl model
-├── save-manager.ts        # fastBundle() + HTTP save + revision tracking
-├── node-resolver.ts       # Find nodes by UUID, name, path, or description
-└── undo-manager.ts        # Operation history and rollback
+├── change-tracker.ts      # Wrapper: sets up observeModel() on Site, exposes withRecording()
+├── save-manager.ts        # Wrapper: calls fastBundle() + HTTP save + revision tracking
+├── node-resolver.ts       # New: find nodes by UUID, name, path (no Studio equivalent for MCP-style refs)
+└── undo-manager.ts        # Wrapper: operation stack + undoChanges() from core/undo-util.ts
 ```
+
+**Not needed** (replaced by direct Studio imports):
+- ~~`model-editor.ts`~~ → Use `TplMgr` directly for all edit operations
+- ~~`element-to-tpl.ts`~~ → Use `mkTplTagX()` from `core/tpls.ts` + `TplMgr.ensureBaseVariantSetting()` for node creation
 
 ## New MCP Tools
 
@@ -228,16 +246,31 @@ observeModel(site, {
 
 The `incremental: true` flag enables field-level tracking (not just instance-level).
 
+### TplMgr Usage
+
+Instantiate after unbundling:
+```
+const tplMgr = new TplMgr({ site });
+```
+
+Key methods for M2 edit operations:
+- **Children**: Use `core/tpls.ts` utilities — `mkTplTagX()` to create nodes, manipulate `tplTag.children` array directly (MobX tracks the mutation)
+- **Text**: Update `vsettings[0].text` (RawText) on TplTag nodes
+- **Styles**: Update `vsettings[0].rs.values` via `RuleSetHelpers`
+- **Args/Props**: `tplMgr.setArg()`, `tplMgr.delArg()` for component instances
+- **Variant settings**: `tplMgr.ensureBaseVariantSetting()` to get/create the base variant setting for a node
+
 ### PlasmicElement to TplTag Conversion (for add-child)
 
-`add-child` accepts a PlasmicElement JSON body (same format as `create-page`). The MCP server must convert this to a TplTag tree in memory. This should use model constructors (`new TplTag(...)`, setting up VariantSettings, RuleSet, etc.) rather than going through the REST API's `elementSchemaToTpl()`.
+`add-child` accepts a PlasmicElement JSON body (same format as `create-page`). The MCP server converts this to a TplTag using Studio's own constructors:
 
-The conversion module (`element-to-tpl.ts`) should:
-1. Map PlasmicElement `type` to TplTag `tag` and layout styles
-2. Create VariantSettings with a base RuleSet for styles
-3. Handle text content as RawText
-4. Recursively process children
-5. Assign UUIDs via the bundler's IID allocation
+1. Use `mkTplTagX()` from `core/tpls.ts` to create TplTag nodes (same as Studio)
+2. Use `TplMgr.ensureBaseVariantSetting()` to set up the base variant
+3. Use `RuleSetHelpers` to apply styles to the variant's RuleSet
+4. Handle text content as RawText (same model class Studio uses)
+5. Recursively process children using `mkTplTagX()` for each
+
+**Not used**: `elementSchemaToTpl()` from `code-components/` — it pulls 30+ deps across layout, styles, variants, codegen. The `mkTplTagX()` approach is what Studio itself uses for programmatic node creation.
 
 ### Revision Tracking
 
@@ -247,3 +280,15 @@ The session must track:
 - `projectUuid`: the bundle UUID (from FastBundler, needed for `fastBundle()`)
 
 These come from the API response when fetching the project bundle.
+
+### Studio Code Reuse Summary
+
+The following upstream modules are imported at runtime (bundled via esbuild, no modifications):
+- `@/wab/shared/TplMgr` — edit operations (`new TplMgr({ site })`)
+- `@/wab/shared/core/tpls` — `mkTplTagX()`, `flattenTpls()`, `isTplTag()`, type guards
+- `@/wab/shared/core/styles` — `mkRuleSet()`, style utilities
+- `@/wab/shared/RuleSetHelpers` — CSS rule manipulation
+- `@/wab/shared/core/observable-model` — `observeModel()`, `ChangeRecorder`
+- `@/wab/shared/core/undo-util` — `undoChanges()`
+- `@/wab/shared/bundler` — `FastBundler.fastBundle()` (already bundled in M1)
+- `@/wab/shared/model/classes` — model constructors (already bundled in M1)
