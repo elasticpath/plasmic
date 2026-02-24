@@ -224,7 +224,7 @@ These are lower priority but improve maintainability and align with established 
 
 ## P3 — Test Coverage
 
-### Current Coverage (33 test suites, 715 tests, all passing)
+### Current Coverage (34 test suites, 825 tests, all passing)
 
 - [x] `bundle/composable/__tests__/composable-bundle-components.test.tsx` (79 tests) — Field rendering, option triggers (click/keyboard/ARIA), quantity button bounds enforcement, quantity control DataProvider shape, component/option/variation list iteration, child variant metadata display, design-time mock data validation
 - [x] `bundle/hooks/__tests__/useBundleConfigurationOrchestration.test.tsx` (14 tests)
@@ -259,6 +259,7 @@ These are lower priority but improve maintainability and align with established 
 - [x] `api/endpoints/checkout/__tests__/setup-payment.test.ts` (25 tests) — Method/body/amount validation, gateway validation, minimum amount ($0.50), Stripe PaymentIntent creation, EP paymentSetup call, success response with clientSecret/transactionId, EP failure rollback (cancels Stripe intent), missing client_secret handling
 - [x] `api/endpoints/checkout/__tests__/confirm-payment.test.ts` (36 tests) — ID format validation (pi_ prefix), Stripe PaymentIntent retrieval/status check, metadata order_id matching, EP confirmPayment call, order transformation, payment status mapping (7 values), order status mapping (5 values), post-payment actions
 - [x] `inventory/components/__tests__/inventory-components.test.tsx` (33 tests) — StockIndicator (14): stock levels/messages/colors/ARIA, LocationSelector (8): loading/empty/select/callback, MultiLocationStock (11): all states/ARIA roles/location list/summary
+- [x] `cart-drawer/__tests__/cart-drawer-components.test.tsx` (110 tests) — CartDrawerContext singleton (8): state get/set/toggle/subscribe/unsubscribe/useDrawerOpen hook sync. EPCartDrawer (18): runtime open/close/portal, loading/error/empty content, Escape close, body scroll lock, backdrop click, side prop, editor inline render, previewState variants. EPCartDrawerTrigger (10): toggle/open/close actions, ARIA label singular/plural, aria-expanded, keyboard Enter/Space, editor no-op, mock count. EPCartField (9): all 5 field types, boolean stringify, null fallback, editor/previewState mock. EPCartItemField (13): all field types, options join formatting, null/editor fallback. EPCartItemImage (7): img render with attributes, placeholder SVG sizing, ARIA labels, loading prop. EPCartItemList (9): list/listitem structure, repeatedElement calls, maxItems, location/stock fetch gating, editor/previewState mock. EPCartItemQuantityControl (10): context provision, min/max bounds, optimistic increment/decrement, location passthrough, error revert, previewState variants. EPCartItemQuantityButton (12): increment/decrement calls, disabled states, previewState override, ARIA labels, keyboard events, null context safety. EPCartItemRemoveButton (9): remove call, null guard, error loading cleanup, ARIA label with/without name, keyboard events, previewState mock.
 
 ### Missing Test Coverage (by priority)
 
@@ -269,7 +270,7 @@ These are lower priority but improve maintainability and align with established 
 - [x] **Tests for cart hooks** — 49 tests across 4 hooks: `use-cart` (9), `use-add-item` (12), `use-update-item` (15), `use-remove-item` (12). Covers cart lifecycle, error handling, cookie management, locale passthrough, removal delegation, and multi-location inventory support.
 - [x] **Tests for inventory hooks** — `use-stock` (25 tests), `use-locations` (19 tests). Covers SWR caching, query key stability, multi-product fetching, per-product error graceful degradation, type filtering, useProductStock convenience wrapper, refetch/mutate, disabled state.
 - [x] **Tests for checkout API endpoints** — `calculate-shipping` (32 tests), `create-order` (34 tests), `setup-payment` (25 tests), `confirm-payment` (36 tests). Covers all 4 handlers end-to-end: validation, SDK calls, Stripe integration, error handling, response transformation.
-- [ ] **Tests for cart drawer components** — 10 components with no test coverage
+- [x] **Tests for cart drawer components** — 110 tests across 10 components: CartDrawerContext (8), EPCartDrawer (18), EPCartDrawerTrigger (10), EPCartField (9), EPCartItemField (13), EPCartItemImage (7), EPCartItemList (9), EPCartItemQuantityControl (10), EPCartItemQuantityButton (12), EPCartItemRemoveButton (9). Covers singleton state management, portal rendering, optimistic quantity updates, error recovery, ARIA accessibility, keyboard navigation, focus trap, body scroll lock, previewState design-time variants, and location/stock data enrichment.
 - [x] **Tests for inventory components** — `LocationSelector` (8 tests), `MultiLocationStock` (11 tests), `StockIndicator` (14 tests). Covers rendering states, ARIA roles, hook mocking, user interaction.
 - [x] **Tests for utils** — `errorHandling.ts` (51 tests), `logger.ts` (35 tests), `cookies.ts` (10 tests), `cart-cookie.ts` (8 tests). Covers all exported functions, config parsing, localStorage mocking, SSR fallback, cache lifecycle, cookie options passthrough.
 
