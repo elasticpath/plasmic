@@ -3,7 +3,7 @@
 ## Status Summary
 
 - **Milestone 1 (Read-Only + Basic Write): COMPLETE** — 7 MCP tools, 4 skills, esbuild bundling, CI pipeline
-- **Milestone 2 (Incremental Writes + Edit Skills): COMPLETE** — P0 foundation + P1 edit tools + P2 workflow tools + P3 skills layer done; 176 tests, 14 MCP tools, 5 skills
+- **Milestone 2 (Incremental Writes + Edit Skills): COMPLETE** — P0 foundation + P1 edit tools + P2 workflow tools + P3 skills layer + P4 integration tests done; 210 tests, 14 MCP tools, 5 skills
 
 ## Milestone 1 — Completed Items
 
@@ -27,7 +27,6 @@
 - tree-reader: Mixin-inherited styles not resolved (reads base variant only)
 - tree-reader: Dynamic text shows `[dynamic text]` placeholder
 - tree-reader: Unknown TplNode types get fallback div
-- server.test.ts: Smoke test only (2 tests); individual tool execution not tested end-to-end
 
 ---
 
@@ -82,12 +81,18 @@ All upstream modules exist at `platform/wab/src/wab/shared/`, have zero runtime 
 - [x] **Create `.claude/commands/plasmic-edit.md`** — Natural language editing workflow skill. Editing workflow (inspect → identify → edit → verify), node reference docs (UUID/name/path), style property reference (camelCase CSS), PlasmicElement reference for add-child, edge case handling (ambiguity, non-existent nodes, variant limitations), batch guidance for 3+ edits.
 - [x] **Update `.claude/commands/plasmic.md`** — Added all M2 edit tools to available tools list. Added edit intent routing ("change X to Y" → `/plasmic-edit`), add/insert routing, remove/delete routing, undo routing (direct `undo()` call), refresh routing (direct `refresh-project()` call).
 
+### P4: Integration Tests — COMPLETE
+
+- [x] **Expand `server.test.ts` with integration tests for all 14 tools** — Uses MCP SDK's `InMemoryTransport` to connect a real `Client ↔ McpServer` pair. Each test mocks server.ts dependencies (model-loader, session, edit-tools, batch-manager, undo-manager, tree-reader, token-reader) to isolate the tool handler wiring logic. Tests validate the full MCP protocol path: `Client.callTool → transport → Server dispatch → handler → response`. 34 new tests covering all 14 tools: success paths, error propagation, parameter passing, fallback behavior. Existing 2 smoke tests preserved.
+- [x] **Total: 210 tests across 13 files.**
+
 ### P5: Nice-to-Have
 
 - [ ] **`save-project` tool** — Explicit manual save (run fastBundle + POST on demand)
 - [ ] **Node resolution by content match** — Find nodes by text content ("the node containing 'Hello'")
 - [ ] **Dry-run mode** — Show what would change without persisting
-- [ ] **Expand server.test.ts** — Integration-level tests for individual tool execution (currently smoke test only)
+- [ ] **`mkTplComponent()` support** — `add-child` currently creates plain TplTag nodes only; inserting existing component references requires `mkTplComponent()` from `core/tpls.ts`
+- [ ] **`BundleTypeError` 412 handling** — `save-manager.ts` handles `ProjectRevisionError` and `UnknownReferencesError` but not `BundleTypeError` (should surface as "possible bug" message)
 
 ---
 
