@@ -54,11 +54,16 @@ export function useBundleOption(): BundleOptionContextValue | null {
 // ---------------------------------------------------------------------------
 // BundleVariationContext — provided by EPBundleVariationPicker to child
 // variation option triggers. Follows the VariationPickerContext pattern.
+//
+// selectedValues maps variationId → option ID (not display label).
+// selectVariation dispatches an option ID for the given axis.
 // ---------------------------------------------------------------------------
 
 export interface BundleVariationContextValue {
+  /** Maps variationId → selected option ID (e.g. "var-color" → "opt-red") */
   selectedValues: Record<string, string>;
-  selectVariation: (axisId: string, value: string) => void;
+  /** Select an option by its ID for the given variation axis */
+  selectVariation: (axisId: string, optionId: string) => void;
 }
 
 export const BundleVariationContext =

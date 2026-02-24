@@ -160,9 +160,9 @@ esbuild jest transform hoists `import` to `require()` at file top, BEFORE `jest.
 
 - [x] **Fix `EPBundleOptionTrigger` missing aria-label** — Real options (with an `id`) had `aria-label={undefined}` because the label was only set when no id was present. Fixed: now always sets `aria-label={`Select ${name || "option"}`}`, reading `name` from `currentBundleOption` selector.
 
-### P1h — Known Issues (not yet fixed)
+### P1h — Known Issues (fixed)
 
-- [ ] **Variation selection uses label strings as keys** — `EPBundleVariationOptionList` and `EPBundleVariationPicker` match variation options by `label` (name string) rather than option ID. Duplicate-named variation options would break selection. Low priority: rare in practice.
+- [x] **Variation selection uses label strings as keys** — `EPBundleVariationOptionList` and `EPBundleVariationPicker` matched variation options by `label` (name string) rather than option ID. Duplicate-named variation options would break selection. Fixed: all variation selection now uses option IDs throughout the pipeline. `EPBundleVariationPicker` passes `{ id, label }` value objects (not bare labels). `EPBundleVariationOptionList` compares `selectedForThisAxis === v.id` (not `v.label`). `EPBundleVariationOptionTrigger` dispatches `optionId` (not label) to `selectVariation`. `findMatchingVariant` does direct ID comparison against variation matrix option IDs. `BundleVariationContextValue.selectedValues` maps `variationId → optionId`. Design-time mock data updated with `id` fields. 3 test files updated to use option IDs in assertions.
 
 - [x] **Option product metadata shows parent info, not selected child** — `EPBundleComponentList` looked up `optionProducts[optionId]` by parent ID only. Fixed: when a `parentId:childId` selection key is found, extracts the childId and uses `optionProducts[childId]` for metadata (name, price, image, sku), with fallback to parent product data for unselected options. 3 new tests verify child variant display, parent fallback, and mixed plain+parent selections. `useBundleOptionProducts` already fetches child product metadata — it was stored but never looked up.
 

@@ -114,8 +114,8 @@ describe("findMatchingVariant", () => {
     },
   };
 
-  it("finds matching variant for complete selections", () => {
-    const selections = { "var-color": "Red", "var-capacity": "512GB" };
+  it("finds matching variant for complete selections (option IDs)", () => {
+    const selections = { "var-color": "opt-red", "var-capacity": "opt-512" };
     const result = findMatchingVariant(selections, parentInfo);
     expect(result).toEqual(
       expect.objectContaining({ id: "child-red-512", name: "Red 512GB" })
@@ -123,7 +123,7 @@ describe("findMatchingVariant", () => {
   });
 
   it("finds different variant for different selections", () => {
-    const selections = { "var-color": "Red", "var-capacity": "1TB" };
+    const selections = { "var-color": "opt-red", "var-capacity": "opt-1tb" };
     const result = findMatchingVariant(selections, parentInfo);
     expect(result).toEqual(
       expect.objectContaining({ id: "child-red-1tb", name: "Red 1TB" })
@@ -135,33 +135,33 @@ describe("findMatchingVariant", () => {
   });
 
   it("returns null for incomplete selections (not all variations selected)", () => {
-    const selections = { "var-color": "Red" }; // missing capacity
+    const selections = { "var-color": "opt-red" }; // missing capacity
     expect(findMatchingVariant(selections, parentInfo)).toBeNull();
   });
 
   it("returns null when parent has no children", () => {
     const noChildren = { ...parentInfo, children: undefined };
-    const selections = { "var-color": "Red", "var-capacity": "512GB" };
+    const selections = { "var-color": "opt-red", "var-capacity": "opt-512" };
     expect(findMatchingVariant(selections, noChildren as any)).toBeNull();
   });
 
   it("returns null when parent has no variationMatrix", () => {
     const noMatrix = { ...parentInfo, variationMatrix: undefined };
-    const selections = { "var-color": "Red", "var-capacity": "512GB" };
+    const selections = { "var-color": "opt-red", "var-capacity": "opt-512" };
     expect(findMatchingVariant(selections, noMatrix as any)).toBeNull();
   });
 
   it("returns null when no child matches the selected combination", () => {
     // Blue 1TB doesn't exist in the matrix
-    const selections = { "var-color": "Blue", "var-capacity": "1TB" };
+    const selections = { "var-color": "opt-blue", "var-capacity": "opt-1tb" };
     const result = findMatchingVariant(selections, parentInfo);
     expect(result).toBeNull();
   });
 
-  it("returns null when variation name does not match any option", () => {
+  it("returns null when option ID does not exist in the matrix", () => {
     const selections = {
-      "var-color": "NonExistentColor",
-      "var-capacity": "512GB",
+      "var-color": "opt-nonexistent",
+      "var-capacity": "opt-512",
     };
     const result = findMatchingVariant(selections, parentInfo);
     expect(result).toBeNull();
@@ -169,7 +169,7 @@ describe("findMatchingVariant", () => {
 
   it("handles parent with no variations array", () => {
     const noVariations = { ...parentInfo, variations: undefined };
-    const selections = { "var-color": "Red", "var-capacity": "512GB" };
+    const selections = { "var-color": "opt-red", "var-capacity": "opt-512" };
     // variations.length would be 0 (from default []), selections.length is 2 → not equal → null
     expect(findMatchingVariant(selections, noVariations as any)).toBeNull();
   });

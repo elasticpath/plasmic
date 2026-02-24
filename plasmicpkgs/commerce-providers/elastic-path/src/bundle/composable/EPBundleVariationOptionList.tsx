@@ -79,8 +79,9 @@ export function EPBundleVariationOptionList(
     const selectedForThisAxis = selectedValues[currentVariation.id];
 
     return currentVariation.values.map((v) => ({
+      id: v.id,
       label: v.label,
-      isSelected: selectedForThisAxis === v.label,
+      isSelected: selectedForThisAxis === v.id,
     }));
   }, [useMock, currentVariation, variationCtx?.selectedValues]);
 
@@ -89,7 +90,7 @@ export function EPBundleVariationOptionList(
   return (
     <div className={className} role="list" aria-label="Variation values">
       {options.map((option, i) => (
-        <div key={option.label} role="listitem">
+        <div key={option.id} role="listitem">
           <DataProvider name="currentBundleVariationOption" data={option}>
             <DataProvider name="currentBundleVariationOptionIndex" data={i}>
               {repeatedElement(i, children)}

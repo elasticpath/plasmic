@@ -95,12 +95,12 @@ describe("useVariationSelection", () => {
     );
 
     act(() => {
-      result.current.handleVariationChange("var-color", "Red");
+      result.current.handleVariationChange("var-color", "opt-red");
     });
 
     // State should update with the new selection
     expect(result.current.variationSelections).toEqual({
-      "var-color": "Red",
+      "var-color": "opt-red",
     });
   });
 
@@ -122,7 +122,7 @@ describe("useVariationSelection", () => {
     );
 
     act(() => {
-      result.current.handleVariationChange("var-color", "Red");
+      result.current.handleVariationChange("var-color", "opt-red");
     });
 
     expect(mockOnSelectionChange).toHaveBeenCalledWith(
@@ -146,7 +146,7 @@ describe("useVariationSelection", () => {
     );
 
     act(() => {
-      result.current.handleVariationChange("var-color", "Red");
+      result.current.handleVariationChange("var-color", "opt-red");
     });
 
     expect(mockOnSelectionChange).not.toHaveBeenCalled();
@@ -171,7 +171,7 @@ describe("useVariationSelection", () => {
     );
 
     act(() => {
-      result.current.handleVariationChange("var-color", "Blue");
+      result.current.handleVariationChange("var-color", "opt-blue");
     });
 
     // Should clear old variant first
@@ -209,7 +209,7 @@ describe("useVariationSelection", () => {
     );
 
     act(() => {
-      result.current.handleVariationChange("var-capacity", "512GB");
+      result.current.handleVariationChange("var-capacity", "opt-512");
     });
 
     // Should NOT clear (no zero call)
@@ -239,14 +239,14 @@ describe("useVariationSelection", () => {
 
     act(() => {
       result.current.setVariationSelections({
-        "var-color": "Red",
-        "var-capacity": "512GB",
+        "var-color": "opt-red",
+        "var-capacity": "opt-512",
       });
     });
 
     expect(result.current.variationSelections).toEqual({
-      "var-color": "Red",
-      "var-capacity": "512GB",
+      "var-color": "opt-red",
+      "var-capacity": "opt-512",
     });
   });
 

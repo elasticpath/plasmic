@@ -114,7 +114,7 @@ export function EPBundleVariationPicker(
     return parentInfo.variations.map((v) => ({
       id: v.id,
       name: v.name,
-      values: v.options?.map((opt) => ({ label: opt.name })) ?? [],
+      values: v.options?.map((opt) => ({ id: opt.id, label: opt.name })) ?? [],
     }));
   }, [useMock, isParentProduct, parentInfo?.variations]);
 
@@ -122,7 +122,7 @@ export function EPBundleVariationPicker(
   const variationContextValue: BundleVariationContextValue = useMemo(
     () => ({
       selectedValues: useMock
-        ? { "var-color": "Space Gray", "var-capacity": "512GB" }
+        ? { "var-color": "opt-color-1", "var-capacity": "opt-cap-1" }
         : variationSelections,
       selectVariation: useMock
         ? () => {}

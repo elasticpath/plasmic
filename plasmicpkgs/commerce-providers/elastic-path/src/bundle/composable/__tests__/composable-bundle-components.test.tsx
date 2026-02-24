@@ -331,7 +331,7 @@ describe("EPBundleVariationField", () => {
 
   it("renders variation name from selector", () => {
     setupSelector({
-      currentBundleVariation: { id: "var-1", name: "Color", values: [{ label: "Red" }, { label: "Blue" }] },
+      currentBundleVariation: { id: "var-1", name: "Color", values: [{ id: "opt-red", label: "Red" }, { id: "opt-blue", label: "Blue" }] },
     });
     const { container } = render(<EPBundleVariationField field="name" />);
     expect(container.textContent).toBe("Color");
@@ -339,7 +339,7 @@ describe("EPBundleVariationField", () => {
 
   it("renders optionCount from values.length", () => {
     setupSelector({
-      currentBundleVariation: { id: "var-1", name: "Color", values: [{ label: "Red" }, { label: "Blue" }] },
+      currentBundleVariation: { id: "var-1", name: "Color", values: [{ id: "opt-red", label: "Red" }, { id: "opt-blue", label: "Blue" }] },
     });
     const { container } = render(<EPBundleVariationField field="optionCount" />);
     expect(container.textContent).toBe("2");
@@ -1067,9 +1067,9 @@ describe("EPBundleVariationOptionList", () => {
     const variation = {
       id: "var-color",
       name: "Color",
-      values: [{ label: "Red" }, { label: "Blue" }, { label: "Green" }],
+      values: [{ id: "opt-red", label: "Red" }, { id: "opt-blue", label: "Blue" }, { id: "opt-green", label: "Green" }],
     };
-    const variationCtx = { selectedValues: { "var-color": "Red" }, selectVariation: jest.fn() };
+    const variationCtx = { selectedValues: { "var-color": "opt-red" }, selectVariation: jest.fn() };
 
     setupSelector({ currentBundleVariation: variation });
 
@@ -1085,13 +1085,13 @@ describe("EPBundleVariationOptionList", () => {
     expect(items.length).toBe(3);
   });
 
-  it("enriches options with isSelected from context", () => {
+  it("enriches options with isSelected from context using option IDs", () => {
     const variation = {
       id: "var-color",
       name: "Color",
-      values: [{ label: "Red" }, { label: "Blue" }],
+      values: [{ id: "opt-red", label: "Red" }, { id: "opt-blue", label: "Blue" }],
     };
-    const variationCtx = { selectedValues: { "var-color": "Red" }, selectVariation: jest.fn() };
+    const variationCtx = { selectedValues: { "var-color": "opt-red" }, selectVariation: jest.fn() };
 
     setupSelector({ currentBundleVariation: variation });
 
@@ -1107,8 +1107,10 @@ describe("EPBundleVariationOptionList", () => {
     const redData = JSON.parse(providers[0].getAttribute("data-provider-value")!);
     const blueData = JSON.parse(providers[1].getAttribute("data-provider-value")!);
 
+    expect(redData.id).toBe("opt-red");
     expect(redData.label).toBe("Red");
     expect(redData.isSelected).toBe(true);
+    expect(blueData.id).toBe("opt-blue");
     expect(blueData.label).toBe("Blue");
     expect(blueData.isSelected).toBe(false);
   });
@@ -1133,7 +1135,7 @@ describe("EPBundleVariationOptionTrigger", () => {
   ) {
     setupSelector({
       currentBundleVariation: { id: "var-color", name: "Color", values: [], ...variationData },
-      currentBundleVariationOption: { label: "Red", isSelected, ...optionData },
+      currentBundleVariationOption: { id: "opt-red", label: "Red", isSelected, ...optionData },
     });
 
     const variationCtx = {
@@ -1165,21 +1167,21 @@ describe("EPBundleVariationOptionTrigger", () => {
     expect(screen.getByRole("radio").hasAttribute("data-selected")).toBe(true);
   });
 
-  it("calls selectVariation on click", () => {
+  it("calls selectVariation with option ID on click", () => {
     renderVariationTrigger();
     fireEvent.click(screen.getByRole("radio"));
-    expect(mockSelectVariation).toHaveBeenCalledWith("var-color", "Red");
+    expect(mockSelectVariation).toHaveBeenCalledWith("var-color", "opt-red");
   });
 
   it("has accessible label from option label", () => {
-    renderVariationTrigger({}, { label: "Space Gray" });
+    renderVariationTrigger({}, { id: "opt-sg", label: "Space Gray" });
     expect(screen.getByRole("radio").getAttribute("aria-label")).toBe("Space Gray");
   });
 
   it("handles keyboard Enter activation", () => {
     renderVariationTrigger();
     fireEvent.keyDown(screen.getByRole("radio"), { key: "Enter" });
-    expect(mockSelectVariation).toHaveBeenCalledWith("var-color", "Red");
+    expect(mockSelectVariation).toHaveBeenCalledWith("var-color", "opt-red");
   });
 });
 

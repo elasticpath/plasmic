@@ -25,7 +25,11 @@ export const getOptionsFromSkuId = (
 };
 
 /**
- * Find the matching child product based on selected variations
+ * Find the matching child product based on selected variations.
+ *
+ * `selections` maps variationId → option ID (not display label).
+ * This avoids fragile name-based matching and allows duplicate-named
+ * variation options to coexist safely.
  */
 export const findMatchingVariant = (
   selections: Record<string, string>,
@@ -43,20 +47,16 @@ export const findMatchingVariant = (
   }
 
   return parentInfo.children.find((child) => {
-    // Find the option IDs for this child product
+    // Find the option IDs for this child product in the variation matrix
     const optionIds = getOptionsFromSkuId(child.id, parentInfo.variationMatrix);
-    
+
     if (!optionIds || optionIds.length === 0) {
       return false;
     }
 
-    // Check if this child matches all selected variation values
-    return Object.entries(selections).every(([variationId, selectedValue]) => {
-      // Find the variation and option that matches this selection
-      const variation = variations.find(v => v.id === variationId);
-      const option = variation?.options?.find(opt => opt.name === selectedValue);
-      
-      return option && optionIds.includes(option.id);
-    });
+    // selections values are now option IDs — direct comparison against the matrix
+    return Object.values(selections).every((selectedOptionId) =>
+      optionIds.includes(selectedOptionId)
+    );
   }) || null;
 };

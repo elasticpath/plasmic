@@ -73,6 +73,7 @@ export function EPBundleVariationOptionTrigger(
     (!currentOption && inEditor);
 
   const variationId = currentVariation?.id ?? MOCK_BUNDLE_VARIATIONS[0].id;
+  const optionId = currentOption?.id ?? MOCK_BUNDLE_VARIATION_OPTIONS[0].id;
   const label = currentOption?.label ?? MOCK_BUNDLE_VARIATION_OPTIONS[0].label;
 
   const isSelected = useMock
@@ -82,7 +83,7 @@ export function EPBundleVariationOptionTrigger(
 
   const handleClick = () => {
     if (useMock || !variationCtx || !variationId) return;
-    variationCtx.selectVariation(variationId, label);
+    variationCtx.selectVariation(variationId, optionId);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

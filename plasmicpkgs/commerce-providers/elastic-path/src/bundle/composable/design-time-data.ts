@@ -47,10 +47,11 @@ export interface MockBundleOption {
 export interface MockBundleVariation {
   id: string;
   name: string;
-  values: { label: string }[];
+  values: { id: string; label: string }[];
 }
 
 export interface MockBundleVariationOption {
+  id: string;
   label: string;
   isSelected: boolean;
 }
@@ -210,17 +211,24 @@ export const MOCK_BUNDLE_VARIATIONS: MockBundleVariation[] = [
   {
     id: "var-color",
     name: "Color",
-    values: [{ label: "Space Gray" }, { label: "Silver" }, { label: "Gold" }],
+    values: [
+      { id: "opt-color-1", label: "Space Gray" },
+      { id: "opt-color-2", label: "Silver" },
+      { id: "opt-color-3", label: "Gold" },
+    ],
   },
   {
     id: "var-capacity",
     name: "Capacity",
-    values: [{ label: "512GB" }, { label: "1TB" }],
+    values: [
+      { id: "opt-cap-1", label: "512GB" },
+      { id: "opt-cap-2", label: "1TB" },
+    ],
   },
 ];
 
 export const MOCK_BUNDLE_VARIATION_OPTIONS: MockBundleVariationOption[] = [
-  { label: "Space Gray", isSelected: true },
-  { label: "Silver", isSelected: false },
-  { label: "Gold", isSelected: false },
+  { id: "opt-color-1", label: "Space Gray", isSelected: true },
+  { id: "opt-color-2", label: "Silver", isSelected: false },
+  { id: "opt-color-3", label: "Gold", isSelected: false },
 ];
