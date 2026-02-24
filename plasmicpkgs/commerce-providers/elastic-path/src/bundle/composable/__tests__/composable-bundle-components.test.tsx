@@ -826,6 +826,158 @@ describe("EPBundleComponentList", () => {
     const items = container.querySelectorAll("[role='listitem']");
     expect(items.length).toBe(MOCK_BUNDLE_COMPONENTS.length);
   });
+
+  it("uses child variant metadata when parentId:childId key is selected", () => {
+    setupSelector({ bundleData: { componentCount: 1 } });
+
+    const formCtxWithChild = {
+      ...TEST_FORM_CONTEXT,
+      // Selection uses parentId:childId key format
+      selectedOptions: {
+        storage: { "parent-ssd:child-512gb-red": 1 },
+      },
+      components: {
+        storage: {
+          name: "Storage",
+          min: 1,
+          max: 1,
+          sort_order: 1,
+          options: [
+            { id: "parent-ssd", sort_order: 1, min: null, max: null, default: true },
+          ],
+        },
+      },
+      parentProducts: {
+        "parent-ssd": { isParent: true },
+      },
+      optionProducts: {
+        // Parent product metadata
+        "parent-ssd": { name: "SSD (Parent)", price: "$99.00", image: "", sku: "SSD-PARENT", description: "Parent" },
+        // Child variant metadata — should be used when child is selected
+        "child-512gb-red": { name: "512GB SSD Red", price: "$119.00", image: "/red.jpg", sku: "SSD-512-RED", description: "Red variant" },
+      },
+    };
+
+    const { container } = render(
+      <BundleFormContext.Provider value={formCtxWithChild}>
+        <EPBundleComponentList>
+          <span>Item</span>
+        </EPBundleComponentList>
+      </BundleFormContext.Provider>
+    );
+
+    const providers = container.querySelectorAll("[data-provider='currentBundleComponent']");
+    expect(providers.length).toBe(1);
+    const componentData = JSON.parse(providers[0].getAttribute("data-provider-value")!);
+
+    // The option should show child variant metadata, not parent
+    expect(componentData.options[0].name).toBe("512GB SSD Red");
+    expect(componentData.options[0].price).toBe("$119.00");
+    expect(componentData.options[0].sku).toBe("SSD-512-RED");
+    expect(componentData.options[0].imageUrl).toBe("/red.jpg");
+    expect(componentData.options[0].isParentProduct).toBe(true);
+    expect(componentData.options[0].isSelected).toBe(true);
+    expect(componentData.options[0].quantity).toBe(1);
+  });
+
+  it("falls back to parent metadata when no child variant is selected", () => {
+    setupSelector({ bundleData: { componentCount: 1 } });
+
+    const formCtxNoChild = {
+      ...TEST_FORM_CONTEXT,
+      // No selection for this component yet
+      selectedOptions: { storage: {} },
+      components: {
+        storage: {
+          name: "Storage",
+          min: 1,
+          max: 1,
+          sort_order: 1,
+          options: [
+            { id: "parent-ssd", sort_order: 1, min: null, max: null, default: false },
+          ],
+        },
+      },
+      parentProducts: {
+        "parent-ssd": { isParent: true },
+      },
+      optionProducts: {
+        "parent-ssd": { name: "SSD (Parent)", price: "$99.00", image: "", sku: "SSD-PARENT", description: "Parent" },
+        "child-512gb-red": { name: "512GB SSD Red", price: "$119.00", image: "/red.jpg", sku: "SSD-512-RED", description: "Red variant" },
+      },
+    };
+
+    const { container } = render(
+      <BundleFormContext.Provider value={formCtxNoChild}>
+        <EPBundleComponentList>
+          <span>Item</span>
+        </EPBundleComponentList>
+      </BundleFormContext.Provider>
+    );
+
+    const providers = container.querySelectorAll("[data-provider='currentBundleComponent']");
+    const componentData = JSON.parse(providers[0].getAttribute("data-provider-value")!);
+
+    // Should show parent metadata when no child is selected
+    expect(componentData.options[0].name).toBe("SSD (Parent)");
+    expect(componentData.options[0].price).toBe("$99.00");
+    expect(componentData.options[0].isSelected).toBe(false);
+  });
+
+  it("handles plain (non-parent) product selections alongside parent:child keys", () => {
+    setupSelector({ bundleData: { componentCount: 1 } });
+
+    const formCtxMixed = {
+      ...TEST_FORM_CONTEXT,
+      selectedOptions: {
+        components: {
+          "plain-product": 1,
+          "parent-prod:child-variant": 1,
+        },
+      },
+      components: {
+        components: {
+          name: "Components",
+          min: 1,
+          max: 3,
+          sort_order: 1,
+          options: [
+            { id: "plain-product", sort_order: 1, min: null, max: null, default: false },
+            { id: "parent-prod", sort_order: 2, min: null, max: null, default: false },
+          ],
+        },
+      },
+      parentProducts: {
+        "parent-prod": { isParent: true },
+      },
+      optionProducts: {
+        "plain-product": { name: "Plain Widget", price: "$50.00", image: "", sku: "PLAIN", description: "Simple" },
+        "parent-prod": { name: "Parent Widget", price: "$75.00", image: "", sku: "PARENT", description: "Parent" },
+        "child-variant": { name: "Child Widget Blue", price: "$85.00", image: "/blue.jpg", sku: "CHILD-BLUE", description: "Blue variant" },
+      },
+    };
+
+    const { container } = render(
+      <BundleFormContext.Provider value={formCtxMixed}>
+        <EPBundleComponentList>
+          <span>Item</span>
+        </EPBundleComponentList>
+      </BundleFormContext.Provider>
+    );
+
+    const providers = container.querySelectorAll("[data-provider='currentBundleComponent']");
+    const componentData = JSON.parse(providers[0].getAttribute("data-provider-value")!);
+
+    // Plain product should show its own metadata
+    const plainOpt = componentData.options.find((o: any) => o.id === "plain-product");
+    expect(plainOpt.name).toBe("Plain Widget");
+    expect(plainOpt.price).toBe("$50.00");
+
+    // Parent product with child selected should show child metadata
+    const parentOpt = componentData.options.find((o: any) => o.id === "parent-prod");
+    expect(parentOpt.name).toBe("Child Widget Blue");
+    expect(parentOpt.price).toBe("$85.00");
+  });
 });
 
 // ===========================================================================

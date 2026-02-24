@@ -106,8 +106,21 @@ export function EPBundleComponentList(props: EPBundleComponentListProps) {
           const quantity = selectionEntry ? selectionEntry[1] : 0;
           const isSelected = quantity > 0;
 
-          // Look up product metadata
-          const productInfo = optionProducts[optionId] || {};
+          // Resolve the effective product ID for metadata lookup.
+          // When a child variant is selected, the key is "parentId:childId" —
+          // extract the childId to show the child's name/price/image.
+          let effectiveProductId = optionId;
+          if (selectionEntry) {
+            const [selectionKey] = selectionEntry;
+            const colonIdx = selectionKey.indexOf(":");
+            if (colonIdx !== -1) {
+              effectiveProductId = selectionKey.slice(colonIdx + 1);
+            }
+          }
+
+          // Look up product metadata — prefer child variant if selected,
+          // fall back to parent product for unselected parent options
+          const productInfo = optionProducts[effectiveProductId] || optionProducts[optionId] || {};
           const parentInfo = parentProducts[optionId];
           const isParentProduct = parentInfo?.isParent ?? false;
 

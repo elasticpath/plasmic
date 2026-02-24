@@ -41,7 +41,7 @@ esbuild jest transform hoists `import` to `require()` at file top, BEFORE `jest.
 ## P1 — Composable Bundle Configurator Components
 
 **Spec:** `specs/composable-bundle-configurator.md`
-**Status:** All 14 components implemented in `src/bundle/composable/`. 3 bugs fixed, 76 component tests added. Build passes, 250 tests pass (12 suites).
+**Status:** All 14 components implemented in `src/bundle/composable/`. 4 bugs fixed, 79 component tests added. Build passes, 253 tests pass (12 suites).
 
 > **Build fix note:** `sortByOrder` expects `sort_order` (snake_case) while enriched objects used `sortOrder` (camelCase). Resolved by adding a `sort_order` property to enriched option/component objects so both naming conventions are available.
 
@@ -162,7 +162,7 @@ esbuild jest transform hoists `import` to `require()` at file top, BEFORE `jest.
 
 - [ ] **Variation selection uses label strings as keys** — `EPBundleVariationOptionList` and `EPBundleVariationPicker` match variation options by `label` (name string) rather than option ID. Duplicate-named variation options would break selection. Low priority: rare in practice.
 
-- [ ] **Option product metadata shows parent info, not selected child** — `EPBundleComponentList` looks up `optionProducts[optionId]` by parent ID. When a child variant is selected, the displayed name/price in `EPBundleOptionField` reflects the parent, not the chosen child. Would need child product lookup keyed by `parentId:childId`.
+- [x] **Option product metadata shows parent info, not selected child** — `EPBundleComponentList` looked up `optionProducts[optionId]` by parent ID only. Fixed: when a `parentId:childId` selection key is found, extracts the childId and uses `optionProducts[childId]` for metadata (name, price, image, sku), with fallback to parent product data for unselected options. 3 new tests verify child variant display, parent fallback, and mixed plain+parent selections. `useBundleOptionProducts` already fetches child product metadata — it was stored but never looked up.
 
 ---
 
@@ -221,9 +221,9 @@ These are lower priority but improve maintainability and align with established 
 
 ## P3 — Test Coverage
 
-### Current Coverage (12 test suites, 250 tests, all passing)
+### Current Coverage (12 test suites, 253 tests, all passing)
 
-- [x] `bundle/composable/__tests__/composable-bundle-components.test.tsx` (76 tests) — Field rendering, option triggers (click/keyboard/ARIA), quantity button bounds enforcement, quantity control DataProvider shape, component/option/variation list iteration, design-time mock data validation
+- [x] `bundle/composable/__tests__/composable-bundle-components.test.tsx` (79 tests) — Field rendering, option triggers (click/keyboard/ARIA), quantity button bounds enforcement, quantity control DataProvider shape, component/option/variation list iteration, child variant metadata display, design-time mock data validation
 - [x] `bundle/hooks/__tests__/useBundleConfigurationOrchestration.test.tsx` (14 tests)
 - [x] `bundle/__tests__/use-parent-products.test.tsx` (12 tests)
 - [x] `bundle/__tests__/use-bundle-option-products.test.tsx` (12 tests)
@@ -238,7 +238,7 @@ These are lower priority but improve maintainability and align with established 
 
 ### Missing Test Coverage (by priority)
 
-- [x] **Tests for new composable bundle components** (P1 deliverables) — 76 tests covering field components, interactive triggers, quantity controls, list iteration, and design-time preview
+- [x] **Tests for new composable bundle components** (P1 deliverables) — 79 tests covering field components, interactive triggers, quantity controls, list iteration, child variant metadata, and design-time preview
 - [ ] **Tests for cart hooks** — `use-add-item`, `use-cart`, `use-remove-item`, `use-update-item`
 - [ ] **Tests for inventory hooks** — `use-stock`, `use-locations`
 - [ ] **Tests for bundle form hooks** — `useBundleForm`, `useBundleFormSync`, `useVariationSelection`
