@@ -1,7 +1,7 @@
 # Implementation Plan — EP Components Cart Work
 
 > Auto-generated from analysis of `specs/*` vs `plasmicpkgs/commerce-providers/elastic-path/src/*`
-> Last updated: 2026-02-25
+> Last updated: 2026-02-24
 
 ---
 
@@ -213,18 +213,18 @@ These are lower priority but improve maintainability and align with established 
 
 ### P2d — Accessibility Gaps
 
-- [ ] **Add missing ARIA attributes**
-  - `EPVariationOptionList` — needs `role="listbox"`, `aria-label`
-  - `EPCartItemQuantityButton` — needs `aria-label` for +/- buttons
-  - `MultiLocationStock` — interactive selection without proper ARIA
-  - `ParentProductOption` — component selection without labels
-  - Add `aria-live` regions for stock status changes
+- [x] **Add missing ARIA attributes**
+  - `EPVariationOptionList` — already has `role="radiogroup"`, `aria-label`, and roving tab index (no changes needed)
+  - `EPCartItemQuantityButton` — already has `aria-label` ("Increase/Decrease quantity"), `role="button"`, `aria-disabled` (no changes needed)
+  - `MultiLocationStock` — Added `role="region"` with `aria-label="Stock availability"` to outer container, `role="list"` with `aria-label="Stock by location"` to locations container, `role="listitem"` to each location entry. Removed unused `calculateTotalStock` import.
+  - `ParentProductOption` — Added `htmlFor`/`id` to associate `<label>` with `<input>`. Added `aria-expanded` and `aria-label` to the "Show/Hide Variations" toggle button.
+  - `StockIndicator` — Added `role="status"` and `aria-live="polite"` for dynamic stock status announcements. Added `aria-hidden="true"` to decorative emoji icons.
 
 ---
 
 ## P3 — Test Coverage
 
-### Current Coverage (24 test suites, 451 tests, all passing)
+### Current Coverage (28 test suites, 555 tests, all passing)
 
 - [x] `bundle/composable/__tests__/composable-bundle-components.test.tsx` (79 tests) — Field rendering, option triggers (click/keyboard/ARIA), quantity button bounds enforcement, quantity control DataProvider shape, component/option/variation list iteration, child variant metadata display, design-time mock data validation
 - [x] `bundle/hooks/__tests__/useBundleConfigurationOrchestration.test.tsx` (14 tests)
@@ -250,6 +250,10 @@ These are lower priority but improve maintainability and align with established 
 - [x] `cart/__tests__/use-remove-item.test.tsx` (12 tests) — deleteACartItem API call (not qty-to-zero), cart refresh after deletion, cookie cleanup on 404, guard conditions
 - [x] `inventory/__tests__/use-stock.test.tsx` (25 tests) — SWR caching, stable sorted query keys, multi-product parallel fetching, per-product error degradation (returns zero-stock), locationIds passthrough, useProductStock wrapper, refetch, disabled state
 - [x] `inventory/__tests__/use-locations.test.tsx` (19 tests) — SWR caching (5min deduping), type filter passthrough, "__all__" default key, empty/null response handling, refetch, disabled state, error propagation
+- [x] `utils/__tests__/errorHandling.test.ts` (51 tests) — All 8 exported functions, EPErrorCode enum verification, ISO timestamp validation, details passthrough, error code categorization (network/API/unknown), user-friendly message mapping, recoverable error classification, logError integration, createFormContextError
+- [x] `utils/__tests__/logger.test.ts` (35 tests) — Default silent behavior, "*" wildcard, level-only config, "level:modules" format, module filtering, console method mapping, data parameter passthrough, tag format, resetLogConfig cache clearing, SSR fallback, localStorage errors
+- [x] `utils/__tests__/cookies.test.ts` (10 tests) — getCookies JSON parsing, undefined for missing cookies, setCookies with options (expires, sameSite, secure), removeCookies delegation
+- [x] `utils/__tests__/cart-cookie.test.ts` (8 tests) — getCartId/setCartId/removeCartCookie delegation to cookies module with correct ELASTICPATH_CART_COOKIE constant
 
 ### Missing Test Coverage (by priority)
 
@@ -262,7 +266,7 @@ These are lower priority but improve maintainability and align with established 
 - [ ] **Tests for checkout API endpoints** — `calculate-shipping`, `create-order`, `setup-payment`, `confirm-payment`
 - [ ] **Tests for cart drawer components** — 10 components with no test coverage
 - [ ] **Tests for inventory components** — `LocationSelector`, `MultiLocationStock`, `StockIndicator`
-- [ ] **Tests for utils** — `errorHandling.ts`, `logger.ts`, `cookies.ts`, `cart-cookie.ts`
+- [x] **Tests for utils** — `errorHandling.ts` (51 tests), `logger.ts` (35 tests), `cookies.ts` (10 tests), `cart-cookie.ts` (8 tests). Covers all exported functions, config parsing, localStorage mocking, SSR fallback, cache lifecycle, cookie options passthrough.
 
 ---
 
