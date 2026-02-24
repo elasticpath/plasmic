@@ -292,6 +292,22 @@ export const normalizeProduct = (
   };
 };
 
+/**
+ * Extract selected variation options from EP's custom_inputs field.
+ * When adding to cart we store them as `_selectedOptions` in custom_inputs.
+ */
+function extractOptionsFromCustomInputs(
+  customInputs: Record<string, unknown> | undefined
+): { name: string; value: string; id?: string }[] {
+  if (!customInputs?._selectedOptions) return [];
+  const raw = customInputs._selectedOptions;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (o: any) =>
+      o && typeof o.name === "string" && typeof o.value === "string"
+  );
+}
+
 const normalizeLineItem = (
   item: NonNullable<CartIncluded["items"]>[number]
 ): LineItem => {
@@ -304,7 +320,11 @@ const normalizeLineItem = (
     ? money(item.unit_price.amount, item.unit_price.currency)
     : money(0);
 
-  return {
+  const options = extractOptionsFromCustomInputs(
+    (item as any).custom_inputs
+  );
+
+  const lineItem: LineItem & { locationSlug?: string } = {
     id: item.id!,
     variantId: item.product_id!, // In Elastic Path, SKU identifies the variant
     productId: item.product_id!,
@@ -320,8 +340,16 @@ const normalizeLineItem = (
       listPrice: unitPrice.value,
       requiresShipping: true,
     },
-    options: [],
+    options,
   };
+
+  // Carry through the location slug from the EP cart item response
+  const locationSlug = (item as any).location;
+  if (locationSlug) {
+    lineItem.locationSlug = locationSlug;
+  }
+
+  return lineItem;
 };
 
 export const normalizeCart = (
