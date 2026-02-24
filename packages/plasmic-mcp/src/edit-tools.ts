@@ -1,0 +1,585 @@
+/**
+ * Core edit tool implementations for M2 P1.
+ *
+ * Each function performs a model mutation inside a ChangeRecorder session,
+ * then saves the changes via SaveManager. The pattern is:
+ *   1. Resolve the target node via node-resolver
+ *   2. Wrap mutation in changeTracker.withRecording()
+ *   3. Save the recorded changes via saveManager.saveChanges()
+ *
+ * All tools operate on the base variant only (M2 limitation).
+ *
+ * Reference: specs/plasmic-incremental-writes.md § Edit Tools
+ */
+
+import { isKnownTplTag, isKnownRawText } from "@/wab/shared/model/classes";
+import { CLASSES } from "@/wab/shared/model/classes-metas";
+import { RSH } from "@/wab/shared/RuleSetHelpers";
+import { TplMgr } from "@/wab/shared/TplMgr";
+import { mkTplTagX } from "@/wab/shared/core/tpls";
+import { flattenTpls } from "@/wab/shared/core/tpls";
+import { requireSession } from "./session.js";
+import { getChangeTracker } from "./change-tracker.js";
+import { SaveManager, type SaveResult } from "./save-manager.js";
+import { PlasmicApiClient } from "./api-client.js";
+import {
+  resolveNode,
+  requireSingleNode,
+  type ResolvedNode,
+} from "./node-resolver.js";
+import type { PlasmicElement } from "./types.js";
+
+// --- Helpers ---
+
+/**
+ * Find a component by UUID from the active session.
+ * Throws if the component is not found.
+ */
+function findComponent(componentUuid: string): any {
+  const session = requireSession();
+  const component = session.site.components?.find(
+    (c: any) => c.uuid === componentUuid
+  );
+  if (!component) {
+    throw new Error(
+      `Component UUID "${componentUuid}" not found. Use list-components to see available components.`
+    );
+  }
+  return component;
+}
+
+/**
+ * Get the IID for a component (for modifiedComponentIids).
+ * Uses the bundler's addrOf to get the address.
+ */
+function getComponentIid(component: any): string | undefined {
+  const session = requireSession();
+  const addr = session.bundler.addrOf(component);
+  return addr?.iid;
+}
+
+/**
+ * Find the parent of a node in the Tpl tree.
+ * Returns null if the node is the root (has no parent).
+ */
+function findParent(
+  tplTree: any,
+  targetNode: any
+): { parent: any; childIndex: number } | null {
+  const allNodes = flattenTpls(tplTree);
+  for (const node of allNodes) {
+    const children = node.children ?? [];
+    const idx = children.indexOf(targetNode);
+    if (idx >= 0) {
+      return { parent: node, childIndex: idx };
+    }
+  }
+  return null;
+}
+
+/**
+ * Check if `ancestor` is an ancestor of (or equal to) `descendant`.
+ * Used for cycle detection in move-child.
+ */
+function isAncestorOf(ancestor: any, descendant: any): boolean {
+  if (ancestor === descendant) return true;
+  const children = ancestor.children ?? [];
+  for (const child of children) {
+    if (isAncestorOf(child, descendant)) return true;
+  }
+  return false;
+}
+
+/**
+ * Insert a node into a parent's children array at a given position.
+ */
+function insertChild(
+  parent: any,
+  child: any,
+  position?: string | number
+): void {
+  if (!parent.children) {
+    parent.children = [];
+  }
+  if (position === "first" || position === 0) {
+    parent.children.unshift(child);
+  } else if (
+    position === "last" ||
+    position === undefined ||
+    position === null
+  ) {
+    parent.children.push(child);
+  } else if (typeof position === "number") {
+    parent.children.splice(position, 0, child);
+  } else {
+    // Default: append
+    parent.children.push(child);
+  }
+}
+
+// --- update-text ---
+
+export interface UpdateTextResult {
+  save: SaveResult;
+  nodeName?: string;
+  nodeUuid: string;
+  previousText?: string;
+  newText: string;
+}
+
+/**
+ * Update the text content of a TplTag node.
+ *
+ * Finds the node via node-resolver, updates the base variant's RawText,
+ * records the change, and saves.
+ *
+ * Error if the node is a container (not a text element).
+ */
+export async function updateText(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  nodeRef: string,
+  text: string
+): Promise<UpdateTextResult> {
+  const component = findComponent(componentUuid);
+  const result = resolveNode(component, nodeRef);
+  const resolved = requireSingleNode(result, nodeRef);
+
+  if (!isKnownTplTag(resolved.node)) {
+    throw new Error(
+      `Node "${nodeRef}" is not a TplTag and cannot have text updated.`
+    );
+  }
+
+  const tpl = resolved.node;
+  const session = requireSession();
+  const tplMgr = new TplMgr({ site: session.site });
+  const vs = tplMgr.ensureBaseVariantSetting(tpl);
+
+  // Check if this is a text-capable node
+  const hasText = vs.text && isKnownRawText(vs.text);
+  const isContainer =
+    !hasText && tpl.children && tpl.children.length > 0;
+
+  if (isContainer) {
+    const layoutType =
+      vs.rs?.values?.flexDirection === "column" ? "vbox" : "container";
+    throw new Error(
+      `Node "${resolved.name ?? nodeRef}" is a container (${layoutType}), not a text element. ` +
+        `Use update-styles to change container properties, or target a text child node.`
+    );
+  }
+
+  const tracker = getChangeTracker();
+  let previousText: string | undefined;
+
+  const changes = tracker.withRecording(() => {
+    if (vs.text && isKnownRawText(vs.text)) {
+      previousText = vs.text.text;
+      vs.text.text = text;
+    } else {
+      // Create a new RawText instance
+      previousText = undefined;
+      vs.text = new CLASSES["RawText"]({ text, markers: [] });
+    }
+  });
+
+  const componentIid = getComponentIid(component);
+  const saveManager = new SaveManager(apiClient);
+  const save = await saveManager.saveChanges(
+    changes,
+    componentIid ? [componentIid] : []
+  );
+
+  return {
+    save,
+    nodeName: resolved.name,
+    nodeUuid: resolved.uuid,
+    previousText,
+    newText: text,
+  };
+}
+
+// --- update-styles ---
+
+export interface UpdateStylesResult {
+  save: SaveResult;
+  nodeName?: string;
+  nodeUuid: string;
+  updatedProperties: string[];
+}
+
+/**
+ * Update CSS styles on a TplTag node's base variant.
+ *
+ * Uses RuleSetHelpers to set each property in the styles object.
+ * Properties use camelCase (React CSSProperties format).
+ */
+export async function updateStyles(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  nodeRef: string,
+  styles: Record<string, string>
+): Promise<UpdateStylesResult> {
+  const component = findComponent(componentUuid);
+  const result = resolveNode(component, nodeRef);
+  const resolved = requireSingleNode(result, nodeRef);
+
+  if (!isKnownTplTag(resolved.node)) {
+    throw new Error(
+      `Node "${nodeRef}" is not a TplTag and cannot have styles updated.`
+    );
+  }
+
+  const tpl = resolved.node;
+  const session = requireSession();
+  const tplMgr = new TplMgr({ site: session.site });
+  const vs = tplMgr.ensureBaseVariantSetting(tpl);
+
+  const tracker = getChangeTracker();
+  const updatedProperties = Object.keys(styles);
+
+  const changes = tracker.withRecording(() => {
+    const rsh = RSH(vs.rs, tpl);
+    rsh.merge(styles);
+  });
+
+  const componentIid = getComponentIid(component);
+  const saveManager = new SaveManager(apiClient);
+  const save = await saveManager.saveChanges(
+    changes,
+    componentIid ? [componentIid] : []
+  );
+
+  return {
+    save,
+    nodeName: resolved.name,
+    nodeUuid: resolved.uuid,
+    updatedProperties,
+  };
+}
+
+// --- add-child ---
+
+export interface AddChildResult {
+  save: SaveResult;
+  parentName?: string;
+  parentUuid: string;
+  newNodeUuid?: string;
+  position: string | number;
+}
+
+/**
+ * Convert a PlasmicElement JSON tree to a live TplTag node.
+ *
+ * Uses mkTplTagX for node creation and TplMgr.ensureBaseVariantSetting
+ * for variant setup. Processes children recursively.
+ *
+ * This approach avoids elementSchemaToTpl which pulls in 30+ dependencies.
+ */
+function plasmicElementToTpl(
+  element: PlasmicElement,
+  tplMgr: TplMgr
+): any {
+  // String elements become text nodes
+  if (typeof element === "string") {
+    const tpl = mkTplTagX("div", {});
+    const vs = tplMgr.ensureBaseVariantSetting(tpl);
+    vs.text = new CLASSES["RawText"]({ text: element, markers: [] });
+    return tpl;
+  }
+
+  // Map element type to HTML tag
+  let tag: string;
+  switch (element.type) {
+    case "box":
+    case "vbox":
+    case "hbox":
+    case "page-section":
+      tag = "div";
+      break;
+    case "text":
+      tag = (element as any).tag ?? "div";
+      break;
+    case "img":
+      tag = "img";
+      break;
+    case "button":
+      tag = "button";
+      break;
+    case "input":
+    case "password":
+    case "textarea":
+      tag = element.type === "textarea" ? "textarea" : "input";
+      break;
+    default:
+      tag = "div";
+      break;
+  }
+
+  // Build children recursively
+  const childElements = "children" in element && element.children
+    ? Array.isArray(element.children)
+      ? element.children
+      : [element.children]
+    : [];
+
+  const childTpls = childElements.map((child) =>
+    plasmicElementToTpl(child, tplMgr)
+  );
+
+  // Create the TplTag node with children
+  const tpl = mkTplTagX(tag, {}, ...childTpls);
+
+  // Set up base variant and styles
+  const vs = tplMgr.ensureBaseVariantSetting(tpl);
+
+  // Apply layout styles for container types
+  if (element.type === "vbox") {
+    const rsh = RSH(vs.rs, tpl);
+    rsh.merge({ display: "flex", flexDirection: "column" });
+  } else if (element.type === "hbox") {
+    const rsh = RSH(vs.rs, tpl);
+    rsh.merge({ display: "flex", flexDirection: "row" });
+  }
+
+  // Apply explicit styles
+  if ("styles" in element && element.styles) {
+    const rsh = RSH(vs.rs, tpl);
+    rsh.merge(element.styles);
+  }
+
+  // Set text content
+  if (element.type === "text" && "value" in element) {
+    vs.text = new CLASSES["RawText"]({
+      text: (element as any).value,
+      markers: [],
+    });
+  } else if (element.type === "button" && "value" in element && (element as any).value) {
+    vs.text = new CLASSES["RawText"]({
+      text: (element as any).value,
+      markers: [],
+    });
+  }
+
+  // Set image src
+  if (element.type === "img" && "src" in element) {
+    if (!vs.attrs) vs.attrs = {};
+    vs.attrs.src = new CLASSES["CustomCode"]({
+      code: JSON.stringify((element as any).src),
+      fallback: null,
+    });
+  }
+
+  return tpl;
+}
+
+/**
+ * Add a child node to a parent TplTag.
+ *
+ * Converts a PlasmicElement JSON tree to TplTag nodes using mkTplTagX,
+ * inserts into the parent at the specified position, and saves.
+ *
+ * Error if the parent is a text node (cannot have children).
+ */
+export async function addChild(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  parentRef: string,
+  child: PlasmicElement,
+  position?: string | number
+): Promise<AddChildResult> {
+  const component = findComponent(componentUuid);
+  const result = resolveNode(component, parentRef);
+  const resolved = requireSingleNode(result, parentRef);
+
+  if (!isKnownTplTag(resolved.node)) {
+    throw new Error(
+      `Node "${parentRef}" is not a TplTag and cannot have children added.`
+    );
+  }
+
+  const parent = resolved.node;
+  const session = requireSession();
+  const tplMgr = new TplMgr({ site: session.site });
+
+  // Check if parent is a text node (not a container)
+  const parentVs = tplMgr.ensureBaseVariantSetting(parent);
+  if (parentVs.text && isKnownRawText(parentVs.text) && (!parent.children || parent.children.length === 0)) {
+    throw new Error(
+      `Node "${resolved.name ?? parentRef}" is a text element and cannot have children. ` +
+        `Target a container node instead.`
+    );
+  }
+
+  const tracker = getChangeTracker();
+  let newTpl: any;
+
+  const changes = tracker.withRecording(() => {
+    newTpl = plasmicElementToTpl(child, tplMgr);
+    insertChild(parent, newTpl, position);
+  });
+
+  const componentIid = getComponentIid(component);
+  const saveManager = new SaveManager(apiClient);
+  const save = await saveManager.saveChanges(
+    changes,
+    componentIid ? [componentIid] : []
+  );
+
+  return {
+    save,
+    parentName: resolved.name,
+    parentUuid: resolved.uuid,
+    newNodeUuid: newTpl?.uuid,
+    position: position ?? "last",
+  };
+}
+
+// --- remove-child ---
+
+export interface RemoveChildResult {
+  save: SaveResult;
+  removedName?: string;
+  removedUuid: string;
+}
+
+/**
+ * Remove a child node from the Tpl tree.
+ *
+ * Prevents removal of the component's root node.
+ * The removed node's IID is included in toDeleteIids for the server.
+ */
+export async function removeChild(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  nodeRef: string
+): Promise<RemoveChildResult> {
+  const component = findComponent(componentUuid);
+  const result = resolveNode(component, nodeRef);
+  const resolved = requireSingleNode(result, nodeRef);
+
+  // Prevent removal of root node
+  if (resolved.node === component.tplTree) {
+    throw new Error(
+      `Cannot remove the root node of component "${component.name}". ` +
+        `Remove individual child nodes instead.`
+    );
+  }
+
+  const parentInfo = findParent(component.tplTree, resolved.node);
+  if (!parentInfo) {
+    throw new Error(
+      `Could not find parent of node "${nodeRef}". The node may already be detached.`
+    );
+  }
+
+  const tracker = getChangeTracker();
+
+  const changes = tracker.withRecording(() => {
+    parentInfo.parent.children.splice(parentInfo.childIndex, 1);
+  });
+
+  const componentIid = getComponentIid(component);
+  const saveManager = new SaveManager(apiClient);
+  const save = await saveManager.saveChanges(
+    changes,
+    componentIid ? [componentIid] : []
+  );
+
+  return {
+    save,
+    removedName: resolved.name,
+    removedUuid: resolved.uuid,
+  };
+}
+
+// --- move-child ---
+
+export interface MoveChildResult {
+  save: SaveResult;
+  movedName?: string;
+  movedUuid: string;
+  newParentName?: string;
+  newParentUuid: string;
+  position: string | number;
+}
+
+/**
+ * Move a child node to a new parent within the same component.
+ *
+ * Removes from current parent, inserts into new parent at position.
+ * Detects and prevents cycles (moving a node into its own descendant).
+ */
+export async function moveChild(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  nodeRef: string,
+  newParentRef: string,
+  position?: string | number
+): Promise<MoveChildResult> {
+  const component = findComponent(componentUuid);
+
+  // Resolve both nodes
+  const nodeResult = resolveNode(component, nodeRef);
+  const resolved = requireSingleNode(nodeResult, nodeRef);
+
+  const parentResult = resolveNode(component, newParentRef);
+  const newParent = requireSingleNode(parentResult, newParentRef);
+
+  if (!isKnownTplTag(newParent.node)) {
+    throw new Error(
+      `New parent "${newParentRef}" is not a TplTag and cannot have children.`
+    );
+  }
+
+  // Prevent moving root node
+  if (resolved.node === component.tplTree) {
+    throw new Error(
+      `Cannot move the root node of component "${component.name}".`
+    );
+  }
+
+  // Detect cycles: cannot move a node into its own descendant
+  if (isAncestorOf(resolved.node, newParent.node)) {
+    throw new Error(
+      `Cannot move "${resolved.name ?? nodeRef}" into its own descendant "${newParent.name ?? newParentRef}".`
+    );
+  }
+
+  // Find current parent
+  const currentParentInfo = findParent(component.tplTree, resolved.node);
+  if (!currentParentInfo) {
+    throw new Error(
+      `Could not find current parent of node "${nodeRef}".`
+    );
+  }
+
+  const tracker = getChangeTracker();
+
+  const changes = tracker.withRecording(() => {
+    // Remove from current parent
+    currentParentInfo.parent.children.splice(
+      currentParentInfo.childIndex,
+      1
+    );
+    // Insert into new parent
+    insertChild(newParent.node, resolved.node, position);
+  });
+
+  const componentIid = getComponentIid(component);
+  const saveManager = new SaveManager(apiClient);
+  const save = await saveManager.saveChanges(
+    changes,
+    componentIid ? [componentIid] : []
+  );
+
+  return {
+    save,
+    movedName: resolved.name,
+    movedUuid: resolved.uuid,
+    newParentName: newParent.name,
+    newParentUuid: newParent.uuid,
+    position: position ?? "last",
+  };
+}

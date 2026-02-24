@@ -3,7 +3,7 @@
 ## Status Summary
 
 - **Milestone 1 (Read-Only + Basic Write): COMPLETE** — 7 MCP tools, 4 skills, esbuild bundling, CI pipeline
-- **Milestone 2 (Incremental Writes + Edit Skills): P0 COMPLETE, P1 NEXT** — P0 foundation (6 items) done with 121 tests; P1 edit tools next
+- **Milestone 2 (Incremental Writes + Edit Skills): P0+P1 COMPLETE, P2 NEXT** — P0 foundation + P1 edit tools done with 148 tests; P2 workflow tools next
 
 ## Milestone 1 — Completed Items
 
@@ -57,13 +57,12 @@ All upstream modules exist at `platform/wab/src/wab/shared/`, have zero runtime 
 - [x] **Test mocks for M2 upstream modules** — Added mocks for `observable-model`, `InstUtil`, `tpls`, `RuleSetHelpers`, `undo-util`, `TplMgr`. Updated `wab-bundler` mock with `fastBundle` and `addrOf`. Updated `jest.config.cjs` with 6 new module mappings.
 - [x] **Unit tests for P0 modules** — 40 new tests across 3 new test files (node-resolver: 15, change-tracker: 9, save-manager: 12) + updates to session and model-loader tests. Total: 121 tests across 10 files.
 
-### P1: Core Edit Tools (build on P0 foundation) — NEXT
+### P1: Core Edit Tools — COMPLETE
 
-- [ ] **Implement `update-text` tool** — Find TplTag via node-resolver, update base variant's RawText, record change, trigger save. Register in `server.ts`. Params: `componentUuid`, `nodeRef`, `text`. Spec: `specs/plasmic-incremental-writes.md` § update-text
-- [ ] **Implement `update-styles` tool** — Find TplTag, update `vsettings[0].rs.values` entries via RuleSetHelpers, record change, trigger save. Params: `componentUuid`, `nodeRef`, `styles` (camelCase CSS object). Spec: `specs/plasmic-incremental-writes.md` § update-styles
-- [ ] **Implement `add-child` tool** — Convert PlasmicElement JSON to TplTag via `mkTplTagX()` + `TplMgr.ensureBaseVariantSetting()`, insert into parent's children at position, trigger save. Params: `componentUuid`, `parentRef`, `child` (PlasmicElement), `position`. Spec: `specs/plasmic-incremental-writes.md` § add-child
-- [ ] **Implement `remove-child` tool** — Find TplTag, remove from parent's children, record IID for `toDeleteIids`, trigger save. Prevent removal of component root node. Params: `componentUuid`, `nodeRef`. Spec: `specs/plasmic-incremental-writes.md` § remove-child
-- [ ] **Implement `move-child` tool** — Remove from current parent, insert into new parent at position. Detect and prevent cycles (moving parent into its own descendant). Params: `componentUuid`, `nodeRef`, `newParentRef`, `position`. Spec: `specs/plasmic-incremental-writes.md` § move-child
+- [x] **Implement `edit-tools.ts`** — New module with 5 edit operations: `updateText`, `updateStyles`, `addChild`, `removeChild`, `moveChild`. Each resolves nodes via node-resolver, wraps mutations in ChangeRecorder, and saves via SaveManager. Created `plasmicElementToTpl()` helper that converts PlasmicElement JSON to TplTag nodes using `mkTplTagX()` + `TplMgr.ensureBaseVariantSetting()` + `RSH.merge()`. Uses `CLASSES["RawText"]` and `CLASSES["CustomCode"]` for model instance creation.
+- [x] **Register 5 edit tools in `server.ts`** — `update-text`, `update-styles`, `add-child`, `remove-child`, `move-child`. Each with Zod input validation, error handling, and structured JSON responses including revision numbers.
+- [x] **Update `wab-classes-metas` mock** — Added `CLASSES["RawText"]` and `CLASSES["CustomCode"]` constructors that create objects with `_type` discriminators, enabling edit tool tests without real MobX model classes.
+- [x] **Unit tests for edit tools** — 27 tests in `edit-tools.test.ts` covering: text update (existing RawText, new RawText, container rejection, non-TplTag rejection, component not found, node not found, UUID resolution), style update (merge, non-TplTag rejection, modifiedComponentIids), add-child (last/first/numeric position, text node rejection, mkTplTagX tag mapping), remove-child (basic, correct child selection, root prevention, deeply nested), move-child (basic, first position, cycle detection, root prevention, non-TplTag parent, numeric position), save integration (saveRevision called, revision incremented). Total: 148 tests across 11 files.
 
 ### P2: Workflow Tools (enhance editing UX)
 
@@ -79,7 +78,7 @@ All upstream modules exist at `platform/wab/src/wab/shared/`, have zero runtime 
 
 ### P4: Remaining Tests
 
-- [ ] **Unit tests for edit tools** — update-text, update-styles, add-child, remove-child, move-child: happy path + error cases (wrong node type, missing node, cycle detection, root removal)
+- [x] **Unit tests for edit tools** — 27 tests covering all 5 tools (done with P1)
 - [ ] **Unit tests for `undo-manager.ts`** — Push/pop operations; undoChanges invocation; empty stack error
 - [ ] **Unit tests for batch tools** — begin/end batch; accumulated save; error on orphaned end-batch
 

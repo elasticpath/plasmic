@@ -23,6 +23,13 @@ import { loadProject } from "./model-loader.js";
 import { readComponentTree } from "./tree-reader.js";
 import { readTokens } from "./token-reader.js";
 import { initChangeTracker, disposeChangeTracker } from "./change-tracker.js";
+import {
+  updateText,
+  updateStyles,
+  addChild,
+  removeChild,
+  moveChild,
+} from "./edit-tools.js";
 
 export function createServer(): McpServer {
   const server = new McpServer({
@@ -418,6 +425,287 @@ export function createServer(): McpServer {
             {
               type: "text" as const,
               text: `Error creating page: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // --- update-text ---
+  // Updates text content on a TplTag node's base variant.
+  // Uses node-resolver to find the target, ChangeRecorder for mutation tracking,
+  // and SaveManager for incremental save.
+  server.tool(
+    "update-text",
+    "Update the text content of an element in a component. Finds the node by UUID, name, path, or index.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component containing the node"),
+      nodeRef: z
+        .string()
+        .describe(
+          'Node reference: UUID, name (e.g., "Hero Title"), path (e.g., "HeroSection.Title"), or index (e.g., "#2")'
+        ),
+      text: z.string().describe("The new text content"),
+    },
+    async ({ componentUuid, nodeRef, text }) => {
+      try {
+        const result = await updateText(apiClient, componentUuid, nodeRef, text);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  node: result.nodeName ?? result.nodeUuid,
+                  previousText: result.previousText,
+                  newText: result.newText,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error updating text: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // --- update-styles ---
+  // Updates CSS styles on a TplTag node's base variant via RuleSetHelpers.
+  server.tool(
+    "update-styles",
+    "Update CSS styles on an element in a component. Uses camelCase property names (e.g., fontSize, backgroundColor).",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component containing the node"),
+      nodeRef: z
+        .string()
+        .describe(
+          'Node reference: UUID, name, path, or index'
+        ),
+      styles: z
+        .record(z.string())
+        .describe(
+          'CSS properties in camelCase format (e.g., {"fontSize": "24px", "backgroundColor": "#ff0000"})'
+        ),
+    },
+    async ({ componentUuid, nodeRef, styles }) => {
+      try {
+        const result = await updateStyles(
+          apiClient,
+          componentUuid,
+          nodeRef,
+          styles
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  node: result.nodeName ?? result.nodeUuid,
+                  updatedProperties: result.updatedProperties,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error updating styles: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // --- add-child ---
+  // Converts PlasmicElement JSON to TplTag nodes and inserts into parent.
+  server.tool(
+    "add-child",
+    "Add a new child element to a container node. Accepts PlasmicElement JSON (vbox, text, img, button types).",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component containing the parent node"),
+      parentRef: z
+        .string()
+        .describe("Reference to the parent node (UUID, name, path, or index)"),
+      child: z.any().describe("PlasmicElement JSON defining the new child"),
+      position: z
+        .union([z.string(), z.number()])
+        .optional()
+        .describe(
+          'Where to insert: "first", "last" (default), or a numeric index'
+        ),
+    },
+    async ({ componentUuid, parentRef, child, position }) => {
+      try {
+        const result = await addChild(
+          apiClient,
+          componentUuid,
+          parentRef,
+          child,
+          position
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  parent: result.parentName ?? result.parentUuid,
+                  position: result.position,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error adding child: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // --- remove-child ---
+  // Removes a node from its parent's children array.
+  server.tool(
+    "remove-child",
+    "Remove an element from a component. Cannot remove the component's root node.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component containing the node"),
+      nodeRef: z
+        .string()
+        .describe("Reference to the node to remove (UUID, name, path, or index)"),
+    },
+    async ({ componentUuid, nodeRef }) => {
+      try {
+        const result = await removeChild(apiClient, componentUuid, nodeRef);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  removed: result.removedName ?? result.removedUuid,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error removing child: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // --- move-child ---
+  // Moves a node from its current parent to a new parent.
+  server.tool(
+    "move-child",
+    "Move an element to a new parent within the same component. Detects and prevents cycles.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component containing the nodes"),
+      nodeRef: z
+        .string()
+        .describe("Reference to the node to move (UUID, name, path, or index)"),
+      newParentRef: z
+        .string()
+        .describe("Reference to the new parent node"),
+      position: z
+        .union([z.string(), z.number()])
+        .optional()
+        .describe(
+          'Where to insert: "first", "last" (default), or a numeric index'
+        ),
+    },
+    async ({ componentUuid, nodeRef, newParentRef, position }) => {
+      try {
+        const result = await moveChild(
+          apiClient,
+          componentUuid,
+          nodeRef,
+          newParentRef,
+          position
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  moved: result.movedName ?? result.movedUuid,
+                  newParent: result.newParentName ?? result.newParentUuid,
+                  position: result.position,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error moving child: ${err.message}`,
             },
           ],
           isError: true,
