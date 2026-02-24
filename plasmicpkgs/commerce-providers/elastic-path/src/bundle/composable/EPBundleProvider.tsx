@@ -7,6 +7,7 @@ import registerComponent, {
   ComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useMemo } from "react";
+import { DEFAULT_DEBOUNCE_MS } from "../../const";
 import { Registerable } from "../../registerable";
 import { useBundleConfiguration } from "../use-bundle-configuration";
 import { useBundleOptionProducts } from "../use-bundle-option-products";
@@ -92,7 +93,7 @@ export const epBundleProviderMeta: ComponentMeta<EPBundleProviderProps> = {
     debounceMs: {
       type: "number",
       description: "Debounce time for API calls in milliseconds",
-      defaultValue: 500,
+      defaultValue: DEFAULT_DEBOUNCE_MS,
       advanced: true,
     },
     previewState: {
@@ -116,7 +117,7 @@ export function EPBundleProvider(props: EPBundleProviderProps) {
     className,
     defaultConfiguration,
     updateUrlOnChange,
-    debounceMs = 500,
+    debounceMs = DEFAULT_DEBOUNCE_MS,
     previewState = "auto",
     loadingContent,
     errorContent,

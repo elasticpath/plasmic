@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
+import { formatCurrencyFromCents } from '../../utils/formatCurrency';
 import { useStripePayment } from '../hooks/use-stripe-payment';
 import { useCheckout } from '../hooks/use-checkout';
 import type { ElasticPathOrder } from '../types';
@@ -131,23 +132,23 @@ function PaymentFormInternal({
             <h4>Order Summary</h4>
             <div className="ep-summary-line">
               <span>Subtotal:</span>
-              <span>{formatCurrency(order.subtotal.amount, order.subtotal.currency)}</span>
+              <span>{formatCurrencyFromCents(order.subtotal.amount, order.subtotal.currency)}</span>
             </div>
             {order.tax.amount > 0 && (
               <div className="ep-summary-line">
                 <span>Tax:</span>
-                <span>{formatCurrency(order.tax.amount, order.tax.currency)}</span>
+                <span>{formatCurrencyFromCents(order.tax.amount, order.tax.currency)}</span>
               </div>
             )}
             {order.shipping && (
               <div className="ep-summary-line">
                 <span>Shipping:</span>
-                <span>{formatCurrency(order.shipping.amount, order.shipping.currency)}</span>
+                <span>{formatCurrencyFromCents(order.shipping.amount, order.shipping.currency)}</span>
               </div>
             )}
             <div className="ep-summary-line ep-total">
               <span>Total:</span>
-              <span>{formatCurrency(order.total.amount, order.total.currency)}</span>
+              <span>{formatCurrencyFromCents(order.total.amount, order.total.currency)}</span>
             </div>
           </div>
 
@@ -159,7 +160,7 @@ function PaymentFormInternal({
             >
               {isProcessing 
                 ? 'Processing...' 
-                : `Pay ${formatCurrency(order.total.amount, order.total.currency)}`
+                : `Pay ${formatCurrencyFromCents(order.total.amount, order.total.currency)}`
               }
             </button>
           </div>
@@ -288,17 +289,6 @@ export function EPPaymentForm({
       />
     </Elements>
   );
-}
-
-function formatCurrency(amount: number, currency: string): string {
-  try {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency.toUpperCase()
-    }).format(amount / 100);
-  } catch {
-    return `${currency.toUpperCase()} ${(amount / 100).toFixed(2)}`;
-  }
 }
 
 export default EPPaymentForm;

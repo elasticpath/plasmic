@@ -8,7 +8,9 @@ import registerComponent, {
   ComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useMemo } from "react";
+import { DEFAULT_CURRENCY_CODE, DEFAULT_LOW_STOCK_THRESHOLD } from "../const";
 import { Registerable } from "../registerable";
+import { formatCurrency } from "../utils/formatCurrency";
 import { createLogger } from "../utils/logger";
 import { useLocations } from "../inventory/use-locations";
 import { useStock } from "../inventory/use-stock";
@@ -84,17 +86,6 @@ export const epCartItemListMeta: ComponentMeta<EPCartItemListProps> = {
   providesData: true,
 };
 
-function formatCurrency(amount: number, currencyCode: string): string {
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: currencyCode,
-    }).format(amount);
-  } catch {
-    return `$${amount.toFixed(2)}`;
-  }
-}
-
 interface EnrichedCartItem {
   id: string;
   variantId: string;
@@ -143,7 +134,7 @@ function enrichLineItem(
       stockAvailable = productStockByLocation[locationSlug];
       if (stockAvailable <= 0) {
         stockStatus = "out-of-stock";
-      } else if (stockAvailable <= 5) {
+      } else if (stockAvailable <= DEFAULT_LOW_STOCK_THRESHOLD) {
         stockStatus = "low";
       } else {
         stockStatus = "in-stock";
@@ -251,7 +242,7 @@ export function EPCartItemList(props: EPCartItemListProps) {
       return MOCK_CART_LINE_ITEMS as EnrichedCartItem[];
     }
     if (!cartData?.lineItems) return [];
-    const currencyCode = cartData.currencyCode ?? "USD";
+    const currencyCode = cartData.currencyCode ?? DEFAULT_CURRENCY_CODE;
     return cartData.lineItems.map((item) =>
       enrichLineItem(item, currencyCode, locationMap, stockMap)
     );

@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useMutablePlasmicQueryData } from "@plasmicapp/query";
 import { listLocations } from "@epcc-sdk/sdks-shopper";
+import { SWR_DEDUPING_INTERVAL_LONG } from "../const";
 import { useCommerce } from "../elastic-path";
 import type { Location, UseLocationsOptions } from "./types";
 import { createLogger } from "../utils/logger";
@@ -32,7 +33,7 @@ export function useLocations({
     },
     {
       revalidateOnFocus: false,
-      dedupingInterval: 5 * 60 * 1000, // 5 minutes
+      dedupingInterval: SWR_DEDUPING_INTERVAL_LONG,
       onError: (err: Error) => {
         log.error("Error fetching locations", {
           error: err.message,

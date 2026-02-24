@@ -4,6 +4,7 @@ import registerComponent, {
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Product } from "@plasmicpkgs/commerce";
+import { DEFAULT_LOW_STOCK_THRESHOLD } from "./const";
 import { MultiLocationStock } from "./inventory/components/MultiLocationStock";
 import { Registerable } from "./registerable";
 import type { MultiLocationStockProps } from "./inventory/types";
@@ -39,7 +40,7 @@ export const epMultiLocationStockMeta: ComponentMeta<EPMultiLocationStockProps> 
       type: "number",
       displayName: "Low Stock Threshold",
       description: "Stock level below which items are considered low stock",
-      defaultValue: 5,
+      defaultValue: DEFAULT_LOW_STOCK_THRESHOLD,
     },
   },
   importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",

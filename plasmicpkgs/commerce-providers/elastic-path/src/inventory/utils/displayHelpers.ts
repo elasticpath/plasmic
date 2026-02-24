@@ -1,3 +1,4 @@
+import { DEFAULT_LOW_STOCK_THRESHOLD, DEFAULT_MEDIUM_STOCK_THRESHOLD } from "../../const";
 import type { Location } from "../types";
 
 /**
@@ -68,8 +69,8 @@ export function formatStockMessage(
  */
 export function getStockIndicatorStyle(
   stock: number,
-  lowThreshold: number = 5,
-  mediumThreshold: number = 20
+  lowThreshold: number = DEFAULT_LOW_STOCK_THRESHOLD,
+  mediumThreshold: number = DEFAULT_MEDIUM_STOCK_THRESHOLD
 ): StockIndicatorStyle {
   if (stock <= 0) {
     return {
@@ -111,7 +112,7 @@ export function getStockIndicatorStyle(
 export function formatStockQuantity(stock: number, showExact: boolean = true): string {
   if (!showExact) {
     if (stock <= 0) return 'Out of Stock';
-    if (stock <= 5) return 'Low Stock';
+    if (stock <= DEFAULT_LOW_STOCK_THRESHOLD) return 'Low Stock';
     return 'In Stock';
   }
 

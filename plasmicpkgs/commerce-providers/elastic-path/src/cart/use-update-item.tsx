@@ -8,6 +8,7 @@ import {
 import debounce from "debounce";
 import { useCallback } from "react";
 import type { CartItemBody, LineItem, UpdateItemHook } from "../types/cart";
+import { DEFAULT_DEBOUNCE_MS } from "../const";
 import { getCartId, normalizeCart, removeCartCookie } from "../utils";
 import useCart from "./use-cart";
 import { handler as removeItemHandler } from "./use-remove-item";
@@ -132,7 +133,7 @@ export const handler: MutationHook<UpdateItemHook> = {
           });
           await mutate(data, false);
           return data;
-        }, ctx.wait ?? 500),
+        }, ctx.wait ?? DEFAULT_DEBOUNCE_MS),
         [fetch, mutate]
       );
     },

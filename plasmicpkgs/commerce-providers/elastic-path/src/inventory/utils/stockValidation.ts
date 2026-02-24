@@ -1,3 +1,4 @@
+import { DEFAULT_LOW_STOCK_THRESHOLD } from "../../const";
 import type { ProductStock } from "../types";
 import { getAvailableStockForLocation, isOutOfStock, isLowStock } from "./stockCalculations";
 
@@ -81,7 +82,7 @@ export function validateStockAvailability(
  */
 export function getStockStatusInfo(
   availableStock: number,
-  lowStockThreshold: number = 5
+  lowStockThreshold: number = DEFAULT_LOW_STOCK_THRESHOLD
 ): StockStatusInfo {
   if (isOutOfStock(availableStock)) {
     return {

@@ -3,6 +3,7 @@ import registerComponent, {
   ComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
+import { DEFAULT_DEBOUNCE_MS } from "./const";
 import { Registerable } from "./registerable";
 import { useBundleConfiguration } from "./bundle/use-bundle-configuration";
 import { useBundleOptionProducts } from "./bundle/use-bundle-option-products";
@@ -58,7 +59,7 @@ export const epBundleConfiguratorMeta: ComponentMeta<EPBundleConfiguratorProps> 
     debounceMs: {
       type: "number",
       description: "Debounce time for API calls in milliseconds",
-      defaultValue: 500,
+      defaultValue: DEFAULT_DEBOUNCE_MS,
     },
   },
   importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
@@ -72,7 +73,7 @@ export function EPBundleConfigurator(props: EPBundleConfiguratorProps) {
     updateUrlOnChange,
     showPrice,
     showValidationErrors,
-    debounceMs = 500,
+    debounceMs = DEFAULT_DEBOUNCE_MS,
   } = props;
 
   // Access product from Plasmic's data context

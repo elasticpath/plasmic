@@ -89,14 +89,10 @@ export function safeJsonParse<T>(json: string): T | null {
 }
 
 /**
- * Formats currency amount for display
+ * Formats currency amount (in cents) for display.
+ * Re-exported from the shared utility for backwards compatibility.
  */
-export function formatCurrency(amount: number, currency: string): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: currency.toUpperCase()
-  }).format(amount / 100); // Assuming amounts are in cents
-}
+export { formatCurrencyFromCents as formatCurrency } from "../../utils/formatCurrency";
 
 /**
  * Converts currency amount to cents

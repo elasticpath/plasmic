@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useFormContext } from "react-hook-form";
+import { DEFAULT_LOW_STOCK_THRESHOLD } from "../../const";
 import { useProductStock } from "../use-stock";
 import { useLocations } from "../use-locations";
 import { StockIndicator } from "./StockIndicator";
@@ -20,7 +21,7 @@ export function MultiLocationStock({
   showLocationSelector = true,
   maxLocationsDisplay = 5,
   showStockNumbers = true,
-  lowStockThreshold = 5,
+  lowStockThreshold = DEFAULT_LOW_STOCK_THRESHOLD,
 }: MultiLocationStockProps) {
   const [selectedLocationId, setSelectedLocationId] = useState<string>("");
   const form = useFormContext();

@@ -1,9 +1,10 @@
 import React from "react";
+import { DEFAULT_LOW_STOCK_THRESHOLD, DEFAULT_MEDIUM_STOCK_THRESHOLD } from "../../const";
 import type { StockIndicatorProps } from "../types";
 
 export function StockIndicator({
   stock,
-  threshold = { low: 5, medium: 20 },
+  threshold = { low: DEFAULT_LOW_STOCK_THRESHOLD, medium: DEFAULT_MEDIUM_STOCK_THRESHOLD },
   showExact = true,
 }: StockIndicatorProps) {
   const getStockLevel = () => {

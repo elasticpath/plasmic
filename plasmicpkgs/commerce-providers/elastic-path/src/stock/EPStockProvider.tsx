@@ -10,6 +10,7 @@ import registerComponent, {
 import type { Product } from "@plasmicpkgs/commerce";
 import React, { useEffect, useMemo } from "react";
 import { useFormContext } from "react-hook-form";
+import { DEFAULT_LOW_STOCK_THRESHOLD } from "../const";
 import { Registerable } from "../registerable";
 import { useProductStock } from "../inventory/use-stock";
 import { useLocations } from "../inventory/use-locations";
@@ -94,7 +95,7 @@ export const epStockProviderMeta: ComponentMeta<EPStockProviderProps> = {
     },
     lowStockThreshold: {
       type: "number",
-      defaultValue: 5,
+      defaultValue: DEFAULT_LOW_STOCK_THRESHOLD,
       displayName: "Low Stock Threshold",
       description: "Stock level below which items show as low stock",
     },
@@ -154,7 +155,7 @@ export function EPStockProvider(props: EPStockProviderProps) {
     children,
     header,
     className,
-    lowStockThreshold = 5,
+    lowStockThreshold = DEFAULT_LOW_STOCK_THRESHOLD,
     maxLocations = 10,
     loadingContent,
     errorContent,

@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useMutablePlasmicQueryData } from "@plasmicapp/query";
 import { getByContextAllProducts, getByContextChildProducts } from "@epcc-sdk/sdks-shopper";
 import type { ProductAttributes, Variation, VariationOption } from "@epcc-sdk/sdks-shopper";
+import { SWR_DEDUPING_INTERVAL_SHORT } from "../const";
 import { useCommerce } from "../elastic-path";
 import { ComponentProduct } from "./types";
 import { handleAPIError } from "../utils/errorHandling";
@@ -202,7 +203,7 @@ export function useParentProducts({
     },
     {
       revalidateOnFocus: false,
-      dedupingInterval: 60 * 1000, // 1 minute
+      dedupingInterval: SWR_DEDUPING_INTERVAL_SHORT,
       onError: (err: Error) => {
         log.error("Error fetching parent products", {
           error: err.message,

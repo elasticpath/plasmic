@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useMutablePlasmicQueryData } from "@plasmicapp/query";
 import { getStock } from "@epcc-sdk/sdks-shopper";
+import { SWR_DEDUPING_INTERVAL_SHORT } from "../const";
 import { useCommerce } from "../elastic-path";
 import type { ProductStock, UseStockOptions } from "./types";
 import { createProductStock } from "./utils/stockCalculations";
@@ -81,7 +82,7 @@ export function useStock({
     },
     {
       revalidateOnFocus: false,
-      dedupingInterval: 60 * 1000, // 1 minute
+      dedupingInterval: SWR_DEDUPING_INTERVAL_SHORT,
       onError: (err: Error) => {
         log.error("Error fetching stock", {
           error: err.message,

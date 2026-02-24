@@ -205,11 +205,15 @@ These are lower priority but improve maintainability and align with established 
   - `EPCartItemList.tsx` (2 casts): Replaced `(item as any).locationSlug` and `(ls.location as any).slug`
   - `MultiLocationStock.tsx` (2 casts): Replaced `(location?.attributes as any)?.slug`
 
-- [ ] **Centralize hardcoded configuration values**
-  - Debounce timeout: `500` ms in cart update, bundle orchestration
-  - Stock thresholds: `5` (low) in `EPCartItemList.tsx` — should match configurable `lowStockThreshold`
-  - SWR deduping intervals: 60s (stock), 300s (locations) — document/centralize
-  - Currency fallback: `$${amount.toFixed(2)}` hardcoded in cart drawer — should use locale
+- [x] **Centralize hardcoded configuration values** — Done. All magic numbers replaced with named constants from `const.ts`. Duplicate `formatCurrency` functions (5 copies) consolidated into shared `utils/formatCurrency.ts`. Changes across 20 files:
+  - **`const.ts`**: Added `DEFAULT_DEBOUNCE_MS` (500), `FOCUS_TRAP_DELAY_MS` (50), `DEFAULT_LOW_STOCK_THRESHOLD` (5), `DEFAULT_MEDIUM_STOCK_THRESHOLD` (20), `SWR_DEDUPING_INTERVAL_SHORT` (60s), `SWR_DEDUPING_INTERVAL_LONG` (5min), `DEFAULT_CURRENCY_CODE` ("USD")
+  - **`utils/formatCurrency.ts`**: Created shared utility with two entry points — `formatCurrency(amount, currencyCode)` for display-unit amounts (browser locale) and `formatCurrencyFromCents(amountInCents, currencyCode)` for cent-based amounts (en-US locale). 13 tests in `utils/__tests__/formatCurrency.test.ts`.
+  - **Debounce** (4 files): `cart/use-update-item.tsx`, `bundle/hooks/useBundleConfigurationOrchestration.tsx`, `registerEPBundleConfigurator.tsx`, `bundle/composable/EPBundleProvider.tsx` — all use `DEFAULT_DEBOUNCE_MS`
+  - **Stock thresholds** (7 files): `cart-drawer/EPCartItemList.tsx`, `inventory/utils/stockValidation.ts`, `inventory/utils/displayHelpers.ts`, `inventory/components/StockIndicator.tsx`, `inventory/components/MultiLocationStock.tsx`, `stock/EPStockProvider.tsx`, `registerEPMultiLocationStock.tsx` — all use `DEFAULT_LOW_STOCK_THRESHOLD` / `DEFAULT_MEDIUM_STOCK_THRESHOLD`
+  - **SWR intervals** (4 files): `inventory/use-stock.tsx`, `inventory/use-locations.tsx`, `bundle/use-bundle-option-products.tsx`, `bundle/use-parent-products.tsx` — use `SWR_DEDUPING_INTERVAL_SHORT` / `SWR_DEDUPING_INTERVAL_LONG`
+  - **Currency formatting** (5 files): `cart-drawer/EPCartDrawer.tsx`, `cart-drawer/EPCartItemList.tsx` — import shared `formatCurrency`; `api/endpoints/order/get-order.ts`, `checkout/components/EPOrderSummary.tsx`, `checkout/components/EPPaymentForm.tsx` — import shared `formatCurrencyFromCents`; `api/utils/api-helpers.ts` — re-exports `formatCurrencyFromCents` as `formatCurrency` for backwards compatibility
+  - **Currency default** (2 files): `cart-drawer/EPCartDrawer.tsx`, `cart-drawer/EPCartItemList.tsx` — use `DEFAULT_CURRENCY_CODE` instead of hardcoded `"USD"`
+  - **Focus trap** (1 file): `cart-drawer/EPCartDrawer.tsx` — uses `FOCUS_TRAP_DELAY_MS`
 
 ### P2d — Accessibility Gaps
 
@@ -224,7 +228,7 @@ These are lower priority but improve maintainability and align with established 
 
 ## P3 — Test Coverage
 
-### Current Coverage (34 test suites, 825 tests, all passing)
+### Current Coverage (35 test suites, 838 tests, all passing)
 
 - [x] `bundle/composable/__tests__/composable-bundle-components.test.tsx` (79 tests) — Field rendering, option triggers (click/keyboard/ARIA), quantity button bounds enforcement, quantity control DataProvider shape, component/option/variation list iteration, child variant metadata display, design-time mock data validation
 - [x] `bundle/hooks/__tests__/useBundleConfigurationOrchestration.test.tsx` (14 tests)
@@ -254,6 +258,7 @@ These are lower priority but improve maintainability and align with established 
 - [x] `utils/__tests__/logger.test.ts` (35 tests) — Default silent behavior, "*" wildcard, level-only config, "level:modules" format, module filtering, console method mapping, data parameter passthrough, tag format, resetLogConfig cache clearing, SSR fallback, localStorage errors
 - [x] `utils/__tests__/cookies.test.ts` (10 tests) — getCookies JSON parsing, undefined for missing cookies, setCookies with options (expires, sameSite, secure), removeCookies delegation
 - [x] `utils/__tests__/cart-cookie.test.ts` (8 tests) — getCartId/setCartId/removeCartCookie delegation to cookies module with correct ELASTICPATH_CART_COOKIE constant
+- [x] `utils/__tests__/formatCurrency.test.ts` (13 tests) — formatCurrency (6): USD/GBP/zero/default/invalid fallback/negative; formatCurrencyFromCents (7): division by 100, zero cents, sub-dollar, uppercase, default, invalid fallback, en-US comma grouping
 - [x] `api/endpoints/checkout/__tests__/calculate-shipping.test.ts` (32 tests) — Environment validation, HTTP method validation, request body/address validation, successful rate calculation, EP response field mapping with defaults, EP API error handling, shipping address passthrough
 - [x] `api/endpoints/checkout/__tests__/create-order.test.ts` (34 tests) — Method/body validation, checkout form validation, data sanitization, successful order creation with 201, EP order transformation (total/subtotal/tax/shipping/customer/relationships), status mapping (6 known + unknown fallback), EP error handling
 - [x] `api/endpoints/checkout/__tests__/setup-payment.test.ts` (25 tests) — Method/body/amount validation, gateway validation, minimum amount ($0.50), Stripe PaymentIntent creation, EP paymentSetup call, success response with clientSecret/transactionId, EP failure rollback (cancels Stripe intent), missing client_secret handling
@@ -272,7 +277,7 @@ These are lower priority but improve maintainability and align with established 
 - [x] **Tests for checkout API endpoints** — `calculate-shipping` (32 tests), `create-order` (34 tests), `setup-payment` (25 tests), `confirm-payment` (36 tests). Covers all 4 handlers end-to-end: validation, SDK calls, Stripe integration, error handling, response transformation.
 - [x] **Tests for cart drawer components** — 110 tests across 10 components: CartDrawerContext (8), EPCartDrawer (18), EPCartDrawerTrigger (10), EPCartField (9), EPCartItemField (13), EPCartItemImage (7), EPCartItemList (9), EPCartItemQuantityControl (10), EPCartItemQuantityButton (12), EPCartItemRemoveButton (9). Covers singleton state management, portal rendering, optimistic quantity updates, error recovery, ARIA accessibility, keyboard navigation, focus trap, body scroll lock, previewState design-time variants, and location/stock data enrichment.
 - [x] **Tests for inventory components** — `LocationSelector` (8 tests), `MultiLocationStock` (11 tests), `StockIndicator` (14 tests). Covers rendering states, ARIA roles, hook mocking, user interaction.
-- [x] **Tests for utils** — `errorHandling.ts` (51 tests), `logger.ts` (35 tests), `cookies.ts` (10 tests), `cart-cookie.ts` (8 tests). Covers all exported functions, config parsing, localStorage mocking, SSR fallback, cache lifecycle, cookie options passthrough.
+- [x] **Tests for utils** — `errorHandling.ts` (51 tests), `logger.ts` (35 tests), `cookies.ts` (10 tests), `cart-cookie.ts` (8 tests), `formatCurrency.ts` (13 tests). Covers all exported functions, config parsing, localStorage mocking, SSR fallback, cache lifecycle, cookie options passthrough, currency formatting with display-unit and cent-based entry points.
 
 ---
 

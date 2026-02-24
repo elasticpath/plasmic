@@ -8,7 +8,9 @@ import registerComponent, {
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import ReactDOM from "react-dom";
 import useCart from "../cart/use-cart";
+import { DEFAULT_CURRENCY_CODE, FOCUS_TRAP_DELAY_MS } from "../const";
 import { Registerable } from "../registerable";
+import { formatCurrency } from "../utils/formatCurrency";
 import { createLogger } from "../utils/logger";
 import { MOCK_CART_DATA } from "../utils/design-time-data";
 import { useDrawerOpen, setDrawerOpen } from "./CartDrawerContext";
@@ -138,17 +140,6 @@ export const epCartDrawerMeta: ComponentMeta<EPCartDrawerProps> = {
   },
 };
 
-function formatCurrency(amount: number, currencyCode: string): string {
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: currencyCode,
-    }).format(amount);
-  } catch {
-    return `$${amount.toFixed(2)}`;
-  }
-}
-
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -243,7 +234,7 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
     // Focus the drawer itself on open
     const timer = setTimeout(() => {
       drawerRef.current?.focus();
-    }, 50);
+    }, FOCUS_TRAP_DELAY_MS);
 
     const handleTab = (e: KeyboardEvent) => {
       if (e.key !== "Tab" || !drawerRef.current) return;
@@ -283,7 +274,7 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
   // Build enriched cart data for DataProvider
   const cartData = useMemo(() => {
     if (!cart) return null;
-    const currencyCode = cart.currency?.code ?? "USD";
+    const currencyCode = cart.currency?.code ?? DEFAULT_CURRENCY_CODE;
     return {
       id: cart.id,
       lineItems: cart.lineItems,

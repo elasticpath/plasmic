@@ -6,6 +6,7 @@ import {
   areSelectionsEqual,
 } from "../utils/bundleSelectionUtils";
 import { shouldTriggerConfiguration } from "../utils/configurationComparison";
+import { DEFAULT_DEBOUNCE_MS } from "../../const";
 import { handleAPIError } from "../../utils/errorHandling";
 import { createLogger } from "../../utils/logger";
 
@@ -46,7 +47,7 @@ export function useBundleConfigurationOrchestration({
   isValid,
   bundleProduct,
   configureBundleSelection,
-  debounceMs = 500,
+  debounceMs = DEFAULT_DEBOUNCE_MS,
 }: UseBundleConfigurationOrchestrationProps): UseBundleConfigurationOrchestrationReturn {
   const [isConfiguring, setIsConfiguring] = useState(false);
   const [error, setError] = useState<Error | null>(null);

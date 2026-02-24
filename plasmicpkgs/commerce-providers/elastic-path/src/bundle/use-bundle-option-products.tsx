@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useMutablePlasmicQueryData } from "@plasmicapp/query";
 import { getByContextAllProducts } from "@epcc-sdk/sdks-shopper";
+import { SWR_DEDUPING_INTERVAL_SHORT } from "../const";
 import { useCommerce } from "../elastic-path";
 import { ComponentProduct } from "./types";
 import { handleAPIError } from "../utils/errorHandling";
@@ -122,7 +123,7 @@ export function useBundleOptionProducts({
     },
     {
       revalidateOnFocus: false,
-      dedupingInterval: 60 * 1000, // 1 minute
+      dedupingInterval: SWR_DEDUPING_INTERVAL_SHORT,
       onError: (err: Error) => {
         log.error("Error fetching bundle option products", {
           error: err.message,

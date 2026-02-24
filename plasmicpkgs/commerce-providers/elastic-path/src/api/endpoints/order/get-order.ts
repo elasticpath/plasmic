@@ -1,13 +1,14 @@
 import { getAnOrder } from "@epcc-sdk/sdks-shopper";
 import type { GetOrderAPI } from "../../schemas/order";
 import type { ElasticPathOrder } from "../../../checkout/types";
+import { formatCurrencyFromCents } from "../../../utils/formatCurrency";
 import { createLogger } from "../../../utils/logger";
 
 const log = createLogger("getOrder");
-import { 
-  createSuccessResponse, 
-  createErrorResponse, 
-  validateMethod 
+import {
+  createSuccessResponse,
+  createErrorResponse,
+  validateMethod
 } from "../../utils/api-helpers";
 import { 
   validateEnvironmentVariables 
@@ -296,25 +297,11 @@ function enrichOrderData(order: ElasticPathOrder): ElasticPathOrder {
           : 0,
         hasShipping: !!order.shipping_address,
         hasTax: order.tax.amount > 0,
-        formattedTotal: formatCurrency(order.total.amount, order.total.currency),
+        formattedTotal: formatCurrencyFromCents(order.total.amount, order.total.currency),
         orderAge: calculateOrderAge(order.meta?.timestamps?.created_at)
       }
     }
   };
-}
-
-/**
- * Formats currency for display
- */
-function formatCurrency(amount: number, currency: string): string {
-  try {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency.toUpperCase()
-    }).format(amount / 100);
-  } catch {
-    return `${currency.toUpperCase()} ${(amount / 100).toFixed(2)}`;
-  }
 }
 
 /**
