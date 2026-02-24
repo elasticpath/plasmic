@@ -11,9 +11,31 @@
 
 ### Core Concept: Headless Studio Client
 Unlike a thin REST API wrapper, this MCP server embeds the same editing engine that Plasmic Studio uses. It loads the project's Bundle into a live in-memory model (Site → Components → TplNodes) using the `FastBundler` from `platform/wab/src/wab/shared/bundler.ts`. This means:
-- **Reads are instant** — component trees, tokens, metadata all come from the in-memory model
-- **Tree structure is lossless** — reads via `tplToPlasmicElements()` convert real Tpl nodes, preserving awareness of variant settings
+- **Reads are instant and lossless** — component trees, tokens, metadata all come from the in-memory Tpl model, read directly from model objects (NOT via the degraded `tplToPlasmicElements()` function)
+- **Full fidelity** — the Tpl model contains everything: HTML tags, layout types (vbox/hbox/page-section), all CSS styles, images, variant settings, data bindings
 - **Writes (future)** — direct model mutations tracked by MobX, saved via incremental bundling
+
+### Data Flow: How the Model Gets Loaded
+The MCP server runs locally (Node.js on the developer's machine). It does NOT need database access. The data flow mirrors exactly what Plasmic Studio does in the browser:
+
+1. MCP server makes HTTP request to self-hosted Plasmic server: `GET /api/v1/projects/:projectId`
+2. Plasmic server (which has DB access) serializes the project into a Bundle JSON
+3. MCP server receives `response.rev.data` — a JSON string containing the full Bundle
+4. `FastBundler.unbundle(bundle)` reconstructs the live Tpl model in Node.js memory
+5. All read tools query the in-memory model directly — no further HTTP calls needed
+
+```
+Plasmic Server (self-hosted, has DB)     MCP Server (local Node.js, no DB)
+┌─────────────────────────────────┐     ┌──────────────────────────────────┐
+│ Database → Bundle serialization │ ──→ │ HTTP fetch → unbundle() → model  │
+│                                 │     │                                  │
+│ GET /api/v1/projects/:id        │     │ Live Tpl model in memory:        │
+│   → { rev: { data: Bundle } }  │     │   Site → Components → TplNodes   │
+└─────────────────────────────────┘     │   (same objects as in Studio)    │
+                                        └──────────────────────────────────┘
+```
+
+This is the same mechanism Studio uses — Studio is a browser app that fetches the bundle over HTTP and unbundles it client-side. Our MCP server does the same thing, just in Node.js.
 
 ### How it connects to Claude Code
 ```bash
@@ -86,7 +108,7 @@ When `set-project` is called:
 - [ ] Tool: `set-project` — fetch project bundle, unbundle into live model, store as session state
 - [ ] Tool: `list-projects` — list projects the user has access to (HTTP call)
 - [ ] Tool: `list-components` — list pages/components with metadata from in-memory model
-- [ ] Tool: `get-component-tree` — read a component's tree as PlasmicElement via `tplToPlasmicElements()`
+- [ ] Tool: `get-component-tree` — read a component's full tree directly from the in-memory Tpl model (tags, styles, layout types, children, images)
 - [ ] Tool: `get-project-meta` — read project metadata from in-memory model
 - [ ] Tool: `create-page` — create a page with PlasmicElement tree via REST API (`POST /api/v1/projects/:id` with `newComponents`)
 - [ ] All errors return clear, actionable messages
@@ -104,7 +126,7 @@ When `set-project` is called:
 5. Developer: "what pages exist?"
 6. Claude calls `list-components` → reads from in-memory model, returns page names/paths/UUIDs instantly
 7. Developer: "show me the structure of the homepage"
-8. Claude calls `get-component-tree` with homepage UUID → `tplToPlasmicElements()` converts Tpl to PlasmicElement JSON
+8. Claude calls `get-component-tree` with homepage UUID → reads directly from in-memory Tpl model, returns full tree with tags, styles, layout types, children
 9. Developer: "create a new product page at /products with a hero and grid"
 10. Claude builds PlasmicElement tree, calls `create-page` → `POST /api/v1/projects/:id` with `newComponents`
 11. API returns UUID of the new page
@@ -118,7 +140,7 @@ When `set-project` is called:
 | Tool called before `set-project` | "No active project. Use set-project first." |
 | Bundle too large for memory | Report size and suggest checking Node.js memory limits |
 | `get-component-tree` for unknown UUID | "Component UUID not found in project." |
-| `tplToPlasmicElements()` returns undefined | "Could not convert component tree. It may use unsupported element types." |
+| TplNode type not recognized by tree reader | Include raw type name in output with a note: "Unknown node type: TplSlot. Showing children only." |
 | Network timeout during bundle fetch | "Could not reach Plasmic API at {host}. Check your network." |
 | `create-page` path conflict | Surface API warning: "Path /products adjusted to /products-1." |
 | Model stale after external edit | Milestone 1: model is a snapshot from `set-project` time. Future: socket.io sync. |
@@ -165,16 +187,38 @@ GET /api/v1/projects/:projectId
                     └─ rs: RuleSet { values: Map<string, string> }
 ```
 
-### Reading Component Trees
+### Reading Component Trees (Direct Tpl Model Access)
+The `get-component-tree` tool reads directly from the in-memory Tpl model — it does NOT use the `tplToPlasmicElements()` function (which is a degraded SDUI MVP that drops styles, images, and layout types).
+
+Instead, the tree reader in `packages/plasmic-mcp/src/tree-reader.ts` walks the Tpl tree and extracts:
+
 ```
-tplToPlasmicElements(component.tplTree)
-  → PlasmicElement (recursive JSON structure)
-  → Same format used by the write API's PlasmicElement body
+component.tplTree (TplNode)
+  → TplTag:
+      .tag         → HTML tag ("div", "h1", "nav", "section", etc.)
+      .children    → child TplNodes (recursive)
+      .type        → "text" | "image" | "column" | "columns" | "other"
+      .vsettings[0].rs.values → CSS styles as Map<string, string>
+      .vsettings[0].text      → RichText content (for text nodes)
+      .vsettings[0].attrs     → HTML attributes
+  → TplComponent:
+      .component.name → referenced component name
+      .component.uuid → referenced component UUID
+  → TplSlot:
+      .param.variable.name → slot name
+      .defaultContents     → default child nodes
 ```
 
-Located at: `platform/wab/src/wab/shared/element-repr/gen-element-repr-v2.ts:51`
-- Takes a single `TplNode` — does NOT need the full Site model
-- Returns `PlasmicElement | undefined`
+The tree reader produces a JSON output that includes all the information Claude needs:
+- Element type and HTML tag
+- CSS styles (from the base variant's RuleSet)
+- Text content
+- Image sources
+- Layout type (derived from flex direction in styles)
+- Child hierarchy
+- Referenced component names
+
+This is new code in `packages/plasmic-mcp/` — it does not modify any upstream files.
 
 ### Writing Pages (Milestone 1 — REST API)
 Uses the existing `POST /api/v1/projects/:projectId` endpoint with `UpdateProjectReq`:
@@ -194,7 +238,7 @@ Uses the existing `POST /api/v1/projects/:projectId` endpoint with `UpdateProjec
 | set-project | GET | `/api/v1/projects/:projectId` | Bundle fetch |
 | list-projects | GET | `/api/v1/projects` | HTTP |
 | list-components | — | In-memory model | `site.components` |
-| get-component-tree | — | In-memory model | `tplToPlasmicElements()` |
+| get-component-tree | — | In-memory model | Direct Tpl traversal |
 | get-project-meta | — | In-memory model | `site` properties |
 | create-page | POST | `/api/v1/projects/:projectId` | REST API |
 
@@ -203,17 +247,13 @@ Uses the existing `POST /api/v1/projects/:projectId` endpoint with `UpdateProjec
 - `mobx` — Required by the model classes and bundler
 - Bundled from `platform/wab/src/wab/shared/`:
   - `bundler.ts` (FastBundler)
-  - `model/classes.ts` (Site, Component, TplTag, TplNode, etc.)
+  - `model/classes.ts` (Site, Component, TplTag, TplNode, VariantSetting, RuleSet, etc.)
   - `model/classes-metas.ts` (model metadata)
-  - `element-repr/gen-element-repr-v2.ts` (`tplToPlasmicElements`)
-  - `core/tagged-unbundle.ts` (`unbundleSite`)
 
 ### Reference Files
 - `platform/wab/src/wab/shared/bundler.ts` — FastBundler, Bundle format
 - `platform/wab/src/wab/shared/model/classes.ts` — generated model classes
 - `platform/wab/src/wab/shared/model/model-schema.ts` — schema (source of truth)
-- `platform/wab/src/wab/shared/element-repr/gen-element-repr-v2.ts` — `tplToPlasmicElements()`
-- `platform/wab/src/wab/shared/core/tagged-unbundle.ts` — `unbundleSite()`
 - `platform/wab/src/wab/shared/ApiSchema.ts` — API request/response types
 - `platform/wab/src/wab/server/routes/projects.ts` — server handlers
 - `packages/cli/src/api.ts` — reference HTTP client (auth headers, error handling)
@@ -231,7 +271,7 @@ packages/plasmic-mcp/
 │   ├── server.ts                # MCP server setup, tool registration
 │   ├── api-client.ts            # Plasmic HTTP client (auth, fetch bundle, REST writes)
 │   ├── model-loader.ts          # Bundle fetch → FastBundler.unbundle() → live model
-│   ├── tree-reader.ts           # tplToPlasmicElements() wrapper, component listing
+│   ├── tree-reader.ts           # Direct Tpl model → JSON traversal (new code, not upstream)
 │   ├── tools/
 │   │   ├── set-project.ts       # Load model, store session state
 │   │   ├── list-projects.ts     # HTTP: list accessible projects

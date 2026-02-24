@@ -1,7 +1,7 @@
 # esbuild Bundling of Plasmic Editing Engine
 
 ## Jobs to Be Done
-- As the MCP server package, I need the Plasmic editing engine (bundler, model classes, element-repr) bundled into a standalone npm package so that consumers can `npx @elasticpath/plasmic-mcp` without access to the monorepo.
+- As the MCP server package, I need the Plasmic editing engine (bundler, model classes) bundled into a standalone npm package so that consumers can `npx @elasticpath/plasmic-mcp` without access to the monorepo.
 - As a developer maintaining this package, I want a clear build strategy for bundling `platform/wab/src/wab/shared/` code that hasn't been extracted into a package before.
 
 ## Context: Why This Is New
@@ -23,7 +23,7 @@ This monorepo is a fork that regularly pulls from upstream Plasmic. The esbuild 
 
 ## Acceptance Criteria
 - [ ] esbuild resolves `@/wab/shared/...` path aliases from `platform/wab/tsconfig.json`
-- [ ] Bundled output includes: FastBundler, model classes, `tplToPlasmicElements()`, `unbundleSite()`
+- [ ] Bundled output includes: FastBundler, model classes (Site, Component, TplTag, TplNode, VariantSetting, RuleSet, etc.)
 - [ ] `mobx` is treated as an external dependency (not bundled, listed in package.json dependencies)
 - [ ] Output is a single CJS entry point suitable for `npx` execution
 - [ ] Bundle size is reasonable (target: under 2MB for the shared code portion)
@@ -71,10 +71,14 @@ From `platform/wab/src/wab/shared/`:
 | `model/classes.ts` | Generated model classes | `Site`, `Component`, `TplTag`, `TplNode`, `TplComponent`, `TplSlot`, `Variant`, `VariantSetting`, `RuleSet`, `StyleToken` |
 | `model/classes-metas.ts` | Model metadata (field types, refs) | `meta` |
 | `model/InstUtil.ts` | Instance utilities | `instUtil` |
-| `element-repr/gen-element-repr-v2.ts` | Tpl → PlasmicElement conversion | `tplToPlasmicElements()` |
-| `core/tagged-unbundle.ts` | Site unbundling with deps | `unbundleSite()` |
 | `bundles.ts` | Bundle type definitions | `Bundle`, `BundledInst` |
 | `common.ts` (partial) | Utility functions used by above | Various helpers |
+
+**NOT bundled** (avoided intentionally):
+| Module | Why avoided |
+|--------|-------------|
+| `element-repr/gen-element-repr-v2.ts` | Degraded SDUI MVP — drops styles, images, layout types. Tree reading is done by new code in `packages/plasmic-mcp/src/tree-reader.ts` that walks Tpl nodes directly. |
+| `core/tagged-unbundle.ts` | Imports `SharedApi.ts` which pulls in `stripe`, `@plasmicapp/data-sources`, and `window` APIs. Use `FastBundler.unbundle()` directly instead. |
 
 ### Path Alias Resolution
 
