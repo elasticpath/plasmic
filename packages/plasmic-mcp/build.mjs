@@ -91,7 +91,7 @@ const bundlePlugin = {
     });
 
     build.onLoad({ filter: /.*/, namespace: STUB_NAMESPACE }, () => {
-      return { contents: "module.exports = new Proxy({}, { get: () => () => {} });", loader: "js" };
+      return { contents: "module.exports = new Proxy({}, { get: (t, p) => p === '__esModule' ? false : () => {} });", loader: "js" };
     });
 
     // Layer 5: Externalize ALL bare package imports (npm packages).

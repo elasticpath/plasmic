@@ -99,6 +99,8 @@ function isAncestorOf(ancestor: any, descendant: any): boolean {
 
 /**
  * Insert a node into a parent's children array at a given position.
+ * Also sets the child's parent pointer so Studio's $$$(tpl).root()
+ * can traverse up to the component root.
  */
 function insertChild(
   parent: any,
@@ -108,6 +110,7 @@ function insertChild(
   if (!parent.children) {
     parent.children = [];
   }
+  child.parent = parent;
   if (position === "first" || position === 0) {
     parent.children.unshift(child);
   } else if (
@@ -304,19 +307,22 @@ export interface AddChildResult {
 /**
  * Convert a PlasmicElement JSON tree to a live TplTag node.
  *
- * Uses mkTplTagX for node creation and TplMgr.ensureBaseVariantSetting
- * for variant setup. Processes children recursively.
+ * Uses mkTplTagX for node creation with the base variant passed directly
+ * (since newly created nodes aren't attached to a component yet, TplMgr
+ * can't determine their owning component for variant lookup).
  *
  * This approach avoids elementSchemaToTpl which pulls in 30+ dependencies.
  */
 function plasmicElementToTpl(
   element: PlasmicElement,
-  tplMgr: TplMgr
+  tplMgr: TplMgr,
+  baseVariant: any
 ): any {
   // String elements become text nodes
   if (typeof element === "string") {
-    const tpl = mkTplTagX("div", {});
-    const vs = tplMgr.ensureBaseVariantSetting(tpl);
+    // Pass baseVariant + styles to trigger variant setting creation in mkTplTagX
+    const tpl = mkTplTagX("div", { baseVariant, styles: {} });
+    const vs = tpl.vsettings[0];
     vs.text = new RawText({ text: element, markers: [] });
     return tpl;
   }
@@ -357,14 +363,21 @@ function plasmicElementToTpl(
     : [];
 
   const childTpls = childElements.map((child) =>
-    plasmicElementToTpl(child, tplMgr)
+    plasmicElementToTpl(child, tplMgr, baseVariant)
   );
 
-  // Create the TplTag node with children
-  const tpl = mkTplTagX(tag, {}, ...childTpls);
+  // Create the TplTag node with children.
+  // Pass baseVariant + styles to trigger variant setting creation in mkTplTagX.
+  const tpl = mkTplTagX(tag, { baseVariant, styles: {} }, ...childTpls);
 
-  // Set up base variant and styles
-  const vs = tplMgr.ensureBaseVariantSetting(tpl);
+  // Set parent pointers for children (mkTplTagX leaves them as null).
+  // Required so Studio's $$$(tpl).root() can traverse up to the component root.
+  for (const child of childTpls) {
+    child.parent = tpl;
+  }
+
+  // Access the base variant setting created by mkTplTagX
+  const vs = tpl.vsettings[0];
 
   // Apply layout styles for container types
   if (element.type === "vbox") {
@@ -444,11 +457,15 @@ export async function addChild(
     );
   }
 
+  // Get the base variant from the component (not from the node) so we can
+  // pass it to plasmicElementToTpl for newly created detached nodes.
+  const baseVariant = tplMgr.ensureBaseVariant(component);
+
   const tracker = getChangeTracker();
   let newTpl: any;
 
   const changes = tracker.withRecording(() => {
-    newTpl = plasmicElementToTpl(child, tplMgr);
+    newTpl = plasmicElementToTpl(child, tplMgr, baseVariant);
     insertChild(parent, newTpl, position);
   });
 

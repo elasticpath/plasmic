@@ -22,6 +22,9 @@ declare module "@/wab/shared/bundler" {
     ): any;
     /** Look up the address (uuid + iid) for a live model instance. */
     addrOf(inst: any): { uuid: string; iid: string } | undefined;
+    /** Initialize parent tracking for fastBundle. Must be called after unbundle()
+     *  with the same bundle JSON and UUID to enable incremental saves. */
+    recomputeParents(bundle: any, uuid: string): void;
   }
 }
 
@@ -158,6 +161,14 @@ declare module "@/wab/shared/core/tpls" {
   export function flattenTpls(tplRoot: any): any[];
 
   export function isTplTag(x: any): boolean;
+
+  /** Register a component's tplTree root in the TPLROOT_TO_COMPONENT WeakMap.
+   *  Required for TplMgr.ensureBaseVariantSetting() to find the owning component. */
+  export function trackComponentRoot(component: any): void;
+
+  /** Register a component → site mapping in the COMPONENT_TO_SITE WeakMap.
+   *  Required for getOwnerSite() lookups. */
+  export function trackComponentSite(component: any, site: any): void;
 }
 
 declare module "@/wab/shared/RuleSetHelpers" {

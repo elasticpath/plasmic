@@ -17,6 +17,7 @@ import type { PlasmicApiClient } from "./api-client.js";
 import { FastBundler } from "@/wab/shared/bundler";
 import { meta } from "@/wab/shared/model/classes-metas";
 import * as classesModule from "@/wab/shared/model/classes";
+import { trackComponentRoot, trackComponentSite } from "@/wab/shared/core/tpls";
 
 let mobxInitialized = false;
 
@@ -90,9 +91,22 @@ export async function loadProject(
   console.error(`[plasmic-mcp] Unbundling project "${projectName}"...`);
   const result = bundler.unbundle(bundleJson, projectId);
 
+  // Initialize parent tracking for fastBundle (incremental saves).
+  // Must be called after unbundle() with the same bundle JSON and UUID.
+  bundler.recomputeParents(bundleJson, projectId);
+
   const site = narrowToSite(result);
 
-  const componentCount = site.components?.length ?? 0;
+  // Register component → root and component → site mappings in the WeakMaps
+  // used by TplMgr.ensureBaseVariantSetting() and getOwnerSite().
+  // Without this, edit tools cannot determine the base variant for any node.
+  const components = site.components ?? [];
+  for (const comp of components) {
+    trackComponentRoot(comp);
+    trackComponentSite(comp, site);
+  }
+
+  const componentCount = components.length;
   console.error(
     `[plasmic-mcp] Project loaded: ${componentCount} components`
   );
