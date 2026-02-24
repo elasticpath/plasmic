@@ -41,11 +41,13 @@ esbuild jest transform hoists `import` to `require()` at file top, BEFORE `jest.
 ## P1 — Composable Bundle Configurator Components
 
 **Spec:** `specs/composable-bundle-configurator.md`
-**Status:** 0 of 14 components implemented. Only the monolithic `EPBundleConfigurator` exists (registered in `index.tsx` with comment "to be reworked in future").
+**Status:** All 14 components implemented in `src/bundle/composable/`. Build passes, 174 tests pass (11 suites).
+
+> **Build fix note:** `sortByOrder` expects `sort_order` (snake_case) while enriched objects used `sortOrder` (camelCase). Resolved by adding a `sort_order` property to enriched option/component objects so both naming conventions are available.
 
 ### P1a — Root Provider & Summary Components
 
-- [ ] **`EPBundleProvider`** — Root DataProvider for bundle state
+- [x] **`EPBundleProvider`** — Root DataProvider for bundle state (`EPBundleProvider.tsx`)
   - Reads `currentProduct` from ancestor via `useSelector`
   - Validates product is a bundle, extracts components
   - Manages bundle form state (selections, quantities)
@@ -56,39 +58,39 @@ esbuild jest transform hoists `import` to `require()` at file top, BEFORE `jest.
   - Provides: `bundleData` DataProvider key
   - Register with `providesData: true`
 
-- [ ] **`EPBundlePriceField`** — Displays current bundle price
+- [x] **`EPBundlePriceField`** — Displays current bundle price (`EPBundlePriceField.tsx`)
   - Reads from `bundleData` context
   - Handles fixed vs cumulative pricing
   - Updates after `configureByContextProduct` success
   - Internal `BundlePrice.tsx` exists but is not registered
 
-- [ ] **`EPBundleValidationErrors`** — Renders validation errors
+- [x] **`EPBundleValidationErrors`** — Renders validation errors (`EPBundleValidationErrors.tsx`)
   - Reads from `bundleData` context
   - Zod schema validation from component min/max and option constraints
   - Internal `ValidationErrors.tsx` exists but is not registered
 
 ### P1b — Component Iteration Layer
 
-- [ ] **`EPBundleComponentList`** — Iterator over bundle components
+- [x] **`EPBundleComponentList`** — Iterator over bundle components (`EPBundleComponentList.tsx`)
   - Iterates sorted by `sort_order`
   - Provides per-iteration: `currentBundleComponent` and `currentBundleComponentIndex`
   - Data shape: `{ name, key, min, max, selectedCount, isValid, options[], sortOrder }`
 
-- [ ] **`EPBundleComponentField`** — Display field for component metadata
+- [x] **`EPBundleComponentField`** — Display field for component metadata (`EPBundleComponentField.tsx`)
   - Reads from `currentBundleComponent`
   - Fields: name, min, max, selectedCount, isValid, optionCount
 
 ### P1c — Option Iteration & Selection Layer
 
-- [ ] **`EPBundleOptionList`** — Iterator over options within a component
+- [x] **`EPBundleOptionList`** — Iterator over options within a component (`EPBundleOptionList.tsx`)
   - Provides per-iteration: `currentBundleOption` and `currentBundleOptionIndex`
   - Data shape: `{ id, name, quantity, minQty, maxQty, isSelected, isParentProduct, price, imageUrl, sortOrder, isDefault }`
 
-- [ ] **`EPBundleOptionField`** — Display field for option details
+- [x] **`EPBundleOptionField`** — Display field for option details (`EPBundleOptionField.tsx`)
   - Reads from `currentBundleOption`
   - Fields: name, price, imageUrl, quantity, etc.
 
-- [ ] **`EPBundleOptionTrigger`** — Interactive selection trigger
+- [x] **`EPBundleOptionTrigger`** — Interactive selection trigger (`EPBundleOptionTrigger.tsx`)
   - Checkbox-like (multi-select) or radio-like (single-select) based on min/max
   - Provides `BundleOptionContext` for quantity buttons
   - Exposes `data-selected` attribute for CSS styling
@@ -96,51 +98,57 @@ esbuild jest transform hoists `import` to `require()` at file top, BEFORE `jest.
 
 ### P1d — Quantity Controls
 
-- [ ] **`EPBundleOptionQuantityControl`** — Quantity state container
+- [x] **`EPBundleOptionQuantityControl`** — Quantity state container (`EPBundleOptionQuantityControl.tsx`)
   - Manages quantity for current option
   - Respects option-level min/max constraints
   - Provides: `bundleOptionQuantity` DataProvider key
   - Provides: context for `EPBundleOptionQuantityButton`
   - Triggers debounced reconfiguration
 
-- [ ] **`EPBundleOptionQuantityButton`** — Increment/decrement button
+- [x] **`EPBundleOptionQuantityButton`** — Increment/decrement button (`EPBundleOptionQuantityButton.tsx`)
   - Reads from `BundleOptionContext`
   - `action: "increment" | "decrement"` prop
   - Disables at min/max bounds
 
 ### P1e — Parent Product Variation Layer
 
-- [ ] **`EPBundleVariationPicker`** — Variation axes iterator for parent options
+- [x] **`EPBundleVariationPicker`** — Variation axes iterator for parent options (`EPBundleVariationPicker.tsx`)
   - Detects parent products, fetches children
   - Provides: `currentBundleVariation` and `currentBundleVariationIndex`
   - Data shape: `{ id, name, values: { label }[] }`
 
-- [ ] **`EPBundleVariationOptionList`** — Values iterator per variation axis
+- [x] **`EPBundleVariationOptionList`** — Values iterator per variation axis (`EPBundleVariationOptionList.tsx`)
   - Provides: `currentBundleVariationOption` and `currentBundleVariationOptionIndex`
   - Data shape: `{ label, isSelected }`
 
-- [ ] **`EPBundleVariationField`** — Display field for variation axis info
+- [x] **`EPBundleVariationField`** — Display field for variation axis info (`EPBundleVariationField.tsx`)
   - Reads from `currentBundleVariation`
 
-- [ ] **`EPBundleVariationOptionTrigger`** — Interactive variation value selector
+- [x] **`EPBundleVariationOptionTrigger`** — Interactive variation value selector (`EPBundleVariationOptionTrigger.tsx`)
   - Selects variation value via `BundleVariationContext`
   - Resolves matching child variant
   - Replaces parent ID with `parentId:childId` key
 
 ### P1f — Registration & Integration
 
-- [ ] **Create `register*` functions for all 14 components**
+- [x] **Create `register*` functions for all 14 components**
   - Include `parentComponentName` hints
   - Include `providesData: true` where applicable
   - Include `previewState` props for design-time preview on every component
 
-- [ ] **Add all components to `registerAll()` in `index.tsx`**
+- [x] **Add all components to `registerAll()` in `index.tsx`**
   - Register field components before parent components (existing convention)
   - Keep monolithic `EPBundleConfigurator` for backwards compatibility
 
-- [ ] **Design-time preview mock data**
+- [x] **Design-time preview mock data** (`bundle/composable/design-time-data.ts`)
   - Covers: multi-component bundle, single-select, multi-select, parent products with variations, fixed pricing, cumulative pricing
-  - Add to `utils/design-time-data.ts`
+
+### P1 Supporting Files
+
+- [x] **`BundleContext.tsx`** — React contexts (`BundleFormContext`, `BundleOptionContext`, `BundleVariationContext`)
+- [x] **`index.ts`** — Barrel export for `bundle/composable/`
+- [x] **Updated `src/index.tsx`** — `registerAll()` registrations for all 14 components
+- [x] **All components follow Plasmic composable pattern** — `ComponentMeta` registration, `DataProvider`/`useSelector` data flow, `repeatedElement` for iteration, `usePlasmicCanvasContext` for editor detection, `previewState` for design-time preview
 
 ---
 

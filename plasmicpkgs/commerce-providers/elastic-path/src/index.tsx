@@ -22,6 +22,20 @@ import { registerEPCartItemQuantityControl } from "./cart-drawer/EPCartItemQuant
 import { registerEPCartItemList } from "./cart-drawer/EPCartItemList";
 import { registerEPCartDrawer } from "./cart-drawer/EPCartDrawer";
 import { registerEPCartDrawerTrigger } from "./cart-drawer/EPCartDrawerTrigger";
+import { registerEPBundleProvider } from "./bundle/composable/EPBundleProvider";
+import { registerEPBundleComponentList } from "./bundle/composable/EPBundleComponentList";
+import { registerEPBundleComponentField } from "./bundle/composable/EPBundleComponentField";
+import { registerEPBundleOptionList } from "./bundle/composable/EPBundleOptionList";
+import { registerEPBundleOptionField } from "./bundle/composable/EPBundleOptionField";
+import { registerEPBundleOptionTrigger } from "./bundle/composable/EPBundleOptionTrigger";
+import { registerEPBundleOptionQuantityControl } from "./bundle/composable/EPBundleOptionQuantityControl";
+import { registerEPBundleOptionQuantityButton } from "./bundle/composable/EPBundleOptionQuantityButton";
+import { registerEPBundlePriceField } from "./bundle/composable/EPBundlePriceField";
+import { registerEPBundleValidationErrors } from "./bundle/composable/EPBundleValidationErrors";
+import { registerEPBundleVariationPicker } from "./bundle/composable/EPBundleVariationPicker";
+import { registerEPBundleVariationOptionList } from "./bundle/composable/EPBundleVariationOptionList";
+import { registerEPBundleVariationField } from "./bundle/composable/EPBundleVariationField";
+import { registerEPBundleVariationOptionTrigger } from "./bundle/composable/EPBundleVariationOptionTrigger";
 import { Registerable } from "./registerable";
 
 export * from "./elastic-path";
@@ -35,6 +49,7 @@ export * from "./registerable";
 export * from "./variant-picker";
 export * from "./stock";
 export * from "./cart-drawer";
+export * from "./bundle/composable";
 
 export function registerAll(loader?: Registerable) {
   // Global context
@@ -70,7 +85,24 @@ export function registerAll(loader?: Registerable) {
   registerEPCartDrawer(loader);
   registerEPCartDrawerTrigger(loader);
 
-  // Bundle configurator (to be reworked in future)
+  // Composable bundle configurator
+  // Register field/leaf components first so they're available as default slot content
+  registerEPBundleComponentField(loader);
+  registerEPBundleOptionField(loader);
+  registerEPBundleOptionQuantityButton(loader);
+  registerEPBundleVariationField(loader);
+  registerEPBundleVariationOptionTrigger(loader);
+  registerEPBundleVariationOptionList(loader);
+  registerEPBundleVariationPicker(loader);
+  registerEPBundleOptionQuantityControl(loader);
+  registerEPBundleOptionTrigger(loader);
+  registerEPBundleOptionList(loader);
+  registerEPBundleComponentList(loader);
+  registerEPBundlePriceField(loader);
+  registerEPBundleValidationErrors(loader);
+  registerEPBundleProvider(loader);
+
+  // Legacy monolithic bundle configurator
   registerEPBundleConfigurator(loader);
 
   // Deprecated — kept for backwards compatibility
