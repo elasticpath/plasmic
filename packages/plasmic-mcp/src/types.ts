@@ -129,6 +129,26 @@ export interface DefaultComponentElement {
   styles?: Record<string, string>;
 }
 
+// --- Token output ---
+// Produced by the get-tokens tool when reading site.styleTokens.
+
+export type StyleTokenType =
+  | "Color"
+  | "Spacing"
+  | "Opacity"
+  | "LineHeight"
+  | "FontFamily"
+  | "FontSize";
+
+export interface TokenInfo {
+  uuid: string;
+  name: string;
+  type: StyleTokenType;
+  value: string;
+  /** Resolved CSS value when the raw value is a token reference (var(--token-<uuid>)). */
+  resolvedValue?: string;
+}
+
 // --- Tree reader output ---
 // Produced by tree-reader.ts when walking the in-memory Tpl model.
 // Designed to give Claude full fidelity: tags, styles, text, images, layout, children.

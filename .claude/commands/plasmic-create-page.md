@@ -4,6 +4,7 @@ You are creating a new page in a Plasmic project.
 - `set-project(projectId)` — Load a project. Call first if no project is active.
 - `list-projects()` — List accessible projects.
 - `list-components()` — List existing pages and components.
+- `get-tokens(type?)` — Get design tokens (colors, spacing, fonts). Use these values in styles for design system consistency.
 - `create-page(name, path, body)` — Create a page with a PlasmicElement tree.
 
 ## PlasmicElement Type Reference
@@ -104,10 +105,11 @@ Styles use React CSSProperties format (camelCase):
 ## Instructions
 1. If no project is active, call `list-projects` and ask the user which project, then `set-project`.
 2. Call `list-components` to see existing pages (avoid path conflicts).
-3. Based on the user's description, construct a PlasmicElement tree.
-4. Choose a reasonable page name (PascalCase) and path (kebab-case with leading slash).
-5. Call `create-page` with the constructed tree.
-6. Report the result. Note any warnings from the API.
+3. Call `get-tokens` to discover the project's design tokens. Use token values (colors, spacing, fonts) in styles instead of hardcoding values.
+4. Based on the user's description, construct a PlasmicElement tree using the project's design tokens.
+5. Choose a reasonable page name (PascalCase) and path (kebab-case with leading slash).
+6. Call `create-page` with the constructed tree.
+7. Report the result. Note any warnings from the API.
 
 ## User's Request
 $ARGUMENTS

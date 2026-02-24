@@ -10,7 +10,7 @@ Create Claude Code skills and workflows that interact with Plasmic Studio progra
 - `specs/plasmic-esbuild-bundling.md` -- esbuild bundling of platform/wab shared code
 - `specs/claude-code-skills.md` -- Claude Code skill/command definitions
 
-## Current State (as of 2026-02-24)
+## Current State (as of 2026-02-24, updated with get-tokens tool)
 
 ### What exists
 - All 3 specs are authored and complete
@@ -31,13 +31,14 @@ Create Claude Code skills and workflows that interact with Plasmic Studio progra
 - `packages/plasmic-mcp/tsconfig.json` — TypeScript config with `@/` path aliases and wab module declarations
 - `packages/plasmic-mcp/build.mjs` — esbuild config with 5-layer plugin (alias resolution, client/server externalization, malformed import handling, stub modules for optional packages, npm externalization)
 - `packages/plasmic-mcp/src/index.ts` — MCP server entry point (stdio transport)
-- `packages/plasmic-mcp/src/server.ts` — McpServer with 6 tools: set-project, list-projects, get-project-meta, list-components, get-component-tree, create-page
+- `packages/plasmic-mcp/src/server.ts` — McpServer with 7 tools: set-project, list-projects, get-project-meta, list-components, get-component-tree, get-tokens, create-page
 - `packages/plasmic-mcp/src/auth.ts` — Auth module (env vars + .plasmic.auth fallback)
 - `packages/plasmic-mcp/src/api-client.ts` — HTTP client (native fetch, listProjects/getProjectBundle/updateProject)
 - `packages/plasmic-mcp/src/model-loader.ts` — Bundle fetch + FastBundler.unbundle() with MobX init
 - `packages/plasmic-mcp/src/session.ts` — Singleton session state
 - `packages/plasmic-mcp/src/tree-reader.ts` — Custom Tpl model walker (TplTag/TplComponent/TplSlot with full CSS/text/attrs)
-- `packages/plasmic-mcp/src/types.ts` — AuthConfig, API types, TreeNode type
+- `packages/plasmic-mcp/src/token-reader.ts` — Design token reader with token reference resolution
+- `packages/plasmic-mcp/src/types.ts` — AuthConfig, API types, TokenInfo, TreeNode types
 - `packages/plasmic-mcp/src/wab.d.ts` — TypeScript declarations for bundled @/wab modules
 - `packages/plasmic-mcp` registered in root workspace
 - `.claude/mcp.json` — MCP server config for Claude Code
@@ -49,11 +50,11 @@ Create Claude Code skills and workflows that interact with Plasmic Studio progra
 - Bundle: 1313 KB CJS, 54 external npm packages
 - TypeScript: `tsc --noEmit` passes with zero errors
 - Runtime: Module loads and starts successfully, authenticates from .plasmic.auth
-- Tests: 64 tests, 6 suites, all passing (`npm test` in `packages/plasmic-mcp/`)
+- Tests: 81 tests, 7 suites, all passing (`npm test` in `packages/plasmic-mcp/`)
 
 ### What remains
 - Phase 6: Manual end-to-end test with Claude Code (requires self-hosted Plasmic instance)
-- Phase 7: Nice-to-haves (get-tokens tool, pattern library, CI pipeline, npm publishing)
+- Phase 7: Nice-to-haves (pattern library, CI pipeline, npm publishing)
 
 ### Key findings from codebase analysis
 
@@ -316,7 +317,7 @@ Wire the MCP server into Claude Code and create skill files.
 
 ### What has been implemented
 
-Test infrastructure and unit tests for all MCP server modules (64 tests, 6 suites).
+Test infrastructure and unit tests for all MCP server modules (81 tests, 7 suites).
 
 - [x] **Jest configuration** ✓ COMPLETE
   - `packages/plasmic-mcp/jest.config.cjs` — `.cjs` extension required because package has `"type": "module"`
@@ -364,6 +365,11 @@ Test infrastructure and unit tests for all MCP server modules (64 tests, 6 suite
   - Layout derivation: vbox (column), hbox (row/default flex), box (non-flex)
   - Edge cases: null tplTree, empty styles, empty children, unknown node types
 
+- [x] **Unit tests for token-reader.ts** ✓ COMPLETE (17 tests)
+  - resolveTokenValue: primitives unchanged, single ref, chain resolution, cycle detection, missing ref
+  - readTokens: all tokens grouped by type, correct fields, type filtering (all 6 types), empty/null input
+  - Token references: resolvedValue present when ref, omitted for primitives, multi-hop chains, cycles, unresolvable refs
+
 - [x] **Integration smoke test for server.ts** ✓ COMPLETE (2 tests)
   - `createServer()` succeeds with valid auth and registers all tools
   - `createServer()` throws descriptive error when auth is not configured
@@ -384,7 +390,7 @@ Test infrastructure and unit tests for all MCP server modules (64 tests, 6 suite
 
 ## Phase 7: Nice-to-Haves
 
-- [ ] **Tool: `get-tokens`** — Design tokens from in-memory model
+- [x] **Tool: `get-tokens`** ✓ COMPLETE — Reads `site.styleTokens`, resolves token references (`var(--token-<uuid>)` chains with cycle detection), groups by type (Color/Spacing/FontSize/LineHeight/FontFamily/Opacity), optional type filter. `token-reader.ts` module + 17 tests. All 3 skill files updated to reference the tool.
 - [ ] **PlasmicElement pattern library** — `.claude/commands/plasmic-patterns.md`
 - [ ] **Bundle size optimization** — Metafile analysis, targeted externals
 - [ ] **CI pipeline** — `.github/workflows/plasmic-mcp.yml`

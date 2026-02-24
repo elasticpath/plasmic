@@ -21,6 +21,7 @@ import { getAuth } from "./auth.js";
 import { requireSession, setSession } from "./session.js";
 import { loadProject } from "./model-loader.js";
 import { readComponentTree } from "./tree-reader.js";
+import { readTokens } from "./token-reader.js";
 
 export function createServer(): McpServer {
   const server = new McpServer({
@@ -269,6 +270,46 @@ export function createServer(): McpServer {
             {
               type: "text" as const,
               text: `Error reading component tree: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // --- get-tokens ---
+  // Reads design tokens (colors, spacing, typography, etc.) from the in-memory
+  // model. Returns token names, types, and values so Claude can use the project's
+  // design system when creating pages. Resolves token references to final values.
+  server.tool(
+    "get-tokens",
+    "Get design tokens (colors, spacing, fonts) from the active project's design system",
+    {
+      type: z
+        .enum(["Color", "Spacing", "Opacity", "LineHeight", "FontFamily", "FontSize"])
+        .optional()
+        .describe("Filter by token type. Omit to get all tokens."),
+    },
+    async ({ type: tokenType }) => {
+      try {
+        const session = requireSession();
+        const result = readTokens(session.site.styleTokens, tokenType);
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error getting tokens: ${err.message}`,
             },
           ],
           isError: true,
