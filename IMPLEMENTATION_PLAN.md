@@ -393,7 +393,7 @@ Test infrastructure and unit tests for all MCP server modules (81 tests, 7 suite
 - [x] **Tool: `get-tokens`** ✓ COMPLETE — Reads `site.styleTokens`, resolves token references (`var(--token-<uuid>)` chains with cycle detection), groups by type (Color/Spacing/FontSize/LineHeight/FontFamily/Opacity), optional type filter. `token-reader.ts` module + 17 tests. All 3 skill files updated to reference the tool.
 - [x] **PlasmicElement pattern library** ✓ COMPLETE — `.claude/commands/plasmic-patterns.md` with 10 validated patterns: hero, feature grid, card, contact form, navigation header, footer, pricing table (3-tier), testimonial, CTA section, image gallery. Includes CSS rules (no shorthand `border`/`transition`), valid element types, valid tags, composition guide, and component reference pattern. All patterns validated against `elementSchemaToTpl()` server-side handling. Cross-references added to `/plasmic-create-page` and `/plasmic` skills.
 - [ ] **Bundle size optimization** — Metafile analysis, targeted externals
-- [ ] **CI pipeline** — `.github/workflows/plasmic-mcp.yml`
+- [x] **CI pipeline** ✓ COMPLETE — `.github/workflows/plasmic-mcp.yml`: triggers on push/PR to master when `packages/plasmic-mcp/` changes. Runs type-check + tests first (fast, no generated files needed), then installs platform/wab deps + make for bundle build. Reports bundle size in GitHub Actions summary.
 - [ ] **npx publishing** — `@elasticpath/plasmic-mcp` npm package with `bin` field
 
 ---
@@ -504,3 +504,4 @@ The following corrections were identified during deep code analysis:
 16. **`genReprV3` exists in `loader.ts`**: Server-side only (requires DB access via `superDbMgr`). Not usable by the MCP server. No standalone v3 element repr module exists.
 17. **`UpdateProjectReq` request body confirmed**: `{ newComponents?: NewComponentReq[], updateComponents?: NewComponentReq[], tokens?: UpsertTokenReq[], updateGlobalContexts?: UpdateGlobalContextReq[], branchId?: string }`. Each `NewComponentReq` has `{ name?, body: PlasmicElement, path?, byUuid?, cloneFrom? }`.
 18. **Auth middleware chain confirmed**: `POST /api/v1/projects/:projectId` uses `cors, teamApiUserAuth, apiAuth, updateProjectData`. The `apiAuth` middleware validates `x-plasmic-api-token` + `x-plasmic-api-user` headers (among other auth methods).
+19. **Spec placeholder syntax corrected**: `specs/claude-code-skills.md` originally used `{{input}}` as the placeholder in example prompt structures. The correct Claude Code variable syntax is `$ARGUMENTS` (which is what the implementation uses). Spec updated to match.

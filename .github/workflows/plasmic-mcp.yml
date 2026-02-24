@@ -1,0 +1,74 @@
+name: Plasmic MCP
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'packages/plasmic-mcp/**'
+      - '.github/workflows/plasmic-mcp.yml'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'packages/plasmic-mcp/**'
+      - '.github/workflows/plasmic-mcp.yml'
+
+jobs:
+  test-and-build:
+    name: Test & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        uses: ./.github/actions/setup-env
+
+      - name: Install root dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: TypeScript type-check
+        working-directory: packages/plasmic-mcp
+        run: npx tsc --noEmit
+
+      - name: Run tests
+        working-directory: packages/plasmic-mcp
+        env:
+          CI: true
+        run: npm test
+
+      - name: Install platform/wab dependencies
+        working-directory: platform/wab
+        run: yarn install --frozen-lockfile
+
+      - name: Generate required files (PEG parsers, model classes)
+        working-directory: platform/wab
+        run: make
+
+      - name: Build bundle
+        working-directory: packages/plasmic-mcp
+        run: node build.mjs
+
+      - name: Verify bundle size
+        working-directory: packages/plasmic-mcp
+        run: |
+          SIZE=$(stat -c%s dist/index.cjs 2>/dev/null || stat -f%z dist/index.cjs)
+          SIZE_KB=$((SIZE / 1024))
+          echo "Bundle size: ${SIZE_KB}KB"
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Bundle size | ${SIZE_KB}KB |" >> $GITHUB_STEP_SUMMARY
+          if [ "$SIZE" -gt 2097152 ]; then
+            echo "::warning::Bundle size ${SIZE_KB}KB exceeds 2MB target"
+          fi
+
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "### Plasmic MCP Results" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "Type-check, tests, and build all passed." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Some checks failed." >> $GITHUB_STEP_SUMMARY
+          fi

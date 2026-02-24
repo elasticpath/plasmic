@@ -137,7 +137,7 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 3. Summarize results clearly.
 
 ## User's Request
-{{input}}
+$ARGUMENTS
 ```
 
 ### `/plasmic-create-page` -- Page Creation Workflow
@@ -274,7 +274,7 @@ A PlasmicElement is a recursive JSON structure. The `create-page` tool accepts t
 6. Report the created page UUID and path. Note any warnings from the API.
 
 ## User's Request
-{{input}}
+$ARGUMENTS
 ```
 
 ### `/plasmic-inspect` -- Project Inspection Workflow
@@ -314,7 +314,7 @@ You are inspecting a Plasmic project to help the developer understand its struct
 6. Use the PlasmicElement JSON to describe the tree in human-readable terms (e.g., "a vertical stack containing a heading, a paragraph, and a 3-column grid of cards").
 
 ## User's Request
-{{input}}
+$ARGUMENTS
 ```
 
 ## Happy Path
@@ -418,7 +418,7 @@ Claude: The Homepage is a vertical stack containing:
 
 Claude Code skills are Markdown files in `.claude/commands/`. The filename (without `.md`) becomes the command name. The file content is injected as a system prompt when the command is invoked.
 
-The `{{input}}` placeholder is replaced with whatever the developer types after the command name.
+The `$ARGUMENTS` placeholder is replaced with whatever the developer types after the command name.
 
 Example: `.claude/commands/plasmic-create-page.md` is invoked as `/plasmic-create-page Create an about page`.
 
