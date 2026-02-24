@@ -49,6 +49,7 @@ export const epBundleVariationOptionTriggerMeta: ComponentMeta<EPBundleVariation
     },
     importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
     importName: "EPBundleVariationOptionTrigger",
+    parentComponentName: "plasmic-commerce-ep-bundle-variation-option-list",
   };
 
 export function EPBundleVariationOptionTrigger(

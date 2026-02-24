@@ -51,6 +51,7 @@ export const epBundleOptionTriggerMeta: ComponentMeta<EPBundleOptionTriggerProps
     },
     importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
     importName: "EPBundleOptionTrigger",
+    parentComponentName: "plasmic-commerce-ep-bundle-option-list",
     providesData: true,
   };
 

@@ -54,6 +54,7 @@ export const epBundleComponentFieldMeta: ComponentMeta<EPBundleComponentFieldPro
     },
     importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
     importName: "EPBundleComponentField",
+    parentComponentName: "plasmic-commerce-ep-bundle-component-list",
   };
 
 export function EPBundleComponentField(props: EPBundleComponentFieldProps) {

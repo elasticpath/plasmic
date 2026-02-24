@@ -50,6 +50,7 @@ export const epBundleOptionQuantityButtonMeta: ComponentMeta<EPBundleOptionQuant
     },
     importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
     importName: "EPBundleOptionQuantityButton",
+    parentComponentName: "plasmic-commerce-ep-bundle-option-quantity-control",
   };
 
 export function EPBundleOptionQuantityButton(

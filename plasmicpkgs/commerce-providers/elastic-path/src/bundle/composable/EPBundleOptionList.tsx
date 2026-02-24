@@ -49,6 +49,7 @@ export const epBundleOptionListMeta: ComponentMeta<EPBundleOptionListProps> = {
   },
   importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
   importName: "EPBundleOptionList",
+  parentComponentName: "plasmic-commerce-ep-bundle-component-list",
   providesData: true,
 };
 

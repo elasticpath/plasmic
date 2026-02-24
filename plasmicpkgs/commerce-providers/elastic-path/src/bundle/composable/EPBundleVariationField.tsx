@@ -44,6 +44,7 @@ export const epBundleVariationFieldMeta: ComponentMeta<EPBundleVariationFieldPro
     },
     importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
     importName: "EPBundleVariationField",
+    parentComponentName: "plasmic-commerce-ep-bundle-variation-picker",
   };
 
 export function EPBundleVariationField(props: EPBundleVariationFieldProps) {

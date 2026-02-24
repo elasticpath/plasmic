@@ -32,6 +32,7 @@ export const epBundlePriceFieldMeta: ComponentMeta<EPBundlePriceFieldProps> = {
   },
   importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
   importName: "EPBundlePriceField",
+  parentComponentName: "plasmic-commerce-ep-bundle-provider",
 };
 
 export function EPBundlePriceField(props: EPBundlePriceFieldProps) {

@@ -1,7 +1,7 @@
 # Implementation Plan — EP Components Cart Work
 
 > Auto-generated from analysis of `specs/*` vs `plasmicpkgs/commerce-providers/elastic-path/src/*`
-> Last updated: 2026-02-24
+> Last updated: 2026-02-25
 
 ---
 
@@ -32,6 +32,8 @@
 
 - [x] **Verify `useBundleFormSync` works for composable components** — Verified: `useFormContext()` gets the parent (product page) form because it runs at provider level before any child `<FormProvider>`. Dual-update pattern (internal form + parent form) works for EPBundleProvider. URL sync with `?bundle_config=` base64 parameter continues working. No code changes needed.
 
+- [x] **Implement URL param restoration on mount** — `useBundleForm` now reads `?bundle_config=` from the URL as the highest priority default configuration. The `getUrlBundleConfig()` helper reads the URL parameter (same base64 format as the `defaultConfiguration` prop). Priority chain: URL param > `defaultConfiguration` prop > API config > auto-select. Reset also respects URL param. 4 new tests in `useBundleForm.test.tsx`.
+
 ### Testing Discovery
 
 esbuild jest transform hoists `import` to `require()` at file top, BEFORE `jest.mock()` calls. Fix: use `require()` for code-under-test so esbuild doesn't hoist it.
@@ -41,7 +43,7 @@ esbuild jest transform hoists `import` to `require()` at file top, BEFORE `jest.
 ## P1 — Composable Bundle Configurator Components
 
 **Spec:** `specs/composable-bundle-configurator.md`
-**Status:** All 14 components implemented in `src/bundle/composable/`. 4 bugs fixed, 79 component tests added. Build passes, 253 tests pass (12 suites).
+**Status:** All 14 components implemented in `src/bundle/composable/`. 4 bugs fixed, 79 component tests added. Build passes, 451 tests pass (24 suites).
 
 > **Build fix note:** `sortByOrder` expects `sort_order` (snake_case) while enriched objects used `sortOrder` (camelCase). Resolved by adding a `sort_order` property to enriched option/component objects so both naming conventions are available.
 
@@ -132,7 +134,7 @@ esbuild jest transform hoists `import` to `require()` at file top, BEFORE `jest.
 ### P1f — Registration & Integration
 
 - [x] **Create `register*` functions for all 14 components**
-  - Include `parentComponentName` hints
+  - Include `parentComponentName` hints — Added to all 13 child components, mapping each to its logical parent's registration `name`. EPBundleProvider (root) has no parent.
   - Include `providesData: true` where applicable
   - Include `previewState` props for design-time preview on every component
 
@@ -222,11 +224,11 @@ These are lower priority but improve maintainability and align with established 
 
 ## P3 — Test Coverage
 
-### Current Coverage (22 test suites, 403 tests, all passing)
+### Current Coverage (24 test suites, 451 tests, all passing)
 
 - [x] `bundle/composable/__tests__/composable-bundle-components.test.tsx` (79 tests) — Field rendering, option triggers (click/keyboard/ARIA), quantity button bounds enforcement, quantity control DataProvider shape, component/option/variation list iteration, child variant metadata display, design-time mock data validation
 - [x] `bundle/hooks/__tests__/useBundleConfigurationOrchestration.test.tsx` (14 tests)
-- [x] `bundle/hooks/__tests__/useBundleForm.test.tsx` (17 tests) — Form initialization, handleComponentSelection (set/clear/parent:child keys/single-select clearing/zero removal), handleSubmit, reset, error conversion, useApiFormattedSelections
+- [x] `bundle/hooks/__tests__/useBundleForm.test.tsx` (21 tests) — Form initialization, handleComponentSelection (set/clear/parent:child keys/single-select clearing/zero removal), handleSubmit, reset, error conversion, useApiFormattedSelections, URL param restoration (highest priority, override prop, fallback to prop, reset reads URL)
 - [x] `bundle/hooks/__tests__/useVariationSelection.test.tsx` (9 tests) — Variation state management, matching variant resolution, clear-old/select-new variant, no-match handling, direct setVariationSelections
 - [x] `bundle/hooks/__tests__/useBundleFormSync.test.tsx` (12 tests) — ConfiguredBundle sync to internal/parent forms, BigInt conversion, selected options sync, URL update with base64 bundle_config, guard conditions (not initialized, no parent form, empty selections)
 - [x] `bundle/schemas/__tests__/bundleSchema.test.ts` (16 tests) — createBundleSchema (required/optional components, min/max validation, option-level quantity constraints, null defaults, parent:child keys), createOptionQuantitySchema, createBundleDefaultValues (priority: defaultConfiguration > API config > auto-select, BigInt conversion, invalid base64 handling)
@@ -246,6 +248,8 @@ These are lower priority but improve maintainability and align with established 
 - [x] `cart/__tests__/use-add-item.test.tsx` (12 tests) — Item validation, cart auto-creation, manageCarts API call, locale passthrough (bug fix verified), error handling
 - [x] `cart/__tests__/use-update-item.test.tsx` (15 tests) — Quantity update, removal delegation (qty < 1), ValidationError for non-integers, location passthrough for multi-location inventory, 404 cookie cleanup
 - [x] `cart/__tests__/use-remove-item.test.tsx` (12 tests) — deleteACartItem API call (not qty-to-zero), cart refresh after deletion, cookie cleanup on 404, guard conditions
+- [x] `inventory/__tests__/use-stock.test.tsx` (25 tests) — SWR caching, stable sorted query keys, multi-product parallel fetching, per-product error degradation (returns zero-stock), locationIds passthrough, useProductStock wrapper, refetch, disabled state
+- [x] `inventory/__tests__/use-locations.test.tsx` (19 tests) — SWR caching (5min deduping), type filter passthrough, "__all__" default key, empty/null response handling, refetch, disabled state, error propagation
 
 ### Missing Test Coverage (by priority)
 
@@ -254,7 +258,7 @@ These are lower priority but improve maintainability and align with established 
 - [x] **Tests for bundle schemas** — `bundleSchema` (16 tests) — Zod schema creation, validation, default value computation with priority chain
 - [x] **Tests for bundle utils** — `bundleSelectionUtils` (24 tests), `variationMatching` (13 tests) — sorting, API conversion, equality checks, default selections, variation matrix traversal
 - [x] **Tests for cart hooks** — 49 tests across 4 hooks: `use-cart` (9), `use-add-item` (12), `use-update-item` (15), `use-remove-item` (12). Covers cart lifecycle, error handling, cookie management, locale passthrough, removal delegation, and multi-location inventory support.
-- [ ] **Tests for inventory hooks** — `use-stock`, `use-locations`
+- [x] **Tests for inventory hooks** — `use-stock` (25 tests), `use-locations` (19 tests). Covers SWR caching, query key stability, multi-product fetching, per-product error graceful degradation, type filtering, useProductStock convenience wrapper, refetch/mutate, disabled state.
 - [ ] **Tests for checkout API endpoints** — `calculate-shipping`, `create-order`, `setup-payment`, `confirm-payment`
 - [ ] **Tests for cart drawer components** — 10 components with no test coverage
 - [ ] **Tests for inventory components** — `LocationSelector`, `MultiLocationStock`, `StockIndicator`

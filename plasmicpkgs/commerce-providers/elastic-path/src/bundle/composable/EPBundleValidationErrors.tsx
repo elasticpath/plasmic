@@ -32,6 +32,7 @@ export const epBundleValidationErrorsMeta: ComponentMeta<EPBundleValidationError
     },
     importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
     importName: "EPBundleValidationErrors",
+    parentComponentName: "plasmic-commerce-ep-bundle-provider",
   };
 
 export function EPBundleValidationErrors(

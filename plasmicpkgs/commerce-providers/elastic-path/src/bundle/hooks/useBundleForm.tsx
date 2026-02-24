@@ -32,6 +32,21 @@ interface UseBundleFormReturn {
 }
 
 /**
+ * Reads the bundle_config URL parameter if present.
+ * Returns the base64-encoded string (same format as defaultConfiguration prop).
+ * Returns undefined in SSR or when the param is absent.
+ */
+function getUrlBundleConfig(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("bundle_config") || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Hook for managing bundle form state with Zod validation
  * Replaces useFormContext dependency with self-contained form management
  */
@@ -47,10 +62,17 @@ export function useBundleForm({
     [components]
   );
 
+  // URL param takes highest priority for restoring state (shared links, page reload).
+  // Priority chain: URL param > defaultConfiguration prop > API config > auto-select
+  const effectiveDefaultConfiguration = useMemo(() => {
+    const urlConfig = getUrlBundleConfig();
+    return urlConfig || defaultConfiguration;
+  }, [defaultConfiguration]);
+
   // Calculate default values
   const defaultValues = useMemo(
-    () => createBundleDefaultValues(components, bundleProduct, defaultConfiguration),
-    [components, bundleProduct, defaultConfiguration]
+    () => createBundleDefaultValues(components, bundleProduct, effectiveDefaultConfiguration),
+    [components, bundleProduct, effectiveDefaultConfiguration]
   );
 
   // Initialize form with Zod resolver
@@ -138,9 +160,10 @@ export function useBundleForm({
     [rhfHandleSubmit, onSubmit]
   );
 
-  // Reset form to default values
+  // Reset form to default values (respects URL param > prop > API > auto-select priority)
   const reset = useCallback(() => {
-    const newDefaults = createBundleDefaultValues(components, bundleProduct, defaultConfiguration);
+    const resetConfig = getUrlBundleConfig() || defaultConfiguration;
+    const newDefaults = createBundleDefaultValues(components, bundleProduct, resetConfig);
     rhfReset(newDefaults);
   }, [rhfReset, components, bundleProduct, defaultConfiguration]);
 

@@ -381,6 +381,157 @@ describe("useBundleForm", () => {
   });
 });
 
+describe("URL param restoration", () => {
+  const originalLocation = window.location;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockWatch.mockReturnValue({ processor: {}, memory: {} });
+  });
+
+  afterEach(() => {
+    // Restore original location
+    delete (window as any).location;
+    window.location = originalLocation;
+  });
+
+  function setUrlParam(param: string, value: string) {
+    delete (window as any).location;
+    (window as any).location = {
+      ...originalLocation,
+      href: `https://example.com/product/test?${param}=${value}`,
+      search: `?${param}=${value}`,
+    };
+  }
+
+  it("reads bundle_config URL param as highest priority default", () => {
+    const urlSelections = { processor: { "opt-2": 1 } };
+    const encoded = btoa(JSON.stringify(urlSelections));
+    setUrlParam("bundle_config", encoded);
+
+    renderHook(() =>
+      useBundleForm({
+        components: {
+          processor: {
+            name: "Processor",
+            min: 1,
+            max: 1,
+            sort_order: 1,
+            options: [
+              { id: "opt-1", type: "product" as const, quantity: 1, default: true },
+            ],
+          },
+        },
+      })
+    );
+
+    // createBundleDefaultValues should be called with the URL-encoded config
+    expect(createBundleDefaultValues).toHaveBeenCalledWith(
+      expect.anything(),
+      undefined,
+      encoded
+    );
+  });
+
+  it("URL param overrides defaultConfiguration prop", () => {
+    const urlSelections = { processor: { "opt-url": 1 } };
+    const urlEncoded = btoa(JSON.stringify(urlSelections));
+    setUrlParam("bundle_config", urlEncoded);
+
+    const propSelections = { processor: { "opt-prop": 1 } };
+    const propEncoded = btoa(JSON.stringify(propSelections));
+
+    renderHook(() =>
+      useBundleForm({
+        components: {
+          processor: {
+            name: "Processor",
+            min: 1,
+            max: 1,
+            sort_order: 1,
+            options: [{ id: "opt-1", type: "product" as const, quantity: 1, default: true }],
+          },
+        },
+        defaultConfiguration: propEncoded,
+      })
+    );
+
+    // Should use URL config, not prop config
+    expect(createBundleDefaultValues).toHaveBeenCalledWith(
+      expect.anything(),
+      undefined,
+      urlEncoded
+    );
+  });
+
+  it("falls back to defaultConfiguration prop when no URL param", () => {
+    // Ensure no bundle_config in URL
+    delete (window as any).location;
+    (window as any).location = {
+      ...originalLocation,
+      href: "https://example.com/product/test",
+      search: "",
+    };
+
+    const propEncoded = btoa(JSON.stringify({ processor: { "opt-prop": 1 } }));
+
+    renderHook(() =>
+      useBundleForm({
+        components: {
+          processor: {
+            name: "Processor",
+            min: 1,
+            max: 1,
+            sort_order: 1,
+            options: [{ id: "opt-1", type: "product" as const, quantity: 1, default: true }],
+          },
+        },
+        defaultConfiguration: propEncoded,
+      })
+    );
+
+    expect(createBundleDefaultValues).toHaveBeenCalledWith(
+      expect.anything(),
+      undefined,
+      propEncoded
+    );
+  });
+
+  it("reset also reads URL param for highest priority", () => {
+    const urlSelections = { processor: { "opt-2": 1 } };
+    const encoded = btoa(JSON.stringify(urlSelections));
+    setUrlParam("bundle_config", encoded);
+
+    const { result } = renderHook(() =>
+      useBundleForm({
+        components: {
+          processor: {
+            name: "Processor",
+            min: 1,
+            max: 1,
+            sort_order: 1,
+            options: [{ id: "opt-1", type: "product" as const, quantity: 1, default: true }],
+          },
+        },
+      })
+    );
+
+    // Clear calls from initialization
+    (createBundleDefaultValues as jest.Mock).mockClear();
+
+    act(() => {
+      result.current.reset();
+    });
+
+    // Reset should also use URL param
+    expect(createBundleDefaultValues).toHaveBeenCalledWith(
+      expect.anything(),
+      undefined,
+      encoded
+    );
+  });
+});
+
 describe("useApiFormattedSelections", () => {
   it("converts parentId:childId keys to child-only keys", () => {
     const { result } = renderHook(() =>

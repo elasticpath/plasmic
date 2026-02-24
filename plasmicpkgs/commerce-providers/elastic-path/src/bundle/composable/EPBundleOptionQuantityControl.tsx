@@ -58,6 +58,7 @@ export const epBundleOptionQuantityControlMeta: ComponentMeta<EPBundleOptionQuan
     },
     importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
     importName: "EPBundleOptionQuantityControl",
+    parentComponentName: "plasmic-commerce-ep-bundle-option-trigger",
     providesData: true,
   };
 
