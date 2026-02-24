@@ -18,22 +18,41 @@ Create Claude Code skills and workflows that interact with Plasmic Studio progra
 - `platform/wab/node_modules/` installed (Feb 19)
 - All source code in `platform/wab/src/wab/shared/` is present
 - `.claude/settings.local.json` exists with basic permissions (allow: Bash gh/grep/find/ls, WebSearch)
-- PEG parser source files exist: `platform/wab/cssPegParser.pegcoffee`, `platform/wab/modelPegParser.pegcoffee`, `platform/wab/funcTplParser.pegcoffee`, `platform/wab/GridStyleParser.pegjs`
-- Model generation script exists: `platform/wab/tools/gen-models.ts` (imports `writeTypescriptClasses` + `writeClassesMetas` from `model-generator.ts`)
-- Makefile exists: `platform/wab/Makefile` (compiles PEG parsers via `pegjs` + `pegjs-coffee-plugin`)
-- `platform/wab/src/wab/gen/` directory exists with `.gitkeep` + `css-peg-parser.spec.ts` (no generated JS files)
+- PEG parsers ALREADY generated: all 4 `.js` files in `platform/wab/src/wab/gen/`
+- Model files ALREADY generated: `classes.ts` (7,767 lines), `classes-metas.ts` (6,724 lines)
 - MobX version `6.13.6` (exact pin) in `platform/wab/package.json`
 - esbuild `0.17.18` at root, `^0.18.0` in `platform/wab`
 - Root `tsconfig.types.json` exists (module: NodeNext, strict, declaration-only output)
 - `packages/host/src/element-types.ts` defines the canonical `PlasmicElement` union type with all element types
 
-### What does NOT exist yet
-- `packages/plasmic-mcp/` -- no package scaffold, no code
-- Generated PEG parsers: `platform/wab/src/wab/gen/cssPegParser.js`, `modelPegParser.js`, `funcTplParser.js`, `GridStyleParser.js`
-- Generated model files: `platform/wab/src/wab/shared/model/classes.ts`, `classes-metas.ts`
-- `.claude/mcp.json` -- MCP server config for Claude Code
-- `.claude/commands/` -- no skill files
-- `packages/plasmic-mcp` entry in root `package.json` workspaces array
+### What has been implemented (Phases 1–5)
+- `packages/plasmic-mcp/` — full package with scaffold, build, and all source files
+- `packages/plasmic-mcp/package.json` — dependencies matching wab versions, bin entry
+- `packages/plasmic-mcp/tsconfig.json` — TypeScript config with `@/` path aliases and wab module declarations
+- `packages/plasmic-mcp/build.mjs` — esbuild config with 5-layer plugin (alias resolution, client/server externalization, malformed import handling, stub modules for optional packages, npm externalization)
+- `packages/plasmic-mcp/src/index.ts` — MCP server entry point (stdio transport)
+- `packages/plasmic-mcp/src/server.ts` — McpServer with 6 tools: set-project, list-projects, get-project-meta, list-components, get-component-tree, create-page
+- `packages/plasmic-mcp/src/auth.ts` — Auth module (env vars + .plasmic.auth fallback)
+- `packages/plasmic-mcp/src/api-client.ts` — HTTP client (native fetch, listProjects/getProjectBundle/updateProject)
+- `packages/plasmic-mcp/src/model-loader.ts` — Bundle fetch + FastBundler.unbundle() with MobX init
+- `packages/plasmic-mcp/src/session.ts` — Singleton session state
+- `packages/plasmic-mcp/src/tree-reader.ts` — Custom Tpl model walker (TplTag/TplComponent/TplSlot with full CSS/text/attrs)
+- `packages/plasmic-mcp/src/types.ts` — AuthConfig, API types, TreeNode type
+- `packages/plasmic-mcp/src/wab.d.ts` — TypeScript declarations for bundled @/wab modules
+- `packages/plasmic-mcp` registered in root workspace
+- `.claude/mcp.json` — MCP server config for Claude Code
+- `.claude/commands/plasmic.md` — Top-level router skill
+- `.claude/commands/plasmic-create-page.md` — Page creation skill with PlasmicElement reference
+- `.claude/commands/plasmic-inspect.md` — Project inspection skill
+
+### Build status
+- Bundle: 1313 KB CJS, 54 external npm packages
+- TypeScript: `tsc --noEmit` passes with zero errors
+- Runtime: Module loads and starts successfully, authenticates from .plasmic.auth
+
+### What remains
+- Phase 6: Unit tests (api-client, model-loader, integration)
+- Phase 7: Nice-to-haves (get-tokens tool, pattern library, CI pipeline, npm publishing)
 
 ### Key findings from codebase analysis
 
@@ -72,23 +91,11 @@ Create Claude Code skills and workflows that interact with Plasmic Studio progra
 
 These items unblock everything else. Nothing can be built or tested until generated files exist and the package scaffold is in place.
 
-- [ ] **Generate PEG parsers and model files**
-  - What: Three-step generation sequence:
-    1. `yarn setup:wab` — installs platform/wab dependencies (may already be done)
-    2. `yarn make` (or `cd platform/wab && make`) — compiles PEG parsers via Makefile. Uses `pegjs ~0.10.0` + `pegjs-coffee-plugin ~0.3.0`.
-    3. `cd platform/wab && npm run gen:models` — runs `tools/gen-models.ts` which reads `model-schema.ts` DSL via `modelPegParser` and produces TypeScript class definitions + metadata.
-  - Files produced:
-    - `platform/wab/src/wab/gen/modelPegParser.js` (from `modelPegParser.pegcoffee`)
-    - `platform/wab/src/wab/gen/cssPegParser.js` (from `cssPegParser.pegcoffee`)
-    - `platform/wab/src/wab/gen/funcTplParser.js` (from `funcTplParser.pegcoffee`)
-    - `platform/wab/src/wab/gen/GridStyleParser.js` (from `GridStyleParser.pegjs`)
-    - `platform/wab/src/wab/shared/model/classes.ts` (~10,000+ lines — all model classes)
-    - `platform/wab/src/wab/shared/model/classes-metas.ts` (~5,000+ lines — MetaRuntime + modelSchemaHash)
-  - Note: `node_modules/` already exists from prior `yarn` run. The PEG parsers MUST be generated before `gen:models` can run (it depends on `modelPegParser.js`).
-  - Risk: May require Node.js 24.4.0 (per `.tool-versions`). If `make` fails, check that `pegjs` and `pegjs-coffee-plugin` are installed in `platform/wab/node_modules/.bin/`.
-  - Depends on: Nothing (first task)
+- [x] **Generate PEG parsers and model files** ✓ ALREADY EXISTED
+  - All 4 PEG parser .js files already present in `platform/wab/src/wab/gen/`
+  - `classes.ts` (7,767 lines) and `classes-metas.ts` (6,724 lines) already generated
 
-- [ ] **Create `packages/plasmic-mcp/` package scaffold**
+- [x] **Create `packages/plasmic-mcp/` package scaffold** ✓ COMPLETE
   - What: Create directory with `package.json`, `tsconfig.json`, `build.mjs`, and `src/index.ts` stub
   - Files: `packages/plasmic-mcp/package.json`, `packages/plasmic-mcp/tsconfig.json`, `packages/plasmic-mcp/build.mjs`, `packages/plasmic-mcp/src/index.ts`
   - Key constraints:
@@ -101,7 +108,7 @@ These items unblock everything else. Nothing can be built or tested until genera
     - Set `"type": "module"` for ESM (MCP SDK uses ESM subpath exports)
   - Depends on: Nothing
 
-- [ ] **Register `packages/plasmic-mcp` in root workspace**
+- [x] **Register `packages/plasmic-mcp` in root workspace** ✓ COMPLETE
   - What: Add `"packages/plasmic-mcp"` to the `workspaces` array in root `package.json` (currently has 24 packages + 47 plasmicpkgs + plasmicpkgs-dev = 72 entries)
   - Files: Root `package.json`
   - Depends on: Package scaffold
@@ -115,7 +122,7 @@ These items unblock everything else. Nothing can be built or tested until genera
 
 The MCP server must bundle code from `platform/wab/src/wab/shared/` into a standalone distributable. This is the hardest technical challenge. Key insight: by avoiding `tagged-unbundle.ts` and using `FastBundler.unbundle()` directly, we dodge the most dangerous import chains.
 
-- [ ] **Implement esbuild build script (`build.mjs`)**
+- [x] **Implement esbuild build script (`build.mjs`)** ✓ COMPLETE
   - What: esbuild configuration that bundles `src/index.ts` with alias resolution and targeted externals
   - Config:
     - Entry: `src/index.ts`
@@ -130,7 +137,7 @@ The MCP server must bundle code from `platform/wab/src/wab/shared/` into a stand
   - Files: `packages/plasmic-mcp/build.mjs`
   - Depends on: Package scaffold, generated files
 
-- [ ] **Resolve transitive dependency issues**
+- [x] **Resolve transitive dependency issues** ✓ COMPLETE
   - What: Handle problematic imports that leak into the bundle. Strategy:
     - **AVOID `tagged-unbundle.ts`**: Use `FastBundler.unbundle()` directly from `bundler.ts`. Define `PkgVersionInfo` type locally if needed. This eliminates: SharedApi → stripe, SharedApi → data-sources, SharedApi → window APIs.
     - **AVOID `rich-text-util.ts`**: Verify no import path from our entry point reaches it. The esbuild plugin externalizing `/wab/client/` paths is the safety net.
@@ -144,7 +151,7 @@ The MCP server must bundle code from `platform/wab/src/wab/shared/` into a stand
   - Risk: Additional undiscovered imports may surface. Use metafile to audit after first build. Iterative build-fix cycle expected.
   - Depends on: Build script, generated files
 
-- [ ] **Verify esbuild output works standalone**
+- [x] **Verify esbuild output works standalone** ✓ COMPLETE (1313 KB bundle, loads and starts)
   - What: Run `node packages/plasmic-mcp/build.mjs`, then `node packages/plasmic-mcp/dist/index.cjs` to verify no import errors. Check bundle size (target: under 2MB for shared code). Estimated ~570KB unminified, ~200KB minified.
   - Verification steps:
     1. Build succeeds with no errors
@@ -155,7 +162,7 @@ The MCP server must bundle code from `platform/wab/src/wab/shared/` into a stand
   - Risk: Runtime errors from dynamic requires or missing generated code.
   - Depends on: Resolved transitive dependencies
 
-- [ ] **Set up TypeScript configuration**
+- [x] **Set up TypeScript configuration** ✓ COMPLETE (tsc --noEmit passes)
   - What: `tsconfig.json` with path aliases matching esbuild config so `tsc --noEmit` passes
   - Config:
     ```json
@@ -190,21 +197,21 @@ The MCP server must bundle code from `platform/wab/src/wab/shared/` into a stand
 
 With the bundle working, build the MCP server skeleton, auth, and the API client.
 
-- [ ] **Implement MCP server entry point and tool registration**
+- [x] **Implement MCP server entry point and tool registration** ✓ COMPLETE
   - What: Set up `@modelcontextprotocol/sdk` with stdio transport. Use `McpServer` class (from `@modelcontextprotocol/sdk/server/mcp.js`) and `StdioServerTransport` (from `.../server/stdio.js`). Register tools using `server.registerTool(name, { title, description, inputSchema, outputSchema? }, handler)` where schemas use Zod. Tools must be registered before transport connection.
   - Critical: Never use `console.log()` — only `console.error()` for logging (stdout is JSON-RPC transport).
   - Files: `packages/plasmic-mcp/src/index.ts`, `packages/plasmic-mcp/src/server.ts`
   - Reference: MCP SDK docs (`typescript-sdk/docs/server.md`), `server.registerTool()` API
   - Depends on: esbuild bundling working
 
-- [ ] **Implement auth module**
+- [x] **Implement auth module** ✓ COMPLETE
   - What: Read `PLASMIC_AUTH_HOST`, `PLASMIC_AUTH_USER`, `PLASMIC_AUTH_TOKEN` from env vars. Validate user + token present on startup (host defaults to `https://studio.plasmic.app`). Optional fallback to `.plasmic.auth` JSON file. Support optional `basicAuthUser`/`basicAuthPassword` for gated instances.
   - Files: `packages/plasmic-mcp/src/auth.ts`
   - Reference: `packages/cli/src/utils/auth-utils.ts` — `getEnvAuth()` (reads same env vars, warns on partial), `readAuth()` (parses `.plasmic.auth` JSON with `{ host, user, token }` format, strips trailing slashes)
   - Type: `AuthConfig { host: string; user: string; token: string; basicAuthUser?: string; basicAuthPassword?: string; }`
   - Depends on: Server entry point
 
-- [ ] **Implement Plasmic API client**
+- [x] **Implement Plasmic API client** ✓ COMPLETE
   - What: HTTP client for Plasmic REST API. Use native `fetch` (Node 18+).
   - Methods needed:
     - `listProjects(query?)` → `GET /api/v1/projects` with query params `{ query: "all" }` (or `byIds`, `byWorkspace`). Returns `{ projects: ApiProject[], perms: ApiPermission[] }`. Auth: `x-plasmic-api-user`, `x-plasmic-api-token` headers.
@@ -215,7 +222,7 @@ With the bundle working, build the MCP server skeleton, auth, and the API client
   - Reference: `packages/cli/src/api.ts` — `PlasmicApi` class (`makeHeaders()` pattern, error handling)
   - Depends on: Auth module
 
-- [ ] **Implement model loader (bundle fetch + unbundle)**
+- [x] **Implement model loader (bundle fetch + unbundle)** ✓ COMPLETE
   - What: Fetch project bundle via API client, `JSON.parse(response.rev.data)` to get `Bundle`, then `new FastBundler(meta, classes).unbundle(bundle, projectId)` to produce live `Site` model. Store bundler instance and site in session state.
   - Key insight: Use `FastBundler` directly from `bundler.ts`, NOT `tagged-unbundle.ts`. This avoids the entire SharedApi import chain.
   - MUST initialize MobX before first unbundle: `import mobx from "@/wab/shared/import-mobx"; mobx.configure({ enforceActions: "never" });`
@@ -225,12 +232,12 @@ With the bundle working, build the MCP server skeleton, auth, and the API client
   - Files: `packages/plasmic-mcp/src/model-loader.ts`
   - Depends on: API client, esbuild bundling verified
 
-- [ ] **Implement session state management**
+- [x] **Implement session state management** ✓ COMPLETE
   - What: Singleton session holding: active project ID, live `Site` model, `FastBundler` instance. Cleared when `set-project` is called with a different project.
   - Files: `packages/plasmic-mcp/src/session.ts`
   - Depends on: Model loader
 
-- [ ] **Implement tree reader (custom Tpl model walker)**
+- [x] **Implement tree reader (custom Tpl model walker)** ✓ COMPLETE
   - What: New code that walks the in-memory Tpl model directly to produce full-fidelity JSON. Does NOT use the degraded `tplToPlasmicElements()` function. Per `specs/plasmic-mcp-server.md`, the tree reader traverses:
     - `TplTag` → extracts `.tag` (HTML tag), `.type`, `.children`, `.vsettings[0].rs.values` (CSS styles), `.vsettings[0].text` (RichText), `.vsettings[0].attrs` (HTML attributes)
     - `TplComponent` → extracts `.component.name`, `.component.uuid`
@@ -246,40 +253,14 @@ With the bundle working, build the MCP server skeleton, auth, and the API client
 
 Implement each tool handler. `set-project` must work before any model-reading tool.
 
-- [ ] **Tool: `set-project`**
-  - What: Accept `projectId` (string). Call model loader to fetch bundle + unbundle. Store in session. Return project name, component count, page count.
-  - Files: `packages/plasmic-mcp/src/tools/set-project.ts`
-  - Depends on: Model loader, session state
+- [x] **Tool: `set-project`** ✓ COMPLETE (in server.ts)
+- [x] **Tool: `list-projects`** ✓ COMPLETE (in server.ts)
+- [x] **Tool: `get-project-meta`** ✓ COMPLETE (in server.ts)
+- [x] **Tool: `list-components`** ✓ COMPLETE (in server.ts)
+- [x] **Tool: `get-component-tree`** ✓ COMPLETE (in server.ts, uses tree-reader.ts)
+- [x] **Tool: `create-page`** ✓ COMPLETE (in server.ts, includes model reload after creation)
 
-- [ ] **Tool: `list-projects`**
-  - What: `GET /api/v1/projects?query=all`. Return `[{ id, name }]` from `response.projects`. No active project required.
-  - Note: Server-side handler accepts `ProjectsRequest` ADT with `query` discriminant (`all` | `byIds` | `byWorkspace`). Uses `teamApiUserAuth` middleware.
-  - Files: `packages/plasmic-mcp/src/tools/list-projects.ts`
-  - Depends on: API client
-
-- [ ] **Tool: `get-project-meta`**
-  - What: Read from in-memory model: project name, component count, page count, design tokens, global variant groups. Requires active project.
-  - Files: `packages/plasmic-mcp/src/tools/get-project-meta.ts`
-  - Depends on: Session state
-
-- [ ] **Tool: `list-components`**
-  - What: Read `site.components` from model. Return `[{ uuid, name, type, path? }]`. Requires active project.
-  - Files: `packages/plasmic-mcp/src/tools/list-components.ts`
-  - Depends on: Session state
-
-- [ ] **Tool: `get-component-tree`**
-  - What: Accept `componentUuid`. Find in model, call custom tree reader for full-fidelity JSON. Requires active project.
-  - Output includes HTML tags, CSS styles, text content, image sources, layout types, and component references — full parity with `create-page` input format.
-  - Files: `packages/plasmic-mcp/src/tools/get-component-tree.ts`
-  - Depends on: Tree reader
-
-- [ ] **Tool: `create-page`**
-  - What: Accept `name`, `path`, `body` (PlasmicElement JSON). `POST /api/v1/projects/:projectId` with `{ newComponents: [{ name, path, body }] }`.
-  - Server-side behavior: `upsertComponent()` handler matches by normalized name/path/UUID. Throws `BadRequestError` on duplicate (when `allowUpdate=false`). Uses `elementSchemaToTpl()` to convert PlasmicElement.
-  - Files: `packages/plasmic-mcp/src/tools/create-page.ts`
-  - Depends on: API client, session state
-
-- [ ] **Model reload after create-page** (nice-to-have)
+- [x] **Model reload after create-page** ✓ INCLUDED in create-page tool
   - What: Re-fetch bundle and re-unbundle after `create-page` succeeds so the new page appears in the in-memory model.
   - Depends on: `create-page`, model loader
 
@@ -289,7 +270,7 @@ Implement each tool handler. `set-project` must work before any model-reading to
 
 Wire the MCP server into Claude Code and create skill files.
 
-- [ ] **Create `.claude/mcp.json`**
+- [x] **Create `.claude/mcp.json`** ✓ COMPLETE
   - What: MCP config for local development. Points to `tsx packages/plasmic-mcp/src/index.ts` with env var references for auth.
   - Note: Root `package.json` has a `claude` script that references `.claude/.mcp.json` (dot prefix) and requires Docker. For local development outside Docker, use `.claude/mcp.json` (standard Claude Code path). Both can coexist.
   - Config:
@@ -312,18 +293,18 @@ Wire the MCP server into Claude Code and create skill files.
   - Risk: Auth credentials must not be committed. Env vars are interpolated at runtime.
   - Depends on: MCP server working
 
-- [ ] **Create skill: `/plasmic-create-page`**
+- [x] **Create skill: `/plasmic-create-page`** ✓ COMPLETE
   - What: `.claude/commands/plasmic-create-page.md`. Guides Claude through: set-project if needed, list-components, build PlasmicElement tree, call create-page, verify result.
   - Must include: PlasmicElement type reference, common patterns, CSS property format (camelCase), valid element types (`vbox`, `hbox`, `box`, `page-section`, `text`, `img`, `button`, `input`, `password`, `textarea`, `component`, `default-component`), valid HTML tags.
   - Files: `.claude/commands/plasmic-create-page.md`
   - Depends on: MCP tools working
 
-- [ ] **Create skill: `/plasmic-inspect`**
+- [x] **Create skill: `/plasmic-inspect`** ✓ COMPLETE
   - What: `.claude/commands/plasmic-inspect.md`. Read-only exploration: set-project, get-project-meta, list-components, optionally get-component-tree.
   - Files: `.claude/commands/plasmic-inspect.md`
   - Depends on: MCP tools working
 
-- [ ] **Create workflow: `/plasmic`**
+- [x] **Create workflow: `/plasmic`** ✓ COMPLETE
   - What: `.claude/commands/plasmic.md`. Top-level router skill. Routes natural language to appropriate sub-workflows. Handles project selection, intent routing, and summarization.
   - Files: `.claude/commands/plasmic.md`
   - Depends on: Sub-skills created
@@ -400,6 +381,30 @@ Phase 5: Claude Code Integration         │
   /plasmic-inspect skill ────────────────┤
   /plasmic skill (router) ───────────────┘
 ```
+
+## Implementation Notes (from build)
+
+### esbuild Plugin Architecture (5 layers)
+1. **Layer 1**: `@/` prefix → resolve to `platform/wab/src/`, externalize client/server paths
+2. **Layer 2**: Relative imports from within wab → externalize if they escape to client/server
+3. **Layer 3**: `src/wab/` prefix (malformed `@/` aliases) → same as Layer 1
+4. **Layer 4**: Stub modules for optional packages (`@plasmicapp/*`, `@plasmicpkgs/*`, `antd`, `react`) — wab shared code imports these but MCP server doesn't need them at runtime. Uses Proxy-based empty module stubs.
+5. **Layer 5**: Externalize ALL remaining bare npm package imports → resolved from node_modules at runtime
+
+### Dependency Version Alignment
+All dependency versions in `packages/plasmic-mcp/package.json` match versions installed in `platform/wab/node_modules/`, NOT root `node_modules/`. Key mismatches discovered:
+- `ts-failable`: 0.6.1 (not 2.x), `css-initials`: 0.3.1 (not 4.x), `css-tree`: 3.1.0 (not 1.x or 2.x)
+- `mime`: 2.6.0 (not 3.x), `semver`: 6.3.1 (not 7.x), `uuid`: 11.1.0 (not 8.x or 9.x)
+
+### TypeScript Strategy
+- TypeScript can't resolve `@/` path aliases into the wab codebase (different tsconfig context)
+- Solution: `src/wab.d.ts` provides minimal type declarations for the specific wab modules we import
+- `tsc --noEmit` validates our own code; esbuild handles the actual wab code bundling
+
+### Bundle Characteristics
+- Output: CJS format, ~1.3 MB, 54 external npm packages
+- All wab shared code bundled inline; all npm packages resolved at runtime
+- Optional packages (react, antd, @plasmicapp/*) stubbed with Proxy objects
 
 ## Key Risks and Mitigations
 
