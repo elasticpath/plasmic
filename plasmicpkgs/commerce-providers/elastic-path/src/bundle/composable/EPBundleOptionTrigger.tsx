@@ -60,6 +60,7 @@ export function EPBundleOptionTrigger(props: EPBundleOptionTriggerProps) {
   const currentOption = useSelector("currentBundleOption") as
     | {
         id?: string;
+        name?: string;
         isSelected?: boolean;
         quantity?: number;
         minQty?: number | null;
@@ -151,7 +152,7 @@ export function EPBundleOptionTrigger(props: EPBundleOptionTriggerProps) {
         role={role}
         tabIndex={0}
         aria-checked={isSelected}
-        aria-label={currentOption?.id ? undefined : "Select option"}
+        aria-label={`Select ${currentOption?.name || "option"}`}
         data-selected={isSelected || undefined}
         data-ep-bundle-option-trigger=""
       >

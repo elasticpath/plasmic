@@ -1,4 +1,7 @@
-import { usePlasmicCanvasContext } from "@plasmicapp/host";
+import {
+  useSelector,
+  usePlasmicCanvasContext,
+} from "@plasmicapp/host";
 import registerComponent, {
   ComponentMeta,
 } from "@plasmicapp/host/registerComponent";
@@ -55,26 +58,31 @@ export function EPBundleOptionQuantityButton(
   const { children, className, action, previewState = "auto" } = props;
 
   const optionCtx = useBundleOption();
+  const currentOption = useSelector("currentBundleOption") as
+    | { minQty?: number | null; maxQty?: number | null }
+    | undefined;
   const inEditor = !!usePlasmicCanvasContext();
 
   const quantity = optionCtx?.quantity ?? 0;
+  const min = currentOption?.minQty ?? 0;
+  const max = currentOption?.maxQty ?? 99;
 
-  // Disabled state: check context for actual quantity bounds
-  // The parent EPBundleOptionQuantityControl provides the min/max,
-  // but this button only needs to know if it can act
+  // Disabled state: enforce min/max bounds from the option data
   const isDisabled =
     previewState === "disabled"
       ? true
       : previewState === "enabled"
         ? false
-        : !optionCtx;
+        : !optionCtx ||
+          (action === "increment" && quantity >= max) ||
+          (action === "decrement" && quantity <= min);
 
   const handleClick = () => {
     if (isDisabled || !optionCtx) return;
     if (action === "increment") {
-      optionCtx.setQuantity(quantity + 1);
+      optionCtx.setQuantity(Math.min(max, quantity + 1));
     } else {
-      optionCtx.setQuantity(Math.max(0, quantity - 1));
+      optionCtx.setQuantity(Math.max(min, quantity - 1));
     }
   };
 

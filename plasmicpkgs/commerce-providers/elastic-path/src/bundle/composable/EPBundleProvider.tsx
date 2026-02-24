@@ -185,6 +185,8 @@ export function EPBundleProvider(props: EPBundleProviderProps) {
 
 // Extracted inner component to avoid calling hooks conditionally (the preview
 // branches above return early, which would violate rules-of-hooks).
+// All hooks are called unconditionally here; the early return for invalid
+// products happens AFTER all hooks to satisfy React's rules-of-hooks.
 function EPBundleProviderInner({
   normalizedProduct,
   defaultConfiguration,
@@ -202,22 +204,15 @@ function EPBundleProviderInner({
   notBundleContent?: React.ReactNode;
   children?: React.ReactNode;
 }) {
-  // Validate product is a bundle
+  // Validate product is a bundle — extract with safe defaults so hooks
+  // below are always called (rules-of-hooks compliance).
   const productValidation = validateBundleProduct(normalizedProduct);
-
-  if (!productValidation.isValid) {
-    if (notBundleContent) {
-      return (
-        <div className={className} data-ep-bundle-provider="">
-          {notBundleContent}
-        </div>
-      );
-    }
-    return null;
-  }
-
-  const { bundleProduct, components } = productValidation;
+  const isProductValid = productValidation.isValid;
+  const bundleProduct = productValidation.bundleProduct;
+  const components = productValidation.components;
   const { isFixedPrice, pricingType } = getBundlePricingType(bundleProduct);
+
+  // --- All hooks called unconditionally below ---
 
   // Bundle form management with Zod validation
   const {
@@ -241,22 +236,22 @@ function EPBundleProviderInner({
       bundleId: bundleProduct?.id || "",
     });
 
-  // Debounced orchestration
+  // Debounced orchestration — disabled when product is not valid
   const { isConfiguring, error: configError } =
     useBundleConfigurationOrchestration({
       selectedOptions: apiFormattedSelections,
-      isInitialized: true,
+      isInitialized: isProductValid,
       isValid,
       bundleProduct,
       configureBundleSelection,
       debounceMs,
     });
 
-  // Form and URL synchronization
+  // Form and URL synchronization — disabled when product is not valid
   useBundleFormSync({
     selectedOptions,
     updateUrlOnChange,
-    isInitialized: true,
+    isInitialized: isProductValid,
     form,
     configuredBundle,
   });
@@ -327,6 +322,18 @@ function EPBundleProviderInner({
       isFixedPrice,
     ]
   );
+
+  // --- Early return AFTER all hooks (rules-of-hooks compliant) ---
+  if (!isProductValid) {
+    if (notBundleContent) {
+      return (
+        <div className={className} data-ep-bundle-provider="">
+          {notBundleContent}
+        </div>
+      );
+    }
+    return null;
+  }
 
   return (
     <DataProvider name="bundleData" data={bundleData}>

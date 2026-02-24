@@ -1,7 +1,7 @@
 # Implementation Plan — EP Components Cart Work
 
 > Auto-generated from analysis of `specs/*` vs `plasmicpkgs/commerce-providers/elastic-path/src/*`
-> Last updated: 2026-02-24
+> Last updated: 2026-02-25
 
 ---
 
@@ -41,7 +41,7 @@ esbuild jest transform hoists `import` to `require()` at file top, BEFORE `jest.
 ## P1 — Composable Bundle Configurator Components
 
 **Spec:** `specs/composable-bundle-configurator.md`
-**Status:** All 14 components implemented in `src/bundle/composable/`. Build passes, 174 tests pass (11 suites).
+**Status:** All 14 components implemented in `src/bundle/composable/`. 3 bugs fixed, 76 component tests added. Build passes, 250 tests pass (12 suites).
 
 > **Build fix note:** `sortByOrder` expects `sort_order` (snake_case) while enriched objects used `sortOrder` (camelCase). Resolved by adding a `sort_order` property to enriched option/component objects so both naming conventions are available.
 
@@ -150,6 +150,20 @@ esbuild jest transform hoists `import` to `require()` at file top, BEFORE `jest.
 - [x] **Updated `src/index.tsx`** — `registerAll()` registrations for all 14 components
 - [x] **All components follow Plasmic composable pattern** — `ComponentMeta` registration, `DataProvider`/`useSelector` data flow, `repeatedElement` for iteration, `usePlasmicCanvasContext` for editor detection, `previewState` for design-time preview
 
+### P1g — Bug Fixes (discovered during test coverage work)
+
+- [x] **Fix rules-of-hooks violation in `EPBundleProviderInner`** — The inner component returned early before hooks were called when `validateBundleProduct()` failed. All hooks (`useBundleFormHook`, `useApiFormattedSelections`, `useBundleConfiguration`, `useBundleConfigurationOrchestration`, `useBundleFormSync`, `useParentProducts`, `useBundleOptionProducts`, and 4 `useMemo` calls) were called conditionally. Fixed by moving the early return to AFTER all hooks, passing safe defaults (`enabled: false`, empty `components: {}`) when product is invalid.
+
+- [x] **Fix `EPBundleOptionQuantityButton` min/max bounds bypass** — The button called `optionCtx.setQuantity(quantity + 1)` without checking maxQty, and `Math.max(0, quantity - 1)` ignoring minQty. Fixed: button now reads `currentBundleOption` via `useSelector` to get minQty/maxQty, clamps values with `Math.min(max, quantity + 1)` / `Math.max(min, quantity - 1)`, and disables at bounds via `aria-disabled`.
+
+- [x] **Fix `EPBundleOptionTrigger` missing aria-label** — Real options (with an `id`) had `aria-label={undefined}` because the label was only set when no id was present. Fixed: now always sets `aria-label={`Select ${name || "option"}`}`, reading `name` from `currentBundleOption` selector.
+
+### P1h — Known Issues (not yet fixed)
+
+- [ ] **Variation selection uses label strings as keys** — `EPBundleVariationOptionList` and `EPBundleVariationPicker` match variation options by `label` (name string) rather than option ID. Duplicate-named variation options would break selection. Low priority: rare in practice.
+
+- [ ] **Option product metadata shows parent info, not selected child** — `EPBundleComponentList` looks up `optionProducts[optionId]` by parent ID. When a child variant is selected, the displayed name/price in `EPBundleOptionField` reflects the parent, not the chosen child. Would need child product lookup keyed by `parentId:childId`.
+
 ---
 
 ## P2 — Code Quality & Consistency
@@ -207,11 +221,12 @@ These are lower priority but improve maintainability and align with established 
 
 ## P3 — Test Coverage
 
-### Current Coverage (11 test suites, 174 tests, all passing)
+### Current Coverage (12 test suites, 250 tests, all passing)
 
+- [x] `bundle/composable/__tests__/composable-bundle-components.test.tsx` (76 tests) — Field rendering, option triggers (click/keyboard/ARIA), quantity button bounds enforcement, quantity control DataProvider shape, component/option/variation list iteration, design-time mock data validation
 - [x] `bundle/hooks/__tests__/useBundleConfigurationOrchestration.test.tsx` (14 tests)
-- [x] `bundle/hooks/__tests__/use-parent-products.test.tsx` (12 tests)
-- [x] `bundle/hooks/__tests__/use-bundle-option-products.test.tsx` (12 tests)
+- [x] `bundle/__tests__/use-parent-products.test.tsx` (12 tests)
+- [x] `bundle/__tests__/use-bundle-option-products.test.tsx` (12 tests)
 - [x] `bundle/utils/__tests__/configurationComparison.test.ts` (11 tests)
 - [x] `bundle/utils/__tests__/priceCalculation.test.ts` (9 tests)
 - [x] `bundle/utils/__tests__/productValidation.test.ts` (9 tests)
@@ -223,7 +238,7 @@ These are lower priority but improve maintainability and align with established 
 
 ### Missing Test Coverage (by priority)
 
-- [ ] **Tests for new composable bundle components** (P1 deliverables)
+- [x] **Tests for new composable bundle components** (P1 deliverables) — 76 tests covering field components, interactive triggers, quantity controls, list iteration, and design-time preview
 - [ ] **Tests for cart hooks** — `use-add-item`, `use-cart`, `use-remove-item`, `use-update-item`
 - [ ] **Tests for inventory hooks** — `use-stock`, `use-locations`
 - [ ] **Tests for bundle form hooks** — `useBundleForm`, `useBundleFormSync`, `useVariationSelection`
