@@ -162,6 +162,10 @@ export interface MockCartItemData {
   imageAlt: string;
   options: { name: string; value: string }[];
   hasDiscount: boolean;
+  locationSlug: string;
+  locationName: string;
+  stockAvailable: number | null;
+  stockStatus: string;
 }
 
 export const MOCK_CART_LINE_ITEMS: MockCartItemData[] = [
@@ -187,6 +191,10 @@ export const MOCK_CART_LINE_ITEMS: MockCartItemData[] = [
       { name: "Size", value: "Medium" },
     ],
     hasDiscount: true,
+    locationSlug: "sample-downtown",
+    locationName: "Sample Downtown Store",
+    stockAvailable: 25,
+    stockStatus: "in-stock",
   },
   {
     id: "sample-cart-item-2",
@@ -210,6 +218,10 @@ export const MOCK_CART_LINE_ITEMS: MockCartItemData[] = [
       { name: "Size", value: "Large" },
     ],
     hasDiscount: false,
+    locationSlug: "sample-westside",
+    locationName: "Sample Westside Mall",
+    stockAvailable: 3,
+    stockStatus: "low",
   },
   {
     id: "sample-cart-item-3",
@@ -230,6 +242,10 @@ export const MOCK_CART_LINE_ITEMS: MockCartItemData[] = [
     imageAlt: "Sample Leather Belt",
     options: [{ name: "Size", value: "32" }],
     hasDiscount: false,
+    locationSlug: "",
+    locationName: "",
+    stockAvailable: null,
+    stockStatus: "",
   },
 ];
 

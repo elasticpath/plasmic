@@ -15,7 +15,11 @@ type CartItemFieldName =
   | "formattedLineTotal"
   | "options"
   | "productId"
-  | "variantId";
+  | "variantId"
+  | "locationName"
+  | "locationSlug"
+  | "stockAvailable"
+  | "stockStatus";
 
 type PreviewState = "auto" | "withData";
 
@@ -41,6 +45,10 @@ export const epCartItemFieldMeta: ComponentMeta<EPCartItemFieldProps> = {
         { label: "Formatted List Price", value: "formattedListPrice" },
         { label: "Formatted Line Total", value: "formattedLineTotal" },
         { label: "Options", value: "options" },
+        { label: "Location Name", value: "locationName" },
+        { label: "Location Slug", value: "locationSlug" },
+        { label: "Stock Available", value: "stockAvailable" },
+        { label: "Stock Status", value: "stockStatus" },
         { label: "Product ID", value: "productId" },
         { label: "Variant ID", value: "variantId" },
       ],

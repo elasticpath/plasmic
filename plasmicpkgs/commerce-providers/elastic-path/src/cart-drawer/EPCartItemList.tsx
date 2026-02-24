@@ -10,6 +10,8 @@ import registerComponent, {
 import React, { useMemo } from "react";
 import { Registerable } from "../registerable";
 import { createLogger } from "../utils/logger";
+import { useLocations } from "../inventory/use-locations";
+import { useStock } from "../inventory/use-stock";
 import {
   MOCK_CART_LINE_ITEMS,
   MockCartItemData,
@@ -110,16 +112,43 @@ interface EnrichedCartItem {
   imageAlt: string;
   options: { name: string; value: string }[];
   hasDiscount: boolean;
+  locationSlug: string;
+  locationName: string;
+  stockAvailable: number | null;
+  stockStatus: string;
 }
 
 function enrichLineItem(
   item: any,
-  currencyCode: string
+  currencyCode: string,
+  locationMap: Record<string, string>,
+  stockMap: Record<string, Record<string, number>>
 ): EnrichedCartItem {
   const price = item.variant?.price ?? item.price ?? 0;
   const listPrice = item.variant?.listPrice ?? item.listPrice ?? price;
   const quantity = item.quantity ?? 1;
   const lineTotal = price * quantity;
+
+  const locationSlug = item.locationSlug ?? "";
+  const locationName = locationSlug ? (locationMap[locationSlug] ?? locationSlug) : "";
+
+  // Look up stock for this product at its location
+  let stockAvailable: number | null = null;
+  let stockStatus = "";
+  if (locationSlug) {
+    const productId = item.variantId ?? item.productId ?? "";
+    const productStockByLocation = stockMap[productId];
+    if (productStockByLocation && locationSlug in productStockByLocation) {
+      stockAvailable = productStockByLocation[locationSlug];
+      if (stockAvailable <= 0) {
+        stockStatus = "out-of-stock";
+      } else if (stockAvailable <= 5) {
+        stockStatus = "low";
+      } else {
+        stockStatus = "in-stock";
+      }
+    }
+  }
 
   return {
     id: item.id,
@@ -139,6 +168,10 @@ function enrichLineItem(
     imageAlt: item.variant?.image?.alt ?? item.name ?? "",
     options: item.options ?? [],
     hasDiscount: listPrice > price,
+    locationSlug,
+    locationName,
+    stockAvailable,
+    stockStatus,
   };
 }
 
@@ -158,6 +191,60 @@ export function EPCartItemList(props: EPCartItemListProps) {
     log.debug("Using mock cart items for design-time preview");
   }
 
+  // Collect unique location slugs and product IDs from cart items that have locations
+  const { locationSlugs, productIds } = useMemo(() => {
+    if (useMock || !cartData?.lineItems) return { locationSlugs: [] as string[], productIds: [] as string[] };
+    const slugs = new Set<string>();
+    const ids = new Set<string>();
+    for (const item of cartData.lineItems) {
+      const slug = (item as any).locationSlug;
+      if (slug) {
+        slugs.add(slug);
+        const productId = item.variantId ?? item.productId;
+        if (productId) ids.add(productId);
+      }
+    }
+    return { locationSlugs: Array.from(slugs), productIds: Array.from(ids) };
+  }, [useMock, cartData]);
+
+  const hasLocations = locationSlugs.length > 0;
+
+  // Fetch all locations (only when cart items have locations)
+  const { locations } = useLocations({ enabled: hasLocations && !inEditor });
+
+  // Build slug → name map
+  const locationMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const loc of locations) {
+      const slug = loc.attributes?.slug ?? loc.id;
+      const name = loc.attributes?.name ?? slug ?? "";
+      if (slug) map[slug] = name;
+    }
+    return map;
+  }, [locations]);
+
+  // Fetch stock for products that have locations
+  const { productStock } = useStock({
+    productIds,
+    locationIds: locationSlugs,
+    enabled: hasLocations && !inEditor,
+  });
+
+  // Build productId → { locationSlug → available } map
+  const stockMap = useMemo(() => {
+    const map: Record<string, Record<string, number>> = {};
+    for (const [productId, stock] of Object.entries(productStock)) {
+      map[productId] = {};
+      for (const ls of stock.locations) {
+        const slug = (ls.location as any).slug ?? ls.location.id;
+        if (slug) {
+          map[productId][slug] = Number(ls.stock.available ?? 0);
+        }
+      }
+    }
+    return map;
+  }, [productStock]);
+
   const items: EnrichedCartItem[] = useMemo(() => {
     if (useMock) {
       return MOCK_CART_LINE_ITEMS as EnrichedCartItem[];
@@ -165,9 +252,9 @@ export function EPCartItemList(props: EPCartItemListProps) {
     if (!cartData?.lineItems) return [];
     const currencyCode = cartData.currencyCode ?? "USD";
     return cartData.lineItems.map((item) =>
-      enrichLineItem(item, currencyCode)
+      enrichLineItem(item, currencyCode, locationMap, stockMap)
     );
-  }, [useMock, cartData]);
+  }, [useMock, cartData, locationMap, stockMap]);
 
   const displayedItems = maxItems ? items.slice(0, maxItems) : items;
 
