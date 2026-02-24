@@ -8,6 +8,7 @@ import useCart from "./use-cart";
 import { buildCartItemData, validateCartItem } from "./utils/cartDataBuilder";
 import type { ExtendedCartItem } from "./utils/cartDataBuilder";
 import { handleAPIError } from "../utils/errorHandling";
+import { getEPClient } from "../utils/getEPClient";
 import { createLogger } from "../utils/logger";
 
 const log = createLogger("useAddItem");
@@ -37,7 +38,7 @@ export const handler: MutationHook<AddItemHook> = {
       // Create cart if doesn't exist
       if (!cartId) {
         const response = await createACart({
-          client: (provider as any)!.client!,
+          client: getEPClient(provider),
           body: {
             data: {
               name: "Cart",
@@ -59,7 +60,7 @@ export const handler: MutationHook<AddItemHook> = {
       const cartData = buildCartItemData(extendedItem);
 
       await manageCarts({
-        client: (provider as any)!.client!,
+        client: getEPClient(provider),
         path: { cartID: cartId },
         body: {
           data: cartData,
@@ -68,7 +69,7 @@ export const handler: MutationHook<AddItemHook> = {
 
       // Get the updated cart
       const cartResponse = await getACart({
-        client: (provider as any)!.client!,
+        client: getEPClient(provider),
         path: { cartID: cartId },
         query: {
           include: ["items"],

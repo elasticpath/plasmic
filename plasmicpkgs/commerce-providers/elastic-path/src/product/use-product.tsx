@@ -2,6 +2,8 @@ import { getByContextProduct, getByContextChildProducts } from "@epcc-sdk/sdks-s
 import type { GetProductHook } from "@plasmicpkgs/commerce";
 import { SWRHook, useProduct, UseProduct } from "@plasmicpkgs/commerce";
 import { normalizeProduct } from "../utils";
+import { handleAPIError } from "../utils/errorHandling";
+import { getEPClient } from "../utils/getEPClient";
 import { createLogger } from "../utils/logger";
 
 const log = createLogger("useProduct");
@@ -24,7 +26,7 @@ export const handler: SWRHook<GetProductHook> = {
 
     try {
       const response = await getByContextProduct({
-        client: (provider as any)!.client!,
+        client: getEPClient(provider),
         path: {
           product_id: id,
         },
@@ -54,7 +56,7 @@ export const handler: SWRHook<GetProductHook> = {
         initialVariantId = id;
 
         const parentResponse = await getByContextProduct({
-          client: (provider as any)!.client!,
+          client: getEPClient(provider),
           path: {
             product_id: parentId,
           },
@@ -77,7 +79,7 @@ export const handler: SWRHook<GetProductHook> = {
       if (hasVariations) {
         try {
           const childProductsResponse = await getByContextChildProducts({
-            client: (provider as any)!.client!,
+            client: getEPClient(provider),
             path: {
               product_id: baseProductId,
             },
@@ -106,7 +108,8 @@ export const handler: SWRHook<GetProductHook> = {
 
       return product;
     } catch (error) {
-      log.error("Error fetching product", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
+      const standardError = handleAPIError(error, "fetching product");
+      log.error("Error fetching product", { error: standardError.message } as Record<string, unknown>);
       return null;
     }
   },

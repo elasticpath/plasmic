@@ -8,6 +8,8 @@ import { useMemo } from "react";
 import { GetCartHook } from "../types/cart";
 import { normalizeCart } from "../utils";
 import { getCartId, setCartId } from "../utils/cart-cookie";
+import { handleAPIError } from "../utils/errorHandling";
+import { getEPClient } from "../utils/getEPClient";
 import { createLogger } from "../utils/logger";
 
 const log = createLogger("useCart");
@@ -26,7 +28,7 @@ export const handler: SWRHook<GetCartHook> = {
       if (cartId) {
         // Get existing cart with items included
         const response = await getACart({
-          client: (provider as any)!.client!,
+          client: getEPClient(provider),
           path: { cartID: cartId },
           query: {
             include: ["items"],
@@ -41,7 +43,7 @@ export const handler: SWRHook<GetCartHook> = {
       } else {
         // Create new cart
         const response = await createACart({
-          client: (provider as any).client!,
+          client: getEPClient(provider),
           body: {
             data: {
               name: "Cart",
@@ -58,7 +60,8 @@ export const handler: SWRHook<GetCartHook> = {
       }
     } catch (error) {
       // If cart not found or error, clear cookie and create new cart
-      log.error("Error getting cart", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
+      const standardError = handleAPIError(error, "getting cart");
+      log.error("Error getting cart", { error: standardError.message } as Record<string, unknown>);
       return undefined;
     }
 

@@ -11,6 +11,8 @@ import type { LineItem, UpdateItemHook } from "../types/cart";
 import { getCartId, normalizeCart, removeCartCookie } from "../utils";
 import useCart from "./use-cart";
 import { handler as removeItemHandler } from "./use-remove-item";
+import { handleAPIError } from "../utils/errorHandling";
+import { getEPClient } from "../utils/getEPClient";
 import { createLogger } from "../utils/logger";
 
 const log = createLogger("useUpdateItem");
@@ -59,7 +61,7 @@ export const handler: MutationHook<UpdateItemHook> = {
       }
 
       await updateACartItem({
-        client: (provider as any)!.client!,
+        client: getEPClient(provider),
         path: {
           cartID: cartId,
           cartitemID: itemId,
@@ -71,7 +73,7 @@ export const handler: MutationHook<UpdateItemHook> = {
 
       // Get updated cart with items
       const response = await getACart({
-        client: (provider as any)!.client!,
+        client: getEPClient(provider),
         path: { cartID: cartId },
         query: {
           include: ["items"],
@@ -85,9 +87,10 @@ export const handler: MutationHook<UpdateItemHook> = {
         return undefined;
       }
     } catch (error) {
-      log.error("Error updating cart item", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
-      // If cart not found, clear cookie
-      if ((error as any)?.status === 404) {
+      const standardError = handleAPIError(error, "updating cart item");
+      log.error("Error updating cart item", { error: standardError.message } as Record<string, unknown>);
+      // If cart not found (404), clear cookie so next operation creates a fresh cart
+      if ((error as Record<string, unknown>)?.status === 404) {
         removeCartCookie();
       }
       return undefined;

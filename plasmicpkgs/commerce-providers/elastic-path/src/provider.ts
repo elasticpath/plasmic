@@ -1,3 +1,4 @@
+import type { Client } from "@epcc-sdk/sdks-shopper";
 import {
   Fetcher,
   MutationHook,
@@ -73,8 +74,7 @@ export type ElasticPathProvider = {
   locale: string;
   cartCookie: string;
   fetcher: Fetcher; // Required by commerce package interface
-  client: any; // The Elastic Path SDK client instance
-  auth: any; // The Elastic Path auth instance
+  client: Client;
   cart: {
     useCart: typeof useCart;
     useAddItem: typeof useAddItem;

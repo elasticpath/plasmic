@@ -13,6 +13,8 @@ import { useCallback } from "react";
 import type { Cart, LineItem, RemoveItemHook } from "../types/cart";
 import { getCartId, normalizeCart, removeCartCookie } from "../utils";
 import useCart from "./use-cart";
+import { handleAPIError } from "../utils/errorHandling";
+import { getEPClient } from "../utils/getEPClient";
 import { createLogger } from "../utils/logger";
 
 const log = createLogger("useRemoveItem");
@@ -44,7 +46,7 @@ export const handler: MutationHook<RemoveItemHook> = {
 
     try {
       await deleteACartItem({
-        client: (provider as any)!.client!,
+        client: getEPClient(provider),
         path: {
           cartID: cartId,
           cartitemID: itemId,
@@ -53,7 +55,7 @@ export const handler: MutationHook<RemoveItemHook> = {
 
       // Get updated cart with items
       const response = await getACart({
-        client: (provider as any)!.client!,
+        client: getEPClient(provider),
         path: { cartID: cartId },
         query: {
           include: ["items"],
@@ -67,9 +69,10 @@ export const handler: MutationHook<RemoveItemHook> = {
         return undefined;
       }
     } catch (error) {
-      log.error("Error removing item from cart", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
-      // If cart not found, clear cookie
-      if ((error as any)?.status === 404) {
+      const standardError = handleAPIError(error, "removing item from cart");
+      log.error("Error removing item from cart", { error: standardError.message } as Record<string, unknown>);
+      // If cart not found (404), clear cookie so next operation creates a fresh cart
+      if ((error as Record<string, unknown>)?.status === 404) {
         removeCartCookie();
       }
       return undefined;

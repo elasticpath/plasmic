@@ -172,10 +172,7 @@ These are lower priority but improve maintainability and align with established 
 
 ### P2a — Type Safety
 
-- [ ] **Eliminate `(provider as any)` casts (44+ occurrences)**
-  - Files: `use-cart.tsx`, `use-add-item.tsx`, `use-remove-item.tsx`, `use-update-item.tsx`, `use-product.tsx`, `use-search.tsx`, `use-categories.tsx`
-  - Standard: `inventory/use-stock.tsx` uses `commerce.providerRef.current?.client` with proper typing
-  - Create a typed helper or extend the commerce provider type
+- [x] **Eliminate `(provider as any)` casts** — Done. Created `utils/getEPClient.ts` utility that centralizes the single type assertion (`provider` → `{ client: Client }`). Replaced 15 occurrences across 7 files. Typed `ElasticPathProvider.client` as `Client` (from `@epcc-sdk/sdks-shopper`) instead of `any`. Removed unused `auth: any` from `ElasticPathProvider` type.
 
 - [ ] **Eliminate other `as any` casts**
   - `(item as any).location` in cart hooks
@@ -186,14 +183,9 @@ These are lower priority but improve maintainability and align with established 
 
 ### P2b — Error Handling Standardization
 
-- [ ] **Standardize error handling across all hooks**
-  - Gold standard: `inventory/use-stock.tsx` using `handleAPIError()` from utils
-  - Non-compliant: `use-remove-item.tsx`, `use-update-item.tsx`, `use-product.tsx`, `use-categories.tsx`
-  - All should use `handleAPIError(error, context)` from `utils/errorHandling.ts`
+- [x] **Standardize error handling across all hooks** — Done. All 7 hook files now use `handleAPIError(error, context)` from `utils/errorHandling.ts`. Added missing error handling to `use-categories.tsx` (had no try/catch at all). Replaced manual `error instanceof Error ? error.message : String(error)` patterns with standardized `handleAPIError()`. Cart hooks' 404 status check preserved (uses `Record<string, unknown>` instead of `as any`).
 
-- [ ] **Extract `extractErrorMessage()` utility**
-  - Pattern `error instanceof Error ? error.message : String(error)` appears in 20+ files
-  - Already partially addressed by `handleAPIError()` but not used everywhere
+- [x] **`extractErrorMessage()` pattern eliminated** — All hooks now use `handleAPIError()` which handles the `error instanceof Error` check internally. No more manual error message extraction in hook files.
 
 ### P2c — Utility Consolidation
 

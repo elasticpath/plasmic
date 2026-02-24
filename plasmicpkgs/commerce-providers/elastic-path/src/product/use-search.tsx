@@ -1,4 +1,4 @@
-import { Client, getByContextAllProducts } from "@epcc-sdk/sdks-shopper";
+import { getByContextAllProducts } from "@epcc-sdk/sdks-shopper";
 import { useSearch } from "@plasmicpkgs/commerce";
 import { getSortVariables, normalizeProductFromList } from "../utils";
 
@@ -7,6 +7,8 @@ import type {
   SWRHook,
   UseSearch,
 } from "@plasmicpkgs/commerce";
+import { handleAPIError } from "../utils/errorHandling";
+import { getEPClient } from "../utils/getEPClient";
 import { createLogger } from "../utils/logger";
 
 const log = createLogger("useSearch");
@@ -65,7 +67,7 @@ export const handler: SWRHook<SearchProductsHook> = {
       params.query["include"] = ["main_image", "files", "component_products"];
 
       const response = await getByContextAllProducts({
-        client: (provider as any)!.client! as Client,
+        client: getEPClient(provider),
         ...params,
       });
 
@@ -85,7 +87,8 @@ export const handler: SWRHook<SearchProductsHook> = {
           (response.data && (response.data.data?.length || 0) > 0) || false,
       };
     } catch (error) {
-      log.error("Error searching products", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
+      const standardError = handleAPIError(error, "searching products");
+      log.error("Error searching products", { error: standardError.message } as Record<string, unknown>);
       return {
         products: [],
         found: false,
