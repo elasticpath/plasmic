@@ -391,7 +391,7 @@ Test infrastructure and unit tests for all MCP server modules (81 tests, 7 suite
 ## Phase 7: Nice-to-Haves
 
 - [x] **Tool: `get-tokens`** ✓ COMPLETE — Reads `site.styleTokens`, resolves token references (`var(--token-<uuid>)` chains with cycle detection), groups by type (Color/Spacing/FontSize/LineHeight/FontFamily/Opacity), optional type filter. `token-reader.ts` module + 17 tests. All 3 skill files updated to reference the tool.
-- [ ] **PlasmicElement pattern library** — `.claude/commands/plasmic-patterns.md`
+- [x] **PlasmicElement pattern library** ✓ COMPLETE — `.claude/commands/plasmic-patterns.md` with 10 validated patterns: hero, feature grid, card, contact form, navigation header, footer, pricing table (3-tier), testimonial, CTA section, image gallery. Includes CSS rules (no shorthand `border`/`transition`), valid element types, valid tags, composition guide, and component reference pattern. All patterns validated against `elementSchemaToTpl()` server-side handling. Cross-references added to `/plasmic-create-page` and `/plasmic` skills.
 - [ ] **Bundle size optimization** — Metafile analysis, targeted externals
 - [ ] **CI pipeline** — `.github/workflows/plasmic-mcp.yml`
 - [ ] **npx publishing** — `@elasticpath/plasmic-mcp` npm package with `bin` field

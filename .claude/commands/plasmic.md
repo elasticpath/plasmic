@@ -12,7 +12,7 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 ## Instructions
 1. If no project is set, call `list-projects` and ask the user which one to work on, then call `set-project`.
 2. Interpret the user's request and route to the appropriate action:
-   - "create a page", "add a page", "make a new page" → build a PlasmicElement tree and call `create-page`
+   - "create a page", "add a page", "make a new page" → build a PlasmicElement tree and call `create-page`. Use `/plasmic-patterns` for validated page section patterns (hero, grid, card, form, pricing, testimonial, CTA, navigation, footer).
    - "what pages exist", "show me the project", "list components" → call `get-project-meta` and `list-components`
    - "show me the homepage", "what does X look like" → find the component UUID via `list-components`, then call `get-component-tree`
    - "what colors are available", "show me the design tokens", "what fonts" → call `get-tokens` (optionally with a type filter)

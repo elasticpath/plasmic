@@ -77,6 +77,11 @@ Styles use React CSSProperties format (camelCase):
 ### Valid Element Types
 `img`, `text`, `box`, `vbox`, `hbox`, `page-section`, `button`, `input`, `password`, `textarea`, `component`, `default-component`
 
+### CSS Rules
+- **camelCase only**: `fontSize`, `backgroundColor`, `borderRadius` (not kebab-case)
+- **No shorthand `border`**: Use `borderWidth`, `borderStyle`, `borderColor` separately
+- **No shorthand `transition`**: Use `transitionProperty`, `transitionDuration` separately
+
 ### Common Page Pattern
 
 **Page with hero and content sections:**
@@ -101,6 +106,8 @@ Styles use React CSSProperties format (camelCase):
   ]
 }
 ```
+
+For more patterns (grids, cards, forms, pricing, testimonials, footers, navigation), see `/plasmic-patterns`.
 
 ## Instructions
 1. If no project is active, call `list-projects` and ask the user which project, then `set-project`.
