@@ -1,7 +1,7 @@
 # Implementation Plan — EP Components Cart Work
 
 > Auto-generated from analysis of `specs/*` vs `plasmicpkgs/commerce-providers/elastic-path/src/*`
-> Last updated: 2025-02-24
+> Last updated: 2026-02-24
 
 ---
 
@@ -18,22 +18,13 @@
 **Spec:** `specs/bundle-hooks-rework.md`
 **Why first:** The composable bundle configurator (P1) depends on clean, SWR-cached hooks. Currently all bundle data-fetching hooks use raw `useEffect`/`useState` instead of the `useMutablePlasmicQueryData` SWR pattern established in `inventory/use-stock.tsx` and `inventory/use-locations.tsx`.
 
-- [ ] **Migrate `use-bundle-option-products.tsx` to SWR caching**
-  - Currently: raw `useState` + `useEffect` with batch fetch and `useMemo` memoization
-  - Target: `useMutablePlasmicQueryData` with stable query key based on bundle product ID and component option IDs
-  - Key: `["ep-bundle-option-products", bundleProductId, sortedOptionIds]`
-  - Options: `revalidateOnFocus: false`, `dedupingInterval: 60_000`
+- [x] **Migrate `use-bundle-option-products.tsx` to SWR caching** — Done. Key: `["ep-bundle-option-products", sortedProductIds]`. Includes child product IDs from parent products. Dedup 60s, revalidateOnFocus false. Batch fetching preserved (100/batch). Uses `handleAPIError`.
 
-- [ ] **Migrate `use-parent-products.tsx` to SWR caching**
-  - Currently: raw `useState` + `useEffect` with two-phase fetch (bulk products, then children)
-  - Target: `useMutablePlasmicQueryData` with stable query key
-  - Key: `["ep-parent-products", sortedComponentOptionIds]`
-  - Preserve: parent detection via `relationships.children` / `attributes.base_product`, excluded variant handling
+- [x] **Migrate `use-parent-products.tsx` to SWR caching** — Done. Key: `["ep-parent-products", sortedProductIds]`. Two-phase fetch (parent detection → child fetching) in single SWR fetcher. Single loading→loaded transition. Uses `handleAPIError`.
 
-- [ ] **Evaluate and clean up `useBundleState` vs `useBundleForm`**
-  - `useBundleState` (`bundle/hooks/useBundleState.tsx`) appears partially superseded by `useBundleForm`
-  - Determine if `useBundleState` is still needed or can be consolidated into `useBundleForm`
-  - If removed, update all consumers
+- [x] **Evaluate and clean up `useBundleState` vs `useBundleForm`** — `useBundleState.tsx` removed. Confirmed no imports anywhere in codebase; was legacy parallel to `useBundleForm` (react-hook-form + Zod).
+
+- [x] **Ensure existing tests still pass** — 171 tests across 11 suites, all passing. Fixed pre-existing failure in `useBundleConfigurationOrchestration` test (expected `console.error` but hook uses structured logger, silent in test env). 24 new tests added (see P3).
 
 - [ ] **Clean up `useBundleConfigurationOrchestration` state management**
   - Currently: raw `useState` + `useEffect` + `useRef` with debounce library
@@ -50,12 +41,9 @@
   - Target: confirm it works when form context comes from `EPBundleProvider` rather than monolithic configurator
   - URL sync with `?bundle=` base64 config must continue working
 
-- [ ] **Ensure existing tests still pass**
-  - `bundle/hooks/__tests__/useBundleConfigurationOrchestration.test.tsx` (11 tests)
-  - `bundle/utils/__tests__/configurationComparison.test.ts` (11 tests)
-  - `bundle/utils/__tests__/priceCalculation.test.ts` (9 tests)
-  - `bundle/utils/__tests__/productValidation.test.ts` (9 tests)
-  - Add new tests for refactored hook interfaces
+### Testing Discovery
+
+esbuild jest transform hoists `import` to `require()` at file top, BEFORE `jest.mock()` calls. Fix: use `require()` for code-under-test so esbuild doesn't hoist it.
 
 ---
 
@@ -220,12 +208,14 @@ These are lower priority but improve maintainability and align with established 
 
 ## P3 — Test Coverage
 
-### Current Coverage (9 test files, 200+ tests, all passing)
+### Current Coverage (11 test suites, 171 tests, all passing)
 
+- [x] `bundle/hooks/__tests__/useBundleConfigurationOrchestration.test.tsx` (11 tests)
+- [x] `bundle/hooks/__tests__/use-parent-products.test.tsx` (12 tests) — **new**
+- [x] `bundle/hooks/__tests__/use-bundle-option-products.test.tsx` (12 tests) — **new**
 - [x] `bundle/utils/__tests__/configurationComparison.test.ts` (11 tests)
 - [x] `bundle/utils/__tests__/priceCalculation.test.ts` (9 tests)
 - [x] `bundle/utils/__tests__/productValidation.test.ts` (9 tests)
-- [x] `bundle/hooks/__tests__/useBundleConfigurationOrchestration.test.tsx` (11 tests)
 - [x] `cart/utils/__tests__/cartDataBuilder.test.ts` (34 tests)
 - [x] `inventory/utils/__tests__/displayHelpers.test.ts` (24 tests)
 - [x] `inventory/utils/__tests__/stockCalculations.test.ts` (23 tests)
@@ -235,10 +225,9 @@ These are lower priority but improve maintainability and align with established 
 ### Missing Test Coverage (by priority)
 
 - [ ] **Tests for new composable bundle components** (P1 deliverables)
-- [ ] **Tests for refactored bundle hooks** (P0 deliverables)
 - [ ] **Tests for cart hooks** — `use-add-item`, `use-cart`, `use-remove-item`, `use-update-item`
 - [ ] **Tests for inventory hooks** — `use-stock`, `use-locations`
-- [ ] **Tests for bundle form hooks** — `useBundleForm`, `useBundleFormSync`, `useBundleState`, `useVariationSelection`
+- [ ] **Tests for bundle form hooks** — `useBundleForm`, `useBundleFormSync`, `useVariationSelection`
 - [ ] **Tests for checkout API endpoints** — `calculate-shipping`, `create-order`, `setup-payment`, `confirm-payment`
 - [ ] **Tests for cart drawer components** — 10 components with no test coverage
 - [ ] **Tests for inventory components** — `LocationSelector`, `MultiLocationStock`, `StockIndicator`

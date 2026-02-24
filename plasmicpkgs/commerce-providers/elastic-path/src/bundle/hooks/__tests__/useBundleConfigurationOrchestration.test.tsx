@@ -226,9 +226,8 @@ describe("useBundleConfigurationOrchestration", () => {
 
   it("handles API errors gracefully", async () => {
     const mockConfigureWithError = jest.fn().mockRejectedValue(new Error("API Error"));
-    const consoleSpy = jest.spyOn(console, "error").mockImplementation();
 
-    renderHook(() =>
+    const { result } = renderHook(() =>
       useBundleConfigurationOrchestration({
         ...defaultProps,
         configureBundleSelection: mockConfigureWithError,
@@ -246,13 +245,10 @@ describe("useBundleConfigurationOrchestration", () => {
       await Promise.resolve();
     });
 
+    // The API was called and the error was caught (not thrown)
     expect(mockConfigureWithError).toHaveBeenCalled();
-    expect(consoleSpy).toHaveBeenCalledWith(
-      "Failed to process bundle configuration:",
-      expect.any(Error)
-    );
-
-    consoleSpy.mockRestore();
+    // isConfiguring returns to false after error — the hook doesn't crash
+    expect(result.current.isConfiguring).toBe(false);
   });
 
   it("tracks configuration state correctly", async () => {

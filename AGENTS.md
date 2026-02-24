@@ -25,3 +25,7 @@ yarn prettier --write                                           # Prettier forma
 - Cart item removal uses `deleteACartItem` (DELETE endpoint), not quantity-to-zero
 - `DataProvider` / `useSelector` pattern for parent-to-child data flow in Plasmic components
 - Use explicit `git add <files>` — never `git add -A` or `git add .`
+
+# Testing Notes
+
+- esbuild hoists `import` to `require()` at file top, before `jest.mock()`. Use `require()` (not `import`) for code-under-test to ensure mocks load first.
