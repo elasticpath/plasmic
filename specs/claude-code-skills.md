@@ -86,18 +86,18 @@ For production (after npm publish):
 ## Acceptance Criteria
 
 ### Must Have
-- [ ] Skill `/plasmic` routes natural language to the correct sub-workflow
-- [ ] Skill `/plasmic-create-page` creates a page with a valid PlasmicElement tree from a natural language description
-- [ ] Skill `/plasmic-inspect` displays project structure, pages, and component trees
-- [ ] Skills call `set-project` automatically when no project is active
-- [ ] Skills include PlasmicElement type reference so Claude can construct valid trees
-- [ ] Skills surface MCP tool errors with actionable guidance
-- [ ] `.claude/mcp.json` exists and works for local development
+- [x] Skill `/plasmic` routes natural language to the correct sub-workflow
+- [x] Skill `/plasmic-create-page` creates a page with a valid PlasmicElement tree from a natural language description
+- [x] Skill `/plasmic-inspect` displays project structure, pages, and component trees
+- [x] Skills call `set-project` automatically when no project is active
+- [x] Skills include PlasmicElement type reference so Claude can construct valid trees
+- [x] Skills surface MCP tool errors with actionable guidance
+- [x] `.claude/mcp.json` exists and works for local development
 
 ### Nice to Have
-- [ ] Pattern library of common PlasmicElement trees (hero, grid, card, form) embedded in skill prompts
-- [ ] Skill `/plasmic-create-page` can reference existing components from the project when building pages
-- [ ] Skills suggest design token values from `get-tokens` (when available)
+- [x] Pattern library of common PlasmicElement trees (hero, grid, card, form) embedded in skill prompts
+- [x] Skill `/plasmic-create-page` can reference existing components from the project when building pages
+- [x] Skills suggest design token values from `get-tokens` (when available)
 
 ## Skills
 

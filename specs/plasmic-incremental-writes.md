@@ -150,27 +150,27 @@ The `node-resolver.ts` module walks the Tpl tree to find matching nodes. If mult
 ## Acceptance Criteria
 
 ### Must Have
-- [ ] `update-text` modifies text content on an existing page/component and persists via incremental save
-- [ ] `update-styles` modifies CSS properties and persists via incremental save
-- [ ] `add-child` inserts a new PlasmicElement into an existing container and persists
-- [ ] `remove-child` removes a node and persists (with `toDeleteIids`)
-- [ ] `move-child` repositions a node within or across containers and persists
-- [ ] `begin-batch` / `end-batch` groups multiple edits into a single save round-trip
-- [ ] `undo` reverts the last operation and persists the rollback
-- [ ] `refresh-project` reloads the bundle and replaces session state
-- [ ] MobX `observeModel()` is set up on the unbundled Site after `set-project`
-- [ ] `fastBundle()` is called with only the changed instances (not a full re-bundle)
-- [ ] Incremental save uses `POST /api/v1/projects/{id}/revisions/{N+1}` with `incremental: true`
-- [ ] Revision number is tracked and incremented per save
-- [ ] HTTP 412 `ProjectRevisionError` is caught and reported to the developer with guidance to `refresh-project`
-- [ ] Node resolution works by UUID, name, and path
-- [ ] All new code is in new files (no modifications to upstream files)
-- [ ] Unit tests cover each edit operation, save flow, conflict detection, undo, and node resolution
-- [ ] Existing M1 tools (`get-component-tree`, `list-components`, etc.) continue to work unchanged
+- [x] `update-text` modifies text content on an existing page/component and persists via incremental save
+- [x] `update-styles` modifies CSS properties and persists via incremental save
+- [x] `add-child` inserts a new PlasmicElement into an existing container and persists
+- [x] `remove-child` removes a node and persists (with `toDeleteIids`)
+- [x] `move-child` repositions a node within or across containers and persists
+- [x] `begin-batch` / `end-batch` groups multiple edits into a single save round-trip
+- [x] `undo` reverts the last operation and persists the rollback
+- [x] `refresh-project` reloads the bundle and replaces session state
+- [x] MobX `observeModel()` is set up on the unbundled Site after `set-project`
+- [x] `fastBundle()` is called with only the changed instances (not a full re-bundle)
+- [x] Incremental save uses `POST /api/v1/projects/{id}/revisions/{N+1}` with `incremental: true`
+- [x] Revision number is tracked and incremented per save
+- [x] HTTP 412 `ProjectRevisionError` is caught and reported to the developer with guidance to `refresh-project`
+- [x] Node resolution works by UUID, name, and path
+- [x] All new code is in new files (no modifications to upstream files)
+- [x] Unit tests cover each edit operation, save flow, conflict detection, undo, and node resolution
+- [x] Existing M1 tools (`get-component-tree`, `list-components`, etc.) continue to work unchanged
 
 ### Nice to Have
 - [ ] `save-project` tool for explicit manual saves
-- [ ] Undo stack depth > 1 (multiple undos)
+- [x] Undo stack depth > 1 (multiple undos)
 - [ ] Node resolution by CSS selector or content match ("the node containing 'Hello'")
 - [ ] Dry-run mode that shows what would change without persisting
 

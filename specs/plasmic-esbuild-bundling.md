@@ -22,14 +22,14 @@ This monorepo is a fork that regularly pulls from upstream Plasmic. The esbuild 
 - **Never add wrapper modules or re-exports to `platform/wab/`** — if the bundler can't reach something, create a local adapter in `packages/plasmic-mcp/src/` instead
 
 ## Acceptance Criteria
-- [ ] esbuild resolves `@/wab/shared/...` path aliases from `platform/wab/tsconfig.json`
-- [ ] Bundled output includes: FastBundler, model classes (Site, Component, TplTag, TplNode, VariantSetting, RuleSet, etc.)
-- [ ] `mobx` is treated as an external dependency (not bundled, listed in package.json dependencies)
-- [ ] Output is a single CJS entry point suitable for `npx` execution
-- [ ] Bundle size is reasonable (target: under 2MB for the shared code portion)
-- [ ] TypeScript type checking passes for the MCP server source code (imports from shared code resolve)
-- [ ] Published package works standalone: `npx @elasticpath/plasmic-mcp` starts without monorepo
-- [ ] Build is reproducible: same source → same output
+- [x] esbuild resolves `@/wab/shared/...` path aliases from `platform/wab/tsconfig.json`
+- [x] Bundled output includes: FastBundler, model classes (Site, Component, TplTag, TplNode, VariantSetting, RuleSet, etc.)
+- [x] `mobx` is treated as an external dependency (not bundled, listed in package.json dependencies)
+- [x] Output is a single CJS entry point suitable for `npx` execution
+- [x] Bundle size is reasonable (target: under 2MB for the shared code portion)
+- [x] TypeScript type checking passes for the MCP server source code (imports from shared code resolve)
+- [x] Published package works standalone: `npx @elasticpath/plasmic-mcp` starts without monorepo
+- [x] Build is reproducible: same source → same output
 
 ## Happy Path
 1. Developer runs `node packages/plasmic-mcp/build.mjs`

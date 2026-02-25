@@ -102,21 +102,21 @@ When `set-project` is called:
 ## Acceptance Criteria (Milestone 1: Read-Only + Basic Write)
 
 ### Must Have
-- [ ] esbuild bundles `platform/wab/src/wab/shared/` code into standalone package (see `specs/plasmic-esbuild-bundling.md`)
-- [ ] MCP server starts via stdio and registers tools with Claude Code
-- [ ] Auth via env vars works
-- [ ] Tool: `set-project` — fetch project bundle, unbundle into live model, store as session state
-- [ ] Tool: `list-projects` — list projects the user has access to (HTTP call)
-- [ ] Tool: `list-components` — list pages/components with metadata from in-memory model
-- [ ] Tool: `get-component-tree` — read a component's full tree directly from the in-memory Tpl model (tags, styles, layout types, children, images)
-- [ ] Tool: `get-project-meta` — read project metadata from in-memory model
-- [ ] Tool: `create-page` — create a page with PlasmicElement tree via REST API (`POST /api/v1/projects/:id` with `newComponents`)
-- [ ] All errors return clear, actionable messages
-- [ ] Package can be installed via npm and run via `npx`
+- [x] esbuild bundles `platform/wab/src/wab/shared/` code into standalone package (see `specs/plasmic-esbuild-bundling.md`)
+- [x] MCP server starts via stdio and registers tools with Claude Code
+- [x] Auth via env vars works
+- [x] Tool: `set-project` — fetch project bundle, unbundle into live model, store as session state
+- [x] Tool: `list-projects` — list projects the user has access to (HTTP call)
+- [x] Tool: `list-components` — list pages/components with metadata from in-memory model
+- [x] Tool: `get-component-tree` — read a component's full tree directly from the in-memory Tpl model (tags, styles, layout types, children, images)
+- [x] Tool: `get-project-meta` — read project metadata from in-memory model
+- [x] Tool: `create-page` — create a page with PlasmicElement tree via REST API (`POST /api/v1/projects/:id` with `newComponents`)
+- [x] All errors return clear, actionable messages
+- [x] Package can be installed via npm and run via `npx`
 
 ### Nice to Have (Milestone 1)
-- [ ] Tool: `get-tokens` — read design tokens from in-memory model
-- [ ] Model reload after `create-page` (re-fetch bundle to see new page in model)
+- [x] Tool: `get-tokens` — read design tokens from in-memory model
+- [x] Model reload after `create-page` (re-fetch bundle to see new page in model)
 
 ## Happy Path
 1. Developer adds MCP server to Claude Code config (once)

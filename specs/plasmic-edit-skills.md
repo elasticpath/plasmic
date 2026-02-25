@@ -129,14 +129,14 @@ Add edit intent routing:
 
 ## Acceptance Criteria
 
-- [ ] `/plasmic-edit` skill exists and handles natural language edit descriptions
-- [ ] `/plasmic` router correctly routes edit intents to `/plasmic-edit`
-- [ ] Skill calls `get-component-tree` before editing to understand current structure
-- [ ] Skill uses `begin-batch` / `end-batch` for multi-edit requests
-- [ ] Skill reports results clearly: what changed, new revision number, any warnings
-- [ ] Skill handles node ambiguity: when multiple matches, presents options to developer
-- [ ] Skill handles save conflicts: explains 412 error, suggests `refresh-project`
-- [ ] Skill suggests `undo` when developer expresses regret ("actually, change it back")
+- [x] `/plasmic-edit` skill exists and handles natural language edit descriptions
+- [x] `/plasmic` router correctly routes edit intents to `/plasmic-edit`
+- [x] Skill calls `get-component-tree` before editing to understand current structure
+- [x] Skill uses `begin-batch` / `end-batch` for multi-edit requests
+- [x] Skill reports results clearly: what changed, new revision number, any warnings
+- [x] Skill handles node ambiguity: when multiple matches, presents options to developer
+- [x] Skill handles save conflicts: explains 412 error, suggests `refresh-project`
+- [x] Skill suggests `undo` when developer expresses regret ("actually, change it back")
 
 ## Happy Path
 

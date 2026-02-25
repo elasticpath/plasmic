@@ -211,24 +211,24 @@ For `export-component-tree` temp files:
 ## Acceptance Criteria
 
 ### Must Have
-- [ ] `get-component-summary` tool returns compact outline (type, tag, name, uuid, childCount per node, no styles/attrs/text)
-- [ ] `get-node-details` tool returns full details for a single resolved node with immediate children as summaries
-- [ ] `export-component-tree` tool writes full tree JSON to temp file and returns file path + compact summary
-- [ ] `get-component-tree` accepts optional `maxDepth`, `excludeStyles`, `summaryOnly` parameters (backward compatible)
-- [ ] `TreeReadOptions` interface in `tree-reader.ts` with depth limiting, style exclusion, summary mode
-- [ ] `readNodeDetails()` function in `tree-reader.ts`
-- [ ] `childCount` field added to `TreeNode` type
-- [ ] Node resolver caches flattened node list per component in session
-- [ ] Cache invalidated on structure-changing edits (`add-child`, `remove-child`, `move-child`), `refresh-project`, `set-project`
-- [ ] Cache NOT invalidated on `update-text`, `update-styles` (no structural change)
-- [ ] `/plasmic-edit` skill updated to use `get-component-summary` → `get-node-details` pattern instead of full tree dumps
-- [ ] `/plasmic-inspect` skill updated to prefer summary + drill-down
-- [ ] `/plasmic` router updated with new tools
-- [ ] Measured context reduction: before/after token count comparison for a typical edit workflow (target: 80%+ reduction)
-- [ ] Unit tests for tree-reader summary mode, depth limiting, readNodeDetails
-- [ ] Unit tests for node resolver caching and invalidation
-- [ ] Integration tests for new MCP tools
-- [ ] All new code in new files or additive changes to existing files (upstream merge safe)
+- [x] `get-component-summary` tool returns compact outline (type, tag, name, uuid, childCount per node, no styles/attrs/text)
+- [x] `get-node-details` tool returns full details for a single resolved node with immediate children as summaries
+- [x] `export-component-tree` tool writes full tree JSON to temp file and returns file path + compact summary
+- [x] `get-component-tree` accepts optional `maxDepth`, `excludeStyles`, `summaryOnly` parameters (backward compatible)
+- [x] `TreeReadOptions` interface in `tree-reader.ts` with depth limiting, style exclusion, summary mode
+- [x] `readNodeDetails()` function in `tree-reader.ts`
+- [x] `childCount` field added to `TreeNode` type
+- [x] Node resolver caches flattened node list per component in session
+- [x] Cache invalidated on structure-changing edits (`add-child`, `remove-child`, `move-child`), `refresh-project`, `set-project`
+- [x] Cache NOT invalidated on `update-text`, `update-styles` (no structural change)
+- [x] `/plasmic-edit` skill updated to use `get-component-summary` → `get-node-details` pattern instead of full tree dumps
+- [x] `/plasmic-inspect` skill updated to prefer summary + drill-down
+- [x] `/plasmic` router updated with new tools
+- [x] Measured context reduction: before/after token count comparison for a typical edit workflow (target: 80%+ reduction)
+- [x] Unit tests for tree-reader summary mode, depth limiting, readNodeDetails
+- [x] Unit tests for node resolver caching and invalidation
+- [x] Integration tests for new MCP tools
+- [x] All new code in new files or additive changes to existing files (upstream merge safe)
 
 ### Nice to Have
 - [ ] `get-subtree(componentUuid, nodeRef, maxDepth?)` — return full tree from a specific node downward

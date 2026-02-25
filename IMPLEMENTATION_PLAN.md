@@ -70,15 +70,17 @@ E2E tests against a running Plasmic server are a separate effort requiring envir
 
 ---
 
-## Priority 4 — Spec Acceptance Criteria Hygiene
+## Priority 4 — Spec Acceptance Criteria Hygiene (COMPLETE)
 
-All spec files have unchecked acceptance criteria despite M1 and M2 being fully implemented. Update specs to reflect actual status.
+Updated all 7 spec files to check off implemented acceptance criteria.
 
-- [ ] **P4.1** Update `specs/plasmic-mcp-server.md` — check off all implemented M1 acceptance criteria
-- [ ] **P4.2** Update `specs/plasmic-esbuild-bundling.md` — check off all implemented bundling criteria
-- [ ] **P4.3** Update `specs/claude-code-skills.md` — check off all implemented M1 skill criteria
-- [ ] **P4.4** Update `specs/plasmic-incremental-writes.md` — check off all implemented M2 criteria
-- [ ] **P4.5** Update `specs/plasmic-edit-skills.md` — check off all implemented M2 skill criteria
+- [x] **P4.1** Update `specs/plasmic-mcp-server.md` — all 11 must-have + 2 nice-to-have checked
+- [x] **P4.2** Update `specs/plasmic-esbuild-bundling.md` — all 8 criteria checked
+- [x] **P4.3** Update `specs/claude-code-skills.md` — all 7 must-have + 3 nice-to-have checked
+- [x] **P4.4** Update `specs/plasmic-incremental-writes.md` — all 17 must-have + 1 nice-to-have checked
+- [x] **P4.5** Update `specs/plasmic-edit-skills.md` — all 8 criteria checked
+- [x] **P4.6** Update `specs/plasmic-context-efficient-queries.md` — all 18 must-have checked
+- [x] **P4.7** Update `specs/plasmic-component-creation.md` — all 14 must-have + 2 nice-to-have checked
 
 ---
 
@@ -91,7 +93,7 @@ These items are mentioned in specs as nice-to-haves or future milestones. They a
 - **Variant-aware editing** — edit non-base variants, responsive breakpoints (mentioned as out of scope in edit skills spec)
 - **Style token creation/editing** — currently read-only via `get-tokens`
 - **Image asset management** — currently can only reference URLs; no upload/manage capability
-- **Multi-level undo improvements** — currently one-level undo per operation
+- **~~Multi-level undo~~** — already implemented (undo stack supports multiple operations)
 - **Node resolution by CSS selector or content match** — richer node targeting
 - **Dry-run mode for edit tools** — preview changes without saving
 - **M3 — Real-time collaboration** — socket.io sync (future milestone per MCP server spec)
