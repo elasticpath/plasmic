@@ -288,9 +288,16 @@ describe("EPBundleValidationErrors", () => {
     setupSelector({
       bundleData: { errors: ["Select a processor", "Select storage"], isValid: false },
     });
-    const { container } = render(<EPBundleValidationErrors />);
-    expect(container.textContent).toContain("Select a processor");
-    expect(container.textContent).toContain("Select storage");
+    const { container } = render(
+      <EPBundleValidationErrors>
+        <span>error slot</span>
+      </EPBundleValidationErrors>
+    );
+    // Component wraps each error in a DataProvider with currentBundleError data
+    const providers = container.querySelectorAll("[data-provider='currentBundleError']");
+    expect(providers).toHaveLength(2);
+    expect(providers[0].getAttribute("data-provider-value")).toContain("Select a processor");
+    expect(providers[1].getAttribute("data-provider-value")).toContain("Select storage");
   });
 
   it("has role=alert and aria-live=polite", () => {
@@ -314,8 +321,16 @@ describe("EPBundleValidationErrors", () => {
   it("falls back to mock error data in editor", () => {
     setEditorMode(true);
     setupSelector({});
-    const { container } = render(<EPBundleValidationErrors previewState="withData" />);
-    expect(container.textContent).toContain(MOCK_BUNDLE_DATA_WITH_ERRORS.errors[0]);
+    const { container } = render(
+      <EPBundleValidationErrors previewState="withData">
+        <span>error slot</span>
+      </EPBundleValidationErrors>
+    );
+    const providers = container.querySelectorAll("[data-provider='currentBundleError']");
+    expect(providers.length).toBeGreaterThan(0);
+    expect(providers[0].getAttribute("data-provider-value")).toContain(
+      MOCK_BUNDLE_DATA_WITH_ERRORS.errors[0]
+    );
   });
 });
 
