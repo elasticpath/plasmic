@@ -12,6 +12,7 @@ import {
   readComponentTree,
   readComponentSummary,
   readNodeDetails,
+  readSubtree,
   countTreeNodes,
 } from "../tree-reader";
 
@@ -1124,6 +1125,232 @@ describe("readNodeDetails", () => {
     expect(result.children?.[0].name).toBe("Default");
     expect(result.children?.[0].styles).toBeUndefined();
     expect(result.children?.[0].text).toBeUndefined();
+  });
+});
+
+// =============================================================================
+// readSubtree — directly exercises the get-subtree tool's core reader
+// =============================================================================
+
+describe("readSubtree", () => {
+  it("reads a full tree from a TplTag node", () => {
+    const tplNode = {
+      _type: "TplTag",
+      tag: "section",
+      uuid: "section-1",
+      name: "Hero",
+      vsettings: [
+        {
+          rs: { values: { padding: "32px" } },
+          attrs: {},
+        },
+      ],
+      children: [
+        {
+          _type: "TplTag",
+          tag: "h1",
+          uuid: "h1-1",
+          name: "Title",
+          vsettings: [
+            {
+              rs: { values: { fontSize: "48px" } },
+              text: { _type: "RawText", text: "Welcome" },
+              attrs: {},
+            },
+          ],
+          children: [],
+        },
+      ],
+    };
+
+    const result = readSubtree(tplNode);
+
+    expect(result).toMatchObject({
+      type: "tag",
+      tag: "section",
+      uuid: "section-1",
+      name: "Hero",
+      styles: { padding: "32px" },
+    });
+    expect(result?.children).toHaveLength(1);
+    expect(result?.children?.[0].text).toBe("Welcome");
+  });
+
+  it("returns null for a null input", () => {
+    // readSubtree calls readTplNode which returns a fallback for unknown types,
+    // but a null/undefined would cause isKnownTplTag etc. to return false,
+    // resulting in the unknown-type fallback node.
+    const result = readSubtree(null);
+    expect(result).toMatchObject({ type: "tag", tag: "div" });
+    expect(result?.name).toContain("Unknown");
+  });
+
+  it("respects maxDepth option", () => {
+    const tplNode = {
+      _type: "TplTag",
+      tag: "div",
+      uuid: "root",
+      vsettings: [{ rs: { values: {} }, attrs: {} }],
+      children: [
+        {
+          _type: "TplTag",
+          tag: "h1",
+          uuid: "child-1",
+          vsettings: [
+            {
+              rs: { values: {} },
+              text: { _type: "RawText", text: "Hello" },
+              attrs: {},
+            },
+          ],
+          children: [],
+        },
+      ],
+    };
+
+    const result = readSubtree(tplNode, { maxDepth: 0 });
+
+    expect(result?.children).toBeUndefined();
+    expect(result?.childCount).toBe(1);
+  });
+
+  it("respects summaryOnly option", () => {
+    const tplNode = {
+      _type: "TplTag",
+      tag: "div",
+      uuid: "root",
+      name: "Container",
+      vsettings: [
+        {
+          rs: { values: { display: "flex" } },
+          text: { _type: "RawText", text: "Text content" },
+          attrs: { href: { _type: "CustomCode", code: '"https://example.com"' } },
+        },
+      ],
+      children: [],
+    };
+
+    const result = readSubtree(tplNode, { summaryOnly: true });
+
+    expect(result?.uuid).toBe("root");
+    expect(result?.name).toBe("Container");
+    expect(result?.styles).toBeUndefined();
+    expect(result?.text).toBeUndefined();
+    expect(result?.attrs).toBeUndefined();
+    expect(result?.childCount).toBe(0);
+  });
+
+  it("respects excludeStyles option", () => {
+    const tplNode = {
+      _type: "TplTag",
+      tag: "div",
+      uuid: "root",
+      vsettings: [
+        {
+          rs: { values: { color: "red", fontSize: "16px" } },
+          text: { _type: "RawText", text: "Keep text" },
+          attrs: {},
+        },
+      ],
+      children: [],
+    };
+
+    const result = readSubtree(tplNode, { excludeStyles: true });
+
+    expect(result?.styles).toBeUndefined();
+    expect(result?.layoutType).toBeUndefined();
+    expect(result?.text).toBe("Keep text");
+  });
+
+  it("reads a TplComponent subtree", () => {
+    const tplNode = {
+      _type: "TplComponent",
+      uuid: "comp-inst-1",
+      name: "MyButton",
+      component: { name: "Button", uuid: "btn-def" },
+      vsettings: [{ args: [] }],
+    };
+
+    const result = readSubtree(tplNode);
+
+    expect(result).toMatchObject({
+      type: "component",
+      uuid: "comp-inst-1",
+      name: "MyButton",
+      componentName: "Button",
+      componentUuid: "btn-def",
+    });
+  });
+
+  it("reads a TplSlot subtree with default contents", () => {
+    const tplNode = {
+      _type: "TplSlot",
+      uuid: "slot-1",
+      param: { variable: { name: "children" } },
+      defaultContents: [
+        {
+          _type: "TplTag",
+          tag: "span",
+          uuid: "default-1",
+          vsettings: [
+            {
+              rs: { values: {} },
+              text: { _type: "RawText", text: "Default" },
+              attrs: {},
+            },
+          ],
+          children: [],
+        },
+      ],
+    };
+
+    const result = readSubtree(tplNode);
+
+    expect(result).toMatchObject({
+      type: "slot",
+      slotName: "children",
+    });
+    expect(result?.children).toHaveLength(1);
+    expect(result?.children?.[0].text).toBe("Default");
+  });
+
+  it("combines summaryOnly + maxDepth options", () => {
+    const tplNode = {
+      _type: "TplTag",
+      tag: "div",
+      uuid: "root",
+      name: "Root",
+      vsettings: [
+        { rs: { values: { display: "flex" } }, attrs: {} },
+      ],
+      children: [
+        {
+          _type: "TplTag",
+          tag: "section",
+          uuid: "section-1",
+          name: "Section",
+          vsettings: [{ rs: { values: { padding: "16px" } }, attrs: {} }],
+          children: [
+            {
+              _type: "TplTag",
+              tag: "h1",
+              uuid: "h1-1",
+              vsettings: [{ rs: { values: {} }, attrs: {} }],
+              children: [],
+            },
+          ],
+        },
+      ],
+    };
+
+    const result = readSubtree(tplNode, { summaryOnly: true, maxDepth: 1 });
+
+    expect(result?.styles).toBeUndefined();
+    expect(result?.childCount).toBe(1);
+    expect(result?.children).toHaveLength(1);
+    expect(result?.children?.[0].styles).toBeUndefined();
+    expect(result?.children?.[0].childCount).toBe(1);
+    expect(result?.children?.[0].children).toBeUndefined();
   });
 });
 

@@ -155,7 +155,7 @@ For more patterns (grids, forms, pricing, testimonials, CTAs), see `/plasmic-pat
    - **Clone**: Find the source UUID and call `clone-component(sourceUuid, name)`. Add `path` only if the clone should be a page.
 5. When cloning or referencing, inspect the source with `get-component-summary` first, then `get-node-details` for specific nodes — avoid loading the full tree unnecessarily.
 6. Use PascalCase for component names (e.g., `HeroSection`, `ProductCard`).
-6. Report the result. Note any warnings from the API.
+7. Report the result. Note any warnings from the API.
 
 ## User's Request
 $ARGUMENTS

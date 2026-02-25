@@ -25,6 +25,7 @@ import {
   renameComponent,
   updatePageMeta,
   deleteComponent,
+  sanitizeStyles,
 } from "../edit-tools";
 import { setSession, clearSession } from "../session";
 import { initChangeTracker, disposeChangeTracker } from "../change-tracker";
@@ -108,6 +109,326 @@ function mkComponent(opts: {
     pageMeta: undefined,
   };
 }
+
+// =============================================================================
+// sanitizeStyles — direct unit tests for CSS shorthand expansion
+//
+// sanitizeStyles is the gateway between user-supplied CSS and Plasmic's
+// RuleSet model. Incorrect expansion causes site-invariant violations
+// (Plasmic rejects shorthands) or silent data loss (dropped background
+// longhands). These tests cover every expansion branch.
+// =============================================================================
+
+describe("sanitizeStyles", () => {
+  // --- Padding shorthand ---
+
+  it("expands padding with 1 value to all four longhands", () => {
+    const result = sanitizeStyles({ padding: "10px" });
+    expect(result).toEqual({
+      paddingTop: "10px",
+      paddingRight: "10px",
+      paddingBottom: "10px",
+      paddingLeft: "10px",
+    });
+  });
+
+  it("expands padding with 2 values (vertical horizontal)", () => {
+    const result = sanitizeStyles({ padding: "10px 20px" });
+    expect(result).toEqual({
+      paddingTop: "10px",
+      paddingRight: "20px",
+      paddingBottom: "10px",
+      paddingLeft: "20px",
+    });
+  });
+
+  it("expands padding with 3 values (top horizontal bottom)", () => {
+    const result = sanitizeStyles({ padding: "10px 20px 30px" });
+    expect(result).toEqual({
+      paddingTop: "10px",
+      paddingRight: "20px",
+      paddingBottom: "30px",
+      paddingLeft: "20px",
+    });
+  });
+
+  it("expands padding with 4 values (top right bottom left)", () => {
+    const result = sanitizeStyles({ padding: "10px 20px 30px 40px" });
+    expect(result).toEqual({
+      paddingTop: "10px",
+      paddingRight: "20px",
+      paddingBottom: "30px",
+      paddingLeft: "40px",
+    });
+  });
+
+  it("accepts padding-shorthand alias", () => {
+    const result = sanitizeStyles({ "padding-shorthand": "5px" });
+    expect(result.paddingTop).toBe("5px");
+    expect(result.paddingLeft).toBe("5px");
+  });
+
+  // --- Margin shorthand ---
+
+  it("expands margin with 2 values", () => {
+    const result = sanitizeStyles({ margin: "8px 16px" });
+    expect(result).toEqual({
+      marginTop: "8px",
+      marginRight: "16px",
+      marginBottom: "8px",
+      marginLeft: "16px",
+    });
+  });
+
+  it("accepts margin-shorthand alias", () => {
+    const result = sanitizeStyles({ "margin-shorthand": "4px" });
+    expect(result.marginTop).toBe("4px");
+    expect(result.marginRight).toBe("4px");
+  });
+
+  // --- Gap shorthand ---
+
+  it("expands gap with 1 value to row-gap and column-gap", () => {
+    const result = sanitizeStyles({ gap: "12px" });
+    expect(result).toEqual({
+      "row-gap": "12px",
+      "column-gap": "12px",
+    });
+  });
+
+  it("expands gap with 2 values (row column)", () => {
+    const result = sanitizeStyles({ gap: "10px 20px" });
+    expect(result).toEqual({
+      "row-gap": "10px",
+      "column-gap": "20px",
+    });
+  });
+
+  // --- Border-radius shorthand ---
+
+  it("expands borderRadius with 1 value", () => {
+    const result = sanitizeStyles({ borderRadius: "8px" });
+    expect(result).toEqual({
+      "border-top-left-radius": "8px",
+      "border-top-right-radius": "8px",
+      "border-bottom-right-radius": "8px",
+      "border-bottom-left-radius": "8px",
+    });
+  });
+
+  it("expands border-radius kebab alias with 4 values", () => {
+    const result = sanitizeStyles({ "border-radius": "4px 8px 12px 16px" });
+    expect(result).toEqual({
+      "border-top-left-radius": "4px",
+      "border-top-right-radius": "8px",
+      "border-bottom-right-radius": "12px",
+      "border-bottom-left-radius": "16px",
+    });
+  });
+
+  // --- Border-width shorthand ---
+
+  it("expands borderWidth to side longhands", () => {
+    const result = sanitizeStyles({ borderWidth: "1px 2px" });
+    expect(result).toEqual({
+      "border-top-width": "1px",
+      "border-right-width": "2px",
+      "border-bottom-width": "1px",
+      "border-left-width": "2px",
+    });
+  });
+
+  it("accepts border-width kebab alias", () => {
+    const result = sanitizeStyles({ "border-width": "3px" });
+    expect(result["border-top-width"]).toBe("3px");
+    expect(result["border-left-width"]).toBe("3px");
+  });
+
+  // --- Border-style shorthand ---
+
+  it("expands borderStyle to side longhands", () => {
+    const result = sanitizeStyles({ borderStyle: "solid dashed" });
+    expect(result).toEqual({
+      "border-top-style": "solid",
+      "border-right-style": "dashed",
+      "border-bottom-style": "solid",
+      "border-left-style": "dashed",
+    });
+  });
+
+  it("accepts border-style kebab alias", () => {
+    const result = sanitizeStyles({ "border-style": "dotted" });
+    expect(result["border-top-style"]).toBe("dotted");
+  });
+
+  // --- Border-color shorthand ---
+
+  it("expands borderColor to side longhands", () => {
+    const result = sanitizeStyles({ borderColor: "red blue green yellow" });
+    expect(result).toEqual({
+      "border-top-color": "red",
+      "border-right-color": "blue",
+      "border-bottom-color": "green",
+      "border-left-color": "yellow",
+    });
+  });
+
+  it("accepts border-color kebab alias", () => {
+    const result = sanitizeStyles({ "border-color": "#000" });
+    expect(result["border-top-color"]).toBe("#000");
+    expect(result["border-left-color"]).toBe("#000");
+  });
+
+  // --- Inset shorthand ---
+
+  it("expands inset to top/right/bottom/left", () => {
+    const result = sanitizeStyles({ inset: "0" });
+    expect(result).toEqual({
+      top: "0",
+      right: "0",
+      bottom: "0",
+      left: "0",
+    });
+  });
+
+  it("expands inset with 2 values", () => {
+    const result = sanitizeStyles({ inset: "10px 20px" });
+    expect(result).toEqual({
+      top: "10px",
+      right: "20px",
+      bottom: "10px",
+      left: "20px",
+    });
+  });
+
+  // --- Background handling ---
+
+  it("converts backgroundColor to linear-gradient background", () => {
+    const result = sanitizeStyles({ backgroundColor: "#ff0000" });
+    expect(result).toEqual({
+      background: "linear-gradient(#ff0000, #ff0000)",
+    });
+  });
+
+  it("accepts background-color kebab alias", () => {
+    const result = sanitizeStyles({ "background-color": "blue" });
+    expect(result).toEqual({
+      background: "linear-gradient(blue, blue)",
+    });
+  });
+
+  it("passes backgroundImage directly as background", () => {
+    const result = sanitizeStyles({
+      backgroundImage: "url(https://example.com/img.png)",
+    });
+    expect(result).toEqual({
+      background: "url(https://example.com/img.png)",
+    });
+  });
+
+  it("accepts background-image kebab alias", () => {
+    const result = sanitizeStyles({
+      "background-image": "url(test.png)",
+    });
+    expect(result).toEqual({ background: "url(test.png)" });
+  });
+
+  it("backgroundImage takes precedence over backgroundColor", () => {
+    const result = sanitizeStyles({
+      backgroundColor: "red",
+      backgroundImage: "url(bg.png)",
+    });
+    // bgImage wins over bgColor in the post-loop consolidation
+    expect(result).toEqual({ background: "url(bg.png)" });
+  });
+
+  it("explicit background shorthand overrides bgColor and bgImage", () => {
+    const result = sanitizeStyles({
+      backgroundColor: "red",
+      backgroundImage: "url(bg.png)",
+      background: "linear-gradient(blue, green)",
+    });
+    expect(result).toEqual({ background: "linear-gradient(blue, green)" });
+  });
+
+  it("drops unsupported background longhands and logs warning", () => {
+    const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = sanitizeStyles({
+      backgroundSize: "cover",
+      backgroundPosition: "center",
+      backgroundRepeat: "no-repeat",
+      fontSize: "16px",
+    });
+
+    // Longhands are dropped, pass-through property preserved
+    expect(result).toEqual({ fontSize: "16px" });
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Dropped unsupported background longhands")
+    );
+
+    consoleSpy.mockRestore();
+  });
+
+  it("drops all background longhand variants (camel + kebab)", () => {
+    const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = sanitizeStyles({
+      "background-size": "contain",
+      "background-position": "top left",
+      "background-repeat": "repeat-x",
+      "background-attachment": "fixed",
+      "background-origin": "padding-box",
+      "background-clip": "border-box",
+    });
+
+    expect(Object.keys(result)).toHaveLength(0);
+    expect(consoleSpy).toHaveBeenCalled();
+
+    consoleSpy.mockRestore();
+  });
+
+  // --- Pass-through and edge cases ---
+
+  it("passes through unknown properties unchanged", () => {
+    const result = sanitizeStyles({
+      color: "red",
+      fontSize: "16px",
+      display: "flex",
+      "--custom-var": "42px",
+    });
+    expect(result).toEqual({
+      color: "red",
+      fontSize: "16px",
+      display: "flex",
+      "--custom-var": "42px",
+    });
+  });
+
+  it("returns empty object for empty input", () => {
+    const result = sanitizeStyles({});
+    expect(result).toEqual({});
+  });
+
+  it("handles multiple shorthands in a single call", () => {
+    const result = sanitizeStyles({
+      padding: "10px 20px",
+      margin: "5px",
+      gap: "8px",
+      borderRadius: "4px",
+      backgroundColor: "#fff",
+    });
+
+    expect(result.paddingTop).toBe("10px");
+    expect(result.paddingRight).toBe("20px");
+    expect(result.marginTop).toBe("5px");
+    expect(result.marginLeft).toBe("5px");
+    expect(result["row-gap"]).toBe("8px");
+    expect(result["column-gap"]).toBe("8px");
+    expect(result["border-top-left-radius"]).toBe("4px");
+    expect(result.background).toBe("linear-gradient(#fff, #fff)");
+  });
+});
 
 describe("edit-tools", () => {
   let api: ReturnType<typeof mockApiClient>;
