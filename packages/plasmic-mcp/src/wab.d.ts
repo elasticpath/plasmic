@@ -150,12 +150,31 @@ declare module "@/wab/shared/core/tpls" {
     styles?: Record<string, string>;
   }
 
+  /** Parameters for creating a TplComponent node via mkTplComponentX. */
+  export interface MkTplComponentParams {
+    /** The Component model object to instantiate. */
+    component: any;
+    /** The base variant of the OWNING component (not the instantiated one). */
+    baseVariant: any;
+    /** Optional display name for the TplComponent node. */
+    name?: string;
+    /** Prop/slot argument bindings. */
+    args?: any[] | Record<string, any>;
+    /** Children to wire into the component's default "children" slot. */
+    children?: any[];
+  }
+
   /** Create a TplTag node with optional children. */
   export function mkTplTagX(
     tag: string,
     opts?: MkTplTagOpts,
     ...children: any[]
   ): any;
+
+  /** Create a TplComponent node (component instance).
+   *  Resolves args, wires children into the default slot, and creates
+   *  a VariantSetting with the base variant. */
+  export function mkTplComponentX(params: MkTplComponentParams): any;
 
   /** Create a text TplTag node. Sets type: "text", creates RawText on the variant setting.
    *  This is what Studio uses to create text nodes. */

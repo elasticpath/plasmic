@@ -387,7 +387,7 @@ Alternate section backgrounds (`#ffffff` / `#f8f9fa`) for visual rhythm. Use con
 
 ## Referencing Existing Components
 
-If the project has reusable components (found via `list-components`), reference them:
+If the project has reusable components (found via `list-components`), reference them by name or UUID:
 
 ```json
 {
@@ -396,6 +396,21 @@ If the project has reusable components (found via `list-components`), reference 
   "props": { "title": "Widget", "price": "$19.99" }
 }
 ```
+
+With slot children (content passed into the component's default "children" slot):
+
+```json
+{
+  "type": "component",
+  "name": "Card",
+  "children": [
+    { "type": "text", "value": "Card title", "tag": "h3" },
+    { "type": "text", "value": "Card description" }
+  ]
+}
+```
+
+Works with both `add-child` (inserts into an existing page/component) and `create-page`/`create-component` (within the element tree body). Components from dependency packages are also resolved automatically.
 
 Props must match the component's actual parameter names exactly (case-sensitive). Use `get-component-summary` to inspect a component's structure, then `get-node-details` for specific nodes. Use `get-component-tree` only when you need the full tree with all styles.
 

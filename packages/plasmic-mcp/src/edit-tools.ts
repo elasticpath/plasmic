@@ -20,7 +20,7 @@ import {
 } from "@/wab/shared/model/classes";
 import { RSH } from "@/wab/shared/RuleSetHelpers";
 import { TplMgr } from "@/wab/shared/TplMgr";
-import { mkTplTagX, mkTplInlinedText } from "@/wab/shared/core/tpls";
+import { mkTplTagX, mkTplInlinedText, mkTplComponentX } from "@/wab/shared/core/tpls";
 import { flattenTpls } from "@/wab/shared/core/tpls";
 import { requireSession } from "./session.js";
 import { getChangeTracker } from "./change-tracker.js";
@@ -28,7 +28,7 @@ import type { RecordedChanges } from "./change-tracker.js";
 import { SaveManager, type SaveResult } from "./save-manager.js";
 import { PlasmicApiClient } from "./api-client.js";
 import { resolveNode, requireSingleNode } from "./node-resolver.js";
-import type { PlasmicElement } from "./types.js";
+import type { PlasmicElement, ComponentElement, DefaultComponentElement } from "./types.js";
 import { isBatchActive, accumulateChanges } from "./batch-manager.js";
 import { pushUndoOperation } from "./undo-manager.js";
 
@@ -238,6 +238,56 @@ function getComponentIid(component: any): string | undefined {
   const session = requireSession();
   const addr = session.bundler.addrOf(component);
   return addr?.iid;
+}
+
+/**
+ * Find a component by name or UUID in the active site and its dependencies.
+ * Used by plasmicElementToTpl to resolve component references in
+ * `{ type: "component", name: "..." }` elements.
+ *
+ * Searches local components first, then dependency project components.
+ * Throws a descriptive error listing available names if not found.
+ */
+function findComponentByNameOrUuid(nameOrUuid: string): any {
+  const session = requireSession();
+  const site = session.site;
+
+  // Search local components first
+  const localComps: any[] = site.components ?? [];
+  let comp = localComps.find(
+    (c: any) => c.name === nameOrUuid || c.uuid === nameOrUuid
+  );
+  if (comp) return comp;
+
+  // Search dependency project components
+  const deps: any[] = site.projectDependencies ?? [];
+  for (const dep of deps) {
+    const depComps: any[] = dep.site?.components ?? [];
+    comp = depComps.find(
+      (c: any) => c.name === nameOrUuid || c.uuid === nameOrUuid
+    );
+    if (comp) return comp;
+  }
+
+  // Not found — build descriptive error with available names
+  const availableNames = localComps
+    .map((c: any) => c.name)
+    .filter(Boolean);
+  const depNames: string[] = [];
+  for (const dep of deps) {
+    for (const c of dep.site?.components ?? []) {
+      if (c.name) depNames.push(c.name);
+    }
+  }
+
+  let msg = `Component "${nameOrUuid}" not found.`;
+  if (availableNames.length > 0) {
+    msg += ` Available: ${availableNames.join(", ")}`;
+  }
+  if (depNames.length > 0) {
+    msg += `. From dependencies: ${depNames.join(", ")}`;
+  }
+  throw new Error(msg);
 }
 
 /**
@@ -481,11 +531,14 @@ export interface AddChildResult {
 }
 
 /**
- * Convert a PlasmicElement JSON tree to a live TplTag node.
+ * Convert a PlasmicElement JSON tree to a live Tpl node.
  *
- * Uses mkTplTagX for node creation with the base variant passed directly
- * (since newly created nodes aren't attached to a component yet, TplMgr
- * can't determine their owning component for variant lookup).
+ * Creates TplTag nodes for HTML primitives (div, text, img, button, input)
+ * and TplComponent nodes for component references ({ type: "component" }).
+ *
+ * Uses mkTplTagX/mkTplComponentX for node creation with the base variant
+ * passed directly (since newly created nodes aren't attached to a component
+ * yet, TplMgr can't determine their owning component for variant lookup).
  *
  * This approach avoids elementSchemaToTpl which pulls in 30+ dependencies.
  */
@@ -497,6 +550,35 @@ function plasmicElementToTpl(
   // String elements become text nodes
   if (typeof element === "string") {
     return mkTplInlinedText(element, [baseVariant], "div", { baseVariant });
+  }
+
+  // Component types create TplComponent nodes, not TplTag nodes.
+  // Resolved by name or UUID from the site model (local + dependency components).
+  if (element.type === "component" || element.type === "default-component") {
+    const componentRef = element.type === "component"
+      ? (element as ComponentElement).name
+      : (element as DefaultComponentElement).kind;
+
+    const targetComponent = findComponentByNameOrUuid(componentRef);
+
+    // Convert children to TplNodes for the component's default slot
+    const childElements = "children" in element && element.children
+      ? Array.isArray(element.children)
+        ? element.children
+        : [element.children]
+      : [];
+
+    const childTpls = childElements.map((child) =>
+      plasmicElementToTpl(child, tplMgr, baseVariant)
+    );
+
+    const tpl = mkTplComponentX({
+      component: targetComponent,
+      baseVariant,
+      ...(childTpls.length > 0 ? { children: childTpls } : {}),
+    });
+
+    return tpl;
   }
 
   // Map element type to HTML tag
@@ -597,8 +679,9 @@ function plasmicElementToTpl(
 /**
  * Add a child node to a parent TplTag.
  *
- * Converts a PlasmicElement JSON tree to TplTag nodes using mkTplTagX,
- * inserts into the parent at the specified position, and saves.
+ * Converts a PlasmicElement JSON tree to Tpl nodes — TplTag for HTML
+ * primitives, TplComponent for `{ type: "component" }` references.
+ * Inserts into the parent at the specified position, and saves.
  *
  * Error if the parent is a text node (cannot have children).
  */

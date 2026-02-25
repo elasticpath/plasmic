@@ -886,6 +886,105 @@ describe("add-child and remove-child", () => {
 });
 
 // =========================================================================
+// Component Instance via add-child
+// =========================================================================
+
+describe("add-child with component instances", () => {
+  it("add-child type:'component' → verify TplComponent in tree → remove-child", async () => {
+    // Need at least 2 components: one to edit, one to reference as an instance
+    if (discoveredComponents.length < 2) {
+      return;
+    }
+
+    // Use a page as the editing target, and a different component as the reference
+    const targetPage =
+      discoveredComponents.find((c) => c.type === "page") ??
+      discoveredComponents[0];
+    const referencedComp = discoveredComponents.find(
+      (c) => c.uuid !== targetPage.uuid
+    )!;
+
+    // Get the tree to find the root container
+    const treeResult = await client.callTool({
+      name: "get-component-tree",
+      arguments: { componentUuid: targetPage.uuid },
+    });
+    const tree = parseResponse(treeResult).tree;
+    const initialChildCount = tree.children?.length ?? 0;
+
+    // Add a component instance as a child of the root
+    const addResult = await client.callTool({
+      name: "add-child",
+      arguments: {
+        componentUuid: targetPage.uuid,
+        parentRef: tree.uuid,
+        child: { type: "component", name: referencedComp.name },
+      },
+    });
+
+    expect(addResult.isError).toBeFalsy();
+    const addOutput = parseResponse(addResult);
+    expect(addOutput.success).toBe(true);
+
+    // Verify the new child is a TplComponent instance in the tree
+    const afterAdd = await client.callTool({
+      name: "get-component-tree",
+      arguments: { componentUuid: targetPage.uuid },
+    });
+    const afterAddTree = parseResponse(afterAdd).tree;
+    expect(afterAddTree.children.length).toBe(initialChildCount + 1);
+
+    // The last child should be a component instance
+    const newChild =
+      afterAddTree.children[afterAddTree.children.length - 1];
+    expect(newChild.type).toBe("component");
+    expect(newChild.componentName).toBe(referencedComp.name);
+    expect(newChild.uuid).toBeTruthy();
+
+    // Clean up: remove the added component instance
+    const removeResult = await client.callTool({
+      name: "remove-child",
+      arguments: {
+        componentUuid: targetPage.uuid,
+        nodeRef: newChild.uuid,
+      },
+    });
+    expect(removeResult.isError).toBeFalsy();
+
+    // Verify it's gone
+    const afterRemove = await client.callTool({
+      name: "get-component-tree",
+      arguments: { componentUuid: targetPage.uuid },
+    });
+    const afterRemoveTree = parseResponse(afterRemove).tree;
+    expect(afterRemoveTree.children.length).toBe(initialChildCount);
+  });
+
+  it("add-child type:'component' with unknown name → error with available names", async () => {
+    const comp = discoveredComponents[0];
+    const treeResult = await client.callTool({
+      name: "get-component-tree",
+      arguments: { componentUuid: comp.uuid },
+    });
+    const tree = parseResponse(treeResult).tree;
+
+    const addResult = await client.callTool({
+      name: "add-child",
+      arguments: {
+        componentUuid: comp.uuid,
+        parentRef: tree.uuid,
+        child: { type: "component", name: "NonExistentComponent_XYZ" },
+      },
+    });
+
+    expect(addResult.isError).toBe(true);
+    const errorText = addResult.content?.[0]?.text ?? "";
+    expect(errorText).toContain("NonExistentComponent_XYZ");
+    expect(errorText).toContain("not found");
+  });
+});
+
+// =========================================================================
 // Nice-to-have: refresh-project
 // =========================================================================
 

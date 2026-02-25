@@ -62,6 +62,10 @@ Container: `{ "type": "vbox", "styles": { ... }, "children": [ ... ] }`
 Text: `{ "type": "text", "value": "Hello", "tag": "h2", "styles": { ... } }`
 Image: `{ "type": "img", "src": "https://...", "styles": { ... } }`
 Button: `{ "type": "button", "value": "Click", "styles": { ... } }`
+Component: `{ "type": "component", "name": "Card" }`
+Component with slot children: `{ "type": "component", "name": "Card", "children": [{ "type": "text", "value": "Content" }] }`
+
+To insert a component instance, use `list-components` to find the component name, then pass `{ "type": "component", "name": "ComponentName" }` as the `child` argument. The component is resolved by name or UUID from the project and its dependencies.
 
 ## Edge Case Handling
 - **Ambiguous node reference** ("the title" matches multiple nodes): Show all matches with UUIDs and context, ask the developer to clarify.

@@ -4,11 +4,16 @@
 
 export const mockMkTplTagX = jest.fn();
 export const mockMkTplInlinedText = jest.fn();
+export const mockMkTplComponentX = jest.fn();
 export const mockTrackComponentRoot = jest.fn();
 export const mockTrackComponentSite = jest.fn();
 
 export function mkTplTagX(tag: string, opts?: any, ...children: any[]): any {
   return mockMkTplTagX(tag, opts, ...children);
+}
+
+export function mkTplComponentX(params: any): any {
+  return mockMkTplComponentX(params);
 }
 
 export function mkTplInlinedText(

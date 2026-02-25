@@ -131,6 +131,7 @@ export interface ComponentElement {
   name: string;
   props?: Record<string, unknown>;
   styles?: Record<string, string>;
+  children?: PlasmicElement | PlasmicElement[];
 }
 
 export interface DefaultComponentElement {
@@ -138,6 +139,7 @@ export interface DefaultComponentElement {
   kind: string;
   props?: Record<string, unknown>;
   styles?: Record<string, string>;
+  children?: PlasmicElement | PlasmicElement[];
 }
 
 // --- Save revision request (M2: incremental writes) ---

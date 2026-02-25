@@ -4,12 +4,12 @@ Last updated: 2026-02-25
 
 ## Project Status Summary
 
-The Plasmic MCP server (`packages/plasmic-mcp/`) provides 23 MCP tools for programmatic Plasmic Studio interaction from Claude Code. Six skill files in `.claude/commands/` orchestrate these tools. Of 11 total specs, 8 are fully implemented, and 3 are newly authored and pending implementation.
+The Plasmic MCP server (`packages/plasmic-mcp/`) provides 23 MCP tools for programmatic Plasmic Studio interaction from Claude Code. Six skill files in `.claude/commands/` orchestrate these tools. Of 11 total specs, 9 are fully implemented, and 2 are pending implementation.
 
-**Test count:** 294 tests across 14 files (281 Jest + 13 Vitest, all passing, zero skipped).
+**Test count:** 302 tests across 14 files (287 Jest + 15 Vitest, all passing, zero skipped).
 **Tools:** 23 registered in server.ts (read, write, batch, undo, save, refresh).
 **Skills:** 6 files (router, inspect, edit, create-page, create-component, patterns).
-**Specs:** 11 total (8 complete, 3 pending implementation).
+**Specs:** 11 total (9 complete, 2 pending implementation).
 
 ---
 
@@ -17,7 +17,7 @@ The Plasmic MCP server (`packages/plasmic-mcp/`) provides 23 MCP tools for progr
 
 ### P0.1: Real Integration Tests with Vitest (spec: `plasmic-integration-tests.md`) — DONE
 
-**Status:** All acceptance criteria met. 13 Vitest integration tests pass using real WAB modules.
+**Status:** All acceptance criteria met. 15 Vitest integration tests pass using real WAB modules (13 original + 2 component instance tests).
 
 **What was implemented:**
 - `vitest.config.integration.ts` — Vite config with two plugins (`stubWabInternals`, `stubBrowserPackages`) mirroring build.mjs Layer 1-4 resolution strategy. Resolve aliases for `@/` → real WAB source.
@@ -41,22 +41,24 @@ The Plasmic MCP server (`packages/plasmic-mcp/`) provides 23 MCP tools for progr
 
 ---
 
-## Priority 1 — Functional Gaps in Existing Code (Need New Specs)
+## Priority 1 — Functional Gaps in Existing Code
 
-### P1.1: ComponentElement Support in `add-child` (spec: `plasmic-component-instances.md` — NEW)
+### P1.1: ComponentElement Support in `add-child` (spec: `plasmic-component-instances.md`) — DONE
 
-`PlasmicElement` union in `types.ts` defines `ComponentElement` (`type: "component"`) and `DefaultComponentElement` (`type: "default-component"`), but `plasmicElementToTpl()` in `edit-tools.ts` silently falls through to `default: tag = "div"` for both types. Component instances requested via `add-child` become empty divs.
+**Status:** All acceptance criteria met. `add-child` with `{ type: "component" }` and `{ type: "default-component" }` now creates real TplComponent nodes.
 
-Note: `create-page` handles these types correctly because it delegates to the Plasmic server's `elementSchemaToTpl`. Only the local `add-child` path is broken.
+**What was implemented:**
+- `edit-tools.ts` — Added `"component"` and `"default-component"` cases to `plasmicElementToTpl()`. Components resolved by name or UUID from `site.components` and dependency projects. Uses `mkTplComponentX()` from `@/wab/shared/core/tpls`. Children recursively converted and passed for default slot wiring.
+- `edit-tools.ts` — Added `findComponentByNameOrUuid()` helper that searches local + dependency components, throws descriptive error listing available names on not found.
+- `wab.d.ts` — Added `MkTplComponentParams` interface and `mkTplComponentX` type declaration.
+- `types.ts` — Added `children?: PlasmicElement | PlasmicElement[]` to `ComponentElement` and `DefaultComponentElement` interfaces.
+- `__mocks__/wab-tpls.ts` — Added `mockMkTplComponentX` mock for Jest tests.
+- `plasmic-edit.md` — Documented component instance insertion syntax in PlasmicElement Reference section.
+- `plasmic-patterns.md` — Added slot children example and `add-child` usage note in Referencing Existing Components section.
 
-**What's needed:**
-- Implement `"component"` case in `plasmicElementToTpl()` — look up component by name/UUID in the Site model, create a `TplComponent` node (using `TplMgr.mkTplComponentX()`)
-- Implement `"default-component"` case — create a `TplComponent` using the component's registered default slot contents
-- Add unit tests for both cases in `edit-tools.test.ts`
-- Add integration test: `add-child` with `{ type: "component", name: "ExistingComponent" }` → verify `get-node-details` shows a component instance, not a div
-- Update `plasmic-edit.md` skill to document component instance insertion
-
-**Impact:** Without this, users cannot compose pages from reusable components via `add-child`. They can only use HTML primitives (div, text, img, button, input). This significantly limits the page-building workflow.
+**Tests (8 new):**
+- Jest (6): component by name, component by UUID, unknown component error with available names, default-component by kind, children passed for slot wiring, component from dependency project.
+- Vitest (2): add-child with real TplComponent → verify in tree → remove-child, unknown component error message.
 
 ### P1.2: Variant-Aware Editing (spec: `plasmic-variant-editing.md` — NEW)
 
@@ -140,15 +142,15 @@ Line 158 has step `6.` numbered twice. No functional impact.
 | `plasmic-incremental-writes.md` — 9 edit tools + save + undo | Complete | ~26 + ~12 + ~16 + ~11 |
 | `plasmic-component-creation.md` — create-component + clone-component | Complete | 7 (in server.test.ts) |
 | `plasmic-context-efficient-queries.md` — Summary/detail tools + caching | Complete | ~34 + ~52 |
-| `plasmic-integration-tests.md` — Vitest with real WAB modules | **Complete** | 13 (real-integration.test.ts) |
-| `plasmic-component-instances.md` — ComponentElement in add-child | **NEW — 0%** | 0 |
+| `plasmic-integration-tests.md` — Vitest with real WAB modules | **Complete** | 15 (real-integration.test.ts) |
+| `plasmic-component-instances.md` — ComponentElement in add-child | **Complete** | 6 Jest + 2 Vitest |
 | `plasmic-variant-editing.md` — Variant-aware editing | **NEW — 0%** | 0 |
 | `plasmic-management-tools.md` — Rename, metadata, preview, delete | **NEW — 0%** | 0 |
 
 ## Implementation Order
 
 1. ~~**P0.1** — Vitest integration tests~~ ✓ DONE
-2. **P1.1** — ComponentElement in add-child (spec authored, critical for real page composition)
+2. ~~**P1.1** — ComponentElement in add-child~~ ✓ DONE
 3. **P1.2** — Variant-aware editing (spec authored, required for responsive/interactive pages)
 4. **P2.1** — Management tools (spec authored — rename, metadata, preview URL, delete)
 5. **P3.1–P3.2** — Test coverage gaps (small, can be done opportunistically)
