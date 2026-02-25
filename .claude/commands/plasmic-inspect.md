@@ -11,6 +11,8 @@ You are inspecting a Plasmic project to help the developer understand its struct
 - `export-component-tree(componentUuid)` — Write full tree to temp file. Returns file path + summary. Use Read tool to inspect sections. Best for complex components.
 - `get-subtree(componentUuid, nodeRef, maxDepth?, excludeStyles?)` — Get the full tree rooted at a specific node. Useful when the developer wants to see a specific section's full tree (e.g., just the hero or footer) without loading the whole component.
 - `list-variants(componentUuid)` — List all variants for a component: global (breakpoints), component (custom), style (hover/focus). Use to discover variant names/UUIDs.
+- `create-style-variant(componentUuid, selector, nodeRef?)` — Create a new interaction state variant. Use `/plasmic-edit` for the full editing workflow.
+- `create-variant-group(componentUuid, name, type?, initialVariants?)` — Create a named variant group. Use `/plasmic-edit` for the full editing workflow.
 - `get-tokens(type?)` — Get design tokens (colors, spacing, fonts) grouped by type. Optional type filter.
 - `get-page-meta(componentUuid)` — Get page metadata (title, description, OG image, canonical URL, path). Only for page components.
 - `get-preview-url(componentUuid)` — Get preview and studio URLs for a page or component.

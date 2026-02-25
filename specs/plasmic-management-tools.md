@@ -153,24 +153,24 @@ None.
 
 ### Must Have
 
-- [ ] `rename-component` tool: renames component, deduplicates name, saves
-- [ ] `rename-component` with `newPath` updates page URL path
-- [ ] `update-page-meta` tool: sets title, description, OG image, canonical
-- [ ] `update-page-meta` throws if component is not a page
-- [ ] `get-page-meta` tool: reads all page metadata fields
-- [ ] `get-preview-url` tool: returns constructed preview and studio URLs
-- [ ] Unit tests for each new tool (rename, meta read/write, preview URL)
-- [ ] Unit test: rename with duplicate name gets auto-deduplicated
-- [ ] Unit test: update-page-meta on non-page component throws
-- [ ] Skill files updated with new tool documentation
-- [ ] All existing tests continue to pass
+- [x] `rename-component` tool: renames component, deduplicates name, saves
+- [x] `rename-component` with `newPath` updates page URL path
+- [x] `update-page-meta` tool: sets title, description, OG image, canonical
+- [x] `update-page-meta` throws if component is not a page
+- [x] `get-page-meta` tool: reads all page metadata fields
+- [x] `get-preview-url` tool: returns constructed preview and studio URLs
+- [x] Unit tests for each new tool (rename, meta read/write, preview URL)
+- [x] Unit test: rename with duplicate name gets auto-deduplicated
+- [x] Unit test: update-page-meta on non-page component throws
+- [x] Skill files updated with new tool documentation
+- [x] All existing tests continue to pass
 
 ### Nice to Have
 
-- [ ] `delete-component` tool with reference-checking guard
-- [ ] `delete-component` with `force: true` overrides reference check
-- [ ] Unit test: delete with references → error listing referencing components
-- [ ] Unit test: delete with `force: true` succeeds despite references
+- [x] `delete-component` tool with reference-checking guard
+- [x] `delete-component` with `force: true` overrides reference check
+- [x] Unit test: delete with references → error listing referencing components
+- [x] Unit test: delete with `force: true` succeeds despite references
 - [ ] `get-project-meta` enhanced to include page metadata summary
 
 ## Happy Path

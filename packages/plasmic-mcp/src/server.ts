@@ -48,6 +48,8 @@ import {
   removeChild,
   moveChild,
   listVariants,
+  createStyleVariant,
+  createVariantGroup,
   renameComponent,
   updatePageMeta,
   deleteComponent,
@@ -1149,6 +1151,150 @@ export function createServer(): McpServer {
             {
               type: "text" as const,
               text: `Error listing variants: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // --- create-style-variant ---
+  // Creates a new CSS interaction state variant (hover, focus, pressed, etc.)
+  // on a component or scoped to a specific element. Required before applying
+  // styles to interaction states that don't exist yet. After creation, use
+  // update-styles with the variant selector to apply styles.
+  server.tool(
+    "create-style-variant",
+    "Create a new interaction state variant (hover, focus, pressed, etc.). Use on a component or scoped to a specific element. After creation, use update-styles with the variant selector.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component to add the style variant to"),
+      selector: z
+        .string()
+        .describe(
+          'CSS pseudo-class selector: ":hover", ":active", ":focus", ":focus-visible", ":focus-within", ":disabled", ":visited", ":link", or "::placeholder"'
+        ),
+      nodeRef: z
+        .string()
+        .optional()
+        .describe(
+          "Node reference (UUID, name, path, or index) to scope the variant to a specific element. Omit for a component-level variant."
+        ),
+    },
+    async ({ componentUuid, selector, nodeRef }) => {
+      try {
+        const result = await createStyleVariant(
+          apiClient,
+          componentUuid,
+          selector,
+          nodeRef
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  variantUuid: result.variantUuid,
+                  selector: result.selector,
+                  scope: result.scope,
+                  ...(result.forTplName
+                    ? { element: result.forTplName }
+                    : {}),
+                  ...(result.forTplUuid
+                    ? { elementUuid: result.forTplUuid }
+                    : {}),
+                  revision: result.save.revisionNum,
+                  message: `Created ${result.selector} variant (${result.scope}-level)${result.forTplName ? ` on ${result.forTplName}` : ""}. Use update-styles with variant: "${result.selector}" to apply styles.`,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error creating style variant: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // --- create-variant-group ---
+  // Creates a named variant group on a component with optional initial variants.
+  // Variant groups define custom component states (e.g., Size: Small/Medium/Large).
+  // Three types: single-choice, multi-choice, and toggle (standalone boolean).
+  server.tool(
+    "create-variant-group",
+    'Create a named variant group on a component (e.g., "Size" with "Small"/"Large" variants). Supports single-choice, multi-choice, and toggle types.',
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component to add the variant group to"),
+      name: z
+        .string()
+        .min(1, "Group name is required")
+        .describe(
+          'Name for the variant group (e.g., "Size", "Theme", "State")'
+        ),
+      type: z
+        .enum(["single", "multi", "toggle"])
+        .optional()
+        .describe(
+          'Group type: "single" (one active at a time, default), "multi" (multiple active), or "toggle" (boolean on/off, auto-creates one variant)'
+        ),
+      initialVariants: z
+        .array(z.string().min(1))
+        .optional()
+        .describe(
+          'Names of variants to create immediately (e.g., ["Small", "Medium", "Large"])'
+        ),
+    },
+    async ({ componentUuid, name, type: groupType, initialVariants }) => {
+      try {
+        const result = await createVariantGroup(
+          apiClient,
+          componentUuid,
+          name,
+          groupType,
+          initialVariants
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  groupUuid: result.groupUuid,
+                  groupName: result.groupName,
+                  type: result.type,
+                  variants: result.variants,
+                  revision: result.save.revisionNum,
+                  message: `Created variant group "${result.groupName}" (${result.type}) with ${result.variants.length} variant(s). Use update-styles/update-text with variant names to apply overrides.`,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error creating variant group: ${err.message}`,
             },
           ],
           isError: true,

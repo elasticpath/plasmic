@@ -22,6 +22,8 @@ import {
   moveChild,
   resolveVariant,
   listVariants,
+  createStyleVariant,
+  createVariantGroup,
   renameComponent,
   updatePageMeta,
   deleteComponent,
@@ -36,6 +38,10 @@ import {
   mockEnsureBaseVariantSetting,
   mockRenameComponent,
   mockRemoveComponent,
+  mockCreateStyleVariant,
+  mockCreatePrivateStyleVariant,
+  mockCreateVariantGroup,
+  mockCreateVariant,
 } from "../__mocks__/wab-tpl-mgr";
 import { mockMkTplTagX, mockMkTplInlinedText, mockMkTplComponentX } from "../__mocks__/wab-tpls";
 import { mockEnsureVariantSetting } from "../__mocks__/wab-variants";
@@ -2427,6 +2433,348 @@ describe("edit-tools", () => {
 
       expect(api.saveRevision).toHaveBeenCalledTimes(1);
       expect(result.save.revisionNum).toBe(11);
+    });
+  });
+
+  // --- createStyleVariant ---
+
+  describe("createStyleVariant", () => {
+    it("creates a component-level :hover variant", async () => {
+      const root = mkTag({ uuid: "root-1", name: "Root" });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+      // No existing style variants
+      (comp as any).variants = [{ name: "base", uuid: "base-uuid" }];
+      setupSession(comp);
+
+      const mockVariant = { uuid: "new-hover-uuid", selectors: [":hover"], forTpl: null };
+      mockCreateStyleVariant.mockReturnValue(mockVariant);
+
+      const result = await createStyleVariant(api, "comp-1", ":hover");
+
+      expect(mockCreateStyleVariant).toHaveBeenCalledWith(comp, [":hover"]);
+      expect(result.variantUuid).toBe("new-hover-uuid");
+      expect(result.selector).toBe(":hover");
+      expect(result.scope).toBe("component");
+      expect(result.forTplUuid).toBeUndefined();
+    });
+
+    it("creates an element-scoped :hover variant when nodeRef is provided", async () => {
+      const textNode = mkTag({ uuid: "text-1", name: "Heading", text: "Hello" });
+      const root = mkTag({ uuid: "root-1", name: "Root", children: [textNode] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+      (comp as any).variants = [{ name: "base", uuid: "base-uuid" }];
+      setupSession(comp);
+
+      const mockVariant = { uuid: "new-hover-uuid", selectors: [":hover"], forTpl: textNode };
+      mockCreatePrivateStyleVariant.mockReturnValue(mockVariant);
+
+      const result = await createStyleVariant(api, "comp-1", ":hover", "Heading");
+
+      expect(mockCreatePrivateStyleVariant).toHaveBeenCalledWith(comp, textNode, [":hover"]);
+      expect(result.variantUuid).toBe("new-hover-uuid");
+      expect(result.selector).toBe(":hover");
+      expect(result.scope).toBe("element");
+      expect(result.forTplUuid).toBe("text-1");
+      expect(result.forTplName).toBe("Heading");
+    });
+
+    it("rejects invalid selectors", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+      setupSession(comp);
+
+      await expect(
+        createStyleVariant(api, "comp-1", ":invalid-selector")
+      ).rejects.toThrow("Invalid selector");
+    });
+
+    it("rejects duplicate component-level style variant", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+      (comp as any).variants = [
+        { name: "base", uuid: "base-uuid" },
+        { uuid: "existing-hover", selectors: [":hover"], forTpl: null },
+      ];
+      setupSession(comp);
+
+      await expect(
+        createStyleVariant(api, "comp-1", ":hover")
+      ).rejects.toThrow("already exists for this component");
+    });
+
+    it("rejects duplicate element-scoped style variant", async () => {
+      const textNode = mkTag({ uuid: "text-1", name: "Heading", text: "Hello" });
+      const root = mkTag({ uuid: "root-1", name: "Root", children: [textNode] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+      (comp as any).variants = [
+        { name: "base", uuid: "base-uuid" },
+        { uuid: "existing-hover", selectors: [":hover"], forTpl: textNode },
+      ];
+      setupSession(comp);
+
+      await expect(
+        createStyleVariant(api, "comp-1", ":hover", "Heading")
+      ).rejects.toThrow("already exists for this element");
+    });
+
+    it("allows same selector on different elements", async () => {
+      const heading = mkTag({ uuid: "text-1", name: "Heading", text: "Hello" });
+      const subtitle = mkTag({ uuid: "text-2", name: "Subtitle", text: "World" });
+      const root = mkTag({ uuid: "root-1", name: "Root", children: [heading, subtitle] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+      // existing hover on heading, but not on subtitle
+      (comp as any).variants = [
+        { name: "base", uuid: "base-uuid" },
+        { uuid: "existing-hover", selectors: [":hover"], forTpl: heading },
+      ];
+      setupSession(comp);
+
+      const mockVariant = { uuid: "new-hover-uuid", selectors: [":hover"], forTpl: subtitle };
+      mockCreatePrivateStyleVariant.mockReturnValue(mockVariant);
+
+      const result = await createStyleVariant(api, "comp-1", ":hover", "Subtitle");
+
+      expect(result.variantUuid).toBe("new-hover-uuid");
+      expect(result.scope).toBe("element");
+      expect(result.forTplName).toBe("Subtitle");
+    });
+
+    it("rejects nodeRef targeting a non-TplTag", async () => {
+      const tplComp = {
+        _type: "TplComponent",
+        uuid: "tpl-comp-1",
+        name: "MyComp",
+        component: { name: "Inner" },
+        vsettings: [],
+        children: [],
+      };
+      const root = mkTag({ uuid: "root-1", children: [tplComp] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+      (comp as any).variants = [];
+      setupSession(comp);
+
+      await expect(
+        createStyleVariant(api, "comp-1", ":hover", "tpl-comp-1")
+      ).rejects.toThrow("not a TplTag");
+    });
+
+    it("saves changes to the server", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+      (comp as any).variants = [];
+      setupSession(comp);
+
+      const mockVariant = { uuid: "hover-uuid", selectors: [":hover"], forTpl: null };
+      mockCreateStyleVariant.mockReturnValue(mockVariant);
+
+      const result = await createStyleVariant(api, "comp-1", ":hover");
+
+      expect(api.saveRevision).toHaveBeenCalledTimes(1);
+      expect(result.save.revisionNum).toBe(11);
+    });
+
+    it("supports all valid selectors", async () => {
+      const validSelectors = [
+        ":hover", ":active", ":focus", ":focus-visible",
+        ":focus-within", ":focus-visible-within",
+        ":disabled", ":visited", ":link", "::placeholder",
+      ];
+
+      for (const selector of validSelectors) {
+        jest.clearAllMocks();
+        mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+        mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+        mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
+
+        const root = mkTag({ uuid: "root-1" });
+        const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+        (comp as any).variants = [];
+        const session = makeSession({ site: { components: [comp] } });
+        setSession(session);
+        initChangeTracker(session.site);
+
+        const mockVariant = { uuid: `${selector}-uuid`, selectors: [selector], forTpl: null };
+        mockCreateStyleVariant.mockReturnValue(mockVariant);
+
+        const result = await createStyleVariant(api, "comp-1", selector);
+        expect(result.selector).toBe(selector);
+
+        disposeChangeTracker();
+        clearSession();
+      }
+    });
+
+    it("throws for unknown component UUID", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+      setupSession(comp);
+
+      await expect(
+        createStyleVariant(api, "nonexistent", ":hover")
+      ).rejects.toThrow("not found");
+    });
+  });
+
+  // --- createVariantGroup ---
+
+  describe("createVariantGroup", () => {
+    it("creates a single-choice variant group with no initial variants", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const comp = mkComponent({ uuid: "comp-1", name: "Card", tplTree: root });
+      setupSession(comp);
+
+      const mockGroup = {
+        uuid: "group-uuid",
+        param: { variable: { name: "Size" } },
+        variants: [],
+      };
+      mockCreateVariantGroup.mockReturnValue(mockGroup);
+
+      const result = await createVariantGroup(api, "comp-1", "Size");
+
+      expect(mockCreateVariantGroup).toHaveBeenCalledWith({
+        component: comp,
+        name: "Size",
+        optionsType: "singleChoice",
+      });
+      expect(result.groupUuid).toBe("group-uuid");
+      expect(result.groupName).toBe("Size");
+      expect(result.type).toBe("single");
+      expect(result.variants).toEqual([]);
+    });
+
+    it("creates a multi-choice variant group", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+      setupSession(comp);
+
+      const mockGroup = {
+        uuid: "group-uuid",
+        param: { variable: { name: "Features" } },
+        variants: [],
+      };
+      mockCreateVariantGroup.mockReturnValue(mockGroup);
+
+      const result = await createVariantGroup(api, "comp-1", "Features", "multi");
+
+      expect(mockCreateVariantGroup).toHaveBeenCalledWith({
+        component: comp,
+        name: "Features",
+        optionsType: "multiChoice",
+      });
+      expect(result.type).toBe("multi");
+    });
+
+    it("creates a toggle (standalone) variant group with auto-created variant", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+      setupSession(comp);
+
+      // Standalone auto-creates one variant named after the group
+      const autoVariant = { uuid: "auto-var-uuid", name: "isActive" };
+      const mockGroup = {
+        uuid: "group-uuid",
+        param: { variable: { name: "isActive" } },
+        variants: [autoVariant],
+      };
+      mockCreateVariantGroup.mockReturnValue(mockGroup);
+
+      const result = await createVariantGroup(api, "comp-1", "isActive", "toggle");
+
+      expect(mockCreateVariantGroup).toHaveBeenCalledWith({
+        component: comp,
+        name: "isActive",
+        optionsType: "standalone",
+      });
+      expect(result.type).toBe("toggle");
+      expect(result.variants).toEqual([{ uuid: "auto-var-uuid", name: "isActive" }]);
+    });
+
+    it("creates initial variants when provided", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+      setupSession(comp);
+
+      const mockGroup = {
+        uuid: "group-uuid",
+        param: { variable: { name: "Size" } },
+        variants: [],
+      };
+      mockCreateVariantGroup.mockReturnValue(mockGroup);
+
+      // Mock createVariant to return proper objects
+      let callCount = 0;
+      mockCreateVariant.mockImplementation((_comp: any, _group: any, name: string) => {
+        callCount++;
+        return { uuid: `var-${callCount}`, name };
+      });
+
+      const result = await createVariantGroup(
+        api, "comp-1", "Size", "single", ["Small", "Medium", "Large"]
+      );
+
+      expect(mockCreateVariant).toHaveBeenCalledTimes(3);
+      expect(mockCreateVariant).toHaveBeenCalledWith(comp, mockGroup, "Small");
+      expect(mockCreateVariant).toHaveBeenCalledWith(comp, mockGroup, "Medium");
+      expect(mockCreateVariant).toHaveBeenCalledWith(comp, mockGroup, "Large");
+      expect(result.variants).toEqual([
+        { uuid: "var-1", name: "Small" },
+        { uuid: "var-2", name: "Medium" },
+        { uuid: "var-3", name: "Large" },
+      ]);
+    });
+
+    it("saves changes to the server", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+      setupSession(comp);
+
+      const mockGroup = {
+        uuid: "group-uuid",
+        param: { variable: { name: "Size" } },
+        variants: [],
+      };
+      mockCreateVariantGroup.mockReturnValue(mockGroup);
+
+      const result = await createVariantGroup(api, "comp-1", "Size");
+
+      expect(api.saveRevision).toHaveBeenCalledTimes(1);
+      expect(result.save.revisionNum).toBe(11);
+    });
+
+    it("throws for unknown component UUID", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+      setupSession(comp);
+
+      await expect(
+        createVariantGroup(api, "nonexistent", "Size")
+      ).rejects.toThrow("not found");
+    });
+
+    it("includes both toggle auto-variant and initial variants", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+      setupSession(comp);
+
+      const autoVariant = { uuid: "auto-uuid", name: "isExpanded" };
+      const mockGroup = {
+        uuid: "group-uuid",
+        param: { variable: { name: "isExpanded" } },
+        variants: [autoVariant],
+      };
+      mockCreateVariantGroup.mockReturnValue(mockGroup);
+      mockCreateVariant.mockReturnValue({ uuid: "extra-uuid", name: "Extra" });
+
+      const result = await createVariantGroup(
+        api, "comp-1", "isExpanded", "toggle", ["Extra"]
+      );
+
+      // Should have the auto-created variant plus the explicitly created one
+      expect(result.variants).toEqual([
+        { uuid: "auto-uuid", name: "isExpanded" },
+        { uuid: "extra-uuid", name: "Extra" },
+      ]);
     });
   });
 });

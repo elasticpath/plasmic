@@ -134,30 +134,30 @@ process.env.PLASMIC_AUTH_TOKEN = "test-token";
 
 ### Must Have
 
-- [ ] `vitest.config.integration.ts` exists with Vite resolve aliases pointing `@/*` to real WAB source
-- [ ] `stub-module.js` exists with Proxy pattern
-- [ ] `real-integration.test.ts` exists using vitest (`vi.fn`, `vi.stubGlobal`, `describe`, `it`, `expect`)
-- [ ] Only `global.fetch` and browser packages are stubbed — all WAB modules run for real
-- [ ] Old `integration.test.ts` and `fixtures/test-site.ts` are deleted
-- [ ] Test: `set-project` → `list-components` → verify real component names/UUIDs from the bundle fixture
-- [ ] Test: `get-component-tree` → verify output has real UUIDs, styles, text from real TplTag instances
-- [ ] Test: `get-component-summary` → verify compact output has uuid/name/childCount, NO styles/text
-- [ ] Test: `get-node-details` on a named node → verify full styles/text/attrs present
-- [ ] Test: compare `get-component-summary` size vs `get-component-tree` size → summary ≤ 20% of full
-- [ ] Test: `get-component-tree` with `maxDepth: 1` → verify children truncated with childCount
-- [ ] Test: `update-text` → `get-node-details` → verify new text content
-- [ ] Test: `update-styles` → `get-node-details` → verify new styles
-- [ ] Test: `begin-batch` → multiple edits → `end-batch` → verify all changes applied
-- [ ] Test: edit → verify → `undo` → verify reverted
-- [ ] Test: node resolution by UUID, by name, by path all find the same node
-- [ ] `npm test` runs both Jest unit tests and vitest integration tests
-- [ ] All existing Jest unit tests continue to pass
+- [x] `vitest.config.integration.ts` exists with Vite resolve aliases pointing `@/*` to real WAB source
+- [x] `stub-module.js` exists with Proxy pattern
+- [x] `real-integration.test.ts` exists using vitest (`vi.fn`, `vi.stubGlobal`, `describe`, `it`, `expect`)
+- [x] Only `global.fetch` and browser packages are stubbed — all WAB modules run for real
+- [x] Old `integration.test.ts` and `fixtures/test-site.ts` are deleted
+- [x] Test: `set-project` → `list-components` → verify real component names/UUIDs from the bundle fixture
+- [x] Test: `get-component-tree` → verify output has real UUIDs, styles, text from real TplTag instances
+- [x] Test: `get-component-summary` → verify compact output has uuid/name/childCount, NO styles/text
+- [x] Test: `get-node-details` on a named node → verify full styles/text/attrs present
+- [x] Test: compare `get-component-summary` size vs `get-component-tree` size → summary ≤ 20% of full
+- [x] Test: `get-component-tree` with `maxDepth: 1` → verify children truncated with childCount
+- [x] Test: `update-text` → `get-node-details` → verify new text content
+- [x] Test: `update-styles` → `get-node-details` → verify new styles
+- [x] Test: `begin-batch` → multiple edits → `end-batch` → verify all changes applied
+- [x] Test: edit → verify → `undo` → verify reverted
+- [x] Test: node resolution by UUID, by name, by path all find the same node
+- [x] `npm test` runs both Jest unit tests and vitest integration tests
+- [x] All existing Jest unit tests continue to pass
 
 ### Nice to Have
 
-- [ ] Test: `add-child` → verify in tree → `remove-child` → verify gone
-- [ ] Test: `move-child` → verify new parent → `undo` → verify original position
-- [ ] Test: `refresh-project` → verify session still valid
+- [x] Test: `add-child` → verify in tree → `remove-child` → verify gone
+- [x] Test: `move-child` → verify new parent → `undo` → verify original position
+- [x] Test: `refresh-project` → verify session still valid
 
 ## Happy Path
 

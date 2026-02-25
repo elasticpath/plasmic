@@ -20,6 +20,8 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `get-preview-url(componentUuid)` — Get preview and studio URLs for a page or component. No server call needed.
 - `delete-component(componentUuid, force?)` — Delete a page or component. Checks for references; use `force: true` to override.
 - `list-variants(componentUuid)` — List all variants for a component: global (breakpoints), component (custom), style (hover/focus).
+- `create-style-variant(componentUuid, selector, nodeRef?)` — Create a new interaction state variant (hover, focus, pressed, etc.). Optional `nodeRef` scopes to a specific element.
+- `create-variant-group(componentUuid, name, type?, initialVariants?)` — Create a named variant group (e.g., "Size" with "Small"/"Large"). Types: "single" (default), "multi", "toggle".
 - `update-text(componentUuid, nodeRef, text, variant?)` — Change text content on a node. Optional `variant` targets a specific variant.
 - `update-styles(componentUuid, nodeRef, styles, variant?)` — Change CSS styles on a node. Optional `variant` targets a specific variant.
 - `add-child(componentUuid, parentRef, child, position)` — Add a new element.
@@ -43,6 +45,8 @@ All edit tools (`update-text`, `update-styles`, `add-child`, `remove-child`, `mo
    - "get subtree", "show me just the hero section tree" → find the component UUID and node reference, then call `get-subtree`
    - "what colors are available", "show me the design tokens", "what fonts" → call `get-tokens` (optionally with a type filter)
    - "what variants exist", "show breakpoints", "list hover states" → find the component UUID via `list-components`, then call `list-variants`
+   - "add hover state", "create a focus variant", "add :active state" → find the component UUID via `list-components`, then call `create-style-variant`. Optionally specify `nodeRef` to scope to a specific element.
+   - "add a size variant", "create variant group", "add Small/Medium/Large variants" → find the component UUID, then call `create-variant-group` with the group name and optional `initialVariants` array.
    - "change X to Y", "update the heading", "make it bigger", "make the background blue" → delegate to `/plasmic-edit`
    - "make the heading smaller on mobile", "change hover color", "set font size for tablet" → delegate to `/plasmic-edit` (variant-aware editing)
    - "add a section", "insert a card", "add a testimonial below the hero" → delegate to `/plasmic-edit`

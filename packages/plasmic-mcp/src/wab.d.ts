@@ -247,6 +247,23 @@ declare module "@/wab/shared/TplMgr" {
      *  Throws if other components reference it via TplComponent instances.
      *  Handles page link removal, arena cleanup, and default component refs. */
     removeComponent(component: any): void;
+    /** Create a component-level style variant (hover/focus/pressed).
+     *  Pushes to component.variants (not variantGroups). */
+    createStyleVariant(component: any, selectors?: string[]): any;
+    /** Create an element-level (private) style variant.
+     *  The variant is scoped to a specific TplNode via forTpl. */
+    createPrivateStyleVariant(component: any, tpl: any, selectors?: string[]): any;
+    /** Create a new named variant group on a component.
+     *  Handles StateParam, onChangeParam, and linked state creation internally.
+     *  optionsType: "singleChoice" | "multiChoice" | "standalone". */
+    createVariantGroup(opts: {
+      component: any;
+      name?: string;
+      optionsType?: string;
+    }): any;
+    /** Add a named variant to an existing ComponentVariantGroup.
+     *  Name is auto-deduplicated via getUniqueVariantName(). */
+    createVariant(component: any, group: any, name?: string): any;
   }
 }
 

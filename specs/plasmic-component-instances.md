@@ -66,16 +66,16 @@ None — all changes are additions to existing files.
 
 ### Must Have
 
-- [ ] `plasmicElementToTpl()` handles `type: "component"` — resolves by name or UUID, creates `TplComponent`
-- [ ] `plasmicElementToTpl()` handles `type: "default-component"` — creates `TplComponent` with default slot contents
-- [ ] Throws descriptive error if component name/UUID not found in Site model
-- [ ] Recursive children of `ComponentElement` are converted and placed in the default slot
-- [ ] Unit tests in `edit-tools.test.ts`: add-child with `{ type: "component", name: "ExistingComp" }` creates a TplComponent (not a div)
-- [ ] Unit test: add-child with unknown component name throws descriptive error
-- [ ] Unit test: add-child with `{ type: "default-component" }` creates TplComponent with default slot contents
-- [ ] Integration test (in real-integration.test.ts once P0.1 exists): add-child with component type → get-node-details → verify component instance
-- [ ] Skill file `plasmic-edit.md` documents component insertion syntax
-- [ ] All existing tests continue to pass
+- [x] `plasmicElementToTpl()` handles `type: "component"` — resolves by name or UUID, creates `TplComponent`
+- [x] `plasmicElementToTpl()` handles `type: "default-component"` — creates `TplComponent` with default slot contents
+- [x] Throws descriptive error if component name/UUID not found in Site model
+- [x] Recursive children of `ComponentElement` are converted and placed in the default slot
+- [x] Unit tests in `edit-tools.test.ts`: add-child with `{ type: "component", name: "ExistingComp" }` creates a TplComponent (not a div)
+- [x] Unit test: add-child with unknown component name throws descriptive error
+- [x] Unit test: add-child with `{ type: "default-component" }` creates TplComponent with default slot contents
+- [x] Integration test (in real-integration.test.ts once P0.1 exists): add-child with component type → get-node-details → verify component instance
+- [x] Skill file `plasmic-edit.md` documents component insertion syntax
+- [x] All existing tests continue to pass
 
 ### Nice to Have
 

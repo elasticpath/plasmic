@@ -117,23 +117,23 @@ None — all changes are additions to existing files.
 
 ### Must Have
 
-- [ ] `list-variants` tool registered in server.ts, returns global + component + style variants
-- [ ] `update-styles` accepts optional `variant` parameter (backward compatible — omit for base)
-- [ ] `update-text` accepts optional `variant` parameter (backward compatible — omit for base)
-- [ ] Variant resolution by UUID, name, and selector string
-- [ ] Descriptive error when variant not found (lists available variants)
-- [ ] Descriptive error when variant is ambiguous (lists matches with UUIDs)
-- [ ] Unit tests: update-styles with variant targets correct VariantSetting
-- [ ] Unit tests: update-styles without variant still targets base (backward compatible)
-- [ ] Unit tests: list-variants returns correct structure
-- [ ] Unit tests: variant resolution by name, UUID, selector
-- [ ] Skill file updates documenting variant workflow
-- [ ] All existing tests continue to pass
+- [x] `list-variants` tool registered in server.ts, returns global + component + style variants
+- [x] `update-styles` accepts optional `variant` parameter (backward compatible — omit for base)
+- [x] `update-text` accepts optional `variant` parameter (backward compatible — omit for base)
+- [x] Variant resolution by UUID, name, and selector string
+- [x] Descriptive error when variant not found (lists available variants)
+- [x] Descriptive error when variant is ambiguous (lists matches with UUIDs)
+- [x] Unit tests: update-styles with variant targets correct VariantSetting
+- [x] Unit tests: update-styles without variant still targets base (backward compatible)
+- [x] Unit tests: list-variants returns correct structure
+- [x] Unit tests: variant resolution by name, UUID, selector
+- [x] Skill file updates documenting variant workflow
+- [x] All existing tests continue to pass
 
 ### Nice to Have
 
-- [ ] `create-style-variant` tool — create a new hover/focus/pressed variant for an element
-- [ ] `create-variant-group` tool — create a new component variant group
+- [x] `create-style-variant` tool — create a new hover/focus/pressed variant for an element
+- [x] `create-variant-group` tool — create a new component variant group
 - [ ] Support variant combos (e.g., "Mobile" + ":hover" simultaneously)
 - [ ] `get-node-details` includes variant-specific overrides in output
 

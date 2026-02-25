@@ -13,6 +13,10 @@
  * or CSS selector (e.g., ":hover"), and the edit targets that variant's
  * VariantSetting.
  *
+ * P7: createStyleVariant and createVariantGroup enable creating new variants
+ * programmatically — completing the variant editing story so users can add
+ * hover/focus states and custom variant groups, not just edit existing ones.
+ *
  * Reference: specs/plasmic-incremental-writes.md § Edit Tools
  * Reference: specs/plasmic-variant-editing.md § Variant-Aware Editing
  */
@@ -1409,5 +1413,223 @@ export async function deleteComponent(
     save,
     deletedName,
     deletedUuid: componentUuid,
+  };
+}
+
+// --- create-style-variant ---
+
+/** Valid CSS pseudo-class/element selectors for style variants. */
+const VALID_STYLE_SELECTORS = [
+  ":hover",
+  ":active",
+  ":focus",
+  ":focus-visible",
+  ":focus-within",
+  ":focus-visible-within",
+  ":disabled",
+  ":visited",
+  ":link",
+  "::placeholder",
+];
+
+export interface CreateStyleVariantResult {
+  save: SaveResult;
+  variantUuid: string;
+  selector: string;
+  scope: "component" | "element";
+  forTplUuid?: string;
+  forTplName?: string;
+}
+
+/**
+ * Create a new CSS interaction state variant (hover, focus, pressed, etc.)
+ * on a component or scoped to a specific element.
+ *
+ * Component-level variants apply to any element in the component.
+ * Element-scoped (private) variants are tied to a specific TplNode.
+ *
+ * Prevents creating duplicate variants with the same selector on the
+ * same scope (component-level or same element).
+ */
+export async function createStyleVariant(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  selector: string,
+  nodeRef?: string
+): Promise<CreateStyleVariantResult> {
+  if (!VALID_STYLE_SELECTORS.includes(selector)) {
+    throw new Error(
+      `Invalid selector "${selector}". Valid selectors: ${VALID_STYLE_SELECTORS.join(", ")}`
+    );
+  }
+
+  const component = findComponent(componentUuid);
+  const session = requireSession();
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  if (nodeRef) {
+    // Private (element-scoped) style variant
+    const result = resolveNode(component, nodeRef);
+    const resolved = requireSingleNode(result, nodeRef);
+
+    if (!isKnownTplTag(resolved.node)) {
+      throw new Error(
+        `Node "${nodeRef}" is not a TplTag. Style variants can only be created on HTML elements.`
+      );
+    }
+
+    // Check for existing private style variant with same selector on this element
+    const existingVariants = (component.variants ?? []).filter(
+      (v: any) => v.selectors?.includes(selector) && v.forTpl === resolved.node
+    );
+    if (existingVariants.length > 0) {
+      throw new Error(
+        `A ${selector} variant already exists for this element (uuid: ${existingVariants[0].uuid}). ` +
+          `Use update-styles with variant: "${selector}" to edit it.`
+      );
+    }
+
+    let variant: any;
+    const changes = tracker.withRecording(() => {
+      variant = tplMgr.createPrivateStyleVariant(component, resolved.node, [selector]);
+    });
+
+    const componentIid = getComponentIid(component);
+    const save = await saveOrAccumulate(
+      apiClient,
+      changes,
+      `create-style-variant: ${selector} on ${resolved.name ?? nodeRef}`,
+      componentIid ? [componentIid] : []
+    );
+
+    return {
+      save,
+      variantUuid: variant!.uuid,
+      selector,
+      scope: "element",
+      forTplUuid: resolved.uuid,
+      forTplName: resolved.name,
+    };
+  } else {
+    // Component-level style variant
+    const existingVariants = (component.variants ?? []).filter(
+      (v: any) => v.selectors?.includes(selector) && !v.forTpl
+    );
+    if (existingVariants.length > 0) {
+      throw new Error(
+        `A ${selector} variant already exists for this component (uuid: ${existingVariants[0].uuid}). ` +
+          `Use update-styles with variant: "${selector}" to edit it.`
+      );
+    }
+
+    let variant: any;
+    const changes = tracker.withRecording(() => {
+      variant = tplMgr.createStyleVariant(component, [selector]);
+    });
+
+    const componentIid = getComponentIid(component);
+    const save = await saveOrAccumulate(
+      apiClient,
+      changes,
+      `create-style-variant: ${selector} on component ${component.name}`,
+      componentIid ? [componentIid] : []
+    );
+
+    return {
+      save,
+      variantUuid: variant!.uuid,
+      selector,
+      scope: "component",
+    };
+  }
+}
+
+// --- create-variant-group ---
+
+export interface CreateVariantGroupResult {
+  save: SaveResult;
+  groupUuid: string;
+  groupName: string;
+  type: "single" | "multi" | "toggle";
+  variants: Array<{ uuid: string; name: string }>;
+}
+
+/**
+ * Create a new named variant group on a component.
+ *
+ * Variant groups define custom component states (e.g., Size: Small/Medium/Large,
+ * or a boolean toggle like "isActive"). Each group can hold multiple variants.
+ *
+ * Types:
+ *   - "single" (default): single-choice group (radio-style, one variant active at a time)
+ *   - "multi": multi-choice group (checkbox-style, multiple variants can be active)
+ *   - "toggle": standalone boolean variant (auto-creates one variant named after the group)
+ *
+ * Optionally creates initial variants in the group.
+ */
+export async function createVariantGroup(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  name: string,
+  type?: "single" | "multi" | "toggle",
+  initialVariants?: string[]
+): Promise<CreateVariantGroupResult> {
+  const component = findComponent(componentUuid);
+  const session = requireSession();
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  // Map user-facing type to TplMgr's internal VariantOptionsType
+  const resolvedType = type ?? "single";
+  let optionsType: string;
+  switch (resolvedType) {
+    case "multi":
+      optionsType = "multiChoice";
+      break;
+    case "toggle":
+      optionsType = "standalone";
+      break;
+    default:
+      optionsType = "singleChoice";
+      break;
+  }
+
+  let group: any;
+  const createdVariants: Array<{ uuid: string; name: string }> = [];
+
+  const changes = tracker.withRecording(() => {
+    group = tplMgr.createVariantGroup({ component, name, optionsType });
+
+    // Standalone type auto-creates one variant — capture it
+    if (optionsType === "standalone" && group.variants?.length > 0) {
+      for (const v of group.variants) {
+        createdVariants.push({ uuid: v.uuid, name: v.name });
+      }
+    }
+
+    // Create additional initial variants if requested
+    if (initialVariants && initialVariants.length > 0) {
+      for (const variantName of initialVariants) {
+        const v = tplMgr.createVariant(component, group, variantName);
+        createdVariants.push({ uuid: v.uuid, name: v.name });
+      }
+    }
+  });
+
+  const componentIid = getComponentIid(component);
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `create-variant-group: "${name}" on ${component.name}`,
+    componentIid ? [componentIid] : []
+  );
+
+  return {
+    save,
+    groupUuid: group!.uuid,
+    groupName: group!.param?.variable?.name ?? name,
+    type: resolvedType,
+    variants: createdVariants,
   };
 }

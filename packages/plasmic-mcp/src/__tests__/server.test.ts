@@ -116,6 +116,8 @@ describe("tool handlers", () => {
   let mockRenameComponent: jest.Mock;
   let mockUpdatePageMeta: jest.Mock;
   let mockDeleteComponent: jest.Mock;
+  let mockCreateStyleVariant: jest.Mock;
+  let mockCreateVariantGroup: jest.Mock;
   let mockBeginBatch: jest.Mock;
   let mockEndBatch: jest.Mock;
   let mockIsBatchActive: jest.Mock;
@@ -170,6 +172,8 @@ describe("tool handlers", () => {
     mockRenameComponent = jest.fn();
     mockUpdatePageMeta = jest.fn();
     mockDeleteComponent = jest.fn();
+    mockCreateStyleVariant = jest.fn();
+    mockCreateVariantGroup = jest.fn();
     mockBeginBatch = jest.fn();
     mockEndBatch = jest.fn();
     mockIsBatchActive = jest.fn().mockReturnValue(false);
@@ -261,6 +265,8 @@ describe("tool handlers", () => {
       renameComponent: (...args: any[]) => mockRenameComponent(...args),
       updatePageMeta: (...args: any[]) => mockUpdatePageMeta(...args),
       deleteComponent: (...args: any[]) => mockDeleteComponent(...args),
+      createStyleVariant: (...args: any[]) => mockCreateStyleVariant(...args),
+      createVariantGroup: (...args: any[]) => mockCreateVariantGroup(...args),
     }));
 
     jest.mock("../batch-manager", () => ({
@@ -2588,6 +2594,175 @@ describe("tool handlers", () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("referenced by");
+    });
+  });
+
+  describe("create-style-variant", () => {
+    it("creates a component-level style variant", async () => {
+      mockCreateStyleVariant.mockResolvedValue({
+        save: { revisionNum: 20, incremental: true },
+        variantUuid: "variant-hover-1",
+        selector: ":hover",
+        scope: "component",
+      });
+
+      const result = await client.callTool({
+        name: "create-style-variant",
+        arguments: { componentUuid: "comp-1", selector: ":hover" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.variantUuid).toBe("variant-hover-1");
+      expect(output.selector).toBe(":hover");
+      expect(output.scope).toBe("component");
+      expect(output.revision).toBe(20);
+      expect(output.message).toContain(":hover");
+      expect(mockCreateStyleVariant).toHaveBeenCalledWith(
+        mockApiClient, "comp-1", ":hover", undefined
+      );
+    });
+
+    it("creates an element-scoped style variant", async () => {
+      mockCreateStyleVariant.mockResolvedValue({
+        save: { revisionNum: 21, incremental: true },
+        variantUuid: "variant-focus-1",
+        selector: ":focus",
+        scope: "element",
+        forTplUuid: "node-btn-1",
+        forTplName: "Button",
+      });
+
+      const result = await client.callTool({
+        name: "create-style-variant",
+        arguments: {
+          componentUuid: "comp-1",
+          selector: ":focus",
+          nodeRef: "Button",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.scope).toBe("element");
+      expect(output.element).toBe("Button");
+      expect(output.elementUuid).toBe("node-btn-1");
+      expect(mockCreateStyleVariant).toHaveBeenCalledWith(
+        mockApiClient, "comp-1", ":focus", "Button"
+      );
+    });
+
+    it("returns error when creation fails", async () => {
+      mockCreateStyleVariant.mockRejectedValue(
+        new Error('A :hover variant already exists for this component')
+      );
+
+      const result = await client.callTool({
+        name: "create-style-variant",
+        arguments: { componentUuid: "comp-1", selector: ":hover" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Error creating style variant");
+    });
+  });
+
+  describe("create-variant-group", () => {
+    it("creates a single-choice variant group with initial variants", async () => {
+      mockCreateVariantGroup.mockResolvedValue({
+        save: { revisionNum: 22, incremental: true },
+        groupUuid: "group-size-1",
+        groupName: "Size",
+        type: "single",
+        variants: [
+          { uuid: "v-small", name: "Small" },
+          { uuid: "v-large", name: "Large" },
+        ],
+      });
+
+      const result = await client.callTool({
+        name: "create-variant-group",
+        arguments: {
+          componentUuid: "comp-1",
+          name: "Size",
+          type: "single",
+          initialVariants: ["Small", "Large"],
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.groupUuid).toBe("group-size-1");
+      expect(output.groupName).toBe("Size");
+      expect(output.type).toBe("single");
+      expect(output.variants).toHaveLength(2);
+      expect(output.revision).toBe(22);
+      expect(mockCreateVariantGroup).toHaveBeenCalledWith(
+        mockApiClient, "comp-1", "Size", "single", ["Small", "Large"]
+      );
+    });
+
+    it("creates a toggle variant group", async () => {
+      mockCreateVariantGroup.mockResolvedValue({
+        save: { revisionNum: 23, incremental: true },
+        groupUuid: "group-toggle-1",
+        groupName: "isActive",
+        type: "toggle",
+        variants: [{ uuid: "v-auto", name: "isActive" }],
+      });
+
+      const result = await client.callTool({
+        name: "create-variant-group",
+        arguments: {
+          componentUuid: "comp-1",
+          name: "isActive",
+          type: "toggle",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.type).toBe("toggle");
+      expect(output.variants).toHaveLength(1);
+      expect(output.variants[0].name).toBe("isActive");
+    });
+
+    it("defaults to single-choice when type is omitted", async () => {
+      mockCreateVariantGroup.mockResolvedValue({
+        save: { revisionNum: 24, incremental: true },
+        groupUuid: "group-1",
+        groupName: "Theme",
+        type: "single",
+        variants: [],
+      });
+
+      const result = await client.callTool({
+        name: "create-variant-group",
+        arguments: { componentUuid: "comp-1", name: "Theme" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.type).toBe("single");
+      expect(mockCreateVariantGroup).toHaveBeenCalledWith(
+        mockApiClient, "comp-1", "Theme", undefined, undefined
+      );
+    });
+
+    it("returns error when creation fails", async () => {
+      mockCreateVariantGroup.mockRejectedValue(
+        new Error('Component UUID "nonexistent" not found')
+      );
+
+      const result = await client.callTool({
+        name: "create-variant-group",
+        arguments: { componentUuid: "nonexistent", name: "Size" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Error creating variant group");
     });
   });
 

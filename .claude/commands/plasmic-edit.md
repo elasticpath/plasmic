@@ -10,6 +10,8 @@ You are editing an existing page or component in a Plasmic project.
 - `export-component-tree(componentUuid)` — Write full tree to temp file. Returns file path + summary. Use Read tool to inspect sections.
 - `get-subtree(componentUuid, nodeRef, maxDepth?, excludeStyles?)` — Get the full tree rooted at a specific node. Use when you want to see a specific section in detail before editing it.
 - `list-variants(componentUuid)` — List all variants: global (breakpoints), component (custom), style (hover/focus). Use to discover variant names/UUIDs before variant-targeted edits.
+- `create-style-variant(componentUuid, selector, nodeRef?)` — Create a new interaction state variant (`:hover`, `:focus`, `:active`, `:focus-visible`, `:disabled`, etc.). Optional `nodeRef` scopes to a specific element. **Required before applying styles to a variant that doesn't exist yet.**
+- `create-variant-group(componentUuid, name, type?, initialVariants?)` — Create a named variant group (e.g., "Size" with "Small"/"Large" variants). Types: `"single"` (one active, default), `"multi"` (multiple active), `"toggle"` (boolean on/off). Optional `initialVariants` array creates variants immediately.
 - `update-text(componentUuid, nodeRef, text, variant?)` — Change text content on a node. Optional `variant` targets a specific variant (by name, UUID, or selector like ":hover").
 - `update-styles(componentUuid, nodeRef, styles, variant?)` — Change CSS styles on a node. Optional `variant` targets a specific variant.
 - `add-child(componentUuid, parentRef, child, position)` — Add a new element.
@@ -80,11 +82,14 @@ To edit styles or text for a specific variant (responsive breakpoint, hover stat
 
 1. Call `list-variants(componentUuid)` to see all available variants with names, UUIDs, and types.
 2. Identify the target variant by name (e.g., "Mobile"), UUID, or selector (e.g., ":hover").
-3. Pass the `variant` parameter to `update-styles` or `update-text`:
+3. **If the variant doesn't exist yet**, create it first:
+   - **Interaction states** (hover, focus, etc.): `create-style-variant(componentUuid, ":hover")` — optionally scope to an element with `nodeRef`.
+   - **Custom variant groups** (Size, Theme, State): `create-variant-group(componentUuid, "Size", "single", ["Small", "Medium", "Large"])`
+4. Pass the `variant` parameter to `update-styles` or `update-text`:
    - By name: `variant: "Mobile"` (case-insensitive)
    - By UUID: `variant: "abc-123"`
    - By selector: `variant: ":hover"` (for style variants like hover, focus, pressed)
-4. Omit `variant` (or don't pass it) to edit the base variant (default, backward-compatible behavior).
+5. Omit `variant` (or don't pass it) to edit the base variant (default, backward-compatible behavior).
 
 **Variant types returned by `list-variants`:**
 - **Global variants** — Screen breakpoints (e.g., "Mobile", "Tablet") with `mediaQuery` values. Applied site-wide.

@@ -5,6 +5,10 @@
  * - ensureBaseVariantSetting/ensureBaseVariant: variant management
  * - renameComponent: component renaming with deduplication
  * - removeComponent: component deletion with reference guards
+ * - createStyleVariant: component-level interaction state (hover/focus/pressed)
+ * - createPrivateStyleVariant: element-scoped interaction state
+ * - createVariantGroup: named variant group with state/param setup
+ * - createVariant: add variant to existing group
  */
 
 export const mockEnsureBaseVariantSetting = jest.fn();
@@ -14,6 +18,10 @@ export const mockRenameComponent = jest.fn((component: any, name: string) => {
   component.name = name;
 });
 export const mockRemoveComponent = jest.fn();
+export const mockCreateStyleVariant = jest.fn();
+export const mockCreatePrivateStyleVariant = jest.fn();
+export const mockCreateVariantGroup = jest.fn();
+export const mockCreateVariant = jest.fn();
 
 export class TplMgr {
   constructor(_args: { site: any }) {}
@@ -32,5 +40,21 @@ export class TplMgr {
 
   removeComponent(component: any): void {
     mockRemoveComponent(component);
+  }
+
+  createStyleVariant(component: any, selectors?: string[]): any {
+    return mockCreateStyleVariant(component, selectors);
+  }
+
+  createPrivateStyleVariant(component: any, tpl: any, selectors?: string[]): any {
+    return mockCreatePrivateStyleVariant(component, tpl, selectors);
+  }
+
+  createVariantGroup(opts: { component: any; name?: string; optionsType?: string }): any {
+    return mockCreateVariantGroup(opts);
+  }
+
+  createVariant(component: any, group: any, name?: string): any {
+    return mockCreateVariant(component, group, name);
   }
 }
