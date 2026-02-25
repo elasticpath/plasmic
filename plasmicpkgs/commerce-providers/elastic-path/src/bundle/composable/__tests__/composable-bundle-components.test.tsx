@@ -51,6 +51,7 @@ const { EPBundleValidationErrors } = require("../EPBundleValidationErrors");
 const { EPBundleVariationField } = require("../EPBundleVariationField");
 const { EPBundleOptionTrigger } = require("../EPBundleOptionTrigger");
 const { EPBundleOptionQuantityButton } = require("../EPBundleOptionQuantityButton");
+const { EPBundleSelectionIndicator } = require("../EPBundleSelectionIndicator");
 const { EPBundleOptionQuantityControl } = require("../EPBundleOptionQuantityControl");
 const { EPBundleComponentList } = require("../EPBundleComponentList");
 const { EPBundleOptionList } = require("../EPBundleOptionList");
@@ -1197,6 +1198,113 @@ describe("EPBundleVariationOptionTrigger", () => {
     renderVariationTrigger();
     fireEvent.keyDown(screen.getByRole("radio"), { key: "Enter" });
     expect(mockSelectVariation).toHaveBeenCalledWith("var-color", "opt-red");
+  });
+});
+
+// ===========================================================================
+// EPBundleSelectionIndicator
+// ===========================================================================
+
+describe("EPBundleSelectionIndicator", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setEditorMode(false);
+    setupSelector({});
+  });
+
+  const defaultCtx = {
+    componentKey: "processor",
+    optionId: "opt-1",
+    isSelected: false,
+    quantity: 0,
+    toggleOption: jest.fn(),
+    setQuantity: jest.fn(),
+  };
+
+  it("renders a div with data-ep-bundle-selection-indicator", () => {
+    render(
+      <BundleOptionContext.Provider value={defaultCtx}>
+        <EPBundleSelectionIndicator />
+      </BundleOptionContext.Provider>
+    );
+    const el = document.querySelector("[data-ep-bundle-selection-indicator]");
+    expect(el).toBeTruthy();
+  });
+
+  it("sets data-selected when option is selected", () => {
+    render(
+      <BundleOptionContext.Provider value={{ ...defaultCtx, isSelected: true, quantity: 1 }}>
+        <EPBundleSelectionIndicator />
+      </BundleOptionContext.Provider>
+    );
+    const el = document.querySelector("[data-ep-bundle-selection-indicator]");
+    expect(el!.hasAttribute("data-selected")).toBe(true);
+  });
+
+  it("does not set data-selected when not selected", () => {
+    render(
+      <BundleOptionContext.Provider value={defaultCtx}>
+        <EPBundleSelectionIndicator />
+      </BundleOptionContext.Provider>
+    );
+    const el = document.querySelector("[data-ep-bundle-selection-indicator]");
+    expect(el!.hasAttribute("data-selected")).toBe(false);
+  });
+
+  it("has aria-hidden=true", () => {
+    render(
+      <BundleOptionContext.Provider value={defaultCtx}>
+        <EPBundleSelectionIndicator />
+      </BundleOptionContext.Provider>
+    );
+    const el = document.querySelector("[data-ep-bundle-selection-indicator]");
+    expect(el!.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("applies className prop", () => {
+    render(
+      <BundleOptionContext.Provider value={defaultCtx}>
+        <EPBundleSelectionIndicator className="my-indicator" />
+      </BundleOptionContext.Provider>
+    );
+    const el = document.querySelector("[data-ep-bundle-selection-indicator]");
+    expect(el!.className).toContain("my-indicator");
+  });
+
+  it("previewState=selected forces data-selected", () => {
+    render(
+      <BundleOptionContext.Provider value={defaultCtx}>
+        <EPBundleSelectionIndicator previewState="selected" />
+      </BundleOptionContext.Provider>
+    );
+    const el = document.querySelector("[data-ep-bundle-selection-indicator]");
+    expect(el!.hasAttribute("data-selected")).toBe(true);
+  });
+
+  it("previewState=unselected forces no data-selected", () => {
+    render(
+      <BundleOptionContext.Provider value={{ ...defaultCtx, isSelected: true, quantity: 1 }}>
+        <EPBundleSelectionIndicator previewState="unselected" />
+      </BundleOptionContext.Provider>
+    );
+    const el = document.querySelector("[data-ep-bundle-selection-indicator]");
+    expect(el!.hasAttribute("data-selected")).toBe(false);
+  });
+
+  it("falls back to mock data in editor when no context", () => {
+    setEditorMode(true);
+    // Render without BundleOptionContext provider — simulates being in editor
+    // outside a real trigger. MOCK_BUNDLE_COMPONENTS[0].options[0].isSelected is true.
+    render(<EPBundleSelectionIndicator />);
+    const el = document.querySelector("[data-ep-bundle-selection-indicator]");
+    expect(el!.hasAttribute("data-selected")).toBe(true);
+  });
+
+  it("renders without data-selected when no context and not in editor", () => {
+    setEditorMode(false);
+    render(<EPBundleSelectionIndicator />);
+    const el = document.querySelector("[data-ep-bundle-selection-indicator]");
+    expect(el!.hasAttribute("data-selected")).toBe(false);
   });
 });
 

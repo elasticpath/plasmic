@@ -4,6 +4,7 @@ export { EPBundleComponentField, registerEPBundleComponentField } from "./EPBund
 export { EPBundleOptionList, registerEPBundleOptionList } from "./EPBundleOptionList";
 export { EPBundleOptionField, registerEPBundleOptionField } from "./EPBundleOptionField";
 export { EPBundleOptionTrigger, registerEPBundleOptionTrigger } from "./EPBundleOptionTrigger";
+export { EPBundleSelectionIndicator, registerEPBundleSelectionIndicator } from "./EPBundleSelectionIndicator";
 export { EPBundleOptionQuantityControl, registerEPBundleOptionQuantityControl } from "./EPBundleOptionQuantityControl";
 export { EPBundleOptionQuantityButton, registerEPBundleOptionQuantityButton } from "./EPBundleOptionQuantityButton";
 export { EPBundlePriceField, registerEPBundlePriceField } from "./EPBundlePriceField";
