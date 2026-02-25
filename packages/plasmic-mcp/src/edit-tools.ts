@@ -42,7 +42,7 @@ import {
 import { RSH } from "@/wab/shared/RuleSetHelpers";
 import { TplMgr } from "@/wab/shared/TplMgr";
 import { ensureVariantSetting } from "@/wab/shared/Variants";
-import { mkTplTagX, mkTplInlinedText, mkTplComponentX } from "@/wab/shared/core/tpls";
+import { mkTplTagX, mkTplInlinedText, mkTplComponentX, clone as cloneTpl } from "@/wab/shared/core/tpls";
 import { flattenTpls } from "@/wab/shared/core/tpls";
 import { requireSession } from "./session.js";
 import { getChangeTracker } from "./change-tracker.js";
@@ -2195,7 +2195,7 @@ function cloneRuleSet(rs: any): any {
   return {
     values: { ...(rs.values ?? {}) },
     mixins: [...(rs.mixins ?? [])],
-    ...(rs.animations !== undefined ? { animations: [...rs.animations] } : {}),
+    ...(Array.isArray(rs.animations) ? { animations: [...rs.animations] } : {}),
   };
 }
 
@@ -2331,8 +2331,8 @@ export async function cloneChild(
   let clonedNode: any;
 
   const changes = tracker.withRecording(() => {
-    // Deep clone the node and all descendants
-    clonedNode = deepCloneTpl(resolved.node);
+    // Deep clone the node and all descendants using WAB's real clone()
+    clonedNode = cloneTpl(resolved.node);
 
     // Set the name on the clone
     if (newName !== undefined) {

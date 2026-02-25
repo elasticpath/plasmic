@@ -1661,3 +1661,854 @@ describe("management tools", () => {
     }
   });
 });
+
+// =========================================================================
+// Slot Override Traversal (P2)
+// =========================================================================
+
+describe("slot override traversal", () => {
+  it("add component instance → add text to slot → verify override node in tree", async () => {
+    // Need a page to edit and a component to instantiate
+    const page = discoveredComponents.find((c) => c.type === "page");
+    const referencedComp = discoveredComponents.find(
+      (c) => c.type === "component"
+    );
+    if (!page || !referencedComp) return;
+
+    const treeResult = await client.callTool({
+      name: "get-component-tree",
+      arguments: { componentUuid: page.uuid },
+    });
+    const tree = parseResponse(treeResult).tree;
+    const initialChildCount = tree.children?.length ?? 0;
+
+    // Add a component instance to the page
+    const addCompResult = await client.callTool({
+      name: "add-child",
+      arguments: {
+        componentUuid: page.uuid,
+        parentRef: tree.uuid,
+        child: { type: "component", name: referencedComp.name },
+      },
+    });
+    expect(addCompResult.isError).toBeFalsy();
+
+    // Re-read tree to get the component instance UUID
+    const afterAddTree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: page.uuid },
+      })
+    ).tree;
+    const compInstance =
+      afterAddTree.children[afterAddTree.children.length - 1];
+    expect(compInstance.type).toBe("component");
+
+    // Try adding a text child to the default "children" slot
+    const addSlotResult = await client.callTool({
+      name: "add-child",
+      arguments: {
+        componentUuid: page.uuid,
+        parentRef: compInstance.uuid,
+        slot: "children",
+        child: { type: "text", value: "Slot Override Text" },
+      },
+    });
+
+    if (addSlotResult.isError) {
+      // Component may not have a "children" slot — skip gracefully
+      // Clean up
+      await client.callTool({
+        name: "remove-child",
+        arguments: { componentUuid: page.uuid, nodeRef: compInstance.uuid },
+      });
+      return;
+    }
+
+    // Re-read tree — the override text should be visible under the component instance
+    const afterSlotTree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: page.uuid },
+      })
+    ).tree;
+    const updatedInstance =
+      afterSlotTree.children[afterSlotTree.children.length - 1];
+
+    // The component instance should now have children (slot override content)
+    expect(updatedInstance.children).toBeDefined();
+    expect(updatedInstance.children.length).toBeGreaterThan(0);
+
+    // Find the text node in the override
+    const overrideTextNode = updatedInstance.children.find(
+      (c: any) => c.text === "Slot Override Text"
+    );
+    expect(overrideTextNode).toBeDefined();
+    expect(overrideTextNode.uuid).toBeTruthy();
+
+    // Clean up
+    await client.callTool({
+      name: "remove-child",
+      arguments: { componentUuid: page.uuid, nodeRef: compInstance.uuid },
+    });
+  });
+
+  it("update-text on node inside slot override → verify change", async () => {
+    const page = discoveredComponents.find((c) => c.type === "page");
+    const referencedComp = discoveredComponents.find(
+      (c) => c.type === "component"
+    );
+    if (!page || !referencedComp) return;
+
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: page.uuid },
+      })
+    ).tree;
+
+    // Add component instance + slot content
+    await client.callTool({
+      name: "add-child",
+      arguments: {
+        componentUuid: page.uuid,
+        parentRef: tree.uuid,
+        child: { type: "component", name: referencedComp.name },
+      },
+    });
+
+    const afterAdd = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: page.uuid },
+      })
+    ).tree;
+    const compInstance = afterAdd.children[afterAdd.children.length - 1];
+
+    const addSlotResult = await client.callTool({
+      name: "add-child",
+      arguments: {
+        componentUuid: page.uuid,
+        parentRef: compInstance.uuid,
+        slot: "children",
+        child: { type: "text", value: "Original Slot Text" },
+      },
+    });
+
+    if (addSlotResult.isError) {
+      await client.callTool({
+        name: "remove-child",
+        arguments: { componentUuid: page.uuid, nodeRef: compInstance.uuid },
+      });
+      return;
+    }
+
+    // Get the override text node UUID
+    const withSlot = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: page.uuid },
+      })
+    ).tree;
+    const instance = withSlot.children[withSlot.children.length - 1];
+    const textNode = instance.children?.find(
+      (c: any) => c.text === "Original Slot Text"
+    );
+    expect(textNode).toBeDefined();
+
+    // Update text on the override node
+    const editResult = await client.callTool({
+      name: "update-text",
+      arguments: {
+        componentUuid: page.uuid,
+        nodeRef: textNode.uuid,
+        text: "Updated Slot Text",
+      },
+    });
+    expect(editResult.isError).toBeFalsy();
+
+    // Verify the change
+    const detail = parseResponse(
+      await client.callTool({
+        name: "get-node-details",
+        arguments: { componentUuid: page.uuid, nodeRef: textNode.uuid },
+      })
+    );
+    expect(detail.node.text).toBe("Updated Slot Text");
+
+    // Clean up
+    await client.callTool({
+      name: "remove-child",
+      arguments: { componentUuid: page.uuid, nodeRef: compInstance.uuid },
+    });
+  });
+});
+
+// =========================================================================
+// Error Recovery (P1)
+// =========================================================================
+
+describe("error recovery", () => {
+  it("failed mutation with invalid nodeRef → model clean → next mutation succeeds", async () => {
+    const comp = discoveredComponents[0];
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+
+    // Attempt mutation with invalid nodeRef — should fail
+    const failResult = await client.callTool({
+      name: "update-styles",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: "bogus-uuid-that-does-not-exist",
+        styles: { color: "red" },
+      },
+    });
+    expect(failResult.isError).toBe(true);
+
+    // Model should still be clean — next mutation should succeed without refresh
+    const successResult = await client.callTool({
+      name: "update-styles",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: tree.uuid,
+        styles: { opacity: "0.9" },
+      },
+    });
+    expect(successResult.isError).toBeFalsy();
+    expect(parseResponse(successResult).success).toBe(true);
+
+    // Verify the style applied
+    const detail = parseResponse(
+      await client.callTool({
+        name: "get-node-details",
+        arguments: { componentUuid: comp.uuid, nodeRef: tree.uuid },
+      })
+    );
+    expect(detail.node.styles["opacity"]).toBe("0.9");
+  });
+});
+
+// =========================================================================
+// Element Tags (P3)
+// =========================================================================
+
+describe("element tags", () => {
+  it("add-child with tag:'section' → verify tag in tree", async () => {
+    const comp = discoveredComponents[0];
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+
+    const addResult = await client.callTool({
+      name: "add-child",
+      arguments: {
+        componentUuid: comp.uuid,
+        parentRef: tree.uuid,
+        child: { type: "box", tag: "section", children: [] },
+      },
+    });
+    expect(addResult.isError).toBeFalsy();
+
+    // Re-read tree and verify tag
+    const afterTree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+    const newChild = afterTree.children[afterTree.children.length - 1];
+    expect(newChild.tag).toBe("section");
+
+    // Clean up
+    await client.callTool({
+      name: "remove-child",
+      arguments: { componentUuid: comp.uuid, nodeRef: newChild.uuid },
+    });
+  });
+
+  it("add-child text with tag:'h1' → verify tag in tree", async () => {
+    const comp = discoveredComponents[0];
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+
+    const addResult = await client.callTool({
+      name: "add-child",
+      arguments: {
+        componentUuid: comp.uuid,
+        parentRef: tree.uuid,
+        child: { type: "text", tag: "h1", value: "Heading" },
+      },
+    });
+    expect(addResult.isError).toBeFalsy();
+
+    const afterTree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+    const newChild = afterTree.children[afterTree.children.length - 1];
+    expect(newChild.tag).toBe("h1");
+    expect(newChild.text).toBe("Heading");
+
+    // Clean up
+    await client.callTool({
+      name: "remove-child",
+      arguments: { componentUuid: comp.uuid, nodeRef: newChild.uuid },
+    });
+  });
+
+  it("add-child with unsafe tag 'script' → error", async () => {
+    const comp = discoveredComponents[0];
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+
+    const addResult = await client.callTool({
+      name: "add-child",
+      arguments: {
+        componentUuid: comp.uuid,
+        parentRef: tree.uuid,
+        child: { type: "box", tag: "script", children: [] },
+      },
+    });
+    expect(addResult.isError).toBe(true);
+    expect(addResult.content?.[0]?.text).toContain("script");
+  });
+});
+
+// =========================================================================
+// update-attrs (P3)
+// =========================================================================
+
+describe("update-attrs", () => {
+  it("set role + aria-label → read back via get-node-details", async () => {
+    const comp = discoveredComponents[0];
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+
+    const attrResult = await client.callTool({
+      name: "update-attrs",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: tree.uuid,
+        attrs: { role: "navigation", "aria-label": "Main menu" },
+      },
+    });
+    expect(attrResult.isError).toBeFalsy();
+    const attrOutput = parseResponse(attrResult);
+    expect(attrOutput.success).toBe(true);
+    expect(attrOutput.updatedAttributes).toContain("role");
+    expect(attrOutput.updatedAttributes).toContain("aria-label");
+
+    // Read back
+    const detail = parseResponse(
+      await client.callTool({
+        name: "get-node-details",
+        arguments: { componentUuid: comp.uuid, nodeRef: tree.uuid },
+      })
+    );
+    expect(detail.node.attrs.role).toBe("navigation");
+    expect(detail.node.attrs["aria-label"]).toBe("Main menu");
+  });
+
+  it("set data-* attribute → read back", async () => {
+    const comp = discoveredComponents[0];
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+
+    const attrResult = await client.callTool({
+      name: "update-attrs",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: tree.uuid,
+        attrs: { "data-testid": "hero-section" },
+      },
+    });
+    expect(attrResult.isError).toBeFalsy();
+
+    const detail = parseResponse(
+      await client.callTool({
+        name: "get-node-details",
+        arguments: { componentUuid: comp.uuid, nodeRef: tree.uuid },
+      })
+    );
+    expect(detail.node.attrs["data-testid"]).toBe("hero-section");
+  });
+
+  it("remove attribute with null → verify gone", async () => {
+    const comp = discoveredComponents[0];
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+
+    // Set an attribute first
+    await client.callTool({
+      name: "update-attrs",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: tree.uuid,
+        attrs: { "data-remove-me": "present" },
+      },
+    });
+
+    // Verify it's there
+    let detail = parseResponse(
+      await client.callTool({
+        name: "get-node-details",
+        arguments: { componentUuid: comp.uuid, nodeRef: tree.uuid },
+      })
+    );
+    expect(detail.node.attrs["data-remove-me"]).toBe("present");
+
+    // Remove it
+    const removeResult = await client.callTool({
+      name: "update-attrs",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: tree.uuid,
+        attrs: { "data-remove-me": null },
+      },
+    });
+    expect(removeResult.isError).toBeFalsy();
+
+    // Verify it's gone
+    detail = parseResponse(
+      await client.callTool({
+        name: "get-node-details",
+        arguments: { componentUuid: comp.uuid, nodeRef: tree.uuid },
+      })
+    );
+    expect(detail.node.attrs?.["data-remove-me"]).toBeUndefined();
+  });
+
+  it("reject event handler attribute", async () => {
+    const comp = discoveredComponents[0];
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+
+    const result = await client.callTool({
+      name: "update-attrs",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: tree.uuid,
+        attrs: { onclick: "alert(1)" },
+      },
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content?.[0]?.text).toContain("onclick");
+  });
+});
+
+// =========================================================================
+// Border Shorthand (P4)
+// =========================================================================
+
+describe("border shorthand", () => {
+  it("update-styles with border shorthand → verify longhands in tree", async () => {
+    const comp = discoveredComponents[0];
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+
+    const editResult = await client.callTool({
+      name: "update-styles",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: tree.uuid,
+        styles: { border: "2px solid red" },
+      },
+    });
+    expect(editResult.isError).toBeFalsy();
+
+    const detail = parseResponse(
+      await client.callTool({
+        name: "get-node-details",
+        arguments: { componentUuid: comp.uuid, nodeRef: tree.uuid },
+      })
+    );
+
+    // Verify all 12 longhands
+    for (const side of ["top", "right", "bottom", "left"]) {
+      expect(detail.node.styles[`border-${side}-width`]).toBe("2px");
+      expect(detail.node.styles[`border-${side}-style`]).toBe("solid");
+      expect(detail.node.styles[`border-${side}-color`]).toBe("red");
+    }
+  });
+
+  it("update-styles with borderRadius → verify corner longhands", async () => {
+    const comp = discoveredComponents[0];
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+
+    const editResult = await client.callTool({
+      name: "update-styles",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: tree.uuid,
+        styles: { borderRadius: "12px" },
+      },
+    });
+    expect(editResult.isError).toBeFalsy();
+
+    const detail = parseResponse(
+      await client.callTool({
+        name: "get-node-details",
+        arguments: { componentUuid: comp.uuid, nodeRef: tree.uuid },
+      })
+    );
+
+    expect(detail.node.styles["border-top-left-radius"]).toBe("12px");
+    expect(detail.node.styles["border-top-right-radius"]).toBe("12px");
+    expect(detail.node.styles["border-bottom-right-radius"]).toBe("12px");
+    expect(detail.node.styles["border-bottom-left-radius"]).toBe("12px");
+  });
+});
+
+// =========================================================================
+// Token References in Styles (P5)
+// =========================================================================
+
+describe("token references in styles", () => {
+  it("get-tokens → apply token:Name → verify resolved value", async () => {
+    // Get available tokens
+    const tokenResult = await client.callTool({
+      name: "get-tokens",
+      arguments: {},
+    });
+    expect(tokenResult.isError).toBeFalsy();
+    const tokenOutput = parseResponse(tokenResult);
+
+    // Find any color token
+    const colorTokens = tokenOutput.tokens?.Color;
+    if (!colorTokens || colorTokens.length === 0) {
+      // No color tokens in fixture — skip
+      return;
+    }
+
+    const token = colorTokens[0];
+    const resolvedValue = token.resolvedValue ?? token.value;
+
+    const comp = discoveredComponents[0];
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+
+    // Apply the token reference
+    const editResult = await client.callTool({
+      name: "update-styles",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: tree.uuid,
+        styles: { color: `token:${token.name}` },
+      },
+    });
+    expect(editResult.isError).toBeFalsy();
+
+    // Verify the resolved value is applied
+    const detail = parseResponse(
+      await client.callTool({
+        name: "get-node-details",
+        arguments: { componentUuid: comp.uuid, nodeRef: tree.uuid },
+      })
+    );
+    // The stored value should be a var(--token-uuid) or the resolved CSS value
+    expect(detail.node.styles["color"]).toBeTruthy();
+  });
+});
+
+// =========================================================================
+// Data Bindings (P7)
+// =========================================================================
+
+describe("data bindings", () => {
+  it("update-text dynamic:true → verify expression in node details", async () => {
+    const comp = discoveredComponents[0];
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+    const textNode = findFirstTextNode(tree);
+    if (!textNode) return;
+
+    const originalText = textNode.text;
+
+    // Set dynamic text
+    const editResult = await client.callTool({
+      name: "update-text",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: textNode.uuid,
+        text: "$ctx.product.name",
+        dynamic: true,
+      },
+    });
+    expect(editResult.isError).toBeFalsy();
+
+    // Verify expression in node details
+    const detail = parseResponse(
+      await client.callTool({
+        name: "get-node-details",
+        arguments: { componentUuid: comp.uuid, nodeRef: textNode.uuid },
+      })
+    );
+    expect(detail.node.dynamic).toBe(true);
+    expect(detail.node.text).toContain("$ctx.product.name");
+
+    // Convert back to static text
+    const staticResult = await client.callTool({
+      name: "update-text",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: textNode.uuid,
+        text: "Static again",
+      },
+    });
+    expect(staticResult.isError).toBeFalsy();
+
+    const afterStatic = parseResponse(
+      await client.callTool({
+        name: "get-node-details",
+        arguments: { componentUuid: comp.uuid, nodeRef: textNode.uuid },
+      })
+    );
+    expect(afterStatic.node.text).toBe("Static again");
+    expect(afterStatic.node.dynamic).toBeFalsy();
+  });
+
+  it("update-text dynamic:true with fallback → verify fallback in output", async () => {
+    const comp = discoveredComponents[0];
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+    const textNode = findFirstTextNode(tree);
+    if (!textNode) return;
+
+    const editResult = await client.callTool({
+      name: "update-text",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: textNode.uuid,
+        text: "$ctx.user.email",
+        dynamic: true,
+        fallback: "N/A",
+      },
+    });
+    expect(editResult.isError).toBeFalsy();
+
+    const detail = parseResponse(
+      await client.callTool({
+        name: "get-node-details",
+        arguments: { componentUuid: comp.uuid, nodeRef: textNode.uuid },
+      })
+    );
+    expect(detail.node.dynamic).toBe(true);
+    expect(detail.node.text).toContain("$ctx.user.email");
+    expect(detail.node.fallback).toBeTruthy();
+
+    // Undo to restore original
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+});
+
+// =========================================================================
+// Node Cloning (P8)
+// =========================================================================
+
+describe("node cloning", () => {
+  it("clone-child → verify clone with new UUID → undo → verify removed", async () => {
+    const comp = discoveredComponents[0];
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+
+    // Add a styled text child to clone
+    const addResult = await client.callTool({
+      name: "add-child",
+      arguments: {
+        componentUuid: comp.uuid,
+        parentRef: tree.uuid,
+        child: { type: "text", value: "Clone Me" },
+      },
+    });
+    expect(addResult.isError).toBeFalsy();
+
+    // Get the new child's UUID
+    const afterAdd = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+    const originalNode = afterAdd.children[afterAdd.children.length - 1];
+    expect(originalNode.text).toBe("Clone Me");
+    const childCountBeforeClone = afterAdd.children.length;
+
+    // Clone it
+    const cloneResult = await client.callTool({
+      name: "clone-child",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: originalNode.uuid,
+      },
+    });
+    expect(cloneResult.isError).toBeFalsy();
+    const cloneOutput = parseResponse(cloneResult);
+    expect(cloneOutput.success).toBe(true);
+    expect(cloneOutput.clonedUuid).toBeTruthy();
+    expect(cloneOutput.clonedUuid).not.toBe(originalNode.uuid);
+
+    // Verify clone in tree
+    const afterClone = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+    expect(afterClone.children.length).toBe(childCountBeforeClone + 1);
+
+    // Find the clone (should be next sibling with same text but different UUID)
+    const clone = afterClone.children.find(
+      (c: any) => c.uuid === cloneOutput.clonedUuid
+    );
+    expect(clone).toBeDefined();
+    expect(clone.text).toBe("Clone Me");
+
+    // Undo the clone
+    const undoResult = await client.callTool({
+      name: "undo",
+      arguments: {},
+    });
+    expect(undoResult.isError).toBeFalsy();
+
+    // Verify clone is gone
+    const afterUndo = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+    expect(afterUndo.children.length).toBe(childCountBeforeClone);
+    const cloneGone = afterUndo.children.find(
+      (c: any) => c.uuid === cloneOutput.clonedUuid
+    );
+    expect(cloneGone).toBeUndefined();
+
+    // Clean up: remove the original added node
+    await client.callTool({
+      name: "remove-child",
+      arguments: { componentUuid: comp.uuid, nodeRef: originalNode.uuid },
+    });
+  });
+
+  it("clone-child with newName → verify name in tree", async () => {
+    const comp = discoveredComponents[0];
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+
+    // Add a child to clone
+    await client.callTool({
+      name: "add-child",
+      arguments: {
+        componentUuid: comp.uuid,
+        parentRef: tree.uuid,
+        child: { type: "text", value: "Named Clone Source" },
+      },
+    });
+
+    const afterAdd = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+    const sourceNode = afterAdd.children[afterAdd.children.length - 1];
+
+    // Clone with custom name
+    const cloneResult = await client.callTool({
+      name: "clone-child",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: sourceNode.uuid,
+        newName: "My Custom Clone",
+      },
+    });
+    expect(cloneResult.isError).toBeFalsy();
+    const cloneOutput = parseResponse(cloneResult);
+    expect(cloneOutput.cloned).toBe("My Custom Clone");
+
+    // Verify name in tree
+    const afterClone = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+    const clone = afterClone.children.find(
+      (c: any) => c.uuid === cloneOutput.clonedUuid
+    );
+    expect(clone).toBeDefined();
+    expect(clone.name).toBe("My Custom Clone");
+
+    // Clean up
+    await client.callTool({
+      name: "remove-child",
+      arguments: { componentUuid: comp.uuid, nodeRef: cloneOutput.clonedUuid },
+    });
+    await client.callTool({
+      name: "remove-child",
+      arguments: { componentUuid: comp.uuid, nodeRef: sourceNode.uuid },
+    });
+  });
+});
