@@ -300,6 +300,14 @@ declare module "@/wab/shared/Variants" {
   export function getBaseVariant(component: any): any;
 }
 
+// --- External modules without type declarations ---
+
+declare module "css-initials" {
+  /** Map of CSS property names (kebab-case) to their initial values. */
+  const cssInitials: Record<string, string>;
+  export default cssInitials;
+}
+
 declare module "@/wab/shared/site-invariants" {
   export class InvariantError extends Error {
     constructor(message: string, data?: any);

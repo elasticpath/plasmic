@@ -31,6 +31,9 @@ import {
   updatePageMeta,
   deleteComponent,
   sanitizeStyles,
+  isValidStyleProp,
+  validateStyleProperties,
+  getValidStylePropertyNames,
 } from "../edit-tools";
 import { setSession, clearSession } from "../session";
 import { initChangeTracker, disposeChangeTracker } from "../change-tracker";
@@ -438,6 +441,307 @@ describe("sanitizeStyles", () => {
     expect(result["border-top-left-radius"]).toBe("4px");
     expect(result.background).toBe("linear-gradient(#fff, #fff)");
   });
+
+  // --- Border combined shorthand ---
+
+  it("expands border with 3 values (width style color) to 12 longhands", () => {
+    const result = sanitizeStyles({ border: "1px solid #FCA5A5" });
+    expect(result).toEqual({
+      "border-top-width": "1px",
+      "border-top-style": "solid",
+      "border-top-color": "#FCA5A5",
+      "border-right-width": "1px",
+      "border-right-style": "solid",
+      "border-right-color": "#FCA5A5",
+      "border-bottom-width": "1px",
+      "border-bottom-style": "solid",
+      "border-bottom-color": "#FCA5A5",
+      "border-left-width": "1px",
+      "border-left-style": "solid",
+      "border-left-color": "#FCA5A5",
+    });
+  });
+
+  it("expands border with 2 values (width style, no color) to 8 longhands", () => {
+    const result = sanitizeStyles({ border: "1px solid" });
+    expect(result).toEqual({
+      "border-top-width": "1px",
+      "border-top-style": "solid",
+      "border-right-width": "1px",
+      "border-right-style": "solid",
+      "border-bottom-width": "1px",
+      "border-bottom-style": "solid",
+      "border-left-width": "1px",
+      "border-left-style": "solid",
+    });
+  });
+
+  it("expands border with width only to 4 longhands", () => {
+    const result = sanitizeStyles({ border: "1px" });
+    expect(result).toEqual({
+      "border-top-width": "1px",
+      "border-right-width": "1px",
+      "border-bottom-width": "1px",
+      "border-left-width": "1px",
+    });
+  });
+
+  it("expands border with style only to 4 longhands", () => {
+    const result = sanitizeStyles({ border: "solid" });
+    expect(result).toEqual({
+      "border-top-style": "solid",
+      "border-right-style": "solid",
+      "border-bottom-style": "solid",
+      "border-left-style": "solid",
+    });
+  });
+
+  it("expands border: none to 4 style longhands", () => {
+    const result = sanitizeStyles({ border: "none" });
+    expect(result).toEqual({
+      "border-top-style": "none",
+      "border-right-style": "none",
+      "border-bottom-style": "none",
+      "border-left-style": "none",
+    });
+  });
+
+  it("expands border: inherit to all 12 longhands", () => {
+    const result = sanitizeStyles({ border: "inherit" });
+    expect(result).toEqual({
+      "border-top-width": "inherit",
+      "border-top-style": "inherit",
+      "border-top-color": "inherit",
+      "border-right-width": "inherit",
+      "border-right-style": "inherit",
+      "border-right-color": "inherit",
+      "border-bottom-width": "inherit",
+      "border-bottom-style": "inherit",
+      "border-bottom-color": "inherit",
+      "border-left-width": "inherit",
+      "border-left-style": "inherit",
+      "border-left-color": "inherit",
+    });
+  });
+
+  it("handles border with rgb() color value", () => {
+    const result = sanitizeStyles({ border: "2px dashed rgb(252, 165, 165)" });
+    expect(result["border-top-width"]).toBe("2px");
+    expect(result["border-top-style"]).toBe("dashed");
+    expect(result["border-top-color"]).toBe("rgb(252, 165, 165)");
+    expect(result["border-bottom-color"]).toBe("rgb(252, 165, 165)");
+  });
+
+  it("handles border width keyword (thin, medium, thick)", () => {
+    const result = sanitizeStyles({ border: "thick double navy" });
+    expect(result["border-top-width"]).toBe("thick");
+    expect(result["border-top-style"]).toBe("double");
+    expect(result["border-top-color"]).toBe("navy");
+  });
+
+  // --- Border side shorthands ---
+
+  it("expands borderTop shorthand to 3 longhands", () => {
+    const result = sanitizeStyles({ borderTop: "2px dashed red" });
+    expect(result).toEqual({
+      "border-top-width": "2px",
+      "border-top-style": "dashed",
+      "border-top-color": "red",
+    });
+  });
+
+  it("expands border-right shorthand (kebab-case) to 3 longhands", () => {
+    const result = sanitizeStyles({ "border-right": "1px solid blue" });
+    expect(result).toEqual({
+      "border-right-width": "1px",
+      "border-right-style": "solid",
+      "border-right-color": "blue",
+    });
+  });
+
+  it("expands borderBottom shorthand to 3 longhands", () => {
+    const result = sanitizeStyles({ borderBottom: "3px dotted green" });
+    expect(result).toEqual({
+      "border-bottom-width": "3px",
+      "border-bottom-style": "dotted",
+      "border-bottom-color": "green",
+    });
+  });
+
+  it("expands borderLeft shorthand to 3 longhands", () => {
+    const result = sanitizeStyles({ borderLeft: "1px solid #ccc" });
+    expect(result).toEqual({
+      "border-left-width": "1px",
+      "border-left-style": "solid",
+      "border-left-color": "#ccc",
+    });
+  });
+
+  // --- Outline shorthand ---
+
+  it("expands outline with 3 values to 3 longhands", () => {
+    const result = sanitizeStyles({ outline: "1px solid #000" });
+    expect(result).toEqual({
+      "outline-width": "1px",
+      "outline-style": "solid",
+      "outline-color": "#000",
+    });
+  });
+
+  it("expands outline: none to outline-style only", () => {
+    const result = sanitizeStyles({ outline: "none" });
+    expect(result).toEqual({
+      "outline-style": "none",
+    });
+  });
+
+  // --- Border + borderRadius together ---
+
+  it("expands border and borderRadius together to 16 longhands", () => {
+    const result = sanitizeStyles({
+      border: "1px solid #ccc",
+      borderRadius: "8px",
+    });
+    // 12 border longhands + 4 radius longhands = 16
+    expect(Object.keys(result)).toHaveLength(16);
+    expect(result["border-top-width"]).toBe("1px");
+    expect(result["border-top-style"]).toBe("solid");
+    expect(result["border-top-color"]).toBe("#ccc");
+    expect(result["border-top-left-radius"]).toBe("8px");
+    expect(result["border-bottom-right-radius"]).toBe("8px");
+  });
+});
+
+// =============================================================================
+// CSS Property Validation — ensures update-styles rejects invalid properties
+// with helpful "did you mean?" suggestions, preventing trial-and-error when
+// users mistype property names or use unsupported shorthands.
+// =============================================================================
+
+describe("isValidStyleProp", () => {
+  it("accepts standard CSS properties (kebab-case)", () => {
+    expect(isValidStyleProp("color")).toBe(true);
+    expect(isValidStyleProp("font-size")).toBe(true);
+    expect(isValidStyleProp("display")).toBe(true);
+    expect(isValidStyleProp("padding-top")).toBe(true);
+    expect(isValidStyleProp("border-top-width")).toBe(true);
+  });
+
+  it("accepts standard CSS properties (camelCase)", () => {
+    expect(isValidStyleProp("fontSize")).toBe(true);
+    expect(isValidStyleProp("paddingTop")).toBe(true);
+    expect(isValidStyleProp("borderTopWidth")).toBe(true);
+    expect(isValidStyleProp("flexDirection")).toBe(true);
+  });
+
+  it("accepts CSS custom properties (--*)", () => {
+    expect(isValidStyleProp("--custom-var")).toBe(true);
+    expect(isValidStyleProp("--my-color")).toBe(true);
+  });
+
+  it("accepts vendor-prefixed properties", () => {
+    expect(isValidStyleProp("-webkit-transform")).toBe(true);
+    expect(isValidStyleProp("-moz-appearance")).toBe(true);
+    expect(isValidStyleProp("-ms-grid")).toBe(true);
+  });
+
+  it("accepts modern CSS properties in additional set", () => {
+    expect(isValidStyleProp("row-gap")).toBe(true);
+    expect(isValidStyleProp("column-gap")).toBe(true);
+    expect(isValidStyleProp("aspect-ratio")).toBe(true);
+    expect(isValidStyleProp("object-fit")).toBe(true);
+    expect(isValidStyleProp("grid-template-columns")).toBe(true);
+  });
+
+  it("rejects truly invalid property names", () => {
+    expect(isValidStyleProp("bordr")).toBe(false);
+    expect(isValidStyleProp("fontsiz")).toBe(false);
+    expect(isValidStyleProp("customprop")).toBe(false);
+    expect(isValidStyleProp("foobar")).toBe(false);
+  });
+});
+
+describe("validateStyleProperties", () => {
+  it("passes for valid properties", () => {
+    expect(() =>
+      validateStyleProperties({
+        color: "red",
+        "font-size": "16px",
+        display: "flex",
+        "padding-top": "10px",
+      })
+    ).not.toThrow();
+  });
+
+  it("passes for CSS custom properties", () => {
+    expect(() =>
+      validateStyleProperties({ "--custom-var": "#fff" })
+    ).not.toThrow();
+  });
+
+  it("throws for invalid property with 'Did you mean' suggestions", () => {
+    expect(() =>
+      validateStyleProperties({ bordr: "1px" })
+    ).toThrow(/Unknown CSS property "bordr".*Did you mean.*"border"/);
+  });
+
+  it("throws with property name in error message", () => {
+    expect(() =>
+      validateStyleProperties({ fontsiz: "16px" })
+    ).toThrow(/Unknown CSS property "fontsiz"/);
+  });
+
+  it("validates after shorthand expansion (expanded properties are valid)", () => {
+    const sanitized = sanitizeStyles({ border: "1px solid #ccc" });
+    expect(() => validateStyleProperties(sanitized)).not.toThrow();
+  });
+
+  it("validates padding expansion output", () => {
+    const sanitized = sanitizeStyles({ padding: "10px 20px" });
+    expect(() => validateStyleProperties(sanitized)).not.toThrow();
+  });
+
+  it("validates mixed valid + sanitized properties", () => {
+    const sanitized = sanitizeStyles({
+      border: "1px solid #ccc",
+      borderRadius: "8px",
+      color: "red",
+      display: "flex",
+    });
+    expect(() => validateStyleProperties(sanitized)).not.toThrow();
+  });
+});
+
+describe("getValidStylePropertyNames", () => {
+  it("returns a sorted array of property names", () => {
+    const names = getValidStylePropertyNames();
+    expect(Array.isArray(names)).toBe(true);
+    expect(names.length).toBeGreaterThan(100);
+    // Verify sorted
+    const sorted = [...names].sort();
+    expect(names).toEqual(sorted);
+  });
+
+  it("includes common CSS properties", () => {
+    const names = getValidStylePropertyNames();
+    expect(names).toContain("color");
+    expect(names).toContain("font-size");
+    expect(names).toContain("display");
+    expect(names).toContain("padding-top");
+    expect(names).toContain("border-top-width");
+    expect(names).toContain("border-top-style");
+    expect(names).toContain("border-top-color");
+    expect(names).toContain("border-top-left-radius");
+  });
+
+  it("includes modern CSS properties", () => {
+    const names = getValidStylePropertyNames();
+    expect(names).toContain("row-gap");
+    expect(names).toContain("column-gap");
+    expect(names).toContain("aspect-ratio");
+    expect(names).toContain("object-fit");
+    expect(names).toContain("grid-template-columns");
+  });
 });
 
 describe("edit-tools", () => {
@@ -663,6 +967,37 @@ describe("edit-tools", () => {
           modifiedComponentIids: ["comp-iid-42"],
         })
       );
+    });
+
+    it("rejects invalid CSS property with suggestions", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Box" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      await expect(
+        updateStyles(api, "comp-1", "Box", { bordr: "1px solid red" })
+      ).rejects.toThrow(/Unknown CSS property "bordr".*Did you mean/);
+      // Should not save when validation fails
+      expect(api.saveRevision).not.toHaveBeenCalled();
+    });
+
+    it("accepts valid CSS properties including expanded shorthands", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Box" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      // border shorthand → 12 longhands, all should be valid
+      const result = await updateStyles(api, "comp-1", "Box", {
+        border: "1px solid #ccc",
+      });
+      expect(result.updatedProperties).toHaveLength(12);
+      expect(result.save.revisionNum).toBe(11);
     });
   });
 

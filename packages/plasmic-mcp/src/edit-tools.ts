@@ -43,6 +43,7 @@ import type { PlasmicElement, ComponentElement, DefaultComponentElement } from "
 import { isBatchActive, accumulateChanges } from "./batch-manager.js";
 import { pushUndoOperation } from "./undo-manager.js";
 import { undoChanges } from "@/wab/shared/core/undo-util";
+import cssInitials from "css-initials";
 
 // --- Tag Validation ---
 
@@ -197,6 +198,78 @@ function expandBoxShorthand(value: string): [string, string, string, string] {
 }
 
 /**
+ * Split a CSS shorthand value into tokens, respecting parenthesized groups.
+ * e.g., "1px solid rgb(255, 0, 0)" → ["1px", "solid", "rgb(255, 0, 0)"]
+ */
+function splitCssTokens(value: string): string[] {
+  const tokens: string[] = [];
+  let current = "";
+  let depth = 0;
+  for (const char of value) {
+    if (char === "(") depth++;
+    if (char === ")") depth--;
+    if (/\s/.test(char) && depth === 0) {
+      if (current) tokens.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  if (current) tokens.push(current);
+  return tokens;
+}
+
+/** CSS border-style keywords. */
+const BORDER_STYLE_KEYWORDS = new Set([
+  "none", "hidden", "dotted", "dashed", "solid",
+  "double", "groove", "ridge", "inset", "outset",
+]);
+
+/** CSS border-width keywords. */
+const BORDER_WIDTH_KEYWORDS = new Set(["thin", "medium", "thick"]);
+
+/** CSS global/inherit values that apply to all longhands. */
+const CSS_GLOBAL_VALUES = new Set(["inherit", "initial", "unset", "revert"]);
+
+/**
+ * Parse a CSS border/outline shorthand value into its component parts.
+ * Format: <width> || <style> || <color> (any order, any optional).
+ *
+ * For global values (inherit, initial, etc.), all three parts are set.
+ */
+function parseBorderShorthand(
+  value: string
+): { width?: string; style?: string; color?: string } {
+  const trimmed = value.trim();
+
+  // Global values apply to all longhands
+  if (CSS_GLOBAL_VALUES.has(trimmed.toLowerCase())) {
+    return { width: trimmed, style: trimmed, color: trimmed };
+  }
+
+  const tokens = splitCssTokens(trimmed);
+  let width: string | undefined;
+  let style: string | undefined;
+  let color: string | undefined;
+
+  for (const token of tokens) {
+    const lower = token.toLowerCase();
+    if (!style && BORDER_STYLE_KEYWORDS.has(lower)) {
+      style = token;
+    } else if (
+      !width &&
+      (BORDER_WIDTH_KEYWORDS.has(lower) || /^[0-9.]/.test(token))
+    ) {
+      width = token;
+    } else if (!color) {
+      color = token;
+    }
+  }
+
+  return { width, style, color };
+}
+
+/**
  * Sanitize CSS styles to prevent site invariant violations.
  *
  * Plasmic's site-invariants.ts rejects CSS shorthand properties that don't have
@@ -326,6 +399,66 @@ export function sanitizeStyles(
         break;
       }
 
+      // --- Border combined shorthand → up to 12 longhands ---
+      case "border": {
+        const parsed = parseBorderShorthand(value);
+        for (const side of ["top", "right", "bottom", "left"]) {
+          if (parsed.width !== undefined) result[`border-${side}-width`] = parsed.width;
+          if (parsed.style !== undefined) result[`border-${side}-style`] = parsed.style;
+          if (parsed.color !== undefined) result[`border-${side}-color`] = parsed.color;
+        }
+        break;
+      }
+
+      // --- Border-top shorthand → 3 longhands ---
+      case "borderTop":
+      case "border-top": {
+        const parsed = parseBorderShorthand(value);
+        if (parsed.width !== undefined) result["border-top-width"] = parsed.width;
+        if (parsed.style !== undefined) result["border-top-style"] = parsed.style;
+        if (parsed.color !== undefined) result["border-top-color"] = parsed.color;
+        break;
+      }
+
+      // --- Border-right shorthand → 3 longhands ---
+      case "borderRight":
+      case "border-right": {
+        const parsed = parseBorderShorthand(value);
+        if (parsed.width !== undefined) result["border-right-width"] = parsed.width;
+        if (parsed.style !== undefined) result["border-right-style"] = parsed.style;
+        if (parsed.color !== undefined) result["border-right-color"] = parsed.color;
+        break;
+      }
+
+      // --- Border-bottom shorthand → 3 longhands ---
+      case "borderBottom":
+      case "border-bottom": {
+        const parsed = parseBorderShorthand(value);
+        if (parsed.width !== undefined) result["border-bottom-width"] = parsed.width;
+        if (parsed.style !== undefined) result["border-bottom-style"] = parsed.style;
+        if (parsed.color !== undefined) result["border-bottom-color"] = parsed.color;
+        break;
+      }
+
+      // --- Border-left shorthand → 3 longhands ---
+      case "borderLeft":
+      case "border-left": {
+        const parsed = parseBorderShorthand(value);
+        if (parsed.width !== undefined) result["border-left-width"] = parsed.width;
+        if (parsed.style !== undefined) result["border-left-style"] = parsed.style;
+        if (parsed.color !== undefined) result["border-left-color"] = parsed.color;
+        break;
+      }
+
+      // --- Outline shorthand → 3 longhands ---
+      case "outline": {
+        const parsed = parseBorderShorthand(value);
+        if (parsed.width !== undefined) result["outline-width"] = parsed.width;
+        if (parsed.style !== undefined) result["outline-style"] = parsed.style;
+        if (parsed.color !== undefined) result["outline-color"] = parsed.color;
+        break;
+      }
+
       // --- Inset shorthand → longhands ---
       case "inset": {
         const [t, r, b, l] = expandBoxShorthand(value);
@@ -359,6 +492,192 @@ export function sanitizeStyles(
   }
 
   return result;
+}
+
+// --- CSS Property Validation ---
+
+/**
+ * Convert camelCase to kebab-case.
+ * e.g., "paddingTop" → "padding-top", "WebkitTransform" → "-webkit-transform"
+ */
+function camelToKebab(str: string): string {
+  return str.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
+}
+
+/**
+ * Additional CSS properties accepted by Plasmic that may not be in
+ * css-initials 0.3.x. Modern CSS properties widely supported by browsers.
+ */
+const ADDITIONAL_VALID_PROPERTIES = new Set([
+  "row-gap", "column-gap",
+  "justify-self", "justify-items",
+  "place-items", "place-content", "place-self",
+  "aspect-ratio",
+  "object-fit", "object-position",
+  "user-select",
+  "backdrop-filter",
+  "will-change",
+  "contain",
+  "appearance",
+  "scroll-behavior", "scroll-snap-type", "scroll-snap-align",
+  "overscroll-behavior", "overscroll-behavior-x", "overscroll-behavior-y",
+  "text-decoration-line", "text-decoration-style", "text-decoration-color",
+  "text-decoration-thickness", "text-underline-offset",
+  "accent-color",
+  "caret-color",
+  "isolation",
+  "mix-blend-mode",
+  "background-blend-mode",
+  "filter",
+  "clip-path",
+  "mask",
+  "writing-mode",
+  "text-overflow",
+  "hyphens",
+  "tab-size",
+  "touch-action",
+  "resize",
+  "all",
+  "background",
+  // Grid layout
+  "grid-template-columns", "grid-template-rows", "grid-template-areas",
+  "grid-column", "grid-row", "grid-area",
+  "grid-column-start", "grid-column-end", "grid-row-start", "grid-row-end",
+  "grid-auto-columns", "grid-auto-rows", "grid-auto-flow",
+  "grid-gap",
+  // Flex shorthand
+  "flex",
+  // Inset
+  "inset",
+  // Outline longhands
+  "outline-width", "outline-style", "outline-color", "outline-offset",
+  // Shorthands handled by sanitizeStyles — included so they appear in
+  // "did you mean?" suggestions (they get expanded before validation)
+  "border", "border-top", "border-right", "border-bottom", "border-left",
+  "border-radius", "border-width", "border-style", "border-color",
+  "outline",
+  "padding", "margin", "gap", "inset",
+]);
+
+/** Build the complete set of valid CSS property names (kebab-case). */
+let _validPropertiesCache: Set<string> | null = null;
+function getValidPropertiesSet(): Set<string> {
+  if (_validPropertiesCache) return _validPropertiesCache;
+  const props = new Set<string>();
+  for (const key of Object.keys(cssInitials)) {
+    props.add(key);
+  }
+  for (const prop of ADDITIONAL_VALID_PROPERTIES) {
+    props.add(prop);
+  }
+  _validPropertiesCache = props;
+  return props;
+}
+
+/**
+ * Check if a CSS property name is valid.
+ * Accepts both camelCase and kebab-case input.
+ * CSS custom properties (--*) and vendor-prefixed properties are always valid.
+ */
+export function isValidStyleProp(prop: string): boolean {
+  if (prop.startsWith("--")) return true;
+  if (
+    prop.startsWith("-webkit-") || prop.startsWith("-moz-") ||
+    prop.startsWith("-ms-") || prop.startsWith("-o-")
+  ) {
+    return true;
+  }
+  const kebab = camelToKebab(prop);
+  return getValidPropertiesSet().has(kebab);
+}
+
+/**
+ * Compute Levenshtein distance between two strings.
+ * Used for "did you mean?" suggestions on invalid property names.
+ */
+function levenshteinDistance(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () =>
+    Array(n + 1).fill(0)
+  );
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1];
+      } else {
+        dp[i][j] =
+          1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+      }
+    }
+  }
+  return dp[m][n];
+}
+
+/**
+ * Suggest closest valid property names for an invalid input.
+ * Returns up to 3 suggestions with Levenshtein distance ≤ 4.
+ */
+function suggestStyleProps(
+  invalid: string,
+  maxSuggestions = 3,
+  maxDistance = 4
+): string[] {
+  const kebab = camelToKebab(invalid);
+  const validProps = [...getValidPropertiesSet()];
+  const scored = validProps
+    .map((prop) => ({ prop, dist: levenshteinDistance(kebab, prop) }))
+    .filter((s) => s.dist <= maxDistance)
+    .sort((a, b) => a.dist - b.dist);
+  return scored.slice(0, maxSuggestions).map((s) => s.prop);
+}
+
+/** Known CSS shorthands handled by sanitizeStyles(). */
+const SHORTHAND_HINTS: Record<string, string> = {
+  "padding": "padding → paddingTop/Right/Bottom/Left",
+  "margin": "margin → marginTop/Right/Bottom/Left",
+  "gap": "gap → row-gap + column-gap",
+  "border": "border → border-{top,right,bottom,left}-{width,style,color}",
+  "border-radius": "borderRadius → border-{corner}-radius longhands",
+  "border-width": "borderWidth → border-{side}-width longhands",
+  "border-style": "borderStyle → border-{side}-style longhands",
+  "border-color": "borderColor → border-{side}-color longhands",
+  "outline": "outline → outline-width, outline-style, outline-color",
+};
+
+/**
+ * Validate CSS properties after sanitization.
+ * Throws a descriptive error for the first invalid property, including
+ * fuzzy-match suggestions and shorthand expansion hints.
+ */
+export function validateStyleProperties(
+  styles: Record<string, string>
+): void {
+  for (const prop of Object.keys(styles)) {
+    if (!isValidStyleProp(prop)) {
+      const kebab = camelToKebab(prop);
+      const suggestions = suggestStyleProps(prop);
+      let msg = `Unknown CSS property "${prop}".`;
+      if (suggestions.length > 0) {
+        msg += ` Did you mean: ${suggestions.map((s) => `"${s}"`).join(", ")}?`;
+      }
+      const hint = SHORTHAND_HINTS[kebab];
+      if (hint) {
+        msg += ` (Hint: ${hint})`;
+      }
+      throw new Error(msg);
+    }
+  }
+}
+
+/**
+ * Get the full sorted list of valid CSS property names.
+ * Used by the list-style-properties tool.
+ */
+export function getValidStylePropertyNames(): string[] {
+  return [...getValidPropertiesSet()].sort();
 }
 
 /**
@@ -919,6 +1238,7 @@ export async function updateStyles(
 
   const tracker = getChangeTracker();
   const sanitized = sanitizeStyles(styles);
+  validateStyleProperties(sanitized);
   const updatedProperties = Object.keys(sanitized);
 
   const changes = tracker.withRecording(() => {

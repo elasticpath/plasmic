@@ -54,6 +54,7 @@ import {
   renameComponent,
   updatePageMeta,
   deleteComponent,
+  getValidStylePropertyNames,
 } from "./edit-tools.js";
 import { beginBatch, endBatch, isBatchActive, cancelBatch, cancelBatchWithRollback, getAccumulatedChanges } from "./batch-manager.js";
 import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
@@ -1388,7 +1389,9 @@ export function createServer(): McpServer {
   // Supports dry-run mode.
   server.tool(
     "update-styles",
-    "Update CSS styles on an element in a component. Uses camelCase property names (e.g., fontSize, backgroundColor).",
+    "Update CSS styles on an element in a component. Uses camelCase property names (e.g., fontSize, backgroundColor). " +
+    "Note: backgroundColor maps to the background shorthand internally. Border/outline shorthands are expanded to longhands. " +
+    "Use list-style-properties to see all valid property names.",
     {
       componentUuid: z
         .string()
@@ -1918,6 +1921,56 @@ export function createServer(): McpServer {
             {
               type: "text" as const,
               text: `Error undoing: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // --- list-style-properties ---
+  // Returns the full list of valid CSS property names accepted by update-styles.
+  // Helps Claude discover correct property names and avoid trial-and-error.
+  server.tool(
+    "list-style-properties",
+    "Returns all valid CSS property names accepted by update-styles. Use this to discover correct property names when styling elements.",
+    {
+      filter: z
+        .string()
+        .optional()
+        .describe('Optional filter to search property names (e.g., "border", "flex"). Returns only matching properties.'),
+    },
+    async ({ filter }) => {
+      try {
+        const allProps = getValidStylePropertyNames();
+        let props = allProps;
+        if (filter) {
+          const lower = filter.toLowerCase();
+          props = allProps.filter((p) => p.includes(lower));
+        }
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  total: props.length,
+                  properties: props,
+                  ...(filter ? { filter } : {}),
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error listing style properties: ${err.message}`,
             },
           ],
           isError: true,
