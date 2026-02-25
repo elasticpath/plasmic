@@ -145,6 +145,8 @@ describe("tool handlers", () => {
   let mockGetChangeTracker: ReturnType<typeof vi.fn>;
   let mockGetAccumulatedChanges: ReturnType<typeof vi.fn>;
   let mockSaveFullBundle: ReturnType<typeof vi.fn>;
+  let mockUpdateAttrs: ReturnType<typeof vi.fn>;
+  let mockGetValidStylePropertyNames: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     process.env = { ...savedEnv };
@@ -190,6 +192,8 @@ describe("tool handlers", () => {
     mockDeleteComponent = vi.fn();
     mockCreateStyleVariant = vi.fn();
     mockCreateVariantGroup = vi.fn();
+    mockUpdateAttrs = vi.fn();
+    mockGetValidStylePropertyNames = vi.fn();
     mockBeginBatch = vi.fn();
     mockEndBatch = vi.fn();
     mockIsBatchActive = vi.fn().mockReturnValue(false);
@@ -294,6 +298,8 @@ describe("tool handlers", () => {
       deleteComponent: (...args: any[]) => mockDeleteComponent(...args),
       createStyleVariant: (...args: any[]) => mockCreateStyleVariant(...args),
       createVariantGroup: (...args: any[]) => mockCreateVariantGroup(...args),
+      updateAttrs: (...args: any[]) => mockUpdateAttrs(...args),
+      getValidStylePropertyNames: () => mockGetValidStylePropertyNames(),
     }));
 
     vi.doMock("../batch-manager", () => ({
@@ -2994,6 +3000,179 @@ describe("tool handlers", () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("Error refreshing project");
+    });
+  });
+
+  describe("update-attrs", () => {
+    it("delegates to updateAttrs and returns updated/removed attributes", async () => {
+      mockUpdateAttrs.mockResolvedValue({
+        save: { revisionNum: 12, incremental: true },
+        nodeName: "Hero Link",
+        nodeUuid: "node-link-1",
+        updatedAttributes: ["href", "aria-label"],
+        removedAttributes: ["title"],
+      });
+
+      const result = await client.callTool({
+        name: "update-attrs",
+        arguments: {
+          componentUuid: "comp-1",
+          nodeRef: "Hero Link",
+          attrs: { href: "/about", "aria-label": "About page", title: null },
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.node).toBe("Hero Link");
+      expect(output.updatedAttributes).toEqual(["href", "aria-label"]);
+      expect(output.removedAttributes).toEqual(["title"]);
+      expect(output.revision).toBe(12);
+    });
+
+    it("supports dry-run mode", async () => {
+      mockUpdateAttrs.mockResolvedValue({
+        save: { revisionNum: 0, incremental: false },
+        nodeName: "Image",
+        nodeUuid: "node-img-1",
+        updatedAttributes: ["alt"],
+        removedAttributes: [],
+      });
+
+      const result = await client.callTool({
+        name: "update-attrs",
+        arguments: {
+          componentUuid: "comp-1",
+          nodeRef: "Image",
+          attrs: { alt: "New description" },
+          dryRun: true,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.dryRun).toBe(true);
+      expect(output.node).toBe("Image");
+      expect(output.updatedAttributes).toEqual(["alt"]);
+      expect(output.message).toContain("Dry run");
+    });
+
+    it("passes variant to updateAttrs", async () => {
+      mockUpdateAttrs.mockResolvedValue({
+        save: { revisionNum: 5, incremental: true },
+        nodeName: "Nav",
+        nodeUuid: "node-nav-1",
+        updatedAttributes: ["aria-expanded"],
+        removedAttributes: [],
+      });
+
+      const result = await client.callTool({
+        name: "update-attrs",
+        arguments: {
+          componentUuid: "comp-1",
+          nodeRef: "Nav",
+          attrs: { "aria-expanded": "true" },
+          variant: "Mobile",
+        },
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(mockUpdateAttrs).toHaveBeenCalledWith(
+        expect.anything(),
+        "comp-1",
+        "Nav",
+        { "aria-expanded": "true" },
+        "Mobile"
+      );
+    });
+
+    it("returns error when updateAttrs fails", async () => {
+      mockUpdateAttrs.mockRejectedValue(
+        new Error("Event handler attributes are not allowed")
+      );
+
+      const result = await client.callTool({
+        name: "update-attrs",
+        arguments: {
+          componentUuid: "comp-1",
+          nodeRef: "Button",
+          attrs: { onclick: "alert()" },
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Error updating attributes");
+    });
+  });
+
+  describe("list-style-properties", () => {
+    it("returns all valid style property names", async () => {
+      mockGetValidStylePropertyNames.mockReturnValue([
+        "color",
+        "fontSize",
+        "padding",
+        "margin",
+        "backgroundColor",
+      ]);
+
+      const result = await client.callTool({
+        name: "list-style-properties",
+        arguments: {},
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.total).toBe(5);
+      expect(output.properties).toEqual([
+        "color",
+        "fontSize",
+        "padding",
+        "margin",
+        "backgroundColor",
+      ]);
+    });
+
+    it("filters properties by substring", async () => {
+      mockGetValidStylePropertyNames.mockReturnValue([
+        "color",
+        "fontSize",
+        "borderWidth",
+        "borderStyle",
+        "borderColor",
+      ]);
+
+      const result = await client.callTool({
+        name: "list-style-properties",
+        arguments: { filter: "border" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.total).toBe(3);
+      expect(output.properties).toEqual([
+        "borderWidth",
+        "borderStyle",
+        "borderColor",
+      ]);
+      expect(output.filter).toBe("border");
+    });
+
+    it("returns empty list when filter matches nothing", async () => {
+      mockGetValidStylePropertyNames.mockReturnValue([
+        "color",
+        "fontSize",
+      ]);
+
+      const result = await client.callTool({
+        name: "list-style-properties",
+        arguments: { filter: "zzz" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.total).toBe(0);
+      expect(output.properties).toEqual([]);
     });
   });
 });

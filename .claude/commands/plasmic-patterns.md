@@ -15,13 +15,13 @@ PlasmicElement pattern library for building pages and components. These are vali
 
 ## Valid Container Tags
 
-`div`, `section`, `nav`, `header`, `footer`, `main`, `article`, `aside`, `ul`, `ol`, `li`, `form`, `address`, `blockquote`, `code`, `dd`, `dl`, `dt`, `h1`-`h6`, `hgroup`, `label`, `p`, `pre`, `span`
+`div`, `section`, `article`, `nav`, `header`, `footer`, `aside`, `main`, `ul`, `ol`, `li`, `form`, `fieldset`
 
-Note: `a` and `button` tags require special handling (link containers or button containers).
+Note: For links, use `type: "text"` with `tag: "a"`. For buttons, use `type: "button"`.
 
 ## Valid Text Tags
 
-`div` (default), `h1`-`h6`, `p`, `span`, `a` (with `href` in attrs), `button`
+`div` (default), `h1`-`h6`, `p`, `span`, `label`, `a` (with `href` in attrs), `blockquote`, `pre`, `code`
 
 ## Patterns
 
@@ -411,6 +411,18 @@ With slot children (content passed into the component's default "children" slot)
 }
 ```
 
+**Default components** use `kind` instead of `name` to reference built-in Plasmic components:
+
+```json
+{
+  "type": "default-component",
+  "kind": "Button",
+  "props": { "children": "Click me" }
+}
+```
+
+The `kind` field resolves the component by name or UUID, just like `name` on `type: "component"`. Use `default-component` when referencing Plasmic's built-in components (Button, etc.) by their kind identifier.
+
 Works with both `add-child` (inserts into an existing page/component) and `create-page`/`create-component` (within the element tree body). Components from dependency packages are also resolved automatically.
 
 Props must match the component's actual parameter names exactly (case-sensitive). Use `get-component-summary` to inspect a component's structure, then `get-node-details` for specific nodes. Use `get-component-tree` only when you need the full tree with all styles.
@@ -463,7 +475,7 @@ Containers support semantic HTML tags for better accessibility and SEO:
 ```
 
 Valid container tags: `div`, `section`, `article`, `nav`, `header`, `footer`, `aside`, `main`, `ul`, `ol`, `li`, `form`, `fieldset`
-Valid text tags: `div`, `h1`-`h6`, `p`, `span`, `a`, `button`, `label`, `blockquote`, `pre`, `code`
+Valid text tags: `div`, `h1`-`h6`, `p`, `span`, `label`, `a`, `blockquote`, `pre`, `code`
 
 ## Targeting Named Slots on Component Instances
 

@@ -27,7 +27,7 @@ A PlasmicElement is a recursive JSON structure. The `create-page` tool accepts t
 - `type: "hbox"` — horizontal stack (flex row)
 - `type: "box"` — basic flex container
 - `type: "page-section"` — full-width page section
-- `tag` defaults to `"div"`, can be `"section"`, `"nav"`, `"header"`, `"footer"`, `"main"`, `"article"`, `"aside"`, `"ul"`, `"ol"`, `"li"`, `"form"`, `"a"`, `"button"`, etc.
+- `tag` defaults to `"div"`, can be `"section"`, `"article"`, `"nav"`, `"header"`, `"footer"`, `"aside"`, `"main"`, `"ul"`, `"ol"`, `"li"`, `"form"`, `"fieldset"`
 
 **Text:**
 ```json
@@ -38,7 +38,7 @@ A PlasmicElement is a recursive JSON structure. The `create-page` tool accepts t
   "styles": { "fontSize": "32px", "fontWeight": "700" }
 }
 ```
-- `tag` defaults to `"div"`, can be `"h1"`-`"h6"`, `"p"`, `"span"`, `"a"`, etc.
+- `tag` defaults to `"div"`, can be `"h1"`-`"h6"`, `"p"`, `"span"`, `"label"`, `"a"`, `"blockquote"`, `"pre"`, `"code"`
 - `value` is the text content (plain string)
 
 **Image:**
