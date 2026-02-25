@@ -114,12 +114,18 @@ export function registerWithDevMeta(
 
   componentRegMap.forEach(({ component, meta, devName }) => {
     const codeComponentMeta = meta;
+    const parentName = (codeComponentMeta as any).parentComponentName;
+    const devParentName =
+      parentName && componentRegMap.has(parentName)
+        ? componentRegMap.get(parentName)!.devName
+        : parentName;
     const devMeta = {
       ...codeComponentMeta,
       name: devName,
       displayName: toDevDisplayName(codeComponentMeta.displayName),
       props: replacePropsWithDevNames(meta.props, componentRegMap, new Set()),
       section: codeComponentMeta.importPath,
+      ...(devParentName && { parentComponentName: devParentName }),
     };
     console.debug(
       `Registering component "${meta.name}" with dev meta:`,

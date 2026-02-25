@@ -16,7 +16,7 @@ import {
   BundleVariationContextValue,
 } from "./BundleContext";
 import { useVariationSelection } from "../hooks/useVariationSelection";
-import { ParentProductInfo } from "../use-parent-products";
+import type { ParentProductInfo } from "../use-parent-products";
 import {
   MOCK_BUNDLE_VARIATIONS,
   MockBundleVariation,
