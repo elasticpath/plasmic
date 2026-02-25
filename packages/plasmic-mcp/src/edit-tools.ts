@@ -25,8 +25,11 @@ import {
   isKnownTplTag,
   isKnownTplComponent,
   isKnownRawText,
+  isKnownRenderExpr,
   RawText,
   CustomCode,
+  RenderExpr,
+  Arg,
 } from "@/wab/shared/model/classes";
 import { RSH } from "@/wab/shared/RuleSetHelpers";
 import { TplMgr } from "@/wab/shared/TplMgr";
@@ -846,21 +849,58 @@ function findComponentByNameOrUuid(nameOrUuid: string): any {
 }
 
 /**
- * Find the parent of a node in the Tpl tree.
+ * Find the parent of a node in the Tpl tree, including inside slot override
+ * content (RenderExpr.tpl arrays on TplComponent instances).
+ *
+ * Returns the parent node, the child's index, and a reference to the actual
+ * children array (either parent.children or arg.expr.tpl for slot overrides).
  * Returns null if the node is the root (has no parent).
  */
 function findParent(
   tplTree: any,
   targetNode: any
-): { parent: any; childIndex: number } | null {
-  const allNodes = flattenTpls(tplTree);
-  for (const node of allNodes) {
-    const children = node.children ?? [];
-    const idx = children.indexOf(targetNode);
-    if (idx >= 0) {
-      return { parent: node, childIndex: idx };
+): { parent: any; childIndex: number; childrenArray: any[] } | null {
+  return findParentRecursive(tplTree, targetNode);
+}
+
+function findParentRecursive(
+  node: any,
+  targetNode: any
+): { parent: any; childIndex: number; childrenArray: any[] } | null {
+  // Check direct children
+  const children = node.children ?? [];
+  const idx = children.indexOf(targetNode);
+  if (idx >= 0) {
+    return { parent: node, childIndex: idx, childrenArray: children };
+  }
+
+  // Recurse into direct children
+  for (const child of children) {
+    const found = findParentRecursive(child, targetNode);
+    if (found) return found;
+  }
+
+  // Check slot override content for TplComponent nodes
+  if (isKnownTplComponent(node)) {
+    const vs = node.vsettings?.[0];
+    if (vs?.args?.length) {
+      for (const arg of vs.args) {
+        if (isKnownRenderExpr(arg.expr)) {
+          const tplArr = arg.expr.tpl ?? [];
+          const tplIdx = tplArr.indexOf(targetNode);
+          if (tplIdx >= 0) {
+            return { parent: node, childIndex: tplIdx, childrenArray: tplArr };
+          }
+          // Recurse into slot override children
+          for (const slotChild of tplArr) {
+            const found = findParentRecursive(slotChild, targetNode);
+            if (found) return found;
+          }
+        }
+      }
     }
   }
+
   return null;
 }
 
@@ -1474,6 +1514,8 @@ export interface AddChildResult {
   parentUuid: string;
   newNodeUuid?: string;
   position: string | number;
+  /** Set when child was added to a named slot on a TplComponent. */
+  slotName?: string;
 }
 
 /**
@@ -1695,11 +1737,14 @@ function plasmicElementToTpl(
 }
 
 /**
- * Add a child node to a parent TplTag.
+ * Add a child node to a parent container or to a named slot on a TplComponent.
  *
  * Converts a PlasmicElement JSON tree to Tpl nodes — TplTag for HTML
  * primitives, TplComponent for `{ type: "component" }` references.
- * Inserts into the parent at the specified position, and saves.
+ *
+ * When `parentRef` is a TplTag: inserts into parent.children at position.
+ * When `parentRef` is a TplComponent: inserts into the named slot's
+ * RenderExpr.tpl array (defaults to "children" slot if `slot` omitted).
  *
  * Error if the parent is a text node (cannot have children).
  */
@@ -1708,21 +1753,120 @@ export async function addChild(
   componentUuid: string,
   parentRef: string,
   child: PlasmicElement,
-  position?: string | number
+  position?: string | number,
+  slot?: string
 ): Promise<AddChildResult> {
   const component = findComponent(componentUuid);
   const result = resolveNode(component, parentRef);
   const resolved = requireSingleNode(result, parentRef);
 
+  const session = requireSession();
+  const tplMgr = new TplMgr({ site: session.site });
+
+  // --- TplComponent parent: add to slot ---
+  if (isKnownTplComponent(resolved.node)) {
+    const tplComp = resolved.node;
+    const targetComp = tplComp.component;
+
+    // Validate the component has slot params
+    const slotParams = (targetComp.params ?? []).filter(
+      (p: any) => p.tplSlot
+    );
+    if (slotParams.length === 0) {
+      throw new Error(
+        `Component "${targetComp.name}" has no slots.`
+      );
+    }
+
+    // Determine target slot name (default to "children")
+    const slotName = slot ?? "children";
+
+    // Find the matching slot param
+    const slotParam = slotParams.find(
+      (p: any) => p.variable?.name === slotName
+    );
+    if (!slotParam) {
+      const available = slotParams
+        .map((p: any) => p.variable?.name)
+        .filter(Boolean)
+        .sort();
+      throw new Error(
+        `Slot "${slotName}" not found on component "${targetComp.name}". ` +
+          `Available slots: ${available.join(", ")}`
+      );
+    }
+
+    // Get base variant setting for the TplComponent instance
+    const vs = tplMgr.ensureBaseVariantSetting(tplComp);
+
+    // Find existing arg for this slot
+    let slotArg = (vs.args ?? []).find(
+      (arg: any) =>
+        arg.param === slotParam || arg.param?.variable?.name === slotName
+    );
+
+    // Validate that existing arg (if any) is a RenderExpr
+    if (slotArg && !isKnownRenderExpr(slotArg.expr)) {
+      throw new Error(
+        `Slot "${slotName}" contains a code expression, not renderable content.`
+      );
+    }
+
+    const baseVariant = tplMgr.ensureBaseVariant(component);
+    const tracker = getChangeTracker();
+    let newTpl: any;
+
+    const changes = tracker.withRecording(() => {
+      newTpl = plasmicElementToTpl(child, tplMgr, baseVariant);
+
+      if (slotArg) {
+        // Slot already has a RenderExpr — insert into its tpl array
+        insertIntoArray(slotArg.expr.tpl, newTpl, position);
+      } else {
+        // No existing override — create new Arg + RenderExpr
+        const renderExpr = new RenderExpr({ tpl: [newTpl] });
+        const newArg = new Arg({ param: slotParam, expr: renderExpr });
+        if (!vs.args) { vs.args = []; }
+        vs.args.push(newArg);
+      }
+
+      // Set parent pointer for tree traversal
+      newTpl.parent = tplComp;
+    });
+
+    const componentIid = getComponentIid(component);
+    const save = await saveOrAccumulate(
+      apiClient,
+      changes,
+      `add-child: ${typeof child === "string" ? "text" : child.type} to slot "${slotName}" on ${resolved.name ?? parentRef}`,
+      componentIid ? [componentIid] : []
+    );
+
+    return {
+      save,
+      parentName: resolved.name,
+      parentUuid: resolved.uuid,
+      newNodeUuid: newTpl?.uuid,
+      position: position ?? "last",
+      slotName,
+    };
+  }
+
+  // --- TplTag parent: original behavior ---
+  if (slot) {
+    throw new Error(
+      `Slot targeting only applies to component instances. ` +
+        `Node "${parentRef}" is a TplTag, not a TplComponent.`
+    );
+  }
+
   if (!isKnownTplTag(resolved.node)) {
     throw new Error(
-      `Node "${parentRef}" is not a TplTag and cannot have children added.`
+      `Node "${parentRef}" is not a container and cannot have children added.`
     );
   }
 
   const parent = resolved.node;
-  const session = requireSession();
-  const tplMgr = new TplMgr({ site: session.site });
 
   // Check if parent is a text node (not a container)
   const parentVs = tplMgr.ensureBaseVariantSetting(parent);
@@ -1760,6 +1904,30 @@ export async function addChild(
     newNodeUuid: newTpl?.uuid,
     position: position ?? "last",
   };
+}
+
+/**
+ * Insert a node into an array at the specified position.
+ * Used for inserting into RenderExpr.tpl arrays (slot content).
+ */
+function insertIntoArray(
+  arr: any[],
+  item: any,
+  position?: string | number
+): void {
+  if (position === "first" || position === 0) {
+    arr.unshift(item);
+  } else if (
+    position === "last" ||
+    position === undefined ||
+    position === null
+  ) {
+    arr.push(item);
+  } else if (typeof position === "number") {
+    arr.splice(position, 0, item);
+  } else {
+    arr.push(item);
+  }
 }
 
 // --- remove-child ---
@@ -1803,7 +1971,7 @@ export async function removeChild(
   const tracker = getChangeTracker();
 
   const changes = tracker.withRecording(() => {
-    parentInfo.parent.children.splice(parentInfo.childIndex, 1);
+    parentInfo.childrenArray.splice(parentInfo.childIndex, 1);
   });
 
   const componentIid = getComponentIid(component);
@@ -1885,8 +2053,8 @@ export async function moveChild(
   const tracker = getChangeTracker();
 
   const changes = tracker.withRecording(() => {
-    // Remove from current parent
-    currentParentInfo.parent.children.splice(
+    // Remove from current parent (supports both direct children and slot overrides)
+    currentParentInfo.childrenArray.splice(
       currentParentInfo.childIndex,
       1
     );

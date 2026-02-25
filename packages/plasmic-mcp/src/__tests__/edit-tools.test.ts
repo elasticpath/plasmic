@@ -4200,3 +4200,522 @@ describe("edit-tools", () => {
     });
   });
 });
+
+// =============================================================================
+// addChild — slot content targeting (P6)
+//
+// When parentRef is a TplComponent, the `slot` parameter targets a named slot
+// on the component instance. Content is added to the slot's RenderExpr.tpl[]
+// array. A new Arg+RenderExpr is created when no override exists yet.
+// =============================================================================
+
+describe("addChild with slot targeting", () => {
+  let api: PlasmicApiClient & { saveRevision: ReturnType<typeof vi.fn> };
+
+  function setupSession(component: any) {
+    const session = makeSession({
+      site: { components: [component] },
+    });
+    setSession(session);
+    initChangeTracker(session.site);
+    return session;
+  }
+
+  /** Helper to build a TplComponent node with slot params. */
+  function mkTplComp(opts: {
+    uuid?: string;
+    name?: string;
+    componentName?: string;
+    slotNames?: string[];
+    existingSlotArgs?: Array<{ slotName: string; children: any[] }>;
+    noSlots?: boolean;
+  }): any {
+    const params = (opts.slotNames ?? ["children"]).map((name) => ({
+      variable: { name },
+      tplSlot: { _type: "TplSlot" },
+    }));
+
+    const args = (opts.existingSlotArgs ?? []).map((sa) => ({
+      _type: "Arg",
+      param: params.find((p: any) => p.variable.name === sa.slotName),
+      expr: { _type: "RenderExpr", tpl: [...sa.children] },
+    }));
+
+    return {
+      _type: "TplComponent",
+      uuid: opts.uuid ?? "tplcomp-1",
+      name: opts.name,
+      component: {
+        name: opts.componentName ?? "Card",
+        params: opts.noSlots ? [] : params,
+      },
+      vsettings: [{
+        rs: { values: {} },
+        args,
+      }],
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    clearNodeCache();
+    api = mockApiClient();
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+    mockWithRecording.mockReturnValue({
+      changes: [],
+      newInsts: [],
+      removedInsts: [],
+    });
+  });
+
+  afterEach(() => {
+    disposeChangeTracker();
+    clearSession();
+    vi.restoreAllMocks();
+  });
+
+  it("adds child to a named slot creating new Arg+RenderExpr", async () => {
+    const tplComp = mkTplComp({
+      uuid: "card-1",
+      name: "MyCard",
+      slotNames: ["children", "header", "footer"],
+    });
+    const root = mkTag({ uuid: "root-1", children: [tplComp] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    const newTpl = mkTag({ uuid: "new-header-1" });
+    mockMkTplInlinedText.mockReturnValue(newTpl);
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+      return tpl.vsettings[0];
+    });
+
+    setupSession(comp);
+
+    const result = await addChild(
+      api,
+      "comp-1",
+      "card-1",
+      { type: "text", value: "Header Text" },
+      undefined,
+      "header"
+    );
+
+    expect(result.slotName).toBe("header");
+    expect(result.parentName).toBe("MyCard");
+    expect(result.save.revisionNum).toBe(11);
+
+    // Verify Arg+RenderExpr was created
+    const vs = tplComp.vsettings[0];
+    const headerArg = vs.args.find(
+      (a: any) => a.param?.variable?.name === "header"
+    );
+    expect(headerArg).toBeDefined();
+    expect(headerArg.expr.tpl).toContain(newTpl);
+  });
+
+  it("appends to existing slot RenderExpr", async () => {
+    const existingChild = mkTag({ uuid: "existing-1" });
+    const tplComp = mkTplComp({
+      uuid: "card-1",
+      name: "MyCard",
+      slotNames: ["children", "header"],
+      existingSlotArgs: [
+        { slotName: "header", children: [existingChild] },
+      ],
+    });
+    const root = mkTag({ uuid: "root-1", children: [tplComp] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    const newTpl = mkTag({ uuid: "new-header-2" });
+    mockMkTplInlinedText.mockReturnValue(newTpl);
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+      return tpl.vsettings[0];
+    });
+
+    setupSession(comp);
+
+    await addChild(
+      api,
+      "comp-1",
+      "card-1",
+      { type: "text", value: "More Header" },
+      undefined,
+      "header"
+    );
+
+    // Existing child should still be there, new one appended
+    const vs = tplComp.vsettings[0];
+    const headerArg = vs.args.find(
+      (a: any) => a.param?.variable?.name === "header"
+    );
+    expect(headerArg.expr.tpl).toEqual([existingChild, newTpl]);
+  });
+
+  it("inserts at position 'first' in existing slot", async () => {
+    const existingChild = mkTag({ uuid: "existing-1" });
+    const tplComp = mkTplComp({
+      uuid: "card-1",
+      slotNames: ["children", "header"],
+      existingSlotArgs: [
+        { slotName: "header", children: [existingChild] },
+      ],
+    });
+    const root = mkTag({ uuid: "root-1", children: [tplComp] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    const newTpl = mkTag({ uuid: "new-first" });
+    mockMkTplInlinedText.mockReturnValue(newTpl);
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+      return tpl.vsettings[0];
+    });
+
+    setupSession(comp);
+
+    await addChild(
+      api,
+      "comp-1",
+      "card-1",
+      { type: "text", value: "First" },
+      "first",
+      "header"
+    );
+
+    const headerArg = tplComp.vsettings[0].args.find(
+      (a: any) => a.param?.variable?.name === "header"
+    );
+    expect(headerArg.expr.tpl[0]).toBe(newTpl);
+    expect(headerArg.expr.tpl[1]).toBe(existingChild);
+  });
+
+  it("inserts at numeric position in existing slot", async () => {
+    const child1 = mkTag({ uuid: "slot-child-1" });
+    const child2 = mkTag({ uuid: "slot-child-2" });
+    const tplComp = mkTplComp({
+      uuid: "card-1",
+      slotNames: ["children", "actions"],
+      existingSlotArgs: [
+        { slotName: "actions", children: [child1, child2] },
+      ],
+    });
+    const root = mkTag({ uuid: "root-1", children: [tplComp] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    const newTpl = mkTag({ uuid: "inserted-middle" });
+    mockMkTplTagX.mockReturnValue(newTpl);
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+      return tpl.vsettings[0];
+    });
+
+    setupSession(comp);
+
+    await addChild(
+      api,
+      "comp-1",
+      "card-1",
+      { type: "box" },
+      1,
+      "actions"
+    );
+
+    const actionsArg = tplComp.vsettings[0].args.find(
+      (a: any) => a.param?.variable?.name === "actions"
+    );
+    expect(actionsArg.expr.tpl).toEqual([child1, newTpl, child2]);
+  });
+
+  it("defaults to 'children' slot when slot omitted on TplComponent", async () => {
+    const tplComp = mkTplComp({
+      uuid: "card-1",
+      name: "MyCard",
+      slotNames: ["children", "header"],
+    });
+    const root = mkTag({ uuid: "root-1", children: [tplComp] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    const newTpl = mkTag({ uuid: "new-default" });
+    mockMkTplInlinedText.mockReturnValue(newTpl);
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+      return tpl.vsettings[0];
+    });
+
+    setupSession(comp);
+
+    const result = await addChild(
+      api,
+      "comp-1",
+      "card-1",
+      { type: "text", value: "Default slot content" }
+    );
+
+    expect(result.slotName).toBe("children");
+    const childrenArg = tplComp.vsettings[0].args.find(
+      (a: any) => a.param?.variable?.name === "children"
+    );
+    expect(childrenArg).toBeDefined();
+    expect(childrenArg.expr.tpl).toContain(newTpl);
+  });
+
+  it("explicit slot:'children' works same as default", async () => {
+    const tplComp = mkTplComp({
+      uuid: "card-1",
+      slotNames: ["children", "header"],
+    });
+    const root = mkTag({ uuid: "root-1", children: [tplComp] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    const newTpl = mkTag({ uuid: "new-explicit" });
+    mockMkTplInlinedText.mockReturnValue(newTpl);
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+      return tpl.vsettings[0];
+    });
+
+    setupSession(comp);
+
+    const result = await addChild(
+      api,
+      "comp-1",
+      "card-1",
+      { type: "text", value: "Explicit children" },
+      undefined,
+      "children"
+    );
+
+    expect(result.slotName).toBe("children");
+  });
+
+  it("errors when slot name doesn't exist on component", async () => {
+    const tplComp = mkTplComp({
+      uuid: "card-1",
+      slotNames: ["children", "header"],
+      componentName: "Card",
+    });
+    const root = mkTag({ uuid: "root-1", children: [tplComp] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+      return tpl.vsettings[0];
+    });
+
+    setupSession(comp);
+
+    await expect(
+      addChild(api, "comp-1", "card-1", { type: "text", value: "x" }, undefined, "sidebar")
+    ).rejects.toThrow(
+      'Slot "sidebar" not found on component "Card". Available slots: children, header'
+    );
+  });
+
+  it("errors when component has no slots", async () => {
+    const tplComp = mkTplComp({
+      uuid: "card-1",
+      componentName: "Badge",
+      noSlots: true,
+    });
+    const root = mkTag({ uuid: "root-1", children: [tplComp] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+      return tpl.vsettings[0];
+    });
+
+    setupSession(comp);
+
+    await expect(
+      addChild(api, "comp-1", "card-1", { type: "text", value: "x" })
+    ).rejects.toThrow('Component "Badge" has no slots.');
+  });
+
+  it("errors when slot used with TplTag parent", async () => {
+    const container = mkTag({ uuid: "container-1", name: "Box" });
+    const root = mkTag({ uuid: "root-1", children: [container] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+      return tpl.vsettings[0];
+    });
+
+    setupSession(comp);
+
+    await expect(
+      addChild(api, "comp-1", "container-1", { type: "text", value: "x" }, undefined, "header")
+    ).rejects.toThrow("Slot targeting only applies to component instances");
+  });
+
+  it("errors when slot contains code expression", async () => {
+    const headerParam = { variable: { name: "header" }, tplSlot: {} };
+    const tplComp = {
+      _type: "TplComponent",
+      uuid: "card-1",
+      component: {
+        name: "Card",
+        params: [
+          { variable: { name: "children" }, tplSlot: {} },
+          headerParam,
+        ],
+      },
+      vsettings: [{
+        rs: { values: {} },
+        args: [{
+          _type: "Arg",
+          param: headerParam,
+          expr: { _type: "CustomCode", code: '"dynamic"', fallback: null },
+        }],
+      }],
+    };
+    const root = mkTag({ uuid: "root-1", children: [tplComp] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+      return tpl.vsettings[0];
+    });
+
+    setupSession(comp);
+
+    await expect(
+      addChild(api, "comp-1", "card-1", { type: "text", value: "x" }, undefined, "header")
+    ).rejects.toThrow("contains a code expression, not renderable content");
+  });
+});
+
+// =============================================================================
+// removeChild — slot override content removal (P6)
+//
+// removeChild should find and remove nodes that live inside slot override
+// RenderExpr.tpl arrays, not just direct children of TplTag nodes.
+// =============================================================================
+
+describe("removeChild from slot override content", () => {
+  let api: PlasmicApiClient & { saveRevision: ReturnType<typeof vi.fn> };
+
+  function setupSession(component: any) {
+    const session = makeSession({
+      site: { components: [component] },
+    });
+    setSession(session);
+    initChangeTracker(session.site);
+    return session;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    clearNodeCache();
+    api = mockApiClient();
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+    mockWithRecording.mockReturnValue({
+      changes: [],
+      newInsts: [],
+      removedInsts: [],
+    });
+  });
+
+  afterEach(() => {
+    disposeChangeTracker();
+    clearSession();
+    vi.restoreAllMocks();
+  });
+
+  it("removes a node from inside a slot RenderExpr.tpl", async () => {
+    const slotChild = mkTag({ uuid: "slot-child-1", name: "SlotContent" });
+    const headerParam = { variable: { name: "header" }, tplSlot: {} };
+    const tplComp = {
+      _type: "TplComponent",
+      uuid: "card-1",
+      name: "Card",
+      component: {
+        name: "CardComponent",
+        params: [headerParam],
+      },
+      vsettings: [{
+        rs: { values: {} },
+        args: [{
+          _type: "Arg",
+          param: headerParam,
+          expr: { _type: "RenderExpr", tpl: [slotChild] },
+        }],
+      }],
+    };
+    const root = mkTag({ uuid: "root-1", children: [tplComp] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    setupSession(comp);
+
+    const result = await removeChild(api, "comp-1", "slot-child-1");
+
+    expect(result.removedUuid).toBe("slot-child-1");
+    // The slot's tpl array should now be empty
+    const slotArg = tplComp.vsettings[0].args[0];
+    expect(slotArg.expr.tpl).toEqual([]);
+  });
+
+  it("removes deeply nested child within slot override", async () => {
+    const deepChild = mkTag({ uuid: "deep-1", name: "DeepChild" });
+    const wrapper = mkTag({
+      uuid: "wrapper-1",
+      children: [deepChild],
+    });
+    const headerParam = { variable: { name: "header" }, tplSlot: {} };
+    const tplComp = {
+      _type: "TplComponent",
+      uuid: "card-1",
+      component: {
+        name: "CardComponent",
+        params: [headerParam],
+      },
+      vsettings: [{
+        rs: { values: {} },
+        args: [{
+          _type: "Arg",
+          param: headerParam,
+          expr: { _type: "RenderExpr", tpl: [wrapper] },
+        }],
+      }],
+    };
+    const root = mkTag({ uuid: "root-1", children: [tplComp] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    setupSession(comp);
+
+    await removeChild(api, "comp-1", "deep-1");
+
+    // deep child removed from wrapper's children
+    expect(wrapper.children).toEqual([]);
+    // wrapper still in slot
+    expect(tplComp.vsettings[0].args[0].expr.tpl).toEqual([wrapper]);
+  });
+
+  it("removes correct node when slot has multiple children", async () => {
+    const child1 = mkTag({ uuid: "sc-1", name: "First" });
+    const child2 = mkTag({ uuid: "sc-2", name: "Second" });
+    const child3 = mkTag({ uuid: "sc-3", name: "Third" });
+    const headerParam = { variable: { name: "header" }, tplSlot: {} };
+    const tplComp = {
+      _type: "TplComponent",
+      uuid: "card-1",
+      component: {
+        name: "CardComponent",
+        params: [headerParam],
+      },
+      vsettings: [{
+        rs: { values: {} },
+        args: [{
+          _type: "Arg",
+          param: headerParam,
+          expr: { _type: "RenderExpr", tpl: [child1, child2, child3] },
+        }],
+      }],
+    };
+    const root = mkTag({ uuid: "root-1", children: [tplComp] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    setupSession(comp);
+
+    await removeChild(api, "comp-1", "sc-2");
+
+    const tplArr = tplComp.vsettings[0].args[0].expr.tpl;
+    expect(tplArr).toEqual([child1, child3]);
+  });
+});

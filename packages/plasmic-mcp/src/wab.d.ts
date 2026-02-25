@@ -65,6 +65,19 @@ declare module "@/wab/shared/model/classes" {
     fallback: any;
   }
 
+  /** Model class for renderable slot content. Contains an array of TplNode children. */
+  export class RenderExpr {
+    constructor(args: { tpl: any[] });
+    tpl: any[];
+  }
+
+  /** Model class for parameter argument bindings. Binds a Param to an Expr. */
+  export class Arg {
+    constructor(args: { param: any; expr: any });
+    param: any;
+    expr: any;
+  }
+
   export function isKnownTplTag(x: any): boolean;
   export function isKnownTplComponent(x: any): boolean;
   export function isKnownTplSlot(x: any): boolean;

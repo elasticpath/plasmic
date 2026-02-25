@@ -1554,7 +1554,7 @@ describe("tool handlers", () => {
       expect(output.revision).toBe(8);
 
       expect(mockAddChild).toHaveBeenCalledWith(
-        mockApiClient, "comp-1", "Container", childElement, undefined
+        mockApiClient, "comp-1", "Container", childElement, undefined, undefined
       );
     });
 
@@ -1578,7 +1578,37 @@ describe("tool handlers", () => {
 
       expect(mockAddChild).toHaveBeenCalledWith(
         mockApiClient, "comp-1", "Container",
-        { type: "text", value: "First" }, "first"
+        { type: "text", value: "First" }, "first", undefined
+      );
+    });
+
+    it("passes slot parameter to addChild", async () => {
+      mockAddChild.mockResolvedValue({
+        save: { revisionNum: 8, incremental: true },
+        parentName: "Card",
+        parentUuid: "card-1",
+        position: "last",
+        slotName: "header",
+      });
+
+      const result = await client.callTool({
+        name: "add-child",
+        arguments: {
+          componentUuid: "comp-1",
+          parentRef: "Card",
+          child: { type: "text", value: "Header" },
+          slot: "header",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(output.success).toBe(true);
+      expect(output.slot).toBe("header");
+      expect(output.parent).toBe("Card");
+
+      expect(mockAddChild).toHaveBeenCalledWith(
+        mockApiClient, "comp-1", "Card",
+        { type: "text", value: "Header" }, undefined, "header"
       );
     });
   });

@@ -1563,11 +1563,15 @@ export function createServer(): McpServer {
 
   // --- add-child ---
   // Converts PlasmicElement JSON to TplTag nodes and inserts into parent.
+  // Supports slot targeting: when parentRef is a TplComponent, use the `slot`
+  // field to specify which named slot to add content to (defaults to "children").
   // M3: invalidates node resolver cache for the component (structural edit).
   // Supports dry-run mode (no cache invalidation in dry-run).
   server.tool(
     "add-child",
-    "Add a new child element to a container node. Accepts PlasmicElement JSON (vbox, text, img, button types).",
+    "Add a new child element to a container node or a named slot on a component instance. " +
+      "Accepts PlasmicElement JSON (vbox, text, img, button, component types). " +
+      "When parentRef is a component instance, use the `slot` field to target a specific slot (defaults to \"children\").",
     {
       componentUuid: z
         .string()
@@ -1582,16 +1586,23 @@ export function createServer(): McpServer {
         .describe(
           'Where to insert: "first", "last" (default), or a numeric index'
         ),
+      slot: z
+        .string()
+        .optional()
+        .describe(
+          "Target slot name on a component instance (e.g., \"header\", \"footer\"). " +
+            "Only valid when parentRef is a TplComponent. Defaults to \"children\" if omitted."
+        ),
       dryRun: z
         .boolean()
         .optional()
         .describe("When true, shows what would change without persisting. Model is left unchanged."),
     },
-    async ({ componentUuid, parentRef, child, position, dryRun }) => {
+    async ({ componentUuid, parentRef, child, position, slot, dryRun }) => {
       try {
         if (dryRun) {
           const result = await withDryRun(() =>
-            addChild(apiClient, componentUuid, parentRef, child, position)
+            addChild(apiClient, componentUuid, parentRef, child, position, slot)
           );
           return {
             content: [
@@ -1601,6 +1612,7 @@ export function createServer(): McpServer {
                   {
                     dryRun: true,
                     parent: result.parentName ?? result.parentUuid,
+                    ...(result.slotName ? { slot: result.slotName } : {}),
                     position: result.position,
                     message: "Dry run: no changes persisted",
                   },
@@ -1617,7 +1629,8 @@ export function createServer(): McpServer {
           componentUuid,
           parentRef,
           child,
-          position
+          position,
+          slot
         );
         // Structural edit: invalidate node resolver cache for this component
         invalidateNodeCache(componentUuid);
@@ -1629,6 +1642,7 @@ export function createServer(): McpServer {
                 {
                   success: true,
                   parent: result.parentName ?? result.parentUuid,
+                  ...(result.slotName ? { slot: result.slotName } : {}),
                   position: result.position,
                   revision: result.save.revisionNum,
                 },

@@ -45,6 +45,26 @@ export class CustomCode {
   }
 }
 
+/** Mock constructor for RenderExpr — slot content containing TplNode children. */
+export class RenderExpr {
+  _type = "RenderExpr";
+  tpl: any[];
+  constructor(args: { tpl: any[] }) {
+    this.tpl = args.tpl;
+  }
+}
+
+/** Mock constructor for Arg — parameter argument binding (param → expr). */
+export class Arg {
+  _type = "Arg";
+  param: any;
+  expr: any;
+  constructor(args: { param: any; expr: any }) {
+    this.param = args.param;
+    this.expr = args.expr;
+  }
+}
+
 export class Site {
   static isKnown(obj: any): boolean {
     return obj?._type === "Site";

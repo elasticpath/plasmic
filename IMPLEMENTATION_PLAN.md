@@ -4,76 +4,30 @@
 
 ---
 
-## Priority 1: Error Recovery & Resilience ✅ COMPLETE
-**Spec:** `specs/plasmic-error-recovery.md` (10 criteria — all implemented)
-**Status:** All acceptance criteria implemented and tested. 463 tests passing.
-**Files modified:** `edit-tools.ts`, `api-client.ts`, `batch-manager.ts`, `server.ts`
-
----
-
-## Priority 2: Slot Override Traversal ✅ COMPLETE
-**Spec:** `specs/plasmic-slot-override-traversal.md` (10 criteria — all implemented)
-**Status:** All acceptance criteria implemented and tested. 481 tests passing.
-**Files modified:** `node-resolver.ts`, `tree-reader.ts`
-
----
-
-## Priority 3: Element Tags & HTML Attributes ✅ COMPLETE
-**Spec:** `specs/plasmic-element-tags-and-attrs.md` (18 criteria — all implemented)
-**Status:** All acceptance criteria implemented and tested. 508 tests passing.
-**Files modified:** `edit-tools.ts`, `server.ts`
-
----
-
-## Priority 4: Border Support & CSS Validation ✅ COMPLETE
-**Spec:** `specs/plasmic-border-and-css-validation.md` (8 criteria — all implemented)
-**Status:** All acceptance criteria implemented and tested. 541 tests passing.
-**Files modified:** `edit-tools.ts`, `server.ts`, `wab.d.ts`
-
----
-
-## Priority 5: Design Token References in Styles ✅ COMPLETE
-**Spec:** `specs/plasmic-token-refs-in-styles.md` (8 criteria — all implemented)
-**Status:** All acceptance criteria implemented and tested. 594 tests passing.
+## Priority 6: Slot Content Targeting ✅ COMPLETE
+**Spec:** `specs/plasmic-slot-targeting.md` (9 criteria — all implemented)
+**Status:** All acceptance criteria implemented and tested. 608 tests passing.
 
 **What was implemented:**
-- [x] `token-reader.ts` — New exports: `mkTokenRef()`, `isTokenRef()`, `parseTokenRefUuid()`, `getAllStyleTokens()`, `findToken()`, `getAcceptableTokenTypes()` for token reference resolution and type validation
-- [x] `edit-tools.ts` `resolveTokenReferences()` — converts `token:TokenName` or `token:uuid` to `var(--token-<uuid>)` WAB format; called in `updateStyles()` before `sanitizeStyles()`; validates token existence (case-insensitive name or UUID), type compatibility (Color for color props, Spacing for size props, etc.), and searches dependency tokens
-- [x] `tree-reader.ts` `resolveStyleTokenRefs()` — detects `var(--token-<uuid>)` in style values, resolves to CSS values for display, adds `tokenRefs` map (CSS property → token name); `readNodeDetails()` accepts optional `styleTokens` parameter
-- [x] `types.ts` — Added `tokenRefs?: Record<string, string>` to `TreeNode`, `styleTokens?: any[]` to `TreeReadOptions`
-- [x] `server.ts` — All tree-reading handlers (get-component-tree, get-node-details, get-subtree, export-component-tree) pass `session.site.styleTokens` in options; update-styles tool description mentions `token:TokenName` syntax
-- [x] 53 new tests: 22 token-reader (mkTokenRef, isTokenRef, parseTokenRefUuid, getAllStyleTokens, findToken, getAcceptableTokenTypes), 18 edit-tools (resolveTokenReferences by name/UUID/case-insensitive, non-token passthrough, mixed values, empty token name, not-found error, type mismatch, dependency tokens, updateStyles integration), 13 tree-reader (resolve var() to CSS, multiple refs, unknown UUID, token chains, no styleTokens, summary mode, readNodeDetails, readSubtree)
+- [x] `edit-tools.ts` `addChild()` — accepts new optional `slot` parameter; when parent is TplComponent, adds child to named slot's `RenderExpr.tpl[]`; defaults to "children" slot when `slot` omitted on TplComponent parents
+- [x] New `Arg` + `RenderExpr` creation when no slot override exists yet (both mock classes and wab.d.ts declarations added)
+- [x] Position support within slots: "first", "last" (default), and numeric index via `insertIntoArray()` helper
+- [x] `findParent()` rewritten as recursive traversal that searches both `node.children` arrays AND `RenderExpr.tpl[]` arrays inside TplComponent slot overrides — enables `removeChild` and `moveChild` for slot content
+- [x] `removeChild` now removes nodes from inside slot override content (uses `childrenArray` from updated `findParent`)
+- [x] `moveChild` also uses `childrenArray` for consistent slot-aware removal
+- [x] `server.ts` — `add-child` tool schema extended with `slot` field; response includes `slotName` when set
+- [x] Error handling: "Slot X not found on component Y" with available slot list, "Component X has no slots", "Slot targeting only applies to component instances" (TplTag + slot), "contains a code expression, not renderable content" (non-RenderExpr slot)
+- [x] Undo and batch mode support inherited from `saveOrAccumulate()`
+- [x] 14 new tests: 9 addChild slot targeting (new Arg+RenderExpr, append to existing, position first/numeric, default children slot, explicit children, invalid slot name, no slots, TplTag+slot error, code expression error), 3 removeChild from slot override (direct removal, deeply nested, multiple children), 1 server integration (slot parameter passthrough)
 
 **Key design decisions:**
-- Token references stored as `var(--token-<uuid>)` in RuleSet.values (matching WAB/Studio format). This is how Plasmic natively stores token references.
-- Tree reader resolves var() to CSS values for human-readable display and adds `tokenRefs` metadata showing which properties use which tokens.
-- Token type validation prevents mismatches (e.g., Color token for padding) but allows any token type for unknown properties.
-- Token lookup searches local `site.styleTokens` first, then dependency project tokens.
+- When `addChild` targets a TplComponent and `slot` is omitted, it defaults to "children" slot (consistent with how Studio handles default slot content)
+- `findParent` was rewritten from flat iteration (`flattenTpls` + indexOf) to recursive walk, which correctly traverses both regular children and slot override tpl arrays at any depth
+- `Arg` and `RenderExpr` constructors added to both `wab.d.ts` (type declarations) and `__mocks__/wab-classes.ts` (test mocks) so new slot overrides can be created programmatically
+- `insertIntoArray()` extracted as a reusable helper for array position insertion, separate from `insertChild()` which sets parent pointers
 
-**Files modified:** `edit-tools.ts`, `token-reader.ts`, `tree-reader.ts`, `types.ts`, `server.ts`
-**Test files:** `edit-tools.test.ts`, `token-reader.test.ts`, `tree-reader.test.ts`, `server.test.ts`
-
----
-
-## Priority 6: Slot Content Targeting
-**Spec:** `specs/plasmic-slot-targeting.md` (9 criteria)
-**Depends on:** Priority 2 (Slot Override Traversal)
-**Why sixth:** Enables adding content to specific named slots on component instances. Without this, only the default `children` slot can receive content, limiting component composition.
-
-**Implementation items:**
-- [ ] `add-child` — accept new optional `slot` field in `server.ts` schema
-- [ ] `edit-tools.ts` `addChild()` — when `slot` specified and parent is TplComponent, add child to named slot's `RenderExpr.tpl[]`
-- [ ] If slot has no existing RenderExpr, create new `Arg` + `RenderExpr`
-- [ ] If slot already has content, append or insert at `position`
-- [ ] Default behavior without `slot`: TplTag containers work as before; TplComponent defaults to `children` slot
-- [ ] `remove-child` — support removing nodes from inside slot override content
-- [ ] Error if slot name doesn't exist: list available slot names on component
-- [ ] Undo and batch mode support
-- [ ] Unit tests: add to named slot, create new slot arg, remove from slot, error on invalid slot name
-- [ ] Integration test: add-child with slot → verify in tree → undo
-
-**Files to modify:** `edit-tools.ts`, `server.ts`
-**Test files:** `edit-tools.test.ts`, `server.test.ts`, `real-integration.test.ts`
+**Files modified:** `edit-tools.ts`, `server.ts`, `wab.d.ts`, `__mocks__/wab-classes.ts`
+**Test files:** `edit-tools.test.ts`, `server.test.ts`
 
 ---
 
@@ -146,21 +100,20 @@ After specs are implemented, the Claude Code skills need updating to document ne
 ## Dependency Graph
 
 ```
-Error Recovery (P1) ✅ ─────────────────────────────────┐
-                                                         │
-Slot Override Traversal (P2) ✅ ──► Slot Targeting (P6) │ All mutation
-                                                         │ tools benefit
-Element Tags & Attrs (P3) ✅ ──► Data Bindings (P7)     │
-                                                         │
-Border & CSS Validation (P4) ✅ ───────────────────────┘
+Slot Override Traversal (P2) ✅ ──► Slot Targeting (P6) ✅
 
-Token Refs in Styles (P5) ✅ ─── standalone
+Element Tags & Attrs (P3) ✅ ──► Data Bindings (P7)
 
 Node Cloning (P8) ─── standalone
 ```
 
-## Status Key
+## Completed (P1–P6)
 
-- [ ] Not started
-- [~] In progress
-- [x] Complete
+| Priority | Feature | Tests |
+|----------|---------|-------|
+| P1 | Error Recovery & Resilience | 463 |
+| P2 | Slot Override Traversal | 481 |
+| P3 | Element Tags & HTML Attributes | 508 |
+| P4 | Border Support & CSS Validation | 541 |
+| P5 | Design Token References in Styles | 594 |
+| P6 | Slot Content Targeting | 608 |
