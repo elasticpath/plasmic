@@ -174,6 +174,22 @@ export interface TokenInfo {
   resolvedValue?: string;
 }
 
+// --- Page metadata output ---
+// Produced by the get-page-meta tool when reading component.pageMeta fields.
+
+export interface PageMetaInfo {
+  name: string;
+  uuid: string;
+  path: string;
+  title: string | null;
+  description: string | null;
+  openGraphImage: string | null;
+  canonical: string | null;
+  params: Record<string, string>;
+  query: Record<string, string>;
+  roleId: string | null;
+}
+
 // --- Tree reader output ---
 // Produced by tree-reader.ts when walking the in-memory Tpl model.
 // Designed to give Claude full fidelity: tags, styles, text, images, layout, children.

@@ -22,6 +22,9 @@ import {
   moveChild,
   resolveVariant,
   listVariants,
+  renameComponent,
+  updatePageMeta,
+  deleteComponent,
 } from "../edit-tools";
 import { setSession, clearSession } from "../session";
 import { initChangeTracker, disposeChangeTracker } from "../change-tracker";
@@ -30,6 +33,8 @@ import { mockWithRecording } from "../__mocks__/wab-observable-model";
 import { mockFastBundle, mockAddrOf } from "../__mocks__/wab-bundler";
 import {
   mockEnsureBaseVariantSetting,
+  mockRenameComponent,
+  mockRemoveComponent,
 } from "../__mocks__/wab-tpl-mgr";
 import { mockMkTplTagX, mockMkTplInlinedText, mockMkTplComponentX } from "../__mocks__/wab-tpls";
 import { mockEnsureVariantSetting } from "../__mocks__/wab-variants";
@@ -1495,6 +1500,281 @@ describe("edit-tools", () => {
       await updateStyles(api, "comp-1", "Box", { color: "red" });
 
       expect(session.revisionNum).toBe(11);
+    });
+  });
+
+  // --- rename-component ---
+
+  describe("renameComponent", () => {
+    it("calls TplMgr.renameComponent with the new name", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const comp = mkComponent({ uuid: "comp-1", name: "OldName", tplTree: root });
+      setupSession(comp);
+
+      const result = await renameComponent(api, "comp-1", "NewName");
+
+      expect(mockRenameComponent).toHaveBeenCalledWith(comp, "NewName");
+      expect(result.oldName).toBe("OldName");
+      expect(result.newName).toBe("NewName");
+      expect(result.componentUuid).toBe("comp-1");
+    });
+
+    it("updates page path when newPath is provided", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const comp = {
+        ...mkComponent({ uuid: "page-1", name: "HomePage", tplTree: root }),
+        pageMeta: { path: "/old" },
+      };
+      setupSession(comp);
+
+      const result = await renameComponent(api, "page-1", "LandingPage", "/landing");
+
+      expect(comp.pageMeta.path).toBe("/landing");
+      expect(result.newPath).toBe("/landing");
+    });
+
+    it("does not update path when component is not a page", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const comp = mkComponent({ uuid: "comp-1", name: "Card", tplTree: root });
+      setupSession(comp);
+
+      const result = await renameComponent(api, "comp-1", "NewCard", "/some-path");
+
+      // newPath is ignored because component has no pageMeta
+      expect(result.newPath).toBeUndefined();
+    });
+
+    it("saves the changes to the server", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const comp = mkComponent({ uuid: "comp-1", name: "Card", tplTree: root });
+      setupSession(comp);
+
+      const result = await renameComponent(api, "comp-1", "NewCard");
+
+      expect(api.saveRevision).toHaveBeenCalledTimes(1);
+      expect(result.save.revisionNum).toBe(11);
+    });
+
+    it("throws for unknown component UUID", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+      setupSession(comp);
+
+      await expect(
+        renameComponent(api, "nonexistent", "Foo")
+      ).rejects.toThrow("not found");
+    });
+
+    it("returns deduplicated name from TplMgr", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const comp = mkComponent({ uuid: "comp-1", name: "Original", tplTree: root });
+      setupSession(comp);
+
+      // Simulate TplMgr deduplication: renameComponent changes name to "Card 2"
+      mockRenameComponent.mockImplementation((c: any, name: string) => {
+        c.name = name + " 2";
+      });
+
+      const result = await renameComponent(api, "comp-1", "Card");
+
+      expect(result.oldName).toBe("Original");
+      expect(result.newName).toBe("Card 2");
+    });
+  });
+
+  // --- update-page-meta ---
+
+  describe("updatePageMeta", () => {
+    function mkPageComponent(uuid: string, name: string, pageMeta: any) {
+      const root = mkTag({ uuid: `${uuid}-root` });
+      return {
+        ...mkComponent({ uuid, name, tplTree: root }),
+        pageMeta,
+      };
+    }
+
+    it("updates title and description", async () => {
+      const comp = mkPageComponent("page-1", "HomePage", {
+        path: "/",
+        title: null,
+        description: "",
+      });
+      setupSession(comp);
+
+      const result = await updatePageMeta(api, "page-1", {
+        title: "Welcome",
+        description: "Landing page",
+      });
+
+      expect(comp.pageMeta.title).toBe("Welcome");
+      expect(comp.pageMeta.description).toBe("Landing page");
+      expect(result.updatedFields).toEqual(["title", "description"]);
+      expect(result.componentName).toBe("HomePage");
+    });
+
+    it("updates all metadata fields at once", async () => {
+      const comp = mkPageComponent("page-1", "HomePage", {
+        path: "/",
+        title: null,
+        description: "",
+        openGraphImage: null,
+        canonical: null,
+      });
+      setupSession(comp);
+
+      const result = await updatePageMeta(api, "page-1", {
+        title: "My Site",
+        description: "Description",
+        openGraphImage: "https://example.com/og.png",
+        canonical: "https://example.com/",
+        path: "/welcome",
+      });
+
+      expect(result.updatedFields).toHaveLength(5);
+      expect(comp.pageMeta.path).toBe("/welcome");
+      expect(comp.pageMeta.openGraphImage).toBe("https://example.com/og.png");
+    });
+
+    it("only updates provided fields, leaves others unchanged", async () => {
+      const comp = mkPageComponent("page-1", "HomePage", {
+        path: "/",
+        title: "Old Title",
+        description: "Old Description",
+      });
+      setupSession(comp);
+
+      await updatePageMeta(api, "page-1", { title: "New Title" });
+
+      expect(comp.pageMeta.title).toBe("New Title");
+      expect(comp.pageMeta.description).toBe("Old Description"); // unchanged
+    });
+
+    it("throws when component is not a page", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const comp = mkComponent({ uuid: "comp-1", name: "Header", tplTree: root });
+      setupSession(comp);
+
+      await expect(
+        updatePageMeta(api, "comp-1", { title: "Fail" })
+      ).rejects.toThrow("not a page");
+    });
+
+    it("throws for unknown component UUID", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+      setupSession(comp);
+
+      await expect(
+        updatePageMeta(api, "nonexistent", { title: "Fail" })
+      ).rejects.toThrow("not found");
+    });
+
+    it("saves the changes to the server", async () => {
+      const comp = mkPageComponent("page-1", "HomePage", {
+        path: "/",
+        title: null,
+      });
+      setupSession(comp);
+
+      const result = await updatePageMeta(api, "page-1", { title: "New" });
+
+      expect(api.saveRevision).toHaveBeenCalledTimes(1);
+      expect(result.save.revisionNum).toBe(11);
+    });
+  });
+
+  // --- delete-component ---
+
+  describe("deleteComponent", () => {
+    it("deletes a component with no references", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const comp = mkComponent({ uuid: "comp-1", name: "OldCard", tplTree: root });
+
+      // Set up session with the component to delete (no other components reference it)
+      const session = makeSession({
+        site: { components: [comp] },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      const result = await deleteComponent(api, "comp-1");
+
+      expect(mockRemoveComponent).toHaveBeenCalledWith(comp);
+      expect(result.deletedName).toBe("OldCard");
+      expect(result.deletedUuid).toBe("comp-1");
+    });
+
+    it("throws when references exist and force is not set", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const cardComp = mkComponent({ uuid: "comp-card", name: "Card", tplTree: root });
+
+      // Create a component that references Card via a TplComponent node
+      const tplCompNode = {
+        _type: "TplComponent",
+        uuid: "tpl-comp-1",
+        component: cardComp,
+        vsettings: [],
+        children: [],
+      };
+      const pageRoot = mkTag({ uuid: "root-2", children: [tplCompNode] });
+      const pageComp = mkComponent({ uuid: "comp-page", name: "HomePage", tplTree: pageRoot });
+
+      const session = makeSession({
+        site: { components: [cardComp, pageComp] },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      await expect(
+        deleteComponent(api, "comp-card")
+      ).rejects.toThrow("referenced by HomePage");
+    });
+
+    it("deletes when force is true despite references", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const cardComp = mkComponent({ uuid: "comp-card", name: "Card", tplTree: root });
+
+      const tplCompNode = {
+        _type: "TplComponent",
+        uuid: "tpl-comp-1",
+        component: cardComp,
+        vsettings: [],
+        children: [],
+      };
+      const pageRoot = mkTag({ uuid: "root-2", children: [tplCompNode] });
+      const pageComp = mkComponent({ uuid: "comp-page", name: "HomePage", tplTree: pageRoot });
+
+      const session = makeSession({
+        site: { components: [cardComp, pageComp] },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      const result = await deleteComponent(api, "comp-card", true);
+
+      expect(mockRemoveComponent).toHaveBeenCalledWith(cardComp);
+      expect(result.deletedName).toBe("Card");
+    });
+
+    it("throws for unknown component UUID", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+      setupSession(comp);
+
+      await expect(
+        deleteComponent(api, "nonexistent")
+      ).rejects.toThrow("not found");
+    });
+
+    it("saves the changes to the server", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const comp = mkComponent({ uuid: "comp-1", name: "ToDelete", tplTree: root });
+      setupSession(comp);
+
+      const result = await deleteComponent(api, "comp-1");
+
+      expect(api.saveRevision).toHaveBeenCalledTimes(1);
+      expect(result.save.revisionNum).toBe(11);
     });
   });
 });

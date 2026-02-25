@@ -14,6 +14,11 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `create-page(name, path, body)` — Create a new page with a PlasmicElement tree. Requires active project.
 - `create-component(name, body)` — Create a new reusable component (not a page) with a PlasmicElement tree.
 - `clone-component(sourceUuid, name, path?)` — Duplicate an existing page or component. Deep copy with a new name.
+- `rename-component(componentUuid, newName, newPath?)` — Rename a page or component. Auto-deduplicates names. Optional `newPath` updates page URL.
+- `get-page-meta(componentUuid)` — Get page metadata (title, description, OG image, canonical, path). Only for pages.
+- `update-page-meta(componentUuid, title?, description?, openGraphImage?, canonical?, path?)` — Set page SEO metadata. Only provided fields are updated.
+- `get-preview-url(componentUuid)` — Get preview and studio URLs for a page or component. No server call needed.
+- `delete-component(componentUuid, force?)` — Delete a page or component. Checks for references; use `force: true` to override.
 - `list-variants(componentUuid)` — List all variants for a component: global (breakpoints), component (custom), style (hover/focus).
 - `update-text(componentUuid, nodeRef, text, variant?)` — Change text content on a node. Optional `variant` targets a specific variant.
 - `update-styles(componentUuid, nodeRef, styles, variant?)` — Change CSS styles on a node. Optional `variant` targets a specific variant.
@@ -42,6 +47,11 @@ All edit tools (`update-text`, `update-styles`, `add-child`, `remove-child`, `mo
    - "make the heading smaller on mobile", "change hover color", "set font size for tablet" → delegate to `/plasmic-edit` (variant-aware editing)
    - "add a section", "insert a card", "add a testimonial below the hero" → delegate to `/plasmic-edit`
    - "remove the footer", "delete the sidebar" → delegate to `/plasmic-edit`
+   - "rename the homepage", "change component name to X" → call `rename-component` with the component UUID and new name
+   - "set the page title", "update page description", "change page path" → call `update-page-meta` with the relevant fields
+   - "what's the page metadata", "show me the SEO settings" → call `get-page-meta` to read current values
+   - "give me the preview URL", "preview link for the homepage" → call `get-preview-url`
+   - "delete the old page", "remove this component" → call `delete-component` (will error if referenced by other components)
    - "undo", "revert that", "undo the last change" → call `undo()` directly
    - "save", "force save", "save to server" → call `save-project()` directly
    - "refresh", "reload the project", "sync with server" → call `refresh-project()` directly

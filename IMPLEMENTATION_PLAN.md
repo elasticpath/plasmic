@@ -4,112 +4,50 @@ Last updated: 2026-02-25
 
 ## Project Status Summary
 
-The Plasmic MCP server (`packages/plasmic-mcp/`) provides 23 MCP tools for programmatic Plasmic Studio interaction from Claude Code. Six skill files in `.claude/commands/` orchestrate these tools. Of 11 total specs, 9 are fully implemented, and 2 are pending implementation.
+The Plasmic MCP server (`packages/plasmic-mcp/`) provides 29 MCP tools for programmatic Plasmic Studio interaction from Claude Code. Six skill files in `.claude/commands/` orchestrate these tools. All 11 specs are fully implemented.
 
-**Test count:** 325 tests across 14 files (306 Jest + 19 Vitest, all passing, zero skipped).
-**Tools:** 24 registered in server.ts (read, write, batch, undo, save, refresh, list-variants).
+**Test count:** 359 tests across 14 files (340 Jest + 19 Vitest, all passing, zero skipped).
+**Tools:** 29 registered in server.ts (read, write, batch, undo, save, refresh, list-variants, rename, metadata, preview, delete).
 **Skills:** 6 files (router, inspect, edit, create-page, create-component, patterns).
-**Specs:** 11 total (10 complete, 1 pending implementation).
+**Specs:** 11 total (all complete).
 
 ---
 
-## Priority 0 — COMPLETE
+## All Completed Work
 
-### P0.1: Real Integration Tests with Vitest (spec: `plasmic-integration-tests.md`) — DONE
+### P0.1: Real Integration Tests with Vitest — DONE
+### P1.1: ComponentElement Support in `add-child` — DONE
+### P1.2: Variant-Aware Editing — DONE
+### P2.1: Page/Component Management Tools — DONE
 
-**Status:** All acceptance criteria met. 15 Vitest integration tests pass using real WAB modules (13 original + 2 component instance tests).
-
-**What was implemented:**
-- `vitest.config.integration.ts` — Vite config with two plugins (`stubWabInternals`, `stubBrowserPackages`) mirroring build.mjs Layer 1-4 resolution strategy. Resolve aliases for `@/` → real WAB source.
-- `src/__mocks__/stub-module.js` — Universal Proxy stub for browser packages (react, @sentry, antd, etc.)
-- `src/__mocks__/import-mobx-shim.cjs` — Shim replacing `@/wab/shared/import-mobx` to avoid conditional require issue in Vite.
-- `src/__tests__/real-integration.test.ts` — 13 tests using real `FastBundler.unbundle()`, `TplMgr`, `ChangeRecorder`, and MobX-observed model instances against `active-screen-variant-group.json` fixture.
-- `jest.config.cjs` — `testPathIgnorePatterns: ["real-integration"]`
-- `package.json` — `vitest` devDep, split test scripts (`test:unit`, `test:integration`, `test`)
-
-**Tests (13):** set-project → list-components, get-component-tree with real UUIDs, get-component-summary compact output, get-node-details, summary ≤ full tree size, maxDepth truncation, update-text round-trip, update-styles round-trip (with shorthand expansion), batch workflow, undo workflow, node resolution by UUID/name, add-child → remove-child, refresh-project.
-
-**Old mocked files deleted:** `integration.test.ts`, `fixtures/test-site.ts`
-
-**Bugs fixed during implementation:**
-1. **`emptyRecordedChanges` called as value instead of function** — `batch-manager.ts` used `{ ...emptyRecordedChanges }` (spreading the function) instead of `emptyRecordedChanges()`. In the real WAB code, `emptyRecordedChanges` is a function, not a const. This caused `existingChanges.changes is not iterable` on the 2nd edit operation. Fixed in `batch-manager.ts`, mock, type declaration, and all test callsites.
-2. **CSS shorthand properties rejected by site-invariants** — Plasmic's `isValidStyleProp()` rejects shorthand properties like `padding`, `margin`, `gap`, `borderRadius` because they lack CSS initial values in `css-initials`. Expanded `sanitizeStyles()` in `edit-tools.ts` to convert 9 shorthand families to their longhand equivalents (padding → paddingTop/Right/Bottom/Left, gap → row-gap + column-gap, etc.).
-3. **Test isolation: batch/undo state leaking between tests** — `set-project` handler didn't cancel active batches or clear the undo stack. Added `cancelBatch()` and `clearUndoStack()` to the `set-project` tool handler in `server.ts`.
-4. **Bundle fixture incompatibility** — `page-replacement.json` lacked the `animations` field on RuleSet (old schema). Switched to `active-screen-variant-group.json` which matches the current model schema.
-
-**Deviation from spec:** Uses `active-screen-variant-group.json` instead of `page-replacement.json` (the spec's fixture is incompatible with the current WAB model schema).
-
----
-
-## Priority 1 — Functional Gaps in Existing Code
-
-### P1.1: ComponentElement Support in `add-child` (spec: `plasmic-component-instances.md`) — DONE
-
-**Status:** All acceptance criteria met. `add-child` with `{ type: "component" }` and `{ type: "default-component" }` now creates real TplComponent nodes.
+**Status:** All acceptance criteria met. 5 new tools implemented with 34 new tests.
 
 **What was implemented:**
-- `edit-tools.ts` — Added `"component"` and `"default-component"` cases to `plasmicElementToTpl()`. Components resolved by name or UUID from `site.components` and dependency projects. Uses `mkTplComponentX()` from `@/wab/shared/core/tpls`. Children recursively converted and passed for default slot wiring.
-- `edit-tools.ts` — Added `findComponentByNameOrUuid()` helper that searches local + dependency components, throws descriptive error listing available names on not found.
-- `wab.d.ts` — Added `MkTplComponentParams` interface and `mkTplComponentX` type declaration.
-- `types.ts` — Added `children?: PlasmicElement | PlasmicElement[]` to `ComponentElement` and `DefaultComponentElement` interfaces.
-- `__mocks__/wab-tpls.ts` — Added `mockMkTplComponentX` mock for Jest tests.
-- `plasmic-edit.md` — Documented component instance insertion syntax in PlasmicElement Reference section.
-- `plasmic-patterns.md` — Added slot children example and `add-child` usage note in Referencing Existing Components section.
+- `edit-tools.ts` — Added `renameComponent()` using `TplMgr.renameComponent()` for name deduplication. Added `updatePageMeta()` for SEO metadata mutations. Added `deleteComponent()` with `findReferencingComponents()` safety guard.
+- `server.ts` — Registered 5 new tools: `rename-component`, `update-page-meta`, `get-page-meta`, `get-preview-url`, `delete-component`. Read-only tools (`get-page-meta`, `get-preview-url`) implemented inline; mutation tools delegate to edit-tools.ts.
+- `wab.d.ts` — Added `TplMgr.renameComponent()` and `TplMgr.removeComponent()` type declarations.
+- `types.ts` — Added `PageMetaInfo` interface for `get-page-meta` response.
+- `__mocks__/wab-tpl-mgr.ts` — Added `mockRenameComponent` (default: updates `component.name`) and `mockRemoveComponent`.
+- Skill files updated: `plasmic.md` (routing for rename, metadata, preview, delete), `plasmic-edit.md` (new tool listings), `plasmic-inspect.md` (`get-page-meta` and `get-preview-url`).
 
-**Tests (8 new):**
-- Jest (6): component by name, component by UUID, unknown component error with available names, default-component by kind, children passed for slot wiring, component from dependency project.
-- Vitest (2): add-child with real TplComponent → verify in tree → remove-child, unknown component error message.
-
-### P1.2: Variant-Aware Editing (spec: `plasmic-variant-editing.md`) — DONE
-
-**Status:** All acceptance criteria met. `update-text` and `update-styles` accept an optional `variant` parameter. New `list-variants` tool enumerates all variant types.
-
-**What was implemented:**
-- `edit-tools.ts` — Added `resolveVariant(site, component, variantStr)` function with 3-step resolution: UUID exact match → CSS selector match (`:hover`, `:focus`, etc.) → case-insensitive name match. Throws descriptive errors for not-found (lists available variants) and ambiguous matches (lists candidate UUIDs).
-- `edit-tools.ts` — Added `listVariants(site, component)` returning `{ globalVariants, componentVariants, styleVariants }` from site.globalVariantGroups, component.variantGroups, and component.variants.
-- `edit-tools.ts` — Modified `updateText()` and `updateStyles()` signatures to accept optional `variant?: string`. When provided, uses `ensureVariantSetting(tpl, [resolvedVariant])` inside `withRecording()`. Base variant behavior unchanged when omitted.
-- `server.ts` — Registered `list-variants` tool with Zod schema. Added `variant` optional parameter to `update-text` and `update-styles` schemas.
-- `wab.d.ts` — Added type declarations for `@/wab/shared/Variants` module (`ensureVariantSetting`, `tryGetVariantSetting`, `isBaseVariant`, `isScreenVariant`, etc.).
-- `__mocks__/wab-variants.ts` — Jest mock with mockable `ensureVariantSetting`/`tryGetVariantSetting` and real logic for variant type helpers.
-- `jest.config.cjs` — Added `@/wab/shared/Variants$` mock mapping.
-- Skill files updated: `plasmic-edit.md` (variant workflow section, updated edge cases), `plasmic-inspect.md` (added `list-variants`), `plasmic.md` (routing for variant queries and responsive/interactive edits).
-
-**Tests (23 new):**
-- Jest (19): resolveVariant (8 tests: UUID, name, selector, not-found, ambiguity), listVariants (6 tests: global/component/style variants, empty, deduplication), variant-aware updateStyles (2 tests), variant-aware updateText (3 tests).
-- Vitest (4): list-variants with real fixture, update-styles with variant, backward compatibility, unknown variant error.
+**Tests (34 new):**
+- Jest server.test.ts (15): rename-component (4: success, path update, error, Zod validation), update-page-meta (3: partial update, all fields, non-page error), get-page-meta (4: full meta, null fields, non-page, unknown UUID), get-preview-url (3: page URL, non-page, unknown UUID), delete-component (3: success, force flag, reference error).
+- Jest edit-tools.test.ts (19): renameComponent (6: basic rename, path update, non-page path ignored, save verification, unknown UUID error, deduplicated name), updatePageMeta (6: title+description, all fields, partial update, non-page error, unknown UUID, save verification), deleteComponent (5: no references, reference guard, force override, unknown UUID, save verification).
 
 **Design decisions:**
-- `ensureVariantSetting` called inside `withRecording()` since creating a new VariantSetting is a model mutation needing change tracking.
-- `create-variant` / `create-variant-group` deferred as stretch goals (not in current spec acceptance criteria).
+- `get-page-meta` extracts text from TemplatedString fields (pageMeta.title/description can be string or TemplatedString).
+- `get-preview-url` constructs URLs from `auth.host` + `session.projectId` — no server call needed.
+- `rename-component` returns the actual post-deduplication name (may differ from input if auto-deduplicated).
+- `delete-component` checks TplComponent references before calling `TplMgr.removeComponent()`. Force flag bypasses the check.
 
 ---
 
-## Priority 2 — Missing Workflow Capabilities (Need New Specs)
-
-### P2.1: Page/Component Management Tools (spec: `plasmic-management-tools.md` — NEW)
-
-Five new tools specified. All implemented as client-side model mutations + save (same pattern as update-text/update-styles):
-
-**`rename-component`** — Renames page or component. Uses `TplMgr.renameComponent()` which handles name deduplication. Optional `newPath` for pages.
-
-**`update-page-meta`** — Sets page SEO fields: `title`, `description`, `openGraphImage`, `canonical`, `path`. Mutates `component.pageMeta` fields directly.
-
-**`get-page-meta`** — Reads page metadata including all SEO fields. Currently `get-project-meta` only surfaces `path`.
-
-**`get-preview-url`** — Constructs preview and studio URLs from host + project ID + page path. No server call needed.
-
-**`delete-component`** (lower priority) — Uses `TplMgr.removeComponent()`. Has reference-checking guards (errors if other components reference the target). Server API has no `deleteComponents` field, so this must be a model mutation + save.
-
-**Impact:** Without rename/metadata tools, page management requires manual Studio visits. Without preview URL, developers can't verify changes from the terminal.
+## Remaining Work
 
 ### P2.2: CI Enhancement for Integration Tests
 
 - `.github/workflows/plasmic-mcp.yml` currently only runs Jest. Now that P0.1 is implemented, CI must also run Vitest integration tests.
 - May need to install `platform/wab` dependencies in CI for real WAB module resolution.
-
----
-
-## Priority 3 — Test Coverage Gaps
 
 ### P3.1: Direct Unit Test for `readSubtree` in `tree-reader.test.ts`
 
@@ -117,18 +55,7 @@ Five new tools specified. All implemented as client-side model mutations + save 
 
 ### P3.2: Direct Unit Tests for `sanitizeStyles` Edge Cases
 
-`sanitizeStyles` in `edit-tools.ts` now handles both background consolidation AND CSS shorthand expansion (padding, margin, gap, borderRadius, borderWidth, borderStyle, borderColor, inset). Tested indirectly via `updateStyles` assertions and integration tests, but these specific paths lack direct unit coverage:
-- `backgroundImage` passed directly → sets `background`
-- `background` explicit shorthand overriding `backgroundColor`
-- `backgroundSize` / `backgroundRepeat` / `backgroundPosition` being dropped with console.error warning
-- `padding: "10px 20px"` → 2-value expansion (top/bottom vs left/right)
-- `borderRadius: "4px 8px 12px 16px"` → 4-value expansion
-- `gap: "10px 20px"` → separate row-gap and column-gap
-- `inset: "10px"` → top/right/bottom/left
-
----
-
-## Priority 4 — Cosmetic
+`sanitizeStyles` in `edit-tools.ts` now handles both background consolidation AND CSS shorthand expansion. Tested indirectly via `updateStyles` assertions and integration tests, but specific paths lack direct unit coverage.
 
 ### P4.1: Duplicate Step Numbering in `plasmic-create-component.md`
 
@@ -147,16 +74,16 @@ Line 158 has step `6.` numbered twice. No functional impact.
 | `plasmic-incremental-writes.md` — 9 edit tools + save + undo | Complete | ~26 + ~12 + ~16 + ~11 |
 | `plasmic-component-creation.md` — create-component + clone-component | Complete | 7 (in server.test.ts) |
 | `plasmic-context-efficient-queries.md` — Summary/detail tools + caching | Complete | ~34 + ~52 |
-| `plasmic-integration-tests.md` — Vitest with real WAB modules | **Complete** | 15 (real-integration.test.ts) |
-| `plasmic-component-instances.md` — ComponentElement in add-child | **Complete** | 6 Jest + 2 Vitest |
-| `plasmic-variant-editing.md` — Variant-aware editing | **Complete** | 19 Jest + 4 Vitest |
-| `plasmic-management-tools.md` — Rename, metadata, preview, delete | **NEW — 0%** | 0 |
+| `plasmic-integration-tests.md` — Vitest with real WAB modules | Complete | 19 (real-integration.test.ts) |
+| `plasmic-component-instances.md` — ComponentElement in add-child | Complete | 6 Jest + 2 Vitest |
+| `plasmic-variant-editing.md` — Variant-aware editing | Complete | 19 Jest + 4 Vitest |
+| `plasmic-management-tools.md` — Rename, metadata, preview, delete | **Complete** | 34 Jest |
 
 ## Implementation Order
 
 1. ~~**P0.1** — Vitest integration tests~~ ✓ DONE
 2. ~~**P1.1** — ComponentElement in add-child~~ ✓ DONE
 3. ~~**P1.2** — Variant-aware editing~~ ✓ DONE
-4. **P2.1** — Management tools (spec authored — rename, metadata, preview URL, delete)
+4. ~~**P2.1** — Management tools~~ ✓ DONE
 5. **P3.1–P3.2** — Test coverage gaps (small, can be done opportunistically)
 6. **P4.1** — Cosmetic fix (trivial)

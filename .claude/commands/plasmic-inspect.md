@@ -12,6 +12,8 @@ You are inspecting a Plasmic project to help the developer understand its struct
 - `get-subtree(componentUuid, nodeRef, maxDepth?, excludeStyles?)` — Get the full tree rooted at a specific node. Useful when the developer wants to see a specific section's full tree (e.g., just the hero or footer) without loading the whole component.
 - `list-variants(componentUuid)` — List all variants for a component: global (breakpoints), component (custom), style (hover/focus). Use to discover variant names/UUIDs.
 - `get-tokens(type?)` — Get design tokens (colors, spacing, fonts) grouped by type. Optional type filter.
+- `get-page-meta(componentUuid)` — Get page metadata (title, description, OG image, canonical URL, path). Only for page components.
+- `get-preview-url(componentUuid)` — Get preview and studio URLs for a page or component.
 
 ## Instructions
 1. If no project is active, call `list-projects` and ask the user which project, then `set-project`.
@@ -28,7 +30,9 @@ You are inspecting a Plasmic project to help the developer understand its struct
    d. Only use `get-component-tree` or `export-component-tree` if the user explicitly needs the complete detailed tree.
 6. If the user asked about design tokens, colors, or fonts, call `get-tokens` (optionally filtered by type).
 7. If the user asked about variants, breakpoints, hover states, or responsive setup, find the component UUID via `list-components`, then call `list-variants(componentUuid)`.
-7. For large component trees, the summary already shows childCounts — describe the structure at the top level and mention deeper nesting counts.
+8. If the user asks about page metadata, SEO settings, or page title/description, call `get-page-meta(componentUuid)` for the page.
+9. If the user asks for a preview link or studio URL, call `get-preview-url(componentUuid)`.
+10. For large component trees, the summary already shows childCounts — describe the structure at the top level and mention deeper nesting counts.
 
 ## User's Request
 $ARGUMENTS

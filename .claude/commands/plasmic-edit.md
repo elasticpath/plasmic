@@ -15,6 +15,11 @@ You are editing an existing page or component in a Plasmic project.
 - `add-child(componentUuid, parentRef, child, position)` — Add a new element.
 - `remove-child(componentUuid, nodeRef)` — Remove an element.
 - `move-child(componentUuid, nodeRef, newParentRef, position)` — Move an element.
+- `rename-component(componentUuid, newName, newPath?)` — Rename a page or component. Auto-deduplicates names.
+- `update-page-meta(componentUuid, title?, description?, openGraphImage?, canonical?, path?)` — Set page SEO metadata.
+- `get-page-meta(componentUuid)` — Get page metadata (title, description, OG image, canonical, path).
+- `get-preview-url(componentUuid)` — Get preview and studio URLs for a page or component.
+- `delete-component(componentUuid, force?)` — Delete a page or component. Checks for references.
 - `begin-batch()` / `end-batch()` — Group edits into a single save.
 - `undo()` — Revert the last operation.
 - `save-project()` — Force a full save of the current in-memory model.

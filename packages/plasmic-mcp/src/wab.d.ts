@@ -240,6 +240,13 @@ declare module "@/wab/shared/TplMgr" {
     ensureBaseVariantSetting(tpl: any): any;
     /** Get the base variant for a component. */
     ensureBaseVariant(comp: any): any;
+    /** Rename a component with automatic name deduplication.
+     *  Handles unique naming via getUniqueComponentName internally. */
+    renameComponent(component: any, name: string): void;
+    /** Remove a component from the site.
+     *  Throws if other components reference it via TplComponent instances.
+     *  Handles page link removal, arena cleanup, and default component refs. */
+    removeComponent(component: any): void;
   }
 }
 

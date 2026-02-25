@@ -19,6 +19,7 @@
 
 import {
   isKnownTplTag,
+  isKnownTplComponent,
   isKnownRawText,
   RawText,
   CustomCode,
@@ -1153,5 +1154,216 @@ export async function moveChild(
     newParentName: newParent.name,
     newParentUuid: newParent.uuid,
     position: position ?? "last",
+  };
+}
+
+// --- rename-component ---
+
+export interface RenameComponentResult {
+  save: SaveResult;
+  oldName: string;
+  newName: string;
+  componentUuid: string;
+  newPath?: string;
+}
+
+/**
+ * Rename a page or component.
+ *
+ * Uses TplMgr.renameComponent() which handles name deduplication
+ * automatically (e.g., "Card" → "Card 2" if "Card" already exists).
+ * Optionally updates the page URL path if the component is a page.
+ */
+export async function renameComponent(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  newName: string,
+  newPath?: string
+): Promise<RenameComponentResult> {
+  const component = findComponent(componentUuid);
+  const oldName = component.name;
+  const session = requireSession();
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  const changes = tracker.withRecording(() => {
+    tplMgr.renameComponent(component, newName);
+    if (newPath !== undefined && component.pageMeta) {
+      component.pageMeta.path = newPath;
+    }
+  });
+
+  const componentIid = getComponentIid(component);
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `rename-component: "${oldName}" → "${component.name}"`,
+    componentIid ? [componentIid] : []
+  );
+
+  return {
+    save,
+    oldName,
+    newName: component.name, // May differ from input due to deduplication
+    componentUuid,
+    // Only report newPath if it was actually applied (component must be a page)
+    newPath: (newPath !== undefined && component.pageMeta) ? newPath : component.pageMeta?.path,
+  };
+}
+
+// --- update-page-meta ---
+
+export interface UpdatePageMetaResult {
+  save: SaveResult;
+  componentUuid: string;
+  componentName: string;
+  updatedFields: string[];
+}
+
+/**
+ * Update page-level SEO metadata.
+ *
+ * Sets fields on component.pageMeta: title, description, openGraphImage,
+ * canonical, path. Only fields explicitly provided are updated; omitted
+ * fields are left unchanged.
+ *
+ * Throws if the target component is not a page (has no pageMeta).
+ */
+export async function updatePageMeta(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  meta: {
+    title?: string;
+    description?: string;
+    openGraphImage?: string;
+    canonical?: string;
+    path?: string;
+  }
+): Promise<UpdatePageMetaResult> {
+  const component = findComponent(componentUuid);
+
+  if (!component.pageMeta) {
+    throw new Error(
+      `Component "${component.name}" is not a page — no page metadata to update. ` +
+        `Only pages (components with a URL path) have metadata.`
+    );
+  }
+
+  const tracker = getChangeTracker();
+  const updatedFields: string[] = [];
+
+  const changes = tracker.withRecording(() => {
+    if (meta.title !== undefined) {
+      component.pageMeta.title = meta.title;
+      updatedFields.push("title");
+    }
+    if (meta.description !== undefined) {
+      component.pageMeta.description = meta.description;
+      updatedFields.push("description");
+    }
+    if (meta.openGraphImage !== undefined) {
+      component.pageMeta.openGraphImage = meta.openGraphImage;
+      updatedFields.push("openGraphImage");
+    }
+    if (meta.canonical !== undefined) {
+      component.pageMeta.canonical = meta.canonical;
+      updatedFields.push("canonical");
+    }
+    if (meta.path !== undefined) {
+      component.pageMeta.path = meta.path;
+      updatedFields.push("path");
+    }
+  });
+
+  const componentIid = getComponentIid(component);
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `update-page-meta: [${updatedFields.join(", ")}] on ${component.name}`,
+    componentIid ? [componentIid] : []
+  );
+
+  return {
+    save,
+    componentUuid,
+    componentName: component.name,
+    updatedFields,
+  };
+}
+
+// --- delete-component ---
+
+export interface DeleteComponentResult {
+  save: SaveResult;
+  deletedName: string;
+  deletedUuid: string;
+}
+
+/**
+ * Find components that reference `targetComponent` via TplComponent instances.
+ * Used by deleteComponent to prevent deletion of referenced components.
+ */
+function findReferencingComponents(site: any, targetComponent: any): any[] {
+  const referencingComps: any[] = [];
+  for (const comp of site.components ?? []) {
+    if (comp === targetComponent) continue;
+    const allNodes = flattenTpls(comp.tplTree);
+    for (const node of allNodes) {
+      if (isKnownTplComponent(node) && node.component === targetComponent) {
+        referencingComps.push(comp);
+        break;
+      }
+    }
+  }
+  return referencingComps;
+}
+
+/**
+ * Delete a component or page from the project.
+ *
+ * Checks for references from other components (TplComponent instances).
+ * If references exist and `force` is not true, throws with a list of
+ * referencing component names. Uses TplMgr.removeComponent() for the
+ * actual deletion, which handles arena cleanup and page link removal.
+ */
+export async function deleteComponent(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  force?: boolean
+): Promise<DeleteComponentResult> {
+  const component = findComponent(componentUuid);
+  const session = requireSession();
+  const site = session.site;
+
+  // Check for references before deletion
+  const referencingComps = findReferencingComponents(site, component);
+  if (referencingComps.length > 0 && !force) {
+    const names = referencingComps.map((c: any) => c.name).join(", ");
+    throw new Error(
+      `Cannot delete "${component.name}": referenced by ${names}. ` +
+        `Use force: true to override.`
+    );
+  }
+
+  const tplMgr = new TplMgr({ site });
+  const tracker = getChangeTracker();
+  const deletedName = component.name;
+
+  const changes = tracker.withRecording(() => {
+    tplMgr.removeComponent(component);
+  });
+
+  const componentIid = getComponentIid(component);
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `delete-component: "${deletedName}"`,
+    componentIid ? [componentIid] : []
+  );
+
+  return {
+    save,
+    deletedName,
+    deletedUuid: componentUuid,
   };
 }

@@ -48,6 +48,9 @@ import {
   removeChild,
   moveChild,
   listVariants,
+  renameComponent,
+  updatePageMeta,
+  deleteComponent,
 } from "./edit-tools.js";
 import { beginBatch, endBatch, isBatchActive, cancelBatch, getAccumulatedChanges } from "./batch-manager.js";
 import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
@@ -1792,6 +1795,343 @@ export function createServer(): McpServer {
             {
               type: "text" as const,
               text: `Error refreshing project: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // --- rename-component ---
+  // Renames a page or component. Uses TplMgr.renameComponent() which
+  // handles name deduplication automatically. Optionally updates the page
+  // URL path. Client-side model mutation + save.
+  server.tool(
+    "rename-component",
+    "Rename a page or component. Handles name deduplication automatically. Optionally update the page URL path.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component or page to rename"),
+      newName: z
+        .string()
+        .min(1, "New name is required")
+        .describe("New name for the component (PascalCase recommended)"),
+      newPath: z
+        .string()
+        .optional()
+        .describe("New URL path for pages (e.g., '/landing'). Only applies to page components."),
+    },
+    async ({ componentUuid, newName, newPath }) => {
+      try {
+        const result = await renameComponent(
+          apiClient,
+          componentUuid,
+          newName,
+          newPath
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  oldName: result.oldName,
+                  newName: result.newName,
+                  uuid: result.componentUuid,
+                  path: result.newPath,
+                  revision: result.save.revisionNum,
+                  message: `Renamed "${result.oldName}" → "${result.newName}"`,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error renaming component: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // --- update-page-meta ---
+  // Sets page-level SEO metadata (title, description, OG image, canonical,
+  // path). Only fields explicitly provided are updated. Throws if the target
+  // component is not a page.
+  server.tool(
+    "update-page-meta",
+    "Set page SEO metadata: title, description, Open Graph image, canonical URL, and/or page path. Only provided fields are updated.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the page component"),
+      title: z
+        .string()
+        .optional()
+        .describe("Page title for SEO (e.g., 'Welcome to My Site')"),
+      description: z
+        .string()
+        .optional()
+        .describe("Page description for SEO meta tag"),
+      openGraphImage: z
+        .string()
+        .optional()
+        .describe("Open Graph image URL for social sharing"),
+      canonical: z
+        .string()
+        .optional()
+        .describe("Canonical URL for SEO"),
+      path: z
+        .string()
+        .optional()
+        .describe("Update the page URL path (e.g., '/about-us')"),
+    },
+    async ({ componentUuid, title, description, openGraphImage, canonical, path: pagePath }) => {
+      try {
+        const result = await updatePageMeta(apiClient, componentUuid, {
+          title,
+          description,
+          openGraphImage,
+          canonical,
+          path: pagePath,
+        });
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  component: result.componentName,
+                  uuid: result.componentUuid,
+                  updatedFields: result.updatedFields,
+                  revision: result.save.revisionNum,
+                  message: `Updated page metadata: ${result.updatedFields.join(", ")}`,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error updating page metadata: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // --- get-page-meta ---
+  // Reads page-level metadata including SEO fields. Unlike get-project-meta
+  // which only shows path, this surfaces title, description, OG image, etc.
+  server.tool(
+    "get-page-meta",
+    "Read page metadata including SEO fields (title, description, Open Graph image, canonical URL). Only works on page components.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the page component"),
+    },
+    async ({ componentUuid }) => {
+      try {
+        const session = requireSession();
+        const component = session.site.components?.find(
+          (c: any) => c.uuid === componentUuid
+        );
+
+        if (!component) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Component UUID "${componentUuid}" not found. Use list-components to see available components.`,
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        if (!component.pageMeta) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Component "${component.name}" is not a page — no page metadata available.`,
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        const pm = component.pageMeta;
+
+        // Extract text from pageMeta fields that may be strings or TemplatedStrings
+        const extractText = (value: any): string | null => {
+          if (value === null || value === undefined) return null;
+          if (typeof value === "string") return value;
+          // TemplatedString: text is an array of parts
+          if (Array.isArray(value?.text)) {
+            return value.text
+              .map((part: any) => (typeof part === "string" ? part : ""))
+              .join("");
+          }
+          // RawText or similar with .text as a string
+          if (typeof value?.text === "string") return value.text;
+          return String(value);
+        };
+
+        const meta = {
+          name: component.name,
+          uuid: component.uuid,
+          path: pm.path,
+          title: extractText(pm.title),
+          description: extractText(pm.description),
+          openGraphImage: extractText(pm.openGraphImage),
+          canonical: extractText(pm.canonical),
+          params: pm.params ?? {},
+          query: pm.query ?? {},
+          roleId: pm.roleId ?? null,
+        };
+
+        return {
+          content: [
+            { type: "text" as const, text: JSON.stringify(meta, null, 2) },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error reading page metadata: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // --- get-preview-url ---
+  // Constructs preview and studio URLs from the auth host, project ID, and
+  // page path. No server call needed — purely computed from session state.
+  server.tool(
+    "get-preview-url",
+    "Get preview and studio URLs for a page or component. No server call needed.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component or page"),
+    },
+    async ({ componentUuid }) => {
+      try {
+        const session = requireSession();
+        const component = session.site.components?.find(
+          (c: any) => c.uuid === componentUuid
+        );
+
+        if (!component) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Component UUID "${componentUuid}" not found. Use list-components to see available components.`,
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        const host = auth.host.replace(/\/$/, ""); // Normalize trailing slash
+        const studioUrl = `${host}/projects/${session.projectId}`;
+
+        const result: Record<string, string> = { studioUrl };
+
+        if (component.pageMeta?.path) {
+          result.previewUrl = `${host}/projects/${session.projectId}/preview${component.pageMeta.path}`;
+        }
+
+        return {
+          content: [
+            { type: "text" as const, text: JSON.stringify(result, null, 2) },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error getting preview URL: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // --- delete-component ---
+  // Deletes a component or page from the project. Checks for references
+  // from other components; if references exist and force is not true, throws
+  // an error listing the referencing components. Uses TplMgr.removeComponent()
+  // for the actual deletion.
+  server.tool(
+    "delete-component",
+    "Delete a page or component. Checks for references from other components. Use force: true to override reference check.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component or page to delete"),
+      force: z
+        .boolean()
+        .optional()
+        .describe("Override reference check and force deletion"),
+    },
+    async ({ componentUuid, force }) => {
+      try {
+        const result = await deleteComponent(apiClient, componentUuid, force);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  deletedName: result.deletedName,
+                  deletedUuid: result.deletedUuid,
+                  revision: result.save.revisionNum,
+                  message: `Deleted "${result.deletedName}"`,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error deleting component: ${err.message}`,
             },
           ],
           isError: true,

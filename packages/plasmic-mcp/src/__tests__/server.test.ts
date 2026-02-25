@@ -112,6 +112,10 @@ describe("tool handlers", () => {
   let mockAddChild: jest.Mock;
   let mockRemoveChild: jest.Mock;
   let mockMoveChild: jest.Mock;
+  let mockListVariants: jest.Mock;
+  let mockRenameComponent: jest.Mock;
+  let mockUpdatePageMeta: jest.Mock;
+  let mockDeleteComponent: jest.Mock;
   let mockBeginBatch: jest.Mock;
   let mockEndBatch: jest.Mock;
   let mockIsBatchActive: jest.Mock;
@@ -162,6 +166,10 @@ describe("tool handlers", () => {
     mockAddChild = jest.fn();
     mockRemoveChild = jest.fn();
     mockMoveChild = jest.fn();
+    mockListVariants = jest.fn();
+    mockRenameComponent = jest.fn();
+    mockUpdatePageMeta = jest.fn();
+    mockDeleteComponent = jest.fn();
     mockBeginBatch = jest.fn();
     mockEndBatch = jest.fn();
     mockIsBatchActive = jest.fn().mockReturnValue(false);
@@ -249,6 +257,10 @@ describe("tool handlers", () => {
       addChild: (...args: any[]) => mockAddChild(...args),
       removeChild: (...args: any[]) => mockRemoveChild(...args),
       moveChild: (...args: any[]) => mockMoveChild(...args),
+      listVariants: (...args: any[]) => mockListVariants(...args),
+      renameComponent: (...args: any[]) => mockRenameComponent(...args),
+      updatePageMeta: (...args: any[]) => mockUpdatePageMeta(...args),
+      deleteComponent: (...args: any[]) => mockDeleteComponent(...args),
     }));
 
     jest.mock("../batch-manager", () => ({
@@ -2007,6 +2019,409 @@ describe("tool handlers", () => {
         hitRate: 71,
         cachedComponents: 3,
       });
+    });
+  });
+
+  // =====================================================================
+  // Management Tools
+  // =====================================================================
+
+  describe("rename-component", () => {
+    it("renames a component and returns old/new names", async () => {
+      mockRenameComponent.mockResolvedValue({
+        save: { revisionNum: 11, incremental: true },
+        oldName: "HomePage",
+        newName: "LandingPage",
+        componentUuid: "comp-1",
+        newPath: undefined,
+      });
+
+      const result = await client.callTool({
+        name: "rename-component",
+        arguments: { componentUuid: "comp-1", newName: "LandingPage" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.oldName).toBe("HomePage");
+      expect(output.newName).toBe("LandingPage");
+      expect(output.uuid).toBe("comp-1");
+      expect(output.message).toContain("Renamed");
+      expect(mockRenameComponent).toHaveBeenCalledWith(
+        mockApiClient,
+        "comp-1",
+        "LandingPage",
+        undefined
+      );
+    });
+
+    it("renames a page with new path", async () => {
+      mockRenameComponent.mockResolvedValue({
+        save: { revisionNum: 12, incremental: true },
+        oldName: "HomePage",
+        newName: "LandingPage",
+        componentUuid: "page-1",
+        newPath: "/landing",
+      });
+
+      const result = await client.callTool({
+        name: "rename-component",
+        arguments: {
+          componentUuid: "page-1",
+          newName: "LandingPage",
+          newPath: "/landing",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.path).toBe("/landing");
+      expect(mockRenameComponent).toHaveBeenCalledWith(
+        mockApiClient,
+        "page-1",
+        "LandingPage",
+        "/landing"
+      );
+    });
+
+    it("returns error when component not found", async () => {
+      mockRenameComponent.mockRejectedValue(
+        new Error('Component UUID "nonexistent" not found.')
+      );
+
+      const result = await client.callTool({
+        name: "rename-component",
+        arguments: { componentUuid: "nonexistent", newName: "Foo" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Error renaming component");
+    });
+
+    it("rejects empty name via Zod validation", async () => {
+      const result = await client.callTool({
+        name: "rename-component",
+        arguments: { componentUuid: "comp-1", newName: "" },
+      });
+
+      expect(result.isError).toBe(true);
+    });
+  });
+
+  describe("update-page-meta", () => {
+    it("updates page metadata fields and returns updated list", async () => {
+      mockUpdatePageMeta.mockResolvedValue({
+        save: { revisionNum: 13, incremental: true },
+        componentUuid: "page-1",
+        componentName: "HomePage",
+        updatedFields: ["title", "description"],
+      });
+
+      const result = await client.callTool({
+        name: "update-page-meta",
+        arguments: {
+          componentUuid: "page-1",
+          title: "Welcome to My Site",
+          description: "A great landing page",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.component).toBe("HomePage");
+      expect(output.updatedFields).toEqual(["title", "description"]);
+      expect(output.message).toContain("title, description");
+      expect(mockUpdatePageMeta).toHaveBeenCalledWith(
+        mockApiClient,
+        "page-1",
+        {
+          title: "Welcome to My Site",
+          description: "A great landing page",
+          openGraphImage: undefined,
+          canonical: undefined,
+          path: undefined,
+        }
+      );
+    });
+
+    it("updates all metadata fields at once", async () => {
+      mockUpdatePageMeta.mockResolvedValue({
+        save: { revisionNum: 14, incremental: true },
+        componentUuid: "page-1",
+        componentName: "HomePage",
+        updatedFields: ["title", "description", "openGraphImage", "canonical", "path"],
+      });
+
+      const result = await client.callTool({
+        name: "update-page-meta",
+        arguments: {
+          componentUuid: "page-1",
+          title: "Welcome",
+          description: "Landing page",
+          openGraphImage: "https://example.com/og.png",
+          canonical: "https://example.com/",
+          path: "/welcome",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.updatedFields).toHaveLength(5);
+    });
+
+    it("returns error when component is not a page", async () => {
+      mockUpdatePageMeta.mockRejectedValue(
+        new Error('Component "Header" is not a page — no page metadata to update.')
+      );
+
+      const result = await client.callTool({
+        name: "update-page-meta",
+        arguments: {
+          componentUuid: "comp-header",
+          title: "Should Fail",
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("not a page");
+    });
+  });
+
+  describe("get-page-meta", () => {
+    it("returns page metadata for a page component", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [
+            {
+              uuid: "page-1",
+              name: "HomePage",
+              pageMeta: {
+                path: "/",
+                title: "Welcome to My Site",
+                description: "A description for SEO",
+                openGraphImage: "https://example.com/og.png",
+                canonical: "https://example.com/",
+                params: { slug: "string" },
+                query: {},
+                roleId: null,
+              },
+            },
+          ],
+        },
+      });
+
+      const result = await client.callTool({
+        name: "get-page-meta",
+        arguments: { componentUuid: "page-1" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.name).toBe("HomePage");
+      expect(output.path).toBe("/");
+      expect(output.title).toBe("Welcome to My Site");
+      expect(output.description).toBe("A description for SEO");
+      expect(output.openGraphImage).toBe("https://example.com/og.png");
+      expect(output.canonical).toBe("https://example.com/");
+      expect(output.params).toEqual({ slug: "string" });
+    });
+
+    it("handles null/undefined metadata fields", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [
+            {
+              uuid: "page-2",
+              name: "MinimalPage",
+              pageMeta: {
+                path: "/minimal",
+                title: null,
+                description: "",
+                openGraphImage: undefined,
+                canonical: null,
+                params: {},
+                query: {},
+                roleId: null,
+              },
+            },
+          ],
+        },
+      });
+
+      const result = await client.callTool({
+        name: "get-page-meta",
+        arguments: { componentUuid: "page-2" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.title).toBeNull();
+      expect(output.description).toBe("");
+      expect(output.openGraphImage).toBeNull();
+      expect(output.canonical).toBeNull();
+    });
+
+    it("returns error for non-page component", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [
+            { uuid: "comp-1", name: "Header" }, // No pageMeta
+          ],
+        },
+      });
+
+      const result = await client.callTool({
+        name: "get-page-meta",
+        arguments: { componentUuid: "comp-1" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("not a page");
+    });
+
+    it("returns error for unknown component UUID", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { components: [] },
+      });
+
+      const result = await client.callTool({
+        name: "get-page-meta",
+        arguments: { componentUuid: "nonexistent" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("not found");
+    });
+  });
+
+  describe("get-preview-url", () => {
+    it("returns preview and studio URLs for a page", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        site: {
+          components: [
+            {
+              uuid: "page-1",
+              name: "HomePage",
+              pageMeta: { path: "/home" },
+            },
+          ],
+        },
+      });
+
+      const result = await client.callTool({
+        name: "get-preview-url",
+        arguments: { componentUuid: "page-1" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.studioUrl).toBe(
+        "https://studio.example.com/projects/proj-123"
+      );
+      expect(output.previewUrl).toBe(
+        "https://studio.example.com/projects/proj-123/preview/home"
+      );
+    });
+
+    it("returns only studio URL for non-page components", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        site: {
+          components: [
+            { uuid: "comp-1", name: "Header" }, // No pageMeta
+          ],
+        },
+      });
+
+      const result = await client.callTool({
+        name: "get-preview-url",
+        arguments: { componentUuid: "comp-1" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.studioUrl).toBe(
+        "https://studio.example.com/projects/proj-123"
+      );
+      expect(output.previewUrl).toBeUndefined();
+    });
+
+    it("returns error for unknown component UUID", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        site: { components: [] },
+      });
+
+      const result = await client.callTool({
+        name: "get-preview-url",
+        arguments: { componentUuid: "nonexistent" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("not found");
+    });
+  });
+
+  describe("delete-component", () => {
+    it("deletes a component and returns success", async () => {
+      mockDeleteComponent.mockResolvedValue({
+        save: { revisionNum: 15, incremental: true },
+        deletedName: "OldCard",
+        deletedUuid: "comp-old",
+      });
+
+      const result = await client.callTool({
+        name: "delete-component",
+        arguments: { componentUuid: "comp-old" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.deletedName).toBe("OldCard");
+      expect(output.deletedUuid).toBe("comp-old");
+      expect(output.message).toContain("Deleted");
+      expect(mockDeleteComponent).toHaveBeenCalledWith(
+        mockApiClient,
+        "comp-old",
+        undefined
+      );
+    });
+
+    it("passes force flag through to implementation", async () => {
+      mockDeleteComponent.mockResolvedValue({
+        save: { revisionNum: 16, incremental: true },
+        deletedName: "ReferencedComp",
+        deletedUuid: "comp-ref",
+      });
+
+      await client.callTool({
+        name: "delete-component",
+        arguments: { componentUuid: "comp-ref", force: true },
+      });
+
+      expect(mockDeleteComponent).toHaveBeenCalledWith(
+        mockApiClient,
+        "comp-ref",
+        true
+      );
+    });
+
+    it("returns error when references exist without force", async () => {
+      mockDeleteComponent.mockRejectedValue(
+        new Error('Cannot delete "Card": referenced by HomePage, AboutPage.')
+      );
+
+      const result = await client.callTool({
+        name: "delete-component",
+        arguments: { componentUuid: "comp-card" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("referenced by");
     });
   });
 
