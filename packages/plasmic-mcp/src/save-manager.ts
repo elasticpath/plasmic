@@ -16,6 +16,7 @@ import { PlasmicApiClient, PlasmicApiError } from "./api-client.js";
 import type { RecordedChanges } from "@/wab/shared/core/observable-model";
 import { requireSession } from "./session.js";
 import { modelSchemaHash } from "@/wab/shared/model/classes-metas";
+import { assertSiteInvariants } from "@/wab/shared/site-invariants";
 
 export interface SaveResult {
   revisionNum: number;
@@ -63,6 +64,16 @@ export class SaveManager {
     }
 
     const newRevisionNum = revisionNum + 1;
+
+    // Validate site invariants before saving (matches Studio's StudioCtx.trySave())
+    try {
+      assertSiteInvariants(site);
+    } catch (err: any) {
+      throw new Error(
+        `Site invariant violation: ${err.message} ` +
+          `Use refresh-project to reload the latest valid version, then retry your edit.`
+      );
+    }
 
     try {
       await this.apiClient.saveRevision(projectId, newRevisionNum, {
@@ -120,6 +131,16 @@ export class SaveManager {
 
     const bundle = bundler.bundle(site, projectId);
     const newRevisionNum = revisionNum + 1;
+
+    // Validate site invariants before saving (matches Studio's StudioCtx.trySave())
+    try {
+      assertSiteInvariants(site);
+    } catch (err: any) {
+      throw new Error(
+        `Site invariant violation: ${err.message} ` +
+          `Use refresh-project to reload the latest valid version, then retry your edit.`
+      );
+    }
 
     await this.apiClient.saveRevision(projectId, newRevisionNum, {
       data: JSON.stringify(bundle),

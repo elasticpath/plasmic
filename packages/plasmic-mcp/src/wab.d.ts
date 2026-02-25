@@ -223,3 +223,17 @@ declare module "@/wab/shared/TplMgr" {
     ensureBaseVariant(comp: any): any;
   }
 }
+
+declare module "@/wab/shared/site-invariants" {
+  export class InvariantError extends Error {
+    constructor(message: string, data?: any);
+    data?: any;
+  }
+
+  /** Validates the entire site model. Throws InvariantError on first violation.
+   *  Matches the check that Studio performs in StudioCtx.trySave(). */
+  export function assertSiteInvariants(
+    site: any,
+    componentUuidsToSkip?: Set<string>
+  ): void;
+}

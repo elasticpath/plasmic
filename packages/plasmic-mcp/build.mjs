@@ -75,6 +75,7 @@ const bundlePlugin = {
       /^@plasmicpkgs\//,
       /^@ant-design\//,
       /^@react-awesome-query-builder\//,
+      /^@sentry/,
       /^antd/,
       /^react$/,
       /^react\//,

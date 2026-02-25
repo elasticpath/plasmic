@@ -39,6 +39,77 @@ import { pushUndoOperation } from "./undo-manager.js";
 // --- Helpers ---
 
 /**
+ * Sanitize CSS styles to prevent site invariant violations.
+ *
+ * Plasmic's "new background system" rejects any style property starting with
+ * "background-" (see site-invariants.ts line 738). All backgrounds must use
+ * the `background` shorthand. This matches how Studio stores backgrounds:
+ *   - ColorFill.showCss() → "linear-gradient(color, color)"
+ *   - ImageBackground.showCss() → "url(...)"
+ *
+ * Accepts both camelCase and kebab-case input.
+ */
+export function sanitizeStyles(
+  styles: Record<string, string>
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  let bgColor: string | undefined;
+  let bgImage: string | undefined;
+  const skippedLonghands: string[] = [];
+
+  for (const [key, value] of Object.entries(styles)) {
+    switch (key) {
+      case "backgroundColor":
+      case "background-color":
+        bgColor = value;
+        break;
+      case "backgroundImage":
+      case "background-image":
+        bgImage = value;
+        break;
+      case "backgroundSize":
+      case "background-size":
+      case "backgroundPosition":
+      case "background-position":
+      case "backgroundRepeat":
+      case "background-repeat":
+      case "backgroundAttachment":
+      case "background-attachment":
+      case "backgroundOrigin":
+      case "background-origin":
+      case "backgroundClip":
+      case "background-clip":
+        skippedLonghands.push(key);
+        break;
+      case "background":
+        result["background"] = value;
+        break;
+      default:
+        result[key] = value;
+        break;
+    }
+  }
+
+  // Don't override an explicit background shorthand
+  if (!result["background"]) {
+    if (bgImage) {
+      result["background"] = bgImage;
+    } else if (bgColor) {
+      result["background"] = `linear-gradient(${bgColor}, ${bgColor})`;
+    }
+  }
+
+  if (skippedLonghands.length > 0) {
+    console.error(
+      `[plasmic-mcp] Warning: Dropped unsupported background longhands: ${skippedLonghands.join(", ")}. ` +
+        `Use the "background" shorthand instead.`
+    );
+  }
+
+  return result;
+}
+
+/**
  * Find a component by UUID from the active session.
  * Throws if the component is not found.
  */
@@ -271,11 +342,12 @@ export async function updateStyles(
   const vs = tplMgr.ensureBaseVariantSetting(tpl);
 
   const tracker = getChangeTracker();
-  const updatedProperties = Object.keys(styles);
+  const sanitized = sanitizeStyles(styles);
+  const updatedProperties = Object.keys(sanitized);
 
   const changes = tracker.withRecording(() => {
     const rsh = RSH(vs.rs, tpl);
-    rsh.merge(styles);
+    rsh.merge(sanitized);
   });
 
   const componentIid = getComponentIid(component);
@@ -363,7 +435,7 @@ function plasmicElementToTpl(
     // Apply explicit styles
     if ("styles" in element && element.styles) {
       const rsh = RSH(vs.rs, tpl);
-      rsh.merge(element.styles);
+      rsh.merge(sanitizeStyles(element.styles));
     }
 
     return tpl;
@@ -403,7 +475,7 @@ function plasmicElementToTpl(
   // Apply explicit styles
   if ("styles" in element && element.styles) {
     const rsh = RSH(vs.rs, tpl);
-    rsh.merge(element.styles);
+    rsh.merge(sanitizeStyles(element.styles));
   }
 
   // Set image src
