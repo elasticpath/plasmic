@@ -66,9 +66,9 @@ export interface ListProjectsResponse {
 export interface NewComponentReq {
   name?: string;
   path?: string;
-  body: PlasmicElement;
+  body?: PlasmicElement;
   byUuid?: string;
-  cloneFrom?: string;
+  cloneFrom?: { uuid: string } | { name: string };
 }
 
 export interface UpdateProjectReq {

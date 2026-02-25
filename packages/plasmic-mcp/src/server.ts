@@ -700,6 +700,209 @@ export function createServer(): McpServer {
     }
   );
 
+  // --- create-component ---
+  // Creates a new reusable component (not a page) via REST API.
+  // Same pattern as create-page but without the path parameter.
+  // Without a path, the server creates ComponentType.Plain instead of ComponentType.Page.
+  server.tool(
+    "create-component",
+    "Create a new reusable component in the active Plasmic project with a PlasmicElement tree",
+    {
+      name: z
+        .string()
+        .describe("Component name in PascalCase (e.g., 'HeroSection')"),
+      body: z
+        .any()
+        .describe("PlasmicElement JSON tree defining the component structure"),
+    },
+    async ({ name, body }) => {
+      try {
+        const session = requireSession();
+
+        await apiClient.updateProject(session.projectId, {
+          newComponents: [{ name, body }],
+        });
+
+        // Reload model so the new component is visible in subsequent queries
+        try {
+          disposeChangeTracker();
+          clearNodeCache();
+          const {
+            site,
+            bundler,
+            projectName,
+            revisionNum: newRevisionNum,
+            modelVersion: newModelVersion,
+            hostlessDataVersion: newHostlessDataVersion,
+          } = await loadProject(apiClient, session.projectId);
+          setSession({
+            projectId: session.projectId,
+            projectName,
+            site,
+            bundler,
+            revisionNum: newRevisionNum,
+            modelVersion: newModelVersion,
+            hostlessDataVersion: newHostlessDataVersion,
+            projectUuid: session.projectId,
+          });
+          initChangeTracker(site);
+          console.error(
+            "[plasmic-mcp] Model reloaded after component creation"
+          );
+        } catch (reloadErr) {
+          console.error(
+            "[plasmic-mcp] Warning: Could not reload model after component creation:",
+            reloadErr
+          );
+        }
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  name,
+                  message: `Component "${name}" created`,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error creating component: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // --- clone-component ---
+  // Duplicates an existing component or page via REST API.
+  // Uses the cloneFrom field on NewComponentReq to deep-clone the source.
+  // The server's tplMgr.cloneComponent() copies the entire Tpl tree.
+  server.tool(
+    "clone-component",
+    "Duplicate an existing page or component. Creates a deep copy with a new name.",
+    {
+      sourceUuid: z
+        .string()
+        .describe("UUID of the component or page to clone (from list-components)"),
+      name: z
+        .string()
+        .describe("Name for the cloned component in PascalCase (e.g., 'HeroSectionV2')"),
+      path: z
+        .string()
+        .optional()
+        .describe("URL path for the clone if it should be a page (e.g., '/products-v2'). Omit to create a non-page component."),
+    },
+    async ({ sourceUuid, name, path: clonePath }) => {
+      try {
+        const session = requireSession();
+
+        // Verify source exists
+        const source = session.site.components?.find(
+          (c: any) => c.uuid === sourceUuid
+        );
+        if (!source) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Error: Source component UUID "${sourceUuid}" not found. Use list-components to see available components.`,
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        const req: any = {
+          name,
+          cloneFrom: { uuid: sourceUuid },
+        };
+        if (clonePath) {
+          req.path = clonePath;
+        }
+
+        await apiClient.updateProject(session.projectId, {
+          newComponents: [req],
+        });
+
+        // Reload model so the clone is visible in subsequent queries
+        try {
+          disposeChangeTracker();
+          clearNodeCache();
+          const {
+            site,
+            bundler,
+            projectName,
+            revisionNum: newRevisionNum,
+            modelVersion: newModelVersion,
+            hostlessDataVersion: newHostlessDataVersion,
+          } = await loadProject(apiClient, session.projectId);
+          setSession({
+            projectId: session.projectId,
+            projectName,
+            site,
+            bundler,
+            revisionNum: newRevisionNum,
+            modelVersion: newModelVersion,
+            hostlessDataVersion: newHostlessDataVersion,
+            projectUuid: session.projectId,
+          });
+          initChangeTracker(site);
+          console.error(
+            "[plasmic-mcp] Model reloaded after component cloning"
+          );
+        } catch (reloadErr) {
+          console.error(
+            "[plasmic-mcp] Warning: Could not reload model after component cloning:",
+            reloadErr
+          );
+        }
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  name,
+                  clonedFrom: source.name,
+                  clonedFromUuid: sourceUuid,
+                  path: clonePath,
+                  message: `Component "${name}" cloned from "${source.name}"${clonePath ? ` at ${clonePath}` : ""}`,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error cloning component: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
   // --- update-text ---
   // Updates text content on a TplTag node's base variant.
   // Uses node-resolver to find the target, ChangeRecorder for mutation tracking,

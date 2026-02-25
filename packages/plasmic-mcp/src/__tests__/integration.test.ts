@@ -667,6 +667,84 @@ describe("integration tests", () => {
   });
 
   // =====================================================================
+  // Component Creation & Cloning
+  // =====================================================================
+
+  describe("create-component and clone-component", () => {
+    it("create-component → calls API and returns success", async () => {
+      const body = {
+        type: "vbox",
+        styles: { padding: "20px" },
+        children: [
+          { type: "text", tag: "h2", value: "Card Title" },
+          { type: "text", tag: "p", value: "Card description" },
+        ],
+      };
+
+      const result = await client.callTool({
+        name: "create-component",
+        arguments: { name: "CardComponent", body },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.name).toBe("CardComponent");
+      expect(output.message).toContain("CardComponent");
+    });
+
+    it("clone-component → clones existing component and returns metadata", async () => {
+      const result = await client.callTool({
+        name: "clone-component",
+        arguments: {
+          sourceUuid: "comp-header-uuid",
+          name: "HeaderV2",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.name).toBe("HeaderV2");
+      expect(output.clonedFrom).toBe("Header");
+      expect(output.clonedFromUuid).toBe("comp-header-uuid");
+    });
+
+    it("clone-component with path → creates a page clone", async () => {
+      const result = await client.callTool({
+        name: "clone-component",
+        arguments: {
+          sourceUuid: "page-home-uuid",
+          name: "HomepageCopy",
+          path: "/home-copy",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.name).toBe("HomepageCopy");
+      expect(output.clonedFrom).toBe("Homepage");
+      expect(output.path).toBe("/home-copy");
+    });
+
+    it("clone-component with invalid sourceUuid → returns error", async () => {
+      const result = await client.callTool({
+        name: "clone-component",
+        arguments: {
+          sourceUuid: "nonexistent-uuid",
+          name: "BadClone",
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      const text = result.content[0].text;
+      expect(text).toContain("nonexistent-uuid");
+      expect(text).toContain("not found");
+    });
+  });
+
+  // =====================================================================
   // Nice-to-have: add-child / remove-child
   // =====================================================================
 

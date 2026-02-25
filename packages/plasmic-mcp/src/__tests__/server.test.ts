@@ -1017,6 +1017,214 @@ describe("tool handlers", () => {
     });
   });
 
+  describe("create-component", () => {
+    it("creates component via API and reloads model", async () => {
+      const newSite = {
+        components: [
+          { uuid: "new-comp", name: "HeroSection" },
+        ],
+      };
+
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        projectName: "Test Project",
+      });
+      mockApiClient.updateProject.mockResolvedValue({});
+      mockLoadProject.mockResolvedValue({
+        site: newSite,
+        bundler: {},
+        projectName: "Test Project",
+        revisionNum: 6,
+        modelVersion: 2,
+        hostlessDataVersion: 0,
+      });
+
+      const body = { type: "vbox", children: [{ type: "text", value: "Hero" }] };
+
+      const result = await client.callTool({
+        name: "create-component",
+        arguments: { name: "HeroSection", body },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.name).toBe("HeroSection");
+
+      // Verify API call — no path (component, not page)
+      expect(mockApiClient.updateProject).toHaveBeenCalledWith("proj-123", {
+        newComponents: [{ name: "HeroSection", body }],
+      });
+
+      // Verify model reload
+      expect(mockDisposeChangeTracker).toHaveBeenCalled();
+      expect(mockClearNodeCache).toHaveBeenCalled();
+      expect(mockLoadProject).toHaveBeenCalledWith(mockApiClient, "proj-123");
+      expect(mockSetSession).toHaveBeenCalled();
+      expect(mockInitChangeTracker).toHaveBeenCalledWith(newSite);
+    });
+
+    it("succeeds even when model reload fails (non-fatal)", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        projectName: "Test Project",
+      });
+      mockApiClient.updateProject.mockResolvedValue({});
+      mockLoadProject.mockRejectedValue(new Error("Reload failed"));
+
+      const result = await client.callTool({
+        name: "create-component",
+        arguments: { name: "Test", body: {} },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+    });
+
+    it("returns error when API call fails", async () => {
+      mockRequireSession.mockReturnValue({ projectId: "proj-123" });
+      mockApiClient.updateProject.mockRejectedValue(new Error("Bad request"));
+
+      const result = await client.callTool({
+        name: "create-component",
+        arguments: { name: "Test", body: {} },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Error creating component");
+    });
+  });
+
+  describe("clone-component", () => {
+    it("clones component via API with sourceUuid and reloads model", async () => {
+      const newSite = {
+        components: [
+          { uuid: "orig-comp", name: "Original" },
+          { uuid: "cloned-comp", name: "OriginalCopy" },
+        ],
+      };
+
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        site: {
+          components: [
+            { uuid: "orig-comp", name: "Original" },
+          ],
+        },
+      });
+      mockApiClient.updateProject.mockResolvedValue({});
+      mockLoadProject.mockResolvedValue({
+        site: newSite,
+        bundler: {},
+        projectName: "Test Project",
+        revisionNum: 7,
+        modelVersion: 2,
+        hostlessDataVersion: 0,
+      });
+
+      const result = await client.callTool({
+        name: "clone-component",
+        arguments: { sourceUuid: "orig-comp", name: "OriginalCopy" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.name).toBe("OriginalCopy");
+      expect(output.clonedFrom).toBe("Original");
+      expect(output.clonedFromUuid).toBe("orig-comp");
+
+      // Verify API call uses cloneFrom with uuid
+      expect(mockApiClient.updateProject).toHaveBeenCalledWith("proj-123", {
+        newComponents: [{ name: "OriginalCopy", cloneFrom: { uuid: "orig-comp" } }],
+      });
+
+      // Verify model reload
+      expect(mockDisposeChangeTracker).toHaveBeenCalled();
+      expect(mockClearNodeCache).toHaveBeenCalled();
+    });
+
+    it("clones as a page when path is provided", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        site: {
+          components: [
+            { uuid: "page-1", name: "Homepage", pageMeta: { path: "/" } },
+          ],
+        },
+      });
+      mockApiClient.updateProject.mockResolvedValue({});
+      mockLoadProject.mockResolvedValue({
+        site: { components: [] },
+        bundler: {},
+        projectName: "Test",
+        revisionNum: 8,
+        modelVersion: 2,
+        hostlessDataVersion: 0,
+      });
+
+      const result = await client.callTool({
+        name: "clone-component",
+        arguments: {
+          sourceUuid: "page-1",
+          name: "HomepageV2",
+          path: "/v2",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.path).toBe("/v2");
+
+      expect(mockApiClient.updateProject).toHaveBeenCalledWith("proj-123", {
+        newComponents: [{
+          name: "HomepageV2",
+          cloneFrom: { uuid: "page-1" },
+          path: "/v2",
+        }],
+      });
+    });
+
+    it("returns error when source UUID not found", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        site: {
+          components: [],
+        },
+      });
+
+      const result = await client.callTool({
+        name: "clone-component",
+        arguments: { sourceUuid: "nonexistent", name: "Clone" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("not found");
+      expect(result.content[0].text).toContain("list-components");
+    });
+
+    it("returns error when API call fails", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        site: {
+          components: [
+            { uuid: "comp-1", name: "Source" },
+          ],
+        },
+      });
+      mockApiClient.updateProject.mockRejectedValue(new Error("Server error"));
+
+      const result = await client.callTool({
+        name: "clone-component",
+        arguments: { sourceUuid: "comp-1", name: "Clone" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Error cloning component");
+    });
+  });
+
   describe("update-text", () => {
     it("delegates to updateText and returns structured result", async () => {
       mockUpdateText.mockResolvedValue({

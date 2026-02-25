@@ -11,6 +11,8 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `export-component-tree(componentUuid)` — Write full tree to temp file. Returns file path + compact summary. Use Read tool to inspect sections.
 - `get-tokens(type?)` — Get design tokens (colors, spacing, fonts) grouped by type. Optional type filter. Requires active project.
 - `create-page(name, path, body)` — Create a new page with a PlasmicElement tree. Requires active project.
+- `create-component(name, body)` — Create a new reusable component (not a page) with a PlasmicElement tree.
+- `clone-component(sourceUuid, name, path?)` — Duplicate an existing page or component. Deep copy with a new name.
 - `update-text(componentUuid, nodeRef, text)` — Change text content on a node.
 - `update-styles(componentUuid, nodeRef, styles)` — Change CSS styles on a node.
 - `add-child(componentUuid, parentRef, child, position)` — Add a new element.
@@ -24,6 +26,8 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 1. If no project is set, call `list-projects` and ask the user which one to work on, then call `set-project`.
 2. Interpret the user's request and route to the appropriate action:
    - "create a page", "add a page", "make a new page" → build a PlasmicElement tree and call `create-page`. Use `/plasmic-patterns` for validated page section patterns (hero, grid, card, form, pricing, testimonial, CTA, navigation, footer).
+   - "create a component", "make a card component", "build a header component" → delegate to `/plasmic-create-component`
+   - "duplicate the header", "clone this component", "copy the homepage" → delegate to `/plasmic-create-component` (it handles both create and clone)
    - "what pages exist", "show me the project", "list components" → call `get-project-meta` and `list-components`
    - "show me the homepage", "what does X look like" → find the component UUID via `list-components`, then call `get-component-summary` (for overview) or `get-node-details` (for specific nodes)
    - "what colors are available", "show me the design tokens", "what fonts" → call `get-tokens` (optionally with a type filter)

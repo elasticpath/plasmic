@@ -12,25 +12,29 @@ Last updated: 2026-02-26
 | M2 — Edit Skills | **Complete** | /plasmic-edit, updated /plasmic router |
 | M2 — Tests | **Complete** | 210 tests across 13 test files |
 | M3 — Context-Efficient Queries | **Complete** | 3 new tools, enhanced get-component-tree, node resolver cache, 246 total tests |
-| M3.5 — Integration Tests | **Complete** | 12 tests using real MCP modules with duck-typed Site fixture, 258 total tests |
-| M4 — Component Creation & Cloning | **Not started** | No spec yet |
+| M3.5 — Integration Tests | **Complete** | 16 tests using real MCP modules with duck-typed Site fixture |
+| M4 — Component Creation & Cloning | **Complete** | 2 tools, skill file, router updated, 269 total tests |
 | M5 — E2E Integration Tests | **Not started** | Requires live Plasmic instance |
 
 ---
 
 ---
 
-## Priority 2 — Component Creation & Cloning (no spec yet)
+## Priority 2 — Component Creation & Cloning (COMPLETE)
 
-Currently only pages can be created. The `UpdateProjectReq` type already supports `newComponents` without a `path` (for non-page components) and `cloneFrom` (for duplicating), but no MCP tools or skills expose these capabilities. Creating reusable components is essential for a scalable page creation workflow.
+Spec: `specs/plasmic-component-creation.md`
 
-- [ ] **P2.1** Author spec at `specs/plasmic-component-creation.md`
-- [ ] **P2.2** Register `create-component` tool in `server.ts` — same as `create-page` but without `path` parameter (component, not page)
-- [ ] **P2.3** Register `clone-component` tool in `server.ts` — uses `cloneFrom` field on `NewComponentReq` to duplicate an existing page or component
-- [ ] **P2.4** Create `/plasmic-create-component` skill in `.claude/commands/` — natural language component creation workflow
-- [ ] **P2.5** Update `/plasmic` router to route "create component" intents to the new skill
-- [ ] **P2.6** Add tests for `create-component` and `clone-component` tool handlers
-- [ ] **P2.7** Update `/plasmic-patterns` with common component patterns (not just page sections)
+Two new MCP tools (`create-component`, `clone-component`) allow creating reusable components and duplicating existing pages/components. Both reload the in-memory model after creation. The `/plasmic-create-component` skill handles both creation and cloning workflows.
+
+- [x] **P2.1** Author spec at `specs/plasmic-component-creation.md`
+- [x] **P2.2** Register `create-component` tool in `server.ts` — same as `create-page` but without `path` parameter
+- [x] **P2.3** Register `clone-component` tool in `server.ts` — uses `cloneFrom: { uuid }` to deep-clone
+- [x] **P2.4** Create `/plasmic-create-component` skill with create and clone instructions
+- [x] **P2.5** Update `/plasmic` router with `create-component`/`clone-component` tools and routing rules
+- [x] **P2.6** Add tests: 7 unit tests in server.test.ts + 4 integration tests in integration.test.ts (269 total)
+- [x] **P2.7** Update `/plasmic-patterns` to reference component creation
+- [x] **P2.8** Fix `cloneFrom` type in types.ts (`string` → `{ uuid: string } | { name: string }`)
+- [x] **P2.9** Make `body` optional in `NewComponentReq` (not needed for cloning)
 
 ---
 

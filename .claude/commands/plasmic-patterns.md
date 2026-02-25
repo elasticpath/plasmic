@@ -1,4 +1,4 @@
-PlasmicElement pattern library for building pages. These are validated, server-compatible patterns that work with the `create-page` tool.
+PlasmicElement pattern library for building pages and components. These are validated, server-compatible patterns that work with the `create-page` and `create-component` tools.
 
 ## CSS Rules
 
