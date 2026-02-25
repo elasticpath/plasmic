@@ -1,8 +1,16 @@
 import { useEffect, useState, useRef } from "react";
 import debounce from "debounce";
 import { ElasticPathBundleProduct } from "../types";
-import { convertSelectionsForAPI } from "../utils/bundleSelectionUtils";
+import {
+  convertSelectionsForAPI,
+  areSelectionsEqual,
+} from "../utils/bundleSelectionUtils";
 import { shouldTriggerConfiguration } from "../utils/configurationComparison";
+import { DEFAULT_DEBOUNCE_MS } from "../../const";
+import { handleAPIError } from "../../utils/errorHandling";
+import { createLogger } from "../../utils/logger";
+
+const log = createLogger("useBundleConfigOrchestration");
 
 // Type for debounced function with clear method
 interface DebouncedFunction {
@@ -15,17 +23,23 @@ interface UseBundleConfigurationOrchestrationProps {
   isInitialized: boolean;
   isValid: boolean;
   bundleProduct?: ElasticPathBundleProduct;
-  configureBundleSelection: (options: Record<string, Record<string, number>>) => Promise<any>;
+  configureBundleSelection: (
+    options: Record<string, Record<string, number>>
+  ) => Promise<any>;
   debounceMs?: number;
 }
 
 interface UseBundleConfigurationOrchestrationReturn {
   isConfiguring: boolean;
-  lastConfigured: string;
+  error: Error | null;
 }
 
 /**
- * Orchestrates bundle configuration API calls with debouncing and duplicate prevention
+ * Orchestrates bundle configuration API calls with debouncing and duplicate prevention.
+ *
+ * Uses areSelectionsEqual() for structural comparison (avoids JSON.stringify key-ordering issues)
+ * and a ref for last-configured tracking (no state sync needed — ref is always current in closures).
+ * Exposes error state so consumers (EPBundleProvider) can surface configuration failures.
  */
 export function useBundleConfigurationOrchestration({
   selectedOptions,
@@ -33,39 +47,49 @@ export function useBundleConfigurationOrchestration({
   isValid,
   bundleProduct,
   configureBundleSelection,
-  debounceMs = 500,
+  debounceMs = DEFAULT_DEBOUNCE_MS,
 }: UseBundleConfigurationOrchestrationProps): UseBundleConfigurationOrchestrationReturn {
-  // Track last configured state to avoid duplicate API calls
-  const [lastConfigured, setLastConfigured] = useState<string>("");
   const [isConfiguring, setIsConfiguring] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
 
-  // Create a ref to hold the latest lastConfigured value
-  const lastConfiguredRef = useRef(lastConfigured);
-  
-  // Update the ref whenever lastConfigured changes
-  useEffect(() => {
-    lastConfiguredRef.current = lastConfigured;
-  }, [lastConfigured]);
+  // Ref tracks last successfully configured selections — no state needed since
+  // no consumer renders based on this value (it's only used for dedup comparison).
+  const lastConfiguredRef = useRef<Record<string, Record<string, number>>>({});
 
-  // Configuration function with debouncing
+  // Debounced configuration function
   const configureFunction = useRef<DebouncedFunction | null>(null);
-  
+
   useEffect(() => {
-    configureFunction.current = debounce(async (options: Record<string, Record<string, number>>) => {
-      try {
-        setIsConfiguring(true);
-        const optionsString = JSON.stringify(options);
-        if (optionsString !== lastConfiguredRef.current && Object.keys(options).length > 0) {
-          await configureBundleSelection(options);
-          setLastConfigured(optionsString);
+    configureFunction.current = debounce(
+      async (options: Record<string, Record<string, number>>) => {
+        // Early return for duplicates — avoids unnecessary isConfiguring flash
+        if (
+          Object.keys(options).length === 0 ||
+          areSelectionsEqual(options, lastConfiguredRef.current)
+        ) {
+          return;
         }
-      } catch (error) {
-        console.error("Failed to process bundle configuration:", error);
-      } finally {
-        setIsConfiguring(false);
-      }
-    }, debounceMs);
-    
+
+        try {
+          setIsConfiguring(true);
+          setError(null);
+          await configureBundleSelection(options);
+          lastConfiguredRef.current = options;
+        } catch (err) {
+          const apiError = handleAPIError(err, "bundle configuration");
+          setError(
+            new Error(apiError.message)
+          );
+          log.error("Failed to process bundle configuration", {
+            error: apiError.message,
+          } as Record<string, unknown>);
+        } finally {
+          setIsConfiguring(false);
+        }
+      },
+      debounceMs
+    );
+
     return () => {
       if (configureFunction.current) {
         configureFunction.current.clear();
@@ -73,24 +97,33 @@ export function useBundleConfigurationOrchestration({
     };
   }, [configureBundleSelection, debounceMs]);
 
-  // Configure bundle when selections change (but not during initialization)
+  // Trigger configuration when selections change
   useEffect(() => {
-    // Convert selections to API format first
     const apiFormattedSelections = convertSelectionsForAPI(selectedOptions);
-    
-    // Check if configuration should be triggered (using API-formatted selections for comparison)
-    if (!shouldTriggerConfiguration(isInitialized, isValid, apiFormattedSelections, bundleProduct)) {
+
+    if (
+      !shouldTriggerConfiguration(
+        isInitialized,
+        isValid,
+        apiFormattedSelections,
+        bundleProduct
+      )
+    ) {
       return;
     }
-    
+
     if (configureFunction.current) {
       configureFunction.current(apiFormattedSelections);
     }
-  }, [selectedOptions, isValid, isInitialized, bundleProduct?.meta?.bundle_configuration]);
-
+  }, [
+    selectedOptions,
+    isValid,
+    isInitialized,
+    bundleProduct?.meta?.bundle_configuration,
+  ]);
 
   return {
     isConfiguring,
-    lastConfigured,
+    error,
   };
 }

@@ -1,230 +1,161 @@
-import { useSelector } from "@plasmicapp/host";
+import {
+  DataProvider,
+  useSelector,
+  usePlasmicCanvasContext,
+} from "@plasmicapp/host";
 import registerComponent, {
   ComponentMeta,
 } from "@plasmicapp/host/registerComponent";
-import React from "react";
+import React, { useState } from "react";
 import { useFormContext } from "react-hook-form";
-import { CommerceError, Product } from "@plasmicpkgs/commerce";
+import type { Product } from "@plasmicpkgs/commerce";
 import useAddItem from "./cart/use-add-item";
-import { useProductStock } from "./inventory/use-stock";
 import { Registerable } from "./registerable";
+import { createLogger } from "./utils/logger";
 import {
   extractCartItemFromForm,
   validateAndParseQuantity,
-  resolveLocationSlug,
-  toCartItemBody,
 } from "./cart/utils/cartDataBuilder";
-import {
-  validateStockAvailability,
-  getStockStatusInfo,
-  shouldPerformStockCheck,
-} from "./inventory/utils/stockValidation";
-import { getAvailableStockForLocation } from "./inventory/utils/stockCalculations";
-import { createFormContextError, formatUserErrorMessage } from "./utils/errorHandling";
+
+const log = createLogger("EPAddToCartButton");
+
+type PreviewState = "auto" | "enabled" | "loading" | "error";
 
 interface EPAddToCartButtonProps {
   children?: React.ReactNode;
-  enableStockCheck?: boolean;
-  locationId?: string;
-  locationSlug?: string;
-  showStockStatus?: boolean;
+  className?: string;
+  previewState?: PreviewState;
 }
 
 export const epAddToCartButtonMeta: ComponentMeta<EPAddToCartButtonProps> = {
   name: "plasmic-commerce-ep-add-to-cart-button",
   displayName: "EP Add To Cart Button",
-  description: "Elastic Path specific add to cart button with bundle and stock support",
+  description:
+    "Adds the current product to the cart when clicked. Reads variant, quantity, bundle configuration, and location from form context. Must be placed inside a Product Box.",
   props: {
     children: {
       type: "slot",
       defaultValue: [
         {
-          type: "button",
+          type: "text",
           value: "Add To Cart",
         },
       ],
     },
-    enableStockCheck: {
-      type: "boolean",
-      displayName: "Enable Stock Check",
-      description: "Check product stock before allowing add to cart",
-      defaultValue: false,
-    },
-    locationId: {
-      type: "string",
-      displayName: "Location ID",
-      description: "Specific location ID to check stock for (optional)",
-    },
-    locationSlug: {
-      type: "string",
-      displayName: "Location Slug",
-      description: "Specific location slug to check stock for (optional)",
-    },
-    showStockStatus: {
-      type: "boolean",
-      displayName: "Show Stock Status",
-      description: "Display stock information with the button",
-      defaultValue: false,
+    previewState: {
+      type: "choice",
+      options: ["auto", "enabled", "loading", "error"],
+      defaultValue: "auto",
+      displayName: "Preview State",
+      description:
+        "Force a preview state with sample data for design-time editing",
+      advanced: true,
     },
   },
   importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
   importName: "EPAddToCartButton",
+  providesData: true,
 };
 
 export function EPAddToCartButton(props: EPAddToCartButtonProps) {
-  const { children, enableStockCheck = false, locationId, locationSlug, showStockStatus = false } = props;
+  const { children, className, previewState = "auto" } = props;
 
   const product = useSelector("currentProduct") as Product | undefined;
   const form = useFormContext();
   const addItem = useAddItem();
+  const inEditor = !!usePlasmicCanvasContext();
 
-  // Hook for stock checking when enabled
-  const { stock, loading: stockLoading } = useProductStock(
-    product?.id || "",
-    undefined, // Don't filter by location in stock hook - we'll filter when needed
-    enableStockCheck && !!product?.id // Simple condition to avoid circular dependency
-  );
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Helper to get current target location slug
-  const getTargetLocationSlug = () => {
-    const formValues = form?.getValues();
-    return resolveLocationSlug(
-      formValues || {},
-      { locationSlug, locationId }
-    );
-  };
-
-  const getAvailableStock = (): number => {
-    if (!enableStockCheck || !stock) return Infinity;
-    
-    const targetLocationSlug = getTargetLocationSlug();
-    return getAvailableStockForLocation(stock, targetLocationSlug);
-  };
+  const useMock = previewState !== "auto";
+  const effectiveIsLoading = useMock
+    ? previewState === "loading"
+    : isLoading;
+  const effectiveError = useMock
+    ? previewState === "error" ? "Sample error message" : null
+    : error;
+  const effectiveIsDisabled = useMock
+    ? false
+    : (previewState === "auto" && inEditor && !product)
+      ? false
+      : (!product || isLoading);
 
   const addToCart = async () => {
     if (!form) {
-      const error = createFormContextError("EPAddToCartButton");
-      throw new CommerceError({ message: formatUserErrorMessage(error) });
+      log.warn("Add to cart aborted: no form context");
+      return;
+    }
+    if (!product) {
+      log.warn("Add to cart aborted: no product in context");
+      return;
     }
 
-    // Validate quantity
-    const quantityValidation = validateAndParseQuantity(form.getValues()["ProductQuantity"] ?? 1);
-    if (!quantityValidation.isValid) {
-      throw new CommerceError({ message: quantityValidation.errorMessage || "Invalid quantity" });
-    }
+    setError(null);
+    setIsLoading(true);
 
-    // Stock validation when enabled
-    if (shouldPerformStockCheck(product?.id || "", stock, enableStockCheck)) {
-      const targetLocationSlug = getTargetLocationSlug();
-      const stockValidation = validateStockAvailability(
-        stock!,
-        quantityValidation.quantity,
-        targetLocationSlug
+    try {
+      const formValues = form.getValues();
+      log.debug("Form values", formValues as Record<string, unknown>);
+
+      const quantityValidation = validateAndParseQuantity(
+        formValues["ProductQuantity"] ?? 1
       );
-
-      if (!stockValidation.isValid) {
-        throw new CommerceError({ message: stockValidation.errorMessage || "Insufficient stock" });
+      if (!quantityValidation.isValid) {
+        setError(quantityValidation.errorMessage || "Invalid quantity");
+        return;
       }
-    }
 
-    if (product) {
-      const cartItem = extractCartItemFromForm(
-        form.getValues(),
-        product,
-        { locationSlug, locationId }
-      );
+      const cartItem = extractCartItemFromForm(formValues, product, {});
+      log.debug("Cart item", { ...cartItem } as Record<string, unknown>);
+
       await addItem(cartItem);
+      log.info("Item added to cart successfully");
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to add item to cart";
+      log.error("Add to cart failed", { error: message } as Record<string, unknown>);
+      setError(message);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const availableStock = getAvailableStock();
-  const isOutOfStock = enableStockCheck && availableStock <= 0;
-  const isDisabled = isOutOfStock || stockLoading;
-
-  // If showing stock status, wrap in container
-  if (showStockStatus && enableStockCheck) {
-    const stockStatusInfo = getStockStatusInfo(availableStock);
-    
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        {/* Stock Status Display */}
-        <div style={{ fontSize: "0.875rem" }}>
-          {stockLoading ? (
-            <span style={{ color: "#666" }}>Checking stock...</span>
-          ) : (
-            <span 
-              style={{ 
-                color: stockStatusInfo.status === 'out-of-stock' ? "#d32f2f" :
-                       stockStatusInfo.status === 'low' ? "#f57c00" : "#388e3c",
-                fontWeight: "500"
-              }}
-            >
-              {stockStatusInfo.message}
-            </span>
-          )}
-        </div>
-        
-        {/* Button */}
-        {React.isValidElement(children) ? (
-          React.cloneElement(children, {
-            disabled: isDisabled,
-            onClick: (e: MouseEvent) => {
-              if (children.props.onClick && typeof children.props.onClick === "function") {
-                children.props.onClick(e);
-              }
-              if (!isDisabled) {
-                addToCart();
-              }
-            },
-            style: {
-              ...children.props.style,
-              opacity: isDisabled ? 0.6 : 1,
-              cursor: isDisabled ? "not-allowed" : "pointer",
-            },
-          } as Partial<unknown> & React.Attributes)
-        ) : (
-          <button
-            onClick={addToCart}
-            disabled={isDisabled}
-            style={{
-              padding: "12px 24px",
-              backgroundColor: isDisabled ? "#ccc" : "#007bff",
-              color: "#fff",
-              border: "none",
-              borderRadius: "4px",
-              fontSize: "1rem",
-              cursor: isDisabled ? "not-allowed" : "pointer",
-            }}
-          >
-            {isOutOfStock ? "Out of Stock" : "Add to Cart"}
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  // Standard button behavior
-  return React.isValidElement(children)
-    ? React.cloneElement(children, {
-        disabled: isDisabled,
-        onClick: (e: MouseEvent) => {
-          if (
-            children.props.onClick &&
-            typeof children.props.onClick === "function"
-          ) {
-            children.props.onClick(e);
-          }
-          if (!isDisabled) {
+  return (
+    <DataProvider
+      name="addToCartState"
+      data={{
+        isLoading: effectiveIsLoading,
+        isDisabled: effectiveIsDisabled,
+        error: effectiveError,
+      }}
+    >
+      <div
+        className={className}
+        onClick={() => {
+          if (!effectiveIsDisabled && !useMock) {
             addToCart();
           }
-        },
-        style: {
-          ...children.props.style,
-          opacity: isDisabled ? 0.6 : 1,
-          cursor: isDisabled ? "not-allowed" : "pointer",
-        },
-      } as Partial<unknown> & React.Attributes)
-    : null;
+        }}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (
+            (e.key === "Enter" || e.key === " ") &&
+            !effectiveIsDisabled &&
+            !useMock
+          ) {
+            e.preventDefault();
+            addToCart();
+          }
+        }}
+        aria-disabled={effectiveIsDisabled}
+        data-loading={effectiveIsLoading || undefined}
+      >
+        {children}
+      </div>
+    </DataProvider>
+  );
 }
 
 export function registerEPAddToCartButton(

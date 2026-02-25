@@ -1,6 +1,7 @@
 import React from "react";
 import registerComponent from "@plasmicapp/host/registerComponent";
 import { EPCheckoutConfirmation } from "./checkout/components/EPCheckoutConfirmation";
+import { Registerable } from "./registerable";
 
 
 export const epCheckoutConfirmationMeta = {
@@ -58,6 +59,8 @@ export const epCheckoutConfirmationMeta = {
   },
 };
 
-export function registerEPCheckoutConfirmation() {
-  registerComponent(EPCheckoutConfirmation, epCheckoutConfirmationMeta);
+export function registerEPCheckoutConfirmation(loader?: Registerable) {
+  const doRegisterComponent: typeof registerComponent = (...args) =>
+    loader ? loader.registerComponent(...args) : registerComponent(...args);
+  doRegisterComponent(EPCheckoutConfirmation, epCheckoutConfirmationMeta);
 }

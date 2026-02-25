@@ -1,3 +1,4 @@
+import type { Client } from "@epcc-sdk/sdks-shopper";
 import {
   Fetcher,
   MutationHook,
@@ -17,6 +18,7 @@ import { handler as useCategories } from "./site/use-categories";
 // import { handler as useCategories } from "./site/use-categories";
 import { useMemo } from "react";
 import initElasticPathClient from "./client";
+import { createLogger } from "./utils/logger";
 import {
   AddItemHook,
   GetCartHook,
@@ -33,11 +35,13 @@ export interface ElasticPathCredentials {
 
 // Create a minimal fetcher to satisfy the commerce package interface
 // Note: This is not used by the hooks as they call the SDK directly
+const log = createLogger("Provider");
+
 const createFetcher = (creds: ElasticPathCredentials): Fetcher => {
   return async (options) => {
     // This fetcher is not actually used since our hooks call the SDK directly
     // But we need to provide it to satisfy the commerce package interface
-    console.warn(
+    log.warn(
       "ElasticPath fetcher called but should not be used - hooks should call SDK directly"
     );
     return null;
@@ -70,8 +74,7 @@ export type ElasticPathProvider = {
   locale: string;
   cartCookie: string;
   fetcher: Fetcher; // Required by commerce package interface
-  client: any; // The Elastic Path SDK client instance
-  auth: any; // The Elastic Path auth instance
+  client: Client;
   cart: {
     useCart: typeof useCart;
     useAddItem: typeof useAddItem;

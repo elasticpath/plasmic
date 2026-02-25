@@ -34,7 +34,8 @@ export function useBundleConfiguration({
           path: { product_id: bundleId },
           body: {
             data: {
-              selected_options: selectedOptions as any,
+              // SDK types expect BigInt values but JSON serialization requires numbers
+              selected_options: selectedOptions as unknown as Record<string, Record<string, BigInt>>,
             },
           },
         });

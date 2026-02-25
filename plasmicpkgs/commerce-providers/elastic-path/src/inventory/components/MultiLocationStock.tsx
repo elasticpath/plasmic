@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useFormContext } from "react-hook-form";
+import { DEFAULT_LOW_STOCK_THRESHOLD } from "../../const";
 import { useProductStock } from "../use-stock";
 import { useLocations } from "../use-locations";
 import { StockIndicator } from "./StockIndicator";
@@ -7,7 +8,6 @@ import { LocationSelector } from "./LocationSelector";
 import type { MultiLocationStockProps } from "../types";
 import {
   filterStockByLocation,
-  calculateTotalStock,
 } from "../utils/stockCalculations";
 import {
   getLocationDisplayName,
@@ -21,7 +21,7 @@ export function MultiLocationStock({
   showLocationSelector = true,
   maxLocationsDisplay = 5,
   showStockNumbers = true,
-  lowStockThreshold = 5,
+  lowStockThreshold = DEFAULT_LOW_STOCK_THRESHOLD,
 }: MultiLocationStockProps) {
   const [selectedLocationId, setSelectedLocationId] = useState<string>("");
   const form = useFormContext();
@@ -32,7 +32,7 @@ export function MultiLocationStock({
   useEffect(() => {
     if (selectedLocationId && form) {
       const selectedLocation = locations.find(loc => loc.id === selectedLocationId);
-      const locationSlug = (selectedLocation?.attributes as any)?.slug || selectedLocationId;
+      const locationSlug = selectedLocation?.attributes?.slug || selectedLocationId;
       form.setValue("SelectedLocationSlug", locationSlug);
     } else if (form) {
       form.setValue("SelectedLocationSlug", undefined);
@@ -81,7 +81,7 @@ export function MultiLocationStock({
     ? (() => {
         // Find the matching location slug for the selected location ID
         const matchingLocation = locations.find(loc => loc.id === selectedLocationId);
-        const locationSlug = (matchingLocation?.attributes as any)?.slug;
+        const locationSlug = matchingLocation?.attributes?.slug;
         const filterIds = [selectedLocationId];
         if (locationSlug && locationSlug !== selectedLocationId) {
           filterIds.push(locationSlug);
@@ -101,12 +101,16 @@ export function MultiLocationStock({
   );
 
   return (
-    <div style={{ 
-      border: "1px solid #e0e0e0", 
-      borderRadius: "8px", 
-      padding: "16px",
-      backgroundColor: "#fff"
-    }}>
+    <div
+      role="region"
+      aria-label="Stock availability"
+      style={{
+        border: "1px solid #e0e0e0",
+        borderRadius: "8px",
+        padding: "16px",
+        backgroundColor: "#fff"
+      }}
+    >
       <div style={{ marginBottom: "16px" }}>
         <h4 style={{ margin: "0 0 8px 0", fontSize: "1rem", fontWeight: "600" }}>
           Stock Availability
@@ -144,13 +148,14 @@ export function MultiLocationStock({
       </div>
 
       {/* Location-specific stock */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+      <div role="list" aria-label="Stock by location" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
         {displayLocations.map((locationStock) => {
           const availableStock = Number(locationStock.stock.available || 0);
           const allocatedStock = Number(locationStock.stock.allocated || 0);
-          
+
           return (
             <div
+              role="listitem"
               key={locationStock.location.id}
               style={{
                 display: "flex",

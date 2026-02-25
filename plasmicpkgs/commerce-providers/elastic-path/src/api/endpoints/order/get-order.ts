@@ -1,10 +1,14 @@
 import { getAnOrder } from "@epcc-sdk/sdks-shopper";
 import type { GetOrderAPI } from "../../schemas/order";
 import type { ElasticPathOrder } from "../../../checkout/types";
-import { 
-  createSuccessResponse, 
-  createErrorResponse, 
-  validateMethod 
+import { formatCurrencyFromCents } from "../../../utils/formatCurrency";
+import { createLogger } from "../../../utils/logger";
+
+const log = createLogger("getOrder");
+import {
+  createSuccessResponse,
+  createErrorResponse,
+  validateMethod
 } from "../../utils/api-helpers";
 import { 
   validateEnvironmentVariables 
@@ -67,14 +71,14 @@ export default async function getOrderHandler(req: any, res: any) {
     );
 
     // Log successful order retrieval
-    console.log(`Order retrieved successfully: ${order.id}`);
+    log.info(`Order retrieved successfully: ${order.id}`);
 
     return res.status(200).json(createSuccessResponse<GetOrderAPI['data']>({
       order
     }));
 
   } catch (error) {
-    console.error('Get order error:', error);
+    log.error("Get order error", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
 
     let checkoutError: CheckoutError;
 
@@ -293,25 +297,11 @@ function enrichOrderData(order: ElasticPathOrder): ElasticPathOrder {
           : 0,
         hasShipping: !!order.shipping_address,
         hasTax: order.tax.amount > 0,
-        formattedTotal: formatCurrency(order.total.amount, order.total.currency),
+        formattedTotal: formatCurrencyFromCents(order.total.amount, order.total.currency),
         orderAge: calculateOrderAge(order.meta?.timestamps?.created_at)
       }
     }
   };
-}
-
-/**
- * Formats currency for display
- */
-function formatCurrency(amount: number, currency: string): string {
-  try {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency.toUpperCase()
-    }).format(amount / 100);
-  } catch {
-    return `${currency.toUpperCase()} ${(amount / 100).toFixed(2)}`;
-  }
 }
 
 /**

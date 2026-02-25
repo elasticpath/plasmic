@@ -1,4 +1,4 @@
-import { getACart, updateACartItem } from "@epcc-sdk/sdks-shopper";
+import { getACart, deleteACartItem } from "@epcc-sdk/sdks-shopper";
 import type {
   HookFetcherContext,
   MutationHook,
@@ -13,6 +13,11 @@ import { useCallback } from "react";
 import type { Cart, LineItem, RemoveItemHook } from "../types/cart";
 import { getCartId, normalizeCart, removeCartCookie } from "../utils";
 import useCart from "./use-cart";
+import { handleAPIError } from "../utils/errorHandling";
+import { getEPClient } from "../utils/getEPClient";
+import { createLogger } from "../utils/logger";
+
+const log = createLogger("useRemoveItem");
 
 export type RemoveItemFn<T = any> = T extends LineItem
   ? (input?: RemoveItemActionInput<T>) => Promise<Cart | null | undefined>
@@ -40,25 +45,17 @@ export const handler: MutationHook<RemoveItemHook> = {
     }
 
     try {
-      // Remove item by setting quantity to 0 (as per Elastic Path docs)
-      // This approach is more reliable than deleteACartItem
-      await updateACartItem({
+      await deleteACartItem({
+        client: getEPClient(provider),
         path: {
           cartID: cartId,
           cartitemID: itemId,
-        },
-        body: {
-          data: {
-            type: "cart_item",
-            id: itemId,
-            quantity: 0,
-          },
         },
       });
 
       // Get updated cart with items
       const response = await getACart({
-        client: (provider as any)!.client!,
+        client: getEPClient(provider),
         path: { cartID: cartId },
         query: {
           include: ["items"],
@@ -72,9 +69,10 @@ export const handler: MutationHook<RemoveItemHook> = {
         return undefined;
       }
     } catch (error) {
-      console.error("Error removing item from cart:", error);
-      // If cart not found, clear cookie
-      if ((error as any)?.status === 404) {
+      const standardError = handleAPIError(error, "removing item from cart");
+      log.error("Error removing item from cart", { error: standardError.message } as Record<string, unknown>);
+      // If cart not found (404), clear cookie so next operation creates a fresh cart
+      if ((error as Record<string, unknown>)?.status === 404) {
         removeCartCookie();
       }
       return undefined;

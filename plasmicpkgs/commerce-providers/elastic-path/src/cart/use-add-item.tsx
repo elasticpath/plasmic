@@ -8,6 +8,10 @@ import useCart from "./use-cart";
 import { buildCartItemData, validateCartItem } from "./utils/cartDataBuilder";
 import type { ExtendedCartItem } from "./utils/cartDataBuilder";
 import { handleAPIError } from "../utils/errorHandling";
+import { getEPClient } from "../utils/getEPClient";
+import { createLogger } from "../utils/logger";
+
+const log = createLogger("useAddItem");
 
 // Note: ExtendedCartItem is now imported from cartDataBuilder utils
 
@@ -24,7 +28,7 @@ export const handler: MutationHook<AddItemHook> = {
     // Validate cart item using pure function
     const validation = validateCartItem(extendedItem);
     if (!validation.isValid) {
-      console.error("Cart item validation failed:", validation.errorMessage);
+      log.error("Cart item validation failed", { errorMessage: validation.errorMessage } as Record<string, unknown>);
       return undefined;
     }
 
@@ -34,7 +38,7 @@ export const handler: MutationHook<AddItemHook> = {
       // Create cart if doesn't exist
       if (!cartId) {
         const response = await createACart({
-          client: (provider as any)!.client!,
+          client: getEPClient(provider),
           body: {
             data: {
               name: "Cart",
@@ -56,7 +60,7 @@ export const handler: MutationHook<AddItemHook> = {
       const cartData = buildCartItemData(extendedItem);
 
       await manageCarts({
-        client: (provider as any)!.client!,
+        client: getEPClient(provider),
         path: { cartID: cartId },
         body: {
           data: cartData,
@@ -65,7 +69,7 @@ export const handler: MutationHook<AddItemHook> = {
 
       // Get the updated cart
       const cartResponse = await getACart({
-        client: (provider as any)!.client!,
+        client: getEPClient(provider),
         path: { cartID: cartId },
         query: {
           include: ["items"],
@@ -73,11 +77,11 @@ export const handler: MutationHook<AddItemHook> = {
       });
 
       return cartResponse.data
-        ? normalizeCart(cartResponse.data)
+        ? normalizeCart(cartResponse.data, provider!.locale)
         : undefined;
     } catch (error) {
       const standardError = handleAPIError(error, "adding item to cart");
-      console.error("Error adding item to cart:", standardError);
+      log.error("Error adding item to cart", { error: standardError.message } as Record<string, unknown>);
       return undefined;
     }
   },

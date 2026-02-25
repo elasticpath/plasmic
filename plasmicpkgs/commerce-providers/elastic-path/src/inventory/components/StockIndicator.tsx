@@ -1,9 +1,10 @@
 import React from "react";
+import { DEFAULT_LOW_STOCK_THRESHOLD, DEFAULT_MEDIUM_STOCK_THRESHOLD } from "../../const";
 import type { StockIndicatorProps } from "../types";
 
 export function StockIndicator({
   stock,
-  threshold = { low: 5, medium: 20 },
+  threshold = { low: DEFAULT_LOW_STOCK_THRESHOLD, medium: DEFAULT_MEDIUM_STOCK_THRESHOLD },
   showExact = true,
 }: StockIndicatorProps) {
   const getStockLevel = () => {
@@ -46,6 +47,9 @@ export function StockIndicator({
 
   return (
     <span
+      role="status"
+      aria-live="polite"
+      aria-label={getStockMessage()}
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -55,7 +59,7 @@ export function StockIndicator({
         fontWeight: stock <= threshold.low ? "600" : "400",
       }}
     >
-      <span>{getStockIcon()}</span>
+      <span aria-hidden="true">{getStockIcon()}</span>
       <span>{getStockMessage()}</span>
     </span>
   );

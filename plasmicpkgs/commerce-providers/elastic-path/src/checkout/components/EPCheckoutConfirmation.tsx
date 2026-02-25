@@ -1,6 +1,9 @@
 import React, { useState, useCallback } from 'react';
 import { EPOrderSummary } from './EPOrderSummary';
 import type { ElasticPathOrder } from '../types';
+import { createLogger } from "../../utils/logger";
+
+const log = createLogger("EPCheckoutConfirmation");
 
 interface EPCheckoutConfirmationProps {
   order: ElasticPathOrder;
@@ -33,7 +36,7 @@ export function EPCheckoutConfirmation({
       try {
         await onPrintOrder();
       } catch (error) {
-        console.error('Print error:', error);
+        log.error("Print error", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
       } finally {
         setIsPrinting(false);
       }

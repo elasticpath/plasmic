@@ -47,6 +47,7 @@ export const ParentProductOption = React.memo(function ParentProductOption({
       {/* Parent product header */}
       <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
         <input
+          id={`parent-option-${componentKey}-${optionId}`}
           type={isSingleSelect ? "radio" : "checkbox"}
           name={isSingleSelect ? `component-${componentKey}` : undefined}
           checked={hasSelection}
@@ -70,16 +71,18 @@ export const ParentProductOption = React.memo(function ParentProductOption({
             }
           }}
         />
-        <label style={{ flex: 1, fontWeight: "bold" }}>
+        <label htmlFor={`parent-option-${componentKey}-${optionId}`} style={{ flex: 1, fontWeight: "bold" }}>
           {parentProduct?.name || optionId}
           <span style={{ fontSize: "0.8em", color: "#666", fontWeight: "normal" }}> (Parent Product)</span>
           {option.default && <span style={{ fontSize: "0.8em", color: "#666" }}> (Default)</span>}
         </label>
-        
+
         {hasSelection && (
           <button
             type="button"
             onClick={() => setShowVariations(!showVariations)}
+            aria-expanded={showVariations}
+            aria-label={`${showVariations ? "Hide" : "Show"} variations for ${parentProduct?.name || optionId}`}
             style={{
               background: "none",
               border: "1px solid #ccc",

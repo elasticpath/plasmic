@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatCurrencyFromCents } from '../../utils/formatCurrency';
 import type { ElasticPathOrder } from '../types';
 
 interface EPOrderSummaryProps {
@@ -58,7 +59,7 @@ export function EPOrderSummary({
                   <div className="ep-item-quantity">Qty: {item.quantity || 1}</div>
                 </div>
                 <div className="ep-item-price">
-                  {formatCurrency(
+                  {formatCurrencyFromCents(
                     item.meta?.display_price?.with_tax?.unit?.amount || 0,
                     item.meta?.display_price?.with_tax?.unit?.currency || order.total.currency
                   )}
@@ -73,26 +74,26 @@ export function EPOrderSummary({
       <div className="ep-price-breakdown">
         <div className="ep-price-line">
           <span>Subtotal:</span>
-          <span>{formatCurrency(order.subtotal.amount, order.subtotal.currency)}</span>
+          <span>{formatCurrencyFromCents(order.subtotal.amount, order.subtotal.currency)}</span>
         </div>
         
         {order.tax.amount > 0 && (
           <div className="ep-price-line">
             <span>Tax:</span>
-            <span>{formatCurrency(order.tax.amount, order.tax.currency)}</span>
+            <span>{formatCurrencyFromCents(order.tax.amount, order.tax.currency)}</span>
           </div>
         )}
         
         {order.shipping && order.shipping.amount > 0 && (
           <div className="ep-price-line">
             <span>Shipping:</span>
-            <span>{formatCurrency(order.shipping.amount, order.shipping.currency)}</span>
+            <span>{formatCurrencyFromCents(order.shipping.amount, order.shipping.currency)}</span>
           </div>
         )}
         
         <div className="ep-price-line ep-total">
           <span>Total:</span>
-          <span>{formatCurrency(order.total.amount, order.total.currency)}</span>
+          <span>{formatCurrencyFromCents(order.total.amount, order.total.currency)}</span>
         </div>
       </div>
 
@@ -179,17 +180,6 @@ function AddressDisplay({ address }: AddressDisplayProps) {
       {address.country && <div>{getCountryName(address.country)}</div>}
     </div>
   );
-}
-
-function formatCurrency(amount: number, currency: string): string {
-  try {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency.toUpperCase()
-    }).format(amount / 100);
-  } catch {
-    return `${currency.toUpperCase()} ${(amount / 100).toFixed(2)}`;
-  }
 }
 
 function formatStatus(status: string): string {

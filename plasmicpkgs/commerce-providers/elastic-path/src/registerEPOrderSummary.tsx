@@ -1,6 +1,7 @@
 import React from "react";
 import registerComponent from "@plasmicapp/host/registerComponent";
 import { EPOrderSummary } from "./checkout/components/EPOrderSummary";
+import { Registerable } from "./registerable";
 
 
 export const epOrderSummaryMeta = {
@@ -53,6 +54,8 @@ export const epOrderSummaryMeta = {
   },
 };
 
-export function registerEPOrderSummary() {
-  registerComponent(EPOrderSummary, epOrderSummaryMeta);
+export function registerEPOrderSummary(loader?: Registerable) {
+  const doRegisterComponent: typeof registerComponent = (...args) =>
+    loader ? loader.registerComponent(...args) : registerComponent(...args);
+  doRegisterComponent(EPOrderSummary, epOrderSummaryMeta);
 }

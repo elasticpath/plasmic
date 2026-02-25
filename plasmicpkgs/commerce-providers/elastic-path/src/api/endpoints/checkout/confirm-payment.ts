@@ -2,6 +2,9 @@ import { confirmPayment } from "@epcc-sdk/sdks-shopper";
 import Stripe from "stripe";
 import type { ConfirmPaymentAPI } from "../../schemas/checkout";
 import type { ElasticPathOrder } from "../../../checkout/types";
+import { createLogger } from "../../../utils/logger";
+
+const log = createLogger("confirmPayment");
 import { 
   createSuccessResponse, 
   createErrorResponse, 
@@ -135,7 +138,7 @@ export default async function confirmPaymentHandler(req: any, res: any) {
     const order: ElasticPathOrder = transformElasticPathOrder(updatedOrder);
 
     // Log successful payment confirmation
-    console.log(`Payment confirmed successfully for order: ${orderId}, transaction: ${transactionId}`);
+    log.info(`Payment confirmed successfully for order: ${orderId}, transaction: ${transactionId}`);
 
     // Optional: Send confirmation email, webhook, etc.
     await handlePostPaymentActions(order, paymentIntent);
@@ -145,7 +148,7 @@ export default async function confirmPaymentHandler(req: any, res: any) {
     }));
 
   } catch (error) {
-    console.error('Confirm payment error:', error);
+    log.error("Confirm payment error", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
 
     let checkoutError: CheckoutError;
 
@@ -256,14 +259,13 @@ async function handlePostPaymentActions(
 ): Promise<void> {
   try {
     // Log successful payment
-    console.log(`Payment successful for order ${order.id}:`, {
+    log.info(`Payment successful for order ${order.id}`, {
       orderId: order.id,
       amount: order.total.amount,
       currency: order.total.currency,
       customerEmail: order.customer?.email,
       stripePaymentIntentId: paymentIntent.id,
-      timestamp: new Date().toISOString()
-    });
+    } as Record<string, unknown>);
 
     // Here you could add:
     // - Send confirmation email
@@ -284,7 +286,7 @@ async function handlePostPaymentActions(
 
   } catch (error) {
     // Don't fail the payment confirmation for post-payment action errors
-    console.error('Post-payment actions failed:', error);
+    log.error("Post-payment actions failed", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
   }
 }
 

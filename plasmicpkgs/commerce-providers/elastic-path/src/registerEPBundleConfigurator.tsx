@@ -3,6 +3,7 @@ import registerComponent, {
   ComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
+import { DEFAULT_DEBOUNCE_MS } from "./const";
 import { Registerable } from "./registerable";
 import { useBundleConfiguration } from "./bundle/use-bundle-configuration";
 import { useBundleOptionProducts } from "./bundle/use-bundle-option-products";
@@ -16,6 +17,7 @@ import { ComponentSelector } from "./bundle/components/ComponentSelector";
 import { sortByOrder } from "./bundle/utils/bundleSelectionUtils";
 import { validateBundleProduct } from "./bundle/utils/productValidation";
 import { calculateBundlePrice } from "./bundle/utils/priceCalculation";
+import { ElasticPathBundleProduct } from "./bundle/types";
 import { Product } from "./types/product";
 
 interface EPBundleConfiguratorProps {
@@ -57,7 +59,7 @@ export const epBundleConfiguratorMeta: ComponentMeta<EPBundleConfiguratorProps> 
     debounceMs: {
       type: "number",
       description: "Debounce time for API calls in milliseconds",
-      defaultValue: 500,
+      defaultValue: DEFAULT_DEBOUNCE_MS,
     },
   },
   importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
@@ -71,7 +73,7 @@ export function EPBundleConfigurator(props: EPBundleConfiguratorProps) {
     updateUrlOnChange,
     showPrice,
     showValidationErrors,
-    debounceMs = 500,
+    debounceMs = DEFAULT_DEBOUNCE_MS,
   } = props;
 
   // Access product from Plasmic's data context
@@ -149,7 +151,7 @@ export function EPBundleConfigurator(props: EPBundleConfiguratorProps) {
   // Calculate price and display information
   const priceInfo = calculateBundlePrice(
     bundleProduct, 
-    configuredBundle ? { data: configuredBundle as any } : undefined
+    configuredBundle ? { data: configuredBundle.data as ElasticPathBundleProduct | undefined } : undefined
   );
   const { currentPrice, isFixedPrice, displayComponents } = priceInfo;
 

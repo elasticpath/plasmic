@@ -1,5 +1,8 @@
 import { getShippingOptions } from "@epcc-sdk/sdks-shopper";
 import type { AddressData, ShippingRate } from "../../../checkout/types";
+import { createLogger } from "../../../utils/logger";
+
+const log = createLogger("calculateShipping");
 import { 
   createSuccessResponse, 
   createErrorResponse, 
@@ -108,14 +111,14 @@ export default async function calculateShippingHandler(req: any, res: any) {
     }));
 
     // Log successful calculation
-    console.log(`Shipping calculated for cart: ${cartId}, found ${shippingRates.length} options`);
+    log.info(`Shipping calculated for cart: ${cartId}, found ${shippingRates.length} options`);
 
     return res.status(200).json(createSuccessResponse<CalculateShippingAPI['data']>({
       shippingRates
     }));
 
   } catch (error) {
-    console.error('Calculate shipping error:', error);
+    log.error("Calculate shipping error", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
 
     let checkoutError: CheckoutError;
 

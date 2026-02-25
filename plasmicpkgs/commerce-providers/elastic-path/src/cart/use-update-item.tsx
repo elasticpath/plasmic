@@ -7,10 +7,16 @@ import {
 } from "@plasmicpkgs/commerce";
 import debounce from "debounce";
 import { useCallback } from "react";
-import type { LineItem, UpdateItemHook } from "../types/cart";
+import type { CartItemBody, LineItem, UpdateItemHook } from "../types/cart";
+import { DEFAULT_DEBOUNCE_MS } from "../const";
 import { getCartId, normalizeCart, removeCartCookie } from "../utils";
 import useCart from "./use-cart";
 import { handler as removeItemHandler } from "./use-remove-item";
+import { handleAPIError } from "../utils/errorHandling";
+import { getEPClient } from "../utils/getEPClient";
+import { createLogger } from "../utils/logger";
+
+const log = createLogger("useUpdateItem");
 
 export type UpdateItemActionInput<T = any> = T extends LineItem
   ? Partial<UpdateItemHook["actionInput"]>
@@ -45,25 +51,32 @@ export const handler: MutationHook<UpdateItemHook> = {
     }
 
     try {
-      // Update cart item quantity
-      // Update the item
+      // Build update data — include location if present so EP validates
+      // stock against the correct inventory pool
+      const updateData: Record<string, unknown> = {
+        id: itemId,
+        quantity: item.quantity,
+      };
+      // EP uses location slug for multi-location inventory validation
+      const itemWithLocation = item as { quantity?: number; location?: string };
+      if (itemWithLocation.location) {
+        updateData.location = itemWithLocation.location;
+      }
+
       await updateACartItem({
+        client: getEPClient(provider),
         path: {
           cartID: cartId,
           cartitemID: itemId,
         },
         body: {
-          data: {
-            type: "cart_item",
-            id: itemId,
-            quantity: item.quantity,
-          },
+          data: updateData,
         },
       });
 
       // Get updated cart with items
       const response = await getACart({
-        client: (provider as any)!.client!,
+        client: getEPClient(provider),
         path: { cartID: cartId },
         query: {
           include: ["items"],
@@ -77,9 +90,10 @@ export const handler: MutationHook<UpdateItemHook> = {
         return undefined;
       }
     } catch (error) {
-      console.error("Error updating cart item:", error);
-      // If cart not found, clear cookie
-      if ((error as any)?.status === 404) {
+      const standardError = handleAPIError(error, "updating cart item");
+      log.error("Error updating cart item", { error: standardError.message } as Record<string, unknown>);
+      // If cart not found (404), clear cookie so next operation creates a fresh cart
+      if ((error as Record<string, unknown>)?.status === 404) {
         removeCartCookie();
       }
       return undefined;
@@ -94,7 +108,7 @@ export const handler: MutationHook<UpdateItemHook> = {
       } = {}
     ) => {
       const { item } = ctx;
-      const { mutate } = useCart() as any;
+      const { mutate } = useCart() as { mutate: (data: unknown, revalidate: boolean) => Promise<unknown> };
 
       return useCallback(
         debounce(async (input: UpdateItemActionInput<T>) => {
@@ -105,17 +119,21 @@ export const handler: MutationHook<UpdateItemHook> = {
             });
           }
 
+          const inputWithLocation = input as UpdateItemActionInput<T> & { location?: string };
           const data = await fetch({
             input: {
               item: {
                 quantity: input.quantity,
-              },
+                ...(inputWithLocation.location && {
+                  location: inputWithLocation.location,
+                }),
+              } as Partial<CartItemBody>,
               itemId,
             },
           });
           await mutate(data, false);
           return data;
-        }, ctx.wait ?? 500),
+        }, ctx.wait ?? DEFAULT_DEBOUNCE_MS),
         [fetch, mutate]
       );
     },

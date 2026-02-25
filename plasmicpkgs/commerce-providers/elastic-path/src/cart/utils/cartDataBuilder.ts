@@ -1,5 +1,5 @@
 import type { BundleConfiguration } from "@epcc-sdk/sdks-shopper";
-import type { CartItemBody } from "../../types/cart";
+import type { CartItemBody, SelectedOption } from "../../types/cart";
 
 /**
  * Extended cart item interface including EP-specific features
@@ -9,16 +9,20 @@ export interface ExtendedCartItem extends CartItemBody {
   // Core fields from CartItemBody (variantId: string, productId?: string, quantity?: number)
   bundleConfiguration?: BundleConfiguration; // EP-specific bundle configuration
   locationId?: string; // EP-specific location
+  selectedOptions?: SelectedOption[]; // Variation options (e.g. Color: Blue, Size: M)
 }
 
 /**
- * Form values from React Hook Form context
+ * Form values from React Hook Form context.
+ * Includes an index signature because the variant picker writes dynamic
+ * keys like `variation_{variationId}` into the form.
  */
 export interface CartFormValues {
   ProductQuantity?: number;
   ProductVariant?: string;
   BundleConfiguration?: BundleConfiguration;
   SelectedLocationSlug?: string;
+  [key: string]: unknown;
 }
 
 /**
@@ -38,6 +42,7 @@ export interface CartItemData {
   quantity: number;
   bundle_configuration?: BundleConfiguration;
   location?: string;
+  custom_inputs?: Record<string, unknown>;
 }
 
 /**
@@ -52,6 +57,32 @@ export function resolveLocationSlug(
 ): string | undefined {
   // Priority: form context > prop slug > prop ID (as fallback)
   return formValues.SelectedLocationSlug || props.locationSlug || props.locationId;
+}
+
+/**
+ * Extracts selected variation options from form values and product metadata.
+ * The variant picker stores form values as `variation_{variationId}` → label.
+ * We match these against product.options to build SelectedOption[] with
+ * human-readable names (e.g. { name: "Color", value: "Midnight Blue" }).
+ */
+function extractSelectedOptions(
+  formValues: CartFormValues,
+  product: any
+): SelectedOption[] {
+  const options: SelectedOption[] = [];
+  const productOptions = product?.options as
+    | Array<{ id: string; displayName: string }>
+    | undefined;
+  if (!productOptions?.length) return options;
+
+  for (const opt of productOptions) {
+    const selectedValue = formValues[`variation_${opt.id}` as keyof CartFormValues];
+    if (typeof selectedValue === "string" && selectedValue) {
+      options.push({ id: opt.id, name: opt.displayName, value: selectedValue });
+    }
+  }
+
+  return options;
 }
 
 /**
@@ -75,6 +106,7 @@ export function extractCartItemFromForm(
   const quantity = formValues.ProductQuantity ?? 1;
   const bundleConfiguration = formValues.BundleConfiguration;
   const locationId = resolveLocationSlug(formValues, props);
+  const selectedOptions = extractSelectedOptions(formValues, product);
 
   return {
     variantId,            // Required by core
@@ -82,6 +114,7 @@ export function extractCartItemFromForm(
     quantity: Math.max(1, quantity), // Optional in core but we provide it for EP
     ...(bundleConfiguration && { bundleConfiguration }),
     ...(locationId && { locationId }),
+    ...(selectedOptions.length > 0 && { selectedOptions }),
   };
 }
 
@@ -108,6 +141,15 @@ export function buildCartItemData(item: ExtendedCartItem): CartItemData {
   // Add location if provided
   if (item.locationId) {
     cartData.location = item.locationId;
+  }
+
+  // Store selected variation options in custom_inputs so they survive the
+  // round-trip through the EP API and can be displayed in the cart drawer.
+  if (item.selectedOptions?.length) {
+    cartData.custom_inputs = {
+      ...cartData.custom_inputs,
+      _selectedOptions: item.selectedOptions,
+    };
   }
 
   return cartData;

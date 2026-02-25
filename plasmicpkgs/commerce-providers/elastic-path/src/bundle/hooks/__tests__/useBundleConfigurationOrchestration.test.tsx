@@ -7,7 +7,7 @@ import { ElasticPathBundleProduct } from "../../types";
 
 describe("useBundleConfigurationOrchestration", () => {
   const mockConfigureBundleSelection = jest.fn().mockResolvedValue(undefined);
-  
+
   const defaultProps = {
     selectedOptions: {},
     isInitialized: true,
@@ -80,7 +80,7 @@ describe("useBundleConfigurationOrchestration", () => {
     });
 
     expect(mockConfigureBundleSelection).toHaveBeenCalledWith({
-      component1: { option1: 1 }
+      component1: { option1: 1 },
     });
   });
 
@@ -89,10 +89,10 @@ describe("useBundleConfigurationOrchestration", () => {
       meta: {
         bundle_configuration: {
           selected_options: {
-            component1: { option1: BigInt(1) }
-          }
-        }
-      }
+            component1: { option1: BigInt(1) },
+          },
+        },
+      },
     } as ElasticPathBundleProduct;
 
     renderHook(() =>
@@ -111,10 +111,10 @@ describe("useBundleConfigurationOrchestration", () => {
       meta: {
         bundle_configuration: {
           selected_options: {
-            component1: { option1: BigInt(1) }
-          }
-        }
-      }
+            component1: { option1: BigInt(1) },
+          },
+        },
+      },
     } as ElasticPathBundleProduct;
 
     renderHook(() =>
@@ -136,7 +136,7 @@ describe("useBundleConfigurationOrchestration", () => {
     });
 
     expect(mockConfigureBundleSelection).toHaveBeenCalledWith({
-      component1: { option1: 2 }
+      component1: { option1: 2 },
     });
   });
 
@@ -147,7 +147,7 @@ describe("useBundleConfigurationOrchestration", () => {
         initialProps: {
           ...defaultProps,
           selectedOptions: { component1: { option1: 1 } },
-        }
+        },
       }
     );
 
@@ -186,7 +186,7 @@ describe("useBundleConfigurationOrchestration", () => {
         initialProps: {
           ...defaultProps,
           selectedOptions: { component1: { option1: 1 } },
-        }
+        },
       }
     );
 
@@ -201,7 +201,7 @@ describe("useBundleConfigurationOrchestration", () => {
 
     expect(mockConfigureBundleSelection).toHaveBeenCalledTimes(1);
     expect(mockConfigureBundleSelection).toHaveBeenCalledWith({
-      component1: { option1: 1 }
+      component1: { option1: 1 },
     });
 
     // Re-render with different selections should trigger another call
@@ -220,15 +220,16 @@ describe("useBundleConfigurationOrchestration", () => {
 
     expect(mockConfigureBundleSelection).toHaveBeenCalledTimes(2);
     expect(mockConfigureBundleSelection).toHaveBeenLastCalledWith({
-      component1: { option1: 2 }
+      component1: { option1: 2 },
     });
   });
 
-  it("handles API errors gracefully", async () => {
-    const mockConfigureWithError = jest.fn().mockRejectedValue(new Error("API Error"));
-    const consoleSpy = jest.spyOn(console, "error").mockImplementation();
+  it("handles API errors gracefully and exposes error state", async () => {
+    const mockConfigureWithError = jest
+      .fn()
+      .mockRejectedValue(new Error("API Error"));
 
-    renderHook(() =>
+    const { result } = renderHook(() =>
       useBundleConfigurationOrchestration({
         ...defaultProps,
         configureBundleSelection: mockConfigureWithError,
@@ -246,19 +247,66 @@ describe("useBundleConfigurationOrchestration", () => {
       await Promise.resolve();
     });
 
+    // The API was called and the error was caught (not thrown)
     expect(mockConfigureWithError).toHaveBeenCalled();
-    expect(consoleSpy).toHaveBeenCalledWith(
-      "Failed to process bundle configuration:",
-      expect.any(Error)
+    // isConfiguring returns to false after error
+    expect(result.current.isConfiguring).toBe(false);
+    // Error state is exposed to consumers
+    expect(result.current.error).toBeInstanceOf(Error);
+    expect(result.current.error?.message).toContain("API Error");
+  });
+
+  it("clears error state on next successful configuration", async () => {
+    const mockConfigure = jest
+      .fn()
+      .mockRejectedValueOnce(new Error("API Error"))
+      .mockResolvedValueOnce(undefined);
+
+    const { result, rerender } = renderHook(
+      (props) => useBundleConfigurationOrchestration(props),
+      {
+        initialProps: {
+          ...defaultProps,
+          configureBundleSelection: mockConfigure,
+          selectedOptions: { component1: { option1: 1 } },
+        },
+      }
     );
 
-    consoleSpy.mockRestore();
+    // First call fails
+    act(() => {
+      jest.advanceTimersByTime(100);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.error).toBeInstanceOf(Error);
+
+    // Change selections — triggers new call that succeeds
+    rerender({
+      ...defaultProps,
+      configureBundleSelection: mockConfigure,
+      selectedOptions: { component1: { option1: 2 } },
+    });
+
+    act(() => {
+      jest.advanceTimersByTime(100);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.error).toBeNull();
+    expect(result.current.isConfiguring).toBe(false);
   });
 
   it("tracks configuration state correctly", async () => {
     let promiseResolver: any;
     const slowConfigureFunction = jest.fn().mockImplementation(async () => {
-      return new Promise(resolve => {
+      return new Promise((resolve) => {
         promiseResolver = resolve;
         setTimeout(() => resolve(undefined), 50);
       });
@@ -294,24 +342,86 @@ describe("useBundleConfigurationOrchestration", () => {
     expect(slowConfigureFunction).toHaveBeenCalled();
   });
 
-  it("updates lastConfigured when configuration succeeds", async () => {
-    const { result } = renderHook(() =>
+  it("does not flash isConfiguring for duplicate selections", async () => {
+    const { result, rerender } = renderHook(
+      (props) => useBundleConfigurationOrchestration(props),
+      {
+        initialProps: {
+          ...defaultProps,
+          selectedOptions: { component1: { option1: 1 } },
+        },
+      }
+    );
+
+    // First call — sets isConfiguring
+    act(() => {
+      jest.advanceTimersByTime(100);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(mockConfigureBundleSelection).toHaveBeenCalledTimes(1);
+    expect(result.current.isConfiguring).toBe(false);
+
+    // Same selections — debounced callback should return early without touching isConfiguring
+    rerender({
+      ...defaultProps,
+      selectedOptions: { component1: { option1: 1 } },
+    });
+
+    act(() => {
+      jest.advanceTimersByTime(100);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(mockConfigureBundleSelection).toHaveBeenCalledTimes(1);
+    expect(result.current.isConfiguring).toBe(false);
+  });
+
+  it("cleans up debounced function on unmount", () => {
+    const { unmount } = renderHook(() =>
       useBundleConfigurationOrchestration({
         ...defaultProps,
         selectedOptions: { component1: { option1: 1 } },
       })
     );
 
-    // Advance timers to trigger debounced function
+    // Unmount before debounce fires — pending call should be cleared
+    unmount();
+
     act(() => {
       jest.advanceTimersByTime(100);
     });
 
-    // Wait for async operations
+    expect(mockConfigureBundleSelection).not.toHaveBeenCalled();
+  });
+
+  it("handles parent:child selection keys via convertSelectionsForAPI", async () => {
+    renderHook(() =>
+      useBundleConfigurationOrchestration({
+        ...defaultProps,
+        selectedOptions: {
+          component1: { "parent-id:child-id": 1 },
+        },
+      })
+    );
+
+    act(() => {
+      jest.advanceTimersByTime(100);
+    });
+
     await act(async () => {
       await Promise.resolve();
     });
 
-    expect(result.current.lastConfigured).toBe(JSON.stringify({ component1: { option1: 1 } }));
+    // convertSelectionsForAPI transforms parent:child → child
+    expect(mockConfigureBundleSelection).toHaveBeenCalledWith({
+      component1: { "child-id": 1 },
+    });
   });
 });

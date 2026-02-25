@@ -1,55 +1,53 @@
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
+import { useMutablePlasmicQueryData } from "@plasmicapp/query";
 import { listLocations } from "@epcc-sdk/sdks-shopper";
+import { SWR_DEDUPING_INTERVAL_LONG } from "../const";
 import { useCommerce } from "../elastic-path";
 import type { Location, UseLocationsOptions } from "./types";
+import { createLogger } from "../utils/logger";
+
+const log = createLogger("useLocations");
 
 export function useLocations({
   type,
   enabled = true,
 }: UseLocationsOptions = {}) {
-  const [locations, setLocations] = useState<Location[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
   const commerce = useCommerce();
+  const client = commerce.providerRef.current?.client;
 
-  useEffect(() => {
-    if (!enabled || !commerce.providerRef.current?.client) {
-      return;
+  const queryKey = enabled && client
+    ? ["ep-locations", type ?? "__all__"]
+    : null;
+
+  const { data, error, isLoading, mutate } = useMutablePlasmicQueryData<
+    Location[],
+    Error
+  >(
+    queryKey,
+    async () => {
+      const response = await listLocations({
+        client: client!,
+        query: type ? { filter: `eq(type,${type})` } : {},
+      });
+      return response.data?.data || [];
+    },
+    {
+      revalidateOnFocus: false,
+      dedupingInterval: SWR_DEDUPING_INTERVAL_LONG,
+      onError: (err: Error) => {
+        log.error("Error fetching locations", {
+          error: err.message,
+        } as Record<string, unknown>);
+      },
     }
+  );
 
-    const fetchLocations = async () => {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const response = await listLocations({
-          client: commerce.providerRef.current.client,
-          query: type ? { filter: `eq(type,${type})` } : {},
-        });
-
-        const locationData = response.data?.data || [];
-        setLocations(locationData);
-      } catch (err) {
-        const error = err instanceof Error ? err : new Error("Failed to fetch locations");
-        setError(error);
-        console.error("Error fetching locations:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchLocations();
-  }, [type, enabled, commerce]);
+  const locations = useMemo(() => data ?? [], [data]);
 
   return {
     locations,
-    loading,
-    error,
-    refetch: () => {
-      if (enabled && commerce.providerRef.current?.client) {
-        setLoading(true);
-        setError(null);
-      }
-    },
+    loading: isLoading ?? false,
+    error: error ?? null,
+    refetch: () => mutate(),
   };
 }
