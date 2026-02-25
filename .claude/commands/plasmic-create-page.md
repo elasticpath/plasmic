@@ -5,6 +5,8 @@ You are creating a new page in a Plasmic project.
 - `list-projects()` — List accessible projects.
 - `list-components()` — List existing pages and components.
 - `get-tokens(type?)` — Get design tokens (colors, spacing, fonts). Use these values in styles for design system consistency.
+- `get-component-summary(componentUuid)` — Compact outline of a component. Use to understand existing components before referencing them.
+- `get-node-details(componentUuid, nodeRef)` — Full details for a single node in a component.
 - `create-page(name, path, body)` — Create a page with a PlasmicElement tree.
 
 ## PlasmicElement Type Reference

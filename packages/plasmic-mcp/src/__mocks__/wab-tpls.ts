@@ -23,7 +23,7 @@ export function mkTplInlinedText(
 export function flattenTpls(tplRoot: any): any[] {
   const result: any[] = [];
   function walk(node: any) {
-    if (!node) return;
+    if (!node) {return;}
     result.push(node);
     if (node.children) {
       for (const child of node.children) {

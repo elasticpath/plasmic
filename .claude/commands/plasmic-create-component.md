@@ -5,7 +5,10 @@ You are creating a new reusable component (not a page) in a Plasmic project.
 - `list-projects()` — List accessible projects.
 - `list-components()` — List existing pages and components.
 - `get-tokens(type?)` — Get design tokens (colors, spacing, fonts). Use these values in styles for design system consistency.
-- `get-component-tree(componentUuid)` — Inspect an existing component's structure (useful when cloning or referencing).
+- `get-component-summary(componentUuid)` — Compact outline of a component (type, tag, name, uuid, childCount — no styles/text). **Use this first** to understand structure before cloning or referencing.
+- `get-node-details(componentUuid, nodeRef)` — Full details for a single node. Use after summary to drill into specific nodes.
+- `get-component-tree(componentUuid, maxDepth?, excludeStyles?, summaryOnly?)` — Full tree with all styles/text. Use only when you need the complete structure.
+- `get-subtree(componentUuid, nodeRef, maxDepth?, excludeStyles?)` — Full tree from a specific node downward.
 - `create-component(name, body)` — Create a reusable component with a PlasmicElement tree.
 - `clone-component(sourceUuid, name, path?)` — Duplicate an existing component or page.
 
@@ -150,7 +153,8 @@ For more patterns (grids, forms, pricing, testimonials, CTAs), see `/plasmic-pat
 4. Determine whether to **create** (new from scratch) or **clone** (copy existing):
    - **Create**: Construct a PlasmicElement tree and call `create-component(name, body)`.
    - **Clone**: Find the source UUID and call `clone-component(sourceUuid, name)`. Add `path` only if the clone should be a page.
-5. Use PascalCase for component names (e.g., `HeroSection`, `ProductCard`).
+5. When cloning or referencing, inspect the source with `get-component-summary` first, then `get-node-details` for specific nodes — avoid loading the full tree unnecessarily.
+6. Use PascalCase for component names (e.g., `HeroSection`, `ProductCard`).
 6. Report the result. Note any warnings from the API.
 
 ## User's Request

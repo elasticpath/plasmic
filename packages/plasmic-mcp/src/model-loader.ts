@@ -22,7 +22,7 @@ import { trackComponentRoot, trackComponentSite } from "@/wab/shared/core/tpls";
 let mobxInitialized = false;
 
 function initMobx(): void {
-  if (mobxInitialized) return;
+  if (mobxInitialized) {return;}
   // import-mobx.ts conditionally loads mobx dev build in Node.
   // Our esbuild alias normalizes mobx/dist/mobx.cjs.development.js → mobx
   // so all code uses the same module instance.

@@ -48,7 +48,7 @@ export function readComponentTree(
   options?: TreeReadOptions
 ): TreeNode | null {
   const tplTree = component.tplTree;
-  if (!tplTree) return null;
+  if (!tplTree) {return null;}
   return readTplNode(tplTree, options, 0);
 }
 
@@ -109,7 +109,7 @@ export function readSubtree(
  * Count total nodes in a TreeNode tree.
  */
 export function countTreeNodes(node: TreeNode | null): number {
-  if (!node) return 0;
+  if (!node) {return 0;}
   let count = 1;
   if (node.children) {
     for (const child of node.children) {
@@ -255,7 +255,7 @@ function readTplComponent(
     const props: Record<string, unknown> = {};
     for (const arg of vs.args) {
       const paramName = arg.param?.variable?.name;
-      if (!paramName) continue;
+      if (!paramName) {continue;}
 
       const value = extractExprValue(arg.expr);
       if (value !== undefined) {
@@ -327,8 +327,8 @@ function deriveLayoutType(
   styles: Record<string, string>
 ): "vbox" | "hbox" | "box" {
   const flexDirection = styles["flexDirection"] || styles["flex-direction"];
-  if (flexDirection === "column") return "vbox";
-  if (flexDirection === "row") return "hbox";
+  if (flexDirection === "column") {return "vbox";}
+  if (flexDirection === "row") {return "hbox";}
 
   const display = styles["display"];
   if (display === "flex" || display === "inline-flex") {
@@ -360,7 +360,7 @@ function extractAttrs(attrs: Record<string, any>): Record<string, unknown> {
 }
 
 function extractExprValue(expr: any): unknown {
-  if (!expr) return undefined;
+  if (!expr) {return undefined;}
 
   if (isKnownCustomCode(expr)) {
     try {

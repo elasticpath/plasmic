@@ -6,11 +6,7 @@
  * undo integration (batch pushed as single undo operation).
  */
 
-import {
-  mockWithRecording,
-  emptyRecordedChanges,
-  mergeRecordedChanges,
-} from "../__mocks__/wab-observable-model";
+import { emptyRecordedChanges } from "../__mocks__/wab-observable-model";
 import { mockFastBundle, mockAddrOf } from "../__mocks__/wab-bundler";
 import { setSession, clearSession } from "../session";
 import { initChangeTracker, disposeChangeTracker } from "../change-tracker";

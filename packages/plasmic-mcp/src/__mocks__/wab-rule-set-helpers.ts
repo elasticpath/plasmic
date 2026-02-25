@@ -17,17 +17,17 @@ export class RuleSetHelpers {
     return this._rs?.values?.[prop];
   }
   set(prop: string, val: string): void {
-    if (!this._rs.values) this._rs.values = {};
+    if (!this._rs.values) {this._rs.values = {};}
     this._rs.values[prop] = val;
   }
   clear(prop: string): void {
-    if (this._rs?.values) delete this._rs.values[prop];
+    if (this._rs?.values) {delete this._rs.values[prop];}
   }
   clearAll(props: string[]): void {
-    for (const p of props) this.clear(p);
+    for (const p of props) {this.clear(p);}
   }
   merge(props: Record<string, string>): void {
-    for (const [k, v] of Object.entries(props)) this.set(k, v);
+    for (const [k, v] of Object.entries(props)) {this.set(k, v);}
   }
   props(): string[] {
     return Object.keys(this._rs?.values ?? {});

@@ -1614,7 +1614,7 @@ export function createServer(): McpServer {
     {},
     async () => {
       try {
-        const session = requireSession();
+        requireSession();
         const saveManager = new SaveManager(apiClient);
         const save = await saveManager.saveFullBundle();
 

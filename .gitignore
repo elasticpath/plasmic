@@ -43,5 +43,6 @@ dist/
 # Playwright test results
 test-results/
 playwright-report/
+.playwright-mcp/
 
 .history/

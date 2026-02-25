@@ -397,7 +397,7 @@ If the project has reusable components (found via `list-components`), reference 
 }
 ```
 
-Props must match the component's actual parameter names exactly (case-sensitive). Use `get-component-tree` to inspect a component's structure before referencing it.
+Props must match the component's actual parameter names exactly (case-sensitive). Use `get-component-summary` to inspect a component's structure, then `get-node-details` for specific nodes. Use `get-component-tree` only when you need the full tree with all styles.
 
 ## User's Request
 $ARGUMENTS

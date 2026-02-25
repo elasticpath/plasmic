@@ -151,7 +151,7 @@ export class PlasmicApiClient {
    * that must be sent as x-csrf-token in subsequent requests.
    */
   async ensureCsrfToken(): Promise<void> {
-    if (this.csrfToken) return;
+    if (this.csrfToken) {return;}
 
     console.error("[plasmic-mcp] Fetching CSRF token...");
     const result = await this.request<{ csrf: string }>(

@@ -27,11 +27,7 @@ import { getChangeTracker } from "./change-tracker.js";
 import type { RecordedChanges } from "./change-tracker.js";
 import { SaveManager, type SaveResult } from "./save-manager.js";
 import { PlasmicApiClient } from "./api-client.js";
-import {
-  resolveNode,
-  requireSingleNode,
-  type ResolvedNode,
-} from "./node-resolver.js";
+import { resolveNode, requireSingleNode } from "./node-resolver.js";
 import type { PlasmicElement } from "./types.js";
 import { isBatchActive, accumulateChanges } from "./batch-manager.js";
 import { pushUndoOperation } from "./undo-manager.js";
@@ -160,10 +156,10 @@ function findParent(
  * Used for cycle detection in move-child.
  */
 function isAncestorOf(ancestor: any, descendant: any): boolean {
-  if (ancestor === descendant) return true;
+  if (ancestor === descendant) {return true;}
   const children = ancestor.children ?? [];
   for (const child of children) {
-    if (isAncestorOf(child, descendant)) return true;
+    if (isAncestorOf(child, descendant)) {return true;}
   }
   return false;
 }
@@ -480,7 +476,7 @@ function plasmicElementToTpl(
 
   // Set image src
   if (element.type === "img" && "src" in element) {
-    if (!vs.attrs) vs.attrs = {};
+    if (!vs.attrs) {vs.attrs = {};}
     vs.attrs.src = new CustomCode({
       code: JSON.stringify((element as any).src),
       fallback: null,

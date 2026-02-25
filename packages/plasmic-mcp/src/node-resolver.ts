@@ -241,7 +241,7 @@ function flattenWithPaths(
 }
 
 function getNodeName(tpl: any): string | undefined {
-  if (tpl.name) return tpl.name;
+  if (tpl.name) {return tpl.name;}
   return undefined;
 }
 
@@ -250,10 +250,10 @@ function getNodeName(tpl: any): string | undefined {
  * Returns undefined for non-text nodes or nodes without text content.
  */
 function getNodeTextContent(tpl: any): string | undefined {
-  if (!isKnownTplTag(tpl)) return undefined;
+  if (!isKnownTplTag(tpl)) {return undefined;}
   const vs = tpl.vsettings?.[0];
-  if (!vs?.text) return undefined;
-  if (isKnownRawText(vs.text)) return vs.text.text;
+  if (!vs?.text) {return undefined;}
+  if (isKnownRawText(vs.text)) {return vs.text.text;}
   return undefined;
 }
 

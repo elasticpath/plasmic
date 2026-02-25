@@ -22,15 +22,15 @@ export function resolveTokenValue(
   visited?: Set<string>
 ): string {
   const match = RE_TOKEN_REF.exec(value);
-  if (!match) return value;
+  if (!match) {return value;}
 
   const refUuid = match[1];
   const seen = visited ?? new Set<string>();
-  if (seen.has(refUuid)) return value;
+  if (seen.has(refUuid)) {return value;}
   seen.add(refUuid);
 
   const refValue = tokenValueMap.get(refUuid);
-  if (!refValue) return value;
+  if (!refValue) {return value;}
 
   return resolveTokenValue(refValue, tokenValueMap, seen);
 }
@@ -74,7 +74,7 @@ export function readTokens(
   // Group by type for readability
   const grouped: Record<string, TokenInfo[]> = {};
   for (const t of tokens) {
-    if (!grouped[t.type]) grouped[t.type] = [];
+    if (!grouped[t.type]) {grouped[t.type] = [];}
     grouped[t.type].push(t);
   }
 
