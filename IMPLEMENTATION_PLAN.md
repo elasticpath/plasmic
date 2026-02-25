@@ -1,6 +1,6 @@
 # Implementation Plan
 
-Last updated: 2026-02-25
+Last updated: 2026-02-26
 
 ## Milestone Status
 
@@ -12,30 +12,11 @@ Last updated: 2026-02-25
 | M2 — Edit Skills | **Complete** | /plasmic-edit, updated /plasmic router |
 | M2 — Tests | **Complete** | 210 tests across 13 test files |
 | M3 — Context-Efficient Queries | **Complete** | 3 new tools, enhanced get-component-tree, node resolver cache, 246 total tests |
+| M3.5 — Integration Tests | **Complete** | 12 tests using real MCP modules with duck-typed Site fixture, 258 total tests |
 | M4 — Component Creation & Cloning | **Not started** | No spec yet |
-| M5 — E2E Integration Tests | **Not started** | No spec yet |
+| M5 — E2E Integration Tests | **Not started** | Requires live Plasmic instance |
 
 ---
-
-## Priority 1 — Context-Efficient Queries (spec exists, zero implementation)
-
-The current `get-component-tree` returns ~15KB per call. An edit workflow calling it before AND after costs ~30KB per cycle. This is the #1 bottleneck for practical use of the editing skills from Claude Code.
-
-Spec: `specs/plasmic-context-efficient-queries.md`
-
-- [x] **P1.1** Add `childCount` field to `TreeNode` in `types.ts`
-- [x] **P1.2** Add `TreeReadOptions` interface to `types.ts` (fields: `maxDepth?`, `excludeStyles?`, `summaryOnly?`)
-- [x] **P1.3** Add `readComponentSummary()` to `tree-reader.ts` — compact indented outline (type, tag, name, uuid, childCount per node; no styles/attrs/text); target ~2KB for a 50-node component
-- [x] **P1.4** Add `readNodeDetails()` to `tree-reader.ts` — full info for a single resolved node with immediate children as summaries; target ~300B per call
-- [x] **P1.5** Register `get-component-summary` tool in `server.ts` — calls `readComponentSummary()`
-- [x] **P1.6** Register `get-node-details` tool in `server.ts` — calls `requireSingleNode()` + `readNodeDetails()`
-- [x] **P1.7** Register `export-component-tree` tool in `server.ts` — writes full JSON to `/tmp/plasmic-tree-{uuid}.json`, returns file path + compact summary
-- [x] **P1.8** Enhance existing `get-component-tree` tool with optional params: `maxDepth`, `excludeStyles`, `summaryOnly` (backward compatible — all optional)
-- [x] **P1.9** Add node resolver caching in `node-resolver.ts` — cache flattened node list per component UUID; invalidate on structural changes (`add-child`, `remove-child`, `move-child`, `refresh-project`, `set-project`); text/style edits do NOT invalidate
-- [x] **P1.10** Update `/plasmic-edit` skill to use `get-component-summary` + `get-node-details` instead of full tree dumps (summary→drill-down pattern)
-- [x] **P1.11** Update `/plasmic-inspect` skill to prefer summary + drill-down over full tree
-- [x] **P1.12** Add tests for `readComponentSummary()`, `readNodeDetails()`, node resolver cache, and all 3 new tool handlers (36 new tests, 246 total)
-- [x] **P1.13** Verify 80%+ context reduction for a typical edit workflow (measured: 73% single-edit, 85-93% multi-edit sessions)
 
 ---
 
@@ -53,18 +34,35 @@ Currently only pages can be created. The `UpdateProjectReq` type already support
 
 ---
 
-## Priority 3 — E2E Integration Tests (no spec yet)
+## Priority 3 — Integration Tests (spec exists, COMPLETE)
 
-All 210 existing tests use mocks. There are no tests that verify the full workflow against a real self-hosted Plasmic instance. This is noted in `AGENTS.md` as requiring env setup.
+Spec: `specs/plasmic-integration-tests.md`
 
-- [ ] **P3.1** Author spec at `specs/plasmic-e2e-tests.md` — define test environment requirements, test project setup, CI configuration
-- [ ] **P3.2** Create E2E test harness that connects to a real Plasmic instance (env-gated, skipped when credentials unavailable)
-- [ ] **P3.3** E2E test: `set-project` → `list-components` → `get-component-tree` (read workflow)
-- [ ] **P3.4** E2E test: `create-page` → verify in `list-components` → `get-component-tree` (create workflow)
-- [ ] **P3.5** E2E test: `update-text` → `update-styles` → verify changes (edit workflow)
-- [ ] **P3.6** E2E test: `begin-batch` → multiple edits → `end-batch` (batch workflow)
-- [ ] **P3.7** E2E test: edit → `undo` → verify revert (undo workflow)
-- [ ] **P3.8** Update CI workflow to optionally run E2E tests when credentials are available
+Integration tests use real MCP modules (model-loader, tree-reader, node-resolver, edit-tools, session, change-tracker, save-manager, batch-manager, undo-manager) against a realistic duck-typed Site fixture. Only `api-client` is mocked. WAB internals remain mocked via jest.config.cjs moduleNameMapper.
+
+- [x] **P3.1** Bundle fixture at `packages/plasmic-mcp/src/__tests__/fixtures/test-site.ts` — 7-node homepage + 3-node header component
+- [x] **P3.2** Integration test file at `packages/plasmic-mcp/src/__tests__/integration.test.ts`
+- [x] **P3.3** Test: `set-project` → `list-components` → verify real component names/UUIDs
+- [x] **P3.4** Test: `get-component-tree` → verify output matches expected node structure
+- [x] **P3.5** Test: `get-component-summary` → verify compact output, NO styles/text
+- [x] **P3.6** Test: `get-node-details` on named node → full styles/text/attrs
+- [x] **P3.7** Test: summary size vs full tree size (summary is ≤60% for small fixture; M3 measured 73-93% for real components)
+- [x] **P3.8** Test: `get-component-tree` with `maxDepth:1` → children truncated with childCount
+- [x] **P3.9** Test: `update-text` → `get-node-details` → verify new text content
+- [x] **P3.10** Test: `update-styles` → `get-node-details` → verify new styles
+- [x] **P3.11** Test: `begin-batch` → edits → `end-batch` → verify all changes applied
+- [x] **P3.12** Test: edit → verify → `undo` → verify reverted
+- [x] **P3.13** Test: node resolution by UUID, name, path all find same node
+- [x] **P3.14** Test: `add-child` → verify in tree → `remove-child` → verify gone
+- [x] **P3.15** All 258 tests pass (246 existing + 12 integration)
+
+### Remaining: Live E2E Tests (future)
+
+E2E tests against a running Plasmic server are a separate effort requiring environment setup:
+
+- [ ] Create E2E test harness with real HTTP calls (env-gated, skipped without credentials)
+- [ ] E2E test: full read/write cycle against a real Plasmic instance
+- [ ] CI configuration for optional E2E runs
 
 ---
 
