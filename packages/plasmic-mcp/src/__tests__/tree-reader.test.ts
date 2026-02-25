@@ -495,7 +495,7 @@ describe("readComponentTree", () => {
       });
     });
 
-    it("handles RenderExpr args with tpl children", () => {
+    it("shows RenderExpr slot args as children grouped by slot name", () => {
       const component = {
         tplTree: {
           _type: "TplComponent",
@@ -527,9 +527,383 @@ describe("readComponentTree", () => {
 
       const result = readComponentTree(component);
 
-      expect(result?.attrs?.content).toEqual([
-        expect.objectContaining({ type: "tag", tag: "div" }),
-      ]);
+      // Slot overrides appear as children, not attrs
+      expect(result?.attrs).toBeUndefined();
+      expect(result?.children).toHaveLength(1);
+      expect(result?.children?.[0]).toMatchObject({
+        type: "slot",
+        slotName: "content",
+      });
+      expect(result?.children?.[0].children).toHaveLength(1);
+      expect(result?.children?.[0].children?.[0]).toMatchObject({
+        type: "tag",
+        tag: "div",
+      });
+    });
+  });
+
+  // =========================================================================
+  // TplComponent slot override traversal
+  //
+  // Slot override content (RenderExpr args on TplComponent) appears as
+  // children grouped by slot name. Non-slot args (CustomCode etc.) stay
+  // in attrs. This enables Claude to see and edit content inside component
+  // instances without switching to Studio.
+  // =========================================================================
+
+  describe("TplComponent slot override traversal", () => {
+    it("shows slot override children grouped by slot name", () => {
+      const component = {
+        tplTree: {
+          _type: "TplComponent",
+          uuid: "card-1",
+          name: "MyCard",
+          component: { name: "Card", uuid: "card-def" },
+          vsettings: [
+            {
+              args: [
+                {
+                  param: { variable: { name: "children" } },
+                  expr: {
+                    _type: "RenderExpr",
+                    tpl: [
+                      {
+                        _type: "TplTag",
+                        tag: "h1",
+                        uuid: "title-1",
+                        name: "Title",
+                        vsettings: [
+                          {
+                            rs: { values: { fontSize: "24px" } },
+                            text: { _type: "RawText", text: "Hello" },
+                            attrs: {},
+                          },
+                        ],
+                        children: [],
+                      },
+                      {
+                        _type: "TplTag",
+                        tag: "p",
+                        uuid: "desc-1",
+                        name: "Description",
+                        vsettings: [
+                          {
+                            rs: { values: {} },
+                            text: { _type: "RawText", text: "World" },
+                            attrs: {},
+                          },
+                        ],
+                        children: [],
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      };
+
+      const result = readComponentTree(component);
+
+      expect(result?.type).toBe("component");
+      expect(result?.componentName).toBe("Card");
+      expect(result?.children).toHaveLength(1);
+
+      const slotWrapper = result?.children?.[0];
+      expect(slotWrapper?.type).toBe("slot");
+      expect(slotWrapper?.slotName).toBe("children");
+      expect(slotWrapper?.children).toHaveLength(2);
+      expect(slotWrapper?.children?.[0]).toMatchObject({
+        type: "tag",
+        tag: "h1",
+        text: "Hello",
+      });
+      expect(slotWrapper?.children?.[1]).toMatchObject({
+        type: "tag",
+        tag: "p",
+        text: "World",
+      });
+    });
+
+    it("shows multiple slots as separate children", () => {
+      const component = {
+        tplTree: {
+          _type: "TplComponent",
+          uuid: "card-1",
+          component: { name: "Card", uuid: "card-def" },
+          vsettings: [
+            {
+              args: [
+                {
+                  param: { variable: { name: "header" } },
+                  expr: {
+                    _type: "RenderExpr",
+                    tpl: [
+                      {
+                        _type: "TplTag",
+                        tag: "h2",
+                        uuid: "h-1",
+                        vsettings: [
+                          {
+                            rs: { values: {} },
+                            text: { _type: "RawText", text: "Header" },
+                            attrs: {},
+                          },
+                        ],
+                        children: [],
+                      },
+                    ],
+                  },
+                },
+                {
+                  param: { variable: { name: "children" } },
+                  expr: {
+                    _type: "RenderExpr",
+                    tpl: [
+                      {
+                        _type: "TplTag",
+                        tag: "p",
+                        uuid: "b-1",
+                        vsettings: [
+                          {
+                            rs: { values: {} },
+                            text: { _type: "RawText", text: "Body" },
+                            attrs: {},
+                          },
+                        ],
+                        children: [],
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      };
+
+      const result = readComponentTree(component);
+
+      expect(result?.children).toHaveLength(2);
+      expect(result?.children?.[0]).toMatchObject({
+        type: "slot",
+        slotName: "header",
+      });
+      expect(result?.children?.[0].children?.[0].text).toBe("Header");
+      expect(result?.children?.[1]).toMatchObject({
+        type: "slot",
+        slotName: "children",
+      });
+      expect(result?.children?.[1].children?.[0].text).toBe("Body");
+    });
+
+    it("separates non-slot props (attrs) from slot overrides (children)", () => {
+      const component = {
+        tplTree: {
+          _type: "TplComponent",
+          uuid: "btn-1",
+          component: { name: "Button", uuid: "btn-def" },
+          vsettings: [
+            {
+              args: [
+                {
+                  param: { variable: { name: "label" } },
+                  expr: { _type: "CustomCode", code: '"Click me"' },
+                },
+                {
+                  param: { variable: { name: "children" } },
+                  expr: {
+                    _type: "RenderExpr",
+                    tpl: [
+                      {
+                        _type: "TplTag",
+                        tag: "span",
+                        uuid: "icon-1",
+                        vsettings: [{ rs: { values: {} }, attrs: {} }],
+                        children: [],
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      };
+
+      const result = readComponentTree(component);
+
+      // Non-slot arg in attrs
+      expect(result?.attrs).toEqual({ label: "Click me" });
+      // Slot override in children
+      expect(result?.children).toHaveLength(1);
+      expect(result?.children?.[0].slotName).toBe("children");
+    });
+
+    it("handles TplComponent with no slot overrides", () => {
+      const component = {
+        tplTree: {
+          _type: "TplComponent",
+          uuid: "comp-1",
+          component: { name: "Button", uuid: "btn-def" },
+          vsettings: [{ args: [] }],
+        },
+      };
+
+      const result = readComponentTree(component);
+
+      expect(result?.children).toBeUndefined();
+    });
+
+    it("handles empty slot override (RenderExpr with empty tpl)", () => {
+      const component = {
+        tplTree: {
+          _type: "TplComponent",
+          uuid: "comp-1",
+          component: { name: "Card", uuid: "c-def" },
+          vsettings: [
+            {
+              args: [
+                {
+                  param: { variable: { name: "children" } },
+                  expr: { _type: "RenderExpr", tpl: [] },
+                },
+              ],
+            },
+          ],
+        },
+      };
+
+      const result = readComponentTree(component);
+
+      // Empty slot is skipped
+      expect(result?.children).toBeUndefined();
+    });
+
+    it("traverses nested TplComponent inside slot override", () => {
+      const component = {
+        tplTree: {
+          _type: "TplComponent",
+          uuid: "outer-1",
+          component: { name: "Layout", uuid: "l-def" },
+          vsettings: [
+            {
+              args: [
+                {
+                  param: { variable: { name: "children" } },
+                  expr: {
+                    _type: "RenderExpr",
+                    tpl: [
+                      {
+                        _type: "TplComponent",
+                        uuid: "inner-1",
+                        name: "InnerCard",
+                        component: { name: "Card", uuid: "c-def" },
+                        vsettings: [
+                          {
+                            args: [
+                              {
+                                param: { variable: { name: "children" } },
+                                expr: {
+                                  _type: "RenderExpr",
+                                  tpl: [
+                                    {
+                                      _type: "TplTag",
+                                      tag: "span",
+                                      uuid: "deep-text",
+                                      vsettings: [
+                                        {
+                                          rs: { values: {} },
+                                          text: {
+                                            _type: "RawText",
+                                            text: "Deep content",
+                                          },
+                                          attrs: {},
+                                        },
+                                      ],
+                                      children: [],
+                                    },
+                                  ],
+                                },
+                              },
+                            ],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      };
+
+      const result = readComponentTree(component);
+
+      // Outer component → slot "children" → InnerCard → slot "children" → span
+      const outerSlot = result?.children?.[0];
+      expect(outerSlot?.slotName).toBe("children");
+
+      const innerComp = outerSlot?.children?.[0];
+      expect(innerComp?.type).toBe("component");
+      expect(innerComp?.componentName).toBe("Card");
+
+      const innerSlot = innerComp?.children?.[0];
+      expect(innerSlot?.slotName).toBe("children");
+      expect(innerSlot?.children?.[0].text).toBe("Deep content");
+    });
+
+    it("includes slot override children in summary mode with childCount", () => {
+      const component = {
+        tplTree: {
+          _type: "TplComponent",
+          uuid: "card-1",
+          name: "MyCard",
+          component: { name: "Card", uuid: "card-def" },
+          vsettings: [
+            {
+              args: [
+                {
+                  param: { variable: { name: "children" } },
+                  expr: {
+                    _type: "RenderExpr",
+                    tpl: [
+                      {
+                        _type: "TplTag",
+                        tag: "h1",
+                        uuid: "t1",
+                        vsettings: [{ rs: { values: {} }, attrs: {} }],
+                        children: [],
+                      },
+                      {
+                        _type: "TplTag",
+                        tag: "p",
+                        uuid: "t2",
+                        vsettings: [{ rs: { values: {} }, attrs: {} }],
+                        children: [],
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      };
+
+      const result = readComponentTree(component, { summaryOnly: true });
+
+      // Component childCount = total override tpl nodes
+      expect(result?.childCount).toBe(2);
+      // Slot wrapper is present
+      expect(result?.children).toHaveLength(1);
+      expect(result?.children?.[0].type).toBe("slot");
+      expect(result?.children?.[0].slotName).toBe("children");
+      expect(result?.children?.[0].childCount).toBe(2);
+      // No styles/text in summary mode
+      expect(result?.children?.[0].children?.[0].styles).toBeUndefined();
     });
   });
 
@@ -1069,7 +1443,7 @@ describe("readNodeDetails", () => {
     expect(result.children).toBeUndefined();
   });
 
-  it("returns details for a TplComponent node", () => {
+  it("returns details for a TplComponent node with non-slot args", () => {
     const compNode = {
       _type: "TplComponent",
       uuid: "comp-inst",
@@ -1092,6 +1466,80 @@ describe("readNodeDetails", () => {
     expect(result.type).toBe("component");
     expect(result.componentName).toBe("Button");
     expect(result.childCount).toBe(0);
+  });
+
+  it("returns details for a TplComponent with slot overrides grouped by slot", () => {
+    const compNode = {
+      _type: "TplComponent",
+      uuid: "card-inst",
+      name: "MyCard",
+      component: { name: "Card", uuid: "card-def" },
+      vsettings: [
+        {
+          args: [
+            {
+              param: { variable: { name: "label" } },
+              expr: { _type: "CustomCode", code: '"Card Title"' },
+            },
+            {
+              param: { variable: { name: "children" } },
+              expr: {
+                _type: "RenderExpr",
+                tpl: [
+                  {
+                    _type: "TplTag",
+                    tag: "h1",
+                    uuid: "h1-slot",
+                    name: "Heading",
+                    vsettings: [
+                      {
+                        rs: { values: { fontSize: "24px" } },
+                        text: { _type: "RawText", text: "Hello" },
+                        attrs: {},
+                      },
+                    ],
+                    children: [],
+                  },
+                  {
+                    _type: "TplTag",
+                    tag: "p",
+                    uuid: "p-slot",
+                    name: "Body",
+                    vsettings: [
+                      {
+                        rs: { values: {} },
+                        text: { _type: "RawText", text: "World" },
+                        attrs: {},
+                      },
+                    ],
+                    children: [],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+
+    const result = readNodeDetails(compNode);
+
+    expect(result.type).toBe("component");
+    expect(result.componentName).toBe("Card");
+    expect(result.attrs).toEqual({ label: "Card Title" });
+    expect(result.childCount).toBe(2);
+
+    // Children are slot wrappers with summaries inside
+    expect(result.children).toHaveLength(1);
+    expect(result.children?.[0]).toMatchObject({
+      type: "slot",
+      slotName: "children",
+      childCount: 2,
+    });
+    // Child summaries: no styles/text
+    expect(result.children?.[0].children?.[0].name).toBe("Heading");
+    expect(result.children?.[0].children?.[0].styles).toBeUndefined();
+    expect(result.children?.[0].children?.[0].text).toBeUndefined();
   });
 
   it("returns details for a TplSlot with default contents", () => {

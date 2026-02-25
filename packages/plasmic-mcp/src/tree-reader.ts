@@ -75,7 +75,32 @@ export function readNodeDetails(tplNode: any): TreeNode {
     return { type: "tag", tag: "div" };
   }
 
-  // Get raw Tpl children and produce summary for each
+  // TplComponent: group slot override children by slot name
+  if (isKnownTplComponent(tplNode)) {
+    const vs = tplNode.vsettings?.[0];
+    const slotArgs = (vs?.args ?? []).filter(
+      (arg: any) => isKnownRenderExpr(arg.expr)
+    );
+    const totalOverrideNodes = slotArgs.reduce(
+      (n: number, arg: any) => n + (arg.expr.tpl?.length ?? 0),
+      0
+    );
+    node.childCount = totalOverrideNodes;
+
+    if (slotArgs.length > 0) {
+      const slotChildren = buildSlotChildren(
+        slotArgs,
+        { summaryOnly: true, maxDepth: 0 },
+        0
+      );
+      if (slotChildren.length > 0) {
+        node.children = slotChildren;
+      }
+    }
+    return node;
+  }
+
+  // Default: TplTag, TplSlot — get raw children and produce summaries
   const rawChildren = getTplChildren(tplNode);
   node.childCount = rawChildren.length;
 
@@ -132,7 +157,7 @@ function readTplNode(
     return readTplTag(tpl, options, depth);
   }
   if (isKnownTplComponent(tpl)) {
-    return readTplComponent(tpl, options);
+    return readTplComponent(tpl, options, depth);
   }
   if (isKnownTplSlot(tpl)) {
     return readTplSlot(tpl, options, depth);
@@ -228,9 +253,16 @@ function readTplTag(
   return node;
 }
 
+/**
+ * Read a TplComponent node, separating slot override args (RenderExpr) from
+ * non-slot prop args. Slot overrides become children grouped by slot name;
+ * non-slot props appear in attrs. This matches Studio's tplChildren() traversal
+ * pattern: getSlotArgs() → filter(isKnownRenderExpr) → flatMap(arg.expr.tpl).
+ */
 function readTplComponent(
   tpl: any,
-  options: TreeReadOptions | undefined
+  options: TreeReadOptions | undefined,
+  depth: number
 ): TreeNode {
   const node: TreeNode = {
     type: "component",
@@ -243,17 +275,47 @@ function readTplComponent(
     node.name = tpl.name;
   }
 
+  // Separate slot args (RenderExpr) from non-slot prop args
+  const vs = tpl.vsettings?.[0];
+  const slotArgs: any[] = [];
+  const nonSlotArgs: any[] = [];
+
+  if (vs?.args?.length > 0) {
+    for (const arg of vs.args) {
+      if (isKnownRenderExpr(arg.expr)) {
+        slotArgs.push(arg);
+      } else {
+        nonSlotArgs.push(arg);
+      }
+    }
+  }
+
+  // Count total slot override children for childCount
+  const totalOverrideChildren = slotArgs.reduce(
+    (count: number, arg: any) => count + (arg.expr.tpl?.length ?? 0),
+    0
+  );
+
   // In summary mode, include childCount and skip props
   if (options?.summaryOnly) {
-    node.childCount = 0;
+    node.childCount = totalOverrideChildren;
+
+    // Still traverse slot overrides if within maxDepth
+    const shouldRecurse =
+      options?.maxDepth === undefined || depth < options.maxDepth;
+    if (shouldRecurse && slotArgs.length > 0) {
+      const slotChildren = buildSlotChildren(slotArgs, options, depth);
+      if (slotChildren.length > 0) {
+        node.children = slotChildren;
+      }
+    }
     return node;
   }
 
-  // Extract component args/props from the base variant
-  const vs = tpl.vsettings?.[0];
-  if (vs?.args?.length > 0) {
+  // Non-slot args → attrs
+  if (nonSlotArgs.length > 0) {
     const props: Record<string, unknown> = {};
-    for (const arg of vs.args) {
+    for (const arg of nonSlotArgs) {
       const paramName = arg.param?.variable?.name;
       if (!paramName) {continue;}
 
@@ -267,7 +329,57 @@ function readTplComponent(
     }
   }
 
+  // Slot args → children grouped by slot name
+  const shouldRecurse =
+    options?.maxDepth === undefined || depth < options.maxDepth;
+
+  if (slotArgs.length > 0) {
+    if (shouldRecurse) {
+      const slotChildren = buildSlotChildren(slotArgs, options, depth);
+      if (slotChildren.length > 0) {
+        node.children = slotChildren;
+      }
+    }
+    if (!shouldRecurse) {
+      node.childCount = totalOverrideChildren;
+    }
+  }
+
   return node;
+}
+
+/**
+ * Build slot wrapper TreeNodes from slot args. Each wrapper groups the
+ * override tpl nodes for a single slot under a type: "slot" node.
+ */
+function buildSlotChildren(
+  slotArgs: any[],
+  options: TreeReadOptions | undefined,
+  depth: number
+): TreeNode[] {
+  const slotChildren: TreeNode[] = [];
+  for (const arg of slotArgs) {
+    const slotName = arg.param?.variable?.name ?? "unnamed";
+    const slotTpls = arg.expr.tpl ?? [];
+    if (slotTpls.length === 0) {continue;}
+
+    const children = slotTpls
+      .map((child: any) => readTplNode(child, options, depth + 1))
+      .filter(Boolean) as TreeNode[];
+
+    const slotNode: TreeNode = {
+      type: "slot",
+      slotName,
+    };
+    if (children.length > 0) {
+      slotNode.children = children;
+    }
+    if (options?.summaryOnly) {
+      slotNode.childCount = slotTpls.length;
+    }
+    slotChildren.push(slotNode);
+  }
+  return slotChildren;
 }
 
 function readTplSlot(
@@ -315,7 +427,18 @@ function getTplChildren(tpl: any): any[] {
   if (isKnownTplSlot(tpl)) {
     return tpl.defaultContents ?? [];
   }
-  // TplComponent: don't traverse into component instances
+  // TplComponent: traverse slot override content (RenderExpr.tpl[])
+  if (isKnownTplComponent(tpl)) {
+    const vs = tpl.vsettings?.[0];
+    if (!vs?.args?.length) {return [];}
+    const children: any[] = [];
+    for (const arg of vs.args) {
+      if (isKnownRenderExpr(arg.expr)) {
+        children.push(...(arg.expr.tpl ?? []));
+      }
+    }
+    return children;
+  }
   return [];
 }
 

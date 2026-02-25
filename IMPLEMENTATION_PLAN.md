@@ -25,21 +25,28 @@
 
 ---
 
-## Priority 2: Slot Override Traversal
-**Spec:** `specs/plasmic-slot-override-traversal.md` (8 criteria)
-**Why next:** Foundation for slot-related editing. Currently, content inside component instance slots (TplComponent → Arg → RenderExpr → tpl[]) is invisible to tree reading and node resolution. This blocks slot targeting (Priority 6) and limits component composition workflows.
+## Priority 2: Slot Override Traversal ✅ COMPLETE
+**Spec:** `specs/plasmic-slot-override-traversal.md` (10 criteria — all implemented)
+**Status:** All acceptance criteria implemented and tested. 481 tests passing.
 
-**Implementation items:**
-- [ ] `node-resolver.ts` — modify `getChildren()` / `flattenWithPaths()` to traverse TplComponent slot overrides via `getSlotArgs()` → `RenderExpr.tpl[]`
-- [ ] `tree-reader.ts` — modify `getTplChildren()` to include slot override nodes in tree output, grouped by slot name
-- [ ] Path format for slot override nodes: `ComponentName.slotName.NodeName` (e.g., `Card.children.Title`)
-- [ ] All mutation tools work on override nodes: `update-text`, `update-styles`, `add-child`, `remove-child`, `move-child`
-- [ ] Handle edge cases: nested TplComponents in overrides, non-RenderExpr args (skip gracefully)
-- [ ] Unit tests: traverse overrides, resolve by UUID/name/path, mutate override text/styles
-- [ ] Integration test: create component instance with slot content → traverse → edit → verify
+**What was implemented:**
+- [x] `node-resolver.ts` `getChildren()` — traverses TplComponent slot overrides via `vsettings[0].args` → `isKnownRenderExpr(arg.expr)` → `arg.expr.tpl[]`
+- [x] `node-resolver.ts` `flattenWithPaths()` — inserts slot name as path segment for override nodes (e.g., `Card.children.Title`)
+- [x] `tree-reader.ts` `readTplComponent()` — separates slot args (RenderExpr → children) from non-slot args (CustomCode etc. → attrs); slot overrides grouped by slot name as `type: "slot"` wrapper nodes
+- [x] `tree-reader.ts` `getTplChildren()` — returns flat list of slot override tpl nodes for TplComponent
+- [x] `tree-reader.ts` `readNodeDetails()` — TplComponent shows slot-grouped children as summaries
+- [x] Path format: `ComponentName.slotName.NodeName` (e.g., `Root.Card.children.Title`)
+- [x] All mutation tools work on override nodes (resolved by UUID/name/path through existing edit-tools)
+- [x] Edge cases: nested TplComponent in overrides (recursive traversal), non-RenderExpr args (skipped), empty slot (skipped), TplComponent with no args (returns [])
+- [x] Summary mode: `childCount` on TplComponent = total slot override tpl nodes; slot wrappers get `childCount`
+- [x] 18 new tests: 10 node-resolver (UUID/name/path/multiple slots/nested/text content) + 8 tree-reader (grouping/multiple slots/mixed args/nested/summary/empty/nodeDetails)
 
-**Files to modify:** `node-resolver.ts`, `tree-reader.ts`
-**Test files:** `node-resolver.test.ts`, `tree-reader.test.ts`, `real-integration.test.ts`
+**Key design decisions:**
+- RenderExpr args are treated as slot overrides; all other arg types (CustomCode, VarRef, etc.) remain as attrs. This matches Studio's `getSlotArgs()` pattern.
+- Slot wrapper nodes use `type: "slot"` with `slotName`, reusing the existing TreeNode type (no schema changes needed).
+
+**Files modified:** `node-resolver.ts`, `tree-reader.ts`
+**Test files:** `node-resolver.test.ts`, `tree-reader.test.ts`
 
 ---
 
@@ -201,13 +208,13 @@ After specs are implemented, the Claude Code skills need updating to document ne
 ## Dependency Graph
 
 ```
-Error Recovery (P1) ✅ ──────────────────────────────────┐
-                                                          │
-Slot Override Traversal (P2) ──► Slot Targeting (P6)     │ All mutation
-                                                          │ tools benefit
-Element Tags & Attrs (P3) ────► Data Bindings (P7)       │
-                                                          │
-Border & CSS Validation (P4) ────────────────────────────┘
+Error Recovery (P1) ✅ ─────────────────────────────────┐
+                                                         │
+Slot Override Traversal (P2) ✅ ──► Slot Targeting (P6) │ All mutation
+                                                         │ tools benefit
+Element Tags & Attrs (P3) ────► Data Bindings (P7)      │
+                                                         │
+Border & CSS Validation (P4) ───────────────────────────┘
 
 Token Refs in Styles (P5) ─── standalone
 

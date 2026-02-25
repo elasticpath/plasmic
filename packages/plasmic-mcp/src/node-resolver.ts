@@ -28,7 +28,9 @@
 import {
   isKnownTplTag,
   isKnownTplSlot,
+  isKnownTplComponent,
   isKnownRawText,
+  isKnownRenderExpr,
 } from "@/wab/shared/model/classes";
 
 export interface ResolvedNode {
@@ -213,6 +215,10 @@ export function requireSingleNode(
 
 /**
  * Flatten the Tpl tree into a list of nodes with path metadata.
+ *
+ * For TplComponent nodes, slot override children are traversed with the slot
+ * name inserted as a path segment: e.g., Card.children.Title. This matches
+ * Studio's tplChildren() traversal via getSlotArgs() → RenderExpr.tpl[].
  */
 function flattenWithPaths(
   tpl: any,
@@ -232,9 +238,25 @@ function flattenWithPaths(
     component,
   });
 
-  const children = getChildren(tpl);
-  for (const child of children) {
-    result.push(...flattenWithPaths(child, component, currentPath));
+  // TplComponent: traverse slot overrides with slot name in path
+  if (isKnownTplComponent(tpl)) {
+    const vs = tpl.vsettings?.[0];
+    if (vs?.args?.length) {
+      for (const arg of vs.args) {
+        if (isKnownRenderExpr(arg.expr)) {
+          const slotName = arg.param?.variable?.name ?? "slot";
+          const slotPath = `${currentPath}.${slotName}`;
+          for (const child of arg.expr.tpl ?? []) {
+            result.push(...flattenWithPaths(child, component, slotPath));
+          }
+        }
+      }
+    }
+  } else {
+    const children = getChildren(tpl);
+    for (const child of children) {
+      result.push(...flattenWithPaths(child, component, currentPath));
+    }
   }
 
   return result;
@@ -264,7 +286,18 @@ function getChildren(tpl: any): any[] {
   if (isKnownTplSlot(tpl)) {
     return tpl.defaultContents ?? [];
   }
-  // TplComponent: don't traverse into component instances for resolution
+  // TplComponent: traverse slot override content (RenderExpr.tpl[])
+  if (isKnownTplComponent(tpl)) {
+    const vs = tpl.vsettings?.[0];
+    if (!vs?.args?.length) {return [];}
+    const children: any[] = [];
+    for (const arg of vs.args) {
+      if (isKnownRenderExpr(arg.expr)) {
+        children.push(...(arg.expr.tpl ?? []));
+      }
+    }
+    return children;
+  }
   return [];
 }
 

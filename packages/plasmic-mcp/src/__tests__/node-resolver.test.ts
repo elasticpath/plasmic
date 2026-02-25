@@ -221,6 +221,210 @@ describe("resolveNode", () => {
     });
   });
 
+  // =========================================================================
+  // TplComponent slot override traversal
+  //
+  // Slot overrides on TplComponent instances (vsettings[0].args with RenderExpr)
+  // are traversed so nodes inside slots are resolvable by UUID, name, and path.
+  // Path includes the slot name as a segment: Card.children.Title
+  // =========================================================================
+
+  describe("TplComponent slot override traversal", () => {
+    /** Helper: create a mock TplComponent with slot overrides */
+    function mkTplComponent(
+      uuid: string,
+      name: string,
+      compName: string,
+      slotOverrides: Record<string, any[]>
+    ): any {
+      const args = Object.entries(slotOverrides).map(([slotName, tpls]) => ({
+        param: { variable: { name: slotName } },
+        expr: { _type: "RenderExpr", tpl: tpls },
+      }));
+      return {
+        _type: "TplComponent",
+        uuid,
+        name,
+        component: { name: compName, uuid: `${uuid}-def` },
+        vsettings: [{ args }],
+      };
+    }
+
+    it("finds a node inside a slot override by UUID", () => {
+      const slotChild = mkTag("slot-child-1", "Title");
+      const card = mkTplComponent("card-1", "Card", "Card", {
+        children: [slotChild],
+      });
+      const root = mkTag("root", "Root", [card]);
+      const comp = mkComponent(root);
+
+      const result = resolveNode(comp, "slot-child-1");
+
+      expect(result.nodes).toHaveLength(1);
+      expect(result.nodes[0].node).toBe(slotChild);
+      expect(result.isAmbiguous).toBe(false);
+    });
+
+    it("finds a node inside a slot override by name", () => {
+      const slotChild = mkTag("sc1", "SlotTitle");
+      const card = mkTplComponent("card-1", "Card", "Card", {
+        children: [slotChild],
+      });
+      const root = mkTag("root", "Root", [card]);
+      const comp = mkComponent(root);
+
+      const result = resolveNode(comp, "SlotTitle");
+
+      expect(result.nodes).toHaveLength(1);
+      expect(result.nodes[0].node).toBe(slotChild);
+    });
+
+    it("includes slot name in path (Card.children.Title)", () => {
+      const slotChild = mkTag("sc1", "Title");
+      const card = mkTplComponent("card-1", "Card", "Card", {
+        children: [slotChild],
+      });
+      const root = mkTag("root", "Root", [card]);
+      const comp = mkComponent(root);
+
+      const result = resolveNode(comp, "sc1");
+
+      expect(result.nodes).toHaveLength(1);
+      expect(result.nodes[0].path).toBe("Root.Card.children.Title");
+    });
+
+    it("resolves by path with slot name segment", () => {
+      const slotChild = mkTag("sc1", "Title");
+      const card = mkTplComponent("card-1", "Card", "Card", {
+        children: [slotChild],
+      });
+      const root = mkTag("root", "Root", [card]);
+      const comp = mkComponent(root);
+
+      const result = resolveNode(comp, "Card.children.Title");
+
+      expect(result.nodes).toHaveLength(1);
+      expect(result.nodes[0].node).toBe(slotChild);
+    });
+
+    it("traverses multiple slots", () => {
+      const headerChild = mkTag("hc1", "HeaderText");
+      const bodyChild = mkTag("bc1", "BodyText");
+      const card = mkTplComponent("card-1", "Card", "Card", {
+        header: [headerChild],
+        children: [bodyChild],
+      });
+      const root = mkTag("root", "Root", [card]);
+      const comp = mkComponent(root);
+
+      const headerResult = resolveNode(comp, "HeaderText");
+      expect(headerResult.nodes).toHaveLength(1);
+      expect(headerResult.nodes[0].node).toBe(headerChild);
+      expect(headerResult.nodes[0].path).toBe("Root.Card.header.HeaderText");
+
+      const bodyResult = resolveNode(comp, "BodyText");
+      expect(bodyResult.nodes).toHaveLength(1);
+      expect(bodyResult.nodes[0].node).toBe(bodyChild);
+      expect(bodyResult.nodes[0].path).toBe("Root.Card.children.BodyText");
+    });
+
+    it("traverses multiple children within a single slot", () => {
+      const child1 = mkTag("c1", "First");
+      const child2 = mkTag("c2", "Second");
+      const card = mkTplComponent("card-1", "Card", "Card", {
+        children: [child1, child2],
+      });
+      const root = mkTag("root", "Root", [card]);
+      const comp = mkComponent(root);
+
+      const result1 = resolveNode(comp, "First");
+      expect(result1.nodes).toHaveLength(1);
+      expect(result1.nodes[0].node).toBe(child1);
+
+      const result2 = resolveNode(comp, "Second");
+      expect(result2.nodes).toHaveLength(1);
+      expect(result2.nodes[0].node).toBe(child2);
+    });
+
+    it("traverses deeply nested overrides (TplComponent inside TplComponent)", () => {
+      const deepChild = mkTag("deep-1", "DeepText");
+      const innerCard = mkTplComponent("inner-1", "InnerCard", "Card", {
+        children: [deepChild],
+      });
+      const outerCard = mkTplComponent("outer-1", "OuterCard", "Card", {
+        children: [innerCard],
+      });
+      const root = mkTag("root", "Root", [outerCard]);
+      const comp = mkComponent(root);
+
+      const result = resolveNode(comp, "DeepText");
+
+      expect(result.nodes).toHaveLength(1);
+      expect(result.nodes[0].node).toBe(deepChild);
+      expect(result.nodes[0].path).toBe(
+        "Root.OuterCard.children.InnerCard.children.DeepText"
+      );
+    });
+
+    it("returns empty children for TplComponent with no args", () => {
+      const card: any = {
+        _type: "TplComponent",
+        uuid: "card-1",
+        name: "Card",
+        component: { name: "Card", uuid: "card-def" },
+        vsettings: [{ args: [] }],
+      };
+      const root = mkTag("root", "Root", [card]);
+      const comp = mkComponent(root);
+
+      // Card itself is found but no children inside
+      const result = resolveNode(comp, "Card");
+      expect(result.nodes).toHaveLength(1);
+
+      const result2 = resolveNode(comp, "NonExistentChild");
+      expect(result2.nodes).toHaveLength(0);
+    });
+
+    it("skips non-RenderExpr args (CustomCode props)", () => {
+      const card: any = {
+        _type: "TplComponent",
+        uuid: "card-1",
+        name: "Card",
+        component: { name: "Card", uuid: "card-def" },
+        vsettings: [
+          {
+            args: [
+              {
+                param: { variable: { name: "label" } },
+                expr: { _type: "CustomCode", code: '"Hello"' },
+              },
+            ],
+          },
+        ],
+      };
+      const root = mkTag("root", "Root", [card]);
+      const comp = mkComponent(root);
+
+      // CustomCode arg is not traversed as slot content
+      const result = resolveNode(comp, "label");
+      expect(result.nodes).toHaveLength(0);
+    });
+
+    it("finds text content inside slot overrides with ~ prefix", () => {
+      const textChild = mkTextTag("tc1", "Greeting", "Hello World");
+      const card = mkTplComponent("card-1", "Card", "Card", {
+        children: [textChild],
+      });
+      const root = mkTag("root", "Root", [card]);
+      const comp = mkComponent(root);
+
+      const result = resolveNode(comp, "~Hello");
+
+      expect(result.nodes).toHaveLength(1);
+      expect(result.nodes[0].node).toBe(textChild);
+    });
+  });
+
   describe("empty tree", () => {
     it("handles component with no tplTree", () => {
       const comp = { uuid: "comp-1", name: "Empty" };
