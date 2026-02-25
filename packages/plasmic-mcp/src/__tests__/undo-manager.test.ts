@@ -52,7 +52,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   clearUndoStack();
   mockFastBundle.mockReturnValue({ map: {}, root: "0" });
-  mockWithRecording.mockReturnValue(emptyRecordedChanges);
+  mockWithRecording.mockReturnValue(emptyRecordedChanges());
 });
 
 afterEach(() => {
@@ -73,9 +73,9 @@ describe("pushUndoOperation", () => {
   });
 
   it("supports multiple pushes", () => {
-    pushUndoOperation("op 1", emptyRecordedChanges);
-    pushUndoOperation("op 2", emptyRecordedChanges);
-    pushUndoOperation("op 3", emptyRecordedChanges);
+    pushUndoOperation("op 1", emptyRecordedChanges());
+    pushUndoOperation("op 2", emptyRecordedChanges());
+    pushUndoOperation("op 3", emptyRecordedChanges());
     expect(getUndoDepth()).toBe(3);
   });
 });
@@ -146,7 +146,7 @@ describe("undo", () => {
   it("does not push an undo-of-undo onto the stack", async () => {
     setupSession();
     const api = mockApiClient();
-    pushUndoOperation("edit", emptyRecordedChanges);
+    pushUndoOperation("edit", emptyRecordedChanges());
 
     await undo(api);
     // Stack should be empty — undo itself was NOT pushed
@@ -156,7 +156,7 @@ describe("undo", () => {
   it("increments revision number after undo", async () => {
     setupSession();
     const api = mockApiClient();
-    pushUndoOperation("edit", emptyRecordedChanges);
+    pushUndoOperation("edit", emptyRecordedChanges());
 
     const result = await undo(api);
     expect(result.save.revisionNum).toBe(6);
@@ -169,17 +169,17 @@ describe("getUndoDepth", () => {
   });
 
   it("tracks depth accurately", () => {
-    pushUndoOperation("a", emptyRecordedChanges);
+    pushUndoOperation("a", emptyRecordedChanges());
     expect(getUndoDepth()).toBe(1);
-    pushUndoOperation("b", emptyRecordedChanges);
+    pushUndoOperation("b", emptyRecordedChanges());
     expect(getUndoDepth()).toBe(2);
   });
 });
 
 describe("clearUndoStack", () => {
   it("clears all operations", () => {
-    pushUndoOperation("a", emptyRecordedChanges);
-    pushUndoOperation("b", emptyRecordedChanges);
+    pushUndoOperation("a", emptyRecordedChanges());
+    pushUndoOperation("b", emptyRecordedChanges());
     clearUndoStack();
     expect(getUndoDepth()).toBe(0);
   });

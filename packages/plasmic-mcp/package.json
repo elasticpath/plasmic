@@ -10,7 +10,9 @@
   "scripts": {
     "build": "node build.mjs",
     "dev": "tsx src/index.ts",
-    "test": "jest --config jest.config.cjs",
+    "test": "jest --config jest.config.cjs && vitest run --config vitest.config.integration.ts",
+    "test:unit": "jest --config jest.config.cjs",
+    "test:integration": "vitest run --config vitest.config.integration.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -48,6 +50,7 @@
     "@types/lodash": "^4.17.0",
     "@types/node": "^20.0.0",
     "esbuild": "^0.20.0",
+    "vitest": "3.2.4",
     "tsx": "^4.20.0",
     "typescript": "^5.2.0"
   },

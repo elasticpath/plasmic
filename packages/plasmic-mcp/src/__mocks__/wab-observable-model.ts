@@ -26,11 +26,13 @@ export function observeModel(_rootInst: any, _opts: any): { dispose: () => void 
   return { dispose: jest.fn() };
 }
 
-export const emptyRecordedChanges = {
-  changes: [],
-  newInsts: [],
-  removedInsts: [],
-};
+export function emptyRecordedChanges() {
+  return {
+    changes: [],
+    newInsts: [],
+    removedInsts: [],
+  };
+}
 
 export function mergeRecordedChanges(a: any, b: any): any {
   return {

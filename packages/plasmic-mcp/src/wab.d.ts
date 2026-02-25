@@ -134,7 +134,7 @@ declare module "@/wab/shared/core/observable-model" {
     }
   ): { dispose: () => void };
 
-  export const emptyRecordedChanges: RecordedChanges;
+  export function emptyRecordedChanges(): RecordedChanges;
   export function mergeRecordedChanges(a: RecordedChanges, b: RecordedChanges): RecordedChanges;
 }
 

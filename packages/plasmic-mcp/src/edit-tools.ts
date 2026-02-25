@@ -35,13 +35,35 @@ import { pushUndoOperation } from "./undo-manager.js";
 // --- Helpers ---
 
 /**
+ * Expand a CSS box-model shorthand value (1-4 parts) into [top, right, bottom, left].
+ * Follows the standard CSS shorthand algorithm.
+ */
+function expandBoxShorthand(value: string): [string, string, string, string] {
+  const parts = value.trim().split(/\s+/);
+  switch (parts.length) {
+    case 1: return [parts[0], parts[0], parts[0], parts[0]];
+    case 2: return [parts[0], parts[1], parts[0], parts[1]];
+    case 3: return [parts[0], parts[1], parts[2], parts[1]];
+    default: return [parts[0], parts[1], parts[2], parts[3]];
+  }
+}
+
+/**
  * Sanitize CSS styles to prevent site invariant violations.
  *
- * Plasmic's "new background system" rejects any style property starting with
- * "background-" (see site-invariants.ts line 738). All backgrounds must use
- * the `background` shorthand. This matches how Studio stores backgrounds:
- *   - ColorFill.showCss() → "linear-gradient(color, color)"
- *   - ImageBackground.showCss() → "url(...)"
+ * Plasmic's site-invariants.ts rejects CSS shorthand properties that don't have
+ * CSS initial values defined (via css-initials). This function expands common
+ * shorthands to their longhand equivalents before they're stored in RuleSets.
+ *
+ * Expanded shorthands:
+ *   - padding → paddingTop/Right/Bottom/Left
+ *   - margin → marginTop/Right/Bottom/Left
+ *   - gap → rowGap + columnGap
+ *   - borderRadius → borderTopLeftRadius/TopRight/BottomRight/BottomLeft
+ *   - borderWidth → borderTopWidth/Right/Bottom/Left
+ *   - borderStyle → borderTopStyle/Right/Bottom/Left
+ *   - borderColor → borderTopColor/Right/Bottom/Left
+ *   - background-* → consolidated to `background` shorthand
  *
  * Accepts both camelCase and kebab-case input.
  */
@@ -55,6 +77,7 @@ export function sanitizeStyles(
 
   for (const [key, value] of Object.entries(styles)) {
     switch (key) {
+      // --- Background shorthand handling ---
       case "backgroundColor":
       case "background-color":
         bgColor = value;
@@ -80,6 +103,91 @@ export function sanitizeStyles(
       case "background":
         result["background"] = value;
         break;
+
+      // --- Padding shorthand → longhands ---
+      case "padding":
+      case "padding-shorthand": {
+        const [t, r, b, l] = expandBoxShorthand(value);
+        result["paddingTop"] = t;
+        result["paddingRight"] = r;
+        result["paddingBottom"] = b;
+        result["paddingLeft"] = l;
+        break;
+      }
+
+      // --- Margin shorthand → longhands ---
+      case "margin":
+      case "margin-shorthand": {
+        const [t, r, b, l] = expandBoxShorthand(value);
+        result["marginTop"] = t;
+        result["marginRight"] = r;
+        result["marginBottom"] = b;
+        result["marginLeft"] = l;
+        break;
+      }
+
+      // --- Gap shorthand → rowGap + columnGap ---
+      case "gap": {
+        const parts = value.trim().split(/\s+/);
+        result["row-gap"] = parts[0];
+        result["column-gap"] = parts.length > 1 ? parts[1] : parts[0];
+        break;
+      }
+
+      // --- Border-radius shorthand → corner longhands ---
+      case "borderRadius":
+      case "border-radius": {
+        const [tl, tr, br, bl] = expandBoxShorthand(value);
+        result["border-top-left-radius"] = tl;
+        result["border-top-right-radius"] = tr;
+        result["border-bottom-right-radius"] = br;
+        result["border-bottom-left-radius"] = bl;
+        break;
+      }
+
+      // --- Border-width shorthand → side longhands ---
+      case "borderWidth":
+      case "border-width": {
+        const [t, r, b, l] = expandBoxShorthand(value);
+        result["border-top-width"] = t;
+        result["border-right-width"] = r;
+        result["border-bottom-width"] = b;
+        result["border-left-width"] = l;
+        break;
+      }
+
+      // --- Border-style shorthand → side longhands ---
+      case "borderStyle":
+      case "border-style": {
+        const [t, r, b, l] = expandBoxShorthand(value);
+        result["border-top-style"] = t;
+        result["border-right-style"] = r;
+        result["border-bottom-style"] = b;
+        result["border-left-style"] = l;
+        break;
+      }
+
+      // --- Border-color shorthand → side longhands ---
+      case "borderColor":
+      case "border-color": {
+        const [t, r, b, l] = expandBoxShorthand(value);
+        result["border-top-color"] = t;
+        result["border-right-color"] = r;
+        result["border-bottom-color"] = b;
+        result["border-left-color"] = l;
+        break;
+      }
+
+      // --- Inset shorthand → longhands ---
+      case "inset": {
+        const [t, r, b, l] = expandBoxShorthand(value);
+        result["top"] = t;
+        result["right"] = r;
+        result["bottom"] = b;
+        result["left"] = l;
+        break;
+      }
+
       default:
         result[key] = value;
         break;

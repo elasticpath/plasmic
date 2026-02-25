@@ -46,7 +46,7 @@ export function beginBatch(): string {
   const batchId = randomUUID();
   currentBatch = {
     batchId,
-    accumulatedChanges: { ...emptyRecordedChanges },
+    accumulatedChanges: emptyRecordedChanges(),
     modifiedComponentIids: new Set(),
     operationCount: 0,
   };

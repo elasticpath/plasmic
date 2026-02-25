@@ -27,4 +27,6 @@ module.exports = {
       "<rootDir>/src/__mocks__/wab-site-invariants",
   },
   testRegex: ".*\\.(spec|test)\\.(ts|tsx)$",
+  // Skip vitest-based integration tests (run separately via vitest)
+  testPathIgnorePatterns: ["real-integration"],
 };

@@ -96,7 +96,7 @@ describe("isBatchActive / getBatchId", () => {
 
 describe("accumulateChanges", () => {
   it("throws if no batch is active", () => {
-    expect(() => accumulateChanges(emptyRecordedChanges)).toThrow(
+    expect(() => accumulateChanges(emptyRecordedChanges())).toThrow(
       "No batch session is active"
     );
   });
@@ -123,8 +123,8 @@ describe("accumulateChanges", () => {
   it("accumulates modifiedComponentIids", () => {
     setupSession();
     beginBatch();
-    accumulateChanges(emptyRecordedChanges, ["iid-1"]);
-    accumulateChanges(emptyRecordedChanges, ["iid-2", "iid-1"]);
+    accumulateChanges(emptyRecordedChanges(), ["iid-1"]);
+    accumulateChanges(emptyRecordedChanges(), ["iid-2", "iid-1"]);
     // Deduplication tested via endBatch
     expect(isBatchActive()).toBe(true);
   });
@@ -237,7 +237,7 @@ describe("cancelBatch", () => {
   it("cancels an active batch without saving", () => {
     setupSession();
     beginBatch();
-    accumulateChanges(emptyRecordedChanges);
+    accumulateChanges(emptyRecordedChanges());
     cancelBatch();
     expect(isBatchActive()).toBe(false);
     expect(getBatchId()).toBeNull();

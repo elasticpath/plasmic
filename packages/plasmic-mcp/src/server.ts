@@ -122,9 +122,10 @@ export function createServer(): McpServer {
     { projectId: z.string().describe("The Plasmic project ID") },
     async ({ projectId }) => {
       try {
-        // Dispose previous change tracker if switching projects
+        // Clean up previous session state before loading new project
+        cancelBatch();
+        clearUndoStack();
         disposeChangeTracker();
-        // Clear node resolver cache (model is being replaced)
         clearNodeCache();
 
         const {
