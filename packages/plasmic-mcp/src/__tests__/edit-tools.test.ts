@@ -34,6 +34,7 @@ import {
   isValidStyleProp,
   validateStyleProperties,
   getValidStylePropertyNames,
+  resolveTokenReferences,
 } from "../edit-tools";
 import { setSession, clearSession } from "../session";
 import { initChangeTracker, disposeChangeTracker } from "../change-tracker";
@@ -3957,6 +3958,245 @@ describe("edit-tools", () => {
           children: [],
         })
       ).rejects.toThrow("Event handler attribute");
+    });
+  });
+
+  // =============================================================================
+  // resolveTokenReferences — converts token:Name values to var(--token-<uuid>)
+  //
+  // This is the bridge between human-readable token names and WAB's internal
+  // var(--token-<uuid>) format. Incorrect resolution means styles silently
+  // fail to connect to the design system, producing hardcoded values instead.
+  // =============================================================================
+
+  describe("resolveTokenReferences", () => {
+    const siteWithTokens = {
+      styleTokens: [
+        { uuid: "color-1", name: "Primary Blue", type: "Color", value: "#0066cc" },
+        { uuid: "color-2", name: "Background", type: "Color", value: "#ffffff" },
+        { uuid: "spacing-1", name: "Base Spacing", type: "Spacing", value: "8px" },
+        { uuid: "font-1", name: "Body Font", type: "FontFamily", value: "Inter" },
+        { uuid: "size-1", name: "Body Size", type: "FontSize", value: "16px" },
+        { uuid: "lh-1", name: "Body Line Height", type: "LineHeight", value: "1.5" },
+        { uuid: "opacity-1", name: "Disabled", type: "Opacity", value: "0.5" },
+      ],
+    };
+
+    it("resolves token:Name to var(--token-<uuid>)", () => {
+      const result = resolveTokenReferences(
+        { color: "token:Primary Blue" },
+        siteWithTokens
+      );
+      expect(result.color).toBe("var(--token-color-1)");
+    });
+
+    it("resolves token by UUID", () => {
+      const result = resolveTokenReferences(
+        { color: "token:color-1" },
+        siteWithTokens
+      );
+      expect(result.color).toBe("var(--token-color-1)");
+    });
+
+    it("resolves token name case-insensitively", () => {
+      const result = resolveTokenReferences(
+        { color: "token:primary blue" },
+        siteWithTokens
+      );
+      expect(result.color).toBe("var(--token-color-1)");
+    });
+
+    it("passes through non-token values unchanged", () => {
+      const result = resolveTokenReferences(
+        { color: "#ff0000", fontSize: "24px" },
+        siteWithTokens
+      );
+      expect(result.color).toBe("#ff0000");
+      expect(result.fontSize).toBe("24px");
+    });
+
+    it("handles mixed token and non-token values", () => {
+      const result = resolveTokenReferences(
+        { color: "token:Primary Blue", fontSize: "24px" },
+        siteWithTokens
+      );
+      expect(result.color).toBe("var(--token-color-1)");
+      expect(result.fontSize).toBe("24px");
+    });
+
+    it("throws when token name is empty", () => {
+      expect(() =>
+        resolveTokenReferences({ color: "token:" }, siteWithTokens)
+      ).toThrow('Token name required after "token:"');
+    });
+
+    it("throws when token is not found", () => {
+      expect(() =>
+        resolveTokenReferences({ color: "token:Nonexistent" }, siteWithTokens)
+      ).toThrow('Token "Nonexistent" not found');
+    });
+
+    it("lists available tokens of matching type in error", () => {
+      try {
+        resolveTokenReferences({ color: "token:Missing" }, siteWithTokens);
+        expect.fail("Should have thrown");
+      } catch (err: any) {
+        expect(err.message).toContain("Primary Blue");
+        expect(err.message).toContain("Background");
+        expect(err.message).toContain("Color");
+      }
+    });
+
+    it("throws when token type mismatches property", () => {
+      expect(() =>
+        resolveTokenReferences(
+          { paddingTop: "token:Primary Blue" },
+          siteWithTokens
+        )
+      ).toThrow('Token "Primary Blue" is type "Color"');
+      expect(() =>
+        resolveTokenReferences(
+          { paddingTop: "token:Primary Blue" },
+          siteWithTokens
+        )
+      ).toThrow("Spacing");
+    });
+
+    it("accepts Spacing token for spacing properties", () => {
+      const result = resolveTokenReferences(
+        { paddingTop: "token:Base Spacing" },
+        siteWithTokens
+      );
+      expect(result.paddingTop).toBe("var(--token-spacing-1)");
+    });
+
+    it("accepts FontFamily token for font-family", () => {
+      const result = resolveTokenReferences(
+        { "font-family": "token:Body Font" },
+        siteWithTokens
+      );
+      expect(result["font-family"]).toBe("var(--token-font-1)");
+    });
+
+    it("accepts FontSize token for font-size", () => {
+      const result = resolveTokenReferences(
+        { "font-size": "token:Body Size" },
+        siteWithTokens
+      );
+      expect(result["font-size"]).toBe("var(--token-size-1)");
+    });
+
+    it("accepts LineHeight token for line-height", () => {
+      const result = resolveTokenReferences(
+        { "line-height": "token:Body Line Height" },
+        siteWithTokens
+      );
+      expect(result["line-height"]).toBe("var(--token-lh-1)");
+    });
+
+    it("accepts Opacity token for opacity", () => {
+      const result = resolveTokenReferences(
+        { opacity: "token:Disabled" },
+        siteWithTokens
+      );
+      expect(result.opacity).toBe("var(--token-opacity-1)");
+    });
+
+    it("allows any token type for unknown properties", () => {
+      // display doesn't have a specific token type requirement
+      const result = resolveTokenReferences(
+        { display: "token:Primary Blue" },
+        siteWithTokens
+      );
+      expect(result.display).toBe("var(--token-color-1)");
+    });
+
+    it("searches dependency tokens", () => {
+      const siteWithDeps = {
+        styleTokens: [],
+        projectDependencies: [
+          {
+            site: {
+              styleTokens: [
+                { uuid: "dep-color-1", name: "Theme Red", type: "Color", value: "#ff0000" },
+              ],
+            },
+          },
+        ],
+      };
+      const result = resolveTokenReferences(
+        { color: "token:Theme Red" },
+        siteWithDeps
+      );
+      expect(result.color).toBe("var(--token-dep-color-1)");
+    });
+
+    it("works with empty token list", () => {
+      expect(() =>
+        resolveTokenReferences({ color: "token:Missing" }, { styleTokens: [] })
+      ).toThrow("No tokens defined");
+    });
+  });
+
+  // --- updateStyles with token references ---
+
+  describe("updateStyles with token references", () => {
+    it("resolves token:Name and applies var(--token-<uuid>) to style", async () => {
+      const node = mkTag({
+        uuid: "styled-1",
+        name: "Box",
+        styles: {},
+      });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      const session = makeSession({
+        site: {
+          components: [comp],
+          styleTokens: [
+            { uuid: "color-1", name: "Primary Blue", type: "Color", value: "#0066cc" },
+          ],
+        },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      const result = await updateStyles(api, "comp-1", "Box", {
+        color: "token:Primary Blue",
+      });
+
+      expect(result.updatedProperties).toContain("color");
+      // The stored value should be the WAB token reference format
+      expect(node.vsettings[0].rs.values.color).toBe("var(--token-color-1)");
+    });
+
+    it("rejects invalid token in updateStyles", async () => {
+      const node = mkTag({
+        uuid: "styled-1",
+        name: "Box",
+        styles: {},
+      });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      const session = makeSession({
+        site: {
+          components: [comp],
+          styleTokens: [
+            { uuid: "color-1", name: "Primary Blue", type: "Color", value: "#0066cc" },
+          ],
+        },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      await expect(
+        updateStyles(api, "comp-1", "Box", {
+          color: "token:Nonexistent",
+        })
+      ).rejects.toThrow('Token "Nonexistent" not found');
     });
   });
 });

@@ -381,14 +381,16 @@ export function createServer(): McpServer {
           };
         }
 
-        // Build options only when optional params are provided (backward compatible)
+        // Build options — always pass styleTokens for token reference resolution
+        const styleTokens = session.site.styleTokens;
         const hasOptions =
-          maxDepth !== undefined || excludeStyles || summaryOnly;
+          maxDepth !== undefined || excludeStyles || summaryOnly || styleTokens?.length > 0;
         const tree = hasOptions
           ? readComponentTree(component, {
               maxDepth,
               excludeStyles: excludeStyles || undefined,
               summaryOnly: summaryOnly || undefined,
+              styleTokens,
             } as TreeReadOptions)
           : readComponentTree(component);
 
@@ -528,7 +530,7 @@ export function createServer(): McpServer {
 
         const resolveResult = resolveNode(component, nodeRef);
         const resolved = requireSingleNode(resolveResult, nodeRef);
-        const node = readNodeDetails(resolved.node);
+        const node = readNodeDetails(resolved.node, session.site.styleTokens);
 
         return {
           content: [
@@ -594,8 +596,10 @@ export function createServer(): McpServer {
           };
         }
 
-        // Full tree for the file
-        const fullTree = readComponentTree(component);
+        // Full tree for the file (with token resolution)
+        const fullTree = readComponentTree(component, {
+          styleTokens: session.site.styleTokens,
+        });
         const fullData = {
           name: component.name,
           uuid: component.uuid,
@@ -694,15 +698,13 @@ export function createServer(): McpServer {
 
         const resolveResult = resolveNode(component, nodeRef);
         const resolved = requireSingleNode(resolveResult, nodeRef);
-        const hasOptions = maxDepth !== undefined || excludeStyles;
         const tree = readSubtree(
           resolved.node,
-          hasOptions
-            ? {
-                maxDepth,
-                excludeStyles: excludeStyles || undefined,
-              }
-            : undefined
+          {
+            maxDepth,
+            excludeStyles: excludeStyles || undefined,
+            styleTokens: session.site.styleTokens,
+          }
         );
         const nodeCount = tree ? countTreeNodes(tree) : 0;
 
@@ -1391,7 +1393,8 @@ export function createServer(): McpServer {
     "update-styles",
     "Update CSS styles on an element in a component. Uses camelCase property names (e.g., fontSize, backgroundColor). " +
     "Note: backgroundColor maps to the background shorthand internally. Border/outline shorthands are expanded to longhands. " +
-    "Use list-style-properties to see all valid property names.",
+    "Use list-style-properties to see all valid property names. " +
+    "Values can reference design tokens with \"token:TokenName\" or \"token:uuid\" (e.g., {\"color\": \"token:Primary Blue\"}).",
     {
       componentUuid: z
         .string()

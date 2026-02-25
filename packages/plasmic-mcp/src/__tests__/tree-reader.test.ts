@@ -1837,3 +1837,233 @@ describe("countTreeNodes", () => {
     expect(countTreeNodes({ type: "tag", tag: "div" })).toBe(1);
   });
 });
+
+// =============================================================================
+// Token reference resolution in styles
+//
+// When style values contain var(--token-<uuid>) references, the tree reader
+// resolves them to human-readable CSS values and annotates which properties
+// reference which tokens. Without this, Claude would see opaque var() strings
+// instead of actual colors/sizes, making it impossible to understand existing
+// designs or make informed styling decisions.
+// =============================================================================
+
+describe("token reference resolution in styles", () => {
+  const styleTokens = [
+    { uuid: "color-1", name: "Primary Blue", type: "Color", value: "#0066cc" },
+    { uuid: "color-2", name: "Background", type: "Color", value: "#ffffff" },
+    { uuid: "spacing-1", name: "Base Spacing", type: "Spacing", value: "8px" },
+  ];
+
+  it("resolves var(--token-<uuid>) to CSS value and adds tokenRefs", () => {
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        tag: "div",
+        uuid: "node-1",
+        name: "Box",
+        vsettings: [
+          {
+            rs: { values: { color: "var(--token-color-1)", display: "flex" } },
+            attrs: {},
+          },
+        ],
+        children: [],
+      },
+    };
+
+    const result = readComponentTree(component, { styleTokens });
+    expect(result?.styles?.color).toBe("#0066cc");
+    expect(result?.styles?.display).toBe("flex");
+    expect(result?.tokenRefs).toEqual({ color: "Primary Blue" });
+  });
+
+  it("resolves multiple token refs in the same node", () => {
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        tag: "div",
+        uuid: "node-1",
+        vsettings: [
+          {
+            rs: {
+              values: {
+                color: "var(--token-color-1)",
+                "background-color": "var(--token-color-2)",
+                "padding-top": "var(--token-spacing-1)",
+              },
+            },
+            attrs: {},
+          },
+        ],
+        children: [],
+      },
+    };
+
+    const result = readComponentTree(component, { styleTokens });
+    expect(result?.styles?.color).toBe("#0066cc");
+    expect(result?.styles?.["background-color"]).toBe("#ffffff");
+    expect(result?.styles?.["padding-top"]).toBe("8px");
+    expect(result?.tokenRefs).toEqual({
+      color: "Primary Blue",
+      "background-color": "Background",
+      "padding-top": "Base Spacing",
+    });
+  });
+
+  it("leaves non-token values unchanged and omits tokenRefs when none", () => {
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        tag: "div",
+        uuid: "node-1",
+        vsettings: [
+          {
+            rs: { values: { color: "red", fontSize: "16px" } },
+            attrs: {},
+          },
+        ],
+        children: [],
+      },
+    };
+
+    const result = readComponentTree(component, { styleTokens });
+    expect(result?.styles?.color).toBe("red");
+    expect(result?.tokenRefs).toBeUndefined();
+  });
+
+  it("handles unknown token UUIDs gracefully (leaves var() as-is)", () => {
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        tag: "div",
+        uuid: "node-1",
+        vsettings: [
+          {
+            rs: { values: { color: "var(--token-unknown-uuid)" } },
+            attrs: {},
+          },
+        ],
+        children: [],
+      },
+    };
+
+    const result = readComponentTree(component, { styleTokens });
+    // Unknown UUID → not resolved, left as-is
+    expect(result?.styles?.color).toBe("var(--token-unknown-uuid)");
+    expect(result?.tokenRefs).toBeUndefined();
+  });
+
+  it("resolves token chains (token referencing another token)", () => {
+    const chainTokens = [
+      { uuid: "base", name: "Blue 500", type: "Color", value: "#0066cc" },
+      { uuid: "semantic", name: "Primary", type: "Color", value: "var(--token-base)" },
+    ];
+
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        tag: "div",
+        uuid: "node-1",
+        vsettings: [
+          {
+            rs: { values: { color: "var(--token-semantic)" } },
+            attrs: {},
+          },
+        ],
+        children: [],
+      },
+    };
+
+    const result = readComponentTree(component, { styleTokens: chainTokens });
+    expect(result?.styles?.color).toBe("#0066cc");
+    expect(result?.tokenRefs).toEqual({ color: "Primary" });
+  });
+
+  it("does not resolve tokens when styleTokens option is not provided", () => {
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        tag: "div",
+        uuid: "node-1",
+        vsettings: [
+          {
+            rs: { values: { color: "var(--token-color-1)" } },
+            attrs: {},
+          },
+        ],
+        children: [],
+      },
+    };
+
+    // No styleTokens option — raw var() should be returned
+    const result = readComponentTree(component);
+    expect(result?.styles?.color).toBe("var(--token-color-1)");
+    expect(result?.tokenRefs).toBeUndefined();
+  });
+
+  it("skips token resolution in summary mode", () => {
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        tag: "div",
+        uuid: "node-1",
+        vsettings: [
+          {
+            rs: { values: { color: "var(--token-color-1)" } },
+            attrs: {},
+          },
+        ],
+        children: [],
+      },
+    };
+
+    const result = readComponentTree(component, {
+      styleTokens,
+      summaryOnly: true,
+    });
+    // Summary mode skips styles entirely
+    expect(result?.styles).toBeUndefined();
+    expect(result?.tokenRefs).toBeUndefined();
+  });
+
+  it("resolves tokens in readNodeDetails", () => {
+    const tplNode = {
+      _type: "TplTag",
+      tag: "div",
+      uuid: "node-1",
+      name: "Styled Box",
+      vsettings: [
+        {
+          rs: { values: { color: "var(--token-color-1)", display: "flex" } },
+          attrs: {},
+        },
+      ],
+      children: [],
+    };
+
+    const result = readNodeDetails(tplNode, styleTokens);
+    expect(result.styles?.color).toBe("#0066cc");
+    expect(result.styles?.display).toBe("flex");
+    expect(result.tokenRefs).toEqual({ color: "Primary Blue" });
+  });
+
+  it("resolves tokens in readSubtree", () => {
+    const tplNode = {
+      _type: "TplTag",
+      tag: "div",
+      uuid: "node-1",
+      vsettings: [
+        {
+          rs: { values: { "padding-top": "var(--token-spacing-1)" } },
+          attrs: {},
+        },
+      ],
+      children: [],
+    };
+
+    const result = readSubtree(tplNode, { styleTokens });
+    expect(result?.styles?.["padding-top"]).toBe("8px");
+    expect(result?.tokenRefs).toEqual({ "padding-top": "Base Spacing" });
+  });
+});

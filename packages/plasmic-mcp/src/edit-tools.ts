@@ -44,6 +44,14 @@ import { isBatchActive, accumulateChanges } from "./batch-manager.js";
 import { pushUndoOperation } from "./undo-manager.js";
 import { undoChanges } from "@/wab/shared/core/undo-util";
 import cssInitials from "css-initials";
+import {
+  findToken,
+  getAllStyleTokens,
+  mkTokenRef,
+  getAcceptableTokenTypes,
+  resolveTokenValue,
+} from "./token-reader.js";
+import type { StyleTokenType } from "./types.js";
 
 // --- Tag Validation ---
 
@@ -267,6 +275,86 @@ function parseBorderShorthand(
   }
 
   return { width, style, color };
+}
+
+// --- Token reference resolution ---
+
+const TOKEN_PREFIX = "token:";
+
+/**
+ * Resolve token references in style values.
+ *
+ * Replaces `token:TokenName` or `token:<uuid>` values with `var(--token-<uuid>)`
+ * — the WAB-standard token reference format stored in RuleSet.values.
+ *
+ * Validates that:
+ *   - The token exists (by name case-insensitive or UUID)
+ *   - The token type is compatible with the CSS property
+ *   - Token names aren't ambiguous (multiple tokens sharing a name)
+ *
+ * Called before sanitizeStyles() so expanded shorthands get the var() value.
+ */
+export function resolveTokenReferences(
+  styles: Record<string, string>,
+  site: any
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  let allTokens: any[] | null = null; // lazy-load on first token: value
+
+  for (const [prop, value] of Object.entries(styles)) {
+    if (typeof value === "string" && value.startsWith(TOKEN_PREFIX)) {
+      const tokenRef = value.slice(TOKEN_PREFIX.length);
+      if (!tokenRef) {
+        throw new Error(
+          `Token name required after "token:" in style property "${prop}".`
+        );
+      }
+
+      // Lazy-load all tokens (local + dependencies)
+      if (!allTokens) {
+        allTokens = getAllStyleTokens(site);
+      }
+
+      const token = findToken(allTokens, tokenRef);
+      if (!token) {
+        // Build helpful error listing available tokens of the expected type
+        const acceptableTypes = getAcceptableTokenTypes(prop);
+        const available = allTokens
+          .filter(
+            (t: any) =>
+              !acceptableTypes ||
+              acceptableTypes.includes(t.type as StyleTokenType)
+          )
+          .map((t: any) => `"${t.name}" (${t.type})`)
+          .join(", ");
+
+        throw new Error(
+          `Token "${tokenRef}" not found.` +
+            (available
+              ? ` Available tokens: ${available}`
+              : " No tokens defined in this project.")
+        );
+      }
+
+      // Validate token type against CSS property
+      const acceptableTypes = getAcceptableTokenTypes(prop);
+      if (
+        acceptableTypes &&
+        !acceptableTypes.includes(token.type as StyleTokenType)
+      ) {
+        throw new Error(
+          `Token "${token.name}" is type "${token.type}" but property "${prop}" expects: ${acceptableTypes.join(", ")}. ` +
+            `Use a ${acceptableTypes.join(" or ")} token instead.`
+        );
+      }
+
+      result[prop] = mkTokenRef(token.uuid);
+    } else {
+      result[prop] = value;
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -1237,7 +1325,10 @@ export async function updateStyles(
     : null;
 
   const tracker = getChangeTracker();
-  const sanitized = sanitizeStyles(styles);
+  // Resolve token references (token:Name → var(--token-<uuid>)) before
+  // shorthand expansion so expanded longhands inherit the var() value.
+  const withTokens = resolveTokenReferences(styles, session.site);
+  const sanitized = sanitizeStyles(withTokens);
   validateStyleProperties(sanitized);
   const updatedProperties = Object.keys(sanitized);
 

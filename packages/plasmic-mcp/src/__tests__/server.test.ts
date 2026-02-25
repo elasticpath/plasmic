@@ -750,7 +750,7 @@ describe("tool handlers", () => {
         expect.objectContaining({ uuid: "comp-1" }),
         "Hero Title"
       );
-      expect(mockReadNodeDetails).toHaveBeenCalledWith(mockNode);
+      expect(mockReadNodeDetails).toHaveBeenCalledWith(mockNode, undefined);
     });
 
     it("returns error when node not found", async () => {
@@ -1842,7 +1842,11 @@ describe("tool handlers", () => {
       expect(output.path).toBe("Root.Hero");
       expect(output.nodeCount).toBe(2);
       expect(output.tree).toEqual(mockTree);
-      expect(mockReadSubtree).toHaveBeenCalledWith(mockNode, undefined);
+      expect(mockReadSubtree).toHaveBeenCalledWith(mockNode, {
+        maxDepth: undefined,
+        excludeStyles: undefined,
+        styleTokens: undefined,
+      });
     });
 
     it("passes maxDepth option when specified", async () => {

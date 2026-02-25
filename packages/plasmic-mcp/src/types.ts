@@ -217,6 +217,8 @@ export interface TreeNode {
   name?: string;
   uuid?: string;
   styles?: Record<string, string>;
+  /** Maps CSS property names to token names when the value is a token reference. */
+  tokenRefs?: Record<string, string>;
   text?: string;
   attrs?: Record<string, unknown>;
   layoutType?: "vbox" | "hbox" | "box";
@@ -239,4 +241,6 @@ export interface TreeReadOptions {
   excludeStyles?: boolean;
   /** Compact mode: type/tag/name/uuid/childCount only — no styles, attrs, or text. */
   summaryOnly?: boolean;
+  /** Style tokens for resolving var(--token-<uuid>) references in styles to display token names. */
+  styleTokens?: any[];
 }

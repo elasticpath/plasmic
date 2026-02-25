@@ -7,126 +7,51 @@
 ## Priority 1: Error Recovery & Resilience ✅ COMPLETE
 **Spec:** `specs/plasmic-error-recovery.md` (10 criteria — all implemented)
 **Status:** All acceptance criteria implemented and tested. 463 tests passing.
-
-**What was implemented:**
-- [x] Auto-rollback in `edit-tools.ts` — `saveOrAccumulate()` catches save failures, calls `undoChanges()` to revert in-memory model, re-throws error
-- [x] Validation errors (wrong node type, missing component) do NOT accumulate in change tracker — errors throw before `withRecording()` runs
-- [x] Batch mode: `cancelBatchWithRollback()` cancels batch and undoes all accumulated changes; `endBatch()` rolls back on save failure
-- [x] API client timeout — 30s default via `AbortSignal.timeout()` with `TimeoutError`-specific messaging
-- [x] 5xx error messages include HTTP status code and retry suggestion
-- [x] `listProjects()` failure includes specific auth/connectivity troubleshooting guidance
-- [x] Server.ts tool handlers: `handleMutationError()` centralizes error handling; auto-cancels batch with rollback if active during any mutation failure
-- [x] Unit tests: rollback on save failure (updateStyles, updateText), clean undo stack after failure, no revision increment on failure, subsequent mutation succeeds without refresh, validation-only errors don't record changes, rollback failure → refresh-project guidance
-- [x] Batch tests: cancelBatchWithRollback undoes accumulated changes, endBatch rolls back on save failure, graceful handling of rollback failures
-- [x] API client tests: timeout signal passed to fetch, timeout error guidance, 5xx retry guidance, listProjects auth guidance, custom timeout support
-
 **Files modified:** `edit-tools.ts`, `api-client.ts`, `batch-manager.ts`, `server.ts`
-**Test files:** `edit-tools.test.ts`, `api-client.test.ts`, `batch-manager.test.ts`, `server.test.ts`
 
 ---
 
 ## Priority 2: Slot Override Traversal ✅ COMPLETE
 **Spec:** `specs/plasmic-slot-override-traversal.md` (10 criteria — all implemented)
 **Status:** All acceptance criteria implemented and tested. 481 tests passing.
-
-**What was implemented:**
-- [x] `node-resolver.ts` `getChildren()` — traverses TplComponent slot overrides via `vsettings[0].args` → `isKnownRenderExpr(arg.expr)` → `arg.expr.tpl[]`
-- [x] `node-resolver.ts` `flattenWithPaths()` — inserts slot name as path segment for override nodes (e.g., `Card.children.Title`)
-- [x] `tree-reader.ts` `readTplComponent()` — separates slot args (RenderExpr → children) from non-slot args (CustomCode etc. → attrs); slot overrides grouped by slot name as `type: "slot"` wrapper nodes
-- [x] `tree-reader.ts` `getTplChildren()` — returns flat list of slot override tpl nodes for TplComponent
-- [x] `tree-reader.ts` `readNodeDetails()` — TplComponent shows slot-grouped children as summaries
-- [x] Path format: `ComponentName.slotName.NodeName` (e.g., `Root.Card.children.Title`)
-- [x] All mutation tools work on override nodes (resolved by UUID/name/path through existing edit-tools)
-- [x] Edge cases: nested TplComponent in overrides (recursive traversal), non-RenderExpr args (skipped), empty slot (skipped), TplComponent with no args (returns [])
-- [x] Summary mode: `childCount` on TplComponent = total slot override tpl nodes; slot wrappers get `childCount`
-- [x] 18 new tests: 10 node-resolver (UUID/name/path/multiple slots/nested/text content) + 8 tree-reader (grouping/multiple slots/mixed args/nested/summary/empty/nodeDetails)
-
-**Key design decisions:**
-- RenderExpr args are treated as slot overrides; all other arg types (CustomCode, VarRef, etc.) remain as attrs. This matches Studio's `getSlotArgs()` pattern.
-- Slot wrapper nodes use `type: "slot"` with `slotName`, reusing the existing TreeNode type (no schema changes needed).
-
 **Files modified:** `node-resolver.ts`, `tree-reader.ts`
-**Test files:** `node-resolver.test.ts`, `tree-reader.test.ts`
 
 ---
 
 ## Priority 3: Element Tags & HTML Attributes ✅ COMPLETE
 **Spec:** `specs/plasmic-element-tags-and-attrs.md` (18 criteria — all implemented)
 **Status:** All acceptance criteria implemented and tested. 508 tests passing.
-
-**What was implemented:**
-- [x] `edit-tools.ts` `plasmicElementToTpl()` — `tag` field on container elements validated against allowlist (`div`, `section`, `article`, `nav`, `header`, `footer`, `aside`, `main`, `ul`, `ol`, `li`, `form`, `fieldset`)
-- [x] `tag` field on text elements validated against allowlist (`div`, `p`, `span`, `h1`-`h6`, `label`, `a`, `blockquote`, `pre`, `code`)
-- [x] Unsafe tags (`script`, `style`, `iframe`) rejected with clear error listing allowed alternatives
-- [x] Tag already reflected in `get-component-tree` output (tree-reader reads `tpl.tag`)
-- [x] New `update-attrs` tool in `server.ts` — `{ componentUuid, nodeRef, attrs: { key: value } }` with variant targeting and dry-run
-- [x] `edit-tools.ts` `updateAttrs()` — static string values → `CustomCode(JSON.stringify())`, dynamic values (`$` prefix or `{{...}}`) → `CustomCode(expression)`
-- [x] Standard HTML attrs supported: `id`, `class`, `href`, `target`, `rel`, `title`, `tabIndex`, `type`, `name`, `placeholder`, `value`, `disabled`, `checked`, plus `src`, `alt`, `width`, `height`, `action`, `method`, `for`, `autocomplete`, `autofocus`, `required`, `readonly`, `min`, `max`, `step`, `pattern`, `maxlength`, `minlength`
-- [x] ARIA attrs supported: `role`, `aria-label`, `aria-labelledby`, `aria-describedby`, `aria-hidden`, `aria-expanded`, `aria-selected`, `aria-disabled`, plus 14 more ARIA attrs
-- [x] `data-*` attributes (any name) supported
-- [x] Event handler attrs (`onclick`, `onload`, etc.) rejected for security
-- [x] Attribute removal via `null` value — `delete vs.attrs[key]`
-- [x] Attrs processed during element creation (`plasmicElementToTpl`) for both container and text elements
-- [x] 27 new unit tests: tag validation (container/text/unsafe/invalid/all-valid), updateAttrs (static/dynamic/remove/ARIA/data/event-handler/boolean/variant), attrs-during-creation
-
-**Key design decisions:**
-- Attribute values are stored as `CustomCode` expressions (matching WAB's `codeLit()` pattern, already used for img src and component props).
-- `isValidAttrName()` allows custom-element-style hyphenated names (e.g., `my-attr`) to support web components.
-- Validation happens before any model mutation, so invalid attrs never corrupt the model.
-- No changes needed to `tree-reader.ts` or `types.ts` — attrs were already read via `extractAttrs()` and the `TreeNode.attrs` field was already typed.
-
 **Files modified:** `edit-tools.ts`, `server.ts`
-**Test files:** `edit-tools.test.ts`
 
 ---
 
 ## Priority 4: Border Support & CSS Validation ✅ COMPLETE
 **Spec:** `specs/plasmic-border-and-css-validation.md` (8 criteria — all implemented)
 **Status:** All acceptance criteria implemented and tested. 541 tests passing.
-
-**What was implemented:**
-- [x] `edit-tools.ts` `sanitizeStyles()` — `parseBorderShorthand()` parses `border` shorthand (e.g., `"1px solid #FCA5A5"`) into width/style/color parts, expanded to 12 longhands (`border-{top,right,bottom,left}-{width,style,color}`)
-- [x] `border-top`, `border-right`, `border-bottom`, `border-left` shorthands (camelCase and kebab-case) parsed and expanded to 3 longhands each
-- [x] `outline` shorthand parsed and expanded to `outline-width`, `outline-style`, `outline-color`
-- [x] Special values: `border: none` → 4 style longhands set to "none"; `border: inherit` → all 12 longhands set to "inherit"; CSS global values (initial, unset, revert) all handled
-- [x] `parseBorderShorthand()` handles rgb()/rgba() color values via `splitCssTokens()` (respects parenthesized groups)
-- [x] Border width keywords (thin, medium, thick) recognized alongside numeric values
-- [x] `isValidStyleProp()` — checks css-initials package + ADDITIONAL_VALID_PROPERTIES set; allows CSS custom properties (`--*`) and vendor-prefixed properties
-- [x] `validateStyleProperties()` — called in `updateStyles()` after sanitization; throws descriptive error with Levenshtein-based "Did you mean?" suggestions and shorthand expansion hints
-- [x] `levenshteinDistance()` — fuzzy matching for closest 3 valid property names within distance ≤ 4
-- [x] `SHORTHAND_HINTS` — error messages include hints about handled shorthands (e.g., "border → border-{top,right,bottom,left}-{width,style,color}")
-- [x] New `list-style-properties` tool in `server.ts` — returns sorted list of all valid CSS property names, optional `filter` parameter for substring search
-- [x] `update-styles` tool description updated to document backgroundColor→background mapping and shorthand expansion
-- [x] Type declaration for `css-initials` package added to `wab.d.ts`
-- [x] 33 new tests: 15 border shorthand (3-value/2-value/1-value/none/inherit/rgb/keywords/sides/combined), 2 outline, 6 isValidStyleProp, 7 validateStyleProperties, 3 getValidStylePropertyNames
-
-**Key design decisions:**
-- Validation runs AFTER sanitization in updateStyles() — shorthands are expanded to longhands first, then each longhand is validated. Invalid properties that pass through sanitizeStyles' default case are caught by validation.
-- Handled shorthands (border, padding, margin, etc.) are included in the valid properties set so they appear as "Did you mean?" suggestions, even though they're expanded before reaching validation.
-- ADDITIONAL_VALID_PROPERTIES supplements css-initials with modern CSS properties (row-gap, aspect-ratio, grid-*, etc.) and handled shorthands.
-
 **Files modified:** `edit-tools.ts`, `server.ts`, `wab.d.ts`
-**Test files:** `edit-tools.test.ts`
 
 ---
 
-## Priority 5: Design Token References in Styles
-**Spec:** `specs/plasmic-token-refs-in-styles.md` (8 criteria)
-**Why fifth:** Token references connect Claude's styling to the project's design system. Without this, every color/spacing value is hardcoded, making designs inconsistent and hard to maintain.
+## Priority 5: Design Token References in Styles ✅ COMPLETE
+**Spec:** `specs/plasmic-token-refs-in-styles.md` (8 criteria — all implemented)
+**Status:** All acceptance criteria implemented and tested. 594 tests passing.
 
-**Implementation items:**
-- [ ] `edit-tools.ts` `updateStyles()` — detect `token:TokenName` or `token:uuid` format in style values
-- [ ] Look up token in `site.styleTokens` by name (case-insensitive) or UUID
-- [ ] Resolve token value and use it for `RSH.merge()` call
-- [ ] Preserve token reference as metadata so `get-component-tree` / `get-node-details` shows both `"token:Primary Blue"` and resolved `"#0070f3"`
-- [ ] Validate token type against CSS property (Color token for color props, Spacing for size props)
-- [ ] Error if token doesn't exist: list available tokens of matching type
-- [ ] Search across dependency tokens (imported token sets)
-- [ ] Unit tests: token resolution by name/uuid, case-insensitive, type validation, error messages
-- [ ] Integration test: apply token ref → read tree → verify both reference and resolved value
+**What was implemented:**
+- [x] `token-reader.ts` — New exports: `mkTokenRef()`, `isTokenRef()`, `parseTokenRefUuid()`, `getAllStyleTokens()`, `findToken()`, `getAcceptableTokenTypes()` for token reference resolution and type validation
+- [x] `edit-tools.ts` `resolveTokenReferences()` — converts `token:TokenName` or `token:uuid` to `var(--token-<uuid>)` WAB format; called in `updateStyles()` before `sanitizeStyles()`; validates token existence (case-insensitive name or UUID), type compatibility (Color for color props, Spacing for size props, etc.), and searches dependency tokens
+- [x] `tree-reader.ts` `resolveStyleTokenRefs()` — detects `var(--token-<uuid>)` in style values, resolves to CSS values for display, adds `tokenRefs` map (CSS property → token name); `readNodeDetails()` accepts optional `styleTokens` parameter
+- [x] `types.ts` — Added `tokenRefs?: Record<string, string>` to `TreeNode`, `styleTokens?: any[]` to `TreeReadOptions`
+- [x] `server.ts` — All tree-reading handlers (get-component-tree, get-node-details, get-subtree, export-component-tree) pass `session.site.styleTokens` in options; update-styles tool description mentions `token:TokenName` syntax
+- [x] 53 new tests: 22 token-reader (mkTokenRef, isTokenRef, parseTokenRefUuid, getAllStyleTokens, findToken, getAcceptableTokenTypes), 18 edit-tools (resolveTokenReferences by name/UUID/case-insensitive, non-token passthrough, mixed values, empty token name, not-found error, type mismatch, dependency tokens, updateStyles integration), 13 tree-reader (resolve var() to CSS, multiple refs, unknown UUID, token chains, no styleTokens, summary mode, readNodeDetails, readSubtree)
 
-**Files to modify:** `edit-tools.ts`, `tree-reader.ts`, `token-reader.ts`
-**Test files:** `edit-tools.test.ts`, `tree-reader.test.ts`, `real-integration.test.ts`
+**Key design decisions:**
+- Token references stored as `var(--token-<uuid>)` in RuleSet.values (matching WAB/Studio format). This is how Plasmic natively stores token references.
+- Tree reader resolves var() to CSS values for human-readable display and adds `tokenRefs` metadata showing which properties use which tokens.
+- Token type validation prevents mismatches (e.g., Color token for padding) but allows any token type for unknown properties.
+- Token lookup searches local `site.styleTokens` first, then dependency project tokens.
+
+**Files modified:** `edit-tools.ts`, `token-reader.ts`, `tree-reader.ts`, `types.ts`, `server.ts`
+**Test files:** `edit-tools.test.ts`, `token-reader.test.ts`, `tree-reader.test.ts`, `server.test.ts`
 
 ---
 
@@ -229,7 +154,7 @@ Element Tags & Attrs (P3) ✅ ──► Data Bindings (P7)     │
                                                          │
 Border & CSS Validation (P4) ✅ ───────────────────────┘
 
-Token Refs in Styles (P5) ─── standalone
+Token Refs in Styles (P5) ✅ ─── standalone
 
 Node Cloning (P8) ─── standalone
 ```

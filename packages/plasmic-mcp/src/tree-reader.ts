@@ -34,6 +34,7 @@ import {
   isKnownStyleTokenRef,
 } from "@/wab/shared/model/classes";
 import type { TreeNode, TreeReadOptions } from "./types.js";
+import { isTokenRef, parseTokenRefUuid, resolveTokenValue } from "./token-reader.js";
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -67,10 +68,13 @@ export function readComponentSummary(
  * Full details for a single TplNode with immediate children as summaries.
  * Used by the get-node-details tool after node-resolver has located the node.
  * Target ~300B per call.
+ *
+ * When styleTokens are provided, var(--token-<uuid>) values in styles are
+ * resolved to CSS values and annotated with token names in tokenRefs.
  */
-export function readNodeDetails(tplNode: any): TreeNode {
+export function readNodeDetails(tplNode: any, styleTokens?: any[]): TreeNode {
   // Read just this node's full details (no children recursion)
-  const node = readTplNode(tplNode, { maxDepth: 0 }, 0);
+  const node = readTplNode(tplNode, { maxDepth: 0, styleTokens }, 0);
   if (!node) {
     return { type: "tag", tag: "div" };
   }
@@ -203,6 +207,14 @@ function readTplTag(
       const values = { ...rs.values };
       if (Object.keys(values).length > 0) {
         node.styles = values;
+
+        // Resolve token references for display when styleTokens are provided
+        if (options?.styleTokens?.length) {
+          const tokenRefs = resolveStyleTokenRefs(values, options.styleTokens);
+          if (Object.keys(tokenRefs).length > 0) {
+            node.tokenRefs = tokenRefs;
+          }
+        }
       }
     }
 
@@ -440,6 +452,45 @@ function getTplChildren(tpl: any): any[] {
     return children;
   }
   return [];
+}
+
+// ---------------------------------------------------------------------------
+// Internal: Token resolution for style display
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve var(--token-<uuid>) references in style values to display token names.
+ * Replaces var() values with resolved CSS values and returns a map of
+ * property → token name for the tokenRefs field.
+ *
+ * Mutates the `styles` object in place (replaces var() with resolved values).
+ */
+function resolveStyleTokenRefs(
+  styles: Record<string, string>,
+  styleTokens: any[]
+): Record<string, string> {
+  const tokenRefs: Record<string, string> = {};
+  const tokenValueMap = new Map<string, string>();
+  const tokenNameMap = new Map<string, string>();
+
+  for (const t of styleTokens) {
+    tokenValueMap.set(t.uuid, t.value);
+    tokenNameMap.set(t.uuid, t.name);
+  }
+
+  for (const [prop, value] of Object.entries(styles)) {
+    if (typeof value === "string" && isTokenRef(value)) {
+      const uuid = parseTokenRefUuid(value);
+      if (uuid && tokenNameMap.has(uuid)) {
+        tokenRefs[prop] = tokenNameMap.get(uuid)!;
+        // Replace var(--token-<uuid>) with resolved CSS value for display
+        const rawValue = tokenValueMap.get(uuid) ?? value;
+        styles[prop] = resolveTokenValue(rawValue, tokenValueMap);
+      }
+    }
+  }
+
+  return tokenRefs;
 }
 
 // ---------------------------------------------------------------------------
