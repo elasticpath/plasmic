@@ -1,23 +1,23 @@
 #!/bin/bash
-# Usage: ./scripts/ralph-loop.sh [plan] [max_iterations]
+# Usage: .ralph/loop.sh [plan] [max_iterations]
 # Examples:
-#   ./scripts/ralph-loop.sh              # Build mode, unlimited iterations
-#   ./scripts/ralph-loop.sh 20           # Build mode, max 20 iterations
-#   ./scripts/ralph-loop.sh plan         # Plan mode, unlimited iterations
-#   ./scripts/ralph-loop.sh plan 5       # Plan mode, max 5 iterations
+#   .ralph/loop.sh              # Build mode, unlimited iterations
+#   .ralph/loop.sh 20           # Build mode, max 20 iterations
+#   .ralph/loop.sh plan         # Plan mode, unlimited iterations
+#   .ralph/loop.sh plan 5       # Plan mode, max 5 iterations
 
 # Parse arguments
 if [ "$1" = "plan" ]; then
     MODE="plan"
-    PROMPT_FILE="PROMPT_plan.md"
+    PROMPT_FILE=".ralph/PROMPT_plan.md"
     MAX_ITERATIONS=${2:-0}
 elif [[ "$1" =~ ^[0-9]+$ ]]; then
     MODE="build"
-    PROMPT_FILE="PROMPT_build.md"
+    PROMPT_FILE=".ralph/PROMPT_build.md"
     MAX_ITERATIONS=$1
 else
     MODE="build"
-    PROMPT_FILE="PROMPT_build.md"
+    PROMPT_FILE=".ralph/PROMPT_build.md"
     MAX_ITERATIONS=0
 fi
 
