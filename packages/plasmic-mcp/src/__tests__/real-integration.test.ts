@@ -985,6 +985,167 @@ describe("add-child with component instances", () => {
 });
 
 // =========================================================================
+// Variant Workflows (P1.2)
+// =========================================================================
+
+describe("variant workflows", () => {
+  it("list-variants → returns global variant groups from fixture", async () => {
+    const comp = discoveredComponents[0];
+
+    const result = await client.callTool({
+      name: "list-variants",
+      arguments: { componentUuid: comp.uuid },
+    });
+
+    expect(result.isError).toBeFalsy();
+    const output = parseResponse(result);
+
+    // The fixture is called "active-screen-variant-group" — it should have
+    // global variant groups (screen variants at minimum).
+    expect(output).toHaveProperty("globalVariants");
+    expect(output).toHaveProperty("componentVariants");
+    expect(output).toHaveProperty("styleVariants");
+
+    // All arrays should be arrays (even if empty)
+    expect(Array.isArray(output.globalVariants)).toBe(true);
+    expect(Array.isArray(output.componentVariants)).toBe(true);
+    expect(Array.isArray(output.styleVariants)).toBe(true);
+
+    // Given the fixture name, global variants should be present
+    if (output.globalVariants.length > 0) {
+      const group = output.globalVariants[0];
+      expect(group.uuid).toBeTruthy();
+      expect(group.type).toBeTruthy();
+      expect(Array.isArray(group.variants)).toBe(true);
+      if (group.variants.length > 0) {
+        expect(group.variants[0].uuid).toBeTruthy();
+        expect(group.variants[0].name).toBeTruthy();
+      }
+    }
+  });
+
+  it("update-styles with variant → applies to non-base variant setting", async () => {
+    const comp = discoveredComponents[0];
+
+    // First list variants to find a real variant to target
+    const variantResult = await client.callTool({
+      name: "list-variants",
+      arguments: { componentUuid: comp.uuid },
+    });
+    const variants = parseResponse(variantResult);
+
+    // Find any non-empty variant (global or component)
+    let targetVariantName: string | null = null;
+    let targetVariantUuid: string | null = null;
+
+    for (const group of variants.globalVariants) {
+      if (group.variants.length > 0) {
+        targetVariantName = group.variants[0].name;
+        targetVariantUuid = group.variants[0].uuid;
+        break;
+      }
+    }
+    if (!targetVariantName) {
+      for (const group of variants.componentVariants) {
+        if (group.variants.length > 0) {
+          targetVariantName = group.variants[0].name;
+          targetVariantUuid = group.variants[0].uuid;
+          break;
+        }
+      }
+    }
+
+    if (!targetVariantName || !targetVariantUuid) {
+      // No variants available in fixture — skip test
+      return;
+    }
+
+    // Get tree to find target node
+    const treeResult = await client.callTool({
+      name: "get-component-tree",
+      arguments: { componentUuid: comp.uuid },
+    });
+    const tree = parseResponse(treeResult).tree;
+
+    // Apply styles to the variant (by UUID for precision)
+    const editResult = await client.callTool({
+      name: "update-styles",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: tree.uuid,
+        styles: { color: "red", fontSize: "12px" },
+        variant: targetVariantUuid,
+      },
+    });
+
+    expect(editResult.isError).toBeFalsy();
+    const editOutput = parseResponse(editResult);
+    expect(editOutput.success).toBe(true);
+    expect(editOutput.updatedProperties).toContain("color");
+    expect(editOutput.updatedProperties).toContain("fontSize");
+  });
+
+  it("update-styles without variant → backward compatible base editing", async () => {
+    const comp = discoveredComponents[0];
+
+    const treeResult = await client.callTool({
+      name: "get-component-tree",
+      arguments: { componentUuid: comp.uuid },
+    });
+    const tree = parseResponse(treeResult).tree;
+
+    // Update styles without variant (should use base variant)
+    const editResult = await client.callTool({
+      name: "update-styles",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: tree.uuid,
+        styles: { opacity: "0.5" },
+      },
+    });
+
+    expect(editResult.isError).toBeFalsy();
+    const editOutput = parseResponse(editResult);
+    expect(editOutput.success).toBe(true);
+
+    // Verify via node details (reads base variant)
+    const detailResult = await client.callTool({
+      name: "get-node-details",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: tree.uuid,
+      },
+    });
+    expect(parseResponse(detailResult).node.styles["opacity"]).toBe("0.5");
+  });
+
+  it("update-styles with unknown variant → returns error", async () => {
+    const comp = discoveredComponents[0];
+
+    const treeResult = await client.callTool({
+      name: "get-component-tree",
+      arguments: { componentUuid: comp.uuid },
+    });
+    const tree = parseResponse(treeResult).tree;
+
+    const editResult = await client.callTool({
+      name: "update-styles",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: tree.uuid,
+        styles: { color: "blue" },
+        variant: "NonExistentVariant_XYZ",
+      },
+    });
+
+    expect(editResult.isError).toBe(true);
+    const errorText = editResult.content?.[0]?.text ?? "";
+    expect(errorText).toContain("NonExistentVariant_XYZ");
+    expect(errorText).toContain("not found");
+  });
+});
+
+// =========================================================================
 // Nice-to-have: refresh-project
 // =========================================================================
 

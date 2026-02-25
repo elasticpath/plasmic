@@ -6,10 +6,10 @@ Last updated: 2026-02-25
 
 The Plasmic MCP server (`packages/plasmic-mcp/`) provides 23 MCP tools for programmatic Plasmic Studio interaction from Claude Code. Six skill files in `.claude/commands/` orchestrate these tools. Of 11 total specs, 9 are fully implemented, and 2 are pending implementation.
 
-**Test count:** 302 tests across 14 files (287 Jest + 15 Vitest, all passing, zero skipped).
-**Tools:** 23 registered in server.ts (read, write, batch, undo, save, refresh).
+**Test count:** 325 tests across 14 files (306 Jest + 19 Vitest, all passing, zero skipped).
+**Tools:** 24 registered in server.ts (read, write, batch, undo, save, refresh, list-variants).
 **Skills:** 6 files (router, inspect, edit, create-page, create-component, patterns).
-**Specs:** 11 total (9 complete, 2 pending implementation).
+**Specs:** 11 total (10 complete, 1 pending implementation).
 
 ---
 
@@ -60,22 +60,27 @@ The Plasmic MCP server (`packages/plasmic-mcp/`) provides 23 MCP tools for progr
 - Jest (6): component by name, component by UUID, unknown component error with available names, default-component by kind, children passed for slot wiring, component from dependency project.
 - Vitest (2): add-child with real TplComponent → verify in tree → remove-child, unknown component error message.
 
-### P1.2: Variant-Aware Editing (spec: `plasmic-variant-editing.md` — NEW)
+### P1.2: Variant-Aware Editing (spec: `plasmic-variant-editing.md`) — DONE
 
-All edit tools (`update-text`, `update-styles`) operate exclusively on the base variant. There is no way to:
-- Set responsive styles (e.g., mobile breakpoint overrides)
-- Set interactive state styles (e.g., hover, focus, pressed)
-- Read or create variant groups
-- Apply styles to a specific variant
+**Status:** All acceptance criteria met. `update-text` and `update-styles` accept an optional `variant` parameter. New `list-variants` tool enumerates all variant types.
 
-**What's needed:**
-- New optional `variant` parameter on `update-text` and `update-styles` tools (backward compatible — omit for base variant)
-- New `list-variants` tool to enumerate global and component variant groups
-- New `create-variant` / `create-variant-group` tools (stretch goal)
-- Variant resolution logic in edit-tools.ts: look up the variant setting for the target variant, create it if missing, apply edits there
-- Update `plasmic-edit.md` skill with variant workflow documentation
+**What was implemented:**
+- `edit-tools.ts` — Added `resolveVariant(site, component, variantStr)` function with 3-step resolution: UUID exact match → CSS selector match (`:hover`, `:focus`, etc.) → case-insensitive name match. Throws descriptive errors for not-found (lists available variants) and ambiguous matches (lists candidate UUIDs).
+- `edit-tools.ts` — Added `listVariants(site, component)` returning `{ globalVariants, componentVariants, styleVariants }` from site.globalVariantGroups, component.variantGroups, and component.variants.
+- `edit-tools.ts` — Modified `updateText()` and `updateStyles()` signatures to accept optional `variant?: string`. When provided, uses `ensureVariantSetting(tpl, [resolvedVariant])` inside `withRecording()`. Base variant behavior unchanged when omitted.
+- `server.ts` — Registered `list-variants` tool with Zod schema. Added `variant` optional parameter to `update-text` and `update-styles` schemas.
+- `wab.d.ts` — Added type declarations for `@/wab/shared/Variants` module (`ensureVariantSetting`, `tryGetVariantSetting`, `isBaseVariant`, `isScreenVariant`, etc.).
+- `__mocks__/wab-variants.ts` — Jest mock with mockable `ensureVariantSetting`/`tryGetVariantSetting` and real logic for variant type helpers.
+- `jest.config.cjs` — Added `@/wab/shared/Variants$` mock mapping.
+- Skill files updated: `plasmic-edit.md` (variant workflow section, updated edge cases), `plasmic-inspect.md` (added `list-variants`), `plasmic.md` (routing for variant queries and responsive/interactive edits).
 
-**Impact:** Without variant editing, all pages are desktop-only with no hover/focus states. Responsive design and interactive components require variant support.
+**Tests (23 new):**
+- Jest (19): resolveVariant (8 tests: UUID, name, selector, not-found, ambiguity), listVariants (6 tests: global/component/style variants, empty, deduplication), variant-aware updateStyles (2 tests), variant-aware updateText (3 tests).
+- Vitest (4): list-variants with real fixture, update-styles with variant, backward compatibility, unknown variant error.
+
+**Design decisions:**
+- `ensureVariantSetting` called inside `withRecording()` since creating a new VariantSetting is a model mutation needing change tracking.
+- `create-variant` / `create-variant-group` deferred as stretch goals (not in current spec acceptance criteria).
 
 ---
 
@@ -144,14 +149,14 @@ Line 158 has step `6.` numbered twice. No functional impact.
 | `plasmic-context-efficient-queries.md` — Summary/detail tools + caching | Complete | ~34 + ~52 |
 | `plasmic-integration-tests.md` — Vitest with real WAB modules | **Complete** | 15 (real-integration.test.ts) |
 | `plasmic-component-instances.md` — ComponentElement in add-child | **Complete** | 6 Jest + 2 Vitest |
-| `plasmic-variant-editing.md` — Variant-aware editing | **NEW — 0%** | 0 |
+| `plasmic-variant-editing.md` — Variant-aware editing | **Complete** | 19 Jest + 4 Vitest |
 | `plasmic-management-tools.md` — Rename, metadata, preview, delete | **NEW — 0%** | 0 |
 
 ## Implementation Order
 
 1. ~~**P0.1** — Vitest integration tests~~ ✓ DONE
 2. ~~**P1.1** — ComponentElement in add-child~~ ✓ DONE
-3. **P1.2** — Variant-aware editing (spec authored, required for responsive/interactive pages)
+3. ~~**P1.2** — Variant-aware editing~~ ✓ DONE
 4. **P2.1** — Management tools (spec authored — rename, metadata, preview URL, delete)
 5. **P3.1–P3.2** — Test coverage gaps (small, can be done opportunistically)
 6. **P4.1** — Cosmetic fix (trivial)

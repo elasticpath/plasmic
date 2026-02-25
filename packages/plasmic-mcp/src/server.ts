@@ -47,6 +47,7 @@ import {
   addChild,
   removeChild,
   moveChild,
+  listVariants,
 } from "./edit-tools.js";
 import { beginBatch, endBatch, isBatchActive, cancelBatch, getAccumulatedChanges } from "./batch-manager.js";
 import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
@@ -1040,8 +1041,64 @@ export function createServer(): McpServer {
     }
   );
 
+  // --- list-variants ---
+  // Returns all variant groups and variants for a component and the project.
+  // Organized into: global variants (screen breakpoints, user-defined),
+  // component variants (custom groups), and style variants (hover, focus, etc.).
+  server.tool(
+    "list-variants",
+    "List all variants for a component: global (breakpoints), component (custom), and style (hover/focus). Use variant names or UUIDs with update-styles/update-text.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component to list variants for"),
+    },
+    async ({ componentUuid }) => {
+      try {
+        const session = requireSession();
+        const component = session.site.components?.find(
+          (c: any) => c.uuid === componentUuid
+        );
+
+        if (!component) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Component UUID "${componentUuid}" not found. Use list-components to see available components.`,
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        const result = listVariants(session.site, component);
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error listing variants: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
   // --- update-text ---
-  // Updates text content on a TplTag node's base variant.
+  // Updates text content on a TplTag node. Targets the base variant by default;
+  // when `variant` is provided, targets that specific variant's VariantSetting.
   // Uses node-resolver to find the target, ChangeRecorder for mutation tracking,
   // and SaveManager for incremental save. Supports dry-run mode.
   server.tool(
@@ -1057,16 +1114,20 @@ export function createServer(): McpServer {
           'Node reference: UUID, name (e.g., "Hero Title"), path (e.g., "HeroSection.Title"), or index (e.g., "#2")'
         ),
       text: z.string().describe("The new text content"),
+      variant: z
+        .string()
+        .optional()
+        .describe('Target variant by name (e.g., "Mobile"), UUID, or selector (e.g., ":hover"). Omit for base variant.'),
       dryRun: z
         .boolean()
         .optional()
         .describe("When true, shows what would change without persisting. Model is left unchanged."),
     },
-    async ({ componentUuid, nodeRef, text, dryRun }) => {
+    async ({ componentUuid, nodeRef, text, variant, dryRun }) => {
       try {
         if (dryRun) {
           const result = await withDryRun(() =>
-            updateText(apiClient, componentUuid, nodeRef, text)
+            updateText(apiClient, componentUuid, nodeRef, text, variant)
           );
           return {
             content: [
@@ -1088,7 +1149,7 @@ export function createServer(): McpServer {
           };
         }
 
-        const result = await updateText(apiClient, componentUuid, nodeRef, text);
+        const result = await updateText(apiClient, componentUuid, nodeRef, text, variant);
         return {
           content: [
             {
@@ -1122,7 +1183,8 @@ export function createServer(): McpServer {
   );
 
   // --- update-styles ---
-  // Updates CSS styles on a TplTag node's base variant via RuleSetHelpers.
+  // Updates CSS styles on a TplTag node. Targets the base variant by default;
+  // when `variant` is provided, targets that specific variant's VariantSetting.
   // Supports dry-run mode.
   server.tool(
     "update-styles",
@@ -1141,16 +1203,20 @@ export function createServer(): McpServer {
         .describe(
           'CSS properties in camelCase format (e.g., {"fontSize": "24px", "backgroundColor": "#ff0000"})'
         ),
+      variant: z
+        .string()
+        .optional()
+        .describe('Target variant by name (e.g., "Mobile"), UUID, or selector (e.g., ":hover"). Omit for base variant.'),
       dryRun: z
         .boolean()
         .optional()
         .describe("When true, shows what would change without persisting. Model is left unchanged."),
     },
-    async ({ componentUuid, nodeRef, styles, dryRun }) => {
+    async ({ componentUuid, nodeRef, styles, variant, dryRun }) => {
       try {
         if (dryRun) {
           const result = await withDryRun(() =>
-            updateStyles(apiClient, componentUuid, nodeRef, styles)
+            updateStyles(apiClient, componentUuid, nodeRef, styles, variant)
           );
           return {
             content: [
@@ -1175,7 +1241,8 @@ export function createServer(): McpServer {
           apiClient,
           componentUuid,
           nodeRef,
-          styles
+          styles,
+          variant
         );
         return {
           content: [

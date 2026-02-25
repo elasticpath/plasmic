@@ -25,6 +25,7 @@ module.exports = {
     "^@/wab/shared/TplMgr$": "<rootDir>/src/__mocks__/wab-tpl-mgr",
     "^@/wab/shared/site-invariants$":
       "<rootDir>/src/__mocks__/wab-site-invariants",
+    "^@/wab/shared/Variants$": "<rootDir>/src/__mocks__/wab-variants",
   },
   testRegex: ".*\\.(spec|test)\\.(ts|tsx)$",
   // Skip vitest-based integration tests (run separately via vitest)

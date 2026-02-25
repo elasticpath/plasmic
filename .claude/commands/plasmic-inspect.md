@@ -10,6 +10,7 @@ You are inspecting a Plasmic project to help the developer understand its struct
 - `get-component-tree(componentUuid, maxDepth?, excludeStyles?, summaryOnly?)` — Get full tree with all details (large). Only use when the developer explicitly needs the complete detailed output.
 - `export-component-tree(componentUuid)` — Write full tree to temp file. Returns file path + summary. Use Read tool to inspect sections. Best for complex components.
 - `get-subtree(componentUuid, nodeRef, maxDepth?, excludeStyles?)` — Get the full tree rooted at a specific node. Useful when the developer wants to see a specific section's full tree (e.g., just the hero or footer) without loading the whole component.
+- `list-variants(componentUuid)` — List all variants for a component: global (breakpoints), component (custom), style (hover/focus). Use to discover variant names/UUIDs.
 - `get-tokens(type?)` — Get design tokens (colors, spacing, fonts) grouped by type. Optional type filter.
 
 ## Instructions
@@ -26,6 +27,7 @@ You are inspecting a Plasmic project to help the developer understand its struct
    c. If the user asks about a specific node's styles or content, call `get-node-details` for that node.
    d. Only use `get-component-tree` or `export-component-tree` if the user explicitly needs the complete detailed tree.
 6. If the user asked about design tokens, colors, or fonts, call `get-tokens` (optionally filtered by type).
+7. If the user asked about variants, breakpoints, hover states, or responsive setup, find the component UUID via `list-components`, then call `list-variants(componentUuid)`.
 7. For large component trees, the summary already shows childCounts — describe the structure at the top level and mention deeper nesting counts.
 
 ## User's Request

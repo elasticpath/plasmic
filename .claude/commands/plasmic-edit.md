@@ -9,8 +9,9 @@ You are editing an existing page or component in a Plasmic project.
 - `get-component-tree(componentUuid, maxDepth?, excludeStyles?, summaryOnly?)` — Get full tree (large). Only use when you need to see the complete structure with all styles.
 - `export-component-tree(componentUuid)` — Write full tree to temp file. Returns file path + summary. Use Read tool to inspect sections.
 - `get-subtree(componentUuid, nodeRef, maxDepth?, excludeStyles?)` — Get the full tree rooted at a specific node. Use when you want to see a specific section in detail before editing it.
-- `update-text(componentUuid, nodeRef, text)` — Change text content on a node.
-- `update-styles(componentUuid, nodeRef, styles)` — Change CSS styles on a node.
+- `list-variants(componentUuid)` — List all variants: global (breakpoints), component (custom), style (hover/focus). Use to discover variant names/UUIDs before variant-targeted edits.
+- `update-text(componentUuid, nodeRef, text, variant?)` — Change text content on a node. Optional `variant` targets a specific variant (by name, UUID, or selector like ":hover").
+- `update-styles(componentUuid, nodeRef, styles, variant?)` — Change CSS styles on a node. Optional `variant` targets a specific variant.
 - `add-child(componentUuid, parentRef, child, position)` — Add a new element.
 - `remove-child(componentUuid, nodeRef)` — Remove an element.
 - `move-child(componentUuid, nodeRef, newParentRef, position)` — Move an element.
@@ -67,11 +68,27 @@ Component with slot children: `{ "type": "component", "name": "Card", "children"
 
 To insert a component instance, use `list-components` to find the component name, then pass `{ "type": "component", "name": "ComponentName" }` as the `child` argument. The component is resolved by name or UUID from the project and its dependencies.
 
+## Variant Editing Workflow
+To edit styles or text for a specific variant (responsive breakpoint, hover state, etc.):
+
+1. Call `list-variants(componentUuid)` to see all available variants with names, UUIDs, and types.
+2. Identify the target variant by name (e.g., "Mobile"), UUID, or selector (e.g., ":hover").
+3. Pass the `variant` parameter to `update-styles` or `update-text`:
+   - By name: `variant: "Mobile"` (case-insensitive)
+   - By UUID: `variant: "abc-123"`
+   - By selector: `variant: ":hover"` (for style variants like hover, focus, pressed)
+4. Omit `variant` (or don't pass it) to edit the base variant (default, backward-compatible behavior).
+
+**Variant types returned by `list-variants`:**
+- **Global variants** — Screen breakpoints (e.g., "Mobile", "Tablet") with `mediaQuery` values. Applied site-wide.
+- **Component variants** — Custom variant groups defined on the component (e.g., "Size: small/medium/large").
+- **Style variants** — Interactive states (e.g., hover, focus, pressed) with CSS `selectors`.
+
 ## Edge Case Handling
 - **Ambiguous node reference** ("the title" matches multiple nodes): Show all matches with UUIDs and context, ask the developer to clarify.
 - **Non-existent node**: Show the current tree outline (via `get-component-summary`) and suggest correct names.
 - **Wrong component target**: Ask which component the developer meant.
-- **Variant editing request**: Explain that editing responsive/variant styles isn't supported yet — edits apply to the base variant only.
+- **Unknown variant**: If `update-styles` or `update-text` returns a variant-not-found error, call `list-variants` to show available options.
 - **Developer expresses regret** ("actually, change it back"): Suggest using `undo`.
 
 ## User's Request

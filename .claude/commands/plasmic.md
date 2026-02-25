@@ -14,8 +14,9 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `create-page(name, path, body)` — Create a new page with a PlasmicElement tree. Requires active project.
 - `create-component(name, body)` — Create a new reusable component (not a page) with a PlasmicElement tree.
 - `clone-component(sourceUuid, name, path?)` — Duplicate an existing page or component. Deep copy with a new name.
-- `update-text(componentUuid, nodeRef, text)` — Change text content on a node.
-- `update-styles(componentUuid, nodeRef, styles)` — Change CSS styles on a node.
+- `list-variants(componentUuid)` — List all variants for a component: global (breakpoints), component (custom), style (hover/focus).
+- `update-text(componentUuid, nodeRef, text, variant?)` — Change text content on a node. Optional `variant` targets a specific variant.
+- `update-styles(componentUuid, nodeRef, styles, variant?)` — Change CSS styles on a node. Optional `variant` targets a specific variant.
 - `add-child(componentUuid, parentRef, child, position)` — Add a new element.
 - `remove-child(componentUuid, nodeRef)` — Remove an element.
 - `move-child(componentUuid, nodeRef, newParentRef, position)` — Move an element.
@@ -36,7 +37,9 @@ All edit tools (`update-text`, `update-styles`, `add-child`, `remove-child`, `mo
    - "show me the homepage", "what does X look like" → find the component UUID via `list-components`, then call `get-component-summary` (for overview) or `get-node-details` (for specific nodes)
    - "get subtree", "show me just the hero section tree" → find the component UUID and node reference, then call `get-subtree`
    - "what colors are available", "show me the design tokens", "what fonts" → call `get-tokens` (optionally with a type filter)
+   - "what variants exist", "show breakpoints", "list hover states" → find the component UUID via `list-components`, then call `list-variants`
    - "change X to Y", "update the heading", "make it bigger", "make the background blue" → delegate to `/plasmic-edit`
+   - "make the heading smaller on mobile", "change hover color", "set font size for tablet" → delegate to `/plasmic-edit` (variant-aware editing)
    - "add a section", "insert a card", "add a testimonial below the hero" → delegate to `/plasmic-edit`
    - "remove the footer", "delete the sidebar" → delegate to `/plasmic-edit`
    - "undo", "revert that", "undo the last change" → call `undo()` directly

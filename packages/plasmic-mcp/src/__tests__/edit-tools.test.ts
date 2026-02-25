@@ -20,6 +20,8 @@ import {
   addChild,
   removeChild,
   moveChild,
+  resolveVariant,
+  listVariants,
 } from "../edit-tools";
 import { setSession, clearSession } from "../session";
 import { initChangeTracker, disposeChangeTracker } from "../change-tracker";
@@ -30,6 +32,7 @@ import {
   mockEnsureBaseVariantSetting,
 } from "../__mocks__/wab-tpl-mgr";
 import { mockMkTplTagX, mockMkTplInlinedText, mockMkTplComponentX } from "../__mocks__/wab-tpls";
+import { mockEnsureVariantSetting } from "../__mocks__/wab-variants";
 import type { PlasmicApiClient } from "../api-client";
 import type { Session } from "../session";
 
@@ -1009,6 +1012,454 @@ describe("edit-tools", () => {
       expect(target.children[0]).toBe(child1);
       expect(target.children[1]).toBe(movable);
       expect(target.children[2]).toBe(child2);
+    });
+  });
+
+  // --- Variant resolution ---
+
+  describe("resolveVariant", () => {
+    /** Build a site with global variant groups */
+    function mkSite(opts?: {
+      globalVariantGroups?: any[];
+    }): any {
+      return {
+        globalVariantGroups: opts?.globalVariantGroups ?? [],
+        components: [],
+      };
+    }
+
+    /** Build a variant object */
+    function mkVariant(opts: {
+      uuid?: string;
+      name?: string;
+      selectors?: string[];
+      forTpl?: any;
+      parent?: any;
+    }): any {
+      return {
+        uuid: opts.uuid ?? `var-${Math.random().toString(36).slice(2, 8)}`,
+        name: opts.name ?? "unnamed",
+        selectors: opts.selectors ?? null,
+        forTpl: opts.forTpl ?? null,
+        parent: opts.parent ?? null,
+      };
+    }
+
+    it("resolves a variant by UUID from global groups", () => {
+      const mobile = mkVariant({ uuid: "mobile-uuid", name: "Mobile" });
+      const site = mkSite({
+        globalVariantGroups: [{
+          uuid: "screen-group",
+          type: "global-screen",
+          param: { variable: { name: "Screen" } },
+          variants: [mobile],
+        }],
+      });
+      const comp = { variantGroups: [], variants: [{ uuid: "base-uuid", name: "base" }] };
+
+      const result = resolveVariant(site, comp, "mobile-uuid");
+      expect(result).toBe(mobile);
+    });
+
+    it("resolves a variant by UUID from component groups", () => {
+      const small = mkVariant({ uuid: "small-uuid", name: "Small" });
+      const site = mkSite();
+      const comp = {
+        variantGroups: [{
+          uuid: "size-group",
+          param: { variable: { name: "Size" } },
+          variants: [small],
+        }],
+        variants: [{ uuid: "base-uuid", name: "base" }],
+      };
+
+      const result = resolveVariant(site, comp, "small-uuid");
+      expect(result).toBe(small);
+    });
+
+    it("resolves a variant by name (case-insensitive)", () => {
+      const mobile = mkVariant({ uuid: "mobile-uuid", name: "Mobile" });
+      const site = mkSite({
+        globalVariantGroups: [{
+          uuid: "screen-group",
+          type: "global-screen",
+          param: { variable: { name: "Screen" } },
+          variants: [mobile],
+        }],
+      });
+      const comp = { variantGroups: [], variants: [] };
+
+      const result = resolveVariant(site, comp, "mobile");
+      expect(result).toBe(mobile);
+    });
+
+    it("resolves a style variant by selector", () => {
+      const hover = mkVariant({
+        uuid: "hover-uuid",
+        name: "hover",
+        selectors: [":hover"],
+      });
+      const site = mkSite();
+      const comp = {
+        variantGroups: [],
+        variants: [{ uuid: "base-uuid", name: "base" }, hover],
+      };
+
+      const result = resolveVariant(site, comp, ":hover");
+      expect(result).toBe(hover);
+    });
+
+    it("throws descriptive error when variant not found", () => {
+      const mobile = mkVariant({ uuid: "mobile-uuid", name: "Mobile" });
+      const site = mkSite({
+        globalVariantGroups: [{
+          uuid: "screen-group",
+          type: "global-screen",
+          param: { variable: { name: "Screen" } },
+          variants: [mobile],
+        }],
+      });
+      const comp = { variantGroups: [], variants: [] };
+
+      expect(() => resolveVariant(site, comp, "Tablet")).toThrow(
+        'Variant "Tablet" not found'
+      );
+      expect(() => resolveVariant(site, comp, "Tablet")).toThrow("Mobile");
+    });
+
+    it("throws ambiguity error when name matches multiple variants", () => {
+      const globalDark = mkVariant({ uuid: "global-dark", name: "Dark" });
+      const compDark = mkVariant({ uuid: "comp-dark", name: "Dark" });
+      const site = mkSite({
+        globalVariantGroups: [{
+          uuid: "theme-group",
+          type: "global-user-defined",
+          param: { variable: { name: "Theme" } },
+          variants: [globalDark],
+        }],
+      });
+      const comp = {
+        variantGroups: [{
+          uuid: "comp-theme-group",
+          param: { variable: { name: "CompTheme" } },
+          variants: [compDark],
+        }],
+        variants: [],
+      };
+
+      expect(() => resolveVariant(site, comp, "Dark")).toThrow("Ambiguous");
+      expect(() => resolveVariant(site, comp, "Dark")).toThrow("global-dark");
+      expect(() => resolveVariant(site, comp, "Dark")).toThrow("comp-dark");
+    });
+
+    it("throws error for missing selector variant", () => {
+      const site = mkSite();
+      const comp = { variantGroups: [], variants: [] };
+
+      expect(() => resolveVariant(site, comp, ":focus")).toThrow(
+        "No :focus variant found"
+      );
+    });
+
+    it("resolves variant by UUID from component.variants array", () => {
+      const styleVariant = mkVariant({
+        uuid: "style-var-uuid",
+        name: "pressed",
+        selectors: [":active"],
+      });
+      const site = mkSite();
+      const comp = {
+        variantGroups: [],
+        variants: [{ uuid: "base-uuid", name: "base" }, styleVariant],
+      };
+
+      const result = resolveVariant(site, comp, "style-var-uuid");
+      expect(result).toBe(styleVariant);
+    });
+  });
+
+  // --- list-variants ---
+
+  describe("listVariants", () => {
+    it("returns global screen variants with mediaQuery", () => {
+      const site = {
+        globalVariantGroups: [{
+          uuid: "screen-group",
+          type: "global-screen",
+          param: { variable: { name: "Screen" } },
+          variants: [
+            { uuid: "mobile-uuid", name: "Mobile", mediaQuery: "(max-width: 768px)" },
+            { uuid: "tablet-uuid", name: "Tablet", mediaQuery: "(max-width: 1024px)" },
+          ],
+        }],
+      };
+      const comp = { variantGroups: [], variants: [] };
+
+      const result = listVariants(site, comp);
+
+      expect(result.globalVariants).toHaveLength(1);
+      expect(result.globalVariants[0].group).toBe("Screen");
+      expect(result.globalVariants[0].type).toBe("global-screen");
+      expect(result.globalVariants[0].variants).toEqual([
+        { uuid: "mobile-uuid", name: "Mobile", mediaQuery: "(max-width: 768px)" },
+        { uuid: "tablet-uuid", name: "Tablet", mediaQuery: "(max-width: 1024px)" },
+      ]);
+    });
+
+    it("returns component variant groups", () => {
+      const site = { globalVariantGroups: [] };
+      const comp = {
+        variantGroups: [{
+          uuid: "size-group",
+          param: { variable: { name: "Size" } },
+          variants: [
+            { uuid: "small-uuid", name: "Small" },
+            { uuid: "large-uuid", name: "Large" },
+          ],
+        }],
+        variants: [],
+      };
+
+      const result = listVariants(site, comp);
+
+      expect(result.componentVariants).toHaveLength(1);
+      expect(result.componentVariants[0].group).toBe("Size");
+      expect(result.componentVariants[0].variants).toEqual([
+        { uuid: "small-uuid", name: "Small" },
+        { uuid: "large-uuid", name: "Large" },
+      ]);
+    });
+
+    it("separates style variants from regular component variants", () => {
+      const site = { globalVariantGroups: [] };
+      const comp = {
+        variantGroups: [{
+          uuid: "mixed-group",
+          param: { variable: { name: "Interaction" } },
+          variants: [
+            { uuid: "hover-uuid", name: "hover", selectors: [":hover"], forTpl: { uuid: "node-1" } },
+            { uuid: "size-uuid", name: "Large" },
+          ],
+        }],
+        variants: [],
+      };
+
+      const result = listVariants(site, comp);
+
+      expect(result.componentVariants).toHaveLength(1);
+      expect(result.componentVariants[0].variants).toEqual([
+        { uuid: "size-uuid", name: "Large" },
+      ]);
+      expect(result.styleVariants).toHaveLength(1);
+      expect(result.styleVariants[0]).toEqual({
+        uuid: "hover-uuid",
+        name: "hover",
+        selectors: [":hover"],
+        forTpl: "node-1",
+      });
+    });
+
+    it("picks up style variants from component.variants array", () => {
+      const site = { globalVariantGroups: [] };
+      const comp = {
+        variantGroups: [],
+        variants: [
+          { uuid: "base", name: "base" },
+          { uuid: "focus-uuid", name: "focus", selectors: [":focus"] },
+        ],
+      };
+
+      const result = listVariants(site, comp);
+
+      expect(result.styleVariants).toHaveLength(1);
+      expect(result.styleVariants[0].uuid).toBe("focus-uuid");
+      expect(result.styleVariants[0].selectors).toEqual([":focus"]);
+    });
+
+    it("returns empty arrays when no variants exist", () => {
+      const site = { globalVariantGroups: [] };
+      const comp = { variantGroups: [], variants: [] };
+
+      const result = listVariants(site, comp);
+
+      expect(result.globalVariants).toEqual([]);
+      expect(result.componentVariants).toEqual([]);
+      expect(result.styleVariants).toEqual([]);
+    });
+
+    it("does not duplicate style variants found in both variantGroups and variants", () => {
+      const hoverVariant = {
+        uuid: "hover-uuid",
+        name: "hover",
+        selectors: [":hover"],
+      };
+      const site = { globalVariantGroups: [] };
+      const comp = {
+        variantGroups: [{
+          uuid: "group-1",
+          param: { variable: { name: "Interaction" } },
+          variants: [hoverVariant],
+        }],
+        // Same variant also in the flat variants array
+        variants: [hoverVariant],
+      };
+
+      const result = listVariants(site, comp);
+      expect(result.styleVariants).toHaveLength(1);
+    });
+  });
+
+  // --- Variant-aware editing ---
+
+  describe("variant-aware updateStyles", () => {
+    it("targets the base variant when variant is omitted (backward compatible)", async () => {
+      const node = mkTag({
+        uuid: "styled-1",
+        name: "Box",
+        styles: { color: "red" },
+      });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      await updateStyles(api, "comp-1", "Box", { fontSize: "24px" });
+
+      // Should call base variant setting, not ensureVariantSetting
+      expect(mockEnsureBaseVariantSetting).toHaveBeenCalled();
+      expect(mockEnsureVariantSetting).not.toHaveBeenCalled();
+    });
+
+    it("targets a specific variant when variant param is provided", async () => {
+      const mobileVariant = {
+        uuid: "mobile-uuid",
+        name: "Mobile",
+        mediaQuery: "(max-width: 768px)",
+      };
+      const mobileVs = { rs: { values: {} }, variants: [mobileVariant] };
+
+      const node = mkTag({
+        uuid: "styled-1",
+        name: "Box",
+        styles: { color: "red" },
+      });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      // Add variant groups to the session's site
+      const session = makeSession({
+        site: {
+          components: [comp],
+          globalVariantGroups: [{
+            uuid: "screen-group",
+            type: "global-screen",
+            param: { variable: { name: "Screen" } },
+            variants: [mobileVariant],
+          }],
+        },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      mockEnsureVariantSetting.mockReturnValue(mobileVs);
+
+      await updateStyles(api, "comp-1", "Box", { fontSize: "14px" }, "Mobile");
+
+      // Should call ensureVariantSetting with the mobile variant
+      expect(mockEnsureVariantSetting).toHaveBeenCalledWith(
+        node,
+        [mobileVariant]
+      );
+      // Should have set the style on the mobile VS
+      expect(mobileVs.rs.values).toHaveProperty("fontSize", "14px");
+    });
+  });
+
+  describe("variant-aware updateText", () => {
+    it("targets the base variant when variant is omitted (backward compatible)", async () => {
+      const textNode = mkTag({
+        uuid: "text-1",
+        name: "Title",
+        text: "Base text",
+      });
+      const root = mkTag({ uuid: "root-1", children: [textNode] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      await updateText(api, "comp-1", "Title", "New text");
+
+      expect(mockEnsureBaseVariantSetting).toHaveBeenCalled();
+      expect(mockEnsureVariantSetting).not.toHaveBeenCalled();
+      expect(textNode.vsettings[0].text.text).toBe("New text");
+    });
+
+    it("targets a specific variant when variant param is provided", async () => {
+      const mobileVariant = {
+        uuid: "mobile-uuid",
+        name: "Mobile",
+      };
+      const mobileVs = {
+        rs: { values: {} },
+        variants: [mobileVariant],
+        text: { _type: "RawText", text: "Mobile text", markers: [] },
+      };
+
+      const textNode = mkTag({
+        uuid: "text-1",
+        name: "Title",
+        text: "Base text",
+      });
+      const root = mkTag({ uuid: "root-1", children: [textNode] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const session = makeSession({
+        site: {
+          components: [comp],
+          globalVariantGroups: [{
+            uuid: "screen-group",
+            type: "global-screen",
+            param: { variable: { name: "Screen" } },
+            variants: [mobileVariant],
+          }],
+        },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      mockEnsureVariantSetting.mockReturnValue(mobileVs);
+
+      const result = await updateText(api, "comp-1", "Title", "Mobile title", "Mobile");
+
+      expect(mockEnsureVariantSetting).toHaveBeenCalledWith(
+        textNode,
+        [mobileVariant]
+      );
+      expect(result.previousText).toBe("Mobile text");
+      expect(result.newText).toBe("Mobile title");
+      expect(mobileVs.text.text).toBe("Mobile title");
+      // Base variant text should be unchanged
+      expect(textNode.vsettings[0].text.text).toBe("Base text");
+    });
+
+    it("throws variant not found error with helpful message", async () => {
+      const textNode = mkTag({
+        uuid: "text-1",
+        name: "Title",
+        text: "Base text",
+      });
+      const root = mkTag({ uuid: "root-1", children: [textNode] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      await expect(
+        updateText(api, "comp-1", "Title", "text", "NonExistent")
+      ).rejects.toThrow('Variant "NonExistent" not found');
     });
   });
 

@@ -1,5 +1,5 @@
 /**
- * Core edit tool implementations for M2 P1.
+ * Core edit tool implementations for M2 P1 + variant-aware editing (P1.2).
  *
  * Each function performs a model mutation inside a ChangeRecorder session,
  * then saves the changes via SaveManager. The pattern is:
@@ -7,9 +7,14 @@
  *   2. Wrap mutation in changeTracker.withRecording()
  *   3. Save the recorded changes via saveManager.saveChanges()
  *
- * All tools operate on the base variant only (M2 limitation).
+ * P1.2: updateText and updateStyles accept an optional `variant` parameter.
+ * When omitted, they target the base variant (backward compatible).
+ * When provided, the variant is resolved by UUID, name (case-insensitive),
+ * or CSS selector (e.g., ":hover"), and the edit targets that variant's
+ * VariantSetting.
  *
  * Reference: specs/plasmic-incremental-writes.md § Edit Tools
+ * Reference: specs/plasmic-variant-editing.md § Variant-Aware Editing
  */
 
 import {
@@ -20,6 +25,7 @@ import {
 } from "@/wab/shared/model/classes";
 import { RSH } from "@/wab/shared/RuleSetHelpers";
 import { TplMgr } from "@/wab/shared/TplMgr";
+import { ensureVariantSetting } from "@/wab/shared/Variants";
 import { mkTplTagX, mkTplInlinedText, mkTplComponentX } from "@/wab/shared/core/tpls";
 import { flattenTpls } from "@/wab/shared/core/tpls";
 import { requireSession } from "./session.js";
@@ -375,6 +381,228 @@ async function saveOrAccumulate(
   return save;
 }
 
+// --- Variant resolution ---
+
+/**
+ * Collect all available variant names for error messages.
+ */
+function collectAvailableVariantNames(site: any, component: any): string[] {
+  const names: string[] = [];
+  for (const group of site.globalVariantGroups ?? []) {
+    for (const v of group.variants ?? []) {
+      if (v.name) names.push(v.name);
+    }
+  }
+  for (const group of component.variantGroups ?? []) {
+    for (const v of group.variants ?? []) {
+      if (v.name) names.push(v.name);
+    }
+  }
+  for (const v of component.variants ?? []) {
+    if (v.selectors?.length > 0) {
+      names.push(v.selectors[0]);
+    }
+  }
+  return names;
+}
+
+/**
+ * Resolve a variant string to a Variant model object.
+ *
+ * Resolution order:
+ *   1. UUID — exact match across all variant groups
+ *   2. Selector — if string starts with ":", search style variants
+ *   3. Name — case-insensitive search in global then component variant groups
+ *
+ * Throws descriptive errors for not-found or ambiguous matches.
+ */
+export function resolveVariant(site: any, component: any, variantStr: string): any {
+  // 1. Search by UUID across all variant sources
+  for (const group of site.globalVariantGroups ?? []) {
+    for (const v of group.variants ?? []) {
+      if (v.uuid === variantStr) return v;
+    }
+  }
+  for (const group of component.variantGroups ?? []) {
+    for (const v of group.variants ?? []) {
+      if (v.uuid === variantStr) return v;
+    }
+  }
+  for (const v of component.variants ?? []) {
+    if (v.uuid === variantStr) return v;
+  }
+
+  // 2. Search by selector (e.g., ":hover", ":focus", ":pressed")
+  if (variantStr.startsWith(":")) {
+    const matches: Array<{ variant: any; source: string }> = [];
+
+    for (const v of component.variants ?? []) {
+      if (v.selectors?.includes(variantStr)) {
+        matches.push({ variant: v, source: `style variant "${v.name ?? variantStr}"` });
+      }
+    }
+    for (const group of component.variantGroups ?? []) {
+      for (const v of group.variants ?? []) {
+        if (v.selectors?.includes(variantStr)) {
+          const alreadyFound = matches.some((m) => m.variant.uuid === v.uuid);
+          if (!alreadyFound) {
+            matches.push({ variant: v, source: `component group "${group.param?.variable?.name ?? "unnamed"}"` });
+          }
+        }
+      }
+    }
+
+    if (matches.length === 1) return matches[0].variant;
+    if (matches.length > 1) {
+      const details = matches.map((m) => `  - ${m.source} (uuid: ${m.variant.uuid})`).join("\n");
+      throw new Error(
+        `Ambiguous variant "${variantStr}" matches ${matches.length} variants:\n${details}\n` +
+          `Use a UUID to target the specific variant.`
+      );
+    }
+    throw new Error(
+      `No ${variantStr} variant found. Use list-variants to see available variants.`
+    );
+  }
+
+  // 3. Search by name (case-insensitive)
+  const lowerName = variantStr.toLowerCase();
+  const matches: Array<{ variant: any; source: string }> = [];
+
+  for (const group of site.globalVariantGroups ?? []) {
+    for (const v of group.variants ?? []) {
+      if (v.name?.toLowerCase() === lowerName) {
+        matches.push({ variant: v, source: `global "${group.param?.variable?.name ?? group.type ?? "unnamed"}"` });
+      }
+    }
+  }
+  for (const group of component.variantGroups ?? []) {
+    for (const v of group.variants ?? []) {
+      if (v.name?.toLowerCase() === lowerName) {
+        matches.push({ variant: v, source: `component "${group.param?.variable?.name ?? "unnamed"}"` });
+      }
+    }
+  }
+
+  if (matches.length === 1) return matches[0].variant;
+  if (matches.length > 1) {
+    const details = matches.map((m) => `  - ${m.source} (uuid: ${m.variant.uuid})`).join("\n");
+    throw new Error(
+      `Ambiguous variant "${variantStr}" matches ${matches.length} variants:\n${details}\n` +
+        `Use a UUID to target the specific variant.`
+    );
+  }
+
+  const available = collectAvailableVariantNames(site, component);
+  throw new Error(
+    `Variant "${variantStr}" not found.` +
+      (available.length > 0 ? ` Available: ${available.join(", ")}` : "") +
+      ` Use list-variants to see all variants.`
+  );
+}
+
+// --- list-variants ---
+
+export interface ListVariantsResult {
+  globalVariants: Array<{
+    group: string;
+    uuid: string;
+    type: string;
+    variants: Array<{
+      uuid: string;
+      name: string;
+      mediaQuery?: string;
+    }>;
+  }>;
+  componentVariants: Array<{
+    group: string;
+    uuid: string;
+    variants: Array<{
+      uuid: string;
+      name: string;
+    }>;
+  }>;
+  styleVariants: Array<{
+    uuid: string;
+    name: string;
+    selectors: string[];
+    forTpl?: string;
+  }>;
+}
+
+/**
+ * Enumerate all variants for a component and the project's global variants.
+ *
+ * Returns three groups:
+ *   - globalVariants: screen breakpoints and user-defined globals
+ *   - componentVariants: custom variant groups on the component
+ *   - styleVariants: interaction states (hover, focus, pressed) with selectors
+ */
+export function listVariants(site: any, component: any): ListVariantsResult {
+  const globalVariants: ListVariantsResult["globalVariants"] = [];
+
+  for (const group of site.globalVariantGroups ?? []) {
+    globalVariants.push({
+      group: group.param?.variable?.name ?? "unnamed",
+      uuid: group.uuid,
+      type: group.type ?? "unknown",
+      variants: (group.variants ?? []).map((v: any) => ({
+        uuid: v.uuid,
+        name: v.name,
+        ...(v.mediaQuery ? { mediaQuery: v.mediaQuery } : {}),
+      })),
+    });
+  }
+
+  const componentVariants: ListVariantsResult["componentVariants"] = [];
+  const styleVariants: ListVariantsResult["styleVariants"] = [];
+  const seenStyleUuids = new Set<string>();
+
+  for (const group of component.variantGroups ?? []) {
+    const regularVariants: Array<{ uuid: string; name: string }> = [];
+
+    for (const v of group.variants ?? []) {
+      if (v.selectors?.length > 0) {
+        // Style variant — track separately
+        if (!seenStyleUuids.has(v.uuid)) {
+          seenStyleUuids.add(v.uuid);
+          styleVariants.push({
+            uuid: v.uuid,
+            name: v.name ?? v.selectors[0],
+            selectors: v.selectors,
+            ...(v.forTpl?.uuid ? { forTpl: v.forTpl.uuid } : {}),
+          });
+        }
+      } else {
+        regularVariants.push({ uuid: v.uuid, name: v.name });
+      }
+    }
+
+    if (regularVariants.length > 0) {
+      componentVariants.push({
+        group: group.param?.variable?.name ?? "unnamed",
+        uuid: group.uuid,
+        variants: regularVariants,
+      });
+    }
+  }
+
+  // Also check component.variants for style variants not in variantGroups
+  for (const v of component.variants ?? []) {
+    if (v.selectors?.length > 0 && !seenStyleUuids.has(v.uuid)) {
+      seenStyleUuids.add(v.uuid);
+      styleVariants.push({
+        uuid: v.uuid,
+        name: v.name ?? v.selectors[0],
+        selectors: v.selectors,
+        ...(v.forTpl?.uuid ? { forTpl: v.forTpl.uuid } : {}),
+      });
+    }
+  }
+
+  return { globalVariants, componentVariants, styleVariants };
+}
+
 // --- update-text ---
 
 export interface UpdateTextResult {
@@ -388,8 +616,11 @@ export interface UpdateTextResult {
 /**
  * Update the text content of a TplTag node.
  *
- * Finds the node via node-resolver, updates the base variant's RawText,
+ * Finds the node via node-resolver, updates the target variant's RawText,
  * records the change, and saves.
+ *
+ * When `variant` is omitted, targets the base variant (backward compatible).
+ * When provided, resolves the variant by UUID, name, or selector.
  *
  * Error if the node is a container (not a text element).
  */
@@ -397,7 +628,8 @@ export async function updateText(
   apiClient: PlasmicApiClient,
   componentUuid: string,
   nodeRef: string,
-  text: string
+  text: string,
+  variant?: string
 ): Promise<UpdateTextResult> {
   const component = findComponent(componentUuid);
   const result = resolveNode(component, nodeRef);
@@ -412,26 +644,38 @@ export async function updateText(
   const tpl = resolved.node;
   const session = requireSession();
   const tplMgr = new TplMgr({ site: session.site });
-  const vs = tplMgr.ensureBaseVariantSetting(tpl);
 
-  // Check if this is a text-capable node
-  const hasText = vs.text && isKnownRawText(vs.text);
+  // Container check uses base variant (structural, variant-independent)
+  const baseVs = tplMgr.ensureBaseVariantSetting(tpl);
+  const hasText = baseVs.text && isKnownRawText(baseVs.text);
   const isContainer =
     !hasText && tpl.children && tpl.children.length > 0;
 
   if (isContainer) {
     const layoutType =
-      vs.rs?.values?.flexDirection === "column" ? "vbox" : "container";
+      baseVs.rs?.values?.flexDirection === "column" ? "vbox" : "container";
     throw new Error(
       `Node "${resolved.name ?? nodeRef}" is a container (${layoutType}), not a text element. ` +
         `Use update-styles to change container properties, or target a text child node.`
     );
   }
 
+  // Resolve target variant (null = base)
+  const resolvedVariant = variant
+    ? resolveVariant(session.site, component, variant)
+    : null;
+
   const tracker = getChangeTracker();
   let previousText: string | undefined;
 
   const changes = tracker.withRecording(() => {
+    // Get or create the VariantSetting for the target variant.
+    // ensureVariantSetting must be inside withRecording because it may
+    // create a new VariantSetting (pushing to tpl.vsettings).
+    const vs = resolvedVariant
+      ? ensureVariantSetting(tpl, [resolvedVariant])
+      : baseVs;
+
     if (vs.text && isKnownRawText(vs.text)) {
       previousText = vs.text.text;
       vs.text.text = text;
@@ -443,10 +687,11 @@ export async function updateText(
   });
 
   const componentIid = getComponentIid(component);
+  const variantLabel = resolvedVariant ? ` [variant: ${resolvedVariant.name ?? variant}]` : "";
   const save = await saveOrAccumulate(
     apiClient,
     changes,
-    `update-text: "${text}" on ${resolved.name ?? nodeRef}`,
+    `update-text: "${text}" on ${resolved.name ?? nodeRef}${variantLabel}`,
     componentIid ? [componentIid] : []
   );
 
@@ -469,16 +714,21 @@ export interface UpdateStylesResult {
 }
 
 /**
- * Update CSS styles on a TplTag node's base variant.
+ * Update CSS styles on a TplTag node.
  *
  * Uses RuleSetHelpers to set each property in the styles object.
  * Properties use camelCase (React CSSProperties format).
+ *
+ * When `variant` is omitted, targets the base variant (backward compatible).
+ * When provided, resolves the variant by UUID, name, or selector, and
+ * applies styles to that variant's VariantSetting.
  */
 export async function updateStyles(
   apiClient: PlasmicApiClient,
   componentUuid: string,
   nodeRef: string,
-  styles: Record<string, string>
+  styles: Record<string, string>,
+  variant?: string
 ): Promise<UpdateStylesResult> {
   const component = findComponent(componentUuid);
   const result = resolveNode(component, nodeRef);
@@ -493,22 +743,34 @@ export async function updateStyles(
   const tpl = resolved.node;
   const session = requireSession();
   const tplMgr = new TplMgr({ site: session.site });
-  const vs = tplMgr.ensureBaseVariantSetting(tpl);
+
+  // Resolve target variant (null = base)
+  const resolvedVariant = variant
+    ? resolveVariant(session.site, component, variant)
+    : null;
 
   const tracker = getChangeTracker();
   const sanitized = sanitizeStyles(styles);
   const updatedProperties = Object.keys(sanitized);
 
   const changes = tracker.withRecording(() => {
+    // Get or create the VariantSetting for the target variant.
+    // ensureVariantSetting must be inside withRecording because it may
+    // create a new VariantSetting (pushing to tpl.vsettings).
+    const vs = resolvedVariant
+      ? ensureVariantSetting(tpl, [resolvedVariant])
+      : tplMgr.ensureBaseVariantSetting(tpl);
+
     const rsh = RSH(vs.rs, tpl);
     rsh.merge(sanitized);
   });
 
   const componentIid = getComponentIid(component);
+  const variantLabel = resolvedVariant ? ` [variant: ${resolvedVariant.name ?? variant}]` : "";
   const save = await saveOrAccumulate(
     apiClient,
     changes,
-    `update-styles: [${updatedProperties.join(", ")}] on ${resolved.name ?? nodeRef}`,
+    `update-styles: [${updatedProperties.join(", ")}] on ${resolved.name ?? nodeRef}${variantLabel}`,
     componentIid ? [componentIid] : []
   );
 

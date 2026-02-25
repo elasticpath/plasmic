@@ -243,6 +243,39 @@ declare module "@/wab/shared/TplMgr" {
   }
 }
 
+declare module "@/wab/shared/Variants" {
+  /**
+   * Get or create a VariantSetting for the given variant combo on a TplNode.
+   * If no VariantSetting exists matching the combo, creates one and pushes
+   * it to tpl.vsettings. Returns the (possibly new) VariantSetting.
+   */
+  export function ensureVariantSetting(tpl: any, variants: any[]): any;
+
+  /**
+   * Find an existing VariantSetting matching the variant combo.
+   * Returns undefined if none exists (does not create).
+   */
+  export function tryGetVariantSetting(tpl: any, variants: any[]): any | undefined;
+
+  /** Check if a variant (or variant combo) is the base variant. */
+  export function isBaseVariant(variants: any): boolean;
+
+  /** Check if a variant belongs to a screen (responsive breakpoint) group. */
+  export function isScreenVariant(variant: any): boolean;
+
+  /** Check if a variant group is the screen breakpoint group. */
+  export function isScreenVariantGroup(group: any): boolean;
+
+  /** Check if a variant is global (belongs to a GlobalVariantGroup). */
+  export function isGlobalVariant(variant: any): boolean;
+
+  /** Check if a variant group is global (screen or user-defined). */
+  export function isGlobalVariantGroup(group: any): boolean;
+
+  /** Get the base variant for a component (component.variants[0]). */
+  export function getBaseVariant(component: any): any;
+}
+
 declare module "@/wab/shared/site-invariants" {
   export class InvariantError extends Error {
     constructor(message: string, data?: any);

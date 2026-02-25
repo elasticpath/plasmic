@@ -1281,7 +1281,7 @@ describe("tool handlers", () => {
       expect(output.revision).toBe(6);
 
       expect(mockUpdateText).toHaveBeenCalledWith(
-        mockApiClient, "comp-1", "Title", "New text"
+        mockApiClient, "comp-1", "Title", "New text", undefined
       );
     });
 
