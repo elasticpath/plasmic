@@ -21,7 +21,10 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `move-child(componentUuid, nodeRef, newParentRef, position)` — Move an element.
 - `begin-batch()` / `end-batch()` — Group multiple edits into a single save.
 - `undo()` — Revert the last operation.
+- `save-project()` — Force a full save of the current in-memory model to the server.
 - `refresh-project()` — Reload project from server (clears undo history).
+
+All edit tools (`update-text`, `update-styles`, `add-child`, `remove-child`, `move-child`) accept an optional `dryRun: true` parameter to preview what would change without persisting.
 
 ## Instructions
 1. If no project is set, call `list-projects` and ask the user which one to work on, then call `set-project`.
@@ -37,7 +40,9 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
    - "add a section", "insert a card", "add a testimonial below the hero" → delegate to `/plasmic-edit`
    - "remove the footer", "delete the sidebar" → delegate to `/plasmic-edit`
    - "undo", "revert that", "undo the last change" → call `undo()` directly
+   - "save", "force save", "save to server" → call `save-project()` directly
    - "refresh", "reload the project", "sync with server" → call `refresh-project()` directly
+   - "what would happen if...", "preview the change", "dry run" → use `dryRun: true` on the edit tool
    - Ambiguous request → ask a clarifying question
 3. Summarize results clearly. For component structures, describe in human-readable terms rather than dumping raw JSON.
 

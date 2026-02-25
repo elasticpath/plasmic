@@ -39,8 +39,8 @@ import {
   countTreeNodes,
 } from "./tree-reader.js";
 import { readTokens } from "./token-reader.js";
-import { resolveNode, requireSingleNode, invalidateNodeCache, clearNodeCache } from "./node-resolver.js";
-import { initChangeTracker, disposeChangeTracker } from "./change-tracker.js";
+import { resolveNode, requireSingleNode, invalidateNodeCache, clearNodeCache, getCacheMetrics } from "./node-resolver.js";
+import { initChangeTracker, disposeChangeTracker, getChangeTracker } from "./change-tracker.js";
 import {
   updateText,
   updateStyles,
@@ -48,9 +48,58 @@ import {
   removeChild,
   moveChild,
 } from "./edit-tools.js";
-import { beginBatch, endBatch, isBatchActive, cancelBatch } from "./batch-manager.js";
+import { beginBatch, endBatch, isBatchActive, cancelBatch, getAccumulatedChanges } from "./batch-manager.js";
 import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
+import { SaveManager } from "./save-manager.js";
+import { undoChanges } from "@/wab/shared/core/undo-util";
 import type { TreeReadOptions } from "./types.js";
+
+/**
+ * Execute an edit function in dry-run mode: performs the mutation in-memory,
+ * captures what changed, then reverts the model to its original state without
+ * saving to the server. Uses batch mode to suppress auto-saves.
+ *
+ * Cannot be used during an active batch session (changes would intermingle).
+ */
+async function withDryRun<T>(fn: () => Promise<T>): Promise<T> {
+  if (isBatchActive()) {
+    throw new Error(
+      "Cannot use dry-run during an active batch session. End the batch first."
+    );
+  }
+
+  beginBatch();
+  try {
+    const result = await fn();
+
+    // Get the accumulated changes so we can undo them
+    const changes = getAccumulatedChanges();
+    if (changes && changes.changes.length > 0) {
+      const tracker = getChangeTracker();
+      tracker.withRecording(() => {
+        undoChanges(changes.changes);
+      });
+    }
+
+    cancelBatch();
+    return result;
+  } catch (err) {
+    // Undo any model changes on error too
+    const changes = getAccumulatedChanges();
+    if (changes && changes.changes.length > 0) {
+      try {
+        const tracker = getChangeTracker();
+        tracker.withRecording(() => {
+          undoChanges(changes.changes);
+        });
+      } catch (_) {
+        // Best-effort undo on error path
+      }
+    }
+    cancelBatch();
+    throw err;
+  }
+}
 
 export function createServer(): McpServer {
   const server = new McpServer({
@@ -466,6 +515,7 @@ export function createServer(): McpServer {
                   name: resolved.name,
                   uuid: resolved.uuid,
                   node,
+                  _cache: getCacheMetrics(),
                 },
                 null,
                 2
@@ -992,7 +1042,7 @@ export function createServer(): McpServer {
   // --- update-text ---
   // Updates text content on a TplTag node's base variant.
   // Uses node-resolver to find the target, ChangeRecorder for mutation tracking,
-  // and SaveManager for incremental save.
+  // and SaveManager for incremental save. Supports dry-run mode.
   server.tool(
     "update-text",
     "Update the text content of an element in a component. Finds the node by UUID, name, path, or index.",
@@ -1006,9 +1056,37 @@ export function createServer(): McpServer {
           'Node reference: UUID, name (e.g., "Hero Title"), path (e.g., "HeroSection.Title"), or index (e.g., "#2")'
         ),
       text: z.string().describe("The new text content"),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting. Model is left unchanged."),
     },
-    async ({ componentUuid, nodeRef, text }) => {
+    async ({ componentUuid, nodeRef, text, dryRun }) => {
       try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            updateText(apiClient, componentUuid, nodeRef, text)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    node: result.nodeName ?? result.nodeUuid,
+                    previousText: result.previousText,
+                    newText: result.newText,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
         const result = await updateText(apiClient, componentUuid, nodeRef, text);
         return {
           content: [
@@ -1044,6 +1122,7 @@ export function createServer(): McpServer {
 
   // --- update-styles ---
   // Updates CSS styles on a TplTag node's base variant via RuleSetHelpers.
+  // Supports dry-run mode.
   server.tool(
     "update-styles",
     "Update CSS styles on an element in a component. Uses camelCase property names (e.g., fontSize, backgroundColor).",
@@ -1061,9 +1140,36 @@ export function createServer(): McpServer {
         .describe(
           'CSS properties in camelCase format (e.g., {"fontSize": "24px", "backgroundColor": "#ff0000"})'
         ),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting. Model is left unchanged."),
     },
-    async ({ componentUuid, nodeRef, styles }) => {
+    async ({ componentUuid, nodeRef, styles, dryRun }) => {
       try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            updateStyles(apiClient, componentUuid, nodeRef, styles)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    node: result.nodeName ?? result.nodeUuid,
+                    updatedProperties: result.updatedProperties,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
         const result = await updateStyles(
           apiClient,
           componentUuid,
@@ -1104,6 +1210,7 @@ export function createServer(): McpServer {
   // --- add-child ---
   // Converts PlasmicElement JSON to TplTag nodes and inserts into parent.
   // M3: invalidates node resolver cache for the component (structural edit).
+  // Supports dry-run mode (no cache invalidation in dry-run).
   server.tool(
     "add-child",
     "Add a new child element to a container node. Accepts PlasmicElement JSON (vbox, text, img, button types).",
@@ -1121,9 +1228,36 @@ export function createServer(): McpServer {
         .describe(
           'Where to insert: "first", "last" (default), or a numeric index'
         ),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting. Model is left unchanged."),
     },
-    async ({ componentUuid, parentRef, child, position }) => {
+    async ({ componentUuid, parentRef, child, position, dryRun }) => {
       try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            addChild(apiClient, componentUuid, parentRef, child, position)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    parent: result.parentName ?? result.parentUuid,
+                    position: result.position,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
         const result = await addChild(
           apiClient,
           componentUuid,
@@ -1167,6 +1301,7 @@ export function createServer(): McpServer {
   // --- remove-child ---
   // Removes a node from its parent's children array.
   // M3: invalidates node resolver cache for the component (structural edit).
+  // Supports dry-run mode (no cache invalidation in dry-run).
   server.tool(
     "remove-child",
     "Remove an element from a component. Cannot remove the component's root node.",
@@ -1177,9 +1312,35 @@ export function createServer(): McpServer {
       nodeRef: z
         .string()
         .describe("Reference to the node to remove (UUID, name, path, or index)"),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting. Model is left unchanged."),
     },
-    async ({ componentUuid, nodeRef }) => {
+    async ({ componentUuid, nodeRef, dryRun }) => {
       try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            removeChild(apiClient, componentUuid, nodeRef)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    removed: result.removedName ?? result.removedUuid,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
         const result = await removeChild(apiClient, componentUuid, nodeRef);
         // Structural edit: invalidate node resolver cache for this component
         invalidateNodeCache(componentUuid);
@@ -1216,6 +1377,7 @@ export function createServer(): McpServer {
   // --- move-child ---
   // Moves a node from its current parent to a new parent.
   // M3: invalidates node resolver cache for the component (structural edit).
+  // Supports dry-run mode (no cache invalidation in dry-run).
   server.tool(
     "move-child",
     "Move an element to a new parent within the same component. Detects and prevents cycles.",
@@ -1235,9 +1397,37 @@ export function createServer(): McpServer {
         .describe(
           'Where to insert: "first", "last" (default), or a numeric index'
         ),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting. Model is left unchanged."),
     },
-    async ({ componentUuid, nodeRef, newParentRef, position }) => {
+    async ({ componentUuid, nodeRef, newParentRef, position, dryRun }) => {
       try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            moveChild(apiClient, componentUuid, nodeRef, newParentRef, position)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    moved: result.movedName ?? result.movedUuid,
+                    newParent: result.newParentName ?? result.newParentUuid,
+                    position: result.position,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
         const result = await moveChild(
           apiClient,
           componentUuid,
@@ -1404,6 +1594,53 @@ export function createServer(): McpServer {
             {
               type: "text" as const,
               text: `Error undoing: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // --- save-project ---
+  // Force a full (non-incremental) save of the current in-memory model.
+  // Useful as a checkpoint after a series of incremental saves, when the
+  // developer suspects drift between in-memory model and server, or as a
+  // "force sync" operation. Unlike incremental saves (which only send deltas),
+  // this sends the complete model state.
+  server.tool(
+    "save-project",
+    "Force a full save of the current in-memory model to the server. Useful as a checkpoint or to reconcile drift after incremental saves.",
+    {},
+    async () => {
+      try {
+        const session = requireSession();
+        const saveManager = new SaveManager(apiClient);
+        const save = await saveManager.saveFullBundle();
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  revision: save.revisionNum,
+                  incremental: save.incremental,
+                  message: `Full save completed at revision ${save.revisionNum}`,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error saving project: ${err.message}`,
             },
           ],
           isError: true,

@@ -11,6 +11,8 @@ import {
   requireSingleNode,
   clearNodeCache,
   invalidateNodeCache,
+  getCacheMetrics,
+  resetCacheMetrics,
 } from "../node-resolver";
 
 /** Helper: create a mock TplTag node */
@@ -25,6 +27,28 @@ function mkTag(
     name: name ?? undefined,
     children: children ?? [],
     tag: "div",
+  };
+}
+
+/** Helper: create a mock TplTag node with text content */
+function mkTextTag(
+  uuid: string,
+  name: string,
+  text: string,
+  children?: any[]
+): any {
+  return {
+    _type: "TplTag",
+    uuid,
+    name,
+    children: children ?? [],
+    tag: "div",
+    vsettings: [
+      {
+        text: { _type: "RawText", text },
+        rs: { values: {} },
+      },
+    ],
   };
 }
 
@@ -46,6 +70,7 @@ function mkComponent(tplTree: any): any {
 
 beforeEach(() => {
   clearNodeCache();
+  resetCacheMetrics();
 });
 
 describe("resolveNode", () => {
@@ -331,5 +356,180 @@ describe("node resolver cache", () => {
     // Should not throw, just not cache (no uuid key)
     const result = resolveNode(comp, "Root");
     expect(result.nodes).toHaveLength(1);
+  });
+});
+
+// =============================================================================
+// Content-based node resolution (~text prefix)
+//
+// Finds nodes by their text content (case-insensitive substring match).
+// Useful when the developer knows the visible text but not the node name/UUID.
+// =============================================================================
+
+describe("content-based resolution", () => {
+  it("finds a node by text content using ~ prefix", () => {
+    const title = mkTextTag("t1", "Title", "Welcome to our site");
+    const root = mkTag("root", "Root", [title]);
+    const comp = mkComponent(root);
+
+    const result = resolveNode(comp, "~Welcome");
+
+    expect(result.nodes).toHaveLength(1);
+    expect(result.nodes[0].node).toBe(title);
+    expect(result.isAmbiguous).toBe(false);
+  });
+
+  it("matches case-insensitively", () => {
+    const title = mkTextTag("t1", "Title", "Hello World");
+    const root = mkTag("root", "Root", [title]);
+    const comp = mkComponent(root);
+
+    const result = resolveNode(comp, "~hello world");
+
+    expect(result.nodes).toHaveLength(1);
+    expect(result.nodes[0].node).toBe(title);
+  });
+
+  it("matches substring of text content", () => {
+    const para = mkTextTag("p1", "Paragraph", "This is a long paragraph with details");
+    const root = mkTag("root", "Root", [para]);
+    const comp = mkComponent(root);
+
+    const result = resolveNode(comp, "~long paragraph");
+
+    expect(result.nodes).toHaveLength(1);
+    expect(result.nodes[0].node).toBe(para);
+  });
+
+  it("reports ambiguity when multiple nodes contain the same text", () => {
+    const item1 = mkTextTag("i1", "Item1", "Buy now");
+    const item2 = mkTextTag("i2", "Item2", "Buy now for less");
+    const root = mkTag("root", "Root", [item1, item2]);
+    const comp = mkComponent(root);
+
+    const result = resolveNode(comp, "~Buy now");
+
+    expect(result.nodes).toHaveLength(2);
+    expect(result.isAmbiguous).toBe(true);
+  });
+
+  it("returns empty when no text matches", () => {
+    const title = mkTextTag("t1", "Title", "Hello");
+    const root = mkTag("root", "Root", [title]);
+    const comp = mkComponent(root);
+
+    const result = resolveNode(comp, "~Goodbye");
+
+    expect(result.nodes).toHaveLength(0);
+  });
+
+  it("ignores non-text nodes (containers)", () => {
+    const container = mkTag("c1", "Container"); // no text
+    const root = mkTag("root", "Root", [container]);
+    const comp = mkComponent(root);
+
+    const result = resolveNode(comp, "~anything");
+
+    expect(result.nodes).toHaveLength(0);
+  });
+
+  it("handles empty search text after ~", () => {
+    const title = mkTextTag("t1", "Title", "Hello");
+    const root = mkTag("root", "Root", [title]);
+    const comp = mkComponent(root);
+
+    const result = resolveNode(comp, "~");
+
+    expect(result.nodes).toHaveLength(0);
+  });
+
+  it("prefers name match over content match for same string", () => {
+    // Node named "Hello" with text "Goodbye" — name should match, not content
+    const node = mkTextTag("n1", "Hello", "Goodbye");
+    const root = mkTag("root", "Root", [node]);
+    const comp = mkComponent(root);
+
+    // Name match (no ~ prefix) should find the node by name
+    const nameResult = resolveNode(comp, "Hello");
+    expect(nameResult.nodes).toHaveLength(1);
+    expect(nameResult.nodes[0].name).toBe("Hello");
+
+    // Content match (~ prefix) should find the node by text
+    const contentResult = resolveNode(comp, "~Goodbye");
+    expect(contentResult.nodes).toHaveLength(1);
+    expect(contentResult.nodes[0].node).toBe(node);
+  });
+});
+
+// =============================================================================
+// Cache hit/miss metrics
+//
+// Exposed via getCacheMetrics() for debugging and performance monitoring.
+// Metrics track how often the flattened node list is served from cache vs.
+// re-computed from the tree.
+// =============================================================================
+
+describe("cache metrics", () => {
+  it("starts at zero", () => {
+    const metrics = getCacheMetrics();
+    expect(metrics.hits).toBe(0);
+    expect(metrics.misses).toBe(0);
+    expect(metrics.hitRate).toBe(0);
+    expect(metrics.cachedComponents).toBe(0);
+  });
+
+  it("records a miss on first resolve", () => {
+    const root = mkTag("r1", "Root");
+    const comp = mkComponent(root);
+
+    resolveNode(comp, "Root");
+
+    const metrics = getCacheMetrics();
+    expect(metrics.misses).toBe(1);
+    expect(metrics.hits).toBe(0);
+    expect(metrics.cachedComponents).toBe(1);
+  });
+
+  it("records a hit on subsequent resolves for the same component", () => {
+    const root = mkTag("r1", "Root");
+    const comp = mkComponent(root);
+
+    resolveNode(comp, "Root"); // miss
+    resolveNode(comp, "Root"); // hit
+    resolveNode(comp, "Root"); // hit
+
+    const metrics = getCacheMetrics();
+    expect(metrics.misses).toBe(1);
+    expect(metrics.hits).toBe(2);
+    expect(metrics.hitRate).toBe(67); // 2/3 ≈ 67%
+  });
+
+  it("records a miss after invalidation", () => {
+    const root = mkTag("r1", "Root");
+    const comp = mkComponent(root);
+
+    resolveNode(comp, "Root"); // miss
+    resolveNode(comp, "Root"); // hit
+
+    invalidateNodeCache("comp-1");
+    resolveNode(comp, "Root"); // miss again
+
+    const metrics = getCacheMetrics();
+    expect(metrics.misses).toBe(2);
+    expect(metrics.hits).toBe(1);
+  });
+
+  it("resetCacheMetrics clears counters", () => {
+    const root = mkTag("r1", "Root");
+    const comp = mkComponent(root);
+
+    resolveNode(comp, "Root"); // miss
+    resolveNode(comp, "Root"); // hit
+
+    resetCacheMetrics();
+
+    const metrics = getCacheMetrics();
+    expect(metrics.hits).toBe(0);
+    expect(metrics.misses).toBe(0);
   });
 });

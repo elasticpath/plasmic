@@ -69,6 +69,15 @@ export function getBatchId(): string | null {
 }
 
 /**
+ * Get the accumulated changes from the current batch session.
+ * Used by dry-run mode to access changes for undo without saving.
+ * Returns null if no batch is active.
+ */
+export function getAccumulatedChanges(): RecordedChanges | null {
+  return currentBatch?.accumulatedChanges ?? null;
+}
+
+/**
  * Accumulate changes from an edit operation during a batch session.
  * Called by edit tools when batch mode is active instead of saving.
  */

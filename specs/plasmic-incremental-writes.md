@@ -169,10 +169,10 @@ The `node-resolver.ts` module walks the Tpl tree to find matching nodes. If mult
 - [x] Existing M1 tools (`get-component-tree`, `list-components`, etc.) continue to work unchanged
 
 ### Nice to Have
-- [ ] `save-project` tool for explicit manual saves
+- [x] `save-project` tool for explicit manual saves
 - [x] Undo stack depth > 1 (multiple undos)
-- [ ] Node resolution by CSS selector or content match ("the node containing 'Hello'")
-- [ ] Dry-run mode that shows what would change without persisting
+- [x] Node resolution by CSS selector or content match ("the node containing 'Hello'")
+- [x] Dry-run mode that shows what would change without persisting
 
 ## Happy Path
 

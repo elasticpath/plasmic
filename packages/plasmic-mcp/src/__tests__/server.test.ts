@@ -120,6 +120,10 @@ describe("tool handlers", () => {
   let mockClearUndoStack: jest.Mock;
   let mockGetUndoDepth: jest.Mock;
   let mockWriteFileSync: jest.Mock;
+  let mockGetCacheMetrics: jest.Mock;
+  let mockGetChangeTracker: jest.Mock;
+  let mockGetAccumulatedChanges: jest.Mock;
+  let mockSaveFullBundle: jest.Mock;
 
   beforeEach(async () => {
     process.env = { ...savedEnv };
@@ -166,6 +170,17 @@ describe("tool handlers", () => {
     mockClearUndoStack = jest.fn();
     mockGetUndoDepth = jest.fn().mockReturnValue(0);
     mockWriteFileSync = jest.fn();
+    mockGetCacheMetrics = jest.fn().mockReturnValue({
+      hits: 0,
+      misses: 0,
+      hitRate: 0,
+      cachedComponents: 0,
+    });
+    mockGetChangeTracker = jest.fn().mockReturnValue({
+      withRecording: jest.fn((fn: any) => { fn(); return { changes: [], newInsts: [], removedInsts: [] }; }),
+    });
+    mockGetAccumulatedChanges = jest.fn().mockReturnValue(null);
+    mockSaveFullBundle = jest.fn().mockResolvedValue({ revisionNum: 99, incremental: false });
 
     // --- Register module mocks (before require) ---
 
@@ -219,11 +234,13 @@ describe("tool handlers", () => {
       requireSingleNode: (...args: any[]) => mockRequireSingleNode(...args),
       invalidateNodeCache: (...args: any[]) => mockInvalidateNodeCache(...args),
       clearNodeCache: () => mockClearNodeCache(),
+      getCacheMetrics: () => mockGetCacheMetrics(),
     }));
 
     jest.mock("../change-tracker", () => ({
       initChangeTracker: (...args: any[]) => mockInitChangeTracker(...args),
       disposeChangeTracker: () => mockDisposeChangeTracker(),
+      getChangeTracker: () => mockGetChangeTracker(),
     }));
 
     jest.mock("../edit-tools", () => ({
@@ -239,6 +256,14 @@ describe("tool handlers", () => {
       endBatch: (...args: any[]) => mockEndBatch(...args),
       isBatchActive: () => mockIsBatchActive(),
       cancelBatch: () => mockCancelBatch(),
+      getAccumulatedChanges: () => mockGetAccumulatedChanges(),
+    }));
+
+    jest.mock("../save-manager", () => ({
+      SaveManager: jest.fn(() => ({
+        saveFullBundle: (...args: any[]) => mockSaveFullBundle(...args),
+        saveChanges: jest.fn(),
+      })),
     }));
 
     jest.mock("../undo-manager", () => ({
@@ -1757,6 +1782,231 @@ describe("tool handlers", () => {
       });
 
       expect(result.isError).toBe(true);
+    });
+  });
+
+  // =====================================================================
+  // save-project tool
+  // =====================================================================
+
+  describe("save-project", () => {
+    it("performs a full save and returns revision info", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        revisionNum: 10,
+      });
+
+      const result = await client.callTool({
+        name: "save-project",
+        arguments: {},
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.revision).toBe(99);
+      expect(output.incremental).toBe(false);
+      expect(output.message).toContain("Full save completed");
+      expect(mockSaveFullBundle).toHaveBeenCalled();
+    });
+
+    it("returns error when no active project", async () => {
+      mockRequireSession.mockImplementation(() => {
+        throw new Error("No active project.");
+      });
+
+      const result = await client.callTool({
+        name: "save-project",
+        arguments: {},
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Error saving project");
+    });
+
+    it("returns error when save fails", async () => {
+      mockRequireSession.mockReturnValue({ projectId: "proj-123" });
+      mockSaveFullBundle.mockRejectedValue(new Error("Site invariant violation"));
+
+      const result = await client.callTool({
+        name: "save-project",
+        arguments: {},
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Site invariant violation");
+    });
+  });
+
+  // =====================================================================
+  // Dry-run mode
+  // =====================================================================
+
+  describe("dry-run mode", () => {
+    it("update-text with dryRun returns preview without saving", async () => {
+      mockIsBatchActive.mockReturnValue(false);
+      mockBeginBatch.mockReturnValue("dry-run-batch");
+      mockGetAccumulatedChanges.mockReturnValue({
+        changes: [{ changeNode: {} }],
+        newInsts: [],
+        removedInsts: [],
+      });
+      mockUpdateText.mockResolvedValue({
+        save: { revisionNum: 10, incremental: true },
+        nodeName: "Title",
+        nodeUuid: "node-1",
+        previousText: "Old",
+        newText: "New",
+      });
+
+      const result = await client.callTool({
+        name: "update-text",
+        arguments: {
+          componentUuid: "comp-1",
+          nodeRef: "Title",
+          text: "New",
+          dryRun: true,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.dryRun).toBe(true);
+      expect(output.node).toBe("Title");
+      expect(output.previousText).toBe("Old");
+      expect(output.newText).toBe("New");
+      expect(output.message).toContain("Dry run");
+      // Verify batch was used to suppress saves
+      expect(mockBeginBatch).toHaveBeenCalled();
+      expect(mockCancelBatch).toHaveBeenCalled();
+    });
+
+    it("update-styles with dryRun returns preview without saving", async () => {
+      mockIsBatchActive.mockReturnValue(false);
+      mockBeginBatch.mockReturnValue("dry-run-batch");
+      mockGetAccumulatedChanges.mockReturnValue({
+        changes: [],
+        newInsts: [],
+        removedInsts: [],
+      });
+      mockUpdateStyles.mockResolvedValue({
+        save: { revisionNum: 10, incremental: true },
+        nodeName: "Hero",
+        nodeUuid: "node-2",
+        updatedProperties: ["fontSize", "color"],
+      });
+
+      const result = await client.callTool({
+        name: "update-styles",
+        arguments: {
+          componentUuid: "comp-1",
+          nodeRef: "Hero",
+          styles: { fontSize: "24px", color: "#ff0000" },
+          dryRun: true,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.dryRun).toBe(true);
+      expect(output.node).toBe("Hero");
+      expect(output.updatedProperties).toEqual(["fontSize", "color"]);
+    });
+
+    it("add-child with dryRun does not invalidate node cache", async () => {
+      mockIsBatchActive.mockReturnValue(false);
+      mockBeginBatch.mockReturnValue("dry-run-batch");
+      mockGetAccumulatedChanges.mockReturnValue({
+        changes: [],
+        newInsts: [],
+        removedInsts: [],
+      });
+      mockAddChild.mockResolvedValue({
+        save: { revisionNum: 10, incremental: true },
+        parentName: "Container",
+        parentUuid: "node-3",
+        position: "last",
+      });
+
+      const result = await client.callTool({
+        name: "add-child",
+        arguments: {
+          componentUuid: "comp-1",
+          parentRef: "Container",
+          child: { type: "text", value: "Test" },
+          dryRun: true,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.dryRun).toBe(true);
+      // Cache should NOT be invalidated in dry-run mode
+      expect(mockInvalidateNodeCache).not.toHaveBeenCalled();
+    });
+
+    it("dry-run rejects when batch is already active", async () => {
+      mockIsBatchActive.mockReturnValue(true);
+
+      const result = await client.callTool({
+        name: "update-text",
+        arguments: {
+          componentUuid: "comp-1",
+          nodeRef: "Title",
+          text: "New",
+          dryRun: true,
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Cannot use dry-run during an active batch");
+    });
+  });
+
+  // =====================================================================
+  // Cache metrics in get-node-details
+  // =====================================================================
+
+  describe("cache metrics", () => {
+    it("get-node-details includes cache metrics in response", async () => {
+      mockGetCacheMetrics.mockReturnValue({
+        hits: 5,
+        misses: 2,
+        hitRate: 71,
+        cachedComponents: 3,
+      });
+
+      const mockNode = { fake: "tpl-node" };
+      const mockResolved = {
+        node: mockNode,
+        uuid: "node-1",
+        name: "Title",
+        path: "Root.Title",
+        component: {},
+      };
+
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Hero" }],
+        },
+      });
+      mockResolveNode.mockReturnValue({ nodes: [mockResolved], isAmbiguous: false });
+      mockRequireSingleNode.mockReturnValue(mockResolved);
+      mockReadNodeDetails.mockReturnValue({ type: "tag", tag: "h1" });
+
+      const result = await client.callTool({
+        name: "get-node-details",
+        arguments: { componentUuid: "comp-1", nodeRef: "Title" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output._cache).toEqual({
+        hits: 5,
+        misses: 2,
+        hitRate: 71,
+        cachedComponents: 3,
+      });
     });
   });
 

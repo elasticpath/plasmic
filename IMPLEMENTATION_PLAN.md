@@ -15,6 +15,7 @@ Last updated: 2026-02-25
 | M3.5 — Integration Tests | **Complete** | 16 tests using real MCP modules with duck-typed Site fixture |
 | M4 — Component Creation & Cloning | **Complete** | 2 tools, skill file, router updated, 269 total tests |
 | M5 — Nice-to-Have Features | **Complete** | get-subtree tool, Zod validation, 282 total tests |
+| M5.5 — Remaining Nice-to-Haves | **Complete** | save-project, content resolution, dry-run, cache metrics, 303 total tests |
 | M6 — E2E Integration Tests | **Not started** | Requires live Plasmic instance |
 
 ---
@@ -65,16 +66,28 @@ Three categories of improvements: new tool, input validation, and test coverage.
 
 ---
 
+## Priority 6 — Remaining Nice-to-Have Features (COMPLETE)
+
+Four features from spec nice-to-have lists, plus 20 new tests.
+
+- [x] **P6.1** `save-project` tool — explicit full save via `SaveManager.saveFullBundle()`
+- [x] **P6.2** Content-based node resolution — `~text` prefix for case-insensitive text matching in `node-resolver.ts`
+- [x] **P6.3** Dry-run mode — `dryRun` param on all 5 edit tools; uses batch+undo to preview without persisting
+- [x] **P6.4** Node resolver cache metrics — `getCacheMetrics()` returning hits/misses/hitRate/cachedComponents
+- [x] **P6.5** Cache metrics included in `get-node-details` response (`_cache` field)
+- [x] **P6.6** Unit tests: 12 node-resolver tests (8 content resolution + 4 cache metrics)
+- [x] **P6.7** Unit tests: 8 server.test.ts tests (3 save-project + 4 dry-run + 1 cache metrics)
+- [x] **P6.8** Update spec acceptance criteria (2 specs: incremental-writes 3 items, context-efficient-queries 1 item)
+- [x] **P6.9** All 303 tests pass (282 → 303, +21 new tests)
+
+---
+
 ## Future Considerations (not yet prioritized)
 
 These items are mentioned in specs as nice-to-haves or future milestones. They are listed here for completeness but are not blocking the primary goal of creating pages from the Claude Code terminal.
 
-- **`save-project` tool** — explicit manual save (spec: `plasmic-incremental-writes.md` nice-to-have)
 - **Variant-aware editing** — edit non-base variants, responsive breakpoints (mentioned as out of scope in edit skills spec)
 - **Style token creation/editing** — currently read-only via `get-tokens`
 - **Image asset management** — currently can only reference URLs; no upload/manage capability
-- **~~Multi-level undo~~** — already implemented (undo stack supports multiple operations)
-- **Node resolution by CSS selector or content match** — richer node targeting
-- **Dry-run mode for edit tools** — preview changes without saving
 - **M3 — Real-time collaboration** — socket.io sync (future milestone per MCP server spec)
-- **Node resolver cache metrics** — hit/miss rates for performance monitoring
+- **M6 — E2E Integration Tests** — requires live Plasmic instance

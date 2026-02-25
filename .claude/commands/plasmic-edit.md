@@ -16,7 +16,10 @@ You are editing an existing page or component in a Plasmic project.
 - `move-child(componentUuid, nodeRef, newParentRef, position)` — Move an element.
 - `begin-batch()` / `end-batch()` — Group edits into a single save.
 - `undo()` — Revert the last operation.
+- `save-project()` — Force a full save of the current in-memory model.
 - `refresh-project()` — Reload project from server.
+
+All edit tools accept an optional `dryRun: true` parameter to preview changes without persisting.
 
 ## Editing Workflow
 1. If no project is active, set one up.
@@ -39,6 +42,7 @@ Nodes can be referenced by:
 - **UUID**: exact match (from `get-component-summary` or `get-node-details` output)
 - **Name**: the node's name in the tree (e.g., "Hero Title")
 - **Path**: dot-separated (e.g., "HeroSection.Title")
+- **Content**: `~` prefix for text content match (e.g., "~Hello World" — case-insensitive substring)
 
 ## Style Property Reference
 Use React CSSProperties format (camelCase):

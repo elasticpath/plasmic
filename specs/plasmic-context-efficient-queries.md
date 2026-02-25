@@ -232,7 +232,7 @@ For `export-component-tree` temp files:
 
 ### Nice to Have
 - [x] `get-subtree(componentUuid, nodeRef, maxDepth?)` — return full tree from a specific node downward
-- [ ] Node resolver cache hit/miss metrics in tool response metadata
+- [x] Node resolver cache hit/miss metrics in tool response metadata
 
 ## Happy Path
 
