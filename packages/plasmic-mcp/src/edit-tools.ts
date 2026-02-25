@@ -20,7 +20,7 @@ import {
 } from "@/wab/shared/model/classes";
 import { RSH } from "@/wab/shared/RuleSetHelpers";
 import { TplMgr } from "@/wab/shared/TplMgr";
-import { mkTplTagX } from "@/wab/shared/core/tpls";
+import { mkTplTagX, mkTplInlinedText } from "@/wab/shared/core/tpls";
 import { flattenTpls } from "@/wab/shared/core/tpls";
 import { requireSession } from "./session.js";
 import { getChangeTracker } from "./change-tracker.js";
@@ -320,11 +320,7 @@ function plasmicElementToTpl(
 ): any {
   // String elements become text nodes
   if (typeof element === "string") {
-    // Pass baseVariant + styles to trigger variant setting creation in mkTplTagX
-    const tpl = mkTplTagX("div", { baseVariant, styles: {} });
-    const vs = tpl.vsettings[0];
-    vs.text = new RawText({ text: element, markers: [] });
-    return tpl;
+    return mkTplInlinedText(element, [baseVariant], "div", { baseVariant });
   }
 
   // Map element type to HTML tag
@@ -355,7 +351,25 @@ function plasmicElementToTpl(
       break;
   }
 
-  // Build children recursively
+  // Text-bearing elements: use mkTplInlinedText (same as Studio)
+  const textValue = (element.type === "text" || element.type === "button")
+    ? (element as any).value
+    : undefined;
+
+  if (textValue !== undefined) {
+    const tpl = mkTplInlinedText(textValue, [baseVariant], tag, { baseVariant });
+    const vs = tpl.vsettings[0];
+
+    // Apply explicit styles
+    if ("styles" in element && element.styles) {
+      const rsh = RSH(vs.rs, tpl);
+      rsh.merge(element.styles);
+    }
+
+    return tpl;
+  }
+
+  // Container elements: build children recursively
   const childElements = "children" in element && element.children
     ? Array.isArray(element.children)
       ? element.children
@@ -366,8 +380,6 @@ function plasmicElementToTpl(
     plasmicElementToTpl(child, tplMgr, baseVariant)
   );
 
-  // Create the TplTag node with children.
-  // Pass baseVariant + styles to trigger variant setting creation in mkTplTagX.
   const tpl = mkTplTagX(tag, { baseVariant, styles: {} }, ...childTpls);
 
   // Set parent pointers for children (mkTplTagX leaves them as null).
@@ -392,19 +404,6 @@ function plasmicElementToTpl(
   if ("styles" in element && element.styles) {
     const rsh = RSH(vs.rs, tpl);
     rsh.merge(element.styles);
-  }
-
-  // Set text content
-  if (element.type === "text" && "value" in element) {
-    vs.text = new RawText({
-      text: (element as any).value,
-      markers: [],
-    });
-  } else if (element.type === "button" && "value" in element && (element as any).value) {
-    vs.text = new RawText({
-      text: (element as any).value,
-      markers: [],
-    });
   }
 
   // Set image src

@@ -157,6 +157,15 @@ declare module "@/wab/shared/core/tpls" {
     ...children: any[]
   ): any;
 
+  /** Create a text TplTag node. Sets type: "text", creates RawText on the variant setting.
+   *  This is what Studio uses to create text nodes. */
+  export function mkTplInlinedText(
+    text: string,
+    variantCombo: any[],
+    tag?: string,
+    opts?: MkTplTagOpts
+  ): any;
+
   /** Flatten a Tpl tree into a list of all nodes. */
   export function flattenTpls(tplRoot: any): any[];
 
