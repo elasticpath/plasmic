@@ -44,6 +44,7 @@ import { initChangeTracker, disposeChangeTracker, getChangeTracker } from "./cha
 import {
   updateText,
   updateStyles,
+  updateAttrs,
   addChild,
   removeChild,
   moveChild,
@@ -1462,6 +1463,94 @@ export function createServer(): McpServer {
         };
       } catch (err: any) {
         return handleMutationError("updating styles", err);
+      }
+    }
+  );
+
+  // --- update-attrs ---
+  // Updates HTML attributes on a TplTag node. Targets the base variant by default;
+  // when `variant` is provided, targets that specific variant's VariantSetting.
+  // Supports standard HTML, ARIA, and data-* attributes. Rejects event handlers.
+  // Pass null as value to remove an attribute.
+  server.tool(
+    "update-attrs",
+    "Update HTML attributes on an element. Supports standard HTML attrs (id, class, href, etc.), ARIA attrs (role, aria-label, etc.), and data-* attrs. Pass null to remove an attribute. Dynamic values: prefix with $ or wrap in {{...}}.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component containing the node"),
+      nodeRef: z
+        .string()
+        .describe(
+          'Node reference: UUID, name (e.g., "Hero Title"), path (e.g., "HeroSection.Title"), or index (e.g., "#2")'
+        ),
+      attrs: z
+        .record(z.any())
+        .describe(
+          'HTML attributes to set. Static values: {"href": "/about", "aria-label": "Nav"}. Dynamic: {"href": "$props.url"} or {"href": "{{props.url}}"}. Remove: {"title": null}'
+        ),
+      variant: z
+        .string()
+        .optional()
+        .describe('Target variant by name (e.g., "Mobile"), UUID, or selector (e.g., ":hover"). Omit for base variant.'),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting. Model is left unchanged."),
+    },
+    async ({ componentUuid, nodeRef, attrs, variant, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            updateAttrs(apiClient, componentUuid, nodeRef, attrs, variant)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    node: result.nodeName ?? result.nodeUuid,
+                    updatedAttributes: result.updatedAttributes,
+                    removedAttributes: result.removedAttributes,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await updateAttrs(
+          apiClient,
+          componentUuid,
+          nodeRef,
+          attrs,
+          variant
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  node: result.nodeName ?? result.nodeUuid,
+                  updatedAttributes: result.updatedAttributes,
+                  removedAttributes: result.removedAttributes,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("updating attributes", err);
       }
     }
   );

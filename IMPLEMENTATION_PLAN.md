@@ -50,30 +50,33 @@
 
 ---
 
-## Priority 3: Element Tags & HTML Attributes
-**Spec:** `specs/plasmic-element-tags-and-attrs.md` (18 criteria)
-**Why third:** Semantic HTML is critical for page creation. Currently all containers render as `<div>` regardless of `tag` field. The `update-attrs` tool is needed for links (`href`), accessibility (`aria-*`), form attributes, and data attributes — all essential for real pages.
+## Priority 3: Element Tags & HTML Attributes ✅ COMPLETE
+**Spec:** `specs/plasmic-element-tags-and-attrs.md` (18 criteria — all implemented)
+**Status:** All acceptance criteria implemented and tested. 508 tests passing.
 
-**Implementation items — Tags:**
-- [ ] `edit-tools.ts` `plasmicElementToTpl()` — honor `tag` field on container elements (validate against allowed list: `div`, `section`, `article`, `nav`, `header`, `footer`, `aside`, `main`, `ul`, `ol`, `li`, `form`, `fieldset`)
-- [ ] Honor `tag` field on text elements (validate: `div`, `p`, `span`, `h1`-`h6`, `label`, `a`, `blockquote`, `pre`, `code`)
-- [ ] Reject unsafe tags (`script`, `style`, `iframe`) with clear error
-- [ ] Reflect tag in `get-component-tree` output (already partially done in `tree-reader.ts`)
+**What was implemented:**
+- [x] `edit-tools.ts` `plasmicElementToTpl()` — `tag` field on container elements validated against allowlist (`div`, `section`, `article`, `nav`, `header`, `footer`, `aside`, `main`, `ul`, `ol`, `li`, `form`, `fieldset`)
+- [x] `tag` field on text elements validated against allowlist (`div`, `p`, `span`, `h1`-`h6`, `label`, `a`, `blockquote`, `pre`, `code`)
+- [x] Unsafe tags (`script`, `style`, `iframe`) rejected with clear error listing allowed alternatives
+- [x] Tag already reflected in `get-component-tree` output (tree-reader reads `tpl.tag`)
+- [x] New `update-attrs` tool in `server.ts` — `{ componentUuid, nodeRef, attrs: { key: value } }` with variant targeting and dry-run
+- [x] `edit-tools.ts` `updateAttrs()` — static string values → `CustomCode(JSON.stringify())`, dynamic values (`$` prefix or `{{...}}`) → `CustomCode(expression)`
+- [x] Standard HTML attrs supported: `id`, `class`, `href`, `target`, `rel`, `title`, `tabIndex`, `type`, `name`, `placeholder`, `value`, `disabled`, `checked`, plus `src`, `alt`, `width`, `height`, `action`, `method`, `for`, `autocomplete`, `autofocus`, `required`, `readonly`, `min`, `max`, `step`, `pattern`, `maxlength`, `minlength`
+- [x] ARIA attrs supported: `role`, `aria-label`, `aria-labelledby`, `aria-describedby`, `aria-hidden`, `aria-expanded`, `aria-selected`, `aria-disabled`, plus 14 more ARIA attrs
+- [x] `data-*` attributes (any name) supported
+- [x] Event handler attrs (`onclick`, `onload`, etc.) rejected for security
+- [x] Attribute removal via `null` value — `delete vs.attrs[key]`
+- [x] Attrs processed during element creation (`plasmicElementToTpl`) for both container and text elements
+- [x] 27 new unit tests: tag validation (container/text/unsafe/invalid/all-valid), updateAttrs (static/dynamic/remove/ARIA/data/event-handler/boolean/variant), attrs-during-creation
 
-**Implementation items — Attributes:**
-- [ ] New `update-attrs` tool in `server.ts` — accepts `{ componentUuid, nodeRef, attrs: { key: value } }`
-- [ ] `edit-tools.ts` — implement `updateAttrs()`: static values → literal expressions, dynamic values (`$` prefix or `{{...}}`) → CustomCode
-- [ ] Support standard HTML attrs: `id`, `class`, `href`, `target`, `rel`, `title`, `tabIndex`, `type`, `name`, `placeholder`, `value`, `disabled`, `checked`
-- [ ] Support ARIA attrs: `role`, `aria-label`, `aria-labelledby`, `aria-describedby`, `aria-hidden`, `aria-expanded`, `aria-selected`, `aria-disabled`
-- [ ] Support `data-*` attributes (any name)
-- [ ] Reject event handler attrs (`onclick`, `onload`, etc.) for security
-- [ ] Attribute removal: pass `null` to delete
-- [ ] Variant targeting and dry-run support on `update-attrs`
-- [ ] Unit tests: tag validation, attr setting/removal, dynamic attrs, variant-aware attrs
-- [ ] Integration test: create element with tag → set attrs → read back → verify
+**Key design decisions:**
+- Attribute values are stored as `CustomCode` expressions (matching WAB's `codeLit()` pattern, already used for img src and component props).
+- `isValidAttrName()` allows custom-element-style hyphenated names (e.g., `my-attr`) to support web components.
+- Validation happens before any model mutation, so invalid attrs never corrupt the model.
+- No changes needed to `tree-reader.ts` or `types.ts` — attrs were already read via `extractAttrs()` and the `TreeNode.attrs` field was already typed.
 
-**Files to modify:** `edit-tools.ts`, `server.ts`, `tree-reader.ts`, `types.ts`
-**Test files:** `edit-tools.test.ts`, `server.test.ts`, `real-integration.test.ts`
+**Files modified:** `edit-tools.ts`, `server.ts`
+**Test files:** `edit-tools.test.ts`
 
 ---
 

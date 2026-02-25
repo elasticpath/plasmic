@@ -19,6 +19,7 @@ import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   updateText,
   updateStyles,
+  updateAttrs,
   addChild,
   removeChild,
   moveChild,
@@ -2971,6 +2972,656 @@ describe("edit-tools", () => {
       await expect(
         updateStyles(api, "comp-1", "Box", { color: "red" })
       ).rejects.toThrow("refresh-project");
+    });
+  });
+
+  // ==========================================================================
+  // Element tag validation
+  //
+  // Container and text elements support an optional `tag` field that overrides
+  // the default HTML tag. This enables semantic HTML (<section>, <nav>, <h1>)
+  // instead of everything being <div>. Tags are validated against allowlists
+  // and unsafe tags (script, style, iframe) are rejected.
+  // ==========================================================================
+
+  describe("addChild with tag validation", () => {
+    it("creates a container element with a custom tag", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const newTpl = mkTag({ uuid: "new-1", tag: "section" });
+      mockMkTplTagX.mockReturnValue(newTpl);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      await addChild(api, "comp-1", "Section", {
+        type: "box",
+        tag: "section",
+        children: [],
+      });
+
+      // mkTplTagX should be called with the validated tag "section"
+      expect(mockMkTplTagX).toHaveBeenCalledWith(
+        "section",
+        expect.anything(),
+      );
+    });
+
+    it("creates a container element with tag 'nav'", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Parent" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const newTpl = mkTag({ uuid: "new-1", tag: "nav" });
+      mockMkTplTagX.mockReturnValue(newTpl);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      await addChild(api, "comp-1", "Parent", {
+        type: "hbox",
+        tag: "nav",
+        children: [],
+      });
+
+      expect(mockMkTplTagX).toHaveBeenCalledWith(
+        "nav",
+        expect.anything(),
+      );
+    });
+
+    it("creates a text element with tag 'h1'", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Parent" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const newTpl = mkTag({ uuid: "new-1", tag: "h1", text: "Title" });
+      mockMkTplInlinedText.mockReturnValue(newTpl);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      await addChild(api, "comp-1", "Parent", {
+        type: "text",
+        value: "Title",
+        tag: "h1",
+      });
+
+      // mkTplInlinedText should be called with the validated tag "h1"
+      expect(mockMkTplInlinedText).toHaveBeenCalledWith(
+        "Title",
+        expect.anything(),
+        "h1",
+        expect.anything(),
+      );
+    });
+
+    it("defaults container tag to 'div' when no tag specified", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Parent" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const newTpl = mkTag({ uuid: "new-1" });
+      mockMkTplTagX.mockReturnValue(newTpl);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      await addChild(api, "comp-1", "Parent", {
+        type: "box",
+        children: [],
+      });
+
+      expect(mockMkTplTagX).toHaveBeenCalledWith(
+        "div",
+        expect.anything(),
+      );
+    });
+
+    it("rejects unsafe tag 'script' on container", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Parent" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      await expect(
+        addChild(api, "comp-1", "Parent", {
+          type: "box",
+          tag: "script",
+          children: [],
+        })
+      ).rejects.toThrow("not allowed (unsafe)");
+    });
+
+    it("rejects unsafe tag 'style' on container", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Parent" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      await expect(
+        addChild(api, "comp-1", "Parent", {
+          type: "box",
+          tag: "style",
+          children: [],
+        })
+      ).rejects.toThrow("not allowed (unsafe)");
+    });
+
+    it("rejects unsafe tag 'iframe' on text", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Parent" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      await expect(
+        addChild(api, "comp-1", "Parent", {
+          type: "text",
+          value: "X",
+          tag: "iframe",
+        })
+      ).rejects.toThrow("not allowed (unsafe)");
+    });
+
+    it("rejects invalid container tag 'span'", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Parent" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      await expect(
+        addChild(api, "comp-1", "Parent", {
+          type: "box",
+          tag: "span",
+          children: [],
+        })
+      ).rejects.toThrow('Invalid tag "span" for container element');
+    });
+
+    it("rejects invalid text tag 'nav'", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Parent" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      await expect(
+        addChild(api, "comp-1", "Parent", {
+          type: "text",
+          value: "X",
+          tag: "nav",
+        })
+      ).rejects.toThrow('Invalid tag "nav" for text element');
+    });
+
+    it("supports all valid container tags", async () => {
+      const validContainerTags = [
+        "div", "section", "article", "nav", "header", "footer",
+        "aside", "main", "ul", "ol", "li", "form", "fieldset",
+      ];
+
+      for (const validTag of validContainerTags) {
+        const container = mkTag({ uuid: "container-1", name: "Parent" });
+        const root = mkTag({ uuid: "root-1", children: [container] });
+        const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+        const newTpl = mkTag({ uuid: "new-1", tag: validTag });
+        mockMkTplTagX.mockReturnValue(newTpl);
+        mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+        setupSession(comp);
+
+        await addChild(api, "comp-1", "Parent", {
+          type: "box",
+          tag: validTag,
+          children: [],
+        });
+
+        expect(mockMkTplTagX).toHaveBeenCalledWith(
+          validTag,
+          expect.anything(),
+        );
+
+        // Clean up for next iteration
+        disposeChangeTracker();
+        clearSession();
+        vi.clearAllMocks();
+        mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+        mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+        mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
+      }
+    });
+
+    it("supports all valid text tags", async () => {
+      const validTextTags = [
+        "div", "p", "span", "h1", "h2", "h3", "h4", "h5", "h6",
+        "label", "a", "blockquote", "pre", "code",
+      ];
+
+      for (const validTag of validTextTags) {
+        const container = mkTag({ uuid: "container-1", name: "Parent" });
+        const root = mkTag({ uuid: "root-1", children: [container] });
+        const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+        const newTpl = mkTag({ uuid: "new-1", tag: validTag, text: "T" });
+        mockMkTplInlinedText.mockReturnValue(newTpl);
+        mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+        setupSession(comp);
+
+        await addChild(api, "comp-1", "Parent", {
+          type: "text",
+          value: "T",
+          tag: validTag,
+        });
+
+        expect(mockMkTplInlinedText).toHaveBeenCalledWith(
+          "T",
+          expect.anything(),
+          validTag,
+          expect.anything(),
+        );
+
+        // Clean up for next iteration
+        disposeChangeTracker();
+        clearSession();
+        vi.clearAllMocks();
+        mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+        mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+        mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
+      }
+    });
+  });
+
+  // ==========================================================================
+  // updateAttrs — HTML attribute management
+  //
+  // updateAttrs sets, updates, and removes HTML attributes on TplTag nodes.
+  // It validates attribute names (rejecting event handlers and invalid syntax),
+  // supports static and dynamic values, and works with variant targeting.
+  // ==========================================================================
+
+  describe("updateAttrs", () => {
+    it("sets static string attributes", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Link" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings[0].attrs) tpl.vsettings[0].attrs = {};
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      const result = await updateAttrs(api, "comp-1", "Link", {
+        href: "/about",
+        title: "About page",
+      });
+
+      expect(result.updatedAttributes).toEqual(["href", "title"]);
+      expect(result.removedAttributes).toEqual([]);
+      expect(result.nodeName).toBe("Link");
+      expect(result.save.revisionNum).toBe(11);
+
+      // Verify attrs were set as CustomCode expressions
+      const attrs = node.vsettings[0].attrs;
+      expect(attrs.href._type).toBe("CustomCode");
+      expect(attrs.href.code).toBe('"/about"');
+      expect(attrs.title._type).toBe("CustomCode");
+      expect(attrs.title.code).toBe('"About page"');
+    });
+
+    it("sets dynamic attribute with $ prefix", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Link" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings[0].attrs) tpl.vsettings[0].attrs = {};
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      await updateAttrs(api, "comp-1", "Link", {
+        href: "$props.url",
+      });
+
+      const attrs = node.vsettings[0].attrs;
+      expect(attrs.href._type).toBe("CustomCode");
+      expect(attrs.href.code).toBe("props.url");
+    });
+
+    it("sets dynamic attribute with {{...}} wrapper", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Link" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings[0].attrs) tpl.vsettings[0].attrs = {};
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      await updateAttrs(api, "comp-1", "Link", {
+        href: "{{props.url}}",
+      });
+
+      const attrs = node.vsettings[0].attrs;
+      expect(attrs.href._type).toBe("CustomCode");
+      expect(attrs.href.code).toBe("props.url");
+    });
+
+    it("removes attributes with null value", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Link" });
+      // Pre-set an attribute to remove
+      node.vsettings[0].attrs = {
+        href: { _type: "CustomCode", code: '"/old"', fallback: null },
+        title: { _type: "CustomCode", code: '"Old title"', fallback: null },
+      };
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings[0].attrs) tpl.vsettings[0].attrs = {};
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      const result = await updateAttrs(api, "comp-1", "Link", {
+        href: null,
+      });
+
+      expect(result.removedAttributes).toEqual(["href"]);
+      expect(result.updatedAttributes).toEqual([]);
+
+      // href should be removed, title should remain
+      expect(node.vsettings[0].attrs.href).toBeUndefined();
+      expect(node.vsettings[0].attrs.title).toBeDefined();
+    });
+
+    it("supports ARIA attributes", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Nav" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings[0].attrs) tpl.vsettings[0].attrs = {};
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      await updateAttrs(api, "comp-1", "Nav", {
+        role: "navigation",
+        "aria-label": "Main menu",
+        "aria-hidden": "false",
+      });
+
+      const attrs = node.vsettings[0].attrs;
+      expect(attrs.role._type).toBe("CustomCode");
+      expect(attrs.role.code).toBe('"navigation"');
+      expect(attrs["aria-label"].code).toBe('"Main menu"');
+      expect(attrs["aria-hidden"].code).toBe('"false"');
+    });
+
+    it("supports data-* attributes", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Card" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings[0].attrs) tpl.vsettings[0].attrs = {};
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      await updateAttrs(api, "comp-1", "Card", {
+        "data-testid": "card-1",
+        "data-custom": "value",
+      });
+
+      const attrs = node.vsettings[0].attrs;
+      expect(attrs["data-testid"].code).toBe('"card-1"');
+      expect(attrs["data-custom"].code).toBe('"value"');
+    });
+
+    it("rejects event handler attributes", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Btn" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      setupSession(comp);
+
+      await expect(
+        updateAttrs(api, "comp-1", "Btn", { onclick: "alert(1)" })
+      ).rejects.toThrow("Event handler attribute");
+
+      await expect(
+        updateAttrs(api, "comp-1", "Btn", { onload: "init()" })
+      ).rejects.toThrow("Event handler attribute");
+    });
+
+    it("rejects attribute names with whitespace", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Box" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      setupSession(comp);
+
+      await expect(
+        updateAttrs(api, "comp-1", "Box", { "bad attr": "value" })
+      ).rejects.toThrow("no whitespace");
+    });
+
+    it("rejects update on non-TplTag", async () => {
+      const compNode = {
+        _type: "TplComponent",
+        uuid: "tpl-comp-1",
+        name: "Sub",
+        component: { name: "Other", uuid: "other-uuid" },
+        vsettings: [],
+        children: [],
+      };
+      const root = mkTag({ uuid: "root-1", children: [compNode] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      setupSession(comp);
+
+      await expect(
+        updateAttrs(api, "comp-1", "tpl-comp-1", { title: "X" })
+      ).rejects.toThrow("not a TplTag");
+    });
+
+    it("sets boolean attribute values", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Input" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings[0].attrs) tpl.vsettings[0].attrs = {};
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      await updateAttrs(api, "comp-1", "Input", {
+        disabled: true,
+        checked: false,
+      });
+
+      const attrs = node.vsettings[0].attrs;
+      expect(attrs.disabled.code).toBe("true");
+      expect(attrs.checked.code).toBe("false");
+    });
+
+    it("handles empty string attribute value", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Input" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings[0].attrs) tpl.vsettings[0].attrs = {};
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      await updateAttrs(api, "comp-1", "Input", {
+        disabled: "",
+      });
+
+      const attrs = node.vsettings[0].attrs;
+      expect(attrs.disabled.code).toBe('""');
+    });
+
+    it("supports variant targeting for attributes", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Link" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      // Set up a variant for targeting
+      const mobileVariant = {
+        uuid: "mobile-var",
+        name: "Mobile",
+        selectors: null,
+      };
+      const mobileVs = {
+        variants: [mobileVariant],
+        attrs: {},
+        rs: { values: {} },
+      };
+
+      const session = makeSession({
+        site: {
+          components: [comp],
+          globalVariantGroups: [
+            {
+              uuid: "screen-group",
+              param: { variable: { name: "Screen" } },
+              variants: [mobileVariant],
+              type: "global-screen",
+            },
+          ],
+        },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      mockEnsureVariantSetting.mockReturnValue(mobileVs);
+
+      await updateAttrs(api, "comp-1", "Link", { "aria-hidden": "true" }, "Mobile");
+
+      expect(mockEnsureVariantSetting).toHaveBeenCalledWith(node, [mobileVariant]);
+      expect(mobileVs.attrs["aria-hidden"]._type).toBe("CustomCode");
+      expect(mobileVs.attrs["aria-hidden"].code).toBe('"true"');
+    });
+
+    it("allows mixed set and remove operations", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Link" });
+      node.vsettings[0].attrs = {
+        href: { _type: "CustomCode", code: '"/old"', fallback: null },
+        title: { _type: "CustomCode", code: '"remove me"', fallback: null },
+      };
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings[0].attrs) tpl.vsettings[0].attrs = {};
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      const result = await updateAttrs(api, "comp-1", "Link", {
+        href: "/new",
+        title: null,
+        "aria-label": "Link",
+      });
+
+      expect(result.updatedAttributes).toEqual(["href", "aria-label"]);
+      expect(result.removedAttributes).toEqual(["title"]);
+
+      const attrs = node.vsettings[0].attrs;
+      expect(attrs.href.code).toBe('"/new"');
+      expect(attrs.title).toBeUndefined();
+      expect(attrs["aria-label"].code).toBe('"Link"');
+    });
+  });
+
+  // ==========================================================================
+  // Attrs during element creation
+  //
+  // The attrs field on PlasmicElement types is processed during add-child to
+  // set HTML attributes on the newly created node. This verifies the end-to-end
+  // flow from element JSON to stored attrs on the TplTag.
+  // ==========================================================================
+
+  describe("addChild with attrs", () => {
+    it("sets attrs on container element during creation", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Parent" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const newTpl = mkTag({ uuid: "new-1" });
+      newTpl.vsettings[0].attrs = {};
+      mockMkTplTagX.mockReturnValue(newTpl);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      await addChild(api, "comp-1", "Parent", {
+        type: "box",
+        tag: "nav",
+        attrs: { role: "navigation", "aria-label": "Main" },
+        children: [],
+      });
+
+      const attrs = newTpl.vsettings[0].attrs;
+      expect(attrs.role._type).toBe("CustomCode");
+      expect(attrs.role.code).toBe('"navigation"');
+      expect(attrs["aria-label"].code).toBe('"Main"');
+    });
+
+    it("sets attrs on text element during creation", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Parent" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const newTpl = mkTag({ uuid: "new-1", tag: "a", text: "Click" });
+      newTpl.vsettings[0].attrs = {};
+      mockMkTplInlinedText.mockReturnValue(newTpl);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      await addChild(api, "comp-1", "Parent", {
+        type: "text",
+        value: "Click",
+        tag: "a",
+        attrs: { href: "/about", target: "_blank" },
+      });
+
+      const attrs = newTpl.vsettings[0].attrs;
+      expect(attrs.href.code).toBe('"/about"');
+      expect(attrs.target.code).toBe('"_blank"');
+    });
+
+    it("rejects event handler attr during creation", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Parent" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const newTpl = mkTag({ uuid: "new-1" });
+      mockMkTplTagX.mockReturnValue(newTpl);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      await expect(
+        addChild(api, "comp-1", "Parent", {
+          type: "box",
+          attrs: { onclick: "bad()" },
+          children: [],
+        })
+      ).rejects.toThrow("Event handler attribute");
     });
   });
 });

@@ -44,6 +44,142 @@ import { isBatchActive, accumulateChanges } from "./batch-manager.js";
 import { pushUndoOperation } from "./undo-manager.js";
 import { undoChanges } from "@/wab/shared/core/undo-util";
 
+// --- Tag Validation ---
+
+/** Valid HTML tags for container elements (box, vbox, hbox, page-section). */
+const CONTAINER_TAGS = new Set([
+  "div", "section", "article", "nav", "header", "footer",
+  "aside", "main", "ul", "ol", "li", "form", "fieldset",
+]);
+
+/** Valid HTML tags for text elements. */
+const TEXT_TAGS = new Set([
+  "div", "p", "span", "h1", "h2", "h3", "h4", "h5", "h6",
+  "label", "a", "blockquote", "pre", "code",
+]);
+
+/** Tags that are always rejected for security reasons. */
+const UNSAFE_TAGS = new Set(["script", "style", "iframe"]);
+
+/**
+ * Validate and return the HTML tag for a container element.
+ * If no tag is specified, returns "div".
+ * Throws if the tag is unsafe or not in the allowed list.
+ */
+function validateContainerTag(tag: string | undefined): string {
+  if (!tag) return "div";
+  if (UNSAFE_TAGS.has(tag)) {
+    throw new Error(
+      `Tag "${tag}" is not allowed (unsafe). ` +
+      `Allowed container tags: ${[...CONTAINER_TAGS].join(", ")}`
+    );
+  }
+  if (!CONTAINER_TAGS.has(tag)) {
+    throw new Error(
+      `Invalid tag "${tag}" for container element. ` +
+      `Allowed tags: ${[...CONTAINER_TAGS].join(", ")}`
+    );
+  }
+  return tag;
+}
+
+/**
+ * Validate and return the HTML tag for a text element.
+ * If no tag is specified, returns "div".
+ * Throws if the tag is unsafe or not in the allowed list.
+ */
+function validateTextTag(tag: string | undefined): string {
+  if (!tag) return "div";
+  if (UNSAFE_TAGS.has(tag)) {
+    throw new Error(
+      `Tag "${tag}" is not allowed (unsafe). ` +
+      `Allowed text tags: ${[...TEXT_TAGS].join(", ")}`
+    );
+  }
+  if (!TEXT_TAGS.has(tag)) {
+    throw new Error(
+      `Invalid tag "${tag}" for text element. ` +
+      `Allowed tags: ${[...TEXT_TAGS].join(", ")}`
+    );
+  }
+  return tag;
+}
+
+// --- Attribute Validation ---
+
+/** Standard HTML attributes that can be set via update-attrs. */
+const STANDARD_HTML_ATTRS = new Set([
+  "id", "class", "href", "target", "rel", "title", "tabIndex",
+  "type", "name", "placeholder", "value", "disabled", "checked",
+  "src", "alt", "width", "height", "action", "method",
+  "for", "autocomplete", "autofocus", "required", "readonly",
+  "min", "max", "step", "pattern", "maxlength", "minlength",
+]);
+
+/** ARIA attributes that can be set via update-attrs. */
+const ARIA_ATTRS = new Set([
+  "role", "aria-label", "aria-labelledby", "aria-describedby",
+  "aria-hidden", "aria-expanded", "aria-selected", "aria-disabled",
+  "aria-live", "aria-atomic", "aria-busy", "aria-controls",
+  "aria-current", "aria-haspopup", "aria-invalid", "aria-pressed",
+  "aria-readonly", "aria-required", "aria-sort", "aria-valuemax",
+  "aria-valuemin", "aria-valuenow", "aria-valuetext",
+]);
+
+/**
+ * Validate an attribute name. Returns true if the attribute is allowed.
+ * Rejects event handler attributes (onclick, onload, etc.) and
+ * attributes with invalid syntax.
+ */
+function isValidAttrName(name: string): { valid: boolean; reason?: string } {
+  // Reject event handlers
+  if (/^on[a-z]/i.test(name)) {
+    return { valid: false, reason: `Event handler attribute "${name}" is not allowed. Use event handlers in code components instead.` };
+  }
+  // Reject empty or whitespace-only names
+  if (!name || /\s/.test(name)) {
+    return { valid: false, reason: `Invalid attribute name "${name}": must be non-empty with no whitespace.` };
+  }
+  // Allow standard HTML attrs
+  if (STANDARD_HTML_ATTRS.has(name)) return { valid: true };
+  // Allow ARIA attrs
+  if (ARIA_ATTRS.has(name)) return { valid: true };
+  // Allow data-* attributes
+  if (name.startsWith("data-")) return { valid: true };
+  // Allow custom element attributes (anything with a hyphen that's not data- or aria-)
+  // This supports web component custom elements per the spec
+  if (/^[a-zA-Z][a-zA-Z0-9-]*$/.test(name)) return { valid: true };
+  // Reject anything else
+  return { valid: false, reason: `Invalid attribute name "${name}": must match valid HTML attribute syntax (letters, digits, hyphens).` };
+}
+
+/**
+ * Create an attribute expression value from a user-provided value.
+ * - null → signals deletion (caller handles)
+ * - string starting with "$" → dynamic CustomCode (strips "$" prefix)
+ * - string wrapped in "{{...}}" → dynamic CustomCode (strips delimiters)
+ * - everything else → static literal via CustomCode(JSON.stringify(...))
+ */
+function createAttrExpr(value: unknown): any {
+  if (typeof value === "string") {
+    // Dynamic value: $expression
+    if (value.startsWith("$")) {
+      return new CustomCode({ code: value.slice(1), fallback: null });
+    }
+    // Dynamic value: {{expression}}
+    if (value.startsWith("{{") && value.endsWith("}}")) {
+      return new CustomCode({ code: value.slice(2, -2).trim(), fallback: null });
+    }
+    // Static string literal
+    return new CustomCode({ code: JSON.stringify(value), fallback: null });
+  }
+  // Booleans, numbers, null-like → serialize as literal
+  return new CustomCode({
+    code: value === undefined ? "undefined" : JSON.stringify(value),
+    fallback: null,
+  });
+}
+
 // --- Helpers ---
 
 /**
@@ -814,6 +950,111 @@ export async function updateStyles(
   };
 }
 
+// --- update-attrs ---
+
+export interface UpdateAttrsResult {
+  save: SaveResult;
+  nodeName?: string;
+  nodeUuid: string;
+  updatedAttributes: string[];
+  removedAttributes: string[];
+}
+
+/**
+ * Update HTML attributes on a TplTag node.
+ *
+ * Supports standard HTML attributes, ARIA attributes, and data-* attributes.
+ * Rejects event handler attributes (onclick, etc.) for security.
+ *
+ * Values:
+ *   - null → removes the attribute
+ *   - string starting with "$" → dynamic CustomCode expression (strips "$")
+ *   - string wrapped in "{{...}}" → dynamic CustomCode expression
+ *   - everything else → static literal (JSON.stringify)
+ *
+ * When `variant` is omitted, targets the base variant (backward compatible).
+ * When provided, resolves the variant and applies to that VariantSetting.
+ */
+export async function updateAttrs(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  nodeRef: string,
+  attrs: Record<string, unknown>,
+  variant?: string
+): Promise<UpdateAttrsResult> {
+  const component = findComponent(componentUuid);
+  const result = resolveNode(component, nodeRef);
+  const resolved = requireSingleNode(result, nodeRef);
+
+  if (!isKnownTplTag(resolved.node)) {
+    throw new Error(
+      `Node "${nodeRef}" is not a TplTag and cannot have attributes updated.`
+    );
+  }
+
+  const tpl = resolved.node;
+  const session = requireSession();
+  const tplMgr = new TplMgr({ site: session.site });
+
+  // Resolve target variant (null = base)
+  const resolvedVariant = variant
+    ? resolveVariant(session.site, component, variant)
+    : null;
+
+  // Validate all attribute names before making any changes
+  const updatedAttributes: string[] = [];
+  const removedAttributes: string[] = [];
+  for (const [key, value] of Object.entries(attrs)) {
+    const validation = isValidAttrName(key);
+    if (!validation.valid) {
+      throw new Error(validation.reason!);
+    }
+    if (value === null) {
+      removedAttributes.push(key);
+    } else {
+      updatedAttributes.push(key);
+    }
+  }
+
+  const tracker = getChangeTracker();
+
+  const changes = tracker.withRecording(() => {
+    const vs = resolvedVariant
+      ? ensureVariantSetting(tpl, [resolvedVariant])
+      : tplMgr.ensureBaseVariantSetting(tpl);
+
+    if (!vs.attrs) {vs.attrs = {};}
+
+    for (const [key, value] of Object.entries(attrs)) {
+      if (value === null) {
+        // Remove the attribute
+        delete vs.attrs[key];
+      } else {
+        // Set or update the attribute
+        vs.attrs[key] = createAttrExpr(value);
+      }
+    }
+  });
+
+  const componentIid = getComponentIid(component);
+  const variantLabel = resolvedVariant ? ` [variant: ${resolvedVariant.name ?? variant}]` : "";
+  const allKeys = [...updatedAttributes, ...removedAttributes.map(k => `-${k}`)];
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `update-attrs: [${allKeys.join(", ")}] on ${resolved.name ?? nodeRef}${variantLabel}`,
+    componentIid ? [componentIid] : []
+  );
+
+  return {
+    save,
+    nodeName: resolved.name,
+    nodeUuid: resolved.uuid,
+    updatedAttributes,
+    removedAttributes,
+  };
+}
+
 // --- add-child ---
 
 export interface AddChildResult {
@@ -919,17 +1160,17 @@ function plasmicElementToTpl(
     return tpl;
   }
 
-  // Map element type to HTML tag
+  // Map element type to HTML tag, with validation for custom tags
   let tag: string;
   switch (element.type) {
     case "box":
     case "vbox":
     case "hbox":
     case "page-section":
-      tag = "div";
+      tag = validateContainerTag((element as any).tag);
       break;
     case "text":
-      tag = (element as any).tag ?? "div";
+      tag = validateTextTag((element as any).tag);
       break;
     case "img":
       tag = "img";
@@ -960,6 +1201,20 @@ function plasmicElementToTpl(
     if ("styles" in element && element.styles) {
       const rsh = RSH(vs.rs, tpl);
       rsh.merge(sanitizeStyles(element.styles));
+    }
+
+    // Process HTML attributes from element.attrs
+    if ("attrs" in element && element.attrs && typeof element.attrs === "object") {
+      if (!vs.attrs) {vs.attrs = {};}
+      for (const [key, value] of Object.entries(element.attrs as Record<string, unknown>)) {
+        const validation = isValidAttrName(key);
+        if (!validation.valid) {
+          throw new Error(validation.reason!);
+        }
+        if (value !== null && value !== undefined) {
+          vs.attrs[key] = createAttrExpr(value);
+        }
+      }
     }
 
     return tpl;
@@ -1009,6 +1264,20 @@ function plasmicElementToTpl(
       code: JSON.stringify((element as any).src),
       fallback: null,
     });
+  }
+
+  // Process HTML attributes from element.attrs
+  if ("attrs" in element && element.attrs && typeof element.attrs === "object") {
+    if (!vs.attrs) {vs.attrs = {};}
+    for (const [key, value] of Object.entries(element.attrs as Record<string, unknown>)) {
+      const validation = isValidAttrName(key);
+      if (!validation.valid) {
+        throw new Error(validation.reason!);
+      }
+      if (value !== null && value !== undefined) {
+        vs.attrs[key] = createAttrExpr(value);
+      }
+    }
   }
 
   return tpl;
