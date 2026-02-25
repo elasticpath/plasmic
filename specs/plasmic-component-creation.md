@@ -109,15 +109,15 @@ The `plasmic.md` router must also be updated to route requests like "create a co
 - [x] `create-component` tool registered in `server.ts` with `name` and `body` parameters (no `path`)
 - [x] `create-component` calls `apiClient.updateProject(projectId, { newComponents: [{ name, body }] })`
 - [x] `create-component` reloads the model after creation using the same pattern as `create-page`
-- [x] `create-component` returns `{ success: true, name, message }` (uuid from server response not yet extracted — `updateProject` returns opaque `unknown`)
+- [x] `create-component` returns `{ success: true, name, uuid, message }` (UUID extracted from API response with model-lookup fallback)
 - [x] `clone-component` tool registered in `server.ts` with `name` and `sourceUuid` parameters
 - [x] `clone-component` calls `apiClient.updateProject(projectId, { newComponents: [{ name, cloneFrom: { uuid: sourceUuid } }] })`
 - [x] `clone-component` reloads the model after creation using the same pattern as `create-page`
-- [x] `clone-component` returns `{ success: true, name, clonedFrom, clonedFromUuid, message }`
+- [x] `clone-component` returns `{ success: true, name, uuid, clonedFrom, clonedFromUuid, message }` (UUID extracted from API response with model-lookup fallback)
 - [x] `.claude/commands/plasmic-create-component.md` skill file exists with PlasmicElement reference and instructions for both `create-component` and `clone-component`
 - [x] `.claude/commands/plasmic.md` updated: tool list includes `create-component` and `clone-component`, routing rules include component creation and cloning requests
 - [x] All existing tests continue to pass (269 total)
-- [x] New unit tests for `create-component` and `clone-component` in `server.test.ts` (3 + 4 = 7 tests)
+- [x] New unit tests for `create-component` and `clone-component` in `server.test.ts` (4 + 6 = 10 tests, including UUID extraction and model-fallback)
 
 ### Nice to Have
 

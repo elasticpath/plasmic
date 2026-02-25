@@ -77,6 +77,22 @@ export interface UpdateProjectReq {
   branchId?: string;
 }
 
+// --- API response for updateProject ---
+// The server returns { result: { newComponents: [{ uuid, name, path }] } }
+// when creating new components or pages.
+
+export interface NewComponentResult {
+  uuid: string;
+  name: string;
+  path?: string;
+}
+
+export interface UpdateProjectResponse {
+  result?: {
+    newComponents?: NewComponentResult[];
+  };
+}
+
 // --- PlasmicElement types (for create-page body) ---
 // Mirrors packages/host/src/element-types.ts
 

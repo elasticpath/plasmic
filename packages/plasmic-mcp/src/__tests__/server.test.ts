@@ -977,7 +977,7 @@ describe("tool handlers", () => {
   });
 
   describe("create-page", () => {
-    it("creates page via API and reloads model", async () => {
+    it("creates page via API and returns UUID from API response", async () => {
       const newSite = {
         components: [
           { uuid: "new-page", name: "Products", pageMeta: { path: "/products" } },
@@ -988,7 +988,9 @@ describe("tool handlers", () => {
         projectId: "proj-123",
         projectName: "Test Project",
       });
-      mockApiClient.updateProject.mockResolvedValue({});
+      mockApiClient.updateProject.mockResolvedValue({
+        result: { newComponents: [{ uuid: "api-page-uuid", name: "Products", path: "/products" }] },
+      });
       mockLoadProject.mockResolvedValue({
         site: newSite,
         bundler: {},
@@ -1010,6 +1012,7 @@ describe("tool handlers", () => {
       expect(output.success).toBe(true);
       expect(output.name).toBe("Products");
       expect(output.path).toBe("/products");
+      expect(output.uuid).toBe("api-page-uuid");
 
       // Verify API call
       expect(mockApiClient.updateProject).toHaveBeenCalledWith("proj-123", {
@@ -1024,7 +1027,38 @@ describe("tool handlers", () => {
       expect(mockInitChangeTracker).toHaveBeenCalledWith(newSite);
     });
 
-    it("succeeds even when model reload fails (non-fatal)", async () => {
+    it("falls back to model lookup when API response has no UUID", async () => {
+      const newSite = {
+        components: [
+          { uuid: "model-page-uuid", name: "Products", pageMeta: { path: "/products" } },
+        ],
+      };
+
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        projectName: "Test Project",
+      });
+      mockApiClient.updateProject.mockResolvedValue({});
+      mockLoadProject.mockResolvedValue({
+        site: newSite,
+        bundler: {},
+        projectName: "Test Project",
+        revisionNum: 6,
+        modelVersion: 2,
+        hostlessDataVersion: 0,
+      });
+
+      const result = await client.callTool({
+        name: "create-page",
+        arguments: { name: "Products", path: "/products", body: {} },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.uuid).toBe("model-page-uuid");
+    });
+
+    it("returns null uuid when model reload fails and API has no UUID", async () => {
       mockRequireSession.mockReturnValue({
         projectId: "proj-123",
         projectName: "Test Project",
@@ -1041,6 +1075,7 @@ describe("tool handlers", () => {
       const output = parseResponse(result);
       expect(result.isError).toBeFalsy();
       expect(output.success).toBe(true);
+      expect(output.uuid).toBeNull();
     });
 
     it("returns error when API call fails", async () => {
@@ -1058,7 +1093,7 @@ describe("tool handlers", () => {
   });
 
   describe("create-component", () => {
-    it("creates component via API and reloads model", async () => {
+    it("creates component via API and returns UUID from API response", async () => {
       const newSite = {
         components: [
           { uuid: "new-comp", name: "HeroSection" },
@@ -1069,7 +1104,9 @@ describe("tool handlers", () => {
         projectId: "proj-123",
         projectName: "Test Project",
       });
-      mockApiClient.updateProject.mockResolvedValue({});
+      mockApiClient.updateProject.mockResolvedValue({
+        result: { newComponents: [{ uuid: "api-comp-uuid", name: "HeroSection" }] },
+      });
       mockLoadProject.mockResolvedValue({
         site: newSite,
         bundler: {},
@@ -1090,6 +1127,7 @@ describe("tool handlers", () => {
       expect(result.isError).toBeFalsy();
       expect(output.success).toBe(true);
       expect(output.name).toBe("HeroSection");
+      expect(output.uuid).toBe("api-comp-uuid");
 
       // Verify API call — no path (component, not page)
       expect(mockApiClient.updateProject).toHaveBeenCalledWith("proj-123", {
@@ -1104,7 +1142,38 @@ describe("tool handlers", () => {
       expect(mockInitChangeTracker).toHaveBeenCalledWith(newSite);
     });
 
-    it("succeeds even when model reload fails (non-fatal)", async () => {
+    it("falls back to model lookup when API response has no UUID", async () => {
+      const newSite = {
+        components: [
+          { uuid: "model-comp-uuid", name: "HeroSection" },
+        ],
+      };
+
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        projectName: "Test Project",
+      });
+      mockApiClient.updateProject.mockResolvedValue({});
+      mockLoadProject.mockResolvedValue({
+        site: newSite,
+        bundler: {},
+        projectName: "Test Project",
+        revisionNum: 6,
+        modelVersion: 2,
+        hostlessDataVersion: 0,
+      });
+
+      const result = await client.callTool({
+        name: "create-component",
+        arguments: { name: "HeroSection", body: {} },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.uuid).toBe("model-comp-uuid");
+    });
+
+    it("returns null uuid when model reload fails and API has no UUID", async () => {
       mockRequireSession.mockReturnValue({
         projectId: "proj-123",
         projectName: "Test Project",
@@ -1120,6 +1189,7 @@ describe("tool handlers", () => {
       const output = parseResponse(result);
       expect(result.isError).toBeFalsy();
       expect(output.success).toBe(true);
+      expect(output.uuid).toBeNull();
     });
 
     it("returns error when API call fails", async () => {
@@ -1137,11 +1207,62 @@ describe("tool handlers", () => {
   });
 
   describe("clone-component", () => {
-    it("clones component via API with sourceUuid and reloads model", async () => {
+    it("clones component via API and returns UUID from API response", async () => {
       const newSite = {
         components: [
           { uuid: "orig-comp", name: "Original" },
           { uuid: "cloned-comp", name: "OriginalCopy" },
+        ],
+      };
+
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        site: {
+          components: [
+            { uuid: "orig-comp", name: "Original" },
+          ],
+        },
+      });
+      mockApiClient.updateProject.mockResolvedValue({
+        result: { newComponents: [{ uuid: "api-clone-uuid", name: "OriginalCopy" }] },
+      });
+      mockLoadProject.mockResolvedValue({
+        site: newSite,
+        bundler: {},
+        projectName: "Test Project",
+        revisionNum: 7,
+        modelVersion: 2,
+        hostlessDataVersion: 0,
+      });
+
+      const result = await client.callTool({
+        name: "clone-component",
+        arguments: { sourceUuid: "orig-comp", name: "OriginalCopy" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.name).toBe("OriginalCopy");
+      expect(output.uuid).toBe("api-clone-uuid");
+      expect(output.clonedFrom).toBe("Original");
+      expect(output.clonedFromUuid).toBe("orig-comp");
+
+      // Verify API call uses cloneFrom with uuid
+      expect(mockApiClient.updateProject).toHaveBeenCalledWith("proj-123", {
+        newComponents: [{ name: "OriginalCopy", cloneFrom: { uuid: "orig-comp" } }],
+      });
+
+      // Verify model reload
+      expect(mockDisposeChangeTracker).toHaveBeenCalled();
+      expect(mockClearNodeCache).toHaveBeenCalled();
+    });
+
+    it("falls back to model lookup when API response has no UUID", async () => {
+      const newSite = {
+        components: [
+          { uuid: "orig-comp", name: "Original" },
+          { uuid: "model-clone-uuid", name: "OriginalCopy" },
         ],
       };
 
@@ -1170,19 +1291,7 @@ describe("tool handlers", () => {
 
       const output = parseResponse(result);
       expect(result.isError).toBeFalsy();
-      expect(output.success).toBe(true);
-      expect(output.name).toBe("OriginalCopy");
-      expect(output.clonedFrom).toBe("Original");
-      expect(output.clonedFromUuid).toBe("orig-comp");
-
-      // Verify API call uses cloneFrom with uuid
-      expect(mockApiClient.updateProject).toHaveBeenCalledWith("proj-123", {
-        newComponents: [{ name: "OriginalCopy", cloneFrom: { uuid: "orig-comp" } }],
-      });
-
-      // Verify model reload
-      expect(mockDisposeChangeTracker).toHaveBeenCalled();
-      expect(mockClearNodeCache).toHaveBeenCalled();
+      expect(output.uuid).toBe("model-clone-uuid");
     });
 
     it("clones as a page when path is provided", async () => {
@@ -1194,9 +1303,11 @@ describe("tool handlers", () => {
           ],
         },
       });
-      mockApiClient.updateProject.mockResolvedValue({});
+      mockApiClient.updateProject.mockResolvedValue({
+        result: { newComponents: [{ uuid: "api-page-clone-uuid", name: "HomepageV2", path: "/v2" }] },
+      });
       mockLoadProject.mockResolvedValue({
-        site: { components: [] },
+        site: { components: [{ uuid: "api-page-clone-uuid", name: "HomepageV2", pageMeta: { path: "/v2" } }] },
         bundler: {},
         projectName: "Test",
         revisionNum: 8,
@@ -1216,6 +1327,7 @@ describe("tool handlers", () => {
       const output = parseResponse(result);
       expect(result.isError).toBeFalsy();
       expect(output.path).toBe("/v2");
+      expect(output.uuid).toBe("api-page-clone-uuid");
 
       expect(mockApiClient.updateProject).toHaveBeenCalledWith("proj-123", {
         newComponents: [{

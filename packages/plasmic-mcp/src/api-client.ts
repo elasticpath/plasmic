@@ -14,6 +14,7 @@ import type {
   ProjectBundleResponse,
   SaveRevisionReq,
   UpdateProjectReq,
+  UpdateProjectResponse,
 } from "./types.js";
 
 /**
@@ -179,8 +180,8 @@ export class PlasmicApiClient {
   async updateProject(
     projectId: string,
     body: UpdateProjectReq
-  ): Promise<unknown> {
-    return this.request<unknown>(
+  ): Promise<UpdateProjectResponse> {
+    return this.request<UpdateProjectResponse>(
       "POST",
       `/api/v1/projects/${encodeURIComponent(projectId)}`,
       body

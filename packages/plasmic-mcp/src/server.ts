@@ -780,9 +780,13 @@ export function createServer(): McpServer {
       try {
         const session = requireSession();
 
-        await apiClient.updateProject(session.projectId, {
+        const apiResponse = await apiClient.updateProject(session.projectId, {
           newComponents: [{ name, path: pagePath, body }],
         });
+
+        // Extract UUID from API response if available
+        let uuid: string | null =
+          apiResponse?.result?.newComponents?.[0]?.uuid ?? null;
 
         // Reload model so the new page is visible in subsequent queries
         try {
@@ -807,6 +811,17 @@ export function createServer(): McpServer {
             projectUuid: session.projectId,
           });
           initChangeTracker(site);
+
+          // Fallback: look up UUID from reloaded model if API didn't provide it
+          if (!uuid) {
+            const newComp = site.components?.find(
+              (c: any) => c.name === name && c.pageMeta?.path === pagePath
+            );
+            if (newComp) {
+              uuid = newComp.uuid;
+            }
+          }
+
           console.error(
             "[plasmic-mcp] Model reloaded after page creation"
           );
@@ -825,6 +840,7 @@ export function createServer(): McpServer {
                 {
                   success: true,
                   name,
+                  uuid,
                   path: pagePath,
                   message: `Page "${name}" created at ${pagePath}`,
                 },
@@ -868,9 +884,13 @@ export function createServer(): McpServer {
       try {
         const session = requireSession();
 
-        await apiClient.updateProject(session.projectId, {
+        const apiResponse = await apiClient.updateProject(session.projectId, {
           newComponents: [{ name, body }],
         });
+
+        // Extract UUID from API response if available
+        let uuid: string | null =
+          apiResponse?.result?.newComponents?.[0]?.uuid ?? null;
 
         // Reload model so the new component is visible in subsequent queries
         try {
@@ -895,6 +915,17 @@ export function createServer(): McpServer {
             projectUuid: session.projectId,
           });
           initChangeTracker(site);
+
+          // Fallback: look up UUID from reloaded model if API didn't provide it
+          if (!uuid) {
+            const newComp = site.components?.find(
+              (c: any) => c.name === name
+            );
+            if (newComp) {
+              uuid = newComp.uuid;
+            }
+          }
+
           console.error(
             "[plasmic-mcp] Model reloaded after component creation"
           );
@@ -913,6 +944,7 @@ export function createServer(): McpServer {
                 {
                   success: true,
                   name,
+                  uuid,
                   message: `Component "${name}" created`,
                 },
                 null,
@@ -984,9 +1016,13 @@ export function createServer(): McpServer {
           req.path = clonePath;
         }
 
-        await apiClient.updateProject(session.projectId, {
+        const apiResponse = await apiClient.updateProject(session.projectId, {
           newComponents: [req],
         });
+
+        // Extract UUID from API response if available
+        let uuid: string | null =
+          apiResponse?.result?.newComponents?.[0]?.uuid ?? null;
 
         // Reload model so the clone is visible in subsequent queries
         try {
@@ -1011,6 +1047,17 @@ export function createServer(): McpServer {
             projectUuid: session.projectId,
           });
           initChangeTracker(site);
+
+          // Fallback: look up UUID from reloaded model if API didn't provide it
+          if (!uuid) {
+            const newComp = site.components?.find(
+              (c: any) => c.name === name
+            );
+            if (newComp) {
+              uuid = newComp.uuid;
+            }
+          }
+
           console.error(
             "[plasmic-mcp] Model reloaded after component cloning"
           );
@@ -1029,6 +1076,7 @@ export function createServer(): McpServer {
                 {
                   success: true,
                   name,
+                  uuid,
                   clonedFrom: source.name,
                   clonedFromUuid: sourceUuid,
                   path: clonePath,
