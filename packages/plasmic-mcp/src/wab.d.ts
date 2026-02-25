@@ -65,6 +65,29 @@ declare module "@/wab/shared/model/classes" {
     fallback: any;
   }
 
+  /** Model class for dynamic text bound to an expression.
+   *  expr is typically a CustomCode or ObjectPath instance.
+   *  html controls whether the expression result is rendered as HTML. */
+  export class ExprText {
+    constructor(args: { expr: any; html: boolean });
+    expr: any;
+    html: boolean;
+  }
+
+  /** Model class for structured data path expressions (e.g., ["$ctx", "product", "name"]).
+   *  Represents dot-notation object access paths. */
+  export class ObjectPath {
+    constructor(args: { path: Array<string | number>; fallback: any });
+    path: Array<string | number>;
+    fallback: any;
+  }
+
+  /** Model class for variable references. Points to a component state variable. */
+  export class VarRef {
+    constructor(args: { variable: any });
+    variable: any;
+  }
+
   /** Model class for renderable slot content. Contains an array of TplNode children. */
   export class RenderExpr {
     constructor(args: { tpl: any[] });
@@ -86,6 +109,7 @@ declare module "@/wab/shared/model/classes" {
   export function isKnownCustomCode(x: any): boolean;
   export function isKnownRenderExpr(x: any): boolean;
   export function isKnownVarRef(x: any): boolean;
+  export function isKnownObjectPath(x: any): boolean;
   export function isKnownImageAssetRef(x: any): boolean;
   export function isKnownStyleTokenRef(x: any): boolean;
 }

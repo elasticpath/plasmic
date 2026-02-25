@@ -136,7 +136,7 @@ describe("readComponentTree", () => {
       expect(result?.text).toBe("Hello World");
     });
 
-    it("reads ExprText html content", () => {
+    it("reads ExprText with CustomCode expression", () => {
       const component = {
         tplTree: {
           _type: "TplTag",
@@ -145,7 +145,11 @@ describe("readComponentTree", () => {
           vsettings: [
             {
               rs: { values: {} },
-              text: { _type: "ExprText", html: "<p>Dynamic</p>" },
+              text: {
+                _type: "ExprText",
+                expr: { _type: "CustomCode", code: "$ctx.product.name", fallback: null },
+                html: false,
+              },
               attrs: {},
             },
           ],
@@ -154,19 +158,107 @@ describe("readComponentTree", () => {
       };
 
       const result = readComponentTree(component);
-      expect(result?.text).toBe("<p>Dynamic</p>");
+      expect(result?.text).toBe("$ctx.product.name");
+      expect(result?.dynamic).toBe(true);
     });
 
-    it("falls back to [dynamic text] for ExprText without html", () => {
+    it("reads ExprText with CustomCode and fallback", () => {
       const component = {
         tplTree: {
           _type: "TplTag",
           tag: "span",
-          uuid: "expr-no-html",
+          uuid: "expr-fallback",
           vsettings: [
             {
               rs: { values: {} },
-              text: { _type: "ExprText", html: undefined },
+              text: {
+                _type: "ExprText",
+                expr: {
+                  _type: "CustomCode",
+                  code: "$ctx.user.email",
+                  fallback: { _type: "CustomCode", code: '"N/A"', fallback: null },
+                },
+                html: false,
+              },
+              attrs: {},
+            },
+          ],
+          children: [],
+        },
+      };
+
+      const result = readComponentTree(component);
+      expect(result?.text).toBe("$ctx.user.email");
+      expect(result?.dynamic).toBe(true);
+      expect(result?.fallback).toBe("N/A");
+    });
+
+    it("reads ExprText with ObjectPath in dot notation", () => {
+      const component = {
+        tplTree: {
+          _type: "TplTag",
+          tag: "span",
+          uuid: "obj-path",
+          vsettings: [
+            {
+              rs: { values: {} },
+              text: {
+                _type: "ExprText",
+                expr: { _type: "ObjectPath", path: ["$ctx", "product", "name"], fallback: null },
+                html: false,
+              },
+              attrs: {},
+            },
+          ],
+          children: [],
+        },
+      };
+
+      const result = readComponentTree(component);
+      expect(result?.text).toBe("$ctx.product.name");
+      expect(result?.dynamic).toBe(true);
+    });
+
+    it("reads ExprText with VarRef", () => {
+      const component = {
+        tplTree: {
+          _type: "TplTag",
+          tag: "span",
+          uuid: "var-text",
+          vsettings: [
+            {
+              rs: { values: {} },
+              text: {
+                _type: "ExprText",
+                expr: { _type: "VarRef", variable: { name: "count" } },
+                html: false,
+              },
+              attrs: {},
+            },
+          ],
+          children: [],
+        },
+      };
+
+      const result = readComponentTree(component);
+      expect(result?.text).toBe("$count");
+      expect(result?.dynamic).toBe(true);
+    });
+
+    it("falls back to [dynamic text] for ExprText with unknown expr type", () => {
+      const component = {
+        tplTree: {
+          _type: "TplTag",
+          tag: "span",
+          uuid: "expr-unknown",
+          vsettings: [
+            {
+              rs: { values: {} },
+              text: {
+                _type: "ExprText",
+                expr: { _type: "SomeOtherExpr" },
+                html: false,
+              },
               attrs: {},
             },
           ],
@@ -176,6 +268,30 @@ describe("readComponentTree", () => {
 
       const result = readComponentTree(component);
       expect(result?.text).toBe("[dynamic text]");
+      expect(result?.dynamic).toBe(true);
+    });
+
+    it("does not set dynamic flag for static RawText", () => {
+      const component = {
+        tplTree: {
+          _type: "TplTag",
+          tag: "p",
+          uuid: "static-text",
+          vsettings: [
+            {
+              rs: { values: {} },
+              text: { _type: "RawText", text: "Static content" },
+              attrs: {},
+            },
+          ],
+          children: [],
+        },
+      };
+
+      const result = readComponentTree(component);
+      expect(result?.text).toBe("Static content");
+      expect(result?.dynamic).toBeUndefined();
+      expect(result?.fallback).toBeUndefined();
     });
   });
 
@@ -350,6 +466,32 @@ describe("readComponentTree", () => {
 
       const result = readComponentTree(component);
       expect(result?.attrs?.className).toBe("$myClass");
+    });
+
+    it("extracts ObjectPath as dot notation", () => {
+      const component = {
+        tplTree: {
+          _type: "TplTag",
+          tag: "span",
+          uuid: "obj-path-attr",
+          vsettings: [
+            {
+              rs: { values: {} },
+              attrs: {
+                dataId: {
+                  _type: "ObjectPath",
+                  path: ["$ctx", "product", "id"],
+                  fallback: null,
+                },
+              },
+            },
+          ],
+          children: [],
+        },
+      };
+
+      const result = readComponentTree(component);
+      expect(result?.attrs?.dataId).toBe("$ctx.product.id");
     });
 
     it("omits attrs when all expression values are undefined", () => {

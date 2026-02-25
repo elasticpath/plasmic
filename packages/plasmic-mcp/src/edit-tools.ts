@@ -25,9 +25,11 @@ import {
   isKnownTplTag,
   isKnownTplComponent,
   isKnownRawText,
+  isKnownExprText,
   isKnownRenderExpr,
   RawText,
   CustomCode,
+  ExprText,
   RenderExpr,
   Arg,
 } from "@/wab/shared/model/classes";
@@ -1226,13 +1228,17 @@ export interface UpdateTextResult {
   nodeUuid: string;
   previousText?: string;
   newText: string;
+  dynamic?: boolean;
+  fallback?: string;
 }
 
 /**
  * Update the text content of a TplTag node.
  *
- * Finds the node via node-resolver, updates the target variant's RawText,
- * records the change, and saves.
+ * Finds the node via node-resolver, updates the target variant's text.
+ * By default creates static RawText. When `dynamic: true`, creates an
+ * ExprText with a CustomCode expression — enabling data-bound text like
+ * `$ctx.product.name`.
  *
  * When `variant` is omitted, targets the base variant (backward compatible).
  * When provided, resolves the variant by UUID, name, or selector.
@@ -1244,7 +1250,10 @@ export async function updateText(
   componentUuid: string,
   nodeRef: string,
   text: string,
-  variant?: string
+  variant?: string,
+  dynamic?: boolean,
+  fallback?: string,
+  html?: boolean
 ): Promise<UpdateTextResult> {
   const component = findComponent(componentUuid);
   const result = resolveNode(component, nodeRef);
@@ -1256,13 +1265,20 @@ export async function updateText(
     );
   }
 
+  // Validate: dynamic text cannot have an empty expression
+  if (dynamic && text.trim() === "") {
+    throw new Error(
+      `Dynamic text expression cannot be empty. Provide a JavaScript expression (e.g., "$ctx.product.name").`
+    );
+  }
+
   const tpl = resolved.node;
   const session = requireSession();
   const tplMgr = new TplMgr({ site: session.site });
 
   // Container check uses base variant (structural, variant-independent)
   const baseVs = tplMgr.ensureBaseVariantSetting(tpl);
-  const hasText = baseVs.text && isKnownRawText(baseVs.text);
+  const hasText = baseVs.text && (isKnownRawText(baseVs.text) || isKnownExprText(baseVs.text));
   const isContainer =
     !hasText && tpl.children && tpl.children.length > 0;
 
@@ -1291,22 +1307,39 @@ export async function updateText(
       ? ensureVariantSetting(tpl, [resolvedVariant])
       : baseVs;
 
+    // Extract previous text from either RawText or ExprText
     if (vs.text && isKnownRawText(vs.text)) {
       previousText = vs.text.text;
+    } else if (vs.text && isKnownExprText(vs.text)) {
+      const expr = vs.text.expr;
+      previousText = expr?.code ?? "[dynamic]";
+    }
+
+    if (dynamic) {
+      // Create ExprText with CustomCode expression
+      const fallbackExpr = fallback != null
+        ? new CustomCode({ code: JSON.stringify(fallback), fallback: null })
+        : null;
+      vs.text = new ExprText({
+        expr: new CustomCode({ code: text, fallback: fallbackExpr }),
+        html: html ?? false,
+      });
+    } else if (vs.text && isKnownRawText(vs.text)) {
+      // Update existing RawText in place
       vs.text.text = text;
     } else {
-      // Create a new RawText instance
-      previousText = undefined;
+      // Create new RawText (replaces ExprText or creates fresh)
       vs.text = new RawText({ text, markers: [] });
     }
   });
 
   const componentIid = getComponentIid(component);
   const variantLabel = resolvedVariant ? ` [variant: ${resolvedVariant.name ?? variant}]` : "";
+  const dynamicLabel = dynamic ? " (dynamic)" : "";
   const save = await saveOrAccumulate(
     apiClient,
     changes,
-    `update-text: "${text}" on ${resolved.name ?? nodeRef}${variantLabel}`,
+    `update-text: "${text}" on ${resolved.name ?? nodeRef}${variantLabel}${dynamicLabel}`,
     componentIid ? [componentIid] : []
   );
 
@@ -1316,6 +1349,8 @@ export async function updateText(
     nodeUuid: resolved.uuid,
     previousText,
     newText: text,
+    ...(dynamic ? { dynamic: true } : {}),
+    ...(fallback != null ? { fallback } : {}),
   };
 }
 

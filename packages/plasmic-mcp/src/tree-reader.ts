@@ -28,6 +28,7 @@ import {
   isKnownRawText,
   isKnownExprText,
   isKnownCustomCode,
+  isKnownObjectPath,
   isKnownRenderExpr,
   isKnownVarRef,
   isKnownImageAssetRef,
@@ -225,9 +226,15 @@ function readTplTag(
 
     // Text content (for text blocks)
     if (vs?.text) {
-      const text = extractText(vs.text);
-      if (text !== undefined) {
-        node.text = text;
+      const textInfo = extractText(vs.text);
+      if (textInfo !== undefined) {
+        node.text = textInfo.text;
+        if (textInfo.dynamic) {
+          node.dynamic = true;
+        }
+        if (textInfo.fallback != null) {
+          node.fallback = textInfo.fallback;
+        }
       }
     }
 
@@ -512,12 +519,47 @@ function deriveLayoutType(
   return "box";
 }
 
-function extractText(richText: any): string | undefined {
+/**
+ * Extract text content from a RawText or ExprText node.
+ * Returns { text, dynamic, fallback } for dynamic text to enable
+ * proper display in tree output.
+ */
+function extractText(richText: any): { text: string; dynamic?: boolean; fallback?: string } | undefined {
   if (isKnownRawText(richText)) {
-    return richText.text;
+    return { text: richText.text };
   }
   if (isKnownExprText(richText)) {
-    return richText.html ?? "[dynamic text]";
+    const expr = richText.expr;
+    let text: string;
+    let fallback: string | undefined;
+
+    if (isKnownCustomCode(expr)) {
+      text = expr.code;
+      fallback = extractFallbackValue(expr.fallback);
+    } else if (isKnownObjectPath(expr)) {
+      // Display ObjectPath as dot notation (e.g., "$ctx.product.name")
+      text = expr.path.join(".");
+      fallback = extractFallbackValue(expr.fallback);
+    } else if (isKnownVarRef(expr)) {
+      text = `$${expr.variable?.name ?? "var"}`;
+    } else {
+      text = "[dynamic text]";
+    }
+
+    return { text, dynamic: true, ...(fallback != null ? { fallback } : {}) };
+  }
+  return undefined;
+}
+
+/** Extract the string value from a fallback expression (typically a CustomCode wrapping a JSON string). */
+function extractFallbackValue(fallback: any): string | undefined {
+  if (!fallback) return undefined;
+  if (isKnownCustomCode(fallback)) {
+    try {
+      return JSON.parse(fallback.code);
+    } catch {
+      return fallback.code;
+    }
   }
   return undefined;
 }
@@ -563,6 +605,10 @@ function extractExprValue(expr: any): unknown {
         .filter(Boolean);
     }
     return undefined;
+  }
+
+  if (isKnownObjectPath(expr)) {
+    return expr.path.join(".");
   }
 
   if (isKnownVarRef(expr)) {

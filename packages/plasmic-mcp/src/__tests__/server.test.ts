@@ -1436,7 +1436,42 @@ describe("tool handlers", () => {
       expect(output.revision).toBe(6);
 
       expect(mockUpdateText).toHaveBeenCalledWith(
-        mockApiClient, "comp-1", "Title", "New text", undefined
+        mockApiClient, "comp-1", "Title", "New text", undefined, undefined, undefined, undefined
+      );
+    });
+
+    it("passes dynamic, fallback, and html parameters to updateText", async () => {
+      mockUpdateText.mockResolvedValue({
+        save: { revisionNum: 8, incremental: true },
+        nodeName: "Price",
+        nodeUuid: "node-dyn",
+        previousText: "Static",
+        newText: "$ctx.product.price",
+        dynamic: true,
+        fallback: "N/A",
+      });
+
+      const result = await client.callTool({
+        name: "update-text",
+        arguments: {
+          componentUuid: "comp-1",
+          nodeRef: "Price",
+          text: "$ctx.product.price",
+          dynamic: true,
+          fallback: "N/A",
+          html: false,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.dynamic).toBe(true);
+      expect(output.fallback).toBe("N/A");
+      expect(output.newText).toBe("$ctx.product.price");
+
+      expect(mockUpdateText).toHaveBeenCalledWith(
+        mockApiClient, "comp-1", "Price", "$ctx.product.price", undefined, true, "N/A", false
       );
     });
 

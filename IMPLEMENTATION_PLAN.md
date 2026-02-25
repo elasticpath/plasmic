@@ -4,59 +4,41 @@
 
 ---
 
-## Priority 6: Slot Content Targeting ✅ COMPLETE
-**Spec:** `specs/plasmic-slot-targeting.md` (9 criteria — all implemented)
-**Status:** All acceptance criteria implemented and tested. 608 tests passing.
+## Priority 7: Data Bindings ✅ COMPLETE
+**Spec:** `specs/plasmic-data-bindings.md` (13 criteria — dynamic text implemented and tested)
+**Status:** Dynamic text bindings implemented and tested. 621 tests passing.
 
 **What was implemented:**
-- [x] `edit-tools.ts` `addChild()` — accepts new optional `slot` parameter; when parent is TplComponent, adds child to named slot's `RenderExpr.tpl[]`; defaults to "children" slot when `slot` omitted on TplComponent parents
-- [x] New `Arg` + `RenderExpr` creation when no slot override exists yet (both mock classes and wab.d.ts declarations added)
-- [x] Position support within slots: "first", "last" (default), and numeric index via `insertIntoArray()` helper
-- [x] `findParent()` rewritten as recursive traversal that searches both `node.children` arrays AND `RenderExpr.tpl[]` arrays inside TplComponent slot overrides — enables `removeChild` and `moveChild` for slot content
-- [x] `removeChild` now removes nodes from inside slot override content (uses `childrenArray` from updated `findParent`)
-- [x] `moveChild` also uses `childrenArray` for consistent slot-aware removal
-- [x] `server.ts` — `add-child` tool schema extended with `slot` field; response includes `slotName` when set
-- [x] Error handling: "Slot X not found on component Y" with available slot list, "Component X has no slots", "Slot targeting only applies to component instances" (TplTag + slot), "contains a code expression, not renderable content" (non-RenderExpr slot)
-- [x] Undo and batch mode support inherited from `saveOrAccumulate()`
-- [x] 14 new tests: 9 addChild slot targeting (new Arg+RenderExpr, append to existing, position first/numeric, default children slot, explicit children, invalid slot name, no slots, TplTag+slot error, code expression error), 3 removeChild from slot override (direct removal, deeply nested, multiple children), 1 server integration (slot parameter passthrough)
+- [x] `update-text` — accepts `dynamic: true`, `fallback`, and `html` optional fields in `server.ts` schema
+- [x] `edit-tools.ts` `updateText()` — when `dynamic: true`, creates `ExprText({ expr: CustomCode({ code: text, fallback }), html })` instead of `RawText`
+- [x] Fallback support: optional `fallback` string wrapped in `CustomCode({ code: JSON.stringify(fallback) })` for null/undefined expression results
+- [x] Static ↔ dynamic text conversion: updating with `dynamic: true` replaces RawText with ExprText; updating without `dynamic` replaces ExprText with RawText
+- [x] Empty expression validation: `dynamic: true` with empty/whitespace text throws descriptive error
+- [x] Container check updated to recognize ExprText (not just RawText) as text content — prevents false "container" errors on dynamic text nodes
+- [x] `tree-reader.ts` `extractText()` — returns expression code for ExprText nodes with `dynamic: true` and optional `fallback` fields on TreeNode
+- [x] CustomCode expressions displayed as-is (e.g., `$ctx.product.name`)
+- [x] ObjectPath expressions displayed as dot notation (e.g., `["$ctx", "product", "name"]` → `$ctx.product.name`)
+- [x] VarRef expressions displayed as `$variableName`
+- [x] `extractExprValue()` updated to handle ObjectPath in attrs (dot notation display)
+- [x] `ExprText`, `ObjectPath`, `VarRef` class declarations added to `wab.d.ts` and mock implementations in `__mocks__/wab-classes.ts`
+- [x] `isKnownObjectPath` type guard added to both `wab.d.ts` and `__mocks__/wab-classes.ts`
+- [x] `TreeNode` type extended with `dynamic?: boolean` and `fallback?: string` fields
+- [x] 8 new edit-tools tests: dynamic ExprText creation, fallback, html:true, dynamic→static conversion, empty expression error, ExprText not treated as container, dynamic-to-dynamic replacement, UUID resolution
+- [x] 7 tree-reader tests updated/added: ExprText with CustomCode, with fallback, ObjectPath dot notation, VarRef, unknown expr type, static RawText no dynamic flag, ObjectPath in attrs
+- [x] 1 new server integration test: dynamic/fallback/html parameter passthrough
+
+**Already working (from Priority 3):**
+- [x] Component props in `add-child` support CustomCode for dynamic values via `props` field
+- [x] `update-attrs` supports dynamic values via `$` prefix or `{{ }}` wrapper
 
 **Key design decisions:**
-- When `addChild` targets a TplComponent and `slot` is omitted, it defaults to "children" slot (consistent with how Studio handles default slot content)
-- `findParent` was rewritten from flat iteration (`flattenTpls` + indexOf) to recursive walk, which correctly traverses both regular children and slot override tpl arrays at any depth
-- `Arg` and `RenderExpr` constructors added to both `wab.d.ts` (type declarations) and `__mocks__/wab-classes.ts` (test mocks) so new slot overrides can be created programmatically
-- `insertIntoArray()` extracted as a reusable helper for array position insertion, separate from `insertChild()` which sets parent pointers
+- `extractText()` return type changed from `string | undefined` to `{ text, dynamic?, fallback? } | undefined` to carry dynamic metadata through the tree reader
+- Fallback is stored as `CustomCode({ code: JSON.stringify(fallback) })` on the inner CustomCode's fallback field, matching how Studio stores fallbacks
+- `html` parameter defaults to `false` (matching Studio's default behavior for ExprText)
+- Existing tests with wrong ExprText mock structure (treating `html` as text content) corrected to use proper `{ expr, html }` structure
 
-**Files modified:** `edit-tools.ts`, `server.ts`, `wab.d.ts`, `__mocks__/wab-classes.ts`
-**Test files:** `edit-tools.test.ts`, `server.test.ts`
-
----
-
-## Priority 7: Data Bindings
-**Spec:** `specs/plasmic-data-bindings.md` (13 criteria)
-**Depends on:** Priority 3 (Element Tags & Attrs — for dynamic attr values)
-**Why seventh:** Dynamic text binding enables data-driven pages. Important but less critical than structural and styling foundations.
-
-**Implementation items — Dynamic Text:**
-- [ ] `update-text` — accept optional `dynamic: true` field in `server.ts` schema
-- [ ] `edit-tools.ts` `updateText()` — when `dynamic: true`, create `ExprText({ expr: CustomCode({ code: text, fallback }), html: false })` instead of `RawText`
-- [ ] Accept optional `fallback` string for null/undefined expression results
-- [ ] Support converting static ↔ dynamic text (overwrite existing text node type)
-
-**Implementation items — Reading Dynamic Content:**
-- [ ] `tree-reader.ts` — show expression source code for `ExprText` nodes (not just `"[dynamic text]"`)
-- [ ] `get-node-details` — show full expression including fallback value
-- [ ] Display `ObjectPath` expressions in dot notation, `VarRef` as variable name
-
-**Implementation items — Documentation:**
-- [ ] Verify and document that component `props` in `add-child` already support CustomCode for dynamic values
-- [ ] Document that `update-attrs` dynamic values use `$` prefix or `{{ }}` wrapper (from Priority 3)
-
-**Implementation items — Tests:**
-- [ ] Unit tests: dynamic text creation, fallback, static↔dynamic conversion, expression display
-- [ ] Integration test: set dynamic text → read tree → verify expression in output
-
-**Files to modify:** `edit-tools.ts`, `server.ts`, `tree-reader.ts`
-**Test files:** `edit-tools.test.ts`, `server.test.ts`, `tree-reader.test.ts`, `real-integration.test.ts`
+**Files modified:** `edit-tools.ts`, `server.ts`, `tree-reader.ts`, `types.ts`, `wab.d.ts`, `__mocks__/wab-classes.ts`
+**Test files:** `edit-tools.test.ts`, `server.test.ts`, `tree-reader.test.ts`
 
 ---
 
@@ -102,12 +84,12 @@ After specs are implemented, the Claude Code skills need updating to document ne
 ```
 Slot Override Traversal (P2) ✅ ──► Slot Targeting (P6) ✅
 
-Element Tags & Attrs (P3) ✅ ──► Data Bindings (P7)
+Element Tags & Attrs (P3) ✅ ──► Data Bindings (P7) ✅
 
 Node Cloning (P8) ─── standalone
 ```
 
-## Completed (P1–P6)
+## Completed (P1–P7)
 
 | Priority | Feature | Tests |
 |----------|---------|-------|
@@ -117,3 +99,4 @@ Node Cloning (P8) ─── standalone
 | P4 | Border Support & CSS Validation | 541 |
 | P5 | Design Token References in Styles | 594 |
 | P6 | Slot Content Targeting | 608 |
+| P7 | Data Bindings (Dynamic Text) | 621 |

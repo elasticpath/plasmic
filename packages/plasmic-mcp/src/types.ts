@@ -220,6 +220,10 @@ export interface TreeNode {
   /** Maps CSS property names to token names when the value is a token reference. */
   tokenRefs?: Record<string, string>;
   text?: string;
+  /** True when text is a dynamic expression (ExprText), not static RawText. */
+  dynamic?: boolean;
+  /** Fallback value for dynamic expressions (shown when expression evaluates to null/undefined). */
+  fallback?: string;
   attrs?: Record<string, unknown>;
   layoutType?: "vbox" | "hbox" | "box";
   children?: TreeNode[];

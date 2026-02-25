@@ -1310,11 +1310,12 @@ export function createServer(): McpServer {
   // --- update-text ---
   // Updates text content on a TplTag node. Targets the base variant by default;
   // when `variant` is provided, targets that specific variant's VariantSetting.
-  // Uses node-resolver to find the target, ChangeRecorder for mutation tracking,
-  // and SaveManager for incremental save. Supports dry-run mode.
+  // When `dynamic` is true, creates an ExprText with CustomCode expression for
+  // data-bound text (e.g., "$ctx.product.name"). Supports dry-run mode.
   server.tool(
     "update-text",
-    "Update the text content of an element in a component. Finds the node by UUID, name, path, or index.",
+    "Update the text content of an element in a component. Finds the node by UUID, name, path, or index. " +
+    "Set dynamic: true to bind text to a JavaScript expression (e.g., \"$ctx.product.name\").",
     {
       componentUuid: z
         .string()
@@ -1324,21 +1325,33 @@ export function createServer(): McpServer {
         .describe(
           'Node reference: UUID, name (e.g., "Hero Title"), path (e.g., "HeroSection.Title"), or index (e.g., "#2")'
         ),
-      text: z.string().describe("The new text content"),
+      text: z.string().describe("The new text content. When dynamic is true, this is a JavaScript expression string (e.g., \"$ctx.product.name\")."),
       variant: z
         .string()
         .optional()
         .describe('Target variant by name (e.g., "Mobile"), UUID, or selector (e.g., ":hover"). Omit for base variant.'),
+      dynamic: z
+        .boolean()
+        .optional()
+        .describe("When true, creates an ExprText with a CustomCode expression instead of static RawText. The text value is treated as a JavaScript expression."),
+      fallback: z
+        .string()
+        .optional()
+        .describe("Fallback text displayed when the dynamic expression evaluates to null/undefined. Only used when dynamic is true."),
+      html: z
+        .boolean()
+        .optional()
+        .describe("When true with dynamic text, the expression result is rendered as HTML. Defaults to false."),
       dryRun: z
         .boolean()
         .optional()
         .describe("When true, shows what would change without persisting. Model is left unchanged."),
     },
-    async ({ componentUuid, nodeRef, text, variant, dryRun }) => {
+    async ({ componentUuid, nodeRef, text, variant, dynamic, fallback, html, dryRun }) => {
       try {
         if (dryRun) {
           const result = await withDryRun(() =>
-            updateText(apiClient, componentUuid, nodeRef, text, variant)
+            updateText(apiClient, componentUuid, nodeRef, text, variant, dynamic, fallback, html)
           );
           return {
             content: [
@@ -1350,6 +1363,8 @@ export function createServer(): McpServer {
                     node: result.nodeName ?? result.nodeUuid,
                     previousText: result.previousText,
                     newText: result.newText,
+                    ...(result.dynamic ? { dynamic: true } : {}),
+                    ...(result.fallback != null ? { fallback: result.fallback } : {}),
                     message: "Dry run: no changes persisted",
                   },
                   null,
@@ -1360,7 +1375,7 @@ export function createServer(): McpServer {
           };
         }
 
-        const result = await updateText(apiClient, componentUuid, nodeRef, text, variant);
+        const result = await updateText(apiClient, componentUuid, nodeRef, text, variant, dynamic, fallback, html);
         return {
           content: [
             {
@@ -1371,6 +1386,8 @@ export function createServer(): McpServer {
                   node: result.nodeName ?? result.nodeUuid,
                   previousText: result.previousText,
                   newText: result.newText,
+                  ...(result.dynamic ? { dynamic: true } : {}),
+                  ...(result.fallback != null ? { fallback: result.fallback } : {}),
                   revision: result.save.revisionNum,
                 },
                 null,

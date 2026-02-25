@@ -19,6 +19,8 @@ export const isKnownCustomCode = (obj: any): boolean =>
 export const isKnownRenderExpr = (obj: any): boolean =>
   obj?._type === "RenderExpr";
 export const isKnownVarRef = (obj: any): boolean => obj?._type === "VarRef";
+export const isKnownObjectPath = (obj: any): boolean =>
+  obj?._type === "ObjectPath";
 export const isKnownImageAssetRef = (obj: any): boolean =>
   obj?._type === "ImageAssetRef";
 export const isKnownStyleTokenRef = (obj: any): boolean =>
@@ -42,6 +44,37 @@ export class CustomCode {
   constructor(args: { code: string; fallback: any }) {
     this.code = args.code;
     this.fallback = args.fallback;
+  }
+}
+
+/** Mock constructor for ExprText — dynamic text bound to a code expression. */
+export class ExprText {
+  _type = "ExprText";
+  expr: any;
+  html: boolean;
+  constructor(args: { expr: any; html: boolean }) {
+    this.expr = args.expr;
+    this.html = args.html;
+  }
+}
+
+/** Mock constructor for ObjectPath — structured data path expression. */
+export class ObjectPath {
+  _type = "ObjectPath";
+  path: Array<string | number>;
+  fallback: any;
+  constructor(args: { path: Array<string | number>; fallback: any }) {
+    this.path = args.path;
+    this.fallback = args.fallback;
+  }
+}
+
+/** Mock constructor for VarRef — variable reference. */
+export class VarRef {
+  _type = "VarRef";
+  variable: any;
+  constructor(args: { variable: any }) {
+    this.variable = args.variable;
   }
 }
 

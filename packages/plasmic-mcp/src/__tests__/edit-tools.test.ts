@@ -896,6 +896,163 @@ describe("edit-tools", () => {
       const result = await updateText(api, "comp-1", "exact-uuid-123", "Updated");
       expect(result.nodeUuid).toBe("exact-uuid-123");
     });
+
+    // --- Dynamic text (ExprText) ---
+
+    it("creates ExprText when dynamic is true", async () => {
+      const textNode = mkTag({
+        uuid: "dyn-1",
+        name: "Price",
+        text: "Old static text",
+      });
+      const root = mkTag({ uuid: "root-1", children: [textNode] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      const result = await updateText(
+        api, "comp-1", "Price", "$ctx.product.price",
+        undefined, true
+      );
+
+      expect(result.previousText).toBe("Old static text");
+      expect(result.newText).toBe("$ctx.product.price");
+      expect(result.dynamic).toBe(true);
+      // The vsettings[0].text should now be an ExprText
+      const vs = textNode.vsettings[0];
+      expect(vs.text._type).toBe("ExprText");
+      expect(vs.text.expr._type).toBe("CustomCode");
+      expect(vs.text.expr.code).toBe("$ctx.product.price");
+      expect(vs.text.html).toBe(false);
+    });
+
+    it("creates ExprText with fallback when provided", async () => {
+      const textNode = mkTag({
+        uuid: "dyn-fb-1",
+        name: "Email",
+        text: "Loading...",
+      });
+      const root = mkTag({ uuid: "root-1", children: [textNode] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      const result = await updateText(
+        api, "comp-1", "Email", "$ctx.user.email",
+        undefined, true, "N/A"
+      );
+
+      expect(result.dynamic).toBe(true);
+      expect(result.fallback).toBe("N/A");
+      const vs = textNode.vsettings[0];
+      expect(vs.text._type).toBe("ExprText");
+      expect(vs.text.expr.fallback._type).toBe("CustomCode");
+      expect(vs.text.expr.fallback.code).toBe('"N/A"');
+    });
+
+    it("creates ExprText with html: true when specified", async () => {
+      const textNode = mkTag({ uuid: "dyn-html-1", name: "RichText" });
+      const root = mkTag({ uuid: "root-1", children: [textNode] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      await updateText(
+        api, "comp-1", "RichText", "$ctx.htmlContent",
+        undefined, true, undefined, true
+      );
+
+      const vs = textNode.vsettings[0];
+      expect(vs.text._type).toBe("ExprText");
+      expect(vs.text.html).toBe(true);
+    });
+
+    it("converts dynamic text back to static (ExprText → RawText)", async () => {
+      // Start with an ExprText node
+      const textNode = mkTag({ uuid: "dyn-to-static", name: "Title" });
+      textNode.vsettings[0].text = {
+        _type: "ExprText",
+        expr: { _type: "CustomCode", code: "$ctx.title", fallback: null },
+        html: false,
+      };
+      const root = mkTag({ uuid: "root-1", children: [textNode] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      const result = await updateText(api, "comp-1", "Title", "Static Title");
+
+      expect(result.previousText).toBe("$ctx.title");
+      expect(result.newText).toBe("Static Title");
+      expect(result.dynamic).toBeUndefined();
+      const vs = textNode.vsettings[0];
+      expect(vs.text._type).toBe("RawText");
+      expect(vs.text.text).toBe("Static Title");
+    });
+
+    it("rejects empty expression for dynamic text", async () => {
+      const textNode = mkTag({ uuid: "dyn-empty", name: "Empty" });
+      const root = mkTag({ uuid: "root-1", children: [textNode] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      await expect(
+        updateText(api, "comp-1", "Empty", "", undefined, true)
+      ).rejects.toThrow("Dynamic text expression cannot be empty");
+
+      await expect(
+        updateText(api, "comp-1", "Empty", "   ", undefined, true)
+      ).rejects.toThrow("Dynamic text expression cannot be empty");
+    });
+
+    it("does not treat ExprText nodes as containers", async () => {
+      // ExprText node with no children should not trigger container check
+      const textNode = mkTag({ uuid: "expr-nocontainer", name: "DynText" });
+      textNode.vsettings[0].text = {
+        _type: "ExprText",
+        expr: { _type: "CustomCode", code: "$ctx.old", fallback: null },
+        html: false,
+      };
+      const root = mkTag({ uuid: "root-1", children: [textNode] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      // Should succeed (not throw container error)
+      const result = await updateText(api, "comp-1", "DynText", "new-expr", undefined, true);
+      expect(result.newText).toBe("new-expr");
+    });
+
+    it("replaces one dynamic expression with another", async () => {
+      const textNode = mkTag({ uuid: "dyn-replace", name: "DynReplace" });
+      textNode.vsettings[0].text = {
+        _type: "ExprText",
+        expr: { _type: "CustomCode", code: "$ctx.old", fallback: null },
+        html: false,
+      };
+      const root = mkTag({ uuid: "root-1", children: [textNode] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      const result = await updateText(
+        api, "comp-1", "DynReplace", "$ctx.new",
+        undefined, true
+      );
+
+      expect(result.previousText).toBe("$ctx.old");
+      expect(result.dynamic).toBe(true);
+      const vs = textNode.vsettings[0];
+      expect(vs.text.expr.code).toBe("$ctx.new");
+    });
   });
 
   // --- update-styles ---
