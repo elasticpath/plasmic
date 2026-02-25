@@ -1637,3 +1637,78 @@ describe("DbMgr.user", () => {
     });
   });
 });
+
+describe("DbMgr.isOrgStarter", () => {
+  it("team editor can set isOrgStarter on a project", () =>
+    withDb(async (sudo, [user1, user2], [db1, db2], project) => {
+      const { team } = await getTeamAndWorkspace(db1());
+      // user1 is team owner (editor+), should succeed
+      const updated = await db1().updateProject({
+        id: project.id,
+        isOrgStarter: true,
+      });
+      expect(updated.isOrgStarter).toBe(true);
+
+      // Toggle it back
+      const updated2 = await db1().updateProject({
+        id: project.id,
+        isOrgStarter: false,
+      });
+      expect(updated2.isOrgStarter).toBe(false);
+    }));
+
+  it("team editor granted via grantTeamPermission can set isOrgStarter", () =>
+    withDb(async (sudo, [user1, user2], [db1, db2], project) => {
+      const { team } = await getTeamAndWorkspace(db1());
+      // Grant user2 team editor
+      await db1().grantTeamPermissionByEmail(team.id, user2.email, "editor");
+      const updated = await db2().updateProject({
+        id: project.id,
+        isOrgStarter: true,
+      });
+      expect(updated.isOrgStarter).toBe(true);
+    }));
+
+  it("team viewer cannot set isOrgStarter", () =>
+    withDb(async (sudo, [user1, user2], [db1, db2], project) => {
+      const { team } = await getTeamAndWorkspace(db1());
+      // Grant user2 team viewer only
+      await db1().grantTeamPermissionByEmail(team.id, user2.email, "viewer");
+      await expect(
+        db2().updateProject({ id: project.id, isOrgStarter: true })
+      ).toReject();
+    }));
+
+  it("workspace editor (without team editor) cannot set isOrgStarter", () =>
+    withDb(async (sudo, [user1, user2], [db1, db2], project) => {
+      const { team, workspace } = await getTeamAndWorkspace(db1());
+      // Grant user2 workspace editor but NOT team editor
+      await db1().grantWorkspacePermissionByEmail(
+        workspace.id,
+        user2.email,
+        "editor"
+      );
+      await expect(
+        db2().updateProject({ id: project.id, isOrgStarter: true })
+      ).toReject();
+    }));
+
+  it("team commenter cannot set isOrgStarter", () =>
+    withDb(async (sudo, [user1, user2], [db1, db2], project) => {
+      const { team } = await getTeamAndWorkspace(db1());
+      await db1().grantTeamPermissionByEmail(
+        team.id,
+        user2.email,
+        "commenter"
+      );
+      await expect(
+        db2().updateProject({ id: project.id, isOrgStarter: true })
+      ).toReject();
+    }));
+
+  it("isOrgStarter defaults to false in project response", () =>
+    withDb(async (sudo, [user1], [db1], project) => {
+      const fetched = await db1().getProjectById(project.id);
+      expect(fetched.isOrgStarter).toBeFalsy();
+    }));
+});

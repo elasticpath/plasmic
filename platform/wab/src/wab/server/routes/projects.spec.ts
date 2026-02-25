@@ -262,3 +262,62 @@ describe("updateProjectData", () => {
     });
   });
 });
+
+describe("isOrgStarter API", () => {
+  let api: SharedApiTester;
+  let cleanup: () => Promise<void>;
+
+  let projects: Project[];
+
+  beforeAll(async () => {
+    const {
+      dburi,
+      con,
+      cleanup: cleanupDatabase,
+    } = await createDatabase("projects_org_starter_test");
+
+    await con.transaction(async (em) => {
+      const userAndProjects = await seedTestUserAndProjects(
+        em,
+        { email: "orgstarter@example.com" },
+        1
+      );
+      projects = userAndProjects.projects;
+    });
+
+    const { host, cleanup: cleanupBackend } = await createBackend(dburi);
+    const baseURL = host;
+    cleanup = async () => {
+      await cleanupBackend();
+      await cleanupDatabase();
+    };
+
+    api = new SharedApiTester(`${baseURL}/api/v1`);
+    await api.refreshCsrfToken();
+    await api.login({
+      email: "orgstarter@example.com",
+      password: "!53kr3tz!",
+    });
+  });
+
+  afterAll(async () => {
+    await api.dispose();
+    await cleanup();
+  });
+
+  it("should include isOrgStarter in project response", async () => {
+    const projectId = projects[0].id;
+    const response = await api.get(`/projects/${projectId}`);
+    expect(response.project).toBeDefined();
+    expect(response.project.isOrgStarter).toBe(false);
+  });
+
+  it("should allow setting isOrgStarter via project update", async () => {
+    const projectId = projects[0].id;
+    await api.put(`/projects/${projectId}`, {
+      isOrgStarter: true,
+    });
+    const response = await api.get(`/projects/${projectId}`);
+    expect(response.project.isOrgStarter).toBe(true);
+  });
+});
