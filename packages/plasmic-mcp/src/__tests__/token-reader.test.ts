@@ -10,6 +10,7 @@
  * the final CSS value to construct valid PlasmicElement trees.
  */
 
+import { describe, it, expect } from "vitest";
 import { readTokens, resolveTokenValue } from "../token-reader";
 
 describe("resolveTokenValue", () => {

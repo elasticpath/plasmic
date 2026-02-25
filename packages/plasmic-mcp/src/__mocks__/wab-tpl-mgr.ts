@@ -11,17 +11,19 @@
  * - createVariant: add variant to existing group
  */
 
-export const mockEnsureBaseVariantSetting = jest.fn();
-export const mockEnsureBaseVariant = jest.fn();
-export const mockRenameComponent = jest.fn((component: any, name: string) => {
+import { vi } from "vitest";
+
+export const mockEnsureBaseVariantSetting = vi.fn();
+export const mockEnsureBaseVariant = vi.fn();
+export const mockRenameComponent = vi.fn((component: any, name: string) => {
   // Default behavior mirrors real TplMgr: update component.name
   component.name = name;
 });
-export const mockRemoveComponent = jest.fn();
-export const mockCreateStyleVariant = jest.fn();
-export const mockCreatePrivateStyleVariant = jest.fn();
-export const mockCreateVariantGroup = jest.fn();
-export const mockCreateVariant = jest.fn();
+export const mockRemoveComponent = vi.fn();
+export const mockCreateStyleVariant = vi.fn();
+export const mockCreatePrivateStyleVariant = vi.fn();
+export const mockCreateVariantGroup = vi.fn();
+export const mockCreateVariant = vi.fn();
 
 export class TplMgr {
   constructor(_args: { site: any }) {}

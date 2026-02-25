@@ -1,14 +1,16 @@
 /**
  * Mock for @/wab/shared/bundler
  *
- * mockUnbundle is a jest.fn() so tests can configure return values per-test.
+ * mockUnbundle is a vi.fn() so tests can configure return values per-test.
  * M2: added mockFastBundle and mockAddrOf for incremental save tests.
  */
 
-export const mockUnbundle = jest.fn();
-export const mockFastBundle = jest.fn();
-export const mockAddrOf = jest.fn();
-export const mockRecomputeParents = jest.fn();
+import { vi } from "vitest";
+
+export const mockUnbundle = vi.fn();
+export const mockFastBundle = vi.fn();
+export const mockAddrOf = vi.fn();
+export const mockRecomputeParents = vi.fn();
 
 export class FastBundler {
   constructor(_meta: any, _classes: any) {}

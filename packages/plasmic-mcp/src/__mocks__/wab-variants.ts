@@ -5,8 +5,10 @@
  * by edit-tools.ts for variant-aware editing (P1.2).
  */
 
-export const mockEnsureVariantSetting = jest.fn();
-export const mockTryGetVariantSetting = jest.fn();
+import { vi } from "vitest";
+
+export const mockEnsureVariantSetting = vi.fn();
+export const mockTryGetVariantSetting = vi.fn();
 
 export function ensureVariantSetting(tpl: any, variants: any[]): any {
   return mockEnsureVariantSetting(tpl, variants);

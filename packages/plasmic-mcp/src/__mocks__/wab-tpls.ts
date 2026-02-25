@@ -2,11 +2,13 @@
  * Mock for @/wab/shared/core/tpls
  */
 
-export const mockMkTplTagX = jest.fn();
-export const mockMkTplInlinedText = jest.fn();
-export const mockMkTplComponentX = jest.fn();
-export const mockTrackComponentRoot = jest.fn();
-export const mockTrackComponentSite = jest.fn();
+import { vi } from "vitest";
+
+export const mockMkTplTagX = vi.fn();
+export const mockMkTplInlinedText = vi.fn();
+export const mockMkTplComponentX = vi.fn();
+export const mockTrackComponentRoot = vi.fn();
+export const mockTrackComponentSite = vi.fn();
 
 export function mkTplTagX(tag: string, opts?: any, ...children: any[]): any {
   return mockMkTplTagX(tag, opts, ...children);

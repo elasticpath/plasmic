@@ -14,6 +14,8 @@
  *   - mockApiClient for save endpoint assertions
  */
 
+import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
+
 import {
   updateText,
   updateStyles,
@@ -52,11 +54,11 @@ import type { Session } from "../session";
 
 function mockApiClient() {
   return {
-    saveRevision: jest.fn().mockResolvedValue({}),
-    listProjects: jest.fn(),
-    getProjectBundle: jest.fn(),
-    updateProject: jest.fn(),
-  } as unknown as PlasmicApiClient & { saveRevision: jest.Mock };
+    saveRevision: vi.fn().mockResolvedValue({}),
+    listProjects: vi.fn(),
+    getProjectBundle: vi.fn(),
+    updateProject: vi.fn(),
+  } as unknown as PlasmicApiClient & { saveRevision: ReturnType<typeof vi.fn> };
 }
 
 function makeSession(overrides?: Partial<Session>): Session {
@@ -67,7 +69,7 @@ function makeSession(overrides?: Partial<Session>): Session {
     bundler: {
       fastBundle: mockFastBundle,
       addrOf: mockAddrOf,
-      bundle: jest.fn().mockReturnValue({ map: {}, root: "0" }),
+      bundle: vi.fn().mockReturnValue({ map: {}, root: "0" }),
     },
     revisionNum: 10,
     modelVersion: 5,
@@ -358,7 +360,7 @@ describe("sanitizeStyles", () => {
   });
 
   it("drops unsupported background longhands and logs warning", () => {
-    const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const result = sanitizeStyles({
       backgroundSize: "cover",
@@ -377,7 +379,7 @@ describe("sanitizeStyles", () => {
   });
 
   it("drops all background longhand variants (camel + kebab)", () => {
-    const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const result = sanitizeStyles({
       "background-size": "contain",
@@ -440,8 +442,8 @@ describe("edit-tools", () => {
   let api: ReturnType<typeof mockApiClient>;
 
   beforeEach(() => {
-    jest.clearAllMocks();
-    jest.spyOn(console, "error").mockImplementation(() => {});
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
     clearNodeCache();
 
     api = mockApiClient();
@@ -459,7 +461,7 @@ describe("edit-tools", () => {
   afterEach(() => {
     disposeChangeTracker();
     clearSession();
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   // Helper to set up session + change tracker with a component
@@ -2581,7 +2583,7 @@ describe("edit-tools", () => {
       ];
 
       for (const selector of validSelectors) {
-        jest.clearAllMocks();
+        vi.clearAllMocks();
         mockFastBundle.mockReturnValue({ map: {}, root: "0" });
         mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
         mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });

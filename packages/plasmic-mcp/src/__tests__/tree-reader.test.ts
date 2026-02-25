@@ -8,6 +8,7 @@
  * expression variant, and layout derivation path.
  */
 
+import { describe, it, expect } from "vitest";
 import {
   readComponentTree,
   readComponentSummary,

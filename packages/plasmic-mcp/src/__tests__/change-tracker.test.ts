@@ -10,6 +10,7 @@
  * server. These tests ensure the recorder is wired correctly.
  */
 
+import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   ChangeTracker,
   initChangeTracker,
@@ -20,13 +21,13 @@ import { mockWithRecording, mockDispose } from "../__mocks__/wab-observable-mode
 
 describe("ChangeTracker", () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-    jest.spyOn(console, "error").mockImplementation(() => {});
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
     disposeChangeTracker();
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   describe("withRecording", () => {
@@ -72,14 +73,14 @@ describe("ChangeTracker", () => {
 
 describe("module singleton", () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-    jest.spyOn(console, "error").mockImplementation(() => {});
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
     disposeChangeTracker();
   });
 
   afterEach(() => {
     disposeChangeTracker();
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it("getChangeTracker throws when not initialized", () => {

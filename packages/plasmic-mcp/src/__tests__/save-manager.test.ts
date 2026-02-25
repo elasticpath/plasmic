@@ -13,6 +13,7 @@
  * - 412 UnknownReferencesError auto-retries with full bundle
  */
 
+import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import { SaveManager } from "../save-manager";
 import { setSession, clearSession } from "../session";
 import { mockFastBundle, mockAddrOf } from "../__mocks__/wab-bundler";
@@ -23,11 +24,11 @@ import type { Session } from "../session";
 /** Create a mock API client with saveRevision spy */
 function mockApiClient() {
   return {
-    saveRevision: jest.fn().mockResolvedValue({}),
-    listProjects: jest.fn(),
-    getProjectBundle: jest.fn(),
-    updateProject: jest.fn(),
-  } as unknown as PlasmicApiClient & { saveRevision: jest.Mock };
+    saveRevision: vi.fn().mockResolvedValue({}),
+    listProjects: vi.fn(),
+    getProjectBundle: vi.fn(),
+    updateProject: vi.fn(),
+  } as unknown as PlasmicApiClient & { saveRevision: ReturnType<typeof vi.fn> };
 }
 
 /** Create a valid session for tests */
@@ -39,7 +40,7 @@ function makeSession(overrides?: Partial<Session>): Session {
     bundler: {
       fastBundle: mockFastBundle,
       addrOf: mockAddrOf,
-      bundle: jest.fn().mockReturnValue({ map: {}, root: "0" }),
+      bundle: vi.fn().mockReturnValue({ map: {}, root: "0" }),
     },
     revisionNum: 10,
     modelVersion: 5,
@@ -54,8 +55,8 @@ describe("SaveManager", () => {
   let saveManager: SaveManager;
 
   beforeEach(() => {
-    jest.clearAllMocks();
-    jest.spyOn(console, "error").mockImplementation(() => {});
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
     api = mockApiClient();
     saveManager = new SaveManager(api as any);
     mockFastBundle.mockReturnValue({ map: { "1": { __type: "Site" } }, root: "0" });
@@ -63,7 +64,7 @@ describe("SaveManager", () => {
 
   afterEach(() => {
     clearSession();
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   describe("saveChanges", () => {
@@ -198,7 +199,7 @@ describe("SaveManager", () => {
     it("throws conflict error on ProjectRevisionError", async () => {
       setSession(makeSession());
 
-      api.saveRevision = jest.fn().mockRejectedValue(
+      api.saveRevision = vi.fn().mockRejectedValue(
         new PlasmicApiError("Stale revision", 412, "ProjectRevisionError")
       );
 
@@ -214,7 +215,7 @@ describe("SaveManager", () => {
     it("conflict error suggests refresh-project", async () => {
       setSession(makeSession());
 
-      api.saveRevision = jest.fn().mockRejectedValue(
+      api.saveRevision = vi.fn().mockRejectedValue(
         new PlasmicApiError("Stale revision", 412, "ProjectRevisionError")
       );
 
@@ -233,7 +234,7 @@ describe("SaveManager", () => {
 
       // First call (incremental) fails with UnknownReferencesError
       // Second call (full bundle) succeeds
-      api.saveRevision = jest.fn()
+      api.saveRevision = vi.fn()
         .mockRejectedValueOnce(
           new PlasmicApiError("Unknown refs", 412, "UnknownReferencesError")
         )
@@ -249,7 +250,7 @@ describe("SaveManager", () => {
       expect(api.saveRevision).toHaveBeenCalledTimes(2);
 
       // Second call should be non-incremental
-      const secondCall = (api.saveRevision as jest.Mock).mock.calls[1];
+      const secondCall = (api.saveRevision as ReturnType<typeof vi.fn>).mock.calls[1];
       expect(secondCall[2].incremental).toBe(false);
 
       expect(result.incremental).toBe(false);
@@ -259,7 +260,7 @@ describe("SaveManager", () => {
       const session = makeSession({ revisionNum: 10 });
       setSession(session);
 
-      api.saveRevision = jest.fn().mockRejectedValue(
+      api.saveRevision = vi.fn().mockRejectedValue(
         new PlasmicApiError("Conflict", 412, "ProjectRevisionError")
       );
 

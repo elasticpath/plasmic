@@ -5,10 +5,17 @@
  * Tests verify the priority order, validation, and error messages that guide
  * developers to correct their configuration.
  *
- * Because the esbuild jest transform doesn't hoist jest.mock calls, tests that
- * need to mock fs/os use jest.resetModules() + dynamic require() for proper
- * module isolation.
+ * Uses vi.resetModules() + dynamic import() for proper module isolation.
  */
+
+import { vi, describe, it, expect, beforeEach, afterEach, afterAll } from "vitest";
+
+// Shared mutable mock holders — vi.doMock factories reference these
+// via the module-level object so closures are not needed.
+const _authMocks = {
+  fsReadFileSync: null as any,
+  osHomedir: null as any,
+};
 
 describe("getAuth", () => {
   const savedEnv = { ...process.env };
@@ -23,29 +30,31 @@ describe("getAuth", () => {
 
   /**
    * Load getAuth with mocked fs and os modules.
-   * Uses jest.resetModules() to ensure the auth module picks up fresh mocks.
+   * Uses vi.resetModules() to ensure the auth module picks up fresh mocks.
    */
-  function loadGetAuthWithMocks(fsReadFileSync: jest.Mock, osHomedir: jest.Mock) {
-    jest.resetModules();
-    jest.mock("fs", () => ({
-      readFileSync: (...args: any[]) => fsReadFileSync(...args),
+  async function loadGetAuthWithMocks(fsReadFileSync: ReturnType<typeof vi.fn>, osHomedir: ReturnType<typeof vi.fn>) {
+    _authMocks.fsReadFileSync = fsReadFileSync;
+    _authMocks.osHomedir = osHomedir;
+    vi.resetModules();
+    vi.doMock("fs", () => ({
+      readFileSync: (...args: any[]) => _authMocks.fsReadFileSync(...args),
     }));
-    jest.mock("path", () => jest.requireActual("path"));
-    jest.mock("os", () => ({
-      homedir: () => osHomedir(),
+    vi.doMock("path", async () => await vi.importActual("path"));
+    vi.doMock("os", () => ({
+      homedir: () => _authMocks.osHomedir(),
     }));
-    return require("../auth").getAuth as typeof import("../auth")["getAuth"];
+    return (await import("../auth")).getAuth as typeof import("../auth")["getAuth"];
   }
 
   beforeEach(() => {
     process.env = { ...savedEnv };
     clearAuthEnv();
-    jest.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
-    jest.resetModules();
+    vi.restoreAllMocks();
+    vi.resetModules();
   });
 
   afterAll(() => {
@@ -54,14 +63,14 @@ describe("getAuth", () => {
 
   // --- Env var tests (don't need fs mocking) ---
 
-  it("returns auth from environment variables when all present", () => {
+  it("returns auth from environment variables when all present", async () => {
     process.env.PLASMIC_AUTH_HOST = "https://studio.example.com";
     process.env.PLASMIC_AUTH_USER = "user123";
     process.env.PLASMIC_AUTH_TOKEN = "token456";
 
-    const getAuth = loadGetAuthWithMocks(
-      jest.fn(() => { throw new Error("ENOENT"); }),
-      jest.fn(() => "/mock/home")
+    const getAuth = await loadGetAuthWithMocks(
+      vi.fn(() => { throw new Error("ENOENT"); }),
+      vi.fn(() => "/mock/home")
     );
     const auth = getAuth();
 
@@ -70,55 +79,55 @@ describe("getAuth", () => {
     expect(auth.token).toBe("token456");
   });
 
-  it("strips trailing slashes from host", () => {
+  it("strips trailing slashes from host", async () => {
     process.env.PLASMIC_AUTH_HOST = "https://studio.example.com///";
     process.env.PLASMIC_AUTH_USER = "user123";
     process.env.PLASMIC_AUTH_TOKEN = "token456";
 
-    const getAuth = loadGetAuthWithMocks(
-      jest.fn(() => { throw new Error("ENOENT"); }),
-      jest.fn(() => "/mock/home")
+    const getAuth = await loadGetAuthWithMocks(
+      vi.fn(() => { throw new Error("ENOENT"); }),
+      vi.fn(() => "/mock/home")
     );
     const auth = getAuth();
     expect(auth.host).toBe("https://studio.example.com");
   });
 
-  it("includes basic auth credentials when present", () => {
+  it("includes basic auth credentials when present", async () => {
     process.env.PLASMIC_AUTH_HOST = "https://studio.example.com";
     process.env.PLASMIC_AUTH_USER = "user123";
     process.env.PLASMIC_AUTH_TOKEN = "token456";
     process.env.PLASMIC_BASIC_AUTH_USER = "basicUser";
     process.env.PLASMIC_BASIC_AUTH_PASSWORD = "basicPass";
 
-    const getAuth = loadGetAuthWithMocks(
-      jest.fn(() => { throw new Error("ENOENT"); }),
-      jest.fn(() => "/mock/home")
+    const getAuth = await loadGetAuthWithMocks(
+      vi.fn(() => { throw new Error("ENOENT"); }),
+      vi.fn(() => "/mock/home")
     );
     const auth = getAuth();
     expect(auth.basicAuthUser).toBe("basicUser");
     expect(auth.basicAuthPassword).toBe("basicPass");
   });
 
-  it("throws when user and token are set but host is missing", () => {
+  it("throws when user and token are set but host is missing", async () => {
     process.env.PLASMIC_AUTH_USER = "user123";
     process.env.PLASMIC_AUTH_TOKEN = "token456";
 
-    const getAuth = loadGetAuthWithMocks(
-      jest.fn(() => { throw new Error("ENOENT"); }),
-      jest.fn(() => "/mock/home")
+    const getAuth = await loadGetAuthWithMocks(
+      vi.fn(() => { throw new Error("ENOENT"); }),
+      vi.fn(() => "/mock/home")
     );
     expect(() => getAuth()).toThrow("PLASMIC_AUTH_HOST is required");
   });
 
   // --- File fallback tests (need fs mocking) ---
 
-  it("warns on partial environment variables and falls through to file", () => {
+  it("warns on partial environment variables and falls through to file", async () => {
     process.env.PLASMIC_AUTH_USER = "user123";
     // No token — partial env vars
 
-    const getAuth = loadGetAuthWithMocks(
-      jest.fn(() => { throw new Error("ENOENT"); }),
-      jest.fn(() => "/mock/home")
+    const getAuth = await loadGetAuthWithMocks(
+      vi.fn(() => { throw new Error("ENOENT"); }),
+      vi.fn(() => "/mock/home")
     );
     expect(() => getAuth()).toThrow("Plasmic authentication required");
     expect(console.error).toHaveBeenCalledWith(
@@ -126,8 +135,8 @@ describe("getAuth", () => {
     );
   });
 
-  it("falls back to .plasmic.auth file when env vars missing", () => {
-    const mockReadFileSync = jest.fn((filePath: any) => {
+  it("falls back to .plasmic.auth file when env vars missing", async () => {
+    const mockReadFileSync = vi.fn((filePath: any) => {
       if (String(filePath).endsWith(".plasmic.auth")) {
         return JSON.stringify({
           host: "https://file-host.example.com",
@@ -138,9 +147,9 @@ describe("getAuth", () => {
       throw new Error("ENOENT");
     });
 
-    const getAuth = loadGetAuthWithMocks(
+    const getAuth = await loadGetAuthWithMocks(
       mockReadFileSync,
-      jest.fn(() => "/mock/home")
+      vi.fn(() => "/mock/home")
     );
     const auth = getAuth();
     expect(auth.host).toBe("https://file-host.example.com");
@@ -148,8 +157,8 @@ describe("getAuth", () => {
     expect(auth.token).toBe("fileToken");
   });
 
-  it("strips trailing slashes from file-based host", () => {
-    const mockReadFileSync = jest.fn((filePath: any) => {
+  it("strips trailing slashes from file-based host", async () => {
+    const mockReadFileSync = vi.fn((filePath: any) => {
       if (String(filePath).endsWith(".plasmic.auth")) {
         return JSON.stringify({
           host: "https://file-host.example.com///",
@@ -160,16 +169,16 @@ describe("getAuth", () => {
       throw new Error("ENOENT");
     });
 
-    const getAuth = loadGetAuthWithMocks(
+    const getAuth = await loadGetAuthWithMocks(
       mockReadFileSync,
-      jest.fn(() => "/mock/home")
+      vi.fn(() => "/mock/home")
     );
     const auth = getAuth();
     expect(auth.host).toBe("https://file-host.example.com");
   });
 
-  it("skips auth file with incomplete fields", () => {
-    const mockReadFileSync = jest.fn((filePath: any) => {
+  it("skips auth file with incomplete fields", async () => {
+    const mockReadFileSync = vi.fn((filePath: any) => {
       if (String(filePath).endsWith(".plasmic.auth")) {
         // Missing token field
         return JSON.stringify({ host: "https://example.com", user: "u" });
@@ -177,17 +186,17 @@ describe("getAuth", () => {
       throw new Error("ENOENT");
     });
 
-    const getAuth = loadGetAuthWithMocks(
+    const getAuth = await loadGetAuthWithMocks(
       mockReadFileSync,
-      jest.fn(() => "/mock/home")
+      vi.fn(() => "/mock/home")
     );
     expect(() => getAuth()).toThrow("Plasmic authentication required");
   });
 
-  it("throws descriptive error when no auth source available", () => {
-    const getAuth = loadGetAuthWithMocks(
-      jest.fn(() => { throw new Error("ENOENT"); }),
-      jest.fn(() => "/mock/home")
+  it("throws descriptive error when no auth source available", async () => {
+    const getAuth = await loadGetAuthWithMocks(
+      vi.fn(() => { throw new Error("ENOENT"); }),
+      vi.fn(() => "/mock/home")
     );
     expect(() => getAuth()).toThrow("Plasmic authentication required");
     expect(() => getAuth()).toThrow("PLASMIC_AUTH_HOST");

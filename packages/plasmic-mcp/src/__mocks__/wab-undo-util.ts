@@ -2,7 +2,9 @@
  * Mock for @/wab/shared/core/undo-util
  */
 
-export const mockUndoChanges = jest.fn();
+import { vi } from "vitest";
+
+export const mockUndoChanges = vi.fn();
 
 export function undoChanges(changes: any[]): void {
   mockUndoChanges(changes);

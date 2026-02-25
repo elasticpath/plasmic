@@ -154,6 +154,7 @@ export default defineConfig({
     ],
   },
   test: {
+    name: "integration",
     include: ["src/__tests__/real-integration.test.ts"],
     testTimeout: 30_000,
     environment: "node",

@@ -10,9 +10,10 @@
  * session, edit-tools, etc.) to isolate the wiring logic in server.ts. Individual
  * modules have their own unit tests.
  *
- * Uses jest.resetModules() + dynamic require() because the esbuild jest
- * transform doesn't hoist jest.mock calls.
+ * Uses vi.resetModules() + dynamic import() for module isolation.
  */
+
+import { vi, describe, it, expect, beforeEach, afterEach, afterAll } from "vitest";
 
 // ============================================================================
 // Suite 1: Server construction (existing smoke tests)
@@ -26,53 +27,65 @@ describe("createServer", () => {
     process.env.PLASMIC_AUTH_HOST = "https://studio.example.com";
     process.env.PLASMIC_AUTH_USER = "test-user";
     process.env.PLASMIC_AUTH_TOKEN = "test-token";
-    jest.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
-    jest.resetModules();
+    vi.restoreAllMocks();
+    vi.resetModules();
   });
 
   afterAll(() => {
     process.env = savedEnv;
   });
 
-  it("creates a server with all tools registered without throwing", () => {
-    jest.resetModules();
-    jest.mock("mobx", () => ({ configure: jest.fn() }));
+  it("creates a server with all tools registered without throwing", async () => {
+    vi.resetModules();
+    vi.doMock("mobx", () => {
+      const mock = { configure: vi.fn() };
+      return { ...mock, default: mock };
+    });
     // Mock fs/os to prevent .plasmic.auth file fallback
-    jest.mock("fs", () => ({
-      readFileSync: () => { throw new Error("ENOENT"); },
-      writeFileSync: jest.fn(),
-    }));
-    jest.mock("os", () => ({
-      homedir: () => "/mock/home",
-      tmpdir: () => "/tmp",
-    }));
+    vi.doMock("fs", () => {
+      const mock = {
+        readFileSync: () => { throw new Error("ENOENT"); },
+        writeFileSync: vi.fn(),
+      };
+      return { ...mock, default: mock };
+    });
+    vi.doMock("os", () => {
+      const mock = { homedir: () => "/mock/home", tmpdir: () => "/tmp" };
+      return { ...mock, default: mock };
+    });
 
-    const { createServer } = require("../server");
+    const { createServer } = await import("../server");
     const server = createServer();
     expect(server).toBeDefined();
   });
 
-  it("throws when auth is not configured", () => {
+  it("throws when auth is not configured", async () => {
     delete process.env.PLASMIC_AUTH_HOST;
     delete process.env.PLASMIC_AUTH_USER;
     delete process.env.PLASMIC_AUTH_TOKEN;
 
-    jest.resetModules();
-    jest.mock("mobx", () => ({ configure: jest.fn() }));
-    jest.mock("fs", () => ({
-      readFileSync: () => { throw new Error("ENOENT"); },
-      writeFileSync: jest.fn(),
-    }));
-    jest.mock("os", () => ({
-      homedir: () => "/mock/home",
-      tmpdir: () => "/tmp",
-    }));
+    vi.resetModules();
+    vi.doMock("mobx", () => {
+      const mock = { configure: vi.fn() };
+      return { ...mock, default: mock };
+    });
+    vi.doMock("fs", () => {
+      const mock = {
+        readFileSync: () => { throw new Error("ENOENT"); },
+        writeFileSync: vi.fn(),
+      };
+      return { ...mock, default: mock };
+    });
+    vi.doMock("os", () => {
+      const mock = { homedir: () => "/mock/home", tmpdir: () => "/tmp" };
+      return { ...mock, default: mock };
+    });
 
-    const { createServer } = require("../server");
+    const { createServer } = await import("../server");
     expect(() => createServer()).toThrow("Plasmic authentication required");
   });
 });
@@ -92,44 +105,44 @@ describe("tool handlers", () => {
   // References to mock functions — reassigned fresh in each beforeEach
   let client: any;
   let mockApiClient: any;
-  let mockLoadProject: jest.Mock;
-  let mockSetSession: jest.Mock;
-  let mockRequireSession: jest.Mock;
-  let mockInitChangeTracker: jest.Mock;
-  let mockDisposeChangeTracker: jest.Mock;
-  let mockReadComponentTree: jest.Mock;
-  let mockReadComponentSummary: jest.Mock;
-  let mockReadNodeDetails: jest.Mock;
-  let mockReadSubtree: jest.Mock;
-  let mockCountTreeNodes: jest.Mock;
-  let mockReadTokens: jest.Mock;
-  let mockResolveNode: jest.Mock;
-  let mockRequireSingleNode: jest.Mock;
-  let mockInvalidateNodeCache: jest.Mock;
-  let mockClearNodeCache: jest.Mock;
-  let mockUpdateText: jest.Mock;
-  let mockUpdateStyles: jest.Mock;
-  let mockAddChild: jest.Mock;
-  let mockRemoveChild: jest.Mock;
-  let mockMoveChild: jest.Mock;
-  let mockListVariants: jest.Mock;
-  let mockRenameComponent: jest.Mock;
-  let mockUpdatePageMeta: jest.Mock;
-  let mockDeleteComponent: jest.Mock;
-  let mockCreateStyleVariant: jest.Mock;
-  let mockCreateVariantGroup: jest.Mock;
-  let mockBeginBatch: jest.Mock;
-  let mockEndBatch: jest.Mock;
-  let mockIsBatchActive: jest.Mock;
-  let mockCancelBatch: jest.Mock;
-  let mockUndoOperation: jest.Mock;
-  let mockClearUndoStack: jest.Mock;
-  let mockGetUndoDepth: jest.Mock;
-  let mockWriteFileSync: jest.Mock;
-  let mockGetCacheMetrics: jest.Mock;
-  let mockGetChangeTracker: jest.Mock;
-  let mockGetAccumulatedChanges: jest.Mock;
-  let mockSaveFullBundle: jest.Mock;
+  let mockLoadProject: ReturnType<typeof vi.fn>;
+  let mockSetSession: ReturnType<typeof vi.fn>;
+  let mockRequireSession: ReturnType<typeof vi.fn>;
+  let mockInitChangeTracker: ReturnType<typeof vi.fn>;
+  let mockDisposeChangeTracker: ReturnType<typeof vi.fn>;
+  let mockReadComponentTree: ReturnType<typeof vi.fn>;
+  let mockReadComponentSummary: ReturnType<typeof vi.fn>;
+  let mockReadNodeDetails: ReturnType<typeof vi.fn>;
+  let mockReadSubtree: ReturnType<typeof vi.fn>;
+  let mockCountTreeNodes: ReturnType<typeof vi.fn>;
+  let mockReadTokens: ReturnType<typeof vi.fn>;
+  let mockResolveNode: ReturnType<typeof vi.fn>;
+  let mockRequireSingleNode: ReturnType<typeof vi.fn>;
+  let mockInvalidateNodeCache: ReturnType<typeof vi.fn>;
+  let mockClearNodeCache: ReturnType<typeof vi.fn>;
+  let mockUpdateText: ReturnType<typeof vi.fn>;
+  let mockUpdateStyles: ReturnType<typeof vi.fn>;
+  let mockAddChild: ReturnType<typeof vi.fn>;
+  let mockRemoveChild: ReturnType<typeof vi.fn>;
+  let mockMoveChild: ReturnType<typeof vi.fn>;
+  let mockListVariants: ReturnType<typeof vi.fn>;
+  let mockRenameComponent: ReturnType<typeof vi.fn>;
+  let mockUpdatePageMeta: ReturnType<typeof vi.fn>;
+  let mockDeleteComponent: ReturnType<typeof vi.fn>;
+  let mockCreateStyleVariant: ReturnType<typeof vi.fn>;
+  let mockCreateVariantGroup: ReturnType<typeof vi.fn>;
+  let mockBeginBatch: ReturnType<typeof vi.fn>;
+  let mockEndBatch: ReturnType<typeof vi.fn>;
+  let mockIsBatchActive: ReturnType<typeof vi.fn>;
+  let mockCancelBatch: ReturnType<typeof vi.fn>;
+  let mockUndoOperation: ReturnType<typeof vi.fn>;
+  let mockClearUndoStack: ReturnType<typeof vi.fn>;
+  let mockGetUndoDepth: ReturnType<typeof vi.fn>;
+  let mockWriteFileSync: ReturnType<typeof vi.fn>;
+  let mockGetCacheMetrics: ReturnType<typeof vi.fn>;
+  let mockGetChangeTracker: ReturnType<typeof vi.fn>;
+  let mockGetAccumulatedChanges: ReturnType<typeof vi.fn>;
+  let mockSaveFullBundle: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     process.env = { ...savedEnv };
@@ -137,77 +150,86 @@ describe("tool handlers", () => {
     process.env.PLASMIC_AUTH_USER = "test-user";
     process.env.PLASMIC_AUTH_TOKEN = "test-token";
 
-    jest.spyOn(console, "error").mockImplementation(() => {});
-    jest.resetModules();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.resetModules();
 
     // Fresh mock function instances for each test
     mockApiClient = {
-      listProjects: jest.fn(),
-      getProjectBundle: jest.fn(),
-      updateProject: jest.fn(),
-      saveRevision: jest.fn(),
+      listProjects: vi.fn(),
+      getProjectBundle: vi.fn(),
+      updateProject: vi.fn(),
+      saveRevision: vi.fn(),
     };
 
-    mockLoadProject = jest.fn();
-    mockSetSession = jest.fn();
-    mockRequireSession = jest.fn();
-    mockInitChangeTracker = jest.fn();
-    mockDisposeChangeTracker = jest.fn();
-    mockReadComponentTree = jest.fn();
-    mockReadComponentSummary = jest.fn();
-    mockReadNodeDetails = jest.fn();
-    mockReadSubtree = jest.fn();
-    mockCountTreeNodes = jest.fn().mockReturnValue(10);
-    mockReadTokens = jest.fn();
-    mockResolveNode = jest.fn();
-    mockRequireSingleNode = jest.fn();
-    mockInvalidateNodeCache = jest.fn();
-    mockClearNodeCache = jest.fn();
-    mockUpdateText = jest.fn();
-    mockUpdateStyles = jest.fn();
-    mockAddChild = jest.fn();
-    mockRemoveChild = jest.fn();
-    mockMoveChild = jest.fn();
-    mockListVariants = jest.fn();
-    mockRenameComponent = jest.fn();
-    mockUpdatePageMeta = jest.fn();
-    mockDeleteComponent = jest.fn();
-    mockCreateStyleVariant = jest.fn();
-    mockCreateVariantGroup = jest.fn();
-    mockBeginBatch = jest.fn();
-    mockEndBatch = jest.fn();
-    mockIsBatchActive = jest.fn().mockReturnValue(false);
-    mockCancelBatch = jest.fn();
-    mockUndoOperation = jest.fn();
-    mockClearUndoStack = jest.fn();
-    mockGetUndoDepth = jest.fn().mockReturnValue(0);
-    mockWriteFileSync = jest.fn();
-    mockGetCacheMetrics = jest.fn().mockReturnValue({
+    mockLoadProject = vi.fn();
+    mockSetSession = vi.fn();
+    mockRequireSession = vi.fn();
+    mockInitChangeTracker = vi.fn();
+    mockDisposeChangeTracker = vi.fn();
+    mockReadComponentTree = vi.fn();
+    mockReadComponentSummary = vi.fn();
+    mockReadNodeDetails = vi.fn();
+    mockReadSubtree = vi.fn();
+    mockCountTreeNodes = vi.fn().mockReturnValue(10);
+    mockReadTokens = vi.fn();
+    mockResolveNode = vi.fn();
+    mockRequireSingleNode = vi.fn();
+    mockInvalidateNodeCache = vi.fn();
+    mockClearNodeCache = vi.fn();
+    mockUpdateText = vi.fn();
+    mockUpdateStyles = vi.fn();
+    mockAddChild = vi.fn();
+    mockRemoveChild = vi.fn();
+    mockMoveChild = vi.fn();
+    mockListVariants = vi.fn();
+    mockRenameComponent = vi.fn();
+    mockUpdatePageMeta = vi.fn();
+    mockDeleteComponent = vi.fn();
+    mockCreateStyleVariant = vi.fn();
+    mockCreateVariantGroup = vi.fn();
+    mockBeginBatch = vi.fn();
+    mockEndBatch = vi.fn();
+    mockIsBatchActive = vi.fn().mockReturnValue(false);
+    mockCancelBatch = vi.fn();
+    mockUndoOperation = vi.fn();
+    mockClearUndoStack = vi.fn();
+    mockGetUndoDepth = vi.fn().mockReturnValue(0);
+    mockWriteFileSync = vi.fn();
+    mockGetCacheMetrics = vi.fn().mockReturnValue({
       hits: 0,
       misses: 0,
       hitRate: 0,
       cachedComponents: 0,
     });
-    mockGetChangeTracker = jest.fn().mockReturnValue({
-      withRecording: jest.fn((fn: any) => { fn(); return { changes: [], newInsts: [], removedInsts: [] }; }),
+    mockGetChangeTracker = vi.fn().mockReturnValue({
+      withRecording: vi.fn((fn: any) => { fn(); return { changes: [], newInsts: [], removedInsts: [] }; }),
     });
-    mockGetAccumulatedChanges = jest.fn().mockReturnValue(null);
-    mockSaveFullBundle = jest.fn().mockResolvedValue({ revisionNum: 99, incremental: false });
+    mockGetAccumulatedChanges = vi.fn().mockReturnValue(null);
+    mockSaveFullBundle = vi.fn().mockResolvedValue({ revisionNum: 99, incremental: false });
 
-    // --- Register module mocks (before require) ---
+    // --- Register module mocks (before import) ---
 
-    jest.mock("mobx", () => ({ configure: jest.fn() }));
-    jest.mock("fs", () => ({
-      readFileSync: () => { throw new Error("ENOENT"); },
-      writeFileSync: (...args: any[]) => mockWriteFileSync(...args),
-    }));
-    jest.mock("os", () => ({
-      homedir: () => "/mock/home",
-      tmpdir: () => "/mock/tmp",
-    }));
+    vi.doMock("mobx", () => {
+      const mock = { configure: vi.fn() };
+      return { ...mock, default: mock };
+    });
+    vi.doMock("fs", () => {
+      const mock = {
+        readFileSync: () => { throw new Error("ENOENT"); },
+        writeFileSync: (...args: any[]) => mockWriteFileSync(...args),
+      };
+      return { ...mock, default: mock };
+    });
+    vi.doMock("os", () => {
+      const mock = {
+        homedir: () => "/mock/home",
+        tmpdir: () => "/mock/tmp",
+      };
+      return { ...mock, default: mock };
+    });
 
-    jest.mock("../api-client", () => ({
-      PlasmicApiClient: jest.fn(() => mockApiClient),
+    vi.doMock("../api-client", () => ({
+      PlasmicApiClient: vi.fn(() => mockApiClient),
       PlasmicApiError: class PlasmicApiError extends Error {
         statusCode: number;
         errorType?: string;
@@ -220,16 +242,16 @@ describe("tool handlers", () => {
       },
     }));
 
-    jest.mock("../model-loader", () => ({
+    vi.doMock("../model-loader", () => ({
       loadProject: (...args: any[]) => mockLoadProject(...args),
     }));
 
-    jest.mock("../session", () => ({
+    vi.doMock("../session", () => ({
       setSession: (...args: any[]) => mockSetSession(...args),
       requireSession: () => mockRequireSession(),
     }));
 
-    jest.mock("../tree-reader", () => ({
+    vi.doMock("../tree-reader", () => ({
       readComponentTree: (...args: any[]) => mockReadComponentTree(...args),
       readComponentSummary: (...args: any[]) => mockReadComponentSummary(...args),
       readNodeDetails: (...args: any[]) => mockReadNodeDetails(...args),
@@ -237,11 +259,11 @@ describe("tool handlers", () => {
       countTreeNodes: (...args: any[]) => mockCountTreeNodes(...args),
     }));
 
-    jest.mock("../token-reader", () => ({
+    vi.doMock("../token-reader", () => ({
       readTokens: (...args: any[]) => mockReadTokens(...args),
     }));
 
-    jest.mock("../node-resolver", () => ({
+    vi.doMock("../node-resolver", () => ({
       resolveNode: (...args: any[]) => mockResolveNode(...args),
       requireSingleNode: (...args: any[]) => mockRequireSingleNode(...args),
       invalidateNodeCache: (...args: any[]) => mockInvalidateNodeCache(...args),
@@ -249,13 +271,13 @@ describe("tool handlers", () => {
       getCacheMetrics: () => mockGetCacheMetrics(),
     }));
 
-    jest.mock("../change-tracker", () => ({
+    vi.doMock("../change-tracker", () => ({
       initChangeTracker: (...args: any[]) => mockInitChangeTracker(...args),
       disposeChangeTracker: () => mockDisposeChangeTracker(),
       getChangeTracker: () => mockGetChangeTracker(),
     }));
 
-    jest.mock("../edit-tools", () => ({
+    vi.doMock("../edit-tools", () => ({
       updateText: (...args: any[]) => mockUpdateText(...args),
       updateStyles: (...args: any[]) => mockUpdateStyles(...args),
       addChild: (...args: any[]) => mockAddChild(...args),
@@ -269,7 +291,7 @@ describe("tool handlers", () => {
       createVariantGroup: (...args: any[]) => mockCreateVariantGroup(...args),
     }));
 
-    jest.mock("../batch-manager", () => ({
+    vi.doMock("../batch-manager", () => ({
       beginBatch: () => mockBeginBatch(),
       endBatch: (...args: any[]) => mockEndBatch(...args),
       isBatchActive: () => mockIsBatchActive(),
@@ -277,14 +299,14 @@ describe("tool handlers", () => {
       getAccumulatedChanges: () => mockGetAccumulatedChanges(),
     }));
 
-    jest.mock("../save-manager", () => ({
-      SaveManager: jest.fn(() => ({
+    vi.doMock("../save-manager", () => ({
+      SaveManager: vi.fn(() => ({
         saveFullBundle: (...args: any[]) => mockSaveFullBundle(...args),
-        saveChanges: jest.fn(),
+        saveChanges: vi.fn(),
       })),
     }));
 
-    jest.mock("../undo-manager", () => ({
+    vi.doMock("../undo-manager", () => ({
       undo: (...args: any[]) => mockUndoOperation(...args),
       clearUndoStack: () => mockClearUndoStack(),
       getUndoDepth: () => mockGetUndoDepth(),
@@ -292,11 +314,11 @@ describe("tool handlers", () => {
 
     // --- Create server and connect transport ---
 
-    const { createServer } = require("../server");
+    const { createServer } = await import("../server");
     const mcpServer = createServer();
 
-    const { InMemoryTransport } = require("@modelcontextprotocol/sdk/inMemory.js");
-    const { Client } = require("@modelcontextprotocol/sdk/client/index.js");
+    const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
 
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await mcpServer.connect(serverTransport);
@@ -307,7 +329,7 @@ describe("tool handlers", () => {
 
   afterEach(async () => {
     try { await client?.close(); } catch { /* transport already closed */ }
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   afterAll(() => {

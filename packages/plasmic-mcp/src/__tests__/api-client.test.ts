@@ -7,6 +7,7 @@
  * meaningful error messages to Claude and the developer.
  */
 
+import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import { PlasmicApiClient } from "../api-client";
 import type { AuthConfig } from "../types";
 
@@ -24,17 +25,17 @@ describe("PlasmicApiClient", () => {
     token: "test-token",
   };
   let client: PlasmicApiClient;
-  let mockFetch: jest.Mock;
+  let mockFetch: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    mockFetch = jest.fn();
+    mockFetch = vi.fn();
     global.fetch = mockFetch;
     client = new PlasmicApiClient(auth);
-    jest.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   describe("listProjects", () => {

@@ -6,6 +6,7 @@
  * undo integration (batch pushed as single undo operation).
  */
 
+import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import { emptyRecordedChanges } from "../__mocks__/wab-observable-model";
 import { mockFastBundle, mockAddrOf } from "../__mocks__/wab-bundler";
 import { setSession, clearSession } from "../session";
@@ -23,7 +24,7 @@ import { clearUndoStack, getUndoDepth } from "../undo-manager";
 // Mock API client
 function mockApiClient(): any {
   return {
-    saveRevision: jest.fn().mockResolvedValue({}),
+    saveRevision: vi.fn().mockResolvedValue({}),
   };
 }
 
@@ -36,7 +37,7 @@ function setupSession() {
     site,
     bundler: {
       fastBundle: mockFastBundle,
-      bundle: jest.fn().mockReturnValue({}),
+      bundle: vi.fn().mockReturnValue({}),
       addrOf: mockAddrOf,
     },
     revisionNum: 5,
@@ -49,7 +50,7 @@ function setupSession() {
 }
 
 beforeEach(() => {
-  jest.clearAllMocks();
+  vi.clearAllMocks();
   cancelBatch();
   clearUndoStack();
   mockFastBundle.mockReturnValue({ map: {}, root: "0" });

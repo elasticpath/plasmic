@@ -9,6 +9,7 @@
  * hostlessDataVersion, projectUuid) needed for incremental saves.
  */
 
+import { describe, it, expect, afterEach } from "vitest";
 import {
   getSession,
   setSession,

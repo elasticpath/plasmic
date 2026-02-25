@@ -10,9 +10,9 @@
   "scripts": {
     "build": "node build.mjs",
     "dev": "tsx src/index.ts",
-    "test": "jest --config jest.config.cjs && vitest run --config vitest.config.integration.ts",
-    "test:unit": "jest --config jest.config.cjs",
-    "test:integration": "vitest run --config vitest.config.integration.ts",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

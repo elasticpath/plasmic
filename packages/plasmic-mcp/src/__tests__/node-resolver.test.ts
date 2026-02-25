@@ -6,6 +6,7 @@
  * wrong element, so these tests verify all four reference types and error cases.
  */
 
+import { describe, it, expect, beforeEach } from "vitest";
 import {
   resolveNode,
   requireSingleNode,

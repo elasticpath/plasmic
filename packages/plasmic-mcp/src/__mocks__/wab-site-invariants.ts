@@ -5,7 +5,9 @@
  * In tests we skip validation since we're using mock model objects.
  */
 
-export const mockAssertSiteInvariants = jest.fn();
+import { vi } from "vitest";
+
+export const mockAssertSiteInvariants = vi.fn();
 
 export function assertSiteInvariants(_site: any): void {
   mockAssertSiteInvariants(_site);

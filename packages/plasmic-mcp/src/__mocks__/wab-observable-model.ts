@@ -6,8 +6,10 @@
  * to control what changes are "recorded" during a mutation.
  */
 
-export const mockWithRecording = jest.fn();
-export const mockDispose = jest.fn();
+import { vi } from "vitest";
+
+export const mockWithRecording = vi.fn();
+export const mockDispose = vi.fn();
 
 export class ChangeRecorder {
   constructor(_opts: any) {}
@@ -23,7 +25,7 @@ export class ChangeRecorder {
 }
 
 export function observeModel(_rootInst: any, _opts: any): { dispose: () => void } {
-  return { dispose: jest.fn() };
+  return { dispose: vi.fn() };
 }
 
 export function emptyRecordedChanges() {
