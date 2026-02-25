@@ -1,4 +1,9 @@
-import { useSelector, usePlasmicCanvasContext } from "@plasmicapp/host";
+import {
+  DataProvider,
+  repeatedElement,
+  useSelector,
+  usePlasmicCanvasContext,
+} from "@plasmicapp/host";
 import registerComponent, {
   ComponentMeta,
 } from "@plasmicapp/host/registerComponent";
@@ -9,6 +14,7 @@ import { MOCK_BUNDLE_DATA_WITH_ERRORS } from "./design-time-data";
 type PreviewState = "auto" | "withData";
 
 interface EPBundleValidationErrorsProps {
+  children?: React.ReactNode;
   className?: string;
   previewState?: PreviewState;
 }
@@ -18,8 +24,17 @@ export const epBundleValidationErrorsMeta: ComponentMeta<EPBundleValidationError
     name: "plasmic-commerce-ep-bundle-validation-errors",
     displayName: "EP Bundle Validation Errors",
     description:
-      "Renders current bundle validation errors. Errors come from Zod schema validation of component min/max and option constraints. Must be inside an EP Bundle Provider.",
+      "Iterates over current bundle validation errors. Each error is exposed via DataProvider so the designer can fully customize the error item layout. Renders nothing when there are no errors. Must be inside an EP Bundle Provider.",
     props: {
+      children: {
+        type: "slot",
+        defaultValue: [
+          {
+            type: "text",
+            value: "Error message",
+          },
+        ],
+      },
       previewState: {
         type: "choice",
         options: ["auto", "withData"],
@@ -33,12 +48,13 @@ export const epBundleValidationErrorsMeta: ComponentMeta<EPBundleValidationError
     importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
     importName: "EPBundleValidationErrors",
     parentComponentName: "plasmic-commerce-ep-bundle-provider",
+    providesData: true,
   };
 
 export function EPBundleValidationErrors(
   props: EPBundleValidationErrorsProps
 ) {
-  const { className, previewState = "auto" } = props;
+  const { children, className, previewState = "auto" } = props;
 
   const bundleData = useSelector("bundleData") as
     | { errors?: string[]; isValid?: boolean }
@@ -61,7 +77,9 @@ export function EPBundleValidationErrors(
       data-ep-bundle-errors=""
     >
       {errors.map((error, i) => (
-        <div key={i}>{error}</div>
+        <DataProvider key={i} name="currentBundleError" data={{ message: error, index: i }}>
+          {repeatedElement(i, children)}
+        </DataProvider>
       ))}
     </div>
   );

@@ -54,14 +54,12 @@ const BUNDLE_VARIATION_CTX_KEY = Symbol.for(
   "@elasticpath/ep-bundle-variation-context"
 );
 
-type SymbolRecord<T> = Record<symbol, React.Context<T | null> | undefined>;
-
 function getSingletonContext<T>(key: symbol): React.Context<T | null> {
-  const g = globalThis as unknown as SymbolRecord<T>;
+  const g = globalThis as any;
   if (!g[key]) {
     g[key] = React.createContext<T | null>(null);
   }
-  return g[key]!;
+  return g[key];
 }
 
 // ---------------------------------------------------------------------------
