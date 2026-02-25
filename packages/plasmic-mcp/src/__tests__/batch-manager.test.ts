@@ -18,8 +18,10 @@ import {
   getBatchId,
   accumulateChanges,
   cancelBatch,
+  cancelBatchWithRollback,
 } from "../batch-manager";
 import { clearUndoStack, getUndoDepth } from "../undo-manager";
+import { mockUndoChanges } from "../__mocks__/wab-undo-util";
 
 // Mock API client
 function mockApiClient(): any {
@@ -247,5 +249,98 @@ describe("cancelBatch", () => {
   it("is a no-op when no batch is active", () => {
     cancelBatch(); // should not throw
     expect(isBatchActive()).toBe(false);
+  });
+});
+
+// ==========================================================================
+// Error recovery: batch rollback on failure
+//
+// When a mutation fails during a batch, the entire batch must be cancelled
+// and all accumulated changes rolled back so the model stays clean.
+// When endBatch's save fails, accumulated changes must also be rolled back.
+// ==========================================================================
+
+describe("cancelBatchWithRollback", () => {
+  it("cancels batch and rolls back accumulated changes", () => {
+    setupSession();
+    beginBatch();
+    const changes = {
+      changes: [
+        { type: "update", changeNode: { inst: {}, field: "text" } },
+        { type: "update", changeNode: { inst: {}, field: "style" } },
+      ],
+      newInsts: [],
+      removedInsts: [],
+    };
+    accumulateChanges(changes as any);
+
+    cancelBatchWithRollback();
+
+    expect(isBatchActive()).toBe(false);
+    // undoChanges should have been called with the accumulated changes
+    expect(mockUndoChanges).toHaveBeenCalledWith(changes.changes);
+  });
+
+  it("is a no-op when no batch is active", () => {
+    cancelBatchWithRollback(); // should not throw
+    expect(isBatchActive()).toBe(false);
+    expect(mockUndoChanges).not.toHaveBeenCalled();
+  });
+
+  it("does not call undoChanges for empty batch", () => {
+    setupSession();
+    beginBatch();
+    // No accumulateChanges called — 0 operations
+    cancelBatchWithRollback();
+
+    expect(isBatchActive()).toBe(false);
+    expect(mockUndoChanges).not.toHaveBeenCalled();
+  });
+
+  it("handles rollback failure gracefully (logs but does not throw)", () => {
+    setupSession();
+    beginBatch();
+    accumulateChanges(
+      {
+        changes: [{ type: "update", changeNode: { inst: {}, field: "x" } }],
+        newInsts: [],
+        removedInsts: [],
+      } as any,
+    );
+
+    // Make undoChanges throw
+    mockUndoChanges.mockImplementationOnce(() => {
+      throw new Error("Rollback failed");
+    });
+
+    // Should not throw — rollback failure is logged, not re-thrown
+    expect(() => cancelBatchWithRollback()).not.toThrow();
+    expect(isBatchActive()).toBe(false);
+  });
+});
+
+describe("endBatch error recovery", () => {
+  it("rolls back accumulated changes when save fails", async () => {
+    setupSession();
+    const api = mockApiClient();
+    api.saveRevision.mockRejectedValueOnce(new Error("Save failed"));
+
+    beginBatch();
+    const changes = {
+      changes: [{ type: "update", changeNode: { inst: {}, field: "text" } }],
+      newInsts: [],
+      removedInsts: [],
+    };
+    accumulateChanges(changes as any);
+    accumulateChanges(changes as any);
+
+    await expect(endBatch(api)).rejects.toThrow("Save failed");
+
+    // Batch should be cleared
+    expect(isBatchActive()).toBe(false);
+    // Accumulated changes should have been rolled back
+    expect(mockUndoChanges).toHaveBeenCalled();
+    // Undo stack should be empty (save didn't succeed)
+    expect(getUndoDepth()).toBe(0);
   });
 });

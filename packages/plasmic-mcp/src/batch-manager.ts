@@ -23,6 +23,8 @@ import { SaveManager, type SaveResult } from "./save-manager.js";
 import { PlasmicApiClient } from "./api-client.js";
 import { requireSession } from "./session.js";
 import { pushUndoOperation } from "./undo-manager.js";
+import { getChangeTracker } from "./change-tracker.js";
+import { undoChanges } from "@/wab/shared/core/undo-util";
 
 interface BatchState {
   batchId: string;
@@ -133,19 +135,25 @@ export async function endBatch(
   }
 
   const saveManager = new SaveManager(apiClient);
-  const save = await saveManager.saveChanges(
-    accumulatedChanges,
-    Array.from(modifiedComponentIids)
-  );
+  try {
+    const save = await saveManager.saveChanges(
+      accumulatedChanges,
+      Array.from(modifiedComponentIids)
+    );
 
-  // Push entire batch as one undo operation
-  pushUndoOperation(`batch of ${operationCount} edits`, accumulatedChanges);
+    // Push entire batch as one undo operation
+    pushUndoOperation(`batch of ${operationCount} edits`, accumulatedChanges);
 
-  console.error(
-    `[plasmic-mcp] Batch session ended: ${operationCount} operations saved as revision ${save.revisionNum}`
-  );
+    console.error(
+      `[plasmic-mcp] Batch session ended: ${operationCount} operations saved as revision ${save.revisionNum}`
+    );
 
-  return { save, operationCount };
+    return { save, operationCount };
+  } catch (err) {
+    // Rollback all accumulated batch changes on save failure
+    rollbackChanges(accumulatedChanges, `batch of ${operationCount} edits`);
+    throw err;
+  }
 }
 
 /**
@@ -158,5 +166,57 @@ export function cancelBatch(): void {
       `[plasmic-mcp] Batch session cancelled: ${currentBatch.batchId}`
     );
     currentBatch = null;
+  }
+}
+
+/**
+ * Cancel an active batch session and rollback all accumulated changes.
+ * Used when a mutation fails during a batch — the entire batch is cancelled
+ * and all previously accumulated changes are reverted so the model stays clean.
+ */
+export function cancelBatchWithRollback(): void {
+  if (!currentBatch) {
+    return;
+  }
+
+  const { accumulatedChanges, operationCount, batchId } = currentBatch;
+  currentBatch = null;
+
+  if (operationCount > 0) {
+    rollbackChanges(
+      accumulatedChanges,
+      `batch ${batchId} (${operationCount} operations)`
+    );
+  } else {
+    console.error(
+      `[plasmic-mcp] Batch session cancelled (no changes to rollback): ${batchId}`
+    );
+  }
+}
+
+/**
+ * Rollback recorded model changes. Used by endBatch on save failure
+ * and cancelBatchWithRollback on operation failure.
+ */
+function rollbackChanges(
+  changes: RecordedChanges,
+  description: string
+): void {
+  if (changes.changes.length === 0) {
+    return;
+  }
+  try {
+    const tracker = getChangeTracker();
+    tracker.withRecording(() => {
+      undoChanges(changes.changes);
+    });
+    console.error(
+      `[plasmic-mcp] Rolled back changes from: ${description}`
+    );
+  } catch (rollbackErr) {
+    console.error(
+      `[plasmic-mcp] CRITICAL: Rollback failed for ${description}. ` +
+        `Use refresh-project to reload a clean model. (${rollbackErr})`
+    );
   }
 }

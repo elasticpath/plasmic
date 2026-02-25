@@ -42,6 +42,7 @@ import { resolveNode, requireSingleNode } from "./node-resolver.js";
 import type { PlasmicElement, ComponentElement, DefaultComponentElement } from "./types.js";
 import { isBatchActive, accumulateChanges } from "./batch-manager.js";
 import { pushUndoOperation } from "./undo-manager.js";
+import { undoChanges } from "@/wab/shared/core/undo-util";
 
 // --- Helpers ---
 
@@ -381,9 +382,35 @@ async function saveOrAccumulate(
   }
 
   const saveManager = new SaveManager(apiClient);
-  const save = await saveManager.saveChanges(changes, modifiedComponentIids);
-  pushUndoOperation(description, changes);
-  return save;
+  try {
+    const save = await saveManager.saveChanges(changes, modifiedComponentIids);
+    pushUndoOperation(description, changes);
+    return save;
+  } catch (err) {
+    // Auto-rollback: revert in-memory model changes so the model stays clean
+    // and subsequent mutations can succeed without refresh-project.
+    try {
+      const tracker = getChangeTracker();
+      tracker.withRecording(() => {
+        undoChanges(changes.changes);
+      });
+      console.error(
+        `[plasmic-mcp] Auto-rolled back failed mutation: ${description}`
+      );
+    } catch (rollbackErr) {
+      // Rollback itself failed — model is in an inconsistent state
+      console.error(
+        `[plasmic-mcp] CRITICAL: Rollback failed after save error. ` +
+          `Use refresh-project to reload a clean model. (${rollbackErr})`
+      );
+      const saveErr = err instanceof Error ? err : new Error(String(err));
+      throw new Error(
+        `${saveErr.message} ` +
+          `Additionally, auto-rollback failed. Use refresh-project to reload a clean model.`
+      );
+    }
+    throw err;
+  }
 }
 
 // --- Variant resolution ---

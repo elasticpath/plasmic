@@ -54,7 +54,7 @@ import {
   updatePageMeta,
   deleteComponent,
 } from "./edit-tools.js";
-import { beginBatch, endBatch, isBatchActive, cancelBatch, getAccumulatedChanges } from "./batch-manager.js";
+import { beginBatch, endBatch, isBatchActive, cancelBatch, cancelBatchWithRollback, getAccumulatedChanges } from "./batch-manager.js";
 import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
 import { SaveManager } from "./save-manager.js";
 import { undoChanges } from "@/wab/shared/core/undo-util";
@@ -105,6 +105,22 @@ async function withDryRun<T>(fn: () => Promise<T>): Promise<T> {
     cancelBatch();
     throw err;
   }
+}
+
+/**
+ * Handle errors from mutation tool handlers. If a batch is active, cancels it
+ * and rolls back all accumulated changes so the model stays clean.
+ */
+function handleMutationError(label: string, err: any) {
+  let message = `Error ${label}: ${err.message}`;
+  if (isBatchActive()) {
+    cancelBatchWithRollback();
+    message += " Batch cancelled and all accumulated changes rolled back.";
+  }
+  return {
+    content: [{ type: "text" as const, text: message }],
+    isError: true,
+  };
 }
 
 export function createServer(): McpServer {
@@ -1217,15 +1233,7 @@ export function createServer(): McpServer {
           ],
         };
       } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error creating style variant: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
+        return handleMutationError("creating style variant", err);
       }
     }
   );
@@ -1290,15 +1298,7 @@ export function createServer(): McpServer {
           ],
         };
       } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error creating variant group: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
+        return handleMutationError("creating variant group", err);
       }
     }
   );
@@ -1376,15 +1376,7 @@ export function createServer(): McpServer {
           ],
         };
       } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error updating text: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
+        return handleMutationError("updating text", err);
       }
     }
   );
@@ -1469,15 +1461,7 @@ export function createServer(): McpServer {
           ],
         };
       } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error updating styles: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
+        return handleMutationError("updating styles", err);
       }
     }
   );
@@ -1560,15 +1544,7 @@ export function createServer(): McpServer {
           ],
         };
       } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error adding child: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
+        return handleMutationError("adding child", err);
       }
     }
   );
@@ -1636,15 +1612,7 @@ export function createServer(): McpServer {
           ],
         };
       } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error removing child: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
+        return handleMutationError("removing child", err);
       }
     }
   );
@@ -1731,15 +1699,7 @@ export function createServer(): McpServer {
           ],
         };
       } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error moving child: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
+        return handleMutationError("moving child", err);
       }
     }
   );
@@ -2056,15 +2016,7 @@ export function createServer(): McpServer {
           ],
         };
       } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error renaming component: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
+        return handleMutationError("renaming component", err);
       }
     }
   );
@@ -2130,15 +2082,7 @@ export function createServer(): McpServer {
           ],
         };
       } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error updating page metadata: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
+        return handleMutationError("updating page metadata", err);
       }
     }
   );
@@ -2331,15 +2275,7 @@ export function createServer(): McpServer {
           ],
         };
       } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error deleting component: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
+        return handleMutationError("deleting component", err);
       }
     }
   );

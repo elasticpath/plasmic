@@ -259,4 +259,149 @@ describe("PlasmicApiClient", () => {
       );
     });
   });
+
+  // ==========================================================================
+  // Error recovery: timeout, 5xx messages, and list-projects guidance
+  //
+  // Timeouts prevent hanging requests. 5xx messages include retry guidance.
+  // list-projects failures include specific auth/connectivity troubleshooting.
+  // ==========================================================================
+
+  describe("request timeout", () => {
+    it("passes AbortSignal.timeout to fetch calls", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        headers: mockHeaders(),
+        json: () => Promise.resolve({ projects: [], perms: [] }),
+      });
+
+      await client.listProjects();
+
+      const fetchOptions = mockFetch.mock.calls[0][1];
+      expect(fetchOptions.signal).toBeDefined();
+    });
+
+    it("throws timeout error with retry guidance", async () => {
+      const timeoutErr = new Error("The operation was aborted");
+      timeoutErr.name = "TimeoutError";
+      mockFetch.mockRejectedValue(timeoutErr);
+
+      // Use getProjectBundle to avoid listProjects wrapper
+      await expect(client.getProjectBundle("proj1")).rejects.toThrow(
+        "timed out"
+      );
+      await expect(client.getProjectBundle("proj1")).rejects.toThrow(
+        "Try again"
+      );
+    });
+
+    it("accepts custom timeout value", async () => {
+      const fastClient = new PlasmicApiClient(auth, 5000);
+      mockFetch.mockResolvedValue({
+        ok: true,
+        headers: mockHeaders(),
+        json: () => Promise.resolve({ projects: [], perms: [] }),
+      });
+
+      await fastClient.listProjects();
+
+      // Signal should be present
+      const fetchOptions = mockFetch.mock.calls[0][1];
+      expect(fetchOptions.signal).toBeDefined();
+    });
+  });
+
+  describe("5xx error messages", () => {
+    it("includes HTTP status and retry suggestion for 500 errors", async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+        headers: mockHeaders(),
+        json: () => Promise.resolve({}),
+      });
+
+      // Use getProjectBundle to test raw 5xx message without listProjects wrapper
+      await expect(client.getProjectBundle("proj1")).rejects.toThrow(
+        "Server error (HTTP 500)"
+      );
+      await expect(client.getProjectBundle("proj1")).rejects.toThrow(
+        "Try again"
+      );
+    });
+
+    it("includes HTTP status and retry suggestion for 502 errors", async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 502,
+        statusText: "Bad Gateway",
+        headers: mockHeaders(),
+        json: () => Promise.reject(new Error("not JSON")),
+      });
+
+      await expect(client.getProjectBundle("proj1")).rejects.toThrow(
+        "Server error (HTTP 502)"
+      );
+    });
+
+    it("preserves server error message in 5xx errors", async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 503,
+        statusText: "Service Unavailable",
+        headers: mockHeaders(),
+        json: () =>
+          Promise.resolve({ error: { message: "Database pool exhausted" } }),
+      });
+
+      await expect(client.getProjectBundle("proj1")).rejects.toThrow(
+        "Database pool exhausted"
+      );
+    });
+
+    it("does not add 5xx guidance for 4xx errors", async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 400,
+        statusText: "Bad Request",
+        headers: mockHeaders(),
+        json: () =>
+          Promise.resolve({ error: { message: "Invalid project ID" } }),
+      });
+
+      const err = await client.getProjectBundle("proj1").catch((e: Error) => e);
+      expect(err.message).toBe("Invalid project ID");
+      expect(err.message).not.toContain("Server error");
+    });
+  });
+
+  describe("listProjects error guidance", () => {
+    it("includes auth and connectivity guidance on failure", async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+        headers: mockHeaders(),
+        json: () => Promise.resolve({}),
+      });
+
+      await expect(client.listProjects()).rejects.toThrow(
+        "Failed to list projects"
+      );
+      await expect(client.listProjects()).rejects.toThrow(
+        "PLASMIC_AUTH_USER"
+      );
+      await expect(client.listProjects()).rejects.toThrow(
+        "PLASMIC_AUTH_TOKEN"
+      );
+    });
+
+    it("includes original error in guidance message", async () => {
+      mockFetch.mockRejectedValue(new Error("ECONNREFUSED"));
+
+      await expect(client.listProjects()).rejects.toThrow(
+        "Original error:"
+      );
+    });
+  });
 });

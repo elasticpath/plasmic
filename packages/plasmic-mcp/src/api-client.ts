@@ -32,6 +32,9 @@ export class PlasmicApiError extends Error {
   }
 }
 
+/** Default request timeout in milliseconds (30 seconds). */
+const DEFAULT_TIMEOUT_MS = 30_000;
+
 export class PlasmicApiClient {
   private auth: AuthConfig;
 
@@ -41,8 +44,12 @@ export class PlasmicApiClient {
   /** Cached CSRF token obtained from GET /api/v1/auth/csrf. */
   private csrfToken: string | undefined;
 
-  constructor(auth: AuthConfig) {
+  /** Request timeout in milliseconds. */
+  private timeoutMs: number;
+
+  constructor(auth: AuthConfig, timeoutMs: number = DEFAULT_TIMEOUT_MS) {
     this.auth = auth;
+    this.timeoutMs = timeoutMs;
   }
 
   private makeHeaders(): Record<string, string> {
@@ -105,8 +112,15 @@ export class PlasmicApiClient {
         headers,
         body: body ? JSON.stringify(body) : undefined,
         redirect: "manual",
+        signal: AbortSignal.timeout(this.timeoutMs),
       });
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.name === "TimeoutError") {
+        throw new Error(
+          `Request to Plasmic API timed out after ${this.timeoutMs / 1000}s (${method} ${urlPath}). ` +
+            `The server may be under heavy load. Try again in a moment.`
+        );
+      }
       throw new Error(
         `Could not reach Plasmic API at ${this.auth.host}. ` +
           `Check your network and PLASMIC_AUTH_HOST setting. (${err})`
@@ -138,6 +152,14 @@ export class PlasmicApiClient {
       } catch {
         errorMessage = `HTTP ${response.status}: ${response.statusText}`;
       }
+
+      // Add actionable guidance for server errors
+      if (response.status >= 500) {
+        errorMessage =
+          `Server error (HTTP ${response.status}): ${errorMessage}. ` +
+          `This is a Plasmic server issue. Try again in a moment.`;
+      }
+
       throw new PlasmicApiError(errorMessage, response.status, errorType);
     }
 
@@ -164,10 +186,20 @@ export class PlasmicApiClient {
   }
 
   async listProjects(): Promise<ListProjectsResponse> {
-    return this.request<ListProjectsResponse>(
-      "GET",
-      "/api/v1/projects?query=all"
-    );
+    try {
+      return await this.request<ListProjectsResponse>(
+        "GET",
+        "/api/v1/projects?query=all"
+      );
+    } catch (err: any) {
+      // Add specific guidance for list-projects failures
+      const hint =
+        `Failed to list projects. ` +
+        `Check that: (1) PLASMIC_AUTH_USER and PLASMIC_AUTH_TOKEN are correct, ` +
+        `(2) the Plasmic server at ${this.auth.host} is reachable, ` +
+        `(3) your API token has project access permissions.`;
+      throw new Error(`${hint} Original error: ${err.message}`);
+    }
   }
 
   async getProjectBundle(projectId: string): Promise<ProjectBundleResponse> {

@@ -47,6 +47,7 @@ import {
 } from "../__mocks__/wab-tpl-mgr";
 import { mockMkTplTagX, mockMkTplInlinedText, mockMkTplComponentX } from "../__mocks__/wab-tpls";
 import { mockEnsureVariantSetting } from "../__mocks__/wab-variants";
+import { mockUndoChanges } from "../__mocks__/wab-undo-util";
 import type { PlasmicApiClient } from "../api-client";
 import type { Session } from "../session";
 
@@ -2777,6 +2778,199 @@ describe("edit-tools", () => {
         { uuid: "auto-uuid", name: "isExpanded" },
         { uuid: "extra-uuid", name: "Extra" },
       ]);
+    });
+  });
+
+  // ==========================================================================
+  // Error recovery: auto-rollback on save failure
+  //
+  // When saveManager.saveChanges() fails (network error, 412 conflict, site
+  // invariant violation), the in-memory model must be automatically reverted
+  // so the next mutation can succeed without calling refresh-project.
+  // ==========================================================================
+
+  describe("error recovery: auto-rollback on save failure", () => {
+    it("rolls back model changes when updateStyles save fails", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Box" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+
+      // Return non-empty changes so rollback has something to undo
+      const fakeChanges = {
+        changes: [{ changeNode: { inst: {}, field: "text" }, type: "update" }],
+        newInsts: [],
+        removedInsts: [],
+      };
+      mockWithRecording.mockReturnValue(fakeChanges);
+
+      setupSession(comp);
+
+      // Make save fail
+      api.saveRevision.mockRejectedValueOnce(new Error("Network error"));
+
+      await expect(
+        updateStyles(api, "comp-1", "Box", { color: "red" })
+      ).rejects.toThrow("Network error");
+
+      // undoChanges should have been called to rollback
+      expect(mockUndoChanges).toHaveBeenCalledWith(fakeChanges.changes);
+    });
+
+    it("rolls back model changes when updateText save fails", async () => {
+      const textNode = mkTag({
+        uuid: "text-1",
+        name: "Title",
+        text: "Original",
+      });
+      const root = mkTag({ uuid: "root-1", children: [textNode] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+
+      const fakeChanges = {
+        changes: [{ changeNode: { inst: {}, field: "text" }, type: "update" }],
+        newInsts: [],
+        removedInsts: [],
+      };
+      mockWithRecording.mockReturnValue(fakeChanges);
+
+      setupSession(comp);
+
+      api.saveRevision.mockRejectedValueOnce(new Error("Save failed"));
+
+      await expect(
+        updateText(api, "comp-1", "Title", "New text")
+      ).rejects.toThrow("Save failed");
+
+      // undoChanges should have been called to rollback
+      expect(mockUndoChanges).toHaveBeenCalledWith(fakeChanges.changes);
+    });
+
+    it("does not push to undo stack when save fails", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Box" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      mockWithRecording.mockReturnValue({
+        changes: [{ changeNode: { inst: {}, field: "x" }, type: "update" }],
+        newInsts: [],
+        removedInsts: [],
+      });
+
+      setupSession(comp);
+
+      // Clear undo stack before test to isolate from other tests
+      const { getUndoDepth, clearUndoStack } = await import("../undo-manager");
+      clearUndoStack();
+
+      api.saveRevision.mockRejectedValueOnce(new Error("Server down"));
+
+      await expect(
+        updateStyles(api, "comp-1", "Box", { color: "red" })
+      ).rejects.toThrow();
+
+      expect(getUndoDepth()).toBe(0);
+    });
+
+    it("does not increment revision when save fails", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Box" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      mockWithRecording.mockReturnValue({
+        changes: [{ changeNode: { inst: {}, field: "x" }, type: "update" }],
+        newInsts: [],
+        removedInsts: [],
+      });
+
+      const session = setupSession(comp);
+      const originalRevision = session.revisionNum;
+      api.saveRevision.mockRejectedValueOnce(new Error("Conflict"));
+
+      await expect(
+        updateStyles(api, "comp-1", "Box", { color: "red" })
+      ).rejects.toThrow();
+
+      expect(session.revisionNum).toBe(originalRevision);
+    });
+
+    it("subsequent mutation succeeds after failed save (no refresh needed)", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Box" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      mockWithRecording.mockReturnValue({
+        changes: [{ changeNode: { inst: {}, field: "x" }, type: "update" }],
+        newInsts: [],
+        removedInsts: [],
+      });
+
+      setupSession(comp);
+
+      // First call fails
+      api.saveRevision.mockRejectedValueOnce(new Error("Temporary error"));
+      await expect(
+        updateStyles(api, "comp-1", "Box", { color: "red" })
+      ).rejects.toThrow("Temporary error");
+
+      // Second call succeeds (no refresh-project needed)
+      api.saveRevision.mockResolvedValueOnce({});
+      const result = await updateStyles(api, "comp-1", "Box", { color: "blue" });
+      expect(result.save.revisionNum).toBe(11);
+    });
+
+    it("validation errors do not accumulate in change tracker", async () => {
+      const containerNode = mkTag({
+        uuid: "container-1",
+        name: "Container",
+        children: [mkTag({ uuid: "child-1" })],
+      });
+      const root = mkTag({ uuid: "root-1", children: [containerNode] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+
+      setupSession(comp);
+
+      // updateText on a container should fail before any recording
+      await expect(
+        updateText(api, "comp-1", "Container", "text")
+      ).rejects.toThrow("container");
+
+      // No save should have been attempted
+      expect(api.saveRevision).not.toHaveBeenCalled();
+      // No undo should have been called (no changes to undo)
+      expect(mockUndoChanges).not.toHaveBeenCalled();
+    });
+
+    it("reports rollback failure with refresh-project guidance", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Box" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      mockWithRecording.mockReturnValue({
+        changes: [{ changeNode: { inst: {}, field: "x" }, type: "update" }],
+        newInsts: [],
+        removedInsts: [],
+      });
+
+      setupSession(comp);
+
+      api.saveRevision.mockRejectedValueOnce(new Error("Save failed"));
+      // Make undoChanges throw to simulate rollback failure
+      mockUndoChanges.mockImplementationOnce(() => {
+        throw new Error("Rollback crashed");
+      });
+
+      await expect(
+        updateStyles(api, "comp-1", "Box", { color: "red" })
+      ).rejects.toThrow("refresh-project");
     });
   });
 });

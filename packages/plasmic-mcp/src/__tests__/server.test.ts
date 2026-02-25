@@ -135,6 +135,7 @@ describe("tool handlers", () => {
   let mockEndBatch: ReturnType<typeof vi.fn>;
   let mockIsBatchActive: ReturnType<typeof vi.fn>;
   let mockCancelBatch: ReturnType<typeof vi.fn>;
+  let mockCancelBatchWithRollback: ReturnType<typeof vi.fn>;
   let mockUndoOperation: ReturnType<typeof vi.fn>;
   let mockClearUndoStack: ReturnType<typeof vi.fn>;
   let mockGetUndoDepth: ReturnType<typeof vi.fn>;
@@ -191,6 +192,7 @@ describe("tool handlers", () => {
     mockEndBatch = vi.fn();
     mockIsBatchActive = vi.fn().mockReturnValue(false);
     mockCancelBatch = vi.fn();
+    mockCancelBatchWithRollback = vi.fn();
     mockUndoOperation = vi.fn();
     mockClearUndoStack = vi.fn();
     mockGetUndoDepth = vi.fn().mockReturnValue(0);
@@ -296,6 +298,7 @@ describe("tool handlers", () => {
       endBatch: (...args: any[]) => mockEndBatch(...args),
       isBatchActive: () => mockIsBatchActive(),
       cancelBatch: () => mockCancelBatch(),
+      cancelBatchWithRollback: () => mockCancelBatchWithRollback(),
       getAccumulatedChanges: () => mockGetAccumulatedChanges(),
     }));
 
