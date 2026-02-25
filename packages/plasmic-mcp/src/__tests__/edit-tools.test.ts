@@ -23,6 +23,7 @@ import {
   addChild,
   removeChild,
   moveChild,
+  cloneChild,
   resolveVariant,
   listVariants,
   createStyleVariant,
@@ -4874,5 +4875,496 @@ describe("removeChild from slot override content", () => {
 
     const tplArr = tplComp.vsettings[0].args[0].expr.tpl;
     expect(tplArr).toEqual([child1, child3]);
+  });
+});
+
+// =============================================================================
+// cloneChild — deep node cloning (P8)
+//
+// clone-child duplicates a node and all its descendants within a component.
+// Every cloned node gets a new UUID. All variant settings (styles, text, attrs)
+// and slot override content are preserved. The clone is inserted as a sibling
+// after the original by default, or at a specified parent + position.
+//
+// Why this matters: building repetitive layouts (card grids, list items, feature
+// sections) requires duplicating existing elements. Without clone-child, Claude
+// must read the full tree, reconstruct the element from scratch via add-child,
+// then copy all styles/text — a fragile multi-step process. clone-child does it
+// in one atomic operation with undo support.
+// =============================================================================
+
+describe("cloneChild", () => {
+  let api: PlasmicApiClient & { saveRevision: ReturnType<typeof vi.fn> };
+
+  function setupSession(component: any) {
+    const session = makeSession({
+      site: { components: [component] },
+    });
+    setSession(session);
+    initChangeTracker(session.site);
+    return session;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    clearNodeCache();
+
+    api = mockApiClient();
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+    mockWithRecording.mockReturnValue({
+      changes: [],
+      newInsts: [],
+      removedInsts: [],
+    });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings?.[0] ?? {});
+  });
+
+  afterEach(() => {
+    disposeChangeTracker();
+    clearSession();
+    vi.restoreAllMocks();
+  });
+
+  it("clones a simple TplTag node as next sibling", async () => {
+    const child = mkTag({
+      uuid: "child-1",
+      name: "Card",
+      tag: "section",
+      text: "Hello World",
+      styles: { "font-size": "16px", color: "red" },
+    });
+    const root = mkTag({ uuid: "root-1", children: [child] });
+    child.parent = root;
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    setupSession(comp);
+
+    const result = await cloneChild(api, "comp-1", "Card");
+
+    // Clone is inserted as next sibling
+    expect(root.children).toHaveLength(2);
+    const clone = root.children[1];
+
+    // New UUID
+    expect(clone.uuid).not.toBe("child-1");
+    expect(result.clonedUuid).toBe(clone.uuid);
+    expect(result.originalUuid).toBe("child-1");
+
+    // Name is auto-generated as "Card (copy)"
+    expect(clone.name).toBe("Card (copy)");
+    expect(result.clonedName).toBe("Card (copy)");
+
+    // Tag preserved
+    expect(clone.tag).toBe("section");
+    expect(clone._type).toBe("TplTag");
+
+    // Text preserved (deep cloned)
+    expect(clone.vsettings[0].text._type).toBe("RawText");
+    expect(clone.vsettings[0].text.text).toBe("Hello World");
+    // Text is a new instance, not the same object
+    expect(clone.vsettings[0].text).not.toBe(child.vsettings[0].text);
+
+    // Styles preserved (deep cloned)
+    expect(clone.vsettings[0].rs.values).toEqual({
+      "font-size": "16px",
+      color: "red",
+    });
+    // RuleSet is a new object
+    expect(clone.vsettings[0].rs).not.toBe(child.vsettings[0].rs);
+
+    // Parent pointer set
+    expect(clone.parent).toBe(root);
+  });
+
+  it("clones with custom newName", async () => {
+    const child = mkTag({ uuid: "child-1", name: "Original" });
+    const root = mkTag({ uuid: "root-1", children: [child] });
+    child.parent = root;
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    setupSession(comp);
+
+    const result = await cloneChild(api, "comp-1", "Original", "CustomClone");
+
+    const clone = root.children[1];
+    expect(clone.name).toBe("CustomClone");
+    expect(result.clonedName).toBe("CustomClone");
+  });
+
+  it("clones a node without name — clone has no auto-name", async () => {
+    const child = mkTag({ uuid: "child-1" });
+    // No name set
+    const root = mkTag({ uuid: "root-1", children: [child] });
+    child.parent = root;
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    setupSession(comp);
+
+    const result = await cloneChild(api, "comp-1", "child-1");
+
+    const clone = root.children[1];
+    // No name on original → no auto-name on clone
+    expect(clone.name).toBeUndefined();
+    expect(result.clonedName).toBeUndefined();
+  });
+
+  it("deep clones children recursively with new UUIDs", async () => {
+    const grandchild = mkTag({ uuid: "gc-1", name: "GrandChild", text: "Nested text" });
+    const child = mkTag({
+      uuid: "child-1",
+      name: "Parent",
+      children: [grandchild],
+    });
+    grandchild.parent = child;
+    const root = mkTag({ uuid: "root-1", children: [child] });
+    child.parent = root;
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    setupSession(comp);
+
+    await cloneChild(api, "comp-1", "Parent");
+
+    const clone = root.children[1];
+    expect(clone.uuid).not.toBe("child-1");
+    expect(clone.children).toHaveLength(1);
+
+    const clonedGc = clone.children[0];
+    expect(clonedGc.uuid).not.toBe("gc-1");
+    expect(clonedGc.name).toBe("GrandChild");
+    expect(clonedGc.vsettings[0].text.text).toBe("Nested text");
+
+    // Parent pointers are correct
+    expect(clonedGc.parent).toBe(clone);
+    expect(clone.parent).toBe(root);
+  });
+
+  it("preserves multiple variant settings", async () => {
+    const baseVariant = { uuid: "base-v", name: "base" };
+    const hoverVariant = { uuid: "hover-v", name: "hover" };
+    const child = {
+      _type: "TplTag",
+      uuid: "child-1",
+      name: "Styled",
+      tag: "div",
+      parent: null as any,
+      children: [],
+      vsettings: [
+        {
+          variants: [baseVariant],
+          rs: { values: { color: "blue" }, mixins: [] },
+          text: null,
+          attrs: null,
+          args: null,
+        },
+        {
+          variants: [hoverVariant],
+          rs: { values: { color: "red" }, mixins: [] },
+          text: null,
+          attrs: null,
+          args: null,
+        },
+      ],
+    };
+    const root = mkTag({ uuid: "root-1", children: [child] });
+    child.parent = root;
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    setupSession(comp);
+
+    await cloneChild(api, "comp-1", "Styled");
+
+    const clone = root.children[1];
+    expect(clone.vsettings).toHaveLength(2);
+
+    // Base variant setting
+    expect(clone.vsettings[0].variants).toEqual([baseVariant]); // Same variant references
+    expect(clone.vsettings[0].rs.values).toEqual({ color: "blue" });
+    expect(clone.vsettings[0].rs).not.toBe(child.vsettings[0].rs); // Different rs object
+
+    // Hover variant setting
+    expect(clone.vsettings[1].variants).toEqual([hoverVariant]);
+    expect(clone.vsettings[1].rs.values).toEqual({ color: "red" });
+    expect(clone.vsettings[1].rs).not.toBe(child.vsettings[1].rs);
+  });
+
+  it("clones attrs with dynamic expressions", async () => {
+    const child = {
+      _type: "TplTag",
+      uuid: "child-1",
+      name: "Link",
+      tag: "a",
+      parent: null as any,
+      children: [],
+      vsettings: [{
+        rs: { values: {}, mixins: [] },
+        text: null,
+        attrs: {
+          href: { _type: "CustomCode", code: '"https://example.com"', fallback: null },
+          "data-id": { _type: "CustomCode", code: '"123"', fallback: null },
+        },
+        args: null,
+      }],
+    };
+    const root = mkTag({ uuid: "root-1", children: [child] });
+    child.parent = root;
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    setupSession(comp);
+
+    await cloneChild(api, "comp-1", "Link");
+
+    const clone = root.children[1];
+    expect(clone.vsettings[0].attrs.href._type).toBe("CustomCode");
+    expect(clone.vsettings[0].attrs.href.code).toBe('"https://example.com"');
+    // Attrs are new objects
+    expect(clone.vsettings[0].attrs).not.toBe(child.vsettings[0].attrs);
+    expect(clone.vsettings[0].attrs.href).not.toBe(child.vsettings[0].attrs.href);
+  });
+
+  it("clones ExprText (dynamic text)", async () => {
+    const child = {
+      _type: "TplTag",
+      uuid: "child-1",
+      name: "DynText",
+      tag: "div",
+      parent: null as any,
+      children: [],
+      vsettings: [{
+        rs: { values: {}, mixins: [] },
+        text: {
+          _type: "ExprText",
+          expr: { _type: "CustomCode", code: "$ctx.title", fallback: null },
+          html: false,
+        },
+        attrs: null,
+        args: null,
+      }],
+    };
+    const root = mkTag({ uuid: "root-1", children: [child] });
+    child.parent = root;
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    setupSession(comp);
+
+    await cloneChild(api, "comp-1", "DynText");
+
+    const clone = root.children[1];
+    expect(clone.vsettings[0].text._type).toBe("ExprText");
+    expect(clone.vsettings[0].text.expr._type).toBe("CustomCode");
+    expect(clone.vsettings[0].text.expr.code).toBe("$ctx.title");
+    expect(clone.vsettings[0].text.html).toBe(false);
+    // New instances
+    expect(clone.vsettings[0].text).not.toBe(child.vsettings[0].text);
+    expect(clone.vsettings[0].text.expr).not.toBe(child.vsettings[0].text.expr);
+  });
+
+  it("clones TplComponent with slot override content", async () => {
+    const slotChild = mkTag({ uuid: "sc-1", name: "SlotContent", text: "Slot text" });
+    const childrenParam = { variable: { name: "children" }, tplSlot: { _type: "TplSlot" } };
+
+    const tplComp: any = {
+      _type: "TplComponent",
+      uuid: "tcomp-1",
+      name: "CardInstance",
+      tag: undefined,
+      parent: null,
+      children: [],
+      component: { name: "Card", params: [childrenParam] },
+      vsettings: [{
+        variants: [],
+        rs: { values: {}, mixins: [] },
+        text: null,
+        attrs: null,
+        args: [{
+          _type: "Arg",
+          param: childrenParam,
+          expr: { _type: "RenderExpr", tpl: [slotChild] },
+        }],
+      }],
+    };
+    slotChild.parent = tplComp;
+
+    const root = mkTag({ uuid: "root-1", children: [tplComp] });
+    tplComp.parent = root;
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    setupSession(comp);
+
+    await cloneChild(api, "comp-1", "CardInstance");
+
+    expect(root.children).toHaveLength(2);
+    const clone = root.children[1];
+
+    // Clone is a TplComponent
+    expect(clone._type).toBe("TplComponent");
+    expect(clone.uuid).not.toBe("tcomp-1");
+    expect(clone.component).toBe(tplComp.component); // Same component ref
+
+    // Slot override content is deep cloned
+    const cloneArgs = clone.vsettings[0].args;
+    expect(cloneArgs).toHaveLength(1);
+    expect(cloneArgs[0].expr._type).toBe("RenderExpr");
+    expect(cloneArgs[0].expr.tpl).toHaveLength(1);
+
+    const clonedSlotChild = cloneArgs[0].expr.tpl[0];
+    expect(clonedSlotChild.uuid).not.toBe("sc-1"); // New UUID
+    expect(clonedSlotChild.name).toBe("SlotContent");
+    expect(clonedSlotChild.vsettings[0].text.text).toBe("Slot text");
+  });
+
+  it("inserts clone at specified parentRef + position", async () => {
+    const child = mkTag({ uuid: "child-1", name: "Source" });
+    const otherContainer = mkTag({ uuid: "other-1", name: "OtherBox", children: [
+      mkTag({ uuid: "existing-1", name: "Existing" }),
+    ] });
+    const root = mkTag({ uuid: "root-1", children: [child, otherContainer] });
+    child.parent = root;
+    otherContainer.parent = root;
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    setupSession(comp);
+
+    const result = await cloneChild(api, "comp-1", "Source", undefined, "OtherBox", "first");
+
+    // Clone is in OtherBox, not next to Source
+    expect(root.children).toHaveLength(2); // Source and OtherBox, no new sibling
+    expect(otherContainer.children).toHaveLength(2);
+    expect(otherContainer.children[0].name).toBe("Source (copy)");
+    expect(otherContainer.children[0].uuid).not.toBe("child-1");
+  });
+
+  it("errors when cloning root node", async () => {
+    const root = mkTag({ uuid: "root-1", name: "Root" });
+    const comp = mkComponent({ uuid: "comp-1", name: "MyComp", tplTree: root });
+
+    setupSession(comp);
+
+    await expect(
+      cloneChild(api, "comp-1", "Root")
+    ).rejects.toThrow(/Cannot clone the root node/);
+  });
+
+  it("errors when node not found", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    setupSession(comp);
+
+    await expect(
+      cloneChild(api, "comp-1", "nonexistent")
+    ).rejects.toThrow(/not found/);
+  });
+
+  it("errors when component UUID not found", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    setupSession(comp);
+
+    await expect(
+      cloneChild(api, "wrong-uuid", "root-1")
+    ).rejects.toThrow(/not found/);
+  });
+
+  it("all cloned UUIDs are unique (deep tree)", async () => {
+    const gc1 = mkTag({ uuid: "gc-1" });
+    const gc2 = mkTag({ uuid: "gc-2" });
+    const child1 = mkTag({ uuid: "c-1", children: [gc1, gc2] });
+    gc1.parent = child1;
+    gc2.parent = child1;
+    const child2 = mkTag({ uuid: "c-2" });
+    const parent = mkTag({ uuid: "p-1", children: [child1, child2] });
+    child1.parent = parent;
+    child2.parent = parent;
+    const root = mkTag({ uuid: "root-1", children: [parent] });
+    parent.parent = root;
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    setupSession(comp);
+
+    await cloneChild(api, "comp-1", "p-1");
+
+    const clone = root.children[1];
+    const originalUuids = new Set(["gc-1", "gc-2", "c-1", "c-2", "p-1"]);
+    const cloneUuids = new Set<string>();
+
+    // Collect all UUIDs from clone tree
+    function collectUuids(node: any) {
+      cloneUuids.add(node.uuid);
+      for (const c of node.children ?? []) {
+        collectUuids(c);
+      }
+    }
+    collectUuids(clone);
+
+    // No UUID in the clone should match any original UUID
+    for (const uuid of cloneUuids) {
+      expect(originalUuids.has(uuid)).toBe(false);
+    }
+    // All clone UUIDs should be unique
+    expect(cloneUuids.size).toBe(5);
+  });
+
+  it("clone is inserted immediately after original", async () => {
+    const child1 = mkTag({ uuid: "c-1", name: "First" });
+    const child2 = mkTag({ uuid: "c-2", name: "Second" });
+    const child3 = mkTag({ uuid: "c-3", name: "Third" });
+    const root = mkTag({ uuid: "root-1", children: [child1, child2, child3] });
+    child1.parent = root;
+    child2.parent = root;
+    child3.parent = root;
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    setupSession(comp);
+
+    await cloneChild(api, "comp-1", "Second");
+
+    expect(root.children).toHaveLength(4);
+    expect(root.children[0].name).toBe("First");
+    expect(root.children[1].name).toBe("Second");
+    expect(root.children[2].name).toBe("Second (copy)");
+    expect(root.children[3].name).toBe("Third");
+  });
+
+  it("save is called and revision returned", async () => {
+    const child = mkTag({ uuid: "child-1", name: "Item" });
+    const root = mkTag({ uuid: "root-1", children: [child] });
+    child.parent = root;
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    setupSession(comp);
+
+    const result = await cloneChild(api, "comp-1", "Item");
+
+    expect(api.saveRevision).toHaveBeenCalledTimes(1);
+    expect(result.save.revisionNum).toBe(11); // 10 + 1
+  });
+
+  it("modifying clone does not affect original", async () => {
+    const child = mkTag({
+      uuid: "child-1",
+      name: "Card",
+      text: "Original text",
+      styles: { color: "blue" },
+    });
+    const root = mkTag({ uuid: "root-1", children: [child] });
+    child.parent = root;
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+    setupSession(comp);
+
+    await cloneChild(api, "comp-1", "Card");
+
+    const clone = root.children[1];
+
+    // Mutate clone's text and styles
+    clone.vsettings[0].text.text = "Modified text";
+    clone.vsettings[0].rs.values.color = "green";
+
+    // Original is unchanged
+    expect(child.vsettings[0].text.text).toBe("Original text");
+    expect(child.vsettings[0].rs.values.color).toBe("blue");
   });
 });

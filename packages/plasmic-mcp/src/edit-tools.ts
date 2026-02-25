@@ -21,15 +21,21 @@
  * Reference: specs/plasmic-variant-editing.md § Variant-Aware Editing
  */
 
+import { randomUUID } from "crypto";
 import {
   isKnownTplTag,
   isKnownTplComponent,
   isKnownRawText,
   isKnownExprText,
   isKnownRenderExpr,
+  isKnownCustomCode,
+  isKnownObjectPath,
+  isKnownVarRef,
   RawText,
   CustomCode,
   ExprText,
+  ObjectPath,
+  VarRef,
   RenderExpr,
   Arg,
 } from "@/wab/shared/model/classes";
@@ -2112,6 +2118,266 @@ export async function moveChild(
     newParentName: newParent.name,
     newParentUuid: newParent.uuid,
     position: position ?? "last",
+  };
+}
+
+// --- clone-child ---
+
+export interface CloneChildResult {
+  save: SaveResult;
+  clonedName?: string;
+  clonedUuid: string;
+  originalUuid: string;
+}
+
+/**
+ * Deep-clone a single expression value (CustomCode, ObjectPath, VarRef).
+ * Returns a new instance so the clone's expressions are independent of the original.
+ */
+function cloneExpr(expr: any): any {
+  if (!expr) return expr;
+  if (isKnownCustomCode(expr)) {
+    return new CustomCode({
+      code: expr.code,
+      fallback: expr.fallback ? cloneExpr(expr.fallback) : expr.fallback,
+    });
+  }
+  if (isKnownObjectPath(expr)) {
+    return new ObjectPath({
+      path: [...expr.path],
+      fallback: expr.fallback ? cloneExpr(expr.fallback) : expr.fallback,
+    });
+  }
+  if (isKnownVarRef(expr)) {
+    return new VarRef({ variable: expr.variable });
+  }
+  // Unknown expression type — shallow copy as fallback
+  return { ...expr };
+}
+
+/**
+ * Deep-clone text content (RawText or ExprText).
+ */
+function cloneText(text: any): any {
+  if (!text) return text;
+  if (isKnownRawText(text)) {
+    return new RawText({
+      text: text.text,
+      markers: [...(text.markers ?? [])],
+    });
+  }
+  if (isKnownExprText(text)) {
+    return new ExprText({
+      expr: cloneExpr(text.expr),
+      html: text.html ?? false,
+    });
+  }
+  return { ...text };
+}
+
+/**
+ * Deep-clone an attrs object (key → Expr map).
+ */
+function cloneAttrs(attrs: any): any {
+  if (!attrs) return attrs;
+  const cloned: any = {};
+  for (const [key, value] of Object.entries(attrs)) {
+    cloned[key] = cloneExpr(value);
+  }
+  return cloned;
+}
+
+/**
+ * Deep-clone a RuleSet (CSS styles container).
+ */
+function cloneRuleSet(rs: any): any {
+  if (!rs) return rs;
+  return {
+    values: { ...(rs.values ?? {}) },
+    mixins: [...(rs.mixins ?? [])],
+    ...(rs.animations !== undefined ? { animations: [...rs.animations] } : {}),
+  };
+}
+
+/**
+ * Deep-clone slot override args (Arg[] on TplComponent variant settings).
+ * Each RenderExpr's tpl nodes are recursively deep-cloned.
+ */
+function cloneArgs(args: any[]): any[] {
+  if (!args || args.length === 0) return [];
+  return args.map((arg: any) => {
+    if (isKnownRenderExpr(arg.expr)) {
+      const clonedTpls = (arg.expr.tpl ?? []).map((t: any) => deepCloneTpl(t));
+      return new Arg({
+        param: arg.param,
+        expr: new RenderExpr({ tpl: clonedTpls }),
+      });
+    }
+    // Non-render expr args (CustomCode props, etc.)
+    return new Arg({
+      param: arg.param,
+      expr: cloneExpr(arg.expr),
+    });
+  });
+}
+
+/**
+ * Deep-clone all variant settings from a node.
+ * Variant references (the Variant objects themselves) are shared — they point
+ * to the same component/global variants. Everything else (RuleSet, text,
+ * attrs, args) is deeply cloned so the clone is fully independent.
+ */
+function cloneVSettings(vsettings: any[]): any[] {
+  if (!vsettings) return [];
+  return vsettings.map((vs: any) => ({
+    variants: vs.variants, // share Variant references (they belong to the component)
+    rs: cloneRuleSet(vs.rs),
+    text: vs.text ? cloneText(vs.text) : vs.text,
+    attrs: vs.attrs ? cloneAttrs(vs.attrs) : vs.attrs,
+    args: vs.args ? cloneArgs(vs.args) : vs.args,
+    // Preserve any additional variant setting fields
+    ...(vs.dataCond !== undefined ? { dataCond: vs.dataCond } : {}),
+    ...(vs.dataRep !== undefined ? { dataRep: vs.dataRep } : {}),
+    ...(vs.columnsConfig !== undefined ? { columnsConfig: vs.columnsConfig } : {}),
+  }));
+}
+
+/**
+ * Deep-clone a TplNode and all its descendants.
+ *
+ * Every cloned node gets a new UUID (via crypto.randomUUID) so there are no
+ * duplicate UUIDs in the model. Variant references (shared objects) are
+ * preserved; everything else (styles, text, attrs, slot overrides) is
+ * independently cloned.
+ *
+ * Handles TplTag (with children) and TplComponent (with slot override args).
+ * Parent pointers are set on cloned children so tree traversal works.
+ */
+function deepCloneTpl(node: any): any {
+  const newUuid = randomUUID();
+
+  // Clone children recursively
+  const clonedChildren = (node.children ?? []).map((c: any) => deepCloneTpl(c));
+
+  // Clone variant settings (all variants, not just base)
+  const clonedVsettings = cloneVSettings(node.vsettings ?? []);
+
+  const clone: any = {
+    _type: node._type,
+    uuid: newUuid,
+    tag: node.tag,
+    name: node.name,
+    parent: null, // set by caller
+    children: clonedChildren,
+    vsettings: clonedVsettings,
+  };
+
+  // TplComponent: preserve the component reference (points to same Component)
+  if (isKnownTplComponent(node)) {
+    clone.component = node.component;
+  }
+
+  // TplSlot: preserve the param reference
+  if (node._type === "TplSlot" && node.param) {
+    clone.param = node.param;
+    clone.defaultContents = (node.defaultContents ?? []).map((c: any) => {
+      const clonedDefault = deepCloneTpl(c);
+      clonedDefault.parent = clone;
+      return clonedDefault;
+    });
+  }
+
+  // Set parent pointers on cloned children
+  for (const child of clonedChildren) {
+    child.parent = clone;
+  }
+
+  return clone;
+}
+
+/**
+ * Clone a node and insert the copy as a sibling (or at a specified location).
+ *
+ * Deep-clones the target node and all descendants with new UUIDs.
+ * All variant settings (base + non-base) are copied. Text, styles, attrs,
+ * and slot override content are preserved on the clone.
+ *
+ * By default the clone is inserted as the next sibling of the original.
+ * When parentRef + position are provided, the clone is inserted there instead.
+ *
+ * Cannot clone the root node of a component (it has no parent to insert into).
+ */
+export async function cloneChild(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  nodeRef: string,
+  newName?: string,
+  parentRef?: string,
+  position?: string | number
+): Promise<CloneChildResult> {
+  const component = findComponent(componentUuid);
+  const result = resolveNode(component, nodeRef);
+  const resolved = requireSingleNode(result, nodeRef);
+
+  // Cannot clone root node
+  if (resolved.node === component.tplTree) {
+    throw new Error(
+      `Cannot clone the root node of component "${component.name}". ` +
+        `Clone individual child nodes instead.`
+    );
+  }
+
+  const tracker = getChangeTracker();
+  let clonedNode: any;
+
+  const changes = tracker.withRecording(() => {
+    // Deep clone the node and all descendants
+    clonedNode = deepCloneTpl(resolved.node);
+
+    // Set the name on the clone
+    if (newName !== undefined) {
+      clonedNode.name = newName;
+    } else if (resolved.node.name) {
+      clonedNode.name = `${resolved.node.name} (copy)`;
+    }
+
+    if (parentRef) {
+      // Insert at specified parent + position
+      const parentResult = resolveNode(component, parentRef);
+      const parentResolved = requireSingleNode(parentResult, parentRef);
+      if (!isKnownTplTag(parentResolved.node)) {
+        throw new Error(
+          `Parent node "${parentRef}" is not a container and cannot have children added.`
+        );
+      }
+      insertChild(parentResolved.node, clonedNode, position);
+    } else {
+      // Insert as sibling after the original
+      const parentInfo = findParent(component.tplTree, resolved.node);
+      if (!parentInfo) {
+        throw new Error(
+          `Cannot find parent of node "${nodeRef}". The node may be detached.`
+        );
+      }
+      // Insert right after the original node
+      parentInfo.childrenArray.splice(parentInfo.childIndex + 1, 0, clonedNode);
+      clonedNode.parent = parentInfo.parent;
+    }
+  });
+
+  const componentIid = getComponentIid(component);
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `clone-child: ${resolved.name ?? nodeRef}`,
+    componentIid ? [componentIid] : []
+  );
+
+  return {
+    save,
+    clonedName: clonedNode?.name,
+    clonedUuid: clonedNode?.uuid,
+    originalUuid: resolved.uuid,
   };
 }
 

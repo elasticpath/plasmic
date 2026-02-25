@@ -48,6 +48,7 @@ import {
   addChild,
   removeChild,
   moveChild,
+  cloneChild,
   listVariants,
   createStyleVariant,
   createVariantGroup,
@@ -1826,6 +1827,107 @@ export function createServer(): McpServer {
         };
       } catch (err: any) {
         return handleMutationError("moving child", err);
+      }
+    }
+  );
+
+  // --- clone-child ---
+  // Duplicates a node and all its descendants within a component.
+  // By default the clone is inserted as the next sibling of the original.
+  // Supports dry-run mode (no persistence or cache invalidation in dry-run).
+  server.tool(
+    "clone-child",
+    "Duplicate an existing element and all its descendants. Creates a deep copy with new UUIDs. Clone is inserted as a sibling after the original by default.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component containing the node"),
+      nodeRef: z
+        .string()
+        .describe(
+          "Reference to the node to clone (UUID, name, path, or index)"
+        ),
+      newName: z
+        .string()
+        .optional()
+        .describe(
+          'Name for the cloned node. Defaults to "Original Name (copy)" if the original has a name.'
+        ),
+      parentRef: z
+        .string()
+        .optional()
+        .describe(
+          "Reference to a different parent to insert the clone into. If omitted, clone is inserted as a sibling of the original."
+        ),
+      position: z
+        .union([z.string(), z.number()])
+        .optional()
+        .describe(
+          'Where to insert the clone: "first", "last" (default), or a numeric index. Only used with parentRef.'
+        ),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe(
+          "When true, shows what would change without persisting. Model is left unchanged."
+        ),
+    },
+    async ({ componentUuid, nodeRef, newName, parentRef, position, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            cloneChild(apiClient, componentUuid, nodeRef, newName, parentRef, position)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    cloned: result.clonedName ?? result.clonedUuid,
+                    clonedUuid: result.clonedUuid,
+                    originalUuid: result.originalUuid,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await cloneChild(
+          apiClient,
+          componentUuid,
+          nodeRef,
+          newName,
+          parentRef,
+          position
+        );
+        // Structural edit: invalidate node resolver cache for this component
+        invalidateNodeCache(componentUuid);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  cloned: result.clonedName ?? result.clonedUuid,
+                  clonedUuid: result.clonedUuid,
+                  originalUuid: result.originalUuid,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("cloning child", err);
       }
     }
   );

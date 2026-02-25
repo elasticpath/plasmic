@@ -125,6 +125,7 @@ describe("tool handlers", () => {
   let mockAddChild: ReturnType<typeof vi.fn>;
   let mockRemoveChild: ReturnType<typeof vi.fn>;
   let mockMoveChild: ReturnType<typeof vi.fn>;
+  let mockCloneChild: ReturnType<typeof vi.fn>;
   let mockListVariants: ReturnType<typeof vi.fn>;
   let mockRenameComponent: ReturnType<typeof vi.fn>;
   let mockUpdatePageMeta: ReturnType<typeof vi.fn>;
@@ -182,6 +183,7 @@ describe("tool handlers", () => {
     mockAddChild = vi.fn();
     mockRemoveChild = vi.fn();
     mockMoveChild = vi.fn();
+    mockCloneChild = vi.fn();
     mockListVariants = vi.fn();
     mockRenameComponent = vi.fn();
     mockUpdatePageMeta = vi.fn();
@@ -285,6 +287,7 @@ describe("tool handlers", () => {
       addChild: (...args: any[]) => mockAddChild(...args),
       removeChild: (...args: any[]) => mockRemoveChild(...args),
       moveChild: (...args: any[]) => mockMoveChild(...args),
+      cloneChild: (...args: any[]) => mockCloneChild(...args),
       listVariants: (...args: any[]) => mockListVariants(...args),
       renameComponent: (...args: any[]) => mockRenameComponent(...args),
       updatePageMeta: (...args: any[]) => mockUpdatePageMeta(...args),
@@ -1726,6 +1729,78 @@ describe("tool handlers", () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("Error moving child");
+    });
+  });
+
+  describe("clone-child", () => {
+    it("delegates to cloneChild and returns structured result", async () => {
+      mockCloneChild.mockResolvedValue({
+        save: { revisionNum: 12, incremental: true },
+        clonedName: "Card (copy)",
+        clonedUuid: "new-uuid-1",
+        originalUuid: "orig-uuid-1",
+      });
+
+      const result = await client.callTool({
+        name: "clone-child",
+        arguments: {
+          componentUuid: "comp-1",
+          nodeRef: "Card",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.cloned).toBe("Card (copy)");
+      expect(output.clonedUuid).toBe("new-uuid-1");
+      expect(output.originalUuid).toBe("orig-uuid-1");
+      expect(output.revision).toBe(12);
+
+      expect(mockCloneChild).toHaveBeenCalledWith(
+        mockApiClient, "comp-1", "Card", undefined, undefined, undefined
+      );
+    });
+
+    it("passes newName, parentRef, position parameters", async () => {
+      mockCloneChild.mockResolvedValue({
+        save: { revisionNum: 13, incremental: true },
+        clonedName: "CustomName",
+        clonedUuid: "new-uuid-2",
+        originalUuid: "orig-uuid-2",
+      });
+
+      await client.callTool({
+        name: "clone-child",
+        arguments: {
+          componentUuid: "comp-1",
+          nodeRef: "Source",
+          newName: "CustomName",
+          parentRef: "OtherBox",
+          position: "first",
+        },
+      });
+
+      expect(mockCloneChild).toHaveBeenCalledWith(
+        mockApiClient, "comp-1", "Source", "CustomName", "OtherBox", "first"
+      );
+    });
+
+    it("returns error when cloning root node", async () => {
+      mockCloneChild.mockRejectedValue(
+        new Error('Cannot clone the root node of component "MyComp".')
+      );
+
+      const result = await client.callTool({
+        name: "clone-child",
+        arguments: {
+          componentUuid: "comp-1",
+          nodeRef: "Root",
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Error cloning child");
     });
   });
 
