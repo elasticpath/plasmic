@@ -1729,6 +1729,60 @@ describe("tool handlers", () => {
       expect(mockReadSubtree).toHaveBeenCalledWith({}, { maxDepth: 1 });
     });
 
+    it("passes excludeStyles option when specified", async () => {
+      const mockResolved = {
+        node: {},
+        uuid: "root-uuid",
+        name: "Root",
+        path: "Root",
+        component: {},
+      };
+
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Homepage" }],
+        },
+      });
+      mockResolveNode.mockReturnValue({ nodes: [mockResolved], isAmbiguous: false });
+      mockRequireSingleNode.mockReturnValue(mockResolved);
+      mockReadSubtree.mockReturnValue({ type: "tag", tag: "div" });
+      mockCountTreeNodes.mockReturnValue(1);
+
+      await client.callTool({
+        name: "get-subtree",
+        arguments: { componentUuid: "comp-1", nodeRef: "Root", excludeStyles: true },
+      });
+
+      expect(mockReadSubtree).toHaveBeenCalledWith({}, { excludeStyles: true });
+    });
+
+    it("passes both maxDepth and excludeStyles when both specified", async () => {
+      const mockResolved = {
+        node: {},
+        uuid: "root-uuid",
+        name: "Root",
+        path: "Root",
+        component: {},
+      };
+
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Homepage" }],
+        },
+      });
+      mockResolveNode.mockReturnValue({ nodes: [mockResolved], isAmbiguous: false });
+      mockRequireSingleNode.mockReturnValue(mockResolved);
+      mockReadSubtree.mockReturnValue({ type: "tag", tag: "div" });
+      mockCountTreeNodes.mockReturnValue(1);
+
+      await client.callTool({
+        name: "get-subtree",
+        arguments: { componentUuid: "comp-1", nodeRef: "Root", maxDepth: 2, excludeStyles: true },
+      });
+
+      expect(mockReadSubtree).toHaveBeenCalledWith({}, { maxDepth: 2, excludeStyles: true });
+    });
+
     it("returns error for unknown component UUID", async () => {
       mockRequireSession.mockReturnValue({
         site: { components: [] },

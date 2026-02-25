@@ -1207,3 +1207,341 @@ describe("refresh-project", () => {
     expect(undoResult.content[0].text).toContain("Nothing to undo");
   });
 });
+
+// =========================================================================
+// Move-child
+// =========================================================================
+
+describe("move-child", () => {
+  it("move-child → verify new parent → undo → verify original position", async () => {
+    const comp = discoveredComponents[0];
+
+    // Get tree to find containers
+    const treeResult = await client.callTool({
+      name: "get-component-tree",
+      arguments: { componentUuid: comp.uuid },
+    });
+    const tree = parseResponse(treeResult).tree;
+
+    // We need at least 2 children on the root to have a node to move
+    // and a destination container
+    if (!tree.children || tree.children.length < 2) {
+      return;
+    }
+
+    // Add two containers: a source section with a child, and a destination section
+    const addSource = await client.callTool({
+      name: "add-child",
+      arguments: {
+        componentUuid: comp.uuid,
+        parentRef: tree.uuid,
+        child: {
+          type: "box",
+          children: [{ type: "text", value: "Movable Item" }],
+        },
+      },
+    });
+    expect(addSource.isError).toBeFalsy();
+
+    const addDest = await client.callTool({
+      name: "add-child",
+      arguments: {
+        componentUuid: comp.uuid,
+        parentRef: tree.uuid,
+        child: { type: "box", children: [] },
+      },
+    });
+    expect(addDest.isError).toBeFalsy();
+
+    // Re-read tree to get UUIDs of the new containers
+    const afterSetup = await client.callTool({
+      name: "get-component-tree",
+      arguments: { componentUuid: comp.uuid },
+    });
+    const setupTree = parseResponse(afterSetup).tree;
+    const sourceContainer = setupTree.children[setupTree.children.length - 2];
+    const destContainer = setupTree.children[setupTree.children.length - 1];
+
+    // The source container should have 1 child (the text node)
+    expect(sourceContainer.children).toBeDefined();
+    expect(sourceContainer.children.length).toBe(1);
+    const movableNode = sourceContainer.children[0];
+
+    // The dest container should have 0 children
+    expect(destContainer.children?.length ?? 0).toBe(0);
+
+    // Move the text node from source to dest
+    const moveResult = await client.callTool({
+      name: "move-child",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: movableNode.uuid,
+        newParentRef: destContainer.uuid,
+      },
+    });
+
+    expect(moveResult.isError).toBeFalsy();
+    const moveOutput = parseResponse(moveResult);
+    expect(moveOutput.success).toBe(true);
+
+    // Verify: source now has 0 children, dest has 1
+    const afterMove = await client.callTool({
+      name: "get-component-tree",
+      arguments: { componentUuid: comp.uuid },
+    });
+    const movedTree = parseResponse(afterMove).tree;
+    const srcAfter = movedTree.children[movedTree.children.length - 2];
+    const dstAfter = movedTree.children[movedTree.children.length - 1];
+
+    expect(srcAfter.children?.length ?? 0).toBe(0);
+    expect(dstAfter.children.length).toBe(1);
+    expect(dstAfter.children[0].uuid).toBe(movableNode.uuid);
+
+    // Undo → node should move back to source
+    const undoResult = await client.callTool({
+      name: "undo",
+      arguments: {},
+    });
+    expect(undoResult.isError).toBeFalsy();
+
+    const afterUndo = await client.callTool({
+      name: "get-component-tree",
+      arguments: { componentUuid: comp.uuid },
+    });
+    const undoneTree = parseResponse(afterUndo).tree;
+    const srcAfterUndo = undoneTree.children[undoneTree.children.length - 2];
+    const dstAfterUndo = undoneTree.children[undoneTree.children.length - 1];
+
+    expect(srcAfterUndo.children.length).toBe(1);
+    expect(srcAfterUndo.children[0].uuid).toBe(movableNode.uuid);
+    expect(dstAfterUndo.children?.length ?? 0).toBe(0);
+
+    // Clean up: remove the two temporary containers
+    await client.callTool({
+      name: "remove-child",
+      arguments: { componentUuid: comp.uuid, nodeRef: sourceContainer.uuid },
+    });
+    await client.callTool({
+      name: "remove-child",
+      arguments: { componentUuid: comp.uuid, nodeRef: destContainer.uuid },
+    });
+  });
+});
+
+// =========================================================================
+// Management Tools
+// =========================================================================
+
+describe("management tools", () => {
+  it("rename-component → verify new name in list-components", async () => {
+    const comp = discoveredComponents[0];
+    const originalName = comp.name;
+
+    // Rename the component
+    const renameResult = await client.callTool({
+      name: "rename-component",
+      arguments: {
+        componentUuid: comp.uuid,
+        newName: "RenamedTestComponent",
+      },
+    });
+
+    expect(renameResult.isError).toBeFalsy();
+    const renameOutput = parseResponse(renameResult);
+    expect(renameOutput.success).toBe(true);
+    expect(renameOutput.oldName).toBe(originalName);
+
+    // Verify rename persisted via list-components
+    const listResult = await client.callTool({
+      name: "list-components",
+      arguments: {},
+    });
+    const components = parseResponse(listResult);
+    const renamed = components.find((c: any) => c.uuid === comp.uuid);
+    expect(renamed).toBeDefined();
+    expect(renamed.name).toBe("RenamedTestComponent");
+
+    // Undo to restore original name
+    const undoResult = await client.callTool({
+      name: "undo",
+      arguments: {},
+    });
+    expect(undoResult.isError).toBeFalsy();
+
+    // Verify name restored
+    const afterUndo = await client.callTool({
+      name: "list-components",
+      arguments: {},
+    });
+    const restored = parseResponse(afterUndo).find(
+      (c: any) => c.uuid === comp.uuid
+    );
+    expect(restored.name).toBe(originalName);
+  });
+
+  it("get-page-meta → returns page metadata for a page component", async () => {
+    const page = discoveredComponents.find((c) => c.type === "page");
+    if (!page) {
+      return;
+    }
+
+    const result = await client.callTool({
+      name: "get-page-meta",
+      arguments: { componentUuid: page.uuid },
+    });
+
+    expect(result.isError).toBeFalsy();
+    const output = parseResponse(result);
+    expect(output.path).toBeTruthy();
+    expect(typeof output.path).toBe("string");
+  });
+
+  it("update-page-meta → verify changes via get-page-meta", async () => {
+    const page = discoveredComponents.find((c) => c.type === "page");
+    if (!page) {
+      return;
+    }
+
+    // Get original metadata
+    const beforeResult = await client.callTool({
+      name: "get-page-meta",
+      arguments: { componentUuid: page.uuid },
+    });
+    const beforeMeta = parseResponse(beforeResult);
+
+    // Update metadata
+    const updateResult = await client.callTool({
+      name: "update-page-meta",
+      arguments: {
+        componentUuid: page.uuid,
+        title: "Integration Test Title",
+        description: "Integration test description",
+      },
+    });
+
+    expect(updateResult.isError).toBeFalsy();
+    const updateOutput = parseResponse(updateResult);
+    expect(updateOutput.success).toBe(true);
+
+    // Verify changes via get-page-meta
+    const afterResult = await client.callTool({
+      name: "get-page-meta",
+      arguments: { componentUuid: page.uuid },
+    });
+    const afterMeta = parseResponse(afterResult);
+    expect(afterMeta.title).toBe("Integration Test Title");
+    expect(afterMeta.description).toBe("Integration test description");
+
+    // Undo to restore
+    const undoResult = await client.callTool({
+      name: "undo",
+      arguments: {},
+    });
+    expect(undoResult.isError).toBeFalsy();
+
+    // Verify restoration
+    const restoredResult = await client.callTool({
+      name: "get-page-meta",
+      arguments: { componentUuid: page.uuid },
+    });
+    const restoredMeta = parseResponse(restoredResult);
+    expect(restoredMeta.title).toBe(beforeMeta.title);
+  });
+
+  it("get-page-meta on non-page → returns error", async () => {
+    const nonPage = discoveredComponents.find((c) => c.type === "component");
+    if (!nonPage) {
+      return;
+    }
+
+    const result = await client.callTool({
+      name: "get-page-meta",
+      arguments: { componentUuid: nonPage.uuid },
+    });
+
+    expect(result.isError).toBe(true);
+    const errorText = result.content?.[0]?.text ?? "";
+    expect(errorText).toContain("not a page");
+  });
+
+  it("get-preview-url → returns preview and studio URLs", async () => {
+    const comp = discoveredComponents[0];
+
+    const result = await client.callTool({
+      name: "get-preview-url",
+      arguments: { componentUuid: comp.uuid },
+    });
+
+    expect(result.isError).toBeFalsy();
+    const output = parseResponse(result);
+    expect(output.studioUrl).toBeTruthy();
+    expect(typeof output.studioUrl).toBe("string");
+    // Studio URL uses projectId, not componentUuid
+    expect(output.studioUrl).toContain("/projects/");
+  });
+
+  it("delete-component → removes component → undo restores it", async () => {
+    // First add a temporary child we can delete, to avoid destroying fixture components
+    const comp = discoveredComponents[0];
+    const treeResult = await client.callTool({
+      name: "get-component-tree",
+      arguments: { componentUuid: comp.uuid },
+    });
+    const tree = parseResponse(treeResult).tree;
+
+    // Add a child to delete (we cannot delete a top-level component without
+    // affecting other tests, but we can test that delete-component properly
+    // rejects deletion of a referenced component)
+    if (discoveredComponents.length < 2) {
+      return;
+    }
+
+    // Try to delete a component that may be referenced by others
+    // This should either succeed or fail with a reference error
+    const targetComp = discoveredComponents.find(
+      (c) => c.type === "component"
+    );
+    if (!targetComp) {
+      return;
+    }
+
+    const deleteResult = await client.callTool({
+      name: "delete-component",
+      arguments: { componentUuid: targetComp.uuid },
+    });
+
+    if (deleteResult.isError) {
+      // If it failed due to references, verify the error message is helpful
+      const errorText = deleteResult.content?.[0]?.text ?? "";
+      expect(
+        errorText.includes("referenced") || errorText.includes("Error")
+      ).toBe(true);
+    } else {
+      // If it succeeded, verify the component is gone
+      const afterDelete = await client.callTool({
+        name: "list-components",
+        arguments: {},
+      });
+      const remaining = parseResponse(afterDelete);
+      const found = remaining.find((c: any) => c.uuid === targetComp.uuid);
+      expect(found).toBeUndefined();
+
+      // Undo the deletion
+      const undoResult = await client.callTool({
+        name: "undo",
+        arguments: {},
+      });
+      expect(undoResult.isError).toBeFalsy();
+
+      // Verify restoration
+      const afterUndo = await client.callTool({
+        name: "list-components",
+        arguments: {},
+      });
+      const restored = parseResponse(afterUndo).find(
+        (c: any) => c.uuid === targetComp.uuid
+      );
+      expect(restored).toBeDefined();
+    }
+  });
+});

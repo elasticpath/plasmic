@@ -11,7 +11,7 @@
  *
  * This means FastBundler.unbundle(), TplMgr, ChangeRecorder, MobX observation,
  * and all model classes run for REAL against a genuine Plasmic bundle fixture
- * (platform/wab/cypress/bundles/page-replacement.json).
+ * (platform/wab/cypress/bundles/active-screen-variant-group.json).
  *
  * Reference: specs/plasmic-integration-tests.md
  */

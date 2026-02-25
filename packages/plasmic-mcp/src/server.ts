@@ -648,8 +648,12 @@ export function createServer(): McpServer {
         .number()
         .optional()
         .describe("Maximum depth below the target node. Omit for full subtree."),
+      excludeStyles: z
+        .boolean()
+        .optional()
+        .describe("Strip styles from output to reduce size."),
     },
-    async ({ componentUuid, nodeRef, maxDepth }) => {
+    async ({ componentUuid, nodeRef, maxDepth, excludeStyles }) => {
       try {
         const session = requireSession();
         const component = session.site.components?.find(
@@ -670,9 +674,15 @@ export function createServer(): McpServer {
 
         const resolveResult = resolveNode(component, nodeRef);
         const resolved = requireSingleNode(resolveResult, nodeRef);
+        const hasOptions = maxDepth !== undefined || excludeStyles;
         const tree = readSubtree(
           resolved.node,
-          maxDepth !== undefined ? { maxDepth } : undefined
+          hasOptions
+            ? {
+                maxDepth,
+                excludeStyles: excludeStyles || undefined,
+              }
+            : undefined
         );
         const nodeCount = tree ? countTreeNodes(tree) : 0;
 
