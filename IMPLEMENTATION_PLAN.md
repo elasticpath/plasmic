@@ -1,6 +1,6 @@
 # Implementation Plan
 
-Last updated: 2026-02-26
+Last updated: 2026-02-25
 
 ## Milestone Status
 
@@ -14,7 +14,8 @@ Last updated: 2026-02-26
 | M3 — Context-Efficient Queries | **Complete** | 3 new tools, enhanced get-component-tree, node resolver cache, 246 total tests |
 | M3.5 — Integration Tests | **Complete** | 16 tests using real MCP modules with duck-typed Site fixture |
 | M4 — Component Creation & Cloning | **Complete** | 2 tools, skill file, router updated, 269 total tests |
-| M5 — E2E Integration Tests | **Not started** | Requires live Plasmic instance |
+| M5 — Nice-to-Have Features | **Complete** | get-subtree tool, Zod validation, 282 total tests |
+| M6 — E2E Integration Tests | **Not started** | Requires live Plasmic instance |
 
 ---
 
@@ -24,49 +25,11 @@ Last updated: 2026-02-26
 
 Spec: `specs/plasmic-component-creation.md`
 
-Two new MCP tools (`create-component`, `clone-component`) allow creating reusable components and duplicating existing pages/components. Both reload the in-memory model after creation. The `/plasmic-create-component` skill handles both creation and cloning workflows.
-
-- [x] **P2.1** Author spec at `specs/plasmic-component-creation.md`
-- [x] **P2.2** Register `create-component` tool in `server.ts` — same as `create-page` but without `path` parameter
-- [x] **P2.3** Register `clone-component` tool in `server.ts` — uses `cloneFrom: { uuid }` to deep-clone
-- [x] **P2.4** Create `/plasmic-create-component` skill with create and clone instructions
-- [x] **P2.5** Update `/plasmic` router with `create-component`/`clone-component` tools and routing rules
-- [x] **P2.6** Add tests: 7 unit tests in server.test.ts + 4 integration tests in integration.test.ts (269 total)
-- [x] **P2.7** Update `/plasmic-patterns` to reference component creation
-- [x] **P2.8** Fix `cloneFrom` type in types.ts (`string` → `{ uuid: string } | { name: string }`)
-- [x] **P2.9** Make `body` optional in `NewComponentReq` (not needed for cloning)
-
 ---
 
-## Priority 3 — Integration Tests (spec exists, COMPLETE)
+## Priority 3 — Integration Tests (COMPLETE)
 
 Spec: `specs/plasmic-integration-tests.md`
-
-Integration tests use real MCP modules (model-loader, tree-reader, node-resolver, edit-tools, session, change-tracker, save-manager, batch-manager, undo-manager) against a realistic duck-typed Site fixture. Only `api-client` is mocked. WAB internals remain mocked via jest.config.cjs moduleNameMapper.
-
-- [x] **P3.1** Bundle fixture at `packages/plasmic-mcp/src/__tests__/fixtures/test-site.ts` — 7-node homepage + 3-node header component
-- [x] **P3.2** Integration test file at `packages/plasmic-mcp/src/__tests__/integration.test.ts`
-- [x] **P3.3** Test: `set-project` → `list-components` → verify real component names/UUIDs
-- [x] **P3.4** Test: `get-component-tree` → verify output matches expected node structure
-- [x] **P3.5** Test: `get-component-summary` → verify compact output, NO styles/text
-- [x] **P3.6** Test: `get-node-details` on named node → full styles/text/attrs
-- [x] **P3.7** Test: summary size vs full tree size (summary is ≤60% for small fixture; M3 measured 73-93% for real components)
-- [x] **P3.8** Test: `get-component-tree` with `maxDepth:1` → children truncated with childCount
-- [x] **P3.9** Test: `update-text` → `get-node-details` → verify new text content
-- [x] **P3.10** Test: `update-styles` → `get-node-details` → verify new styles
-- [x] **P3.11** Test: `begin-batch` → edits → `end-batch` → verify all changes applied
-- [x] **P3.12** Test: edit → verify → `undo` → verify reverted
-- [x] **P3.13** Test: node resolution by UUID, name, path all find same node
-- [x] **P3.14** Test: `add-child` → verify in tree → `remove-child` → verify gone
-- [x] **P3.15** All 258 tests pass (246 existing + 12 integration)
-
-### Remaining: Live E2E Tests (future)
-
-E2E tests against a running Plasmic server are a separate effort requiring environment setup:
-
-- [ ] Create E2E test harness with real HTTP calls (env-gated, skipped without credentials)
-- [ ] E2E test: full read/write cycle against a real Plasmic instance
-- [ ] CI configuration for optional E2E runs
 
 ---
 
@@ -84,12 +47,29 @@ Updated all 7 spec files to check off implemented acceptance criteria.
 
 ---
 
+## Priority 5 — Nice-to-Have Features & Test Coverage (COMPLETE)
+
+Three categories of improvements: new tool, input validation, and test coverage.
+
+- [x] **P5.1** Implement `get-subtree` tool in `server.ts` — returns full tree from a specific node downward with optional `maxDepth`
+- [x] **P5.2** Add `readSubtree()` function to `tree-reader.ts` (thin wrapper around internal `readTplNode`)
+- [x] **P5.3** Add Zod `.min(1)` validation for `create-component` name, `clone-component` name and sourceUuid
+- [x] **P5.4** Integration test: `move-child` → verify new parent → `undo` → verify original position
+- [x] **P5.5** Integration test: `refresh-project` → verify session still valid, undo stack cleared
+- [x] **P5.6** Integration tests for `get-subtree`: full subtree, maxDepth, leaf node, invalid nodeRef
+- [x] **P5.7** Unit tests for `get-subtree` in `server.test.ts`: wiring, maxDepth option, errors
+- [x] **P5.8** Zod validation tests in `server.test.ts`: empty name/sourceUuid rejected
+- [x] **P5.9** Update spec acceptance criteria (3 specs updated)
+- [x] **P5.10** Update skill files with `get-subtree` routing
+- [x] **P5.11** All 282 tests pass (269 → 282, +13 new tests)
+
+---
+
 ## Future Considerations (not yet prioritized)
 
 These items are mentioned in specs as nice-to-haves or future milestones. They are listed here for completeness but are not blocking the primary goal of creating pages from the Claude Code terminal.
 
 - **`save-project` tool** — explicit manual save (spec: `plasmic-incremental-writes.md` nice-to-have)
-- **`get-subtree` tool** — subtree extraction with depth limit (spec: `plasmic-context-efficient-queries.md` nice-to-have)
 - **Variant-aware editing** — edit non-base variants, responsive breakpoints (mentioned as out of scope in edit skills spec)
 - **Style token creation/editing** — currently read-only via `get-tokens`
 - **Image asset management** — currently can only reference URLs; no upload/manage capability

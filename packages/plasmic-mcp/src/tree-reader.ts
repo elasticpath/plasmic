@@ -94,6 +94,18 @@ export function readNodeDetails(tplNode: any): TreeNode {
 }
 
 /**
+ * Read a subtree starting from a specific TplNode with optional depth limiting.
+ * Used by the get-subtree tool to return full tree from a specific node downward.
+ * Combines node-resolver targeting with tree-reader output.
+ */
+export function readSubtree(
+  tplNode: any,
+  options?: TreeReadOptions
+): TreeNode | null {
+  return readTplNode(tplNode, options, 0);
+}
+
+/**
  * Count total nodes in a TreeNode tree.
  */
 export function countTreeNodes(node: TreeNode | null): number {

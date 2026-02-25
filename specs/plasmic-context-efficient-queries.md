@@ -231,7 +231,7 @@ For `export-component-tree` temp files:
 - [x] All new code in new files or additive changes to existing files (upstream merge safe)
 
 ### Nice to Have
-- [ ] `get-subtree(componentUuid, nodeRef, maxDepth?)` — return full tree from a specific node downward
+- [x] `get-subtree(componentUuid, nodeRef, maxDepth?)` — return full tree from a specific node downward
 - [ ] Node resolver cache hit/miss metrics in tool response metadata
 
 ## Happy Path

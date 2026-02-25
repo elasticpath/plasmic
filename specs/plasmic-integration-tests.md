@@ -114,8 +114,8 @@ const fixtureBundle = {
 ### Nice to Have
 
 - [x] Test: `add-child` → verify in tree → `remove-child` → verify gone
-- [ ] Test: `move-child` → verify new parent → `undo` → verify original position
-- [ ] Test: `refresh-project` → verify session still valid
+- [x] Test: `move-child` → verify new parent → `undo` → verify original position
+- [x] Test: `refresh-project` → verify session still valid
 
 ## Happy Path
 

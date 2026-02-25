@@ -9,6 +9,7 @@ You are inspecting a Plasmic project to help the developer understand its struct
 - `get-node-details(componentUuid, nodeRef)` — Get full details (styles, text, attrs) for a single node (~300B). Children shown as summaries. **Use this to drill into specific nodes.**
 - `get-component-tree(componentUuid, maxDepth?, excludeStyles?, summaryOnly?)` — Get full tree with all details (large). Only use when the developer explicitly needs the complete detailed output.
 - `export-component-tree(componentUuid)` — Write full tree to temp file. Returns file path + summary. Use Read tool to inspect sections. Best for complex components.
+- `get-subtree(componentUuid, nodeRef, maxDepth?, excludeStyles?)` — Get the full tree rooted at a specific node. Useful when the developer wants to see a specific section's full tree (e.g., just the hero or footer) without loading the whole component.
 - `get-tokens(type?)` — Get design tokens (colors, spacing, fonts) grouped by type. Optional type filter.
 
 ## Instructions

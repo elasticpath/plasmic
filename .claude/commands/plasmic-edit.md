@@ -8,6 +8,7 @@ You are editing an existing page or component in a Plasmic project.
 - `get-node-details(componentUuid, nodeRef)` — Get full details (styles, text, attrs) for one node (~300B). Children shown as summaries. **Use this to inspect the specific node before/after editing.**
 - `get-component-tree(componentUuid, maxDepth?, excludeStyles?, summaryOnly?)` — Get full tree (large). Only use when you need to see the complete structure with all styles.
 - `export-component-tree(componentUuid)` — Write full tree to temp file. Returns file path + summary. Use Read tool to inspect sections.
+- `get-subtree(componentUuid, nodeRef, maxDepth?, excludeStyles?)` — Get the full tree rooted at a specific node. Use when you want to see a specific section in detail before editing it.
 - `update-text(componentUuid, nodeRef, text)` — Change text content on a node.
 - `update-styles(componentUuid, nodeRef, styles)` — Change CSS styles on a node.
 - `add-child(componentUuid, parentRef, child, position)` — Add a new element.

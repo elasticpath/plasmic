@@ -100,6 +100,7 @@ describe("tool handlers", () => {
   let mockReadComponentTree: jest.Mock;
   let mockReadComponentSummary: jest.Mock;
   let mockReadNodeDetails: jest.Mock;
+  let mockReadSubtree: jest.Mock;
   let mockCountTreeNodes: jest.Mock;
   let mockReadTokens: jest.Mock;
   let mockResolveNode: jest.Mock;
@@ -145,6 +146,7 @@ describe("tool handlers", () => {
     mockReadComponentTree = jest.fn();
     mockReadComponentSummary = jest.fn();
     mockReadNodeDetails = jest.fn();
+    mockReadSubtree = jest.fn();
     mockCountTreeNodes = jest.fn().mockReturnValue(10);
     mockReadTokens = jest.fn();
     mockResolveNode = jest.fn();
@@ -204,6 +206,7 @@ describe("tool handlers", () => {
       readComponentTree: (...args: any[]) => mockReadComponentTree(...args),
       readComponentSummary: (...args: any[]) => mockReadComponentSummary(...args),
       readNodeDetails: (...args: any[]) => mockReadNodeDetails(...args),
+      readSubtree: (...args: any[]) => mockReadSubtree(...args),
       countTreeNodes: (...args: any[]) => mockCountTreeNodes(...args),
     }));
 
@@ -1605,6 +1608,155 @@ describe("tool handlers", () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("Nothing to undo");
+    });
+  });
+
+  // =====================================================================
+  // get-subtree tool
+  // =====================================================================
+
+  describe("get-subtree", () => {
+    it("resolves node and returns subtree via readSubtree", async () => {
+      const mockNode = { fake: "tpl-node" };
+      const mockResolved = {
+        node: mockNode,
+        uuid: "hero-uuid",
+        name: "Hero",
+        path: "Root.Hero",
+        component: {},
+      };
+      const mockTree = {
+        type: "tag",
+        tag: "section",
+        name: "Hero",
+        children: [
+          { type: "tag", tag: "h1", name: "Title" },
+        ],
+      };
+
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [
+            { uuid: "comp-1", name: "Homepage", pageMeta: { path: "/" } },
+          ],
+        },
+      });
+      mockResolveNode.mockReturnValue({
+        nodes: [mockResolved],
+        isAmbiguous: false,
+      });
+      mockRequireSingleNode.mockReturnValue(mockResolved);
+      mockReadSubtree.mockReturnValue(mockTree);
+      mockCountTreeNodes.mockReturnValue(2);
+
+      const result = await client.callTool({
+        name: "get-subtree",
+        arguments: { componentUuid: "comp-1", nodeRef: "Hero" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.component).toBe("Homepage");
+      expect(output.componentUuid).toBe("comp-1");
+      expect(output.subtreeRoot).toBe("Hero");
+      expect(output.path).toBe("Root.Hero");
+      expect(output.nodeCount).toBe(2);
+      expect(output.tree).toEqual(mockTree);
+      expect(mockReadSubtree).toHaveBeenCalledWith(mockNode, undefined);
+    });
+
+    it("passes maxDepth option when specified", async () => {
+      const mockResolved = {
+        node: {},
+        uuid: "root-uuid",
+        name: "Root",
+        path: "Root",
+        component: {},
+      };
+
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Homepage" }],
+        },
+      });
+      mockResolveNode.mockReturnValue({ nodes: [mockResolved], isAmbiguous: false });
+      mockRequireSingleNode.mockReturnValue(mockResolved);
+      mockReadSubtree.mockReturnValue({ type: "tag", tag: "div" });
+      mockCountTreeNodes.mockReturnValue(1);
+
+      await client.callTool({
+        name: "get-subtree",
+        arguments: { componentUuid: "comp-1", nodeRef: "Root", maxDepth: 1 },
+      });
+
+      expect(mockReadSubtree).toHaveBeenCalledWith({}, { maxDepth: 1 });
+    });
+
+    it("returns error for unknown component UUID", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { components: [] },
+      });
+
+      const result = await client.callTool({
+        name: "get-subtree",
+        arguments: { componentUuid: "nonexistent", nodeRef: "Hero" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("not found");
+    });
+
+    it("returns error when node not found", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Homepage" }],
+        },
+      });
+      mockResolveNode.mockReturnValue({ nodes: [], isAmbiguous: false });
+      mockRequireSingleNode.mockImplementation(() => {
+        throw new Error('Node "Missing" not found.');
+      });
+
+      const result = await client.callTool({
+        name: "get-subtree",
+        arguments: { componentUuid: "comp-1", nodeRef: "Missing" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Error reading subtree");
+    });
+  });
+
+  // =====================================================================
+  // Zod validation for create/clone tools
+  // =====================================================================
+
+  describe("Zod validation", () => {
+    it("create-component rejects empty name", async () => {
+      const result = await client.callTool({
+        name: "create-component",
+        arguments: { name: "", body: { type: "vbox" } },
+      });
+
+      expect(result.isError).toBe(true);
+    });
+
+    it("clone-component rejects empty name", async () => {
+      const result = await client.callTool({
+        name: "clone-component",
+        arguments: { sourceUuid: "some-uuid", name: "" },
+      });
+
+      expect(result.isError).toBe(true);
+    });
+
+    it("clone-component rejects empty sourceUuid", async () => {
+      const result = await client.callTool({
+        name: "clone-component",
+        arguments: { sourceUuid: "", name: "CloneName" },
+      });
+
+      expect(result.isError).toBe(true);
     });
   });
 

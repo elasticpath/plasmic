@@ -35,6 +35,7 @@ import {
   readComponentTree,
   readComponentSummary,
   readNodeDetails,
+  readSubtree,
   countTreeNodes,
 } from "./tree-reader.js";
 import { readTokens } from "./token-reader.js";
@@ -571,6 +572,88 @@ export function createServer(): McpServer {
     }
   );
 
+  // --- get-subtree ---
+  // Returns the full tree from a specific node downward, identified by UUID,
+  // name, path, or index. Useful when the developer knows which section they
+  // need and wants to avoid the full component tree. Supports maxDepth to
+  // limit how deep the subtree goes.
+  server.tool(
+    "get-subtree",
+    "Get the full tree from a specific node downward. Use node UUID, name, path, or index to target the subtree root.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component containing the node"),
+      nodeRef: z
+        .string()
+        .describe(
+          'Node reference: UUID, name (e.g., "Hero"), path (e.g., "Root.Hero"), or index (e.g., "#0")'
+        ),
+      maxDepth: z
+        .number()
+        .optional()
+        .describe("Maximum depth below the target node. Omit for full subtree."),
+    },
+    async ({ componentUuid, nodeRef, maxDepth }) => {
+      try {
+        const session = requireSession();
+        const component = session.site.components?.find(
+          (c: any) => c.uuid === componentUuid
+        );
+
+        if (!component) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Component UUID "${componentUuid}" not found in project. Use list-components to see available components.`,
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        const resolveResult = resolveNode(component, nodeRef);
+        const resolved = requireSingleNode(resolveResult, nodeRef);
+        const tree = readSubtree(
+          resolved.node,
+          maxDepth !== undefined ? { maxDepth } : undefined
+        );
+        const nodeCount = tree ? countTreeNodes(tree) : 0;
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  component: component.name,
+                  componentUuid: component.uuid,
+                  subtreeRoot: resolved.name ?? resolved.uuid,
+                  path: resolved.path,
+                  nodeCount,
+                  tree,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error reading subtree: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
   // --- get-tokens ---
   // Reads design tokens (colors, spacing, typography, etc.) from the in-memory
   // model. Returns token names, types, and values so Claude can use the project's
@@ -710,6 +793,7 @@ export function createServer(): McpServer {
     {
       name: z
         .string()
+        .min(1, "Component name is required")
         .describe("Component name in PascalCase (e.g., 'HeroSection')"),
       body: z
         .any()
@@ -796,9 +880,11 @@ export function createServer(): McpServer {
     {
       sourceUuid: z
         .string()
+        .min(1, "Source UUID is required")
         .describe("UUID of the component or page to clone (from list-components)"),
       name: z
         .string()
+        .min(1, "Clone name is required")
         .describe("Name for the cloned component in PascalCase (e.g., 'HeroSectionV2')"),
       path: z
         .string()

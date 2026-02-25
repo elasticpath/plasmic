@@ -121,8 +121,8 @@ The `plasmic.md` router must also be updated to route requests like "create a co
 
 ### Nice to Have
 
-- [ ] `create-component` Zod schema validates that `name` is non-empty
-- [ ] `clone-component` Zod schema validates that `sourceUuid` is a non-empty string
+- [x] `create-component` Zod schema validates that `name` is non-empty
+- [x] `clone-component` Zod schema validates that `sourceUuid` is a non-empty string
 - [x] `plasmic-create-component.md` skill includes examples showing when to use `clone-component` vs `create-component` (copy-with-variation vs new-from-scratch)
 - [x] `server.test.ts` test: `clone-component` with an unknown `sourceUuid` returns `isError: true`
 

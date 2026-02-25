@@ -807,4 +807,241 @@ describe("integration tests", () => {
       }
     });
   });
+
+  // =====================================================================
+  // move-child with undo
+  // =====================================================================
+
+  describe("move-child and undo", () => {
+    it("move-child → verify new parent → undo → verify original position", async () => {
+      // Verify initial structure: Card 1 is in Content (second child of Root)
+      const beforeResult = await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: "page-home-uuid" },
+      });
+      const beforeTree = parseResponse(beforeResult).tree;
+      const contentBefore = beforeTree.children[1]; // Content section
+      expect(contentBefore.name).toBe("Content");
+      expect(contentBefore.children).toHaveLength(2);
+      expect(contentBefore.children[0].name).toBe("Card 1");
+
+      const heroBefore = beforeTree.children[0]; // Hero section
+      expect(heroBefore.name).toBe("Hero");
+      expect(heroBefore.children).toHaveLength(2);
+
+      // Move Card 1 from Content to Hero
+      const moveResult = await client.callTool({
+        name: "move-child",
+        arguments: {
+          componentUuid: "page-home-uuid",
+          nodeRef: "Card 1",
+          newParentRef: "Hero",
+        },
+      });
+      expect(moveResult.isError).toBeFalsy();
+      const moveOutput = parseResponse(moveResult);
+      expect(moveOutput.success).toBe(true);
+      expect(moveOutput.moved).toBe("Card 1");
+      expect(moveOutput.newParent).toBe("Hero");
+
+      // Verify Card 1 moved to Hero
+      const afterMove = await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: "page-home-uuid" },
+      });
+      const afterMoveTree = parseResponse(afterMove).tree;
+      const heroAfterMove = afterMoveTree.children[0];
+      expect(heroAfterMove.children).toHaveLength(3); // Title, Subtitle, Card 1
+      expect(heroAfterMove.children[2].name).toBe("Card 1");
+
+      const contentAfterMove = afterMoveTree.children[1];
+      expect(contentAfterMove.children).toHaveLength(1); // Only Card 2 remains
+
+      // Configure undo mock to move Card 1 back to Content
+      const { requireSession } = require("../session");
+      const session = requireSession();
+      const comp = session.site.components.find(
+        (c: any) => c.uuid === "page-home-uuid"
+      );
+      const heroNode = comp.tplTree.children[0]; // Hero
+      const contentNode = comp.tplTree.children[1]; // Content
+
+      const { mockUndoChanges } = require("@/wab/shared/core/undo-util");
+      mockUndoChanges.mockImplementation(() => {
+        // Card 1 is the last child of Hero after the move
+        const card1 = heroNode.children[heroNode.children.length - 1];
+        // Remove from Hero
+        heroNode.children.splice(heroNode.children.length - 1, 1);
+        // Re-insert at the beginning of Content
+        card1.parent = contentNode;
+        contentNode.children.unshift(card1);
+      });
+
+      // Call undo
+      const undoResult = await client.callTool({
+        name: "undo",
+        arguments: {},
+      });
+      expect(undoResult.isError).toBeFalsy();
+      const undoOutput = parseResponse(undoResult);
+      expect(undoOutput.success).toBe(true);
+
+      // Verify Card 1 is back in Content
+      const afterUndo = await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: "page-home-uuid" },
+      });
+      const afterUndoTree = parseResponse(afterUndo).tree;
+      const heroAfterUndo = afterUndoTree.children[0];
+      expect(heroAfterUndo.children).toHaveLength(2); // Title, Subtitle
+
+      const contentAfterUndo = afterUndoTree.children[1];
+      expect(contentAfterUndo.children).toHaveLength(2); // Card 1, Card 2
+      expect(contentAfterUndo.children[0].name).toBe("Card 1");
+    });
+  });
+
+  // =====================================================================
+  // refresh-project session validity
+  // =====================================================================
+
+  describe("refresh-project", () => {
+    it("refresh-project → session still valid → can list-components and read tree", async () => {
+      // Make an edit first to verify undo stack gets cleared
+      const editResult = await client.callTool({
+        name: "update-text",
+        arguments: {
+          componentUuid: "page-home-uuid",
+          nodeRef: "Hero Title",
+          text: "Pre-refresh text",
+        },
+      });
+      expect(editResult.isError).toBeFalsy();
+
+      // Refresh the project
+      const refreshResult = await client.callTool({
+        name: "refresh-project",
+        arguments: {},
+      });
+      expect(refreshResult.isError).toBeFalsy();
+      const refreshOutput = parseResponse(refreshResult);
+      expect(refreshOutput.success).toBe(true);
+      expect(refreshOutput.projectName).toBe("Test Project");
+      expect(refreshOutput.componentCount).toBe(2);
+      expect(refreshOutput.pageCount).toBe(1);
+
+      // Verify session still works: list-components
+      const listResult = await client.callTool({
+        name: "list-components",
+        arguments: {},
+      });
+      expect(listResult.isError).toBeFalsy();
+      const components = parseResponse(listResult);
+      expect(components).toHaveLength(2);
+
+      // Verify session still works: get-component-tree
+      const treeResult = await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: "page-home-uuid" },
+      });
+      expect(treeResult.isError).toBeFalsy();
+      const treeOutput = parseResponse(treeResult);
+      expect(treeOutput.name).toBe("Homepage");
+      expect(treeOutput.tree).toBeDefined();
+
+      // Verify undo stack was cleared (undo should fail with "nothing to undo")
+      const undoResult = await client.callTool({
+        name: "undo",
+        arguments: {},
+      });
+      expect(undoResult.isError).toBe(true);
+      const undoText = undoResult.content[0].text;
+      expect(undoText).toContain("Nothing to undo");
+    });
+  });
+
+  // =====================================================================
+  // get-subtree
+  // =====================================================================
+
+  describe("get-subtree", () => {
+    it("get-subtree returns full tree from a specific node downward", async () => {
+      const result = await client.callTool({
+        name: "get-subtree",
+        arguments: {
+          componentUuid: "page-home-uuid",
+          nodeRef: "Hero",
+        },
+      });
+
+      expect(result.isError).toBeFalsy();
+      const output = parseResponse(result);
+      expect(output.subtreeRoot).toBe("Hero");
+      expect(output.component).toBe("Homepage");
+      expect(output.nodeCount).toBe(3); // Hero + Title + Subtitle
+
+      const tree = output.tree;
+      expect(tree.type).toBe("tag");
+      expect(tree.tag).toBe("section");
+      expect(tree.name).toBe("Hero");
+      expect(tree.styles).toBeDefined();
+      expect(tree.children).toHaveLength(2);
+      expect(tree.children[0].name).toBe("Hero Title");
+      expect(tree.children[0].text).toBe("Welcome Home");
+      expect(tree.children[1].name).toBe("Hero Subtitle");
+    });
+
+    it("get-subtree with maxDepth limits depth", async () => {
+      const result = await client.callTool({
+        name: "get-subtree",
+        arguments: {
+          componentUuid: "page-home-uuid",
+          nodeRef: "Root",
+          maxDepth: 0,
+        },
+      });
+
+      expect(result.isError).toBeFalsy();
+      const output = parseResponse(result);
+      expect(output.subtreeRoot).toBe("Root");
+
+      const tree = output.tree;
+      expect(tree.name).toBe("Root");
+      expect(tree.childCount).toBe(2);
+      expect(tree.children).toBeUndefined();
+    });
+
+    it("get-subtree on leaf node returns single node", async () => {
+      const result = await client.callTool({
+        name: "get-subtree",
+        arguments: {
+          componentUuid: "page-home-uuid",
+          nodeRef: "Hero Title",
+        },
+      });
+
+      expect(result.isError).toBeFalsy();
+      const output = parseResponse(result);
+      expect(output.subtreeRoot).toBe("Hero Title");
+      expect(output.nodeCount).toBe(1);
+
+      const tree = output.tree;
+      expect(tree.tag).toBe("h1");
+      expect(tree.text).toBe("Welcome Home");
+      expect(tree.styles.fontSize).toBe("48px");
+    });
+
+    it("get-subtree with invalid nodeRef returns error", async () => {
+      const result = await client.callTool({
+        name: "get-subtree",
+        arguments: {
+          componentUuid: "page-home-uuid",
+          nodeRef: "NonexistentNode",
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("not found");
+    });
+  });
 });
