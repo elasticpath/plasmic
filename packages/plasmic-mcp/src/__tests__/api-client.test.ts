@@ -10,6 +10,13 @@
 import { PlasmicApiClient } from "../api-client";
 import type { AuthConfig } from "../types";
 
+/** Returns a minimal Headers-like object that satisfies storeCookies(). */
+function mockHeaders(setCookies: string[] = []) {
+  return {
+    getSetCookie: () => setCookies,
+  };
+}
+
 describe("PlasmicApiClient", () => {
   const auth: AuthConfig = {
     host: "https://studio.example.com",
@@ -38,6 +45,7 @@ describe("PlasmicApiClient", () => {
       };
       mockFetch.mockResolvedValue({
         ok: true,
+        headers: mockHeaders(),
         json: () => Promise.resolve(mockResponse),
       });
 
@@ -66,6 +74,7 @@ describe("PlasmicApiClient", () => {
       };
       mockFetch.mockResolvedValue({
         ok: true,
+        headers: mockHeaders(),
         json: () => Promise.resolve(mockResponse),
       });
 
@@ -85,6 +94,7 @@ describe("PlasmicApiClient", () => {
       };
       mockFetch.mockResolvedValue({
         ok: true,
+        headers: mockHeaders(),
         json: () => Promise.resolve(mockResponse),
       });
 
@@ -99,6 +109,7 @@ describe("PlasmicApiClient", () => {
     it("makes POST request with serialized body", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
+        headers: mockHeaders(),
         json: () => Promise.resolve({ success: true }),
       });
 
@@ -121,6 +132,7 @@ describe("PlasmicApiClient", () => {
     it("does not include body for undefined body param", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
+        headers: mockHeaders(),
         json: () => Promise.resolve({}),
       });
 
@@ -145,6 +157,7 @@ describe("PlasmicApiClient", () => {
 
       mockFetch.mockResolvedValue({
         ok: true,
+        headers: mockHeaders(),
         json: () => Promise.resolve({ projects: [], perms: [] }),
       });
 
@@ -166,6 +179,7 @@ describe("PlasmicApiClient", () => {
     it("does not include Authorization header without basic auth", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
+        headers: mockHeaders(),
         json: () => Promise.resolve({ projects: [], perms: [] }),
       });
 
@@ -182,6 +196,7 @@ describe("PlasmicApiClient", () => {
         ok: false,
         status: 403,
         statusText: "Forbidden",
+        headers: mockHeaders(),
       });
 
       await expect(client.listProjects()).rejects.toThrow(
@@ -194,6 +209,7 @@ describe("PlasmicApiClient", () => {
         ok: false,
         status: 400,
         statusText: "Bad Request",
+        headers: mockHeaders(),
         json: () =>
           Promise.resolve({ error: { message: "Invalid project ID" } }),
       });
@@ -208,6 +224,7 @@ describe("PlasmicApiClient", () => {
         ok: false,
         status: 500,
         statusText: "Internal Server Error",
+        headers: mockHeaders(),
         json: () => Promise.resolve({}),
       });
 
@@ -221,6 +238,7 @@ describe("PlasmicApiClient", () => {
         ok: false,
         status: 502,
         statusText: "Bad Gateway",
+        headers: mockHeaders(),
         json: () => Promise.reject(new Error("not JSON")),
       });
 

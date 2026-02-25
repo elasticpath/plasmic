@@ -187,7 +187,22 @@ export interface TreeNode {
   attrs?: Record<string, unknown>;
   layoutType?: "vbox" | "hbox" | "box";
   children?: TreeNode[];
+  /** Number of immediate children. Present in summary mode and when depth-truncated. */
+  childCount?: number;
   componentName?: string;
   componentUuid?: string;
   slotName?: string;
+}
+
+// --- Tree reader options ---
+// Controls how much detail the tree reader returns. All fields optional for
+// backward compatibility — omitting all options produces the full tree.
+
+export interface TreeReadOptions {
+  /** Stop recursing after this many levels (0 = root only, 1 = root + children, etc.). */
+  maxDepth?: number;
+  /** Strip CSS styles from output to reduce size. */
+  excludeStyles?: boolean;
+  /** Compact mode: type/tag/name/uuid/childCount only — no styles, attrs, or text. */
+  summaryOnly?: boolean;
 }

@@ -5,7 +5,10 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `list-projects()` — List all accessible projects. No active project required.
 - `get-project-meta()` — Get project metadata (name, counts, tokens). Requires active project.
 - `list-components()` — List all pages and components with UUIDs and paths. Requires active project.
-- `get-component-tree(componentUuid)` — Get a component's full element tree as JSON (tags, CSS, text, images, layout). Requires active project.
+- `get-component-summary(componentUuid, maxDepth?)` — Get a compact outline of a component's structure (~2KB). No styles or text. **Preferred for exploring structure.**
+- `get-node-details(componentUuid, nodeRef)` — Get full details for a single node (~300B). **Use to inspect specific nodes.**
+- `get-component-tree(componentUuid, maxDepth?, excludeStyles?, summaryOnly?)` — Get a component's full element tree as JSON (tags, CSS, text, images, layout). Large output. Only use when full detail is needed.
+- `export-component-tree(componentUuid)` — Write full tree to temp file. Returns file path + compact summary. Use Read tool to inspect sections.
 - `get-tokens(type?)` — Get design tokens (colors, spacing, fonts) grouped by type. Optional type filter. Requires active project.
 - `create-page(name, path, body)` — Create a new page with a PlasmicElement tree. Requires active project.
 - `update-text(componentUuid, nodeRef, text)` — Change text content on a node.
@@ -22,7 +25,7 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 2. Interpret the user's request and route to the appropriate action:
    - "create a page", "add a page", "make a new page" → build a PlasmicElement tree and call `create-page`. Use `/plasmic-patterns` for validated page section patterns (hero, grid, card, form, pricing, testimonial, CTA, navigation, footer).
    - "what pages exist", "show me the project", "list components" → call `get-project-meta` and `list-components`
-   - "show me the homepage", "what does X look like" → find the component UUID via `list-components`, then call `get-component-tree`
+   - "show me the homepage", "what does X look like" → find the component UUID via `list-components`, then call `get-component-summary` (for overview) or `get-node-details` (for specific nodes)
    - "what colors are available", "show me the design tokens", "what fonts" → call `get-tokens` (optionally with a type filter)
    - "change X to Y", "update the heading", "make it bigger", "make the background blue" → delegate to `/plasmic-edit`
    - "add a section", "insert a card", "add a testimonial below the hero" → delegate to `/plasmic-edit`
@@ -30,7 +33,7 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
    - "undo", "revert that", "undo the last change" → call `undo()` directly
    - "refresh", "reload the project", "sync with server" → call `refresh-project()` directly
    - Ambiguous request → ask a clarifying question
-3. Summarize results clearly. For component trees, describe the structure in human-readable terms rather than dumping raw JSON.
+3. Summarize results clearly. For component structures, describe in human-readable terms rather than dumping raw JSON.
 
 ## User's Request
 $ARGUMENTS

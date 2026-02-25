@@ -6,22 +6,39 @@
  *
  * Tools use three patterns:
  *   - HTTP-only (list-projects, create-page): call Plasmic REST API directly
- *   - Model-read (list-components, get-component-tree, get-project-meta): read
- *     from the in-memory Site model (requires set-project first)
+ *   - Model-read (list-components, get-component-tree, get-component-summary,
+ *     get-node-details, export-component-tree, get-project-meta): read from
+ *     the in-memory Site model (requires set-project first)
  *   - Session-setup (set-project): fetch bundle → unbundle → store in session
+ *
+ * M3 additions:
+ *   - get-component-summary: compact tree outline (~2KB vs ~15KB)
+ *   - get-node-details: full details for a single node (~300B)
+ *   - export-component-tree: full tree to temp file, returns path + summary
+ *   - get-component-tree enhanced with maxDepth, excludeStyles, summaryOnly
+ *   - Node resolver cache invalidation on structural edits / project reload
  *
  * CRITICAL: Never use console.log() — stdout is the JSON-RPC transport.
  * All logging goes through console.error().
  */
 
+import fs from "fs";
+import os from "os";
+import path from "path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { PlasmicApiClient } from "./api-client.js";
 import { getAuth } from "./auth.js";
 import { requireSession, setSession } from "./session.js";
 import { loadProject } from "./model-loader.js";
-import { readComponentTree } from "./tree-reader.js";
+import {
+  readComponentTree,
+  readComponentSummary,
+  readNodeDetails,
+  countTreeNodes,
+} from "./tree-reader.js";
 import { readTokens } from "./token-reader.js";
+import { resolveNode, requireSingleNode, invalidateNodeCache, clearNodeCache } from "./node-resolver.js";
 import { initChangeTracker, disposeChangeTracker } from "./change-tracker.js";
 import {
   updateText,
@@ -32,6 +49,7 @@ import {
 } from "./edit-tools.js";
 import { beginBatch, endBatch, isBatchActive, cancelBatch } from "./batch-manager.js";
 import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
+import type { TreeReadOptions } from "./types.js";
 
 export function createServer(): McpServer {
   const server = new McpServer({
@@ -56,6 +74,8 @@ export function createServer(): McpServer {
       try {
         // Dispose previous change tracker if switching projects
         disposeChangeTracker();
+        // Clear node resolver cache (model is being replaced)
+        clearNodeCache();
 
         const {
           site,
@@ -244,9 +264,9 @@ export function createServer(): McpServer {
   );
 
   // --- get-component-tree ---
-  // Reads a component's full element tree directly from the in-memory Tpl model.
+  // Reads a component's element tree directly from the in-memory Tpl model.
   // Uses the custom tree reader (NOT the degraded tplToPlasmicElements function).
-  // Returns tags, styles, text, images, layout types, children, component refs.
+  // M3: enhanced with optional params for context-efficient querying.
   server.tool(
     "get-component-tree",
     "Get the full element tree of a component with HTML tags, CSS styles, text, images, and layout",
@@ -254,8 +274,20 @@ export function createServer(): McpServer {
       componentUuid: z
         .string()
         .describe("UUID of the component to inspect"),
+      maxDepth: z
+        .number()
+        .optional()
+        .describe("Stop recursing after N levels. Deeper children replaced with childCount."),
+      excludeStyles: z
+        .boolean()
+        .optional()
+        .describe("Strip styles from output to reduce size."),
+      summaryOnly: z
+        .boolean()
+        .optional()
+        .describe("Return compact outline (same as get-component-summary)."),
     },
-    async ({ componentUuid }) => {
+    async ({ componentUuid, maxDepth, excludeStyles, summaryOnly }) => {
       try {
         const session = requireSession();
         const component = session.site.components?.find(
@@ -274,7 +306,16 @@ export function createServer(): McpServer {
           };
         }
 
-        const tree = readComponentTree(component);
+        // Build options only when optional params are provided (backward compatible)
+        const hasOptions =
+          maxDepth !== undefined || excludeStyles || summaryOnly;
+        const tree = hasOptions
+          ? readComponentTree(component, {
+              maxDepth,
+              excludeStyles: excludeStyles || undefined,
+              summaryOnly: summaryOnly || undefined,
+            } as TreeReadOptions)
+          : readComponentTree(component);
 
         return {
           content: [
@@ -299,6 +340,229 @@ export function createServer(): McpServer {
             {
               type: "text" as const,
               text: `Error reading component tree: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // --- get-component-summary ---
+  // M3: Returns a compact outline (~2KB) of a component's node tree.
+  // Contains type, tag, name, uuid, and childCount per node — no styles,
+  // attrs, or text. Use get-node-details to inspect specific nodes.
+  server.tool(
+    "get-component-summary",
+    "Get a compact outline of a component's node tree (type, tag, name, uuid, childCount). No styles or text. Use get-node-details for specific nodes.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component to inspect"),
+      maxDepth: z
+        .number()
+        .optional()
+        .describe("Maximum tree depth to return. Omit for full outline."),
+    },
+    async ({ componentUuid, maxDepth }) => {
+      try {
+        const session = requireSession();
+        const component = session.site.components?.find(
+          (c: any) => c.uuid === componentUuid
+        );
+
+        if (!component) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Component UUID "${componentUuid}" not found in project. Use list-components to see available components.`,
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        const tree = readComponentSummary(component, maxDepth);
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  name: component.name,
+                  uuid: component.uuid,
+                  path: component.pageMeta?.path,
+                  tree,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error reading component summary: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // --- get-node-details ---
+  // M3: Returns full details for a single node (~300B), with immediate
+  // children shown as summaries. Uses existing node-resolver for targeting.
+  server.tool(
+    "get-node-details",
+    "Get full details (styles, text, attrs) for a single node. Children shown as summaries. Use node UUID, name, path, or index.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component containing the node"),
+      nodeRef: z
+        .string()
+        .describe(
+          'Node reference: UUID, name (e.g., "Hero Title"), path (e.g., "HeroSection.Title"), or index (e.g., "#2")'
+        ),
+    },
+    async ({ componentUuid, nodeRef }) => {
+      try {
+        const session = requireSession();
+        const component = session.site.components?.find(
+          (c: any) => c.uuid === componentUuid
+        );
+
+        if (!component) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Component UUID "${componentUuid}" not found in project. Use list-components to see available components.`,
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        const resolveResult = resolveNode(component, nodeRef);
+        const resolved = requireSingleNode(resolveResult, nodeRef);
+        const node = readNodeDetails(resolved.node);
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  path: resolved.path,
+                  name: resolved.name,
+                  uuid: resolved.uuid,
+                  node,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error reading node details: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // --- export-component-tree ---
+  // M3: Writes the full tree JSON to a temp file and returns the file path
+  // plus a compact summary. Same UUID always maps to the same file path
+  // (overwrites previous export). For complex restructuring where the
+  // developer needs full accuracy available via Read tool.
+  server.tool(
+    "export-component-tree",
+    "Write full component tree JSON to a temp file. Returns file path + compact summary. Use Read tool to inspect sections.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component to export"),
+    },
+    async ({ componentUuid }) => {
+      try {
+        const session = requireSession();
+        const component = session.site.components?.find(
+          (c: any) => c.uuid === componentUuid
+        );
+
+        if (!component) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Component UUID "${componentUuid}" not found in project. Use list-components to see available components.`,
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        // Full tree for the file
+        const fullTree = readComponentTree(component);
+        const fullData = {
+          name: component.name,
+          uuid: component.uuid,
+          path: component.pageMeta?.path,
+          tree: fullTree,
+        };
+
+        // Write to temp file (overwrite per component UUID)
+        const filePath = path.join(
+          os.tmpdir(),
+          `plasmic-tree-${componentUuid}.json`
+        );
+        fs.writeFileSync(filePath, JSON.stringify(fullData, null, 2), "utf-8");
+
+        // Compact summary for the response
+        const summaryTree = readComponentSummary(component);
+        const nodeCount = countTreeNodes(fullTree);
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  name: component.name,
+                  uuid: component.uuid,
+                  path: component.pageMeta?.path,
+                  filePath,
+                  nodeCount,
+                  tree: summaryTree,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error exporting component tree: ${err.message}`,
             },
           ],
           isError: true,
@@ -375,6 +639,7 @@ export function createServer(): McpServer {
         // Reload model so the new page is visible in subsequent queries
         try {
           disposeChangeTracker();
+          clearNodeCache();
           const {
             site,
             bundler,
@@ -549,6 +814,7 @@ export function createServer(): McpServer {
 
   // --- add-child ---
   // Converts PlasmicElement JSON to TplTag nodes and inserts into parent.
+  // M3: invalidates node resolver cache for the component (structural edit).
   server.tool(
     "add-child",
     "Add a new child element to a container node. Accepts PlasmicElement JSON (vbox, text, img, button types).",
@@ -576,6 +842,8 @@ export function createServer(): McpServer {
           child,
           position
         );
+        // Structural edit: invalidate node resolver cache for this component
+        invalidateNodeCache(componentUuid);
         return {
           content: [
             {
@@ -609,6 +877,7 @@ export function createServer(): McpServer {
 
   // --- remove-child ---
   // Removes a node from its parent's children array.
+  // M3: invalidates node resolver cache for the component (structural edit).
   server.tool(
     "remove-child",
     "Remove an element from a component. Cannot remove the component's root node.",
@@ -623,6 +892,8 @@ export function createServer(): McpServer {
     async ({ componentUuid, nodeRef }) => {
       try {
         const result = await removeChild(apiClient, componentUuid, nodeRef);
+        // Structural edit: invalidate node resolver cache for this component
+        invalidateNodeCache(componentUuid);
         return {
           content: [
             {
@@ -655,6 +926,7 @@ export function createServer(): McpServer {
 
   // --- move-child ---
   // Moves a node from its current parent to a new parent.
+  // M3: invalidates node resolver cache for the component (structural edit).
   server.tool(
     "move-child",
     "Move an element to a new parent within the same component. Detects and prevents cycles.",
@@ -684,6 +956,8 @@ export function createServer(): McpServer {
           newParentRef,
           position
         );
+        // Structural edit: invalidate node resolver cache for this component
+        invalidateNodeCache(componentUuid);
         return {
           content: [
             {
@@ -852,6 +1126,7 @@ export function createServer(): McpServer {
   // --- refresh-project ---
   // Re-fetches the project bundle to sync with server state.
   // Useful after 412 conflicts or when another user has made changes.
+  // M3: clears node resolver cache (model is fully replaced).
   server.tool(
     "refresh-project",
     "Reload the project from the server to sync with latest changes. Clears undo history.",
@@ -868,6 +1143,9 @@ export function createServer(): McpServer {
 
         // Clear undo stack (model state is being replaced)
         clearUndoStack();
+
+        // Clear node resolver cache (model is being replaced)
+        clearNodeCache();
 
         const {
           site,

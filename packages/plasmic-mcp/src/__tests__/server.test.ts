@@ -3,12 +3,12 @@
  *
  * Two test suites:
  *   1. createServer — smoke tests for server construction and auth (existing)
- *   2. tool handlers — verifies all 14 MCP tool handlers by connecting a real
+ *   2. tool handlers — verifies all 17 MCP tool handlers by connecting a real
  *      Client ↔ Server pair via InMemoryTransport and calling each tool
  *
  * The tool handler tests mock every module that server.ts imports (model-loader,
  * session, edit-tools, etc.) to isolate the wiring logic in server.ts. Individual
- * modules have their own unit tests (176 tests across 13 files).
+ * modules have their own unit tests.
  *
  * Uses jest.resetModules() + dynamic require() because the esbuild jest
  * transform doesn't hoist jest.mock calls.
@@ -44,9 +44,11 @@ describe("createServer", () => {
     // Mock fs/os to prevent .plasmic.auth file fallback
     jest.mock("fs", () => ({
       readFileSync: () => { throw new Error("ENOENT"); },
+      writeFileSync: jest.fn(),
     }));
     jest.mock("os", () => ({
       homedir: () => "/mock/home",
+      tmpdir: () => "/tmp",
     }));
 
     const { createServer } = require("../server");
@@ -63,9 +65,11 @@ describe("createServer", () => {
     jest.mock("mobx", () => ({ configure: jest.fn() }));
     jest.mock("fs", () => ({
       readFileSync: () => { throw new Error("ENOENT"); },
+      writeFileSync: jest.fn(),
     }));
     jest.mock("os", () => ({
       homedir: () => "/mock/home",
+      tmpdir: () => "/tmp",
     }));
 
     const { createServer } = require("../server");
@@ -94,7 +98,14 @@ describe("tool handlers", () => {
   let mockInitChangeTracker: jest.Mock;
   let mockDisposeChangeTracker: jest.Mock;
   let mockReadComponentTree: jest.Mock;
+  let mockReadComponentSummary: jest.Mock;
+  let mockReadNodeDetails: jest.Mock;
+  let mockCountTreeNodes: jest.Mock;
   let mockReadTokens: jest.Mock;
+  let mockResolveNode: jest.Mock;
+  let mockRequireSingleNode: jest.Mock;
+  let mockInvalidateNodeCache: jest.Mock;
+  let mockClearNodeCache: jest.Mock;
   let mockUpdateText: jest.Mock;
   let mockUpdateStyles: jest.Mock;
   let mockAddChild: jest.Mock;
@@ -107,6 +118,7 @@ describe("tool handlers", () => {
   let mockUndoOperation: jest.Mock;
   let mockClearUndoStack: jest.Mock;
   let mockGetUndoDepth: jest.Mock;
+  let mockWriteFileSync: jest.Mock;
 
   beforeEach(async () => {
     process.env = { ...savedEnv };
@@ -131,7 +143,14 @@ describe("tool handlers", () => {
     mockInitChangeTracker = jest.fn();
     mockDisposeChangeTracker = jest.fn();
     mockReadComponentTree = jest.fn();
+    mockReadComponentSummary = jest.fn();
+    mockReadNodeDetails = jest.fn();
+    mockCountTreeNodes = jest.fn().mockReturnValue(10);
     mockReadTokens = jest.fn();
+    mockResolveNode = jest.fn();
+    mockRequireSingleNode = jest.fn();
+    mockInvalidateNodeCache = jest.fn();
+    mockClearNodeCache = jest.fn();
     mockUpdateText = jest.fn();
     mockUpdateStyles = jest.fn();
     mockAddChild = jest.fn();
@@ -144,14 +163,19 @@ describe("tool handlers", () => {
     mockUndoOperation = jest.fn();
     mockClearUndoStack = jest.fn();
     mockGetUndoDepth = jest.fn().mockReturnValue(0);
+    mockWriteFileSync = jest.fn();
 
     // --- Register module mocks (before require) ---
 
     jest.mock("mobx", () => ({ configure: jest.fn() }));
     jest.mock("fs", () => ({
       readFileSync: () => { throw new Error("ENOENT"); },
+      writeFileSync: (...args: any[]) => mockWriteFileSync(...args),
     }));
-    jest.mock("os", () => ({ homedir: () => "/mock/home" }));
+    jest.mock("os", () => ({
+      homedir: () => "/mock/home",
+      tmpdir: () => "/mock/tmp",
+    }));
 
     jest.mock("../api-client", () => ({
       PlasmicApiClient: jest.fn(() => mockApiClient),
@@ -178,10 +202,20 @@ describe("tool handlers", () => {
 
     jest.mock("../tree-reader", () => ({
       readComponentTree: (...args: any[]) => mockReadComponentTree(...args),
+      readComponentSummary: (...args: any[]) => mockReadComponentSummary(...args),
+      readNodeDetails: (...args: any[]) => mockReadNodeDetails(...args),
+      countTreeNodes: (...args: any[]) => mockCountTreeNodes(...args),
     }));
 
     jest.mock("../token-reader", () => ({
       readTokens: (...args: any[]) => mockReadTokens(...args),
+    }));
+
+    jest.mock("../node-resolver", () => ({
+      resolveNode: (...args: any[]) => mockResolveNode(...args),
+      requireSingleNode: (...args: any[]) => mockRequireSingleNode(...args),
+      invalidateNodeCache: (...args: any[]) => mockInvalidateNodeCache(...args),
+      clearNodeCache: () => mockClearNodeCache(),
     }));
 
     jest.mock("../change-tracker", () => ({
@@ -275,8 +309,9 @@ describe("tool handlers", () => {
       expect(output.componentCount).toBe(3);
       expect(output.pageCount).toBe(2);
 
-      // Verify wiring: dispose old tracker → load → set session → init tracker
+      // Verify wiring: dispose old tracker → clear cache → load → set session → init tracker
       expect(mockDisposeChangeTracker).toHaveBeenCalled();
+      expect(mockClearNodeCache).toHaveBeenCalled();
       expect(mockLoadProject).toHaveBeenCalledWith(mockApiClient, "proj-123");
       expect(mockSetSession).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -475,6 +510,34 @@ describe("tool handlers", () => {
       );
     });
 
+    it("passes options when optional params provided", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Hero" }],
+        },
+      });
+      mockReadComponentTree.mockReturnValue({ type: "tag", tag: "div" });
+
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: {
+          componentUuid: "comp-1",
+          maxDepth: 2,
+          excludeStyles: true,
+          summaryOnly: true,
+        },
+      });
+
+      expect(mockReadComponentTree).toHaveBeenCalledWith(
+        expect.objectContaining({ uuid: "comp-1" }),
+        expect.objectContaining({
+          maxDepth: 2,
+          excludeStyles: true,
+          summaryOnly: true,
+        })
+      );
+    });
+
     it("returns error for unknown component UUID", async () => {
       mockRequireSession.mockReturnValue({
         site: { components: [] },
@@ -490,6 +553,343 @@ describe("tool handlers", () => {
       expect(result.content[0].text).toContain("list-components");
     });
   });
+
+  // =====================================================================
+  // M3: Context-Efficient Query Tools
+  // =====================================================================
+
+  describe("get-component-summary", () => {
+    it("returns compact tree outline via readComponentSummary", async () => {
+      const mockSummary = {
+        type: "tag",
+        tag: "div",
+        uuid: "root",
+        name: "Root",
+        childCount: 2,
+        children: [
+          { type: "tag", tag: "h1", uuid: "t1", name: "Title", childCount: 0 },
+          { type: "tag", tag: "p", uuid: "t2", name: "Body", childCount: 0 },
+        ],
+      };
+
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [
+            { uuid: "comp-1", name: "Hero", pageMeta: { path: "/hero" } },
+          ],
+        },
+      });
+      mockReadComponentSummary.mockReturnValue(mockSummary);
+
+      const result = await client.callTool({
+        name: "get-component-summary",
+        arguments: { componentUuid: "comp-1" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.name).toBe("Hero");
+      expect(output.uuid).toBe("comp-1");
+      expect(output.path).toBe("/hero");
+      expect(output.tree).toEqual(mockSummary);
+      expect(mockReadComponentSummary).toHaveBeenCalledWith(
+        expect.objectContaining({ uuid: "comp-1" }),
+        undefined
+      );
+    });
+
+    it("passes maxDepth parameter", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Hero" }],
+        },
+      });
+      mockReadComponentSummary.mockReturnValue({ type: "tag", tag: "div" });
+
+      await client.callTool({
+        name: "get-component-summary",
+        arguments: { componentUuid: "comp-1", maxDepth: 3 },
+      });
+
+      expect(mockReadComponentSummary).toHaveBeenCalledWith(
+        expect.objectContaining({ uuid: "comp-1" }),
+        3
+      );
+    });
+
+    it("returns error for unknown component UUID", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { components: [] },
+      });
+
+      const result = await client.callTool({
+        name: "get-component-summary",
+        arguments: { componentUuid: "nonexistent" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("not found");
+    });
+  });
+
+  describe("get-node-details", () => {
+    it("resolves node and returns full details", async () => {
+      const mockNode = { fake: "tpl-node" };
+      const mockResolved = {
+        node: mockNode,
+        uuid: "node-1",
+        name: "Hero Title",
+        path: "Root.Hero.Hero Title",
+        component: {},
+      };
+      const mockDetails = {
+        type: "tag",
+        tag: "h1",
+        uuid: "node-1",
+        name: "Hero Title",
+        styles: { fontSize: "48px" },
+        text: "Welcome",
+        childCount: 0,
+      };
+
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Hero" }],
+        },
+      });
+      mockResolveNode.mockReturnValue({
+        nodes: [mockResolved],
+        isAmbiguous: false,
+      });
+      mockRequireSingleNode.mockReturnValue(mockResolved);
+      mockReadNodeDetails.mockReturnValue(mockDetails);
+
+      const result = await client.callTool({
+        name: "get-node-details",
+        arguments: { componentUuid: "comp-1", nodeRef: "Hero Title" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.path).toBe("Root.Hero.Hero Title");
+      expect(output.name).toBe("Hero Title");
+      expect(output.uuid).toBe("node-1");
+      expect(output.node).toEqual(mockDetails);
+      expect(mockResolveNode).toHaveBeenCalledWith(
+        expect.objectContaining({ uuid: "comp-1" }),
+        "Hero Title"
+      );
+      expect(mockReadNodeDetails).toHaveBeenCalledWith(mockNode);
+    });
+
+    it("returns error when node not found", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Hero" }],
+        },
+      });
+      mockResolveNode.mockReturnValue({
+        nodes: [],
+        isAmbiguous: false,
+      });
+      mockRequireSingleNode.mockImplementation(() => {
+        throw new Error('Node "Missing" not found.');
+      });
+
+      const result = await client.callTool({
+        name: "get-node-details",
+        arguments: { componentUuid: "comp-1", nodeRef: "Missing" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Error reading node details");
+    });
+
+    it("returns error for unknown component UUID", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { components: [] },
+      });
+
+      const result = await client.callTool({
+        name: "get-node-details",
+        arguments: { componentUuid: "nonexistent", nodeRef: "Title" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("not found");
+    });
+  });
+
+  describe("export-component-tree", () => {
+    it("writes full tree to temp file and returns summary", async () => {
+      const mockFullTree = {
+        type: "tag",
+        tag: "div",
+        children: [{ type: "tag", tag: "h1" }],
+      };
+      const mockSummaryTree = {
+        type: "tag",
+        tag: "div",
+        childCount: 1,
+      };
+
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [
+            { uuid: "comp-1", name: "Homepage", pageMeta: { path: "/" } },
+          ],
+        },
+      });
+      mockReadComponentTree.mockReturnValue(mockFullTree);
+      mockReadComponentSummary.mockReturnValue(mockSummaryTree);
+      mockCountTreeNodes.mockReturnValue(2);
+
+      const result = await client.callTool({
+        name: "export-component-tree",
+        arguments: { componentUuid: "comp-1" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.name).toBe("Homepage");
+      expect(output.uuid).toBe("comp-1");
+      expect(output.path).toBe("/");
+      expect(output.nodeCount).toBe(2);
+      expect(output.tree).toEqual(mockSummaryTree);
+      // File path uses temp dir + component UUID
+      expect(output.filePath).toContain("plasmic-tree-comp-1.json");
+
+      // Verify writeFileSync was called with the full tree
+      expect(mockWriteFileSync).toHaveBeenCalledWith(
+        expect.stringContaining("plasmic-tree-comp-1.json"),
+        expect.stringContaining('"tag": "div"'),
+        "utf-8"
+      );
+    });
+
+    it("returns error for unknown component UUID", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { components: [] },
+      });
+
+      const result = await client.callTool({
+        name: "export-component-tree",
+        arguments: { componentUuid: "nonexistent" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("not found");
+    });
+  });
+
+  // =====================================================================
+  // M3: Cache invalidation on structural edits
+  // =====================================================================
+
+  describe("cache invalidation", () => {
+    it("add-child invalidates node cache for the component", async () => {
+      mockAddChild.mockResolvedValue({
+        save: { revisionNum: 8, incremental: true },
+        parentName: "Container",
+        parentUuid: "node-3",
+        position: "last",
+      });
+
+      await client.callTool({
+        name: "add-child",
+        arguments: {
+          componentUuid: "comp-1",
+          parentRef: "Container",
+          child: { type: "text", value: "Hello" },
+        },
+      });
+
+      expect(mockInvalidateNodeCache).toHaveBeenCalledWith("comp-1");
+    });
+
+    it("remove-child invalidates node cache for the component", async () => {
+      mockRemoveChild.mockResolvedValue({
+        save: { revisionNum: 9, incremental: true },
+        removedName: "OldSection",
+        removedUuid: "node-4",
+      });
+
+      await client.callTool({
+        name: "remove-child",
+        arguments: {
+          componentUuid: "comp-1",
+          nodeRef: "OldSection",
+        },
+      });
+
+      expect(mockInvalidateNodeCache).toHaveBeenCalledWith("comp-1");
+    });
+
+    it("move-child invalidates node cache for the component", async () => {
+      mockMoveChild.mockResolvedValue({
+        save: { revisionNum: 10, incremental: true },
+        movedName: "Title",
+        movedUuid: "node-5",
+        newParentName: "Hero",
+        newParentUuid: "node-6",
+        position: 0,
+      });
+
+      await client.callTool({
+        name: "move-child",
+        arguments: {
+          componentUuid: "comp-1",
+          nodeRef: "Title",
+          newParentRef: "Hero",
+        },
+      });
+
+      expect(mockInvalidateNodeCache).toHaveBeenCalledWith("comp-1");
+    });
+
+    it("refresh-project clears entire node cache", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+      });
+      mockLoadProject.mockResolvedValue({
+        site: { components: [] },
+        bundler: {},
+        projectName: "Test",
+        revisionNum: 15,
+        modelVersion: 3,
+        hostlessDataVersion: 1,
+      });
+
+      await client.callTool({
+        name: "refresh-project",
+        arguments: {},
+      });
+
+      expect(mockClearNodeCache).toHaveBeenCalled();
+    });
+
+    it("set-project clears entire node cache", async () => {
+      mockLoadProject.mockResolvedValue({
+        site: { components: [] },
+        bundler: {},
+        projectName: "New Project",
+        revisionNum: 1,
+        modelVersion: 1,
+        hostlessDataVersion: 0,
+      });
+
+      await client.callTool({
+        name: "set-project",
+        arguments: { projectId: "new-proj" },
+      });
+
+      expect(mockClearNodeCache).toHaveBeenCalled();
+    });
+  });
+
+  // =====================================================================
+  // Remaining existing tools (tokens, create-page, edits, batch, undo)
+  // =====================================================================
 
   describe("get-tokens", () => {
     it("returns all tokens when no filter specified", async () => {
@@ -536,10 +936,6 @@ describe("tool handlers", () => {
     });
   });
 
-  // =====================================================================
-  // Create Page (HTTP + Model Edit)
-  // =====================================================================
-
   describe("create-page", () => {
     it("creates page via API and reloads model", async () => {
       const newSite = {
@@ -580,8 +976,9 @@ describe("tool handlers", () => {
         newComponents: [{ name: "Products", path: "/products", body }],
       });
 
-      // Verify model reload sequence
+      // Verify model reload sequence includes cache clear
       expect(mockDisposeChangeTracker).toHaveBeenCalled();
+      expect(mockClearNodeCache).toHaveBeenCalled();
       expect(mockLoadProject).toHaveBeenCalledWith(mockApiClient, "proj-123");
       expect(mockSetSession).toHaveBeenCalled();
       expect(mockInitChangeTracker).toHaveBeenCalledWith(newSite);
@@ -619,10 +1016,6 @@ describe("tool handlers", () => {
       expect(result.content[0].text).toContain("Error creating page");
     });
   });
-
-  // =====================================================================
-  // Edit Tools
-  // =====================================================================
 
   describe("update-text", () => {
     it("delegates to updateText and returns structured result", async () => {
@@ -1043,10 +1436,11 @@ describe("tool handlers", () => {
       expect(output.componentCount).toBe(2);
       expect(output.pageCount).toBe(1);
 
-      // Verify cleanup sequence: cancel batch → dispose tracker → clear undo → load → session → init tracker
+      // Verify cleanup sequence: cancel batch → dispose tracker → clear undo → clear cache → load → session → init tracker
       expect(mockCancelBatch).toHaveBeenCalled();
       expect(mockDisposeChangeTracker).toHaveBeenCalled();
       expect(mockClearUndoStack).toHaveBeenCalled();
+      expect(mockClearNodeCache).toHaveBeenCalled();
       expect(mockLoadProject).toHaveBeenCalledWith(mockApiClient, "proj-123");
       expect(mockSetSession).toHaveBeenCalled();
       expect(mockInitChangeTracker).toHaveBeenCalledWith(refreshedSite);

@@ -8,7 +8,12 @@
  * expression variant, and layout derivation path.
  */
 
-import { readComponentTree } from "../tree-reader";
+import {
+  readComponentTree,
+  readComponentSummary,
+  readNodeDetails,
+  countTreeNodes,
+} from "../tree-reader";
 
 describe("readComponentTree", () => {
   it("returns null when component has no tplTree", () => {
@@ -679,5 +684,480 @@ describe("readComponentTree", () => {
       });
       expect(result?.name).toContain("Unknown");
     });
+  });
+
+  // ===========================================================================
+  // M3: TreeReadOptions — summaryOnly, maxDepth, excludeStyles
+  // ===========================================================================
+
+  describe("TreeReadOptions", () => {
+    /** A reusable 3-level component tree for options tests */
+    function deepComponent() {
+      return {
+        tplTree: {
+          _type: "TplTag",
+          tag: "div",
+          uuid: "root",
+          name: "Root",
+          vsettings: [
+            {
+              rs: { values: { display: "flex", flexDirection: "column" } },
+              text: undefined,
+              attrs: {},
+            },
+          ],
+          children: [
+            {
+              _type: "TplTag",
+              tag: "section",
+              uuid: "hero",
+              name: "Hero",
+              vsettings: [
+                {
+                  rs: { values: { padding: "32px" } },
+                  attrs: {},
+                },
+              ],
+              children: [
+                {
+                  _type: "TplTag",
+                  tag: "h1",
+                  uuid: "title",
+                  name: "Hero Title",
+                  vsettings: [
+                    {
+                      rs: { values: { fontSize: "48px", fontWeight: "700" } },
+                      text: { _type: "RawText", text: "Welcome" },
+                      attrs: {},
+                    },
+                  ],
+                  children: [],
+                },
+                {
+                  _type: "TplTag",
+                  tag: "p",
+                  uuid: "subtitle",
+                  name: "Hero Subtitle",
+                  vsettings: [
+                    {
+                      rs: { values: { fontSize: "18px" } },
+                      text: { _type: "RawText", text: "Build fast" },
+                      attrs: {},
+                    },
+                  ],
+                  children: [],
+                },
+              ],
+            },
+            {
+              _type: "TplComponent",
+              uuid: "grid",
+              name: "ProductGrid",
+              component: { name: "ProductGrid", uuid: "grid-def" },
+              vsettings: [{ args: [] }],
+            },
+            {
+              _type: "TplTag",
+              tag: "footer",
+              uuid: "footer",
+              name: "Footer",
+              vsettings: [
+                {
+                  rs: { values: { padding: "16px" } },
+                  attrs: {},
+                },
+              ],
+              children: [
+                {
+                  _type: "TplTag",
+                  tag: "span",
+                  uuid: "copyright",
+                  vsettings: [
+                    {
+                      rs: { values: {} },
+                      text: { _type: "RawText", text: "© 2024" },
+                      attrs: {},
+                    },
+                  ],
+                  children: [],
+                },
+              ],
+            },
+          ],
+        },
+      };
+    }
+
+    describe("summaryOnly", () => {
+      it("strips styles, text, and attrs from all nodes", () => {
+        const result = readComponentTree(deepComponent(), { summaryOnly: true });
+
+        expect(result?.styles).toBeUndefined();
+        expect(result?.text).toBeUndefined();
+        expect(result?.attrs).toBeUndefined();
+        expect(result?.layoutType).toBeUndefined();
+
+        // Hero child
+        const hero = result?.children?.[0];
+        expect(hero?.styles).toBeUndefined();
+        expect(hero?.text).toBeUndefined();
+
+        // Deep title node
+        const title = hero?.children?.[0];
+        expect(title?.styles).toBeUndefined();
+        expect(title?.text).toBeUndefined();
+      });
+
+      it("includes childCount on every node", () => {
+        const result = readComponentTree(deepComponent(), { summaryOnly: true });
+
+        expect(result?.childCount).toBe(3); // Root has 3 children
+        expect(result?.children?.[0].childCount).toBe(2); // Hero has 2
+        expect(result?.children?.[0].children?.[0].childCount).toBe(0); // Title has 0
+        expect(result?.children?.[1].childCount).toBe(0); // Component has 0
+        expect(result?.children?.[2].childCount).toBe(1); // Footer has 1
+      });
+
+      it("preserves type, tag, name, uuid for all nodes", () => {
+        const result = readComponentTree(deepComponent(), { summaryOnly: true });
+
+        expect(result).toMatchObject({
+          type: "tag",
+          tag: "div",
+          uuid: "root",
+          name: "Root",
+        });
+
+        expect(result?.children?.[1]).toMatchObject({
+          type: "component",
+          uuid: "grid",
+          componentName: "ProductGrid",
+        });
+      });
+    });
+
+    describe("maxDepth", () => {
+      it("maxDepth: 0 returns only root with childCount", () => {
+        const result = readComponentTree(deepComponent(), { maxDepth: 0 });
+
+        expect(result?.children).toBeUndefined();
+        expect(result?.childCount).toBe(3);
+        // Root still has full details (styles, etc.)
+        expect(result?.styles).toBeDefined();
+      });
+
+      it("maxDepth: 1 returns root + direct children with childCount", () => {
+        const result = readComponentTree(deepComponent(), { maxDepth: 1 });
+
+        expect(result?.children).toHaveLength(3);
+        // Direct children have their data but their own children are truncated
+        const hero = result?.children?.[0];
+        expect(hero?.styles).toBeDefined(); // full detail at depth 1
+        expect(hero?.children).toBeUndefined(); // no recursion beyond depth 1
+        expect(hero?.childCount).toBe(2); // but shows how many children exist
+      });
+
+      it("maxDepth: undefined returns full tree (backward compat)", () => {
+        const result = readComponentTree(deepComponent());
+
+        // Full recursion — title is at depth 2
+        const title = result?.children?.[0].children?.[0];
+        expect(title?.text).toBe("Welcome");
+        expect(title?.childCount).toBeUndefined(); // no childCount in full mode
+      });
+    });
+
+    describe("excludeStyles", () => {
+      it("strips styles but keeps text and attrs", () => {
+        const result = readComponentTree(deepComponent(), { excludeStyles: true });
+
+        expect(result?.styles).toBeUndefined();
+        expect(result?.layoutType).toBeUndefined();
+
+        // Text is still present
+        const title = result?.children?.[0].children?.[0];
+        expect(title?.text).toBe("Welcome");
+        expect(title?.styles).toBeUndefined();
+      });
+    });
+
+    describe("combined options", () => {
+      it("summaryOnly + maxDepth: 1 truncates and strips", () => {
+        const result = readComponentTree(deepComponent(), {
+          summaryOnly: true,
+          maxDepth: 1,
+        });
+
+        expect(result?.styles).toBeUndefined();
+        expect(result?.childCount).toBe(3);
+        expect(result?.children).toHaveLength(3);
+
+        const hero = result?.children?.[0];
+        expect(hero?.styles).toBeUndefined();
+        expect(hero?.childCount).toBe(2);
+        expect(hero?.children).toBeUndefined();
+      });
+    });
+  });
+});
+
+// =============================================================================
+// M3: readComponentSummary
+// =============================================================================
+
+describe("readComponentSummary", () => {
+  it("returns a summary tree (same as summaryOnly: true)", () => {
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        tag: "div",
+        uuid: "root",
+        name: "Root",
+        vsettings: [
+          {
+            rs: { values: { color: "red" } },
+            text: { _type: "RawText", text: "Hello" },
+            attrs: {},
+          },
+        ],
+        children: [
+          {
+            _type: "TplTag",
+            tag: "h1",
+            uuid: "h1",
+            vsettings: [{ rs: { values: {} }, attrs: {} }],
+            children: [],
+          },
+        ],
+      },
+    };
+
+    const result = readComponentSummary(component);
+
+    // No styles, text, or attrs
+    expect(result?.styles).toBeUndefined();
+    expect(result?.text).toBeUndefined();
+    // Has childCount
+    expect(result?.childCount).toBe(1);
+    expect(result?.children?.[0].childCount).toBe(0);
+  });
+
+  it("returns null for component without tplTree", () => {
+    expect(readComponentSummary({ tplTree: null })).toBeNull();
+  });
+
+  it("respects maxDepth parameter", () => {
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        tag: "div",
+        uuid: "root",
+        vsettings: [{ rs: { values: {} }, attrs: {} }],
+        children: [
+          {
+            _type: "TplTag",
+            tag: "h1",
+            uuid: "h1",
+            vsettings: [{ rs: { values: {} }, attrs: {} }],
+            children: [],
+          },
+        ],
+      },
+    };
+
+    const result = readComponentSummary(component, 0);
+
+    expect(result?.children).toBeUndefined();
+    expect(result?.childCount).toBe(1);
+  });
+});
+
+// =============================================================================
+// M3: readNodeDetails
+// =============================================================================
+
+describe("readNodeDetails", () => {
+  it("returns full details for a TplTag with children as summaries", () => {
+    const child1 = {
+      _type: "TplTag",
+      tag: "h1",
+      uuid: "c1",
+      name: "Title",
+      vsettings: [
+        {
+          rs: { values: { fontSize: "48px" } },
+          text: { _type: "RawText", text: "Hello" },
+          attrs: {},
+        },
+      ],
+      children: [],
+    };
+    const child2 = {
+      _type: "TplTag",
+      tag: "p",
+      uuid: "c2",
+      name: "Subtitle",
+      vsettings: [
+        {
+          rs: { values: { fontSize: "16px" } },
+          text: { _type: "RawText", text: "World" },
+          attrs: {},
+        },
+      ],
+      children: [],
+    };
+    const parentNode = {
+      _type: "TplTag",
+      tag: "section",
+      uuid: "parent",
+      name: "Hero",
+      vsettings: [
+        {
+          rs: { values: { padding: "32px", display: "flex", flexDirection: "column" } },
+          attrs: {},
+        },
+      ],
+      children: [child1, child2],
+    };
+
+    const result = readNodeDetails(parentNode);
+
+    // Parent has full details
+    expect(result.type).toBe("tag");
+    expect(result.tag).toBe("section");
+    expect(result.styles).toEqual({
+      padding: "32px",
+      display: "flex",
+      flexDirection: "column",
+    });
+    expect(result.layoutType).toBe("vbox");
+    expect(result.childCount).toBe(2);
+
+    // Children are summaries (no styles, no text)
+    expect(result.children).toHaveLength(2);
+    expect(result.children?.[0].name).toBe("Title");
+    expect(result.children?.[0].styles).toBeUndefined();
+    expect(result.children?.[0].text).toBeUndefined();
+    expect(result.children?.[0].childCount).toBe(0);
+    expect(result.children?.[1].name).toBe("Subtitle");
+    expect(result.children?.[1].styles).toBeUndefined();
+  });
+
+  it("returns full details for a leaf node", () => {
+    const leaf = {
+      _type: "TplTag",
+      tag: "h1",
+      uuid: "leaf",
+      name: "Heading",
+      vsettings: [
+        {
+          rs: { values: { fontSize: "32px" } },
+          text: { _type: "RawText", text: "Big Title" },
+          attrs: {},
+        },
+      ],
+      children: [],
+    };
+
+    const result = readNodeDetails(leaf);
+
+    expect(result.styles).toEqual({ fontSize: "32px" });
+    expect(result.text).toBe("Big Title");
+    expect(result.childCount).toBe(0);
+    expect(result.children).toBeUndefined();
+  });
+
+  it("returns details for a TplComponent node", () => {
+    const compNode = {
+      _type: "TplComponent",
+      uuid: "comp-inst",
+      name: "MyButton",
+      component: { name: "Button", uuid: "btn-def" },
+      vsettings: [
+        {
+          args: [
+            {
+              param: { variable: { name: "label" } },
+              expr: { _type: "CustomCode", code: '"Click me"' },
+            },
+          ],
+        },
+      ],
+    };
+
+    const result = readNodeDetails(compNode);
+
+    expect(result.type).toBe("component");
+    expect(result.componentName).toBe("Button");
+    expect(result.childCount).toBe(0);
+  });
+
+  it("returns details for a TplSlot with default contents", () => {
+    const slotChild = {
+      _type: "TplTag",
+      tag: "span",
+      uuid: "sc1",
+      name: "Default",
+      vsettings: [
+        {
+          rs: { values: { color: "gray" } },
+          text: { _type: "RawText", text: "Placeholder" },
+          attrs: {},
+        },
+      ],
+      children: [],
+    };
+    const slotNode = {
+      _type: "TplSlot",
+      uuid: "slot1",
+      param: { variable: { name: "children" } },
+      defaultContents: [slotChild],
+    };
+
+    const result = readNodeDetails(slotNode);
+
+    expect(result.type).toBe("slot");
+    expect(result.slotName).toBe("children");
+    expect(result.childCount).toBe(1);
+    expect(result.children).toHaveLength(1);
+    // Child is a summary — no styles or text
+    expect(result.children?.[0].name).toBe("Default");
+    expect(result.children?.[0].styles).toBeUndefined();
+    expect(result.children?.[0].text).toBeUndefined();
+  });
+});
+
+// =============================================================================
+// M3: countTreeNodes
+// =============================================================================
+
+describe("countTreeNodes", () => {
+  it("counts all nodes in a tree", () => {
+    const tree = {
+      type: "tag" as const,
+      tag: "div",
+      children: [
+        { type: "tag" as const, tag: "h1" },
+        {
+          type: "tag" as const,
+          tag: "section",
+          children: [
+            { type: "tag" as const, tag: "p" },
+            { type: "tag" as const, tag: "span" },
+          ],
+        },
+        { type: "component" as const, componentName: "Button" },
+      ],
+    };
+
+    expect(countTreeNodes(tree)).toBe(6);
+  });
+
+  it("returns 0 for null", () => {
+    expect(countTreeNodes(null)).toBe(0);
+  });
+
+  it("returns 1 for a leaf node", () => {
+    expect(countTreeNodes({ type: "tag", tag: "div" })).toBe(1);
   });
 });

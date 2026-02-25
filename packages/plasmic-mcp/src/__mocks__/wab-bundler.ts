@@ -8,6 +8,7 @@
 export const mockUnbundle = jest.fn();
 export const mockFastBundle = jest.fn();
 export const mockAddrOf = jest.fn();
+export const mockRecomputeParents = jest.fn();
 
 export class FastBundler {
   constructor(_meta: any, _classes: any) {}
@@ -26,5 +27,9 @@ export class FastBundler {
 
   addrOf(inst: any): { uuid: string; iid: string } | undefined {
     return mockAddrOf(inst);
+  }
+
+  recomputeParents(bundle: any, projectId: string): void {
+    mockRecomputeParents(bundle, projectId);
   }
 }

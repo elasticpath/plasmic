@@ -5,6 +5,12 @@
  * Returns all matching candidates when ambiguous, so the skill layer can ask the
  * developer to disambiguate.
  *
+ * M3 additions:
+ *   Module-level cache of flattened node lists per component UUID. Avoids re-walking
+ *   the tree on every resolve call during batch edits. Structural edits (add-child,
+ *   remove-child, move-child) invalidate the affected component's cache entry.
+ *   Text/style edits leave the cache valid since they don't change tree structure.
+ *
  * Reference: specs/plasmic-incremental-writes.md § Node Resolution
  */
 
@@ -30,6 +36,27 @@ export interface ResolveResult {
   isAmbiguous: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Node resolver cache
+// ---------------------------------------------------------------------------
+
+/** Cached flattened node lists keyed by component UUID. */
+const nodeCache = new Map<string, ResolvedNode[]>();
+
+/** Invalidate the cached node list for a specific component (after structural edits). */
+export function invalidateNodeCache(componentUuid: string): void {
+  nodeCache.delete(componentUuid);
+}
+
+/** Clear the entire node cache (after set-project or refresh-project). */
+export function clearNodeCache(): void {
+  nodeCache.clear();
+}
+
+// ---------------------------------------------------------------------------
+// Resolution
+// ---------------------------------------------------------------------------
+
 /**
  * Resolve a node reference within a component's Tpl tree.
  *
@@ -45,8 +72,17 @@ export function resolveNode(component: any, nodeRef: string): ResolveResult {
     return { nodes: [], isAmbiguous: false };
   }
 
-  // Collect all nodes with metadata
-  const allNodes = flattenWithPaths(tplTree, component);
+  // Check cache first, flatten only on miss
+  const cacheKey = component.uuid;
+  let allNodes: ResolvedNode[];
+  if (cacheKey && nodeCache.has(cacheKey)) {
+    allNodes = nodeCache.get(cacheKey)!;
+  } else {
+    allNodes = flattenWithPaths(tplTree, component);
+    if (cacheKey) {
+      nodeCache.set(cacheKey, allNodes);
+    }
+  }
 
   // Try UUID match first (most specific)
   const uuidMatch = allNodes.filter((n) => n.uuid === nodeRef);

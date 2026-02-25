@@ -6,7 +6,12 @@
  * wrong element, so these tests verify all four reference types and error cases.
  */
 
-import { resolveNode, requireSingleNode } from "../node-resolver";
+import {
+  resolveNode,
+  requireSingleNode,
+  clearNodeCache,
+  invalidateNodeCache,
+} from "../node-resolver";
 
 /** Helper: create a mock TplTag node */
 function mkTag(
@@ -38,6 +43,10 @@ function mkSlot(uuid: string, name?: string, defaultContents?: any[]): any {
 function mkComponent(tplTree: any): any {
   return { uuid: "comp-1", name: "TestComponent", tplTree };
 }
+
+beforeEach(() => {
+  clearNodeCache();
+});
 
 describe("resolveNode", () => {
   describe("UUID lookup", () => {
@@ -233,5 +242,94 @@ describe("requireSingleNode", () => {
     expect(() => requireSingleNode(result, "Item")).toThrow("2 matches");
     expect(() => requireSingleNode(result, "Item")).toThrow("a1");
     expect(() => requireSingleNode(result, "Item")).toThrow("a2");
+  });
+});
+
+// =============================================================================
+// M3: Node resolver caching
+//
+// The cache avoids re-flattening the Tpl tree on every resolve call during
+// batch edits. Structural edits (add/remove/move) must invalidate; text/style
+// edits must NOT invalidate (they don't change tree structure).
+// =============================================================================
+
+describe("node resolver cache", () => {
+  it("caches flattened node list — second resolve does not re-walk tree", () => {
+    const child = mkTag("c1", "Child");
+    const root = mkTag("root", "Root", [child]);
+    const comp = mkComponent(root);
+
+    // First call populates cache
+    const result1 = resolveNode(comp, "Child");
+    expect(result1.nodes).toHaveLength(1);
+
+    // Mutate the tree (add a sibling) WITHOUT invalidating cache
+    const newChild = mkTag("c2", "NewChild");
+    root.children.push(newChild);
+
+    // Second call returns cached data (doesn't see the new child)
+    const result2 = resolveNode(comp, "NewChild");
+    expect(result2.nodes).toHaveLength(0); // stale cache
+
+    // After invalidation, the new child is visible
+    invalidateNodeCache("comp-1");
+    const result3 = resolveNode(comp, "NewChild");
+    expect(result3.nodes).toHaveLength(1);
+    expect(result3.nodes[0].node).toBe(newChild);
+  });
+
+  it("clearNodeCache clears all cached entries", () => {
+    const root1 = mkTag("r1", "Root1");
+    const comp1 = { uuid: "comp-A", name: "CompA", tplTree: root1 };
+    const root2 = mkTag("r2", "Root2");
+    const comp2 = { uuid: "comp-B", name: "CompB", tplTree: root2 };
+
+    // Populate cache for two components
+    resolveNode(comp1, "Root1");
+    resolveNode(comp2, "Root2");
+
+    // Mutate both trees
+    root1.children = [mkTag("new-A", "NewA")];
+    root2.children = [mkTag("new-B", "NewB")];
+
+    // Cache is stale — mutations not visible
+    expect(resolveNode(comp1, "NewA").nodes).toHaveLength(0);
+    expect(resolveNode(comp2, "NewB").nodes).toHaveLength(0);
+
+    // clearNodeCache makes both fresh
+    clearNodeCache();
+    expect(resolveNode(comp1, "NewA").nodes).toHaveLength(1);
+    expect(resolveNode(comp2, "NewB").nodes).toHaveLength(1);
+  });
+
+  it("invalidateNodeCache only clears the specified component", () => {
+    const root1 = mkTag("r1", "Root1");
+    const comp1 = { uuid: "comp-X", name: "CompX", tplTree: root1 };
+    const root2 = mkTag("r2", "Root2");
+    const comp2 = { uuid: "comp-Y", name: "CompY", tplTree: root2 };
+
+    // Populate both caches
+    resolveNode(comp1, "Root1");
+    resolveNode(comp2, "Root2");
+
+    // Mutate comp1's tree, invalidate only comp1
+    root1.children = [mkTag("new-X", "NewX")];
+    invalidateNodeCache("comp-X");
+
+    // comp-X sees the new child, comp-Y still cached
+    expect(resolveNode(comp1, "NewX").nodes).toHaveLength(1);
+
+    // comp-Y mutation NOT visible (cache intact)
+    root2.children = [mkTag("new-Y", "NewY")];
+    expect(resolveNode(comp2, "NewY").nodes).toHaveLength(0);
+  });
+
+  it("works correctly with component that has no uuid", () => {
+    const root = mkTag("r1", "Root");
+    const comp = { name: "NoUuid", tplTree: root };
+
+    // Should not throw, just not cache (no uuid key)
+    const result = resolveNode(comp, "Root");
+    expect(result.nodes).toHaveLength(1);
   });
 });

@@ -23,6 +23,8 @@ module.exports = {
     "^@/wab/shared/core/undo-util$":
       "<rootDir>/src/__mocks__/wab-undo-util",
     "^@/wab/shared/TplMgr$": "<rootDir>/src/__mocks__/wab-tpl-mgr",
+    "^@/wab/shared/site-invariants$":
+      "<rootDir>/src/__mocks__/wab-site-invariants",
   },
   testRegex: ".*\\.(spec|test)\\.(ts|tsx)$",
 };

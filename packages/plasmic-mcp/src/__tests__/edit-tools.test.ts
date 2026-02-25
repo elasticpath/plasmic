@@ -23,12 +23,13 @@ import {
 } from "../edit-tools";
 import { setSession, clearSession } from "../session";
 import { initChangeTracker, disposeChangeTracker } from "../change-tracker";
+import { clearNodeCache } from "../node-resolver";
 import { mockWithRecording } from "../__mocks__/wab-observable-model";
 import { mockFastBundle, mockAddrOf } from "../__mocks__/wab-bundler";
 import {
   mockEnsureBaseVariantSetting,
 } from "../__mocks__/wab-tpl-mgr";
-import { mockMkTplTagX } from "../__mocks__/wab-tpls";
+import { mockMkTplTagX, mockMkTplInlinedText } from "../__mocks__/wab-tpls";
 import type { PlasmicApiClient } from "../api-client";
 import type { Session } from "../session";
 
@@ -106,6 +107,7 @@ describe("edit-tools", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(console, "error").mockImplementation(() => {});
+    clearNodeCache();
 
     api = mockApiClient();
     mockFastBundle.mockReturnValue({ map: {}, root: "0" });
@@ -272,12 +274,15 @@ describe("edit-tools", () => {
         backgroundColor: "#ff0000",
       });
 
-      expect(result.updatedProperties).toEqual(["fontSize", "backgroundColor"]);
+      expect(result.updatedProperties).toEqual(["fontSize", "background"]);
       expect(result.nodeName).toBe("Box");
       expect(result.save.revisionNum).toBe(11);
       // RSH mock actually mutates rs.values
       expect(node.vsettings[0].rs.values.fontSize).toBe("24px");
-      expect(node.vsettings[0].rs.values.backgroundColor).toBe("#ff0000");
+      // backgroundColor is sanitized to a background gradient shorthand
+      expect(node.vsettings[0].rs.values.background).toBe(
+        "linear-gradient(#ff0000, #ff0000)"
+      );
       // Existing style preserved
       expect(node.vsettings[0].rs.values.color).toBe("red");
     });
@@ -335,9 +340,9 @@ describe("edit-tools", () => {
       const root = mkTag({ uuid: "root-1", children: [container] });
       const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
-      // mkTplTagX creates a new TplTag
+      // Text elements use mkTplInlinedText, not mkTplTagX
       const newTpl = mkTag({ uuid: "new-child-1", tag: "div" });
-      mockMkTplTagX.mockReturnValue(newTpl);
+      mockMkTplInlinedText.mockReturnValue(newTpl);
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -462,7 +467,10 @@ describe("edit-tools", () => {
         src: "https://example.com/img.png",
       });
 
-      expect(mockMkTplTagX).toHaveBeenCalledWith("img", {});
+      expect(mockMkTplTagX).toHaveBeenCalledWith(
+        "img",
+        { baseVariant: undefined, styles: {} }
+      );
     });
   });
 
