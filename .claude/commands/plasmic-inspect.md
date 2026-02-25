@@ -36,5 +36,48 @@ You are inspecting a Plasmic project to help the developer understand its struct
 9. If the user asks for a preview link or studio URL, call `get-preview-url(componentUuid)`.
 10. For large component trees, the summary already shows childCounts — describe the structure at the top level and mention deeper nesting counts.
 
+## Understanding Tree Output
+
+### Dynamic Text
+Text nodes bound to data expressions show `dynamic: true` in the tree output:
+```json
+{ "text": "$ctx.product.name", "dynamic": true, "fallback": "Untitled" }
+```
+- `CustomCode` expressions show the raw JS code as `text`
+- `ObjectPath` expressions show dot-joined paths (e.g., `$ctx.product.name`)
+- `VarRef` expressions show `$variableName`
+- Static text just shows `{ "text": "Hello world" }` (no `dynamic` field)
+
+### Design Token References
+When using `get-node-details`, styles that reference design tokens include a `tokenRefs` object alongside `styles`:
+```json
+{
+  "styles": { "color": "#1a2b3c", "fontSize": "16px" },
+  "tokenRefs": { "color": "Brand Primary", "fontSize": "Body Size" }
+}
+```
+`styles` shows the resolved CSS value. `tokenRefs` maps property names to token names. Properties with literal (non-token) values are absent from `tokenRefs`.
+
+### Slot Override Content
+Component instances (`TplComponent`) display slot override content as `type: "slot"` wrapper nodes:
+```json
+{
+  "type": "component",
+  "componentName": "Card",
+  "children": [
+    { "type": "slot", "slotName": "children", "children": [...] },
+    { "type": "slot", "slotName": "icon", "children": [...] }
+  ]
+}
+```
+Each slot override gets its own wrapper with `slotName`. Non-slot prop args appear in `attrs` on the component node.
+
+### HTML Attributes
+Node attributes are displayed in an `attrs` object:
+```json
+{ "attrs": { "href": "/home", "disabled": false, "aria-label": "Close", "data-testid": "hero" } }
+```
+Dynamic attribute expressions (CustomCode) show as their raw code string or parsed JSON value.
+
 ## User's Request
 $ARGUMENTS

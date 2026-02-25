@@ -4,9 +4,10 @@ PlasmicElement pattern library for building pages and components. These are vali
 
 - **camelCase only**: `fontSize`, `backgroundColor`, `borderRadius` (not kebab-case)
 - **Values are strings**: `"16px"`, `"#ff0000"`, `"1px solid #ccc"`
-- **No shorthand `border`**: Use `borderWidth`, `borderStyle`, `borderColor` separately
+- **Border shorthand supported**: `border: "1px solid #ccc"` auto-expands to longhands. Also works: `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `outline`.
 - **No shorthand `transition`**: Use `transitionProperty`, `transitionDuration` separately
-- **Use design tokens**: Call `get-tokens()` first and use project token values instead of hardcoded colors/spacing
+- **Use design tokens**: Call `get-tokens()` first and use `token:TokenName` values instead of hardcoded colors/spacing (e.g., `"color": "token:Brand Primary"`)
+- **Dynamic text**: Use `update-text` with `dynamic: true` to bind text to JS expressions like `$ctx.product.name`
 
 ## Valid Element Types
 
@@ -413,6 +414,66 @@ With slot children (content passed into the component's default "children" slot)
 Works with both `add-child` (inserts into an existing page/component) and `create-page`/`create-component` (within the element tree body). Components from dependency packages are also resolved automatically.
 
 Props must match the component's actual parameter names exactly (case-sensitive). Use `get-component-summary` to inspect a component's structure, then `get-node-details` for specific nodes. Use `get-component-tree` only when you need the full tree with all styles.
+
+## Using Design Tokens in Styles
+
+After calling `get-tokens()`, reference tokens by name instead of hardcoding values:
+
+```json
+{
+  "type": "text",
+  "tag": "h1",
+  "value": "Welcome",
+  "styles": {
+    "fontSize": "token:Heading Size",
+    "color": "token:Brand Primary",
+    "fontFamily": "token:Body Font"
+  }
+}
+```
+
+Token references are resolved to `var(--token-<uuid>)` internally. The tree reader shows both the resolved CSS value and the token name in a `tokenRefs` object.
+
+## Using Semantic HTML Tags
+
+Containers support semantic HTML tags for better accessibility and SEO:
+
+```json
+{
+  "type": "page-section",
+  "tag": "section",
+  "children": [
+    {
+      "type": "hbox",
+      "tag": "nav",
+      "children": [
+        { "type": "text", "tag": "a", "value": "Home", "attrs": { "href": "/" } }
+      ]
+    },
+    {
+      "type": "vbox",
+      "tag": "article",
+      "children": [
+        { "type": "text", "tag": "h2", "value": "Article Title" },
+        { "type": "text", "tag": "p", "value": "Article body..." }
+      ]
+    }
+  ]
+}
+```
+
+Valid container tags: `div`, `section`, `article`, `nav`, `header`, `footer`, `aside`, `main`, `ul`, `ol`, `li`, `form`, `fieldset`
+Valid text tags: `div`, `h1`-`h6`, `p`, `span`, `a`, `button`, `label`, `blockquote`, `pre`, `code`
+
+## Targeting Named Slots on Component Instances
+
+When using `add-child` with a component instance as the parent, use the `slot` parameter to target a specific slot:
+
+```
+add-child(componentUuid, "CardInstance", child, slot: "icon")
+```
+
+If `slot` is omitted and the parent is a TplComponent, content goes to the `"children"` slot by default.
 
 ## User's Request
 $ARGUMENTS

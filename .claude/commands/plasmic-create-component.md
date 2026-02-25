@@ -69,8 +69,9 @@ Same as `/plasmic-create-page`. The `create-component` tool accepts a PlasmicEle
 
 ### CSS Rules
 - **camelCase only**: `fontSize`, `backgroundColor`, `borderRadius` (not kebab-case)
-- **No shorthand `border`**: Use `borderWidth`, `borderStyle`, `borderColor` separately
+- **Border shorthand supported**: `border: "1px solid #ccc"` auto-expands to longhands. Also `borderTop`, `outline`, etc.
 - **No shorthand `transition`**: Use `transitionProperty`, `transitionDuration` separately
+- **Design token references**: Use `token:TokenName` as a style value (e.g., `"color": "token:Brand Primary"`) to reference the project's design tokens
 
 **Component instance (reference existing component):**
 ```json
@@ -81,6 +82,14 @@ Same as `/plasmic-create-page`. The `create-component` tool accepts a PlasmicEle
   "children": [ ...slot content... ]
 }
 ```
+
+**Adding children to named slots after creation:**
+Use `add-child` with the `slot` parameter to target a specific slot on a component instance:
+```
+add-child(componentUuid, "CardInstance", child, slot: "icon")
+add-child(componentUuid, "CardInstance", child, slot: "footer")
+```
+Omitting `slot` defaults to the `"children"` slot. The `slot` parameter only works when the parent is a TplComponent.
 
 ### Valid Element Types
 `img`, `text`, `box`, `vbox`, `hbox`, `page-section`, `button`, `input`, `password`, `textarea`, `component`, `default-component`

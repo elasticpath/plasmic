@@ -81,8 +81,9 @@ Styles use React CSSProperties format (camelCase):
 
 ### CSS Rules
 - **camelCase only**: `fontSize`, `backgroundColor`, `borderRadius` (not kebab-case)
-- **No shorthand `border`**: Use `borderWidth`, `borderStyle`, `borderColor` separately
+- **Border shorthand supported**: `border: "1px solid #ccc"` auto-expands to longhands. Also `borderTop`, `outline`, etc.
 - **No shorthand `transition`**: Use `transitionProperty`, `transitionDuration` separately
+- **Design token references**: Use `token:TokenName` as a style value (e.g., `"color": "token:Brand Primary"`) to reference the project's design tokens
 
 ### Common Page Pattern
 

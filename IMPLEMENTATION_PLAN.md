@@ -4,65 +4,9 @@
 
 ---
 
-## Priority 8: Node Cloning ✅ COMPLETE
-**Spec:** `specs/plasmic-node-cloning.md` (14 criteria)
-**Status:** Node cloning implemented and tested. 640 tests passing.
+## All Features Complete
 
-**What was implemented:**
-- [x] New `clone-child` tool in `server.ts` — accepts `{ componentUuid, nodeRef, newName?, parentRef?, position?, dryRun? }`
-- [x] `edit-tools.ts` — `cloneChild()`: deep clones target node and all descendants
-- [x] `deepCloneTpl()` recursive clone with helper functions: `cloneExpr()`, `cloneText()`, `cloneAttrs()`, `cloneRuleSet()`, `cloneArgs()`, `cloneVSettings()`
-- [x] Clone inserted as sibling immediately after original by default
-- [x] Optional `parentRef` + `position` to insert clone elsewhere
-- [x] All cloned nodes get new UUIDs via `crypto.randomUUID()`
-- [x] All variant settings (base + non-base) copied — Variant references shared, RuleSet/text/attrs/args independently cloned
-- [x] Text content preserved: RawText (static) and ExprText (dynamic with CustomCode/ObjectPath/VarRef)
-- [x] Styles preserved via deep-cloned RuleSet
-- [x] Attrs preserved via deep-cloned expression map
-- [x] Slot override content in TplComponent instances preserved via deep-cloned Arg+RenderExpr
-- [x] Cannot clone root node of component (descriptive error)
-- [x] Dry-run mode supported (via `withDryRun()` wrapper in server.ts)
-- [x] Batch mode supported (via `saveOrAccumulate()`)
-- [x] Returns new root node's UUID
-- [x] Undo support (via `pushUndoOperation()` in `saveOrAccumulate()`)
-- [x] Node cache invalidated after structural clone operation
-- [x] Auto-generated clone name: `"Original Name (copy)"` or custom via `newName`
-- [x] 16 unit tests: simple clone, custom name, unnamed clone, deep tree, variant settings, attrs with expressions, ExprText, TplComponent slot overrides, parentRef+position, root node error, not-found errors, UUID uniqueness, sibling ordering, save verification, mutation independence
-- [x] 3 server integration tests: delegation + result, parameter passthrough, error handling
-
-**Key design decisions:**
-- Deep clone implemented in MCP layer (not WAB's `clone()` from `tpls.ts`) so it works with both mocked unit tests and real integration tests
-- Variant references (Variant objects) are shared between original and clone — they belong to the component, not the node
-- `crypto.randomUUID()` used for UUID generation — compatible with Node.js built-in, produces standard UUIDs
-- Clone helpers are private functions (not exported) — only `cloneChild()` is the public API
-
-**Files modified:** `edit-tools.ts`, `server.ts`
-**Test files:** `edit-tools.test.ts`, `server.test.ts`
-
----
-
-## Post-Implementation: Skill Updates
-
-After specs are implemented, the Claude Code skills need updating to document new capabilities:
-
-- [ ] **`.claude/commands/plasmic.md`** — Add `clone-child` and `update-attrs` to tool routing; add routing for dynamic text, token refs
-- [ ] **`.claude/commands/plasmic-edit.md`** — Major update: document `clone-child`, `update-attrs`, dynamic text, token references, slot targeting, border shorthand support
-- [ ] **`.claude/commands/plasmic-patterns.md`** — Add examples using token refs (`token:Primary Blue`), dynamic text (`dynamic: true`), border shorthand, semantic HTML tags
-- [ ] **`.claude/commands/plasmic-create-page.md`** — Add dynamic text and token ref examples
-- [ ] **`.claude/commands/plasmic-create-component.md`** — Add slot children targeting examples
-- [ ] **`.claude/commands/plasmic-inspect.md`** — Document dynamic text and token ref display in tree output
-
----
-
-## Dependency Graph
-
-```
-Slot Override Traversal (P2) ✅ ──► Slot Targeting (P6) ✅
-
-Element Tags & Attrs (P3) ✅ ──► Data Bindings (P7) ✅
-
-Node Cloning (P8) ✅ ─── standalone
-```
+All P1–P8 features and post-implementation skill updates are done. 640 tests passing.
 
 ## Completed (P1–P8)
 
@@ -76,3 +20,24 @@ Node Cloning (P8) ✅ ─── standalone
 | P6 | Slot Content Targeting | 608 |
 | P7 | Data Bindings (Dynamic Text) | 621 |
 | P8 | Node Cloning | 640 |
+
+## Post-Implementation: Skill Updates ✅ COMPLETE
+
+All Claude Code skills updated to document P1–P8 capabilities:
+
+- [x] **`.claude/commands/plasmic.md`** — Added `clone-child`, `update-attrs`, `list-style-properties` to tool list; added routing for dynamic text, token refs, slot targeting, node cloning, attribute editing, CSS property discovery
+- [x] **`.claude/commands/plasmic-edit.md`** — Added `clone-child`, `update-attrs`, `list-style-properties` tools; new sections for Dynamic Text Bindings, Design Token References, Border Shorthand, HTML Attribute Editing, Node Cloning, Slot Content Targeting
+- [x] **`.claude/commands/plasmic-patterns.md`** — Updated CSS rules (border shorthand now supported, token refs via `token:Name`); added sections for Design Tokens in Styles, Semantic HTML Tags, Named Slot Targeting
+- [x] **`.claude/commands/plasmic-create-page.md`** — Updated CSS rules (border shorthand, token refs)
+- [x] **`.claude/commands/plasmic-create-component.md`** — Updated CSS rules (border shorthand, token refs); added slot targeting examples
+- [x] **`.claude/commands/plasmic-inspect.md`** — New section documenting tree output formats: dynamic text (`dynamic: true`, `fallback`), token references (`tokenRefs` object), slot override display (`type: "slot"` wrappers), HTML attributes
+
+## Dependency Graph
+
+```
+Slot Override Traversal (P2) ✅ ──► Slot Targeting (P6) ✅
+
+Element Tags & Attrs (P3) ✅ ──► Data Bindings (P7) ✅
+
+Node Cloning (P8) ✅ ─── standalone
+```

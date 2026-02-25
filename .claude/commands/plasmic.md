@@ -22,17 +22,20 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `list-variants(componentUuid)` — List all variants for a component: global (breakpoints), component (custom), style (hover/focus).
 - `create-style-variant(componentUuid, selector, nodeRef?)` — Create a new interaction state variant (hover, focus, pressed, etc.). Optional `nodeRef` scopes to a specific element.
 - `create-variant-group(componentUuid, name, type?, initialVariants?)` — Create a named variant group (e.g., "Size" with "Small"/"Large"). Types: "single" (default), "multi", "toggle".
-- `update-text(componentUuid, nodeRef, text, variant?)` — Change text content on a node. Optional `variant` targets a specific variant.
-- `update-styles(componentUuid, nodeRef, styles, variant?)` — Change CSS styles on a node. Optional `variant` targets a specific variant.
-- `add-child(componentUuid, parentRef, child, position)` — Add a new element.
+- `update-text(componentUuid, nodeRef, text, variant?, dynamic?, fallback?, html?)` — Change text content. Set `dynamic: true` to bind a JS expression (e.g., `$ctx.product.name`). Optional `fallback` for null values. Optional `html: true` to render as HTML.
+- `update-styles(componentUuid, nodeRef, styles, variant?)` — Change CSS styles. Values accept `token:TokenName` for design token references. Border/outline shorthands (e.g., `"1px solid #ccc"`) are auto-expanded.
+- `update-attrs(componentUuid, nodeRef, attrs, variant?)` — Set or remove HTML/ARIA/data-* attributes. Pass `null` to delete. Prefix with `$` or wrap in `{{...}}` for dynamic expressions.
+- `add-child(componentUuid, parentRef, child, position, slot?)` — Add a new element. Optional `slot` targets a named slot on a TplComponent instance.
 - `remove-child(componentUuid, nodeRef)` — Remove an element.
 - `move-child(componentUuid, nodeRef, newParentRef, position)` — Move an element.
+- `clone-child(componentUuid, nodeRef, newName?, parentRef?, position?)` — Deep-clone a node and all descendants with new UUIDs. Inserted as next sibling by default; optional `parentRef` + `position` for elsewhere.
+- `list-style-properties(filter?)` — List all valid CSS property names. Optional substring filter (e.g., `"border"`, `"flex"`).
 - `begin-batch()` / `end-batch()` — Group multiple edits into a single save.
 - `undo()` — Revert the last operation.
 - `save-project()` — Force a full save of the current in-memory model to the server.
 - `refresh-project()` — Reload project from server (clears undo history).
 
-All edit tools (`update-text`, `update-styles`, `add-child`, `remove-child`, `move-child`) accept an optional `dryRun: true` parameter to preview what would change without persisting.
+All edit tools (`update-text`, `update-styles`, `update-attrs`, `add-child`, `remove-child`, `move-child`, `clone-child`) accept an optional `dryRun: true` parameter to preview what would change without persisting.
 
 ## Instructions
 1. If no project is set, call `list-projects` and ask the user which one to work on, then call `set-project`.
@@ -51,6 +54,12 @@ All edit tools (`update-text`, `update-styles`, `add-child`, `remove-child`, `mo
    - "make the heading smaller on mobile", "change hover color", "set font size for tablet" → delegate to `/plasmic-edit` (variant-aware editing)
    - "add a section", "insert a card", "add a testimonial below the hero" → delegate to `/plasmic-edit`
    - "remove the footer", "delete the sidebar" → delegate to `/plasmic-edit`
+   - "clone this card", "duplicate the hero section node", "copy the button" → delegate to `/plasmic-edit` (node cloning within a component)
+   - "set the href", "add aria-label", "set data-testid", "update the placeholder" → delegate to `/plasmic-edit` (HTML attribute editing)
+   - "bind this text to data", "make the title dynamic", "show $ctx.user.name" → delegate to `/plasmic-edit` (dynamic text bindings)
+   - "use the brand color token", "apply the primary color token" → delegate to `/plasmic-edit` (design token references)
+   - "add content to the icon slot", "put text in the header slot" → delegate to `/plasmic-edit` (slot content targeting)
+   - "what CSS properties are valid", "list border properties" → call `list-style-properties` directly (optionally with a `filter`)
    - "rename the homepage", "change component name to X" → call `rename-component` with the component UUID and new name
    - "set the page title", "update page description", "change page path" → call `update-page-meta` with the relevant fields
    - "what's the page metadata", "show me the SEO settings" → call `get-page-meta` to read current values

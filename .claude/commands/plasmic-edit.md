@@ -12,11 +12,14 @@ You are editing an existing page or component in a Plasmic project.
 - `list-variants(componentUuid)` — List all variants: global (breakpoints), component (custom), style (hover/focus). Use to discover variant names/UUIDs before variant-targeted edits.
 - `create-style-variant(componentUuid, selector, nodeRef?)` — Create a new interaction state variant (`:hover`, `:focus`, `:active`, `:focus-visible`, `:disabled`, etc.). Optional `nodeRef` scopes to a specific element. **Required before applying styles to a variant that doesn't exist yet.**
 - `create-variant-group(componentUuid, name, type?, initialVariants?)` — Create a named variant group (e.g., "Size" with "Small"/"Large" variants). Types: `"single"` (one active, default), `"multi"` (multiple active), `"toggle"` (boolean on/off). Optional `initialVariants` array creates variants immediately.
-- `update-text(componentUuid, nodeRef, text, variant?)` — Change text content on a node. Optional `variant` targets a specific variant (by name, UUID, or selector like ":hover").
-- `update-styles(componentUuid, nodeRef, styles, variant?)` — Change CSS styles on a node. Optional `variant` targets a specific variant.
-- `add-child(componentUuid, parentRef, child, position)` — Add a new element.
+- `update-text(componentUuid, nodeRef, text, variant?, dynamic?, fallback?, html?)` — Change text content. Set `dynamic: true` to create a data-bound expression. Optional `fallback` for null values. Optional `html: true` to render as HTML.
+- `update-styles(componentUuid, nodeRef, styles, variant?)` — Change CSS styles. Values accept `token:TokenName` for design token references. Border/outline shorthands auto-expand.
+- `update-attrs(componentUuid, nodeRef, attrs, variant?)` — Set or remove HTML/ARIA/data-* attributes. Pass `null` to delete. Prefix with `$` or wrap in `{{...}}` for dynamic expressions.
+- `add-child(componentUuid, parentRef, child, position, slot?)` — Add a new element. Optional `slot` targets a named slot on a TplComponent instance.
 - `remove-child(componentUuid, nodeRef)` — Remove an element.
 - `move-child(componentUuid, nodeRef, newParentRef, position)` — Move an element.
+- `clone-child(componentUuid, nodeRef, newName?, parentRef?, position?)` — Deep-clone a node and all descendants with new UUIDs. Inserted as next sibling by default.
+- `list-style-properties(filter?)` — List all valid CSS property names. Optional substring filter (e.g., `"border"`, `"flex"`).
 - `rename-component(componentUuid, newName, newPath?)` — Rename a page or component. Auto-deduplicates names.
 - `update-page-meta(componentUuid, title?, description?, openGraphImage?, canonical?, path?)` — Set page SEO metadata.
 - `get-page-meta(componentUuid)` — Get page metadata (title, description, OG image, canonical, path).
@@ -27,7 +30,7 @@ You are editing an existing page or component in a Plasmic project.
 - `save-project()` — Force a full save of the current in-memory model.
 - `refresh-project()` — Reload project from server.
 
-All edit tools accept an optional `dryRun: true` parameter to preview changes without persisting.
+All edit tools (`update-text`, `update-styles`, `update-attrs`, `add-child`, `remove-child`, `move-child`, `clone-child`) accept an optional `dryRun: true` parameter to preview changes without persisting.
 
 ## Editing Workflow
 1. If no project is active, set one up.
@@ -35,11 +38,13 @@ All edit tools accept an optional `dryRun: true` parameter to preview changes wi
 3. Identify the node(s) to modify from the summary. Use node names or UUIDs.
 4. If you need to see a node's current styles/text before editing, call `get-node-details` for that specific node.
 5. Choose the right tool for each edit:
-   - Text changes → `update-text`
-   - Style changes → `update-styles` (use camelCase CSS: fontSize, backgroundColor, etc.)
-   - Adding elements → `add-child` with a PlasmicElement JSON body
+   - Text changes → `update-text` (static text or `dynamic: true` for data bindings)
+   - Style changes → `update-styles` (use camelCase CSS; use `token:TokenName` for design tokens)
+   - Attribute changes → `update-attrs` (HTML, ARIA, data-* attributes)
+   - Adding elements → `add-child` with a PlasmicElement JSON body (use `slot` for TplComponent slots)
    - Removing elements → `remove-child`
    - Rearranging → `move-child`
+   - Duplicating nodes → `clone-child`
 6. For 3+ edits, wrap in `begin-batch` / `end-batch`.
 7. After editing, call `get-node-details` on the edited node to confirm the change.
 8. Only use `get-component-tree` or `export-component-tree` if you need the complete picture (e.g., complex restructuring).
@@ -57,11 +62,49 @@ Use React CSSProperties format (camelCase):
 - fontSize, fontWeight, fontFamily
 - color, backgroundColor, borderColor
 - padding, margin, gap (shorthand values as strings: "16px", "8px 16px")
-- borderRadius, border (e.g., "1px solid #ccc")
+- borderRadius, border (e.g., "1px solid #ccc") — shorthands auto-expand to longhands
 - width, height, maxWidth, minHeight
 - display, flexDirection, alignItems, justifyContent
 - position, top, right, bottom, left
 - opacity, overflow, textAlign
+
+**Border/outline shorthand expansion:** `border: "1px solid #ccc"` auto-expands to 12 longhands (borderTopWidth, borderTopStyle, borderTopColor, etc.). Side-specific shorthands like `borderTop: "2px dashed red"` expand to 3 longhands. `outline: "1px solid blue"` expands to outline-width, outline-style, outline-color.
+
+**Design token references:** Use `token:TokenName` (case-insensitive) or `token:<uuid>` as a style value to reference the project's design tokens. Example: `{ "color": "token:Brand Primary", "fontSize": "token:Body Size" }`. Call `get-tokens()` to discover available tokens.
+
+**Discovering valid properties:** Call `list-style-properties()` to see all valid CSS property names. Use `list-style-properties(filter: "border")` to filter.
+
+## HTML Attribute Editing
+Use `update-attrs` to set or remove HTML, ARIA, and data-* attributes on nodes:
+- Static: `{ "href": "/home", "disabled": true, "data-testid": "hero" }`
+- Dynamic (JS expression): `{ "href": "$ctx.url" }` or `{ "href": "{{$ctx.url}}" }`
+- Remove: `{ "href": null }`
+- ARIA: `{ "aria-label": "Close", "role": "button" }`
+- Event handlers (`onclick`, `onload`, etc.) are rejected for security.
+
+## Dynamic Text Bindings
+Use `update-text` with `dynamic: true` to bind text to data expressions:
+- Basic: `update-text(uuid, "Title", "$ctx.product.name", dynamic: true)`
+- With fallback: `update-text(uuid, "Title", "$ctx.product.name", dynamic: true, fallback: "Untitled")`
+- HTML rendering: `update-text(uuid, "Body", "$ctx.content", dynamic: true, html: true)`
+- Convert back to static: `update-text(uuid, "Title", "Static text")` (omit `dynamic`)
+
+In tree output, dynamic text shows as `{ "text": "$ctx.product.name", "dynamic": true, "fallback": "Untitled" }`.
+
+## Node Cloning
+Use `clone-child` to duplicate a node and all its descendants:
+- Basic: `clone-child(componentUuid, "Card")` — creates "Card (copy)" as next sibling
+- Custom name: `clone-child(componentUuid, "Card", newName: "CardAlt")`
+- Different parent: `clone-child(componentUuid, "Card", parentRef: "OtherSection", position: "first")`
+- All styles, text, variant settings, slot overrides are deep-cloned with new UUIDs
+- Cannot clone the root node of a component
+
+## Slot Content Targeting
+Use the `slot` parameter on `add-child` to add content to named slots on component instances:
+- Default slot: `add-child(uuid, "CardInstance", child, slot: "children")` — or just omit `slot`
+- Named slot: `add-child(uuid, "CardInstance", child, slot: "icon")` — targets the "icon" slot
+- If no RenderExpr exists for that slot, one is created automatically
+- `slot` only works when `parentRef` is a TplComponent; using it on a TplTag throws an error
 
 ## PlasmicElement Reference (for add-child)
 When adding new elements, construct a PlasmicElement JSON:
