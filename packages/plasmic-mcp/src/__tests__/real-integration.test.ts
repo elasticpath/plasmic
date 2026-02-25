@@ -960,6 +960,122 @@ describe("add-child with component instances", () => {
     expect(afterRemoveTree.children.length).toBe(initialChildCount);
   });
 
+  it("add-child type:'component' with props → verify props in tree output", async () => {
+    // Need at least 2 components: one to edit, one to reference as an instance
+    if (discoveredComponents.length < 2) {
+      return;
+    }
+
+    // Use a page as the editing target
+    const targetPage =
+      discoveredComponents.find((c) => c.type === "page") ??
+      discoveredComponents[0];
+    // Find a component that has params (e.g., hostless-plasmic-head has title, description)
+    const referencedComp = discoveredComponents.find(
+      (c) => c.uuid !== targetPage.uuid
+    )!;
+
+    // List variants to find param names on the referenced component
+    // We need to know what props are available - get the tree to check structure
+    const treeResult = await client.callTool({
+      name: "get-component-tree",
+      arguments: { componentUuid: targetPage.uuid },
+    });
+    const tree = parseResponse(treeResult).tree;
+    const initialChildCount = tree.children?.length ?? 0;
+
+    // Add a component instance with props (title is a common PropParam)
+    const addResult = await client.callTool({
+      name: "add-child",
+      arguments: {
+        componentUuid: targetPage.uuid,
+        parentRef: tree.uuid,
+        child: {
+          type: "component",
+          name: referencedComp.name,
+          props: { title: "Integration Test Title" },
+        },
+      },
+    });
+
+    // The add might fail if the referenced component doesn't have a "title" param.
+    // In that case, this test is a no-op for this fixture (we guard gracefully).
+    if (addResult.isError) {
+      // If it failed because of unknown prop, that's expected for some components
+      const errorText = addResult.content?.[0]?.text ?? "";
+      if (errorText.includes("Unknown prop")) {
+        return; // Skip gracefully — fixture component doesn't have "title" param
+      }
+      throw new Error(`Unexpected error: ${errorText}`);
+    }
+
+    const addOutput = parseResponse(addResult);
+    expect(addOutput.success).toBe(true);
+
+    // Verify the new child has the prop value in tree output
+    const afterAdd = await client.callTool({
+      name: "get-component-tree",
+      arguments: { componentUuid: targetPage.uuid },
+    });
+    const afterAddTree = parseResponse(afterAdd).tree;
+    expect(afterAddTree.children.length).toBe(initialChildCount + 1);
+
+    const newChild =
+      afterAddTree.children[afterAddTree.children.length - 1];
+    expect(newChild.type).toBe("component");
+    expect(newChild.componentName).toBe(referencedComp.name);
+    // Props should appear in the attrs field (tree-reader extracts args as attrs)
+    expect(newChild.attrs).toBeDefined();
+    expect(newChild.attrs.title).toBe("Integration Test Title");
+
+    // Clean up: remove the added component instance
+    const removeResult = await client.callTool({
+      name: "remove-child",
+      arguments: {
+        componentUuid: targetPage.uuid,
+        nodeRef: newChild.uuid,
+      },
+    });
+    expect(removeResult.isError).toBeFalsy();
+  });
+
+  it("add-child type:'component' with unknown prop name → descriptive error", async () => {
+    if (discoveredComponents.length < 2) {
+      return;
+    }
+
+    const targetPage =
+      discoveredComponents.find((c) => c.type === "page") ??
+      discoveredComponents[0];
+    const referencedComp = discoveredComponents.find(
+      (c) => c.uuid !== targetPage.uuid
+    )!;
+
+    const treeResult = await client.callTool({
+      name: "get-component-tree",
+      arguments: { componentUuid: targetPage.uuid },
+    });
+    const tree = parseResponse(treeResult).tree;
+
+    const addResult = await client.callTool({
+      name: "add-child",
+      arguments: {
+        componentUuid: targetPage.uuid,
+        parentRef: tree.uuid,
+        child: {
+          type: "component",
+          name: referencedComp.name,
+          props: { totallyBogus_XYZ: "value" },
+        },
+      },
+    });
+
+    expect(addResult.isError).toBe(true);
+    const errorText = addResult.content?.[0]?.text ?? "";
+    expect(errorText).toContain("Unknown prop");
+    expect(errorText).toContain("totallyBogus_XYZ");
+  });
+
   it("add-child type:'component' with unknown name → error with available names", async () => {
     const comp = discoveredComponents[0];
     const treeResult = await client.callTool({

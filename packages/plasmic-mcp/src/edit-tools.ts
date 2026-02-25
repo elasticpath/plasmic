@@ -835,10 +835,54 @@ function plasmicElementToTpl(
       plasmicElementToTpl(child, tplMgr, baseVariant)
     );
 
+    // Convert props to args dict for mkTplComponentX.
+    // Each prop value is wrapped in a CustomCode expression (same as codeLit).
+    // Slot params are rejected — use the "children" field for slot content.
+    const propsField = "props" in element ? element.props : undefined;
+    let args: Record<string, any> | undefined;
+    if (propsField && Object.keys(propsField).length > 0) {
+      args = {};
+      const componentParams: any[] = targetComponent.params ?? [];
+      const paramByName = new Map<string, any>();
+      for (const p of componentParams) {
+        if (p.variable?.name) {
+          paramByName.set(p.variable.name, p);
+        }
+      }
+
+      for (const [key, value] of Object.entries(propsField)) {
+        const param = paramByName.get(key);
+        if (!param) {
+          const available = [...paramByName.keys()].sort().join(", ");
+          throw new Error(
+            `Unknown prop "${key}" on component "${targetComponent.name}". ` +
+            `Available params: ${available || "(none)"}`
+          );
+        }
+        // Slot params must use the "children" field, not "props"
+        if (param.tplSlot) {
+          throw new Error(
+            `Prop "${key}" is a slot on component "${targetComponent.name}". ` +
+            `Use the "children" field to pass slot content instead.`
+          );
+        }
+        // Convert value to CustomCode expression (same as WAB's codeLit)
+        const code = value === undefined ? "undefined" : JSON.stringify(value);
+        if (code === undefined) {
+          throw new Error(
+            `Prop "${key}" on component "${targetComponent.name}" has a ` +
+            `non-serializable value (${typeof value}).`
+          );
+        }
+        args[key] = new CustomCode({ code, fallback: null });
+      }
+    }
+
     const tpl = mkTplComponentX({
       component: targetComponent,
       baseVariant,
       ...(childTpls.length > 0 ? { children: childTpls } : {}),
+      ...(args ? { args } : {}),
     });
 
     return tpl;

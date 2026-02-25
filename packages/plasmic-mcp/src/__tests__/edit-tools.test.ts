@@ -1112,6 +1112,337 @@ describe("edit-tools", () => {
     });
   });
 
+  // --- add-child with component props ---
+  //
+  // The "props" field on ComponentElement allows setting non-slot prop
+  // overrides on component instances. Each prop value is converted to a
+  // CustomCode expression and passed as args to mkTplComponentX. This
+  // enables richer component composition (e.g., { type: "component",
+  // name: "Button", props: { label: "Click me", disabled: true } }).
+
+  describe("addChild with component props", () => {
+    /** Build a TplComponent-like node (as returned by mkTplComponentX mock) */
+    function mkTplComponent(opts: {
+      uuid?: string;
+      componentName: string;
+      componentUuid: string;
+    }): any {
+      return {
+        _type: "TplComponent",
+        uuid: opts.uuid ?? `tpl-comp-${Math.random().toString(36).slice(2, 8)}`,
+        name: null,
+        component: { name: opts.componentName, uuid: opts.componentUuid },
+        vsettings: [{ rs: { values: {} }, args: [] }],
+        children: [],
+      };
+    }
+
+    it("passes props as args dict to mkTplComponentX", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const buttonComp = {
+        uuid: "button-uuid",
+        name: "Button",
+        tplTree: mkTag({ uuid: "button-root" }),
+        params: [
+          { variable: { name: "label" } },
+          { variable: { name: "disabled" } },
+          { variable: { name: "count" } },
+        ],
+      };
+
+      const newTplComp = mkTplComponent({
+        uuid: "new-tpl-props-1",
+        componentName: "Button",
+        componentUuid: "button-uuid",
+      });
+      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} } }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      const session = makeSession({
+        site: { components: [owningComp, buttonComp] },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      await addChild(api, "comp-1", "Section", {
+        type: "component",
+        name: "Button",
+        props: { label: "Click me", disabled: true, count: 42 },
+      });
+
+      // mkTplComponentX should receive an args dict with CustomCode values
+      const callArgs = mockMkTplComponentX.mock.calls[0][0];
+      expect(callArgs.component).toBe(buttonComp);
+      expect(callArgs.args).toBeDefined();
+      expect(callArgs.args.label._type).toBe("CustomCode");
+      expect(callArgs.args.label.code).toBe('"Click me"');
+      expect(callArgs.args.disabled._type).toBe("CustomCode");
+      expect(callArgs.args.disabled.code).toBe("true");
+      expect(callArgs.args.count._type).toBe("CustomCode");
+      expect(callArgs.args.count.code).toBe("42");
+    });
+
+    it("passes both props and children together", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const cardComp = {
+        uuid: "card-uuid",
+        name: "Card",
+        tplTree: mkTag({ uuid: "card-root" }),
+        params: [
+          { variable: { name: "title" } },
+          { variable: { name: "children" }, tplSlot: {} }, // slot param
+        ],
+      };
+
+      const newTplComp = mkTplComponent({
+        uuid: "new-tpl-props-2",
+        componentName: "Card",
+        componentUuid: "card-uuid",
+      });
+      mockMkTplComponentX.mockReturnValue(newTplComp);
+      const childTpl = mkTag({ uuid: "child-text-1", tag: "div" });
+      mockMkTplInlinedText.mockReturnValue(childTpl);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} } }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      const session = makeSession({
+        site: { components: [owningComp, cardComp] },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      await addChild(api, "comp-1", "Section", {
+        type: "component",
+        name: "Card",
+        props: { title: "My Card" },
+        children: [{ type: "text", value: "Card body" }],
+      });
+
+      const callArgs = mockMkTplComponentX.mock.calls[0][0];
+      expect(callArgs.args.title._type).toBe("CustomCode");
+      expect(callArgs.args.title.code).toBe('"My Card"');
+      expect(callArgs.children).toEqual([childTpl]);
+    });
+
+    it("handles null and array prop values", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const widgetComp = {
+        uuid: "widget-uuid",
+        name: "Widget",
+        tplTree: mkTag({ uuid: "widget-root" }),
+        params: [
+          { variable: { name: "items" } },
+          { variable: { name: "fallback" } },
+        ],
+      };
+
+      const newTplComp = mkTplComponent({
+        uuid: "new-tpl-props-3",
+        componentName: "Widget",
+        componentUuid: "widget-uuid",
+      });
+      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} } }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      const session = makeSession({
+        site: { components: [owningComp, widgetComp] },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      await addChild(api, "comp-1", "Section", {
+        type: "component",
+        name: "Widget",
+        props: { items: ["a", "b"], fallback: null },
+      });
+
+      const callArgs = mockMkTplComponentX.mock.calls[0][0];
+      expect(callArgs.args.items.code).toBe('["a","b"]');
+      expect(callArgs.args.fallback.code).toBe("null");
+    });
+
+    it("throws error for unknown prop name", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const buttonComp = {
+        uuid: "button-uuid",
+        name: "Button",
+        tplTree: mkTag({ uuid: "button-root" }),
+        params: [{ variable: { name: "label" } }],
+      };
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} } }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      const session = makeSession({
+        site: { components: [owningComp, buttonComp] },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      await expect(
+        addChild(api, "comp-1", "Section", {
+          type: "component",
+          name: "Button",
+          props: { nonExistent: "value" },
+        })
+      ).rejects.toThrow('Unknown prop "nonExistent" on component "Button"');
+    });
+
+    it("throws error when prop targets a slot param", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const cardComp = {
+        uuid: "card-uuid",
+        name: "Card",
+        tplTree: mkTag({ uuid: "card-root" }),
+        params: [
+          { variable: { name: "children" }, tplSlot: { name: "children" } },
+        ],
+      };
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} } }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      const session = makeSession({
+        site: { components: [owningComp, cardComp] },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      await expect(
+        addChild(api, "comp-1", "Section", {
+          type: "component",
+          name: "Card",
+          props: { children: "some text" },
+        })
+      ).rejects.toThrow('Prop "children" is a slot on component "Card"');
+    });
+
+    it("skips args when props is empty object", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const buttonComp = {
+        uuid: "button-uuid",
+        name: "Button",
+        tplTree: mkTag({ uuid: "button-root" }),
+        params: [{ variable: { name: "label" } }],
+      };
+
+      const newTplComp = mkTplComponent({
+        uuid: "new-tpl-props-6",
+        componentName: "Button",
+        componentUuid: "button-uuid",
+      });
+      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} } }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      const session = makeSession({
+        site: { components: [owningComp, buttonComp] },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      await addChild(api, "comp-1", "Section", {
+        type: "component",
+        name: "Button",
+        props: {},
+      });
+
+      // Empty props should NOT produce an args field
+      const callArgs = mockMkTplComponentX.mock.calls[0][0];
+      expect(callArgs.args).toBeUndefined();
+    });
+
+    it("works with default-component type and props", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const inputComp = {
+        uuid: "input-uuid",
+        name: "TextInput",
+        tplTree: mkTag({ uuid: "input-root" }),
+        params: [
+          { variable: { name: "placeholder" } },
+          { variable: { name: "required" } },
+        ],
+      };
+
+      const newTplComp = mkTplComponent({
+        uuid: "new-tpl-props-7",
+        componentName: "TextInput",
+        componentUuid: "input-uuid",
+      });
+      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} } }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      const session = makeSession({
+        site: { components: [owningComp, inputComp] },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      await addChild(api, "comp-1", "Section", {
+        type: "default-component",
+        kind: "TextInput",
+        props: { placeholder: "Enter text...", required: true },
+      });
+
+      const callArgs = mockMkTplComponentX.mock.calls[0][0];
+      expect(callArgs.component).toBe(inputComp);
+      expect(callArgs.args.placeholder.code).toBe('"Enter text..."');
+      expect(callArgs.args.required.code).toBe("true");
+    });
+  });
+
   // --- remove-child ---
 
   describe("removeChild", () => {

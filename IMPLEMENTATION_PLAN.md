@@ -1,12 +1,12 @@
 # Implementation Plan
 
-Last updated: 2026-02-26
+Last updated: 2026-02-25
 
 ## Project Status Summary
 
 The Plasmic MCP server (`packages/plasmic-mcp/`) provides 29 MCP tools for programmatic Plasmic Studio interaction from Claude Code. Six skill files in `.claude/commands/` orchestrate these tools. All 11 specs are fully implemented.
 
-**Test count:** 409 tests across 14 files (383 Jest + 26 Vitest, all passing, zero skipped).
+**Test count:** 418 tests across 14 files (390 Jest + 28 Vitest, all passing, zero skipped).
 **Tools:** 29 registered in server.ts (read, write, batch, undo, save, refresh, list-variants, rename, metadata, preview, delete).
 **Skills:** 6 files (router, inspect, edit, create-page, create-component, patterns).
 **Specs:** 11 total (all complete).
@@ -24,8 +24,8 @@ The Plasmic MCP server (`packages/plasmic-mcp/`) provides 29 MCP tools for progr
 | `plasmic-incremental-writes.md` — 9 edit tools + save + undo | Complete | ~26 + ~12 + ~16 + ~11 |
 | `plasmic-component-creation.md` — create-component + clone-component | Complete | 10 (in server.test.ts) |
 | `plasmic-context-efficient-queries.md` — Summary/detail tools + caching | Complete | ~34 + ~52 |
-| `plasmic-integration-tests.md` — Vitest with real WAB modules | Complete | 26 (real-integration.test.ts) |
-| `plasmic-component-instances.md` — ComponentElement in add-child | Complete | 6 Jest + 2 Vitest |
+| `plasmic-integration-tests.md` — Vitest with real WAB modules | Complete | 28 (real-integration.test.ts) |
+| `plasmic-component-instances.md` — ComponentElement in add-child + props | Complete | 13 Jest + 4 Vitest |
 | `plasmic-variant-editing.md` — Variant-aware editing | Complete | 19 Jest + 4 Vitest |
 | `plasmic-management-tools.md` — Rename, metadata, preview, delete | Complete | 34 Jest + 6 Vitest |
 
@@ -41,12 +41,12 @@ The Plasmic MCP server (`packages/plasmic-mcp/`) provides 29 MCP tools for progr
 8. ~~**P4.1** — Duplicate step numbering fix~~ ✓ DONE
 9. ~~**P4.2** — get-subtree excludeStyles parameter + integration test coverage~~ ✓ DONE
 10. ~~**P5.1** — UUID return from create-page/create-component/clone-component~~ ✓ DONE (3 new tests)
+11. ~~**P6.1** — `props` field on ComponentElement for component prop overrides~~ ✓ DONE (7 Jest + 2 Vitest)
 
 ## Known Limitations (not planned for implementation)
 
 These are documented nice-to-haves from specs that are not currently planned:
 
 - `create-style-variant` and `create-variant-group` tools (spec nice-to-haves)
-- `props` field on ComponentElement for setting component prop overrides beyond slot children
 - Variant-specific overrides in `get-node-details` output
 - `get-project-meta` enhanced to include page metadata summary

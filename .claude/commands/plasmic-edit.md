@@ -69,9 +69,11 @@ Text: `{ "type": "text", "value": "Hello", "tag": "h2", "styles": { ... } }`
 Image: `{ "type": "img", "src": "https://...", "styles": { ... } }`
 Button: `{ "type": "button", "value": "Click", "styles": { ... } }`
 Component: `{ "type": "component", "name": "Card" }`
+Component with props: `{ "type": "component", "name": "Button", "props": { "label": "Click me", "disabled": true } }`
 Component with slot children: `{ "type": "component", "name": "Card", "children": [{ "type": "text", "value": "Content" }] }`
+Component with props + children: `{ "type": "component", "name": "Card", "props": { "title": "My Card" }, "children": [{ "type": "text", "value": "Body" }] }`
 
-To insert a component instance, use `list-components` to find the component name, then pass `{ "type": "component", "name": "ComponentName" }` as the `child` argument. The component is resolved by name or UUID from the project and its dependencies.
+To insert a component instance, use `list-components` to find the component name, then pass `{ "type": "component", "name": "ComponentName" }` as the `child` argument. The component is resolved by name or UUID from the project and its dependencies. Props must match the component's parameter names exactly (case-sensitive). Slot params cannot be set via `props` — use `children` instead.
 
 ## Variant Editing Workflow
 To edit styles or text for a specific variant (responsive breakpoint, hover state, etc.):

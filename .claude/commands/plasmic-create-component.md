@@ -72,6 +72,16 @@ Same as `/plasmic-create-page`. The `create-component` tool accepts a PlasmicEle
 - **No shorthand `border`**: Use `borderWidth`, `borderStyle`, `borderColor` separately
 - **No shorthand `transition`**: Use `transitionProperty`, `transitionDuration` separately
 
+**Component instance (reference existing component):**
+```json
+{
+  "type": "component",
+  "name": "Button",
+  "props": { "label": "Click me", "disabled": true },
+  "children": [ ...slot content... ]
+}
+```
+
 ### Valid Element Types
 `img`, `text`, `box`, `vbox`, `hbox`, `page-section`, `button`, `input`, `password`, `textarea`, `component`, `default-component`
 

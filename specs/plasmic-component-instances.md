@@ -79,7 +79,7 @@ None — all changes are additions to existing files.
 
 ### Nice to Have
 
-- [ ] Support `props` field on `ComponentElement` for setting component prop overrides
+- [x] Support `props` field on `ComponentElement` for setting component prop overrides
 - [ ] Support nested component references (component inside component's children slot)
 
 ## Happy Path
