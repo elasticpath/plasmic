@@ -14,7 +14,7 @@
 - Zero TODO/FIXME/HACK comments in `packages/plasmic-mcp/`
 - Zero skipped or flaky tests
 - Zero placeholder or stub implementations (all stubs are intentional mock infrastructure)
-- All 1221 tests passing (1084 unit + 137 integration)
+- All 1243 tests passing (1106 unit + 137 integration)
 - Eval system files implemented:
   - `evals/harness/mcp-client.ts` — McpEvalClient (mock mode via InMemoryTransport; integration mode via StdioClientTransport child process)
   - `evals/harness/types.ts` — EvalScenario, GraderConfig, SetupStep, TranscriptEntry, etc.
@@ -263,23 +263,23 @@
   - Navigate to `{host}/projects/{projectId}`
   - Wait for iframe chain: `page → iframe.studio-frame → iframe.__wab_studio-frame → .canvas-editor__canvas-container`
   - Navigation timeout: configurable, default 60 seconds (spec V9)
-  - [ ] If task modified a specific component, navigate to that component within Studio (spec V10) — current implementation uses project-level URL
+  - [x] If task modified a specific component, navigate to that component within Studio (spec V10). Runner extracts last componentUuid from transcript (tool input params + creation results) and passes to `capture()`, which appends `?arena_type=component&arena={uuid}` to the Studio URL. Falls back to project-level URL when no UUID available.
 - [x] **Capture**: Full Studio editor view (tree + canvas + right panel), NOT just preview (spec V14)
   - Desktop: 1280x800 always captured
   - Mobile: 375x812 for responsive scenarios (keyword detection)
   - Save to `evals/results/screenshots/{runId}/{scenarioId}-{viewport}.png`
-- [ ] **Playwright config**: `actionTimeout: 10_000`, `trace: "retain-on-failure"`, `screenshot: "only-on-failure"` (spec V17-V19) — `trace: "retain-on-failure"` not added; screenshots captured directly
+- [x] **Playwright config**: `actionTimeout: 10_000` via `context.setDefaultTimeout()` (V17), `trace` via `context.tracing.start()/stop()` — saves trace zip on capture failure for debugging (V18). `screenshot: "only-on-failure"` N/A — screenshots captured manually (V19).
 - [x] **Edge cases**:
   - Studio fails to load: log timeout, save visible screenshot, mark visual failed, continue (spec VE1)
   - Studio shows spinner/error: screenshot captured anyway, flagged (spec V15/GE5)
   - Component deleted by task: navigate to project root (spec VE3)
-  - [ ] Multiple components modified: screenshot last modified (spec VE4) — uses project-level URL instead
+  - [x] Multiple components modified: screenshot last modified (spec VE4). `extractLastComponentUuid()` returns the last UUID from the transcript, covering both input params and creation results.
   - Studio not running: skip visual with warning, state checks still run (spec VE5)
   - Browser crashes: relaunch, re-auth, continue from next task (spec VE6)
 - [x] `--no-visual` flag skips this step (already existed, now wired up); Playwright dynamically imported so mock tier doesn't need it
 - **Spec**: mcp-eval-visual-capture.md
 - **Dependencies**: P1.4, running Plasmic Studio instance
-- **Files**: `evals/visual/capture.ts`, `evals/visual/auth.ts`
+- **Files**: `evals/visual/capture.ts`, `evals/visual/auth.ts`, `evals/harness/runner.ts` (extractLastComponentUuid), `src/__tests__/eval-visual-capture.test.ts` (22 tests)
 
 ### P2.4: LLM-as-Judge grading (Tier 2) — DONE
 - [x] After visual capture, feed screenshot + transcript + rubric to multimodal Claude for quality scoring
@@ -459,4 +459,4 @@ P0.1 (scaffolding)
                               P2.2   P2.4
 ```
 
-**ALL PHASES COMPLETE.** P0 + P1: working `npm run eval` with mock-tier state-check grading, JSON reports, CI workflow. P2: 55 scenarios (20 simple + 20 medium + 15 complex), visual capture, LLM-as-Judge, integration-tier MCP client. P3: eval dashboard, human review workflow with auto-flagging (judge-disagrees, low-quality, new-scenario) and overrides.json persistence, scenario validator, cost tracking. 1221 tests passing (1084 unit + 137 integration).
+**ALL PHASES COMPLETE.** P0 + P1: working `npm run eval` with mock-tier state-check grading, JSON reports, CI workflow. P2: 55 scenarios (20 simple + 20 medium + 15 complex), visual capture with component-level navigation (V10/VE4), LLM-as-Judge, integration-tier MCP client. P3: eval dashboard, human review workflow with auto-flagging (judge-disagrees, low-quality, new-scenario) and overrides.json persistence, scenario validator, cost tracking. 1243 tests passing (1106 unit + 137 integration).

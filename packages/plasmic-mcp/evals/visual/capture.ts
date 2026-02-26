@@ -13,6 +13,13 @@
  * Why Playwright: Studio loads inside nested iframes that require a real
  * browser to render. Simple HTTP screenshot services can't handle the
  * iframe chain or the authenticated session.
+ *
+ * Component-level navigation (V10): When a componentUuid is provided,
+ * the capture navigates directly to that component's arena in Studio
+ * using ?arena_type=component&arena={uuid} query params. This shows the
+ * specific component that was modified, not just the project overview.
+ * The runner extracts the last componentUuid from the conversation
+ * transcript, handling both tool input params and creation results (VE4).
  */
 
 import { mkdirSync } from "fs";
@@ -31,6 +38,7 @@ const DESKTOP_VIEWPORT = { width: 1280, height: 800 };
 const MOBILE_VIEWPORT = { width: 375, height: 812 };
 
 const DEFAULT_NAVIGATION_TIMEOUT_MS = 60_000;
+const DEFAULT_ACTION_TIMEOUT_MS = 10_000;
 
 export interface VisualCaptureConfig {
   /** Run ID for organizing screenshots into per-run directories */
@@ -126,8 +134,13 @@ export class VisualCapture {
         this.browser,
         this.config.authConfig
       );
+      // V17: Set action timeout to 10s so individual Playwright actions
+      // (clicks, waits) fail fast instead of hanging for 30s defaults.
+      this.context.setDefaultTimeout(DEFAULT_ACTION_TIMEOUT_MS);
       this.page = await this.context.newPage();
       await this.page.setViewportSize(DESKTOP_VIEWPORT);
+      // V18: Start tracing so we can save it on capture failures for debugging.
+      await this.context.tracing.start({ screenshots: true, snapshots: true });
     } catch (err: any) {
       // Retry auth once before giving up (spec VE2)
       console.error(
@@ -139,8 +152,10 @@ export class VisualCapture {
           this.browser,
           this.config.authConfig
         );
+        this.context.setDefaultTimeout(DEFAULT_ACTION_TIMEOUT_MS);
         this.page = await this.context.newPage();
         await this.page.setViewportSize(DESKTOP_VIEWPORT);
+        await this.context.tracing.start({ screenshots: true, snapshots: true });
       } catch (retryErr: any) {
         console.error(
           `[visual] Auth retry failed: ${retryErr.message}. ` +
@@ -161,14 +176,21 @@ export class VisualCapture {
   /**
    * Capture screenshots of Studio showing the result of a scenario.
    *
-   * Constructs the Studio URL from the auth host and project ID, navigates
-   * there, waits for the canvas to load, and takes desktop (always) and
-   * mobile (for responsive scenarios) screenshots.
+   * When componentUuid is provided (V10), navigates directly to that
+   * component's arena using ?arena_type=component&arena={uuid} query
+   * params. This shows the specific component modified by the task,
+   * giving the LLM judge focused visual context. When multiple components
+   * were modified (VE4), the runner passes the last one from the transcript.
+   *
+   * Falls back to the project overview URL when no componentUuid is
+   * available (e.g., project-level operations or component creation
+   * where the UUID couldn't be extracted).
    */
   async capture(
     scenarioId: string,
     scenarioDescription: string,
-    mcpClient: McpEvalClient
+    mcpClient: McpEvalClient,
+    componentUuid?: string
   ): Promise<CaptureResult> {
     if (!this.isAvailable()) {
       return {
@@ -179,13 +201,15 @@ export class VisualCapture {
     }
 
     try {
-      // Build Studio URL from auth host + project ID.
-      // This opens the project's default view in Studio. We don't use
-      // inspect.preview-url because it requires a componentUuid — the
-      // project-level URL is sufficient for capturing the editor state.
+      // Build Studio URL. When a componentUuid is available, navigate
+      // directly to that component's arena (V10). Otherwise fall back
+      // to the project overview.
       const host = this.config.authConfig.host.replace(/\/$/, "");
       const projectId = mcpClient.getProjectId();
-      const studioUrl = `${host}/projects/${projectId}`;
+      let studioUrl = `${host}/projects/${projectId}`;
+      if (componentUuid) {
+        studioUrl += `?arena_type=component&arena=${encodeURIComponent(componentUuid)}`;
+      }
 
       const timeout =
         this.config.navigationTimeout ?? DEFAULT_NAVIGATION_TIMEOUT_MS;
@@ -210,6 +234,8 @@ export class VisualCapture {
         } catch {
           // Screenshot also failed — page might be blank
         }
+        // V18: Save trace on failure for debugging, then restart tracing
+        await this.saveTraceOnFailure(scenarioId);
         return {
           desktopPath,
           mobilePath: null,
@@ -264,6 +290,8 @@ export class VisualCapture {
         }
       }
 
+      // Save trace for non-crash failures too
+      await this.saveTraceOnFailure(scenarioId);
       return {
         desktopPath: null,
         mobilePath: null,
@@ -313,6 +341,25 @@ export class VisualCapture {
   }
 
   /**
+   * Save Playwright trace on capture failure for debugging (V18).
+   * Stops the current trace, saves it to a zip file alongside screenshots,
+   * and restarts tracing for the next scenario. Trace files can be viewed
+   * with `npx playwright show-trace <path>`.
+   */
+  private async saveTraceOnFailure(scenarioId: string): Promise<void> {
+    if (!this.context) return;
+    try {
+      const tracePath = join(this.screenshotDir, `${scenarioId}-trace.zip`);
+      await this.context.tracing.stop({ path: tracePath });
+      console.error(`[visual] Trace saved: ${tracePath}`);
+      // Restart tracing for subsequent scenarios
+      await this.context.tracing.start({ screenshots: true, snapshots: true });
+    } catch {
+      // Tracing save failed — non-fatal, continue
+    }
+  }
+
+  /**
    * Relaunch browser and re-authenticate after a crash (VE6).
    * Creates a fresh browser instance and new authenticated session.
    */
@@ -329,8 +376,10 @@ export class VisualCapture {
       this.browser,
       this.config.authConfig
     );
+    this.context.setDefaultTimeout(DEFAULT_ACTION_TIMEOUT_MS);
     this.page = await this.context.newPage();
     await this.page.setViewportSize(DESKTOP_VIEWPORT);
+    await this.context.tracing.start({ screenshots: true, snapshots: true });
   }
 
   /** Release browser resources */

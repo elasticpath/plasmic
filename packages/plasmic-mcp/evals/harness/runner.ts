@@ -151,13 +151,20 @@ export async function runScenario(
     // Visual capture — screenshot Studio after task completes.
     // Runs after grading so the project state is final. Failures are
     // logged but never affect pass/fail (screenshots are advisory).
+    // V10: Extract last componentUuid from transcript for component-level
+    // navigation. VE4: When multiple components were modified, the last
+    // one is the most relevant for the final screenshot.
     let screenshotPaths: { desktop: string | null; mobile: string | null } | undefined;
     let visualError: string | undefined;
     if (visualCapture?.isAvailable()) {
+      const lastComponentUuid = extractLastComponentUuid(
+        conversationResult.transcript
+      );
       const captureResult = await visualCapture.capture(
         scenario.id,
         scenario.description,
-        mcpClient
+        mcpClient,
+        lastComponentUuid ?? undefined
       );
       screenshotPaths = {
         desktop: captureResult.desktopPath,
@@ -336,6 +343,59 @@ export async function runAll(
   }
 
   return { results, totalCostDollars: totalCost };
+}
+
+/**
+ * Extract the last componentUuid referenced in the transcript (V10, VE4).
+ *
+ * Scans tool_result entries for componentUuid in two places:
+ * 1. Tool call input params (most operations pass componentUuid as a param)
+ * 2. Tool result JSON (component.create / component.create-page return uuid)
+ *
+ * Returns the LAST uuid found, which is the most recently acted-on component.
+ * When multiple components were modified (VE4), this gives us the final one
+ * for the screenshot — the most relevant view for the LLM judge.
+ */
+export function extractLastComponentUuid(
+  transcript: TranscriptEntry[]
+): string | null {
+  let last: string | null = null;
+  for (const entry of transcript) {
+    if (entry.role !== "tool_result") continue;
+    try {
+      const parsed = JSON.parse(entry.content);
+
+      // Check input params — most tool calls include componentUuid directly
+      if (parsed.input?.componentUuid) {
+        last = parsed.input.componentUuid as string;
+        continue;
+      }
+
+      // Check creation results — component.create and component.create-page
+      // return {success: true, uuid: "..."} but don't receive componentUuid
+      // as input (the component doesn't exist yet).
+      if (
+        parsed.name === "component" &&
+        (parsed.input?.action === "create" ||
+          parsed.input?.action === "create-page" ||
+          parsed.input?.action === "clone") &&
+        !parsed.isError &&
+        parsed.result
+      ) {
+        try {
+          const result = JSON.parse(parsed.result);
+          if (result.uuid) {
+            last = result.uuid as string;
+          }
+        } catch {
+          // Result might be truncated or not valid JSON — skip
+        }
+      }
+    } catch {
+      // Skip unparseable transcript entries
+    }
+  }
+  return last;
 }
 
 /**
