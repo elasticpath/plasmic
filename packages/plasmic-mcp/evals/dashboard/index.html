@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Plasmic MCP Eval Dashboard</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"
+    onerror="document.getElementById('chart-fallback-msg')&&(document.getElementById('chart-fallback-msg').style.display='block');window.__chartJsUnavailable=true;"></script>
   <style>
     :root {
       --bg: #f8f9fa;
@@ -390,20 +391,34 @@
     // Global overrides state — loaded once and updated on save
     let globalOverrides = {};
 
+    /**
+     * Fetch with a 30-second timeout via AbortController. Prevents the
+     * dashboard from hanging indefinitely when the server is unresponsive.
+     */
+    function fetchWithTimeout(url, options = {}, timeoutMs = 30000) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      return fetch(url, { ...options, signal: controller.signal })
+        .finally(() => clearTimeout(timer));
+    }
+
     async function init() {
       let reports;
       try {
         const [reportsRes, overridesRes] = await Promise.all([
-          fetch("/api/reports"),
-          fetch("/api/overrides"),
+          fetchWithTimeout("/api/reports"),
+          fetchWithTimeout("/api/overrides"),
         ]);
         reports = await reportsRes.json();
         globalOverrides = await overridesRes.json();
       } catch (e) {
+        const isTimeout = e.name === "AbortError";
         document.getElementById("app").innerHTML = `
           <div class="empty-state">
-            <h2>Connection Error</h2>
-            <p>Could not fetch reports. Is the dashboard server running?</p>
+            <h2>${isTimeout ? "Request Timed Out" : "Connection Error"}</h2>
+            <p>${isTimeout
+              ? "The server did not respond within 30 seconds."
+              : "Could not fetch reports. Is the dashboard server running?"}</p>
             <code>npm run eval:dashboard</code>
           </div>`;
         return;
@@ -492,6 +507,9 @@
         </div>
 
         <!-- Charts -->
+        <div id="chart-fallback-msg" style="display:none;background:#fff3cd;color:#856404;border:1px solid #ffc107;border-radius:8px;padding:16px;margin-bottom:24px;text-align:center;">
+          Charts unavailable — Chart.js CDN could not be loaded. Data tables below are still functional.
+        </div>
         <div class="chart-grid">
           <div class="chart-section full">
             <h2>Success Rate Over Time</h2>
@@ -575,22 +593,22 @@
                   <td>${(s.reviewFlags || []).map(f => '<span class="badge review">' + esc(f) + '</span> ').join("")}</td>
                   <td>
                     <div class="review-actions">
-                      <button onclick="toggleOverrideForm('${esc(s.id)}')">Review</button>
+                      <button data-action="toggle" data-scenario-id="${escAttr(s.id)}">Review</button>
                     </div>
-                    <div class="override-form" id="form-${esc(s.id)}">
+                    <div class="override-form" data-form-for="${escAttr(s.id)}">
                       <label>Override Result</label>
-                      <select id="override-${esc(s.id)}">
+                      <select data-field="override" data-scenario-id="${escAttr(s.id)}">
                         <option value="">No override</option>
                         <option value="true">Override to PASS</option>
                         <option value="false">Override to FAIL</option>
                       </select>
                       <label>Reviewer</label>
-                      <input type="text" id="reviewer-${esc(s.id)}" placeholder="Your name" />
+                      <input type="text" data-field="reviewer" data-scenario-id="${escAttr(s.id)}" placeholder="Your name" />
                       <label>Notes</label>
-                      <textarea id="notes-${esc(s.id)}" placeholder="Review notes..."></textarea>
+                      <textarea data-field="notes" data-scenario-id="${escAttr(s.id)}" placeholder="Review notes..."></textarea>
                       <div class="btn-row">
-                        <button class="btn-save" onclick="submitOverride('${esc(s.id)}')">Save</button>
-                        <button class="btn-cancel" onclick="toggleOverrideForm('${esc(s.id)}')">Cancel</button>
+                        <button class="btn-save" data-action="submit" data-scenario-id="${escAttr(s.id)}">Save</button>
+                        <button class="btn-cancel" data-action="toggle" data-scenario-id="${escAttr(s.id)}">Cancel</button>
                       </div>
                     </div>
                   </td>
@@ -723,13 +741,25 @@
         });
       });
 
-      // Render charts
-      renderSuccessTrend(reports);
-      renderDomainChart(latest);
-      renderTierChart(latest);
-      renderEfficiencyTrend(reports);
-      renderTokenTrend(reports);
-      renderQualityDistribution(latest);
+      // Wire event delegation for review actions (no inline onclick handlers)
+      app.addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-action]");
+        if (!btn) return;
+        const action = btn.dataset.action;
+        const scenarioId = btn.dataset.scenarioId;
+        if (action === "toggle") toggleOverrideForm(scenarioId);
+        else if (action === "submit") submitOverride(scenarioId);
+      });
+
+      // Render charts (skip if Chart.js CDN failed to load)
+      if (typeof Chart !== "undefined" && !window.__chartJsUnavailable) {
+        renderSuccessTrend(reports);
+        renderDomainChart(latest);
+        renderTierChart(latest);
+        renderEfficiencyTrend(reports);
+        renderTokenTrend(reports);
+        renderQualityDistribution(latest);
+      }
     }
 
     // --- Charts ---
@@ -1080,17 +1110,28 @@
       return el.innerHTML;
     }
 
+    /**
+     * Escape for use inside HTML attribute values (also escapes quotes).
+     * The standard esc() only escapes <, >, & — safe for text content but
+     * not for attribute contexts where quotes can break out.
+     */
+    function escAttr(str) {
+      if (!str) return "";
+      return esc(str).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+
     // --- Override Form ---
 
     function toggleOverrideForm(scenarioId) {
-      const form = document.getElementById("form-" + scenarioId);
+      const form = document.querySelector(`[data-form-for="${CSS.escape(scenarioId)}"]`);
       if (form) form.classList.toggle("open");
     }
 
     async function submitOverride(scenarioId) {
-      const overrideEl = document.getElementById("override-" + scenarioId);
-      const reviewerEl = document.getElementById("reviewer-" + scenarioId);
-      const notesEl = document.getElementById("notes-" + scenarioId);
+      const escaped = CSS.escape(scenarioId);
+      const overrideEl = document.querySelector(`[data-field="override"][data-scenario-id="${escaped}"]`);
+      const reviewerEl = document.querySelector(`[data-field="reviewer"][data-scenario-id="${escaped}"]`);
+      const notesEl = document.querySelector(`[data-field="notes"][data-scenario-id="${escaped}"]`);
 
       const body = { scenarioId };
       if (overrideEl && overrideEl.value) {
@@ -1104,7 +1145,7 @@
       }
 
       try {
-        const res = await fetch("/api/overrides", {
+        const res = await fetchWithTimeout("/api/overrides", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),

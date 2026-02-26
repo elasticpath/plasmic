@@ -123,12 +123,58 @@ const server = createServer((req, res) => {
     req.on("data", (chunk) => { body += chunk; });
     req.on("end", () => {
       try {
-        const { scenarioId, ...override } = JSON.parse(body);
-        if (!scenarioId || typeof scenarioId !== "string") {
+        const parsed = JSON.parse(body);
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
           res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "scenarioId is required" }));
+          res.end(JSON.stringify({ error: "Request body must be a JSON object" }));
           return;
         }
+
+        const { scenarioId, overrideSuccess, notes, reviewedBy } = parsed;
+
+        // Validate scenarioId: required, string, kebab-case pattern
+        if (!scenarioId || typeof scenarioId !== "string") {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "scenarioId is required and must be a string" }));
+          return;
+        }
+        if (!/^[a-zA-Z0-9_-]+$/.test(scenarioId)) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "scenarioId must contain only alphanumeric characters, hyphens, and underscores" }));
+          return;
+        }
+
+        // Reject unexpected fields — only allow known override properties
+        const ALLOWED_FIELDS = new Set(["scenarioId", "overrideSuccess", "notes", "reviewedBy"]);
+        const unexpected = Object.keys(parsed).filter((k) => !ALLOWED_FIELDS.has(k));
+        if (unexpected.length > 0) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: `Unexpected fields: ${unexpected.join(", ")}` }));
+          return;
+        }
+
+        // Validate field types
+        if (overrideSuccess !== undefined && typeof overrideSuccess !== "boolean") {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "overrideSuccess must be a boolean" }));
+          return;
+        }
+        if (notes !== undefined && typeof notes !== "string") {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "notes must be a string" }));
+          return;
+        }
+        if (reviewedBy !== undefined && typeof reviewedBy !== "string") {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "reviewedBy must be a string" }));
+          return;
+        }
+
+        // Build sanitized override object — only include explicitly set fields
+        const override = { reviewedAt: new Date().toISOString() };
+        if (overrideSuccess !== undefined) override.overrideSuccess = overrideSuccess;
+        if (notes) override.notes = notes.slice(0, 2000); // cap length
+        if (reviewedBy) override.reviewedBy = reviewedBy.slice(0, 200); // cap length
 
         mkdirSync(RESULTS_DIR, { recursive: true });
         let existing = {};
@@ -139,10 +185,7 @@ const server = createServer((req, res) => {
             // Start fresh if malformed
           }
         }
-        existing[scenarioId] = {
-          ...override,
-          reviewedAt: new Date().toISOString(),
-        };
+        existing[scenarioId] = override;
         writeFileSync(OVERRIDES_PATH, JSON.stringify(existing, null, 2));
 
         res.writeHead(200, { "Content-Type": "application/json" });

@@ -2,9 +2,9 @@
 
 ## Status Summary
 
-**Complete**: MCP server (8 STRAP tools, 103 actions), eval harness (cli, runner, claude-client, mcp-client, scenario-loader, scenario-validator, reporter, types), 8 grader types + LLM judge + review flags, visual capture (Playwright), dashboard (Chart.js), CI workflow, 70 scenarios (21 simple / 30 medium / 19 complex), package scripts. P1-P4 fully complete. **P4 Code Component Variant Support fully complete** — P4.1-P4.4 (type declarations, listVariants, resolveVariant, createStyleVariant with 16 unit tests) and P4.5 (3 eval scenarios: simple list, medium resolve+style, complex create-style+apply). Total tests: 1,407. Total scenarios: 70.
+**Complete**: MCP server (8 STRAP tools, 103 actions), eval harness, graders, visual capture, dashboard, CI, 70 scenarios. P1-P4 fully complete. **P5 Dashboard Hardening fully complete** — XSS fix (data attributes + event delegation + escAttr()), fetch timeout (30s AbortController), Chart.js CDN fallback (onerror + guard), POST /api/overrides input validation (allowlist + type checks + length caps). Total tests: 1,407.
 
-**In progress**: P5-P8 hardening tasks. Next: P5 Dashboard Hardening.
+**In progress**: P6-P8 hardening tasks. Next: P6 Visual Capture Hardening.
 
 **Goal**: Close remaining gaps in scenario coverage, grader utilization, test coverage, and robustness so the eval system reliably measures Claude's ability to complete Plasmic design tasks across all 8 STRAP domains.
 
@@ -51,28 +51,38 @@ _Impact: MEDIUM — new MCP feature that unlocks eval scenarios for an untested 
   - Files: `evals/scenarios/variant.yaml`
   - AC: ✅ 3 new scenarios; `eval:validate` passes (70 total scenarios)
 
-### P5: Dashboard Hardening — `evals/dashboard/`
+### P5: Dashboard Hardening — `evals/dashboard/` ✅ COMPLETE
 _Impact: LOW-MEDIUM — security and reliability improvements for the results dashboard._
 
-- [ ] **P5.1 — Fix XSS in onclick handlers**
-  - Replace inline `onclick` handlers with data attributes + event delegation; ensure `esc()` covers attribute contexts
+- [x] **P5.1 — Fix XSS in onclick handlers**
+  - Replaced all inline `onclick` handlers with `data-action`/`data-scenario-id` attributes + event delegation on `app`
+  - Added `escAttr()` function that escapes `"` and `'` for safe attribute context usage
+  - Replaced `getElementById` lookups with `querySelector` using `data-form-for`/`data-field` + `CSS.escape()`
   - Files: `evals/dashboard/index.html`
-  - AC: No inline JS event handlers in HTML; scenario names with `<script>` or `"onmouseover=` are rendered safely
+  - AC: ✅ Zero inline JS event handlers; scenario names with special chars are rendered safely
 
-- [ ] **P5.2 — Add fetch timeout**
-  - Wrap all `fetch()` calls with `AbortController` (30s timeout); show error message on timeout
+- [x] **P5.2 — Add fetch timeout**
+  - Added `fetchWithTimeout()` helper using `AbortController` with 30s timeout
+  - All `fetch()` calls replaced: `init()` reports+overrides, `submitOverride()` POST
+  - Timeout shows "Request Timed Out" message; other errors show "Connection Error"
   - Files: `evals/dashboard/index.html`
-  - AC: Dashboard shows "Request timed out" after 30s if server is unresponsive
+  - AC: ✅ Dashboard shows "Request timed out" after 30s if server is unresponsive
 
-- [ ] **P5.3 — Add Chart.js CDN fallback**
-  - Add `onerror` handler on CDN script tag that loads local bundle or shows "Charts unavailable" message
+- [x] **P5.3 — Add Chart.js CDN fallback**
+  - Added `onerror` on CDN script tag setting `window.__chartJsUnavailable = true`
+  - Chart rendering guarded by `typeof Chart !== "undefined" && !window.__chartJsUnavailable`
+  - Hidden banner `#chart-fallback-msg` shown when CDN fails
   - Files: `evals/dashboard/index.html`
-  - AC: Page is functional (shows data, no blank screen) when CDN is unreachable
+  - AC: ✅ Page shows data tables and "Charts unavailable" message when CDN is unreachable
 
-- [ ] **P5.4 — Validate POST /api/overrides input**
-  - Validate scenarioId format, reject unexpected fields, sanitize override values
+- [x] **P5.4 — Validate POST /api/overrides input**
+  - Allowlist: only `scenarioId`, `overrideSuccess`, `notes`, `reviewedBy` accepted; unexpected fields return 400
+  - `scenarioId` validated against `/^[a-zA-Z0-9_-]+$/` pattern
+  - Type checks: `overrideSuccess` must be boolean, `notes`/`reviewedBy` must be strings
+  - Length caps: notes 2000 chars, reviewedBy 200 chars
+  - No more `...override` spread — sanitized object built from validated fields only
   - Files: `evals/dashboard/render.js`
-  - AC: Malformed POST bodies return 400 with descriptive error
+  - AC: ✅ Malformed POST bodies return 400 with descriptive error
 
 ### P6: Visual Capture Hardening — `evals/visual/`
 _Impact: LOW-MEDIUM — defensive fixes to prevent silent failures in screenshot capture._
