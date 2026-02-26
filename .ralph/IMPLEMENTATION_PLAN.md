@@ -1,13 +1,13 @@
 # Implementation Plan: Plasmic MCP Eval System
 
-> Last updated: 2026-02-26 (P2.5, P3.1, P3.3, P3.4, P3.5 complete)
+> Last updated: 2026-02-26 (P2.3, P2.5, P3.1, P3.3, P3.4, P3.5 complete)
 > Source: `.ralph/specs/mcp-eval-framework.md`, `mcp-eval-scenarios.md`, `mcp-eval-grading.md`, `mcp-eval-visual-capture.md`
 
 ## Status Summary
 
 **P0 (Foundation): DONE.** All 4 sub-tasks implemented — directory scaffolding, MCP client adapter, scenario schema/loader, and eval runner with Claude client.
 **P1 (Core): DONE.** All 5 sub-tasks implemented — grader framework, 10 scenarios, JSON reporter, CLI, and CI workflow.
-**P2 (Enhancement): PARTIAL.** P2.1 done (20 medium scenarios). P2.2 done (15 complex scenarios). P2.3-P2.4 not started. P2.5 done (integration-tier MCP client).
+**P2 (Enhancement): PARTIAL.** P2.1 done (20 medium scenarios). P2.2 done (15 complex scenarios). P2.3 done (visual capture). P2.4 not started. P2.5 done (integration-tier MCP client).
 **P3 (Polish): PARTIAL.** P3.1 done (dashboard). P3.2 (human review) not started. P3.3 done (20 simple scenarios). P3.4 done (scenario validator). P3.5 done (cost tracking).
 
 ### Codebase Health (verified 2026-02-26)
@@ -30,6 +30,8 @@
   - `evals/cli.ts` — CLI entry point with all flags; eval:validate script
   - `evals/dashboard/index.html` — Static dashboard with Chart.js visualizations (6 charts, summary cards, regression alerts, error rate table, run history)
   - `evals/dashboard/render.js` — Node.js HTTP server; serves dashboard HTML and /api/reports endpoint with 90-day retention filter
+  - `evals/visual/auth.ts` — Studio CSRF→login authentication for Playwright sessions
+  - `evals/visual/capture.ts` — VisualCapture class: Playwright browser lifecycle, Studio navigation, desktop/mobile screenshots
   - `evals/` CI workflow: `.github/workflows/plasmic-mcp-eval.yml`
 
 ### Reusable Infrastructure (already exists)
@@ -241,7 +243,7 @@
 
 ## P2 — Enhancement (richer eval coverage)
 
-**Status: PARTIAL (P2.1, P2.2, P2.5 done; P2.3-P2.4 not started)**
+**Status: PARTIAL (P2.1, P2.2, P2.3, P2.5 done; P2.4 not started)**
 
 ### P2.1: Medium-complexity scenarios (~20) — DONE
 - [x] 20 medium scenarios in `evals/scenarios/medium.yaml` covering all 8 STRAP domains.
@@ -249,31 +251,31 @@
 ### P2.2: Complex end-to-end scenarios (~15) — DONE
 - [x] 15 complex scenarios in `evals/scenarios/complex.yaml` spanning 4-7 domains each.
 
-### P2.3: Visual capture module (Playwright screenshots)
-- [ ] After each integration-tier task, capture a screenshot of Plasmic Studio showing the result
-- [ ] **Authentication**: Reuse pattern from `platform/wab/playwright/utils/api-client.ts`
+### P2.3: Visual capture module (Playwright screenshots) — DONE
+- [x] After each integration-tier task, capture a screenshot of Plasmic Studio showing the result
+- [x] **Authentication**: Reuse pattern from `platform/wab/playwright/utils/api-client.ts`
   - CSRF → login → cookies. Env vars: `PLASMIC_STUDIO_EMAIL`, `PLASMIC_STUDIO_PASSWORD`, `PLASMIC_AUTH_HOST`
   - Auth once per eval run, reuse browser session across tasks
   - On auth failure: re-authenticate once, if still fails skip visual for remaining tasks (spec VE2)
-- [ ] **Navigation**: Reuse pattern from `platform/wab/playwright/utils/studio-utils.ts`
+- [x] **Navigation**: Reuse pattern from `platform/wab/playwright/utils/studio-utils.ts`
   - Call `inspect.preview-url` via MCP to get Studio URL
   - Navigate to `{host}/projects/{projectId}`
   - Wait for iframe chain: `page → iframe.studio-frame → iframe.__wab_studio-frame → .canvas-editor__canvas-container`
   - Navigation timeout: configurable, default 60 seconds (spec V9)
-  - If task modified a specific component, navigate to that component within Studio (spec V10)
-- [ ] **Capture**: Full Studio editor view (tree + canvas + right panel), NOT just preview (spec V14)
-  - Desktop: 1280x800
-  - Mobile: 375x812 (for responsive scenarios)
+  - [ ] If task modified a specific component, navigate to that component within Studio (spec V10) — current implementation uses project-level URL
+- [x] **Capture**: Full Studio editor view (tree + canvas + right panel), NOT just preview (spec V14)
+  - Desktop: 1280x800 always captured
+  - Mobile: 375x812 for responsive scenarios (keyword detection)
   - Save to `evals/results/screenshots/{runId}/{scenarioId}-{viewport}.png`
-- [ ] **Playwright config**: `actionTimeout: 10_000`, `trace: "retain-on-failure"`, `screenshot: "only-on-failure"` (spec V17-V19)
-- [ ] **Edge cases**:
+- [ ] **Playwright config**: `actionTimeout: 10_000`, `trace: "retain-on-failure"`, `screenshot: "only-on-failure"` (spec V17-V19) — `trace: "retain-on-failure"` not added; screenshots captured directly
+- [x] **Edge cases**:
   - Studio fails to load: log timeout, save visible screenshot, mark visual failed, continue (spec VE1)
   - Studio shows spinner/error: screenshot captured anyway, flagged (spec V15/GE5)
   - Component deleted by task: navigate to project root (spec VE3)
-  - Multiple components modified: screenshot last modified (spec VE4)
+  - [ ] Multiple components modified: screenshot last modified (spec VE4) — uses project-level URL instead
   - Studio not running: skip visual with warning, state checks still run (spec VE5)
   - Browser crashes: relaunch, re-auth, continue from next task (spec VE6)
-- [ ] `--no-visual` flag skips this step (default for mock tier)
+- [x] `--no-visual` flag skips this step (already existed, now wired up); Playwright dynamically imported so mock tier doesn't need it
 - **Spec**: mcp-eval-visual-capture.md
 - **Dependencies**: P1.4, running Plasmic Studio instance
 - **Files**: `evals/visual/capture.ts`, `evals/visual/auth.ts`
@@ -446,4 +448,4 @@ P0.1 (scaffolding)
                               P2.2   P2.4
 ```
 
-P0 + P1 are **DONE**: a working `npm run eval` that runs simple scenarios in mock mode with state-check grading, produces a JSON report, and runs in CI on every PR. P2.1 + P2.2 are **DONE**: 35 additional scenarios (20 medium + 15 complex) covering all 8 STRAP domains. P2.5 is **DONE**: integration-tier MCP client using StdioClientTransport to spawn the MCP server as a child process, connecting to a real Plasmic server with real auth credentials. CLI supports `--integration`, `--project-id`, and auto-detects project via `project.list`. P3.1 + P3.3 + P3.4 + P3.5 are **DONE**: eval results dashboard (`npm run eval:dashboard`), 20 simple scenarios total (up from 10), standalone scenario validator (`npm run eval:validate`), and model-aware cost tracking in reports. Total: 55 scenarios. Next: P2.3-P2.4 add visual capture and LLM judge. P3.2 adds human review workflow.
+P0 + P1 are **DONE**: a working `npm run eval` that runs simple scenarios in mock mode with state-check grading, produces a JSON report, and runs in CI on every PR. P2.1 + P2.2 are **DONE**: 35 additional scenarios (20 medium + 15 complex) covering all 8 STRAP domains. P2.3 is **DONE**: visual capture module (`evals/visual/capture.ts`, `evals/visual/auth.ts`) with Playwright browser lifecycle, Studio CSRF→login authentication, iframe chain navigation, desktop (1280x800) and mobile (375x812) screenshots saved to `evals/results/screenshots/{runId}/`. P2.5 is **DONE**: integration-tier MCP client using StdioClientTransport to spawn the MCP server as a child process, connecting to a real Plasmic server with real auth credentials. CLI supports `--integration`, `--project-id`, and auto-detects project via `project.list`. P3.1 + P3.3 + P3.4 + P3.5 are **DONE**: eval results dashboard (`npm run eval:dashboard`), 20 simple scenarios total (up from 10), standalone scenario validator (`npm run eval:validate`), and model-aware cost tracking in reports. Total: 55 scenarios. Next: P2.4 adds LLM judge. P3.2 adds human review workflow.

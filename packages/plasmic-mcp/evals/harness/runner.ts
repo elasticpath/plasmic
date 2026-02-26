@@ -18,6 +18,7 @@
 import type { EvalScenario, ScenarioResult, TranscriptEntry } from "./types.js";
 import type { McpEvalClient } from "./mcp-client.js";
 import type { ClaudeClient } from "./claude-client.js";
+import type { VisualCapture } from "../visual/capture.js";
 import { runGraders } from "../graders/index.js";
 
 const SYSTEM_PROMPT = `You are an expert Plasmic developer. You have access to MCP tools that let you create, edit, and inspect Plasmic projects.
@@ -39,7 +40,8 @@ Complete the task fully, then respond with a brief summary of what you did.`;
 export async function runScenario(
   scenario: EvalScenario,
   mcpClient: McpEvalClient,
-  claudeClient: ClaudeClient
+  claudeClient: ClaudeClient,
+  visualCapture?: VisualCapture
 ): Promise<ScenarioResult> {
   const startTime = Date.now();
   const errors: string[] = [];
@@ -138,6 +140,29 @@ export async function runScenario(
       );
     }
 
+    // Visual capture — screenshot Studio after task completes.
+    // Runs after grading so the project state is final. Failures are
+    // logged but never affect pass/fail (screenshots are advisory).
+    let screenshotPaths: { desktop: string | null; mobile: string | null } | undefined;
+    let visualError: string | undefined;
+    if (visualCapture?.isAvailable()) {
+      const captureResult = await visualCapture.capture(
+        scenario.id,
+        scenario.description,
+        mcpClient
+      );
+      screenshotPaths = {
+        desktop: captureResult.desktopPath,
+        mobile: captureResult.mobilePath,
+      };
+      if (captureResult.error) {
+        visualError = captureResult.error;
+        console.error(
+          `[visual] ${scenario.id}: ${captureResult.error}`
+        );
+      }
+    }
+
     return {
       id: scenario.id,
       tier: scenario.tier,
@@ -152,6 +177,8 @@ export async function runScenario(
       retries,
       transcript: conversationResult.transcript,
       graderResults,
+      screenshotPaths,
+      visualError,
     };
   } catch (err: any) {
     // Fatal error — still produce a result so partial reports can be saved (GE6)
@@ -211,7 +238,8 @@ export async function runAll(
     result: ScenarioResult
   ) => void,
   maxCostDollars?: number,
-  model?: string
+  model?: string,
+  visualCapture?: VisualCapture
 ): Promise<RunAllResult> {
   const results: ScenarioResult[] = [];
   let totalCost = 0;
@@ -232,7 +260,7 @@ export async function runAll(
       `[eval] Running scenario ${i + 1}/${scenarios.length}: ${scenario.id}`
     );
 
-    const result = await runScenario(scenario, mcpClient, claudeClient);
+    const result = await runScenario(scenario, mcpClient, claudeClient, visualCapture);
     results.push(result);
 
     const inputCost = (result.tokensInput / 1_000_000) * pricing.input;

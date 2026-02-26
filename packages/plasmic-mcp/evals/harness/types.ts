@@ -69,6 +69,15 @@ export interface GraderResult {
   details?: Record<string, unknown>;
 }
 
+// --- Visual Capture ---
+
+export interface ScreenshotPaths {
+  /** Absolute path to desktop viewport screenshot (1280x800) */
+  desktop: string | null;
+  /** Absolute path to mobile viewport screenshot (375x812), null if not a responsive scenario */
+  mobile: string | null;
+}
+
 // --- Scenario Results ---
 
 export interface ScenarioResult {
@@ -85,6 +94,10 @@ export interface ScenarioResult {
   retries: number;
   transcript: TranscriptEntry[];
   graderResults: GraderResult[];
+  /** Screenshot paths from visual capture (integration tier only, null if skipped) */
+  screenshotPaths?: ScreenshotPaths;
+  /** Error message from visual capture, null on success or if skipped */
+  visualError?: string;
 }
 
 // --- Report ---

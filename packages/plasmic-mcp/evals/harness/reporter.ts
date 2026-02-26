@@ -24,14 +24,20 @@ const __dirname = dirname(__filename);
 
 const RESULTS_DIR = resolve(__dirname, "../results");
 
+/** Generate a runId string from the current timestamp: YYYY-MM-DD-HHmmss */
+export function generateRunId(date: Date = new Date()): string {
+  return formatRunId(date);
+}
+
 export function generateReport(
   results: ScenarioResult[],
   model: string,
   tier: "mock" | "integration",
-  totalCostDollars: number = 0
+  totalCostDollars: number = 0,
+  runId?: string
 ): EvalReport {
   const now = new Date();
-  const runId = formatRunId(now);
+  const finalRunId = runId ?? formatRunId(now);
 
   const passed = results.filter((r) => r.success).length;
   const failed = results.filter(
@@ -75,7 +81,7 @@ export function generateReport(
     .filter((s): s is number => s !== null);
 
   return {
-    runId,
+    runId: finalRunId,
     timestamp: now.toISOString(),
     tier,
     model,

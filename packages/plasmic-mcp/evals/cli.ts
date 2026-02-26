@@ -27,9 +27,12 @@ import { ClaudeClient } from "./harness/claude-client.js";
 import { runAll } from "./harness/runner.js";
 import {
   generateReport,
+  generateRunId,
   saveReport,
   printSummary,
 } from "./harness/reporter.js";
+import { VisualCapture } from "./visual/capture.js";
+import { getAuthConfig } from "./visual/auth.js";
 import type { EvalOptions } from "./harness/types.js";
 
 function parseArgs(args: string[]): EvalOptions & { help?: boolean } {
@@ -93,7 +96,11 @@ Integration mode env vars:
   PLASMIC_AUTH_HOST                Plasmic API host (e.g., https://studio.plasmic.app)
   PLASMIC_AUTH_USER                Plasmic auth user/email
   PLASMIC_AUTH_TOKEN               Plasmic auth token
-  EVAL_PROJECT_ID                  Target project ID (alternative to --project-id)`);
+  EVAL_PROJECT_ID                  Target project ID (alternative to --project-id)
+
+Visual capture env vars (integration mode, requires playwright):
+  PLASMIC_STUDIO_EMAIL             Studio login email
+  PLASMIC_STUDIO_PASSWORD          Studio login password`);
 }
 
 async function main(): Promise<void> {
@@ -148,9 +155,26 @@ async function main(): Promise<void> {
   const model = options.model ?? "claude-sonnet-4-20250514";
   const maxCost = options.maxCost ?? 5;
   const threshold = options.threshold ?? 0.9;
+  const runId = generateRunId();
 
   const mcpClient = new McpEvalClient(mode, options.projectId);
   const claudeClient = new ClaudeClient(apiKey, model);
+
+  // Visual capture — only in integration mode with --no-visual not set.
+  // Mock mode has no real Studio to screenshot; the in-memory MCP server
+  // operates entirely in-process without a visual frontend.
+  let visualCapture: VisualCapture | undefined;
+  if (mode === "integration" && !options.noVisual) {
+    const authConfig = getAuthConfig();
+    if (authConfig) {
+      visualCapture = new VisualCapture({ runId, authConfig });
+    } else {
+      console.error(
+        "[eval] Visual capture skipped: PLASMIC_STUDIO_EMAIL and " +
+          "PLASMIC_STUDIO_PASSWORD are required for screenshots."
+      );
+    }
+  }
 
   try {
     console.error(`[eval] Initializing MCP client (${mode} mode)...`);
@@ -159,6 +183,21 @@ async function main(): Promise<void> {
       `[eval] MCP client ready (project: ${mcpClient.getProjectId()})`
     );
 
+    // Initialize visual capture if configured
+    if (visualCapture) {
+      console.error("[eval] Initializing visual capture (Playwright)...");
+      try {
+        await visualCapture.initialize();
+        console.error("[eval] Visual capture ready.");
+      } catch (err: any) {
+        console.error(
+          `[eval] Visual capture init failed: ${err.message}. ` +
+            "Continuing without screenshots."
+        );
+        visualCapture = undefined;
+      }
+    }
+
     // Run scenarios
     const { results, totalCostDollars } = await runAll(
       scenarios,
@@ -166,13 +205,15 @@ async function main(): Promise<void> {
       claudeClient,
       (completed, total, result) => {
         const status = result.success ? "PASS" : "FAIL";
+        const visual = result.screenshotPaths?.desktop ? " [screenshot]" : "";
         console.error(
           `[eval] [${completed}/${total}] ${result.id}: ${status} ` +
-            `(${result.toolCalls} tools, ${(result.durationMs / 1000).toFixed(1)}s)`
+            `(${result.toolCalls} tools, ${(result.durationMs / 1000).toFixed(1)}s)${visual}`
         );
       },
       maxCost,
-      model
+      model,
+      visualCapture
     );
 
     // Generate and save report
@@ -180,7 +221,8 @@ async function main(): Promise<void> {
       results,
       model,
       mode as "mock" | "integration",
-      totalCostDollars
+      totalCostDollars,
+      runId
     );
     const reportPath = saveReport(report);
     console.error(`[eval] Report saved: ${reportPath}`);
@@ -212,6 +254,9 @@ async function main(): Promise<void> {
     }
     process.exit(1);
   } finally {
+    if (visualCapture) {
+      await visualCapture.close();
+    }
     await mcpClient.close();
   }
 }
