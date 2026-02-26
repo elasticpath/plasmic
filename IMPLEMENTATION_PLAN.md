@@ -3,10 +3,9 @@
 > **Goal**: Create Claude Code skills and workflows that can interact with Plasmic Studio
 > programmatically to create fully-featured pages from the Claude Code terminal.
 >
-> **Current state**: 8 STRAP domain tools (consolidating 103 actions), 6 Claude Code skills (STRAP calling convention), 1116 tests (998 unit + 118 integration), 19 test files.
-> Zero TODOs/FIXMEs/skipped tests. Zero tsc errors. All code quality items complete.
+> **Current state**: 8 STRAP domain tools (consolidating 103 actions), 6 Claude Code skills (STRAP calling convention), 1116 tests (998 unit + 118 integration), 19 test files. Zero TODOs/FIXMEs/skipped tests. Zero tsc errors. All code quality items complete.
 >
-> **Last verified**: 2026-02-26 — All 1116 tests pass, tsc clean. Skills audit pass 2 complete.
+> **Last verified**: 2026-02-26 — All 1116 tests pass, tsc clean. Skills audit pass 3 complete. Vitest workspace deprecation resolved.
 >
 > **Spec consistency pass 1** (2026-02-26): Fixed 4 gap spec → STRAP naming discrepancies:
 > `gap-mixins.md` remove-mixin→detach-mixin, `gap-themes.md` themeRef→themeIndex,
@@ -144,6 +143,20 @@ STRAP spec updated for `component.extract` (Tier 5.1) and `interaction.update`.
   - `component.update-state`: removed `variableType?` (handler ignores it) (plasmic.md)
 - **Spec fixes**: `gap-interactions.md` remove params clarified (`event` required), `gap-remaining-features.md` removed stale `type?` from create-data-token
 - **Why**: The first audit (7.3) caught parameter renames but missed required/optional mismatches, unused params, and params not passed through by handlers. This pass verified every parameter against both the Zod schema AND the handler's `requireParam()` calls.
+
+### 7.5 Skills Audit Pass 3 — Runtime Accuracy & Spec Alignment — IMPLEMENTED
+- Third pass auditing all 6 skills + server.ts comments + spec consistency
+- **1 critical fix** (would cause tool failures): `interaction.list` `nodeRef` shown as optional in 3 skills but is required per `requireParam()` — fixed in plasmic.md, plasmic-inspect.md, plasmic-edit.md
+- **Documentation gaps fixed**:
+  - Added missing `playState?` (paused/running) parameter to `node.add-animation` in plasmic.md and plasmic-edit.md
+  - Added `inspect.style-properties` to plasmic-inspect.md (was missing from tool listing)
+  - Fixed `variant.rename` and `variant.remove` showing `componentUuid` as required (it's optional per handler)
+- **Server.ts comment fixes**: Updated action count 99→103 (header), 17→18 (component domain section)
+- **Spec consistency fixes**:
+  - `gap-visibility-and-conditional.md`: Removed contradictory Out of Scope bullet about CSS display:none
+  - `strap-consolidation.md`: Fixed 4 parameter names in mapping tables (type→tokenType, type→assetType)
+  - `test-restructure.md`: Updated test count from 1046 to 1116
+- **Vitest migration**: Replaced deprecated `vitest.workspace.ts` with `vitest.config.ts` using `test.projects`
 
 ---
 

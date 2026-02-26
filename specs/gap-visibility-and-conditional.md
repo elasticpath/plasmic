@@ -49,5 +49,5 @@ Two new actions split across the `node` domain (visibility) and `data` domain (c
 | Reading visibility when not explicitly set | Output omits field (implicit "visible") |
 
 ## Out of Scope
-- CSS display:none (that's a style, not visibility control)
+- Direct CSS display manipulation (the `displayNone` visibility value handles this through the visibility API)
 - Visibility animations/transitions

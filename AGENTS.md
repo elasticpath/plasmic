@@ -15,7 +15,7 @@ yarn prettier --write         # Prettier formatting
 yarn eslint --fix             # ESLint linting
 ```
 
-`packages/plasmic-mcp` has its own `jest.config.cjs` (`.cjs` because `"type": "module"`) with `moduleNameMapper` for `@/wab/` path aliases. Root jest config excludes it.
+`packages/plasmic-mcp` uses Vitest with a root `vitest.config.ts` that references two project configs: `vitest.config.unit.ts` (mocked WAB via aliases) and `vitest.config.integration.ts` (real WAB source). Run `npm test` to execute both.
 
 E2E tests (`cd platform/wab && yarn cypress open`) require environment setup — do not run in the loop.
 

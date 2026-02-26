@@ -32,7 +32,7 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `component({ action: "list-props", componentUuid })` — Component parameters with type, kind, default value.
 - `component({ action: "list-states", componentUuid })` — State variables with type, access level, initial value.
 - `data({ action: "list-queries", componentUuid })` — Data queries (client-side and server-side).
-- `interaction({ action: "list", componentUuid, nodeRef? })` — Event handlers on nodes.
+- `interaction({ action: "list", componentUuid, nodeRef })` — Event handlers on a specific node.
 - `variant({ action: "list", componentUuid })` — All variants: global (breakpoints), component (custom), style (hover/focus).
 - `data({ action: "get-code-meta", componentUuid })` — Code component metadata: importPath, props, defaultStyles.
 
@@ -52,8 +52,8 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 ### Variants
 - `variant({ action: "create-style", componentUuid, selector, nodeRef? })` — Create :hover, :focus, :active, etc.
 - `variant({ action: "create-group", componentUuid, name, type?, initialVariants? })` — Named group (single/multi/toggle).
-- `variant({ action: "rename", componentUuid, variantRef, newName })` — Rename a component-level variant.
-- `variant({ action: "remove", componentUuid, variantRef })` — Remove a component-level variant.
+- `variant({ action: "rename", variantRef, newName, componentUuid? })` — Rename a component-level variant.
+- `variant({ action: "remove", variantRef, componentUuid? })` — Remove a component-level variant.
 - `variant({ action: "create-global-group", name, type?, initialVariants? })` — Site-level variant group.
 - `variant({ action: "create-screen", name, minWidth?, maxWidth? })` — Add a screen breakpoint variant.
 - `variant({ action: "update-screen", variantRef, minWidth?, maxWidth? })` — Update a screen variant's breakpoints.
@@ -95,7 +95,7 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `design({ action: "create-animation", name, keyframes? })` — New @keyframes (keyframes: `[{ percentage: 0, styles: {...} }, ...]`).
 - `design({ action: "update-animation", seqRef, name?, keyframes? })` — Update animation.
 - `design({ action: "remove-animation", seqRef })` — Delete (cleans up node references).
-- `node({ action: "add-animation", componentUuid, nodeRef, seqRef, duration?, delay?, timingFunction?, iterationCount?, direction?, fillMode? })` — Attach animation.
+- `node({ action: "add-animation", componentUuid, nodeRef, seqRef, duration?, delay?, timingFunction?, iterationCount?, direction?, fillMode?, playState? })` — Attach animation. `playState`: "paused" | "running".
 - `node({ action: "remove-animation", componentUuid, nodeRef, seqRef?, animationIndex? })` — Detach animation.
 
 ### Theme CRUD

@@ -63,7 +63,7 @@ src/__tests__/
 - [x] New gap features have unit + integration tests
 - [x] Internal module tests (api-client, auth, session, batch-manager, etc.) are unchanged
 - [x] `npm test` runs all tests (unit + integration)
-- [x] Total test count is higher than 664 (now 1046)
+- [x] Total test count is higher than 664 (now 1116: 998 unit + 118 integration, as of 2026-02-26)
 - [x] Test files are < 500 lines each where possible
 
 ## Implementation Notes
@@ -74,7 +74,7 @@ src/__tests__/
 - **token-reader.test.ts merged into design.test.ts**: All token/mixin reading assertions were moved to the design domain file.
 - **Shared helpers extracted to test-helpers.ts**: `mkSite`, `mkComponent`, `mkPage`, `callTool`, and related fixtures were deduplicated into a single shared module to avoid copy-paste across 8 domain files.
 - **Fixed pre-existing convertToPage/convertToComponent bug**: These actions were missing `mockWithRecording` setup in the original tests. Fixed during migration; 20 additional tests were added to improve coverage.
-- **Test count**: Went from 1026 (pre-restructure) to 1046 after restructure (+20 tests from improved coverage).
+- **Test count**: Went from 1026 (pre-restructure) to 1046 after restructure (+20 tests from improved coverage), then to 1116 (998 unit + 118 integration) as of 2026-02-26 through continued gap-feature and variant-domain work.
 
 ## Edge Cases
 | Scenario | Expected behaviour |

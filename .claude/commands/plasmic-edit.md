@@ -12,7 +12,7 @@ You are editing an existing page or component in a Plasmic project.
 - `component({ action: "list-props", componentUuid })` — Component parameters.
 - `component({ action: "list-states", componentUuid })` — State variables.
 - `data({ action: "list-queries", componentUuid })` — Data queries.
-- `interaction({ action: "list", componentUuid, nodeRef? })` — Event handlers on nodes.
+- `interaction({ action: "list", componentUuid, nodeRef })` — Event handlers on a specific node.
 - `design({ action: "list-mixins" })` — Available reusable style bundles.
 - `design({ action: "list-animations" })` — Available @keyframes animations.
 - `design({ action: "list-assets", assetType? })` — Available image assets.
@@ -51,14 +51,14 @@ You are editing an existing page or component in a Plasmic project.
 - `node({ action: "detach-mixin", componentUuid, nodeRef, mixinRef })` — Remove mixin from element.
 
 ### Animations (on nodes)
-- `node({ action: "add-animation", componentUuid, nodeRef, seqRef, duration?, delay?, timingFunction?, iterationCount?, direction?, fillMode? })` — Attach animation.
+- `node({ action: "add-animation", componentUuid, nodeRef, seqRef, duration?, delay?, timingFunction?, iterationCount?, direction?, fillMode?, playState? })` — Attach animation. `playState`: "paused" | "running".
 - `node({ action: "remove-animation", componentUuid, nodeRef, seqRef?, animationIndex? })` — Detach animation.
 
 ### Variants
 - `variant({ action: "create-style", componentUuid, selector, nodeRef? })` — Create :hover, :focus, etc.
 - `variant({ action: "create-group", componentUuid, name, type?, initialVariants? })` — Named group.
-- `variant({ action: "rename", componentUuid, variantRef, newName })` — Rename a component-level variant.
-- `variant({ action: "remove", componentUuid, variantRef })` — Remove a component-level variant.
+- `variant({ action: "rename", variantRef, newName, componentUuid? })` — Rename a component-level variant.
+- `variant({ action: "remove", variantRef, componentUuid? })` — Remove a component-level variant.
 
 ### Management
 - `component({ action: "rename", componentUuid, newName, newPath? })` — Rename.
@@ -234,7 +234,7 @@ Attach CSS animations to elements:
 2. Attach: `node({ action: "add-animation", componentUuid: uuid, nodeRef: "Hero", seqRef: "fade-in", duration: "1s", delay: "0.2s", timingFunction: "ease-out" })`
 3. Detach: `node({ action: "remove-animation", componentUuid: uuid, nodeRef: "Hero", seqRef: "fade-in" })` or omit seqRef to remove all
 
-**Timing parameters:** duration, delay, timingFunction, iterationCount, direction (`normal`/`reverse`/`alternate`), fillMode (`none`/`forwards`/`backwards`/`both`)
+**Timing parameters:** duration, delay, timingFunction, iterationCount, direction (`normal`/`reverse`/`alternate`/`alternate-reverse`), fillMode (`none`/`forwards`/`backwards`/`both`), playState (`paused`/`running`)
 
 ## Image Assets
 Set images from uploaded assets or URLs:

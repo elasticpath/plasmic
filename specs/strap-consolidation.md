@@ -142,8 +142,8 @@ Note: 12 actions. This is a clean split: component-level variant listing/creatio
 
 | Action | Replaces | Parameters |
 |--------|----------|------------|
-| `list-tokens` | get-tokens | type? |
-| `create-token` | create-token | name, type, value, dryRun? |
+| `list-tokens` | get-tokens | tokenType? |
+| `create-token` | create-token | name, tokenType, value, dryRun? |
 | `update-token` | update-token | tokenRef, value?, name?, dryRun? |
 | `remove-token` | remove-token | tokenRef, dryRun? |
 | `duplicate-token` | duplicate-token | tokenRef, newName?, dryRun? |
@@ -180,8 +180,8 @@ Note: 12 actions. This is a clean split: component-level variant listing/creatio
 
 | Action | Replaces | Parameters |
 |--------|----------|------------|
-| `list-assets` | list-assets | type? |
-| `upload-asset` | upload-asset | name, type, url?, dataUri?, width?, height?, dryRun? |
+| `list-assets` | list-assets | assetType? |
+| `upload-asset` | upload-asset | name, assetType, url?, dataUri?, width?, height?, dryRun? |
 | `rename-asset` | rename-asset | assetRef, newName, dryRun? |
 | `remove-asset` | remove-asset | assetRef, dryRun? |
 

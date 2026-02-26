@@ -19,7 +19,8 @@ You are inspecting a Plasmic project to help the developer understand its struct
 - `component({ action: "list-props", componentUuid })` — Parameters with type, kind, default value, description.
 - `component({ action: "list-states", componentUuid })` — State variables with variableType, accessType, initial value.
 - `data({ action: "list-queries", componentUuid })` — Data queries (client + server) with name, body expression.
-- `interaction({ action: "list", componentUuid, nodeRef? })` — Event handlers: event name, action type, args. Optional `nodeRef` to filter.
+- `interaction({ action: "list", componentUuid, nodeRef })` — Event handlers: event name, action type, args.
+- `inspect({ action: "style-properties", filter? })` — Valid CSS property names (optional substring filter).
 - `variant({ action: "list", componentUuid })` — Global (breakpoints), component (custom), style (hover/focus) variants.
 - `data({ action: "get-code-meta", componentUuid })` — Code component metadata: importPath, displayName, description, props with types/defaults.
 

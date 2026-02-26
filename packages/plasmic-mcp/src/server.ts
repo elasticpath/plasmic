@@ -4,7 +4,7 @@
  * Uses McpServer from @modelcontextprotocol/sdk with Zod schemas for input
  * validation. All tools are registered before the transport connects.
  *
- * STRAP architecture: 99 actions consolidated into 8 domain tools.
+ * STRAP architecture: 103 actions consolidated into 8 domain tools.
  * Each domain tool uses an `action` discriminator to route to the
  * appropriate handler function.
  *
@@ -945,7 +945,7 @@ export function createServer(): McpServer {
   );
 
   // ========================================================================
-  // DOMAIN 3: component (17 actions)
+  // DOMAIN 3: component (18 actions)
   // ========================================================================
 
   server.tool(
