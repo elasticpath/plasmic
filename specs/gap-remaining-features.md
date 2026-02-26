@@ -49,20 +49,25 @@ This spec covers the smaller gap features that don't warrant individual spec fil
 ## 3. A/B Testing (Splits)
 
 ### `data({ action: "create-split" })`
-- **Parameters**: `name`, `slices` (array of `{ name, weight }`)
+- **Parameters**: `name`, `splitType` (experiment | segment), `slices` (array of `{ name, prob?, cond? }`)
 - Creates a Split with SplitSlice entries
 
 ### `data({ action: "list-splits" })`
 - **Parameters**: (none)
-- Returns: Array of `{ splitUuid, name, slices }`
+- Returns: Array of `{ splitUuid, name, splitType, slices }`
+
+### `data({ action: "update-split" })`
+- **Parameters**: `splitRef` (name or UUID), `name?`, `status?` (new | running | stopped)
+- Updates split name or status
 
 ### `data({ action: "remove-split" })`
 - **Parameters**: `splitRef` (name or UUID)
 - Removes split
 
 ### Acceptance Criteria
-- [x] Can create A/B test with weighted slices
+- [x] Can create A/B test with typed slices (experiment or segment)
 - [x] Can list all splits
+- [x] Can update a split (name or status)
 - [x] Can remove a split
 - [x] Undo support
 - [x] Integration + unit tests
@@ -97,7 +102,7 @@ This spec covers the smaller gap features that don't warrant individual spec fil
 ## 5. Extract to Component
 
 ### `component({ action: "extract" })`
-- **Parameters**: `componentUuid`, `nodeRef`, `newName`
+- **Parameters**: `componentUuid`, `nodeRef`, `name`
 - Extracts a subtree into a new component, replacing the subtree with a component instance
 - Returns: `{ newComponentUuid, instanceUuid }`
 

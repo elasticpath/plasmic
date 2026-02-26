@@ -31,16 +31,16 @@ Animation management as site-level operations in `design` domain, and element-le
 - At least one of `newName` or `keyframes` must be provided
 
 ### `design({ action: "remove-animation" })`
-- **Parameters**: `animationRef` (name or UUID)
+- **Parameters**: `seqRef` (name or UUID)
 - Removes sequence + cleans up element references
 
 ### `node({ action: "add-animation" })`
-- **Parameters**: `componentUuid`, `nodeRef`, `animationRef` (name or UUID), `duration?` (default "1s"), `delay?` (default "0s"), `timingFunction?` (default "ease"), `iterationCount?` (default 1), `direction?`, `fillMode?`, `variant?`, `dryRun?`
+- **Parameters**: `componentUuid`, `nodeRef`, `seqRef` (name or UUID), `duration?` (default "1s"), `delay?` (default "0s"), `timingFunction?` (default "ease"), `iterationCount?` (default 1), `direction?`, `fillMode?`, `playState?`, `variant?`, `dryRun?`
 - Adds animation to element's RuleSet.animations[]
 
 ### `node({ action: "remove-animation" })`
-- **Parameters**: `componentUuid`, `nodeRef`, `animationRef`, `variant?`, `dryRun?`
-- Removes animation from element
+- **Parameters**: `componentUuid`, `nodeRef`, `seqRef?`, `animationIndex?`, `variant?`, `dryRun?`
+- Removes animation from element (by sequence reference or index)
 
 ## Acceptance Criteria
 - [x] Can create animation sequence with keyframes

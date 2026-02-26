@@ -17,11 +17,11 @@ Currently the MCP only supports raw `src` URLs in PlasmicElement image elements.
 Asset management integrates into the `design` domain (site-level design system entities).
 
 ### `design({ action: "list-assets" })`
-- **Parameters**: `type?` (icon | image | responsive-image)
+- **Parameters**: `assetType?` (picture | icon)
 - Returns: Array of `{ assetUuid, name, type, width?, height?, aspectRatio? }`
 
 ### `design({ action: "upload-asset" })`
-- **Parameters**: `name`, `type` (icon | image), `url` (fetch and embed) or `dataUri` (inline), `width?`, `height?`
+- **Parameters**: `name`, `assetType` (picture | icon), `url` (fetch and embed) or `dataUri` (inline), `width?`, `height?`
 - Fetches URL, converts to dataUri, creates ImageAsset
 - Returns: `{ assetUuid, name, type }`
 

@@ -17,7 +17,7 @@ Token types: Color, Spacing, Opacity, LineHeight, FontFamily, FontSize.
 Token CRUD integrates into the `design` domain (site-level design system entities).
 
 ### `design({ action: "create-token" })`
-- **Parameters**: `name`, `type` (Color | Spacing | Opacity | LineHeight | FontFamily | FontSize), `value`
+- **Parameters**: `name`, `tokenType` (Color | Spacing | Opacity | LineHeight | FontFamily | FontSize), `value`
 - Creates a StyleToken on the site
 - Returns: `{ tokenUuid, name, type, value }`
 

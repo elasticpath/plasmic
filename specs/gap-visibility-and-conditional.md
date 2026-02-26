@@ -15,10 +15,10 @@ Studio uses `TplVisibility` enum and `dataCond` (CustomCode/ObjectPath) on Varia
 Two new actions split across the `node` domain (visibility) and `data` domain (conditional rendering):
 
 ### `set-visibility`
-- **Parameters**: `componentUuid`, `nodeRef`, `visible` (boolean | "customCode"), `variant?`, `dryRun?`
+- **Parameters**: `componentUuid`, `nodeRef`, `visible` (boolean | "displayNone"), `variant?`, `dryRun?`
 - `visible: true` — element is shown (removes visibility override for variant)
-- `visible: false` — element is hidden for this variant
-- `visible: "customCode"` — sets visibility to "not rendered" (TplVisibility.DisplayNone)
+- `visible: false` — element is hidden for this variant (not rendered)
+- `visible: "displayNone"` — sets visibility to CSS display:none (hidden but occupies no space)
 - Uses `setTplVisibility()` from WAB's tpls module, or equivalent VariantSetting mutation
 
 ### `set-data-cond`

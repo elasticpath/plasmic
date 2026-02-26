@@ -15,7 +15,7 @@ Data repetition auto-creates implicit component states (tracked by `states.ts`).
 
 ## New MCP Actions
 
-### `set-data-rep` (node domain)
+### `set-data-rep` (data domain)
 Sets or clears data repetition on an element.
 
 **Parameters:**

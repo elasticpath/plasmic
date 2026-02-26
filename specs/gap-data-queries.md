@@ -30,8 +30,8 @@ Data query CRUD integrates into the `data` domain.
 - Removes query + cleans up expression references
 
 ### `data({ action: "update-query" })`
-- **Parameters**: `componentUuid`, `queryRef`, `name?`, `op?`
-- Updates query name or operation
+- **Parameters**: `componentUuid`, `queryRef`, `name`, `dryRun?`
+- Updates query name (renames the query)
 
 ## Acceptance Criteria
 - [x] Can create a data query on a component

@@ -8,9 +8,16 @@
 >
 > **Last verified**: 2026-02-26 — 4 new variant actions (create-screen, update-screen, rename, remove) implemented. variant domain now 12 actions. Test count updated.
 >
-> **Spec consistency pass** (2026-02-26): Fixed 4 gap spec → STRAP naming discrepancies:
+> **Spec consistency pass 1** (2026-02-26): Fixed 4 gap spec → STRAP naming discrepancies:
 > `gap-mixins.md` remove-mixin→detach-mixin, `gap-themes.md` themeRef→themeIndex,
 > `gap-animations.md` added missing update-animation action, `test-restructure.md` added interaction.update.
+>
+> **Spec consistency pass 2** (2026-02-26): Fixed 9 remaining gap spec → implementation discrepancies:
+> `gap-visibility-and-conditional.md` "customCode"→"displayNone", `gap-data-repetition.md` "node domain"→"data domain",
+> `gap-token-crud.md` type→tokenType, `gap-images-and-assets.md` type→assetType,
+> `gap-interactions.md` added event+interactionName params to update, `gap-animations.md` animationRef→seqRef+animationIndex,
+> `gap-data-queries.md` update-query name? made required+removed op?, `gap-remaining-features.md` newName→name for extract,
+> splits weight→prob+added splitType+added update-split action.
 
 ---
 
@@ -29,7 +36,8 @@ Key file sizes: `server.ts` (~4,730 lines after STRAP consolidation), `edit-tool
 `tree-reader.ts` (~850 lines).
 
 Spec consistency: All 15 gap specs updated to reflect STRAP domain assignments (2026-02-26).
-Second pass fixed 4 naming discrepancies (detach-mixin, themeIndex, update-animation, interaction.update).
+Pass 1 fixed 4 naming discrepancies (detach-mixin, themeIndex, update-animation, interaction.update).
+Pass 2 fixed 9 remaining discrepancies (displayNone, data domain header, tokenType, assetType, interaction.update params, seqRef/animationIndex, update-query name required, extract name, splits prob/splitType/update-split).
 STRAP spec updated for `component.extract` (Tier 5.1) and `interaction.update`.
 
 ---

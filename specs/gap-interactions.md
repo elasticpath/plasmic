@@ -39,7 +39,7 @@ List all interactions on an element.
 
 ### `interaction({ action: "update" })`
 Modify an existing interaction.
-- **Parameters**: `componentUuid`, `nodeRef`, `interactionIndex`, `actionName?`, `args?`, `condition?`, `dryRun?`
+- **Parameters**: `componentUuid`, `nodeRef`, `event`, `interactionIndex`, `actionName?`, `args?`, `condition?`, `interactionName?`, `dryRun?`
 
 ### `interaction({ action: "remove" })`
 Remove an interaction from an element.
