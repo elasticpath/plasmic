@@ -1,5 +1,5 @@
 # Variant domain scenarios
-# Tests: listing variants on components
+# Tests: listing variants, code component variants, style variant creation
 scenarios:
   - id: variant-list
     description: "List all variants defined on the Homepage component. First find the Homepage component, then list its variants."
@@ -20,3 +20,130 @@ scenarios:
           expected: {}
       - type: no-errors
         params: {}
+
+  # Code component variant scenarios (P4.5)
+  # These test the ability to discover, resolve, and use code component variants —
+  # registered variant states (e.g., Selected, Pressed) that come from code component
+  # metadata rather than user-created style variants.
+
+  - id: variant-list-code-component
+    description: >
+      Find a component whose root is a code component with registered variants
+      (e.g., a button or trigger component). List the component's variants using
+      variant.list and confirm that the response includes a codeComponentVariants
+      array with entries showing the variant key, displayName, and cssSelector.
+    domains:
+      - variant
+      - component
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - variant
+      - type: tool-params
+        params:
+          tool: variant
+          action: list
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 2
+          max: 6
+
+  - id: variant-resolve-code-component
+    description: >
+      Find a component with code component variants (registered variants from
+      a code component root). List the variants to discover available code
+      component variant names. Then apply styles to an element on that component
+      targeting one of the code component variants by name — for example, use
+      node.update-styles with the variant parameter set to the code component
+      variant's key or displayName (e.g., "selected" or "Selected") to set
+      a background color on the root element for that variant state.
+    domains:
+      - variant
+      - node
+      - component
+      - inspect
+    tier: medium
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - variant
+            - node
+      - type: tool-params
+        params:
+          tool: variant
+          action: list
+          expected: {}
+      - type: tool-params
+        params:
+          tool: node
+          action: update-styles
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 4
+          max: 15
+    visual:
+      rubric: "Verify the component's variant list includes code component variants with keys and display names. The style inspector for the targeted element should show variant-specific styles applied under the selected code component variant state."
+
+  - id: variant-create-style-code-component
+    description: >
+      Build variant-specific styles using a code component's registered CSS
+      selectors. Steps:
+      1) Find a component whose root is a code component with registered variants.
+      2) List the component's variants to discover code component variants and
+         their CSS selectors (e.g., [data-selected], [data-pressed]).
+      3) Create a new style variant on the component using variant.create-style
+         with the selector set to one of the discovered code component CSS
+         selectors (e.g., selector: "[data-selected]").
+      4) Apply styles to the root element targeting the newly created style
+         variant (e.g., set backgroundColor to a highlight color).
+      5) List variants again to confirm the new style variant was created.
+    domains:
+      - variant
+      - node
+      - component
+      - inspect
+    tier: complex
+    timeout: 120
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - variant
+            - node
+      - type: tool-params
+        params:
+          tool: variant
+          action: list
+          expected: {}
+      - type: tool-params
+        params:
+          tool: variant
+          action: create-style
+          expected: {}
+      - type: tool-params
+        params:
+          tool: node
+          action: update-styles
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 6
+          max: 20
+    visual:
+      rubric: "Verify the component's variant panel shows a new style variant created with the code component's CSS selector. The style inspector should show variant-specific styles applied to the root element under that variant state. The variant list should show both the original code component variants and the newly created style variant."

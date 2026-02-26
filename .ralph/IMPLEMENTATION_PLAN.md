@@ -2,9 +2,9 @@
 
 ## Status Summary
 
-**Complete**: MCP server (8 STRAP tools, 103 actions), eval harness (cli, runner, claude-client, mcp-client, scenario-loader, scenario-validator, reporter, types), 8 grader types + LLM judge + review flags, visual capture (Playwright), dashboard (Chart.js), CI workflow, 67 scenarios (20 simple / 32 medium / 15 complex), package scripts. P1 (scenario coverage gaps) and P2 (unused grader activation) fully complete. state-check.ts enhanced with `componentName` resolution as alternative to `componentUuid`; scenario-validator.ts updated to accept `componentName`. **P3 Eval Module Unit Tests fully complete** — 148 new tests across 7 test files (runner 18, claude-client 12, mcp-client 12, scenario-loader 14, reporter 19, transcript-check 28, state-check 45). Total tests: 1,407 (up from 1,259). P4 Code Component Variant Support — P4.1-P4.4 complete (type declarations, listVariants, resolveVariant, createStyleVariant all support code component variants with 16 new unit tests). P4.5 (eval scenarios) remains.
+**Complete**: MCP server (8 STRAP tools, 103 actions), eval harness (cli, runner, claude-client, mcp-client, scenario-loader, scenario-validator, reporter, types), 8 grader types + LLM judge + review flags, visual capture (Playwright), dashboard (Chart.js), CI workflow, 70 scenarios (21 simple / 30 medium / 19 complex), package scripts. P1-P4 fully complete. **P4 Code Component Variant Support fully complete** — P4.1-P4.4 (type declarations, listVariants, resolveVariant, createStyleVariant with 16 unit tests) and P4.5 (3 eval scenarios: simple list, medium resolve+style, complex create-style+apply). Total tests: 1,407. Total scenarios: 70.
 
-**In progress**: P4.5 eval scenarios for code component variants is next. Then P5-P8 hardening tasks.
+**In progress**: P5-P8 hardening tasks. Next: P5 Dashboard Hardening.
 
 **Goal**: Close remaining gaps in scenario coverage, grader utilization, test coverage, and robustness so the eval system reliably measures Claude's ability to complete Plasmic design tasks across all 8 STRAP domains.
 
@@ -23,7 +23,7 @@ _Impact: MEDIUM — 148 new tests ensure regressions in runner/reporter/loader/g
 - [x] **P3.6 — transcript-check.ts tests** (28 tests) — `src/__tests__/eval-transcript-check.test.ts`
 - [x] **P3.7 — state-check.ts tests** (45 tests) — `src/__tests__/eval-state-check.test.ts`
 
-### P4: Code Component Variant Support — `src/`
+### P4: Code Component Variant Support — `src/` ✅ COMPLETE
 _Impact: MEDIUM — new MCP feature that unlocks eval scenarios for an untested variant type. Spec complete at `.ralph/specs/code-component-variant-support.md`._
 
 - [x] **P4.1 — Implement `variant.list` code component variant output**
@@ -46,10 +46,10 @@ _Impact: MEDIUM — new MCP feature that unlocks eval scenarios for an untested 
   - Files: `src/wab.d.ts`
   - AC: `tsc --noEmit` passes
 
-- [ ] **P4.5 — Add eval scenarios for code component variants**
-  - 1 simple (list code component variants), 1 medium (resolve and apply styles to code component variant), 1 complex (create style variant with code component selector + apply styles)
+- [x] **P4.5 — Add eval scenarios for code component variants**
+  - 3 scenarios added to `evals/scenarios/variant.yaml`: `variant-list-code-component` (simple), `variant-resolve-code-component` (medium), `variant-create-style-code-component` (complex)
   - Files: `evals/scenarios/variant.yaml`
-  - AC: 3 new scenarios; `eval:validate` passes
+  - AC: ✅ 3 new scenarios; `eval:validate` passes (70 total scenarios)
 
 ### P5: Dashboard Hardening — `evals/dashboard/`
 _Impact: LOW-MEDIUM — security and reliability improvements for the results dashboard._
