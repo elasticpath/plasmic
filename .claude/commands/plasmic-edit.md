@@ -15,7 +15,7 @@ You are editing an existing page or component in a Plasmic project.
 - `interaction({ action: "list", componentUuid, nodeRef? })` — Event handlers on nodes.
 - `design({ action: "list-mixins" })` — Available reusable style bundles.
 - `design({ action: "list-animations" })` — Available @keyframes animations.
-- `design({ action: "list-assets", nameFilter?, assetType? })` — Available image assets.
+- `design({ action: "list-assets", assetType? })` — Available image assets.
 - `design({ action: "list-tokens", tokenType? })` — Design tokens.
 
 ### Text & Content
@@ -34,31 +34,35 @@ You are editing an existing page or component in a Plasmic project.
 - `node({ action: "reorder", componentUuid, parentRef, childRefs[] })` — Reorder children.
 
 ### Visibility & Data Binding
-- `node({ action: "set-visibility", componentUuid, nodeRef, visibility, variant? })` — `"visible"` / `"notRendered"` / `"displayNone"`.
-- `data({ action: "set-data-cond", componentUuid, nodeRef, expr, variant? })` — JS conditional. `null` removes.
-- `data({ action: "set-data-rep", componentUuid, nodeRef, collection, elementVar?, indexVar? })` — Repeat over collection. `null` removes.
+- `node({ action: "set-visibility", componentUuid, nodeRef, visible, variant? })` — `true` (visible) / `false` (not rendered) / `"displayNone"` (CSS display:none).
+- `data({ action: "set-data-cond", componentUuid, nodeRef, condition, variant? })` — JS conditional. `null` removes.
+- `data({ action: "set-data-rep", componentUuid, nodeRef, collection, elementVariable?, indexVariable? })` — Repeat over collection. `null` removes.
 
 ### Images
 - `node({ action: "set-image", componentUuid, nodeRef, src?, assetRef?, variant? })` — Set image from URL or uploaded asset.
 
 ### Interactions
-- `interaction({ action: "add", componentUuid, nodeRef, event, actionName, args?, condition? })` — Add event handler.
-- `interaction({ action: "remove", componentUuid, nodeRef, eventIndex? })` — Remove handler(s).
+- `interaction({ action: "add", componentUuid, nodeRef, event, actionName, args?, condition?, interactionName? })` — Add event handler.
+- `interaction({ action: "update", componentUuid, nodeRef, event, interactionIndex, actionName?, args?, condition?, interactionName? })` — Update existing handler.
+- `interaction({ action: "remove", componentUuid, nodeRef, interactionIndex? })` — Remove handler(s).
 
 ### Mixins (on nodes)
 - `node({ action: "apply-mixin", componentUuid, nodeRef, mixinRef })` — Apply mixin to element.
 - `node({ action: "detach-mixin", componentUuid, nodeRef, mixinRef })` — Remove mixin from element.
 
 ### Animations (on nodes)
-- `node({ action: "add-animation", componentUuid, nodeRef, sequenceRef, duration?, delay?, timingFunction?, iterationCount?, direction?, fillMode? })` — Attach animation.
-- `node({ action: "remove-animation", componentUuid, nodeRef, sequenceRef? })` — Detach animation.
+- `node({ action: "add-animation", componentUuid, nodeRef, seqRef, duration?, delay?, timingFunction?, iterationCount?, direction?, fillMode? })` — Attach animation.
+- `node({ action: "remove-animation", componentUuid, nodeRef, seqRef?, animationIndex? })` — Detach animation.
 
 ### Variants
 - `variant({ action: "create-style", componentUuid, selector, nodeRef? })` — Create :hover, :focus, etc.
 - `variant({ action: "create-group", componentUuid, name, type?, initialVariants? })` — Named group.
+- `variant({ action: "rename", componentUuid, variantRef, newName })` — Rename a component-level variant.
+- `variant({ action: "remove", componentUuid, variantRef })` — Remove a component-level variant.
 
 ### Management
 - `component({ action: "rename", componentUuid, newName, newPath? })` — Rename.
+- `component({ action: "extract", componentUuid, nodeRef, name })` — Extract subtree into a new reusable component.
 - `component({ action: "update-page-meta", componentUuid, ... })` — Set SEO metadata.
 - `inspect({ action: "page-meta", componentUuid })` — Read SEO metadata.
 - `inspect({ action: "preview-url", componentUuid })` — Preview/studio URLs.
@@ -157,14 +161,14 @@ Partial lists supported — unlisted children are appended at the end.
 
 ## Visibility & Conditional Rendering
 Control element visibility per variant:
-- Hide completely (not rendered): `node({ action: "set-visibility", componentUuid: uuid, nodeRef: "Sidebar", visibility: "notRendered" })`
-- Hide with CSS (display:none): `node({ action: "set-visibility", componentUuid: uuid, nodeRef: "Sidebar", visibility: "displayNone" })`
-- Show: `node({ action: "set-visibility", componentUuid: uuid, nodeRef: "Sidebar", visibility: "visible" })`
+- Hide completely (not rendered): `node({ action: "set-visibility", componentUuid: uuid, nodeRef: "Sidebar", visible: false })`
+- Hide with CSS (display:none): `node({ action: "set-visibility", componentUuid: uuid, nodeRef: "Sidebar", visible: "displayNone" })`
+- Show: `node({ action: "set-visibility", componentUuid: uuid, nodeRef: "Sidebar", visible: true })`
 
 Attach JS conditional expressions:
-- Show only if logged in: `data({ action: "set-data-cond", componentUuid: uuid, nodeRef: "AdminPanel", expr: "$ctx.user.isLoggedIn" })`
-- Show if non-empty: `data({ action: "set-data-cond", componentUuid: uuid, nodeRef: "Results", expr: "$queries.search.data.length > 0" })`
-- Remove condition: `data({ action: "set-data-cond", componentUuid: uuid, nodeRef: "AdminPanel", expr: null })`
+- Show only if logged in: `data({ action: "set-data-cond", componentUuid: uuid, nodeRef: "AdminPanel", condition: "$ctx.user.isLoggedIn" })`
+- Show if non-empty: `data({ action: "set-data-cond", componentUuid: uuid, nodeRef: "Results", condition: "$queries.search.data.length > 0" })`
+- Remove condition: `data({ action: "set-data-cond", componentUuid: uuid, nodeRef: "AdminPanel", condition: null })`
 
 Both support `variant` parameter for responsive/variant-specific visibility.
 
@@ -176,12 +180,12 @@ Repeat an element for each item in a collection:
 data({ action: "set-data-rep", componentUuid, nodeRef: "ProductCard", collection: "$queries.products.data" })
 ```
 - Default loop variables: `currentItem` (element) and `currentIndex` (index)
-- Custom names: `data({ action: "set-data-rep", componentUuid: uuid, nodeRef: "Row", collection: "$ctx.items", elementVar: "item", indexVar: "i" })`
+- Custom names: `data({ action: "set-data-rep", componentUuid: uuid, nodeRef: "Row", collection: "$ctx.items", elementVariable: "item", indexVariable: "i" })`
 - Remove: `data({ action: "set-data-rep", componentUuid: uuid, nodeRef: "ProductCard", collection: null })`
 
 Inside repeated elements, use loop variables in dynamic text and conditions:
 - `node({ action: "update-text", componentUuid: uuid, nodeRef: "ProductName", text: "$ctx.currentItem.name", dynamic: true })`
-- `data({ action: "set-data-cond", componentUuid: uuid, nodeRef: "Badge", expr: "$ctx.currentItem.isNew" })`
+- `data({ action: "set-data-cond", componentUuid: uuid, nodeRef: "Badge", condition: "$ctx.currentItem.isNew" })`
 
 Tree output shows `dataRep` field with `{ collection, elementVariable, indexVariable }`.
 
@@ -214,7 +218,9 @@ interaction({ action: "add", componentUuid: uuid, nodeRef: "Btn", event: "onClic
 
 **Action types:** `navigation` (navigateTo/goToPage), `updateVariable` (setState), `customFunction` (runCode)
 
-**Remove:** `interaction({ action: "remove", componentUuid: uuid, nodeRef: "Btn" })` removes all handlers on that node, or specify `eventIndex` for a specific one.
+**Update:** `interaction({ action: "update", componentUuid: uuid, nodeRef: "Btn", event: "onClick", interactionIndex: 0, args: { destination: "'/new-path'" } })` modifies an existing handler.
+
+**Remove:** `interaction({ action: "remove", componentUuid: uuid, nodeRef: "Btn" })` removes all handlers on that node, or specify `interactionIndex` for a specific one.
 
 ## Mixin Application
 Apply reusable style bundles to elements:
@@ -225,8 +231,8 @@ Apply reusable style bundles to elements:
 ## Node Animations
 Attach CSS animations to elements:
 1. Check available sequences: `design({ action: "list-animations" })`
-2. Attach: `node({ action: "add-animation", componentUuid: uuid, nodeRef: "Hero", sequenceRef: "fade-in", duration: "1s", delay: "0.2s", timingFunction: "ease-out" })`
-3. Detach: `node({ action: "remove-animation", componentUuid: uuid, nodeRef: "Hero", sequenceRef: "fade-in" })` or omit sequenceRef to remove all
+2. Attach: `node({ action: "add-animation", componentUuid: uuid, nodeRef: "Hero", seqRef: "fade-in", duration: "1s", delay: "0.2s", timingFunction: "ease-out" })`
+3. Detach: `node({ action: "remove-animation", componentUuid: uuid, nodeRef: "Hero", seqRef: "fade-in" })` or omit seqRef to remove all
 
 **Timing parameters:** duration, delay, timingFunction, iterationCount, direction (`normal`/`reverse`/`alternate`), fillMode (`none`/`forwards`/`backwards`/`both`)
 

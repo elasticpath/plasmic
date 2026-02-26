@@ -494,46 +494,46 @@ After creating a page or component with `component({ action: "create-page" })`/`
 ### Data-Driven Product Grid
 Create a product grid that renders from a data query:
 1. Create page with a card container and one template card
-2. `data({ action: "add-query", uuid, name: "products", body: "await fetch('/api/products').then(r => r.json())" })`
-3. `data({ action: "set-data-rep", uuid, nodeRef: "ProductCard", collection: "$queries.products.data" })` — repeat card for each product
-4. `node({ action: "update-text", uuid, nodeRef: "CardTitle", text: "$ctx.currentItem.name", dynamic: true, fallback: "Product" })`
-5. `node({ action: "update-text", uuid, nodeRef: "CardPrice", text: "$ctx.currentItem.price", dynamic: true })`
-6. `node({ action: "set-image", uuid, nodeRef: "CardImage", src: "$ctx.currentItem.imageUrl" })` — dynamic image
+2. `data({ action: "add-query", componentUuid: uuid, name: "products", queryType: "dataQuery" })`
+3. `data({ action: "set-data-rep", componentUuid: uuid, nodeRef: "ProductCard", collection: "$queries.products.data" })` — repeat card for each product
+4. `node({ action: "update-text", componentUuid: uuid, nodeRef: "CardTitle", text: "$ctx.currentItem.name", dynamic: true, fallback: "Product" })`
+5. `node({ action: "update-text", componentUuid: uuid, nodeRef: "CardPrice", text: "$ctx.currentItem.price", dynamic: true })`
+6. `node({ action: "set-image", componentUuid: uuid, nodeRef: "CardImage", src: "$ctx.currentItem.imageUrl" })` — dynamic image
 
 ### Interactive Counter
 Add state and interactions to a button:
-1. `component({ action: "add-state", uuid, name: "count", variableType: "number", accessType: "private", initVal: "0" })`
-2. `node({ action: "update-text", uuid, nodeRef: "CountLabel", text: "$state.count", dynamic: true, fallback: "0" })`
-3. `interaction({ action: "add", uuid, nodeRef: "IncrementBtn", trigger: "onClick", actionType: "updateVariable", args: { variable: "count", operation: "newValue", value: "$state.count + 1" } })`
+1. `component({ action: "add-state", componentUuid: uuid, name: "count", variableType: "number", accessType: "private", initialValue: "0" })`
+2. `node({ action: "update-text", componentUuid: uuid, nodeRef: "CountLabel", text: "$state.count", dynamic: true, fallback: "0" })`
+3. `interaction({ action: "add", componentUuid: uuid, nodeRef: "IncrementBtn", event: "onClick", actionName: "updateVariable", args: { variable: "count", operation: "newValue", value: "$state.count + 1" } })`
 
 ### Conditional Sections
 Show/hide content based on conditions:
-1. `data({ action: "set-data-cond", uuid, nodeRef: "AdminPanel", dataCond: "$ctx.user.role === 'admin'" })` — admin-only section
-2. `data({ action: "set-data-cond", uuid, nodeRef: "EmptyState", dataCond: "$queries.items.data.length === 0" })` — show when no data
-3. `node({ action: "set-visibility", uuid, nodeRef: "DesktopNav", visibility: "notRendered", variant: "Mobile" })` — hide on mobile
+1. `data({ action: "set-data-cond", componentUuid: uuid, nodeRef: "AdminPanel", condition: "$ctx.user.role === 'admin'" })` — admin-only section
+2. `data({ action: "set-data-cond", componentUuid: uuid, nodeRef: "EmptyState", condition: "$queries.items.data.length === 0" })` — show when no data
+3. `node({ action: "set-visibility", componentUuid: uuid, nodeRef: "DesktopNav", visible: false, variant: "Mobile" })` — hide on mobile
 
 ### Navigation Links
 Add click-to-navigate behavior:
-1. `interaction({ action: "add", uuid, nodeRef: "AboutLink", trigger: "onClick", actionType: "navigation", args: { destination: "'/about'" } })`
-2. `interaction({ action: "add", uuid, nodeRef: "LoginBtn", trigger: "onClick", actionType: "navigation", args: { destination: "'/login'" } })`
+1. `interaction({ action: "add", componentUuid: uuid, nodeRef: "AboutLink", event: "onClick", actionName: "navigation", args: { destination: "'/about'" } })`
+2. `interaction({ action: "add", componentUuid: uuid, nodeRef: "LoginBtn", event: "onClick", actionName: "navigation", args: { destination: "'/login'" } })`
 
 ### Form with Validation State
 Create a form with input tracking:
-1. `component({ action: "add-state", uuid, name: "email", variableType: "text", accessType: "private", initVal: "''" })`
-2. `component({ action: "add-state", uuid, name: "isValid", variableType: "boolean", accessType: "private", initVal: "false" })`
-3. `interaction({ action: "add", uuid, nodeRef: "EmailInput", trigger: "onChange", actionType: "updateVariable", args: { variable: "email", operation: "newValue", value: "$event.target.value" } })`
-4. `interaction({ action: "add", uuid, nodeRef: "SubmitBtn", trigger: "onClick", actionType: "customFunction", args: { code: "if ($state.isValid) { fetch('/api/submit', { method: 'POST', body: JSON.stringify({ email: $state.email }) }) }" } })`
+1. `component({ action: "add-state", componentUuid: uuid, name: "email", variableType: "text", accessType: "private", initialValue: "''" })`
+2. `component({ action: "add-state", componentUuid: uuid, name: "isValid", variableType: "boolean", accessType: "private", initialValue: "false" })`
+3. `interaction({ action: "add", componentUuid: uuid, nodeRef: "EmailInput", event: "onChange", actionName: "updateVariable", args: { variable: "email", operation: "newValue", value: "$event.target.value" } })`
+4. `interaction({ action: "add", componentUuid: uuid, nodeRef: "SubmitBtn", event: "onClick", actionName: "customFunction", args: { code: "if ($state.isValid) { fetch('/api/submit', { method: 'POST', body: JSON.stringify({ email: $state.email }) }) }" } })`
 
 ### Rich Text Content
 Apply inline formatting after creation:
-1. `node({ action: "update-rich-text", uuid, nodeRef: "Intro", text: "Welcome to our amazing platform", marks: [{ type: "bold", start: 15, end: 22 }, { type: "italic", start: 23, end: 31 }] })`
-2. `node({ action: "update-rich-text", uuid, nodeRef: "CTA", text: "Click here to get started", marks: [{ type: "link", start: 6, end: 10, href: "/signup" }] })`
+1. `node({ action: "update-rich-text", componentUuid: uuid, nodeRef: "Intro", text: "Welcome to our amazing platform", marks: [{ type: "bold", start: 15, end: 22 }, { type: "italic", start: 23, end: 31 }] })`
+2. `node({ action: "update-rich-text", componentUuid: uuid, nodeRef: "CTA", text: "Click here to get started", marks: [{ type: "link", start: 6, end: 10, href: "/signup" }] })`
 
 ### Animated Hero
 Apply entrance animations:
-1. `design({ action: "create-animation", name: "fade-in-up", keyframes: [{ offset: 0, styles: { opacity: "0", transform: "translateY(20px)" } }, { offset: 100, styles: { opacity: "1", transform: "translateY(0)" } }] })`
-2. `node({ action: "add-animation", uuid, nodeRef: "HeroTitle", animationName: "fade-in-up", duration: "0.8s", timingFunction: "ease-out" })`
-3. `node({ action: "add-animation", uuid, nodeRef: "HeroSubtitle", animationName: "fade-in-up", duration: "0.8s", delay: "0.2s", timingFunction: "ease-out" })`
+1. `design({ action: "create-animation", name: "fade-in-up", keyframes: [{ percentage: 0, styles: { opacity: "0", transform: "translateY(20px)" } }, { percentage: 100, styles: { opacity: "1", transform: "translateY(0)" } }] })`
+2. `node({ action: "add-animation", componentUuid: uuid, nodeRef: "HeroTitle", seqRef: "fade-in-up", duration: "0.8s", timingFunction: "ease-out" })`
+3. `node({ action: "add-animation", componentUuid: uuid, nodeRef: "HeroSubtitle", seqRef: "fade-in-up", duration: "0.8s", delay: "0.2s", timingFunction: "ease-out" })`
 
 ## User's Request
 $ARGUMENTS

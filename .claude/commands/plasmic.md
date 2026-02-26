@@ -21,10 +21,10 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `design({ action: "list-tokens", tokenType? })` — Design tokens (Color, Spacing, FontSize, FontFamily, LineHeight, Opacity).
 - `design({ action: "list-mixins" })` — Reusable style bundles with uuid, name, styles.
 - `design({ action: "list-animations" })` — @keyframes animations with uuid, name, keyframeCount.
-- `design({ action: "list-themes" })` — Site themes with index, isActive, defaultStyles, tagStyles.
+- `design({ action: "list-themes" })` — Site themes with index, isActive, defaultStyles, themeStyles.
 - `data({ action: "list-data-tokens" })` — Data tokens accessible as `$ctx.tokenName` in expressions.
 - `variant({ action: "list-global-groups" })` — Global variant groups (screen breakpoints, custom).
-- `design({ action: "list-assets", nameFilter?, assetType? })` — Image assets with uuid, name, type, dimensions.
+- `design({ action: "list-assets", assetType? })` — Image assets with uuid, name, type, dimensions.
 - `data({ action: "list-functions" })` — Registered custom functions with params and types.
 - `data({ action: "list-splits" })` — A/B test splits (experiments and segments).
 
@@ -44,6 +44,7 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `component({ action: "delete", componentUuid, force? })` — Delete (checks references; `force: true` overrides).
 - `component({ action: "convert-to-page", componentUuid, path? })` — Convert component to page.
 - `component({ action: "convert-to-component", componentUuid })` — Convert page to component.
+- `component({ action: "extract", componentUuid, nodeRef, name })` — Extract subtree into a new reusable component.
 - `inspect({ action: "page-meta", componentUuid })` — Read SEO metadata (title, description, OG image, canonical).
 - `component({ action: "update-page-meta", componentUuid, title?, description?, openGraphImage?, canonical?, path? })` — Set SEO metadata.
 - `inspect({ action: "preview-url", componentUuid })` — Preview and studio URLs.
@@ -51,7 +52,11 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 ### Variants
 - `variant({ action: "create-style", componentUuid, selector, nodeRef? })` — Create :hover, :focus, :active, etc.
 - `variant({ action: "create-group", componentUuid, name, type?, initialVariants? })` — Named group (single/multi/toggle).
+- `variant({ action: "rename", componentUuid, variantRef, newName })` — Rename a component-level variant.
+- `variant({ action: "remove", componentUuid, variantRef })` — Remove a component-level variant.
 - `variant({ action: "create-global-group", name, type?, initialVariants? })` — Site-level variant group.
+- `variant({ action: "create-screen", groupRef, name })` — Add a screen breakpoint variant to a global group.
+- `variant({ action: "update-screen", groupRef, variantRef, name? })` — Update a screen variant.
 - `variant({ action: "add-global", groupRef, name })` — Add variant to a global group.
 - `variant({ action: "remove-global-group", groupRef })` — Remove global group.
 - `variant({ action: "rename-global", groupRef, variantRef, newName })` — Rename variant in global group.
@@ -69,9 +74,9 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `node({ action: "set-image", componentUuid, nodeRef, src?, assetRef?, variant? })` — Set image from URL or uploaded asset.
 
 ### Visibility & Data Binding
-- `node({ action: "set-visibility", componentUuid, nodeRef, visibility, variant? })` — `"visible"` / `"notRendered"` / `"displayNone"`.
-- `data({ action: "set-data-cond", componentUuid, nodeRef, expr, variant? })` — JS conditional expression (e.g., `"$ctx.user.isLoggedIn"`). `null` removes.
-- `data({ action: "set-data-rep", componentUuid, nodeRef, collection, elementVar?, indexVar? })` — Repeat element for each item in collection. `null` collection removes.
+- `node({ action: "set-visibility", componentUuid, nodeRef, visible, variant? })` — `true` (visible) / `false` (not rendered) / `"displayNone"` (CSS display:none).
+- `data({ action: "set-data-cond", componentUuid, nodeRef, condition, variant? })` — JS conditional expression (e.g., `"$ctx.user.isLoggedIn"`). `null` removes.
+- `data({ action: "set-data-rep", componentUuid, nodeRef, collection, elementVariable?, indexVariable? })` — Repeat element for each item in collection. `null` collection removes.
 
 ### Design Token CRUD
 - `design({ action: "create-token", name, tokenType, value })` — New token (Color/Spacing/FontSize/FontFamily/LineHeight/Opacity).
@@ -87,15 +92,15 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `node({ action: "detach-mixin", componentUuid, nodeRef, mixinRef })` — Remove mixin from element.
 
 ### Animation CRUD
-- `design({ action: "create-animation", name, keyframes? })` — New @keyframes (keyframes: `[{ offset: 0, styles: {...} }, ...]`).
-- `design({ action: "update-animation", sequenceRef, name?, keyframes? })` — Update animation.
-- `design({ action: "remove-animation", sequenceRef })` — Delete (cleans up node references).
-- `node({ action: "add-animation", componentUuid, nodeRef, sequenceRef, duration?, delay?, timingFunction?, iterationCount?, direction?, fillMode? })` — Attach animation.
-- `node({ action: "remove-animation", componentUuid, nodeRef, sequenceRef? })` — Detach animation.
+- `design({ action: "create-animation", name, keyframes? })` — New @keyframes (keyframes: `[{ percentage: 0, styles: {...} }, ...]`).
+- `design({ action: "update-animation", seqRef, name?, keyframes? })` — Update animation.
+- `design({ action: "remove-animation", seqRef })` — Delete (cleans up node references).
+- `node({ action: "add-animation", componentUuid, nodeRef, seqRef, duration?, delay?, timingFunction?, iterationCount?, direction?, fillMode? })` — Attach animation.
+- `node({ action: "remove-animation", componentUuid, nodeRef, seqRef?, animationIndex? })` — Detach animation.
 
 ### Theme CRUD
-- `design({ action: "create-theme", defaultStyles?, tagStyles?, setActive? })` — New theme. `tagStyles`: `[{ selector: "h1", styles: {...} }]`.
-- `design({ action: "update-theme", themeIndex, defaultStyles?, tagStyles? })` — Update theme styles.
+- `design({ action: "create-theme", defaultStyles?, themeStyles?, setActive? })` — New theme. `themeStyles`: `[{ selector: "h1", styles: {...} }]`.
+- `design({ action: "update-theme", themeIndex, defaultStyles?, themeStyles? })` — Update theme styles.
 - `design({ action: "remove-theme", themeIndex })` — Delete (cannot remove active theme).
 - `design({ action: "set-active-theme", themeIndex? })` — Set active theme (`null` deactivates).
 
@@ -105,7 +110,7 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `data({ action: "remove-data-token", tokenRef })` — Delete data token.
 
 ### Asset Management
-- `design({ action: "upload-asset", name, assetType?, src?, dataUri? })` — Upload image from URL or data URI.
+- `design({ action: "upload-asset", name, assetType?, url?, dataUri? })` — Upload image from URL or data URI.
 - `design({ action: "rename-asset", assetRef, newName })` — Rename asset.
 - `design({ action: "remove-asset", assetRef })` — Delete asset (cleans up references).
 
@@ -113,14 +118,15 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `component({ action: "add-prop", componentUuid, name, type, defaultValue?, description? })` — Add prop (text/number/boolean/object/href/eventHandler).
 - `component({ action: "remove-prop", componentUuid, propRef })` — Remove prop.
 - `component({ action: "update-prop", componentUuid, propRef, name?, defaultValue?, description? })` — Update prop.
-- `component({ action: "add-state", componentUuid, name, variableType, accessType, initVal? })` — Add state (text/number/boolean/array/object; private/readonly/writable).
+- `component({ action: "add-state", componentUuid, name, variableType, accessType, initialValue? })` — Add state (text/number/boolean/array/object; private/readonly/writable).
 - `component({ action: "remove-state", componentUuid, stateRef })` — Remove state variable.
-- `component({ action: "update-state", componentUuid, stateRef, name?, variableType?, accessType?, initVal? })` — Update state.
-- `data({ action: "add-query", componentUuid, name, body?, serverSide? })` — Add data query.
+- `component({ action: "update-state", componentUuid, stateRef, name?, variableType?, accessType?, initialValue? })` — Update state.
+- `data({ action: "add-query", componentUuid, name, queryType? })` — Add data query (queryType: "dataQuery" | "serverQuery", default "dataQuery").
 - `data({ action: "remove-query", componentUuid, queryRef })` — Remove query.
-- `data({ action: "update-query", componentUuid, queryRef, name?, body? })` — Update query.
-- `interaction({ action: "add", componentUuid, nodeRef, event, action, args?, condition? })` — Add event handler.
-- `interaction({ action: "remove", componentUuid, nodeRef, eventIndex? })` — Remove handler(s).
+- `data({ action: "update-query", componentUuid, queryRef, name })` — Rename query.
+- `interaction({ action: "add", componentUuid, nodeRef, event, actionName, args?, condition?, interactionName? })` — Add event handler.
+- `interaction({ action: "update", componentUuid, nodeRef, event, interactionIndex, actionName?, args?, condition?, interactionName? })` — Update existing handler.
+- `interaction({ action: "remove", componentUuid, nodeRef, interactionIndex? })` — Remove handler(s).
 
 ### A/B Testing
 - `data({ action: "create-split", name, type, slices })` — New experiment or segment.
@@ -175,7 +181,7 @@ All edit tools accept `dryRun: true` to preview changes without persisting.
    - "make this bold", "add a link in the text", "format the text" → rich text
    - "hide this element", "show only if logged in", "conditional rendering" → visibility/data-cond
    - "repeat for each product", "loop over items", "collection rendering" → data-rep
-   - "add onClick handler", "when clicked navigate to", "on hover change color" → interactions
+   - "add onClick handler", "when clicked navigate to", "on hover change color" → interactions (add/update/remove)
    - "apply the heading mixin", "detach mixin from this" → apply/detach mixin
    - "animate this element", "add fade animation" → node animation
    - "set the image", "use this asset" → node.set-image
@@ -205,7 +211,11 @@ All edit tools accept `dryRun: true` to preview changes without persisting.
    **Variant Management (handle directly):**
    - "add hover state", "create focus variant" → `variant({ action: "create-style" })`
    - "add a size variant group" → `variant({ action: "create-group" })`
+   - "rename variant" → `variant({ action: "rename" })` (component-level) or `variant({ action: "rename-global" })` (global)
+   - "remove variant" → `variant({ action: "remove" })` (component-level) or `variant({ action: "remove-global-group" })` (global group)
    - "create a global variant group", "add a breakpoint" → `variant({ action: "create-global-group" })`
+   - "add a screen breakpoint" → `variant({ action: "create-screen" })`
+   - "update screen variant" → `variant({ action: "update-screen" })`
    - "add variant to global group" → `variant({ action: "add-global" })`
    - "remove global variant group" → `variant({ action: "remove-global-group" })`
    - "rename global variant" → `variant({ action: "rename-global" })`
@@ -215,6 +225,7 @@ All edit tools accept `dryRun: true` to preview changes without persisting.
    - "update/remove split" → `data({ action: "update-split" })` / `data({ action: "remove-split" })`
 
    **Page/Component Management (handle directly):**
+   - "extract this into a component" → `component({ action: "extract" })`
    - "rename the homepage" → `component({ action: "rename" })`
    - "set the page title", "update page description" → `component({ action: "update-page-meta" })`
    - "what's the page metadata" → `inspect({ action: "page-meta" })`

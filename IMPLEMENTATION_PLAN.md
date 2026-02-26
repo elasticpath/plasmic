@@ -6,7 +6,7 @@
 > **Current state**: 8 STRAP domain tools (consolidating 103 actions), 6 Claude Code skills (STRAP calling convention), 1116 tests (998 unit + 118 integration), 19 test files.
 > Zero TODOs/FIXMEs/skipped tests. Zero tsc errors. All code quality items complete.
 >
-> **Last verified**: 2026-02-26 — 4 new variant actions (create-screen, update-screen, rename, remove) implemented. variant domain now 12 actions. Test count updated.
+> **Last verified**: 2026-02-26 — All 1116 tests pass, tsc clean. Skills audit complete.
 >
 > **Spec consistency pass 1** (2026-02-26): Fixed 4 gap spec → STRAP naming discrepancies:
 > `gap-mixins.md` remove-mixin→detach-mixin, `gap-themes.md` themeRef→themeIndex,
@@ -121,6 +121,13 @@ STRAP spec updated for `component.extract` (Tier 5.1) and `interaction.update`.
 
 ### 7.2 Rewrite Skills for STRAP (Post-Consolidation) — IMPLEMENTED
 - All 6 skills rewritten to use `domain({ action: "..." })` calling convention
+
+### 7.3 Skills Audit — Parameter Name Alignment — IMPLEMENTED
+- Audited all 6 skills against server.ts Zod schemas
+- **25+ parameter mismatches fixed** across 5 skill files (plasmic.md, plasmic-edit.md, plasmic-patterns.md, plasmic-inspect.md, plasmic-create-page.md was clean, plasmic-create-component.md was clean)
+- Key fixes: `visibility`→`visible`, `expr`→`condition`, `elementVar`→`elementVariable`, `indexVar`→`indexVariable`, `initVal`→`initialValue`, `body/serverSide`→`queryType`, `action`→`actionName`, `eventIndex`→`interactionIndex`, `sequenceRef`→`seqRef`, `offset`→`percentage`, `tagStyles`→`themeStyles`, `src`→`url` (upload-asset), removed non-existent `nameFilter` param
+- **6 missing actions added**: `interaction.update`, `variant.create-screen`, `variant.update-screen`, `variant.rename`, `variant.remove`, `component.extract`
+- **Why**: Wrong parameter names in skills cause tool calls to fail with Zod validation errors when Claude Code uses them to interact with Plasmic. This was the highest-priority fix.
 
 ---
 

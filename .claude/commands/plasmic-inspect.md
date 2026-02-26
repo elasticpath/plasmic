@@ -27,10 +27,10 @@ You are inspecting a Plasmic project to help the developer understand its struct
 - `design({ action: "list-tokens", tokenType? })` — Design tokens grouped by type (Color, Spacing, FontSize, FontFamily, LineHeight, Opacity).
 - `design({ action: "list-mixins" })` — Reusable style bundles with uuid, name, styles, forTheme flag.
 - `design({ action: "list-animations" })` — @keyframes definitions with uuid, name, keyframeCount.
-- `design({ action: "list-themes" })` — Themes with index, isActive, defaultStyles, tagStyles (per-tag overrides).
+- `design({ action: "list-themes" })` — Themes with index, isActive, defaultStyles, themeStyles (per-tag overrides).
 - `data({ action: "list-data-tokens" })` — Data tokens with name, type, value. Accessible as `$ctx.tokenName`.
 - `variant({ action: "list-global-groups" })` — Global variant groups with type and variant names.
-- `design({ action: "list-assets", nameFilter?, assetType? })` — Image assets with uuid, name, type (picture/icon), dimensions.
+- `design({ action: "list-assets", assetType? })` — Image assets with uuid, name, type (picture/icon), dimensions.
 - `data({ action: "list-functions" })` — Custom functions with importName, namespace, params, isQuery.
 - `data({ action: "list-splits" })` — A/B test splits with name, type (experiment/segment), slices.
 
