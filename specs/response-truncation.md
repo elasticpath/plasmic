@@ -37,7 +37,7 @@ Default: 15,000 characters. Can be set lower for context-constrained agents.
   "name": "ProductPage",
   "truncated": true,
   "nodesShown": 35,
-  "nodesTotal": 87,
+  "totalNodes": 87,
   "hint": "Response truncated at 15000 chars. Use inspect.subtree with a nodeRef to see deeper sections, or pass maxDepth to limit tree depth.",
   "tree": { ... partial tree ... }
 }
@@ -45,7 +45,7 @@ Default: 15,000 characters. Can be set lower for context-constrained agents.
 
 ## Acceptance Criteria
 - [ ] Responses over 15,000 characters are truncated with continuation hint
-- [ ] `truncated: true` and `nodesShown`/`nodesTotal` fields present when truncated
+- [ ] `truncated: true` and `nodesShown`/`totalNodes` fields present when truncated
 - [ ] Hint message guides agent to use subtree/maxDepth
 - [ ] `maxChars` parameter allows agent to request smaller responses
 - [ ] Truncation preserves valid JSON (no mid-object cuts)

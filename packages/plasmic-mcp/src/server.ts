@@ -282,16 +282,12 @@ export function createServer(): McpServer {
               content: [
                 {
                   type: "text" as const,
-                  text: JSON.stringify(
-                    {
-                      projectId: pid,
-                      projectName,
-                      componentCount: components.length,
-                      pageCount: pages.length,
-                    },
-                    null,
-                    2
-                  ),
+                  text: JSON.stringify({
+                    projectId: pid,
+                    projectName,
+                    componentCount: components.length,
+                    pageCount: pages.length,
+                  }),
                 },
               ],
             };
