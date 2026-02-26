@@ -356,14 +356,14 @@ Every old tool is mapped exactly once. Here is the exhaustive cross-reference so
 | **Total** | **97** |
 
 ## Acceptance Criteria
-- [ ] 97 old tools are removed from server.ts
-- [ ] 8 new domain tools are registered, each with `action` as a required string enum parameter
-- [ ] All other parameters are flat (no nested `data` object)
-- [ ] Zod schema validates that action-specific required params are present (discriminated union or `.refine()`)
-- [ ] Each action handler delegates to the same underlying function (edit-tools.ts, tree-reader.ts, etc.) -- logic is NOT rewritten
-- [ ] Tool descriptions include a table of available actions for LLM discoverability
-- [ ] All 1026 tests pass after migration (updated to use new tool names)
-- [ ] `npm run build` succeeds with no new warnings
+- [x] 97 old tools are removed from server.ts
+- [x] 8 new domain tools are registered, each with `action` as a required string enum parameter
+- [x] All other parameters are flat (no nested `data` object)
+- [x] Zod schema validates that action-specific required params are present (discriminated union or `.refine()`)
+- [x] Each action handler delegates to the same underlying function (edit-tools.ts, tree-reader.ts, etc.) -- logic is NOT rewritten
+- [x] Tool descriptions include a table of available actions for LLM discoverability
+- [x] All 1026 tests pass after migration (updated to use new tool names)
+- [x] `npm run build` succeeds with no new warnings
 
 ## Happy Path
 1. Claude Code skill calls `node({ action: "add", componentUuid: "...", parentRef: "...", child: {...} })`

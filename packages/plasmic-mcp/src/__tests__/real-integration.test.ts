@@ -4673,6 +4673,257 @@ describe("image assets", () => {
   });
 });
 
+// ==========================================================================
+// CQ-5: Missing integration tests for 11 tools
+// ==========================================================================
+
+describe("project.list", () => {
+  it("returns array of projects with id and name", async () => {
+    const result = parseResponse(
+      await client.callTool({
+        name: "project",
+        arguments: { action: "list" },
+      })
+    );
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBeGreaterThan(0);
+    expect(result[0]).toHaveProperty("id");
+    expect(result[0]).toHaveProperty("name");
+    expect(result[0].id).toBe(fixtureProjectId);
+  });
+});
+
+describe("project.get-meta", () => {
+  it("returns project metadata with pages and components", async () => {
+    const result = parseResponse(
+      await client.callTool({
+        name: "project",
+        arguments: { action: "get-meta" },
+      })
+    );
+    expect(result.projectId).toBe(fixtureProjectId);
+    expect(typeof result.projectName).toBe("string");
+    expect(typeof result.componentCount).toBe("number");
+    expect(typeof result.pageCount).toBe("number");
+    expect(Array.isArray(result.pages)).toBe(true);
+    expect(Array.isArray(result.components)).toBe(true);
+    expect(result.componentCount).toBeGreaterThan(0);
+
+    // Pages should have uuid, name, and path
+    if (result.pages.length > 0) {
+      expect(result.pages[0]).toHaveProperty("uuid");
+      expect(result.pages[0]).toHaveProperty("name");
+      expect(result.pages[0]).toHaveProperty("path");
+    }
+
+    // The fixture has global variant groups (it's called "active-screen-variant-group")
+    expect(result.globalVariantGroupCount).toBeGreaterThan(0);
+  });
+});
+
+describe("project.save", () => {
+  it("saves the project and returns revision info", async () => {
+    const result = parseResponse(
+      await client.callTool({
+        name: "project",
+        arguments: { action: "save" },
+      })
+    );
+    expect(result.success).toBe(true);
+    expect(typeof result.revision).toBe("number");
+    expect(result.revision).toBeGreaterThanOrEqual(2);
+    expect(typeof result.incremental).toBe("boolean");
+    expect(result.message).toContain("save completed");
+  });
+});
+
+describe("inspect.export", () => {
+  it("exports component tree to temp file and returns summary", async () => {
+    const comp = discoveredComponents[0];
+    const result = parseResponse(
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "export", componentUuid: comp.uuid },
+      })
+    );
+    expect(result.name).toBe(comp.name);
+    expect(result.uuid).toBe(comp.uuid);
+    expect(typeof result.filePath).toBe("string");
+    expect(result.filePath).toContain(comp.uuid);
+    expect(typeof result.nodeCount).toBe("number");
+    expect(result.nodeCount).toBeGreaterThan(0);
+    expect(result.tree).toBeDefined();
+    // Summary tree should have type and uuid but no styles
+    expect(result.tree.type).toBeTruthy();
+    expect(result.tree.uuid).toBeTruthy();
+  });
+});
+
+describe("inspect.subtree", () => {
+  it("returns subtree from a specific node", async () => {
+    const comp = discoveredComponents[0];
+    // Get the tree first to find a container node
+    const treeResult = parseResponse(
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
+      })
+    );
+    const container = findFirstContainer(treeResult.tree);
+    expect(container).toBeTruthy();
+
+    const result = parseResponse(
+      await client.callTool({
+        name: "inspect",
+        arguments: {
+          action: "subtree",
+          componentUuid: comp.uuid,
+          nodeRef: container!.uuid,
+        },
+      })
+    );
+    expect(result.component).toBe(comp.name);
+    expect(result.componentUuid).toBe(comp.uuid);
+    expect(typeof result.nodeCount).toBe("number");
+    expect(result.nodeCount).toBeGreaterThan(0);
+    expect(result.tree).toBeDefined();
+    expect(result.tree.uuid).toBe(container!.uuid);
+  });
+});
+
+describe("inspect.style-properties", () => {
+  it("returns list of valid CSS property names", async () => {
+    const result = parseResponse(
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "style-properties" },
+      })
+    );
+    expect(typeof result.total).toBe("number");
+    expect(result.total).toBeGreaterThan(0);
+    expect(Array.isArray(result.properties)).toBe(true);
+    expect(result.properties).toContain("color");
+    expect(result.properties).toContain("font-size");
+  });
+
+  it("filters properties when filter param is provided", async () => {
+    const result = parseResponse(
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "style-properties", filter: "font" },
+      })
+    );
+    expect(result.total).toBeGreaterThan(0);
+    expect(result.filter).toBe("font");
+    for (const prop of result.properties) {
+      expect(prop).toContain("font");
+    }
+  });
+});
+
+describe("component.create-page", () => {
+  it("creates a page with name and path", async () => {
+    const raw = await client.callTool({
+      name: "component",
+      arguments: { action: "create-page", name: "Test Page", path: "/test-page" },
+    });
+    const result = parseResponse(raw);
+    expect(raw.isError).toBeFalsy();
+    expect(result.success).toBe(true);
+    expect(result.name).toBe("Test Page");
+    expect(result.path).toBe("/test-page");
+    expect(result.message).toContain("Test Page");
+  });
+});
+
+describe("component.create", () => {
+  it("creates a component with name", async () => {
+    const raw = await client.callTool({
+      name: "component",
+      arguments: { action: "create", name: "TestWidget" },
+    });
+    const result = parseResponse(raw);
+    expect(raw.isError).toBeFalsy();
+    expect(result.success).toBe(true);
+    expect(result.name).toBe("TestWidget");
+    expect(result.message).toContain("TestWidget");
+  });
+});
+
+describe("component.clone", () => {
+  it("clones an existing component", async () => {
+    const source = discoveredComponents[0];
+    const raw = await client.callTool({
+      name: "component",
+      arguments: {
+        action: "clone",
+        sourceUuid: source.uuid,
+        name: "ClonedComponent",
+      },
+    });
+    const result = parseResponse(raw);
+    expect(raw.isError).toBeFalsy();
+    expect(result.success).toBe(true);
+    expect(result.name).toBe("ClonedComponent");
+    expect(result.clonedFrom).toBe(source.name);
+    expect(result.clonedFromUuid).toBe(source.uuid);
+    expect(result.message).toContain("ClonedComponent");
+    expect(result.message).toContain(source.name);
+  });
+});
+
+describe("variant.create-style", () => {
+  it("creates a hover style variant on a component", async () => {
+    const comp = discoveredComponents[0];
+    const raw = await client.callTool({
+      name: "variant",
+      arguments: {
+        action: "create-style",
+        componentUuid: comp.uuid,
+        selector: ":hover",
+      },
+    });
+    const result = parseResponse(raw);
+    expect(raw.isError).toBeFalsy();
+    expect(result.success).toBe(true);
+    expect(result.variantUuid).toBeTruthy();
+    expect(result.selector).toBe(":hover");
+    expect(result.scope).toBe("component");
+    expect(typeof result.revision).toBe("number");
+
+    // Undo the variant creation
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+  });
+});
+
+describe("variant.create-group", () => {
+  it("creates a variant group with initial variants", async () => {
+    const comp = discoveredComponents[0];
+    const raw = await client.callTool({
+      name: "variant",
+      arguments: {
+        action: "create-group",
+        componentUuid: comp.uuid,
+        name: "Size",
+        type: "single",
+        initialVariants: ["Small", "Large"],
+      },
+    });
+    const result = parseResponse(raw);
+    expect(raw.isError).toBeFalsy();
+    expect(result.success).toBe(true);
+    expect(result.groupUuid).toBeTruthy();
+    expect(result.groupName).toBe("Size");
+    expect(result.type).toBe("single");
+    expect(Array.isArray(result.variants)).toBe(true);
+    expect(result.variants.length).toBe(2);
+    expect(typeof result.revision).toBe("number");
+
+    // Undo the group creation
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+  });
+});
+
 /** Walk a tree recursively to find a node by UUID. */
 function findNodeByUuid(tree: any, uuid: string): any {
   if (tree.uuid === uuid) return tree;

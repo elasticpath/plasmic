@@ -3,10 +3,10 @@
 > **Goal**: Create Claude Code skills and workflows that can interact with Plasmic Studio
 > programmatically to create fully-featured pages from the Claude Code terminal.
 >
-> **Current state**: 8 STRAP domain tools (consolidating 97 actions), 6 Claude Code skills (STRAP calling convention), 1046 tests (948 unit + 98 integration), 19 test files.
+> **Current state**: 8 STRAP domain tools (consolidating 97 actions), 6 Claude Code skills (STRAP calling convention), 1058 tests (948 unit + 110 integration), 19 test files.
 > Zero TODOs/FIXMEs/skipped tests. Zero tsc errors.
 >
-> **Last verified**: 2026-02-26 — CQ-8 wab.d.ts type declarations complete. All tsc errors resolved.
+> **Last verified**: 2026-02-26 — CQ-5 integration test gaps closed (11 tools → 0 gaps). CQ-8 wab.d.ts type declarations complete.
 
 ---
 
@@ -374,9 +374,21 @@ These are code health improvements discovered during analysis. No specs needed.
 - **Additional finding**: tree-reader now surfaces `visibility` and `dataCond` (added with 1.1). It does NOT yet surface `dataRep`, `interactions`, `marks` (RichText markers), `mixins`, or `animations` — all will need to be added as specs are implemented.
 - **Action**: Consider adding optional `variant` parameter to tree-reader for variant-specific output (lower priority). Tree-reader extensions are tracked in each spec's "Also requires" section.
 
-### CQ-5 Integration Test Coverage Gaps
-- **What**: 11 tools have no integration test: `list-projects`, `get-project-meta`, `export-component-tree`, `get-subtree`, `create-page`, `create-component`, `clone-component`, `create-style-variant`, `create-variant-group`, `list-style-properties`, `save-project`
-- **Action**: Add integration tests for each (some require fixture enhancements or API mock updates)
+### CQ-5 Integration Test Coverage Gaps — DONE (2026-02-26)
+- **Status**: COMPLETED
+  - 12 new integration tests covering all 11 previously untested tools
+  - `project.list` — returns array of projects with id/name from fixture
+  - `project.get-meta` — returns project metadata (componentCount, pageCount, pages, components, globalVariantGroupCount)
+  - `project.save` — saves full bundle and returns revision info
+  - `inspect.export` — exports tree to temp file, returns summary with filePath and nodeCount
+  - `inspect.subtree` — returns subtree from a specific container node
+  - `inspect.style-properties` — returns valid CSS properties (2 tests: unfiltered + filtered)
+  - `component.create-page` — creates page with name and path
+  - `component.create` — creates component with name
+  - `component.clone` — clones existing component
+  - `variant.create-style` — creates :hover style variant (with undo)
+  - `variant.create-group` — creates "Size" group with initial variants (with undo)
+  - Total: 1058 tests (948 unit + 110 integration)
 
 ### CQ-6 server.test.ts Unit Test Gaps
 - **What**: `list-variants` tool handler has no unit test. `remove-child` and `move-child` have no dryRun tests. Batch error rollback path untested.
