@@ -3393,6 +3393,202 @@ describe("rich text", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// State Management Integration Tests
+// ---------------------------------------------------------------------------
+
+describe("state management", () => {
+  it("add state → list states → remove state round-trip", async () => {
+    // Pick a component to work with
+    const comp = discoveredComponents[0];
+
+    // List states — should be empty initially
+    const listResult1 = await client.callTool({
+      name: "list-states",
+      arguments: { componentUuid: comp.uuid },
+    });
+    const list1 = parseResponse(listResult1);
+    expect(list1.stateCount).toBe(0);
+    expect(list1.states).toEqual([]);
+
+    // Add a boolean state
+    const addResult = await client.callTool({
+      name: "add-state",
+      arguments: {
+        componentUuid: comp.uuid,
+        name: "isOpen",
+        variableType: "boolean",
+        accessType: "private",
+        initialValue: "false",
+      },
+    });
+    const added = parseResponse(addResult);
+    expect(added.success).toBe(true);
+    expect(added.name).toBe("isOpen");
+    expect(added.variableType).toBe("boolean");
+    expect(added.accessType).toBe("private");
+    expect(added.stateUuid).toBeDefined();
+
+    // List states — should have one
+    const listResult2 = await client.callTool({
+      name: "list-states",
+      arguments: { componentUuid: comp.uuid },
+    });
+    const list2 = parseResponse(listResult2);
+    expect(list2.stateCount).toBe(1);
+    expect(list2.states[0].name).toBe("isOpen");
+    expect(list2.states[0].variableType).toBe("boolean");
+    expect(list2.states[0].initialValue).toBe("false");
+
+    // Remove the state
+    const removeResult = await client.callTool({
+      name: "remove-state",
+      arguments: { componentUuid: comp.uuid, stateRef: "isOpen" },
+    });
+    const removed = parseResponse(removeResult);
+    expect(removed.success).toBe(true);
+    expect(removed.removedName).toBe("isOpen");
+
+    // List states — should be empty again
+    const listResult3 = await client.callTool({
+      name: "list-states",
+      arguments: { componentUuid: comp.uuid },
+    });
+    const list3 = parseResponse(listResult3);
+    expect(list3.stateCount).toBe(0);
+
+    // Undo the remove
+    await client.callTool({ name: "undo", arguments: {} });
+
+    // List states — should have the state back
+    const listResult4 = await client.callTool({
+      name: "list-states",
+      arguments: { componentUuid: comp.uuid },
+    });
+    const list4 = parseResponse(listResult4);
+    expect(list4.stateCount).toBe(1);
+    expect(list4.states[0].name).toBe("isOpen");
+
+    // Undo the add to clean up
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+
+  it("add multiple state types and verify", async () => {
+    const comp = discoveredComponents[0];
+
+    // Add text state
+    const textResult = await client.callTool({
+      name: "add-state",
+      arguments: {
+        componentUuid: comp.uuid,
+        name: "searchQuery",
+        variableType: "text",
+        initialValue: "hello",
+      },
+    });
+    expect(parseResponse(textResult).success).toBe(true);
+
+    // Add number state
+    const numResult = await client.callTool({
+      name: "add-state",
+      arguments: {
+        componentUuid: comp.uuid,
+        name: "count",
+        variableType: "number",
+        initialValue: "42",
+      },
+    });
+    expect(parseResponse(numResult).success).toBe(true);
+
+    // List should show 2 states
+    const listResult = await client.callTool({
+      name: "list-states",
+      arguments: { componentUuid: comp.uuid },
+    });
+    const list = parseResponse(listResult);
+    expect(list.stateCount).toBe(2);
+
+    const names = list.states.map((s: any) => s.name).sort();
+    expect(names).toEqual(["count", "searchQuery"]);
+
+    // Undo both
+    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+
+  it("update state access type and initial value", async () => {
+    const comp = discoveredComponents[0];
+
+    // Add state
+    await client.callTool({
+      name: "add-state",
+      arguments: {
+        componentUuid: comp.uuid,
+        name: "value",
+        variableType: "text",
+        accessType: "private",
+      },
+    });
+
+    // Update to writable
+    const updateResult = await client.callTool({
+      name: "update-state",
+      arguments: {
+        componentUuid: comp.uuid,
+        stateRef: "value",
+        accessType: "writable",
+        initialValue: "default",
+      },
+    });
+    const updated = parseResponse(updateResult);
+    expect(updated.success).toBe(true);
+    expect(updated.updatedFields).toContain("accessType");
+    expect(updated.updatedFields).toContain("initialValue");
+
+    // Verify via list
+    const listResult = await client.callTool({
+      name: "list-states",
+      arguments: { componentUuid: comp.uuid },
+    });
+    const list = parseResponse(listResult);
+    expect(list.states[0].accessType).toBe("writable");
+    expect(list.states[0].initialValue).toBe('"default"');
+
+    // Undo update, then undo add
+    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+
+  it("rejects duplicate state name", async () => {
+    const comp = discoveredComponents[0];
+
+    // Add first state
+    await client.callTool({
+      name: "add-state",
+      arguments: {
+        componentUuid: comp.uuid,
+        name: "isOpen",
+        variableType: "boolean",
+      },
+    });
+
+    // Try to add duplicate
+    const dupResult = await client.callTool({
+      name: "add-state",
+      arguments: {
+        componentUuid: comp.uuid,
+        name: "isOpen",
+        variableType: "boolean",
+      },
+    });
+    const dup = parseResponse(dupResult);
+    expect(dup.error || (typeof dup === "string" && dup.includes("already exists"))).toBeTruthy();
+
+    // Undo
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+});
+
 /** Walk a tree recursively to find a node by UUID. */
 function findNodeByUuid(tree: any, uuid: string): any {
   if (tree.uuid === uuid) return tree;

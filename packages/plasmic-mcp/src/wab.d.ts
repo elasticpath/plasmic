@@ -109,6 +109,15 @@ declare module "@/wab/shared/model/classes" {
     animations: any;
   }
 
+  /** Model class for ArgType — function parameter descriptor (name + type). */
+  export class ArgType {
+    constructor(args: { name?: "arg"; argName: string; type: any; displayName?: string | null });
+    name: "arg";
+    argName: string;
+    displayName: string | null;
+    type: any;
+  }
+
   /** Model class for StyleMarker — CSS formatting applied to a text range. */
   export class StyleMarker {
     constructor(args: { position: number; length: number; rs: any });
@@ -138,6 +147,66 @@ declare module "@/wab/shared/model/classes" {
   export function isKnownStyleTokenRef(x: any): boolean;
   export function isKnownStyleMarker(x: any): boolean;
   export function isKnownNodeMarker(x: any): boolean;
+  export function isKnownState(x: any): boolean;
+  export function isKnownNamedState(x: any): boolean;
+
+  /** Model class for state value parameter (extends Param pattern). */
+  export class StateParam {
+    constructor(args: any);
+    variable: any;
+    uuid: string;
+    type: any;
+    state: any;
+    enumValues: any[];
+    origin: any;
+    exportType: string;
+    defaultExpr: any;
+    previewExpr: any;
+    propEffect: any;
+    description: any;
+    displayName: any;
+    about: any;
+    isRepeated: any;
+    isMainContentSlot: boolean;
+    required: boolean;
+    mergeWithParent: boolean;
+    isLocalizable: boolean;
+  }
+
+  /** Model class for state onChange handler parameter. */
+  export class StateChangeHandlerParam {
+    constructor(args: any);
+    variable: any;
+    uuid: string;
+    type: any;
+    state: any;
+    enumValues: any[];
+    origin: any;
+    exportType: string;
+    defaultExpr: any;
+    previewExpr: any;
+    propEffect: any;
+    description: any;
+    displayName: any;
+    about: any;
+    isRepeated: any;
+    isMainContentSlot: boolean;
+    required: boolean;
+    mergeWithParent: boolean;
+    isLocalizable: boolean;
+  }
+
+  /** Model class for NamedState — named state variable on a component. */
+  export class NamedState {
+    constructor(args: any);
+    name: string;
+    param: any;
+    accessType: string;
+    variableType: string;
+    onChangeParam: any;
+    tplNode: any;
+    implicitState: any;
+  }
 }
 
 // --- M2 modules ---

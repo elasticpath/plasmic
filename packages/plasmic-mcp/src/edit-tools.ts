@@ -33,6 +33,7 @@ import {
   isKnownVarRef,
   isKnownStyleMarker,
   isKnownNodeMarker,
+  isKnownNamedState,
   RawText,
   CustomCode,
   ExprText,
@@ -41,12 +42,16 @@ import {
   Rep,
   Var,
   PropParam,
+  StateParam,
+  StateChangeHandlerParam,
+  NamedState,
   Text as TextType,
   Num,
   BoolType,
   AnyType,
   HrefType,
   FunctionType,
+  ArgType,
   RuleSet,
   StyleMarker,
   NodeMarker,
@@ -4209,6 +4214,483 @@ export async function updateProp(
     save,
     paramUuid: param.uuid,
     name: param.variable.name,
+    previousName,
+    updatedFields,
+  };
+}
+
+// --- State Management ---
+
+/** Supported state variable types. */
+const SUPPORTED_STATE_TYPES = new Set([
+  "text", "number", "boolean", "array", "object",
+]);
+
+export interface StateInfo {
+  uuid: string;
+  name: string;
+  variableType: string;
+  accessType: string;
+  paramUuid: string;
+  initialValue?: string;
+}
+
+/**
+ * List all named states on a component.
+ *
+ * Read-only — no mutation or save. Filters to NamedState instances only
+ * (excludes VariantGroupState and implicit states).
+ */
+export function listStates(component: any): StateInfo[] {
+  return (component.states ?? [])
+    .filter((s: any) => isKnownNamedState(s))
+    .map((state: any) => {
+      const info: StateInfo = {
+        uuid: state.param?.uuid ?? "unknown",
+        name: state.name,
+        variableType: state.variableType ?? "text",
+        accessType: state.accessType ?? "private",
+        paramUuid: state.param?.uuid ?? "unknown",
+      };
+
+      // Extract initial value from param.defaultExpr
+      if (state.param?.defaultExpr) {
+        if (isKnownCustomCode(state.param.defaultExpr)) {
+          info.initialValue = state.param.defaultExpr.code;
+        } else if (isKnownObjectPath(state.param.defaultExpr)) {
+          info.initialValue = state.param.defaultExpr.path.join(".");
+        }
+      }
+
+      return info;
+    });
+}
+
+// --- add-state ---
+
+export interface AddStateResult {
+  save: SaveResult;
+  stateUuid: string;
+  paramUuid: string;
+  name: string;
+  variableType: string;
+  accessType: string;
+}
+
+/**
+ * Create the WAB type object for a given state variable type.
+ * Maps: text→Text, number→Num, boolean→BoolType, array/object→AnyType.
+ */
+function createStateType(variableType: string): any {
+  switch (variableType) {
+    case "text": return new TextType({ name: "text" });
+    case "number": return new Num({ name: "num" });
+    case "boolean": return new BoolType({ name: "bool" });
+    case "array":
+    case "object": return new AnyType({ name: "any" });
+    default:
+      throw new Error(`Unsupported state variable type: ${variableType}`);
+  }
+}
+
+/**
+ * Convert a user-provided initial value string to a CustomCode expression,
+ * wrapping as needed based on the state variable type.
+ */
+function toStateInitialExpr(variableType: string, initialValue: string): any {
+  let code: string;
+  switch (variableType) {
+    case "text":
+      code = JSON.stringify(initialValue);
+      break;
+    case "number": {
+      const num = Number(initialValue);
+      if (isNaN(num)) {
+        throw new Error(
+          `Invalid initial value for number state: "${initialValue}". Must be a valid number.`
+        );
+      }
+      code = String(num);
+      break;
+    }
+    case "boolean":
+      if (initialValue !== "true" && initialValue !== "false") {
+        throw new Error(
+          `Invalid initial value for boolean state: "${initialValue}". Must be "true" or "false".`
+        );
+      }
+      code = initialValue;
+      break;
+    default:
+      code = initialValue;
+  }
+  return new CustomCode({ code, fallback: null });
+}
+
+/**
+ * Add a named state variable to a component.
+ *
+ * Creates a NamedState with associated StateParam and StateChangeHandlerParam.
+ * The state is pushed to component.states, and both params are pushed to
+ * component.params.
+ *
+ * Supported variable types: text, number, boolean, array, object.
+ * Access types: private (default), readonly, writable.
+ *
+ * When accessType is "writable", the StateParam exportType is "External",
+ * otherwise "ToolsOnly".
+ */
+export async function addState(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  name: string,
+  variableType: string,
+  accessType: string = "private",
+  initialValue?: string
+): Promise<AddStateResult> {
+  if (!SUPPORTED_STATE_TYPES.has(variableType)) {
+    throw new Error(
+      `Invalid variable type "${variableType}". Supported types: ${[...SUPPORTED_STATE_TYPES].join(", ")}`
+    );
+  }
+
+  const validAccessTypes = ["private", "readonly", "writable"];
+  if (!validAccessTypes.includes(accessType)) {
+    throw new Error(
+      `Invalid access type "${accessType}". Supported types: ${validAccessTypes.join(", ")}`
+    );
+  }
+
+  const component = findComponent(componentUuid);
+  const session = requireSession();
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  // Check for duplicate state name
+  const existingStates: any[] = component.states ?? [];
+  const duplicate = existingStates.find(
+    (s: any) => isKnownNamedState(s) && s.name === name
+  );
+  if (duplicate) {
+    throw new Error(
+      `State "${name}" already exists on component "${component.name}".`
+    );
+  }
+
+  // Deduplicate param names
+  const uniqueName = tplMgr.getUniqueParamName(component, name);
+  const onChangeName = tplMgr.getUniqueParamName(component, `On ${uniqueName} change`);
+
+  // Create WAB type
+  const typeObj = createStateType(variableType);
+
+  // Create initial value expression if provided
+  const defaultExpr = initialValue !== undefined
+    ? toStateInitialExpr(variableType, initialValue)
+    : null;
+
+  // Determine export type based on access
+  const paramExportType = accessType === "writable" ? "External" : "ToolsOnly";
+  const onChangeExportType = accessType === "private" ? "ToolsOnly" : "External";
+
+  let state: any;
+  let valueParam: any;
+
+  const changes = tracker.withRecording(() => {
+    // Create StateParam (value param)
+    valueParam = new StateParam({
+      variable: new Var({ name: uniqueName, uuid: randomUUID() }),
+      uuid: randomUUID(),
+      type: typeObj,
+      state: null, // back-reference set below
+      enumValues: [],
+      origin: null,
+      exportType: paramExportType,
+      defaultExpr,
+      previewExpr: null,
+      propEffect: null,
+      description: variableType,
+      displayName: null,
+      about: null,
+      isRepeated: null,
+      isMainContentSlot: false,
+      required: false,
+      mergeWithParent: false,
+      isLocalizable: false,
+    });
+
+    // Create StateChangeHandlerParam (onChange param)
+    const onChangeParam = new StateChangeHandlerParam({
+      variable: new Var({ name: onChangeName, uuid: randomUUID() }),
+      uuid: randomUUID(),
+      type: new FunctionType({ name: "func", params: [new ArgType({ name: "arg", argName: "val", type: createStateType(variableType), displayName: null })] }),
+      state: null, // back-reference set below
+      enumValues: [],
+      origin: null,
+      exportType: onChangeExportType,
+      defaultExpr: null,
+      previewExpr: null,
+      propEffect: null,
+      description: "EventHandler",
+      displayName: null,
+      about: null,
+      isRepeated: null,
+      isMainContentSlot: false,
+      required: false,
+      mergeWithParent: false,
+      isLocalizable: false,
+    });
+
+    // Create NamedState
+    state = new NamedState({
+      name: uniqueName,
+      param: valueParam,
+      accessType,
+      variableType,
+      onChangeParam,
+      tplNode: null,
+      implicitState: null,
+    });
+
+    // Set back-references
+    valueParam.state = state;
+    onChangeParam.state = state;
+
+    // Push to component
+    if (!component.states) component.states = [];
+    component.states.push(state);
+
+    if (!component.params) component.params = [];
+    component.params.push(valueParam);
+    component.params.push(onChangeParam);
+  });
+
+  const componentIid = getComponentIid(component);
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `add-state: ${uniqueName} (${variableType}) on ${component.name}`,
+    componentIid ? [componentIid] : []
+  );
+
+  return {
+    save,
+    stateUuid: valueParam!.uuid,
+    paramUuid: valueParam!.uuid,
+    name: uniqueName,
+    variableType,
+    accessType,
+  };
+}
+
+// --- remove-state ---
+
+export interface RemoveStateResult {
+  save: SaveResult;
+  removedName: string;
+  removedUuid: string;
+  cleanedArgCount: number;
+}
+
+/**
+ * Find a named state on a component by name or param UUID.
+ */
+function findState(component: any, stateRef: string): any | null {
+  return (component.states ?? []).find(
+    (s: any) =>
+      isKnownNamedState(s) &&
+      (s.name === stateRef || s.param?.uuid === stateRef)
+  ) ?? null;
+}
+
+/**
+ * Remove a named state from a component.
+ *
+ * Removes the NamedState, its StateParam, and its StateChangeHandlerParam.
+ * Cleans up Arg objects on all TplComponent instances that reference
+ * either param. Splices both params from component.params and the state
+ * from component.states.
+ */
+export async function removeState(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  stateRef: string
+): Promise<RemoveStateResult> {
+  const component = findComponent(componentUuid);
+  const session = requireSession();
+
+  const state = findState(component, stateRef);
+  if (!state) {
+    throw new Error(
+      `State "${stateRef}" not found on component "${component.name}". ` +
+        `Use list-states to see available states.`
+    );
+  }
+
+  const tracker = getChangeTracker();
+  let cleanedArgCount = 0;
+
+  const changes = tracker.withRecording(() => {
+    const valueParam = state.param;
+    const onChangeParam = state.onChangeParam;
+
+    // Clean up Args on all TplComponent instances referencing this component
+    for (const comp of session.site.components ?? []) {
+      if (!comp.tplTree) continue;
+      const tpls = flattenTpls(comp.tplTree);
+      for (const tpl of tpls) {
+        if (isKnownTplComponent(tpl) && tpl.component === component) {
+          for (const vs of tpl.vsettings ?? []) {
+            const args = vs.args ?? [];
+            for (let i = args.length - 1; i >= 0; i--) {
+              if (args[i].param === valueParam || args[i].param === onChangeParam) {
+                args.splice(i, 1);
+                cleanedArgCount++;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Remove params from component.params
+    const params = component.params ?? [];
+    for (const param of [valueParam, onChangeParam]) {
+      if (!param) continue;
+      const idx = params.indexOf(param);
+      if (idx >= 0) params.splice(idx, 1);
+    }
+
+    // Remove state from component.states
+    const states = component.states ?? [];
+    const stateIdx = states.indexOf(state);
+    if (stateIdx >= 0) states.splice(stateIdx, 1);
+  });
+
+  const componentIid = getComponentIid(component);
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `remove-state: ${state.name} from ${component.name}`,
+    componentIid ? [componentIid] : []
+  );
+
+  return {
+    save,
+    removedName: state.name,
+    removedUuid: state.param?.uuid ?? "unknown",
+    cleanedArgCount,
+  };
+}
+
+// --- update-state ---
+
+export interface UpdateStateResult {
+  save: SaveResult;
+  stateUuid: string;
+  name: string;
+  previousName?: string;
+  updatedFields: string[];
+}
+
+/**
+ * Update a state's name, access type, and/or initial value.
+ *
+ * Variable type cannot be changed via update — use remove-state + add-state instead.
+ * When accessType changes, the associated param export types are updated too.
+ */
+export async function updateState(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  stateRef: string,
+  newName?: string,
+  accessType?: string,
+  initialValue?: string
+): Promise<UpdateStateResult> {
+  const component = findComponent(componentUuid);
+  const session = requireSession();
+
+  const state = findState(component, stateRef);
+  if (!state) {
+    throw new Error(
+      `State "${stateRef}" not found on component "${component.name}". ` +
+        `Use list-states to see available states.`
+    );
+  }
+
+  if (accessType !== undefined) {
+    const validAccessTypes = ["private", "readonly", "writable"];
+    if (!validAccessTypes.includes(accessType)) {
+      throw new Error(
+        `Invalid access type "${accessType}". Supported types: ${validAccessTypes.join(", ")}`
+      );
+    }
+  }
+
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+  const updatedFields: string[] = [];
+  let previousName: string | undefined;
+
+  const changes = tracker.withRecording(() => {
+    if (newName !== undefined) {
+      previousName = state.name;
+
+      // Check for duplicate
+      const existingStates: any[] = component.states ?? [];
+      const duplicate = existingStates.find(
+        (s: any) => isKnownNamedState(s) && s.name === newName && s !== state
+      );
+      if (duplicate) {
+        throw new Error(
+          `State "${newName}" already exists on component "${component.name}".`
+        );
+      }
+
+      state.name = newName;
+      // Rename the underlying param variable too
+      if (state.param?.variable) {
+        tplMgr.renameParam(component, state.param, newName);
+      }
+      // Rename the onChange param to match
+      if (state.onChangeParam?.variable) {
+        const onChangeName = `On ${newName} change`;
+        tplMgr.renameParam(component, state.onChangeParam, onChangeName);
+      }
+      updatedFields.push("name");
+    }
+
+    if (accessType !== undefined) {
+      state.accessType = accessType;
+      // Update export types on params
+      if (state.param) {
+        state.param.exportType = accessType === "writable" ? "External" : "ToolsOnly";
+      }
+      if (state.onChangeParam) {
+        state.onChangeParam.exportType = accessType === "private" ? "ToolsOnly" : "External";
+      }
+      updatedFields.push("accessType");
+    }
+
+    if (initialValue !== undefined) {
+      const variableType = state.variableType ?? "text";
+      state.param.defaultExpr = toStateInitialExpr(variableType, initialValue);
+      updatedFields.push("initialValue");
+    }
+  });
+
+  const componentIid = getComponentIid(component);
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `update-state: ${state.name} on ${component.name} [${updatedFields.join(", ")}]`,
+    componentIid ? [componentIid] : []
+  );
+
+  return {
+    save,
+    stateUuid: state.param?.uuid ?? "unknown",
+    name: state.name,
     previousName,
     updatedFields,
   };

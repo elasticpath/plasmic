@@ -40,6 +40,10 @@ export const isKnownStyleMarker = (obj: any): boolean =>
   obj?._type === "StyleMarker";
 export const isKnownNodeMarker = (obj: any): boolean =>
   obj?._type === "NodeMarker";
+export const isKnownState = (obj: any): boolean =>
+  obj?._type === "State" || obj?._type === "NamedState" || obj?._type === "VariantGroupState";
+export const isKnownNamedState = (obj: any): boolean =>
+  obj?._type === "NamedState";
 
 /** Mock constructors for model classes used by edit-tools.ts */
 export class RawText {
@@ -249,6 +253,20 @@ export class FunctionType {
   }
 }
 
+/** Mock constructor for ArgType — function parameter descriptor. */
+export class ArgType {
+  _type = "ArgType";
+  name = "arg";
+  argName: string;
+  displayName: string | null;
+  type: any;
+  constructor(args: { argName: string; type: any; displayName?: string | null }) {
+    this.argName = args.argName;
+    this.type = args.type;
+    this.displayName = args.displayName ?? null;
+  }
+}
+
 /** Mock constructor for RuleSet — CSS property values + mixins. */
 export class RuleSet {
   _type = "RuleSet";
@@ -285,6 +303,113 @@ export class NodeMarker {
     this.position = args.position;
     this.length = args.length;
     this.tpl = args.tpl;
+  }
+}
+
+/** Mock constructor for StateParam — state value parameter (extends Param pattern). */
+export class StateParam {
+  _type = "StateParam";
+  variable: any;
+  uuid: string;
+  type: any;
+  state: any;
+  enumValues: any[];
+  origin: any;
+  exportType: string;
+  defaultExpr: any;
+  previewExpr: any;
+  propEffect: any;
+  description: any;
+  displayName: any;
+  about: any;
+  isRepeated: any;
+  isMainContentSlot: boolean;
+  required: boolean;
+  mergeWithParent: boolean;
+  isLocalizable: boolean;
+  constructor(args: any) {
+    this.variable = args.variable;
+    this.uuid = args.uuid;
+    this.type = args.type;
+    this.state = args.state ?? null;
+    this.enumValues = args.enumValues ?? [];
+    this.origin = args.origin ?? null;
+    this.exportType = args.exportType ?? "ToolsOnly";
+    this.defaultExpr = args.defaultExpr ?? null;
+    this.previewExpr = args.previewExpr ?? null;
+    this.propEffect = args.propEffect ?? null;
+    this.description = args.description ?? null;
+    this.displayName = args.displayName ?? null;
+    this.about = args.about ?? null;
+    this.isRepeated = args.isRepeated ?? null;
+    this.isMainContentSlot = args.isMainContentSlot ?? false;
+    this.required = args.required ?? false;
+    this.mergeWithParent = args.mergeWithParent ?? false;
+    this.isLocalizable = args.isLocalizable ?? false;
+  }
+}
+
+/** Mock constructor for StateChangeHandlerParam — state onChange handler. */
+export class StateChangeHandlerParam {
+  _type = "StateChangeHandlerParam";
+  variable: any;
+  uuid: string;
+  type: any;
+  state: any;
+  enumValues: any[];
+  origin: any;
+  exportType: string;
+  defaultExpr: any;
+  previewExpr: any;
+  propEffect: any;
+  description: any;
+  displayName: any;
+  about: any;
+  isRepeated: any;
+  isMainContentSlot: boolean;
+  required: boolean;
+  mergeWithParent: boolean;
+  isLocalizable: boolean;
+  constructor(args: any) {
+    this.variable = args.variable;
+    this.uuid = args.uuid;
+    this.type = args.type;
+    this.state = args.state ?? null;
+    this.enumValues = args.enumValues ?? [];
+    this.origin = args.origin ?? null;
+    this.exportType = args.exportType ?? "ToolsOnly";
+    this.defaultExpr = args.defaultExpr ?? null;
+    this.previewExpr = args.previewExpr ?? null;
+    this.propEffect = args.propEffect ?? null;
+    this.description = args.description ?? null;
+    this.displayName = args.displayName ?? null;
+    this.about = args.about ?? null;
+    this.isRepeated = args.isRepeated ?? null;
+    this.isMainContentSlot = args.isMainContentSlot ?? false;
+    this.required = args.required ?? false;
+    this.mergeWithParent = args.mergeWithParent ?? false;
+    this.isLocalizable = args.isLocalizable ?? false;
+  }
+}
+
+/** Mock constructor for NamedState — named state variable on a component. */
+export class NamedState {
+  _type = "NamedState";
+  name: string;
+  param: any;
+  accessType: string;
+  variableType: string;
+  onChangeParam: any;
+  tplNode: any;
+  implicitState: any;
+  constructor(args: any) {
+    this.name = args.name;
+    this.param = args.param;
+    this.accessType = args.accessType ?? "private";
+    this.variableType = args.variableType ?? "text";
+    this.onChangeParam = args.onChangeParam;
+    this.tplNode = args.tplNode ?? null;
+    this.implicitState = args.implicitState ?? null;
   }
 }
 

@@ -3,10 +3,10 @@
 > **Goal**: Create Claude Code skills and workflows that can interact with Plasmic Studio
 > programmatically to create fully-featured pages from the Claude Code terminal.
 >
-> **Current state**: 46 MCP tools, 6 Claude Code skills, 798 tests (732 unit + 66 integration).
+> **Current state**: 50 MCP tools, 6 Claude Code skills, 828 tests (758 unit + 70 integration).
 > Zero TODOs/FIXMEs/skipped tests.
 >
-> **Last verified**: 2026-02-26 — 1.5 Rich Text Formatting implemented.
+> **Last verified**: 2026-02-26 — 2.1 State Management implemented.
 
 ---
 
@@ -21,7 +21,7 @@ from `site.styleTokens`). The Token CRUD spec (1.3) must handle removal manually
 The MCP source lives entirely in `packages/plasmic-mcp/src/` (16 source files,
 ~8,200 lines). The `src/tools/` directory exists but is empty (created for future refactor).
 
-Key file sizes: `server.ts` (~3,680 lines), `edit-tools.ts` (~4,000 lines),
+Key file sizes: `server.ts` (~3,950 lines), `edit-tools.ts` (~4,500 lines),
 `tree-reader.ts` (~850 lines). Both `server.ts` and `edit-tools.ts` are large
 and will grow with each new feature — the STRAP consolidation (Tier 6) addresses this.
 
@@ -112,17 +112,15 @@ These features make pages respond to user actions. State management must come be
 
 ### 2.1 State Management
 - **Spec**: `specs/gap-state-management.md`
-- **Status**: NOT IMPLEMENTED
-  - Verified: zero references to `addComponentState`, `add-state`, `list-states` in MCP src/
-  - WAB backing confirmed: `addComponentState()` (line 626), `removeComponentState()` (line 643), `updateStateAccessType()` (line 539) in `shared/core/states.ts`
-- **What**: Four new component-level actions:
-  - `add-state` — create state variable (text/number/boolean/array/object/variant/dateString/dateRangeStrings)
-  - `list-states` — list all state variables on a component
-  - `remove-state` — delete state + clean up expression references
-  - `update-state` — change `accessType` (private → writable) or `initialValue`
-- **Cross-tool integration**: States usable in interactions (`$state.isOpen`), conditional visibility (`set-data-cond`), and dynamic text (`update-text` with `dynamic: true`)
-- **Effort**: Medium — CRUD + expression cleanup on removal
-- **Tests needed**: Unit + integration (create state → use in dynamic text → verify)
+- **Status**: IMPLEMENTED
+  - Four new tools: `add-state`, `list-states`, `remove-state`, `update-state`
+  - Creates NamedState with StateParam + StateChangeHandlerParam (with FunctionType + ArgType)
+  - Supports variable types: text, number, boolean, array, object
+  - Access types: private, readonly, writable (controls param export types)
+  - Back-references (param.state, onChangeParam.state) correctly set
+  - Duplicate state name detection, cleanup of Args on TplComponent instances for removal
+  - 30 unit tests + 4 integration tests (full round-trip: add → list → update → remove → undo)
+  - Key insight: Real WAB model requires separate type instances per parent (no sharing), and ArgType needs all fields including `name: "arg"` and `displayName: null`
 
 ### 2.2 Interactions & Event Handlers
 - **Spec**: `specs/gap-interactions.md`

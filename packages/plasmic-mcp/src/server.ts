@@ -68,6 +68,10 @@ import {
   addProp,
   removeProp,
   updateProp,
+  listStates,
+  addState,
+  removeState,
+  updateState,
 } from "./edit-tools.js";
 import { beginBatch, endBatch, isBatchActive, cancelBatch, cancelBatchWithRollback, getAccumulatedChanges } from "./batch-manager.js";
 import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
@@ -3656,6 +3660,340 @@ export function createServer(): McpServer {
         };
       } catch (err: any) {
         return handleMutationError("updating prop", err);
+      }
+    }
+  );
+
+  // --- list-states ---
+  // List all named states on a component.
+  server.tool(
+    "list-states",
+    "List all named state variables on a component. " +
+      "Returns name, variableType, accessType, and initialValue for each state.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component to list states for (from list-components)"),
+    },
+    async ({ componentUuid }) => {
+      try {
+        const session = requireSession();
+        const component = session.site.components?.find(
+          (c: any) => c.uuid === componentUuid
+        );
+
+        if (!component) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Component UUID "${componentUuid}" not found. Use list-components to see available components.`,
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        const states = listStates(component);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  componentUuid,
+                  componentName: component.name,
+                  stateCount: states.length,
+                  states,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("listing states", err);
+      }
+    }
+  );
+
+  // --- add-state ---
+  // Create a new named state variable on a component.
+  server.tool(
+    "add-state",
+    "Create a new named state variable on a component. " +
+      "Supported variable types: text, number, boolean, array, object. " +
+      "Access types: private (default), readonly, writable. " +
+      "The state is usable in dynamic text ($state.name), data-cond, and interactions.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component to add the state to"),
+      name: z
+        .string()
+        .describe('State variable name (e.g., "isOpen", "count", "searchQuery")'),
+      variableType: z
+        .enum(["text", "number", "boolean", "array", "object"])
+        .describe("Type of the state variable"),
+      accessType: z
+        .enum(["private", "readonly", "writable"])
+        .optional()
+        .describe(
+          'Access type: "private" (default, internal only), "readonly" (exposed as read-only prop), "writable" (exposed as read-write prop)'
+        ),
+      initialValue: z
+        .string()
+        .optional()
+        .describe(
+          'Initial value as a string: text is auto-quoted, number/boolean validated. E.g., "false", "0", "hello"'
+        ),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe(
+          "When true, shows what would change without persisting."
+        ),
+    },
+    async ({ componentUuid, name, variableType, accessType, initialValue, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            addState(apiClient, componentUuid, name, variableType, accessType ?? "private", initialValue)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    stateUuid: result.stateUuid,
+                    paramUuid: result.paramUuid,
+                    name: result.name,
+                    variableType: result.variableType,
+                    accessType: result.accessType,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await addState(
+          apiClient, componentUuid, name, variableType, accessType ?? "private", initialValue
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  stateUuid: result.stateUuid,
+                  paramUuid: result.paramUuid,
+                  name: result.name,
+                  variableType: result.variableType,
+                  accessType: result.accessType,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("adding state", err);
+      }
+    }
+  );
+
+  // --- remove-state ---
+  // Remove a named state from a component with cleanup.
+  server.tool(
+    "remove-state",
+    "Remove a named state variable from a component. " +
+      "Cleans up associated params and arg bindings on TplComponent instances.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component containing the state"),
+      stateRef: z
+        .string()
+        .describe(
+          'State reference: name (e.g., "isOpen") or param UUID'
+        ),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe(
+          "When true, shows what would change without persisting."
+        ),
+    },
+    async ({ componentUuid, stateRef, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            removeState(apiClient, componentUuid, stateRef)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    removedName: result.removedName,
+                    removedUuid: result.removedUuid,
+                    cleanedArgCount: result.cleanedArgCount,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await removeState(apiClient, componentUuid, stateRef);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  removedName: result.removedName,
+                  removedUuid: result.removedUuid,
+                  cleanedArgCount: result.cleanedArgCount,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("removing state", err);
+      }
+    }
+  );
+
+  // --- update-state ---
+  // Update a state's name, access type, and/or initial value.
+  server.tool(
+    "update-state",
+    "Update a state variable's name, access type, and/or initial value. " +
+      "Variable type cannot be changed — use remove-state + add-state instead.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component containing the state"),
+      stateRef: z
+        .string()
+        .describe(
+          'State reference: name (e.g., "isOpen") or param UUID'
+        ),
+      name: z
+        .string()
+        .optional()
+        .describe("New state name. Omit to keep current name."),
+      accessType: z
+        .enum(["private", "readonly", "writable"])
+        .optional()
+        .describe(
+          'New access type. Omit to keep current. When changed to "writable", the state param becomes an external prop.'
+        ),
+      initialValue: z
+        .string()
+        .optional()
+        .describe(
+          'New initial value (same format as add-state). Omit to keep current.'
+        ),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe(
+          "When true, shows what would change without persisting."
+        ),
+    },
+    async ({ componentUuid, stateRef, name, accessType, initialValue, dryRun }) => {
+      try {
+        if (!name && accessType === undefined && initialValue === undefined) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    error: true,
+                    message:
+                      "At least one of 'name', 'accessType', or 'initialValue' must be provided.",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            updateState(apiClient, componentUuid, stateRef, name, accessType, initialValue)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    stateUuid: result.stateUuid,
+                    name: result.name,
+                    previousName: result.previousName,
+                    updatedFields: result.updatedFields,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await updateState(
+          apiClient, componentUuid, stateRef, name, accessType, initialValue
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  stateUuid: result.stateUuid,
+                  name: result.name,
+                  previousName: result.previousName,
+                  updatedFields: result.updatedFields,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("updating state", err);
       }
     }
   );

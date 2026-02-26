@@ -48,6 +48,10 @@ import {
   removeProp,
   updateProp,
   updateRichText,
+  listStates,
+  addState,
+  removeState,
+  updateState,
 } from "../edit-tools";
 import { setSession, clearSession } from "../session";
 import { initChangeTracker, disposeChangeTracker } from "../change-tracker";
@@ -7326,5 +7330,618 @@ describe("updateRichText", () => {
       { start: 0, end: 3, type: "bold" },
     ]);
     expect(result.previousText).toBe("old content");
+  });
+});
+
+// =============================================================================
+// State Management — CRUD operations for component state variables
+// =============================================================================
+
+describe("listStates", () => {
+  it("returns empty array for component with no states", () => {
+    const comp = { states: [], params: [] };
+    const result = listStates(comp);
+    expect(result).toEqual([]);
+  });
+
+  it("returns named states with info", () => {
+    const param = {
+      _type: "StateParam",
+      uuid: "state-param-1",
+      variable: { name: "isOpen" },
+      defaultExpr: { _type: "CustomCode", code: "false" },
+    };
+    const state = {
+      _type: "NamedState",
+      name: "isOpen",
+      variableType: "boolean",
+      accessType: "private",
+      param,
+    };
+    const comp = { states: [state], params: [param] };
+    const result = listStates(comp);
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe("isOpen");
+    expect(result[0].variableType).toBe("boolean");
+    expect(result[0].accessType).toBe("private");
+    expect(result[0].initialValue).toBe("false");
+  });
+
+  it("filters out non-NamedState entries", () => {
+    const state1 = {
+      _type: "NamedState",
+      name: "count",
+      variableType: "number",
+      accessType: "private",
+      param: { _type: "StateParam", uuid: "sp1", variable: { name: "count" } },
+    };
+    const variantGroupState = {
+      _type: "VariantGroupState",
+      variableType: "variant",
+      param: { _type: "StateParam", uuid: "sp2", variable: { name: "color" } },
+    };
+    const comp = { states: [state1, variantGroupState], params: [] };
+    const result = listStates(comp);
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe("count");
+  });
+});
+
+describe("addState", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    clearNodeCache();
+    api = mockApiClient();
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+    mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
+  });
+
+  afterEach(() => {
+    disposeChangeTracker();
+    clearSession();
+    vi.restoreAllMocks();
+  });
+
+  it("creates a boolean state with initial value", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    (comp as any).states = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await addState(api, "comp-1", "isOpen", "boolean", "private", "false");
+
+    expect(result.name).toBe("isOpen");
+    expect(result.variableType).toBe("boolean");
+    expect(result.accessType).toBe("private");
+    expect(result.stateUuid).toBeDefined();
+    expect(comp.states).toHaveLength(1);
+    expect(comp.states[0]._type).toBe("NamedState");
+    expect(comp.states[0].name).toBe("isOpen");
+    expect(comp.states[0].variableType).toBe("boolean");
+    expect(comp.states[0].accessType).toBe("private");
+    // Value param
+    expect(comp.states[0].param._type).toBe("StateParam");
+    expect(comp.states[0].param.type._type).toBe("BoolType");
+    expect(comp.states[0].param.defaultExpr._type).toBe("CustomCode");
+    expect(comp.states[0].param.defaultExpr.code).toBe("false");
+    expect(comp.states[0].param.exportType).toBe("ToolsOnly");
+    // onChange param
+    expect(comp.states[0].onChangeParam._type).toBe("StateChangeHandlerParam");
+    expect(comp.states[0].onChangeParam.type._type).toBe("FunctionType");
+    // Both params pushed to component.params
+    expect(comp.params).toHaveLength(2);
+    expect(comp.params[0]._type).toBe("StateParam");
+    expect(comp.params[1]._type).toBe("StateChangeHandlerParam");
+  });
+
+  it("creates a text state without initial value", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    (comp as any).states = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await addState(api, "comp-1", "searchQuery", "text");
+
+    expect(result.variableType).toBe("text");
+    expect(comp.states[0].param.type._type).toBe("Text");
+    expect(comp.states[0].param.defaultExpr).toBeNull();
+  });
+
+  it("creates a number state", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    (comp as any).states = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await addState(api, "comp-1", "count", "number", "private", "0");
+
+    expect(result.variableType).toBe("number");
+    expect(comp.states[0].param.type._type).toBe("Num");
+    expect(comp.states[0].param.defaultExpr.code).toBe("0");
+  });
+
+  it("creates a writable state with External export", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    (comp as any).states = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await addState(api, "comp-1", "value", "text", "writable");
+
+    expect(result.accessType).toBe("writable");
+    expect(comp.states[0].param.exportType).toBe("External");
+    expect(comp.states[0].onChangeParam.exportType).toBe("External");
+  });
+
+  it("creates a readonly state", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    (comp as any).states = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await addState(api, "comp-1", "value", "text", "readonly");
+
+    expect(comp.states[0].param.exportType).toBe("ToolsOnly");
+    expect(comp.states[0].onChangeParam.exportType).toBe("External");
+  });
+
+  it("sets back-references: param.state and onChangeParam.state", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    (comp as any).states = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await addState(api, "comp-1", "isOpen", "boolean");
+
+    const state = comp.states[0];
+    expect(state.param.state).toBe(state);
+    expect(state.onChangeParam.state).toBe(state);
+  });
+
+  it("rejects duplicate state name", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    (comp as any).states = [
+      { _type: "NamedState", name: "isOpen", variableType: "boolean", param: { uuid: "p1" } },
+    ];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      addState(api, "comp-1", "isOpen", "boolean")
+    ).rejects.toThrow(/already exists/);
+  });
+
+  it("rejects invalid variable type", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    (comp as any).states = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      addState(api, "comp-1", "x", "variant")
+    ).rejects.toThrow(/Invalid variable type/);
+  });
+
+  it("rejects invalid access type", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    (comp as any).states = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      addState(api, "comp-1", "x", "text", "public" as any)
+    ).rejects.toThrow(/Invalid access type/);
+  });
+
+  it("rejects invalid boolean initial value", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    (comp as any).states = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      addState(api, "comp-1", "flag", "boolean", "private", "yes")
+    ).rejects.toThrow(/Must be "true" or "false"/);
+  });
+
+  it("rejects invalid number initial value", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    (comp as any).states = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      addState(api, "comp-1", "count", "number", "private", "abc")
+    ).rejects.toThrow(/Must be a valid number/);
+  });
+
+  it("creates array and object state types", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    (comp as any).states = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await addState(api, "comp-1", "items", "array", "private", "[]");
+    expect(comp.states[0].param.type._type).toBe("AnyType");
+    expect(comp.states[0].param.defaultExpr.code).toBe("[]");
+
+    // Reset for next
+    comp.params = [];
+    comp.states = [];
+    await addState(api, "comp-1", "config", "object", "private", "{}");
+    expect(comp.states[0].param.type._type).toBe("AnyType");
+    expect(comp.states[0].param.defaultExpr.code).toBe("{}");
+  });
+
+  it("calls getUniqueParamName for deduplication", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    (comp as any).states = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await addState(api, "comp-1", "count", "number");
+
+    expect(mockGetUniqueParamName).toHaveBeenCalledWith(comp, "count");
+    // Also for the onChange param name
+    expect(mockGetUniqueParamName).toHaveBeenCalledWith(comp, "On count change");
+  });
+});
+
+describe("removeState", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    clearNodeCache();
+    api = mockApiClient();
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+    mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
+  });
+
+  afterEach(() => {
+    disposeChangeTracker();
+    clearSession();
+    vi.restoreAllMocks();
+  });
+
+  it("removes a state by name", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const valueParam = { _type: "StateParam", uuid: "sp1", variable: { name: "isOpen" } };
+    const onChangeParam = { _type: "StateChangeHandlerParam", uuid: "ocp1", variable: { name: "On isOpen change" } };
+    const state = {
+      _type: "NamedState",
+      name: "isOpen",
+      variableType: "boolean",
+      accessType: "private",
+      param: valueParam,
+      onChangeParam,
+    };
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [valueParam, onChangeParam];
+    (comp as any).states = [state];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await removeState(api, "comp-1", "isOpen");
+
+    expect(result.removedName).toBe("isOpen");
+    expect(comp.states).toHaveLength(0);
+    expect(comp.params).toHaveLength(0);
+  });
+
+  it("removes a state by param UUID", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const valueParam = { _type: "StateParam", uuid: "sp1", variable: { name: "count" } };
+    const onChangeParam = { _type: "StateChangeHandlerParam", uuid: "ocp1", variable: { name: "On count change" } };
+    const state = {
+      _type: "NamedState",
+      name: "count",
+      variableType: "number",
+      param: valueParam,
+      onChangeParam,
+    };
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [valueParam, onChangeParam];
+    (comp as any).states = [state];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await removeState(api, "comp-1", "sp1");
+
+    expect(result.removedName).toBe("count");
+    expect(result.removedUuid).toBe("sp1");
+    expect(comp.states).toHaveLength(0);
+    expect(comp.params).toHaveLength(0);
+  });
+
+  it("cleans up Args on TplComponent instances", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const valueParam = { _type: "StateParam", uuid: "sp1", variable: { name: "isOpen" } };
+    const onChangeParam = { _type: "StateChangeHandlerParam", uuid: "ocp1", variable: { name: "On isOpen change" } };
+    const state = {
+      _type: "NamedState",
+      name: "isOpen",
+      variableType: "boolean",
+      param: valueParam,
+      onChangeParam,
+    };
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [valueParam, onChangeParam];
+    (comp as any).states = [state];
+
+    // Another component that has a TplComponent instance referencing comp
+    const tplCompInstance = {
+      _type: "TplComponent",
+      component: comp,
+      vsettings: [
+        {
+          args: [
+            { param: valueParam, expr: { _type: "CustomCode", code: "true" } },
+            { param: onChangeParam, expr: { _type: "CustomCode", code: "() => {}" } },
+            { param: { uuid: "other-param" }, expr: { _type: "CustomCode", code: "42" } },
+          ],
+        },
+      ],
+      children: [],
+    };
+    const otherRoot = mkTag({ uuid: "other-root", children: [tplCompInstance] });
+    const otherComp = mkComponent({ uuid: "comp-2", tplTree: otherRoot });
+
+    const site = { components: [comp, otherComp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await removeState(api, "comp-1", "isOpen");
+
+    expect(result.cleanedArgCount).toBe(2);
+    // Only the "other-param" arg remains
+    expect(tplCompInstance.vsettings[0].args).toHaveLength(1);
+    expect(tplCompInstance.vsettings[0].args[0].param.uuid).toBe("other-param");
+  });
+
+  it("throws when state not found", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    (comp as any).states = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      removeState(api, "comp-1", "nonexistent")
+    ).rejects.toThrow(/not found/);
+  });
+});
+
+describe("updateState", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    clearNodeCache();
+    api = mockApiClient();
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+    mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
+  });
+
+  afterEach(() => {
+    disposeChangeTracker();
+    clearSession();
+    vi.restoreAllMocks();
+  });
+
+  it("renames a state", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const valueParam = { _type: "StateParam", uuid: "sp1", variable: { name: "isOpen" } };
+    const onChangeParam = { _type: "StateChangeHandlerParam", uuid: "ocp1", variable: { name: "On isOpen change" } };
+    const state = {
+      _type: "NamedState",
+      name: "isOpen",
+      variableType: "boolean",
+      accessType: "private",
+      param: valueParam,
+      onChangeParam,
+    };
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [valueParam, onChangeParam];
+    (comp as any).states = [state];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateState(api, "comp-1", "isOpen", "isVisible");
+
+    expect(result.name).toBe("isVisible");
+    expect(result.previousName).toBe("isOpen");
+    expect(result.updatedFields).toContain("name");
+    expect(state.name).toBe("isVisible");
+    expect(mockRenameParam).toHaveBeenCalledWith(comp, valueParam, "isVisible");
+    expect(mockRenameParam).toHaveBeenCalledWith(comp, onChangeParam, "On isVisible change");
+  });
+
+  it("updates access type from private to writable", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const valueParam = { _type: "StateParam", uuid: "sp1", variable: { name: "value" }, exportType: "ToolsOnly" };
+    const onChangeParam = { _type: "StateChangeHandlerParam", uuid: "ocp1", variable: { name: "On value change" }, exportType: "ToolsOnly" };
+    const state = {
+      _type: "NamedState",
+      name: "value",
+      variableType: "text",
+      accessType: "private",
+      param: valueParam,
+      onChangeParam,
+    };
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [valueParam, onChangeParam];
+    (comp as any).states = [state];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateState(api, "comp-1", "value", undefined, "writable");
+
+    expect(result.updatedFields).toContain("accessType");
+    expect(state.accessType).toBe("writable");
+    expect(valueParam.exportType).toBe("External");
+    expect(onChangeParam.exportType).toBe("External");
+  });
+
+  it("updates initial value", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const valueParam = {
+      _type: "StateParam", uuid: "sp1", variable: { name: "count" },
+      defaultExpr: { _type: "CustomCode", code: "0" },
+    };
+    const onChangeParam = { _type: "StateChangeHandlerParam", uuid: "ocp1", variable: { name: "On count change" } };
+    const state = {
+      _type: "NamedState",
+      name: "count",
+      variableType: "number",
+      accessType: "private",
+      param: valueParam,
+      onChangeParam,
+    };
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [valueParam, onChangeParam];
+    (comp as any).states = [state];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateState(api, "comp-1", "count", undefined, undefined, "10");
+
+    expect(result.updatedFields).toContain("initialValue");
+    expect(valueParam.defaultExpr._type).toBe("CustomCode");
+    expect(valueParam.defaultExpr.code).toBe("10");
+  });
+
+  it("rejects duplicate name", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const state1 = {
+      _type: "NamedState", name: "isOpen", variableType: "boolean",
+      param: { _type: "StateParam", uuid: "sp1", variable: { name: "isOpen" } },
+      onChangeParam: { _type: "StateChangeHandlerParam", uuid: "ocp1", variable: { name: "On isOpen change" } },
+    };
+    const state2 = {
+      _type: "NamedState", name: "count", variableType: "number",
+      param: { _type: "StateParam", uuid: "sp2", variable: { name: "count" } },
+      onChangeParam: { _type: "StateChangeHandlerParam", uuid: "ocp2", variable: { name: "On count change" } },
+    };
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [state1.param, state1.onChangeParam, state2.param, state2.onChangeParam];
+    (comp as any).states = [state1, state2];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      updateState(api, "comp-1", "count", "isOpen")
+    ).rejects.toThrow(/already exists/);
+  });
+
+  it("rejects invalid access type", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const state = {
+      _type: "NamedState", name: "isOpen", variableType: "boolean",
+      param: { _type: "StateParam", uuid: "sp1", variable: { name: "isOpen" } },
+      onChangeParam: { _type: "StateChangeHandlerParam", uuid: "ocp1", variable: { name: "On isOpen change" } },
+    };
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [state.param, state.onChangeParam];
+    (comp as any).states = [state];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      updateState(api, "comp-1", "isOpen", undefined, "public" as any)
+    ).rejects.toThrow(/Invalid access type/);
+  });
+
+  it("throws when state not found", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    (comp as any).states = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      updateState(api, "comp-1", "nonexistent", "newName")
+    ).rejects.toThrow(/not found/);
   });
 });
