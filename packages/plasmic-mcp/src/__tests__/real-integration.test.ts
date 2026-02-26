@@ -637,6 +637,109 @@ describe("read workflows", () => {
     expect(typeof output.nodesShown).toBe("number");
     expect(output.hint).toContain("300 chars");
   });
+
+  it("inspect.summary format: concise → compact output, then drill in by name", async () => {
+    const comp = discoveredComponents[0];
+
+    // Step 1: Get concise summary
+    const result = await client.callTool({
+      name: "inspect",
+      arguments: { action: "summary", componentUuid: comp.uuid, maxDepth: -1, format: "concise" },
+    });
+    expect(result.isError).toBeFalsy();
+    const output = parseResponse(result);
+
+    // Root node should have uuid (for subsequent calls)
+    expect(output.tree.uuid).toBeTruthy();
+
+    // Concise format: no type field, no nodeType, childCount abbreviated to cc
+    expect(output.tree.type).toBeUndefined();
+    expect(output.tree.nodeType).toBeUndefined();
+    if (output.tree.cc !== undefined || output.tree.childCount !== undefined) {
+      // childCount should be abbreviated to cc
+      expect(output.tree.childCount).toBeUndefined();
+      expect(typeof output.tree.cc).toBe("number");
+    }
+
+    // Children should NOT have UUIDs
+    function assertNoChildUuids(node: any) {
+      if (node.children) {
+        for (const child of node.children) {
+          expect(child.uuid).toBeUndefined();
+          assertNoChildUuids(child);
+        }
+      }
+    }
+    assertNoChildUuids(output.tree);
+
+    // Step 2: Drill into the root by its UUID (preserved in concise format) using inspect.node
+    const rootUuid = output.tree.uuid;
+    expect(rootUuid).toBeTruthy();
+    const nodeResult = await client.callTool({
+      name: "inspect",
+      arguments: { action: "node", componentUuid: comp.uuid, nodeRef: rootUuid },
+    });
+    expect(nodeResult.isError).toBeFalsy();
+    const nodeOutput = parseResponse(nodeResult);
+    // inspect.node returns full format with uuid and type
+    expect(nodeOutput.node.uuid).toBeTruthy();
+    expect(nodeOutput.node.type).toBeTruthy();
+  });
+
+  it("inspect.tree format: concise → components show comp, slots show slot", async () => {
+    const comp = discoveredComponents[0];
+
+    const result = await client.callTool({
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid, maxDepth: -1, format: "concise" },
+    });
+    expect(result.isError).toBeFalsy();
+    const output = parseResponse(result);
+
+    // Walk the concise tree and verify key transformations
+    function assertConcise(node: any) {
+      // type and nodeType must be absent
+      expect(node.type).toBeUndefined();
+      expect(node.nodeType).toBeUndefined();
+      // componentName should be comp
+      expect(node.componentName).toBeUndefined();
+      // componentUuid should be absent
+      expect(node.componentUuid).toBeUndefined();
+      // slotName should be slot
+      expect(node.slotName).toBeUndefined();
+      // childCount should be cc
+      expect(node.childCount).toBeUndefined();
+      // visibility should be hidden
+      expect(node.visibility).toBeUndefined();
+      // dataCond should be conditional
+      expect(node.dataCond).toBeUndefined();
+      // dataRep should be repeats
+      expect(node.dataRep).toBeUndefined();
+      if (node.children) {
+        for (const child of node.children) {
+          // non-root children must not have uuid
+          expect(child.uuid).toBeUndefined();
+          assertConcise(child);
+        }
+      }
+    }
+    assertConcise(output.tree);
+  });
+
+  it("inspect.tree format: full → unchanged default behavior", async () => {
+    const comp = discoveredComponents[0];
+
+    const result = await client.callTool({
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid, maxDepth: -1, format: "full" },
+    });
+    expect(result.isError).toBeFalsy();
+    const output = parseResponse(result);
+
+    // Full format retains type and uuid on all nodes
+    expect(output.tree.type).toBe("tag");
+    expect(output.tree.uuid).toBeTruthy();
+  });
 });
 
 // =========================================================================

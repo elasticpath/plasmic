@@ -39,6 +39,7 @@ import {
   countTreeNodes,
   countTplNodes,
   truncateTreeToCharBudget,
+  toConciseFormat,
 } from "./tree-reader.js";
 import { readTokens } from "./token-reader.js";
 import { resolveNode, requireSingleNode, invalidateNodeCache, clearNodeCache, getCacheMetrics } from "./node-resolver.js";
@@ -547,9 +548,10 @@ export function createServer(): McpServer {
       maxChars: z.number().optional().describe("Character budget for response JSON. Defaults to 15000 (~4000 tokens). Pass -1 for unlimited."),
       excludeStyles: z.boolean().optional().describe("Strip styles from output to reduce size"),
       summaryOnly: z.boolean().optional().describe("Return compact outline (same as summary action)"),
+      format: z.enum(["concise", "full"]).optional().describe('Response format. "concise" strips UUIDs (except root), abbreviates keys (childCount→cc, componentName→comp), replaces detail fields with booleans. ~70% token reduction for orientation. Default: "full".'),
       filter: z.string().optional().describe("Filter string for style-properties action"),
     },
-    async ({ action, componentUuid, nodeRef, maxDepth, maxChars, excludeStyles, summaryOnly, filter }) => {
+    async ({ action, componentUuid, nodeRef, maxDepth, maxChars, excludeStyles, summaryOnly, format, filter }) => {
       try {
         switch (action) {
           case "tree": {
@@ -599,11 +601,14 @@ export function createServer(): McpServer {
 
             const truncated = nodesShown < totalNodes;
 
+            // Apply concise format transformation (after truncation, before serialization)
+            const outputTree = format === "concise" && tree ? toConciseFormat(tree) : tree;
+
             const result: Record<string, unknown> = {
               name: component.name,
               uuid: component.uuid,
               path: component.pageMeta?.path,
-              tree,
+              tree: outputTree,
             };
 
             if (truncated) {
@@ -670,11 +675,14 @@ export function createServer(): McpServer {
 
             const truncated = nodesShown < totalNodes;
 
+            // Apply concise format transformation (after truncation, before serialization)
+            const outputTree = format === "concise" && tree ? toConciseFormat(tree) : tree;
+
             const result: Record<string, unknown> = {
               name: component.name,
               uuid: component.uuid,
               path: component.pageMeta?.path,
-              tree,
+              tree: outputTree,
             };
 
             if (truncated) {
@@ -786,13 +794,16 @@ export function createServer(): McpServer {
               charTruncated = truncResult.wasTruncated;
             }
 
+            // Apply concise format transformation (after truncation, before serialization)
+            const outputTree = format === "concise" && tree ? toConciseFormat(tree) : tree;
+
             const result: Record<string, unknown> = {
               component: component.name,
               componentUuid: component.uuid,
               subtreeRoot: resolved.name ?? resolved.uuid,
               path: resolved.path,
               nodeCount,
-              tree,
+              tree: outputTree,
             };
 
             if (charTruncated) {

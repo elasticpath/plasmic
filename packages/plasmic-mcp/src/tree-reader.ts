@@ -242,6 +242,82 @@ export function truncateTreeToCharBudget(
   };
 }
 
+/**
+ * Transform a TreeNode tree into concise format for orientation-only queries.
+ *
+ * Why: Full TreeNode output includes UUIDs (36 bytes each), verbose keys
+ * (`childCount`, `componentName`, `componentUuid`), and detail fields
+ * (`dataCond` expressions, `dataRep` objects) that are unnecessary when an
+ * agent is just orienting within a component tree. Concise format strips
+ * these, achieving ~70% token reduction for summary-style queries while
+ * keeping enough info (tag, name, position) for the agent to identify nodes
+ * and drill in with inspect.node using the node name.
+ *
+ * Root node always retains its UUID so subsequent tool calls can reference it.
+ *
+ * Key mappings:
+ *   type          → dropped (inferred from tag/comp/slot presence)
+ *   nodeType      → dropped
+ *   uuid          → dropped (except root)
+ *   childCount    → cc
+ *   componentName → comp
+ *   componentUuid → dropped
+ *   slotName      → slot
+ *   visibility    → hidden: true
+ *   dataCond      → conditional: true
+ *   dataRep       → repeats: true
+ */
+export function toConciseFormat(
+  node: TreeNode,
+  isRoot: boolean = true
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+
+  // Identity — root keeps UUID for subsequent tool calls
+  if (isRoot && node.uuid) result.uuid = node.uuid;
+  if (node.tag) result.tag = node.tag;
+  if (node.name) result.name = node.name;
+
+  // Component → comp (replaces componentName + componentUuid)
+  if (node.componentName) result.comp = node.componentName;
+
+  // Slot → slot (replaces slotName)
+  if (node.slotName) result.slot = node.slotName;
+
+  // Layout
+  if (node.layoutType) result.layoutType = node.layoutType;
+
+  // Styles (kept when present — concise strips metadata, not content)
+  if (node.styles) result.styles = node.styles;
+  if (node.tokenRefs) result.tokenRefs = node.tokenRefs;
+
+  // Text
+  if (node.text) result.text = node.text;
+  if (node.marks) result.marks = node.marks;
+  if (node.dynamic) result.dynamic = node.dynamic;
+  if (node.fallback) result.fallback = node.fallback;
+
+  // Attrs
+  if (node.attrs) result.attrs = node.attrs;
+
+  // Boolean flags replace verbose detail fields
+  if (node.visibility) result.hidden = true;
+  if (node.dataCond) result.conditional = true;
+  if (node.dataRep) result.repeats = true;
+
+  // childCount → cc
+  if (node.childCount !== undefined) result.cc = node.childCount;
+
+  // Recurse children
+  if (node.children) {
+    result.children = node.children.map((child) =>
+      toConciseFormat(child, false)
+    );
+  }
+
+  return result;
+}
+
 // ---------------------------------------------------------------------------
 // Internal: Character budget helpers
 // ---------------------------------------------------------------------------

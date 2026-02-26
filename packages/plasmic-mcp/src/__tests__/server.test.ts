@@ -117,6 +117,7 @@ describe("tool handlers", () => {
   let mockCountTreeNodes: ReturnType<typeof vi.fn>;
   let mockCountTplNodes: ReturnType<typeof vi.fn>;
   let mockTruncateTreeToCharBudget: ReturnType<typeof vi.fn>;
+  let mockToConciseFormat: ReturnType<typeof vi.fn>;
   let mockReadTokens: ReturnType<typeof vi.fn>;
   let mockResolveNode: ReturnType<typeof vi.fn>;
   let mockRequireSingleNode: ReturnType<typeof vi.fn>;
@@ -187,6 +188,7 @@ describe("tool handlers", () => {
       nodesShown: mockCountTreeNodes(tree),
       wasTruncated: false,
     }));
+    mockToConciseFormat = vi.fn().mockImplementation((node: any) => ({ ...node, _concise: true }));
     mockReadTokens = vi.fn();
     mockResolveNode = vi.fn();
     mockRequireSingleNode = vi.fn();
@@ -283,6 +285,7 @@ describe("tool handlers", () => {
       countTreeNodes: (...args: any[]) => mockCountTreeNodes(...args),
       countTplNodes: (...args: any[]) => mockCountTplNodes(...args),
       truncateTreeToCharBudget: (...args: any[]) => mockTruncateTreeToCharBudget(...args),
+      toConciseFormat: (...args: any[]) => mockToConciseFormat(...args),
     }));
 
     vi.doMock("../token-reader", () => ({
@@ -818,6 +821,48 @@ describe("tool handlers", () => {
       expect(output.hint).toContain("15000 chars");
       expect(output.hint).toContain("inspect.subtree");
     });
+
+    it("applies concise format when format: concise is specified", async () => {
+      const mockTree = { type: "tag", tag: "div", uuid: "root-1", name: "Root" };
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Hero", tplTree: {} }],
+        },
+      });
+      mockReadComponentTree.mockReturnValue(mockTree);
+      mockCountTplNodes.mockReturnValue(1);
+
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: "comp-1", format: "concise" },
+      });
+
+      expect(mockToConciseFormat).toHaveBeenCalledWith(mockTree);
+    });
+
+    it("does not apply concise format when format is full or omitted", async () => {
+      const mockTree = { type: "tag", tag: "div", uuid: "root-1", name: "Root" };
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Hero", tplTree: {} }],
+        },
+      });
+      mockReadComponentTree.mockReturnValue(mockTree);
+      mockCountTplNodes.mockReturnValue(1);
+
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: "comp-1", format: "full" },
+      });
+      expect(mockToConciseFormat).not.toHaveBeenCalled();
+
+      mockToConciseFormat.mockClear();
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: "comp-1" },
+      });
+      expect(mockToConciseFormat).not.toHaveBeenCalled();
+    });
   });
 
   // =====================================================================
@@ -944,6 +989,24 @@ describe("tool handlers", () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("not found");
+    });
+
+    it("applies concise format to summary when format: concise", async () => {
+      const mockTree = { type: "tag", tag: "div", uuid: "root-1", childCount: 3 };
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Hero", tplTree: {} }],
+        },
+      });
+      mockReadComponentSummary.mockReturnValue(mockTree);
+      mockCountTplNodes.mockReturnValue(1);
+
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "summary", componentUuid: "comp-1", format: "concise" },
+      });
+
+      expect(mockToConciseFormat).toHaveBeenCalledWith(mockTree);
     });
   });
 
@@ -2375,6 +2438,34 @@ describe("tool handlers", () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("Error in inspect.subtree");
+    });
+
+    it("applies concise format to subtree when format: concise", async () => {
+      const mockTree = { type: "tag", tag: "section", uuid: "node-1", name: "Hero" };
+      const mockNode = {};
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Homepage" }],
+        },
+      });
+      mockResolveNode.mockReturnValue({
+        nodes: [{ node: mockNode, name: "Hero", uuid: "node-1", path: "Root > Hero" }],
+        isAmbiguous: false,
+      });
+      mockRequireSingleNode.mockReturnValue({
+        node: mockNode,
+        name: "Hero",
+        uuid: "node-1",
+        path: "Root > Hero",
+      });
+      mockReadSubtree.mockReturnValue(mockTree);
+
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "subtree", componentUuid: "comp-1", nodeRef: "Hero", format: "concise" },
+      });
+
+      expect(mockToConciseFormat).toHaveBeenCalledWith(mockTree);
     });
   });
 

@@ -145,7 +145,7 @@ All edit tools accept `dryRun: true` to preview changes without persisting.
 MCP inspect responses consume your context window. Every unnecessary tree dump costs thousands of tokens. Use the most targeted inspect action available:
 
 1. **Know the node name?** → `inspect({ action: "node", componentUuid, nodeRef })` (~300B)
-2. **Need the overall layout?** → `inspect({ action: "summary", componentUuid, maxDepth: 2 })` (~2KB)
+2. **Need the overall layout?** → `inspect({ action: "summary", componentUuid, maxDepth: 2, format: "concise" })` (~600B with concise)
 3. **Need a section's subtree?** → `inspect({ action: "subtree", componentUuid, nodeRef, maxDepth: 2 })` (variable)
 4. **LAST RESORT** → `inspect({ action: "tree", componentUuid, maxDepth: 3 })` (large — always set maxDepth)
 

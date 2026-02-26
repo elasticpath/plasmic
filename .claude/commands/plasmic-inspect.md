@@ -43,9 +43,9 @@ You are inspecting a Plasmic project to help the developer understand its struct
 
 ALWAYS navigate component trees progressively. NEVER request the full tree upfront.
 
-**Step 1 — Orient:** Get the component outline (structure only, no styles/text).
+**Step 1 — Orient:** Get the component outline (structure only, no styles/text). Use `format: "concise"` to strip UUIDs and abbreviate keys (~70% smaller).
 ```
-inspect({ action: "summary", componentUuid, maxDepth: 2 })
+inspect({ action: "summary", componentUuid, maxDepth: 2, format: "concise" })
 ```
 
 **Step 2 — Locate:** Find a specific node by name to see its full details.

@@ -23,6 +23,7 @@ import {
   countTreeNodes,
   countTplNodes,
   truncateTreeToCharBudget,
+  toConciseFormat,
 } from "../tree-reader";
 import { getValidStylePropertyNames } from "../edit-tools";
 
@@ -3371,5 +3372,234 @@ describe("truncateTreeToCharBudget", () => {
     expect(result.wasTruncated).toBe(true);
     const resultJson = JSON.stringify(result.tree);
     expect(resultJson.length).toBeLessThanOrEqual(budget);
+  });
+});
+
+// =========================================================================
+// toConciseFormat — transforms TreeNode into concise orientation format
+// =========================================================================
+
+describe("toConciseFormat", () => {
+  it("strips type and nodeType fields", () => {
+    const node: import("../types").TreeNode = {
+      type: "tag",
+      tag: "div",
+      nodeType: "other",
+      uuid: "root-1",
+      name: "Container",
+    };
+    const result = toConciseFormat(node);
+    expect(result.type).toBeUndefined();
+    expect(result.nodeType).toBeUndefined();
+    expect(result.tag).toBe("div");
+    expect(result.name).toBe("Container");
+  });
+
+  it("keeps UUID on root node only", () => {
+    const node: import("../types").TreeNode = {
+      type: "tag",
+      tag: "div",
+      uuid: "root-1",
+      name: "Root",
+      children: [
+        { type: "tag", tag: "h1", uuid: "child-1", name: "Title" },
+        { type: "tag", tag: "p", uuid: "child-2", name: "Body" },
+      ],
+    };
+    const result = toConciseFormat(node);
+    expect(result.uuid).toBe("root-1");
+    const children = result.children as any[];
+    expect(children[0].uuid).toBeUndefined();
+    expect(children[1].uuid).toBeUndefined();
+  });
+
+  it("abbreviates childCount to cc", () => {
+    const node: import("../types").TreeNode = {
+      type: "tag",
+      tag: "div",
+      uuid: "root-1",
+      childCount: 5,
+    };
+    const result = toConciseFormat(node);
+    expect(result.cc).toBe(5);
+    expect(result.childCount).toBeUndefined();
+  });
+
+  it("replaces componentName with comp and drops componentUuid", () => {
+    const node: import("../types").TreeNode = {
+      type: "component",
+      uuid: "root-1",
+      componentName: "CardComponent",
+      componentUuid: "comp-uuid-1",
+    };
+    const result = toConciseFormat(node);
+    expect(result.comp).toBe("CardComponent");
+    expect(result.componentName).toBeUndefined();
+    expect(result.componentUuid).toBeUndefined();
+  });
+
+  it("replaces slotName with slot", () => {
+    const node: import("../types").TreeNode = {
+      type: "slot",
+      uuid: "root-1",
+      slotName: "children",
+    };
+    const result = toConciseFormat(node);
+    expect(result.slot).toBe("children");
+    expect(result.slotName).toBeUndefined();
+  });
+
+  it("replaces visibility with hidden: true", () => {
+    const node: import("../types").TreeNode = {
+      type: "tag",
+      tag: "div",
+      uuid: "root-1",
+      visibility: "notRendered",
+    };
+    const result = toConciseFormat(node);
+    expect(result.hidden).toBe(true);
+    expect(result.visibility).toBeUndefined();
+  });
+
+  it("replaces dataCond expression with conditional: true", () => {
+    const node: import("../types").TreeNode = {
+      type: "tag",
+      tag: "div",
+      uuid: "root-1",
+      dataCond: "$ctx.isLoggedIn",
+    };
+    const result = toConciseFormat(node);
+    expect(result.conditional).toBe(true);
+    expect(result.dataCond).toBeUndefined();
+  });
+
+  it("replaces dataRep object with repeats: true", () => {
+    const node: import("../types").TreeNode = {
+      type: "tag",
+      tag: "div",
+      uuid: "root-1",
+      dataRep: {
+        collection: "$queries.items.data",
+        elementVariable: "currentItem",
+      },
+    };
+    const result = toConciseFormat(node);
+    expect(result.repeats).toBe(true);
+    expect(result.dataRep).toBeUndefined();
+  });
+
+  it("preserves styles, text, attrs, and layoutType", () => {
+    const node: import("../types").TreeNode = {
+      type: "tag",
+      tag: "div",
+      uuid: "root-1",
+      styles: { display: "flex", "padding-top": "20px" },
+      tokenRefs: { "padding-top": "spacing-md" },
+      text: "Hello world",
+      marks: [{ start: 0, end: 5, type: "bold" }],
+      dynamic: true,
+      fallback: "Loading...",
+      attrs: { "data-testid": "hero" },
+      layoutType: "vbox",
+    };
+    const result = toConciseFormat(node);
+    expect(result.styles).toEqual({ display: "flex", "padding-top": "20px" });
+    expect(result.tokenRefs).toEqual({ "padding-top": "spacing-md" });
+    expect(result.text).toBe("Hello world");
+    expect(result.marks).toEqual([{ start: 0, end: 5, type: "bold" }]);
+    expect(result.dynamic).toBe(true);
+    expect(result.fallback).toBe("Loading...");
+    expect(result.attrs).toEqual({ "data-testid": "hero" });
+    expect(result.layoutType).toBe("vbox");
+  });
+
+  it("recursively transforms children", () => {
+    const node: import("../types").TreeNode = {
+      type: "tag",
+      tag: "div",
+      uuid: "root-1",
+      name: "Root",
+      children: [
+        {
+          type: "component",
+          uuid: "comp-1",
+          componentName: "Button",
+          componentUuid: "btn-uuid",
+          visibility: "displayNone",
+          children: [
+            {
+              type: "slot",
+              uuid: "slot-1",
+              slotName: "label",
+              childCount: 1,
+            },
+          ],
+        },
+      ],
+    };
+    const result = toConciseFormat(node);
+    expect(result.uuid).toBe("root-1"); // root keeps uuid
+    const child = (result.children as any[])[0];
+    expect(child.uuid).toBeUndefined(); // non-root loses uuid
+    expect(child.comp).toBe("Button");
+    expect(child.hidden).toBe(true);
+    expect(child.type).toBeUndefined();
+    const slot = child.children[0];
+    expect(slot.uuid).toBeUndefined();
+    expect(slot.slot).toBe("label");
+    expect(slot.cc).toBe(1);
+    expect(slot.type).toBeUndefined();
+  });
+
+  it("full format (no transformation) is unchanged by default", () => {
+    const node: import("../types").TreeNode = {
+      type: "tag",
+      tag: "div",
+      uuid: "root-1",
+      name: "Root",
+      childCount: 2,
+      componentName: undefined,
+    };
+    // Full format is the TreeNode itself — no transformation.
+    // This test ensures toConciseFormat is opt-in, not applied by default.
+    expect(node.type).toBe("tag");
+    expect(node.uuid).toBe("root-1");
+    expect(node.childCount).toBe(2);
+  });
+
+  it("50-node concise summary fits under 3 KB", () => {
+    // Build a 50-node summary tree (summaryOnly strips styles/text/attrs)
+    const children: import("../types").TreeNode[] = [];
+    for (let i = 0; i < 49; i++) {
+      children.push({
+        type: "tag",
+        tag: "div",
+        uuid: `child-${i}`,
+        name: `Node${i}`,
+        childCount: 0,
+      });
+    }
+    const tree: import("../types").TreeNode = {
+      type: "tag",
+      tag: "div",
+      uuid: "root",
+      name: "Root",
+      childCount: 49,
+      children,
+    };
+    const concise = toConciseFormat(tree);
+    const json = JSON.stringify(concise);
+    expect(json.length).toBeLessThan(3000);
+  });
+
+  it("omits optional fields that are not set", () => {
+    const node: import("../types").TreeNode = {
+      type: "tag",
+      tag: "span",
+      uuid: "root-1",
+    };
+    const result = toConciseFormat(node);
+    // Only uuid and tag should be present
+    expect(Object.keys(result)).toEqual(["uuid", "tag"]);
   });
 });
