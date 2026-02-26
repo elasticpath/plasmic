@@ -241,14 +241,14 @@ async function gradeProperty(
   params: Record<string, unknown>,
   mcpClient: McpEvalClient
 ): Promise<GraderResult> {
-  const componentUuid = params.componentUuid as string;
   const nodeRef = params.nodeRef as string;
+  const { uuid: componentUuid, error } = await resolveComponentUuid(params, mcpClient);
 
   if (!componentUuid || !nodeRef) {
     return {
       graderType: "property",
       passed: false,
-      message: "property check requires componentUuid and nodeRef",
+      message: `property check ${error ?? "requires componentUuid/componentName and nodeRef"}`,
     };
   }
 
@@ -344,13 +344,13 @@ async function gradeStructure(
   params: Record<string, unknown>,
   mcpClient: McpEvalClient
 ): Promise<GraderResult> {
-  const componentUuid = params.componentUuid as string;
+  const { uuid: componentUuid, error } = await resolveComponentUuid(params, mcpClient);
 
   if (!componentUuid) {
     return {
       graderType: "structure",
       passed: false,
-      message: "structure check requires componentUuid",
+      message: `structure check ${error ?? "requires componentUuid or componentName"}`,
     };
   }
 
@@ -444,14 +444,14 @@ async function gradeData(
   params: Record<string, unknown>,
   mcpClient: McpEvalClient
 ): Promise<GraderResult> {
-  const componentUuid = params.componentUuid as string;
   const checkType = params.checkType as string;
+  const { uuid: componentUuid, error } = await resolveComponentUuid(params, mcpClient);
 
   if (!componentUuid) {
     return {
       graderType: "data",
       passed: false,
-      message: "data check requires componentUuid",
+      message: `data check ${error ?? "requires componentUuid or componentName"}`,
     };
   }
 
@@ -527,6 +527,52 @@ async function gradeData(
       passed: false,
       message: `Data check failed: ${err.message}`,
     };
+  }
+}
+
+/**
+ * Resolve componentUuid from grader params.
+ * Supports two modes:
+ *   1. Direct UUID — params.componentUuid is provided
+ *   2. Name-based — params.componentName resolves via component.list
+ *
+ * Why: Scenarios that create components dynamically cannot hardcode UUIDs
+ * in YAML. Name-based resolution enables property/structure/data graders
+ * to work with components Claude creates at runtime.
+ */
+async function resolveComponentUuid(
+  params: Record<string, unknown>,
+  mcpClient: McpEvalClient
+): Promise<{ uuid: string | null; error?: string }> {
+  const directUuid = params.componentUuid as string | undefined;
+  if (directUuid) {
+    return { uuid: directUuid };
+  }
+
+  const componentName = params.componentName as string | undefined;
+  if (!componentName) {
+    return { uuid: null, error: "requires componentUuid or componentName" };
+  }
+
+  try {
+    const result = await mcpClient.callTool("component", { action: "list" });
+    if (result.isError) {
+      return { uuid: null, error: `Failed to list components: ${result.content}` };
+    }
+    const data = JSON.parse(result.content);
+    const items = [...(data.pages ?? []), ...(data.components ?? [])];
+    const match = items.find((item: any) =>
+      item.name?.toLowerCase().includes(componentName.toLowerCase())
+    );
+    if (!match?.uuid) {
+      return {
+        uuid: null,
+        error: `No component found matching "${componentName}" (available: ${items.map((i: any) => i.name).join(", ")})`,
+      };
+    }
+    return { uuid: match.uuid };
+  } catch (err: any) {
+    return { uuid: null, error: `Component lookup failed: ${err.message}` };
   }
 }
 

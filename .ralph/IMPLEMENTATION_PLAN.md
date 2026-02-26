@@ -2,53 +2,15 @@
 
 ## Status Summary
 
-**Complete**: MCP server (8 STRAP tools, 103 actions), eval harness (cli, runner, claude-client, mcp-client, scenario-loader, scenario-validator, reporter, types), 8 grader types + LLM judge + review flags, visual capture (Playwright), dashboard (Chart.js), CI workflow, 55 scenarios (20 simple / 20 medium / 15 complex), 42 eval tests, package scripts.
+**Complete**: MCP server (8 STRAP tools, 103 actions), eval harness (cli, runner, claude-client, mcp-client, scenario-loader, scenario-validator, reporter, types), 8 grader types + LLM judge + review flags, visual capture (Playwright), dashboard (Chart.js), CI workflow, 67 scenarios (20 simple / 32 medium / 15 complex), 42 eval tests, package scripts. P1 (scenario coverage gaps) and P2 (unused grader activation) fully complete. state-check.ts enhanced with `componentName` resolution as alternative to `componentUuid`; scenario-validator.ts updated to accept `componentName`.
 
-**In progress**: P4 Code Component Variant Support — P4.1-P4.4 complete (type declarations, listVariants, resolveVariant, createStyleVariant all support code component variants with 16 new unit tests). P4.5 (eval scenarios) remains.
+**In progress**: P3 Eval Module Unit Tests is the next priority. P4 Code Component Variant Support — P4.1-P4.4 complete (type declarations, listVariants, resolveVariant, createStyleVariant all support code component variants with 16 new unit tests). P4.5 (eval scenarios) remains.
 
 **Goal**: Close remaining gaps in scenario coverage, grader utilization, test coverage, and robustness so the eval system reliably measures Claude's ability to complete Plasmic design tasks across all 8 STRAP domains.
 
 ---
 
 ## Prioritized Task List
-
-### P1: Scenario Coverage Gaps — `evals/scenarios/`
-_Impact: HIGH — directly affects eval signal quality. Domains with few scenarios produce unreliable pass rates._
-
-- [ ] **P1.1 — Add project domain scenarios (target: 6-8 total)**
-  - Add 2 medium scenarios: batch operation workflow (begin-batch → edits → end-batch), save/refresh cycle with state verification
-  - Add 2 complex scenarios: multi-step undo with state assertions, project state inspection after compound mutations
-  - Files: `evals/scenarios/project.yaml`
-  - AC: Project domain has >= 6 scenarios; at least 2 medium and 2 complex; all pass `eval:validate`
-
-- [ ] **P1.2 — Add interaction domain mid-tier scenarios (target: 5+ medium)**
-  - Add 3 medium scenarios: onClick with condition expression, multi-handler chain (onClick → updateVariable → navigation), form onChange with validation
-  - Rebalance: consider promoting 2 complex → medium if they test single interaction patterns
-  - Files: `evals/scenarios/interaction.yaml`
-  - AC: Interaction domain has >= 4 medium scenarios; simple/medium/complex ratio is roughly balanced; all pass `eval:validate`
-
-- [ ] **P1.3 — Add data domain medium scenarios (target: 4+ medium)**
-  - Add 2 medium scenarios: query configuration (add-query with params), data token CRUD (create → update → list verification)
-  - Files: `evals/scenarios/data.yaml`
-  - AC: Data domain has >= 4 medium scenarios; all pass `eval:validate`
-
-### P2: Activate Unused Grader Types — `evals/scenarios/`
-_Impact: HIGH — 3 fully-implemented graders (property, structure, data) have zero usage. Adding scenarios that use them validates both grader correctness and deeper eval assertions._
-
-- [ ] **P2.1 — Add scenarios using the `property` grader**
-  - Write 2 scenarios (1 medium, 1 complex) that assert specific CSS property values after style mutations (e.g., "set padding-top to 20px on a container, verify property grader confirms value")
-  - Files: new entries in `evals/scenarios/node.yaml` or `design.yaml`
-  - AC: >= 2 scenarios use `property` grader type in their `checks` array; `eval:validate` passes
-
-- [ ] **P2.2 — Add scenarios using the `structure` grader**
-  - Write 2 scenarios that assert DOM structure after add/remove/reorder mutations (e.g., "add 3 children to a container, verify child count and nesting depth")
-  - Files: new entries in `evals/scenarios/node.yaml` or `component.yaml`
-  - AC: >= 2 scenarios use `structure` grader type; `eval:validate` passes
-
-- [ ] **P2.3 — Add scenarios using the `data` grader**
-  - Write 2 scenarios that assert data bindings exist after data-rep/data-cond/interaction mutations (e.g., "set data-rep on element, verify data grader confirms collection expression")
-  - Files: new entries in `evals/scenarios/data.yaml` or `interaction.yaml`
-  - AC: >= 2 scenarios use `data` grader type; `eval:validate` passes
 
 ### P3: Eval Module Unit Tests — `src/__tests__/`
 _Impact: MEDIUM — harness code has zero unit tests. Regressions in runner/reporter/loader could silently corrupt eval results._

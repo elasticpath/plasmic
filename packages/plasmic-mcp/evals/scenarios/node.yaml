@@ -1,5 +1,11 @@
 # Node domain scenarios
-# Tests: adding elements, modifying content
+# Tests: adding elements, modifying content, style verification, structure verification
+#
+# Why property/structure graders here: Transcript graders (tool-params) only verify
+# that Claude called the right tools with the right arguments. Property and structure
+# graders go deeper — they query the actual project state to verify that the mutations
+# took effect. This catches cases where Claude calls update-styles with correct params
+# but the styles don't actually apply (e.g., invalid CSS property, wrong node ref).
 scenarios:
   - id: node-add-heading
     description: "Add a heading element that says 'Hello World' to the Homepage component. First inspect the Homepage to find a suitable container, then add the heading."
@@ -25,3 +31,151 @@ scenarios:
         params:
           min: 3
           max: 12
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: property grader — verify CSS styles after update-styles
+  # Tests: property grader validates actual node state, not just tool calls
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: node-verify-styles
+    description: "Create a new reusable component called 'StyledBox'. Add a container div element inside it. Then style that container with padding-top of 20px, padding-bottom of 20px, background-color of '#f0f0f0', and border-radius of 8px. Finally, inspect the container to verify the styles were applied."
+    domains:
+      - node
+      - component
+      - inspect
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+            - inspect
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: StyledBox
+      - type: existence
+        params:
+          entityType: component
+          name: StyledBox
+      - type: tool-params
+        params:
+          tool: node
+          action: update-styles
+          expected: {}
+      - type: property
+        params:
+          componentName: StyledBox
+          nodeRef: "0"
+          styles:
+            padding-top: "20px"
+            padding-bottom: "20px"
+      - type: count
+        params:
+          min: 4
+          max: 15
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "Select the container in StyledBox — the style panel should show padding-top and padding-bottom at 20px, background-color #f0f0f0, and border-radius 8px."
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Complex: property grader — verify text and styles on multiple nodes
+  # Tests: deep property verification across a multi-node component
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: node-verify-multi-property
+    description: >
+      Build a styled component and verify all properties took effect:
+      1) Create a new reusable component called 'VerifyCard'.
+      2) Add a heading element that says 'Card Title' to the VerifyCard.
+      3) Add a paragraph element that says 'Card description text' below the heading.
+      4) Style the heading with font-size 24px, font-weight bold, and color '#333333'.
+      5) Style the paragraph with font-size 14px and color '#666666'.
+      6) Inspect both elements to verify the styles and text were correctly applied.
+    domains:
+      - node
+      - component
+      - inspect
+    tier: complex
+    timeout: 240
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+            - inspect
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: VerifyCard
+      - type: existence
+        params:
+          entityType: component
+          name: VerifyCard
+      - type: structure
+        params:
+          componentName: VerifyCard
+          minChildren: 2
+          childTags:
+            - h1
+            - div
+      - type: count
+        params:
+          min: 8
+          max: 25
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "VerifyCard should show a heading ('Card Title') at 24px bold in dark grey and a paragraph ('Card description text') at 14px in lighter grey. Tree should show two child elements."
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: structure grader — verify child count after adding elements
+  # Tests: structure grader validates DOM tree shape
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: node-verify-structure
+    description: "Create a new reusable component called 'GridLayout'. Add three container div elements inside it to serve as grid columns. Inspect the component to verify it has exactly three children."
+    domains:
+      - node
+      - component
+      - inspect
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+            - inspect
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: GridLayout
+      - type: existence
+        params:
+          entityType: component
+          name: GridLayout
+      - type: structure
+        params:
+          componentName: GridLayout
+          minChildren: 3
+          maxChildren: 3
+      - type: count
+        params:
+          min: 5
+          max: 18
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "GridLayout component tree should show exactly three div children as direct descendants of the root container."

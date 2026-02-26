@@ -50,17 +50,22 @@ const VALID_GRADER_TYPES = [
 ];
 
 // Required params by grader type (soft check — missing params may still work
-// if the grader has defaults, but are likely mistakes)
+// if the grader has defaults, but are likely mistakes).
+// property/structure/data accept either componentUuid OR componentName;
+// the validator checks that at least one is present.
 const GRADER_REQUIRED_PARAMS: Record<string, string[]> = {
   existence: ["entityType", "name"],
-  property: ["componentUuid", "nodeRef"],
-  structure: ["componentUuid"],
-  data: ["componentUuid", "checkType"],
+  property: ["nodeRef"],
+  structure: [],
+  data: ["checkType"],
   "tool-sequence": ["tools"],
   "tool-params": ["tool"],
   count: [],
   "no-errors": [],
 };
+
+// Grader types that require either componentUuid or componentName
+const GRADER_NEEDS_COMPONENT_REF = new Set(["property", "structure", "data"]);
 
 // Spec targets for scenario counts by tier
 const TIER_TARGETS: Record<string, { min: number; label: string }> = {
@@ -216,6 +221,18 @@ function validateGraderParams(
     if (grader.params[param] === undefined) {
       warnings.push(
         `${prefix} Grader "${grader.type}" missing param: "${param}"`
+      );
+    }
+  }
+
+  // property/structure/data graders need either componentUuid or componentName
+  if (GRADER_NEEDS_COMPONENT_REF.has(grader.type)) {
+    if (
+      grader.params.componentUuid === undefined &&
+      grader.params.componentName === undefined
+    ) {
+      warnings.push(
+        `${prefix} Grader "${grader.type}" missing componentUuid or componentName`
       );
     }
   }
