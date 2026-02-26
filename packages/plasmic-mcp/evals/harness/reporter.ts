@@ -27,7 +27,8 @@ const RESULTS_DIR = resolve(__dirname, "../results");
 export function generateReport(
   results: ScenarioResult[],
   model: string,
-  tier: "mock" | "integration"
+  tier: "mock" | "integration",
+  totalCostDollars: number = 0
 ): EvalReport {
   const now = new Date();
   const runId = formatRunId(now);
@@ -91,6 +92,7 @@ export function generateReport(
       meanTokensOutput: mean(results.map((r) => r.tokensOutput)),
       meanQualityScore:
         qualityScores.length > 0 ? mean(qualityScores) : null,
+      totalCostDollars,
       byDomain,
       byTier,
     },
@@ -121,6 +123,9 @@ export function printSummary(report: EvalReport): void {
   console.error(`  Timed Out:    ${aggregate.timedOut}`);
   console.error(
     `  Success Rate: ${(aggregate.successRate * 100).toFixed(1)}%`
+  );
+  console.error(
+    `  Est. Cost:   $${aggregate.totalCostDollars.toFixed(4)}`
   );
   console.error("");
 

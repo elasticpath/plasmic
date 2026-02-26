@@ -15,7 +15,7 @@
  * Claude's behavior, not leftover state from previous scenarios.
  */
 
-import type { EvalScenario, ScenarioResult } from "./types.js";
+import type { EvalScenario, ScenarioResult, TranscriptEntry } from "./types.js";
 import type { McpEvalClient } from "./mcp-client.js";
 import type { ClaudeClient } from "./claude-client.js";
 import { runGraders } from "../graders/index.js";
@@ -50,14 +50,35 @@ export async function runScenario(
 
     // Run setup steps — direct tool calls, not mediated by Claude.
     // This mirrors how unit tests use beforeEach to set up fixtures.
+    // Setup failures abort the scenario — broken preconditions make results meaningless.
     if (scenario.setup) {
+      let setupFailed = false;
       for (const step of scenario.setup) {
         const result = await mcpClient.callTool(step.tool, step.params);
         if (result.isError) {
           errors.push(
             `Setup step failed: ${step.tool}.${step.params.action ?? "?"} — ${result.content}`
           );
+          setupFailed = true;
+          break;
         }
+      }
+      if (setupFailed) {
+        return {
+          id: scenario.id,
+          tier: scenario.tier,
+          domains: scenario.domains,
+          success: false,
+          qualityScore: null,
+          toolCalls: 0,
+          tokensInput: 0,
+          tokensOutput: 0,
+          durationMs: Date.now() - startTime,
+          errors,
+          retries: 0,
+          transcript: [],
+          graderResults: [],
+        };
       }
     }
 
@@ -94,6 +115,11 @@ export async function runScenario(
       mcpClient
     );
 
+    // Count retries: tool errors followed by continued conversation indicate
+    // Claude self-correcting. This is the number of tool_result entries with
+    // isError=true (excluding the very last one, if it ended the conversation).
+    const retries = countRetries(conversationResult.transcript);
+
     // Determine overall success
     const success = conversationResult.timedOut
       ? false
@@ -123,7 +149,7 @@ export async function runScenario(
       tokensOutput: conversationResult.totalOutputTokens,
       durationMs: Date.now() - startTime,
       errors,
-      retries: 0,
+      retries,
       transcript: conversationResult.transcript,
       graderResults,
     };
@@ -147,6 +173,30 @@ export async function runScenario(
   }
 }
 
+// Per-million-token pricing by model family. Used for cost estimation.
+// When a model isn't listed, we fall back to the most expensive tier (Opus)
+// to avoid underestimating costs.
+const MODEL_PRICING: Record<string, { input: number; output: number }> = {
+  "claude-sonnet": { input: 3, output: 15 },
+  "claude-haiku": { input: 0.8, output: 4 },
+  "claude-opus": { input: 15, output: 75 },
+};
+
+function getModelPricing(
+  model: string
+): { input: number; output: number } {
+  for (const [prefix, pricing] of Object.entries(MODEL_PRICING)) {
+    if (model.includes(prefix)) return pricing;
+  }
+  // Default to Opus pricing (most expensive) to avoid underestimating
+  return MODEL_PRICING["claude-opus"];
+}
+
+export interface RunAllResult {
+  results: ScenarioResult[];
+  totalCostDollars: number;
+}
+
 /**
  * Run all scenarios sequentially, with progress reporting and cost limits.
  * Results are accumulated incrementally so partial results survive interruption (GE6).
@@ -160,10 +210,12 @@ export async function runAll(
     total: number,
     result: ScenarioResult
   ) => void,
-  maxCostDollars?: number
-): Promise<ScenarioResult[]> {
+  maxCostDollars?: number,
+  model?: string
+): Promise<RunAllResult> {
   const results: ScenarioResult[] = [];
   let totalCost = 0;
+  const pricing = getModelPricing(model ?? "claude-sonnet");
 
   for (let i = 0; i < scenarios.length; i++) {
     const scenario = scenarios[i];
@@ -183,9 +235,8 @@ export async function runAll(
     const result = await runScenario(scenario, mcpClient, claudeClient);
     results.push(result);
 
-    // Rough cost estimate: $3/M input, $15/M output for Sonnet
-    const inputCost = (result.tokensInput / 1_000_000) * 3;
-    const outputCost = (result.tokensOutput / 1_000_000) * 15;
+    const inputCost = (result.tokensInput / 1_000_000) * pricing.input;
+    const outputCost = (result.tokensOutput / 1_000_000) * pricing.output;
     totalCost += inputCost + outputCost;
 
     if (onProgress) {
@@ -193,5 +244,27 @@ export async function runAll(
     }
   }
 
-  return results;
+  return { results, totalCostDollars: totalCost };
+}
+
+/**
+ * Count self-correction retries from the transcript.
+ * A retry is a tool_result with isError=true that is followed by Claude
+ * continuing the conversation (i.e., not the final entry).
+ */
+function countRetries(transcript: TranscriptEntry[]): number {
+  let retries = 0;
+  for (let i = 0; i < transcript.length; i++) {
+    const entry = transcript[i];
+    if (entry.role !== "tool_result") continue;
+    try {
+      const parsed = JSON.parse(entry.content);
+      if (parsed.isError && i < transcript.length - 1) {
+        retries++;
+      }
+    } catch {
+      // Skip unparseable entries
+    }
+  }
+  return retries;
 }

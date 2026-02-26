@@ -1,0 +1,264 @@
+# Additional simple scenarios (P3.3)
+# Tests: less common single-domain and cross-domain actions
+# Fills simple tier to ~20 total (spec target)
+scenarios:
+  - id: design-upload-asset
+    description: "Upload an image asset to the project from the URL 'https://via.placeholder.com/400x300'. Name it 'PlaceholderImage' and set it as type 'picture'."
+    domains:
+      - design
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+      - type: tool-params
+        params:
+          tool: design
+          action: upload-asset
+          expected:
+            name: PlaceholderImage
+      # no-errors omitted: mock mode fetch returns 404 for external URLs
+      - type: count
+        params:
+          min: 1
+          max: 5
+
+  - id: design-rename-token
+    description: "Rename a color token in the project. First list the color tokens to find one, then rename it to 'PrimaryBrand'."
+    domains:
+      - design
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+      - type: tool-params
+        params:
+          tool: design
+          action: list-tokens
+          expected: {}
+      - type: tool-params
+        params:
+          tool: design
+          action: update-token
+          expected:
+            newName: PrimaryBrand
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 2
+          max: 6
+
+  - id: design-create-mixin
+    description: "Create a style mixin called 'CardShadow' with a box shadow of '0 4px 12px rgba(0,0,0,0.15)' and border radius of '8px'."
+    domains:
+      - design
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+      - type: tool-params
+        params:
+          tool: design
+          action: create-mixin
+          expected:
+            name: CardShadow
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 1
+          max: 5
+
+  - id: design-create-animation
+    description: "Create an animation sequence called 'FadeIn' that animates opacity from 0 to 1, with keyframes at 0% (opacity: '0') and 100% (opacity: '1')."
+    domains:
+      - design
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+      - type: tool-params
+        params:
+          tool: design
+          action: create-animation
+          expected:
+            name: FadeIn
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 1
+          max: 5
+
+  - id: variant-create-screen
+    description: "Create a mobile screen variant (responsive breakpoint) with a maximum width of 768 pixels. Name it 'Mobile'."
+    domains:
+      - variant
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - variant
+      - type: tool-params
+        params:
+          tool: variant
+          action: create-screen
+          expected:
+            maxWidth: 768
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 1
+          max: 5
+
+  - id: component-update-page-meta
+    description: "Set the SEO metadata for the Homepage page. First list the components to find the Homepage UUID, then set the title to 'Home | My Site' and the description to 'Welcome to my site'."
+    domains:
+      - component
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+      - type: tool-params
+        params:
+          tool: component
+          action: update-page-meta
+          expected:
+            title: "Home | My Site"
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 2
+          max: 6
+
+  - id: component-extract
+    description: "In the Homepage component, inspect its structure to find a child element, then extract that element into a new reusable component called 'HeroSection'."
+    domains:
+      - component
+      - inspect
+    tier: simple
+    timeout: 120
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - inspect
+      - type: tool-params
+        params:
+          tool: component
+          action: extract
+          expected:
+            name: HeroSection
+      - type: no-errors
+        params: {}
+      - type: existence
+        params:
+          entityType: component
+          name: HeroSection
+      - type: count
+        params:
+          min: 3
+          max: 10
+
+  - id: project-undo
+    description: "First, add a text element with the content 'Temporary Text' to the Homepage component. Then undo that operation using the project tool."
+    domains:
+      - project
+      - node
+    tier: simple
+    timeout: 120
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - inspect
+            - node
+            - project
+      - type: tool-params
+        params:
+          tool: project
+          action: undo
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 4
+          max: 12
+
+  - id: node-dry-run
+    description: "Use dry-run mode to preview adding a button element to the Homepage component. Set dryRun to true so the change is not persisted. First inspect the Homepage to find a suitable parent element."
+    domains:
+      - node
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - inspect
+            - node
+      - type: tool-params
+        params:
+          tool: node
+          action: add
+          expected:
+            dryRun: true
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 3
+          max: 8
+
+  - id: design-create-token
+    description: "Create a new spacing token called 'LargeGap' with a value of '32px'. Use the tokenType 'Spacing'."
+    domains:
+      - design
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: LargeGap
+            tokenType: Spacing
+      - type: no-errors
+        params: {}
+      - type: existence
+        params:
+          entityType: token
+          name: LargeGap
+          tokenType: Spacing
+      - type: count
+        params:
+          min: 1
+          max: 5

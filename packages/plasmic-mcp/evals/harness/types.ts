@@ -106,6 +106,7 @@ export interface EvalReport {
     meanTokensInput: number;
     meanTokensOutput: number;
     meanQualityScore: number | null;
+    totalCostDollars: number;
     byDomain: Record<string, DomainStats>;
     byTier: Record<string, TierStats>;
   };

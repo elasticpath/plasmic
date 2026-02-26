@@ -99,6 +99,7 @@ async function gradeExistence(
           action: "summary",
           componentUuid,
           maxDepth: -1,
+          maxChars: -1, // Unlimited — graders need full tree to avoid false negatives
         });
         if (result.isError) {
           return {
@@ -293,11 +294,12 @@ async function gradeProperty(
       }
     }
 
-    // Check attrs (subset match)
+    // Check attrs (subset match — coerce to string for type safety)
     if (params.attrs) {
       const expectedAttrs = params.attrs as Record<string, string>;
       for (const [attr, value] of Object.entries(expectedAttrs)) {
-        const actual = node.attrs?.[attr];
+        const raw = node.attrs?.[attr];
+        const actual = raw != null ? String(raw) : undefined;
         if (
           !actual ||
           !actual.toLowerCase().includes(value.toLowerCase())
@@ -357,6 +359,7 @@ async function gradeStructure(
       action: "summary",
       componentUuid,
       maxDepth: -1,
+      maxChars: -1, // Unlimited — graders need full tree to avoid false negatives
     };
     if (params.nodeRef) {
       inspectParams.action = "subtree";

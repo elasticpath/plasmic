@@ -127,7 +127,7 @@ async function main(): Promise<void> {
     console.error("[eval] MCP client ready");
 
     // Run scenarios
-    const results = await runAll(
+    const { results, totalCostDollars } = await runAll(
       scenarios,
       mcpClient,
       claudeClient,
@@ -138,14 +138,16 @@ async function main(): Promise<void> {
             `(${result.toolCalls} tools, ${(result.durationMs / 1000).toFixed(1)}s)`
         );
       },
-      maxCost
+      maxCost,
+      model
     );
 
     // Generate and save report
     const report = generateReport(
       results,
       model,
-      mode as "mock" | "integration"
+      mode as "mock" | "integration",
+      totalCostDollars
     );
     const reportPath = saveReport(report);
     console.error(`[eval] Report saved: ${reportPath}`);

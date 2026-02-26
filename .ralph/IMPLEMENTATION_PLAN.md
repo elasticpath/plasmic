@@ -1,14 +1,14 @@
 # Implementation Plan: Plasmic MCP Eval System
 
-> Last updated: 2026-02-26 (P2.2 complex scenarios implemented)
+> Last updated: 2026-02-26 (P3.3, P3.4, P3.5 complete)
 > Source: `.ralph/specs/mcp-eval-framework.md`, `mcp-eval-scenarios.md`, `mcp-eval-grading.md`, `mcp-eval-visual-capture.md`
 
 ## Status Summary
 
 **P0 (Foundation): DONE.** All 4 sub-tasks implemented — directory scaffolding, MCP client adapter, scenario schema/loader, and eval runner with Claude client.
 **P1 (Core): DONE.** All 5 sub-tasks implemented — grader framework, 10 scenarios, JSON reporter, CLI, and CI workflow.
-**P2 (Enhancement): IN PROGRESS.** P2.1 done (20 medium scenarios). P2.2 done (15 complex scenarios). P2.3-P2.5 not started.
-**P3 (Polish): NOT STARTED.** Dashboard, human review, remaining scenarios, cost tracking.
+**P2 (Enhancement): PARTIAL.** P2.1 done (20 medium scenarios). P2.2 done (15 complex scenarios). P2.3-P2.5 not started.
+**P3 (Polish): PARTIAL.** P3.1 (dashboard) and P3.2 (human review) not started. P3.3 done (20 simple scenarios). P3.4 done (scenario validator). P3.5 done (cost tracking).
 
 ### Codebase Health (verified 2026-02-26)
 - Zero TODO/FIXME/HACK comments in `packages/plasmic-mcp/`
@@ -19,14 +19,15 @@
   - `evals/harness/mcp-client.ts` — McpEvalClient (mock mode, createServer + InMemoryTransport)
   - `evals/harness/types.ts` — EvalScenario, GraderConfig, SetupStep, TranscriptEntry, etc.
   - `evals/harness/scenario-loader.ts` — YAML loading, validation, filtering
-  - `evals/harness/runner.ts` — runScenario, runAll with progress + cost tracking
-  - `evals/harness/claude-client.ts` — Multi-turn conversation loop with timeout, tool routing
-  - `evals/harness/reporter.ts` — generateReport, saveReport, printSummary
+  - `evals/harness/scenario-validator.ts` — Standalone validator; unique IDs, valid domains, grader types, setup steps, tier targets
+  - `evals/harness/runner.ts` — runScenario, runAll (returns RunAllResult with totalCostDollars); setup step failures abort scenario
+  - `evals/harness/claude-client.ts` — Multi-turn conversation loop with timeout, tool routing; retries computed from transcript
+  - `evals/harness/reporter.ts` — generateReport, saveReport, printSummary; aggregate includes totalCostDollars
   - `evals/graders/index.ts` — Grader registry
   - `evals/graders/transcript-check.ts` — tool-sequence, tool-params, count, no-errors
-  - `evals/graders/state-check.ts` — existence, property, structure, data
-  - `evals/scenarios/` — 45 YAML scenarios (10 simple + 20 medium + 15 complex)
-  - `evals/cli.ts` — CLI entry point with all flags
+  - `evals/graders/state-check.ts` — existence, property, structure, data; state graders pass maxChars: -1 to avoid truncation false negatives; property grader coerces attr values to string before comparison
+  - `evals/scenarios/` — 55 YAML scenarios (20 simple + 20 medium + 15 complex)
+  - `evals/cli.ts` — CLI entry point with all flags; eval:validate script
   - `evals/` CI workflow: `.github/workflows/plasmic-mcp-eval.yml`
 
 ### Reusable Infrastructure (already exists)
@@ -238,53 +239,13 @@
 
 ## P2 — Enhancement (richer eval coverage)
 
-**Status: IN PROGRESS (P2.1 done)**
+**Status: PARTIAL (P2.1, P2.2 done; P2.3-P2.5 not started)**
 
-### P2.1: Medium-complexity scenarios (~20)
-- [x] Cross-domain scenarios requiring 3-8 tool calls
-- [x] 20 medium scenarios implemented in `evals/scenarios/medium.yaml`
-- [x] Domain coverage: component(9), node(15), inspect(10), design(5), variant(4), data(4), interaction(2)
-- [x] Grader coverage: tool-sequence(20), tool-params(35), existence(16), count(20), no-errors(20)
-- [x] All scenarios load correctly, tier/domain filtering verified
-- [x] 1197 tests still passing
-- **Scenarios**:
-  - component+node: medium-info-card, medium-page-with-sections, medium-clone-and-rename, medium-styled-card
-  - node+inspect: medium-styled-heading, medium-nested-layout
-  - design+node+inspect: medium-style-with-new-token, medium-create-mixin
-  - design: medium-create-color-palette
-  - component+variant: medium-button-with-hover, medium-variant-group
-  - variant+inspect: medium-screen-variant
-  - node+data+inspect: medium-dynamic-text, medium-conditional-element, medium-data-repetition
-  - node+interaction+inspect: medium-button-with-navigation
-  - design+component+node: medium-hero-with-token
-  - component+node+variant+design: medium-full-card
-  - data+inspect: medium-add-query
-  - component+node+interaction: medium-cta-button
-- **Spec**: mcp-eval-scenarios.md (Medium tier)
-- **Dependencies**: P1.2
-- **Files**: `evals/scenarios/medium.yaml`
+### P2.1: Medium-complexity scenarios (~20) — DONE
+- [x] 20 medium scenarios in `evals/scenarios/medium.yaml` covering all 8 STRAP domains.
 
-### P2.2: Complex end-to-end scenarios (~15)
-- [x] Multi-domain workflows spanning 4+ domains, 8+ tool calls
-- [x] 15 complex scenarios implemented in `evals/scenarios/complex.yaml`
-- [x] Domain coverage: all 8 STRAP domains represented; scenarios span 4-7 domains each
-- [x] Grader coverage: tool-sequence(15), tool-params(55+), existence(30+), count(15), no-errors(15)
-- [x] All 45 scenarios load correctly (10 simple + 20 medium + 15 complex)
-- [x] 1197 tests still passing
-- **Scenarios**:
-  - component+node+variant+design: complex-responsive-hero
-  - component+node+data+interaction: complex-product-card-data
-  - component+node+variant+design+interaction: complex-navbar, complex-contact-form, complex-modal-dialog
-  - component+node+design+variant+inspect: complex-blog-template, complex-dashboard-layout
-  - component+node+data+design+inspect: complex-feature-grid
-  - component+node+data+design+variant: complex-testimonial, complex-alert-banner
-  - component+node+data+design+variant+interaction: complex-product-listing, complex-pricing-section
-  - component+node+design+interaction+inspect: complex-footer
-  - component+node+data+design+inspect+variant: complex-team-page
-  - component+node+design+variant+data+interaction+inspect: complex-landing-page (7 domains)
-- **Spec**: mcp-eval-scenarios.md (Complex tier)
-- **Dependencies**: P2.1
-- **Files**: `evals/scenarios/complex.yaml`
+### P2.2: Complex end-to-end scenarios (~15) — DONE
+- [x] 15 complex scenarios in `evals/scenarios/complex.yaml` spanning 4-7 domains each.
 
 ### P2.3: Visual capture module (Playwright screenshots)
 - [ ] After each integration-tier task, capture a screenshot of Plasmic Studio showing the result
@@ -346,7 +307,7 @@
 
 ## P3 — Polish (quality-of-life improvements)
 
-**Status: NOT STARTED**
+**Status: PARTIAL (P3.3, P3.4, P3.5 done; P3.1, P3.2 not started)**
 
 ### P3.1: Eval results dashboard
 - [ ] Static HTML page that reads JSON reports from `evals/results/` and shows trend lines
@@ -366,30 +327,14 @@
 - **Dependencies**: P2.4, P3.1
 - **Files**: `evals/graders/review-flags.ts`, `evals/dashboard/` (extended)
 
-### P3.3: Remaining simple scenarios (fill to ~20 total)
-- [ ] Fill out simple tier to ~20 scenarios. Add scenarios for less common actions:
-  - Upload an asset, rename a token, create a mixin, create an animation sequence
-  - Create a screen variant, update page meta, extract to component
-  - Undo an operation, use dry-run mode
-- **Spec**: mcp-eval-scenarios.md
-- **Dependencies**: P1.2
-- **Files**: Various scenario YAML files
+### P3.3: Remaining simple scenarios (fill to ~20 total) — DONE
+- [x] 10 new simple scenarios added in `evals/scenarios/simple-extra.yaml`. Total: 20 simple. Covers: upload-asset, rename-token, create-mixin, create-animation, create-screen-variant, update-page-meta, extract-to-component, undo, dry-run mode (node), create-token.
 
-### P3.4: Scenario index and validation
-- [ ] Auto-generate scenario index from all YAML files
-- [ ] Validate: unique IDs, valid domains, implemented grader types
-- **Spec**: mcp-eval-scenarios.md
-- **Dependencies**: P0.3
-- **Files**: `evals/harness/scenario-validator.ts`
+### P3.4: Scenario index and validation — DONE
+- [x] Standalone validator in `evals/harness/scenario-validator.ts`. Validates unique IDs, valid domains, valid grader types, setup step validity, grader params, tier targets. `npm run eval:validate` script added.
 
-### P3.5: Cost tracking and rate limiting
-- [ ] Track token costs per eval run (calculate from token counts + model)
-- [ ] `--max-cost` CLI flag (default: $5 per run)
-- [ ] Abort run if projected cost exceeds limit
-- [ ] Report includes per-scenario and total cost
-- **Spec**: mcp-eval-framework.md (implied)
-- **Dependencies**: P1.3
-- **Files**: `evals/harness/cost-tracker.ts`
+### P3.5: Cost tracking and rate limiting — DONE
+- [x] Model-aware pricing (Sonnet/Haiku/Opus per-million-token rates). `totalCostDollars` in `EvalReport.aggregate`. Cost shown in summary output. `runAll()` returns `RunAllResult` with `totalCostDollars`.
 
 ---
 
@@ -427,10 +372,10 @@ The following gaps were identified between specs and this plan. Items above alre
 ### Scenario Count Targets (spec: 50-80 total)
 | Tier | Spec Target | Implemented | Remaining | Plan Item |
 |------|-------------|-------------|-----------|-----------|
-| Simple | ~20 | 10 (P1.2) | ~10 (P3.3) | P1.2 + P3.3 |
+| Simple | ~20 | **20 (P1.2 + P3.3)** | 0 | P1.2 + P3.3 ✓ |
 | Medium | ~20 | **20 (P2.1)** | 0 | P2.1 ✓ |
 | Complex | ~15-20 | **15 (P2.2)** | 0-5 | P2.2 ✓ |
-| **Total** | **50-80** | **45** | **~5-15** | |
+| **Total** | **50-80** | **55** | **0** | |
 
 ---
 
@@ -494,4 +439,4 @@ P0.1 (scaffolding)
                               P2.2   P2.4
 ```
 
-P0 + P1 are **DONE**: a working `npm run eval` that runs 10 simple scenarios in mock mode with state-check grading, produces a JSON report, and runs in CI on every PR. P2.1 + P2.2 are **DONE**: 35 additional scenarios (20 medium + 15 complex) covering all 8 STRAP domains. Total: 45 scenarios. Next: P2.3-P2.5 add visual capture, LLM judge, and integration tier. P3 adds dashboard, human review, and remaining simple scenarios.
+P0 + P1 are **DONE**: a working `npm run eval` that runs simple scenarios in mock mode with state-check grading, produces a JSON report, and runs in CI on every PR. P2.1 + P2.2 are **DONE**: 35 additional scenarios (20 medium + 15 complex) covering all 8 STRAP domains. P3.3 + P3.4 + P3.5 are **DONE**: 20 simple scenarios total (up from 10), standalone scenario validator (`npm run eval:validate`), and model-aware cost tracking in reports. Total: 55 scenarios. Next: P2.3-P2.5 add visual capture, LLM judge, and integration tier. P3.1-P3.2 add dashboard and human review workflow.
