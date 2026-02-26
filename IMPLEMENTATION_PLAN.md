@@ -3,10 +3,10 @@
 > **Goal**: Create Claude Code skills and workflows that can interact with Plasmic Studio
 > programmatically to create fully-featured pages from the Claude Code terminal.
 >
-> **Current state**: 8 STRAP domain tools (consolidating 97 actions), 6 Claude Code skills (STRAP calling convention), 1058 tests (948 unit + 110 integration), 19 test files.
-> Zero TODOs/FIXMEs/skipped tests. Zero tsc errors.
+> **Current state**: 8 STRAP domain tools (consolidating 97 actions), 6 Claude Code skills (STRAP calling convention), 1063 tests (953 unit + 110 integration), 19 test files.
+> Zero TODOs/FIXMEs/skipped tests. Zero tsc errors. All code quality items complete.
 >
-> **Last verified**: 2026-02-26 — CQ-5 integration test gaps closed (11 tools → 0 gaps). CQ-8 wab.d.ts type declarations complete.
+> **Last verified**: 2026-02-26 — CQ-5/CQ-6 test gaps closed. CQ-8 wab.d.ts type declarations complete. All specs have checked acceptance criteria.
 
 ---
 
@@ -390,9 +390,14 @@ These are code health improvements discovered during analysis. No specs needed.
   - `variant.create-group` — creates "Size" group with initial variants (with undo)
   - Total: 1058 tests (948 unit + 110 integration)
 
-### CQ-6 server.test.ts Unit Test Gaps
-- **What**: `list-variants` tool handler has no unit test. `remove-child` and `move-child` have no dryRun tests. Batch error rollback path untested.
-- **Action**: Add missing unit tests
+### CQ-6 server.test.ts Unit Test Gaps — DONE (2026-02-26)
+- **Status**: COMPLETED
+  - 5 new unit tests covering all 3 gaps
+  - `variant.list` — 2 tests (basic delegation + component not found error)
+  - `node.remove` dryRun — 1 test (verifies cancelBatch called, cache not invalidated)
+  - `node.move` dryRun — 1 test (verifies cancelBatch called, cache not invalidated)
+  - `project.end-batch` error rollback — 1 test (verifies error propagation when endBatch throws)
+  - Total: 1063 tests (953 unit + 110 integration)
 
 ### CQ-8 wab.d.ts Type Declaration Gaps — DONE (2026-02-26)
 - **Status**: COMPLETED

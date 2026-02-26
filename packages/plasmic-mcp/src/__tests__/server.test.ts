@@ -1902,6 +1902,19 @@ describe("tool handlers", () => {
 
       expect(mockEndBatch).toHaveBeenCalledWith(mockApiClient, undefined);
     });
+
+    it("calls cancelBatchWithRollback when endBatch throws", async () => {
+      mockIsBatchActive.mockReturnValue(true);
+      mockEndBatch.mockRejectedValue(new Error("Save failed"));
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "end-batch", batchId: "batch-123" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Save failed");
+    });
   });
 
   describe("project.undo", () => {
@@ -2324,6 +2337,82 @@ describe("tool handlers", () => {
       expect(result.isError).toBeFalsy();
       expect(output.dryRun).toBe(true);
       // Cache should NOT be invalidated in dry-run mode
+      expect(mockInvalidateNodeCache).not.toHaveBeenCalled();
+    });
+
+    it("node.remove with dryRun does not persist and calls cancelBatch", async () => {
+      mockIsBatchActive.mockReturnValue(false);
+      mockBeginBatch.mockReturnValue("dry-run-batch");
+      mockGetAccumulatedChanges.mockReturnValue({
+        changes: [],
+        newInsts: [],
+        removedInsts: [],
+      });
+      mockRemoveChild.mockResolvedValue({
+        save: { revisionNum: 10, incremental: true },
+        removedName: "OldSection",
+        removedUuid: "node-4",
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "remove",
+          componentUuid: "comp-1",
+          nodeRef: "OldSection",
+          dryRun: true,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.dryRun).toBe(true);
+      expect(output.removed).toBe("OldSection");
+      expect(output.message).toContain("Dry run");
+      expect(mockBeginBatch).toHaveBeenCalled();
+      expect(mockCancelBatch).toHaveBeenCalled();
+      // Cache should NOT be invalidated in dry-run mode
+      expect(mockInvalidateNodeCache).not.toHaveBeenCalled();
+    });
+
+    it("node.move with dryRun does not persist and calls cancelBatch", async () => {
+      mockIsBatchActive.mockReturnValue(false);
+      mockBeginBatch.mockReturnValue("dry-run-batch");
+      mockGetAccumulatedChanges.mockReturnValue({
+        changes: [],
+        newInsts: [],
+        removedInsts: [],
+      });
+      mockMoveChild.mockResolvedValue({
+        save: { revisionNum: 10, incremental: true },
+        movedName: "Title",
+        movedUuid: "node-5",
+        newParentName: "Hero",
+        newParentUuid: "node-6",
+        position: 0,
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "move",
+          componentUuid: "comp-1",
+          nodeRef: "Title",
+          newParentRef: "Hero",
+          position: 0,
+          dryRun: true,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.dryRun).toBe(true);
+      expect(output.moved).toBe("Title");
+      expect(output.newParent).toBe("Hero");
+      expect(output.position).toBe(0);
+      expect(output.message).toContain("Dry run");
+      expect(mockBeginBatch).toHaveBeenCalled();
+      expect(mockCancelBatch).toHaveBeenCalled();
       expect(mockInvalidateNodeCache).not.toHaveBeenCalled();
     });
 
@@ -2797,6 +2886,47 @@ describe("tool handlers", () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("referenced by");
+    });
+  });
+
+  describe("variant.list", () => {
+    it("delegates to listVariants and returns variant data", async () => {
+      const mockVariantData = {
+        globalVariants: [{ uuid: "gvg-1", name: "Screen", variants: [] }],
+        componentVariants: [],
+        styleVariants: [{ uuid: "sv-1", selector: ":hover" }],
+      };
+      mockListVariants.mockReturnValue(mockVariantData);
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Homepage" }],
+        },
+      });
+
+      const result = await client.callTool({
+        name: "variant",
+        arguments: { action: "list", componentUuid: "comp-1" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.globalVariants).toHaveLength(1);
+      expect(output.styleVariants).toHaveLength(1);
+      expect(mockListVariants).toHaveBeenCalled();
+    });
+
+    it("returns error when component not found", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { components: [] },
+      });
+
+      const result = await client.callTool({
+        name: "variant",
+        arguments: { action: "list", componentUuid: "nonexistent" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("not found");
     });
   });
 
