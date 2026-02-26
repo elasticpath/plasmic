@@ -1,6 +1,6 @@
 # Implementation Plan: Plasmic MCP Eval System
 
-> Last updated: 2026-02-26 (P3.3, P3.4, P3.5 complete)
+> Last updated: 2026-02-26 (P3.1, P3.3, P3.4, P3.5 complete)
 > Source: `.ralph/specs/mcp-eval-framework.md`, `mcp-eval-scenarios.md`, `mcp-eval-grading.md`, `mcp-eval-visual-capture.md`
 
 ## Status Summary
@@ -8,7 +8,7 @@
 **P0 (Foundation): DONE.** All 4 sub-tasks implemented — directory scaffolding, MCP client adapter, scenario schema/loader, and eval runner with Claude client.
 **P1 (Core): DONE.** All 5 sub-tasks implemented — grader framework, 10 scenarios, JSON reporter, CLI, and CI workflow.
 **P2 (Enhancement): PARTIAL.** P2.1 done (20 medium scenarios). P2.2 done (15 complex scenarios). P2.3-P2.5 not started.
-**P3 (Polish): PARTIAL.** P3.1 (dashboard) and P3.2 (human review) not started. P3.3 done (20 simple scenarios). P3.4 done (scenario validator). P3.5 done (cost tracking).
+**P3 (Polish): PARTIAL.** P3.1 done (dashboard). P3.2 (human review) not started. P3.3 done (20 simple scenarios). P3.4 done (scenario validator). P3.5 done (cost tracking).
 
 ### Codebase Health (verified 2026-02-26)
 - Zero TODO/FIXME/HACK comments in `packages/plasmic-mcp/`
@@ -28,6 +28,8 @@
   - `evals/graders/state-check.ts` — existence, property, structure, data; state graders pass maxChars: -1 to avoid truncation false negatives; property grader coerces attr values to string before comparison
   - `evals/scenarios/` — 55 YAML scenarios (20 simple + 20 medium + 15 complex)
   - `evals/cli.ts` — CLI entry point with all flags; eval:validate script
+  - `evals/dashboard/index.html` — Static dashboard with Chart.js visualizations (6 charts, summary cards, regression alerts, error rate table, run history)
+  - `evals/dashboard/render.js` — Node.js HTTP server; serves dashboard HTML and /api/reports endpoint with 90-day retention filter
   - `evals/` CI workflow: `.github/workflows/plasmic-mcp-eval.yml`
 
 ### Reusable Infrastructure (already exists)
@@ -307,13 +309,14 @@
 
 ## P3 — Polish (quality-of-life improvements)
 
-**Status: PARTIAL (P3.3, P3.4, P3.5 done; P3.1, P3.2 not started)**
+**Status: PARTIAL (P3.1, P3.3, P3.4, P3.5 done; P3.2 not started)**
 
-### P3.1: Eval results dashboard
-- [ ] Static HTML page that reads JSON reports from `evals/results/` and shows trend lines
-- [ ] Metrics: success rate over time (overall + per-domain), quality score distribution, tool call efficiency, regression alerts, error rate by domain/action
-- [ ] Retention policy: retain last 90 days of results (spec GE7)
-- [ ] Single HTML file with inline Chart.js
+### P3.1: Eval results dashboard — DONE
+- [x] Static HTML page that reads JSON reports from `evals/results/` and shows trend lines
+- [x] Metrics: success rate over time (overall + per-domain), quality score distribution, tool call efficiency, regression alerts, error rate by domain/action
+- [x] Retention policy: retain last 90 days of results (spec GE7)
+- [x] Single HTML file with inline Chart.js
+- [x] Static HTML dashboard served by Node.js local server (`npm run eval:dashboard`). Chart.js from CDN. Visualizations: success rate trend (overall + per-domain), domain/tier bar charts, efficiency trends, token usage trends, regression alerts, error rate by domain, run history with expandable per-scenario details. Reports loaded via /api/reports endpoint with 90-day retention filter. Transcripts stripped from API response to reduce payload size.
 - **Spec**: mcp-eval-grading.md (Dashboard)
 - **Dependencies**: P1.3
 - **Files**: `evals/dashboard/index.html`, `evals/dashboard/render.js`
@@ -439,4 +442,4 @@ P0.1 (scaffolding)
                               P2.2   P2.4
 ```
 
-P0 + P1 are **DONE**: a working `npm run eval` that runs simple scenarios in mock mode with state-check grading, produces a JSON report, and runs in CI on every PR. P2.1 + P2.2 are **DONE**: 35 additional scenarios (20 medium + 15 complex) covering all 8 STRAP domains. P3.3 + P3.4 + P3.5 are **DONE**: 20 simple scenarios total (up from 10), standalone scenario validator (`npm run eval:validate`), and model-aware cost tracking in reports. Total: 55 scenarios. Next: P2.3-P2.5 add visual capture, LLM judge, and integration tier. P3.1-P3.2 add dashboard and human review workflow.
+P0 + P1 are **DONE**: a working `npm run eval` that runs simple scenarios in mock mode with state-check grading, produces a JSON report, and runs in CI on every PR. P2.1 + P2.2 are **DONE**: 35 additional scenarios (20 medium + 15 complex) covering all 8 STRAP domains. P3.1 + P3.3 + P3.4 + P3.5 are **DONE**: eval results dashboard (`npm run eval:dashboard`), 20 simple scenarios total (up from 10), standalone scenario validator (`npm run eval:validate`), and model-aware cost tracking in reports. Total: 55 scenarios. Next: P2.3-P2.5 add visual capture, LLM judge, and integration tier. P3.2 adds human review workflow.

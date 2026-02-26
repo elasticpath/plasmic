@@ -15,7 +15,8 @@
     "test:integration": "vitest run --project integration",
     "typecheck": "tsc --noEmit",
     "eval": "tsx evals/cli.ts",
-    "eval:validate": "tsx evals/harness/scenario-validator.ts"
+    "eval:validate": "tsx evals/harness/scenario-validator.ts",
+    "eval:dashboard": "node evals/dashboard/render.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.0",

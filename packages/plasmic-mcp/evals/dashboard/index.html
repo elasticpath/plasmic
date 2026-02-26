@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Plasmic MCP Eval Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #f8f9fa;
+      --surface: #ffffff;
+      --text: #1a1a2e;
+      --text-secondary: #6c757d;
+      --border: #dee2e6;
+      --accent: #4361ee;
+      --success: #2ec4b6;
+      --danger: #e63946;
+      --warning: #f4a261;
+      --info: #457b9d;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    header h1 {
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    header .meta {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    /* Summary cards */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .card .label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+    }
+
+    .card .value {
+      font-size: 28px;
+      font-weight: 700;
+    }
+
+    .card .sub {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    .value.success { color: var(--success); }
+    .value.danger { color: var(--danger); }
+    .value.accent { color: var(--accent); }
+
+    /* Chart sections */
+    .chart-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+
+    .chart-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .chart-section.full {
+      grid-column: 1 / -1;
+    }
+
+    .chart-section h2 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    .chart-wrap {
+      position: relative;
+      height: 300px;
+    }
+
+    /* Tables */
+    .table-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+
+    .table-section h2 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th {
+      text-align: left;
+      padding: 8px 12px;
+      background: var(--bg);
+      border-bottom: 2px solid var(--border);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    tr:hover td {
+      background: #f0f4ff;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .badge.pass {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .badge.fail {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    .badge.timeout {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .badge.regression {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #e63946;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-secondary);
+    }
+
+    .empty-state h2 {
+      font-size: 18px;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+
+    .empty-state p {
+      font-size: 14px;
+    }
+
+    .empty-state code {
+      display: inline-block;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 13px;
+      margin-top: 8px;
+    }
+
+    /* Scenario details toggle */
+    .expandable { cursor: pointer; user-select: none; }
+    .expandable td:first-child::before {
+      content: "\25B6";
+      display: inline-block;
+      margin-right: 6px;
+      font-size: 10px;
+      transition: transform 0.15s;
+    }
+    .expandable.open td:first-child::before {
+      transform: rotate(90deg);
+    }
+    .detail-row { display: none; }
+    .detail-row.open { display: table-row; }
+    .detail-row td {
+      padding: 12px 20px;
+      background: var(--bg);
+    }
+
+    .scenario-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 8px;
+    }
+
+    .scenario-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+    }
+
+    @media (max-width: 900px) {
+      .chart-grid { grid-template-columns: 1fr; }
+      .cards { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Plasmic MCP Eval Dashboard</h1>
+    <span class="meta" id="header-meta">Loading...</span>
+  </header>
+
+  <div class="container" id="app">
+    <div class="empty-state" id="loading">
+      <h2>Loading reports...</h2>
+      <p>Fetching eval data from server.</p>
+    </div>
+  </div>
+
+  <script>
+    /**
+     * Dashboard renderer — fetches reports from /api/reports and builds all
+     * visualizations inline. No build step, no framework, no dependencies
+     * beyond Chart.js.
+     *
+     * Why Chart.js via CDN: it's the most widely-used charting library,
+     * renders well in all browsers, and the CDN version avoids adding
+     * npm dependencies for a developer tool.
+     */
+
+    const DOMAIN_COLORS = {
+      project:     "#4361ee",
+      inspect:     "#3a86ff",
+      component:   "#8338ec",
+      node:        "#ff006e",
+      variant:     "#fb5607",
+      design:      "#ffbe0b",
+      data:        "#2ec4b6",
+      interaction: "#06d6a0",
+    };
+
+    const TIER_COLORS = {
+      simple:  "#2ec4b6",
+      medium:  "#f4a261",
+      complex: "#e63946",
+    };
+
+    async function init() {
+      let reports;
+      try {
+        const res = await fetch("/api/reports");
+        reports = await res.json();
+      } catch (e) {
+        document.getElementById("app").innerHTML = `
+          <div class="empty-state">
+            <h2>Connection Error</h2>
+            <p>Could not fetch reports. Is the dashboard server running?</p>
+            <code>npm run eval:dashboard</code>
+          </div>`;
+        return;
+      }
+
+      if (!reports || reports.length === 0) {
+        document.getElementById("header-meta").textContent = "No reports";
+        document.getElementById("app").innerHTML = `
+          <div class="empty-state">
+            <h2>No Eval Reports Found</h2>
+            <p>Run an eval to generate reports, then refresh this page.</p>
+            <code>npm run eval</code>
+          </div>`;
+        return;
+      }
+
+      document.getElementById("header-meta").textContent =
+        `${reports.length} run(s) | Latest: ${formatDate(reports[reports.length - 1].timestamp)}`;
+
+      renderDashboard(reports);
+    }
+
+    function renderDashboard(reports) {
+      const latest = reports[reports.length - 1];
+      const prev = reports.length > 1 ? reports[reports.length - 2] : null;
+      const agg = latest.aggregate;
+
+      // Detect regressions: scenarios that passed before but fail now
+      const regressions = detectRegressions(latest, prev);
+
+      // Compute error rates by domain across all runs
+      const errorRates = computeErrorRates(reports);
+
+      const app = document.getElementById("app");
+      app.innerHTML = `
+        <!-- Summary Cards -->
+        <div class="cards">
+          <div class="card">
+            <div class="label">Total Runs</div>
+            <div class="value accent">${reports.length}</div>
+            <div class="sub">${formatDate(reports[0].timestamp)} &ndash; ${formatDate(latest.timestamp)}</div>
+          </div>
+          <div class="card">
+            <div class="label">Latest Success Rate</div>
+            <div class="value ${agg.successRate >= 0.9 ? "success" : "danger"}">
+              ${(agg.successRate * 100).toFixed(1)}%
+            </div>
+            <div class="sub">${agg.passed}/${agg.total} passed</div>
+          </div>
+          <div class="card">
+            <div class="label">Total Scenarios Run</div>
+            <div class="value">${reports.reduce((sum, r) => sum + r.aggregate.total, 0)}</div>
+            <div class="sub">across ${reports.length} run(s)</div>
+          </div>
+          <div class="card">
+            <div class="label">Total Cost</div>
+            <div class="value">$${reports.reduce((sum, r) => sum + (r.aggregate.totalCostDollars || 0), 0).toFixed(2)}</div>
+            <div class="sub">model: ${latest.model}</div>
+          </div>
+          <div class="card">
+            <div class="label">Mean Tool Calls</div>
+            <div class="value">${agg.meanToolCalls.toFixed(1)}</div>
+            <div class="sub">per scenario (latest)</div>
+          </div>
+          <div class="card">
+            <div class="label">Regressions</div>
+            <div class="value ${regressions.length > 0 ? "danger" : "success"}">
+              ${regressions.length}
+            </div>
+            <div class="sub">${regressions.length > 0 ? "scenarios need attention" : "no regressions"}</div>
+          </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="chart-grid">
+          <div class="chart-section full">
+            <h2>Success Rate Over Time</h2>
+            <div class="chart-wrap"><canvas id="chart-success-trend"></canvas></div>
+          </div>
+          <div class="chart-section">
+            <h2>Domain Performance (Latest Run)</h2>
+            <div class="chart-wrap"><canvas id="chart-domain"></canvas></div>
+          </div>
+          <div class="chart-section">
+            <h2>Tier Performance (Latest Run)</h2>
+            <div class="chart-wrap"><canvas id="chart-tier"></canvas></div>
+          </div>
+          <div class="chart-section">
+            <h2>Efficiency Trend (Tool Calls)</h2>
+            <div class="chart-wrap"><canvas id="chart-efficiency"></canvas></div>
+          </div>
+          <div class="chart-section">
+            <h2>Token Usage Trend</h2>
+            <div class="chart-wrap"><canvas id="chart-tokens"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Regression Alerts -->
+        ${regressions.length > 0 ? `
+        <div class="table-section">
+          <h2>Regression Alerts</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Scenario</th>
+                <th>Tier</th>
+                <th>Domains</th>
+                <th>Status</th>
+                <th>Errors</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${regressions.map(s => `
+                <tr>
+                  <td>${esc(s.id)}</td>
+                  <td>${esc(s.tier)}</td>
+                  <td>${s.domains.map(d => esc(d)).join(", ")}</td>
+                  <td><span class="badge regression">REGRESSION</span></td>
+                  <td>${s.errors.length > 0 ? esc(s.errors[0].substring(0, 80)) : "&mdash;"}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>` : ""}
+
+        <!-- Error Rate by Domain -->
+        <div class="table-section">
+          <h2>Error Rate by Domain</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Domain</th>
+                <th>Total Runs</th>
+                <th>Failures</th>
+                <th>Error Rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${Object.entries(errorRates)
+                .sort((a, b) => b[1].errorRate - a[1].errorRate)
+                .map(([domain, stats]) => `
+                  <tr>
+                    <td>${esc(domain)}</td>
+                    <td>${stats.total}</td>
+                    <td>${stats.failed}</td>
+                    <td>
+                      <span class="badge ${stats.errorRate > 0.2 ? "fail" : stats.errorRate > 0 ? "timeout" : "pass"}">
+                        ${(stats.errorRate * 100).toFixed(1)}%
+                      </span>
+                    </td>
+                  </tr>
+                `).join("")}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Run History -->
+        <div class="table-section">
+          <h2>Run History</h2>
+          <table id="run-history">
+            <thead>
+              <tr>
+                <th>Run ID</th>
+                <th>Date</th>
+                <th>Model</th>
+                <th>Tier</th>
+                <th>Scenarios</th>
+                <th>Success Rate</th>
+                <th>Cost</th>
+                <th>Mean Duration</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${reports.slice().reverse().map((r, i) => `
+                <tr class="expandable" data-idx="${i}">
+                  <td>${esc(r.runId)}</td>
+                  <td>${formatDate(r.timestamp)}</td>
+                  <td>${esc(r.model)}</td>
+                  <td>${esc(r.tier)}</td>
+                  <td>${r.aggregate.passed}/${r.aggregate.total}</td>
+                  <td>
+                    <span class="badge ${r.aggregate.successRate >= 0.9 ? "pass" : "fail"}">
+                      ${(r.aggregate.successRate * 100).toFixed(1)}%
+                    </span>
+                  </td>
+                  <td>$${(r.aggregate.totalCostDollars || 0).toFixed(4)}</td>
+                  <td>${(r.aggregate.meanDurationMs / 1000).toFixed(1)}s</td>
+                </tr>
+                <tr class="detail-row" data-idx="${i}">
+                  <td colspan="8">
+                    <div class="scenario-grid">
+                      ${r.scenarios.map(s => `
+                        <div class="scenario-item">
+                          <span>${esc(s.id)}</span>
+                          <span class="badge ${s.success ? "pass" : s.errors.includes("Scenario timed out") ? "timeout" : "fail"}">
+                            ${s.success ? "PASS" : s.errors.includes("Scenario timed out") ? "TIMEOUT" : "FAIL"}
+                          </span>
+                        </div>
+                      `).join("")}
+                    </div>
+                  </td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      // Wire expandable rows
+      document.querySelectorAll(".expandable").forEach(row => {
+        row.addEventListener("click", () => {
+          const idx = row.dataset.idx;
+          row.classList.toggle("open");
+          const detail = document.querySelector(`.detail-row[data-idx="${idx}"]`);
+          if (detail) detail.classList.toggle("open");
+        });
+      });
+
+      // Render charts
+      renderSuccessTrend(reports);
+      renderDomainChart(latest);
+      renderTierChart(latest);
+      renderEfficiencyTrend(reports);
+      renderTokenTrend(reports);
+    }
+
+    // --- Charts ---
+
+    function renderSuccessTrend(reports) {
+      const labels = reports.map(r => formatDate(r.timestamp));
+
+      // Overall success rate
+      const datasets = [{
+        label: "Overall",
+        data: reports.map(r => (r.aggregate.successRate * 100)),
+        borderColor: "#1a1a2e",
+        backgroundColor: "rgba(26,26,46,0.1)",
+        borderWidth: 2,
+        tension: 0.3,
+        fill: true,
+      }];
+
+      // Per-domain success rates
+      const allDomains = new Set();
+      reports.forEach(r => {
+        Object.keys(r.aggregate.byDomain || {}).forEach(d => allDomains.add(d));
+      });
+
+      for (const domain of allDomains) {
+        datasets.push({
+          label: domain,
+          data: reports.map(r => {
+            const stats = (r.aggregate.byDomain || {})[domain];
+            return stats ? (stats.successRate * 100) : null;
+          }),
+          borderColor: DOMAIN_COLORS[domain] || "#999",
+          borderWidth: 1.5,
+          borderDash: [4, 2],
+          tension: 0.3,
+          pointRadius: 2,
+          fill: false,
+        });
+      }
+
+      new Chart(document.getElementById("chart-success-trend"), {
+        type: "line",
+        data: { labels, datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 } } },
+          },
+          scales: {
+            y: {
+              min: 0, max: 100,
+              ticks: { callback: v => v + "%" },
+              title: { display: true, text: "Success Rate" },
+            },
+          },
+          interaction: { mode: "index", intersect: false },
+          spanGaps: true,
+        },
+      });
+    }
+
+    function renderDomainChart(report) {
+      const domains = Object.keys(report.aggregate.byDomain || {}).sort();
+      const data = domains.map(d => (report.aggregate.byDomain[d].successRate * 100));
+      const colors = domains.map(d => DOMAIN_COLORS[d] || "#999");
+
+      new Chart(document.getElementById("chart-domain"), {
+        type: "bar",
+        data: {
+          labels: domains,
+          datasets: [{
+            label: "Success Rate",
+            data: data,
+            backgroundColor: colors.map(c => c + "cc"),
+            borderColor: colors,
+            borderWidth: 1,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          indexAxis: "y",
+          plugins: { legend: { display: false } },
+          scales: {
+            x: {
+              min: 0, max: 100,
+              ticks: { callback: v => v + "%" },
+            },
+          },
+        },
+      });
+    }
+
+    function renderTierChart(report) {
+      const tiers = Object.keys(report.aggregate.byTier || {}).sort();
+      const data = tiers.map(t => (report.aggregate.byTier[t].successRate * 100));
+      const colors = tiers.map(t => TIER_COLORS[t] || "#999");
+
+      new Chart(document.getElementById("chart-tier"), {
+        type: "bar",
+        data: {
+          labels: tiers,
+          datasets: [{
+            label: "Success Rate",
+            data: data,
+            backgroundColor: colors.map(c => c + "cc"),
+            borderColor: colors,
+            borderWidth: 1,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          indexAxis: "y",
+          plugins: { legend: { display: false } },
+          scales: {
+            x: {
+              min: 0, max: 100,
+              ticks: { callback: v => v + "%" },
+            },
+          },
+        },
+      });
+    }
+
+    function renderEfficiencyTrend(reports) {
+      const labels = reports.map(r => formatDate(r.timestamp));
+
+      new Chart(document.getElementById("chart-efficiency"), {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "Mean Tool Calls",
+              data: reports.map(r => r.aggregate.meanToolCalls),
+              borderColor: "#4361ee",
+              backgroundColor: "rgba(67,97,238,0.1)",
+              borderWidth: 2,
+              tension: 0.3,
+              yAxisID: "y",
+              fill: true,
+            },
+            {
+              label: "Mean Duration (s)",
+              data: reports.map(r => r.aggregate.meanDurationMs / 1000),
+              borderColor: "#e63946",
+              borderWidth: 2,
+              tension: 0.3,
+              yAxisID: "y1",
+              fill: false,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 } } },
+          },
+          scales: {
+            y: {
+              type: "linear",
+              position: "left",
+              title: { display: true, text: "Tool Calls" },
+              beginAtZero: true,
+            },
+            y1: {
+              type: "linear",
+              position: "right",
+              title: { display: true, text: "Duration (s)" },
+              beginAtZero: true,
+              grid: { drawOnChartArea: false },
+            },
+          },
+          interaction: { mode: "index", intersect: false },
+        },
+      });
+    }
+
+    function renderTokenTrend(reports) {
+      const labels = reports.map(r => formatDate(r.timestamp));
+
+      new Chart(document.getElementById("chart-tokens"), {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "Mean Input Tokens",
+              data: reports.map(r => r.aggregate.meanTokensInput),
+              borderColor: "#457b9d",
+              backgroundColor: "rgba(69,123,157,0.1)",
+              borderWidth: 2,
+              tension: 0.3,
+              fill: true,
+            },
+            {
+              label: "Mean Output Tokens",
+              data: reports.map(r => r.aggregate.meanTokensOutput),
+              borderColor: "#2ec4b6",
+              backgroundColor: "rgba(46,196,182,0.1)",
+              borderWidth: 2,
+              tension: 0.3,
+              fill: true,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 } } },
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: { display: true, text: "Tokens" },
+            },
+          },
+          interaction: { mode: "index", intersect: false },
+        },
+      });
+    }
+
+    // --- Data Processing ---
+
+    /**
+     * Detect regressions: scenarios that passed in the previous run but fail
+     * in the latest. This surfaces scenarios that need immediate attention.
+     */
+    function detectRegressions(latest, prev) {
+      if (!prev) return [];
+
+      const prevPassSet = new Set(
+        prev.scenarios.filter(s => s.success).map(s => s.id)
+      );
+
+      return latest.scenarios.filter(
+        s => !s.success && prevPassSet.has(s.id)
+      );
+    }
+
+    /**
+     * Compute error rates by domain across all runs. Aggregates total
+     * executions and failures per domain to show which domains are most
+     * error-prone.
+     */
+    function computeErrorRates(reports) {
+      const rates = {};
+
+      for (const report of reports) {
+        for (const scenario of report.scenarios) {
+          for (const domain of scenario.domains) {
+            if (!rates[domain]) {
+              rates[domain] = { total: 0, failed: 0, errorRate: 0 };
+            }
+            rates[domain].total++;
+            if (!scenario.success) rates[domain].failed++;
+          }
+        }
+      }
+
+      for (const stats of Object.values(rates)) {
+        stats.errorRate = stats.total > 0 ? stats.failed / stats.total : 0;
+      }
+
+      return rates;
+    }
+
+    // --- Helpers ---
+
+    function formatDate(iso) {
+      const d = new Date(iso);
+      return d.toLocaleDateString("en-US", {
+        month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+      });
+    }
+
+    function esc(str) {
+      if (!str) return "";
+      const el = document.createElement("span");
+      el.textContent = str;
+      return el.innerHTML;
+    }
+
+    // Boot
+    init();
+  </script>
+</body>
+</html>
