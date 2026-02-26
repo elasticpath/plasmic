@@ -1,5 +1,7 @@
 # Themes
 
+> **Note**: Domain assignments updated to reflect STRAP consolidation (Tier 6.1).
+
 ## Jobs to Be Done
 - As a Claude Code user building multi-brand sites, I want to read and manage themes so that the same components can have different visual treatments
 - As a Claude Code user, I want to apply theme-specific token values so that design tokens change per theme
@@ -10,25 +12,25 @@ Studio's theme model: `Theme` has `defaultStyle` (Mixin) + named `ThemeStyle` en
 
 ## Implementation
 
-Theme management in the `component` domain (site-level).
+Theme management in the `design` domain (site-level design system entities).
 
-### `component({ action: "list-themes" })`
+### `design({ action: "list-themes" })`
 - **Parameters**: (none)
 - Returns: Array of `{ themeUuid, name, isActive, styles: string[] }`
 
-### `component({ action: "create-theme" })`
+### `design({ action: "create-theme" })`
 - **Parameters**: `name`, `defaultStyles?` (Record<string, string>)
 - Creates a Theme on the site
 
-### `component({ action: "update-theme" })`
+### `design({ action: "update-theme" })`
 - **Parameters**: `themeRef` (name or UUID), `name?`, `defaultStyles?`
 - Updates theme properties
 
-### `component({ action: "remove-theme" })`
+### `design({ action: "remove-theme" })`
 - **Parameters**: `themeRef` (name or UUID)
 - Removes theme from site
 
-### `component({ action: "set-active-theme" })`
+### `design({ action: "set-active-theme" })`
 - **Parameters**: `themeRef` (name or UUID)
 - Sets the active theme for the project
 
@@ -38,7 +40,7 @@ Theme management in the `component` domain (site-level).
 - [x] Can update theme name and default styles
 - [x] Can remove a theme
 - [x] Can set the active theme
-- [x] `inspect({ action: "tokens" })` reflects active theme overrides
+- [x] `design({ action: "list-tokens" })` reflects active theme overrides
 - [x] Undo support
 - [x] Batch mode support
 - [x] Integration test: create theme → set active → read tokens → verify override

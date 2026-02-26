@@ -6,7 +6,7 @@
 
 ## Background
 
-The server currently has 97 individual tools. The STRAP pattern (Structured Tool Resource Action Pattern) consolidates these into 8 domain tools, each with an `action` discriminator and flat parameters. This is a breaking change -- old tool names are removed entirely.
+The server currently has 98 individual tools. The STRAP pattern (Structured Tool Resource Action Pattern) consolidates these into 8 domain tools, each with an `action` discriminator and flat parameters. This is a breaking change -- old tool names are removed entirely.
 
 ### Design rationale
 
@@ -24,13 +24,13 @@ This yields **8 domains** with clear boundaries:
 |--------|---------------|-------------|
 | `project` | Session lifecycle, persistence, batch, undo | 8 |
 | `inspect` | All read-only queries on component trees | 8 |
-| `component` | Component/page lifecycle, props, states | 17 |
+| `component` | Component/page lifecycle, props, states | 18 |
 | `node` | Element mutations (structure, style, text, attrs, images, mixins, animations) | 15 |
 | `variant` | Variant management (component, global, style) | 8 |
 | `design` | Site-level design system (tokens, mixins, animations, themes, assets) | 22 |
 | `data` | Data flow (queries, data-tokens, data-rep, data-cond, splits, code meta) | 16 |
-| `interaction` | Event handlers | 3 |
-| **Total** | | **97 actions across 8 tools** |
+| `interaction` | Event handlers | 4 |
+| **Total** | | **99 actions across 8 tools** |
 
 ### Decision: where does `set-image` live?
 
@@ -72,7 +72,7 @@ These operate on nodes (adding/removing Animation objects from a VariantSetting)
 | `preview-url` | get-preview-url | componentUuid |
 | `page-meta` | get-page-meta | componentUuid |
 
-### 3. `component` -- Component/page lifecycle and configuration (14 actions)
+### 3. `component` -- Component/page lifecycle and configuration (18 actions)
 
 | Action | Replaces | Parameters |
 |--------|----------|------------|
@@ -85,6 +85,7 @@ These operate on nodes (adding/removing Animation objects from a VariantSetting)
 | `convert-to-page` | convert-to-page | componentUuid, path? |
 | `convert-to-component` | convert-to-component | componentUuid |
 | `update-page-meta` | update-page-meta | componentUuid, title?, description?, openGraphImage?, canonical?, path? |
+| `extract` | extract-to-component | componentUuid, nodeRef, name |
 | `list-props` | list-props | componentUuid |
 | `add-prop` | add-prop | componentUuid, name, type, defaultValue?, description?, dryRun? |
 | `update-prop` | update-prop | componentUuid, propRef, name?, defaultValue?, description?, dryRun? |
@@ -94,7 +95,7 @@ These operate on nodes (adding/removing Animation objects from a VariantSetting)
 | `update-state` | update-state | componentUuid, stateRef, name?, accessType?, initialValue?, dryRun? |
 | `remove-state` | remove-state | componentUuid, stateRef, dryRun? |
 
-Note: `component` has 17 actions if we count props and states (list/add/update/remove for each = 7 extra). This is acceptable because props and states are intrinsic to component definition -- they define the component's interface and internal state. They do not exist independently at the site level.
+Note: `component` has 18 actions including `extract` (added post-STRAP) plus props and states (list/add/update/remove for each = 7 extra). This is acceptable because props, states, and extract are intrinsic to component definition -- they define the component's interface, internal state, and structure. They do not exist independently at the site level.
 
 ### 4. `node` -- Element mutations (14 actions)
 
@@ -227,15 +228,16 @@ Total: 22 actions.
 
 Total: 16 actions.
 
-### 8. `interaction` -- Event handlers (3 actions)
+### 8. `interaction` -- Event handlers (4 actions)
 
 | Action | Replaces | Parameters |
 |--------|----------|------------|
 | `list` | list-interactions | componentUuid, nodeRef |
 | `add` | add-interaction | componentUuid, nodeRef, event, actionName, args, interactionName?, condition?, dryRun? |
+| `update` | (new) | componentUuid, nodeRef, event, interactionIndex, actionName?, args?, condition?, interactionName?, dryRun? |
 | `remove` | remove-interaction | componentUuid, nodeRef, event, interactionIndex?, dryRun? |
 
-## Verification: Complete tool coverage (97 tools)
+## Verification: Complete tool coverage (99 tools)
 
 Every old tool is mapped exactly once. Here is the exhaustive cross-reference sorted alphabetically by old tool name:
 
@@ -270,76 +272,78 @@ Every old tool is mapped exactly once. Here is the exhaustive cross-reference so
 | 27 | duplicate-token | design | duplicate-token |
 | 28 | end-batch | project | end-batch |
 | 29 | export-component-tree | inspect | export |
-| 30 | get-code-component-meta | data | get-code-meta |
-| 31 | get-component-summary | inspect | summary |
-| 32 | get-component-tree | inspect | tree |
-| 33 | get-node-details | inspect | node |
-| 34 | get-page-meta | inspect | page-meta |
-| 35 | get-preview-url | inspect | preview-url |
-| 36 | get-project-meta | project | get-meta |
-| 37 | get-subtree | inspect | subtree |
-| 38 | get-tokens | design | list-tokens |
-| 39 | list-animation-sequences | design | list-animations |
-| 40 | list-assets | design | list-assets |
-| 41 | list-components | component | list |
-| 42 | list-custom-functions | data | list-functions |
-| 43 | list-data-tokens | data | list-data-tokens |
-| 44 | list-global-variant-groups | variant | list-global-groups |
-| 45 | list-interactions | interaction | list |
-| 46 | list-mixins | design | list-mixins |
-| 47 | list-projects | project | list |
-| 48 | list-props | component | list-props |
-| 49 | list-queries | data | list-queries |
-| 50 | list-splits | data | list-splits |
-| 51 | list-states | component | list-states |
-| 52 | list-style-properties | inspect | style-properties |
-| 53 | list-themes | design | list-themes |
-| 54 | list-variants | variant | list |
-| 55 | move-child | node | move |
-| 56 | refresh-project | project | refresh |
-| 57 | remove-animation-sequence | design | remove-animation |
-| 58 | remove-asset | design | remove-asset |
-| 59 | remove-child | node | remove |
-| 60 | remove-data-token | data | remove-data-token |
-| 61 | remove-global-variant-group | variant | remove-global-group |
-| 62 | remove-interaction | interaction | remove |
-| 63 | remove-mixin | design | remove-mixin |
-| 64 | remove-node-animation | node | remove-animation |
-| 65 | remove-prop | component | remove-prop |
-| 66 | remove-query | data | remove-query |
-| 67 | remove-split | data | remove-split |
-| 68 | remove-state | component | remove-state |
-| 69 | remove-theme | design | remove-theme |
-| 70 | remove-token | design | remove-token |
-| 71 | rename-asset | design | rename-asset |
-| 72 | rename-component | component | rename |
-| 73 | rename-global-variant | variant | rename-global |
-| 74 | reorder-children | node | reorder |
-| 75 | save-project | project | save |
-| 76 | set-active-theme | design | set-active-theme |
-| 77 | set-data-cond | data | set-data-cond |
-| 78 | set-data-rep | data | set-data-rep |
-| 79 | set-image | node | set-image |
-| 80 | set-project | project | set |
-| 81 | set-visibility | node | set-visibility |
-| 82 | undo | project | undo |
-| 83 | update-animation-sequence | design | update-animation |
-| 84 | update-attrs | node | update-attrs |
-| 85 | update-data-token | data | update-data-token |
-| 86 | update-mixin | design | update-mixin |
-| 87 | update-page-meta | component | update-page-meta |
-| 88 | update-prop | component | update-prop |
-| 89 | update-query | data | update-query |
-| 90 | update-rich-text | node | update-rich-text |
-| 91 | update-split | data | update-split |
-| 92 | update-state | component | update-state |
-| 93 | update-styles | node | update-styles |
-| 94 | update-text | node | update-text |
-| 95 | update-theme | design | update-theme |
-| 96 | update-token | design | update-token |
-| 97 | upload-asset | design | upload-asset |
+| 30 | extract-to-component | component | extract |
+| 31 | get-code-component-meta | data | get-code-meta |
+| 32 | get-component-summary | inspect | summary |
+| 33 | get-component-tree | inspect | tree |
+| 34 | get-node-details | inspect | node |
+| 35 | get-page-meta | inspect | page-meta |
+| 36 | get-preview-url | inspect | preview-url |
+| 37 | get-project-meta | project | get-meta |
+| 38 | get-subtree | inspect | subtree |
+| 39 | get-tokens | design | list-tokens |
+| 40 | list-animation-sequences | design | list-animations |
+| 41 | list-assets | design | list-assets |
+| 42 | list-components | component | list |
+| 43 | list-custom-functions | data | list-functions |
+| 44 | list-data-tokens | data | list-data-tokens |
+| 45 | list-global-variant-groups | variant | list-global-groups |
+| 46 | list-interactions | interaction | list |
+| 47 | list-mixins | design | list-mixins |
+| 48 | list-projects | project | list |
+| 49 | list-props | component | list-props |
+| 50 | list-queries | data | list-queries |
+| 51 | list-splits | data | list-splits |
+| 52 | list-states | component | list-states |
+| 53 | list-style-properties | inspect | style-properties |
+| 54 | list-themes | design | list-themes |
+| 55 | list-variants | variant | list |
+| 56 | move-child | node | move |
+| 57 | refresh-project | project | refresh |
+| 58 | remove-animation-sequence | design | remove-animation |
+| 59 | remove-asset | design | remove-asset |
+| 60 | remove-child | node | remove |
+| 61 | remove-data-token | data | remove-data-token |
+| 62 | remove-global-variant-group | variant | remove-global-group |
+| 63 | remove-interaction | interaction | remove |
+| 64 | remove-mixin | design | remove-mixin |
+| 65 | remove-node-animation | node | remove-animation |
+| 66 | remove-prop | component | remove-prop |
+| 67 | remove-query | data | remove-query |
+| 68 | remove-split | data | remove-split |
+| 69 | remove-state | component | remove-state |
+| 70 | remove-theme | design | remove-theme |
+| 71 | remove-token | design | remove-token |
+| 72 | rename-asset | design | rename-asset |
+| 73 | rename-component | component | rename |
+| 74 | rename-global-variant | variant | rename-global |
+| 75 | reorder-children | node | reorder |
+| 76 | save-project | project | save |
+| 77 | set-active-theme | design | set-active-theme |
+| 78 | set-data-cond | data | set-data-cond |
+| 79 | set-data-rep | data | set-data-rep |
+| 80 | set-image | node | set-image |
+| 81 | set-project | project | set |
+| 82 | set-visibility | node | set-visibility |
+| 83 | undo | project | undo |
+| 84 | update-animation-sequence | design | update-animation |
+| 85 | update-attrs | node | update-attrs |
+| 86 | update-data-token | data | update-data-token |
+| 87 | update-mixin | design | update-mixin |
+| 88 | update-page-meta | component | update-page-meta |
+| 89 | update-prop | component | update-prop |
+| 90 | update-query | data | update-query |
+| 91 | update-rich-text | node | update-rich-text |
+| 92 | update-split | data | update-split |
+| 93 | update-state | component | update-state |
+| 94 | update-styles | node | update-styles |
+| 95 | update-text | node | update-text |
+| 96 | update-theme | design | update-theme |
+| 97 | update-token | design | update-token |
+| 98 | upload-asset | design | upload-asset |
+| 99 | (new) | interaction | update |
 
-**Count: 97 old tools mapped to 97 actions across 8 domain tools.**
+**Count: 98 old tools mapped to 99 actions across 8 domain tools. Row 99 is a new action with no predecessor tool.**
 
 ## Action count per domain (final)
 
@@ -347,16 +351,16 @@ Every old tool is mapped exactly once. Here is the exhaustive cross-reference so
 |--------|---------|
 | project | 8 |
 | inspect | 8 |
-| component | 17 |
+| component | 18 |
 | node | 15 |
 | variant | 8 |
 | design | 22 |
 | data | 16 |
-| interaction | 3 |
-| **Total** | **97** |
+| interaction | 4 |
+| **Total** | **99** |
 
 ## Acceptance Criteria
-- [x] 97 old tools are removed from server.ts
+- [x] 98 old tools are removed from server.ts (99 total actions, 1 is new with no predecessor)
 - [x] 8 new domain tools are registered, each with `action` as a required string enum parameter
 - [x] All other parameters are flat (no nested `data` object)
 - [x] Zod schema validates that action-specific required params are present (discriminated union or `.refine()`)

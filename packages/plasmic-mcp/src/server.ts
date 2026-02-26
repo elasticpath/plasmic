@@ -4,19 +4,19 @@
  * Uses McpServer from @modelcontextprotocol/sdk with Zod schemas for input
  * validation. All tools are registered before the transport connects.
  *
- * STRAP architecture: 97 actions consolidated into 8 domain tools.
+ * STRAP architecture: 99 actions consolidated into 8 domain tools.
  * Each domain tool uses an `action` discriminator to route to the
  * appropriate handler function.
  *
  * Domains:
  *   - project (8 actions): session lifecycle, persistence, batch, undo
  *   - inspect (8 actions): read-only queries on component trees
- *   - component (17 actions): component/page lifecycle, props, states
+ *   - component (18 actions): component/page lifecycle, props, states
  *   - node (15 actions): element mutations (structure, style, text, attrs)
  *   - variant (8 actions): variant management (component, global, style)
  *   - design (22 actions): site-level design system (tokens, mixins, etc.)
  *   - data (16 actions): data flow (queries, data-tokens, splits, etc.)
- *   - interaction (3 actions): event handlers
+ *   - interaction (4 actions): event handlers
  *
  * CRITICAL: Never use console.log() — stdout is the JSON-RPC transport.
  * All logging goes through console.error().
@@ -74,6 +74,7 @@ import {
   updateState,
   listInteractions,
   addInteraction,
+  updateInteraction,
   removeInteraction,
   listQueries,
   addQuery,
@@ -4492,18 +4493,19 @@ export function createServer(): McpServer {
   );
 
   // ========================================================================
-  // DOMAIN 8: interaction (3 actions)
+  // DOMAIN 8: interaction (4 actions)
   // ========================================================================
 
   server.tool(
     "interaction",
     "Event handler interactions on elements.\n" +
-      "Actions: list, add, remove.\n" +
+      "Actions: list, add, update, remove.\n" +
       "- list: List all interactions on an element\n" +
       "- add: Add an event handler (navigation, updateVariable, customFunction)\n" +
+      "- update: Modify an existing interaction's action, args, or condition\n" +
       "- remove: Remove interaction(s) from an element",
     {
-      action: z.enum(["list", "add", "remove"]),
+      action: z.enum(["list", "add", "update", "remove"]),
       componentUuid: z.string().optional().describe("UUID of the component"),
       nodeRef: z.string().optional().describe("Element reference"),
       event: z.string().optional().describe("Event name (e.g., onClick, onChange)"),
@@ -4601,6 +4603,65 @@ export function createServer(): McpServer {
                       success: true,
                       interactionUuid: result.interactionUuid,
                       event: result.event,
+                      actionName: result.actionName,
+                      interactionName: result.interactionName,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "update": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "interaction.update");
+            const nref = requireParam(params.nodeRef, "nodeRef", "interaction.update");
+            const evt = requireParam(params.event, "event", "interaction.update");
+            const idx = requireParam(params.interactionIndex, "interactionIndex", "interaction.update");
+
+            const updates: Record<string, any> = {};
+            if (params.actionName !== undefined) updates.actionName = params.actionName;
+            if (params.args !== undefined) updates.args = params.args;
+            if (params.condition !== undefined) updates.condition = params.condition;
+            if (params.interactionName !== undefined) updates.interactionName = params.interactionName;
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                updateInteraction(apiClient, cuuid, nref, evt, idx, updates)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        event: result.event,
+                        interactionIndex: result.interactionIndex,
+                        actionName: result.actionName,
+                        interactionName: result.interactionName,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await updateInteraction(apiClient, cuuid, nref, evt, idx, updates);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      event: result.event,
+                      interactionIndex: result.interactionIndex,
                       actionName: result.actionName,
                       interactionName: result.interactionName,
                       revision: result.save.revisionNum,

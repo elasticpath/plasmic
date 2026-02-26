@@ -1,5 +1,7 @@
 # Style Token CRUD
 
+> **Note**: Domain assignments updated to reflect STRAP consolidation (Tier 6.1).
+
 ## Jobs to Be Done
 - As a Claude Code user building a design system, I want to create, rename, and delete style tokens so that I can manage the project's design system programmatically
 - As a Claude Code user, I want to organize tokens by type so that colors, spacing, and typography are consistently defined
@@ -12,22 +14,22 @@ Token types: Color, Spacing, Opacity, LineHeight, FontFamily, FontSize.
 
 ## Implementation
 
-Token CRUD integrates into the `inspect` domain (read) and `component` domain (mutate, since tokens are site-level).
+Token CRUD integrates into the `design` domain (site-level design system entities).
 
-### `component({ action: "create-token" })`
+### `design({ action: "create-token" })`
 - **Parameters**: `name`, `type` (Color | Spacing | Opacity | LineHeight | FontFamily | FontSize), `value`
 - Creates a StyleToken on the site
 - Returns: `{ tokenUuid, name, type, value }`
 
-### `component({ action: "update-token" })`
+### `design({ action: "update-token" })`
 - **Parameters**: `tokenRef` (name or UUID), `value?`, `name?`
 - Updates token value and/or name
 
-### `component({ action: "remove-token" })`
+### `design({ action: "remove-token" })`
 - **Parameters**: `tokenRef` (name or UUID)
 - Removes token from site + cleans up references in styles
 
-### `component({ action: "duplicate-token" })`
+### `design({ action: "duplicate-token" })`
 - **Parameters**: `tokenRef` (name or UUID), `newName?`
 - Duplicates token with optional new name
 
@@ -39,7 +41,7 @@ Token CRUD integrates into the `inspect` domain (read) and `component` domain (m
 - [x] Can rename token (references update automatically via TplMgr)
 - [x] Can remove token (cleaned up from all style references)
 - [x] Can duplicate token
-- [x] `inspect({ action: "tokens" })` shows created tokens
+- [x] `design({ action: "list-tokens" })` shows created tokens
 - [x] Token reference syntax `token:Name` works with newly created tokens
 - [x] Undo support for all token operations
 - [x] Batch mode support

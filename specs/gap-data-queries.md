@@ -1,5 +1,7 @@
 # Data Queries
 
+> **Note**: Domain assignments updated to reflect STRAP consolidation (Tier 6.1).
+
 ## Jobs to Be Done
 - As a Claude Code user building data-driven pages, I want to create data queries on components so that pages can fetch and display dynamic data
 - As a Claude Code user, I want to reference query results in dynamic text and conditions so that UI reflects real data
@@ -12,22 +14,22 @@ Query data sources are configured externally (Plasmic CMS, REST, GraphQL, etc.).
 
 ## Implementation
 
-Data query CRUD integrates into the `component` domain.
+Data query CRUD integrates into the `data` domain.
 
-### `component({ action: "add-query" })`
+### `data({ action: "add-query" })`
 - **Parameters**: `componentUuid`, `name`, `queryType` (dataQuery | serverQuery), `op?` (DataSourceOpExpr config)
 - Creates a ComponentDataQuery or ComponentServerQuery
 - Returns: `{ queryUuid, name, queryType }`
 
-### `component({ action: "list-queries" })`
+### `data({ action: "list-queries" })`
 - **Parameters**: `componentUuid`
 - Returns: Array of `{ queryUuid, name, queryType, op? }`
 
-### `component({ action: "remove-query" })`
+### `data({ action: "remove-query" })`
 - **Parameters**: `componentUuid`, `queryRef` (name or UUID)
 - Removes query + cleans up expression references
 
-### `component({ action: "update-query" })`
+### `data({ action: "update-query" })`
 - **Parameters**: `componentUuid`, `queryRef`, `name?`, `op?`
 - Updates query name or operation
 

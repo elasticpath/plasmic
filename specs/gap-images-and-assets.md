@@ -1,5 +1,7 @@
 # Images & Assets
 
+> **Note**: Domain assignments updated to reflect STRAP consolidation (Tier 6.1).
+
 ## Jobs to Be Done
 - As a Claude Code user building pages, I want to upload and reference image assets so that pages have properly managed images
 - As a Claude Code user, I want to use project image assets in elements so that images are tracked in the design system rather than as raw URLs
@@ -12,22 +14,22 @@ Currently the MCP only supports raw `src` URLs in PlasmicElement image elements.
 
 ## Implementation
 
-Asset management integrates into the `component` domain (site-level operations).
+Asset management integrates into the `design` domain (site-level design system entities).
 
-### `component({ action: "list-assets" })`
+### `design({ action: "list-assets" })`
 - **Parameters**: `type?` (icon | image | responsive-image)
 - Returns: Array of `{ assetUuid, name, type, width?, height?, aspectRatio? }`
 
-### `component({ action: "upload-asset" })`
+### `design({ action: "upload-asset" })`
 - **Parameters**: `name`, `type` (icon | image), `url` (fetch and embed) or `dataUri` (inline), `width?`, `height?`
 - Fetches URL, converts to dataUri, creates ImageAsset
 - Returns: `{ assetUuid, name, type }`
 
-### `component({ action: "remove-asset" })`
+### `design({ action: "remove-asset" })`
 - **Parameters**: `assetRef` (name or UUID)
 - Removes asset + cleans up references
 
-### `component({ action: "rename-asset" })`
+### `design({ action: "rename-asset" })`
 - **Parameters**: `assetRef`, `newName`
 - Renames asset
 

@@ -1,5 +1,7 @@
 # Mixins (Reusable Style Collections)
 
+> **Note**: Domain assignments updated to reflect STRAP consolidation (Tier 6.1).
+
 ## Jobs to Be Done
 - As a Claude Code user building a design system, I want to create reusable style collections (mixins) so that consistent styling is applied across elements without duplication
 - As a Claude Code user, I want to apply and remove mixins from elements so that style changes propagate automatically
@@ -12,22 +14,22 @@ TplMgr provides: `addMixin()`, `removeMixin()`, `renameMixin()`, `duplicateMixin
 
 ## Implementation
 
-Mixin CRUD integrates into the `component` domain (site-level operations) and mixin application into the `node` domain.
+Mixin CRUD integrates into the `design` domain (site-level design system entities) and mixin application into the `node` domain.
 
-### `component({ action: "create-mixin" })`
+### `design({ action: "create-mixin" })`
 - **Parameters**: `name`, `styles` (Record<string, string>)
 - Creates a Mixin with the given CSS properties
 - Returns: `{ mixinUuid, name, styles }`
 
-### `component({ action: "list-mixins" })`
+### `design({ action: "list-mixins" })`
 - **Parameters**: (none)
 - Returns: Array of `{ mixinUuid, name, styles }`
 
-### `component({ action: "update-mixin" })`
+### `design({ action: "update-mixin" })`
 - **Parameters**: `mixinRef` (name or UUID), `styles` (Record<string, string>), `name?`
 - Updates mixin CSS properties and/or name
 
-### `component({ action: "remove-mixin" })`
+### `design({ action: "remove-mixin" })`
 - **Parameters**: `mixinRef` (name or UUID)
 - Removes mixin from site + from all element references
 
@@ -48,7 +50,7 @@ Mixin CRUD integrates into the `component` domain (site-level operations) and mi
 - [x] Can apply a mixin to an element
 - [x] Can remove a mixin from an element
 - [x] `inspect({ action: "node" })` output includes `mixins` array when element uses mixins
-- [x] `inspect({ action: "tokens" })` or new action lists available mixins
+- [x] `design({ action: "list-mixins" })` lists available mixins
 - [x] Undo support for all mixin operations
 - [x] Batch mode support
 - [x] Integration test: create mixin → apply to element → read back → update mixin → verify change propagated

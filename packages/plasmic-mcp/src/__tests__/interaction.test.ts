@@ -10,6 +10,7 @@ import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   listInteractions,
   addInteraction,
+  updateInteraction,
   removeInteraction,
 } from "../edit-tools";
 import { setSession, clearSession } from "../session";
@@ -620,5 +621,297 @@ describe("removeInteraction", () => {
     await expect(
       removeInteraction(api, "comp-1", "comp-inst-1", "onClick")
     ).rejects.toThrow(/non-TplTag|TplComponent/);
+  });
+});
+
+// =============================================================================
+// updateInteraction — modifying existing event handler interactions
+// =============================================================================
+
+describe("updateInteraction", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    api = mockApiClient();
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    mockWithRecording.mockReturnValue({
+      changes: [], newInsts: [], removedInsts: [],
+    });
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "100" });
+  });
+
+  afterEach(() => {
+    clearSession();
+    disposeChangeTracker();
+    clearNodeCache();
+  });
+
+  it("updates an interaction's args", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {
+      onClick: {
+        _type: "EventHandler",
+        interactions: [
+          {
+            _type: "Interaction",
+            uuid: "int-1",
+            interactionName: "Navigate",
+            actionName: "navigation",
+            conditionalMode: "always",
+            condExpr: null,
+            args: [
+              {
+                _type: "NameArg",
+                name: "destination",
+                expr: { _type: "CustomCode", code: '"/old-page"', fallback: null },
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateInteraction(api, "comp-1", "root-1", "onClick", 0, {
+      args: { destination: "/new-page" },
+    });
+
+    expect(result.actionName).toBe("navigation");
+    expect(result.interactionIndex).toBe(0);
+
+    const interaction = root.vsettings[0].attrs.onClick.interactions[0];
+    expect(interaction.args[0].name).toBe("destination");
+  });
+
+  it("updates an interaction's action name and args", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {
+      onClick: {
+        _type: "EventHandler",
+        interactions: [
+          {
+            _type: "Interaction",
+            uuid: "int-1",
+            interactionName: "Old action",
+            actionName: "navigation",
+            conditionalMode: "always",
+            condExpr: null,
+            args: [
+              {
+                _type: "NameArg",
+                name: "destination",
+                expr: { _type: "CustomCode", code: '"/page"', fallback: null },
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateInteraction(api, "comp-1", "root-1", "onClick", 0, {
+      actionName: "customFunction",
+      args: { code: "console.log('updated')" },
+    });
+
+    expect(result.actionName).toBe("customFunction");
+    const interaction = root.vsettings[0].attrs.onClick.interactions[0];
+    expect(interaction.actionName).toBe("customFunction");
+    expect(interaction.args[0].name).toBe("customFunction");
+  });
+
+  it("updates an interaction's condition", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {
+      onClick: {
+        _type: "EventHandler",
+        interactions: [
+          {
+            _type: "Interaction",
+            uuid: "int-1",
+            interactionName: "Navigate",
+            actionName: "navigation",
+            conditionalMode: "always",
+            condExpr: null,
+            args: [],
+          },
+        ],
+      },
+    };
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await updateInteraction(api, "comp-1", "root-1", "onClick", 0, {
+      condition: "$state.isLoggedIn",
+    });
+
+    const interaction = root.vsettings[0].attrs.onClick.interactions[0];
+    expect(interaction.conditionalMode).toBe("expression");
+    expect(interaction.condExpr._type).toBe("CustomCode");
+    expect(interaction.condExpr.code).toBe("$state.isLoggedIn");
+  });
+
+  it("removes condition when set to null", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {
+      onClick: {
+        _type: "EventHandler",
+        interactions: [
+          {
+            _type: "Interaction",
+            uuid: "int-1",
+            interactionName: "Navigate",
+            actionName: "navigation",
+            conditionalMode: "expression",
+            condExpr: { _type: "CustomCode", code: "$state.isLoggedIn", fallback: null },
+            args: [],
+          },
+        ],
+      },
+    };
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await updateInteraction(api, "comp-1", "root-1", "onClick", 0, {
+      condition: null,
+    });
+
+    const interaction = root.vsettings[0].attrs.onClick.interactions[0];
+    expect(interaction.conditionalMode).toBe("always");
+    expect(interaction.condExpr).toBeNull();
+  });
+
+  it("updates the interaction name", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {
+      onClick: {
+        _type: "EventHandler",
+        interactions: [
+          {
+            _type: "Interaction",
+            uuid: "int-1",
+            interactionName: "Old Name",
+            actionName: "navigation",
+            conditionalMode: "always",
+            condExpr: null,
+            args: [],
+          },
+        ],
+      },
+    };
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateInteraction(api, "comp-1", "root-1", "onClick", 0, {
+      interactionName: "New Name",
+    });
+
+    expect(result.interactionName).toBe("New Name");
+    const interaction = root.vsettings[0].attrs.onClick.interactions[0];
+    expect(interaction.interactionName).toBe("New Name");
+  });
+
+  it("throws when event has no handler", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {};
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      updateInteraction(api, "comp-1", "root-1", "onClick", 0, { condition: "true" })
+    ).rejects.toThrow(/No event handler/);
+  });
+
+  it("throws when interaction index is out of range", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {
+      onClick: {
+        _type: "EventHandler",
+        interactions: [
+          { _type: "Interaction", uuid: "int-1", actionName: "navigation", args: [] },
+        ],
+      },
+    };
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      updateInteraction(api, "comp-1", "root-1", "onClick", 5, { condition: "true" })
+    ).rejects.toThrow(/out of range/);
+  });
+
+  it("throws when target is not a TplTag", async () => {
+    const root = {
+      _type: "TplComponent",
+      uuid: "comp-inst-1",
+      vsettings: [{ rs: { values: {} }, attrs: {} }],
+      children: [],
+      component: { uuid: "other" },
+    };
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      updateInteraction(api, "comp-1", "comp-inst-1", "onClick", 0, { condition: "true" })
+    ).rejects.toThrow(/non-TplTag|TplComponent/);
+  });
+
+  it("accepts action alias when changing action", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {
+      onClick: {
+        _type: "EventHandler",
+        interactions: [
+          {
+            _type: "Interaction",
+            uuid: "int-1",
+            interactionName: "Navigate",
+            actionName: "navigation",
+            conditionalMode: "always",
+            condExpr: null,
+            args: [],
+          },
+        ],
+      },
+    };
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateInteraction(api, "comp-1", "root-1", "onClick", 0, {
+      actionName: "runCode",
+      args: { code: "alert(1)" },
+    });
+
+    expect(result.actionName).toBe("customFunction");
   });
 });

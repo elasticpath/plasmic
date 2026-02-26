@@ -1,5 +1,7 @@
 # Visibility & Conditional Rendering
 
+> **Note**: Domain assignments updated to reflect STRAP consolidation (Tier 6.1).
+
 ## Jobs to Be Done
 - As a Claude Code user building responsive pages, I want to hide/show elements per variant so that layouts adapt to screen sizes
 - As a Claude Code user building dynamic UIs, I want to set data conditions on elements so that content renders conditionally
@@ -10,7 +12,7 @@ Studio uses `TplVisibility` enum and `dataCond` (CustomCode/ObjectPath) on Varia
 
 ## Implementation
 
-Two new actions on the `node` domain tool:
+Two new actions split across the `node` domain (visibility) and `data` domain (conditional rendering):
 
 ### `set-visibility`
 - **Parameters**: `componentUuid`, `nodeRef`, `visible` (boolean | "customCode"), `variant?`, `dryRun?`
@@ -28,8 +30,8 @@ Two new actions on the `node` domain tool:
 ## Acceptance Criteria
 - [x] `node({ action: "set-visibility", visible: false, variant: "Mobile" })` hides element on mobile
 - [x] `node({ action: "set-visibility", visible: true })` restores default visibility
-- [x] `node({ action: "set-data-cond", condition: "$ctx.showBanner" })` sets conditional rendering
-- [x] `node({ action: "set-data-cond", condition: null })` removes condition
+- [x] `data({ action: "set-data-cond", condition: "$ctx.showBanner" })` sets conditional rendering
+- [x] `data({ action: "set-data-cond", condition: null })` removes condition
 - [x] `inspect({ action: "node" })` output includes `visibility` and `dataCond` fields when set
 - [x] Undo support for both actions
 - [x] Batch mode support

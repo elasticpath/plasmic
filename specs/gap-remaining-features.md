@@ -1,5 +1,7 @@
 # Remaining Gap Features
 
+> **Note**: Domain assignments updated to reflect STRAP consolidation (Tier 6.1).
+
 This spec covers the smaller gap features that don't warrant individual spec files.
 
 ## Jobs to Be Done
@@ -46,15 +48,15 @@ This spec covers the smaller gap features that don't warrant individual spec fil
 
 ## 3. A/B Testing (Splits)
 
-### `component({ action: "create-split" })`
+### `data({ action: "create-split" })`
 - **Parameters**: `name`, `slices` (array of `{ name, weight }`)
 - Creates a Split with SplitSlice entries
 
-### `component({ action: "list-splits" })`
+### `data({ action: "list-splits" })`
 - **Parameters**: (none)
 - Returns: Array of `{ splitUuid, name, slices }`
 
-### `component({ action: "remove-split" })`
+### `data({ action: "remove-split" })`
 - **Parameters**: `splitRef` (name or UUID)
 - Removes split
 
@@ -69,18 +71,18 @@ This spec covers the smaller gap features that don't warrant individual spec fil
 
 ## 4. Data Tokens
 
-### `component({ action: "create-data-token" })`
+### `data({ action: "create-data-token" })`
 - **Parameters**: `name`, `value` (JSON string), `type?` (default "Data")
 - Creates a DataToken on the site
 
-### `component({ action: "list-data-tokens" })`
+### `data({ action: "list-data-tokens" })`
 - **Parameters**: (none)
 - Returns: Array of `{ tokenUuid, name, value }`
 
-### `component({ action: "update-data-token" })`
+### `data({ action: "update-data-token" })`
 - **Parameters**: `tokenRef`, `value?`, `name?`
 
-### `component({ action: "remove-data-token" })`
+### `data({ action: "remove-data-token" })`
 - **Parameters**: `tokenRef`
 
 ### Acceptance Criteria
@@ -114,28 +116,28 @@ This spec covers the smaller gap features that don't warrant individual spec fil
 - **Parameters**: `name`, `type?` (single | multi | toggle), `initialVariants?`
 - Creates a GlobalVariantGroup on the site
 
-### `variant({ action: "create-screen" })`
+### `variant({ action: "create-screen" })` -- Deferred -- not included in STRAP consolidation
 - **Parameters**: `name`, `minWidth?`, `maxWidth?`
 - Creates a screen variant (responsive breakpoint)
 
-### `variant({ action: "update-screen" })`
+### `variant({ action: "update-screen" })` -- Deferred -- not included in STRAP consolidation
 - **Parameters**: `variantUuid`, `minWidth?`, `maxWidth?`
 - Updates breakpoint media query
 
-### `variant({ action: "rename" })`
+### `variant({ action: "rename" })` -- Deferred -- not included in STRAP consolidation
 - **Parameters**: `componentUuid?`, `variantUuid`, `newName`
 - Renames a variant
 
-### `variant({ action: "remove" })`
+### `variant({ action: "remove" })` -- Deferred -- not included in STRAP consolidation
 - **Parameters**: `componentUuid?`, `variantUuid`
 - Removes a variant with cleanup
 
 ### Acceptance Criteria
 - [x] Can create global variant group (e.g., "Dark Mode")
-- [x] Can create screen variant with media query
-- [x] Can update screen variant breakpoint
-- [x] Can rename any variant
-- [x] Can remove any variant with cleanup
+- [ ] Can create screen variant with media query (Deferred -- not included in STRAP consolidation)
+- [ ] Can update screen variant breakpoint (Deferred -- not included in STRAP consolidation)
+- [ ] Can rename any variant (Deferred -- not included in STRAP consolidation)
+- [ ] Can remove any variant with cleanup (Deferred -- not included in STRAP consolidation)
 - [x] Undo support
 - [x] Integration + unit tests
 
@@ -143,7 +145,7 @@ This spec covers the smaller gap features that don't warrant individual spec fil
 
 ## 7. Code Component Meta
 
-### `component({ action: "get-code-meta" })`
+### `data({ action: "get-code-meta" })`
 - **Parameters**: `componentUuid`
 - Returns code component metadata if present: `{ codeComponentMeta, subComponents, trapsFocus }`
 
@@ -156,7 +158,7 @@ This spec covers the smaller gap features that don't warrant individual spec fil
 
 ## 8. Custom Functions
 
-### `component({ action: "list-functions" })`
+### `data({ action: "list-functions" })`
 - **Parameters**: (none)
 - Returns: Array of `{ name, args, returnType }`
 

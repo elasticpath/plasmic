@@ -5400,6 +5400,121 @@ export async function removeInteraction(
   return { save, removedCount, event };
 }
 
+// --- update-interaction ---
+
+export interface UpdateInteractionResult {
+  save: SaveResult;
+  event: string;
+  interactionIndex: number;
+  actionName: string;
+  interactionName: string;
+}
+
+/**
+ * Update an existing interaction on a TplTag element's event handler.
+ *
+ * Modifies the interaction at the given index within the given event's handler.
+ * Only provided fields are updated; omitted fields remain unchanged.
+ */
+export async function updateInteraction(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  nodeRef: string,
+  event: string,
+  interactionIndex: number,
+  updates: {
+    actionName?: string;
+    args?: Record<string, string>;
+    condition?: string | null;
+    interactionName?: string;
+  }
+): Promise<UpdateInteractionResult> {
+  const component = findComponent(componentUuid);
+  const session = requireSession();
+  const nodeResult = resolveNode(component, nodeRef);
+  const resolved = requireSingleNode(nodeResult, nodeRef);
+  const tpl = resolved.node;
+
+  if (!isKnownTplTag(tpl)) {
+    throw new Error(
+      `Cannot update interactions on a ${tpl._type ?? "non-TplTag"} node. Only TplTag elements support interactions.`
+    );
+  }
+
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  let finalActionName = "";
+  let finalInteractionName = "";
+
+  const changes = tracker.withRecording(() => {
+    const baseVs = tplMgr.ensureBaseVariantSetting(tpl);
+    const handler = baseVs.attrs?.[event];
+    if (!handler || !isKnownEventHandler(handler)) {
+      throw new Error(
+        `No event handler for "${event}" on this element. Use interaction.list to see available interactions.`
+      );
+    }
+
+    const interactions = handler.interactions ?? [];
+    if (interactionIndex < 0 || interactionIndex >= interactions.length) {
+      throw new Error(
+        `Interaction index ${interactionIndex} out of range (0-${interactions.length - 1}).`
+      );
+    }
+
+    const interaction = interactions[interactionIndex];
+
+    // Update action name and rebuild args if actionName changed
+    if (updates.actionName !== undefined) {
+      const resolvedAction = resolveActionName(updates.actionName);
+      interaction.actionName = resolvedAction;
+      // When changing action, args must be provided for the new action
+      const newArgs = buildActionArgs(resolvedAction, updates.args ?? {});
+      interaction.args = newArgs;
+    } else if (updates.args !== undefined) {
+      // Rebuild args for the current action with new values
+      const newArgs = buildActionArgs(interaction.actionName, updates.args);
+      interaction.args = newArgs;
+    }
+
+    // Update condition
+    if (updates.condition !== undefined) {
+      if (updates.condition === null || updates.condition === "") {
+        interaction.condExpr = null;
+        interaction.conditionalMode = "always";
+      } else {
+        interaction.condExpr = new CustomCode({ code: updates.condition, fallback: null });
+        interaction.conditionalMode = "expression";
+      }
+    }
+
+    // Update interaction name
+    if (updates.interactionName !== undefined) {
+      interaction.interactionName = updates.interactionName;
+    }
+
+    finalActionName = interaction.actionName;
+    finalInteractionName = interaction.interactionName;
+  });
+
+  const componentIid = getComponentIid(component);
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `update-interaction: ${event}[${interactionIndex}] on ${component.name}`,
+    componentIid ? [componentIid] : []
+  );
+
+  return {
+    save,
+    event,
+    interactionIndex,
+    actionName: finalActionName,
+    interactionName: finalInteractionName,
+  };
+}
+
 // =============================================================================
 // Data Queries — CRUD for ComponentDataQuery and ComponentServerQuery
 // =============================================================================

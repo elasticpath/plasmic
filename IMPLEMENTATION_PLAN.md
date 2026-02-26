@@ -3,10 +3,10 @@
 > **Goal**: Create Claude Code skills and workflows that can interact with Plasmic Studio
 > programmatically to create fully-featured pages from the Claude Code terminal.
 >
-> **Current state**: 9 STRAP domain tools (consolidating 98 actions), 6 Claude Code skills (STRAP calling convention), 1073 tests (961 unit + 112 integration), 19 test files.
+> **Current state**: 8 STRAP domain tools (consolidating 99 actions), 6 Claude Code skills (STRAP calling convention), 1083 tests (970 unit + 113 integration), 19 test files.
 > Zero TODOs/FIXMEs/skipped tests. Zero tsc errors. All code quality items complete.
 >
-> **Last verified**: 2026-02-26 — Extract to Component implemented (5.1 complete). All specs fully implemented.
+> **Last verified**: 2026-02-26 — interaction.update implemented, spec inconsistencies fixed. All specs fully implemented.
 
 ---
 
@@ -21,8 +21,11 @@ from `site.styleTokens`). The Token CRUD spec (1.3) handles removal manually.
 The MCP source lives entirely in `packages/plasmic-mcp/src/` (16 source files,
 ~8,200 lines). The `src/tools/` directory exists but is empty (created for future refactor).
 
-Key file sizes: `server.ts` (~4,600 lines after STRAP consolidation), `edit-tools.ts` (~5,900 lines),
+Key file sizes: `server.ts` (~4,730 lines after STRAP consolidation), `edit-tools.ts` (~5,900 lines),
 `tree-reader.ts` (~850 lines).
+
+Spec consistency: All 15 gap specs updated to reflect STRAP domain assignments (2026-02-26).
+STRAP spec updated for `component.extract` (Tier 5.1) and `interaction.update`.
 
 ---
 
@@ -52,6 +55,7 @@ Key file sizes: `server.ts` (~4,600 lines after STRAP consolidation), `edit-tool
 
 ### 2.2 Interactions & Event Handlers — IMPLEMENTED
 - **Spec**: `specs/gap-interactions.md`
+- All 4 actions implemented: list, add, update, remove (update added 2026-02-26)
 
 ---
 
@@ -88,7 +92,7 @@ Key file sizes: `server.ts` (~4,600 lines after STRAP consolidation), `edit-tool
 
 ## Tier 6 — Architecture & Infrastructure
 
-### 6.1 STRAP Consolidation (98 Tools → 8 Domain Tools) — IMPLEMENTED
+### 6.1 STRAP Consolidation (99 Actions → 8 Domain Tools) — IMPLEMENTED
 - **Spec**: `specs/strap-consolidation.md`
 
 ### 6.2 Test Restructure — IMPLEMENTED

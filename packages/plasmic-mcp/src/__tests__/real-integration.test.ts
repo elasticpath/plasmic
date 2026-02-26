@@ -3691,6 +3691,57 @@ describe("interactions", () => {
       result.isError || (typeof output === "string" && output.includes("Unknown event"))
     ).toBeTruthy();
   });
+
+  it("interaction.update modifies an existing interaction", async () => {
+    const comp = discoveredComponents[0];
+    const tree = parseResponse(
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
+      })
+    ).tree;
+
+    // First add an interaction to update
+    await client.callTool({
+      name: "interaction",
+      arguments: { action: "add", componentUuid: comp.uuid,
+        nodeRef: tree.uuid,
+        event: "onClick",
+        actionName: "navigation",
+        args: { destination: "/original" },
+        interactionName: "Original Nav",
+      },
+    });
+
+    // Update the interaction's args and name
+    const updateResult = await client.callTool({
+      name: "interaction",
+      arguments: { action: "update", componentUuid: comp.uuid,
+        nodeRef: tree.uuid,
+        event: "onClick",
+        interactionIndex: 0,
+        args: { destination: "/updated" },
+        interactionName: "Updated Nav",
+      },
+    });
+    expect(updateResult.isError).toBeFalsy();
+    const updateOutput = parseResponse(updateResult);
+    expect(updateOutput.success).toBe(true);
+    expect(updateOutput.interactionName).toBe("Updated Nav");
+
+    // Verify via list
+    const listResult = parseResponse(
+      await client.callTool({
+        name: "interaction",
+        arguments: { action: "list", componentUuid: comp.uuid, nodeRef: tree.uuid },
+      })
+    );
+    const updated = listResult.interactions.find(
+      (i: any) => i.interactionName === "Updated Nav"
+    );
+    expect(updated).toBeDefined();
+    expect(updated.actionName).toBe("navigation");
+  });
 });
 
 // =========================================================================

@@ -1,5 +1,7 @@
 # Animations
 
+> **Note**: Domain assignments updated to reflect STRAP consolidation (Tier 6.1).
+
 ## Jobs to Be Done
 - As a Claude Code user building polished pages, I want to add CSS animations to elements so that pages have entrance effects, hover transitions, and motion
 - As a Claude Code user, I want to manage animation sequences in the design system so that motion is consistent across the project
@@ -12,18 +14,18 @@ TplMgr provides: `addAnimationSequence()`, `removeAnimationSequence()`, `renameA
 
 ## Implementation
 
-Animation management as site-level operations in `component` domain, and element-level application in `node` domain.
+Animation management as site-level operations in `design` domain, and element-level application in `node` domain.
 
-### `component({ action: "create-animation" })`
-- **Parameters**: `name`, `keyframes` (array of `{ offset: number, styles: Record<string,string> }`)
+### `design({ action: "create-animation" })`
+- **Parameters**: `name`, `keyframes` (array of `{ percentage: number, styles: Record<string,string> }`)
 - Creates an AnimationSequence on the site
 - Returns: `{ animationUuid, name }`
 
-### `component({ action: "list-animations" })`
+### `design({ action: "list-animations" })`
 - **Parameters**: (none)
 - Returns: Array of `{ animationUuid, name, keyframeCount }`
 
-### `component({ action: "remove-animation" })`
+### `design({ action: "remove-animation" })`
 - **Parameters**: `animationRef` (name or UUID)
 - Removes sequence + cleans up element references
 
@@ -53,7 +55,7 @@ Animation management as site-level operations in `component` domain, and element
 |----------|-------------------|
 | Apply same animation twice to element | Replace existing (update timing) |
 | Remove animation used by elements | Clean up element references first |
-| Keyframe offset not 0-1 | Error: "Keyframe offset must be between 0 and 1" |
+| Keyframe percentage not 0-100 | Error: "Keyframe percentage must be 0-100" |
 | Invalid timing function | Accept as-is (CSS value) |
 | Empty keyframes array | Error: "Animation must have at least one keyframe" |
 
