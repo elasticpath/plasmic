@@ -2809,3 +2809,219 @@ export async function createVariantGroup(
     variants: createdVariants,
   };
 }
+
+// --- set-visibility ---
+
+export interface SetVisibilityResult {
+  save: SaveResult;
+  nodeName?: string;
+  nodeUuid: string;
+  previousVisibility: string;
+  newVisibility: string;
+}
+
+/**
+ * Set element visibility per variant.
+ *
+ * Visibility is stored via two fields on the VariantSetting:
+ *   - `dataCond`: a CustomCode expression (false = not rendered, true = rendered)
+ *   - `rs.values["plasmic-display-none"]`: internal marker for CSS display:none
+ *
+ * Three states:
+ *   - visible (true): clear dataCond + display-none marker
+ *   - notRendered (false): dataCond = code("false"), clear display-none marker
+ *   - displayNone ("displayNone"): dataCond = code("true"), set display-none marker
+ */
+export async function setVisibility(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  nodeRef: string,
+  visible: boolean | "displayNone",
+  variant?: string
+): Promise<SetVisibilityResult> {
+  const component = findComponent(componentUuid);
+  const result = resolveNode(component, nodeRef);
+  const resolved = requireSingleNode(result, nodeRef);
+
+  const tpl = resolved.node;
+  if (!isKnownTplTag(tpl) && !isKnownTplComponent(tpl)) {
+    throw new Error(
+      `Node "${nodeRef}" is not a TplTag or TplComponent and cannot have visibility set.`
+    );
+  }
+
+  const session = requireSession();
+  const tplMgr = new TplMgr({ site: session.site });
+  const resolvedVariant = variant
+    ? resolveVariant(session.site, component, variant)
+    : null;
+
+  const tracker = getChangeTracker();
+  let previousVisibility = "visible";
+
+  const changes = tracker.withRecording(() => {
+    const vs = resolvedVariant
+      ? ensureVariantSetting(tpl, [resolvedVariant])
+      : tplMgr.ensureBaseVariantSetting(tpl);
+
+    // Derive previous visibility state
+    previousVisibility = deriveVisibility(vs);
+
+    if (visible === true) {
+      // Visible: clear dataCond and display-none marker
+      vs.dataCond = null;
+      if (vs.rs?.values) {
+        delete vs.rs.values["plasmic-display-none"];
+      }
+    } else if (visible === false) {
+      // Not rendered: dataCond = false, clear display-none marker
+      vs.dataCond = new CustomCode({ code: "false", fallback: null });
+      if (vs.rs?.values) {
+        delete vs.rs.values["plasmic-display-none"];
+      }
+    } else if (visible === "displayNone") {
+      // Display none: dataCond = true + display-none marker
+      vs.dataCond = new CustomCode({ code: "true", fallback: null });
+      if (!vs.rs) vs.rs = { values: {} };
+      if (!vs.rs.values) vs.rs.values = {};
+      vs.rs.values["plasmic-display-none"] = "true";
+    }
+  });
+
+  const newVisibility =
+    visible === true
+      ? "visible"
+      : visible === false
+        ? "notRendered"
+        : "displayNone";
+
+  const componentIid = getComponentIid(component);
+  const variantLabel = resolvedVariant
+    ? ` [variant: ${resolvedVariant.name ?? variant}]`
+    : "";
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `set-visibility: ${newVisibility} on ${resolved.name ?? nodeRef}${variantLabel}`,
+    componentIid ? [componentIid] : []
+  );
+
+  return {
+    save,
+    nodeName: resolved.name,
+    nodeUuid: resolved.uuid,
+    previousVisibility,
+    newVisibility,
+  };
+}
+
+/**
+ * Derive the current visibility state from a VariantSetting.
+ */
+function deriveVisibility(vs: any): string {
+  if (!vs?.dataCond) return "visible";
+  if (isKnownCustomCode(vs.dataCond)) {
+    if (vs.dataCond.code === "false") return "notRendered";
+    if (vs.dataCond.code === "true") {
+      if (vs.rs?.values?.["plasmic-display-none"] === "true") {
+        return "displayNone";
+      }
+      return "visible";
+    }
+    return "conditional";
+  }
+  return "conditional";
+}
+
+// --- set-data-cond ---
+
+export interface SetDataCondResult {
+  save: SaveResult;
+  nodeName?: string;
+  nodeUuid: string;
+  previousCondition: string | null;
+  newCondition: string | null;
+}
+
+/**
+ * Set or clear a data condition expression for conditional rendering.
+ *
+ * The condition is a JavaScript expression evaluated at render time.
+ * When set, the element is only rendered when the expression is truthy.
+ * Pass null to remove the condition (element always renders).
+ *
+ * Setting a custom condition clears any existing visibility state
+ * (PLASMIC_DISPLAY_NONE marker) since the condition now controls rendering.
+ */
+export async function setDataCond(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  nodeRef: string,
+  condition: string | null,
+  variant?: string
+): Promise<SetDataCondResult> {
+  const component = findComponent(componentUuid);
+  const result = resolveNode(component, nodeRef);
+  const resolved = requireSingleNode(result, nodeRef);
+
+  const tpl = resolved.node;
+  if (!isKnownTplTag(tpl) && !isKnownTplComponent(tpl)) {
+    throw new Error(
+      `Node "${nodeRef}" is not a TplTag or TplComponent and cannot have a data condition set.`
+    );
+  }
+
+  const session = requireSession();
+  const tplMgr = new TplMgr({ site: session.site });
+  const resolvedVariant = variant
+    ? resolveVariant(session.site, component, variant)
+    : null;
+
+  const tracker = getChangeTracker();
+  let previousCondition: string | null = null;
+
+  const changes = tracker.withRecording(() => {
+    const vs = resolvedVariant
+      ? ensureVariantSetting(tpl, [resolvedVariant])
+      : tplMgr.ensureBaseVariantSetting(tpl);
+
+    // Extract previous condition
+    if (vs.dataCond && isKnownCustomCode(vs.dataCond)) {
+      previousCondition = vs.dataCond.code;
+    } else if (vs.dataCond && isKnownObjectPath(vs.dataCond)) {
+      previousCondition = vs.dataCond.path.join(".");
+    }
+
+    if (condition === null) {
+      // Remove data condition
+      vs.dataCond = null;
+    } else {
+      // Set custom code expression
+      vs.dataCond = new CustomCode({ code: condition, fallback: null });
+    }
+
+    // Clear display-none marker — condition now controls rendering
+    if (vs.rs?.values) {
+      delete vs.rs.values["plasmic-display-none"];
+    }
+  });
+
+  const componentIid = getComponentIid(component);
+  const variantLabel = resolvedVariant
+    ? ` [variant: ${resolvedVariant.name ?? variant}]`
+    : "";
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `set-data-cond: ${condition ?? "(removed)"} on ${resolved.name ?? nodeRef}${variantLabel}`,
+    componentIid ? [componentIid] : []
+  );
+
+  return {
+    save,
+    nodeName: resolved.name,
+    nodeUuid: resolved.uuid,
+    previousCondition,
+    newCondition: condition,
+  };
+}

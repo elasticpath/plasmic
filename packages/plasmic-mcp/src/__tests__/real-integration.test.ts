@@ -2512,3 +2512,263 @@ describe("node cloning", () => {
     });
   });
 });
+
+// =========================================================================
+// Visibility & Conditional Rendering
+//
+// These tests verify the full MCP protocol path for set-visibility and
+// set-data-cond: real model mutations via ChangeRecorder, real tree-reader
+// output, and real undo support. This catches bugs that mocked tests miss
+// (e.g., WAB model class constructors, RuleSet internal state).
+// =========================================================================
+
+describe("visibility and conditional rendering", () => {
+  it("set-visibility false → read back notRendered → undo → verify restored", async () => {
+    const comp = discoveredComponents.find((c) => c.type === "page") ?? discoveredComponents[0];
+    if (!comp) return;
+
+    // Get the tree and find a TplTag node to hide
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+
+    // Find a named child node (not the root)
+    const target = findNamedNode(tree);
+    if (!target) return;
+
+    // Hide the element
+    const hideResult = await client.callTool({
+      name: "set-visibility",
+      arguments: { componentUuid: comp.uuid, nodeRef: target.uuid, visible: false },
+    });
+    expect(hideResult.isError).toBeFalsy();
+    const hideOutput = parseResponse(hideResult);
+    expect(hideOutput.success).toBe(true);
+    expect(hideOutput.newVisibility).toBe("notRendered");
+
+    // Read back via get-node-details and verify visibility field
+    const detailResult = await client.callTool({
+      name: "get-node-details",
+      arguments: { componentUuid: comp.uuid, nodeRef: target.uuid },
+    });
+    const detail = parseResponse(detailResult);
+    expect(detail.node.visibility).toBe("notRendered");
+
+    // Also verify in full tree
+    const hiddenTree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+    const hiddenNode = findNodeByUuid(hiddenTree, target.uuid);
+    expect(hiddenNode?.visibility).toBe("notRendered");
+
+    // Undo the visibility change
+    const undoResult = await client.callTool({ name: "undo", arguments: {} });
+    expect(undoResult.isError).toBeFalsy();
+
+    // Verify the element is visible again (no visibility field)
+    const restoredDetail = parseResponse(
+      await client.callTool({
+        name: "get-node-details",
+        arguments: { componentUuid: comp.uuid, nodeRef: target.uuid },
+      })
+    );
+    expect(restoredDetail.node.visibility).toBeUndefined();
+  });
+
+  it("set-visibility displayNone → verify displayNone in tree", async () => {
+    const comp = discoveredComponents.find((c) => c.type === "page") ?? discoveredComponents[0];
+    if (!comp) return;
+
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+    const target = findNamedNode(tree);
+    if (!target) return;
+
+    // Set display:none visibility
+    const result = await client.callTool({
+      name: "set-visibility",
+      arguments: { componentUuid: comp.uuid, nodeRef: target.uuid, visible: "displayNone" },
+    });
+    expect(result.isError).toBeFalsy();
+    expect(parseResponse(result).newVisibility).toBe("displayNone");
+
+    // Read back and verify
+    const detail = parseResponse(
+      await client.callTool({
+        name: "get-node-details",
+        arguments: { componentUuid: comp.uuid, nodeRef: target.uuid },
+      })
+    );
+    expect(detail.node.visibility).toBe("displayNone");
+
+    // Clean up: restore visibility
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+
+  it("set-data-cond → read back expression → undo → verify removed", async () => {
+    const comp = discoveredComponents.find((c) => c.type === "page") ?? discoveredComponents[0];
+    if (!comp) return;
+
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+    const target = findNamedNode(tree);
+    if (!target) return;
+
+    // Set a data condition
+    const condResult = await client.callTool({
+      name: "set-data-cond",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: target.uuid,
+        condition: "$ctx.user.isLoggedIn",
+      },
+    });
+    expect(condResult.isError).toBeFalsy();
+    const condOutput = parseResponse(condResult);
+    expect(condOutput.success).toBe(true);
+    expect(condOutput.newCondition).toBe("$ctx.user.isLoggedIn");
+
+    // Read back and verify dataCond appears in node details
+    const detail = parseResponse(
+      await client.callTool({
+        name: "get-node-details",
+        arguments: { componentUuid: comp.uuid, nodeRef: target.uuid },
+      })
+    );
+    expect(detail.node.dataCond).toBe("$ctx.user.isLoggedIn");
+    expect(detail.node.visibility).toBeUndefined(); // custom expression, not a visibility state
+
+    // Undo
+    const undoResult = await client.callTool({ name: "undo", arguments: {} });
+    expect(undoResult.isError).toBeFalsy();
+
+    // Verify condition is removed
+    const restoredDetail = parseResponse(
+      await client.callTool({
+        name: "get-node-details",
+        arguments: { componentUuid: comp.uuid, nodeRef: target.uuid },
+      })
+    );
+    expect(restoredDetail.node.dataCond).toBeUndefined();
+  });
+
+  it("set-data-cond null → removes existing condition", async () => {
+    const comp = discoveredComponents.find((c) => c.type === "page") ?? discoveredComponents[0];
+    if (!comp) return;
+
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+    const target = findNamedNode(tree);
+    if (!target) return;
+
+    // Set a condition first
+    await client.callTool({
+      name: "set-data-cond",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: target.uuid,
+        condition: "$ctx.showBanner",
+      },
+    });
+
+    // Now remove it
+    const removeResult = await client.callTool({
+      name: "set-data-cond",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: target.uuid,
+        condition: null,
+      },
+    });
+    expect(removeResult.isError).toBeFalsy();
+    const removeOutput = parseResponse(removeResult);
+    expect(removeOutput.previousCondition).toBe("$ctx.showBanner");
+    expect(removeOutput.newCondition).toBeNull();
+
+    // Verify it's gone
+    const detail = parseResponse(
+      await client.callTool({
+        name: "get-node-details",
+        arguments: { componentUuid: comp.uuid, nodeRef: target.uuid },
+      })
+    );
+    expect(detail.node.dataCond).toBeUndefined();
+
+    // Clean up both operations
+    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+
+  it("set-visibility false → set-visibility true → verify restored", async () => {
+    const comp = discoveredComponents.find((c) => c.type === "page") ?? discoveredComponents[0];
+    if (!comp) return;
+
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+    const target = findNamedNode(tree);
+    if (!target) return;
+
+    // Hide
+    await client.callTool({
+      name: "set-visibility",
+      arguments: { componentUuid: comp.uuid, nodeRef: target.uuid, visible: false },
+    });
+
+    // Show again
+    const showResult = await client.callTool({
+      name: "set-visibility",
+      arguments: { componentUuid: comp.uuid, nodeRef: target.uuid, visible: true },
+    });
+    expect(showResult.isError).toBeFalsy();
+    const showOutput = parseResponse(showResult);
+    expect(showOutput.previousVisibility).toBe("notRendered");
+    expect(showOutput.newVisibility).toBe("visible");
+
+    // Verify visibility is back to default (field absent)
+    const detail = parseResponse(
+      await client.callTool({
+        name: "get-node-details",
+        arguments: { componentUuid: comp.uuid, nodeRef: target.uuid },
+      })
+    );
+    expect(detail.node.visibility).toBeUndefined();
+
+    // Clean up
+    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+});
+
+/** Walk a tree recursively to find a node by UUID. */
+function findNodeByUuid(tree: any, uuid: string): any {
+  if (tree.uuid === uuid) return tree;
+  if (tree.children) {
+    for (const child of tree.children) {
+      const found = findNodeByUuid(child, uuid);
+      if (found) return found;
+    }
+  }
+  return null;
+}

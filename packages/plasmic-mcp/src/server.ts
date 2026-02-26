@@ -56,6 +56,8 @@ import {
   updatePageMeta,
   deleteComponent,
   getValidStylePropertyNames,
+  setVisibility,
+  setDataCond,
 } from "./edit-tools.js";
 import { beginBatch, endBatch, isBatchActive, cancelBatch, cancelBatchWithRollback, getAccumulatedChanges } from "./batch-manager.js";
 import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
@@ -2554,6 +2556,200 @@ export function createServer(): McpServer {
         };
       } catch (err: any) {
         return handleMutationError("deleting component", err);
+      }
+    }
+  );
+
+  // --- set-visibility ---
+  // Controls element visibility per variant: show, hide (not rendered), or
+  // display:none (CSS hidden). Uses dataCond + PLASMIC_DISPLAY_NONE marker
+  // on the VariantSetting to match Studio's internal visibility model.
+  server.tool(
+    "set-visibility",
+    "Set element visibility per variant. Use to hide/show elements for responsive layouts " +
+      "or conditional rendering. visible=true shows element, visible=false removes from render, " +
+      'visible="displayNone" hides via CSS display:none.',
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component containing the node"),
+      nodeRef: z
+        .string()
+        .describe(
+          'Node reference: UUID, name (e.g., "Hero Title"), path (e.g., "HeroSection.Title"), or index (e.g., "#2")'
+        ),
+      visible: z
+        .union([z.boolean(), z.literal("displayNone")])
+        .describe(
+          'Visibility state: true (show), false (not rendered), or "displayNone" (CSS hidden)'
+        ),
+      variant: z
+        .string()
+        .optional()
+        .describe(
+          'Target variant by name (e.g., "Mobile"), UUID, or selector (e.g., ":hover"). Omit for base variant.'
+        ),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe(
+          "When true, shows what would change without persisting. Model is left unchanged."
+        ),
+    },
+    async ({ componentUuid, nodeRef, visible, variant, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            setVisibility(apiClient, componentUuid, nodeRef, visible, variant)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    node: result.nodeName ?? result.nodeUuid,
+                    previousVisibility: result.previousVisibility,
+                    newVisibility: result.newVisibility,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await setVisibility(
+          apiClient,
+          componentUuid,
+          nodeRef,
+          visible,
+          variant
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  node: result.nodeName ?? result.nodeUuid,
+                  previousVisibility: result.previousVisibility,
+                  newVisibility: result.newVisibility,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("setting visibility", err);
+      }
+    }
+  );
+
+  // --- set-data-cond ---
+  // Sets or removes a JavaScript condition expression for conditional rendering.
+  // The condition is evaluated at render time — the element only renders when truthy.
+  // Separate from set-visibility: visibility is a simple tri-state toggle, while
+  // data-cond enables arbitrary JS-based conditional logic.
+  server.tool(
+    "set-data-cond",
+    "Set a data condition expression for conditional rendering on an element. " +
+      'The condition is a JavaScript expression evaluated at render time (e.g., "$ctx.user.isLoggedIn"). ' +
+      "Pass null to remove the condition.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component containing the node"),
+      nodeRef: z
+        .string()
+        .describe(
+          'Node reference: UUID, name (e.g., "Hero Title"), path (e.g., "HeroSection.Title"), or index (e.g., "#2")'
+        ),
+      condition: z
+        .string()
+        .nullable()
+        .describe(
+          'JavaScript condition expression (e.g., "$ctx.showBanner") or null to remove'
+        ),
+      variant: z
+        .string()
+        .optional()
+        .describe(
+          'Target variant by name (e.g., "Mobile"), UUID, or selector (e.g., ":hover"). Omit for base variant.'
+        ),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe(
+          "When true, shows what would change without persisting. Model is left unchanged."
+        ),
+    },
+    async ({ componentUuid, nodeRef, condition, variant, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            setDataCond(
+              apiClient,
+              componentUuid,
+              nodeRef,
+              condition,
+              variant
+            )
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    node: result.nodeName ?? result.nodeUuid,
+                    previousCondition: result.previousCondition,
+                    newCondition: result.newCondition,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await setDataCond(
+          apiClient,
+          componentUuid,
+          nodeRef,
+          condition,
+          variant
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  node: result.nodeName ?? result.nodeUuid,
+                  previousCondition: result.previousCondition,
+                  newCondition: result.newCondition,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("setting data condition", err);
       }
     }
   );

@@ -2209,3 +2209,276 @@ describe("token reference resolution in styles", () => {
     expect(result?.tokenRefs).toEqual({ "padding-top": "Base Spacing" });
   });
 });
+
+// =============================================================================
+// Visibility & data condition output
+//
+// The tree reader surfaces visibility and dataCond fields from VariantSetting.
+// These are structurally important and appear even in summary mode.
+// Visibility is derived from dataCond + the PLASMIC_DISPLAY_NONE internal marker.
+// =============================================================================
+
+describe("visibility and dataCond output", () => {
+  it("returns visibility: notRendered when dataCond code is false", () => {
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        tag: "div",
+        uuid: "hidden-1",
+        name: "HiddenBanner",
+        vsettings: [
+          {
+            rs: { values: {} },
+            attrs: {},
+            dataCond: { _type: "CustomCode", code: "false", fallback: null },
+          },
+        ],
+        children: [],
+      },
+    };
+
+    const result = readComponentTree(component);
+    expect(result?.visibility).toBe("notRendered");
+    expect(result?.dataCond).toBeUndefined();
+  });
+
+  it("returns visibility: displayNone when dataCond is true and display-none marker is set", () => {
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        tag: "div",
+        uuid: "dn-1",
+        vsettings: [
+          {
+            rs: { values: { "plasmic-display-none": "true" } },
+            attrs: {},
+            dataCond: { _type: "CustomCode", code: "true", fallback: null },
+          },
+        ],
+        children: [],
+      },
+    };
+
+    const result = readComponentTree(component);
+    expect(result?.visibility).toBe("displayNone");
+    expect(result?.dataCond).toBeUndefined();
+  });
+
+  it("omits visibility when dataCond is true without display-none marker (explicitly visible)", () => {
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        tag: "div",
+        uuid: "vis-1",
+        vsettings: [
+          {
+            rs: { values: {} },
+            attrs: {},
+            dataCond: { _type: "CustomCode", code: "true", fallback: null },
+          },
+        ],
+        children: [],
+      },
+    };
+
+    const result = readComponentTree(component);
+    expect(result?.visibility).toBeUndefined();
+    expect(result?.dataCond).toBeUndefined();
+  });
+
+  it("returns dataCond when custom expression is set", () => {
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        tag: "div",
+        uuid: "cond-1",
+        name: "ConditionalBanner",
+        vsettings: [
+          {
+            rs: { values: {} },
+            attrs: {},
+            dataCond: {
+              _type: "CustomCode",
+              code: "$ctx.showBanner",
+              fallback: null,
+            },
+          },
+        ],
+        children: [],
+      },
+    };
+
+    const result = readComponentTree(component);
+    expect(result?.visibility).toBeUndefined();
+    expect(result?.dataCond).toBe("$ctx.showBanner");
+  });
+
+  it("returns dataCond for ObjectPath expressions", () => {
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        tag: "div",
+        uuid: "op-1",
+        vsettings: [
+          {
+            rs: { values: {} },
+            attrs: {},
+            dataCond: {
+              _type: "ObjectPath",
+              path: ["$ctx", "user", "isLoggedIn"],
+              fallback: null,
+            },
+          },
+        ],
+        children: [],
+      },
+    };
+
+    const result = readComponentTree(component);
+    expect(result?.dataCond).toBe("$ctx.user.isLoggedIn");
+  });
+
+  it("omits visibility and dataCond when dataCond is null/undefined", () => {
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        tag: "div",
+        uuid: "def-1",
+        vsettings: [
+          {
+            rs: { values: { display: "flex" } },
+            attrs: {},
+            dataCond: null,
+          },
+        ],
+        children: [],
+      },
+    };
+
+    const result = readComponentTree(component);
+    expect(result?.visibility).toBeUndefined();
+    expect(result?.dataCond).toBeUndefined();
+  });
+
+  it("shows visibility in summary mode", () => {
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        tag: "div",
+        uuid: "sum-1",
+        vsettings: [
+          {
+            rs: { values: {} },
+            attrs: {},
+            dataCond: { _type: "CustomCode", code: "false", fallback: null },
+          },
+        ],
+        children: [],
+      },
+    };
+
+    const result = readComponentSummary(component);
+    expect(result?.visibility).toBe("notRendered");
+  });
+
+  it("shows dataCond in readNodeDetails", () => {
+    const tplNode = {
+      _type: "TplTag",
+      tag: "div",
+      uuid: "det-1",
+      name: "ConditionalBox",
+      vsettings: [
+        {
+          rs: { values: {} },
+          attrs: {},
+          dataCond: {
+            _type: "CustomCode",
+            code: "$ctx.isActive",
+            fallback: null,
+          },
+        },
+      ],
+      children: [],
+    };
+
+    const result = readNodeDetails(tplNode);
+    expect(result.dataCond).toBe("$ctx.isActive");
+    expect(result.visibility).toBeUndefined();
+  });
+
+  it("surfaces visibility on TplComponent nodes", () => {
+    const component = {
+      tplTree: {
+        _type: "TplComponent",
+        uuid: "comp-vis-1",
+        name: "HiddenWidget",
+        component: { name: "Widget", uuid: "widget-def" },
+        vsettings: [
+          {
+            args: [],
+            dataCond: { _type: "CustomCode", code: "false", fallback: null },
+            rs: { values: {} },
+          },
+        ],
+      },
+    };
+
+    const result = readComponentTree(component);
+    expect(result?.visibility).toBe("notRendered");
+  });
+
+  it("surfaces dataCond on TplComponent nodes", () => {
+    const component = {
+      tplTree: {
+        _type: "TplComponent",
+        uuid: "comp-cond-1",
+        component: { name: "Widget", uuid: "widget-def" },
+        vsettings: [
+          {
+            args: [],
+            dataCond: {
+              _type: "CustomCode",
+              code: "$ctx.showWidget",
+              fallback: null,
+            },
+            rs: { values: {} },
+          },
+        ],
+      },
+    };
+
+    const result = readComponentTree(component);
+    expect(result?.dataCond).toBe("$ctx.showWidget");
+  });
+
+  it("filters plasmic-display-none from styles output", () => {
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        tag: "div",
+        uuid: "filter-1",
+        vsettings: [
+          {
+            rs: {
+              values: {
+                color: "red",
+                "plasmic-display-none": "true",
+              },
+            },
+            attrs: {},
+            dataCond: { _type: "CustomCode", code: "true", fallback: null },
+          },
+        ],
+        children: [],
+      },
+    };
+
+    const result = readComponentTree(component);
+    // plasmic-display-none should NOT appear in styles
+    expect(result?.styles?.["plasmic-display-none"]).toBeUndefined();
+    // Real styles should still be present
+    expect(result?.styles?.color).toBe("red");
+    // But visibility state should be derived from it
+    expect(result?.visibility).toBe("displayNone");
+  });
+});

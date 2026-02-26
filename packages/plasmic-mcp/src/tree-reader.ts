@@ -197,6 +197,11 @@ function readTplTag(
     node.name = tpl.name;
   }
 
+  // Visibility and data condition — structurally important, shown even in summary mode
+  const visInfo = extractVisibilityInfo(vs, rs);
+  if (visInfo.visibility) node.visibility = visInfo.visibility;
+  if (visInfo.dataCond) node.dataCond = visInfo.dataCond;
+
   // In summary mode, skip styles, text, and attrs
   if (!options?.summaryOnly) {
     // CSS styles from the base variant's RuleSet
@@ -206,6 +211,8 @@ function readTplTag(
       typeof rs.values === "object"
     ) {
       const values = { ...rs.values };
+      // Filter internal visibility marker — not a real CSS property
+      delete values["plasmic-display-none"];
       if (Object.keys(values).length > 0) {
         node.styles = values;
 
@@ -296,6 +303,12 @@ function readTplComponent(
 
   // Separate slot args (RenderExpr) from non-slot prop args
   const vs = tpl.vsettings?.[0];
+  const compRs = vs?.rs;
+
+  // Visibility and data condition — structurally important, shown even in summary mode
+  const compVisInfo = extractVisibilityInfo(vs, compRs);
+  if (compVisInfo.visibility) node.visibility = compVisInfo.visibility;
+  if (compVisInfo.dataCond) node.dataCond = compVisInfo.dataCond;
   const slotArgs: any[] = [];
   const nonSlotArgs: any[] = [];
 
@@ -503,6 +516,43 @@ function resolveStyleTokenRefs(
 // ---------------------------------------------------------------------------
 // Internal: Style and expression helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Extract visibility and data condition info from a variant setting.
+ * Visibility is derived from dataCond and the PLASMIC_DISPLAY_NONE internal marker:
+ *   - dataCond = code("false") → notRendered (element removed from DOM)
+ *   - dataCond = code("true") + PLASMIC_DISPLAY_NONE → displayNone (CSS hidden)
+ *   - dataCond = custom expression → dataCond field with expression string
+ *   - null/undefined dataCond → visible (omitted from output)
+ */
+function extractVisibilityInfo(
+  vs: any,
+  rs: any
+): { visibility?: "notRendered" | "displayNone"; dataCond?: string } {
+  if (!vs?.dataCond) return {};
+
+  if (isKnownCustomCode(vs.dataCond)) {
+    const code = vs.dataCond.code;
+    if (code === "false") {
+      return { visibility: "notRendered" };
+    }
+    if (code === "true") {
+      if (rs?.values?.["plasmic-display-none"] === "true") {
+        return { visibility: "displayNone" };
+      }
+      // Explicitly visible (no-op, same as default)
+      return {};
+    }
+    // Custom condition expression
+    return { dataCond: code };
+  }
+
+  if (isKnownObjectPath(vs.dataCond)) {
+    return { dataCond: vs.dataCond.path.join(".") };
+  }
+
+  return {};
+}
 
 function deriveLayoutType(
   styles: Record<string, string>

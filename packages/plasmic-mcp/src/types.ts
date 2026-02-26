@@ -226,6 +226,10 @@ export interface TreeNode {
   fallback?: string;
   attrs?: Record<string, unknown>;
   layoutType?: "vbox" | "hbox" | "box";
+  /** Element visibility state. Only present when element is not in default visible state. */
+  visibility?: "notRendered" | "displayNone";
+  /** Data condition expression for conditional rendering. Only present when a custom condition is set. */
+  dataCond?: string;
   children?: TreeNode[];
   /** Number of immediate children. Present in summary mode and when depth-truncated. */
   childCount?: number;

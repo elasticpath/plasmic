@@ -36,6 +36,8 @@ import {
   validateStyleProperties,
   getValidStylePropertyNames,
   resolveTokenReferences,
+  setVisibility,
+  setDataCond,
 } from "../edit-tools";
 import { setSession, clearSession } from "../session";
 import { initChangeTracker, disposeChangeTracker } from "../change-tracker";
@@ -5366,5 +5368,412 @@ describe("cloneChild", () => {
     // Original is unchanged
     expect(child.vsettings[0].text.text).toBe("Original text");
     expect(child.vsettings[0].rs.values.color).toBe("blue");
+  });
+});
+
+// =============================================================================
+// setVisibility — element visibility per variant
+//
+// Visibility is stored via dataCond (CustomCode) and the internal
+// "plasmic-display-none" marker on the RuleSet. Three states:
+//   visible (true): clear both fields
+//   notRendered (false): dataCond = code("false")
+//   displayNone: dataCond = code("true") + display-none marker
+// =============================================================================
+
+describe("setVisibility", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    clearNodeCache();
+    api = mockApiClient();
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+    mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
+  });
+
+  afterEach(() => {
+    disposeChangeTracker();
+    clearSession();
+    vi.restoreAllMocks();
+  });
+
+  function setupSession(component: any) {
+    const session = makeSession({ site: { components: [component] } });
+    setSession(session);
+    initChangeTracker(session.site);
+    return session;
+  }
+
+  it("hides element (notRendered)", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Banner" });
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setVisibility(api, "comp-1", "Banner", false);
+
+    expect(result.newVisibility).toBe("notRendered");
+    expect(result.previousVisibility).toBe("visible");
+    expect(result.nodeName).toBe("Banner");
+    expect(result.nodeUuid).toBe("node-1");
+    expect(node.vsettings[0].dataCond._type).toBe("CustomCode");
+    expect(node.vsettings[0].dataCond.code).toBe("false");
+    expect(result.save.revisionNum).toBe(11);
+  });
+
+  it("shows element (visible) from hidden state", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Banner" });
+    node.vsettings[0].dataCond = { _type: "CustomCode", code: "false", fallback: null };
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setVisibility(api, "comp-1", "Banner", true);
+
+    expect(result.newVisibility).toBe("visible");
+    expect(result.previousVisibility).toBe("notRendered");
+    expect(node.vsettings[0].dataCond).toBeNull();
+  });
+
+  it("hides with displayNone", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Banner" });
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setVisibility(api, "comp-1", "Banner", "displayNone");
+
+    expect(result.newVisibility).toBe("displayNone");
+    expect(node.vsettings[0].dataCond._type).toBe("CustomCode");
+    expect(node.vsettings[0].dataCond.code).toBe("true");
+    expect(node.vsettings[0].rs.values["plasmic-display-none"]).toBe("true");
+  });
+
+  it("clears display-none marker when switching from displayNone to visible", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Banner" });
+    node.vsettings[0].dataCond = { _type: "CustomCode", code: "true", fallback: null };
+    node.vsettings[0].rs.values["plasmic-display-none"] = "true";
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setVisibility(api, "comp-1", "Banner", true);
+
+    expect(result.previousVisibility).toBe("displayNone");
+    expect(result.newVisibility).toBe("visible");
+    expect(node.vsettings[0].dataCond).toBeNull();
+    expect(node.vsettings[0].rs.values["plasmic-display-none"]).toBeUndefined();
+  });
+
+  it("clears display-none marker when switching from displayNone to notRendered", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Banner" });
+    node.vsettings[0].dataCond = { _type: "CustomCode", code: "true", fallback: null };
+    node.vsettings[0].rs.values["plasmic-display-none"] = "true";
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    await setVisibility(api, "comp-1", "Banner", false);
+
+    expect(node.vsettings[0].dataCond.code).toBe("false");
+    expect(node.vsettings[0].rs.values["plasmic-display-none"]).toBeUndefined();
+  });
+
+  it("works on TplComponent nodes", async () => {
+    const compNode: any = {
+      _type: "TplComponent",
+      uuid: "comp-node-1",
+      name: "Widget",
+      component: { name: "Widget", uuid: "widget-def" },
+      vsettings: [{ rs: { values: {} }, args: [] }],
+    };
+    const root = mkTag({ uuid: "root-1", children: [compNode] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setVisibility(api, "comp-1", "Widget", false);
+
+    expect(result.newVisibility).toBe("notRendered");
+    expect(compNode.vsettings[0].dataCond.code).toBe("false");
+  });
+
+  it("rejects TplSlot nodes", async () => {
+    const slotNode: any = {
+      _type: "TplSlot",
+      uuid: "slot-1",
+      name: "content",
+      param: { variable: { name: "children" } },
+      defaultContents: [],
+    };
+    const root = mkTag({ uuid: "root-1", children: [slotNode] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    setupSession(comp);
+
+    await expect(
+      setVisibility(api, "comp-1", "content", false)
+    ).rejects.toThrow(/not a TplTag or TplComponent/);
+  });
+
+  it("supports variant-aware visibility", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Banner" });
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const mobileVariant = {
+      uuid: "mobile-v",
+      name: "Mobile",
+      selectors: [],
+    };
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).variantGroups = [{ variants: [mobileVariant] }];
+    (comp as any).variants = [];
+
+    // Create a separate variant setting for mobile
+    const mobileVs = { rs: { values: {} }, variants: [mobileVariant] };
+    mockEnsureVariantSetting.mockReturnValue(mobileVs);
+    const session = makeSession({
+      site: {
+        components: [comp],
+        globalVariantGroups: [],
+      } as any,
+    });
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await setVisibility(api, "comp-1", "Banner", false, "Mobile");
+
+    expect(result.newVisibility).toBe("notRendered");
+    expect(mobileVs.rs.values["plasmic-display-none"]).toBeUndefined();
+    // The mobileVs should have dataCond set
+    expect((mobileVs as any).dataCond?.code).toBe("false");
+  });
+
+  it("captures conditional as previous visibility when custom dataCond exists", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Banner" });
+    node.vsettings[0].dataCond = { _type: "CustomCode", code: "$ctx.isActive", fallback: null };
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setVisibility(api, "comp-1", "Banner", false);
+
+    expect(result.previousVisibility).toBe("conditional");
+  });
+
+  it("save is called and revision returned", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Item" });
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setVisibility(api, "comp-1", "Item", false);
+
+    expect(api.saveRevision).toHaveBeenCalledTimes(1);
+    expect(result.save.revisionNum).toBe(11);
+  });
+});
+
+// =============================================================================
+// setDataCond — conditional rendering via JavaScript expressions
+//
+// Sets or clears a data condition expression on an element's VariantSetting.
+// The condition is a JS expression evaluated at render time; the element only
+// renders when the expression is truthy. Clearing (null) makes the element
+// always render.
+// =============================================================================
+
+describe("setDataCond", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    clearNodeCache();
+    api = mockApiClient();
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+    mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
+  });
+
+  afterEach(() => {
+    disposeChangeTracker();
+    clearSession();
+    vi.restoreAllMocks();
+  });
+
+  function setupSession(component: any) {
+    const session = makeSession({ site: { components: [component] } });
+    setSession(session);
+    initChangeTracker(session.site);
+    return session;
+  }
+
+  it("sets condition expression", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Banner" });
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setDataCond(api, "comp-1", "Banner", "$ctx.showBanner");
+
+    expect(result.newCondition).toBe("$ctx.showBanner");
+    expect(result.previousCondition).toBeNull();
+    expect(result.nodeName).toBe("Banner");
+    expect(result.nodeUuid).toBe("node-1");
+    expect(node.vsettings[0].dataCond._type).toBe("CustomCode");
+    expect(node.vsettings[0].dataCond.code).toBe("$ctx.showBanner");
+    expect(result.save.revisionNum).toBe(11);
+  });
+
+  it("removes condition with null", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Banner" });
+    node.vsettings[0].dataCond = { _type: "CustomCode", code: "$ctx.showBanner", fallback: null };
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setDataCond(api, "comp-1", "Banner", null);
+
+    expect(result.newCondition).toBeNull();
+    expect(result.previousCondition).toBe("$ctx.showBanner");
+    expect(node.vsettings[0].dataCond).toBeNull();
+  });
+
+  it("captures ObjectPath as previous condition", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Banner" });
+    node.vsettings[0].dataCond = {
+      _type: "ObjectPath",
+      path: ["$ctx", "user", "isLoggedIn"],
+      fallback: null,
+    };
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setDataCond(api, "comp-1", "Banner", "$ctx.isActive");
+
+    expect(result.previousCondition).toBe("$ctx.user.isLoggedIn");
+  });
+
+  it("clears display-none marker when setting condition", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Banner" });
+    node.vsettings[0].dataCond = { _type: "CustomCode", code: "true", fallback: null };
+    node.vsettings[0].rs.values["plasmic-display-none"] = "true";
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    await setDataCond(api, "comp-1", "Banner", "$ctx.showBanner");
+
+    expect(node.vsettings[0].rs.values["plasmic-display-none"]).toBeUndefined();
+    expect(node.vsettings[0].dataCond.code).toBe("$ctx.showBanner");
+  });
+
+  it("clears display-none marker when removing condition", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Banner" });
+    node.vsettings[0].dataCond = { _type: "CustomCode", code: "true", fallback: null };
+    node.vsettings[0].rs.values["plasmic-display-none"] = "true";
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    await setDataCond(api, "comp-1", "Banner", null);
+
+    expect(node.vsettings[0].rs.values["plasmic-display-none"]).toBeUndefined();
+    expect(node.vsettings[0].dataCond).toBeNull();
+  });
+
+  it("works on TplComponent nodes", async () => {
+    const compNode: any = {
+      _type: "TplComponent",
+      uuid: "comp-node-1",
+      name: "Widget",
+      component: { name: "Widget", uuid: "widget-def" },
+      vsettings: [{ rs: { values: {} }, args: [] }],
+    };
+    const root = mkTag({ uuid: "root-1", children: [compNode] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setDataCond(api, "comp-1", "Widget", "$ctx.showWidget");
+
+    expect(result.newCondition).toBe("$ctx.showWidget");
+    expect(compNode.vsettings[0].dataCond.code).toBe("$ctx.showWidget");
+  });
+
+  it("rejects TplSlot nodes", async () => {
+    const slotNode: any = {
+      _type: "TplSlot",
+      uuid: "slot-1",
+      name: "content",
+      param: { variable: { name: "children" } },
+      defaultContents: [],
+    };
+    const root = mkTag({ uuid: "root-1", children: [slotNode] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    setupSession(comp);
+
+    await expect(
+      setDataCond(api, "comp-1", "content", "$ctx.show")
+    ).rejects.toThrow(/not a TplTag or TplComponent/);
+  });
+
+  it("supports variant-aware data condition", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Banner" });
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const mobileVariant = {
+      uuid: "mobile-v",
+      name: "Mobile",
+      selectors: [],
+    };
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).variantGroups = [{ variants: [mobileVariant] }];
+    (comp as any).variants = [];
+
+    const mobileVs = { rs: { values: {} }, variants: [mobileVariant] };
+    mockEnsureVariantSetting.mockReturnValue(mobileVs);
+    const session = makeSession({
+      site: {
+        components: [comp],
+        globalVariantGroups: [],
+      } as any,
+    });
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await setDataCond(
+      api, "comp-1", "Banner", "$ctx.isMobileUser", "Mobile"
+    );
+
+    expect(result.newCondition).toBe("$ctx.isMobileUser");
+    expect((mobileVs as any).dataCond?.code).toBe("$ctx.isMobileUser");
+  });
+
+  it("save is called and revision returned", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Item" });
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setDataCond(api, "comp-1", "Item", "$ctx.show");
+
+    expect(api.saveRevision).toHaveBeenCalledTimes(1);
+    expect(result.save.revisionNum).toBe(11);
   });
 });
