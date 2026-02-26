@@ -3,10 +3,10 @@
 > **Goal**: Create Claude Code skills and workflows that can interact with Plasmic Studio
 > programmatically to create fully-featured pages from the Claude Code terminal.
 >
-> **Current state**: 8 STRAP domain tools (consolidating 97 actions), 6 Claude Code skills (STRAP calling convention), 1063 tests (953 unit + 110 integration), 19 test files.
+> **Current state**: 9 STRAP domain tools (consolidating 98 actions), 6 Claude Code skills (STRAP calling convention), 1073 tests (961 unit + 112 integration), 19 test files.
 > Zero TODOs/FIXMEs/skipped tests. Zero tsc errors. All code quality items complete.
 >
-> **Last verified**: 2026-02-26 — CQ-5/CQ-6 test gaps closed. CQ-8 wab.d.ts type declarations complete. All specs have checked acceptance criteria.
+> **Last verified**: 2026-02-26 — Extract to Component implemented (5.1 complete). All specs fully implemented.
 
 ---
 
@@ -80,16 +80,15 @@ Key file sizes: `server.ts` (~4,600 lines after STRAP consolidation), `edit-tool
 
 ## Tier 5 — Remaining Features
 
-### 5.1 Remaining Features Bundle — IMPLEMENTED (7 of 8; Extract to Component skipped)
+### 5.1 Remaining Features Bundle — IMPLEMENTED (8 of 8)
 - **Spec**: `specs/gap-remaining-features.md`
-- Sub-features done: Reorder Children, Global Variant Groups, Convert Page/Component, Data Tokens, Code Component Meta, Custom Functions, A/B Testing (Splits)
-- Sub-feature skipped: Extract to Component (complex 13-step process)
+- Sub-features done: Reorder Children, Global Variant Groups, Convert Page/Component, Data Tokens, Code Component Meta, Custom Functions, A/B Testing (Splits), Extract to Component
 
 ---
 
 ## Tier 6 — Architecture & Infrastructure
 
-### 6.1 STRAP Consolidation (97 Tools → 8 Domain Tools) — IMPLEMENTED
+### 6.1 STRAP Consolidation (98 Tools → 8 Domain Tools) — IMPLEMENTED
 - **Spec**: `specs/strap-consolidation.md`
 
 ### 6.2 Test Restructure — IMPLEMENTED
@@ -100,7 +99,7 @@ Key file sizes: `server.ts` (~4,600 lines after STRAP consolidation), `edit-tool
 ## Tier 7 — Skills Updates
 
 ### 7.1 Update Skills for New Features (Pre-STRAP) — IMPLEMENTED
-- All 6 skills updated to cover all 97 tools
+- All 6 skills updated to cover all 98 tools
 
 ### 7.2 Rewrite Skills for STRAP (Post-Consolidation) — IMPLEMENTED
 - All 6 skills rewritten to use `domain({ action: "..." })` calling convention

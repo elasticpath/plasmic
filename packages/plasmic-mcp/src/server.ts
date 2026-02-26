@@ -119,6 +119,7 @@ import {
   renameAsset,
   removeAsset,
   setImage,
+  extractToComponent,
 } from "./edit-tools.js";
 import { beginBatch, endBatch, isBatchActive, cancelBatch, cancelBatchWithRollback, getAccumulatedChanges } from "./batch-manager.js";
 import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
@@ -945,20 +946,21 @@ export function createServer(): McpServer {
   server.tool(
     "component",
     "Component and page lifecycle, props, and states.\n" +
-      "Actions: list, create-page, create, clone, rename, delete, convert-to-page, convert-to-component, update-page-meta, list-props, add-prop, update-prop, remove-prop, list-states, add-state, update-state, remove-state.\n" +
+      "Actions: list, create-page, create, clone, rename, delete, extract, convert-to-page, convert-to-component, update-page-meta, list-props, add-prop, update-prop, remove-prop, list-states, add-state, update-state, remove-state.\n" +
       "- list: List all pages and components\n" +
       "- create-page: Create a new page with PlasmicElement tree\n" +
       "- create: Create a new reusable component\n" +
       "- clone: Duplicate an existing page or component\n" +
       "- rename: Rename a page or component\n" +
       "- delete: Delete a page or component\n" +
+      "- extract: Extract a subtree into a new component, replacing it with a component instance\n" +
       "- convert-to-page/convert-to-component: Convert between page and component\n" +
       "- update-page-meta: Set page SEO metadata\n" +
       "- list-props/add-prop/update-prop/remove-prop: Manage component props\n" +
       "- list-states/add-state/update-state/remove-state: Manage component states",
     {
       action: z.enum([
-        "list", "create-page", "create", "clone", "rename", "delete",
+        "list", "create-page", "create", "clone", "rename", "delete", "extract",
         "convert-to-page", "convert-to-component", "update-page-meta",
         "list-props", "add-prop", "update-prop", "remove-prop",
         "list-states", "add-state", "update-state", "remove-state",
@@ -971,6 +973,7 @@ export function createServer(): McpServer {
       newName: z.string().optional().describe("New name for rename"),
       newPath: z.string().optional().describe("New URL path for rename"),
       force: z.boolean().optional().describe("Force deletion even with references"),
+      nodeRef: z.string().optional().describe("Node reference for extract (UUID, name, path, or index)"),
       title: z.string().optional().describe("Page title for SEO"),
       description: z.string().optional().describe("Page description for SEO"),
       openGraphImage: z.string().optional().describe("Open Graph image URL"),
@@ -1304,6 +1307,60 @@ export function createServer(): McpServer {
                       deletedUuid: result.deletedUuid,
                       revision: result.save.revisionNum,
                       message: `Deleted "${result.deletedName}"`,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "extract": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "component.extract");
+            const nRef = requireParam(params.nodeRef, "nodeRef", "component.extract");
+            const eName = requireParam(params.name, "name", "component.extract");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                extractToComponent(apiClient, cuuid, nRef, eName)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        newComponentUuid: result.newComponentUuid,
+                        newComponentName: result.newComponentName,
+                        instanceUuid: result.instanceUuid,
+                        containingComponentUuid: result.containingComponentUuid,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await extractToComponent(apiClient, cuuid, nRef, eName);
+            clearNodeCache();
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      newComponentUuid: result.newComponentUuid,
+                      newComponentName: result.newComponentName,
+                      instanceUuid: result.instanceUuid,
+                      containingComponentUuid: result.containingComponentUuid,
+                      revision: result.save.revisionNum,
+                      message: `Extracted "${result.newComponentName}" from component`,
                     },
                     null,
                     2
@@ -1821,7 +1878,7 @@ export function createServer(): McpServer {
             throw new Error(`Unknown action '${action}' for component tool.`);
         }
       } catch (err: any) {
-        if (["rename", "delete", "convert-to-page", "convert-to-component", "update-page-meta",
+        if (["rename", "delete", "extract", "convert-to-page", "convert-to-component", "update-page-meta",
              "add-prop", "update-prop", "remove-prop", "add-state", "update-state", "remove-state"].includes(action)) {
           return handleMutationError(`component.${action}`, err);
         }

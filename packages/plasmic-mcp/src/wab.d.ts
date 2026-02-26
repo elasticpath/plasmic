@@ -846,6 +846,22 @@ declare module "@/wab/shared/TplMgr" {
     renameImageAsset(asset: any, name: string): void;
     /** Remove an image asset and clean up all references. */
     removeImageAsset(asset: any): void;
+    /** Add a component to the site and set up arenas.
+     *  Handles sub-components, arena creation, and MobX observation. */
+    attachComponent(
+      component: any,
+      originalComponent?: any,
+      originalComponentSite?: any
+    ): void;
+    /** Get a unique component name, deduplicating with suffix if needed. */
+    getUniqueComponentName(name?: string): string;
+    /** Check if a TplNode can be extracted to a new component.
+     *  Returns false for root nodes, columns, and nodes inside text. */
+    canExtractComponent(tpl: any): boolean;
+    /** Remove a state from a component's states array and clean up params. */
+    removeState(component: any, state: any): void;
+    /** Attempt to remove a variant; no-op if the variant cannot be removed. */
+    tryRemoveVariant(variant: any, component: any): void;
   }
 }
 
@@ -880,6 +896,29 @@ declare module "@/wab/shared/Variants" {
 
   /** Get the base variant for a component (component.variants[0]). */
   export function getBaseVariant(component: any): any;
+}
+
+declare module "@/wab/shared/core/components" {
+  /**
+   * Extract a subtree from a component into a new reusable component.
+   * Replaces the original subtree with a TplComponent instance that
+   * references the newly created component.
+   *
+   * Returns the TplComponent instance (replacement node). The new
+   * Component is available at `result.component`.
+   *
+   * After calling, you must call `tplMgr.attachComponent(result.component)`
+   * to register the new component with the site.
+   */
+  export function extractComponent(opts: {
+    site: any;
+    name: string;
+    tpl: any;
+    containingComponent: any;
+    resurfaceParams?: boolean;
+    tplMgr: any;
+    getCanvasEnvForTpl: (node: any) => any;
+  }): any;
 }
 
 // --- External modules without type declarations ---

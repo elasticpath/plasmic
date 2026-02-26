@@ -1,7 +1,7 @@
 /**
  * Unit tests for the component domain.
  *
- * Covers: renameComponent, updatePageMeta, deleteComponent,
+ * Covers: renameComponent, updatePageMeta, deleteComponent, extractToComponent,
  * listProps, addProp, removeProp, updateProp,
  * listStates, addState, removeState, updateState,
  * convertToPage, convertToComponent.
@@ -15,6 +15,7 @@ import {
   renameComponent,
   updatePageMeta,
   deleteComponent,
+  extractToComponent,
   listProps,
   addProp,
   removeProp,
@@ -39,7 +40,11 @@ import {
   mockConvertComponentToPage,
   mockConvertPageToComponent,
   mockChangePagePath,
+  mockAttachComponent,
+  mockGetUniqueComponentName,
+  mockCanExtractComponent,
 } from "../__mocks__/wab-tpl-mgr";
+import { mockExtractComponent } from "../__mocks__/wab-components";
 import { mockApiClient, makeSession, mkTag, mkComponent } from "./test-helpers";
 
 // =============================================================================
@@ -1632,5 +1637,179 @@ describe("convertToComponent", () => {
     initChangeTracker(session.site);
 
     await expect(convertToComponent(api, "comp1")).rejects.toThrow(/already a component/);
+  });
+});
+
+// =============================================================================
+// Extract to Component
+// =============================================================================
+
+describe("extractToComponent", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    clearNodeCache();
+
+    api = mockApiClient();
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+    mockWithRecording.mockReturnValue({
+      changes: [],
+      newInsts: [],
+      removedInsts: [],
+    });
+    // Default: allow extraction (vi.clearAllMocks resets implementations)
+    mockCanExtractComponent.mockReturnValue(true);
+    mockGetUniqueComponentName.mockImplementation((name?: string) => name ?? "Unnamed Component");
+  });
+  afterEach(() => { clearSession(); disposeChangeTracker(); clearNodeCache(); });
+
+  function setupSession(component: any) {
+    const session = makeSession({
+      site: { components: [component] },
+    });
+    setSession(session);
+    initChangeTracker(session.site);
+    return session;
+  }
+
+  it("extracts a child node into a new component", async () => {
+    const child = mkTag({ uuid: "child-1", name: "HeroSection" });
+    const root = mkTag({ uuid: "root-1", name: "Root", children: [child] });
+    child.parent = root;
+    const comp = mkComponent({ uuid: "comp-1", name: "Page", tplTree: root });
+    setupSession(comp);
+
+    // Mock extractComponent to return a TplComponent with a new component
+    const newComp = { uuid: "new-comp-uuid", name: "HeroSection", params: [], states: [] };
+    const tplComponentInstance = {
+      _type: "TplComponent",
+      uuid: "instance-uuid",
+      component: newComp,
+      vsettings: [],
+    };
+    mockExtractComponent.mockReturnValue(tplComponentInstance);
+
+    const result = await extractToComponent(api, "comp-1", "child-1", "HeroSection");
+
+    expect(mockExtractComponent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        site: expect.any(Object),
+        name: "HeroSection",
+        tpl: child,
+        containingComponent: comp,
+        resurfaceParams: false,
+      })
+    );
+    expect(mockAttachComponent.mock.calls[0][0]).toBe(newComp);
+    expect(result.newComponentUuid).toBe("new-comp-uuid");
+    expect(result.newComponentName).toBe("HeroSection");
+    expect(result.instanceUuid).toBe("instance-uuid");
+    expect(result.containingComponentUuid).toBe("comp-1");
+  });
+
+  it("saves changes to the server", async () => {
+    const child = mkTag({ uuid: "child-1", name: "Card" });
+    const root = mkTag({ uuid: "root-1", name: "Root", children: [child] });
+    child.parent = root;
+    const comp = mkComponent({ uuid: "comp-1", name: "Page", tplTree: root });
+    setupSession(comp);
+
+    const newComp = { uuid: "nc-uuid", name: "Card", params: [], states: [] };
+    mockExtractComponent.mockReturnValue({
+      _type: "TplComponent", uuid: "inst-uuid", component: newComp, vsettings: [],
+    });
+
+    const result = await extractToComponent(api, "comp-1", "child-1", "Card");
+
+    expect(api.saveRevision).toHaveBeenCalledTimes(1);
+    expect(result.save.revisionNum).toBe(11);
+  });
+
+  it("uses getUniqueComponentName for deduplication", async () => {
+    const child = mkTag({ uuid: "child-1", name: "Section" });
+    const root = mkTag({ uuid: "root-1", children: [child] });
+    child.parent = root;
+    const comp = mkComponent({ uuid: "comp-1", name: "Page", tplTree: root });
+    setupSession(comp);
+
+    mockGetUniqueComponentName.mockReturnValue("Section 2");
+    const newComp = { uuid: "nc-uuid", name: "Section 2", params: [], states: [] };
+    mockExtractComponent.mockReturnValue({
+      _type: "TplComponent", uuid: "inst-uuid", component: newComp, vsettings: [],
+    });
+
+    const result = await extractToComponent(api, "comp-1", "child-1", "Section");
+
+    expect(mockGetUniqueComponentName).toHaveBeenCalledWith("Section");
+    expect(mockExtractComponent).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Section 2" })
+    );
+    expect(result.newComponentName).toBe("Section 2");
+  });
+
+  it("throws for unknown component UUID", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    setupSession(comp);
+
+    await expect(
+      extractToComponent(api, "nonexistent", "child-1", "Foo")
+    ).rejects.toThrow("not found");
+  });
+
+  it("throws for unknown node reference", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", name: "Page", tplTree: root });
+    setupSession(comp);
+
+    await expect(
+      extractToComponent(api, "comp-1", "nonexistent-node", "Foo")
+    ).rejects.toThrow("not found");
+  });
+
+  it("throws when trying to extract the root node", async () => {
+    const root = mkTag({ uuid: "root-1", name: "Root" });
+    const comp = mkComponent({ uuid: "comp-1", name: "Page", tplTree: root });
+    setupSession(comp);
+
+    await expect(
+      extractToComponent(api, "comp-1", "root-1", "Foo")
+    ).rejects.toThrow(/root element/);
+  });
+
+  it("throws when canExtractComponent returns false", async () => {
+    const child = mkTag({ uuid: "child-1", name: "Column" });
+    const root = mkTag({ uuid: "root-1", children: [child] });
+    child.parent = root;
+    const comp = mkComponent({ uuid: "comp-1", name: "Page", tplTree: root });
+    setupSession(comp);
+
+    mockCanExtractComponent.mockReturnValue(false);
+
+    await expect(
+      extractToComponent(api, "comp-1", "child-1", "Foo")
+    ).rejects.toThrow(/grid column|text element/);
+  });
+
+  it("passes getCanvasEnvForTpl as () => undefined", async () => {
+    const child = mkTag({ uuid: "child-1", name: "Section" });
+    const root = mkTag({ uuid: "root-1", children: [child] });
+    child.parent = root;
+    const comp = mkComponent({ uuid: "comp-1", name: "Page", tplTree: root });
+    setupSession(comp);
+
+    const newComp = { uuid: "nc-uuid", name: "Section", params: [], states: [] };
+    mockExtractComponent.mockReturnValue({
+      _type: "TplComponent", uuid: "inst-uuid", component: newComp, vsettings: [],
+    });
+
+    await extractToComponent(api, "comp-1", "child-1", "Section");
+
+    const callArgs = mockExtractComponent.mock.calls[0][0];
+    expect(callArgs.getCanvasEnvForTpl).toBeInstanceOf(Function);
+    expect(callArgs.getCanvasEnvForTpl({})).toBeUndefined();
   });
 });

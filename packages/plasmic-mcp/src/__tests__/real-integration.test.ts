@@ -4872,6 +4872,97 @@ describe("component.clone", () => {
   });
 });
 
+describe("component.extract", () => {
+  it("extracts a child node into a new component", async () => {
+    const comp = discoveredComponents[0];
+
+    // Get the component tree to find a child node to extract
+    const treeRaw = await client.callTool({
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
+    });
+    const treeResult = parseResponse(treeRaw);
+    const tree = treeResult.tree;
+
+    // Find any non-root child node to extract (may or may not have a name)
+    function findExtractableChild(node: any): { uuid: string } | null {
+      if (node.children) {
+        for (const child of node.children) {
+          if (child.uuid && child.type === "tag") {
+            return { uuid: child.uuid };
+          }
+        }
+        for (const child of node.children) {
+          const found = findExtractableChild(child);
+          if (found) return found;
+        }
+      }
+      return null;
+    }
+    const childNode = findExtractableChild(tree);
+    expect(childNode).toBeTruthy();
+
+    const raw = await client.callTool({
+      name: "component",
+      arguments: {
+        action: "extract",
+        componentUuid: comp.uuid,
+        nodeRef: childNode!.uuid,
+        name: "ExtractedSection",
+      },
+    });
+    const result = parseResponse(raw);
+    expect(raw.isError).toBeFalsy();
+    expect(result.success).toBe(true);
+    expect(result.newComponentUuid).toBeTruthy();
+    expect(result.newComponentName).toBeTruthy();
+    expect(result.instanceUuid).toBeTruthy();
+    expect(result.containingComponentUuid).toBe(comp.uuid);
+    expect(typeof result.revision).toBe("number");
+    expect(result.message).toContain("Extracted");
+
+    // The new component should appear in the component list
+    const listRaw = await client.callTool({
+      name: "component",
+      arguments: { action: "list" },
+    });
+    const listResult = parseResponse(listRaw);
+    const newComp = listResult.find(
+      (c: any) => c.uuid === result.newComponentUuid
+    );
+    expect(newComp).toBeTruthy();
+    expect(newComp.type).toBe("component");
+
+    // Undo the extraction
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+  });
+
+  it("returns error when extracting the root node", async () => {
+    const comp = discoveredComponents[0];
+
+    // Get root UUID
+    const treeRaw = await client.callTool({
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
+    });
+    const treeResult = parseResponse(treeRaw);
+    const rootUuid = treeResult.tree.uuid;
+
+    const raw = await client.callTool({
+      name: "component",
+      arguments: {
+        action: "extract",
+        componentUuid: comp.uuid,
+        nodeRef: rootUuid,
+        name: "ShouldFail",
+      },
+    });
+    expect(raw.isError).toBe(true);
+    const errText = raw.content?.[0]?.text ?? "";
+    expect(errText).toMatch(/root element/i);
+  });
+});
+
 describe("variant.create-style", () => {
   it("creates a hover style variant on a component", async () => {
     const comp = discoveredComponents[0];

@@ -124,6 +124,13 @@ export const mockRenameImageAsset = vi.fn((asset: any, name: string) => {
   asset.name = name;
 });
 export const mockRemoveImageAsset = vi.fn();
+export const mockAttachComponent = vi.fn();
+export const mockGetUniqueComponentName = vi.fn(
+  (_name?: string) => _name ?? "Unnamed Component"
+);
+export const mockCanExtractComponent = vi.fn((_tpl: any) => true);
+export const mockRemoveState = vi.fn();
+export const mockTryRemoveVariant = vi.fn();
 export const mockGetUniqueParamName = vi.fn(
   (_component: any, name?: string) => name ?? "Unnamed Prop"
 );
@@ -268,6 +275,26 @@ export class TplMgr {
 
   removeImageAsset(asset: any): void {
     mockRemoveImageAsset(asset);
+  }
+
+  attachComponent(component: any, originalComponent?: any, originalComponentSite?: any): void {
+    mockAttachComponent(component, originalComponent, originalComponentSite);
+  }
+
+  getUniqueComponentName(name?: string): string {
+    return mockGetUniqueComponentName(name);
+  }
+
+  canExtractComponent(tpl: any): boolean {
+    return mockCanExtractComponent(tpl);
+  }
+
+  removeState(component: any, state: any): void {
+    mockRemoveState(component, state);
+  }
+
+  tryRemoveVariant(variant: any, component: any): void {
+    mockTryRemoveVariant(variant, component);
   }
 
   addMixin(name?: string, mixin?: any): any {

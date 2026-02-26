@@ -102,6 +102,7 @@ import type { PlasmicElement, ComponentElement, DefaultComponentElement } from "
 import { isBatchActive, accumulateChanges } from "./batch-manager.js";
 import { pushUndoOperation } from "./undo-manager.js";
 import { undoChanges } from "@/wab/shared/core/undo-util";
+import { extractComponent as wabExtractComponent } from "@/wab/shared/core/components";
 import cssInitials from "css-initials";
 import {
   findToken,
@@ -3166,6 +3167,112 @@ export async function deleteComponent(
     save,
     deletedName,
     deletedUuid: componentUuid,
+  };
+}
+
+// --- extract-to-component ---
+
+export interface ExtractComponentResult {
+  save: SaveResult;
+  newComponentUuid: string;
+  newComponentName: string;
+  instanceUuid: string;
+  containingComponentUuid: string;
+}
+
+/**
+ * Extract a subtree from a component into a new reusable component.
+ *
+ * The target node (identified by nodeRef) is replaced with a TplComponent
+ * instance referencing the newly created component. Styles, children, and
+ * variant settings are preserved in the new component.
+ *
+ * Uses WAB's extractComponent() which handles:
+ *   - Cloning the subtree with new UUIDs
+ *   - Mapping variants from the containing component to the new component
+ *   - Promoting private style variants on the new root
+ *   - Resetting positioning (moved to the TplComponent wrapper)
+ *   - Piping variant args, slots, and variable references
+ *   - Extracting expression dependencies as props
+ *
+ * getCanvasEnvForTpl returns undefined in the MCP context (no canvas),
+ * so code expression fallbacks are not auto-generated. This matches
+ * the WAB test pattern (components.spec.ts).
+ */
+export async function extractToComponent(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  nodeRef: string,
+  newName: string,
+): Promise<ExtractComponentResult> {
+  const component = findComponent(componentUuid);
+  const session = requireSession();
+  const site = session.site;
+
+  // Resolve the target node
+  const result = resolveNode(component, nodeRef);
+  const resolved = requireSingleNode(result, nodeRef);
+  const tpl = resolved.node;
+
+  // Validate: must be TplTag or TplComponent, not root
+  if (!isKnownTplTag(tpl) && !isKnownTplComponent(tpl)) {
+    throw new Error(
+      `Cannot extract node "${nodeRef}": only TplTag and TplComponent elements can be extracted.`
+    );
+  }
+  if (tpl === component.tplTree) {
+    throw new Error(
+      `Cannot extract the root element of "${component.name}". Select a child element instead.`
+    );
+  }
+
+  const tplMgr = new TplMgr({ site });
+
+  // Additional validation via TplMgr (checks column, text ancestor)
+  if (!tplMgr.canExtractComponent(tpl)) {
+    throw new Error(
+      `Cannot extract node "${nodeRef}": element is either a grid column or inside a text element.`
+    );
+  }
+
+  const tracker = getChangeTracker();
+  const uniqueName = tplMgr.getUniqueComponentName(newName);
+
+  let newComponent: any;
+  let instanceNode: any;
+
+  const changes = tracker.withRecording(() => {
+    instanceNode = wabExtractComponent({
+      site,
+      name: uniqueName,
+      tpl,
+      containingComponent: component,
+      resurfaceParams: false,
+      tplMgr,
+      getCanvasEnvForTpl: () => undefined,
+    });
+    newComponent = instanceNode.component;
+    tplMgr.attachComponent(newComponent);
+  });
+
+  // Save: both the containing component and the new component are modified
+  const componentIid = getComponentIid(component);
+  const newComponentIid = getComponentIid(newComponent);
+  const iids = [componentIid, newComponentIid].filter(Boolean) as string[];
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `extract-component: "${newComponent.name}" from "${component.name}"`,
+    iids
+  );
+
+  return {
+    save,
+    newComponentUuid: newComponent.uuid,
+    newComponentName: newComponent.name,
+    instanceUuid: instanceNode.uuid,
+    containingComponentUuid: componentUuid,
   };
 }
 

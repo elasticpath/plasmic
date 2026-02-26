@@ -100,11 +100,11 @@ This spec covers the smaller gap features that don't warrant individual spec fil
 - Returns: `{ newComponentUuid, instanceUuid }`
 
 ### Acceptance Criteria
-- [ ] Can extract subtree to new component
-- [ ] Original location has component instance
-- [ ] Styles and children preserved
-- [ ] Undo support
-- [ ] Integration + unit tests
+- [x] Can extract subtree to new component
+- [x] Original location has component instance
+- [x] Styles and children preserved
+- [x] Undo support
+- [x] Integration + unit tests
 
 ---
 
