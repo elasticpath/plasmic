@@ -1,8 +1,459 @@
-# Implementation Plan
+# Implementation Plan: Plasmic MCP Eval System
 
-> Last updated: —
-> Source: `.ralph/specs/*`
+> Last updated: 2026-02-26
+> Source: `.ralph/specs/mcp-eval-framework.md`, `mcp-eval-scenarios.md`, `mcp-eval-grading.md`, `mcp-eval-visual-capture.md`
+
+## Status Summary
+
+Nothing from the eval system exists yet. The MCP server itself is complete (8 STRAP domains, 103 actions, 1197 tests, 6 Claude Code skills, zero TODOs/placeholders). This plan builds the eval system from scratch.
+
+### Codebase Health (verified 2026-02-26)
+- Zero TODO/FIXME/HACK comments in `packages/plasmic-mcp/`
+- Zero skipped or flaky tests
+- Zero placeholder or stub implementations (all stubs are intentional mock infrastructure)
+- All 1197 tests passing (1060 unit + 137 integration)
+
+### Reusable Infrastructure (already exists)
+- `createServer()` export from `server.ts` — returns `McpServer` with all 8 tools
+- `InMemoryTransport.createLinkedPair()` — in-process client/server pairs (used in tests)
+- `client.listTools()` — programmatic tool schema extraction (returns JSON Schema from Zod)
+- Bundle fixture: `platform/wab/cypress/bundles/active-screen-variant-group.json`
+- Test helpers: `mockApiClient()`, `makeSession()`, `mkTag()`, `mkComponent()`
+- Auth mocking pattern: `process.env.PLASMIC_AUTH_*` + stubbed `fetch()`
+- Vitest workspace: unit (mocked WAB) and integration (real WAB) projects
 
 ---
 
-_No items yet. Run `bash .ralph/loop.sh plan` to generate from specs._
+## P0 — Foundation (must exist before anything else works)
+
+**Status: NOT STARTED**
+
+### P0.1: Eval directory structure and package scaffolding
+- [ ] Create `packages/plasmic-mcp/evals/` directory tree:
+  - `evals/scenarios/` — YAML scenario definitions (by domain + cross-domain)
+  - `evals/graders/` — State-check grader implementations
+  - `evals/harness/` — Eval runner, MCP client adapter, result collector
+  - `evals/results/` — Output directory (gitignored except `.gitkeep`)
+  - `evals/results/screenshots/` — Visual capture output (gitignored)
+- [ ] Add `evals/results/` to `.gitignore`
+- [ ] Add devDependencies to `packages/plasmic-mcp/package.json`: `@anthropic-ai/sdk` (Claude API), `yaml` (scenario parsing)
+- **Spec**: mcp-eval-framework.md
+- **Dependencies**: None
+- **Files**: `packages/plasmic-mcp/evals/`, `packages/plasmic-mcp/package.json` (devDeps)
+
+### P0.2: MCP client adapter for eval harness
+- [ ] Build programmatic MCP client that calls the 8 STRAP domain tools via MCP protocol
+- [ ] **Mock mode**: Import `createServer()` from `server.ts`, use `InMemoryTransport` to create client/server pair in-process. Set up env vars so `getAuth()` succeeds with mock credentials. Mock `fetch()` to return bundle fixture (same pattern as `real-integration.test.ts`)
+- [ ] Expose `callTool(domain, params)` method that sends tool calls and returns JSON results
+- [ ] Expose `listTools()` method that returns tool definitions as Anthropic API `Tool[]` format (from `client.listTools()` JSON Schema → Anthropic SDK tool shape)
+- [ ] Handle environment variable validation: fail fast with clear error if `ANTHROPIC_API_KEY` is missing (spec edge case EC4)
+- **Spec**: mcp-eval-framework.md
+- **Dependencies**: P0.1
+- **Files**: `evals/harness/mcp-client.ts`
+
+### P0.3: Scenario schema and loader
+- [ ] Define TypeScript interfaces: `EvalScenario`, `GraderConfig`, `SetupStep`
+- [ ] Build YAML loader that reads + validates scenario files
+- [ ] Validate: unique scenario IDs, valid domain names, valid grader types
+- [ ] Warn (don't error) if a scenario has no graders defined — track but don't affect pass rate (spec edge case EC6)
+- **Schema**:
+  ```typescript
+  interface EvalScenario {
+    id: string;                          // e.g., "design-list-tokens"
+    description: string;                 // Natural-language task prompt
+    domains: string[];                   // Expected STRAP domains
+    tier: "simple" | "medium" | "complex";
+    graders: GraderConfig[];             // State checks to run after task
+    timeout: number;                     // Seconds before timeout
+    setup?: SetupStep[];                 // Optional: tool calls to set up preconditions
+    visual?: { rubric: string };         // Optional: LLM judge rubric (P2)
+  }
+  interface GraderConfig {
+    type: "existence" | "property" | "structure" | "count" | "data" | "tool-sequence" | "tool-params" | "no-errors";
+    params: Record<string, unknown>;
+  }
+  interface SetupStep {
+    tool: string;                        // Domain tool name
+    params: Record<string, unknown>;     // Tool parameters
+  }
+  ```
+- **Key pattern**: Scenarios with `setup` steps run those tool calls before handing the prompt to Claude. This lets scenarios assume certain project state (e.g., "a project is loaded").
+- **Spec**: mcp-eval-scenarios.md
+- **Dependencies**: P0.1
+- **Files**: `evals/harness/types.ts`, `evals/harness/scenario-loader.ts`
+
+### P0.4: Minimal eval runner (end-to-end loop for ONE scenario)
+- [ ] Core eval loop that executes a single scenario end-to-end:
+  1. Load scenario YAML
+  2. Initialize MCP client (mock mode)
+  3. Run setup steps (if any) — direct tool calls, not via Claude
+  4. Send the scenario's `description` as a user message to Claude via Anthropic SDK, with the 8 STRAP tools registered as tool definitions
+  5. Handle Claude's `tool_use` responses by routing them to the MCP client
+  6. Continue the conversation until Claude produces a final text response (no more tool calls) or timeout
+  7. Collect transcript: every message (user, assistant, tool results)
+  8. Run state-check graders against the final project state (via MCP inspect calls)
+  9. Produce a per-scenario result object with pass/fail, metrics, transcript
+- [ ] Handle edge case: Claude asks clarifying questions instead of calling tools — mark as incomplete, log for review (spec edge case SE3)
+- [ ] Handle edge case: timeout — record partial transcript, mark as timed out (spec edge case EC2)
+- [ ] Handle edge case: tool errors — log and continue conversation (Claude may self-correct) (spec edge case EC1)
+- [ ] System prompt: describe the 8 STRAP tools, derived from `client.listTools()`. Register tools as Anthropic API tool definitions with JSON Schema from MCP SDK
+- **Spec**: mcp-eval-framework.md
+- **Dependencies**: P0.2, P0.3
+- **Files**: `evals/harness/runner.ts`, `evals/harness/claude-client.ts`
+
+---
+
+## P1 — Core (minimum viable eval system)
+
+**Status: NOT STARTED**
+
+### P1.1: State-check grader framework
+- [ ] Implement programmatic graders that validate project state after task completes
+- [ ] **Mock-tier graders** (transcript validation):
+  - `tool-sequence`: Specific tools were called (order-independent, checks set membership)
+  - `tool-params`: A specific tool call included expected parameters
+  - `count`: Tool call count is within expected range
+  - `no-errors`: No tool calls returned `isError: true`
+- [ ] **State graders** (MCP inspect validation):
+  - `existence`: Call `component.list` or `inspect.node` to check an entity exists
+  - `property`: Call `inspect.node` and check specific style/text/attr values
+  - `structure`: Call `inspect.summary` and check child count, node types, nesting
+  - `data`: Call `data.list-queries`, `interaction.list`, etc. to check data bindings
+- [ ] State graders work identically in mock and integration tier — they query the MCP server's current model state via tool calls
+- [ ] Handle extra output gracefully: if Claude creates extra nodes beyond what's asked, pass as long as required entities exist (spec edge case SE2)
+- **Spec**: mcp-eval-grading.md (Tier 1)
+- **Dependencies**: P0.4
+- **Files**: `evals/graders/state-check.ts`, `evals/graders/transcript-check.ts`, `evals/graders/index.ts`
+
+### P1.2: First 10 simple scenarios (one per domain + 2 cross-domain)
+- [ ] Write 10 YAML scenarios to validate the eval loop end-to-end:
+  1. `project-list` — "List all projects" (project)
+  2. `inspect-summary` — "Show me the structure of the [component]" (inspect; setup: project.set)
+  3. `component-create-page` — "Create a page called About at /about" (component)
+  4. `node-add-heading` — "Add a heading that says Hello World to [container]" (node)
+  5. `variant-list` — "List all variants on [component]" (variant)
+  6. `design-list-tokens` — "List all color tokens" (design)
+  7. `data-list-queries` — "Show me what queries are defined on [component]" (data)
+  8. `interaction-list` — "List event handlers on [element]" (interaction)
+  9. `component-node-card` — "Create a card component with heading and description" (component + node)
+  10. `node-design-style` — "Style the heading with 48px font size and blue color" (node + design)
+- [ ] Each scenario includes: id, description, domains, tier, graders, timeout, setup steps
+- **Spec**: mcp-eval-scenarios.md (Simple tier)
+- **Dependencies**: P0.4, P1.1
+- **Files**: `evals/scenarios/project.yaml`, `evals/scenarios/inspect.yaml`, `evals/scenarios/component.yaml`, `evals/scenarios/node.yaml`, `evals/scenarios/variant.yaml`, `evals/scenarios/design.yaml`, `evals/scenarios/data.yaml`, `evals/scenarios/interaction.yaml`, `evals/scenarios/cross-domain.yaml`
+
+### P1.3: JSON report output
+- [ ] After all scenarios run, produce structured JSON report
+- [ ] Handle partial results: if eval run is interrupted, save completed scenario results (spec edge case GE6)
+- **Report schema**:
+  ```typescript
+  interface EvalReport {
+    runId: string;                    // YYYY-MM-DD-HHMMSS
+    timestamp: string;
+    tier: "mock" | "integration";
+    model: string;                    // Claude model used
+    scenarios: ScenarioResult[];
+    aggregate: {
+      total: number;
+      passed: number;
+      failed: number;
+      timedOut: number;
+      successRate: number;            // 0-1
+      meanToolCalls: number;
+      meanDurationMs: number;
+      meanTokensInput: number;
+      meanTokensOutput: number;
+      meanQualityScore: number | null; // null until LLM judge added (P2)
+      byDomain: Record<string, { total: number; passed: number; successRate: number }>;
+      byTier: Record<string, { total: number; passed: number; successRate: number }>;
+    };
+  }
+  interface ScenarioResult {
+    id: string;
+    tier: string;
+    domains: string[];
+    success: boolean;
+    qualityScore: number | null;      // null until LLM judge is added (P2)
+    toolCalls: number;
+    tokensInput: number;
+    tokensOutput: number;
+    durationMs: number;
+    errors: string[];
+    retries: number;
+    transcript: TranscriptEntry[];    // Full conversation log
+    graderResults: GraderResult[];    // Per-grader pass/fail with details
+  }
+  ```
+- [ ] Output: `evals/results/{runId}.json`
+- **Spec**: mcp-eval-grading.md (Reporting)
+- **Dependencies**: P0.4
+- **Files**: `evals/harness/reporter.ts`
+
+### P1.4: npm run eval command + CLI
+- [ ] Add `npm run eval` script to `packages/plasmic-mcp/package.json`: `"eval": "tsx evals/cli.ts"`
+- [ ] CLI flags:
+  - `npm run eval` — Run all scenarios (mock tier by default)
+  - `npm run eval -- --tier simple` — Filter by tier
+  - `npm run eval -- --domain component` — Filter by domain
+  - `npm run eval -- --scenario design-list-tokens` — Run single scenario
+  - `npm run eval -- --integration` — Use integration tier (requires running Plasmic)
+  - `npm run eval -- --no-visual` — Skip visual capture (default in mock tier)
+  - `npm run eval -- --max-cost 5` — Abort if projected cost exceeds $N (default: $5)
+- [ ] CLI outputs summary table to stderr: scenario name, pass/fail, tool calls, duration
+- [ ] Exit code 0 if success rate >= threshold (default 90%), 1 otherwise
+- [ ] Fail fast with clear error if `ANTHROPIC_API_KEY` is not set
+- **Spec**: mcp-eval-framework.md
+- **Dependencies**: P0.4, P1.1, P1.2, P1.3
+- **Files**: `evals/cli.ts`, `packages/plasmic-mcp/package.json` (scripts)
+
+### P1.5: CI workflow for mock-tier evals
+- [ ] Add eval step to `.github/workflows/` (new `plasmic-mcp-eval.yml` or extend existing)
+- [ ] Runs on PRs touching `packages/plasmic-mcp/`
+- [ ] Requires `ANTHROPIC_API_KEY` secret (for Claude API calls during eval)
+- [ ] Runs `npm run eval -- --tier simple` first (fast feedback), then full mock tier
+- [ ] Posts summary as PR check annotation
+- [ ] Blocks merge if success rate < 90% (configurable via env var `EVAL_THRESHOLD`)
+- [ ] Cost controls: simple tier only on every PR, full suite nightly
+- **Spec**: mcp-eval-framework.md (CI)
+- **Dependencies**: P1.4
+- **Files**: `.github/workflows/plasmic-mcp-eval.yml`
+
+---
+
+## P2 — Enhancement (richer eval coverage)
+
+**Status: NOT STARTED**
+
+### P2.1: Medium-complexity scenarios (~20)
+- [ ] Cross-domain scenarios requiring 3-8 tool calls
+- [ ] Target: ~20 scenarios (spec requires ~20 medium)
+- [ ] Examples:
+  - Create a card component with image, title, description, then style it
+  - Create a button with hover and disabled style variants
+  - Style a heading with a design token reference and font size
+  - Create a component with a data-bound text element
+  - Build a navigation bar with multiple links and responsive variant
+- **Spec**: mcp-eval-scenarios.md (Medium tier)
+- **Dependencies**: P1.2
+- **Files**: `evals/scenarios/cross-domain.yaml` (extended), new per-domain files
+
+### P2.2: Complex end-to-end scenarios (~15)
+- [ ] Multi-domain workflows spanning 4+ domains, 8+ tool calls
+- [ ] Target: ~15 scenarios (spec requires 15-20 complex)
+- [ ] Examples:
+  - Build a responsive hero section with heading, token-referenced colors, mobile variant
+  - Create a product card with data repetition, queries, and click handler
+  - Build a pricing page with variant toggle, CTA interaction, responsive layout
+- **Spec**: mcp-eval-scenarios.md (Complex tier)
+- **Dependencies**: P2.1
+- **Files**: `evals/scenarios/e2e.yaml`
+
+### P2.3: Visual capture module (Playwright screenshots)
+- [ ] After each integration-tier task, capture a screenshot of Plasmic Studio showing the result
+- [ ] **Authentication**: Reuse pattern from `platform/wab/playwright/utils/api-client.ts`
+  - CSRF → login → cookies. Env vars: `PLASMIC_STUDIO_EMAIL`, `PLASMIC_STUDIO_PASSWORD`, `PLASMIC_AUTH_HOST`
+  - Auth once per eval run, reuse browser session across tasks
+  - On auth failure: re-authenticate once, if still fails skip visual for remaining tasks (spec VE2)
+- [ ] **Navigation**: Reuse pattern from `platform/wab/playwright/utils/studio-utils.ts`
+  - Call `inspect.preview-url` via MCP to get Studio URL
+  - Navigate to `{host}/projects/{projectId}`
+  - Wait for iframe chain: `page → iframe.studio-frame → iframe.__wab_studio-frame → .canvas-editor__canvas-container`
+  - Navigation timeout: configurable, default 60 seconds (spec V9)
+  - If task modified a specific component, navigate to that component within Studio (spec V10)
+- [ ] **Capture**: Full Studio editor view (tree + canvas + right panel), NOT just preview (spec V14)
+  - Desktop: 1280x800
+  - Mobile: 375x812 (for responsive scenarios)
+  - Save to `evals/results/screenshots/{runId}/{scenarioId}-{viewport}.png`
+- [ ] **Playwright config**: `actionTimeout: 10_000`, `trace: "retain-on-failure"`, `screenshot: "only-on-failure"` (spec V17-V19)
+- [ ] **Edge cases**:
+  - Studio fails to load: log timeout, save visible screenshot, mark visual failed, continue (spec VE1)
+  - Studio shows spinner/error: screenshot captured anyway, flagged (spec V15/GE5)
+  - Component deleted by task: navigate to project root (spec VE3)
+  - Multiple components modified: screenshot last modified (spec VE4)
+  - Studio not running: skip visual with warning, state checks still run (spec VE5)
+  - Browser crashes: relaunch, re-auth, continue from next task (spec VE6)
+- [ ] `--no-visual` flag skips this step (default for mock tier)
+- **Spec**: mcp-eval-visual-capture.md
+- **Dependencies**: P1.4, running Plasmic Studio instance
+- **Files**: `evals/visual/capture.ts`, `evals/visual/auth.ts`
+
+### P2.4: LLM-as-Judge grading (Tier 2)
+- [ ] After visual capture, feed screenshot + transcript + rubric to multimodal Claude for quality scoring
+- [ ] Input: screenshot PNG(s), task prompt, full transcript, task-specific rubric
+- [ ] Model selection: Sonnet for simple/medium, Opus for complex (configurable)
+- [ ] Output: 1-5 quality score + text rationale
+  - 5 = Exceptional (exceeds expectations)
+  - 4 = Good (all requirements met, minor improvements possible)
+  - 3 = Adequate (core requirements met, notable gaps)
+  - 2 = Below expectations (partial completion)
+  - 1 = Failed (wrong approach or significant errors)
+- [ ] Score is advisory (not used for CI pass/fail), stored in report alongside state-check results
+- [ ] Rubric defined per-scenario in YAML `visual.rubric` field
+- [ ] Fallback: if LLM judge API call fails, `qualityScore = null`, log warning, continue (spec GE3)
+- **Spec**: mcp-eval-grading.md (Tier 2)
+- **Dependencies**: P2.3 (screenshots exist)
+- **Files**: `evals/graders/llm-judge.ts`
+
+### P2.5: Integration-tier MCP client (real Plasmic server)
+- [ ] Connect eval harness to a real running MCP server via stdio transport
+- [ ] Launch MCP server as child process: `tsx packages/plasmic-mcp/src/index.ts`
+- [ ] Connect via `StdioClientTransport` from `@modelcontextprotocol/sdk`
+- [ ] Before each scenario, reset test project to known state (clone from template or delete/recreate)
+- [ ] Env vars: `PLASMIC_AUTH_HOST`, `PLASMIC_AUTH_USER`, `PLASMIC_AUTH_PASSWORD`, test project ID
+- **Spec**: mcp-eval-framework.md (Integration tier)
+- **Dependencies**: P1.4
+- **Files**: `evals/harness/mcp-client.ts` (extended with integration mode)
+
+---
+
+## P3 — Polish (quality-of-life improvements)
+
+**Status: NOT STARTED**
+
+### P3.1: Eval results dashboard
+- [ ] Static HTML page that reads JSON reports from `evals/results/` and shows trend lines
+- [ ] Metrics: success rate over time (overall + per-domain), quality score distribution, tool call efficiency, regression alerts, error rate by domain/action
+- [ ] Retention policy: retain last 90 days of results (spec GE7)
+- [ ] Single HTML file with inline Chart.js
+- **Spec**: mcp-eval-grading.md (Dashboard)
+- **Dependencies**: P1.3
+- **Files**: `evals/dashboard/index.html`, `evals/dashboard/render.js`
+
+### P3.2: Human review workflow (Tier 3)
+- [ ] Auto-flag criteria: state check and LLM judge disagree, LLM score <= 2, new/changed scenarios
+- [ ] Report includes `needsReview: true` flag per scenario
+- [ ] Dashboard surfaces review queue
+- [ ] Mechanism: companion `overrides.json` file for human annotations
+- **Spec**: mcp-eval-grading.md (Tier 3)
+- **Dependencies**: P2.4, P3.1
+- **Files**: `evals/graders/review-flags.ts`, `evals/dashboard/` (extended)
+
+### P3.3: Remaining simple scenarios (fill to ~20 total)
+- [ ] Fill out simple tier to ~20 scenarios. Add scenarios for less common actions:
+  - Upload an asset, rename a token, create a mixin, create an animation sequence
+  - Create a screen variant, update page meta, extract to component
+  - Undo an operation, use dry-run mode
+- **Spec**: mcp-eval-scenarios.md
+- **Dependencies**: P1.2
+- **Files**: Various scenario YAML files
+
+### P3.4: Scenario index and validation
+- [ ] Auto-generate scenario index from all YAML files
+- [ ] Validate: unique IDs, valid domains, implemented grader types
+- **Spec**: mcp-eval-scenarios.md
+- **Dependencies**: P0.3
+- **Files**: `evals/harness/scenario-validator.ts`
+
+### P3.5: Cost tracking and rate limiting
+- [ ] Track token costs per eval run (calculate from token counts + model)
+- [ ] `--max-cost` CLI flag (default: $5 per run)
+- [ ] Abort run if projected cost exceeds limit
+- [ ] Report includes per-scenario and total cost
+- **Spec**: mcp-eval-framework.md (implied)
+- **Dependencies**: P1.3
+- **Files**: `evals/harness/cost-tracker.ts`
+
+---
+
+## Spec Gap Analysis
+
+The following gaps were identified between specs and this plan. Items above already incorporate these fixes; this section is for traceability.
+
+### Deliberate Deviations from Specs (documented decisions)
+1. **Custom harness over Promptfoo** — Spec says "Promptfoo configured"; plan uses custom Anthropic SDK harness. Reasons in Design Decisions below.
+2. **Mock tier as MVP** — Spec presents tiers as co-equal; plan prioritizes mock (P0/P1) and defers integration (P2).
+3. **Setup steps** — Not in specs; added for test reliability (deterministic preconditions).
+
+### Gaps Addressed in This Plan Update
+| Gap | Spec Source | Resolution |
+|-----|-------------|------------|
+| Missing API key fail-fast | EC4 | Added to P0.2 and P1.4 |
+| Ungraded scenario handling | EC6 | Added to P0.3 (warn, track, don't affect pass rate) |
+| Claude asks clarifying questions | SE3 | Added to P0.4 (mark incomplete, log) |
+| Timeout partial transcript | EC2 | Added to P0.4 |
+| Tool error continuation | EC1 | Added to P0.4 |
+| Extra output tolerance | SE2 | Added to P1.1 |
+| Interrupted run partial save | GE6 | Added to P1.3 |
+| `meanQualityScore` in aggregate | R2 | Added to P1.3 schema |
+| Scenario count shortfall | S3 | Bumped P2.1 to ~20, P2.2 to ~15 (total ~55) |
+| Visual capture edge cases (6) | VE1-VE6 | Added to P2.3 |
+| Navigation timeout default | V9 | Added to P2.3 (60s configurable) |
+| Component-level navigation | V10 | Added to P2.3 |
+| Full editor view clarification | V14 | Added to P2.3 |
+| Playwright config details | V17-V19 | Added to P2.3 |
+| LLM judge fallback on API error | GE3 | Added to P2.4 |
+| Quality score rubric definition | G16 | Added to P2.4 (5-level scale) |
+| Error rate by domain in dashboard | R3 | Added to P3.1 |
+| Dashboard retention policy | GE7 | Added to P3.1 (90 days) |
+
+### Scenario Count Targets (spec: 50-80 total)
+| Tier | Spec Target | Plan Target | Plan Item |
+|------|-------------|-------------|-----------|
+| Simple | ~20 | 10 (P1.2) + ~10 (P3.3) = ~20 | P1.2 + P3.3 |
+| Medium | ~20 | ~20 (P2.1) | P2.1 |
+| Complex | ~15-20 | ~15 (P2.2) | P2.2 |
+| **Total** | **50-80** | **~55** | |
+
+---
+
+## Design Decisions Log
+
+### Custom harness over Promptfoo
+**Decision**: Build a custom eval harness using the Anthropic SDK directly instead of adopting Promptfoo.
+**Rationale**:
+- Our evals are multi-turn tool-use conversations, not single-turn prompt-response pairs. Promptfoo's model assumes prompt → response → grade, but MCP tool use requires an agentic loop (Claude calls tools, gets results, calls more tools, eventually responds).
+- Mock tier requires in-process MCP server via InMemoryTransport. Promptfoo would need a custom provider that essentially IS our harness.
+- We need tight control over transcript capture, tool routing, and timeout handling.
+- The custom harness is ~300-500 lines. The Promptfoo adapter to achieve the same would be comparable complexity plus Promptfoo's overhead.
+- If Promptfoo adds native multi-turn MCP support, we can wrap our runner as a Promptfoo provider (20-line adapter).
+
+### Mock tier as MVP
+**Decision**: Mock tier (in-process server with WAB mocks) is the entire P0/P1. Integration tier is P2.
+**Rationale**:
+- Mock tier runs fast (~seconds per scenario vs ~minutes for integration), needs no infrastructure, and validates the critical question: "does Claude select the right tools with the right parameters?"
+- The existing 1197 tests already prove the tools themselves work correctly. Evals test Claude's ability to USE the tools, not the tools' correctness.
+- Integration tier adds value (validates full roundtrip including model loading, saving, visual output) but is expensive and requires a running Plasmic instance.
+
+### Scenario setup steps
+**Decision**: Scenarios can include `setup` steps that are direct tool calls (not mediated by Claude).
+**Rationale**:
+- Many scenarios need preconditions (e.g., "a project is loaded", "a component called Hero exists"). Running these through Claude would be slow, expensive, and fragile.
+- Setup steps are deterministic — they call MCP tools directly with known parameters. Only the main task prompt goes through Claude.
+- This mirrors how unit tests use `beforeEach` to set up fixtures.
+
+### Tool definition extraction via listTools()
+**Decision**: Use `client.listTools()` from the MCP SDK to get tool schemas as JSON Schema, then convert to Anthropic API tool format.
+**Rationale**:
+- Avoids duplicating Zod schemas. The MCP SDK automatically converts Zod → JSON Schema.
+- Tool definitions stay in sync with the server automatically — no manual maintenance.
+- The `McpServer` class has no public API to enumerate tools directly; `Client.listTools()` via InMemoryTransport is the canonical approach.
+
+---
+
+## Implementation Order (Critical Path)
+
+```
+P0.1 (scaffolding)
+  |
+  +-- P0.2 (MCP client adapter)
+  |     |
+  |     +-- P0.4 (eval runner) -------> P1.1 (graders) -> P1.2 (10 scenarios)
+  |                                                              |
+  P0.3 (scenario schema) ----+                                  v
+                                                           P1.3 (reports)
+                                                               |
+                                                               v
+                                                           P1.4 (CLI + npm run eval)
+                                                               |
+                                                               v
+                                                           P1.5 (CI workflow)
+                                                               |
+                                +------+------+------+-----+
+                                v      v      v      v
+                              P2.1   P2.3   P2.5   P3.*
+                                |      |
+                                v      v
+                              P2.2   P2.4
+```
+
+The minimum shippable unit is P0 + P1.1 + P1.2 + P1.3 + P1.4: a working `npm run eval` that runs 10 simple scenarios in mock mode with state-check grading and produces a JSON report. Everything else layers on top.
