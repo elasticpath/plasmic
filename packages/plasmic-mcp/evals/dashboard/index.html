@@ -190,6 +190,95 @@
       border: 1px solid #e63946;
     }
 
+    .badge.review {
+      background: #e8daef;
+      color: #6c3483;
+    }
+
+    .badge.overridden {
+      background: #d5f5e3;
+      color: #1e8449;
+      border: 1px solid #2ec4b6;
+    }
+
+    .review-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .review-actions button {
+      padding: 4px 12px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .review-actions button:hover {
+      background: var(--bg);
+    }
+
+    .override-form {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 8px;
+      display: none;
+    }
+
+    .override-form.open { display: block; }
+
+    .override-form label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      margin-top: 8px;
+    }
+
+    .override-form label:first-child { margin-top: 0; }
+
+    .override-form input,
+    .override-form textarea,
+    .override-form select {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 13px;
+      font-family: inherit;
+    }
+
+    .override-form textarea { resize: vertical; min-height: 60px; }
+
+    .override-form .btn-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .override-form .btn-save {
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 6px 16px;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .override-form .btn-cancel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 6px 16px;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
     .empty-state {
       text-align: center;
       padding: 60px 20px;
@@ -298,11 +387,18 @@
       complex: "#e63946",
     };
 
+    // Global overrides state — loaded once and updated on save
+    let globalOverrides = {};
+
     async function init() {
       let reports;
       try {
-        const res = await fetch("/api/reports");
-        reports = await res.json();
+        const [reportsRes, overridesRes] = await Promise.all([
+          fetch("/api/reports"),
+          fetch("/api/overrides"),
+        ]);
+        reports = await reportsRes.json();
+        globalOverrides = await overridesRes.json();
       } catch (e) {
         document.getElementById("app").innerHTML = `
           <div class="empty-state">
@@ -341,6 +437,13 @@
       // Compute error rates by domain across all runs
       const errorRates = computeErrorRates(reports);
 
+      // Build review queue from latest run: flagged scenarios that haven't
+      // been overridden yet. This surfaces the scenarios most in need of
+      // human attention.
+      const reviewQueue = latest.scenarios.filter(
+        s => s.needsReview && !globalOverrides[s.id]
+      );
+
       const app = document.getElementById("app");
       app.innerHTML = `
         <!-- Summary Cards -->
@@ -378,6 +481,13 @@
               ${regressions.length}
             </div>
             <div class="sub">${regressions.length > 0 ? "scenarios need attention" : "no regressions"}</div>
+          </div>
+          <div class="card">
+            <div class="label">Review Queue</div>
+            <div class="value ${reviewQueue.length > 0 ? "accent" : "success"}">
+              ${reviewQueue.length}
+            </div>
+            <div class="sub">${reviewQueue.length > 0 ? "flagged for review" : "no items pending"}</div>
           </div>
         </div>
 
@@ -427,6 +537,89 @@
                   <td>${s.domains.map(d => esc(d)).join(", ")}</td>
                   <td><span class="badge regression">REGRESSION</span></td>
                   <td>${s.errors.length > 0 ? esc(s.errors[0].substring(0, 80)) : "&mdash;"}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>` : ""}
+
+        <!-- Review Queue — scenarios flagged for human review -->
+        ${reviewQueue.length > 0 ? `
+        <div class="table-section" id="review-queue-section">
+          <h2>Review Queue</h2>
+          <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">
+            Scenarios auto-flagged for human review. Click "Review" to annotate.
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>Scenario</th>
+                <th>Tier</th>
+                <th>Result</th>
+                <th>Quality</th>
+                <th>Flags</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${reviewQueue.map(s => `
+                <tr>
+                  <td>${esc(s.id)}</td>
+                  <td>${esc(s.tier)}</td>
+                  <td><span class="badge ${s.success ? "pass" : "fail"}">${s.success ? "PASS" : "FAIL"}</span></td>
+                  <td>${s.qualityScore !== null && s.qualityScore !== undefined ? s.qualityScore + "/5" : "&mdash;"}</td>
+                  <td>${(s.reviewFlags || []).map(f => '<span class="badge review">' + esc(f) + '</span> ').join("")}</td>
+                  <td>
+                    <div class="review-actions">
+                      <button onclick="toggleOverrideForm('${esc(s.id)}')">Review</button>
+                    </div>
+                    <div class="override-form" id="form-${esc(s.id)}">
+                      <label>Override Result</label>
+                      <select id="override-${esc(s.id)}">
+                        <option value="">No override</option>
+                        <option value="true">Override to PASS</option>
+                        <option value="false">Override to FAIL</option>
+                      </select>
+                      <label>Reviewer</label>
+                      <input type="text" id="reviewer-${esc(s.id)}" placeholder="Your name" />
+                      <label>Notes</label>
+                      <textarea id="notes-${esc(s.id)}" placeholder="Review notes..."></textarea>
+                      <div class="btn-row">
+                        <button class="btn-save" onclick="submitOverride('${esc(s.id)}')">Save</button>
+                        <button class="btn-cancel" onclick="toggleOverrideForm('${esc(s.id)}')">Cancel</button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>` : ""}
+
+        <!-- Overridden Scenarios -->
+        ${Object.keys(globalOverrides).length > 0 ? `
+        <div class="table-section">
+          <h2>Human Review Overrides</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Scenario</th>
+                <th>Override</th>
+                <th>Reviewer</th>
+                <th>Notes</th>
+                <th>Reviewed At</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${Object.entries(globalOverrides).map(([id, o]) => `
+                <tr>
+                  <td>${esc(id)}</td>
+                  <td>${o.overrideSuccess !== undefined && o.overrideSuccess !== null
+                    ? '<span class="badge overridden">' + (o.overrideSuccess ? "PASS" : "FAIL") + '</span>'
+                    : "&mdash;"}</td>
+                  <td>${esc(o.reviewedBy || "")}</td>
+                  <td>${esc(o.notes || "")}</td>
+                  <td>${o.reviewedAt ? formatDate(o.reviewedAt) : "&mdash;"}</td>
                 </tr>
               `).join("")}
             </tbody>
@@ -817,6 +1010,54 @@
       const el = document.createElement("span");
       el.textContent = str;
       return el.innerHTML;
+    }
+
+    // --- Override Form ---
+
+    function toggleOverrideForm(scenarioId) {
+      const form = document.getElementById("form-" + scenarioId);
+      if (form) form.classList.toggle("open");
+    }
+
+    async function submitOverride(scenarioId) {
+      const overrideEl = document.getElementById("override-" + scenarioId);
+      const reviewerEl = document.getElementById("reviewer-" + scenarioId);
+      const notesEl = document.getElementById("notes-" + scenarioId);
+
+      const body = { scenarioId };
+      if (overrideEl && overrideEl.value) {
+        body.overrideSuccess = overrideEl.value === "true";
+      }
+      if (reviewerEl && reviewerEl.value) {
+        body.reviewedBy = reviewerEl.value;
+      }
+      if (notesEl && notesEl.value) {
+        body.notes = notesEl.value;
+      }
+
+      try {
+        const res = await fetch("/api/overrides", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const result = await res.json();
+        if (result.ok) {
+          // Update local state and re-render
+          globalOverrides[scenarioId] = {
+            overrideSuccess: body.overrideSuccess,
+            reviewedBy: body.reviewedBy,
+            notes: body.notes,
+            reviewedAt: new Date().toISOString(),
+          };
+          // Refresh dashboard
+          init();
+        } else {
+          alert("Failed to save override: " + (result.error || "unknown error"));
+        }
+      } catch (e) {
+        alert("Error saving override: " + e.message);
+      }
     }
 
     // Boot

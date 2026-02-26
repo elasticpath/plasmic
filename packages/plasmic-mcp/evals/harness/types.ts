@@ -106,7 +106,33 @@ export interface ScenarioResult {
   judgeTokensInput?: number;
   /** Output tokens consumed by the LLM judge call */
   judgeTokensOutput?: number;
+  /** Whether this scenario is flagged for human review */
+  needsReview?: boolean;
+  /** Reasons why this scenario was flagged for review */
+  reviewFlags?: string[];
 }
+
+// --- Human Review Overrides ---
+
+/**
+ * A human reviewer's annotation for a specific scenario. Stored in
+ * evals/results/overrides.json as a persistent companion file to the
+ * JSON reports. Overrides let reviewers correct automated judgments
+ * (e.g., mark a false-positive failure as actually passing).
+ */
+export interface ReviewOverride {
+  /** Override the automated success determination */
+  overrideSuccess?: boolean;
+  /** Free-text notes from the reviewer */
+  notes?: string;
+  /** Who performed the review */
+  reviewedBy?: string;
+  /** ISO timestamp of the review */
+  reviewedAt?: string;
+}
+
+/** Overrides file schema: scenario ID → override annotation */
+export type OverridesFile = Record<string, ReviewOverride>;
 
 // --- Report ---
 
@@ -128,6 +154,8 @@ export interface EvalReport {
     meanTokensOutput: number;
     meanQualityScore: number | null;
     totalCostDollars: number;
+    /** Count of scenarios flagged for human review */
+    needsReview: number;
     byDomain: Record<string, DomainStats>;
     byTier: Record<string, TierStats>;
   };

@@ -1,6 +1,6 @@
 # Implementation Plan: Plasmic MCP Eval System
 
-> Last updated: 2026-02-26 (P2.3, P2.4, P2.5, P3.1, P3.3, P3.4, P3.5 complete)
+> Last updated: 2026-02-26 (P3.2 complete — all planned tasks done)
 > Source: `.ralph/specs/mcp-eval-framework.md`, `mcp-eval-scenarios.md`, `mcp-eval-grading.md`, `mcp-eval-visual-capture.md`
 
 ## Status Summary
@@ -8,13 +8,13 @@
 **P0 (Foundation): DONE.** All 4 sub-tasks implemented — directory scaffolding, MCP client adapter, scenario schema/loader, and eval runner with Claude client.
 **P1 (Core): DONE.** All 5 sub-tasks implemented — grader framework, 10 scenarios, JSON reporter, CLI, and CI workflow.
 **P2 (Enhancement): DONE.** P2.1 done (20 medium scenarios). P2.2 done (15 complex scenarios). P2.3 done (visual capture). P2.4 done (LLM-as-Judge). P2.5 done (integration-tier MCP client).
-**P3 (Polish): PARTIAL.** P3.1 done (dashboard). P3.2 (human review) not started. P3.3 done (20 simple scenarios). P3.4 done (scenario validator). P3.5 done (cost tracking).
+**P3 (Polish): DONE.** P3.1 done (dashboard). P3.2 done (human review workflow). P3.3 done (20 simple scenarios). P3.4 done (scenario validator). P3.5 done (cost tracking).
 
 ### Codebase Health (verified 2026-02-26)
 - Zero TODO/FIXME/HACK comments in `packages/plasmic-mcp/`
 - Zero skipped or flaky tests
 - Zero placeholder or stub implementations (all stubs are intentional mock infrastructure)
-- All 1197 tests passing (1060 unit + 137 integration)
+- All 1221 tests passing (1084 unit + 137 integration)
 - Eval system files implemented:
   - `evals/harness/mcp-client.ts` — McpEvalClient (mock mode via InMemoryTransport; integration mode via StdioClientTransport child process)
   - `evals/harness/types.ts` — EvalScenario, GraderConfig, SetupStep, TranscriptEntry, etc.
@@ -26,6 +26,7 @@
   - `evals/graders/index.ts` — Grader registry
   - `evals/graders/transcript-check.ts` — tool-sequence, tool-params, count, no-errors
   - `evals/graders/state-check.ts` — existence, property, structure, data; state graders pass maxChars: -1 to avoid truncation false negatives; property grader coerces attr values to string before comparison
+  - `evals/graders/review-flags.ts` — Auto-flagging logic for human review (judge-disagrees, low-quality, new-scenario); applyReviewFlags mutates results
   - `evals/scenarios/` — 55 YAML scenarios (20 simple + 20 medium + 15 complex)
   - `evals/cli.ts` — CLI entry point with all flags; eval:validate script
   - `evals/dashboard/index.html` — Static dashboard with Chart.js visualizations (6 charts, summary cards, regression alerts, error rate table, run history)
@@ -317,7 +318,7 @@
 
 ## P3 — Polish (quality-of-life improvements)
 
-**Status: PARTIAL (P3.1, P3.3, P3.4, P3.5 done; P3.2 not started)**
+**Status: DONE**
 
 ### P3.1: Eval results dashboard — DONE
 - [x] Static HTML page that reads JSON reports from `evals/results/` and shows trend lines
@@ -329,14 +330,22 @@
 - **Dependencies**: P1.3
 - **Files**: `evals/dashboard/index.html`, `evals/dashboard/render.js`
 
-### P3.2: Human review workflow (Tier 3)
-- [ ] Auto-flag criteria: state check and LLM judge disagree, LLM score <= 2, new/changed scenarios
-- [ ] Report includes `needsReview: true` flag per scenario
-- [ ] Dashboard surfaces review queue
-- [ ] Mechanism: companion `overrides.json` file for human annotations
+### P3.2: Human review workflow (Tier 3) — DONE
+- [x] Auto-flag criteria: state check and LLM judge disagree (`judge-disagrees`), LLM score <= 2 (`low-quality`), new/changed scenarios (`new-scenario`)
+- [x] Report includes `needsReview: true` flag per scenario with `reviewFlags: string[]` reasons
+- [x] `applyReviewFlags()` called during `generateReport()` using previous report for new-scenario detection
+- [x] Dashboard surfaces review queue: flagged scenarios table with inline override form (override result, reviewer, notes)
+- [x] Dashboard shows "Human Review Overrides" table for previously reviewed items
+- [x] Mechanism: companion `evals/results/overrides.json` file for human annotations via `loadOverrides()`/`saveOverride()`
+- [x] Dashboard server: `GET /api/overrides` and `POST /api/overrides` endpoints
+- [x] CLI: `loadPreviousReport()` fetches latest report from results dir for new-scenario baseline
+- [x] Reporter: `printSummary()` shows review queue count + flagged scenarios with flag reasons
+- [x] Aggregate: `needsReview` count included in `EvalReport.aggregate`
+- [x] **Implementation**: `evals/graders/review-flags.ts` — `computeReviewFlags()` (pure function per scenario) and `applyReviewFlags()` (batch mutator). Three flag types: `judge-disagrees` (state pass + judge <=2, or state fail + judge >=4), `low-quality` (judge <=2), `new-scenario` (ID not in previous report). Reporter calls `applyReviewFlags()` inside `generateReport()` before building aggregates. Overrides persisted in `evals/results/overrides.json` via `loadOverrides()`/`saveOverride()` functions. Dashboard renders review queue with inline forms; saves via POST to `/api/overrides`.
+- [x] 24 unit tests in `src/__tests__/eval-review-flags.test.ts` covering all flag criteria (judge-disagrees, low-quality, new-scenario), combined flags, and `applyReviewFlags()` batch behavior.
 - **Spec**: mcp-eval-grading.md (Tier 3)
 - **Dependencies**: P2.4, P3.1
-- **Files**: `evals/graders/review-flags.ts`, `evals/dashboard/` (extended)
+- **Files**: `evals/graders/review-flags.ts`, `evals/harness/types.ts` (ReviewOverride, OverridesFile, needsReview fields), `evals/harness/reporter.ts` (loadPreviousReport, loadOverrides, saveOverride, review summary), `evals/cli.ts` (loadPreviousReport wiring), `evals/dashboard/index.html` (review queue + overrides UI), `evals/dashboard/render.js` (overrides API endpoints), `src/__tests__/eval-review-flags.test.ts`
 
 ### P3.3: Remaining simple scenarios (fill to ~20 total) — DONE
 - [x] 10 new simple scenarios added in `evals/scenarios/simple-extra.yaml`. Total: 20 simple. Covers: upload-asset, rename-token, create-mixin, create-animation, create-screen-variant, update-page-meta, extract-to-component, undo, dry-run mode (node), create-token.
@@ -450,4 +459,4 @@ P0.1 (scaffolding)
                               P2.2   P2.4
 ```
 
-P0 + P1 are **DONE**: a working `npm run eval` that runs simple scenarios in mock mode with state-check grading, produces a JSON report, and runs in CI on every PR. P2.1 + P2.2 are **DONE**: 35 additional scenarios (20 medium + 15 complex) covering all 8 STRAP domains. P2.3 is **DONE**: visual capture module (`evals/visual/capture.ts`, `evals/visual/auth.ts`) with Playwright browser lifecycle, Studio CSRF→login authentication, iframe chain navigation, desktop (1280x800) and mobile (375x812) screenshots saved to `evals/results/screenshots/{runId}/`. P2.4 is **DONE**: LLM-as-Judge grader (`evals/graders/llm-judge.ts`) with multimodal Claude scoring (1-5), tier-based model selection (Sonnet/Opus), `--judge-model` and `--no-judge` CLI flags, cost tracking, and visual rubrics added to all 35 medium + complex scenarios. P2.5 is **DONE**: integration-tier MCP client using StdioClientTransport to spawn the MCP server as a child process, connecting to a real Plasmic server with real auth credentials. CLI supports `--integration`, `--project-id`, and auto-detects project via `project.list`. P3.1 + P3.3 + P3.4 + P3.5 are **DONE**: eval results dashboard (`npm run eval:dashboard`), 20 simple scenarios total (up from 10), standalone scenario validator (`npm run eval:validate`), and model-aware cost tracking in reports. Total: 55 scenarios. Next: P3.2 adds human review workflow.
+**ALL PHASES COMPLETE.** P0 + P1: working `npm run eval` with mock-tier state-check grading, JSON reports, CI workflow. P2: 55 scenarios (20 simple + 20 medium + 15 complex), visual capture, LLM-as-Judge, integration-tier MCP client. P3: eval dashboard, human review workflow with auto-flagging (judge-disagrees, low-quality, new-scenario) and overrides.json persistence, scenario validator, cost tracking. 1221 tests passing (1084 unit + 137 integration).

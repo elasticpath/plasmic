@@ -9,15 +9,18 @@
  * rendering, while the console summary provides immediate human feedback.
  */
 
-import { writeFileSync, mkdirSync } from "fs";
-import { resolve, dirname } from "path";
+import { writeFileSync, readFileSync, readdirSync, mkdirSync, existsSync } from "fs";
+import { resolve, dirname, join } from "path";
 import { fileURLToPath } from "url";
 import type {
   ScenarioResult,
   EvalReport,
   DomainStats,
   TierStats,
+  OverridesFile,
+  ReviewOverride,
 } from "./types.js";
+import { applyReviewFlags } from "../graders/review-flags.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -34,10 +37,16 @@ export function generateReport(
   model: string,
   tier: "mock" | "integration",
   totalCostDollars: number = 0,
-  runId?: string
+  runId?: string,
+  previousReport?: EvalReport | null
 ): EvalReport {
   const now = new Date();
   const finalRunId = runId ?? formatRunId(now);
+
+  // Apply review flags before building the report. This mutates each result
+  // in place, setting needsReview and reviewFlags. The previous report is
+  // used to detect new scenarios that lack established baselines.
+  applyReviewFlags(results, previousReport);
 
   const passed = results.filter((r) => r.success).length;
   const failed = results.filter(
@@ -46,6 +55,7 @@ export function generateReport(
   const timedOut = results.filter((r) =>
     r.errors.includes("Scenario timed out")
   ).length;
+  const needsReviewCount = results.filter((r) => r.needsReview).length;
 
   // Per-domain success rates
   const byDomain: Record<string, DomainStats> = {};
@@ -99,6 +109,7 @@ export function generateReport(
       meanQualityScore:
         qualityScores.length > 0 ? mean(qualityScores) : null,
       totalCostDollars,
+      needsReview: needsReviewCount,
       byDomain,
       byTier,
     },
@@ -138,6 +149,11 @@ export function printSummary(report: EvalReport): void {
       `  Mean Quality: ${aggregate.meanQualityScore.toFixed(1)}/5`
     );
   }
+  if (aggregate.needsReview > 0) {
+    console.error(
+      `  Review Queue: ${aggregate.needsReview} scenario(s) flagged`
+    );
+  }
   console.error("");
 
   // Per-scenario table — include Quality column if any scenarios have scores
@@ -168,6 +184,7 @@ export function printSummary(report: EvalReport): void {
 
   for (const s of report.scenarios) {
     const result = s.success ? "PASS" : "FAIL";
+    const reviewMark = s.needsReview ? " *" : "";
     const duration = `${(s.durationMs / 1000).toFixed(1)}s`;
     const quality = s.qualityScore !== null ? `${s.qualityScore}/5` : "-";
 
@@ -175,7 +192,7 @@ export function printSummary(report: EvalReport): void {
       console.error(
         "  " +
           s.id.padEnd(35) +
-          result.padEnd(10) +
+          (result + reviewMark).padEnd(10) +
           quality.padEnd(10) +
           String(s.toolCalls).padEnd(8) +
           duration.padEnd(12) +
@@ -185,11 +202,22 @@ export function printSummary(report: EvalReport): void {
       console.error(
         "  " +
           s.id.padEnd(35) +
-          result.padEnd(10) +
+          (result + reviewMark).padEnd(10) +
           String(s.toolCalls).padEnd(8) +
           duration.padEnd(12) +
           (s.errors.length > 0 ? s.errors[0].substring(0, 30) : "")
       );
+    }
+  }
+
+  // Review queue — list flagged scenarios with their flag reasons
+  const flaggedScenarios = report.scenarios.filter((s) => s.needsReview);
+  if (flaggedScenarios.length > 0) {
+    console.error("");
+    console.error("  Review Queue (* = flagged):");
+    for (const s of flaggedScenarios) {
+      const flags = (s.reviewFlags ?? []).join(", ");
+      console.error(`    ${s.id.padEnd(35)} [${flags}]`);
     }
   }
 
@@ -205,6 +233,67 @@ export function printSummary(report: EvalReport): void {
   }
 
   console.error("=".repeat(70) + "\n");
+}
+
+/**
+ * Load the most recent report from evals/results/ to use as the baseline
+ * for new-scenario detection in review flags. Returns null if no previous
+ * reports exist.
+ */
+export function loadPreviousReport(): EvalReport | null {
+  if (!existsSync(RESULTS_DIR)) return null;
+
+  const files = readdirSync(RESULTS_DIR)
+    .filter((f) => f.endsWith(".json") && f !== "overrides.json")
+    .sort();
+
+  if (files.length === 0) return null;
+
+  // The last file alphabetically is the most recent (YYYY-MM-DD-HHmmss.json)
+  const latestFile = files[files.length - 1];
+  try {
+    const content = readFileSync(join(RESULTS_DIR, latestFile), "utf-8");
+    const report = JSON.parse(content) as EvalReport;
+    if (report.timestamp && report.aggregate) {
+      return report;
+    }
+  } catch {
+    // Malformed file — skip
+  }
+  return null;
+}
+
+const OVERRIDES_PATH = resolve(RESULTS_DIR, "overrides.json");
+
+/**
+ * Load the overrides file from evals/results/overrides.json.
+ * Returns an empty object if the file doesn't exist or is malformed.
+ */
+export function loadOverrides(): OverridesFile {
+  if (!existsSync(OVERRIDES_PATH)) return {};
+  try {
+    const content = readFileSync(OVERRIDES_PATH, "utf-8");
+    return JSON.parse(content) as OverridesFile;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Save or update a single override annotation in overrides.json.
+ * Merges with existing overrides — doesn't replace the entire file.
+ */
+export function saveOverride(
+  scenarioId: string,
+  override: ReviewOverride
+): void {
+  mkdirSync(RESULTS_DIR, { recursive: true });
+  const existing = loadOverrides();
+  existing[scenarioId] = {
+    ...override,
+    reviewedAt: override.reviewedAt ?? new Date().toISOString(),
+  };
+  writeFileSync(OVERRIDES_PATH, JSON.stringify(existing, null, 2));
 }
 
 function formatRunId(date: Date): string {

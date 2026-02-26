@@ -13,7 +13,7 @@
  */
 
 import { createServer } from "http";
-import { readFileSync, readdirSync, existsSync } from "fs";
+import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from "fs";
 import { resolve, dirname, join } from "path";
 import { fileURLToPath } from "url";
 
@@ -22,6 +22,7 @@ const __dirname = dirname(__filename);
 
 const RESULTS_DIR = resolve(__dirname, "../results");
 const DASHBOARD_HTML = resolve(__dirname, "index.html");
+const OVERRIDES_PATH = resolve(RESULTS_DIR, "overrides.json");
 const RETENTION_DAYS = 90;
 const PORT = parseInt(process.env.EVAL_DASHBOARD_PORT || "3847", 10);
 
@@ -34,7 +35,9 @@ function loadReports() {
   if (!existsSync(RESULTS_DIR)) return [];
 
   const cutoff = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
-  const files = readdirSync(RESULTS_DIR).filter((f) => f.endsWith(".json"));
+  const files = readdirSync(RESULTS_DIR).filter(
+    (f) => f.endsWith(".json") && f !== "overrides.json"
+  );
 
   const reports = [];
   for (const file of files) {
@@ -99,6 +102,56 @@ const server = createServer((req, res) => {
       })),
     }));
     res.end(JSON.stringify(slim));
+  } else if (url.pathname === "/api/overrides" && req.method === "GET") {
+    // Read overrides.json — human review annotations that persist across runs
+    let overrides = {};
+    if (existsSync(OVERRIDES_PATH)) {
+      try {
+        overrides = JSON.parse(readFileSync(OVERRIDES_PATH, "utf-8"));
+      } catch {
+        // Malformed file — return empty
+      }
+    }
+    res.writeHead(200, {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-cache",
+    });
+    res.end(JSON.stringify(overrides));
+  } else if (url.pathname === "/api/overrides" && req.method === "POST") {
+    // Save a single override annotation: { scenarioId, overrideSuccess?, notes?, reviewedBy? }
+    let body = "";
+    req.on("data", (chunk) => { body += chunk; });
+    req.on("end", () => {
+      try {
+        const { scenarioId, ...override } = JSON.parse(body);
+        if (!scenarioId || typeof scenarioId !== "string") {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "scenarioId is required" }));
+          return;
+        }
+
+        mkdirSync(RESULTS_DIR, { recursive: true });
+        let existing = {};
+        if (existsSync(OVERRIDES_PATH)) {
+          try {
+            existing = JSON.parse(readFileSync(OVERRIDES_PATH, "utf-8"));
+          } catch {
+            // Start fresh if malformed
+          }
+        }
+        existing[scenarioId] = {
+          ...override,
+          reviewedAt: new Date().toISOString(),
+        };
+        writeFileSync(OVERRIDES_PATH, JSON.stringify(existing, null, 2));
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (e) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: `Invalid JSON: ${e.message}` }));
+      }
+    });
   } else {
     res.writeHead(404, { "Content-Type": "text/plain" });
     res.end("Not found");
@@ -112,7 +165,7 @@ server.listen(PORT, () => {
   console.log(`  Retention:  ${RETENTION_DAYS} days\n`);
 
   const reportCount = existsSync(RESULTS_DIR)
-    ? readdirSync(RESULTS_DIR).filter((f) => f.endsWith(".json")).length
+    ? readdirSync(RESULTS_DIR).filter((f) => f.endsWith(".json") && f !== "overrides.json").length
     : 0;
   console.log(`  Found ${reportCount} report(s)\n`);
 });

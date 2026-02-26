@@ -30,6 +30,7 @@ import {
   generateRunId,
   saveReport,
   printSummary,
+  loadPreviousReport,
 } from "./harness/reporter.js";
 import { VisualCapture } from "./visual/capture.js";
 import { getAuthConfig } from "./visual/auth.js";
@@ -245,13 +246,19 @@ async function main(): Promise<void> {
       judgeConfig
     );
 
-    // Generate and save report
+    // Load the previous report to detect new scenarios for review flagging.
+    // This enables the "new-scenario" flag that surfaces scenarios without
+    // established baselines for human review.
+    const previousReport = loadPreviousReport();
+
+    // Generate and save report (review flags are applied inside generateReport)
     const report = generateReport(
       results,
       model,
       mode as "mock" | "integration",
       totalCostDollars,
-      runId
+      runId,
+      previousReport
     );
     const reportPath = saveReport(report);
     console.error(`[eval] Report saved: ${reportPath}`);
