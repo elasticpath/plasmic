@@ -2322,6 +2322,18 @@ function plasmicElementToTpl(
     });
   }
 
+  // Auto-set type="password" for password inputs
+  if (element.type === "password") {
+    if (!vs.attrs) {vs.attrs = {};}
+    // Only set if not already explicitly provided via attrs
+    if (!vs.attrs.type) {
+      vs.attrs.type = new CustomCode({
+        code: JSON.stringify("password"),
+        fallback: null,
+      });
+    }
+  }
+
   // Process HTML attributes from element.attrs
   if ("attrs" in element && element.attrs && typeof element.attrs === "object") {
     if (!vs.attrs) {vs.attrs = {};}
@@ -2601,6 +2613,7 @@ export interface MoveChildResult {
   newParentName?: string;
   newParentUuid: string;
   position: string | number;
+  slotName?: string;
 }
 
 /**
@@ -2614,7 +2627,8 @@ export async function moveChild(
   componentUuid: string,
   nodeRef: string,
   newParentRef: string,
-  position?: string | number
+  position?: string | number,
+  slot?: string
 ): Promise<MoveChildResult> {
   const component = findComponent(componentUuid);
 
@@ -2624,12 +2638,6 @@ export async function moveChild(
 
   const parentResult = resolveNode(component, newParentRef);
   const newParent = requireSingleNode(parentResult, newParentRef);
-
-  if (!isKnownTplTag(newParent.node)) {
-    throw new Error(
-      `New parent "${newParentRef}" is not a TplTag and cannot have children.`
-    );
-  }
 
   // Prevent moving root node
   if (resolved.node === component.tplTree) {
@@ -2650,6 +2658,104 @@ export async function moveChild(
   if (!currentParentInfo) {
     throw new Error(
       `Could not find current parent of node "${nodeRef}".`
+    );
+  }
+
+  // --- TplComponent parent: move into slot ---
+  if (isKnownTplComponent(newParent.node)) {
+    const tplComp = newParent.node;
+    const targetComp = tplComp.component;
+
+    const slotParams = (targetComp.params ?? []).filter(
+      (p: any) => p.tplSlot
+    );
+    if (slotParams.length === 0) {
+      throw new Error(
+        `Component "${targetComp.name}" has no slots.`
+      );
+    }
+
+    const slotName = slot ?? "children";
+    const slotParam = slotParams.find(
+      (p: any) => p.variable?.name === slotName
+    );
+    if (!slotParam) {
+      const available = slotParams
+        .map((p: any) => p.variable?.name)
+        .filter(Boolean)
+        .sort();
+      throw new Error(
+        `Slot "${slotName}" not found on component "${targetComp.name}". ` +
+          `Available slots: ${available.join(", ")}`
+      );
+    }
+
+    const session = requireSession();
+    const tplMgr = new TplMgr({ site: session.site });
+    const vs = tplMgr.ensureBaseVariantSetting(tplComp);
+
+    let slotArg = (vs.args ?? []).find(
+      (arg: any) =>
+        arg.param === slotParam || arg.param?.variable?.name === slotName
+    );
+
+    if (slotArg && !isKnownRenderExpr(slotArg.expr)) {
+      throw new Error(
+        `Slot "${slotName}" contains a code expression, not renderable content.`
+      );
+    }
+
+    const tracker = getChangeTracker();
+
+    const changes = tracker.withRecording(() => {
+      // Remove from current parent
+      currentParentInfo.childrenArray.splice(
+        currentParentInfo.childIndex,
+        1
+      );
+
+      if (slotArg) {
+        insertIntoArray(slotArg.expr.tpl, resolved.node, position);
+      } else {
+        const renderExpr = new RenderExpr({ tpl: [resolved.node] });
+        const newArg = new Arg({ param: slotParam, expr: renderExpr });
+        if (!vs.args) { vs.args = []; }
+        vs.args.push(newArg);
+      }
+
+      resolved.node.parent = tplComp;
+    });
+
+    const componentIid = getComponentIid(component);
+    const save = await saveOrAccumulate(
+      apiClient,
+      changes,
+      `move-child: ${resolved.name ?? nodeRef} to slot "${slotName}" on ${newParent.name ?? newParentRef}`,
+      componentIid ? [componentIid] : []
+    );
+
+    return {
+      save,
+      movedName: resolved.name,
+      movedUuid: resolved.uuid,
+      newParentName: newParent.name,
+      newParentUuid: newParent.uuid,
+      position: position ?? "last",
+      slotName,
+    };
+  }
+
+  // --- TplTag parent: original behavior ---
+  if (slot) {
+    throw new Error(
+      `Slot targeting only applies to component instances. ` +
+        `Node "${newParentRef}" is a TplTag, not a TplComponent.`
+    );
+  }
+
+  if (!isKnownTplTag(newParent.node)) {
+    throw new Error(
+      `New parent "${newParentRef}" is not a TplTag and cannot have children.`
     );
   }
 
@@ -2690,6 +2796,7 @@ export interface CloneChildResult {
   clonedName?: string;
   clonedUuid: string;
   originalUuid: string;
+  slotName?: string;
 }
 
 /**
@@ -2710,7 +2817,8 @@ export async function cloneChild(
   nodeRef: string,
   newName?: string,
   parentRef?: string,
-  position?: string | number
+  position?: string | number,
+  slot?: string
 ): Promise<CloneChildResult> {
   const component = findComponent(componentUuid);
   const result = resolveNode(component, nodeRef);
@@ -2726,6 +2834,7 @@ export async function cloneChild(
 
   const tracker = getChangeTracker();
   let clonedNode: any;
+  let resolvedSlotName: string | undefined;
 
   const changes = tracker.withRecording(() => {
     // Deep clone the node and all descendants using WAB's real clone()
@@ -2742,13 +2851,83 @@ export async function cloneChild(
       // Insert at specified parent + position
       const parentResult = resolveNode(component, parentRef);
       const parentResolved = requireSingleNode(parentResult, parentRef);
-      if (!isKnownTplTag(parentResolved.node)) {
+
+      // --- TplComponent parent: clone into slot ---
+      if (isKnownTplComponent(parentResolved.node)) {
+        const tplComp = parentResolved.node;
+        const targetComp = tplComp.component;
+
+        const slotParams = (targetComp.params ?? []).filter(
+          (p: any) => p.tplSlot
+        );
+        if (slotParams.length === 0) {
+          throw new Error(
+            `Component "${targetComp.name}" has no slots.`
+          );
+        }
+
+        const slotName = slot ?? "children";
+        const slotParam = slotParams.find(
+          (p: any) => p.variable?.name === slotName
+        );
+        if (!slotParam) {
+          const available = slotParams
+            .map((p: any) => p.variable?.name)
+            .filter(Boolean)
+            .sort();
+          throw new Error(
+            `Slot "${slotName}" not found on component "${targetComp.name}". ` +
+              `Available slots: ${available.join(", ")}`
+          );
+        }
+
+        const session = requireSession();
+        const tplMgr = new TplMgr({ site: session.site });
+        const vs = tplMgr.ensureBaseVariantSetting(tplComp);
+
+        let slotArg = (vs.args ?? []).find(
+          (arg: any) =>
+            arg.param === slotParam || arg.param?.variable?.name === slotName
+        );
+
+        if (slotArg && !isKnownRenderExpr(slotArg.expr)) {
+          throw new Error(
+            `Slot "${slotName}" contains a code expression, not renderable content.`
+          );
+        }
+
+        if (slotArg) {
+          insertIntoArray(slotArg.expr.tpl, clonedNode, position);
+        } else {
+          const renderExpr = new RenderExpr({ tpl: [clonedNode] });
+          const newArg = new Arg({ param: slotParam, expr: renderExpr });
+          if (!vs.args) { vs.args = []; }
+          vs.args.push(newArg);
+        }
+
+        clonedNode.parent = tplComp;
+        resolvedSlotName = slotName;
+      } else if (isKnownTplTag(parentResolved.node)) {
+        // --- TplTag parent ---
+        if (slot) {
+          throw new Error(
+            `Slot targeting only applies to component instances. ` +
+              `Node "${parentRef}" is a TplTag, not a TplComponent.`
+          );
+        }
+        insertChild(parentResolved.node, clonedNode, position);
+      } else {
         throw new Error(
           `Parent node "${parentRef}" is not a container and cannot have children added.`
         );
       }
-      insertChild(parentResolved.node, clonedNode, position);
     } else {
+      // Reject slot without parentRef
+      if (slot) {
+        throw new Error(
+          `Slot targeting requires parentRef to specify the component instance.`
+        );
+      }
       // Insert as sibling after the original
       const parentInfo = findParent(component.tplTree, resolved.node);
       if (!parentInfo) {
@@ -2775,6 +2954,7 @@ export async function cloneChild(
     clonedName: clonedNode?.name,
     clonedUuid: clonedNode?.uuid,
     originalUuid: resolved.uuid,
+    ...(resolvedSlotName ? { slotName: resolvedSlotName } : {}),
   };
 }
 

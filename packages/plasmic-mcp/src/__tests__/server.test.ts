@@ -1715,7 +1715,7 @@ describe("tool handlers", () => {
       expect(output.revision).toBe(10);
 
       expect(mockMoveChild).toHaveBeenCalledWith(
-        mockApiClient, "comp-1", "Title", "Hero", 0
+        mockApiClient, "comp-1", "Title", "Hero", 0, undefined
       );
     });
 
@@ -1764,7 +1764,7 @@ describe("tool handlers", () => {
       expect(output.revision).toBe(12);
 
       expect(mockCloneChild).toHaveBeenCalledWith(
-        mockApiClient, "comp-1", "Card", undefined, undefined, undefined
+        mockApiClient, "comp-1", "Card", undefined, undefined, undefined, undefined
       );
     });
 
@@ -1788,7 +1788,7 @@ describe("tool handlers", () => {
       });
 
       expect(mockCloneChild).toHaveBeenCalledWith(
-        mockApiClient, "comp-1", "Source", "CustomName", "OtherBox", "first"
+        mockApiClient, "comp-1", "Source", "CustomName", "OtherBox", "first", undefined
       );
     });
 

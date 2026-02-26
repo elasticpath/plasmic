@@ -3,10 +3,10 @@
 > **Goal**: Create Claude Code skills and workflows that can interact with Plasmic Studio
 > programmatically to create fully-featured pages from the Claude Code terminal.
 >
-> **Current state**: 97 MCP tools, 6 Claude Code skills, 1014 tests (940 unit + 74 integration).
+> **Current state**: 97 MCP tools, 6 Claude Code skills, 1026 tests (928 unit + 98 integration).
 > Zero TODOs/FIXMEs/skipped tests.
 >
-> **Last verified**: 2026-02-26 — 3.1 Images & Assets implemented.
+> **Last verified**: 2026-02-26 — CQ-2, CQ-3, CQ-7 implemented.
 
 ---
 
@@ -332,17 +332,26 @@ These are code health improvements discovered during analysis. No specs needed.
   - `randomUUID` import retained — still used by `setDataRep`
   - All 738 tests pass after removal
 
-### CQ-2 moveChild Slot Support Gap
-- **Location**: `edit-tools.ts` moveChild function (line ~2050)
-- **Verified**: No `slot` parameter in function signature or Zod schema. Rejects all non-TplTag new parents: `if (!isKnownTplTag(newParent.node))` throws error.
-- **What**: `addChild` supports slot targeting on `TplComponent` parents, but `moveChild` rejects non-`TplTag` parents entirely. Users must workaround via `removeChild` + `addChild`.
-- **Action**: Add optional `slot` parameter to `moveChild` (mirrors `addChild` signature)
+### CQ-2 moveChild Slot Support — DONE (2026-02-26)
+- **Status**: COMPLETED
+  - Added optional `slot` parameter to `moveChild()` mirroring `addChild()` slot semantics
+  - When `newParentRef` is a TplComponent: finds slot param, creates/reuses Arg+RenderExpr, inserts node
+  - When `newParentRef` is a TplTag with `slot` param: rejects with clear error
+  - TplComponent without slots: rejects with "has no slots" error
+  - Updated server.ts `move-child` tool schema with `slot` parameter
+  - MoveChildResult extended with `slotName?: string` field
+  - 5 new unit tests: slot creation, existing slot append, default children slot, slot rejection on TplTag, nonexistent slot name
+  - Existing "rejects move to non-TplTag parent" test updated to match new error path ("has no slots")
 
-### CQ-3 cloneChild Slot Support Gap
-- **Location**: `edit-tools.ts` cloneChild function (line ~2348)
-- **Verified**: No `slot` parameter. When `parentRef` is provided: `if (!isKnownTplTag(parentResolved.node))` throws error.
-- **What**: When `parentRef` is provided, `cloneChild` rejects `TplComponent` parents. Cannot clone into a slot.
-- **Action**: Add optional `slot` parameter to `cloneChild` (mirrors `addChild` signature)
+### CQ-3 cloneChild Slot Support — DONE (2026-02-26)
+- **Status**: COMPLETED
+  - Added optional `slot` parameter to `cloneChild()` mirroring `addChild()` slot semantics
+  - When `parentRef` is a TplComponent: finds slot param, creates/reuses Arg+RenderExpr, inserts clone
+  - When `parentRef` is a TplTag with `slot` param: rejects with clear error
+  - `slot` without `parentRef`: rejects with "requires parentRef" error
+  - Updated server.ts `clone-child` tool schema with `slot` parameter
+  - CloneChildResult extended with `slotName?: string` field
+  - 5 new unit tests: slot creation, existing slot append, slot rejection on TplTag, nonexistent slot, slot without parentRef
 
 ### CQ-4 tree-reader Base-Variant-Only Limitation
 - **Location**: `tree-reader.ts` — reads only `vsettings[0]` throughout
@@ -359,10 +368,12 @@ These are code health improvements discovered during analysis. No specs needed.
 - **What**: `list-variants` tool handler has no unit test. `remove-child` and `move-child` have no dryRun tests. Batch error rollback path untested.
 - **Action**: Add missing unit tests
 
-### CQ-7 addChild Element Type Gaps
-- **Verified**: `password` type at line 1676 sets `tag = "input"` but does NOT auto-set `type="password"` attribute. Inconsistent with `type: "img"` which auto-sets `src`.
-- **What**: `button`, `input`, `password`, `textarea`, `page-section` element types have no tests. `vbox`/`hbox` layout style application untested. `password` type doesn't auto-set `type="password"` attribute.
-- **Action**: Add tests + fix password input auto-attribute
+### CQ-7 addChild Password Auto-Attribute — DONE (2026-02-26)
+- **Status**: PARTIALLY COMPLETED (password fix done; remaining element type tests deferred)
+  - Fixed: `type: "password"` now auto-sets `type="password"` attribute on the input element (consistent with how `type: "img"` auto-sets `src`)
+  - Does not override explicit `attrs.type` if user provides one
+  - 2 new unit tests: auto-set password type, no override of explicit type attr
+  - Remaining: `button`, `input`, `textarea`, `page-section`, `vbox`/`hbox` layout style tests still missing (low priority)
 
 ---
 
@@ -371,7 +382,7 @@ These are code health improvements discovered during analysis. No specs needed.
 ```
 Phase 1 (Foundations):      1.1 Visibility ✓ → 1.2 Data Repetition ✓ → 1.3 Tokens ✓ → CQ-1 Dead Code ✓ → 1.4 Props ✓ → 1.5 Rich Text ✓
 Phase 2 (Authoring):        2.1 State ✓
-Phase 3 (Interactivity):    2.2 Interactions ✓ → CQ-2/CQ-3 Slot Gaps
+Phase 3 (Interactivity):    2.2 Interactions ✓ → CQ-2/CQ-3 Slot Gaps ✓ → CQ-7 Password Fix ✓
 Phase 4 (Assets & Data):    3.1 Images ✓ → 3.2 Queries ✓
 Phase 5 (Design System):    4.1 Mixins ✓ → 4.2 Animations ✓ → 4.3 Themes ✓
 Phase 6 (Remaining):        5.1 sub-features ✓(reorder, global variants, convert, data tokens, code meta, custom functions, splits) — extract-to-component skipped

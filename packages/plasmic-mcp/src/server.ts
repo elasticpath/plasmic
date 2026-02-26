@@ -1909,7 +1909,8 @@ export function createServer(): McpServer {
   // Supports dry-run mode (no cache invalidation in dry-run).
   server.tool(
     "move-child",
-    "Move an element to a new parent within the same component. Detects and prevents cycles.",
+    "Move an element to a new parent within the same component. Detects and prevents cycles. " +
+      "When newParentRef is a component instance, use the `slot` field to target a specific slot (defaults to \"children\").",
     {
       componentUuid: z
         .string()
@@ -1926,16 +1927,23 @@ export function createServer(): McpServer {
         .describe(
           'Where to insert: "first", "last" (default), or a numeric index'
         ),
+      slot: z
+        .string()
+        .optional()
+        .describe(
+          "Target slot name on a component instance (e.g., \"header\", \"footer\"). " +
+            "Only valid when newParentRef is a TplComponent. Defaults to \"children\" if omitted."
+        ),
       dryRun: z
         .boolean()
         .optional()
         .describe("When true, shows what would change without persisting. Model is left unchanged."),
     },
-    async ({ componentUuid, nodeRef, newParentRef, position, dryRun }) => {
+    async ({ componentUuid, nodeRef, newParentRef, position, slot, dryRun }) => {
       try {
         if (dryRun) {
           const result = await withDryRun(() =>
-            moveChild(apiClient, componentUuid, nodeRef, newParentRef, position)
+            moveChild(apiClient, componentUuid, nodeRef, newParentRef, position, slot)
           );
           return {
             content: [
@@ -1946,6 +1954,7 @@ export function createServer(): McpServer {
                     dryRun: true,
                     moved: result.movedName ?? result.movedUuid,
                     newParent: result.newParentName ?? result.newParentUuid,
+                    ...(result.slotName ? { slot: result.slotName } : {}),
                     position: result.position,
                     message: "Dry run: no changes persisted",
                   },
@@ -1962,7 +1971,8 @@ export function createServer(): McpServer {
           componentUuid,
           nodeRef,
           newParentRef,
-          position
+          position,
+          slot
         );
         // Structural edit: invalidate node resolver cache for this component
         invalidateNodeCache(componentUuid);
@@ -1975,6 +1985,7 @@ export function createServer(): McpServer {
                   success: true,
                   moved: result.movedName ?? result.movedUuid,
                   newParent: result.newParentName ?? result.newParentUuid,
+                  ...(result.slotName ? { slot: result.slotName } : {}),
                   position: result.position,
                   revision: result.save.revisionNum,
                 },
@@ -1996,7 +2007,9 @@ export function createServer(): McpServer {
   // Supports dry-run mode (no persistence or cache invalidation in dry-run).
   server.tool(
     "clone-child",
-    "Duplicate an existing element and all its descendants. Creates a deep copy with new UUIDs. Clone is inserted as a sibling after the original by default.",
+    "Duplicate an existing element and all its descendants. Creates a deep copy with new UUIDs. " +
+      "Clone is inserted as a sibling after the original by default. " +
+      "When parentRef is a component instance, use the `slot` field to target a specific slot (defaults to \"children\").",
     {
       componentUuid: z
         .string()
@@ -2024,6 +2037,13 @@ export function createServer(): McpServer {
         .describe(
           'Where to insert the clone: "first", "last" (default), or a numeric index. Only used with parentRef.'
         ),
+      slot: z
+        .string()
+        .optional()
+        .describe(
+          "Target slot name on a component instance (e.g., \"header\", \"footer\"). " +
+            "Only valid when parentRef is a TplComponent. Defaults to \"children\" if omitted."
+        ),
       dryRun: z
         .boolean()
         .optional()
@@ -2031,11 +2051,11 @@ export function createServer(): McpServer {
           "When true, shows what would change without persisting. Model is left unchanged."
         ),
     },
-    async ({ componentUuid, nodeRef, newName, parentRef, position, dryRun }) => {
+    async ({ componentUuid, nodeRef, newName, parentRef, position, slot, dryRun }) => {
       try {
         if (dryRun) {
           const result = await withDryRun(() =>
-            cloneChild(apiClient, componentUuid, nodeRef, newName, parentRef, position)
+            cloneChild(apiClient, componentUuid, nodeRef, newName, parentRef, position, slot)
           );
           return {
             content: [
@@ -2047,6 +2067,7 @@ export function createServer(): McpServer {
                     cloned: result.clonedName ?? result.clonedUuid,
                     clonedUuid: result.clonedUuid,
                     originalUuid: result.originalUuid,
+                    ...(result.slotName ? { slot: result.slotName } : {}),
                     message: "Dry run: no changes persisted",
                   },
                   null,
@@ -2063,7 +2084,8 @@ export function createServer(): McpServer {
           nodeRef,
           newName,
           parentRef,
-          position
+          position,
+          slot
         );
         // Structural edit: invalidate node resolver cache for this component
         invalidateNodeCache(componentUuid);
@@ -2077,6 +2099,7 @@ export function createServer(): McpServer {
                   cloned: result.clonedName ?? result.clonedUuid,
                   clonedUuid: result.clonedUuid,
                   originalUuid: result.originalUuid,
+                  ...(result.slotName ? { slot: result.slotName } : {}),
                   revision: result.save.revisionNum,
                 },
                 null,
