@@ -10,7 +10,7 @@ Goal: Claude Code skills and workflows that create Plasmic pages programmaticall
 - **Code quality**: Zero FIXMEs, zero HACK/XXX markers, zero placeholders, zero partial implementations
 - **Core page-creation workflow**: Functional end-to-end (project.set -> discover tokens -> build tree -> create-page -> enhance via /plasmic-edit -> save)
 
-P1, P2, P3, and P4 are DONE. P5-P6 remain TODO.
+P1, P2, P3, P4, and P5 are DONE. P6 remains TODO.
 
 ---
 
@@ -128,38 +128,25 @@ The spec suggested depth-first serialization with accumulator. Instead, we use a
 
 ---
 
-## Priority 5: Skills Progressive Navigation (Best Practices)
+## ~~Priority 5: Skills Progressive Navigation (Best Practices)~~ DONE
 
 **Spec**: `specs/skills-progressive-navigation.md`
 
-The progressive navigation pattern is IMPLIED but not FORMALIZED in any skill. `plasmic-inspect.md` is closest (lines 50-54: "summary first, then node, then tree only when explicitly needed"). But multiple skills show `inspect.tree` without maxDepth, and none reference `format: "concise"` or truncation hints.
+### What was done
 
-### Checklist
+- **`plasmic.md` (router)**: Added "Context Budget" section with 4-level priority ordering (inspect.node > inspect.summary > inspect.subtree > inspect.tree), truncation hints guidance, and explicit "never call inspect.tree without maxDepth" instruction. Updated tool listing to mark tree as "Last resort".
+- **`plasmic-inspect.md`**: Added full "Navigation Pattern" section with 4-step progressive disclosure (Orient → Locate → Drill → Full) with concrete code examples. Added "Following Truncation Hints" subsection explaining `truncated: true`, `totalNodes`, and `hint` fields. Added "AVOID" section listing anti-patterns. Updated Instructions steps to include maxDepth values. Marked tree tool as "Last resort".
+- **`plasmic-edit.md`**: Strengthened editing workflow — step 7 now explicitly says "verify with targeted reads, NOT full tree". Added "Verification rule" paragraph after workflow. Updated inspection tools to include maxDepth values and reordered subtree before tree. Marked tree as "Last resort".
+- **`plasmic-create-page.md`**: Added step 7 "Verify with a summary" using `inspect.summary` with `maxDepth: 2`. Updated tool listing to include maxDepth in summary signature.
+- **`plasmic-create-component.md`**: Added step 7 "Verify with a summary" post-creation. Updated all inspect tool listings with explicit maxDepth values. Reordered tools (subtree before tree). Step 5 (clone inspection) now includes `maxDepth: 2`. Marked tree as "Last resort".
+- **`plasmic-patterns.md`**: Updated component reference inspection guidance to include `maxDepth: 2` on summary, `maxDepth: 3` on tree, and "last resort" qualifier.
+- **Audit**: Verified no skill instructs `inspect.tree` without maxDepth (only the AVOID examples in plasmic-inspect.md show it, intentionally as anti-patterns).
 
-- [ ] Update `plasmic.md` (router):
-  - [ ] Add "Context Budget" section explaining MCP response costs
-  - [ ] Add guidance: "Use the most targeted inspect action available"
-  - [ ] Priority ordering: inspect.node > inspect.summary > inspect.subtree > inspect.tree (last resort)
-- [ ] Update `plasmic-inspect.md`:
-  - [ ] Add explicit 4-step navigation pattern: Orient -> Locate -> Detail -> Full
-  - [ ] Add `format: "concise"` references (depends on P6 being done, or document as upcoming)
-  - [ ] Add guidance on following truncation hints
-  - [ ] Add AVOID section: no `inspect.tree` without maxDepth
-- [ ] Update `plasmic-edit.md`:
-  - [ ] Add targeted verification: "After editing, use inspect.node on the edited node, NOT inspect.tree"
-  - [ ] Remove or qualify any references to inspect.tree for verification
-- [ ] Update `plasmic-create-page.md`:
-  - [ ] Add post-creation verification: "Verify with inspect.summary (maxDepth: 1-2), not full tree"
-- [ ] Update `plasmic-create-component.md`:
-  - [ ] Same post-creation verification guidance
-  - [ ] Update line 190: recommend summary before tree for clone inspection
-- [ ] Ensure no skill instructs `inspect.tree` without maxDepth
-- [ ] Add references to `format: "concise"` where appropriate (once P6 is implemented)
-- [ ] Add guidance on following truncation hints (once P4 is implemented)
+### Note on format: "concise"
 
-**Files**: `.claude/commands/plasmic.md`, `.claude/commands/plasmic-inspect.md`, `.claude/commands/plasmic-edit.md`, `.claude/commands/plasmic-create-page.md`, `.claude/commands/plasmic-create-component.md`
+P6 (concise format) is not yet implemented. Skills currently omit `format: "concise"` references. When P6 ships, skills should be updated to reference it — particularly in plasmic-inspect.md step 1 (Orient) and plasmic.md Context Budget section.
 
-**Dependencies**: Should be implemented AFTER P2-P4 so referenced features actually exist. Can partially implement (maxDepth guidance) before P6 (format: "concise").
+**Files changed**: `.claude/commands/plasmic.md`, `.claude/commands/plasmic-inspect.md`, `.claude/commands/plasmic-edit.md`, `.claude/commands/plasmic-create-page.md`, `.claude/commands/plasmic-create-component.md`, `.claude/commands/plasmic-patterns.md`
 
 ---
 
@@ -221,8 +208,8 @@ P1 (component instance styling)  -- DONE
 P2 (compact JSON)                -- DONE
 P3 (default maxDepth)            -- DONE
 P4 (response truncation)         -- DONE
-P5 (skills progressive nav)      -- after P2-P4, references server features
+P5 (skills progressive nav)      -- DONE
 P6 (concise format)              -- after P3-P4, incremental optimization
 ```
 
-P5 is next. P5 updates skill documentation to formalize the progressive navigation pattern (orient → locate → detail → full) and reference the server features from P2-P4. P6 can be done before or after P5 (P5 should be updated after P6 to reference `format: "concise"`).
+P6 is next. After P6 ships, update skills (plasmic-inspect.md step 1, plasmic.md Context Budget) to reference `format: "concise"`.

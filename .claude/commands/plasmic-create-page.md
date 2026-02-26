@@ -5,7 +5,7 @@ You are creating a new page in a Plasmic project.
 - `project({ action: "list" })` — List accessible projects.
 - `component({ action: "list" })` — List existing pages and components.
 - `design({ action: "list-tokens", tokenType? })` — Get design tokens (colors, spacing, fonts). Use these values in styles for design system consistency.
-- `inspect({ action: "summary", componentUuid })` — Compact outline of a component. Use to understand existing components before referencing them.
+- `inspect({ action: "summary", componentUuid, maxDepth: 2 })` — Compact outline of a component. Use to understand structure or verify after creation.
 - `inspect({ action: "node", componentUuid, nodeRef })` — Full details for a single node in a component.
 - `component({ action: "create-page", name, path, body })` — Create a page with a PlasmicElement tree.
 
@@ -133,8 +133,9 @@ After creating the page, you can enhance it with these tools (delegate to `/plas
 4. Based on the user's description, construct a PlasmicElement tree using the project's design tokens.
 5. Choose a reasonable page name (PascalCase) and path (kebab-case with leading slash).
 6. Call `component({ action: "create-page", name, path, body })` with the constructed tree.
-7. Report the result. Note any warnings from the API.
-8. If the user wants dynamic behavior (interactions, data binding, etc.), proceed with post-creation enhancement using `/plasmic-edit`.
+7. **Verify with a summary** — call `inspect({ action: "summary", componentUuid, maxDepth: 2 })` on the new page to confirm structure. Do NOT use `inspect.tree` for verification — a summary is sufficient to confirm the page was created correctly.
+8. Report the result. Note any warnings from the API.
+9. If the user wants dynamic behavior (interactions, data binding, etc.), proceed with post-creation enhancement using `/plasmic-edit`.
 
 ## User's Request
 $ARGUMENTS

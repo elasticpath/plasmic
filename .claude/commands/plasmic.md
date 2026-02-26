@@ -13,7 +13,7 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `component({ action: "list" })` — All pages and components with UUIDs and paths.
 - `inspect({ action: "summary", componentUuid, maxDepth? })` — Compact outline (~2KB). **Start here.**
 - `inspect({ action: "node", componentUuid, nodeRef })` — Full details for one node (~300B).
-- `inspect({ action: "tree", componentUuid, maxDepth?, excludeStyles?, summaryOnly? })` — Full tree with styles/text. Large output.
+- `inspect({ action: "tree", componentUuid, maxDepth?, excludeStyles?, summaryOnly? })` — Full tree with styles/text. **Last resort** — always set maxDepth.
 - `inspect({ action: "export", componentUuid })` — Write full tree to temp file. Use Read tool to inspect.
 - `inspect({ action: "subtree", componentUuid, nodeRef, maxDepth?, excludeStyles? })` — Subtree from a specific node.
 
@@ -139,6 +139,19 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `project({ action: "undo" })` — Revert the last operation.
 
 All edit tools accept `dryRun: true` to preview changes without persisting.
+
+## Context Budget
+
+MCP inspect responses consume your context window. Every unnecessary tree dump costs thousands of tokens. Use the most targeted inspect action available:
+
+1. **Know the node name?** → `inspect({ action: "node", componentUuid, nodeRef })` (~300B)
+2. **Need the overall layout?** → `inspect({ action: "summary", componentUuid, maxDepth: 2 })` (~2KB)
+3. **Need a section's subtree?** → `inspect({ action: "subtree", componentUuid, nodeRef, maxDepth: 2 })` (variable)
+4. **LAST RESORT** → `inspect({ action: "tree", componentUuid, maxDepth: 3 })` (large — always set maxDepth)
+
+**Truncation hints**: When a response says `truncated: true`, follow its `hint` — use `inspect.subtree` or `inspect.node` to drill into the parts you need instead of requesting a deeper tree.
+
+**Never** call `inspect({ action: "tree" })` without `maxDepth`. The server defaults to `maxDepth: 3`, but explicit is better than implicit.
 
 ## Instructions
 1. If no project is set, call `project({ action: "list" })` and ask the user which one to work on, then call `project({ action: "set" })`.

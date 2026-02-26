@@ -3,11 +3,11 @@ You are editing an existing page or component in a Plasmic project.
 ## Available Tools
 
 ### Inspection (read before edit)
-- `inspect({ action: "summary", componentUuid, maxDepth? })` — Compact outline (~2KB). **Start here.**
+- `inspect({ action: "summary", componentUuid, maxDepth: 2 })` — Compact outline (~2KB). **Start here** to orient.
 - `inspect({ action: "node", componentUuid, nodeRef })` — Full details for one node. **Use to inspect before/after editing.**
-- `inspect({ action: "tree", componentUuid, ... })` — Full tree (large). Only when needed.
+- `inspect({ action: "subtree", componentUuid, nodeRef, maxDepth: 2 })` — Targeted branch when you need a section's children.
+- `inspect({ action: "tree", componentUuid, maxDepth: 3 })` — Full tree (large). **Last resort** — always set maxDepth.
 - `inspect({ action: "export", componentUuid })` — Write to temp file. Use Read tool to inspect.
-- `inspect({ action: "subtree", componentUuid, nodeRef, ... })` — Subtree from a specific node.
 - `variant({ action: "list", componentUuid })` — All variants: global, component, style.
 - `component({ action: "list-props", componentUuid })` — Component parameters.
 - `component({ action: "list-states", componentUuid })` — State variables.
@@ -77,13 +77,15 @@ All edit tools accept `dryRun: true` to preview changes without persisting.
 
 ## Editing Workflow
 1. If no project is active, set one up.
-2. Call `inspect({ action: "summary", componentUuid })` to see the compact outline.
-3. Identify the node(s) to modify. Use node names or UUIDs.
+2. Call `inspect({ action: "summary", componentUuid, maxDepth: 2 })` to see the compact outline.
+3. Identify the node(s) to modify. Use node names or UUIDs from the summary.
 4. Call `inspect({ action: "node", componentUuid, nodeRef })` to see current styles/text before editing.
 5. Choose the right tool for each edit (see sections below).
 6. For 3+ edits, wrap in `project({ action: "begin-batch" })` / `project({ action: "end-batch" })`.
-7. After editing, call `inspect({ action: "node", componentUuid, nodeRef })` on the edited node to confirm.
+7. **Verify with targeted reads** — call `inspect({ action: "node", componentUuid, nodeRef })` on the edited node to confirm. Do NOT re-read the full tree after edits.
 8. If a save conflict occurs (412), explain and suggest `project({ action: "refresh" })`.
+
+**Verification rule**: After editing, always verify with `inspect.node` on the specific node you changed. Never use `inspect.tree` to confirm a single edit — it wastes thousands of context tokens to re-read an entire tree when you only need one node's state.
 
 ## Node References
 - **UUID**: exact match (from tree output)
@@ -266,7 +268,7 @@ Valid types: `img`, `text`, `box`, `vbox`, `hbox`, `page-section`, `button`, `in
 
 ## Edge Case Handling
 - **Ambiguous node**: Show all matches with UUIDs, ask to clarify.
-- **Non-existent node**: Show tree outline via `inspect({ action: "summary", componentUuid })`, suggest correct names.
+- **Non-existent node**: Show tree outline via `inspect({ action: "summary", componentUuid, maxDepth: 2 })`, suggest correct names.
 - **Unknown variant**: Call `variant({ action: "list", componentUuid })` to show available options.
 - **Regret**: Suggest `project({ action: "undo" })`.
 

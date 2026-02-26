@@ -425,7 +425,7 @@ The `kind` field resolves the component by name or UUID, just like `name` on `ty
 
 Works with both `node({ action: "add" })` (inserts into an existing page/component) and `component({ action: "create-page" })`/`component({ action: "create" })` (within the element tree body). Components from dependency packages are also resolved automatically.
 
-Props must match the component's actual parameter names exactly (case-sensitive). Use `inspect({ action: "summary" })` to inspect a component's structure, then `inspect({ action: "node" })` for specific nodes. Use `inspect({ action: "tree" })` only when you need the full tree with all styles.
+Props must match the component's actual parameter names exactly (case-sensitive). Use `inspect({ action: "summary", componentUuid, maxDepth: 2 })` to inspect a component's structure, then `inspect({ action: "node", componentUuid, nodeRef })` for specific nodes. Use `inspect({ action: "tree", componentUuid, maxDepth: 3 })` only as a last resort when you need the full tree with all styles.
 
 ## Using Design Tokens in Styles
 
