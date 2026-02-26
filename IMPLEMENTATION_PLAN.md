@@ -6,11 +6,11 @@ Goal: Claude Code skills and workflows that create Plasmic pages programmaticall
 
 - **MCP server**: 8 STRAP domain tools, ~99 actions, 4,844-line server.ts
 - **Skills**: 6 Claude Code skills (plasmic, plasmic-inspect, plasmic-edit, plasmic-create-page, plasmic-create-component, plasmic-patterns)
-- **Tests**: 1,118 passing (999 unit + 119 integration), 0 skipped, 0 TODOs in code
+- **Tests**: 1,134 passing (1011 unit + 123 integration), 0 skipped, 0 TODOs in code
 - **Code quality**: Zero FIXMEs, zero HACK/XXX markers, zero placeholders, zero partial implementations
 - **Core page-creation workflow**: Functional end-to-end (project.set -> discover tokens -> build tree -> create-page -> enhance via /plasmic-edit -> save)
 
-P1 and P2 are DONE. P3-P6 remain TODO.
+P1, P2, and P3 are DONE. P4-P6 remain TODO.
 
 ---
 
@@ -43,43 +43,56 @@ The original spec only identified the `updateStyles()` gate as the problem, but 
 
 ---
 
-## Priority 3: Default maxDepth on Inspect Actions (Context Safety)
+## ~~Priority 3: Default maxDepth on Inspect Actions (Context Safety)~~ DONE
 
 **Spec**: `specs/response-default-maxdepth.md`
 
-Currently `maxDepth` defaults to unlimited. The tree-reader at line 269 has `shouldRecurse = maxDepth === undefined || depth < maxDepth` -- unlimited by default. A deeply nested 500-node component returns all 500 nodes, filling the context window.
+### What was done
 
-### Current Behavior (from tree-reader.ts)
-
-- Line 65: `readComponentSummary(component, { summaryOnly: true, maxDepth })` -- maxDepth passed through, no default
-- Line 269: `options?.maxDepth === undefined || depth < options.maxDepth` -- unlimited when undefined
-- Line 349, 351, 380, 444: Same pattern for slot overrides and nested trees
-- Zod schema (server.ts:544): `maxDepth: z.number().optional()` -- no validation of -1
+- **Added `countTplNodes()` to `tree-reader.ts`** — walks the raw Tpl tree (TplTag.children, TplComponent slot overrides, TplSlot.defaultContents) independently of maxDepth to count total nodes for truncation metadata.
+- **Default maxDepth in `server.ts` inspect handlers**:
+  - `inspect.tree`: defaults to `maxDepth: 3` when not specified
+  - `inspect.summary`: defaults to `maxDepth: 2` when not specified
+  - `inspect.subtree` and `inspect.node`: no default (unlimited) — targeted drill-down tools
+  - `maxDepth: -1` converts to unlimited in all handlers
+- **Truncation metadata** added to `inspect.tree` and `inspect.summary` responses:
+  - `truncated: boolean` — always present
+  - `totalNodes: number` — always present
+  - When truncated: `maxDepthApplied`, `hint` ("Use inspect.subtree or inspect.node to drill into specific sections")
+  - When not truncated: no `hint` or `maxDepthApplied`
+- **Updated Zod schema description** for `maxDepth` param to mention defaults and -1 convention.
+- **Updated existing tests**: Added `maxDepth: -1` to ~93 integration test calls that need unlimited depth. Fixed 1 test with duplicate maxDepth key.
+- **New tests added** (16 total):
+  - 7 `countTplNodes` unit tests (TplTag, TplComponent, TplSlot, null, undefined, leaf, nested)
+  - 5 server handler tests (default maxDepth, -1 unlimited, truncation metadata for tree and summary)
+  - 4 integration tests (default truncation, summary truncation, unlimited via -1, maxDepth: 0)
 
 ### Checklist
 
-- [ ] Default `maxDepth: 2` on `inspect.summary` (root -> children -> grandchildren) in the summary handler
-- [ ] Default `maxDepth: 3` on `inspect.tree` in the tree handler
-- [ ] Keep unlimited default on `inspect.subtree` and `inspect.node` (targeted drill-down tools)
-- [ ] Add `maxDepth: -1` support to mean "unlimited" -- convert -1 to undefined before passing to tree-reader
-- [ ] Add truncation metadata to response when maxDepth truncates:
+- [x] Default `maxDepth: 2` on `inspect.summary` (root -> children -> grandchildren) in the summary handler
+- [x] Default `maxDepth: 3` on `inspect.tree` in the tree handler
+- [x] Keep unlimited default on `inspect.subtree` and `inspect.node` (targeted drill-down tools)
+- [x] Add `maxDepth: -1` support to mean "unlimited" -- convert -1 to undefined before passing to tree-reader
+- [x] Add truncation metadata to response when maxDepth truncates:
   - `truncated: boolean`
   - `maxDepthApplied: number`
   - `totalNodes: number` (requires a count traversal)
   - `hint: string` (e.g., "Use inspect.subtree or inspect.node to drill into specific sections")
-- [ ] Update tree-reader to count total nodes independently of maxDepth for the metadata
-- [ ] Update existing tests that expect full-depth results to pass explicit `maxDepth: -1`
-- [ ] Add new tests:
-  - [ ] summary without maxDepth returns depth-2 tree
-  - [ ] tree without maxDepth returns depth-3 tree
-  - [ ] `maxDepth: -1` returns full unlimited tree
-  - [ ] `maxDepth: 0` returns only root with childCount
-  - [ ] shallow component (depth < maxDepth) returns `truncated: false`
-  - [ ] truncation hint is present when `truncated: true`
+- [x] Update tree-reader to count total nodes independently of maxDepth for the metadata
+- [x] Update existing tests that expect full-depth results to pass explicit `maxDepth: -1`
+- [x] Add new tests:
+  - [x] summary without maxDepth returns depth-2 tree
+  - [x] tree without maxDepth returns depth-3 tree
+  - [x] `maxDepth: -1` returns full unlimited tree
+  - [x] `maxDepth: 0` returns only root with childCount
+  - [x] shallow component (depth < maxDepth) returns `truncated: false`
+  - [x] truncation hint is present when `truncated: true`
 
-**Files**: `packages/plasmic-mcp/src/tree-reader.ts` (lines 65, 269, 349, 351, 380, 444), `packages/plasmic-mcp/src/server.ts` (inspect handlers around lines 544-1011)
+### Test counts
 
-**Dependencies**: None, but should be done before Priority 5 (skills reference these features).
+- Unit: 1,011 tests (18 suites) — up from 999
+- Integration: 123 tests — up from 119
+- Total: 1,134 tests
 
 ---
 
@@ -214,10 +227,10 @@ Optional `format: "concise"` mode for inspect actions. Strips UUIDs (except root
 ```
 P1 (component instance styling)  -- DONE
 P2 (compact JSON)                -- DONE
-P3 (default maxDepth)            -- standalone, context safety
+P3 (default maxDepth)            -- DONE
 P4 (response truncation)         -- after P3, safety net
 P5 (skills progressive nav)      -- after P2-P4, references server features
 P6 (concise format)              -- after P3-P4, incremental optimization
 ```
 
-P3 is next. P3 and P4 are sequential. P5 depends on P2-P4. P6 can be done after P3-P4 but before or after P5 (P5 should be updated after P6 to reference `format: "concise"`).
+P4 is next. P4 adds a character-budget hard limit as a safety net on top of P3's maxDepth defaults. P5 depends on P2-P4. P6 can be done after P3-P4 but before or after P5 (P5 should be updated after P6 to reference `format: "concise"`).

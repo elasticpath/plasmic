@@ -21,6 +21,7 @@ import {
   readNodeDetails,
   readSubtree,
   countTreeNodes,
+  countTplNodes,
 } from "../tree-reader";
 import { getValidStylePropertyNames } from "../edit-tools";
 
@@ -1994,6 +1995,95 @@ describe("countTreeNodes", () => {
 
   it("returns 1 for a leaf node", () => {
     expect(countTreeNodes({ type: "tag", tag: "div" })).toBe(1);
+  });
+});
+
+// =============================================================================
+// countTplNodes — counts raw Tpl tree nodes independently of maxDepth
+//
+// Used by the server to report totalNodes in truncation metadata. Walks the
+// raw Tpl model (TplTag.children, TplComponent slot overrides, TplSlot
+// defaultContents) to count all nodes before any depth limiting.
+// =============================================================================
+
+describe("countTplNodes", () => {
+  it("counts nodes in a TplTag tree with children", () => {
+    const tpl = {
+      _type: "TplTag",
+      children: [
+        { _type: "TplTag", children: [] },
+        {
+          _type: "TplTag",
+          children: [
+            { _type: "TplTag", children: [] },
+          ],
+        },
+      ],
+    };
+    expect(countTplNodes(tpl)).toBe(4);
+  });
+
+  it("counts TplComponent slot override children", () => {
+    const tpl = {
+      _type: "TplComponent",
+      component: { name: "Button" },
+      vsettings: [{
+        args: [
+          {
+            expr: {
+              _type: "RenderExpr",
+              tpl: [
+                { _type: "TplTag", children: [] },
+                { _type: "TplTag", children: [] },
+              ],
+            },
+          },
+        ],
+      }],
+    };
+    expect(countTplNodes(tpl)).toBe(3); // Component + 2 slot children
+  });
+
+  it("counts TplSlot defaultContents", () => {
+    const tpl = {
+      _type: "TplSlot",
+      param: { variable: { name: "children" } },
+      defaultContents: [
+        { _type: "TplTag", children: [] },
+      ],
+    };
+    expect(countTplNodes(tpl)).toBe(2); // Slot + 1 default content
+  });
+
+  it("returns 0 for null", () => {
+    expect(countTplNodes(null)).toBe(0);
+  });
+
+  it("returns 0 for undefined", () => {
+    expect(countTplNodes(undefined)).toBe(0);
+  });
+
+  it("returns 1 for a leaf TplTag", () => {
+    const tpl = { _type: "TplTag", children: [] };
+    expect(countTplNodes(tpl)).toBe(1);
+  });
+
+  it("counts deeply nested trees correctly", () => {
+    // Build: root -> child1 (with 2 grandchildren) + child2 (leaf)
+    const tpl = {
+      _type: "TplTag",
+      children: [
+        {
+          _type: "TplTag",
+          children: [
+            { _type: "TplTag", children: [] },
+            { _type: "TplTag", children: [] },
+          ],
+        },
+        { _type: "TplTag", children: [] },
+      ],
+    };
+    expect(countTplNodes(tpl)).toBe(5);
   });
 });
 

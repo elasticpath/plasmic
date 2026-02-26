@@ -151,6 +151,39 @@ export function countTreeNodes(node: TreeNode | null): number {
   return count;
 }
 
+/**
+ * Count total nodes in the raw Tpl tree, independently of any maxDepth truncation.
+ * Walks TplTag.children, TplComponent slot overrides (RenderExpr.tpl), and
+ * TplSlot.defaultContents to produce an accurate total.
+ */
+export function countTplNodes(tpl: any): number {
+  if (!tpl) {return 0;}
+  let count = 1;
+
+  if (isKnownTplTag(tpl)) {
+    for (const child of tpl.children ?? []) {
+      count += countTplNodes(child);
+    }
+  } else if (isKnownTplComponent(tpl)) {
+    const vs = tpl.vsettings?.[0];
+    if (vs?.args?.length > 0) {
+      for (const arg of vs.args) {
+        if (isKnownRenderExpr(arg.expr)) {
+          for (const child of arg.expr.tpl ?? []) {
+            count += countTplNodes(child);
+          }
+        }
+      }
+    }
+  } else if (isKnownTplSlot(tpl)) {
+    for (const child of tpl.defaultContents ?? []) {
+      count += countTplNodes(child);
+    }
+  }
+
+  return count;
+}
+
 // ---------------------------------------------------------------------------
 // Internal: Tpl node reading
 // ---------------------------------------------------------------------------

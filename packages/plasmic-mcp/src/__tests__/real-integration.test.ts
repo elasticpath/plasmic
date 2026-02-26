@@ -329,7 +329,7 @@ describe("read workflows", () => {
     const comp = discoveredComponents[0];
     const result = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
 
     expect(result.isError).toBeFalsy();
@@ -352,7 +352,7 @@ describe("read workflows", () => {
     const comp = discoveredComponents[0];
     const result = await client.callTool({
       name: "inspect",
-      arguments: { action: "summary", componentUuid: comp.uuid },
+      arguments: { action: "summary", maxDepth: -1, componentUuid: comp.uuid },
     });
 
     expect(result.isError).toBeFalsy();
@@ -383,7 +383,7 @@ describe("read workflows", () => {
     // First get the full tree to discover a named node
     const treeResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const textNode = findFirstTextNode(tree);
@@ -436,7 +436,7 @@ describe("read workflows", () => {
     for (const comp of discoveredComponents) {
       const treeResult = await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       });
       if (!treeResult.isError) {
         const tree = parseResponse(treeResult).tree;
@@ -452,11 +452,11 @@ describe("read workflows", () => {
 
     const fullResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: bestComp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: bestComp.uuid },
     });
     const summaryResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "summary", componentUuid: bestComp.uuid },
+      arguments: { action: "summary", maxDepth: -1, componentUuid: bestComp.uuid },
     });
 
     const fullSize = fullResult.content[0].text.length;
@@ -479,9 +479,7 @@ describe("read workflows", () => {
     const comp = discoveredComponents[0];
     const result = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid,
-        maxDepth: 1,
-      },
+      arguments: { action: "tree", componentUuid: comp.uuid, maxDepth: 1 },
     });
 
     expect(result.isError).toBeFalsy();
@@ -499,6 +497,89 @@ describe("read workflows", () => {
       }
     }
   });
+
+  it("inspect.tree default maxDepth → truncation metadata when component is deep", async () => {
+    // Find a component with enough depth to trigger truncation at default maxDepth: 3
+    const comp = discoveredComponents[0];
+
+    // Call without maxDepth to use the default (3)
+    const result = await client.callTool({
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
+    });
+
+    expect(result.isError).toBeFalsy();
+    const output = parseResponse(result);
+
+    // Response must include truncation metadata
+    expect(output.truncated).toBeDefined();
+    expect(typeof output.totalNodes).toBe("number");
+    expect(output.totalNodes).toBeGreaterThan(0);
+
+    if (output.truncated) {
+      expect(output.maxDepthApplied).toBe(3);
+      expect(output.hint).toContain("inspect.subtree");
+    }
+  });
+
+  it("inspect.summary default maxDepth → truncation metadata when component is deep", async () => {
+    const comp = discoveredComponents[0];
+
+    // Call without maxDepth to use the default (2)
+    const result = await client.callTool({
+      name: "inspect",
+      arguments: { action: "summary", componentUuid: comp.uuid },
+    });
+
+    expect(result.isError).toBeFalsy();
+    const output = parseResponse(result);
+
+    expect(output.truncated).toBeDefined();
+    expect(typeof output.totalNodes).toBe("number");
+    expect(output.totalNodes).toBeGreaterThan(0);
+
+    if (output.truncated) {
+      expect(output.maxDepthApplied).toBe(2);
+      expect(output.hint).toContain("inspect.subtree");
+    }
+  });
+
+  it("inspect.tree with maxDepth: -1 → unlimited depth, truncated: false", async () => {
+    const comp = discoveredComponents[0];
+
+    const result = await client.callTool({
+      name: "inspect",
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
+    });
+
+    expect(result.isError).toBeFalsy();
+    const output = parseResponse(result);
+
+    // With unlimited depth, all nodes should be returned
+    expect(output.truncated).toBe(false);
+    expect(typeof output.totalNodes).toBe("number");
+    expect(output.totalNodes).toBeGreaterThan(0);
+    expect(output.hint).toBeUndefined();
+  });
+
+  it("inspect.tree with maxDepth: 0 → only root node returned", async () => {
+    const comp = discoveredComponents[0];
+
+    const result = await client.callTool({
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid, maxDepth: 0 },
+    });
+
+    expect(result.isError).toBeFalsy();
+    const output = parseResponse(result);
+    const tree = output.tree;
+
+    // Root should have no children (depth 0 = root only)
+    expect(tree).toBeDefined();
+    expect(tree.children).toBeUndefined();
+    // But totalNodes should reflect the real tree depth
+    expect(output.totalNodes).toBeGreaterThan(0);
+  });
 });
 
 // =========================================================================
@@ -512,7 +593,7 @@ describe("edit workflows", () => {
     // Discover a text node
     const treeResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const textNode = findFirstTextNode(tree);
@@ -557,7 +638,7 @@ describe("edit workflows", () => {
     // Discover a node with existing styles
     const treeResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
 
@@ -610,7 +691,7 @@ describe("batch workflows", () => {
     const comp = discoveredComponents[0];
     const treeResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const textNode = findFirstTextNode(tree);
@@ -688,7 +769,7 @@ describe("undo workflows", () => {
     const comp = discoveredComponents[0];
     const treeResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const textNode = findFirstTextNode(tree);
@@ -751,7 +832,7 @@ describe("node resolution", () => {
     // Discover a named node from the tree
     const treeResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const namedNode = findNamedNode(tree);
@@ -812,7 +893,7 @@ describe("node.add and node.remove", () => {
     // Find a container node
     const treeResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const container = findFirstContainer(tree);
@@ -838,7 +919,7 @@ describe("node.add and node.remove", () => {
     // Verify the new child appears in the tree
     const afterAdd = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const afterAddTree = parseResponse(afterAdd).tree;
     expect(afterAddTree.children.length).toBe(initialChildCount + 1);
@@ -859,7 +940,7 @@ describe("node.add and node.remove", () => {
     // Verify it's gone
     const afterRemove = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const afterRemoveTree = parseResponse(afterRemove).tree;
     expect(afterRemoveTree.children.length).toBe(initialChildCount);
@@ -888,7 +969,7 @@ describe("node.add with component instances", () => {
     // Get the tree to find the root container
     const treeResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: targetPage.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: targetPage.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const initialChildCount = tree.children?.length ?? 0;
@@ -909,7 +990,7 @@ describe("node.add with component instances", () => {
     // Verify the new child is a TplComponent instance in the tree
     const afterAdd = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: targetPage.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: targetPage.uuid },
     });
     const afterAddTree = parseResponse(afterAdd).tree;
     expect(afterAddTree.children.length).toBe(initialChildCount + 1);
@@ -933,7 +1014,7 @@ describe("node.add with component instances", () => {
     // Verify it's gone
     const afterRemove = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: targetPage.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: targetPage.uuid },
     });
     const afterRemoveTree = parseResponse(afterRemove).tree;
     expect(afterRemoveTree.children.length).toBe(initialChildCount);
@@ -958,7 +1039,7 @@ describe("node.add with component instances", () => {
     // We need to know what props are available - get the tree to check structure
     const treeResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: targetPage.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: targetPage.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const initialChildCount = tree.children?.length ?? 0;
@@ -993,7 +1074,7 @@ describe("node.add with component instances", () => {
     // Verify the new child has the prop value in tree output
     const afterAdd = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: targetPage.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: targetPage.uuid },
     });
     const afterAddTree = parseResponse(afterAdd).tree;
     expect(afterAddTree.children.length).toBe(initialChildCount + 1);
@@ -1030,7 +1111,7 @@ describe("node.add with component instances", () => {
 
     const treeResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: targetPage.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: targetPage.uuid },
     });
     const tree = parseResponse(treeResult).tree;
 
@@ -1056,7 +1137,7 @@ describe("node.add with component instances", () => {
     const comp = discoveredComponents[0];
     const treeResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
 
@@ -1098,7 +1179,7 @@ describe("node.update-styles on TplComponent instance", () => {
     // Get the root container
     const treeResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: targetPage.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: targetPage.uuid },
     });
     const tree = parseResponse(treeResult).tree;
 
@@ -1117,7 +1198,7 @@ describe("node.update-styles on TplComponent instance", () => {
     // Get the newly added child's UUID
     const afterAdd = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: targetPage.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: targetPage.uuid },
     });
     const afterAddTree = parseResponse(afterAdd).tree;
     const instanceNode =
@@ -1244,7 +1325,7 @@ describe("variant workflows", () => {
     // Get tree to find target node
     const treeResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
 
@@ -1270,7 +1351,7 @@ describe("variant workflows", () => {
 
     const treeResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
 
@@ -1302,7 +1383,7 @@ describe("variant workflows", () => {
 
     const treeResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
 
@@ -1332,7 +1413,7 @@ describe("project.refresh", () => {
     const comp = discoveredComponents[0];
     const treeResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const textNode = findFirstTextNode(tree);
@@ -1370,7 +1451,7 @@ describe("project.refresh", () => {
     // Verify session still works: get-component-tree
     const newTreeResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     expect(newTreeResult.isError).toBeFalsy();
 
@@ -1395,7 +1476,7 @@ describe("node.move", () => {
     // Get tree to find containers
     const treeResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
 
@@ -1430,7 +1511,7 @@ describe("node.move", () => {
     // Re-read tree to get UUIDs of the new containers
     const afterSetup = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const setupTree = parseResponse(afterSetup).tree;
     const sourceContainer = setupTree.children[setupTree.children.length - 2];
@@ -1460,7 +1541,7 @@ describe("node.move", () => {
     // Verify: source now has 0 children, dest has 1
     const afterMove = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const movedTree = parseResponse(afterMove).tree;
     const srcAfter = movedTree.children[movedTree.children.length - 2];
@@ -1479,7 +1560,7 @@ describe("node.move", () => {
 
     const afterUndo = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const undoneTree = parseResponse(afterUndo).tree;
     const srcAfterUndo = undoneTree.children[undoneTree.children.length - 2];
@@ -1656,7 +1737,7 @@ describe("management tools", () => {
     const comp = discoveredComponents[0];
     const treeResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
 
@@ -1732,7 +1813,7 @@ describe("slot override traversal", () => {
 
     const treeResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: page.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: page.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const initialChildCount = tree.children?.length ?? 0;
@@ -1751,7 +1832,7 @@ describe("slot override traversal", () => {
     const afterAddTree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: page.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: page.uuid },
       })
     ).tree;
     const compInstance =
@@ -1782,7 +1863,7 @@ describe("slot override traversal", () => {
     const afterSlotTree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: page.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: page.uuid },
       })
     ).tree;
     const updatedInstance =
@@ -1816,7 +1897,7 @@ describe("slot override traversal", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: page.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: page.uuid },
       })
     ).tree;
 
@@ -1832,7 +1913,7 @@ describe("slot override traversal", () => {
     const afterAdd = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: page.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: page.uuid },
       })
     ).tree;
     const compInstance = afterAdd.children[afterAdd.children.length - 1];
@@ -1858,7 +1939,7 @@ describe("slot override traversal", () => {
     const withSlot = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: page.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: page.uuid },
       })
     ).tree;
     const instance = withSlot.children[withSlot.children.length - 1];
@@ -1904,7 +1985,7 @@ describe("error recovery", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
 
@@ -1950,7 +2031,7 @@ describe("element tags", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
 
@@ -1967,7 +2048,7 @@ describe("element tags", () => {
     const afterTree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
     const newChild = afterTree.children[afterTree.children.length - 1];
@@ -1985,7 +2066,7 @@ describe("element tags", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
 
@@ -2001,7 +2082,7 @@ describe("element tags", () => {
     const afterTree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
     const newChild = afterTree.children[afterTree.children.length - 1];
@@ -2020,7 +2101,7 @@ describe("element tags", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
 
@@ -2046,7 +2127,7 @@ describe("node.update-attrs", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
 
@@ -2079,7 +2160,7 @@ describe("node.update-attrs", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
 
@@ -2106,7 +2187,7 @@ describe("node.update-attrs", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
 
@@ -2153,7 +2234,7 @@ describe("node.update-attrs", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
 
@@ -2179,7 +2260,7 @@ describe("border shorthand", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
 
@@ -2212,7 +2293,7 @@ describe("border shorthand", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
 
@@ -2267,7 +2348,7 @@ describe("token references in styles", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
 
@@ -2303,7 +2384,7 @@ describe("data bindings", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
     const textNode = findFirstTextNode(tree);
@@ -2357,7 +2438,7 @@ describe("data bindings", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
     const textNode = findFirstTextNode(tree);
@@ -2399,7 +2480,7 @@ describe("node cloning", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
 
@@ -2417,7 +2498,7 @@ describe("node cloning", () => {
     const afterAdd = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
     const originalNode = afterAdd.children[afterAdd.children.length - 1];
@@ -2441,7 +2522,7 @@ describe("node cloning", () => {
     const afterClone = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
     expect(afterClone.children.length).toBe(childCountBeforeClone + 1);
@@ -2464,7 +2545,7 @@ describe("node cloning", () => {
     const afterUndo = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
     expect(afterUndo.children.length).toBe(childCountBeforeClone);
@@ -2485,7 +2566,7 @@ describe("node cloning", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
 
@@ -2501,7 +2582,7 @@ describe("node cloning", () => {
     const afterAdd = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
     const sourceNode = afterAdd.children[afterAdd.children.length - 1];
@@ -2522,7 +2603,7 @@ describe("node cloning", () => {
     const afterClone = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
     const clone = afterClone.children.find(
@@ -2561,7 +2642,7 @@ describe("visibility and conditional rendering", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
 
@@ -2591,7 +2672,7 @@ describe("visibility and conditional rendering", () => {
     const hiddenTree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
     const hiddenNode = findNodeByUuid(hiddenTree, target.uuid);
@@ -2618,7 +2699,7 @@ describe("visibility and conditional rendering", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
     const target = findNamedNode(tree);
@@ -2652,7 +2733,7 @@ describe("visibility and conditional rendering", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
     const target = findNamedNode(tree);
@@ -2702,7 +2783,7 @@ describe("visibility and conditional rendering", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
     const target = findNamedNode(tree);
@@ -2751,7 +2832,7 @@ describe("visibility and conditional rendering", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
     const target = findNamedNode(tree);
@@ -2797,7 +2878,7 @@ describe("data repetition", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
     const target = findNamedNode(tree);
@@ -2854,7 +2935,7 @@ describe("data repetition", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
     const target = findNamedNode(tree);
@@ -2904,7 +2985,7 @@ describe("data repetition", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
     const target = findNamedNode(tree);
@@ -3260,7 +3341,7 @@ describe("rich text", () => {
     // Find a text node
     const treeResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const textNode = findFirstTextNode(tree);
@@ -3283,7 +3364,7 @@ describe("rich text", () => {
     // Read back via get-component-tree and verify marks
     const readResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const readTree = parseResponse(readResult).tree;
     const updatedNode = findNodeByUuid(readTree, textNode.uuid);
@@ -3302,7 +3383,7 @@ describe("rich text", () => {
 
     const treeResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const textNode = findFirstTextNode(tree);
@@ -3326,7 +3407,7 @@ describe("rich text", () => {
     // Read back and verify marks
     const readResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const readTree = parseResponse(readResult).tree;
     const updatedNode = findNodeByUuid(readTree, textNode.uuid);
@@ -3341,7 +3422,7 @@ describe("rich text", () => {
 
     const treeResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const textNode = findFirstTextNode(tree);
@@ -3362,7 +3443,7 @@ describe("rich text", () => {
     // Read back — text should be reconstructed ("Click here for info", not "Click [child] for info")
     const readResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const readTree = parseResponse(readResult).tree;
     const updatedNode = findNodeByUuid(readTree, textNode.uuid);
@@ -3383,7 +3464,7 @@ describe("rich text", () => {
 
     const treeResult = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const textNode = findFirstTextNode(tree);
@@ -3602,7 +3683,7 @@ describe("interactions", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
 
@@ -3667,7 +3748,7 @@ describe("interactions", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
 
@@ -3721,7 +3802,7 @@ describe("interactions", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
 
@@ -3763,7 +3844,7 @@ describe("interactions", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
 
@@ -3787,7 +3868,7 @@ describe("interactions", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
 
@@ -4008,7 +4089,7 @@ describe("mixins", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
     const rootUuid = tree.uuid;
@@ -4099,7 +4180,7 @@ describe("mixins", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
 
@@ -4160,7 +4241,7 @@ describe("animations", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
 
@@ -4245,7 +4326,7 @@ describe("animations", () => {
     const tree = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     ).tree;
 
@@ -4388,7 +4469,7 @@ describe("node.reorder", () => {
     const treeResult = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     );
     const tree = treeResult.tree ?? treeResult;
@@ -4740,7 +4821,7 @@ describe("image assets", () => {
     const summaryResult = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "summary", componentUuid: comp.uuid },
+        arguments: { action: "summary", maxDepth: -1, componentUuid: comp.uuid },
       })
     );
     const rootUuid = summaryResult.tree.uuid;
@@ -4761,7 +4842,7 @@ describe("image assets", () => {
     const afterAdd = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     );
     function findImg(node: any): string | null {
@@ -4907,7 +4988,7 @@ describe("inspect.subtree", () => {
     const treeResult = parseResponse(
       await client.callTool({
         name: "inspect",
-        arguments: { action: "tree", componentUuid: comp.uuid },
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
       })
     );
     const container = findFirstContainer(treeResult.tree);
@@ -5020,7 +5101,7 @@ describe("component.extract", () => {
     // Get the component tree to find a child node to extract
     const treeRaw = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const treeResult = parseResponse(treeRaw);
     const tree = treeResult.tree;
@@ -5084,7 +5165,7 @@ describe("component.extract", () => {
     // Get root UUID
     const treeRaw = await client.callTool({
       name: "inspect",
-      arguments: { action: "tree", componentUuid: comp.uuid },
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
     });
     const treeResult = parseResponse(treeRaw);
     const rootUuid = treeResult.tree.uuid;

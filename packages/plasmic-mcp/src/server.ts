@@ -37,6 +37,7 @@ import {
   readNodeDetails,
   readSubtree,
   countTreeNodes,
+  countTplNodes,
 } from "./tree-reader.js";
 import { readTokens } from "./token-reader.js";
 import { resolveNode, requireSingleNode, invalidateNodeCache, clearNodeCache, getCacheMetrics } from "./node-resolver.js";
@@ -541,7 +542,7 @@ export function createServer(): McpServer {
       action: z.enum(["tree", "summary", "node", "subtree", "export", "style-properties", "preview-url", "page-meta"]),
       componentUuid: z.string().optional().describe("UUID of the component to inspect"),
       nodeRef: z.string().optional().describe("Node reference: UUID, name, path, or index"),
-      maxDepth: z.number().optional().describe("Maximum tree depth to return"),
+      maxDepth: z.number().optional().describe("Maximum tree depth to return. Defaults to 3 for tree, 2 for summary. Pass -1 for unlimited."),
       excludeStyles: z.boolean().optional().describe("Strip styles from output to reduce size"),
       summaryOnly: z.boolean().optional().describe("Return compact outline (same as summary action)"),
       filter: z.string().optional().describe("Filter string for style-properties action"),
@@ -568,33 +569,45 @@ export function createServer(): McpServer {
               };
             }
 
+            // Default maxDepth: 3 for tree; -1 means unlimited
+            const effectiveMaxDepth = maxDepth === -1 ? undefined : (maxDepth ?? 3);
+
             // Build options — always pass styleTokens for token reference resolution
             const styleTokens = session.site.styleTokens;
-            const hasOptions =
-              maxDepth !== undefined || excludeStyles || summaryOnly || styleTokens?.length > 0;
-            const tree = hasOptions
-              ? readComponentTree(component, {
-                  maxDepth,
-                  excludeStyles: excludeStyles || undefined,
-                  summaryOnly: summaryOnly || undefined,
-                  styleTokens,
-                } as TreeReadOptions)
-              : readComponentTree(component);
+            const tree = readComponentTree(component, {
+              maxDepth: effectiveMaxDepth,
+              excludeStyles: excludeStyles || undefined,
+              summaryOnly: summaryOnly || undefined,
+              styleTokens,
+            } as TreeReadOptions);
+
+            // Truncation metadata — count total Tpl nodes independently of maxDepth
+            const totalNodes = component.tplTree ? countTplNodes(component.tplTree) : 0;
+            const nodesReturned = tree ? countTreeNodes(tree) : 0;
+            const truncated = nodesReturned < totalNodes;
+
+            const result: Record<string, unknown> = {
+              name: component.name,
+              uuid: component.uuid,
+              path: component.pageMeta?.path,
+              tree,
+            };
+
+            if (truncated) {
+              result.truncated = true;
+              result.maxDepthApplied = effectiveMaxDepth;
+              result.totalNodes = totalNodes;
+              result.hint = "Use inspect.subtree or inspect.node to drill into specific sections";
+            } else {
+              result.truncated = false;
+              result.totalNodes = totalNodes;
+            }
 
             return {
               content: [
                 {
                   type: "text" as const,
-                  text: JSON.stringify(
-                    {
-                      name: component.name,
-                      uuid: component.uuid,
-                      path: component.pageMeta?.path,
-                      tree,
-                    },
-                    null,
-                    2
-                  ),
+                  text: JSON.stringify(result),
                 },
               ],
             };
@@ -619,22 +632,37 @@ export function createServer(): McpServer {
               };
             }
 
-            const tree = readComponentSummary(component, maxDepth);
+            // Default maxDepth: 2 for summary; -1 means unlimited
+            const effectiveMaxDepth = maxDepth === -1 ? undefined : (maxDepth ?? 2);
+            const tree = readComponentSummary(component, effectiveMaxDepth);
+
+            // Truncation metadata — count total Tpl nodes independently of maxDepth
+            const totalNodes = component.tplTree ? countTplNodes(component.tplTree) : 0;
+            const nodesReturned = tree ? countTreeNodes(tree) : 0;
+            const truncated = nodesReturned < totalNodes;
+
+            const result: Record<string, unknown> = {
+              name: component.name,
+              uuid: component.uuid,
+              path: component.pageMeta?.path,
+              tree,
+            };
+
+            if (truncated) {
+              result.truncated = true;
+              result.maxDepthApplied = effectiveMaxDepth;
+              result.totalNodes = totalNodes;
+              result.hint = "Use inspect.subtree or inspect.node to drill into specific sections";
+            } else {
+              result.truncated = false;
+              result.totalNodes = totalNodes;
+            }
 
             return {
               content: [
                 {
                   type: "text" as const,
-                  text: JSON.stringify(
-                    {
-                      name: component.name,
-                      uuid: component.uuid,
-                      path: component.pageMeta?.path,
-                      tree,
-                    },
-                    null,
-                    2
-                  ),
+                  text: JSON.stringify(result),
                 },
               ],
             };
@@ -706,10 +734,12 @@ export function createServer(): McpServer {
 
             const resolveResult = resolveNode(component, nref);
             const resolved = requireSingleNode(resolveResult, nref);
+            // No default maxDepth for subtree (targeted drill-down); -1 means unlimited
+            const effectiveMaxDepth = maxDepth === -1 ? undefined : maxDepth;
             const tree = readSubtree(
               resolved.node,
               {
-                maxDepth,
+                maxDepth: effectiveMaxDepth,
                 excludeStyles: excludeStyles || undefined,
                 styleTokens: session.site.styleTokens,
               }

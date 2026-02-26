@@ -115,6 +115,7 @@ describe("tool handlers", () => {
   let mockReadNodeDetails: ReturnType<typeof vi.fn>;
   let mockReadSubtree: ReturnType<typeof vi.fn>;
   let mockCountTreeNodes: ReturnType<typeof vi.fn>;
+  let mockCountTplNodes: ReturnType<typeof vi.fn>;
   let mockReadTokens: ReturnType<typeof vi.fn>;
   let mockResolveNode: ReturnType<typeof vi.fn>;
   let mockRequireSingleNode: ReturnType<typeof vi.fn>;
@@ -179,6 +180,7 @@ describe("tool handlers", () => {
     mockReadNodeDetails = vi.fn();
     mockReadSubtree = vi.fn();
     mockCountTreeNodes = vi.fn().mockReturnValue(10);
+    mockCountTplNodes = vi.fn().mockReturnValue(10);
     mockReadTokens = vi.fn();
     mockResolveNode = vi.fn();
     mockRequireSingleNode = vi.fn();
@@ -273,6 +275,7 @@ describe("tool handlers", () => {
       readNodeDetails: (...args: any[]) => mockReadNodeDetails(...args),
       readSubtree: (...args: any[]) => mockReadSubtree(...args),
       countTreeNodes: (...args: any[]) => mockCountTreeNodes(...args),
+      countTplNodes: (...args: any[]) => mockCountTplNodes(...args),
     }));
 
     vi.doMock("../token-reader", () => ({
@@ -570,7 +573,7 @@ describe("tool handlers", () => {
   });
 
   describe("inspect.tree", () => {
-    it("returns component tree for valid UUID", async () => {
+    it("returns component tree for valid UUID with default maxDepth: 3", async () => {
       const mockTree = {
         type: "tag",
         tag: "div",
@@ -580,11 +583,13 @@ describe("tool handlers", () => {
       mockRequireSession.mockReturnValue({
         site: {
           components: [
-            { uuid: "comp-1", name: "Hero", pageMeta: { path: "/hero" } },
+            { uuid: "comp-1", name: "Hero", pageMeta: { path: "/hero" }, tplTree: {} },
           ],
         },
       });
       mockReadComponentTree.mockReturnValue(mockTree);
+      mockCountTreeNodes.mockReturnValue(2);
+      mockCountTplNodes.mockReturnValue(2);
 
       const result = await client.callTool({
         name: "inspect",
@@ -597,8 +602,11 @@ describe("tool handlers", () => {
       expect(output.uuid).toBe("comp-1");
       expect(output.path).toBe("/hero");
       expect(output.tree).toEqual(mockTree);
+      expect(output.truncated).toBe(false);
+      expect(output.totalNodes).toBe(2);
       expect(mockReadComponentTree).toHaveBeenCalledWith(
-        expect.objectContaining({ uuid: "comp-1", name: "Hero" })
+        expect.objectContaining({ uuid: "comp-1", name: "Hero" }),
+        expect.objectContaining({ maxDepth: 3 })
       );
     });
 
@@ -631,6 +639,70 @@ describe("tool handlers", () => {
       );
     });
 
+    it("maxDepth: -1 passes unlimited depth to readComponentTree", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Hero", tplTree: {} }],
+        },
+      });
+      mockReadComponentTree.mockReturnValue({ type: "tag", tag: "div" });
+      mockCountTreeNodes.mockReturnValue(1);
+      mockCountTplNodes.mockReturnValue(1);
+
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: "comp-1", maxDepth: -1 },
+      });
+
+      expect(mockReadComponentTree).toHaveBeenCalledWith(
+        expect.objectContaining({ uuid: "comp-1" }),
+        expect.objectContaining({ maxDepth: undefined })
+      );
+    });
+
+    it("includes truncation metadata when tree is depth-limited", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Hero", tplTree: {} }],
+        },
+      });
+      mockReadComponentTree.mockReturnValue({ type: "tag", tag: "div" });
+      mockCountTreeNodes.mockReturnValue(3);  // Returned tree has 3 nodes
+      mockCountTplNodes.mockReturnValue(10);  // Real tree has 10 nodes
+
+      const result = await client.callTool({
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: "comp-1" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.truncated).toBe(true);
+      expect(output.maxDepthApplied).toBe(3);
+      expect(output.totalNodes).toBe(10);
+      expect(output.hint).toContain("inspect.subtree");
+    });
+
+    it("reports truncated: false when all nodes are returned", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Hero", tplTree: {} }],
+        },
+      });
+      mockReadComponentTree.mockReturnValue({ type: "tag", tag: "div" });
+      mockCountTreeNodes.mockReturnValue(5);
+      mockCountTplNodes.mockReturnValue(5);
+
+      const result = await client.callTool({
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: "comp-1" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.truncated).toBe(false);
+      expect(output.totalNodes).toBe(5);
+      expect(output.hint).toBeUndefined();
+    });
+
     it("returns error for unknown component UUID", async () => {
       mockRequireSession.mockReturnValue({
         site: { components: [] },
@@ -652,7 +724,7 @@ describe("tool handlers", () => {
   // =====================================================================
 
   describe("inspect.summary", () => {
-    it("returns compact tree outline via readComponentSummary", async () => {
+    it("returns compact tree outline with default maxDepth: 2", async () => {
       const mockSummary = {
         type: "tag",
         tag: "div",
@@ -668,11 +740,13 @@ describe("tool handlers", () => {
       mockRequireSession.mockReturnValue({
         site: {
           components: [
-            { uuid: "comp-1", name: "Hero", pageMeta: { path: "/hero" } },
+            { uuid: "comp-1", name: "Hero", pageMeta: { path: "/hero" }, tplTree: {} },
           ],
         },
       });
       mockReadComponentSummary.mockReturnValue(mockSummary);
+      mockCountTreeNodes.mockReturnValue(3);
+      mockCountTplNodes.mockReturnValue(3);
 
       const result = await client.callTool({
         name: "inspect",
@@ -685,19 +759,23 @@ describe("tool handlers", () => {
       expect(output.uuid).toBe("comp-1");
       expect(output.path).toBe("/hero");
       expect(output.tree).toEqual(mockSummary);
+      expect(output.truncated).toBe(false);
+      expect(output.totalNodes).toBe(3);
       expect(mockReadComponentSummary).toHaveBeenCalledWith(
         expect.objectContaining({ uuid: "comp-1" }),
-        undefined
+        2
       );
     });
 
-    it("passes maxDepth parameter", async () => {
+    it("passes explicit maxDepth parameter", async () => {
       mockRequireSession.mockReturnValue({
         site: {
-          components: [{ uuid: "comp-1", name: "Hero" }],
+          components: [{ uuid: "comp-1", name: "Hero", tplTree: {} }],
         },
       });
       mockReadComponentSummary.mockReturnValue({ type: "tag", tag: "div" });
+      mockCountTreeNodes.mockReturnValue(1);
+      mockCountTplNodes.mockReturnValue(1);
 
       await client.callTool({
         name: "inspect",
@@ -708,6 +786,49 @@ describe("tool handlers", () => {
         expect.objectContaining({ uuid: "comp-1" }),
         3
       );
+    });
+
+    it("maxDepth: -1 passes unlimited depth to readComponentSummary", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Hero", tplTree: {} }],
+        },
+      });
+      mockReadComponentSummary.mockReturnValue({ type: "tag", tag: "div" });
+      mockCountTreeNodes.mockReturnValue(1);
+      mockCountTplNodes.mockReturnValue(1);
+
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "summary", componentUuid: "comp-1", maxDepth: -1 },
+      });
+
+      expect(mockReadComponentSummary).toHaveBeenCalledWith(
+        expect.objectContaining({ uuid: "comp-1" }),
+        undefined
+      );
+    });
+
+    it("includes truncation metadata when summary is depth-limited", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Hero", tplTree: {} }],
+        },
+      });
+      mockReadComponentSummary.mockReturnValue({ type: "tag", tag: "div" });
+      mockCountTreeNodes.mockReturnValue(2);
+      mockCountTplNodes.mockReturnValue(8);
+
+      const result = await client.callTool({
+        name: "inspect",
+        arguments: { action: "summary", componentUuid: "comp-1" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.truncated).toBe(true);
+      expect(output.maxDepthApplied).toBe(2);
+      expect(output.totalNodes).toBe(8);
+      expect(output.hint).toContain("inspect.subtree");
     });
 
     it("returns error for unknown component UUID", async () => {
