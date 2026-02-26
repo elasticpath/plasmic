@@ -135,4 +135,6 @@ export interface EvalOptions {
   maxCost?: number;
   model?: string;
   threshold?: number;
+  /** Project ID for integration mode. Falls back to EVAL_PROJECT_ID env var, then auto-detect. */
+  projectId?: string;
 }

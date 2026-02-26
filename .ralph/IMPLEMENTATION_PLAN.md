@@ -1,13 +1,13 @@
 # Implementation Plan: Plasmic MCP Eval System
 
-> Last updated: 2026-02-26 (P3.1, P3.3, P3.4, P3.5 complete)
+> Last updated: 2026-02-26 (P2.5, P3.1, P3.3, P3.4, P3.5 complete)
 > Source: `.ralph/specs/mcp-eval-framework.md`, `mcp-eval-scenarios.md`, `mcp-eval-grading.md`, `mcp-eval-visual-capture.md`
 
 ## Status Summary
 
 **P0 (Foundation): DONE.** All 4 sub-tasks implemented — directory scaffolding, MCP client adapter, scenario schema/loader, and eval runner with Claude client.
 **P1 (Core): DONE.** All 5 sub-tasks implemented — grader framework, 10 scenarios, JSON reporter, CLI, and CI workflow.
-**P2 (Enhancement): PARTIAL.** P2.1 done (20 medium scenarios). P2.2 done (15 complex scenarios). P2.3-P2.5 not started.
+**P2 (Enhancement): PARTIAL.** P2.1 done (20 medium scenarios). P2.2 done (15 complex scenarios). P2.3-P2.4 not started. P2.5 done (integration-tier MCP client).
 **P3 (Polish): PARTIAL.** P3.1 done (dashboard). P3.2 (human review) not started. P3.3 done (20 simple scenarios). P3.4 done (scenario validator). P3.5 done (cost tracking).
 
 ### Codebase Health (verified 2026-02-26)
@@ -16,7 +16,7 @@
 - Zero placeholder or stub implementations (all stubs are intentional mock infrastructure)
 - All 1197 tests passing (1060 unit + 137 integration)
 - Eval system files implemented:
-  - `evals/harness/mcp-client.ts` — McpEvalClient (mock mode, createServer + InMemoryTransport)
+  - `evals/harness/mcp-client.ts` — McpEvalClient (mock mode via InMemoryTransport; integration mode via StdioClientTransport child process)
   - `evals/harness/types.ts` — EvalScenario, GraderConfig, SetupStep, TranscriptEntry, etc.
   - `evals/harness/scenario-loader.ts` — YAML loading, validation, filtering
   - `evals/harness/scenario-validator.ts` — Standalone validator; unique IDs, valid domains, grader types, setup steps, tier targets
@@ -241,7 +241,7 @@
 
 ## P2 — Enhancement (richer eval coverage)
 
-**Status: PARTIAL (P2.1, P2.2 done; P2.3-P2.5 not started)**
+**Status: PARTIAL (P2.1, P2.2, P2.5 done; P2.3-P2.4 not started)**
 
 ### P2.1: Medium-complexity scenarios (~20) — DONE
 - [x] 20 medium scenarios in `evals/scenarios/medium.yaml` covering all 8 STRAP domains.
@@ -295,15 +295,19 @@
 - **Dependencies**: P2.3 (screenshots exist)
 - **Files**: `evals/graders/llm-judge.ts`
 
-### P2.5: Integration-tier MCP client (real Plasmic server)
-- [ ] Connect eval harness to a real running MCP server via stdio transport
-- [ ] Launch MCP server as child process: `tsx packages/plasmic-mcp/src/index.ts`
-- [ ] Connect via `StdioClientTransport` from `@modelcontextprotocol/sdk`
-- [ ] Before each scenario, reset test project to known state (clone from template or delete/recreate)
-- [ ] Env vars: `PLASMIC_AUTH_HOST`, `PLASMIC_AUTH_USER`, `PLASMIC_AUTH_PASSWORD`, test project ID
+### P2.5: Integration-tier MCP client (real Plasmic server) — DONE
+- [x] Connect eval harness to a real running MCP server via stdio transport
+- [x] Launch MCP server as child process: `npx tsx src/index.ts` via `StdioClientTransport`
+- [x] Connect via `StdioClientTransport` from `@modelcontextprotocol/sdk/client/stdio.js`
+- [x] Before each scenario, reset project via `project.set` (re-fetches from Plasmic API)
+- [x] Env vars: `PLASMIC_AUTH_HOST`, `PLASMIC_AUTH_USER`, `PLASMIC_AUTH_TOKEN` (required); `EVAL_PROJECT_ID` (optional, or use `--project-id` CLI flag, or auto-detect via `project.list`)
+- [x] CLI: `--project-id` flag, `--integration` flag, env var validation with early fail
+- [x] Server stderr captured for debugging; exposed via `getServerStderr()`
+- [x] Graceful cleanup: client.close() + transport.close() (kills child process)
+- **Known limitation**: if a scenario calls `project.save`, changes persist in the remote project and become the new baseline for subsequent scenarios. True project cloning/reset requires Plasmic API calls outside MCP (future improvement).
 - **Spec**: mcp-eval-framework.md (Integration tier)
 - **Dependencies**: P1.4
-- **Files**: `evals/harness/mcp-client.ts` (extended with integration mode)
+- **Files**: `evals/harness/mcp-client.ts`, `evals/cli.ts`, `evals/harness/types.ts`
 
 ---
 
@@ -442,4 +446,4 @@ P0.1 (scaffolding)
                               P2.2   P2.4
 ```
 
-P0 + P1 are **DONE**: a working `npm run eval` that runs simple scenarios in mock mode with state-check grading, produces a JSON report, and runs in CI on every PR. P2.1 + P2.2 are **DONE**: 35 additional scenarios (20 medium + 15 complex) covering all 8 STRAP domains. P3.1 + P3.3 + P3.4 + P3.5 are **DONE**: eval results dashboard (`npm run eval:dashboard`), 20 simple scenarios total (up from 10), standalone scenario validator (`npm run eval:validate`), and model-aware cost tracking in reports. Total: 55 scenarios. Next: P2.3-P2.5 add visual capture, LLM judge, and integration tier. P3.2 adds human review workflow.
+P0 + P1 are **DONE**: a working `npm run eval` that runs simple scenarios in mock mode with state-check grading, produces a JSON report, and runs in CI on every PR. P2.1 + P2.2 are **DONE**: 35 additional scenarios (20 medium + 15 complex) covering all 8 STRAP domains. P2.5 is **DONE**: integration-tier MCP client using StdioClientTransport to spawn the MCP server as a child process, connecting to a real Plasmic server with real auth credentials. CLI supports `--integration`, `--project-id`, and auto-detects project via `project.list`. P3.1 + P3.3 + P3.4 + P3.5 are **DONE**: eval results dashboard (`npm run eval:dashboard`), 20 simple scenarios total (up from 10), standalone scenario validator (`npm run eval:validate`), and model-aware cost tracking in reports. Total: 55 scenarios. Next: P2.3-P2.4 add visual capture and LLM judge. P3.2 adds human review workflow.

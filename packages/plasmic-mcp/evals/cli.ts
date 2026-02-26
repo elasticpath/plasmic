@@ -7,6 +7,7 @@
  *   npm run eval -- --domain component        Filter by STRAP domain
  *   npm run eval -- --scenario design-list-tokens   Run single scenario
  *   npm run eval -- --integration             Use integration tier
+ *   npm run eval -- --project-id <id>         Project ID for integration tier
  *   npm run eval -- --max-cost 5              Cost limit in dollars (default: $5)
  *   npm run eval -- --model claude-opus-4-6   Override Claude model
  *   npm run eval -- --threshold 0.9           Success rate threshold (default: 90%)
@@ -60,6 +61,9 @@ function parseArgs(args: string[]): EvalOptions & { help?: boolean } {
       case "--threshold":
         options.threshold = parseFloat(args[++i]);
         break;
+      case "--project-id":
+        options.projectId = args[++i];
+        break;
       case "--help":
       case "-h":
         options.help = true;
@@ -78,11 +82,18 @@ Options:
   --domain <name>                 Filter scenarios by STRAP domain
   --scenario <id>                 Run a single scenario by ID
   --integration                   Use integration tier (requires running Plasmic)
+  --project-id <id>               Project ID for integration tier (or set EVAL_PROJECT_ID)
   --no-visual                     Skip visual capture
   --max-cost <dollars>            Abort if projected cost exceeds $N (default: $5)
   --model <model-id>              Claude model to use (default: claude-sonnet-4-20250514)
   --threshold <0-1>               Success rate threshold (default: 0.9)
-  --help, -h                      Show this help message`);
+  --help, -h                      Show this help message
+
+Integration mode env vars:
+  PLASMIC_AUTH_HOST                Plasmic API host (e.g., https://studio.plasmic.app)
+  PLASMIC_AUTH_USER                Plasmic auth user/email
+  PLASMIC_AUTH_TOKEN               Plasmic auth token
+  EVAL_PROJECT_ID                  Target project ID (alternative to --project-id)`);
 }
 
 async function main(): Promise<void> {
@@ -104,6 +115,26 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // Validate integration-mode env vars early so we fail fast before
+  // loading scenarios or starting the MCP server.
+  if (options.integration) {
+    const requiredVars = [
+      "PLASMIC_AUTH_HOST",
+      "PLASMIC_AUTH_USER",
+      "PLASMIC_AUTH_TOKEN",
+    ];
+    const missing = requiredVars.filter((v) => !process.env[v]);
+    if (missing.length > 0) {
+      console.error(
+        `[eval] ERROR: Integration mode requires: ${missing.join(", ")}`
+      );
+      console.error(
+        "[eval] Set these environment variables before running integration evals."
+      );
+      process.exit(1);
+    }
+  }
+
   // Load scenarios
   const scenarios = loadScenarios(options);
   if (scenarios.length === 0) {
@@ -118,13 +149,15 @@ async function main(): Promise<void> {
   const maxCost = options.maxCost ?? 5;
   const threshold = options.threshold ?? 0.9;
 
-  const mcpClient = new McpEvalClient(mode as "mock" | "integration");
+  const mcpClient = new McpEvalClient(mode, options.projectId);
   const claudeClient = new ClaudeClient(apiKey, model);
 
   try {
     console.error(`[eval] Initializing MCP client (${mode} mode)...`);
     await mcpClient.initialize();
-    console.error("[eval] MCP client ready");
+    console.error(
+      `[eval] MCP client ready (project: ${mcpClient.getProjectId()})`
+    );
 
     // Run scenarios
     const { results, totalCostDollars } = await runAll(
@@ -171,6 +204,12 @@ async function main(): Promise<void> {
   } catch (err: any) {
     console.error(`[eval] Fatal error: ${err.message}`);
     console.error(err.stack);
+    // Log server stderr if available (helps debug integration mode failures)
+    const serverStderr = mcpClient.getServerStderr();
+    if (serverStderr) {
+      console.error("[eval] Server stderr:");
+      console.error(serverStderr.substring(0, 2000));
+    }
     process.exit(1);
   } finally {
     await mcpClient.close();
