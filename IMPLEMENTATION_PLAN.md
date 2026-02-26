@@ -271,12 +271,12 @@ These are breaking changes that should be done after feature work stabilizes.
 
 These are code health improvements discovered during analysis. No specs needed.
 
-### CQ-1 Dead Clone Code Removal
-- **Location**: `edit-tools.ts` lines ~2137-2296
-- **What**: Seven private functions (`deepCloneTpl`, `cloneVSettings`, `cloneArgs`, `cloneRuleSet`, `cloneAttrs`, `cloneText`, `cloneExpr`) are dead code — `cloneChild` now uses WAB's real `cloneTpl` (imported as `clone` from `@/wab/shared/core/tpls`). ~160 lines of unreachable code forming a self-referential cluster with no external call site.
-- **Verified**: Exhaustive grep confirms zero live callers. The cluster only calls itself.
-- **Cleanup**: Removing the cluster also makes `randomUUID` import unused; `ObjectPath` and `VarRef` class constructors (not type guards) become dead imports.
-- **Action**: Delete all seven functions + clean up orphaned imports
+### CQ-1 Dead Clone Code Removal — DONE (2026-02-26)
+- **Status**: COMPLETED
+  - Removed 7 dead functions: `deepCloneTpl`, `cloneVSettings`, `cloneArgs`, `cloneRuleSet`, `cloneAttrs`, `cloneText`, `cloneExpr` (~165 lines)
+  - Cleaned up orphaned `ObjectPath` and `VarRef` constructor imports (type guards retained)
+  - `randomUUID` import retained — still used by `setDataRep`
+  - All 738 tests pass after removal
 
 ### CQ-2 moveChild Slot Support Gap
 - **Location**: `edit-tools.ts` moveChild function (line ~2050)
@@ -315,7 +315,7 @@ These are code health improvements discovered during analysis. No specs needed.
 ## Implementation Order Recommendation
 
 ```
-Phase 1 (Foundations):      1.1 Visibility ✓ → 1.2 Data Repetition ✓ → 1.3 Tokens ✓ → CQ-1 Dead Code
+Phase 1 (Foundations):      1.1 Visibility ✓ → 1.2 Data Repetition ✓ → 1.3 Tokens ✓ → CQ-1 Dead Code ✓
 Phase 2 (Authoring):        1.4 Props → 1.5 Rich Text → 2.1 State
 Phase 3 (Interactivity):    2.2 Interactions → CQ-2/CQ-3 Slot Gaps
 Phase 4 (Assets & Data):    3.1 Images → 3.2 Queries
