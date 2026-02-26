@@ -1,11 +1,17 @@
 /**
- * Unit tests for tree-reader.ts
+ * Unit tests for the inspect domain (inspect tool actions).
  *
- * The tree reader is the most complex read path in the MCP server. It walks
- * the in-memory Tpl model to produce JSON that Claude uses to understand
- * page structure. Incorrect output here means Claude builds broken pages
- * or misunderstands existing layouts, so these tests cover every node type,
- * expression variant, and layout derivation path.
+ * This file covers:
+ *   - readComponentTree, readComponentSummary, readNodeDetails, readSubtree,
+ *     countTreeNodes (backs inspect.tree, inspect.summary, inspect.node,
+ *     inspect.subtree actions) — full coverage of all node types, expression
+ *     variants, layout derivation, token resolution, visibility/dataCond,
+ *     dataRep, and rich text marks.
+ *   - getValidStylePropertyNames (backs inspect.style-properties action).
+ *
+ * All test assertions are preserved exactly from the source files:
+ *   - tree-reader.test.ts (lines 1–3011)
+ *   - edit-tools.test.ts (lines 810–840, getValidStylePropertyNames describe block)
  */
 
 import { describe, it, expect } from "vitest";
@@ -16,6 +22,7 @@ import {
   readSubtree,
   countTreeNodes,
 } from "../tree-reader";
+import { getValidStylePropertyNames } from "../edit-tools";
 
 describe("readComponentTree", () => {
   it("returns null when component has no tplTree", () => {
@@ -3007,5 +3014,41 @@ describe("rich text marks", () => {
       { start: 6, end: 10, type: "link", href: "/" },
       { start: 15, end: 20, type: "link", href: "/about" },
     ]);
+  });
+});
+
+// =============================================================================
+// getValidStylePropertyNames (backs inspect.style-properties action)
+// =============================================================================
+
+describe("getValidStylePropertyNames", () => {
+  it("returns a sorted array of property names", () => {
+    const names = getValidStylePropertyNames();
+    expect(Array.isArray(names)).toBe(true);
+    expect(names.length).toBeGreaterThan(100);
+    // Verify sorted
+    const sorted = [...names].sort();
+    expect(names).toEqual(sorted);
+  });
+
+  it("includes common CSS properties", () => {
+    const names = getValidStylePropertyNames();
+    expect(names).toContain("color");
+    expect(names).toContain("font-size");
+    expect(names).toContain("display");
+    expect(names).toContain("padding-top");
+    expect(names).toContain("border-top-width");
+    expect(names).toContain("border-top-style");
+    expect(names).toContain("border-top-color");
+    expect(names).toContain("border-top-left-radius");
+  });
+
+  it("includes modern CSS properties", () => {
+    const names = getValidStylePropertyNames();
+    expect(names).toContain("row-gap");
+    expect(names).toContain("column-gap");
+    expect(names).toContain("aspect-ratio");
+    expect(names).toContain("object-fit");
+    expect(names).toContain("grid-template-columns");
   });
 });

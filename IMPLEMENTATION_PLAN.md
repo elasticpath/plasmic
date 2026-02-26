@@ -3,10 +3,10 @@
 > **Goal**: Create Claude Code skills and workflows that can interact with Plasmic Studio
 > programmatically to create fully-featured pages from the Claude Code terminal.
 >
-> **Current state**: 8 STRAP domain tools (consolidating 97 actions), 6 Claude Code skills (STRAP calling convention), 1026 tests (928 unit + 98 integration).
+> **Current state**: 8 STRAP domain tools (consolidating 97 actions), 6 Claude Code skills (STRAP calling convention), 1046 tests (948 unit + 98 integration), 19 test files.
 > Zero TODOs/FIXMEs/skipped tests.
 >
-> **Last verified**: 2026-02-26 — Tier 6.1 STRAP consolidation and Tier 7.2 skills rewrite complete.
+> **Last verified**: 2026-02-26 — Tier 6.1 STRAP consolidation, Tier 7.2 skills rewrite, and 6.2 Test Restructure complete.
 
 ---
 
@@ -296,12 +296,18 @@ These are breaking changes that should be done after feature work stabilizes.
   - `set-data-cond`, `set-data-rep` → `data` domain (data flow, not element structure)
   - Error format: `"Error in domain.action: message"` (catch blocks) and `"Error domain.action: message"` (handleMutationError)
 
-### 6.2 Test Restructure
+### 6.2 Test Restructure — IMPLEMENTED (2026-02-26)
 - **Spec**: `specs/test-restructure.md`
-- **Status**: NOT STARTED — tests still organized by module (server.test.ts, edit-tools.test.ts, etc.)
-- **What**: Restructure tests to match 8 STRAP domains: `project.test.ts`, `inspect.test.ts`, `component.test.ts`, `node.test.ts`, `variant.test.ts`, `design.test.ts`, `data.test.ts`, `interaction.test.ts`
-- **Dependencies**: STRAP consolidation (6.1) complete ✓
-- **Effort**: Large but mechanical — split existing server.test.ts and edit-tools.test.ts by domain
+- **Status**: IMPLEMENTED
+  - `edit-tools.test.ts` (11,475 lines) split into 8 domain test files: `node.test.ts` (251 tests), `component.test.ts` (76 tests), `variant.test.ts` (41 tests), `design.test.ts` (131 tests), `data.test.ts` (57 tests), `interaction.test.ts` (23 tests), `inspect.test.ts` (105 tests), `project.test.ts` (9 tests)
+  - `tree-reader.test.ts` merged into `inspect.test.ts`; `token-reader.test.ts` merged into `design.test.ts`
+  - Shared test helpers extracted to `test-helpers.ts` (`mockApiClient`, `makeSession`, `mkTag`, `mkComponent`)
+  - Fixed pre-existing `convertToPage`/`convertToComponent` mock setup (`mockWithRecording.mockReturnValue` needed for standalone describe blocks)
+  - `server.test.ts` kept as-is (handler routing tests, already domain-organized internally)
+  - `node-resolver.test.ts` kept as-is (internal utility)
+  - All other internal module tests unchanged (api-client, auth, session, batch-manager, change-tracker, undo-manager, save-manager, model-loader)
+  - Total: 19 test files (8 domain + 1 server handlers + 1 node-resolver + 8 internal + 1 integration)
+  - Build and all 1046 tests pass
 
 ---
 
@@ -394,7 +400,7 @@ Phase 3 (Interactivity):    2.2 Interactions ✓ → CQ-2/CQ-3 Slot Gaps ✓ →
 Phase 4 (Assets & Data):    3.1 Images ✓ → 3.2 Queries ✓
 Phase 5 (Design System):    4.1 Mixins ✓ → 4.2 Animations ✓ → 4.3 Themes ✓
 Phase 6 (Remaining):        5.1 sub-features ✓(reorder, global variants, convert, data tokens, code meta, custom functions, splits) — extract-to-component skipped
-Phase 7 (Architecture):     6.1 STRAP ✓ → 7.2 Skills Rewrite ✓ → 6.2 Test Restructure
+Phase 7 (Architecture):     6.1 STRAP ✓ → 7.2 Skills Rewrite ✓ → 6.2 Test Restructure ✓
 Continuous:                 CQ-5/CQ-6/CQ-7 test gaps
 ```
 
