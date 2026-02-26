@@ -2,9 +2,9 @@
 
 ## Status Summary
 
-**Complete**: MCP server (8 STRAP tools, 103 actions), eval harness (cli, runner, claude-client, mcp-client, scenario-loader, scenario-validator, reporter, types), 8 grader types + LLM judge + review flags, visual capture (Playwright), dashboard (Chart.js), CI workflow, 67 scenarios (20 simple / 32 medium / 15 complex), 42 eval tests, package scripts. P1 (scenario coverage gaps) and P2 (unused grader activation) fully complete. state-check.ts enhanced with `componentName` resolution as alternative to `componentUuid`; scenario-validator.ts updated to accept `componentName`.
+**Complete**: MCP server (8 STRAP tools, 103 actions), eval harness (cli, runner, claude-client, mcp-client, scenario-loader, scenario-validator, reporter, types), 8 grader types + LLM judge + review flags, visual capture (Playwright), dashboard (Chart.js), CI workflow, 67 scenarios (20 simple / 32 medium / 15 complex), package scripts. P1 (scenario coverage gaps) and P2 (unused grader activation) fully complete. state-check.ts enhanced with `componentName` resolution as alternative to `componentUuid`; scenario-validator.ts updated to accept `componentName`. **P3 Eval Module Unit Tests fully complete** — 148 new tests across 7 test files (runner 18, claude-client 12, mcp-client 12, scenario-loader 14, reporter 19, transcript-check 28, state-check 45). Total tests: 1,407 (up from 1,259). P4 Code Component Variant Support — P4.1-P4.4 complete (type declarations, listVariants, resolveVariant, createStyleVariant all support code component variants with 16 new unit tests). P4.5 (eval scenarios) remains.
 
-**In progress**: P3 Eval Module Unit Tests is the next priority. P4 Code Component Variant Support — P4.1-P4.4 complete (type declarations, listVariants, resolveVariant, createStyleVariant all support code component variants with 16 new unit tests). P4.5 (eval scenarios) remains.
+**In progress**: P4.5 eval scenarios for code component variants is next. Then P5-P8 hardening tasks.
 
 **Goal**: Close remaining gaps in scenario coverage, grader utilization, test coverage, and robustness so the eval system reliably measures Claude's ability to complete Plasmic design tasks across all 8 STRAP domains.
 
@@ -12,43 +12,16 @@
 
 ## Prioritized Task List
 
-### P3: Eval Module Unit Tests — `src/__tests__/`
-_Impact: MEDIUM — harness code has zero unit tests. Regressions in runner/reporter/loader could silently corrupt eval results._
+### P3: Eval Module Unit Tests — `src/__tests__/` ✅ COMPLETE
+_Impact: MEDIUM — 148 new tests ensure regressions in runner/reporter/loader/graders are caught immediately._
 
-- [ ] **P3.1 — runner.ts tests**
-  - Test scenario execution flow, cost accumulation, retry counting, timeout enforcement, error handling
-  - Files: new `src/__tests__/eval-runner.test.ts`
-  - AC: >= 10 tests covering happy path, retry logic, cost-limit abort, error propagation
-
-- [ ] **P3.2 — claude-client.ts tests**
-  - Test conversation management, timeout handling, tool call routing, message formatting
-  - Files: new `src/__tests__/eval-claude-client.test.ts`
-  - AC: >= 8 tests covering tool dispatch, timeout, conversation state
-
-- [ ] **P3.3 — mcp-client.ts tests**
-  - Test mock vs integration mode switching, tool call dispatch to correct domain handler, project reset between scenarios
-  - Files: new `src/__tests__/eval-mcp-client.test.ts`
-  - AC: >= 8 tests covering both modes, tool routing, reset logic
-
-- [ ] **P3.4 — scenario-loader.ts tests**
-  - Test YAML loading, validation integration, tier/domain filtering, malformed input handling
-  - Files: new `src/__tests__/eval-scenario-loader.test.ts`
-  - AC: >= 6 tests covering load, filter, validation errors
-
-- [ ] **P3.5 — reporter.ts tests**
-  - Test report generation, aggregate stat computation, review flag application, JSON output format
-  - Files: new `src/__tests__/eval-reporter.test.ts`
-  - AC: >= 8 tests covering report structure, aggregation, flag merging
-
-- [ ] **P3.6 — transcript-check.ts tests**
-  - Test tool-sequence matching (exact, subset, ordered), tool-params validation, count assertions, no-errors detection
-  - Files: new `src/__tests__/eval-transcript-check.test.ts`
-  - AC: >= 10 tests covering all 4 transcript grader types
-
-- [ ] **P3.7 — state-check.ts tests**
-  - Test existence, property, structure, data grader logic against mock component state
-  - Files: new `src/__tests__/eval-state-check.test.ts`
-  - AC: >= 12 tests covering all 4 state grader types including edge cases
+- [x] **P3.1 — runner.ts tests** (18 tests) — `src/__tests__/eval-runner.test.ts`
+- [x] **P3.2 — claude-client.ts tests** (12 tests) — `src/__tests__/eval-claude-client.test.ts`
+- [x] **P3.3 — mcp-client.ts tests** (12 tests) — `src/__tests__/eval-mcp-client.test.ts`
+- [x] **P3.4 — scenario-loader.ts tests** (14 tests) — `src/__tests__/eval-scenario-loader.test.ts`
+- [x] **P3.5 — reporter.ts tests** (19 tests) — `src/__tests__/eval-reporter.test.ts`
+- [x] **P3.6 — transcript-check.ts tests** (28 tests) — `src/__tests__/eval-transcript-check.test.ts`
+- [x] **P3.7 — state-check.ts tests** (45 tests) — `src/__tests__/eval-state-check.test.ts`
 
 ### P4: Code Component Variant Support — `src/`
 _Impact: MEDIUM — new MCP feature that unlocks eval scenarios for an untested variant type. Spec complete at `.ralph/specs/code-component-variant-support.md`._
