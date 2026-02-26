@@ -10,6 +10,7 @@
  */
 
 import { writeFileSync, readFileSync, readdirSync, mkdirSync, existsSync } from "fs";
+import { execSync } from "child_process";
 import { resolve, dirname, join } from "path";
 import { fileURLToPath } from "url";
 import type {
@@ -95,6 +96,7 @@ export function generateReport(
     timestamp: now.toISOString(),
     tier,
     model,
+    gitSha: getGitSha(),
     scenarios: results,
     aggregate: {
       total,
@@ -294,6 +296,50 @@ export function saveOverride(
     reviewedAt: override.reviewedAt ?? new Date().toISOString(),
   };
   writeFileSync(OVERRIDES_PATH, JSON.stringify(existing, null, 2));
+}
+
+/**
+ * Get the current git commit SHA. Returns undefined if not in a git repo
+ * or git is unavailable (e.g., CI container without git).
+ */
+export function getGitSha(): string | undefined {
+  try {
+    return execSync("git rev-parse HEAD", { encoding: "utf-8" }).trim();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Find scenario IDs that already passed in a previous run with the same git SHA.
+ * Used for resume/skip: interrupted runs can be resumed without re-running
+ * scenarios that already succeeded at this commit.
+ */
+export function findPassedScenarioIds(gitSha: string): Set<string> {
+  const passed = new Set<string>();
+  if (!existsSync(RESULTS_DIR)) return passed;
+
+  const files = readdirSync(RESULTS_DIR).filter(
+    (f) => f.endsWith(".json") && f !== "overrides.json"
+  );
+
+  for (const file of files) {
+    try {
+      const content = readFileSync(join(RESULTS_DIR, file), "utf-8");
+      const report = JSON.parse(content) as EvalReport;
+      if (report.gitSha === gitSha && report.scenarios) {
+        for (const s of report.scenarios) {
+          if (s.success) {
+            passed.add(s.id);
+          }
+        }
+      }
+    } catch {
+      // Skip malformed files
+    }
+  }
+
+  return passed;
 }
 
 function formatRunId(date: Date): string {

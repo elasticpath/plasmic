@@ -141,6 +141,8 @@ export interface EvalReport {
   timestamp: string;
   tier: "mock" | "integration";
   model: string;
+  /** Git commit SHA at the time of the run, for resume/skip matching */
+  gitSha?: string;
   scenarios: ScenarioResult[];
   aggregate: {
     total: number;
@@ -190,4 +192,6 @@ export interface EvalOptions {
   noJudge?: boolean;
   /** Override model for LLM judge (ignores tier-based selection) */
   judgeModel?: string;
+  /** Re-run all scenarios even if passing results exist for this git SHA */
+  force?: boolean;
 }

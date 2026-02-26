@@ -13,7 +13,7 @@
  */
 
 import { createServer } from "http";
-import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from "fs";
+import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, unlinkSync, statSync, rmSync } from "fs";
 import { resolve, dirname, join } from "path";
 import { fileURLToPath } from "url";
 
@@ -68,6 +68,82 @@ function loadReports() {
 
   return reports;
 }
+
+/**
+ * Delete result JSON files and screenshot directories older than 90 days.
+ * Prevents unbounded disk usage from accumulated eval runs. Invoked on
+ * dashboard server startup and available standalone via `npm run eval:cleanup`.
+ */
+function cleanupOldResults() {
+  if (!existsSync(RESULTS_DIR)) return;
+
+  const cutoff = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  let deletedFiles = 0;
+  let deletedDirs = 0;
+
+  // Clean up JSON report files older than 90 days
+  const jsonFiles = readdirSync(RESULTS_DIR).filter(
+    (f) => f.endsWith(".json") && f !== "overrides.json"
+  );
+  for (const file of jsonFiles) {
+    const filePath = join(RESULTS_DIR, file);
+    try {
+      const content = readFileSync(filePath, "utf-8");
+      const report = JSON.parse(content);
+      if (report.timestamp) {
+        const reportDate = new Date(report.timestamp).getTime();
+        if (reportDate < cutoff) {
+          unlinkSync(filePath);
+          deletedFiles++;
+        }
+      }
+    } catch {
+      // Can't parse — check file modification time as fallback
+      try {
+        const stat = statSync(filePath);
+        if (stat.mtimeMs < cutoff) {
+          unlinkSync(filePath);
+          deletedFiles++;
+        }
+      } catch {
+        // Skip files we can't stat
+      }
+    }
+  }
+
+  // Clean up screenshot directories older than 90 days (by mtime)
+  const screenshotsDir = join(RESULTS_DIR, "screenshots");
+  if (existsSync(screenshotsDir)) {
+    const runDirs = readdirSync(screenshotsDir);
+    for (const dir of runDirs) {
+      const dirPath = join(screenshotsDir, dir);
+      try {
+        const stat = statSync(dirPath);
+        if (stat.isDirectory() && stat.mtimeMs < cutoff) {
+          rmSync(dirPath, { recursive: true, force: true });
+          deletedDirs++;
+        }
+      } catch {
+        // Skip directories we can't stat
+      }
+    }
+  }
+
+  if (deletedFiles > 0 || deletedDirs > 0) {
+    console.log(
+      `[cleanup] Removed ${deletedFiles} report(s) and ${deletedDirs} screenshot dir(s) older than ${RETENTION_DAYS} days`
+    );
+  }
+}
+
+// Standalone cleanup mode: `node render.js --cleanup-only`
+if (process.argv.includes("--cleanup-only")) {
+  cleanupOldResults();
+  process.exit(0);
+}
+
+// Run cleanup on server startup
+cleanupOldResults();
 
 const server = createServer((req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);

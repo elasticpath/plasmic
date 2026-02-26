@@ -31,6 +31,8 @@ import {
   saveReport,
   printSummary,
   loadPreviousReport,
+  getGitSha,
+  findPassedScenarioIds,
 } from "./harness/reporter.js";
 import { VisualCapture } from "./visual/capture.js";
 import { getAuthConfig } from "./visual/auth.js";
@@ -74,6 +76,9 @@ function parseArgs(args: string[]): EvalOptions & { help?: boolean } {
       case "--judge-model":
         options.judgeModel = args[++i];
         break;
+      case "--force":
+        options.force = true;
+        break;
       case "--help":
       case "-h":
         options.help = true;
@@ -99,6 +104,7 @@ Options:
   --max-cost <dollars>            Abort if projected cost exceeds $N (default: $5)
   --model <model-id>              Claude model to use (default: claude-sonnet-4-20250514)
   --threshold <0-1>               Success rate threshold (default: 0.9)
+  --force                         Re-run all scenarios (ignore cached passing results)
   --help, -h                      Show this help message
 
 Integration mode env vars:
@@ -152,12 +158,39 @@ async function main(): Promise<void> {
   }
 
   // Load scenarios
-  const scenarios = loadScenarios(options);
+  let scenarios = loadScenarios(options);
   if (scenarios.length === 0) {
     console.error("[eval] No scenarios found matching filters.");
     process.exit(1);
   }
   console.error(`[eval] Loaded ${scenarios.length} scenario(s)`);
+
+  // Resume/skip: skip scenarios that already passed for this git SHA.
+  // This saves API costs on interrupted nightly runs — re-run only what
+  // failed or hasn't been attempted yet. Use --force to re-run everything.
+  let skippedCount = 0;
+  if (!options.force) {
+    const gitSha = getGitSha();
+    if (gitSha) {
+      const alreadyPassed = findPassedScenarioIds(gitSha);
+      if (alreadyPassed.size > 0) {
+        const before = scenarios.length;
+        scenarios = scenarios.filter((s) => !alreadyPassed.has(s.id));
+        skippedCount = before - scenarios.length;
+        if (skippedCount > 0) {
+          console.error(
+            `[eval] Skipped ${skippedCount} scenario(s) already passing at ${gitSha.slice(0, 8)}. Use --force to re-run all.`
+          );
+        }
+        if (scenarios.length === 0) {
+          console.error(
+            "[eval] All scenarios already passed for this commit. Nothing to run."
+          );
+          process.exit(0);
+        }
+      }
+    }
+  }
 
   // Initialize clients
   const mode = options.integration ? "integration" : "mock";

@@ -16,7 +16,8 @@
     "typecheck": "tsc --noEmit",
     "eval": "tsx evals/cli.ts",
     "eval:validate": "tsx evals/harness/scenario-validator.ts",
-    "eval:dashboard": "node evals/dashboard/render.js"
+    "eval:dashboard": "node evals/dashboard/render.js",
+    "eval:cleanup": "node evals/dashboard/render.js --cleanup-only"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.0",

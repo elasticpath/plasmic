@@ -4,7 +4,7 @@
 
 **Complete**: MCP server (8 STRAP tools, 103 actions), eval harness, graders, visual capture, dashboard, CI, 70 scenarios. P1-P4 fully complete. **P5 Dashboard Hardening fully complete** — XSS fix (data attributes + event delegation + escAttr()), fetch timeout (30s AbortController), Chart.js CDN fallback (onerror + guard), POST /api/overrides input validation (allowlist + type checks + length caps). Total tests: 1,407.
 
-**In progress**: P7-P8 hardening tasks. Next: P7 Eval Report Archival.
+**All tasks complete**. P1-P8 fully implemented.
 
 **Goal**: Close remaining gaps in scenario coverage, grader utilization, test coverage, and robustness so the eval system reliably measures Claude's ability to complete Plasmic design tasks across all 8 STRAP domains.
 
@@ -12,16 +12,7 @@
 
 ## Prioritized Task List
 
-### P3: Eval Module Unit Tests — `src/__tests__/` ✅ COMPLETE
-_Impact: MEDIUM — 148 new tests ensure regressions in runner/reporter/loader/graders are caught immediately._
-
-- [x] **P3.1 — runner.ts tests** (18 tests) — `src/__tests__/eval-runner.test.ts`
-- [x] **P3.2 — claude-client.ts tests** (12 tests) — `src/__tests__/eval-claude-client.test.ts`
-- [x] **P3.3 — mcp-client.ts tests** (12 tests) — `src/__tests__/eval-mcp-client.test.ts`
-- [x] **P3.4 — scenario-loader.ts tests** (14 tests) — `src/__tests__/eval-scenario-loader.test.ts`
-- [x] **P3.5 — reporter.ts tests** (19 tests) — `src/__tests__/eval-reporter.test.ts`
-- [x] **P3.6 — transcript-check.ts tests** (28 tests) — `src/__tests__/eval-transcript-check.test.ts`
-- [x] **P3.7 — state-check.ts tests** (45 tests) — `src/__tests__/eval-state-check.test.ts`
+### P3: Eval Module Unit Tests ✅ COMPLETE (148 tests across 7 files)
 
 ### P4: Code Component Variant Support — `src/` ✅ COMPLETE
 _Impact: MEDIUM — new MCP feature that unlocks eval scenarios for an untested variant type. Spec complete at `.ralph/specs/code-component-variant-support.md`._
@@ -112,19 +103,24 @@ _Impact: LOW-MEDIUM — defensive fixes to prevent silent failures in screenshot
   - Files: `evals/visual/capture.ts`
   - AC: ✅ 6 error patterns trigger relaunch; overlay timeout increased to 2000ms
 
-### P7: Eval Report Archival — `evals/dashboard/render.js`, `evals/results/`
+### P7: Eval Report Archival — `evals/dashboard/render.js`, `evals/results/` ✅ COMPLETE
 _Impact: LOW — prevents unbounded disk usage from accumulated eval results and screenshots._
 
-- [ ] **P7.1 — Implement actual 90-day cleanup**
-  - Add a cleanup function that deletes result JSON and screenshot files older than 90 days; invoke on dashboard server startup and via a `eval:cleanup` script
+- [x] **P7.1 — Implement actual 90-day cleanup**
+  - Added `cleanupOldResults()` function to `render.js`: deletes JSON reports by timestamp and screenshot dirs by mtime
+  - Runs automatically on dashboard server startup
+  - Standalone via `npm run eval:cleanup` (uses `--cleanup-only` flag)
   - Files: `evals/dashboard/render.js`, `package.json`
-  - AC: Files in `evals/results/` older than 90 days are deleted on server start; `npm run eval:cleanup` works standalone
+  - AC: ✅ Files older than 90 days are deleted on server start; `npm run eval:cleanup` works standalone
 
-### P8: Eval Resume/Skip — `evals/harness/runner.ts`
+### P8: Eval Resume/Skip — `evals/harness/reporter.ts`, `evals/cli.ts` ✅ COMPLETE
 _Impact: LOW — saves API costs on interrupted runs, but only matters for full nightly runs._
 
-- [ ] **P8.1 — Implement scenario skip for completed results**
-  - On run start, check `evals/results/` for existing results matching the current scenario set; skip scenarios that already have a passing result from the same git SHA
-  - Add `--force` flag to override and re-run all
-  - Files: `evals/harness/runner.ts`, `evals/cli.ts`
-  - AC: Interrupted run can be resumed; already-passed scenarios are skipped; `--force` re-runs everything; cost savings logged
+- [x] **P8.1 — Implement scenario skip for completed results**
+  - Added `gitSha` field to EvalReport (types.ts) and `getGitSha()` helper (reporter.ts)
+  - Reports now record the git commit SHA at generation time
+  - `findPassedScenarioIds(gitSha)` scans existing reports for matching SHA
+  - cli.ts skips scenarios that already passed for current git SHA; logs skip count
+  - `--force` flag overrides skip behavior; help text updated
+  - Files: `evals/harness/types.ts`, `evals/harness/reporter.ts`, `evals/cli.ts`
+  - AC: ✅ Interrupted runs resumable; passed scenarios skipped; `--force` re-runs all; cost savings logged
