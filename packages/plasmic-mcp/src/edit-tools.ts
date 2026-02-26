@@ -7901,16 +7901,17 @@ export interface UpdateSplitResult {
 }
 
 /**
- * Update a split's name and/or status.
+ * Update a split's name, status, and/or slices.
  */
 export async function updateSplit(
   apiClient: PlasmicApiClient,
   splitRef: string,
   newName?: string,
   newStatus?: "new" | "running" | "stopped",
+  newSlices?: Array<{ name: string; prob?: number; cond?: string }>,
 ): Promise<UpdateSplitResult> {
-  if (!newName && !newStatus) {
-    throw new Error("At least one of name or status must be provided.");
+  if (!newName && !newStatus && !newSlices) {
+    throw new Error("At least one of name, status, or slices must be provided.");
   }
 
   const session = requireSession();
@@ -7920,6 +7921,28 @@ export async function updateSplit(
   const changes = tracker.withRecording(() => {
     if (newName) split.name = newName;
     if (newStatus) split.status = newStatus;
+    if (newSlices) {
+      const splitSlices = newSlices.map((sl) => {
+        if (split.splitType === "experiment") {
+          return new RandomSplitSlice({
+            uuid: randomUUID(),
+            name: sl.name,
+            prob: sl.prob ?? Math.round(100 / newSlices.length),
+            externalId: undefined,
+            contents: [],
+          });
+        } else {
+          return new SegmentSplitSlice({
+            uuid: randomUUID(),
+            name: sl.name,
+            cond: sl.cond ?? "{}",
+            externalId: undefined,
+            contents: [],
+          });
+        }
+      });
+      split.slices = splitSlices;
+    }
   });
 
   const save = await saveOrAccumulate(

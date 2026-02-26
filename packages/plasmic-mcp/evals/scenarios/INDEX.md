@@ -1,8 +1,8 @@
 # Eval Scenario Index
 
-Total: 55 scenarios
+Total: 70 scenarios
 
-## Simple (20)
+## Simple (21)
 
 | ID | Domains | Graders | Timeout |
 |---|---|---|---|
@@ -26,11 +26,17 @@ Total: 55 scenarios
 | node-dry-run | node | tool-sequence, tool-params, no-errors, count | 90s |
 | design-create-token | design | tool-sequence, tool-params, no-errors, existence, count | 60s |
 | variant-list | variant | tool-sequence, tool-params, no-errors | 60s |
+| variant-list-code-component | variant, component | tool-sequence, tool-params, no-errors, count | 60s |
 
-## Medium (20)
+## Medium (30)
 
 | ID | Domains | Graders | Timeout |
 |---|---|---|---|
+| data-verify-query | data, component | tool-sequence, tool-params, existence, data, count, no-errors | 120s |
+| data-verify-interaction | data, component, node, interaction | tool-sequence, tool-params, existence, count, no-errors | 150s |
+| interaction-conditional-click | interaction, component, node | tool-sequence, tool-params, existence, count, no-errors | 150s |
+| interaction-multi-handler | interaction, component, node | tool-sequence, tool-params, existence, count, no-errors | 150s |
+| interaction-onchange-handler | interaction, component, node | tool-sequence, tool-params, existence, count, no-errors | 150s |
 | medium-info-card | component, node | tool-sequence, tool-params, existence, count, no-errors | 120s |
 | medium-page-with-sections | component, node | tool-sequence, tool-params, existence, count, no-errors | 120s |
 | medium-clone-and-rename | component | tool-sequence, tool-params, existence, count, no-errors | 120s |
@@ -51,8 +57,13 @@ Total: 55 scenarios
 | medium-full-card | component, node, variant, design | tool-sequence, tool-params, existence, count, no-errors | 180s |
 | medium-add-query | data, inspect | tool-sequence, tool-params, count, no-errors | 120s |
 | medium-cta-button | component, node, interaction | tool-sequence, tool-params, existence, count, no-errors | 150s |
+| node-verify-styles | node, component, inspect | tool-sequence, tool-params, existence, property, count, no-errors | 150s |
+| node-verify-structure | node, component, inspect | tool-sequence, tool-params, existence, structure, count, no-errors | 150s |
+| project-batch-workflow | project, design | tool-sequence, tool-params, existence, count, no-errors | 150s |
+| project-save-refresh | project, component | tool-sequence, tool-params, existence, count, no-errors | 150s |
+| variant-resolve-code-component | variant, node, component, inspect | tool-sequence, tool-params, no-errors, count | 90s |
 
-## Complex (15)
+## Complex (19)
 
 | ID | Domains | Graders | Timeout |
 |---|---|---|---|
@@ -71,3 +82,7 @@ Total: 55 scenarios
 | complex-team-page | component, node, data, design, inspect, variant | tool-sequence, tool-params, existence, count, no-errors | 240s |
 | complex-landing-page | component, node, design, variant, data, interaction, inspect | tool-sequence, tool-params, existence, count, no-errors | 300s |
 | complex-pricing-section | component, node, variant, design, interaction, data | tool-sequence, tool-params, existence, count, no-errors | 240s |
+| node-verify-multi-property | node, component, inspect | tool-sequence, tool-params, existence, structure, count, no-errors | 240s |
+| project-multi-undo | project, component, design | tool-sequence, tool-params, existence, count, no-errors | 240s |
+| project-compound-state | project, design, component, node, inspect | tool-sequence, tool-params, existence, count, no-errors | 240s |
+| variant-create-style-code-component | variant, node, component, inspect | tool-sequence, tool-params, no-errors, count | 120s |

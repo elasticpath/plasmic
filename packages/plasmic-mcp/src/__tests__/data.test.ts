@@ -1202,13 +1202,64 @@ describe("updateSplit", () => {
     expect(result.split.status).toBe("running");
   });
 
-  it("throws when neither name nor status provided", async () => {
+  it("throws when neither name, status, nor slices provided", async () => {
     const site = { components: [], splits: [{ uuid: "s1", name: "Test", splitType: "experiment", status: "new", slices: [] }] };
     const session = makeSession({ site } as any);
     setSession(session);
     initChangeTracker(session.site);
 
     await expect(updateSplit(api, "Test")).rejects.toThrow(/at least one/i);
+  });
+
+  it("updates slices on an experiment split", async () => {
+    const split = { uuid: "s1", name: "AB Test", splitType: "experiment", status: "new", slices: [] };
+    const site = { components: [], splits: [split] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateSplit(api, "AB Test", undefined, undefined, [
+      { name: "Control", prob: 50 },
+      { name: "Treatment", prob: 50 },
+    ]);
+    expect(result.split.slices).toHaveLength(2);
+    expect(result.split.slices[0].name).toBe("Control");
+    expect(result.split.slices[0].prob).toBe(50);
+    expect(result.split.slices[1].name).toBe("Treatment");
+    expect(result.split.slices[1].prob).toBe(50);
+  });
+
+  it("updates slices on a segment split", async () => {
+    const split = { uuid: "s1", name: "Geo Split", splitType: "segment", status: "new", slices: [] };
+    const site = { components: [], splits: [split] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateSplit(api, "Geo Split", undefined, undefined, [
+      { name: "US", cond: '{"country":"US"}' },
+      { name: "EU", cond: '{"region":"EU"}' },
+    ]);
+    expect(result.split.slices).toHaveLength(2);
+    expect(result.split.slices[0].name).toBe("US");
+    expect(result.split.slices[0].cond).toBe('{"country":"US"}');
+    expect(result.split.slices[1].name).toBe("EU");
+  });
+
+  it("updates slices only (no name or status change)", async () => {
+    const split = { uuid: "s1", name: "Unchanged", splitType: "experiment", status: "running", slices: [] };
+    const site = { components: [], splits: [split] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateSplit(api, "Unchanged", undefined, undefined, [
+      { name: "A" },
+      { name: "B" },
+    ]);
+    expect(result.split.name).toBe("Unchanged");
+    expect(result.split.status).toBe("running");
+    expect(result.split.slices).toHaveLength(2);
   });
 });
 

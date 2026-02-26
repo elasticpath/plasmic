@@ -9,11 +9,11 @@ You are inspecting a Plasmic project to help the developer understand its struct
 - `component({ action: "list" })` — All pages and components with UUIDs and paths.
 
 ### Component Tree Inspection
-- `inspect({ action: "summary", componentUuid, maxDepth? })` — Compact outline (~2KB). **Use first.**
-- `inspect({ action: "node", componentUuid, nodeRef })` — Full details for one node. **Drill into specifics.**
-- `inspect({ action: "tree", componentUuid, maxDepth?, excludeStyles?, summaryOnly? })` — Full tree (large). **Last resort** — always set maxDepth.
+- `inspect({ action: "summary", componentUuid, maxDepth?, maxChars?, format? })` — Compact outline (~2KB). **Use first.** Use `format: "concise"` for ~70% smaller output.
+- `inspect({ action: "node", componentUuid, nodeRef, format? })` — Full details for one node. **Drill into specifics.**
+- `inspect({ action: "tree", componentUuid, maxDepth?, maxChars?, excludeStyles?, format? })` — Full tree (large). **Last resort** — always set maxDepth.
 - `inspect({ action: "export", componentUuid })` — Write to temp file. Use Read tool for sections.
-- `inspect({ action: "subtree", componentUuid, nodeRef, maxDepth?, excludeStyles? })` — Subtree from a specific node.
+- `inspect({ action: "subtree", componentUuid, nodeRef, maxDepth?, maxChars?, excludeStyles?, format? })` — Subtree from a specific node.
 
 ### Component Introspection
 - `component({ action: "list-props", componentUuid })` — Parameters with type, kind, default value, description.

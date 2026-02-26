@@ -33,7 +33,7 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `component({ action: "list-states", componentUuid })` — State variables with type, access level, initial value.
 - `data({ action: "list-queries", componentUuid })` — Data queries (client-side and server-side).
 - `interaction({ action: "list", componentUuid, nodeRef })` — Event handlers on a specific node.
-- `variant({ action: "list", componentUuid })` — All variants: global (breakpoints), component (custom), style (hover/focus).
+- `variant({ action: "list", componentUuid })` — All variants: global (breakpoints), component (custom), style (hover/focus), code component variants (in `codeComponentVariants` array with `key`, `displayName`, `cssSelector`, `codeComponentName`).
 - `data({ action: "get-code-meta", componentUuid })` — Code component metadata: importPath, props, defaultStyles.
 
 ### Page/Component Lifecycle
@@ -50,7 +50,7 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `inspect({ action: "preview-url", componentUuid })` — Preview and studio URLs.
 
 ### Variants
-- `variant({ action: "create-style", componentUuid, selector, nodeRef? })` — Create :hover, :focus, :active, etc.
+- `variant({ action: "create-style", componentUuid, selector, nodeRef? })` — Create :hover, :focus, :active, etc. Also accepts code component attribute selectors (e.g., `[data-selected]`) on code component roots.
 - `variant({ action: "create-group", componentUuid, name, type?, initialVariants? })` — Named group (single/multi/toggle).
 - `variant({ action: "rename", variantRef, newName, componentUuid? })` — Rename a component-level variant.
 - `variant({ action: "remove", variantRef, componentUuid? })` — Remove a component-level variant.
@@ -138,7 +138,7 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `project({ action: "begin-batch" })` / `project({ action: "end-batch" })` — Group multiple edits into a single save.
 - `project({ action: "undo" })` — Revert the last operation.
 
-All edit tools accept `dryRun: true` to preview changes without persisting. Exception: the `variant` domain does NOT support `dryRun`.
+Most edit tools accept `dryRun: true` to preview changes without persisting. Exceptions: the `variant` domain does NOT support `dryRun`, and `component.create-page`, `component.create`, and `component.clone` reject `dryRun` because they create server-side components via the API.
 
 ## Context Budget
 

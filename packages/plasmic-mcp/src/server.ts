@@ -1084,6 +1084,12 @@ export function createServer(): McpServer {
           }
 
           case "create-page": {
+            if (params.dryRun) {
+              return {
+                content: [{ type: "text" as const, text: JSON.stringify({ error: true, message: "Dry run is not supported for component.create-page. This action creates a server-side component via the API and cannot be previewed." }) }],
+                isError: true,
+              };
+            }
             const pageName = requireParam(params.name, "name", "component.create-page");
             const pagePath = requireParam(params.path, "path", "component.create-page");
             const session = requireSession();
@@ -1159,6 +1165,12 @@ export function createServer(): McpServer {
           }
 
           case "create": {
+            if (params.dryRun) {
+              return {
+                content: [{ type: "text" as const, text: JSON.stringify({ error: true, message: "Dry run is not supported for component.create. This action creates a server-side component via the API and cannot be previewed." }) }],
+                isError: true,
+              };
+            }
             const compName = requireParam(params.name, "name", "component.create");
             if (compName.length < 1) throw new Error("Component name is required");
             const session = requireSession();
@@ -1233,6 +1245,12 @@ export function createServer(): McpServer {
           }
 
           case "clone": {
+            if (params.dryRun) {
+              return {
+                content: [{ type: "text" as const, text: JSON.stringify({ error: true, message: "Dry run is not supported for component.clone. This action creates a server-side component via the API and cannot be previewed." }) }],
+                isError: true,
+              };
+            }
             const srcUuid = requireParam(params.sourceUuid, "sourceUuid", "component.clone");
             if (srcUuid.length < 1) throw new Error("Source UUID is required");
             const cloneName = requireParam(params.name, "name", "component.clone");
@@ -1339,6 +1357,30 @@ export function createServer(): McpServer {
             const cuuid = requireParam(params.componentUuid, "componentUuid", "component.rename");
             const nn = requireParam(params.newName, "newName", "component.rename");
             if (nn.length < 1) throw new Error("New name is required");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                renameComponent(apiClient, cuuid, nn, params.newPath)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        oldName: result.oldName,
+                        newName: result.newName,
+                        uuid: result.componentUuid,
+                        path: result.newPath,
+                        message: "Dry run: no changes persisted",
+                      }
+                    ),
+                  },
+                ],
+              };
+            }
+
             const result = await renameComponent(apiClient, cuuid, nn, params.newPath);
             return {
               content: [
@@ -1362,6 +1404,28 @@ export function createServer(): McpServer {
 
           case "delete": {
             const cuuid = requireParam(params.componentUuid, "componentUuid", "component.delete");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                deleteComponent(apiClient, cuuid, params.force)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        deletedName: result.deletedName,
+                        deletedUuid: result.deletedUuid,
+                        message: "Dry run: no changes persisted",
+                      }
+                    ),
+                  },
+                ],
+              };
+            }
+
             const result = await deleteComponent(apiClient, cuuid, params.force);
             return {
               content: [
@@ -1433,6 +1497,28 @@ export function createServer(): McpServer {
 
           case "convert-to-page": {
             const cuuid = requireParam(params.componentUuid, "componentUuid", "component.convert-to-page");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                convertToPage(apiClient, cuuid, params.path)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        componentName: result.componentName,
+                        path: result.path,
+                        message: "Dry run: no changes persisted",
+                      }
+                    ),
+                  },
+                ],
+              };
+            }
+
             const result = await convertToPage(apiClient, cuuid, params.path);
             return {
               content: [
@@ -1453,6 +1539,27 @@ export function createServer(): McpServer {
 
           case "convert-to-component": {
             const cuuid = requireParam(params.componentUuid, "componentUuid", "component.convert-to-component");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                convertToComponent(apiClient, cuuid)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        componentName: result.componentName,
+                        message: "Dry run: no changes persisted",
+                      }
+                    ),
+                  },
+                ],
+              };
+            }
+
             const result = await convertToComponent(apiClient, cuuid);
             return {
               content: [
@@ -1472,13 +1579,37 @@ export function createServer(): McpServer {
 
           case "update-page-meta": {
             const cuuid = requireParam(params.componentUuid, "componentUuid", "component.update-page-meta");
-            const result = await updatePageMeta(apiClient, cuuid, {
+            const meta = {
               title: params.title,
               description: params.description,
               openGraphImage: params.openGraphImage,
               canonical: params.canonical,
               path: params.path,
-            });
+            };
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                updatePageMeta(apiClient, cuuid, meta)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        component: result.componentName,
+                        uuid: result.componentUuid,
+                        updatedFields: result.updatedFields,
+                        message: "Dry run: no changes persisted",
+                      }
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await updatePageMeta(apiClient, cuuid, meta);
             return {
               content: [
                 {
@@ -4450,7 +4581,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                updateSplit(apiClient, sRef, params.name, params.status)
+                updateSplit(apiClient, sRef, params.name, params.status, params.slices)
               );
               return {
                 content: [
@@ -4468,7 +4599,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await updateSplit(apiClient, sRef, params.name, params.status);
+            const result = await updateSplit(apiClient, sRef, params.name, params.status, params.slices);
             return {
               content: [
                 {

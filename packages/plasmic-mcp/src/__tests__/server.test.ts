@@ -133,6 +133,9 @@ describe("tool handlers", () => {
   let mockRenameComponent: ReturnType<typeof vi.fn>;
   let mockUpdatePageMeta: ReturnType<typeof vi.fn>;
   let mockDeleteComponent: ReturnType<typeof vi.fn>;
+  let mockExtractToComponent: ReturnType<typeof vi.fn>;
+  let mockConvertToPage: ReturnType<typeof vi.fn>;
+  let mockConvertToComponent: ReturnType<typeof vi.fn>;
   let mockCreateStyleVariant: ReturnType<typeof vi.fn>;
   let mockCreateVariantGroup: ReturnType<typeof vi.fn>;
   let mockCreateScreenVariantAction: ReturnType<typeof vi.fn>;
@@ -219,6 +222,9 @@ describe("tool handlers", () => {
     mockRenameComponent = vi.fn();
     mockUpdatePageMeta = vi.fn();
     mockDeleteComponent = vi.fn();
+    mockExtractToComponent = vi.fn();
+    mockConvertToPage = vi.fn();
+    mockConvertToComponent = vi.fn();
     mockCreateStyleVariant = vi.fn();
     mockCreateVariantGroup = vi.fn();
     mockCreateScreenVariantAction = vi.fn();
@@ -347,6 +353,9 @@ describe("tool handlers", () => {
       renameComponent: (...args: any[]) => mockRenameComponent(...args),
       updatePageMeta: (...args: any[]) => mockUpdatePageMeta(...args),
       deleteComponent: (...args: any[]) => mockDeleteComponent(...args),
+      extractToComponent: (...args: any[]) => mockExtractToComponent(...args),
+      convertToPage: (...args: any[]) => mockConvertToPage(...args),
+      convertToComponent: (...args: any[]) => mockConvertToComponent(...args),
       createStyleVariant: (...args: any[]) => mockCreateStyleVariant(...args),
       createVariantGroup: (...args: any[]) => mockCreateVariantGroup(...args),
       createScreenVariant: (...args: any[]) => mockCreateScreenVariantAction(...args),
@@ -2929,6 +2938,225 @@ describe("tool handlers", () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("Cannot use dry-run during an active batch");
+    });
+
+    // Component domain dryRun: API-based actions reject dryRun
+    it("component.create-page with dryRun returns error", async () => {
+      const result = await client.callTool({
+        name: "component",
+        arguments: {
+          action: "create-page",
+          name: "Test",
+          path: "/test",
+          dryRun: true,
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      const text = result.content[0].text;
+      expect(text).toContain("Dry run is not supported for component.create-page");
+    });
+
+    it("component.create with dryRun returns error", async () => {
+      const result = await client.callTool({
+        name: "component",
+        arguments: {
+          action: "create",
+          name: "TestComp",
+          dryRun: true,
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      const text = result.content[0].text;
+      expect(text).toContain("Dry run is not supported for component.create");
+    });
+
+    it("component.clone with dryRun returns error", async () => {
+      const result = await client.callTool({
+        name: "component",
+        arguments: {
+          action: "clone",
+          sourceUuid: "src-1",
+          name: "ClonedComp",
+          dryRun: true,
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      const text = result.content[0].text;
+      expect(text).toContain("Dry run is not supported for component.clone");
+    });
+
+    // Component domain dryRun: in-memory mutation actions support dryRun
+    it("component.rename with dryRun returns preview without saving", async () => {
+      mockIsBatchActive.mockReturnValue(false);
+      mockBeginBatch.mockReturnValue("dry-run-batch");
+      mockGetAccumulatedChanges.mockReturnValue({
+        changes: [{ changeNode: {} }],
+        newInsts: [],
+        removedInsts: [],
+      });
+      mockRenameComponent.mockResolvedValue({
+        save: { revisionNum: 10, incremental: true },
+        oldName: "OldName",
+        newName: "NewName",
+        componentUuid: "comp-1",
+        newPath: undefined,
+      });
+
+      const result = await client.callTool({
+        name: "component",
+        arguments: {
+          action: "rename",
+          componentUuid: "comp-1",
+          newName: "NewName",
+          dryRun: true,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.dryRun).toBe(true);
+      expect(output.oldName).toBe("OldName");
+      expect(output.newName).toBe("NewName");
+      expect(output.message).toContain("Dry run");
+      expect(mockBeginBatch).toHaveBeenCalled();
+      expect(mockCancelBatch).toHaveBeenCalled();
+    });
+
+    it("component.delete with dryRun returns preview without saving", async () => {
+      mockIsBatchActive.mockReturnValue(false);
+      mockBeginBatch.mockReturnValue("dry-run-batch");
+      mockGetAccumulatedChanges.mockReturnValue({
+        changes: [{ changeNode: {} }],
+        newInsts: [],
+        removedInsts: [],
+      });
+      mockDeleteComponent.mockResolvedValue({
+        save: { revisionNum: 10, incremental: true },
+        deletedName: "OldComp",
+        deletedUuid: "comp-del",
+      });
+
+      const result = await client.callTool({
+        name: "component",
+        arguments: {
+          action: "delete",
+          componentUuid: "comp-del",
+          dryRun: true,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.dryRun).toBe(true);
+      expect(output.deletedName).toBe("OldComp");
+      expect(output.deletedUuid).toBe("comp-del");
+      expect(output.message).toContain("Dry run");
+      expect(mockBeginBatch).toHaveBeenCalled();
+      expect(mockCancelBatch).toHaveBeenCalled();
+    });
+
+    it("component.convert-to-page with dryRun returns preview without saving", async () => {
+      mockIsBatchActive.mockReturnValue(false);
+      mockBeginBatch.mockReturnValue("dry-run-batch");
+      mockGetAccumulatedChanges.mockReturnValue({
+        changes: [{ changeNode: {} }],
+        newInsts: [],
+        removedInsts: [],
+      });
+      mockConvertToPage.mockResolvedValue({
+        save: { revisionNum: 10, incremental: true },
+        componentName: "MyComp",
+        path: "/my-comp",
+      });
+
+      const result = await client.callTool({
+        name: "component",
+        arguments: {
+          action: "convert-to-page",
+          componentUuid: "comp-1",
+          path: "/my-comp",
+          dryRun: true,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.dryRun).toBe(true);
+      expect(output.componentName).toBe("MyComp");
+      expect(output.path).toBe("/my-comp");
+      expect(output.message).toContain("Dry run");
+      expect(mockBeginBatch).toHaveBeenCalled();
+      expect(mockCancelBatch).toHaveBeenCalled();
+    });
+
+    it("component.convert-to-component with dryRun returns preview without saving", async () => {
+      mockIsBatchActive.mockReturnValue(false);
+      mockBeginBatch.mockReturnValue("dry-run-batch");
+      mockGetAccumulatedChanges.mockReturnValue({
+        changes: [{ changeNode: {} }],
+        newInsts: [],
+        removedInsts: [],
+      });
+      mockConvertToComponent.mockResolvedValue({
+        save: { revisionNum: 10, incremental: true },
+        componentName: "MyPage",
+      });
+
+      const result = await client.callTool({
+        name: "component",
+        arguments: {
+          action: "convert-to-component",
+          componentUuid: "comp-1",
+          dryRun: true,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.dryRun).toBe(true);
+      expect(output.componentName).toBe("MyPage");
+      expect(output.message).toContain("Dry run");
+      expect(mockBeginBatch).toHaveBeenCalled();
+      expect(mockCancelBatch).toHaveBeenCalled();
+    });
+
+    it("component.update-page-meta with dryRun returns preview without saving", async () => {
+      mockIsBatchActive.mockReturnValue(false);
+      mockBeginBatch.mockReturnValue("dry-run-batch");
+      mockGetAccumulatedChanges.mockReturnValue({
+        changes: [{ changeNode: {} }],
+        newInsts: [],
+        removedInsts: [],
+      });
+      mockUpdatePageMeta.mockResolvedValue({
+        save: { revisionNum: 10, incremental: true },
+        componentName: "HomePage",
+        componentUuid: "comp-1",
+        updatedFields: ["title", "description"],
+      });
+
+      const result = await client.callTool({
+        name: "component",
+        arguments: {
+          action: "update-page-meta",
+          componentUuid: "comp-1",
+          title: "New Title",
+          description: "New Description",
+          dryRun: true,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.dryRun).toBe(true);
+      expect(output.component).toBe("HomePage");
+      expect(output.updatedFields).toEqual(["title", "description"]);
+      expect(output.message).toContain("Dry run");
+      expect(mockBeginBatch).toHaveBeenCalled();
+      expect(mockCancelBatch).toHaveBeenCalled();
     });
   });
 

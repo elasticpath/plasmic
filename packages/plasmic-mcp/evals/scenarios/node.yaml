@@ -126,7 +126,7 @@ scenarios:
           minChildren: 2
           childTags:
             - h1
-            - div
+            - p
       - type: count
         params:
           min: 8
