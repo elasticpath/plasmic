@@ -138,6 +138,81 @@ declare module "@/wab/shared/model/classes" {
     tpl: any;
   }
 
+  /** Model class for Rep — data repetition binding (collection → element/index vars). */
+  export class Rep {
+    constructor(args: { element: any; index: any; collection: any });
+    element: any;
+    index: any;
+    collection: any;
+  }
+
+  /** Model class for Var — named variable with unique UUID. */
+  export class Var {
+    constructor(args: { name: string; uuid: string });
+    name: string;
+    uuid: string;
+  }
+
+  /** Model class for PropParam — component prop definition. */
+  export class PropParam {
+    constructor(args: any);
+    variable: any;
+    uuid: string;
+    type: any;
+    advanced: boolean;
+    enumValues: any[];
+    origin: any;
+    exportType: string;
+    defaultExpr: any;
+    previewExpr: any;
+    propEffect: any;
+    description: any;
+    displayName: any;
+    about: any;
+    isRepeated: any;
+    isMainContentSlot: boolean;
+    required: boolean;
+    mergeWithParent: boolean;
+    isLocalizable: boolean;
+  }
+
+  /** Model class for Text type descriptor. */
+  export class Text {
+    constructor(args: any);
+    name: string;
+  }
+
+  /** Model class for Num type descriptor. */
+  export class Num {
+    constructor(args: any);
+    name: string;
+  }
+
+  /** Model class for BoolType type descriptor. */
+  export class BoolType {
+    constructor(args: any);
+    name: string;
+  }
+
+  /** Model class for AnyType type descriptor. */
+  export class AnyType {
+    constructor(args: any);
+    name: string;
+  }
+
+  /** Model class for HrefType type descriptor. */
+  export class HrefType {
+    constructor(args: any);
+    name: string;
+  }
+
+  /** Model class for FunctionType type descriptor. */
+  export class FunctionType {
+    constructor(args: any);
+    name: string;
+    params: any[];
+  }
+
   export function isKnownTplTag(x: any): boolean;
   export function isKnownTplComponent(x: any): boolean;
   export function isKnownTplSlot(x: any): boolean;
@@ -606,6 +681,9 @@ declare module "@/wab/shared/core/tpls" {
   /** Flatten a Tpl tree into a list of all nodes. */
   export function flattenTpls(tplRoot: any): any[];
 
+  /** Deep-clone a TplNode tree, creating new instances with new UUIDs. */
+  export function clone(node: any): any;
+
   export function isTplTag(x: any): boolean;
 
   /** Register a component's tplTree root in the TPLROOT_TO_COMPONENT WeakMap.
@@ -682,6 +760,16 @@ declare module "@/wab/shared/TplMgr" {
     /** Add a named variant to an existing ComponentVariantGroup.
      *  Name is auto-deduplicated via getUniqueVariantName(). */
     createVariant(component: any, group: any, name?: string): any;
+    /** Add a style token to the site. Returns the created StyleToken. */
+    addStyleToken(opts: { name: string; tokenType: string; value: string }): any;
+    /** Rename a style token with automatic name deduplication. */
+    renameStyleToken(token: any, name: string): void;
+    /** Duplicate a style token with auto-generated unique name. */
+    duplicateStyleToken(token: any): any;
+    /** Get a unique parameter name for a component, deduplicating if needed. */
+    getUniqueParamName(component: any, name?: string): string;
+    /** Rename a parameter and fix up $props.x expressions throughout the component. */
+    renameParam(component: any, param: any, name: string): void;
     /** Remove a client-side data query from a component.
      *  Cleans up QueryInvalidationExpr references. */
     removeComponentQuery(component: any, query: any): void;

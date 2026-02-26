@@ -4,9 +4,9 @@
 > programmatically to create fully-featured pages from the Claude Code terminal.
 >
 > **Current state**: 8 STRAP domain tools (consolidating 97 actions), 6 Claude Code skills (STRAP calling convention), 1046 tests (948 unit + 98 integration), 19 test files.
-> Zero TODOs/FIXMEs/skipped tests.
+> Zero TODOs/FIXMEs/skipped tests. Zero tsc errors.
 >
-> **Last verified**: 2026-02-26 — Tier 6.1 STRAP consolidation, Tier 7.2 skills rewrite, and 6.2 Test Restructure complete.
+> **Last verified**: 2026-02-26 — CQ-8 wab.d.ts type declarations complete. All tsc errors resolved.
 
 ---
 
@@ -381,6 +381,14 @@ These are code health improvements discovered during analysis. No specs needed.
 ### CQ-6 server.test.ts Unit Test Gaps
 - **What**: `list-variants` tool handler has no unit test. `remove-child` and `move-child` have no dryRun tests. Batch error rollback path untested.
 - **Action**: Add missing unit tests
+
+### CQ-8 wab.d.ts Type Declaration Gaps — DONE (2026-02-26)
+- **Status**: COMPLETED
+  - Fixed 20 tsc errors in `edit-tools.ts` caused by `wab.d.ts` not declaring all types/methods used at runtime
+  - Added 10 missing class declarations to `@/wab/shared/model/classes`: `Rep`, `Var`, `PropParam`, `Text`, `Num`, `BoolType`, `AnyType`, `HrefType`, `FunctionType`
+  - Added `clone` export to `@/wab/shared/core/tpls` module declaration
+  - Added 5 missing TplMgr methods: `addStyleToken`, `renameStyleToken`, `duplicateStyleToken`, `getUniqueParamName`, `renameParam`
+  - `tsc --noEmit` now passes with zero errors; all 1046 tests pass
 
 ### CQ-7 addChild Password Auto-Attribute — DONE (2026-02-26)
 - **Status**: PARTIALLY COMPLETED (password fix done; remaining element type tests deferred)
