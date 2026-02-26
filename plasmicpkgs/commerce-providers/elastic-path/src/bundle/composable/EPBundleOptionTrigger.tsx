@@ -53,6 +53,12 @@ export const epBundleOptionTriggerMeta: ComponentMeta<EPBundleOptionTriggerProps
     importName: "EPBundleOptionTrigger",
     parentComponentName: "plasmic-commerce-ep-bundle-option-list",
     providesData: true,
+    variants: {
+      selected: {
+        cssSelector: "[data-selected]",
+        displayName: "Selected",
+      },
+    },
   };
 
 export function EPBundleOptionTrigger(props: EPBundleOptionTriggerProps) {

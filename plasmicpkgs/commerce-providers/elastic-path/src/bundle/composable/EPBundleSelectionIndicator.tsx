@@ -36,6 +36,12 @@ export const epBundleSelectionIndicatorMeta: ComponentMeta<EPBundleSelectionIndi
     importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
     importName: "EPBundleSelectionIndicator",
     parentComponentName: "plasmic-commerce-ep-bundle-option-trigger",
+    variants: {
+      selected: {
+        cssSelector: "[data-selected]",
+        displayName: "Selected",
+      },
+    },
   };
 
 export function EPBundleSelectionIndicator(

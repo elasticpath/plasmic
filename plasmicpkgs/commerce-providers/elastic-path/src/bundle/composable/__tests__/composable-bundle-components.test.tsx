@@ -61,6 +61,9 @@ const { BundleFormContext } = require("../BundleContext");
 const { BundleOptionContext } = require("../BundleContext");
 const { BundleVariationContext } = require("../BundleContext");
 const { MOCK_BUNDLE_COMPONENTS, MOCK_BUNDLE_DATA, MOCK_BUNDLE_DATA_WITH_ERRORS } = require("../design-time-data");
+const { epBundleOptionTriggerMeta } = require("../EPBundleOptionTrigger");
+const { epBundleSelectionIndicatorMeta } = require("../EPBundleSelectionIndicator");
+const { epBundleVariationOptionTriggerMeta } = require("../EPBundleVariationOptionTrigger");
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -359,6 +362,23 @@ describe("EPBundleVariationField", () => {
     });
     const { container } = render(<EPBundleVariationField field="optionCount" />);
     expect(container.textContent).toBe("2");
+  });
+
+  it("displays option label from currentBundleVariationOption", () => {
+    setupSelector({
+      currentBundleVariation: { id: "var-1", name: "Color", values: [{ id: "opt-red", label: "Red" }] },
+      currentBundleVariationOption: { id: "opt-red", label: "Red", isSelected: true },
+    });
+    const { container } = render(<EPBundleVariationField field="optionLabel" />);
+    expect(container.textContent).toBe("Red");
+  });
+
+  it("displays mock option label in editor when no data", () => {
+    setEditorMode(true);
+    setupSelector({});
+    const { container } = render(<EPBundleVariationField field="optionLabel" />);
+    // MOCK_BUNDLE_VARIATION_OPTIONS[0].label is "Space Gray"
+    expect(container.textContent).toBe("Space Gray");
   });
 
   it("returns null when no data and not in editor", () => {
@@ -1363,5 +1383,29 @@ describe("Design-time mock data", () => {
   it("MOCK_BUNDLE_DATA_WITH_ERRORS has errors", () => {
     expect(MOCK_BUNDLE_DATA_WITH_ERRORS.errors.length).toBeGreaterThan(0);
     expect(MOCK_BUNDLE_DATA_WITH_ERRORS.isValid).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Variant registrations
+// ---------------------------------------------------------------------------
+
+describe("variant registrations", () => {
+  it("EPBundleOptionTrigger registers selected variant", () => {
+    expect(epBundleOptionTriggerMeta.variants).toEqual({
+      selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+    });
+  });
+
+  it("EPBundleSelectionIndicator registers selected variant", () => {
+    expect(epBundleSelectionIndicatorMeta.variants).toEqual({
+      selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+    });
+  });
+
+  it("EPBundleVariationOptionTrigger registers selected variant", () => {
+    expect(epBundleVariationOptionTriggerMeta.variants).toEqual({
+      selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+    });
   });
 });
