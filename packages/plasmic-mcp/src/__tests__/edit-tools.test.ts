@@ -47,6 +47,7 @@ import {
   addProp,
   removeProp,
   updateProp,
+  updateRichText,
 } from "../edit-tools";
 import { setSession, clearSession } from "../session";
 import { initChangeTracker, disposeChangeTracker } from "../change-tracker";
@@ -55,6 +56,7 @@ import { mockWithRecording } from "../__mocks__/wab-observable-model";
 import { mockFastBundle, mockAddrOf } from "../__mocks__/wab-bundler";
 import {
   mockEnsureBaseVariantSetting,
+  mockEnsureBaseVariant,
   mockRenameComponent,
   mockRemoveComponent,
   mockCreateStyleVariant,
@@ -6992,5 +6994,337 @@ describe("updateProp", () => {
     await expect(
       updateProp(api, "comp-1", "title", "children")
     ).rejects.toThrow(/reserved/);
+  });
+});
+
+// =============================================================================
+// updateRichText — rich text with inline formatting marks
+//
+// Creates RawText with StyleMarkers (bold, italic, underline, strikethrough)
+// and NodeMarkers (link, code) for inline formatting.
+// =============================================================================
+describe("updateRichText", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  const mockBaseVariant = { _type: "Variant", uuid: "base-var-1", name: "base" };
+
+  beforeEach(() => {
+    api = mockApiClient();
+    clearNodeCache();
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    (mockEnsureBaseVariant as any).mockReturnValue(mockBaseVariant);
+    // mkTplTagX creates a minimal TplTag for inline elements (links, code)
+    mockMkTplTagX.mockImplementation((tag: string) => {
+      return {
+        _type: "TplTag",
+        tag,
+        name: null,
+        children: [],
+        type: "text",
+        uuid: `tpl-${Math.random().toString(36).slice(2, 8)}`,
+        parent: null,
+        vsettings: [{ rs: { values: {} }, attrs: {}, text: null }],
+      };
+    });
+    mockWithRecording.mockImplementation((fn?: () => void) => {
+      if (fn) fn();
+      return { changes: [], newInsts: [], removedInsts: [] };
+    });
+  });
+
+  afterEach(() => {
+    clearSession();
+    disposeChangeTracker();
+  });
+
+  it("creates plain RawText when marks array is empty", async () => {
+    const root = mkTag({ uuid: "root-1", text: "old text" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateRichText(api, "comp-1", "root-1", "Hello world", []);
+    expect(result.newText).toBe("Hello world");
+    expect(result.markCount).toBe(0);
+    // vs.text should be a plain RawText with no markers
+    const vs = root.vsettings[0];
+    expect(vs.text._type).toBe("RawText");
+    expect(vs.text.text).toBe("Hello world");
+    expect(vs.text.markers).toEqual([]);
+  });
+
+  it("creates StyleMarker for bold mark", async () => {
+    const root = mkTag({ uuid: "root-1", text: "old text" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateRichText(api, "comp-1", "root-1", "Hello bold world", [
+      { start: 6, end: 10, type: "bold" },
+    ]);
+    expect(result.markCount).toBe(1);
+
+    const vs = root.vsettings[0];
+    expect(vs.text._type).toBe("RawText");
+    expect(vs.text.text).toBe("Hello bold world");
+    expect(vs.text.markers).toHaveLength(1);
+    const marker = vs.text.markers[0];
+    expect(marker._type).toBe("StyleMarker");
+    expect(marker.position).toBe(6);
+    expect(marker.length).toBe(4);
+    expect(marker.rs.values["font-weight"]).toBe("700");
+  });
+
+  it("creates StyleMarker for italic mark", async () => {
+    const root = mkTag({ uuid: "root-1", text: "old text" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await updateRichText(api, "comp-1", "root-1", "Hello italic world", [
+      { start: 6, end: 12, type: "italic" },
+    ]);
+
+    const marker = root.vsettings[0].text.markers[0];
+    expect(marker._type).toBe("StyleMarker");
+    expect(marker.rs.values["font-style"]).toBe("italic");
+  });
+
+  it("creates StyleMarkers for underline and strikethrough", async () => {
+    const root = mkTag({ uuid: "root-1", text: "old text" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await updateRichText(api, "comp-1", "root-1", "underline and strike", [
+      { start: 0, end: 9, type: "underline" },
+      { start: 14, end: 20, type: "strikethrough" },
+    ]);
+
+    const markers = root.vsettings[0].text.markers;
+    expect(markers).toHaveLength(2);
+    expect(markers[0].rs.values["text-decoration-line"]).toBe("underline");
+    expect(markers[1].rs.values["text-decoration-line"]).toBe("line-through");
+  });
+
+  it("creates NodeMarker with TplTag for link mark", async () => {
+    const root = mkTag({ uuid: "root-1", text: "old text" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await updateRichText(api, "comp-1", "root-1", "Click here for info", [
+      { start: 6, end: 10, type: "link", href: "/about" },
+    ]);
+
+    const vs = root.vsettings[0];
+    // WAB text has [child] placeholder: "Click [child] for info"
+    expect(vs.text.text).toBe("Click [child] for info");
+    expect(vs.text.markers).toHaveLength(1);
+
+    const marker = vs.text.markers[0];
+    expect(marker._type).toBe("NodeMarker");
+    expect(marker.position).toBe(6);
+    expect(marker.length).toBe(7); // length of "[child]"
+
+    // The TplTag should be an anchor with href and text
+    const childTpl = marker.tpl;
+    expect(childTpl.tag).toBe("a");
+    expect(childTpl.vsettings[0].text.text).toBe("here");
+    expect(childTpl.vsettings[0].attrs.href.code).toBe('"\/about"');
+
+    // Child should be added to parent's children
+    expect(root.children).toContain(childTpl);
+    expect(childTpl.parent).toBe(root);
+  });
+
+  it("creates NodeMarker with TplTag for code mark", async () => {
+    const root = mkTag({ uuid: "root-1", text: "old text" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await updateRichText(api, "comp-1", "root-1", "Use the foo function", [
+      { start: 8, end: 11, type: "code" },
+    ]);
+
+    const vs = root.vsettings[0];
+    expect(vs.text.text).toBe("Use the [child] function");
+    const marker = vs.text.markers[0];
+    expect(marker._type).toBe("NodeMarker");
+    expect(marker.tpl.tag).toBe("code");
+    expect(marker.tpl.vsettings[0].text.text).toBe("foo");
+  });
+
+  it("handles bold + link on same range (overlapping marks)", async () => {
+    const root = mkTag({ uuid: "root-1", text: "old text" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await updateRichText(api, "comp-1", "root-1", "Click here now", [
+      { start: 6, end: 10, type: "link", href: "/page" },
+      { start: 6, end: 10, type: "bold" },
+    ]);
+
+    const vs = root.vsettings[0];
+    // Should have NodeMarker on parent text
+    const nodeMarker = vs.text.markers.find((m: any) => m._type === "NodeMarker");
+    expect(nodeMarker).toBeDefined();
+
+    // The bold StyleMarker should be on the child TplTag's RawText (inside the link)
+    const childRawText = nodeMarker.tpl.vsettings[0].text;
+    expect(childRawText.markers).toHaveLength(1);
+    expect(childRawText.markers[0]._type).toBe("StyleMarker");
+    expect(childRawText.markers[0].rs.values["font-weight"]).toBe("700");
+    expect(childRawText.markers[0].position).toBe(0);
+    expect(childRawText.markers[0].length).toBe(4); // "here"
+  });
+
+  it("handles multiple node marks without overlap", async () => {
+    const root = mkTag({ uuid: "root-1", text: "old text" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await updateRichText(api, "comp-1", "root-1", "Visit home and about pages", [
+      { start: 6, end: 10, type: "link", href: "/" },
+      { start: 15, end: 20, type: "link", href: "/about" },
+    ]);
+
+    const vs = root.vsettings[0];
+    // "Visit [child] and [child] pages"
+    expect(vs.text.text).toBe("Visit [child] and [child] pages");
+    expect(vs.text.markers.filter((m: any) => m._type === "NodeMarker")).toHaveLength(2);
+    expect(root.children).toHaveLength(2);
+  });
+
+  // --- Error cases ---
+
+  it("rejects mark with start >= end", async () => {
+    const root = mkTag({ uuid: "root-1", text: "old text" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      updateRichText(api, "comp-1", "root-1", "Hello", [
+        { start: 3, end: 3, type: "bold" },
+      ])
+    ).rejects.toThrow(/start must be less than end/);
+  });
+
+  it("rejects mark extending beyond text length", async () => {
+    const root = mkTag({ uuid: "root-1", text: "old text" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      updateRichText(api, "comp-1", "root-1", "Hello", [
+        { start: 2, end: 10, type: "bold" },
+      ])
+    ).rejects.toThrow(/exceeds text length/);
+  });
+
+  it("rejects link mark without href", async () => {
+    const root = mkTag({ uuid: "root-1", text: "old text" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      updateRichText(api, "comp-1", "root-1", "Click here", [
+        { start: 6, end: 10, type: "link" },
+      ])
+    ).rejects.toThrow(/href/);
+  });
+
+  it("rejects overlapping node marks", async () => {
+    const root = mkTag({ uuid: "root-1", text: "old text" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      updateRichText(api, "comp-1", "root-1", "Click here now", [
+        { start: 0, end: 8, type: "link", href: "/a" },
+        { start: 6, end: 14, type: "link", href: "/b" },
+      ])
+    ).rejects.toThrow(/cannot overlap/);
+  });
+
+  it("rejects rich text on a container node", async () => {
+    const child = mkTag({ uuid: "child-1" });
+    const root = mkTag({ uuid: "root-1", children: [child] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      updateRichText(api, "comp-1", "root-1", "Hello", [
+        { start: 0, end: 5, type: "bold" },
+      ])
+    ).rejects.toThrow(/container|text element/i);
+  });
+
+  it("rejects rich text marks on dynamic text (ExprText)", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].text = {
+      _type: "ExprText",
+      expr: { _type: "CustomCode", code: "$ctx.title" },
+      html: false,
+    };
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      updateRichText(api, "comp-1", "root-1", "Hello", [
+        { start: 0, end: 5, type: "bold" },
+      ])
+    ).rejects.toThrow(/dynamic text/);
+  });
+
+  it("preserves previousText from existing RawText", async () => {
+    const root = mkTag({ uuid: "root-1", text: "old content" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateRichText(api, "comp-1", "root-1", "new content", [
+      { start: 0, end: 3, type: "bold" },
+    ]);
+    expect(result.previousText).toBe("old content");
   });
 });

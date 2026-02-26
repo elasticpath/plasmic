@@ -43,6 +43,7 @@ import { resolveNode, requireSingleNode, invalidateNodeCache, clearNodeCache, ge
 import { initChangeTracker, disposeChangeTracker, getChangeTracker } from "./change-tracker.js";
 import {
   updateText,
+  updateRichText,
   updateStyles,
   updateAttrs,
   addChild,
@@ -1410,6 +1411,102 @@ export function createServer(): McpServer {
         };
       } catch (err: any) {
         return handleMutationError("updating text", err);
+      }
+    }
+  );
+
+  // --- update-rich-text ---
+  // Updates text content with inline formatting marks (bold, italic, links, etc.).
+  // Creates RawText with StyleMarkers and NodeMarkers for rich text content.
+  // Supports dry-run mode.
+  server.tool(
+    "update-rich-text",
+    "Update the text content of an element with inline formatting marks (bold, italic, underline, strikethrough, link, code). " +
+    "Provide a flat text string and an array of marks with start/end positions and type. " +
+    "Link marks require an 'href' property. Overlapping marks are allowed (e.g., bold + link on same range).",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component containing the node"),
+      nodeRef: z
+        .string()
+        .describe(
+          'Node reference: UUID, name (e.g., "Hero Title"), path (e.g., "HeroSection.Title"), or index (e.g., "#2")'
+        ),
+      text: z.string().describe("The plain text content (without formatting). Mark positions refer to this text."),
+      marks: z
+        .array(
+          z.object({
+            start: z.number().describe("Start position in the text (0-indexed, inclusive)"),
+            end: z.number().describe("End position in the text (0-indexed, exclusive)"),
+            type: z
+              .enum(["bold", "italic", "underline", "strikethrough", "link", "code"])
+              .describe("The mark type"),
+            href: z
+              .string()
+              .optional()
+              .describe("URL for link marks (required when type is 'link')"),
+          })
+        )
+        .describe("Array of inline formatting marks to apply to the text"),
+      variant: z
+        .string()
+        .optional()
+        .describe('Target variant by name (e.g., "Mobile"), UUID, or selector (e.g., ":hover"). Omit for base variant.'),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting. Model is left unchanged."),
+    },
+    async ({ componentUuid, nodeRef, text, marks, variant, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            updateRichText(apiClient, componentUuid, nodeRef, text, marks, variant)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    node: result.nodeName ?? result.nodeUuid,
+                    previousText: result.previousText,
+                    newText: result.newText,
+                    markCount: result.markCount,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await updateRichText(apiClient, componentUuid, nodeRef, text, marks, variant);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  node: result.nodeName ?? result.nodeUuid,
+                  previousText: result.previousText,
+                  newText: result.newText,
+                  markCount: result.markCount,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("updating rich text", err);
       }
     }
   );

@@ -101,6 +101,30 @@ declare module "@/wab/shared/model/classes" {
     expr: any;
   }
 
+  /** Model class for RuleSet — CSS property values + mixins + animations. */
+  export class RuleSet {
+    constructor(args: { values: Record<string, string>; mixins: any[]; animations: any });
+    values: Record<string, string>;
+    mixins: any[];
+    animations: any;
+  }
+
+  /** Model class for StyleMarker — CSS formatting applied to a text range. */
+  export class StyleMarker {
+    constructor(args: { position: number; length: number; rs: any });
+    position: number;
+    length: number;
+    rs: any;
+  }
+
+  /** Model class for NodeMarker — inline TplTag element (link, code) embedded in text. */
+  export class NodeMarker {
+    constructor(args: { position: number; length: number; tpl: any });
+    position: number;
+    length: number;
+    tpl: any;
+  }
+
   export function isKnownTplTag(x: any): boolean;
   export function isKnownTplComponent(x: any): boolean;
   export function isKnownTplSlot(x: any): boolean;
@@ -112,6 +136,8 @@ declare module "@/wab/shared/model/classes" {
   export function isKnownObjectPath(x: any): boolean;
   export function isKnownImageAssetRef(x: any): boolean;
   export function isKnownStyleTokenRef(x: any): boolean;
+  export function isKnownStyleMarker(x: any): boolean;
+  export function isKnownNodeMarker(x: any): boolean;
 }
 
 // --- M2 modules ---

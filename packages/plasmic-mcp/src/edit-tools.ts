@@ -31,6 +31,8 @@ import {
   isKnownCustomCode,
   isKnownObjectPath,
   isKnownVarRef,
+  isKnownStyleMarker,
+  isKnownNodeMarker,
   RawText,
   CustomCode,
   ExprText,
@@ -45,6 +47,9 @@ import {
   AnyType,
   HrefType,
   FunctionType,
+  RuleSet,
+  StyleMarker,
+  NodeMarker,
 } from "@/wab/shared/model/classes";
 import { RSH } from "@/wab/shared/RuleSetHelpers";
 import { TplMgr } from "@/wab/shared/TplMgr";
@@ -1365,6 +1370,520 @@ export async function updateText(
     ...(dynamic ? { dynamic: true } : {}),
     ...(fallback != null ? { fallback } : {}),
   };
+}
+
+// --- update-rich-text ---
+
+/** Mark definition as provided by the caller. */
+export interface RichTextMark {
+  start: number;
+  end: number;
+  type: "bold" | "italic" | "underline" | "strikethrough" | "link" | "code";
+  href?: string;
+}
+
+export interface UpdateRichTextResult {
+  save: SaveResult;
+  nodeName?: string;
+  nodeUuid: string;
+  previousText?: string;
+  newText: string;
+  markCount: number;
+}
+
+/** The [child] placeholder that WAB uses for NodeMarker positions in RawText. */
+const NODE_MARKER_PLACEHOLDER = "[child]";
+
+/** Mark types that map to StyleMarker (CSS properties on a text range). */
+const STYLE_MARK_TYPES = new Set(["bold", "italic", "underline", "strikethrough"]);
+
+/** Mark types that map to NodeMarker (inline TplTag elements). */
+const NODE_MARK_TYPES = new Set(["link", "code"]);
+
+/**
+ * CSS properties for each style mark type.
+ * Values are stored as kebab-case in RuleSet.values (WAB convention).
+ */
+const STYLE_MARK_CSS: Record<string, Record<string, string>> = {
+  bold: { "font-weight": "700" },
+  italic: { "font-style": "italic" },
+  underline: { "text-decoration-line": "underline" },
+  strikethrough: { "text-decoration-line": "line-through" },
+};
+
+/**
+ * Update the text content of a TplTag node with inline formatting marks.
+ *
+ * Creates a RawText with StyleMarkers (bold, italic, underline, strikethrough)
+ * and NodeMarkers (link, code) for inline formatting. This is the rich text
+ * counterpart to updateText which creates plain text.
+ *
+ * StyleMarkers apply CSS properties to text ranges via RuleSet.
+ * NodeMarkers wrap text ranges in inline TplTag elements (<a>, <code>).
+ *
+ * Mark positions are in the user's flat text coordinate system. Internally,
+ * NodeMarker text is replaced with "[child]" placeholders and the actual text
+ * lives inside the child TplTag's RawText.
+ */
+export async function updateRichText(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  nodeRef: string,
+  text: string,
+  marks: RichTextMark[],
+  variant?: string
+): Promise<UpdateRichTextResult> {
+  const component = findComponent(componentUuid);
+  const result = resolveNode(component, nodeRef);
+  const resolved = requireSingleNode(result, nodeRef);
+
+  if (!isKnownTplTag(resolved.node)) {
+    throw new Error(
+      `Node "${nodeRef}" is not a TplTag and cannot have text updated.`
+    );
+  }
+
+  // Validate marks
+  validateRichTextMarks(text, marks);
+
+  // If no marks, create plain RawText (same as update-text with no formatting)
+  if (marks.length === 0) {
+    const tpl = resolved.node;
+    const session = requireSession();
+    const tplMgr = new TplMgr({ site: session.site });
+    const baseVs = tplMgr.ensureBaseVariantSetting(tpl);
+
+    // Container check
+    const hasText = baseVs.text && (isKnownRawText(baseVs.text) || isKnownExprText(baseVs.text));
+    const isContainer = !hasText && tpl.children && tpl.children.length > 0;
+    if (isContainer) {
+      throw new Error(
+        `Rich text can only be set on text elements. Node "${resolved.name ?? nodeRef}" is a container.`
+      );
+    }
+
+    const resolvedVariant = variant
+      ? resolveVariant(session.site, component, variant)
+      : null;
+
+    const tracker = getChangeTracker();
+    let previousText: string | undefined;
+
+    const changes = tracker.withRecording(() => {
+      const vs = resolvedVariant
+        ? ensureVariantSetting(tpl, [resolvedVariant])
+        : baseVs;
+
+      if (vs.text && isKnownRawText(vs.text)) {
+        previousText = vs.text.text;
+      }
+
+      vs.text = new RawText({ text, markers: [] });
+    });
+
+    const componentIid = getComponentIid(component);
+    const save = await saveOrAccumulate(
+      apiClient,
+      changes,
+      `update-rich-text: plain "${text}" on ${resolved.name ?? nodeRef}`,
+      componentIid ? [componentIid] : []
+    );
+
+    return {
+      save,
+      nodeName: resolved.name,
+      nodeUuid: resolved.uuid,
+      previousText,
+      newText: text,
+      markCount: 0,
+    };
+  }
+
+  // Setup session, component, base variant BEFORE building markers
+  // (needed so mkTplTagX can create real class instances in integration)
+  const tpl = resolved.node;
+  const session = requireSession();
+  const tplMgr = new TplMgr({ site: session.site });
+  const baseVs = tplMgr.ensureBaseVariantSetting(tpl);
+  const baseVariant = tplMgr.ensureBaseVariant(component);
+
+  // Container check
+  const hasText = baseVs.text && (isKnownRawText(baseVs.text) || isKnownExprText(baseVs.text));
+  const isContainer = !hasText && tpl.children && tpl.children.length > 0;
+  if (isContainer) {
+    throw new Error(
+      `Rich text can only be set on text elements. Node "${resolved.name ?? nodeRef}" is a container.`
+    );
+  }
+
+  // Check for ExprText (dynamic text)
+  if (baseVs.text && isKnownExprText(baseVs.text)) {
+    throw new Error(
+      `Rich text marks not supported on dynamic text. Use update-text with dynamic:true instead.`
+    );
+  }
+
+  // Separate into node marks (link, code) and style marks (bold, italic, etc.)
+  const nodeMarks = marks
+    .filter((m) => NODE_MARK_TYPES.has(m.type))
+    .sort((a, b) => a.start - b.start);
+  const styleMarks = marks.filter((m) => STYLE_MARK_TYPES.has(m.type));
+
+  // Validate: node marks don't overlap each other
+  for (let i = 1; i < nodeMarks.length; i++) {
+    if (nodeMarks[i].start < nodeMarks[i - 1].end) {
+      throw new Error(
+        `Link/code marks cannot overlap each other (mark at ${nodeMarks[i - 1].start}-${nodeMarks[i - 1].end} overlaps with ${nodeMarks[i].start}-${nodeMarks[i].end}).`
+      );
+    }
+  }
+
+  // Build WAB text with [child] placeholders and create inline TplTags
+  const { wabText, wabNodeMarkers, childTpls, offsetMap } =
+    buildNodeMarkerText(text, nodeMarks, baseVariant);
+
+  // Build StyleMarkers, splitting across node mark boundaries
+  const { parentStyleMarkers, childStyleMarkers } =
+    buildRichStyleMarkers(text, styleMarks, nodeMarks, offsetMap);
+
+  // Apply child style markers to child TplTag RawText
+  for (const { childIndex, marker } of childStyleMarkers) {
+    const childTpl = childTpls[childIndex];
+    const childRawText = childTpl.vsettings?.[0]?.text;
+    if (childRawText && isKnownRawText(childRawText)) {
+      childRawText.markers.push(marker);
+    }
+  }
+
+  // All parent-level markers
+  const allParentMarkers = [...wabNodeMarkers, ...parentStyleMarkers];
+
+  const resolvedVariant = variant
+    ? resolveVariant(session.site, component, variant)
+    : null;
+
+  const tracker = getChangeTracker();
+  let previousText: string | undefined;
+
+  const changes = tracker.withRecording(() => {
+    const vs = resolvedVariant
+      ? ensureVariantSetting(tpl, [resolvedVariant])
+      : baseVs;
+
+    if (vs.text && isKnownRawText(vs.text)) {
+      previousText = vs.text.text;
+    }
+
+    // Replace text with rich text
+    vs.text = new RawText({ text: wabText, markers: allParentMarkers });
+
+    // Replace inline children — remove old inline TplTag children, add new ones.
+    // Inline tags are children referenced by NodeMarkers (a, code, span, etc.).
+    const inlineTags = new Set(["a", "code", "span", "strong", "i", "em", "sub", "sup"]);
+    if (tpl.children) {
+      tpl.children = tpl.children.filter(
+        (child: any) => !isKnownTplTag(child) || !inlineTags.has(child.tag)
+      );
+    } else {
+      tpl.children = [];
+    }
+
+    // Add new inline TplTag children and set parent pointers
+    for (const childTpl of childTpls) {
+      childTpl.parent = tpl;
+      tpl.children.push(childTpl);
+    }
+  });
+
+  const componentIid = getComponentIid(component);
+  const variantLabel = resolvedVariant
+    ? ` [variant: ${resolvedVariant.name ?? variant}]`
+    : "";
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `update-rich-text: "${text}" with ${marks.length} marks on ${resolved.name ?? nodeRef}${variantLabel}`,
+    componentIid ? [componentIid] : []
+  );
+
+  return {
+    save,
+    nodeName: resolved.name,
+    nodeUuid: resolved.uuid,
+    previousText,
+    newText: text,
+    markCount: marks.length,
+  };
+}
+
+/**
+ * Validate rich text marks for consistency.
+ * Throws descriptive errors for invalid marks.
+ */
+function validateRichTextMarks(text: string, marks: RichTextMark[]): void {
+  for (const mark of marks) {
+    if (mark.start >= mark.end) {
+      throw new Error(
+        `Mark start must be less than end (got start=${mark.start}, end=${mark.end} for "${mark.type}" mark).`
+      );
+    }
+    if (mark.end > text.length) {
+      throw new Error(
+        `Mark end (${mark.end}) exceeds text length (${text.length}).`
+      );
+    }
+    if (mark.start < 0) {
+      throw new Error(
+        `Mark start must be non-negative (got ${mark.start}).`
+      );
+    }
+    if (mark.type === "link" && !mark.href) {
+      throw new Error(`Link marks require 'href' property.`);
+    }
+  }
+}
+
+/**
+ * Build WAB text with [child] placeholders for node marks (link, code).
+ *
+ * Returns the WAB text string, NodeMarker objects, child TplTag objects,
+ * and an offset map for converting user positions to WAB positions.
+ */
+function buildNodeMarkerText(
+  userText: string,
+  nodeMarks: RichTextMark[],
+  baseVariant: any
+): {
+  wabText: string;
+  wabNodeMarkers: any[];
+  childTpls: any[];
+  offsetMap: { userStart: number; userEnd: number; cumulativeOffset: number }[];
+} {
+  if (nodeMarks.length === 0) {
+    return {
+      wabText: userText,
+      wabNodeMarkers: [],
+      childTpls: [],
+      offsetMap: [],
+    };
+  }
+
+  const parts: string[] = [];
+  const wabNodeMarkers: any[] = [];
+  const childTpls: any[] = [];
+  const offsetMap: { userStart: number; userEnd: number; cumulativeOffset: number }[] = [];
+  let lastEnd = 0;
+  let cumulativeOffset = 0;
+
+  for (const mark of nodeMarks) {
+    // Text before this node mark
+    parts.push(userText.slice(lastEnd, mark.start));
+
+    // The WAB position where [child] will be placed
+    const wabPosition = parts.join("").length;
+    const markedText = userText.slice(mark.start, mark.end);
+
+    // Create inline TplTag for this node mark
+    const tag = mark.type === "link" ? "a" : "code";
+    const childTpl = createInlineTplTag(tag, markedText, baseVariant, mark.href);
+    childTpls.push(childTpl);
+
+    // Create NodeMarker
+    wabNodeMarkers.push(
+      new NodeMarker({
+        position: wabPosition,
+        length: NODE_MARKER_PLACEHOLDER.length,
+        tpl: childTpl,
+      })
+    );
+
+    // Add [child] placeholder to WAB text
+    parts.push(NODE_MARKER_PLACEHOLDER);
+
+    // Track offset: [child] (7 chars) replaces the original text (mark.end - mark.start chars)
+    cumulativeOffset += NODE_MARKER_PLACEHOLDER.length - (mark.end - mark.start);
+    offsetMap.push({ userStart: mark.start, userEnd: mark.end, cumulativeOffset });
+
+    lastEnd = mark.end;
+  }
+
+  // Text after the last node mark
+  parts.push(userText.slice(lastEnd));
+
+  return {
+    wabText: parts.join(""),
+    wabNodeMarkers,
+    childTpls,
+    offsetMap,
+  };
+}
+
+/**
+ * Create an inline TplTag for use inside a NodeMarker.
+ *
+ * Uses mkTplTagX to create proper class instances (required for real WAB
+ * model validation in integration). Then sets text content and attributes
+ * on the created VariantSetting.
+ *
+ * For links (<a>): sets the href attribute and text content.
+ * For code (<code>): sets text content only.
+ */
+function createInlineTplTag(tag: string, text: string, baseVariant: any, href?: string): any {
+  const tpl = mkTplTagX(tag, { baseVariant, styles: {} });
+  const vs = tpl.vsettings[0];
+
+  // Set text content
+  vs.text = new RawText({ text, markers: [] });
+
+  // For links, set the href attribute
+  if (tag === "a" && href) {
+    if (!vs.attrs) { vs.attrs = {}; }
+    vs.attrs.href = new CustomCode({
+      code: JSON.stringify(href),
+      fallback: null,
+    });
+  }
+
+  return tpl;
+}
+
+/**
+ * Build StyleMarkers for style marks, handling overlap with node marks.
+ *
+ * Style marks that are entirely outside node mark ranges produce parent-level
+ * StyleMarkers (on the parent RawText). Style marks that overlap with node
+ * marks are split: the inside portion produces a child-level StyleMarker
+ * (on the child TplTag's RawText), the outside portion produces a parent marker.
+ */
+function buildRichStyleMarkers(
+  userText: string,
+  styleMarks: RichTextMark[],
+  nodeMarks: RichTextMark[],
+  offsetMap: { userStart: number; userEnd: number; cumulativeOffset: number }[]
+): {
+  parentStyleMarkers: any[];
+  childStyleMarkers: { childIndex: number; marker: any }[];
+} {
+  const parentStyleMarkers: any[] = [];
+  const childStyleMarkers: { childIndex: number; marker: any }[] = [];
+
+  for (const mark of styleMarks) {
+    const css = STYLE_MARK_CSS[mark.type];
+    if (!css) continue;
+
+    // Split the style mark range into segments: inside/outside node marks
+    const segments = splitRangeByNodeMarks(mark.start, mark.end, nodeMarks);
+
+    for (const seg of segments) {
+      if (seg.type === "outside") {
+        // Convert user position to WAB position
+        const wabStart = userPosToWabPos(seg.start, nodeMarks, offsetMap);
+        const wabEnd = userPosToWabPos(seg.end, nodeMarks, offsetMap);
+        if (wabEnd > wabStart) {
+          parentStyleMarkers.push(
+            new StyleMarker({
+              position: wabStart,
+              length: wabEnd - wabStart,
+              rs: new RuleSet({ values: { ...css }, mixins: [], animations: null }),
+            })
+          );
+        }
+      } else {
+        // seg.type === "inside" — style marker on child TplTag's RawText
+        const childIndex = seg.childIndex!;
+        const localStart = seg.start - nodeMarks[childIndex].start;
+        const localEnd = seg.end - nodeMarks[childIndex].start;
+        if (localEnd > localStart) {
+          childStyleMarkers.push({
+            childIndex,
+            marker: new StyleMarker({
+              position: localStart,
+              length: localEnd - localStart,
+              rs: new RuleSet({ values: { ...css }, mixins: [], animations: null }),
+            }),
+          });
+        }
+      }
+    }
+  }
+
+  return { parentStyleMarkers, childStyleMarkers };
+}
+
+/**
+ * Split a range [start, end) into segments that are inside or outside node mark ranges.
+ */
+function splitRangeByNodeMarks(
+  start: number,
+  end: number,
+  nodeMarks: RichTextMark[]
+): { type: "inside" | "outside"; start: number; end: number; childIndex?: number }[] {
+  if (nodeMarks.length === 0) {
+    return [{ type: "outside", start, end }];
+  }
+
+  const segments: { type: "inside" | "outside"; start: number; end: number; childIndex?: number }[] = [];
+  let cursor = start;
+
+  for (let i = 0; i < nodeMarks.length; i++) {
+    const nm = nodeMarks[i];
+    if (cursor >= end) break;
+
+    // Outside segment before this node mark
+    if (cursor < nm.start && cursor < end) {
+      const segEnd = Math.min(nm.start, end);
+      if (segEnd > cursor) {
+        segments.push({ type: "outside", start: cursor, end: segEnd });
+      }
+      cursor = segEnd;
+    }
+
+    // Inside segment (overlap with this node mark)
+    if (cursor < nm.end && cursor < end && cursor >= nm.start) {
+      const segStart = Math.max(cursor, nm.start);
+      const segEnd = Math.min(nm.end, end);
+      if (segEnd > segStart) {
+        segments.push({ type: "inside", start: segStart, end: segEnd, childIndex: i });
+      }
+      cursor = segEnd;
+    } else if (cursor < nm.end && cursor < end) {
+      // Style mark starts before node mark start but cursor was advanced past it
+      cursor = Math.min(nm.end, end);
+    }
+  }
+
+  // Remaining outside segment after all node marks
+  if (cursor < end) {
+    segments.push({ type: "outside", start: cursor, end });
+  }
+
+  return segments;
+}
+
+/**
+ * Convert a user text position to a WAB text position, accounting for
+ * [child] placeholder offset introduced by node marks.
+ */
+function userPosToWabPos(
+  userPos: number,
+  nodeMarks: RichTextMark[],
+  offsetMap: { userStart: number; userEnd: number; cumulativeOffset: number }[]
+): number {
+  // Find how many complete node marks are before this position
+  let offset = 0;
+  for (let i = 0; i < nodeMarks.length; i++) {
+    if (nodeMarks[i].end <= userPos) {
+      // This node mark is entirely before userPos
+      offset = offsetMap[i].cumulativeOffset;
+    } else if (nodeMarks[i].start < userPos) {
+      // userPos is inside a node mark — shouldn't happen for "outside" segments
+      // but handle gracefully: position at end of [child]
+      offset = offsetMap[i].cumulativeOffset;
+    } else {
+      break;
+    }
+  }
+  return userPos + offset;
 }
 
 // --- update-styles ---

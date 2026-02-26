@@ -2691,3 +2691,311 @@ describe("dataRep output", () => {
     });
   });
 });
+
+// =============================================================================
+// Rich text — extracting marks from RawText with markers
+// =============================================================================
+describe("rich text marks", () => {
+  it("returns marks for StyleMarkers (bold)", () => {
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        uuid: "tag-1",
+        tag: "p",
+        vsettings: [
+          {
+            rs: { values: {} },
+            text: {
+              _type: "RawText",
+              text: "Hello bold world",
+              markers: [
+                {
+                  _type: "StyleMarker",
+                  position: 6,
+                  length: 4,
+                  rs: { values: { "font-weight": "700" } },
+                },
+              ],
+            },
+          },
+        ],
+        children: [],
+      },
+    };
+
+    const result = readComponentTree(component);
+    expect(result?.text).toBe("Hello bold world");
+    expect(result?.marks).toEqual([
+      { start: 6, end: 10, type: "bold" },
+    ]);
+  });
+
+  it("returns marks for italic and strikethrough", () => {
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        uuid: "tag-1",
+        tag: "p",
+        vsettings: [
+          {
+            rs: { values: {} },
+            text: {
+              _type: "RawText",
+              text: "styled text here",
+              markers: [
+                {
+                  _type: "StyleMarker",
+                  position: 0,
+                  length: 6,
+                  rs: { values: { "font-style": "italic" } },
+                },
+                {
+                  _type: "StyleMarker",
+                  position: 12,
+                  length: 4,
+                  rs: { values: { "text-decoration-line": "line-through" } },
+                },
+              ],
+            },
+          },
+        ],
+        children: [],
+      },
+    };
+
+    const result = readComponentTree(component);
+    expect(result?.marks).toEqual([
+      { start: 0, end: 6, type: "italic" },
+      { start: 12, end: 16, type: "strikethrough" },
+    ]);
+  });
+
+  it("reconstructs user text from NodeMarker with link", () => {
+    const linkTpl = {
+      _type: "TplTag",
+      tag: "a",
+      vsettings: [
+        {
+          text: { _type: "RawText", text: "here", markers: [] },
+          attrs: {
+            href: { _type: "CustomCode", code: '"/about"' },
+          },
+        },
+      ],
+    };
+
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        uuid: "tag-1",
+        tag: "p",
+        vsettings: [
+          {
+            rs: { values: {} },
+            text: {
+              _type: "RawText",
+              text: "Click [child] for info",
+              markers: [
+                {
+                  _type: "NodeMarker",
+                  position: 6,
+                  length: 7,
+                  tpl: linkTpl,
+                },
+              ],
+            },
+          },
+        ],
+        children: [linkTpl],
+      },
+    };
+
+    const result = readComponentTree(component);
+    // User text reconstructed: "Click here for info"
+    expect(result?.text).toBe("Click here for info");
+    expect(result?.marks).toEqual([
+      { start: 6, end: 10, type: "link", href: "/about" },
+    ]);
+  });
+
+  it("reconstructs user text from NodeMarker with code", () => {
+    const codeTpl = {
+      _type: "TplTag",
+      tag: "code",
+      vsettings: [
+        {
+          text: { _type: "RawText", text: "foo", markers: [] },
+          attrs: {},
+        },
+      ],
+    };
+
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        uuid: "tag-1",
+        tag: "p",
+        vsettings: [
+          {
+            rs: { values: {} },
+            text: {
+              _type: "RawText",
+              text: "Use the [child] function",
+              markers: [
+                {
+                  _type: "NodeMarker",
+                  position: 8,
+                  length: 7,
+                  tpl: codeTpl,
+                },
+              ],
+            },
+          },
+        ],
+        children: [codeTpl],
+      },
+    };
+
+    const result = readComponentTree(component);
+    expect(result?.text).toBe("Use the foo function");
+    expect(result?.marks).toEqual([
+      { start: 8, end: 11, type: "code" },
+    ]);
+  });
+
+  it("handles bold mark inside a link (child StyleMarker)", () => {
+    const linkTpl = {
+      _type: "TplTag",
+      tag: "a",
+      vsettings: [
+        {
+          text: {
+            _type: "RawText",
+            text: "here",
+            markers: [
+              {
+                _type: "StyleMarker",
+                position: 0,
+                length: 4,
+                rs: { values: { "font-weight": "700" } },
+              },
+            ],
+          },
+          attrs: {
+            href: { _type: "CustomCode", code: '"/page"' },
+          },
+        },
+      ],
+    };
+
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        uuid: "tag-1",
+        tag: "p",
+        vsettings: [
+          {
+            rs: { values: {} },
+            text: {
+              _type: "RawText",
+              text: "Click [child] now",
+              markers: [
+                {
+                  _type: "NodeMarker",
+                  position: 6,
+                  length: 7,
+                  tpl: linkTpl,
+                },
+              ],
+            },
+          },
+        ],
+        children: [linkTpl],
+      },
+    };
+
+    const result = readComponentTree(component);
+    expect(result?.text).toBe("Click here now");
+    expect(result?.marks).toEqual([
+      { start: 6, end: 10, type: "link", href: "/page" },
+      { start: 6, end: 10, type: "bold" },
+    ]);
+  });
+
+  it("omits marks when RawText has no markers", () => {
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        uuid: "tag-1",
+        tag: "p",
+        vsettings: [
+          {
+            rs: { values: {} },
+            text: {
+              _type: "RawText",
+              text: "Plain text",
+              markers: [],
+            },
+          },
+        ],
+        children: [],
+      },
+    };
+
+    const result = readComponentTree(component);
+    expect(result?.text).toBe("Plain text");
+    expect(result?.marks).toBeUndefined();
+  });
+
+  it("handles multiple node marks reconstructing text correctly", () => {
+    const link1 = {
+      _type: "TplTag",
+      tag: "a",
+      vsettings: [
+        {
+          text: { _type: "RawText", text: "home", markers: [] },
+          attrs: { href: { _type: "CustomCode", code: '"/"' } },
+        },
+      ],
+    };
+    const link2 = {
+      _type: "TplTag",
+      tag: "a",
+      vsettings: [
+        {
+          text: { _type: "RawText", text: "about", markers: [] },
+          attrs: { href: { _type: "CustomCode", code: '"/about"' } },
+        },
+      ],
+    };
+
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        uuid: "tag-1",
+        tag: "p",
+        vsettings: [
+          {
+            rs: { values: {} },
+            text: {
+              _type: "RawText",
+              text: "Visit [child] and [child] pages",
+              markers: [
+                { _type: "NodeMarker", position: 6, length: 7, tpl: link1 },
+                { _type: "NodeMarker", position: 18, length: 7, tpl: link2 },
+              ],
+            },
+          },
+        ],
+        children: [link1, link2],
+      },
+    };
+
+    const result = readComponentTree(component);
+    expect(result?.text).toBe("Visit home and about pages");
+    expect(result?.marks).toEqual([
+      { start: 6, end: 10, type: "link", href: "/" },
+      { start: 15, end: 20, type: "link", href: "/about" },
+    ]);
+  });
+});

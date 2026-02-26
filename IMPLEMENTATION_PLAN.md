@@ -3,10 +3,10 @@
 > **Goal**: Create Claude Code skills and workflows that can interact with Plasmic Studio
 > programmatically to create fully-featured pages from the Claude Code terminal.
 >
-> **Current state**: 45 MCP tools, 6 Claude Code skills, 772 tests (710 unit + 62 integration).
+> **Current state**: 46 MCP tools, 6 Claude Code skills, 798 tests (732 unit + 66 integration).
 > Zero TODOs/FIXMEs/skipped tests.
 >
-> **Last verified**: 2026-02-26 — 1.4 Component Props Definition implemented.
+> **Last verified**: 2026-02-26 — 1.5 Rich Text Formatting implemented.
 
 ---
 
@@ -21,8 +21,8 @@ from `site.styleTokens`). The Token CRUD spec (1.3) must handle removal manually
 The MCP source lives entirely in `packages/plasmic-mcp/src/` (16 source files,
 ~8,200 lines). The `src/tools/` directory exists but is empty (created for future refactor).
 
-Key file sizes: `server.ts` (~3,570 lines), `edit-tools.ts` (~3,700 lines),
-`tree-reader.ts` (~620 lines). Both `server.ts` and `edit-tools.ts` are large
+Key file sizes: `server.ts` (~3,680 lines), `edit-tools.ts` (~4,000 lines),
+`tree-reader.ts` (~850 lines). Both `server.ts` and `edit-tools.ts` are large
 and will grow with each new feature — the STRAP consolidation (Tier 6) addresses this.
 
 ---
@@ -83,17 +83,26 @@ Each is self-contained with no cross-spec dependencies.
   - Slot type support deferred (requires TplSlot tree creation infrastructure)
 - **Cross-tool integration**: Props usable in dynamic text (`$props.title`), data conditions (`$props.showIcon`), and settable on instances via `add-child` props
 
-### 1.5 Rich Text Formatting
+### 1.5 Rich Text Formatting — IMPLEMENTED (2026-02-26)
 - **Spec**: `specs/gap-rich-text.md`
-- **Status**: NOT IMPLEMENTED
-  - Verified: zero references to `RichText` editing or `update-rich-text` in MCP src/
-  - WAB backing confirmed: `RichText` (abstract, line 4717), `NodeMarker` (line 4661) in `classes.ts`; `RawText.markers` field exists but tree-reader drops markers (only returns `.text` string)
-- **What**: One new node-level action:
-  - `update-rich-text` — set text with inline formatting marks (bold, italic, underline, code, strikethrough, link)
-- **Also requires**: Extend `get-node-details` to surface `marks` array for rich text nodes
-- **Design decision**: Parallel to `update-text` (not a modification), keeping APIs clean. Dynamic text and rich text are mutually exclusive.
-- **Effort**: Medium — must construct WAB's `RichText` structure from caller-friendly mark format
-- **Tests needed**: Unit tests for mark validation + integration (set with link → read back → verify; bold+italic)
+- **Status**: IMPLEMENTED
+  - One new tool: `update-rich-text` — set text with inline formatting marks (bold, italic, underline, strikethrough, link, code)
+  - StyleMarker marks (bold/italic/underline/strikethrough): CSS properties on RuleSet (font-weight, font-style, text-decoration-line)
+  - NodeMarker marks (link/code): inline TplTag children (`<a>` with href, `<code>`) with [child] placeholder in parent RawText
+  - Overlapping marks supported: style marks that overlap node marks are split — inside portion goes to child TplTag's RawText StyleMarker, outside portion goes to parent
+  - Position mapping between user's flat text and WAB internal text (with [child] placeholders)
+  - Tree-reader extended: `extractRichText()` reconstructs user-visible text from WAB text + markers, surfaces `marks` array in TreeNode output
+  - New TreeNodeMark type in types.ts for marks output format
+  - RuleSet, StyleMarker, NodeMarker mock classes + isKnownStyleMarker/isKnownNodeMarker type guards added
+  - Creates inline TplTags via mkTplTagX (proper class instances for real WAB model validation)
+  - Mark validation: start < end, end <= text.length, link requires href, node marks can't overlap each other
+  - Dynamic text (ExprText) with marks is rejected with clear error
+  - 15 unit tests (edit-tools) + 8 unit tests (tree-reader) + 4 integration tests = 27 new tests
+  - Total test count: 798 (732 unit + 66 integration)
+- **Design decisions**:
+  - Parallel to `update-text` (not a modification), keeping APIs clean. Dynamic text and rich text are mutually exclusive.
+  - StyleMarker CSS is stored in kebab-case (WAB convention): `font-weight: 700`, `font-style: italic`, `text-decoration-line: underline/line-through`
+  - NodeMarker uses `[child]` placeholder (7 chars) in parent RawText — actual text lives in child TplTag's RawText
 
 ---
 
@@ -317,8 +326,8 @@ These are code health improvements discovered during analysis. No specs needed.
 ## Implementation Order Recommendation
 
 ```
-Phase 1 (Foundations):      1.1 Visibility ✓ → 1.2 Data Repetition ✓ → 1.3 Tokens ✓ → CQ-1 Dead Code ✓ → 1.4 Props ✓
-Phase 2 (Authoring):        1.5 Rich Text → 2.1 State
+Phase 1 (Foundations):      1.1 Visibility ✓ → 1.2 Data Repetition ✓ → 1.3 Tokens ✓ → CQ-1 Dead Code ✓ → 1.4 Props ✓ → 1.5 Rich Text ✓
+Phase 2 (Authoring):        2.1 State
 Phase 3 (Interactivity):    2.2 Interactions → CQ-2/CQ-3 Slot Gaps
 Phase 4 (Assets & Data):    3.1 Images → 3.2 Queries
 Phase 5 (Design System):    4.1 Mixins → 4.2 Animations → 4.3 Themes

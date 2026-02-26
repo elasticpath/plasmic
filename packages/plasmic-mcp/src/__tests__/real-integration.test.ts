@@ -3232,6 +3232,167 @@ describe("component props", () => {
   });
 });
 
+// =============================================================================
+// Rich text formatting — update-rich-text tool integration tests
+//
+// Validates that rich text marks (bold, italic, link, code) are correctly
+// applied to real WAB model objects and can be read back via the tree-reader.
+// (e.g., WAB model class constructors, RuleSet/StyleMarker/NodeMarker state).
+// =============================================================================
+describe("rich text", () => {
+  it("update-rich-text with bold mark → read back → verify marks", async () => {
+    const comp = discoveredComponents[0];
+
+    // Find a text node
+    const treeResult = await client.callTool({
+      name: "get-component-tree",
+      arguments: { componentUuid: comp.uuid },
+    });
+    const tree = parseResponse(treeResult).tree;
+    const textNode = findFirstTextNode(tree);
+    if (!textNode) return;
+
+    // Set rich text with a bold mark
+    const editResult = await client.callTool({
+      name: "update-rich-text",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: textNode.uuid,
+        text: "Hello bold world",
+        marks: [{ start: 6, end: 10, type: "bold" }],
+      },
+    });
+    expect(editResult.isError).toBeFalsy();
+    const editOutput = parseResponse(editResult);
+    expect(editOutput.success).toBe(true);
+    expect(editOutput.markCount).toBe(1);
+
+    // Read back via get-component-tree and verify marks
+    const readResult = await client.callTool({
+      name: "get-component-tree",
+      arguments: { componentUuid: comp.uuid },
+    });
+    const readTree = parseResponse(readResult).tree;
+    const updatedNode = findNodeByUuid(readTree, textNode.uuid);
+    expect(updatedNode).toBeDefined();
+    expect(updatedNode.text).toBe("Hello bold world");
+    expect(updatedNode.marks).toBeDefined();
+    expect(updatedNode.marks).toContainEqual({ start: 6, end: 10, type: "bold" });
+
+    // Undo and verify
+    const undoResult = await client.callTool({ name: "undo", arguments: {} });
+    expect(undoResult.isError).toBeFalsy();
+  });
+
+  it("update-rich-text with bold + italic → verify multiple marks", async () => {
+    const comp = discoveredComponents[0];
+
+    const treeResult = await client.callTool({
+      name: "get-component-tree",
+      arguments: { componentUuid: comp.uuid },
+    });
+    const tree = parseResponse(treeResult).tree;
+    const textNode = findFirstTextNode(tree);
+    if (!textNode) return;
+
+    const editResult = await client.callTool({
+      name: "update-rich-text",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: textNode.uuid,
+        text: "Hello styled world",
+        marks: [
+          { start: 6, end: 12, type: "bold" },
+          { start: 6, end: 12, type: "italic" },
+        ],
+      },
+    });
+    expect(editResult.isError).toBeFalsy();
+    const editOutput = parseResponse(editResult);
+    expect(editOutput.markCount).toBe(2);
+
+    // Read back and verify marks
+    const readResult = await client.callTool({
+      name: "get-component-tree",
+      arguments: { componentUuid: comp.uuid },
+    });
+    const readTree = parseResponse(readResult).tree;
+    const updatedNode = findNodeByUuid(readTree, textNode.uuid);
+    expect(updatedNode.marks).toHaveLength(2);
+
+    // Undo
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+
+  it("update-rich-text with link mark → verify node marker and text reconstruction", async () => {
+    const comp = discoveredComponents[0];
+
+    const treeResult = await client.callTool({
+      name: "get-component-tree",
+      arguments: { componentUuid: comp.uuid },
+    });
+    const tree = parseResponse(treeResult).tree;
+    const textNode = findFirstTextNode(tree);
+    if (!textNode) return;
+
+    const editResult = await client.callTool({
+      name: "update-rich-text",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: textNode.uuid,
+        text: "Click here for info",
+        marks: [{ start: 6, end: 10, type: "link", href: "/about" }],
+      },
+    });
+    expect(editResult.isError).toBeFalsy();
+    const editOutput = parseResponse(editResult);
+    expect(editOutput.success).toBe(true);
+
+    // Read back — text should be reconstructed ("Click here for info", not "Click [child] for info")
+    const readResult = await client.callTool({
+      name: "get-component-tree",
+      arguments: { componentUuid: comp.uuid },
+    });
+    const readTree = parseResponse(readResult).tree;
+    const updatedNode = findNodeByUuid(readTree, textNode.uuid);
+    expect(updatedNode.text).toBe("Click here for info");
+    expect(updatedNode.marks).toContainEqual({
+      start: 6,
+      end: 10,
+      type: "link",
+      href: "/about",
+    });
+
+    // Undo
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+
+  it("update-rich-text validates mark errors", async () => {
+    const comp = discoveredComponents[0];
+
+    const treeResult = await client.callTool({
+      name: "get-component-tree",
+      arguments: { componentUuid: comp.uuid },
+    });
+    const tree = parseResponse(treeResult).tree;
+    const textNode = findFirstTextNode(tree);
+    if (!textNode) return;
+
+    // Mark extending beyond text length
+    const result = await client.callTool({
+      name: "update-rich-text",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: textNode.uuid,
+        text: "Short",
+        marks: [{ start: 2, end: 50, type: "bold" }],
+      },
+    });
+    const text = (result.content as any)[0]?.text ?? "";
+    expect(text).toMatch(/exceeds text length/i);
+  });
+});
+
 /** Walk a tree recursively to find a node by UUID. */
 function findNodeByUuid(tree: any, uuid: string): any {
   if (tree.uuid === uuid) return tree;

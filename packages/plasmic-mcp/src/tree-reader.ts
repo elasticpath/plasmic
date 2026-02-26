@@ -33,8 +33,10 @@ import {
   isKnownVarRef,
   isKnownImageAssetRef,
   isKnownStyleTokenRef,
+  isKnownStyleMarker,
+  isKnownNodeMarker,
 } from "@/wab/shared/model/classes";
-import type { TreeNode, TreeReadOptions } from "./types.js";
+import type { TreeNode, TreeNodeMark, TreeReadOptions } from "./types.js";
 import { isTokenRef, parseTokenRefUuid, resolveTokenValue } from "./token-reader.js";
 
 // ---------------------------------------------------------------------------
@@ -240,6 +242,9 @@ function readTplTag(
       const textInfo = extractText(vs.text);
       if (textInfo !== undefined) {
         node.text = textInfo.text;
+        if (textInfo.marks?.length) {
+          node.marks = textInfo.marks;
+        }
         if (textInfo.dynamic) {
           node.dynamic = true;
         }
@@ -615,8 +620,12 @@ function deriveLayoutType(
  * Returns { text, dynamic, fallback } for dynamic text to enable
  * proper display in tree output.
  */
-function extractText(richText: any): { text: string; dynamic?: boolean; fallback?: string } | undefined {
+function extractText(richText: any): { text: string; marks?: TreeNodeMark[]; dynamic?: boolean; fallback?: string } | undefined {
   if (isKnownRawText(richText)) {
+    // Check for inline formatting markers
+    if (richText.markers?.length > 0) {
+      return extractRichText(richText);
+    }
     return { text: richText.text };
   }
   if (isKnownExprText(richText)) {
@@ -640,6 +649,180 @@ function extractText(richText: any): { text: string; dynamic?: boolean; fallback
     return { text, dynamic: true, ...(fallback != null ? { fallback } : {}) };
   }
   return undefined;
+}
+
+/**
+ * Map a StyleMarker's CSS properties back to user-facing mark types.
+ * Returns the mark type string or null if the CSS doesn't match a known mark.
+ */
+const CSS_TO_MARK_TYPE: Record<string, Record<string, string>> = {
+  "font-weight": { "700": "bold", "bold": "bold" },
+  "font-style": { "italic": "italic" },
+  "text-decoration-line": { "underline": "underline", "line-through": "strikethrough" },
+};
+
+function styleMarkerToMarkType(rs: any): string | null {
+  if (!rs?.values) return null;
+  for (const [prop, valueMap] of Object.entries(CSS_TO_MARK_TYPE)) {
+    const value = rs.values[prop];
+    if (value && (valueMap as Record<string, string>)[value]) {
+      return (valueMap as Record<string, string>)[value];
+    }
+  }
+  return null;
+}
+
+/**
+ * Extract rich text content from a RawText with markers.
+ *
+ * Reconstructs the user-visible text by replacing [child] placeholders with
+ * the actual text content from NodeMarker TplTags. Builds a marks array
+ * in user text coordinates.
+ */
+function extractRichText(rawText: any): { text: string; marks: TreeNodeMark[] } {
+  const wabText: string = rawText.text;
+  const markers: any[] = rawText.markers;
+
+  // Sort markers by position
+  const sortedMarkers = [...markers].sort((a: any, b: any) => a.position - b.position);
+
+  // Collect NodeMarkers to reconstruct user text
+  const nodeMarkers = sortedMarkers.filter((m: any) => isKnownNodeMarker(m));
+  const styleMarkers = sortedMarkers.filter((m: any) => isKnownStyleMarker(m));
+
+  // Reconstruct user text by replacing [child] placeholders with actual text
+  let userText = "";
+  const marks: TreeNodeMark[] = [];
+  let wabCursor = 0;
+  let userCursor = 0;
+
+  // Build a position map: for each NodeMarker, map WAB position to user text position
+  const nodeMarkerMap: { wabStart: number; wabEnd: number; userStart: number; userEnd: number; tag: string; href?: string }[] = [];
+
+  for (const nm of nodeMarkers) {
+    // Add text before this NodeMarker
+    const beforeText = wabText.slice(wabCursor, nm.position);
+    userText += beforeText;
+    userCursor += beforeText.length;
+
+    // Get the actual text from the NodeMarker's TplTag
+    const childText = extractNodeMarkerText(nm.tpl);
+    const userStart = userCursor;
+    userText += childText;
+    userCursor += childText.length;
+    const userEnd = userCursor;
+
+    const tag = nm.tpl?.tag ?? "span";
+    const href = extractNodeMarkerHref(nm.tpl);
+
+    nodeMarkerMap.push({
+      wabStart: nm.position,
+      wabEnd: nm.position + nm.length,
+      userStart,
+      userEnd,
+      tag,
+      href,
+    });
+
+    // Create mark for this NodeMarker
+    if (tag === "a" && href) {
+      marks.push({ start: userStart, end: userEnd, type: "link", href });
+    } else if (tag === "code") {
+      marks.push({ start: userStart, end: userEnd, type: "code" });
+    }
+
+    wabCursor = nm.position + nm.length;
+  }
+
+  // Add remaining text after last NodeMarker
+  userText += wabText.slice(wabCursor);
+
+  // Convert StyleMarkers to user-facing marks
+  for (const sm of styleMarkers) {
+    const markType = styleMarkerToMarkType(sm.rs);
+    if (!markType) continue;
+
+    // Convert WAB position to user position
+    const userStart = wabPosToUserPos(sm.position, nodeMarkerMap);
+    const userEnd = wabPosToUserPos(sm.position + sm.length, nodeMarkerMap);
+
+    if (userEnd > userStart) {
+      marks.push({ start: userStart, end: userEnd, type: markType as TreeNodeMark["type"] });
+    }
+  }
+
+  // Also extract StyleMarkers from child TplTag RawTexts (marks inside NodeMarkers)
+  for (const nmInfo of nodeMarkerMap) {
+    const nm = nodeMarkers.find((m: any) => m.position === nmInfo.wabStart);
+    if (!nm?.tpl) continue;
+
+    const childRawText = nm.tpl.vsettings?.[0]?.text;
+    if (!childRawText || !isKnownRawText(childRawText)) continue;
+
+    for (const childMarker of childRawText.markers ?? []) {
+      if (!isKnownStyleMarker(childMarker)) continue;
+      const markType = styleMarkerToMarkType(childMarker.rs);
+      if (!markType) continue;
+
+      marks.push({
+        start: nmInfo.userStart + childMarker.position,
+        end: nmInfo.userStart + childMarker.position + childMarker.length,
+        type: markType as TreeNodeMark["type"],
+      });
+    }
+  }
+
+  // Sort marks by start position for consistent output
+  marks.sort((a, b) => a.start - b.start || a.end - b.end);
+
+  return { text: userText, marks };
+}
+
+/** Get text content from a NodeMarker's TplTag. */
+function extractNodeMarkerText(tpl: any): string {
+  if (!tpl) return "";
+  const vs = tpl.vsettings?.[0];
+  if (!vs?.text) return "";
+  if (isKnownRawText(vs.text)) return vs.text.text;
+  return "";
+}
+
+/** Get href attribute from a NodeMarker's TplTag (for links). */
+function extractNodeMarkerHref(tpl: any): string | undefined {
+  if (!tpl) return undefined;
+  const vs = tpl.vsettings?.[0];
+  if (!vs?.attrs?.href) return undefined;
+  const hrefExpr = vs.attrs.href;
+  if (isKnownCustomCode(hrefExpr)) {
+    try {
+      return JSON.parse(hrefExpr.code);
+    } catch {
+      return hrefExpr.code;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Convert a WAB text position to a user text position.
+ * Accounts for [child] placeholder offsets from NodeMarkers.
+ */
+function wabPosToUserPos(
+  wabPos: number,
+  nodeMarkerMap: { wabStart: number; wabEnd: number; userStart: number; userEnd: number }[]
+): number {
+  let offset = 0;
+  for (const nm of nodeMarkerMap) {
+    if (wabPos <= nm.wabStart) break;
+    if (wabPos >= nm.wabEnd) {
+      // Past this NodeMarker — adjust by the difference between [child] length and user text length
+      offset += (nm.userEnd - nm.userStart) - (nm.wabEnd - nm.wabStart);
+    } else {
+      // Inside the [child] placeholder — map to start of user text for this NodeMarker
+      return nm.userStart;
+    }
+  }
+  return wabPos + offset;
 }
 
 /** Extract the string value from a fallback expression (typically a CustomCode wrapping a JSON string). */

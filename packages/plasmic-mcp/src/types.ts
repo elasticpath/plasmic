@@ -220,6 +220,8 @@ export interface TreeNode {
   /** Maps CSS property names to token names when the value is a token reference. */
   tokenRefs?: Record<string, string>;
   text?: string;
+  /** Inline formatting marks on the text (bold, italic, link, etc.). Only present when RawText has markers. */
+  marks?: TreeNodeMark[];
   /** True when text is a dynamic expression (ExprText), not static RawText. */
   dynamic?: boolean;
   /** Fallback value for dynamic expressions (shown when expression evaluates to null/undefined). */
@@ -242,6 +244,17 @@ export interface TreeNode {
   componentName?: string;
   componentUuid?: string;
   slotName?: string;
+}
+
+// --- Rich text mark (in tree output) ---
+// Represents an inline formatting mark on text content.
+// Positions are in the user-visible text coordinate system (not WAB internal).
+
+export interface TreeNodeMark {
+  start: number;
+  end: number;
+  type: "bold" | "italic" | "underline" | "strikethrough" | "link" | "code";
+  href?: string;
 }
 
 // --- Tree reader options ---

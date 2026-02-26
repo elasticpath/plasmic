@@ -36,6 +36,10 @@ export const isKnownStateChangeHandlerParam = (obj: any): boolean =>
   obj?._type === "StateChangeHandlerParam";
 export const isKnownGlobalVariantGroupParam = (obj: any): boolean =>
   obj?._type === "GlobalVariantGroupParam";
+export const isKnownStyleMarker = (obj: any): boolean =>
+  obj?._type === "StyleMarker";
+export const isKnownNodeMarker = (obj: any): boolean =>
+  obj?._type === "NodeMarker";
 
 /** Mock constructors for model classes used by edit-tools.ts */
 export class RawText {
@@ -242,6 +246,45 @@ export class FunctionType {
   params: any[];
   constructor(args: any) {
     this.params = args.params ?? [];
+  }
+}
+
+/** Mock constructor for RuleSet — CSS property values + mixins. */
+export class RuleSet {
+  _type = "RuleSet";
+  values: Record<string, string>;
+  mixins: any[];
+  animations: any;
+  constructor(args: { values: Record<string, string>; mixins: any[]; animations: any }) {
+    this.values = args.values ?? {};
+    this.mixins = args.mixins ?? [];
+    this.animations = args.animations ?? null;
+  }
+}
+
+/** Mock constructor for StyleMarker — CSS formatting on a text range. */
+export class StyleMarker {
+  _type = "StyleMarker";
+  position: number;
+  length: number;
+  rs: any;
+  constructor(args: { position: number; length: number; rs: any }) {
+    this.position = args.position;
+    this.length = args.length;
+    this.rs = args.rs;
+  }
+}
+
+/** Mock constructor for NodeMarker — inline TplTag element (link, code) in text. */
+export class NodeMarker {
+  _type = "NodeMarker";
+  position: number;
+  length: number;
+  tpl: any;
+  constructor(args: { position: number; length: number; tpl: any }) {
+    this.position = args.position;
+    this.length = args.length;
+    this.tpl = args.tpl;
   }
 }
 
