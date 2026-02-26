@@ -213,11 +213,63 @@ Concrete JSON payloads for direct MCP integration.
 { "action": "end-batch" }
 ```
 
+### Code component variants
+
+`variant.list` returns code component variants alongside standard variants:
+
+```json
+{
+  "action": "list",
+  "componentUuid": "<uuid>"
+}
+// Response includes:
+// "codeComponentVariants": [{ "key": "selected", "label": "Selected" }, ...]
+```
+
+Target a code component variant when styling:
+
+```json
+{
+  "action": "update-styles",
+  "componentUuid": "<uuid>",
+  "nodeRef": "ProductCard",
+  "variant": "selected",
+  "styles": { "borderColor": "#0070f3", "boxShadow": "0 0 0 2px #0070f3" }
+}
+```
+
+Create a style variant with a CSS selector for a code component:
+
+```json
+{
+  "action": "create-style",
+  "componentUuid": "<uuid>",
+  "name": "Selected State",
+  "selector": "[data-selected]"
+}
+```
+
 ### Undo
 
 ```json
 { "action": "undo" }
 ```
+
+### Dry run
+
+Preview a mutation without persisting changes:
+
+```json
+{
+  "action": "update-styles",
+  "componentUuid": "<uuid>",
+  "nodeRef": "Hero Title",
+  "styles": { "fontSize": "64px" },
+  "dryRun": true
+}
+```
+
+Returns the result the action *would* produce (including a change summary) but does not save. Supported on all mutation domains except `variant`.
 
 ### Inspect efficiently
 
@@ -251,11 +303,17 @@ Six slash commands are available when the skill files are installed in `.claude/
 ```bash
 npm run dev              # Start dev server (tsx)
 npm run build            # Build distribution
-npm test                 # All tests (1,197 passing)
+npm test                 # All tests (1,427 passing)
 npm run test:unit        # Unit tests only (mocked WAB)
 npm run test:integration # Integration tests (real WAB)
 npm run typecheck        # TypeScript validation
+npm run eval             # Run evaluation scenarios
+npm run eval:validate    # Validate scenario YAML files
+npm run eval:dashboard   # Start eval results dashboard
+npm run eval:cleanup     # Clean up old results (90-day retention)
 ```
+
+The eval harness runs YAML-defined scenarios at mock and integration tiers, grading results with state checks, visual LLM judge, and human spot-check flags.
 
 ## Architecture
 
@@ -263,6 +321,7 @@ npm run typecheck        # TypeScript validation
 - **Embedded WAB engine** — editing operations run against Plasmic's own `platform/wab/src/wab/` classes (no separate API calls for edits)
 - **Vitest workspace** — unit tests (mocked WAB) + integration tests (real WAB classes)
 - **Stdio transport** — JSON-RPC over stdin/stdout; all logging goes to stderr
+- **Eval system** — YAML scenarios, three-tier grading (state checks, visual LLM judge, human spot-check), Playwright visual capture
 
 ## License
 
