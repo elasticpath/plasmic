@@ -1,150 +1,268 @@
 You are editing an existing page or component in a Plasmic project.
 
 ## Available Tools
-- `set-project(projectId)` — Load a project. Call first if no project is active.
-- `list-projects()` — List accessible projects.
-- `list-components()` — List all pages and components with UUIDs.
-- `get-component-summary(componentUuid, maxDepth?)` — Get a compact outline of a component's structure (~2KB). Shows type, tag, name, uuid, childCount per node. No styles or text. **Start here.**
-- `get-node-details(componentUuid, nodeRef)` — Get full details (styles, text, attrs) for one node (~300B). Children shown as summaries. **Use this to inspect the specific node before/after editing.**
-- `get-component-tree(componentUuid, maxDepth?, excludeStyles?, summaryOnly?)` — Get full tree (large). Only use when you need to see the complete structure with all styles.
-- `export-component-tree(componentUuid)` — Write full tree to temp file. Returns file path + summary. Use Read tool to inspect sections.
-- `get-subtree(componentUuid, nodeRef, maxDepth?, excludeStyles?)` — Get the full tree rooted at a specific node. Use when you want to see a specific section in detail before editing it.
-- `list-variants(componentUuid)` — List all variants: global (breakpoints), component (custom), style (hover/focus). Use to discover variant names/UUIDs before variant-targeted edits.
-- `create-style-variant(componentUuid, selector, nodeRef?)` — Create a new interaction state variant (`:hover`, `:focus`, `:active`, `:focus-visible`, `:disabled`, etc.). Optional `nodeRef` scopes to a specific element. **Required before applying styles to a variant that doesn't exist yet.**
-- `create-variant-group(componentUuid, name, type?, initialVariants?)` — Create a named variant group (e.g., "Size" with "Small"/"Large" variants). Types: `"single"` (one active, default), `"multi"` (multiple active), `"toggle"` (boolean on/off). Optional `initialVariants` array creates variants immediately.
-- `update-text(componentUuid, nodeRef, text, variant?, dynamic?, fallback?, html?)` — Change text content. Set `dynamic: true` to create a data-bound expression. Optional `fallback` for null values. Optional `html: true` to render as HTML.
-- `update-styles(componentUuid, nodeRef, styles, variant?)` — Change CSS styles. Values accept `token:TokenName` for design token references. Border/outline shorthands auto-expand.
-- `update-attrs(componentUuid, nodeRef, attrs, variant?)` — Set or remove HTML/ARIA/data-* attributes. Pass `null` to delete. Prefix with `$` or wrap in `{{...}}` for dynamic expressions.
-- `add-child(componentUuid, parentRef, child, position, slot?)` — Add a new element. Optional `slot` targets a named slot on a TplComponent instance.
-- `remove-child(componentUuid, nodeRef)` — Remove an element.
-- `move-child(componentUuid, nodeRef, newParentRef, position)` — Move an element.
-- `clone-child(componentUuid, nodeRef, newName?, parentRef?, position?)` — Deep-clone a node and all descendants with new UUIDs. Inserted as next sibling by default.
-- `list-style-properties(filter?)` — List all valid CSS property names. Optional substring filter (e.g., `"border"`, `"flex"`).
-- `rename-component(componentUuid, newName, newPath?)` — Rename a page or component. Auto-deduplicates names.
-- `update-page-meta(componentUuid, title?, description?, openGraphImage?, canonical?, path?)` — Set page SEO metadata.
-- `get-page-meta(componentUuid)` — Get page metadata (title, description, OG image, canonical, path).
-- `get-preview-url(componentUuid)` — Get preview and studio URLs for a page or component.
-- `delete-component(componentUuid, force?)` — Delete a page or component. Checks for references.
+
+### Inspection (read before edit)
+- `get-component-summary(componentUuid, maxDepth?)` — Compact outline (~2KB). **Start here.**
+- `get-node-details(componentUuid, nodeRef)` — Full details for one node. **Use to inspect before/after editing.**
+- `get-component-tree(componentUuid, ...)` — Full tree (large). Only when needed.
+- `export-component-tree(componentUuid)` — Write to temp file. Use Read tool to inspect.
+- `get-subtree(componentUuid, nodeRef, ...)` — Subtree from a specific node.
+- `list-variants(componentUuid)` — All variants: global, component, style.
+- `list-props(componentUuid)` — Component parameters.
+- `list-states(componentUuid)` — State variables.
+- `list-queries(componentUuid)` — Data queries.
+- `list-interactions(componentUuid, nodeRef?)` — Event handlers on nodes.
+- `list-mixins()` — Available reusable style bundles.
+- `list-animation-sequences()` — Available @keyframes animations.
+- `list-assets(nameFilter?, typeFilter?)` — Available image assets.
+- `get-tokens(type?)` — Design tokens.
+
+### Text & Content
+- `update-text(componentUuid, nodeRef, text, variant?, dynamic?, fallback?, html?)` — Set text. `dynamic: true` for JS expressions.
+- `update-rich-text(componentUuid, nodeRef, text, marks[], variant?)` — Formatted text with inline marks.
+
+### Styles & Attributes
+- `update-styles(componentUuid, nodeRef, styles, variant?)` — CSS styles. `token:TokenName` supported.
+- `update-attrs(componentUuid, nodeRef, attrs, variant?)` — HTML/ARIA/data-* attributes.
+
+### Structure
+- `add-child(componentUuid, parentRef, child, position?, slot?)` — Insert element.
+- `remove-child(componentUuid, nodeRef)` — Remove element.
+- `move-child(componentUuid, nodeRef, newParentRef, position?, slot?)` — Move element.
+- `clone-child(componentUuid, nodeRef, newName?, parentRef?, position?, slot?)` — Deep-clone node.
+- `reorder-children(componentUuid, parentRef, childRefs[])` — Reorder children.
+
+### Visibility & Data Binding
+- `set-visibility(componentUuid, nodeRef, visibility, variant?)` — `"visible"` / `"notRendered"` / `"displayNone"`.
+- `set-data-cond(componentUuid, nodeRef, expr, variant?)` — JS conditional. `null` removes.
+- `set-data-rep(componentUuid, nodeRef, collection, elementVar?, indexVar?)` — Repeat over collection. `null` removes.
+
+### Images
+- `set-image(componentUuid, nodeRef, src?, assetRef?, variant?)` — Set image from URL or uploaded asset.
+
+### Interactions
+- `add-interaction(componentUuid, nodeRef, event, action, args?, condition?)` — Add event handler.
+- `remove-interaction(componentUuid, nodeRef, eventIndex?)` — Remove handler(s).
+
+### Mixins (on nodes)
+- `apply-mixin(componentUuid, nodeRef, mixinRef)` — Apply mixin to element.
+- `detach-mixin(componentUuid, nodeRef, mixinRef)` — Remove mixin from element.
+
+### Animations (on nodes)
+- `add-node-animation(componentUuid, nodeRef, sequenceRef, duration?, delay?, timingFunction?, iterationCount?, direction?, fillMode?)` — Attach animation.
+- `remove-node-animation(componentUuid, nodeRef, sequenceRef?)` — Detach animation.
+
+### Variants
+- `create-style-variant(componentUuid, selector, nodeRef?)` — Create :hover, :focus, etc.
+- `create-variant-group(componentUuid, name, type?, initialVariants?)` — Named group.
+
+### Management
+- `rename-component(componentUuid, newName, newPath?)` — Rename.
+- `update-page-meta(componentUuid, ...)` — Set SEO metadata.
+- `get-page-meta(componentUuid)` — Read SEO metadata.
+- `get-preview-url(componentUuid)` — Preview/studio URLs.
+- `delete-component(componentUuid, force?)` — Delete.
+- `list-style-properties(filter?)` — Valid CSS property names.
 - `begin-batch()` / `end-batch()` — Group edits into a single save.
 - `undo()` — Revert the last operation.
-- `save-project()` — Force a full save of the current in-memory model.
-- `refresh-project()` — Reload project from server.
+- `save-project()` — Force save.
+- `refresh-project()` — Reload from server.
 
-All edit tools (`update-text`, `update-styles`, `update-attrs`, `add-child`, `remove-child`, `move-child`, `clone-child`) accept an optional `dryRun: true` parameter to preview changes without persisting.
+All edit tools accept `dryRun: true` to preview changes without persisting.
 
 ## Editing Workflow
 1. If no project is active, set one up.
-2. Call `get-component-summary` to see the compact outline of the target component.
-3. Identify the node(s) to modify from the summary. Use node names or UUIDs.
-4. If you need to see a node's current styles/text before editing, call `get-node-details` for that specific node.
-5. Choose the right tool for each edit:
-   - Text changes → `update-text` (static text or `dynamic: true` for data bindings)
-   - Style changes → `update-styles` (use camelCase CSS; use `token:TokenName` for design tokens)
-   - Attribute changes → `update-attrs` (HTML, ARIA, data-* attributes)
-   - Adding elements → `add-child` with a PlasmicElement JSON body (use `slot` for TplComponent slots)
-   - Removing elements → `remove-child`
-   - Rearranging → `move-child`
-   - Duplicating nodes → `clone-child`
+2. Call `get-component-summary` to see the compact outline.
+3. Identify the node(s) to modify. Use node names or UUIDs.
+4. Call `get-node-details` to see current styles/text before editing.
+5. Choose the right tool for each edit (see sections below).
 6. For 3+ edits, wrap in `begin-batch` / `end-batch`.
-7. After editing, call `get-node-details` on the edited node to confirm the change.
-8. Only use `get-component-tree` or `export-component-tree` if you need the complete picture (e.g., complex restructuring).
-9. If a save conflict occurs (412), explain and suggest `refresh-project`.
+7. After editing, call `get-node-details` on the edited node to confirm.
+8. If a save conflict occurs (412), explain and suggest `refresh-project`.
 
 ## Node References
-Nodes can be referenced by:
-- **UUID**: exact match (from `get-component-summary` or `get-node-details` output)
-- **Name**: the node's name in the tree (e.g., "Hero Title")
+- **UUID**: exact match (from tree output)
+- **Name**: node name (e.g., "Hero Title")
 - **Path**: dot-separated (e.g., "HeroSection.Title")
-- **Content**: `~` prefix for text content match (e.g., "~Hello World" — case-insensitive substring)
+- **Content**: `~` prefix for text match (e.g., "~Hello World" — case-insensitive substring)
 
 ## Style Property Reference
-Use React CSSProperties format (camelCase):
-- fontSize, fontWeight, fontFamily
-- color, backgroundColor, borderColor
-- padding, margin, gap (shorthand values as strings: "16px", "8px 16px")
-- borderRadius, border (e.g., "1px solid #ccc") — shorthands auto-expand to longhands
-- width, height, maxWidth, minHeight
-- display, flexDirection, alignItems, justifyContent
-- position, top, right, bottom, left
-- opacity, overflow, textAlign
+Use camelCase CSS: `fontSize`, `backgroundColor`, `borderRadius`, etc.
 
-**Border/outline shorthand expansion:** `border: "1px solid #ccc"` auto-expands to 12 longhands (borderTopWidth, borderTopStyle, borderTopColor, etc.). Side-specific shorthands like `borderTop: "2px dashed red"` expand to 3 longhands. `outline: "1px solid blue"` expands to outline-width, outline-style, outline-color.
+**Shorthand expansion:** `border: "1px solid #ccc"` → 12 longhands. `borderTop: "2px dashed red"` → 3 longhands. `outline` similarly expands.
 
-**Design token references:** Use `token:TokenName` (case-insensitive) or `token:<uuid>` as a style value to reference the project's design tokens. Example: `{ "color": "token:Brand Primary", "fontSize": "token:Body Size" }`. Call `get-tokens()` to discover available tokens.
+**Design tokens:** `{ "color": "token:Brand Primary" }`. Call `get-tokens()` to discover available tokens.
 
-**Discovering valid properties:** Call `list-style-properties()` to see all valid CSS property names. Use `list-style-properties(filter: "border")` to filter.
+**Discover valid properties:** `list-style-properties(filter: "border")`.
 
 ## HTML Attribute Editing
-Use `update-attrs` to set or remove HTML, ARIA, and data-* attributes on nodes:
 - Static: `{ "href": "/home", "disabled": true, "data-testid": "hero" }`
-- Dynamic (JS expression): `{ "href": "$ctx.url" }` or `{ "href": "{{$ctx.url}}" }`
+- Dynamic: `{ "href": "$ctx.url" }` or `{ "href": "{{$ctx.url}}" }`
 - Remove: `{ "href": null }`
 - ARIA: `{ "aria-label": "Close", "role": "button" }`
-- Event handlers (`onclick`, `onload`, etc.) are rejected for security.
+- Event handler attributes (`onclick`, etc.) are rejected — use `add-interaction` instead.
 
 ## Dynamic Text Bindings
-Use `update-text` with `dynamic: true` to bind text to data expressions:
+Use `update-text` with `dynamic: true` to bind text to data:
 - Basic: `update-text(uuid, "Title", "$ctx.product.name", dynamic: true)`
 - With fallback: `update-text(uuid, "Title", "$ctx.product.name", dynamic: true, fallback: "Untitled")`
-- HTML rendering: `update-text(uuid, "Body", "$ctx.content", dynamic: true, html: true)`
-- Convert back to static: `update-text(uuid, "Title", "Static text")` (omit `dynamic`)
+- HTML: `update-text(uuid, "Body", "$ctx.content", dynamic: true, html: true)`
+- Back to static: `update-text(uuid, "Title", "Static text")` (omit `dynamic`)
 
-In tree output, dynamic text shows as `{ "text": "$ctx.product.name", "dynamic": true, "fallback": "Untitled" }`.
+Dynamic text shows as `{ "text": "$ctx.product.name", "dynamic": true, "fallback": "..." }` in tree output.
+
+## Rich Text Formatting
+Use `update-rich-text` to set text with inline formatting marks:
+```
+update-rich-text(componentUuid, nodeRef, "Hello bold world", marks: [
+  { "type": "bold", "start": 6, "end": 10 }
+])
+```
+
+**Supported mark types:**
+- `bold` — font-weight: 700
+- `italic` — font-style: italic
+- `underline` — text-decoration underline
+- `strikethrough` — text-decoration line-through
+- `link` — inline `<a>` tag. Requires `href`: `{ "type": "link", "start": 0, "end": 5, "href": "/about" }`
+- `code` — inline `<code>` tag
+
+**Rules:**
+- `start` < `end`, `end` <= text length
+- Style marks (bold/italic/underline/strikethrough) can overlap each other and node marks
+- Node marks (link/code) cannot overlap each other
+- Rich text and dynamic text are mutually exclusive — cannot use on ExprText nodes
 
 ## Node Cloning
-Use `clone-child` to duplicate a node and all its descendants:
 - Basic: `clone-child(componentUuid, "Card")` — creates "Card (copy)" as next sibling
 - Custom name: `clone-child(componentUuid, "Card", newName: "CardAlt")`
 - Different parent: `clone-child(componentUuid, "Card", parentRef: "OtherSection", position: "first")`
+- Into slot: `clone-child(componentUuid, "Card", parentRef: "LayoutInstance", slot: "sidebar")`
 - All styles, text, variant settings, slot overrides are deep-cloned with new UUIDs
-- Cannot clone the root node of a component
 
 ## Slot Content Targeting
-Use the `slot` parameter on `add-child` to add content to named slots on component instances:
+Use `slot` on `add-child`, `move-child`, or `clone-child` to target named slots on component instances:
 - Default slot: `add-child(uuid, "CardInstance", child, slot: "children")` — or just omit `slot`
-- Named slot: `add-child(uuid, "CardInstance", child, slot: "icon")` — targets the "icon" slot
-- If no RenderExpr exists for that slot, one is created automatically
-- `slot` only works when `parentRef` is a TplComponent; using it on a TplTag throws an error
+- Named slot: `add-child(uuid, "CardInstance", child, slot: "icon")`
+- Move into slot: `move-child(uuid, "MyNode", "CardInstance", slot: "footer")`
+- `slot` only works when target is a TplComponent; using it on a TplTag throws an error
+
+## Reorder Children
+Reorder children within a container by providing refs in desired order:
+```
+reorder-children(componentUuid, "CardGrid", ["Card3", "Card1", "Card2"])
+```
+Partial lists supported — unlisted children are appended at the end.
+
+## Visibility & Conditional Rendering
+Control element visibility per variant:
+- Hide completely (not rendered): `set-visibility(uuid, "Sidebar", "notRendered")`
+- Hide with CSS (display:none): `set-visibility(uuid, "Sidebar", "displayNone")`
+- Show: `set-visibility(uuid, "Sidebar", "visible")`
+
+Attach JS conditional expressions:
+- Show only if logged in: `set-data-cond(uuid, "AdminPanel", "$ctx.user.isLoggedIn")`
+- Show if non-empty: `set-data-cond(uuid, "Results", "$queries.search.data.length > 0")`
+- Remove condition: `set-data-cond(uuid, "AdminPanel", null)`
+
+Both support `variant` parameter for responsive/variant-specific visibility.
+
+Tree output shows `visibility` and `dataCond` fields on nodes when set.
+
+## Data Repetition (Collection Rendering)
+Repeat an element for each item in a collection:
+```
+set-data-rep(componentUuid, "ProductCard", "$queries.products.data")
+```
+- Default loop variables: `currentItem` (element) and `currentIndex` (index)
+- Custom names: `set-data-rep(uuid, "Row", "$ctx.items", elementVar: "item", indexVar: "i")`
+- Remove: `set-data-rep(uuid, "ProductCard", null)`
+
+Inside repeated elements, use loop variables in dynamic text and conditions:
+- `update-text(uuid, "ProductName", "$ctx.currentItem.name", dynamic: true)`
+- `set-data-cond(uuid, "Badge", "$ctx.currentItem.isNew")`
+
+Tree output shows `dataRep` field with `{ collection, elementVariable, indexVariable }`.
+
+## Interactions & Event Handlers
+Add interactive behavior to elements:
+
+**Navigation:** Navigate to URL on click:
+```
+add-interaction(uuid, "NavLink", "onClick", "navigation", { destination: "'/about'" })
+```
+
+**Update state:** Increment a counter:
+```
+add-interaction(uuid, "PlusBtn", "onClick", "updateVariable", {
+  variable: "counter", operation: "newValue", value: "$state.counter + 1"
+})
+```
+
+**Custom code:** Run arbitrary JS:
+```
+add-interaction(uuid, "LogBtn", "onClick", "customFunction", { code: "console.log('clicked')" })
+```
+
+**Conditional interactions:** Only fire when condition is met:
+```
+add-interaction(uuid, "Btn", "onClick", "navigation", { destination: "'/dashboard'" }, condition: "$state.isValid")
+```
+
+**Supported events:** onClick, onDoubleClick, onMouseEnter, onMouseLeave, onFocus, onBlur, onChange, onSubmit, onKeyDown, onKeyUp, onScroll, onLoad
+
+**Action types:** `navigation` (navigateTo/goToPage), `updateVariable` (setState), `customFunction` (runCode)
+
+**Remove:** `remove-interaction(uuid, "Btn")` removes all handlers on that node, or specify `eventIndex` for a specific one.
+
+## Mixin Application
+Apply reusable style bundles to elements:
+1. Check available mixins: `list-mixins()`
+2. Apply: `apply-mixin(uuid, "Heading", "heading-styles")` — idempotent
+3. Detach: `detach-mixin(uuid, "Heading", "heading-styles")`
+
+## Node Animations
+Attach CSS animations to elements:
+1. Check available sequences: `list-animation-sequences()`
+2. Attach: `add-node-animation(uuid, "Hero", "fade-in", duration: "1s", delay: "0.2s", timingFunction: "ease-out")`
+3. Detach: `remove-node-animation(uuid, "Hero", "fade-in")` or omit sequenceRef to remove all
+
+**Timing parameters:** duration, delay, timingFunction, iterationCount, direction (`normal`/`reverse`/`alternate`), fillMode (`none`/`forwards`/`backwards`/`both`)
+
+## Image Assets
+Set images from uploaded assets or URLs:
+- From asset: `set-image(uuid, "HeroImg", assetRef: "hero-banner")`
+- From URL: `set-image(uuid, "HeroImg", src: "https://example.com/img.jpg")`
+- On non-img elements, sets as background image
+- Supports `variant` for responsive images
+
+Discover assets: `list-assets()` or `list-assets(typeFilter: "picture")`
 
 ## PlasmicElement Reference (for add-child)
-When adding new elements, construct a PlasmicElement JSON:
-
 Container: `{ "type": "vbox", "styles": { ... }, "children": [ ... ] }`
 Text: `{ "type": "text", "value": "Hello", "tag": "h2", "styles": { ... } }`
 Image: `{ "type": "img", "src": "https://...", "styles": { ... } }`
 Button: `{ "type": "button", "value": "Click", "styles": { ... } }`
-Component: `{ "type": "component", "name": "Card" }`
-Component with props: `{ "type": "component", "name": "Button", "props": { "label": "Click me", "disabled": true } }`
-Component with slot children: `{ "type": "component", "name": "Card", "children": [{ "type": "text", "value": "Content" }] }`
-Component with props + children: `{ "type": "component", "name": "Card", "props": { "title": "My Card" }, "children": [{ "type": "text", "value": "Body" }] }`
+Input: `{ "type": "input", "attrs": { "placeholder": "..." } }`
+Component: `{ "type": "component", "name": "Card", "props": { "title": "My Card" }, "children": [...] }`
 
-To insert a component instance, use `list-components` to find the component name, then pass `{ "type": "component", "name": "ComponentName" }` as the `child` argument. The component is resolved by name or UUID from the project and its dependencies. Props must match the component's parameter names exactly (case-sensitive). Slot params cannot be set via `props` — use `children` instead.
+Valid types: `img`, `text`, `box`, `vbox`, `hbox`, `page-section`, `button`, `input`, `password`, `textarea`, `component`, `default-component`
 
 ## Variant Editing Workflow
-To edit styles or text for a specific variant (responsive breakpoint, hover state, etc.):
-
-1. Call `list-variants(componentUuid)` to see all available variants with names, UUIDs, and types.
-2. Identify the target variant by name (e.g., "Mobile"), UUID, or selector (e.g., ":hover").
-3. **If the variant doesn't exist yet**, create it first:
-   - **Interaction states** (hover, focus, etc.): `create-style-variant(componentUuid, ":hover")` — optionally scope to an element with `nodeRef`.
-   - **Custom variant groups** (Size, Theme, State): `create-variant-group(componentUuid, "Size", "single", ["Small", "Medium", "Large"])`
-4. Pass the `variant` parameter to `update-styles` or `update-text`:
-   - By name: `variant: "Mobile"` (case-insensitive)
-   - By UUID: `variant: "abc-123"`
-   - By selector: `variant: ":hover"` (for style variants like hover, focus, pressed)
-5. Omit `variant` (or don't pass it) to edit the base variant (default, backward-compatible behavior).
-
-**Variant types returned by `list-variants`:**
-- **Global variants** — Screen breakpoints (e.g., "Mobile", "Tablet") with `mediaQuery` values. Applied site-wide.
-- **Component variants** — Custom variant groups defined on the component (e.g., "Size: small/medium/large").
-- **Style variants** — Interactive states (e.g., hover, focus, pressed) with CSS `selectors`.
+1. Call `list-variants(componentUuid)` to see available variants.
+2. Identify variant by name (e.g., "Mobile"), UUID, or selector (e.g., ":hover").
+3. **If it doesn't exist**, create it:
+   - Interactive states: `create-style-variant(uuid, ":hover")`
+   - Custom groups: `create-variant-group(uuid, "Size", "single", ["Small", "Medium", "Large"])`
+4. Pass `variant` to any edit tool: `update-styles(uuid, "Title", { "fontSize": "24px" }, variant: "Mobile")`
+5. Omit `variant` to edit the base (default).
 
 ## Edge Case Handling
-- **Ambiguous node reference** ("the title" matches multiple nodes): Show all matches with UUIDs and context, ask the developer to clarify.
-- **Non-existent node**: Show the current tree outline (via `get-component-summary`) and suggest correct names.
-- **Wrong component target**: Ask which component the developer meant.
-- **Unknown variant**: If `update-styles` or `update-text` returns a variant-not-found error, call `list-variants` to show available options.
-- **Developer expresses regret** ("actually, change it back"): Suggest using `undo`.
+- **Ambiguous node**: Show all matches with UUIDs, ask to clarify.
+- **Non-existent node**: Show tree outline via `get-component-summary`, suggest correct names.
+- **Unknown variant**: Call `list-variants` to show available options.
+- **Regret**: Suggest `undo`.
 
 ## User's Request
 $ARGUMENTS

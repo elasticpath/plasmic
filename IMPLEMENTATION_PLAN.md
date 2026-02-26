@@ -3,10 +3,10 @@
 > **Goal**: Create Claude Code skills and workflows that can interact with Plasmic Studio
 > programmatically to create fully-featured pages from the Claude Code terminal.
 >
-> **Current state**: 97 MCP tools, 6 Claude Code skills, 1026 tests (928 unit + 98 integration).
+> **Current state**: 97 MCP tools, 6 Claude Code skills (updated to cover all 97 tools), 1026 tests (928 unit + 98 integration).
 > Zero TODOs/FIXMEs/skipped tests.
 >
-> **Last verified**: 2026-02-26 — CQ-2, CQ-3, CQ-7 implemented.
+> **Last verified**: 2026-02-26 — CQ-2, CQ-3, CQ-7 implemented. Tier 7.1 skills update complete.
 
 ---
 
@@ -305,14 +305,13 @@ These are breaking changes that should be done after feature work stabilizes.
 ## Tier 7 — Skills Updates
 
 ### 7.1 Update Skills for New Features (Pre-STRAP)
-- **Status**: Skills are accurate for current 34-tool API; no coverage of any gap features
-- **What**: As each Tier 1-5 feature ships, update the relevant skills:
-  - `plasmic.md` (router) — add routing for new tool names
-  - `plasmic-edit.md` — add documentation for visibility, data-rep, interactions, state, rich text, etc.
-  - `plasmic-create-page.md` / `plasmic-create-component.md` — add patterns using new features
-  - `plasmic-patterns.md` — add patterns with interactions, conditional visibility, state, data repetition
-  - `plasmic-inspect.md` — document new output fields (visibility, dataCond, dataRep, interactions, marks, mixins, animations)
-- **Effort**: Incremental — update as features ship
+- **Status**: IMPLEMENTED — 6 skills updated to cover all 97 tools
+  - `plasmic.md` (router) — expanded from ~35 tools to all 97 tools organized by domain (Session, Discovery, Design System Read, Component Introspection, Lifecycle, Variants, Node Editing, Visibility, Token CRUD, Mixin CRUD, Animation CRUD, Theme CRUD, Data Token CRUD, Asset Management, Component Config, A/B Testing, Utilities); routing rules added for all new features
+  - `plasmic-edit.md` — added Rich Text Formatting (`update-rich-text`), Visibility & Conditional Rendering (`set-visibility`, `set-data-cond`), Data Repetition (`set-data-rep`), Reorder Children, Interactions (`add-interaction`), Mixin Application (`apply/detach`), Node Animations, Image Assets (`set-image`), move-child/clone-child slot parameters
+  - `plasmic-inspect.md` — added all new listing/introspection tools (`list-props`, `list-states`, `list-queries`, `list-interactions`, `list-mixins`, `list-animation-sequences`, `list-themes`, `list-data-tokens`, `list-global-variant-groups`, `list-assets`, `list-custom-functions`, `list-splits`, `get-code-component-meta`); tree output fields for visibility, dataCond, dataRep, marks, image asset references
+  - `plasmic-create-page.md` — added "Post-Creation Enhancement" section documenting dynamic data, visibility, data repetition, interactions, images, animations, mixins, state, queries, and props
+  - `plasmic-create-component.md` — added "Post-Creation Enhancement" section documenting props, state, interactions, dynamic data, visibility, data repetition, queries, images, animations, mixins, variant groups
+  - `plasmic-patterns.md` — added "Post-Creation Enhancement Recipes" with 7 workflow patterns: Data-Driven Product Grid, Interactive Counter, Conditional Sections, Navigation Links, Form with Validation State, Rich Text Content, Animated Hero
 
 ### 7.2 Rewrite Skills for STRAP (Post-Consolidation)
 - **What**: Rewrite all 6 skills to use `domain({ action: "..." })` calling convention
@@ -387,7 +386,7 @@ Phase 4 (Assets & Data):    3.1 Images ✓ → 3.2 Queries ✓
 Phase 5 (Design System):    4.1 Mixins ✓ → 4.2 Animations ✓ → 4.3 Themes ✓
 Phase 6 (Remaining):        5.1 sub-features ✓(reorder, global variants, convert, data tokens, code meta, custom functions, splits) — extract-to-component skipped
 Phase 7 (Architecture):     6.1 STRAP → 6.2 Test Restructure → 7.2 Skills Rewrite
-Continuous:                 7.1 Skills updates after each phase; CQ-5/CQ-6/CQ-7 test gaps
+Continuous:                 CQ-5/CQ-6/CQ-7 test gaps
 ```
 
 Each phase should ship with updated skills (7.1) and tests for the new features.

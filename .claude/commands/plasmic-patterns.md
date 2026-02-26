@@ -487,5 +487,53 @@ add-child(componentUuid, "CardInstance", child, slot: "icon")
 
 If `slot` is omitted and the parent is a TplComponent, content goes to the `"children"` slot by default.
 
+## Post-Creation Enhancement Recipes
+
+After creating a page or component with `create-page`/`create-component`, use these tool sequences to add dynamic behavior. These use `/plasmic-edit` tools.
+
+### Data-Driven Product Grid
+Create a product grid that renders from a data query:
+1. Create page with a card container and one template card
+2. `add-query(uuid, "products", body: "await fetch('/api/products').then(r => r.json())")`
+3. `set-data-rep(uuid, "ProductCard", "$queries.products.data")` — repeat card for each product
+4. `update-text(uuid, "CardTitle", "$ctx.currentItem.name", dynamic: true, fallback: "Product")`
+5. `update-text(uuid, "CardPrice", "$ctx.currentItem.price", dynamic: true)`
+6. `set-image(uuid, "CardImage", src: "$ctx.currentItem.imageUrl")` — dynamic image
+
+### Interactive Counter
+Add state and interactions to a button:
+1. `add-state(uuid, "count", "number", "private", initVal: "0")`
+2. `update-text(uuid, "CountLabel", "$state.count", dynamic: true, fallback: "0")`
+3. `add-interaction(uuid, "IncrementBtn", "onClick", "updateVariable", { variable: "count", operation: "newValue", value: "$state.count + 1" })`
+
+### Conditional Sections
+Show/hide content based on conditions:
+1. `set-data-cond(uuid, "AdminPanel", "$ctx.user.role === 'admin'")` — admin-only section
+2. `set-data-cond(uuid, "EmptyState", "$queries.items.data.length === 0")` — show when no data
+3. `set-visibility(uuid, "DesktopNav", "notRendered", variant: "Mobile")` — hide on mobile
+
+### Navigation Links
+Add click-to-navigate behavior:
+1. `add-interaction(uuid, "AboutLink", "onClick", "navigation", { destination: "'/about'" })`
+2. `add-interaction(uuid, "LoginBtn", "onClick", "navigation", { destination: "'/login'" })`
+
+### Form with Validation State
+Create a form with input tracking:
+1. `add-state(uuid, "email", "text", "private", initVal: "''")`
+2. `add-state(uuid, "isValid", "boolean", "private", initVal: "false")`
+3. `add-interaction(uuid, "EmailInput", "onChange", "updateVariable", { variable: "email", operation: "newValue", value: "$event.target.value" })`
+4. `add-interaction(uuid, "SubmitBtn", "onClick", "customFunction", { code: "if ($state.isValid) { fetch('/api/submit', { method: 'POST', body: JSON.stringify({ email: $state.email }) }) }" })`
+
+### Rich Text Content
+Apply inline formatting after creation:
+1. `update-rich-text(uuid, "Intro", "Welcome to our amazing platform", marks: [{ type: "bold", start: 15, end: 22 }, { type: "italic", start: 23, end: 31 }])`
+2. `update-rich-text(uuid, "CTA", "Click here to get started", marks: [{ type: "link", start: 6, end: 10, href: "/signup" }])`
+
+### Animated Hero
+Apply entrance animations:
+1. `create-animation-sequence("fade-in-up", keyframes: [{ offset: 0, styles: { opacity: "0", transform: "translateY(20px)" } }, { offset: 100, styles: { opacity: "1", transform: "translateY(0)" } }])`
+2. `add-node-animation(uuid, "HeroTitle", "fade-in-up", duration: "0.8s", timingFunction: "ease-out")`
+3. `add-node-animation(uuid, "HeroSubtitle", "fade-in-up", duration: "0.8s", delay: "0.2s", timingFunction: "ease-out")`
+
 ## User's Request
 $ARGUMENTS

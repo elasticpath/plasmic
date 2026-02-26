@@ -5,7 +5,7 @@ You are creating a new reusable component (not a page) in a Plasmic project.
 - `list-projects()` — List accessible projects.
 - `list-components()` — List existing pages and components.
 - `get-tokens(type?)` — Get design tokens (colors, spacing, fonts). Use these values in styles for design system consistency.
-- `get-component-summary(componentUuid)` — Compact outline of a component (type, tag, name, uuid, childCount — no styles/text). **Use this first** to understand structure before cloning or referencing.
+- `get-component-summary(componentUuid)` — Compact outline of a component (type, tag, name, uuid, childCount — no styles/text). **Use first** to understand structure before cloning or referencing.
 - `get-node-details(componentUuid, nodeRef)` — Full details for a single node. Use after summary to drill into specific nodes.
 - `get-component-tree(componentUuid, maxDepth?, excludeStyles?, summaryOnly?)` — Full tree with all styles/text. Use only when you need the complete structure.
 - `get-subtree(componentUuid, nodeRef, maxDepth?, excludeStyles?)` — Full tree from a specific node downward.
@@ -165,6 +165,21 @@ Omitting `slot` defaults to the `"children"` slot. The `slot` parameter only wor
 
 For more patterns (grids, forms, pricing, testimonials, CTAs), see `/plasmic-patterns`.
 
+## Post-Creation Enhancement
+
+After creating the component, you can enhance it with these tools (delegate to `/plasmic-edit`):
+- **Component props**: Define parameters with `add-prop` (text/number/boolean/object/href/eventHandler), then use `$props.propName` in dynamic text
+- **State management**: Add component state with `add-state` (private/readonly/writable), then use `$state.stateName` in expressions
+- **Interactions**: Add onClick/onChange/etc. handlers with `add-interaction` — navigate, update state, or run custom code
+- **Dynamic data**: Bind text to expressions with `update-text(dynamic: true)` or `update-rich-text`
+- **Visibility**: Conditionally show/hide elements with `set-visibility` or `set-data-cond`
+- **Data repetition**: Repeat elements with `set-data-rep` (e.g., `$queries.products.data`)
+- **Data queries**: Add data sources with `add-query`
+- **Images**: Set images from assets with `set-image`
+- **Animations**: Attach CSS animations with `add-node-animation`
+- **Mixins**: Apply reusable style bundles with `apply-mixin`
+- **Variant groups**: Add size/theme variants with `create-variant-group`
+
 ## Instructions
 1. If no project is active, call `list-projects` and ask the user which project, then `set-project`.
 2. Call `list-components` to see existing components (avoid name conflicts, find clone sources).
@@ -175,6 +190,7 @@ For more patterns (grids, forms, pricing, testimonials, CTAs), see `/plasmic-pat
 5. When cloning or referencing, inspect the source with `get-component-summary` first, then `get-node-details` for specific nodes — avoid loading the full tree unnecessarily.
 6. Use PascalCase for component names (e.g., `HeroSection`, `ProductCard`).
 7. Report the result. Note any warnings from the API.
+8. If the user wants dynamic behavior (props, state, interactions, etc.), proceed with post-creation enhancement using `/plasmic-edit`.
 
 ## User's Request
 $ARGUMENTS

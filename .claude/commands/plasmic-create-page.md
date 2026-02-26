@@ -112,6 +112,20 @@ Styles use React CSSProperties format (camelCase):
 
 For more patterns (grids, cards, forms, pricing, testimonials, footers, navigation), see `/plasmic-patterns`.
 
+## Post-Creation Enhancement
+
+After creating the page, you can enhance it with these tools (delegate to `/plasmic-edit`):
+- **Dynamic data**: Bind text to expressions with `update-text(dynamic: true)` or `update-rich-text` for formatted text
+- **Visibility**: Conditionally show/hide sections with `set-visibility` or `set-data-cond`
+- **Data repetition**: Repeat elements over collections with `set-data-rep` (e.g., product cards from `$queries.products.data`)
+- **Interactions**: Add onClick handlers, navigation, state updates with `add-interaction`
+- **Images**: Set images from uploaded assets with `set-image`
+- **Animations**: Attach CSS animations with `add-node-animation`
+- **Mixins**: Apply reusable style bundles with `apply-mixin`
+- **State management**: Add component state with `add-state`, then reference in interactions and dynamic text
+- **Data queries**: Add data sources with `add-query`, then use `$queries.name.data` in expressions
+- **Component props**: Define parameters with `add-prop` for reusable components
+
 ## Instructions
 1. If no project is active, call `list-projects` and ask the user which project, then `set-project`.
 2. Call `list-components` to see existing pages (avoid path conflicts).
@@ -120,6 +134,7 @@ For more patterns (grids, cards, forms, pricing, testimonials, footers, navigati
 5. Choose a reasonable page name (PascalCase) and path (kebab-case with leading slash).
 6. Call `create-page` with the constructed tree.
 7. Report the result. Note any warnings from the API.
+8. If the user wants dynamic behavior (interactions, data binding, etc.), proceed with post-creation enhancement using `/plasmic-edit`.
 
 ## User's Request
 $ARGUMENTS

@@ -1,83 +1,146 @@
 You are inspecting a Plasmic project to help the developer understand its structure.
 
 ## Available Tools
-- `set-project(projectId)` — Load a project. Call first if no project is active.
+
+### Project Overview
+- `set-project(projectId)` — Load project. Call first if no project is active.
 - `list-projects()` — List accessible projects.
-- `get-project-meta()` — Get project metadata (name, component count, page count, tokens).
-- `list-components()` — List all pages and components with UUIDs and paths.
-- `get-component-summary(componentUuid, maxDepth?)` — Get a compact outline of a component's structure (~2KB). Shows type, tag, name, uuid, childCount per node. No styles or text. **Use this first when inspecting a component.**
-- `get-node-details(componentUuid, nodeRef)` — Get full details (styles, text, attrs) for a single node (~300B). Children shown as summaries. **Use this to drill into specific nodes.**
-- `get-component-tree(componentUuid, maxDepth?, excludeStyles?, summaryOnly?)` — Get full tree with all details (large). Only use when the developer explicitly needs the complete detailed output.
-- `export-component-tree(componentUuid)` — Write full tree to temp file. Returns file path + summary. Use Read tool to inspect sections. Best for complex components.
-- `get-subtree(componentUuid, nodeRef, maxDepth?, excludeStyles?)` — Get the full tree rooted at a specific node. Useful when the developer wants to see a specific section's full tree (e.g., just the hero or footer) without loading the whole component.
-- `list-variants(componentUuid)` — List all variants for a component: global (breakpoints), component (custom), style (hover/focus). Use to discover variant names/UUIDs.
-- `create-style-variant(componentUuid, selector, nodeRef?)` — Create a new interaction state variant. Use `/plasmic-edit` for the full editing workflow.
-- `create-variant-group(componentUuid, name, type?, initialVariants?)` — Create a named variant group. Use `/plasmic-edit` for the full editing workflow.
-- `get-tokens(type?)` — Get design tokens (colors, spacing, fonts) grouped by type. Optional type filter.
-- `get-page-meta(componentUuid)` — Get page metadata (title, description, OG image, canonical URL, path). Only for page components.
-- `get-preview-url(componentUuid)` — Get preview and studio URLs for a page or component.
+- `get-project-meta()` — Project metadata: name, component/page counts, token count.
+- `list-components()` — All pages and components with UUIDs and paths.
+
+### Component Tree Inspection
+- `get-component-summary(componentUuid, maxDepth?)` — Compact outline (~2KB). **Use first.**
+- `get-node-details(componentUuid, nodeRef)` — Full details for one node. **Drill into specifics.**
+- `get-component-tree(componentUuid, maxDepth?, excludeStyles?, summaryOnly?)` — Full tree (large). Only when explicitly needed.
+- `export-component-tree(componentUuid)` — Write to temp file. Use Read tool for sections.
+- `get-subtree(componentUuid, nodeRef, maxDepth?, excludeStyles?)` — Subtree from a specific node.
+
+### Component Introspection
+- `list-props(componentUuid)` — Parameters with type, kind, default value, description.
+- `list-states(componentUuid)` — State variables with variableType, accessType, initial value.
+- `list-queries(componentUuid)` — Data queries (client + server) with name, body expression.
+- `list-interactions(componentUuid, nodeRef?)` — Event handlers: event name, action type, args. Optional `nodeRef` to filter.
+- `list-variants(componentUuid)` — Global (breakpoints), component (custom), style (hover/focus) variants.
+- `get-code-component-meta(componentUuid)` — Code component metadata: importPath, displayName, description, props with types/defaults.
+
+### Design System
+- `get-tokens(type?)` — Design tokens grouped by type (Color, Spacing, FontSize, FontFamily, LineHeight, Opacity).
+- `list-mixins()` — Reusable style bundles with uuid, name, styles, forTheme flag.
+- `list-animation-sequences()` — @keyframes definitions with uuid, name, keyframeCount.
+- `list-themes()` — Themes with index, isActive, defaultStyles, tagStyles (per-tag overrides).
+- `list-data-tokens()` — Data tokens with name, type, value. Accessible as `$ctx.tokenName`.
+- `list-global-variant-groups()` — Global variant groups with type and variant names.
+- `list-assets(nameFilter?, typeFilter?)` — Image assets with uuid, name, type (picture/icon), dimensions.
+- `list-custom-functions()` — Custom functions with importName, namespace, params, isQuery.
+- `list-splits()` — A/B test splits with name, type (experiment/segment), slices.
+
+### Page Metadata
+- `get-page-meta(componentUuid)` — SEO: title, description, OG image, canonical URL, path.
+- `get-preview-url(componentUuid)` — Preview and studio URLs.
 
 ## Instructions
 1. If no project is active, call `list-projects` and ask the user which project, then `set-project`.
 2. Call `get-project-meta` for an overview.
 3. Call `list-components` for the full listing.
-4. Present the results clearly:
+4. Present results clearly:
    - Project name and summary stats
-   - Pages listed with their paths
-   - Components listed with their names
-5. If the user asked about a specific component or page:
-   a. Call `get-component-summary` to get the compact outline.
-   b. Describe the structure in human-readable terms (e.g., "a vertical stack containing a heading, paragraph, and 3-column grid of cards").
-   c. If the user asks about a specific node's styles or content, call `get-node-details` for that node.
-   d. Only use `get-component-tree` or `export-component-tree` if the user explicitly needs the complete detailed tree.
-6. If the user asked about design tokens, colors, or fonts, call `get-tokens` (optionally filtered by type).
-7. If the user asked about variants, breakpoints, hover states, or responsive setup, find the component UUID via `list-components`, then call `list-variants(componentUuid)`.
-8. If the user asks about page metadata, SEO settings, or page title/description, call `get-page-meta(componentUuid)` for the page.
-9. If the user asks for a preview link or studio URL, call `get-preview-url(componentUuid)`.
-10. For large component trees, the summary already shows childCounts — describe the structure at the top level and mention deeper nesting counts.
+   - Pages with paths
+   - Components with names
+5. For specific component/page inspection:
+   a. `get-component-summary` for structure overview
+   b. Describe in human-readable terms (e.g., "a vertical stack with heading, paragraph, and 3-column card grid")
+   c. `get-node-details` for specific nodes' styles or content
+   d. Only `get-component-tree` or `export-component-tree` when explicitly needed
+6. For design system inspection, use the appropriate listing tool.
+7. For component configuration, use `list-props`, `list-states`, `list-queries`, or `list-interactions`.
+8. Summarize findings in human-readable terms, not raw JSON.
 
 ## Understanding Tree Output
 
 ### Dynamic Text
-Text nodes bound to data expressions show `dynamic: true` in the tree output:
 ```json
 { "text": "$ctx.product.name", "dynamic": true, "fallback": "Untitled" }
 ```
-- `CustomCode` expressions show the raw JS code as `text`
-- `ObjectPath` expressions show dot-joined paths (e.g., `$ctx.product.name`)
-- `VarRef` expressions show `$variableName`
-- Static text just shows `{ "text": "Hello world" }` (no `dynamic` field)
+- `CustomCode` → raw JS expression as `text`
+- `ObjectPath` → dot-joined path (e.g., `$ctx.product.name`)
+- `VarRef` → `$variableName`
+- Static text → `{ "text": "Hello world" }` (no `dynamic` field)
 
 ### Design Token References
-When using `get-node-details`, styles that reference design tokens include a `tokenRefs` object alongside `styles`:
 ```json
 {
   "styles": { "color": "#1a2b3c", "fontSize": "16px" },
   "tokenRefs": { "color": "Brand Primary", "fontSize": "Body Size" }
 }
 ```
-`styles` shows the resolved CSS value. `tokenRefs` maps property names to token names. Properties with literal (non-token) values are absent from `tokenRefs`.
+`styles` = resolved CSS values. `tokenRefs` maps property → token name. Literal values absent from `tokenRefs`.
 
 ### Slot Override Content
-Component instances (`TplComponent`) display slot override content as `type: "slot"` wrapper nodes:
 ```json
 {
-  "type": "component",
-  "componentName": "Card",
+  "type": "component", "componentName": "Card",
   "children": [
     { "type": "slot", "slotName": "children", "children": [...] },
     { "type": "slot", "slotName": "icon", "children": [...] }
   ]
 }
 ```
-Each slot override gets its own wrapper with `slotName`. Non-slot prop args appear in `attrs` on the component node.
 
 ### HTML Attributes
-Node attributes are displayed in an `attrs` object:
 ```json
-{ "attrs": { "href": "/home", "disabled": false, "aria-label": "Close", "data-testid": "hero" } }
+{ "attrs": { "href": "/home", "disabled": false, "aria-label": "Close" } }
 ```
-Dynamic attribute expressions (CustomCode) show as their raw code string or parsed JSON value.
+Dynamic expressions show as raw code strings.
+
+### Visibility & Conditional Rendering
+When visibility is explicitly set, nodes show:
+```json
+{ "visibility": "notRendered" }
+```
+or
+```json
+{ "visibility": "displayNone" }
+```
+Elements with JS conditional expressions show:
+```json
+{ "dataCond": "$ctx.user.isLoggedIn" }
+```
+Visible elements with no conditions omit these fields.
+
+### Data Repetition
+Elements repeated over a collection show:
+```json
+{
+  "dataRep": {
+    "collection": "$queries.products.data",
+    "elementVariable": "currentItem",
+    "indexVariable": "currentIndex"
+  }
+}
+```
+Inside repeated elements, descendant dynamic text/conditions can reference `$ctx.currentItem.*`.
+
+### Rich Text Marks
+Text nodes with inline formatting show a `marks` array:
+```json
+{
+  "text": "Hello bold world",
+  "marks": [
+    { "type": "bold", "start": 6, "end": 10 }
+  ]
+}
+```
+Mark types: `bold`, `italic`, `underline`, `strikethrough`, `link` (with `href`), `code`.
+
+### Image Asset References
+Image nodes referencing uploaded assets show structured info:
+```json
+{
+  "attrs": {
+    "src": { "assetUuid": "abc-123", "assetName": "hero-banner", "assetType": "picture", "src": "data:image/..." }
+  }
+}
+```
 
 ## User's Request
 $ARGUMENTS
