@@ -21,6 +21,8 @@ export const isKnownRenderExpr = (obj: any): boolean =>
 export const isKnownVarRef = (obj: any): boolean => obj?._type === "VarRef";
 export const isKnownObjectPath = (obj: any): boolean =>
   obj?._type === "ObjectPath";
+export const isKnownImageAsset = (obj: any): boolean =>
+  obj?._type === "ImageAsset";
 export const isKnownImageAssetRef = (obj: any): boolean =>
   obj?._type === "ImageAssetRef";
 export const isKnownStyleTokenRef = (obj: any): boolean =>
@@ -114,6 +116,44 @@ export class Var {
   constructor(args: { name: string; uuid: string }) {
     this.name = args.name;
     this.uuid = args.uuid;
+  }
+}
+
+/** Mock constructor for ImageAsset — site-level image with metadata and data URI. */
+export class ImageAsset {
+  _type = "ImageAsset";
+  uuid: string;
+  name: string;
+  type: string;
+  dataUri: string | null;
+  width: number | null;
+  height: number | null;
+  aspectRatio: number | null;
+  constructor(args: {
+    uuid: string;
+    name: string;
+    type: string;
+    dataUri?: string | null;
+    width?: number | null;
+    height?: number | null;
+    aspectRatio?: number | null;
+  }) {
+    this.uuid = args.uuid;
+    this.name = args.name;
+    this.type = args.type;
+    this.dataUri = args.dataUri ?? null;
+    this.width = args.width ?? null;
+    this.height = args.height ?? null;
+    this.aspectRatio = args.aspectRatio ?? null;
+  }
+}
+
+/** Mock constructor for ImageAssetRef — expression referencing an ImageAsset. */
+export class ImageAssetRef {
+  _type = "ImageAssetRef";
+  asset: any;
+  constructor(args: { asset: any }) {
+    this.asset = args.asset;
   }
 }
 

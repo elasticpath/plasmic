@@ -83,6 +83,9 @@ import {
   Split,
   RandomSplitSlice,
   SegmentSplitSlice,
+  ImageAsset,
+  ImageAssetRef,
+  isKnownImageAssetRef,
 } from "@/wab/shared/model/classes";
 import { RSH } from "@/wab/shared/RuleSetHelpers";
 import { TplMgr } from "@/wab/shared/TplMgr";
@@ -7140,4 +7143,306 @@ export async function removeSplit(
   );
 
   return { save, removedName, removedUuid };
+}
+
+// ==========================================================================
+// Image Assets CRUD
+// ==========================================================================
+
+function findImageAsset(site: any, assetRef: string): any {
+  const assets: any[] = site.imageAssets ?? [];
+  const byUuid = assets.find((a: any) => a.uuid === assetRef);
+  if (byUuid) return byUuid;
+  const lower = assetRef.toLowerCase();
+  const byName = assets.find((a: any) => (a.name ?? "").toLowerCase() === lower);
+  if (byName) return byName;
+  const names = assets.map((a: any) => a.name).join(", ");
+  throw new Error(
+    `Image asset "${assetRef}" not found. Available: [${names}]`
+  );
+}
+
+export interface ImageAssetInfo {
+  uuid: string;
+  name: string;
+  type: string;
+  width?: number;
+  height?: number;
+  aspectRatio?: number;
+}
+
+export interface ListAssetsResult {
+  assets: ImageAssetInfo[];
+}
+
+/**
+ * List all image assets in the project with optional type filter.
+ */
+export function listAssets(
+  type?: string,
+): ListAssetsResult {
+  const session = requireSession();
+  let assets: any[] = session.site.imageAssets ?? [];
+
+  if (type) {
+    assets = assets.filter((a: any) => a.type === type);
+  }
+
+  return {
+    assets: assets.map((a: any) => ({
+      uuid: a.uuid,
+      name: a.name,
+      type: a.type,
+      ...(a.width != null ? { width: a.width } : {}),
+      ...(a.height != null ? { height: a.height } : {}),
+      ...(a.aspectRatio != null ? { aspectRatio: a.aspectRatio } : {}),
+    })),
+  };
+}
+
+export interface UploadAssetResult {
+  save: SaveResult;
+  assetUuid: string;
+  name: string;
+  type: string;
+}
+
+/**
+ * Create an image asset from a URL (fetched and embedded as dataUri) or inline dataUri.
+ */
+export async function uploadAsset(
+  apiClient: PlasmicApiClient,
+  name: string,
+  type: string,
+  opts: { url?: string; dataUri?: string; width?: number; height?: number },
+): Promise<UploadAssetResult> {
+  if (!opts.url && !opts.dataUri) {
+    throw new Error("Either url or dataUri must be provided.");
+  }
+
+  let dataUri = opts.dataUri;
+
+  if (opts.url) {
+    try {
+      const response = await fetch(opts.url);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const contentType = response.headers.get("content-type") ?? "image/png";
+      if (!contentType.startsWith("image/")) {
+        throw new Error(`URL does not point to a supported image format (got: ${contentType})`);
+      }
+      const buffer = await response.arrayBuffer();
+      const base64 = Buffer.from(buffer).toString("base64");
+      dataUri = `data:${contentType};base64,${base64}`;
+    } catch (err: any) {
+      throw new Error(`Failed to fetch image from URL: ${err.message}`);
+    }
+  }
+
+  const session = requireSession();
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  let assetUuid = "";
+  let assetName = "";
+  let assetType = "";
+
+  const aspectRatio = (opts.width && opts.height)
+    ? opts.width / opts.height
+    : undefined;
+
+  const changes = tracker.withRecording(() => {
+    const asset = tplMgr.addImageAsset({
+      name,
+      type,
+      dataUri: dataUri!,
+      width: opts.width,
+      height: opts.height,
+      aspectRatio,
+    });
+    assetUuid = asset.uuid;
+    assetName = asset.name;
+    assetType = asset.type;
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `upload-asset: ${assetName}`,
+    []
+  );
+
+  return { save, assetUuid, name: assetName, type: assetType };
+}
+
+export interface RenameAssetResult {
+  save: SaveResult;
+  assetUuid: string;
+  oldName: string;
+  newName: string;
+}
+
+/**
+ * Rename an image asset by reference (UUID or name).
+ */
+export async function renameAsset(
+  apiClient: PlasmicApiClient,
+  assetRef: string,
+  newName: string,
+): Promise<RenameAssetResult> {
+  const session = requireSession();
+  const asset = findImageAsset(session.site, assetRef);
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  const oldName = asset.name;
+
+  const changes = tracker.withRecording(() => {
+    tplMgr.renameImageAsset(asset, newName);
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `rename-asset: ${oldName} → ${newName}`,
+    []
+  );
+
+  return { save, assetUuid: asset.uuid, oldName, newName: asset.name };
+}
+
+export interface RemoveAssetResult {
+  save: SaveResult;
+  removedName: string;
+  removedUuid: string;
+}
+
+/**
+ * Remove an image asset. TplMgr.removeImageAsset() handles reference cleanup.
+ */
+export async function removeAsset(
+  apiClient: PlasmicApiClient,
+  assetRef: string,
+): Promise<RemoveAssetResult> {
+  const session = requireSession();
+  const asset = findImageAsset(session.site, assetRef);
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  const removedName = asset.name;
+  const removedUuid = asset.uuid;
+
+  const changes = tracker.withRecording(() => {
+    tplMgr.removeImageAsset(asset);
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `remove-asset: ${removedName}`,
+    []
+  );
+
+  return { save, removedName, removedUuid };
+}
+
+export interface SetImageResult {
+  save: SaveResult;
+  nodeUuid: string;
+  nodeName?: string;
+  imageSource: string;
+}
+
+/**
+ * Set an image on an element. For <img> tags, sets the src attribute as an
+ * ImageAssetRef (when assetRef provided) or CustomCode (when src URL provided).
+ * For non-img elements, sets background-image CSS property.
+ */
+export async function setImage(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  nodeRef: string,
+  opts: { assetRef?: string; src?: string },
+  variant?: string,
+): Promise<SetImageResult> {
+  if (!opts.assetRef && !opts.src) {
+    throw new Error("Either assetRef or src must be provided.");
+  }
+
+  const session = requireSession();
+  const component = findComponent(componentUuid);
+  const result = resolveNode(component, nodeRef);
+  const resolved = requireSingleNode(result, nodeRef);
+
+  if (!isKnownTplTag(resolved.node)) {
+    throw new Error(
+      `set-image requires a TplTag element but got ${resolved.node?._type ?? "unknown"}.`
+    );
+  }
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  // Resolve target variant (null = base)
+  const resolvedVariant = variant
+    ? resolveVariant(session.site, component, variant)
+    : null;
+
+  const baseVs = resolved.node.vsettings?.[0];
+
+  const tag = resolved.node.tag;
+  const isImgTag = tag === "img";
+  let imageSource = "";
+
+  // Resolve asset if assetRef provided
+  let asset: any = undefined;
+  if (opts.assetRef) {
+    asset = findImageAsset(session.site, opts.assetRef);
+    imageSource = `asset:${asset.name}`;
+  } else {
+    imageSource = opts.src!;
+  }
+
+  const changes = tracker.withRecording(() => {
+    const vs = resolvedVariant
+      ? ensureVariantSetting(resolved.node, [resolvedVariant])
+      : baseVs;
+
+    if (isImgTag) {
+      // For img elements, set the src attr
+      if (!vs.attrs) vs.attrs = {};
+      if (asset) {
+        vs.attrs.src = new ImageAssetRef({ asset });
+      } else {
+        vs.attrs.src = new CustomCode({
+          code: JSON.stringify(opts.src),
+          fallback: null,
+        });
+      }
+    } else {
+      // For non-img elements, set background CSS
+      if (!vs.rs) vs.rs = { values: {}, mixins: [] };
+      if (!vs.rs.values) vs.rs.values = {};
+      if (asset) {
+        vs.rs.values["background"] = `url("${asset.dataUri ?? ""}")`;
+      } else {
+        vs.rs.values["background"] = `url("${opts.src}")`;
+      }
+    }
+  });
+
+  const componentIid = getComponentIid(component);
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `set-image on ${resolved.node.name ?? resolved.node.uuid}`,
+    componentIid ? [componentIid] : []
+  );
+
+  return {
+    save,
+    nodeUuid: resolved.node.uuid,
+    nodeName: resolved.node.name,
+    imageSource,
+  };
 }

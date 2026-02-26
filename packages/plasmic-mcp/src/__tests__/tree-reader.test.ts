@@ -380,7 +380,7 @@ describe("readComponentTree", () => {
               attrs: {
                 src: {
                   _type: "ImageAssetRef",
-                  asset: { dataUri: "data:image/png;base64,abc" },
+                  asset: { uuid: "asset-1", name: "Hero", type: "picture", dataUri: "data:image/png;base64,abc" },
                 },
               },
             },
@@ -390,7 +390,12 @@ describe("readComponentTree", () => {
       };
 
       const result = readComponentTree(component);
-      expect(result?.attrs?.src).toBe("data:image/png;base64,abc");
+      expect(result?.attrs?.src).toEqual({
+        assetUuid: "asset-1",
+        assetName: "Hero",
+        assetType: "picture",
+        src: "data:image/png;base64,abc",
+      });
     });
 
     it("extracts ImageAssetRef with url fallback", () => {
@@ -405,7 +410,7 @@ describe("readComponentTree", () => {
               attrs: {
                 src: {
                   _type: "ImageAssetRef",
-                  asset: { url: "https://cdn.example.com/img.png" },
+                  asset: { uuid: "asset-2", name: "Photo", type: "picture", url: "https://cdn.example.com/img.png" },
                 },
               },
             },
@@ -415,7 +420,12 @@ describe("readComponentTree", () => {
       };
 
       const result = readComponentTree(component);
-      expect(result?.attrs?.src).toBe("https://cdn.example.com/img.png");
+      expect(result?.attrs?.src).toEqual({
+        assetUuid: "asset-2",
+        assetName: "Photo",
+        assetType: "picture",
+        src: "https://cdn.example.com/img.png",
+      });
     });
 
     it("extracts StyleTokenRef value", () => {

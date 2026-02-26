@@ -114,6 +114,11 @@ import {
   createSplit,
   updateSplit,
   removeSplit,
+  listAssets,
+  uploadAsset,
+  renameAsset,
+  removeAsset,
+  setImage,
 } from "./edit-tools.js";
 import { beginBatch, endBatch, isBatchActive, cancelBatch, cancelBatchWithRollback, getAccumulatedChanges } from "./batch-manager.js";
 import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
@@ -6254,6 +6259,332 @@ export function createServer(): McpServer {
         };
       } catch (err: any) {
         return handleMutationError("removing split", err);
+      }
+    }
+  );
+
+  // ========================================================================
+  // list-assets
+  // ========================================================================
+
+  server.tool(
+    "list-assets",
+    "List all image assets in the project. Optionally filter by type (picture or icon).",
+    {
+      type: z
+        .enum(["picture", "icon"])
+        .optional()
+        .describe("Filter by asset type. Omit to list all assets."),
+    },
+    async ({ type }) => {
+      try {
+        const result = listAssets(type);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("listing assets", err);
+      }
+    }
+  );
+
+  // ========================================================================
+  // upload-asset
+  // ========================================================================
+
+  server.tool(
+    "upload-asset",
+    'Upload an image asset from a URL or inline dataUri. Type is "picture" (photos, screenshots) or "icon" (SVG icons).',
+    {
+      name: z.string().describe("Name for the asset (e.g., \"Hero Banner\", \"Logo\")"),
+      type: z
+        .enum(["picture", "icon"])
+        .describe('Asset type: "picture" for images, "icon" for SVG icons'),
+      url: z
+        .string()
+        .optional()
+        .describe("URL to fetch the image from (will be converted to dataUri)"),
+      dataUri: z
+        .string()
+        .optional()
+        .describe("Inline data URI (e.g., data:image/png;base64,...)"),
+      width: z.number().optional().describe("Image width in pixels"),
+      height: z.number().optional().describe("Image height in pixels"),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting."),
+    },
+    async ({ name, type: assetType, url, dataUri, width, height, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            uploadAsset(apiClient, name, assetType, { url, dataUri, width, height })
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    name: result.name,
+                    assetType: result.type,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await uploadAsset(apiClient, name, assetType, { url, dataUri, width, height });
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  assetUuid: result.assetUuid,
+                  name: result.name,
+                  assetType: result.type,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("uploading asset", err);
+      }
+    }
+  );
+
+  // ========================================================================
+  // rename-asset
+  // ========================================================================
+
+  server.tool(
+    "rename-asset",
+    "Rename an image asset by UUID or name.",
+    {
+      assetRef: z.string().describe("Asset reference (UUID or name)"),
+      newName: z.string().describe("New name for the asset"),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting."),
+    },
+    async ({ assetRef, newName, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            renameAsset(apiClient, assetRef, newName)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    oldName: result.oldName,
+                    newName: result.newName,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await renameAsset(apiClient, assetRef, newName);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  assetUuid: result.assetUuid,
+                  oldName: result.oldName,
+                  newName: result.newName,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("renaming asset", err);
+      }
+    }
+  );
+
+  // ========================================================================
+  // remove-asset
+  // ========================================================================
+
+  server.tool(
+    "remove-asset",
+    "Remove an image asset and clean up all element references.",
+    {
+      assetRef: z.string().describe("Asset reference (UUID or name)"),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting."),
+    },
+    async ({ assetRef, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            removeAsset(apiClient, assetRef)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    removedName: result.removedName,
+                    removedUuid: result.removedUuid,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await removeAsset(apiClient, assetRef);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  removedName: result.removedName,
+                  removedUuid: result.removedUuid,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("removing asset", err);
+      }
+    }
+  );
+
+  // ========================================================================
+  // set-image
+  // ========================================================================
+
+  server.tool(
+    "set-image",
+    "Set the image source on an element. For <img> tags, sets the src attribute. " +
+      "For other elements, sets background-image. Use assetRef for project assets or src for raw URLs.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component containing the element"),
+      nodeRef: z
+        .string()
+        .describe(
+          'Node reference: UUID, name (e.g., "Hero Image"), path, or index'
+        ),
+      assetRef: z
+        .string()
+        .optional()
+        .describe("Image asset reference (UUID or name). Mutually exclusive with src."),
+      src: z
+        .string()
+        .optional()
+        .describe("Raw image URL. Mutually exclusive with assetRef."),
+      variant: z
+        .string()
+        .optional()
+        .describe(
+          'Target variant by name, UUID, or selector. Omit for base variant.'
+        ),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting."),
+    },
+    async ({ componentUuid, nodeRef, assetRef, src, variant, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            setImage(apiClient, componentUuid, nodeRef, { assetRef, src }, variant)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    node: result.nodeName ?? result.nodeUuid,
+                    imageSource: result.imageSource,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await setImage(
+          apiClient,
+          componentUuid,
+          nodeRef,
+          { assetRef, src },
+          variant
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  node: result.nodeName ?? result.nodeUuid,
+                  imageSource: result.imageSource,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("setting image", err);
       }
     }
   );

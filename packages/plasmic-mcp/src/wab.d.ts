@@ -147,6 +147,7 @@ declare module "@/wab/shared/model/classes" {
   export function isKnownRenderExpr(x: any): boolean;
   export function isKnownVarRef(x: any): boolean;
   export function isKnownObjectPath(x: any): boolean;
+  export function isKnownImageAsset(x: any): boolean;
   export function isKnownImageAssetRef(x: any): boolean;
   export function isKnownStyleTokenRef(x: any): boolean;
   export function isKnownStyleMarker(x: any): boolean;
@@ -451,6 +452,32 @@ declare module "@/wab/shared/model/classes" {
     externalId: any;
   }
 
+  /** Model class for ImageAsset — site-level image with metadata and data URI. */
+  export class ImageAsset {
+    constructor(args: {
+      uuid: string;
+      name: string;
+      type: string;
+      dataUri?: string | null;
+      width?: number | null;
+      height?: number | null;
+      aspectRatio?: number | null;
+    });
+    readonly uuid: string;
+    name: string;
+    readonly type: string;
+    dataUri: string | null;
+    width: number | null;
+    height: number | null;
+    aspectRatio: number | null;
+  }
+
+  /** Model class for ImageAssetRef — expression referencing an ImageAsset. */
+  export class ImageAssetRef {
+    constructor(args: { asset: any });
+    asset: any;
+  }
+
   /** Model class for GlobalVariantGroup — site-level variant group (custom or screen). */
   export class GlobalVariantGroup {
     constructor(args: {
@@ -718,6 +745,19 @@ declare module "@/wab/shared/TplMgr" {
     renameVariantGroup(group: any, name?: string): void;
     /** Remove a split from the site. */
     removeSplit(split: any): void;
+    /** Create an ImageAsset and add it to site.imageAssets. Returns the new asset. */
+    addImageAsset(opts: {
+      name?: string;
+      type: string;
+      dataUri?: string;
+      width?: number;
+      height?: number;
+      aspectRatio?: number;
+    }): any;
+    /** Rename an image asset with automatic name deduplication. */
+    renameImageAsset(asset: any, name: string): void;
+    /** Remove an image asset and clean up all references. */
+    removeImageAsset(asset: any): void;
   }
 }
 

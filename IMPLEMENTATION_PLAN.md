@@ -3,10 +3,10 @@
 > **Goal**: Create Claude Code skills and workflows that can interact with Plasmic Studio
 > programmatically to create fully-featured pages from the Claude Code terminal.
 >
-> **Current state**: 92 MCP tools, 6 Claude Code skills, 992 tests (898 unit + 94 integration).
+> **Current state**: 97 MCP tools, 6 Claude Code skills, 1014 tests (940 unit + 74 integration).
 > Zero TODOs/FIXMEs/skipped tests.
 >
-> **Last verified**: 2026-02-26 — 5.1 Remaining Features (7 of 8 sub-features) implemented.
+> **Last verified**: 2026-02-26 — 3.1 Images & Assets implemented.
 
 ---
 
@@ -147,19 +147,23 @@ These features make pages respond to user actions. State management must come be
 
 These features enable data-driven and media-rich pages.
 
-### 3.1 Images & Assets
+### 3.1 Images & Assets — IMPLEMENTED (2026-02-26)
 - **Spec**: `specs/gap-images-and-assets.md`
-- **Status**: NOT IMPLEMENTED
-  - Verified: only read-path `ImageAssetRef` handling exists in tree-reader
-  - WAB backing confirmed: `TplMgr.addImageAsset()` (line 1906), `renameImageAsset()` (line 1935), `removeImageAsset()` (line 1951) in `shared/TplMgr.ts`
-- **What**: Four site-level + one node-level action:
-  - `list-assets` — list all ImageAssets with optional type filter
-  - `upload-asset` — create ImageAsset from URL or dataUri
-  - `remove-asset` — delete and clean up references
-  - `rename-asset` — rename by ref
-  - `set-image` — set image on node (by asset ref or raw src URL), variant-aware
-- **Effort**: Medium — URL fetching for upload, plus element-type-aware setting (img tag vs background-image)
-- **Tests needed**: Unit + integration (upload → set → read back → verify)
+- **Status**: IMPLEMENTED
+  - Five new tools: `list-assets`, `upload-asset`, `rename-asset`, `remove-asset`, `set-image`
+  - `list-assets` returns all ImageAssets with uuid, name, type (picture/icon), dimensions, hasData flag; optional type filter
+  - `upload-asset` creates ImageAsset from URL (fetched → base64 dataUri) or inline dataUri; supports name, type, width, height
+  - `rename-asset` via TplMgr.renameImageAsset(); `remove-asset` via TplMgr.removeImageAsset() with reference cleanup
+  - `set-image` is element-type-aware: img tags get src attr (ImageAssetRef for assets, CustomCode for URLs); non-img tags get background CSS
+  - Variant support on `set-image` via resolveVariant + ensureVariantSetting
+  - Tree-reader enhanced: ImageAssetRef now returns structured object `{ assetUuid, assetName, assetType, src }` instead of raw string
+  - Mock classes: ImageAsset, ImageAssetRef + isKnownImageAsset type guard; TplMgr mock extended with addImageAsset, renameImageAsset, removeImageAsset
+  - 18 unit tests + 4 integration tests (round-trip: upload → list → rename → remove; set-image on img element; type filter; error validation)
+  - Total test count: 1014 (940 unit + 74 integration)
+- **Design decisions**:
+  - `set-image` on non-img elements uses `background` CSS shorthand with `url("...")` — requires WAB bg-styles parser for invariant validation
+  - `upload-asset` fetches URL content via `fetch()` and converts to base64 dataUri for model storage
+  - `findImageAsset()` helper: UUID-first lookup, falls back to case-insensitive name match
 
 ### 3.2 Data Queries — IMPLEMENTED (2026-02-26)
 - **Spec**: `specs/gap-data-queries.md`
@@ -366,9 +370,9 @@ These are code health improvements discovered during analysis. No specs needed.
 
 ```
 Phase 1 (Foundations):      1.1 Visibility ✓ → 1.2 Data Repetition ✓ → 1.3 Tokens ✓ → CQ-1 Dead Code ✓ → 1.4 Props ✓ → 1.5 Rich Text ✓
-Phase 2 (Authoring):        2.1 State
-Phase 3 (Interactivity):    2.2 Interactions → CQ-2/CQ-3 Slot Gaps
-Phase 4 (Assets & Data):    3.1 Images → 3.2 Queries
+Phase 2 (Authoring):        2.1 State ✓
+Phase 3 (Interactivity):    2.2 Interactions ✓ → CQ-2/CQ-3 Slot Gaps
+Phase 4 (Assets & Data):    3.1 Images ✓ → 3.2 Queries ✓
 Phase 5 (Design System):    4.1 Mixins ✓ → 4.2 Animations ✓ → 4.3 Themes ✓
 Phase 6 (Remaining):        5.1 sub-features ✓(reorder, global variants, convert, data tokens, code meta, custom functions, splits) — extract-to-component skipped
 Phase 7 (Architecture):     6.1 STRAP → 6.2 Test Restructure → 7.2 Skills Rewrite

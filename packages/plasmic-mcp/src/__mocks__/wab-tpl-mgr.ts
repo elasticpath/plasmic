@@ -112,6 +112,18 @@ export const mockRenameVariantGroup = vi.fn((group: any, name: string) => {
   if (group.param?.variable) group.param.variable.name = name;
 });
 export const mockRemoveSplit = vi.fn();
+export const mockAddImageAsset = vi.fn((opts: any) => {
+  return {
+    _type: "ImageAsset", uuid: "mock-image-asset-uuid",
+    name: opts?.name ?? "Unnamed Image", type: opts?.type ?? "picture",
+    dataUri: opts?.dataUri ?? null, width: opts?.width ?? null,
+    height: opts?.height ?? null, aspectRatio: opts?.aspectRatio ?? null,
+  };
+});
+export const mockRenameImageAsset = vi.fn((asset: any, name: string) => {
+  asset.name = name;
+});
+export const mockRemoveImageAsset = vi.fn();
 export const mockGetUniqueParamName = vi.fn(
   (_component: any, name?: string) => name ?? "Unnamed Prop"
 );
@@ -244,6 +256,18 @@ export class TplMgr {
 
   removeSplit(split: any): void {
     mockRemoveSplit(split);
+  }
+
+  addImageAsset(opts: any): any {
+    return mockAddImageAsset(opts);
+  }
+
+  renameImageAsset(asset: any, name: string): void {
+    mockRenameImageAsset(asset, name);
+  }
+
+  removeImageAsset(asset: any): void {
+    mockRemoveImageAsset(asset);
   }
 
   addMixin(name?: string, mixin?: any): any {

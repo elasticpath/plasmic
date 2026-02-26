@@ -4639,6 +4639,157 @@ describe("splits", () => {
   });
 });
 
+describe("image assets", () => {
+  it("upload → list → rename → remove round-trip", async () => {
+    // Upload an asset from dataUri
+    const uploadRaw = await client.callTool({
+      name: "upload-asset",
+      arguments: {
+        name: "Test Image",
+        type: "picture",
+        dataUri: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==",
+        width: 100,
+        height: 50,
+      },
+    });
+    const uploadResult = parseResponse(uploadRaw);
+    if (!uploadResult?.success) {
+      process.stderr.write(`upload-asset error: ${JSON.stringify(uploadResult)}\n`);
+    }
+    expect(uploadResult.success).toBe(true);
+    expect(uploadResult.assetUuid).toBeTruthy();
+    expect(uploadResult.name).toBe("Test Image");
+
+    const assetUuid = uploadResult.assetUuid;
+
+    // List — should include our asset
+    const listResult = parseResponse(
+      await client.callTool({ name: "list-assets", arguments: {} })
+    );
+    expect(listResult.assets.some((a: any) => a.uuid === assetUuid)).toBe(true);
+    const found = listResult.assets.find((a: any) => a.uuid === assetUuid);
+    expect(found.type).toBe("picture");
+
+    // Rename
+    const renameResult = parseResponse(
+      await client.callTool({
+        name: "rename-asset",
+        arguments: { assetRef: assetUuid, newName: "Renamed Image" },
+      })
+    );
+    expect(renameResult.success).toBe(true);
+
+    // Verify rename took effect
+    const listAfterRename = parseResponse(
+      await client.callTool({ name: "list-assets", arguments: {} })
+    );
+    const renamed = listAfterRename.assets.find((a: any) => a.uuid === assetUuid);
+    expect(renamed.name).toBe("Renamed Image");
+
+    // Remove
+    const removeResult = parseResponse(
+      await client.callTool({
+        name: "remove-asset",
+        arguments: { assetRef: assetUuid },
+      })
+    );
+    expect(removeResult.success).toBe(true);
+
+    // Verify removed
+    const listAfterRemove = parseResponse(
+      await client.callTool({ name: "list-assets", arguments: {} })
+    );
+    expect(listAfterRemove.assets.some((a: any) => a.uuid === assetUuid)).toBe(false);
+
+    // Undo all (remove, rename, upload = 3 undos)
+    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+
+  it("set-image sets src on an img element with raw URL", async () => {
+    // Add an img child, then use set-image to set its src attribute
+    const comp = discoveredComponents[0];
+    const summaryResult = parseResponse(
+      await client.callTool({
+        name: "get-component-summary",
+        arguments: { componentUuid: comp.uuid },
+      })
+    );
+    const rootUuid = summaryResult.tree.uuid;
+
+    // Add an img child to the root
+    const addResult = parseResponse(
+      await client.callTool({
+        name: "add-child",
+        arguments: {
+          componentUuid: comp.uuid,
+          parentRef: rootUuid,
+          child: { type: "img" },
+        },
+      })
+    );
+    expect(addResult.success).toBe(true);
+
+    // Find the img node UUID from the updated tree
+    const afterAdd = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    );
+    function findImg(node: any): string | null {
+      if (node.tag === "img" && node.uuid) return node.uuid;
+      for (const child of node.children ?? []) {
+        const found = findImg(child);
+        if (found) return found;
+      }
+      return null;
+    }
+    const imgUuid = findImg(afterAdd.tree);
+    expect(imgUuid).toBeTruthy();
+
+    const setResult = parseResponse(
+      await client.callTool({
+        name: "set-image",
+        arguments: {
+          componentUuid: comp.uuid,
+          nodeRef: imgUuid!,
+          src: "https://example.com/photo.jpg",
+        },
+      })
+    );
+    if (!setResult?.success) {
+      process.stderr.write(`set-image error: ${JSON.stringify(setResult)}\n`);
+    }
+    expect(setResult.success).toBe(true);
+    expect(setResult.imageSource).toBe("https://example.com/photo.jpg");
+
+    // Undo both the set-image and add-child
+    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+
+  it("list-assets with type filter", async () => {
+    const listResult = parseResponse(
+      await client.callTool({ name: "list-assets", arguments: { type: "icon" } })
+    );
+    expect(Array.isArray(listResult.assets)).toBe(true);
+  });
+
+  it("upload-asset rejects missing source", async () => {
+    const raw = await client.callTool({
+      name: "upload-asset",
+      arguments: {
+        name: "Bad Upload",
+        type: "picture",
+      },
+    });
+    const result = parseResponse(raw);
+    expect(raw.isError || (typeof result === "string" && result.includes("Either"))).toBe(true);
+  });
+});
+
 /** Walk a tree recursively to find a node by UUID. */
 function findNodeByUuid(tree: any, uuid: string): any {
   if (tree.uuid === uuid) return tree;

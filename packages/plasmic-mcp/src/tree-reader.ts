@@ -865,7 +865,16 @@ function extractExprValue(expr: any): unknown {
   }
 
   if (isKnownImageAssetRef(expr)) {
-    return expr.asset?.dataUri ?? expr.asset?.url ?? "[image]";
+    const asset = expr.asset;
+    if (asset) {
+      return {
+        assetUuid: asset.uuid,
+        assetName: asset.name,
+        assetType: asset.type,
+        src: asset.dataUri ?? asset.url ?? "[image]",
+      };
+    }
+    return "[image]";
   }
 
   if (isKnownStyleTokenRef(expr)) {
