@@ -29,6 +29,19 @@ export const mockCreateVariant = vi.fn();
 export const mockAddStyleToken = vi.fn();
 export const mockRenameStyleToken = vi.fn();
 export const mockDuplicateStyleToken = vi.fn();
+export const mockRemoveComponentQuery = vi.fn(
+  (component: any, query: any) => {
+    const idx = component.dataQueries?.indexOf(query);
+    if (idx !== undefined && idx >= 0) component.dataQueries.splice(idx, 1);
+  }
+);
+export const mockRemoveComponentServerQuery = vi.fn(
+  (component: any, query: any) => {
+    const idx = component.serverQueries?.indexOf(query);
+    if (idx !== undefined && idx >= 0) component.serverQueries.splice(idx, 1);
+  }
+);
+export const mockClearReferencesToRemovedQueries = vi.fn();
 export const mockGetUniqueParamName = vi.fn(
   (_component: any, name?: string) => name ?? "Unnamed Prop"
 );
@@ -93,5 +106,17 @@ export class TplMgr {
 
   renameParam(component: any, param: any, name: string): void {
     mockRenameParam(component, param, name);
+  }
+
+  removeComponentQuery(component: any, query: any): void {
+    mockRemoveComponentQuery(component, query);
+  }
+
+  removeComponentServerQuery(component: any, query: any): void {
+    mockRemoveComponentServerQuery(component, query);
+  }
+
+  clearReferencesToRemovedQueries(removedQueries: string[] | string): void {
+    mockClearReferencesToRemovedQueries(removedQueries);
   }
 }

@@ -3786,6 +3786,146 @@ describe("interactions", () => {
   });
 });
 
+// =========================================================================
+// Data Queries
+// =========================================================================
+
+describe("data queries", () => {
+  it("add-query → list-queries → remove-query round-trip", async () => {
+    const comp = discoveredComponents[0];
+
+    // Add a data query
+    const addResult = await client.callTool({
+      name: "add-query",
+      arguments: {
+        componentUuid: comp.uuid,
+        name: "products",
+      },
+    });
+    expect(addResult.isError).toBeFalsy();
+    const addOutput = parseResponse(addResult);
+    expect(addOutput.success).toBe(true);
+    expect(addOutput.name).toBe("products");
+    expect(addOutput.queryType).toBe("dataQuery");
+    expect(addOutput.queryUuid).toBeTruthy();
+
+    // List queries
+    const listResult = parseResponse(
+      await client.callTool({
+        name: "list-queries",
+        arguments: { componentUuid: comp.uuid },
+      })
+    );
+    expect(listResult.queryCount).toBeGreaterThanOrEqual(1);
+    const found = listResult.queries.find(
+      (q: any) => q.name === "products"
+    );
+    expect(found).toBeDefined();
+    expect(found.queryType).toBe("dataQuery");
+
+    // Remove the query
+    const removeResult = await client.callTool({
+      name: "remove-query",
+      arguments: {
+        componentUuid: comp.uuid,
+        queryRef: "products",
+      },
+    });
+    expect(removeResult.isError).toBeFalsy();
+    const removeOutput = parseResponse(removeResult);
+    expect(removeOutput.success).toBe(true);
+    expect(removeOutput.removedName).toBe("products");
+
+    // Verify empty
+    const listAfter = parseResponse(
+      await client.callTool({
+        name: "list-queries",
+        arguments: { componentUuid: comp.uuid },
+      })
+    );
+    const productsAfter = (listAfter.queries ?? []).find(
+      (q: any) => q.name === "products"
+    );
+    expect(productsAfter).toBeUndefined();
+  });
+
+  it("add-query → update-query → verify rename", async () => {
+    const comp = discoveredComponents[0];
+
+    // Add a data query
+    await client.callTool({
+      name: "add-query",
+      arguments: {
+        componentUuid: comp.uuid,
+        name: "oldName",
+      },
+    });
+
+    // Update the query name
+    const updateResult = await client.callTool({
+      name: "update-query",
+      arguments: {
+        componentUuid: comp.uuid,
+        queryRef: "oldName",
+        name: "newName",
+      },
+    });
+    expect(updateResult.isError).toBeFalsy();
+    const updateOutput = parseResponse(updateResult);
+    expect(updateOutput.success).toBe(true);
+    expect(updateOutput.name).toBe("newName");
+
+    // Verify via list
+    const listResult = parseResponse(
+      await client.callTool({
+        name: "list-queries",
+        arguments: { componentUuid: comp.uuid },
+      })
+    );
+    const renamed = listResult.queries.find(
+      (q: any) => q.name === "newName"
+    );
+    expect(renamed).toBeDefined();
+    const old = listResult.queries.find(
+      (q: any) => q.name === "oldName"
+    );
+    expect(old).toBeUndefined();
+
+    // Undo twice
+    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+
+  it("rejects duplicate query name", async () => {
+    const comp = discoveredComponents[0];
+
+    // Add first query
+    await client.callTool({
+      name: "add-query",
+      arguments: {
+        componentUuid: comp.uuid,
+        name: "myQuery",
+      },
+    });
+
+    // Try duplicate
+    const dupResult = await client.callTool({
+      name: "add-query",
+      arguments: {
+        componentUuid: comp.uuid,
+        name: "myQuery",
+      },
+    });
+    const dup = parseResponse(dupResult);
+    expect(
+      dupResult.isError || (typeof dup === "string" && dup.includes("already exists"))
+    ).toBeTruthy();
+
+    // Undo
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+});
+
 /** Walk a tree recursively to find a node by UUID. */
 function findNodeByUuid(tree: any, uuid: string): any {
   if (tree.uuid === uuid) return tree;

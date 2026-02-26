@@ -55,6 +55,10 @@ import {
   listInteractions,
   addInteraction,
   removeInteraction,
+  listQueries,
+  addQuery,
+  removeQuery,
+  updateQuery,
 } from "../edit-tools";
 import { setSession, clearSession } from "../session";
 import { initChangeTracker, disposeChangeTracker } from "../change-tracker";
@@ -75,6 +79,8 @@ import {
   mockDuplicateStyleToken,
   mockGetUniqueParamName,
   mockRenameParam,
+  mockRemoveComponentQuery,
+  mockRemoveComponentServerQuery,
 } from "../__mocks__/wab-tpl-mgr";
 import { mockMkTplTagX, mockMkTplInlinedText, mockMkTplComponentX } from "../__mocks__/wab-tpls";
 import { mockEnsureVariantSetting } from "../__mocks__/wab-variants";
@@ -8549,5 +8555,340 @@ describe("removeInteraction", () => {
     await expect(
       removeInteraction(api, "comp-1", "comp-inst-1", "onClick")
     ).rejects.toThrow(/non-TplTag|TplComponent/);
+  });
+});
+
+// =============================================================================
+// listQueries — reading data queries from a component
+// =============================================================================
+
+describe("listQueries", () => {
+  beforeEach(() => {
+    mockWithRecording.mockReturnValue({
+      changes: [], newInsts: [], removedInsts: [],
+    });
+  });
+
+  afterEach(() => {
+    clearSession();
+    disposeChangeTracker();
+    clearNodeCache();
+  });
+
+  it("returns empty array when no queries exist", () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).dataQueries = [];
+    (comp as any).serverQueries = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = listQueries(comp);
+    expect(result).toEqual([]);
+  });
+
+  it("lists data queries", () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).dataQueries = [
+      { uuid: "q1", name: "products", op: null },
+      { uuid: "q2", name: "categories", op: null },
+    ];
+    (comp as any).serverQueries = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = listQueries(comp);
+    expect(result).toHaveLength(2);
+    expect(result[0]).toEqual({ uuid: "q1", name: "products", queryType: "dataQuery" });
+    expect(result[1]).toEqual({ uuid: "q2", name: "categories", queryType: "dataQuery" });
+  });
+
+  it("lists both data and server queries", () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).dataQueries = [
+      { uuid: "q1", name: "products", op: null },
+    ];
+    (comp as any).serverQueries = [
+      { uuid: "q2", name: "fetchUser", op: null },
+    ];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = listQueries(comp);
+    expect(result).toHaveLength(2);
+    expect(result[0].queryType).toBe("dataQuery");
+    expect(result[1].queryType).toBe("serverQuery");
+    expect(result[1].name).toBe("fetchUser");
+  });
+});
+
+// =============================================================================
+// addQuery — creating data queries on a component
+// =============================================================================
+
+describe("addQuery", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    api = mockApiClient();
+    mockWithRecording.mockReturnValue({
+      changes: [], newInsts: [], removedInsts: [],
+    });
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "100" });
+  });
+
+  afterEach(() => {
+    clearSession();
+    disposeChangeTracker();
+    clearNodeCache();
+  });
+
+  it("adds a data query", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).dataQueries = [];
+    (comp as any).serverQueries = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await addQuery(api, "comp-1", "products");
+    expect(result.name).toBe("products");
+    expect(result.queryType).toBe("dataQuery");
+    expect(result.queryUuid).toBeTruthy();
+
+    expect(comp.dataQueries).toHaveLength(1);
+    expect(comp.dataQueries[0].name).toBe("products");
+    expect(comp.dataQueries[0].uuid).toBe(result.queryUuid);
+  });
+
+  it("adds a server query", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).dataQueries = [];
+    (comp as any).serverQueries = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await addQuery(api, "comp-1", "fetchUser", "serverQuery");
+    expect(result.queryType).toBe("serverQuery");
+    expect(comp.serverQueries).toHaveLength(1);
+    expect(comp.serverQueries[0].name).toBe("fetchUser");
+  });
+
+  it("normalizes query name to valid identifier", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).dataQueries = [];
+    (comp as any).serverQueries = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await addQuery(api, "comp-1", "user-data");
+    expect(result.name).toBe("userData");
+  });
+
+  it("rejects duplicate query name", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).dataQueries = [{ uuid: "q1", name: "products", op: null }];
+    (comp as any).serverQueries = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      addQuery(api, "comp-1", "products")
+    ).rejects.toThrow(/already exists/);
+  });
+
+  it("rejects empty query name", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).dataQueries = [];
+    (comp as any).serverQueries = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      addQuery(api, "comp-1", "")
+    ).rejects.toThrow(/cannot be empty/);
+  });
+});
+
+// =============================================================================
+// removeQuery — removing data queries from a component
+// =============================================================================
+
+describe("removeQuery", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    api = mockApiClient();
+    mockWithRecording.mockReturnValue({
+      changes: [], newInsts: [], removedInsts: [],
+    });
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "100" });
+  });
+
+  afterEach(() => {
+    clearSession();
+    disposeChangeTracker();
+    clearNodeCache();
+  });
+
+  it("removes a data query by name", async () => {
+    const query = { _type: "ComponentDataQuery", uuid: "q1", name: "products", op: null };
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).dataQueries = [query];
+    (comp as any).serverQueries = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await removeQuery(api, "comp-1", "products");
+    expect(result.removedName).toBe("products");
+    expect(result.removedUuid).toBe("q1");
+    expect(result.queryType).toBe("dataQuery");
+    expect(mockRemoveComponentQuery).toHaveBeenCalledWith(comp, query);
+  });
+
+  it("removes a server query by UUID", async () => {
+    const query = { _type: "ComponentServerQuery", uuid: "sq1", name: "fetchUser", op: null };
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).dataQueries = [];
+    (comp as any).serverQueries = [query];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await removeQuery(api, "comp-1", "sq1");
+    expect(result.removedName).toBe("fetchUser");
+    expect(result.queryType).toBe("serverQuery");
+    expect(mockRemoveComponentServerQuery).toHaveBeenCalledWith(comp, query);
+  });
+
+  it("throws when query not found", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).dataQueries = [];
+    (comp as any).serverQueries = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      removeQuery(api, "comp-1", "nonexistent")
+    ).rejects.toThrow(/not found/);
+  });
+});
+
+// =============================================================================
+// updateQuery — renaming data queries
+// =============================================================================
+
+describe("updateQuery", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    api = mockApiClient();
+    mockWithRecording.mockReturnValue({
+      changes: [], newInsts: [], removedInsts: [],
+    });
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "100" });
+  });
+
+  afterEach(() => {
+    clearSession();
+    disposeChangeTracker();
+    clearNodeCache();
+  });
+
+  it("renames a data query", async () => {
+    const query = { uuid: "q1", name: "products", op: null };
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).dataQueries = [query];
+    (comp as any).serverQueries = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateQuery(api, "comp-1", "products", "items");
+    expect(result.name).toBe("items");
+    expect(query.name).toBe("items");
+  });
+
+  it("rejects duplicate name", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).dataQueries = [
+      { uuid: "q1", name: "products", op: null },
+      { uuid: "q2", name: "categories", op: null },
+    ];
+    (comp as any).serverQueries = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      updateQuery(api, "comp-1", "products", "categories")
+    ).rejects.toThrow(/already exists/);
+  });
+
+  it("throws when no name provided", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).dataQueries = [{ uuid: "q1", name: "products", op: null }];
+    (comp as any).serverQueries = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      updateQuery(api, "comp-1", "products", undefined)
+    ).rejects.toThrow(/name must be provided/);
+  });
+
+  it("throws when query not found", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).dataQueries = [];
+    (comp as any).serverQueries = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      updateQuery(api, "comp-1", "nonexistent", "newName")
+    ).rejects.toThrow(/not found/);
   });
 });

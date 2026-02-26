@@ -3,10 +3,10 @@
 > **Goal**: Create Claude Code skills and workflows that can interact with Plasmic Studio
 > programmatically to create fully-featured pages from the Claude Code terminal.
 >
-> **Current state**: 53 MCP tools, 6 Claude Code skills, 855 tests (781 unit + 74 integration).
+> **Current state**: 57 MCP tools, 6 Claude Code skills, 873 tests (796 unit + 77 integration).
 > Zero TODOs/FIXMEs/skipped tests.
 >
-> **Last verified**: 2026-02-26 — 2.2 Interactions & Event Handlers implemented.
+> **Last verified**: 2026-02-26 — 3.2 Data Queries implemented.
 
 ---
 
@@ -161,19 +161,20 @@ These features enable data-driven and media-rich pages.
 - **Effort**: Medium — URL fetching for upload, plus element-type-aware setting (img tag vs background-image)
 - **Tests needed**: Unit + integration (upload → set → read back → verify)
 
-### 3.2 Data Queries
+### 3.2 Data Queries — IMPLEMENTED (2026-02-26)
 - **Spec**: `specs/gap-data-queries.md`
-- **Status**: NOT IMPLEMENTED
-  - Verified: zero references to `addEmptyQuery`, `ComponentDataQuery` in MCP src/
-  - WAB backing confirmed: `addEmptyQuery()` (line 2835 standalone), `TplMgr.removeComponentQuery()` (line 1240), `clearReferencesToRemovedQueries()` (line 1212) in `shared/TplMgr.ts`
-- **What**: Four component-level actions:
-  - `add-query` — create ComponentDataQuery or ComponentServerQuery
-  - `list-queries` — list all queries on a component
-  - `remove-query` — delete and clean up expression references
-  - `update-query` — update name or operation config
+- **Status**: IMPLEMENTED
+  - Four new tools: `list-queries`, `add-query`, `remove-query`, `update-query`
+  - Creates ComponentDataQuery (client-side) or ComponentServerQuery (server-side)
+  - Query names validated as valid JS identifiers (used as `$queries.queryName` in expressions)
+  - Name normalization: `user-data` → `userData`, hyphen/space to camelCase
+  - Duplicate name detection across both data and server query arrays
+  - Removal via TplMgr.removeComponentQuery / removeComponentServerQuery for proper cleanup
+  - Mock classes: ComponentDataQuery, ComponentServerQuery + isKnownComponentDataQuery, isKnownComponentServerQuery
+  - TplMgr mock extended with removeComponentQuery, removeComponentServerQuery, clearReferencesToRemovedQueries
+  - 18 unit tests + 3 integration tests (round-trip: add → list → remove; rename; duplicate rejection)
+  - Total test count: 873 (796 unit + 77 integration)
 - **Cross-tool integration**: Query results usable via `$queries.myQuery.data` in dynamic text, data-cond, and data-rep collection expressions
-- **Effort**: Medium — straightforward CRUD with reference cleanup
-- **Tests needed**: Unit + integration (create query → reference in dynamic text → verify)
 
 ---
 

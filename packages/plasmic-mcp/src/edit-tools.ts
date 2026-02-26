@@ -61,6 +61,10 @@ import {
   RuleSet,
   StyleMarker,
   NodeMarker,
+  ComponentDataQuery,
+  ComponentServerQuery,
+  isKnownComponentDataQuery,
+  isKnownComponentServerQuery,
 } from "@/wab/shared/model/classes";
 import { RSH } from "@/wab/shared/RuleSetHelpers";
 import { TplMgr } from "@/wab/shared/TplMgr";
@@ -5086,4 +5090,262 @@ export async function removeInteraction(
   );
 
   return { save, removedCount, event };
+}
+
+// =============================================================================
+// Data Queries — CRUD for ComponentDataQuery and ComponentServerQuery
+// =============================================================================
+
+export interface QueryInfo {
+  uuid: string;
+  name: string;
+  queryType: "dataQuery" | "serverQuery";
+}
+
+/**
+ * List all data queries on a component.
+ * Returns both client-side (dataQuery) and server-side (serverQuery) queries.
+ */
+export function listQueries(component: any): QueryInfo[] {
+  requireSession();
+
+  const result: QueryInfo[] = [];
+
+  for (const q of component.dataQueries ?? []) {
+    result.push({
+      uuid: q.uuid,
+      name: q.name,
+      queryType: "dataQuery",
+    });
+  }
+
+  for (const q of component.serverQueries ?? []) {
+    result.push({
+      uuid: q.uuid,
+      name: q.name,
+      queryType: "serverQuery",
+    });
+  }
+
+  return result;
+}
+
+export interface AddQueryResult {
+  save: SaveResult;
+  queryUuid: string;
+  name: string;
+  queryType: "dataQuery" | "serverQuery";
+}
+
+/**
+ * Validate a query name: must be a valid JS identifier (used as $queries.name).
+ */
+function validateQueryName(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new Error("Query name cannot be empty.");
+  }
+  // Normalize to camelCase-safe identifier (replace spaces/hyphens with camelCase)
+  const normalized = trimmed
+    .replace(/[-_\s]+(.)/g, (_m, c) => c.toUpperCase())
+    .replace(/^[^a-zA-Z$_]/, "_$&"); // prefix with _ if starts with digit
+  if (!/^[a-zA-Z$_][a-zA-Z0-9$_]*$/.test(normalized)) {
+    throw new Error(
+      `Query name "${trimmed}" is not a valid JavaScript identifier. ` +
+        `Query names are referenced as $queries.${normalized} in expressions.`
+    );
+  }
+  return normalized;
+}
+
+/**
+ * Find a query by name or UUID. Searches both dataQueries and serverQueries.
+ */
+function findQuery(
+  component: any,
+  queryRef: string
+): { query: any; queryType: "dataQuery" | "serverQuery" } {
+  // Search data queries
+  for (const q of component.dataQueries ?? []) {
+    if (q.uuid === queryRef || q.name === queryRef) {
+      return { query: q, queryType: "dataQuery" };
+    }
+  }
+  // Search server queries
+  for (const q of component.serverQueries ?? []) {
+    if (q.uuid === queryRef || q.name === queryRef) {
+      return { query: q, queryType: "serverQuery" };
+    }
+  }
+  throw new Error(
+    `Query "${queryRef}" not found. Use list-queries to see available queries.`
+  );
+}
+
+/**
+ * Add a new data query to a component.
+ * Creates a ComponentDataQuery (client-side) or ComponentServerQuery (server-side).
+ */
+export async function addQuery(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  name: string,
+  queryType: "dataQuery" | "serverQuery" = "dataQuery"
+): Promise<AddQueryResult> {
+  const validName = validateQueryName(name);
+  const component = findComponent(componentUuid);
+  const session = requireSession();
+  const tracker = getChangeTracker();
+
+  // Check for duplicate names
+  const allQueries = [
+    ...(component.dataQueries ?? []),
+    ...(component.serverQueries ?? []),
+  ];
+  if (allQueries.some((q: any) => q.name === validName)) {
+    throw new Error(
+      `Query "${validName}" already exists on component "${component.name}". ` +
+        `Use a different name or remove the existing query first.`
+    );
+  }
+
+  const queryUuid = randomUUID();
+
+  const changes = tracker.withRecording(() => {
+    if (queryType === "dataQuery") {
+      const query = new ComponentDataQuery({
+        uuid: queryUuid,
+        name: validName,
+        op: null,
+      });
+      if (!component.dataQueries) component.dataQueries = [];
+      component.dataQueries.push(query);
+    } else {
+      const query = new ComponentServerQuery({
+        uuid: queryUuid,
+        name: validName,
+        op: null,
+      });
+      if (!component.serverQueries) component.serverQueries = [];
+      component.serverQueries.push(query);
+    }
+  });
+
+  const componentIid = getComponentIid(component);
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `add-query: ${validName} (${queryType}) on ${component.name}`,
+    componentIid ? [componentIid] : []
+  );
+
+  return {
+    save,
+    queryUuid,
+    name: validName,
+    queryType,
+  };
+}
+
+export interface RemoveQueryResult {
+  save: SaveResult;
+  removedName: string;
+  removedUuid: string;
+  queryType: "dataQuery" | "serverQuery";
+}
+
+/**
+ * Remove a data query from a component.
+ * Uses TplMgr.removeComponentQuery / removeComponentServerQuery for proper cleanup.
+ */
+export async function removeQuery(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  queryRef: string
+): Promise<RemoveQueryResult> {
+  const component = findComponent(componentUuid);
+  const session = requireSession();
+  const tracker = getChangeTracker();
+  const { query, queryType } = findQuery(component, queryRef);
+
+  const removedName = query.name;
+  const removedUuid = query.uuid;
+
+  const tplMgr = new TplMgr({ site: session.site });
+
+  const changes = tracker.withRecording(() => {
+    if (queryType === "dataQuery") {
+      tplMgr.removeComponentQuery(component, query);
+    } else {
+      tplMgr.removeComponentServerQuery(component, query);
+    }
+  });
+
+  const componentIid = getComponentIid(component);
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `remove-query: ${removedName} from ${component.name}`,
+    componentIid ? [componentIid] : []
+  );
+
+  return { save, removedName, removedUuid, queryType };
+}
+
+export interface UpdateQueryResult {
+  save: SaveResult;
+  queryUuid: string;
+  name: string;
+  queryType: "dataQuery" | "serverQuery";
+}
+
+/**
+ * Update a data query's name.
+ */
+export async function updateQuery(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  queryRef: string,
+  newName?: string
+): Promise<UpdateQueryResult> {
+  const component = findComponent(componentUuid);
+  requireSession();
+  const tracker = getChangeTracker();
+  const { query, queryType } = findQuery(component, queryRef);
+
+  if (!newName) {
+    throw new Error("At least a new name must be provided for update-query.");
+  }
+
+  const validName = validateQueryName(newName);
+
+  // Check for duplicate names (excluding current query)
+  const allQueries = [
+    ...(component.dataQueries ?? []),
+    ...(component.serverQueries ?? []),
+  ].filter((q: any) => q.uuid !== query.uuid);
+  if (allQueries.some((q: any) => q.name === validName)) {
+    throw new Error(
+      `Query "${validName}" already exists on component "${component.name}".`
+    );
+  }
+
+  const changes = tracker.withRecording(() => {
+    query.name = validName;
+  });
+
+  const componentIid = getComponentIid(component);
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `update-query: rename to ${validName} on ${component.name}`,
+    componentIid ? [componentIid] : []
+  );
+
+  return {
+    save,
+    queryUuid: query.uuid,
+    name: validName,
+    queryType,
+  };
 }

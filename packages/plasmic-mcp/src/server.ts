@@ -75,6 +75,10 @@ import {
   listInteractions,
   addInteraction,
   removeInteraction,
+  listQueries,
+  addQuery,
+  removeQuery,
+  updateQuery,
 } from "./edit-tools.js";
 import { beginBatch, endBatch, isBatchActive, cancelBatch, cancelBatchWithRollback, getAccumulatedChanges } from "./batch-manager.js";
 import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
@@ -4232,6 +4236,277 @@ export function createServer(): McpServer {
         };
       } catch (err: any) {
         return handleMutationError("removing interaction", err);
+      }
+    }
+  );
+
+  // --- list-queries ---
+  // List all data queries on a component.
+  server.tool(
+    "list-queries",
+    "List all data queries on a component. " +
+      "Returns both client-side (dataQuery) and server-side (serverQuery) queries.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component to list queries for"),
+    },
+    async ({ componentUuid }) => {
+      try {
+        const session = requireSession();
+        const component = session.site.components?.find(
+          (c: any) => c.uuid === componentUuid
+        );
+        if (!component) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Component not found: ${componentUuid}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        const queries = listQueries(component);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  componentUuid,
+                  componentName: component.name,
+                  queryCount: queries.length,
+                  queries,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("listing queries", err);
+      }
+    }
+  );
+
+  // --- add-query ---
+  // Add a data query to a component.
+  server.tool(
+    "add-query",
+    "Add a data query to a component. " +
+      "Creates a ComponentDataQuery (client-side) or ComponentServerQuery (server-side). " +
+      "Query results are accessible via $queries.queryName in expressions.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component to add the query to"),
+      name: z
+        .string()
+        .describe('Query name (must be a valid JS identifier, e.g., "products", "userData")'),
+      queryType: z
+        .enum(["dataQuery", "serverQuery"])
+        .optional()
+        .describe('Type of query: "dataQuery" (client-side, default) or "serverQuery" (server-side)'),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting."),
+    },
+    async ({ componentUuid, name, queryType, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            addQuery(apiClient, componentUuid, name, queryType ?? "dataQuery")
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    queryUuid: result.queryUuid,
+                    name: result.name,
+                    queryType: result.queryType,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await addQuery(
+          apiClient, componentUuid, name, queryType ?? "dataQuery"
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  queryUuid: result.queryUuid,
+                  name: result.name,
+                  queryType: result.queryType,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("adding query", err);
+      }
+    }
+  );
+
+  // --- remove-query ---
+  // Remove a data query from a component.
+  server.tool(
+    "remove-query",
+    "Remove a data query from a component. " +
+      "Cleans up query invalidation references. " +
+      "Expressions using $queries.queryName will break at runtime after removal.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component containing the query"),
+      queryRef: z
+        .string()
+        .describe("Query reference: name or UUID"),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting."),
+    },
+    async ({ componentUuid, queryRef, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            removeQuery(apiClient, componentUuid, queryRef)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    removedName: result.removedName,
+                    removedUuid: result.removedUuid,
+                    queryType: result.queryType,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await removeQuery(apiClient, componentUuid, queryRef);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  removedName: result.removedName,
+                  removedUuid: result.removedUuid,
+                  queryType: result.queryType,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("removing query", err);
+      }
+    }
+  );
+
+  // --- update-query ---
+  // Rename a data query on a component.
+  server.tool(
+    "update-query",
+    "Rename a data query on a component. " +
+      "Updates the query name. Existing $queries.oldName references will need manual update.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component containing the query"),
+      queryRef: z
+        .string()
+        .describe("Query reference: current name or UUID"),
+      name: z
+        .string()
+        .describe("New query name (must be a valid JS identifier)"),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting."),
+    },
+    async ({ componentUuid, queryRef, name, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            updateQuery(apiClient, componentUuid, queryRef, name)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    queryUuid: result.queryUuid,
+                    name: result.name,
+                    queryType: result.queryType,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await updateQuery(apiClient, componentUuid, queryRef, name);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  queryUuid: result.queryUuid,
+                  name: result.name,
+                  queryType: result.queryType,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("updating query", err);
       }
     }
   );

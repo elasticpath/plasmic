@@ -470,6 +470,37 @@ export const isKnownEventHandler = (obj: any): boolean =>
 export const isKnownInteraction = (obj: any): boolean =>
   obj?._type === "Interaction";
 
+/** Mock constructor for ComponentDataQuery — client-side data query on a component. */
+export class ComponentDataQuery {
+  _type = "ComponentDataQuery";
+  uuid: string;
+  name: string;
+  op: any;
+  constructor(args: { uuid: string; name: string; op?: any }) {
+    this.uuid = args.uuid;
+    this.name = args.name;
+    this.op = args.op ?? null;
+  }
+}
+
+/** Mock constructor for ComponentServerQuery — server-side query on a component. */
+export class ComponentServerQuery {
+  _type = "ComponentServerQuery";
+  uuid: string;
+  name: string;
+  op: any;
+  constructor(args: { uuid: string; name: string; op?: any }) {
+    this.uuid = args.uuid;
+    this.name = args.name;
+    this.op = args.op ?? null;
+  }
+}
+
+export const isKnownComponentDataQuery = (obj: any): boolean =>
+  obj?._type === "ComponentDataQuery";
+export const isKnownComponentServerQuery = (obj: any): boolean =>
+  obj?._type === "ComponentServerQuery";
+
 export class Site {
   static isKnown(obj: any): boolean {
     return obj?._type === "Site";

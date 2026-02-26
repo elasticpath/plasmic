@@ -151,6 +151,24 @@ declare module "@/wab/shared/model/classes" {
   export function isKnownNamedState(x: any): boolean;
   export function isKnownEventHandler(x: any): boolean;
   export function isKnownInteraction(x: any): boolean;
+  export function isKnownComponentDataQuery(x: any): boolean;
+  export function isKnownComponentServerQuery(x: any): boolean;
+
+  /** Model class for ComponentDataQuery — client-side data query on a component. */
+  export class ComponentDataQuery {
+    constructor(args: { uuid: string; name: string; op?: any });
+    uuid: string;
+    name: string;
+    op: any;
+  }
+
+  /** Model class for ComponentServerQuery — server-side data query on a component. */
+  export class ComponentServerQuery {
+    constructor(args: { uuid: string; name: string; op?: any });
+    uuid: string;
+    name: string;
+    op: any;
+  }
 
   /** Model class for EventHandler — event handler expression containing interactions. */
   export class EventHandler {
@@ -430,6 +448,14 @@ declare module "@/wab/shared/TplMgr" {
     /** Add a named variant to an existing ComponentVariantGroup.
      *  Name is auto-deduplicated via getUniqueVariantName(). */
     createVariant(component: any, group: any, name?: string): any;
+    /** Remove a client-side data query from a component.
+     *  Cleans up QueryInvalidationExpr references. */
+    removeComponentQuery(component: any, query: any): void;
+    /** Remove a server-side query from a component.
+     *  Cleans up QueryInvalidationExpr references. */
+    removeComponentServerQuery(component: any, query: any): void;
+    /** Clean up QueryInvalidationExpr references to removed queries. */
+    clearReferencesToRemovedQueries(removedQueries: string[] | string): void;
   }
 }
 
