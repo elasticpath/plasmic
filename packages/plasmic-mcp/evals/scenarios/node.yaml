@@ -1,0 +1,27 @@
+# Node domain scenarios
+# Tests: adding elements, modifying content
+scenarios:
+  - id: node-add-heading
+    description: "Add a heading element that says 'Hello World' to the Homepage component. First inspect the Homepage to find a suitable container, then add the heading."
+    domains:
+      - node
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - inspect
+            - node
+      - type: tool-params
+        params:
+          tool: node
+          action: add
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 3
+          max: 12

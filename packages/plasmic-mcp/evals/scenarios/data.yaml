@@ -1,0 +1,22 @@
+# Data domain scenarios
+# Tests: query listing, data binding inspection
+scenarios:
+  - id: data-list-queries
+    description: "Show me what data queries are defined on the Homepage component. First find the Homepage, then list its queries."
+    domains:
+      - data
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - data
+      - type: tool-params
+        params:
+          tool: data
+          action: list-queries
+          expected: {}
+      - type: no-errors
+        params: {}

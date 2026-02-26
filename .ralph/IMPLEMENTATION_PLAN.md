@@ -1,17 +1,32 @@
 # Implementation Plan: Plasmic MCP Eval System
 
-> Last updated: 2026-02-26
+> Last updated: 2026-02-26 (P0 + P1 implementation status update)
 > Source: `.ralph/specs/mcp-eval-framework.md`, `mcp-eval-scenarios.md`, `mcp-eval-grading.md`, `mcp-eval-visual-capture.md`
 
 ## Status Summary
 
-Nothing from the eval system exists yet. The MCP server itself is complete (8 STRAP domains, 103 actions, 1197 tests, 6 Claude Code skills, zero TODOs/placeholders). This plan builds the eval system from scratch.
+**P0 (Foundation): DONE.** All 4 sub-tasks implemented — directory scaffolding, MCP client adapter, scenario schema/loader, and eval runner with Claude client.
+**P1 (Core): P1.1-P1.4 DONE.** Grader framework, 10 scenarios, JSON reporter, and CLI all implemented. **P1.5 (CI workflow) is NEXT.**
+**P2 (Enhancement): NOT STARTED.** Medium/complex scenarios, visual capture, LLM judge, integration tier.
+**P3 (Polish): NOT STARTED.** Dashboard, human review, remaining scenarios, cost tracking.
 
 ### Codebase Health (verified 2026-02-26)
 - Zero TODO/FIXME/HACK comments in `packages/plasmic-mcp/`
 - Zero skipped or flaky tests
 - Zero placeholder or stub implementations (all stubs are intentional mock infrastructure)
 - All 1197 tests passing (1060 unit + 137 integration)
+- Eval system files implemented:
+  - `evals/harness/mcp-client.ts` — McpEvalClient (mock mode, createServer + InMemoryTransport)
+  - `evals/harness/types.ts` — EvalScenario, GraderConfig, SetupStep, TranscriptEntry, etc.
+  - `evals/harness/scenario-loader.ts` — YAML loading, validation, filtering
+  - `evals/harness/runner.ts` — runScenario, runAll with progress + cost tracking
+  - `evals/harness/claude-client.ts` — Multi-turn conversation loop with timeout, tool routing
+  - `evals/harness/reporter.ts` — generateReport, saveReport, printSummary
+  - `evals/graders/index.ts` — Grader registry
+  - `evals/graders/transcript-check.ts` — tool-sequence, tool-params, count, no-errors
+  - `evals/graders/state-check.ts` — existence, property, structure, data
+  - `evals/scenarios/` — 10 YAML scenarios (one per domain + 2 cross-domain)
+  - `evals/cli.ts` — CLI entry point with all flags
 
 ### Reusable Infrastructure (already exists)
 - `createServer()` export from `server.ts` — returns `McpServer` with all 8 tools
@@ -26,36 +41,36 @@ Nothing from the eval system exists yet. The MCP server itself is complete (8 ST
 
 ## P0 — Foundation (must exist before anything else works)
 
-**Status: NOT STARTED**
+**Status: DONE**
 
 ### P0.1: Eval directory structure and package scaffolding
-- [ ] Create `packages/plasmic-mcp/evals/` directory tree:
+- [x] Create `packages/plasmic-mcp/evals/` directory tree:
   - `evals/scenarios/` — YAML scenario definitions (by domain + cross-domain)
   - `evals/graders/` — State-check grader implementations
   - `evals/harness/` — Eval runner, MCP client adapter, result collector
   - `evals/results/` — Output directory (gitignored except `.gitkeep`)
   - `evals/results/screenshots/` — Visual capture output (gitignored)
-- [ ] Add `evals/results/` to `.gitignore`
-- [ ] Add devDependencies to `packages/plasmic-mcp/package.json`: `@anthropic-ai/sdk` (Claude API), `yaml` (scenario parsing)
+- [x] Add `evals/results/` to `.gitignore`
+- [x] Add devDependencies to `packages/plasmic-mcp/package.json`: `@anthropic-ai/sdk` (Claude API), `yaml` (scenario parsing)
 - **Spec**: mcp-eval-framework.md
 - **Dependencies**: None
 - **Files**: `packages/plasmic-mcp/evals/`, `packages/plasmic-mcp/package.json` (devDeps)
 
 ### P0.2: MCP client adapter for eval harness
-- [ ] Build programmatic MCP client that calls the 8 STRAP domain tools via MCP protocol
-- [ ] **Mock mode**: Import `createServer()` from `server.ts`, use `InMemoryTransport` to create client/server pair in-process. Set up env vars so `getAuth()` succeeds with mock credentials. Mock `fetch()` to return bundle fixture (same pattern as `real-integration.test.ts`)
-- [ ] Expose `callTool(domain, params)` method that sends tool calls and returns JSON results
-- [ ] Expose `listTools()` method that returns tool definitions as Anthropic API `Tool[]` format (from `client.listTools()` JSON Schema → Anthropic SDK tool shape)
-- [ ] Handle environment variable validation: fail fast with clear error if `ANTHROPIC_API_KEY` is missing (spec edge case EC4)
+- [x] Build programmatic MCP client that calls the 8 STRAP domain tools via MCP protocol
+- [x] **Mock mode**: Import `createServer()` from `server.ts`, use `InMemoryTransport` to create client/server pair in-process. Set up env vars so `getAuth()` succeeds with mock credentials. Mock `fetch()` to return bundle fixture (same pattern as `real-integration.test.ts`)
+- [x] Expose `callTool(domain, params)` method that sends tool calls and returns JSON results
+- [x] Expose `listTools()` method that returns tool definitions as Anthropic API `Tool[]` format (from `client.listTools()` JSON Schema → Anthropic SDK tool shape)
+- [x] Handle environment variable validation: fail fast with clear error if `ANTHROPIC_API_KEY` is missing (spec edge case EC4)
 - **Spec**: mcp-eval-framework.md
 - **Dependencies**: P0.1
 - **Files**: `evals/harness/mcp-client.ts`
 
 ### P0.3: Scenario schema and loader
-- [ ] Define TypeScript interfaces: `EvalScenario`, `GraderConfig`, `SetupStep`
-- [ ] Build YAML loader that reads + validates scenario files
-- [ ] Validate: unique scenario IDs, valid domain names, valid grader types
-- [ ] Warn (don't error) if a scenario has no graders defined — track but don't affect pass rate (spec edge case EC6)
+- [x] Define TypeScript interfaces: `EvalScenario`, `GraderConfig`, `SetupStep`
+- [x] Build YAML loader that reads + validates scenario files
+- [x] Validate: unique scenario IDs, valid domain names, valid grader types
+- [x] Warn (don't error) if a scenario has no graders defined — track but don't affect pass rate (spec edge case EC6)
 - **Schema**:
   ```typescript
   interface EvalScenario {
@@ -83,7 +98,7 @@ Nothing from the eval system exists yet. The MCP server itself is complete (8 ST
 - **Files**: `evals/harness/types.ts`, `evals/harness/scenario-loader.ts`
 
 ### P0.4: Minimal eval runner (end-to-end loop for ONE scenario)
-- [ ] Core eval loop that executes a single scenario end-to-end:
+- [x] Core eval loop that executes a single scenario end-to-end:
   1. Load scenario YAML
   2. Initialize MCP client (mock mode)
   3. Run setup steps (if any) — direct tool calls, not via Claude
@@ -93,10 +108,10 @@ Nothing from the eval system exists yet. The MCP server itself is complete (8 ST
   7. Collect transcript: every message (user, assistant, tool results)
   8. Run state-check graders against the final project state (via MCP inspect calls)
   9. Produce a per-scenario result object with pass/fail, metrics, transcript
-- [ ] Handle edge case: Claude asks clarifying questions instead of calling tools — mark as incomplete, log for review (spec edge case SE3)
-- [ ] Handle edge case: timeout — record partial transcript, mark as timed out (spec edge case EC2)
-- [ ] Handle edge case: tool errors — log and continue conversation (Claude may self-correct) (spec edge case EC1)
-- [ ] System prompt: describe the 8 STRAP tools, derived from `client.listTools()`. Register tools as Anthropic API tool definitions with JSON Schema from MCP SDK
+- [x] Handle edge case: Claude asks clarifying questions instead of calling tools — mark as incomplete, log for review (spec edge case SE3)
+- [x] Handle edge case: timeout — record partial transcript, mark as timed out (spec edge case EC2)
+- [x] Handle edge case: tool errors — log and continue conversation (Claude may self-correct) (spec edge case EC1)
+- [x] System prompt: describe the 8 STRAP tools, derived from `client.listTools()`. Register tools as Anthropic API tool definitions with JSON Schema from MCP SDK
 - **Spec**: mcp-eval-framework.md
 - **Dependencies**: P0.2, P0.3
 - **Files**: `evals/harness/runner.ts`, `evals/harness/claude-client.ts`
@@ -105,28 +120,28 @@ Nothing from the eval system exists yet. The MCP server itself is complete (8 ST
 
 ## P1 — Core (minimum viable eval system)
 
-**Status: NOT STARTED**
+**Status: P1.1-P1.4 DONE, P1.5 NEXT**
 
 ### P1.1: State-check grader framework
-- [ ] Implement programmatic graders that validate project state after task completes
-- [ ] **Mock-tier graders** (transcript validation):
+- [x] Implement programmatic graders that validate project state after task completes
+- [x] **Mock-tier graders** (transcript validation):
   - `tool-sequence`: Specific tools were called (order-independent, checks set membership)
   - `tool-params`: A specific tool call included expected parameters
   - `count`: Tool call count is within expected range
   - `no-errors`: No tool calls returned `isError: true`
-- [ ] **State graders** (MCP inspect validation):
+- [x] **State graders** (MCP inspect validation):
   - `existence`: Call `component.list` or `inspect.node` to check an entity exists
   - `property`: Call `inspect.node` and check specific style/text/attr values
   - `structure`: Call `inspect.summary` and check child count, node types, nesting
   - `data`: Call `data.list-queries`, `interaction.list`, etc. to check data bindings
-- [ ] State graders work identically in mock and integration tier — they query the MCP server's current model state via tool calls
-- [ ] Handle extra output gracefully: if Claude creates extra nodes beyond what's asked, pass as long as required entities exist (spec edge case SE2)
+- [x] State graders work identically in mock and integration tier — they query the MCP server's current model state via tool calls
+- [x] Handle extra output gracefully: if Claude creates extra nodes beyond what's asked, pass as long as required entities exist (spec edge case SE2)
 - **Spec**: mcp-eval-grading.md (Tier 1)
 - **Dependencies**: P0.4
 - **Files**: `evals/graders/state-check.ts`, `evals/graders/transcript-check.ts`, `evals/graders/index.ts`
 
 ### P1.2: First 10 simple scenarios (one per domain + 2 cross-domain)
-- [ ] Write 10 YAML scenarios to validate the eval loop end-to-end:
+- [x] Write 10 YAML scenarios to validate the eval loop end-to-end:
   1. `project-list` — "List all projects" (project)
   2. `inspect-summary` — "Show me the structure of the [component]" (inspect; setup: project.set)
   3. `component-create-page` — "Create a page called About at /about" (component)
@@ -137,14 +152,14 @@ Nothing from the eval system exists yet. The MCP server itself is complete (8 ST
   8. `interaction-list` — "List event handlers on [element]" (interaction)
   9. `component-node-card` — "Create a card component with heading and description" (component + node)
   10. `node-design-style` — "Style the heading with 48px font size and blue color" (node + design)
-- [ ] Each scenario includes: id, description, domains, tier, graders, timeout, setup steps
+- [x] Each scenario includes: id, description, domains, tier, graders, timeout, setup steps
 - **Spec**: mcp-eval-scenarios.md (Simple tier)
 - **Dependencies**: P0.4, P1.1
 - **Files**: `evals/scenarios/project.yaml`, `evals/scenarios/inspect.yaml`, `evals/scenarios/component.yaml`, `evals/scenarios/node.yaml`, `evals/scenarios/variant.yaml`, `evals/scenarios/design.yaml`, `evals/scenarios/data.yaml`, `evals/scenarios/interaction.yaml`, `evals/scenarios/cross-domain.yaml`
 
 ### P1.3: JSON report output
-- [ ] After all scenarios run, produce structured JSON report
-- [ ] Handle partial results: if eval run is interrupted, save completed scenario results (spec edge case GE6)
+- [x] After all scenarios run, produce structured JSON report
+- [x] Handle partial results: if eval run is interrupted, save completed scenario results (spec edge case GE6)
 - **Report schema**:
   ```typescript
   interface EvalReport {
@@ -184,14 +199,14 @@ Nothing from the eval system exists yet. The MCP server itself is complete (8 ST
     graderResults: GraderResult[];    // Per-grader pass/fail with details
   }
   ```
-- [ ] Output: `evals/results/{runId}.json`
+- [x] Output: `evals/results/{runId}.json`
 - **Spec**: mcp-eval-grading.md (Reporting)
 - **Dependencies**: P0.4
 - **Files**: `evals/harness/reporter.ts`
 
 ### P1.4: npm run eval command + CLI
-- [ ] Add `npm run eval` script to `packages/plasmic-mcp/package.json`: `"eval": "tsx evals/cli.ts"`
-- [ ] CLI flags:
+- [x] Add `npm run eval` script to `packages/plasmic-mcp/package.json`: `"eval": "tsx evals/cli.ts"`
+- [x] CLI flags:
   - `npm run eval` — Run all scenarios (mock tier by default)
   - `npm run eval -- --tier simple` — Filter by tier
   - `npm run eval -- --domain component` — Filter by domain
@@ -199,14 +214,14 @@ Nothing from the eval system exists yet. The MCP server itself is complete (8 ST
   - `npm run eval -- --integration` — Use integration tier (requires running Plasmic)
   - `npm run eval -- --no-visual` — Skip visual capture (default in mock tier)
   - `npm run eval -- --max-cost 5` — Abort if projected cost exceeds $N (default: $5)
-- [ ] CLI outputs summary table to stderr: scenario name, pass/fail, tool calls, duration
-- [ ] Exit code 0 if success rate >= threshold (default 90%), 1 otherwise
-- [ ] Fail fast with clear error if `ANTHROPIC_API_KEY` is not set
+- [x] CLI outputs summary table to stderr: scenario name, pass/fail, tool calls, duration
+- [x] Exit code 0 if success rate >= threshold (default 90%), 1 otherwise
+- [x] Fail fast with clear error if `ANTHROPIC_API_KEY` is not set
 - **Spec**: mcp-eval-framework.md
 - **Dependencies**: P0.4, P1.1, P1.2, P1.3
 - **Files**: `evals/cli.ts`, `packages/plasmic-mcp/package.json` (scripts)
 
-### P1.5: CI workflow for mock-tier evals
+### P1.5: CI workflow for mock-tier evals ← NEXT PRIORITY
 - [ ] Add eval step to `.github/workflows/` (new `plasmic-mcp-eval.yml` or extend existing)
 - [ ] Runs on PRs touching `packages/plasmic-mcp/`
 - [ ] Requires `ANTHROPIC_API_KEY` secret (for Claude API calls during eval)
@@ -456,4 +471,4 @@ P0.1 (scaffolding)
                               P2.2   P2.4
 ```
 
-The minimum shippable unit is P0 + P1.1 + P1.2 + P1.3 + P1.4: a working `npm run eval` that runs 10 simple scenarios in mock mode with state-check grading and produces a JSON report. Everything else layers on top.
+The minimum shippable unit (P0 + P1.1-P1.4) is **DONE**: a working `npm run eval` that runs 10 simple scenarios in mock mode with state-check grading and produces a JSON report. Next step is P1.5 (CI workflow), then P2/P3 layer on top.

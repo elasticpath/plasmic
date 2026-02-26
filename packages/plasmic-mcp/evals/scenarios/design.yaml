@@ -1,0 +1,25 @@
+# Design domain scenarios
+# Tests: token listing, design system queries
+scenarios:
+  - id: design-list-tokens
+    description: "List all color tokens defined in the project's design system."
+    domains:
+      - design
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+      - type: tool-params
+        params:
+          tool: design
+          action: list-tokens
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 1
+          max: 5

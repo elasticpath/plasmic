@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "eval": "tsx evals/cli.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.0",
@@ -47,12 +48,14 @@
     "zod": "^3.25.0"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
     "@types/lodash": "^4.17.0",
     "@types/node": "^20.0.0",
     "esbuild": "^0.20.0",
     "vitest": "3.2.4",
     "tsx": "^4.20.0",
-    "typescript": "^5.2.0"
+    "typescript": "^5.2.0",
+    "yaml": "^2.7.0"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -1,0 +1,22 @@
+# Variant domain scenarios
+# Tests: listing variants on components
+scenarios:
+  - id: variant-list
+    description: "List all variants defined on the Homepage component. First find the Homepage component, then list its variants."
+    domains:
+      - variant
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - variant
+      - type: tool-params
+        params:
+          tool: variant
+          action: list
+          expected: {}
+      - type: no-errors
+        params: {}

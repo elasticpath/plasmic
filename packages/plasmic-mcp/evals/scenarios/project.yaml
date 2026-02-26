@@ -1,0 +1,25 @@
+# Project domain scenarios
+# Tests: project listing, metadata retrieval
+scenarios:
+  - id: project-list
+    description: "List all available Plasmic projects and tell me their names."
+    domains:
+      - project
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - project
+      - type: tool-params
+        params:
+          tool: project
+          action: list
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 1
+          max: 5
