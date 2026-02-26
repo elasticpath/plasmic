@@ -1,13 +1,13 @@
 # Implementation Plan: Plasmic MCP Eval System
 
-> Last updated: 2026-02-26 (P2.1 medium scenarios implemented)
+> Last updated: 2026-02-26 (P2.2 complex scenarios implemented)
 > Source: `.ralph/specs/mcp-eval-framework.md`, `mcp-eval-scenarios.md`, `mcp-eval-grading.md`, `mcp-eval-visual-capture.md`
 
 ## Status Summary
 
 **P0 (Foundation): DONE.** All 4 sub-tasks implemented — directory scaffolding, MCP client adapter, scenario schema/loader, and eval runner with Claude client.
 **P1 (Core): DONE.** All 5 sub-tasks implemented — grader framework, 10 scenarios, JSON reporter, CLI, and CI workflow.
-**P2 (Enhancement): IN PROGRESS.** P2.1 done (20 medium scenarios). P2.2-P2.5 not started.
+**P2 (Enhancement): IN PROGRESS.** P2.1 done (20 medium scenarios). P2.2 done (15 complex scenarios). P2.3-P2.5 not started.
 **P3 (Polish): NOT STARTED.** Dashboard, human review, remaining scenarios, cost tracking.
 
 ### Codebase Health (verified 2026-02-26)
@@ -25,7 +25,7 @@
   - `evals/graders/index.ts` — Grader registry
   - `evals/graders/transcript-check.ts` — tool-sequence, tool-params, count, no-errors
   - `evals/graders/state-check.ts` — existence, property, structure, data
-  - `evals/scenarios/` — 30 YAML scenarios (10 simple + 20 medium in `medium.yaml`)
+  - `evals/scenarios/` — 45 YAML scenarios (10 simple + 20 medium + 15 complex)
   - `evals/cli.ts` — CLI entry point with all flags
   - `evals/` CI workflow: `.github/workflows/plasmic-mcp-eval.yml`
 
@@ -265,15 +265,26 @@
 - **Files**: `evals/scenarios/medium.yaml`
 
 ### P2.2: Complex end-to-end scenarios (~15)
-- [ ] Multi-domain workflows spanning 4+ domains, 8+ tool calls
-- [ ] Target: ~15 scenarios (spec requires 15-20 complex)
-- [ ] Examples:
-  - Build a responsive hero section with heading, token-referenced colors, mobile variant
-  - Create a product card with data repetition, queries, and click handler
-  - Build a pricing page with variant toggle, CTA interaction, responsive layout
+- [x] Multi-domain workflows spanning 4+ domains, 8+ tool calls
+- [x] 15 complex scenarios implemented in `evals/scenarios/complex.yaml`
+- [x] Domain coverage: all 8 STRAP domains represented; scenarios span 4-7 domains each
+- [x] Grader coverage: tool-sequence(15), tool-params(55+), existence(30+), count(15), no-errors(15)
+- [x] All 45 scenarios load correctly (10 simple + 20 medium + 15 complex)
+- [x] 1197 tests still passing
+- **Scenarios**:
+  - component+node+variant+design: complex-responsive-hero
+  - component+node+data+interaction: complex-product-card-data
+  - component+node+variant+design+interaction: complex-navbar, complex-contact-form, complex-modal-dialog
+  - component+node+design+variant+inspect: complex-blog-template, complex-dashboard-layout
+  - component+node+data+design+inspect: complex-feature-grid
+  - component+node+data+design+variant: complex-testimonial, complex-alert-banner
+  - component+node+data+design+variant+interaction: complex-product-listing, complex-pricing-section
+  - component+node+design+interaction+inspect: complex-footer
+  - component+node+data+design+inspect+variant: complex-team-page
+  - component+node+design+variant+data+interaction+inspect: complex-landing-page (7 domains)
 - **Spec**: mcp-eval-scenarios.md (Complex tier)
 - **Dependencies**: P2.1
-- **Files**: `evals/scenarios/e2e.yaml`
+- **Files**: `evals/scenarios/complex.yaml`
 
 ### P2.3: Visual capture module (Playwright screenshots)
 - [ ] After each integration-tier task, capture a screenshot of Plasmic Studio showing the result
@@ -418,8 +429,8 @@ The following gaps were identified between specs and this plan. Items above alre
 |------|-------------|-------------|-----------|-----------|
 | Simple | ~20 | 10 (P1.2) | ~10 (P3.3) | P1.2 + P3.3 |
 | Medium | ~20 | **20 (P2.1)** | 0 | P2.1 ✓ |
-| Complex | ~15-20 | 0 | ~15 (P2.2) | P2.2 |
-| **Total** | **50-80** | **30** | **~25** | |
+| Complex | ~15-20 | **15 (P2.2)** | 0-5 | P2.2 ✓ |
+| **Total** | **50-80** | **45** | **~5-15** | |
 
 ---
 
@@ -483,4 +494,4 @@ P0.1 (scaffolding)
                               P2.2   P2.4
 ```
 
-P0 + P1 are **DONE**: a working `npm run eval` that runs 10 simple scenarios in mock mode with state-check grading, produces a JSON report, and runs in CI on every PR. Next: P2/P3 add richer coverage, visual capture, LLM judge, and integration tier.
+P0 + P1 are **DONE**: a working `npm run eval` that runs 10 simple scenarios in mock mode with state-check grading, produces a JSON report, and runs in CI on every PR. P2.1 + P2.2 are **DONE**: 35 additional scenarios (20 medium + 15 complex) covering all 8 STRAP domains. Total: 45 scenarios. Next: P2.3-P2.5 add visual capture, LLM judge, and integration tier. P3 adds dashboard, human review, and remaining simple scenarios.
