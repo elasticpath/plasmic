@@ -75,6 +75,11 @@ import {
   Theme,
   ThemeStyle,
   ThemeLayoutSettings,
+  DataToken,
+  isKnownDataToken,
+  PageMeta,
+  GlobalVariantGroup,
+  isKnownGlobalVariantGroup,
 } from "@/wab/shared/model/classes";
 import { RSH } from "@/wab/shared/RuleSetHelpers";
 import { TplMgr } from "@/wab/shared/TplMgr";
@@ -6260,4 +6265,561 @@ export async function setActiveTheme(
   );
 
   return { save, activeThemeIndex: themeIndex ?? -1 };
+}
+
+// ==========================================================================
+// reorder-children
+// ==========================================================================
+
+export interface ReorderChildrenResult {
+  save: SaveResult;
+  parentName?: string;
+  parentUuid: string;
+  newOrder: string[];
+}
+
+/**
+ * Reorder children of a container element to match the given order.
+ * Uses TplMgr.reorderChildren() — partial lists supported (unlisted children appended at end).
+ */
+export async function reorderChildren(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  parentRef: string,
+  childRefs: string[],
+): Promise<ReorderChildrenResult> {
+  const component = findComponent(componentUuid);
+
+  const parentResult = resolveNode(component, parentRef);
+  const parent = requireSingleNode(parentResult, parentRef);
+
+  if (!isKnownTplTag(parent.node)) {
+    throw new Error(
+      `Parent "${parentRef}" is not a TplTag and cannot have its children reordered.`
+    );
+  }
+
+  const parentNode = parent.node;
+  const currentChildren: any[] = parentNode.children ?? [];
+
+  if (currentChildren.length === 0) {
+    throw new Error(
+      `Parent "${parentRef}" has no children to reorder.`
+    );
+  }
+
+  // Resolve each childRef to a TplNode that must be a direct child
+  const resolvedChildren: any[] = [];
+  for (const ref of childRefs) {
+    const childResult = resolveNode(component, ref);
+    const child = requireSingleNode(childResult, ref);
+    if (!currentChildren.includes(child.node)) {
+      throw new Error(
+        `Node "${ref}" is not a direct child of "${parentRef}".`
+      );
+    }
+    resolvedChildren.push(child.node);
+  }
+
+  const session = requireSession();
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  const changes = tracker.withRecording(() => {
+    tplMgr.reorderChildren(parentNode, resolvedChildren);
+  });
+
+  const componentIid = getComponentIid(component);
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `reorder-children: ${parent.name ?? parentRef}`,
+    componentIid ? [componentIid] : []
+  );
+
+  // Return the new order as UUID list
+  const newOrder = (parentNode.children ?? []).map(
+    (c: any) => c.uuid ?? "unknown"
+  );
+
+  return { save, parentName: parent.name, parentUuid: parent.uuid, newOrder };
+}
+
+// ==========================================================================
+// convert-to-page / convert-to-component
+// ==========================================================================
+
+export interface ConvertToPageResult {
+  save: SaveResult;
+  componentName: string;
+  path: string;
+}
+
+/**
+ * Convert a component to a page with the given URL path.
+ */
+export async function convertToPage(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  path?: string,
+): Promise<ConvertToPageResult> {
+  const component = findComponent(componentUuid);
+
+  if (component.pageMeta) {
+    throw new Error(
+      `"${component.name}" is already a page (path: ${component.pageMeta.path}).`
+    );
+  }
+
+  const session = requireSession();
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  const changes = tracker.withRecording(() => {
+    tplMgr.convertComponentToPage(component);
+    if (path) {
+      tplMgr.changePagePath(component, path);
+    }
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `convert-to-page: ${component.name}`,
+    []
+  );
+
+  return {
+    save,
+    componentName: component.name,
+    path: component.pageMeta?.path ?? path ?? "",
+  };
+}
+
+export interface ConvertToComponentResult {
+  save: SaveResult;
+  componentName: string;
+}
+
+/**
+ * Convert a page to a regular component. Removes pageMeta.
+ */
+export async function convertToComponent(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+): Promise<ConvertToComponentResult> {
+  const component = findComponent(componentUuid);
+
+  if (!component.pageMeta) {
+    throw new Error(
+      `"${component.name}" is already a component (not a page).`
+    );
+  }
+
+  const session = requireSession();
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  const changes = tracker.withRecording(() => {
+    tplMgr.convertPageToComponent(component);
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `convert-to-component: ${component.name}`,
+    []
+  );
+
+  return { save, componentName: component.name };
+}
+
+// ==========================================================================
+// Data Tokens CRUD
+// ==========================================================================
+
+function findDataToken(site: any, tokenRef: string): any {
+  const tokens: any[] = site.dataTokens ?? [];
+  // Try UUID match first
+  const byUuid = tokens.find((t: any) => t.uuid === tokenRef);
+  if (byUuid) return byUuid;
+  // Try case-insensitive name match
+  const lower = tokenRef.toLowerCase();
+  const byName = tokens.find((t: any) => t.name.toLowerCase() === lower);
+  if (byName) return byName;
+  const names = tokens.map((t: any) => t.name).join(", ");
+  throw new Error(
+    `Data token "${tokenRef}" not found. Available: [${names}]`
+  );
+}
+
+export interface DataTokenInfo {
+  uuid: string;
+  name: string;
+  value: string;
+  type: string;
+}
+
+export interface ListDataTokensResult {
+  tokens: DataTokenInfo[];
+}
+
+/**
+ * List all data tokens on the site.
+ */
+export function listDataTokens(): ListDataTokensResult {
+  const session = requireSession();
+  const tokens: any[] = session.site.dataTokens ?? [];
+  return {
+    tokens: tokens.map((t: any) => ({
+      uuid: t.uuid,
+      name: t.name,
+      value: t.value,
+      type: "Data",
+    })),
+  };
+}
+
+export interface CreateDataTokenResult {
+  save: SaveResult;
+  token: DataTokenInfo;
+}
+
+/**
+ * Create a new data token with a name and optional JSON value.
+ */
+export async function createDataToken(
+  apiClient: PlasmicApiClient,
+  name: string,
+  value?: string,
+): Promise<CreateDataTokenResult> {
+  const session = requireSession();
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  let token: any;
+  const changes = tracker.withRecording(() => {
+    token = tplMgr.addDataToken({ name, value: value ?? "null" });
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `create-data-token: ${token.name}`,
+    []
+  );
+
+  return {
+    save,
+    token: { uuid: token.uuid, name: token.name, value: token.value, type: "Data" },
+  };
+}
+
+export interface UpdateDataTokenResult {
+  save: SaveResult;
+  token: DataTokenInfo;
+}
+
+/**
+ * Update a data token's name and/or value.
+ */
+export async function updateDataToken(
+  apiClient: PlasmicApiClient,
+  tokenRef: string,
+  newName?: string,
+  newValue?: string,
+): Promise<UpdateDataTokenResult> {
+  if (!newName && newValue === undefined) {
+    throw new Error("At least one of name or value must be provided.");
+  }
+
+  const session = requireSession();
+  const token = findDataToken(session.site, tokenRef);
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  const changes = tracker.withRecording(() => {
+    if (newName) {
+      tplMgr.renameDataToken(session.projectId, token, newName);
+    }
+    if (newValue !== undefined) {
+      token.value = newValue;
+    }
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `update-data-token: ${token.name}`,
+    []
+  );
+
+  return {
+    save,
+    token: { uuid: token.uuid, name: token.name, value: token.value, type: "Data" },
+  };
+}
+
+export interface RemoveDataTokenResult {
+  save: SaveResult;
+  removedName: string;
+  removedUuid: string;
+}
+
+/**
+ * Remove a data token from the site.
+ */
+export async function removeDataToken(
+  apiClient: PlasmicApiClient,
+  tokenRef: string,
+): Promise<RemoveDataTokenResult> {
+  const session = requireSession();
+  const token = findDataToken(session.site, tokenRef);
+  const tracker = getChangeTracker();
+
+  const removedName = token.name;
+  const removedUuid = token.uuid;
+
+  const changes = tracker.withRecording(() => {
+    const idx = session.site.dataTokens.indexOf(token);
+    if (idx >= 0) session.site.dataTokens.splice(idx, 1);
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `remove-data-token: ${removedName}`,
+    []
+  );
+
+  return { save, removedName, removedUuid };
+}
+
+// ==========================================================================
+// Global Variant Groups
+// ==========================================================================
+
+export interface GlobalVariantGroupInfo {
+  uuid: string;
+  name: string;
+  type: string;
+  multi: boolean;
+  variants: Array<{ uuid: string; name: string; mediaQuery?: string }>;
+}
+
+export interface ListGlobalVariantGroupsResult {
+  groups: GlobalVariantGroupInfo[];
+}
+
+/**
+ * List all global variant groups (user-defined and screen).
+ */
+export function listGlobalVariantGroups(): ListGlobalVariantGroupsResult {
+  const session = requireSession();
+  const groups: any[] = session.site.globalVariantGroups ?? [];
+  return {
+    groups: groups.map((g: any) => ({
+      uuid: g.uuid,
+      name: g.param?.variable?.name ?? g.param?.name ?? "Unnamed",
+      type: g.type ?? "global-user-defined",
+      multi: g.multi ?? false,
+      variants: (g.variants ?? []).map((v: any) => ({
+        uuid: v.uuid,
+        name: v.name,
+        ...(v.mediaQuery ? { mediaQuery: v.mediaQuery } : {}),
+      })),
+    })),
+  };
+}
+
+export interface CreateGlobalVariantGroupResult {
+  save: SaveResult;
+  group: GlobalVariantGroupInfo;
+}
+
+/**
+ * Create a global variant group with optional initial variants.
+ */
+export async function createGlobalVariantGroup(
+  apiClient: PlasmicApiClient,
+  name: string,
+  groupType?: "single" | "multi",
+  initialVariants?: string[],
+): Promise<CreateGlobalVariantGroupResult> {
+  const session = requireSession();
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  let group: any;
+  const changes = tracker.withRecording(() => {
+    group = tplMgr.createGlobalVariantGroup(name);
+    if (groupType === "multi") {
+      group.multi = true;
+    }
+    if (initialVariants) {
+      for (const vName of initialVariants) {
+        tplMgr.createGlobalVariant(group, vName);
+      }
+    }
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `create-global-variant-group: ${name}`,
+    []
+  );
+
+  return {
+    save,
+    group: {
+      uuid: group.uuid,
+      name: group.param?.variable?.name ?? name,
+      type: group.type ?? "global-user-defined",
+      multi: group.multi ?? false,
+      variants: (group.variants ?? []).map((v: any) => ({
+        uuid: v.uuid,
+        name: v.name,
+      })),
+    },
+  };
+}
+
+function findGlobalVariantGroup(site: any, groupRef: string): any {
+  const groups: any[] = site.globalVariantGroups ?? [];
+  const byUuid = groups.find((g: any) => g.uuid === groupRef);
+  if (byUuid) return byUuid;
+  const lower = groupRef.toLowerCase();
+  const byName = groups.find(
+    (g: any) => (g.param?.variable?.name ?? "").toLowerCase() === lower
+  );
+  if (byName) return byName;
+  const names = groups.map((g: any) => g.param?.variable?.name ?? "Unnamed").join(", ");
+  throw new Error(
+    `Global variant group "${groupRef}" not found. Available: [${names}]`
+  );
+}
+
+function findGlobalVariant(site: any, variantRef: string): { group: any; variant: any } {
+  const groups: any[] = site.globalVariantGroups ?? [];
+  for (const g of groups) {
+    for (const v of g.variants ?? []) {
+      if (v.uuid === variantRef) return { group: g, variant: v };
+    }
+  }
+  for (const g of groups) {
+    const lower = variantRef.toLowerCase();
+    for (const v of g.variants ?? []) {
+      if ((v.name ?? "").toLowerCase() === lower) return { group: g, variant: v };
+    }
+  }
+  throw new Error(
+    `Global variant "${variantRef}" not found.`
+  );
+}
+
+export interface AddGlobalVariantResult {
+  save: SaveResult;
+  variant: { uuid: string; name: string; mediaQuery?: string };
+}
+
+/**
+ * Add a variant to an existing global variant group.
+ */
+export async function addGlobalVariant(
+  apiClient: PlasmicApiClient,
+  groupRef: string,
+  name: string,
+): Promise<AddGlobalVariantResult> {
+  const session = requireSession();
+  const group = findGlobalVariantGroup(session.site, groupRef);
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  let variant: any;
+  const changes = tracker.withRecording(() => {
+    variant = tplMgr.createGlobalVariant(group, name);
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `add-global-variant: ${name} to ${group.param?.variable?.name}`,
+    []
+  );
+
+  return {
+    save,
+    variant: { uuid: variant.uuid, name: variant.name },
+  };
+}
+
+export interface RemoveGlobalVariantGroupResult {
+  save: SaveResult;
+  removedName: string;
+  removedUuid: string;
+}
+
+/**
+ * Remove an entire global variant group and all its variants.
+ */
+export async function removeGlobalVariantGroup(
+  apiClient: PlasmicApiClient,
+  groupRef: string,
+): Promise<RemoveGlobalVariantGroupResult> {
+  const session = requireSession();
+  const group = findGlobalVariantGroup(session.site, groupRef);
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  const removedName = group.param?.variable?.name ?? "Unnamed";
+  const removedUuid = group.uuid;
+
+  const changes = tracker.withRecording(() => {
+    tplMgr.removeGlobalVariantGroup(group);
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `remove-global-variant-group: ${removedName}`,
+    []
+  );
+
+  return { save, removedName, removedUuid };
+}
+
+export interface RenameGlobalVariantResult {
+  save: SaveResult;
+  oldName: string;
+  newName: string;
+}
+
+/**
+ * Rename a global variant.
+ */
+export async function renameGlobalVariant(
+  apiClient: PlasmicApiClient,
+  variantRef: string,
+  newName: string,
+): Promise<RenameGlobalVariantResult> {
+  const session = requireSession();
+  const { variant } = findGlobalVariant(session.site, variantRef);
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  const oldName = variant.name;
+
+  const changes = tracker.withRecording(() => {
+    tplMgr.renameVariant(variant, newName);
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `rename-global-variant: ${oldName} → ${newName}`,
+    []
+  );
+
+  return { save, oldName, newName: variant.name };
 }

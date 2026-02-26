@@ -3,10 +3,10 @@
 > **Goal**: Create Claude Code skills and workflows that can interact with Plasmic Studio
 > programmatically to create fully-featured pages from the Claude Code terminal.
 >
-> **Current state**: 74 MCP tools, 6 Claude Code skills, 944 tests (858 unit + 86 integration).
+> **Current state**: 86 MCP tools, 6 Claude Code skills, 975 tests (884 unit + 91 integration).
 > Zero TODOs/FIXMEs/skipped tests.
 >
-> **Last verified**: 2026-02-26 — 4.3 Themes implemented.
+> **Last verified**: 2026-02-26 — 5.1 Remaining Features (partial) implemented.
 
 ---
 
@@ -231,18 +231,35 @@ These features enable systematic design management but are not blocking for basi
 
 ### 5.1 Remaining Features Bundle
 - **Spec**: `specs/gap-remaining-features.md`
-- **Status**: ALL NOT IMPLEMENTED (confirmed for all 8 sub-features)
+- **Status**: PARTIALLY IMPLEMENTED (4 of 8 sub-features done)
 - **Sub-features** (ordered by utility):
-  1. **Reorder Children** — `node({ action: "reorder" })` using `TplMgr.reorderChildren()` (line 2210)
-  2. **Global Variant Groups** — create/rename/remove global groups + screen breakpoints using `TplMgr.createGlobalVariantGroup()` (line 763), `createScreenVariant()` (line 781)
-  3. **Convert Page ↔ Component** — using `TplMgr.convertComponentToPage()` (line 1543) / `convertPageToComponent()` (line 1581)
-  4. **Extract to Component** — using subtree extraction → new component + instance replacement
-  5. **Data Tokens** — CRUD for `Site.dataTokens[]` using `TplMgr.addDataToken()` (line 2163)
-  6. **Code Component Meta** — read-only `get-code-meta` for code component introspection
-  7. **Custom Functions** — read-only `list-functions` for custom project functions
-  8. **A/B Testing (Splits)** — CRUD for `Split` + `SplitSlice` using WAB split utilities
-- **Effort**: Varies (reorder is trivial; extract is complex)
-- **Tests needed**: Unit + integration per sub-feature
+  1. **Reorder Children** — IMPLEMENTED (2026-02-26)
+     - `reorder-children` tool: reorder children of a container by providing refs in desired order
+     - Uses TplMgr.reorderChildren() — partial lists supported (unlisted children appended at end)
+     - Validates parent is TplTag, all childRefs are direct children
+     - 3 unit tests + 1 integration test
+  2. **Global Variant Groups** — IMPLEMENTED (2026-02-26)
+     - Five tools: `list-global-variant-groups`, `create-global-variant-group`, `add-global-variant`, `remove-global-variant-group`, `rename-global-variant`
+     - Create supports single/multi type, initial variant names
+     - Groups/variants resolved by UUID or name (case-insensitive)
+     - 8 unit tests + 1 integration test (round-trip: create → list → add → rename → remove)
+  3. **Convert Page ↔ Component** — IMPLEMENTED (2026-02-26)
+     - Two tools: `convert-to-page` (with optional path), `convert-to-component`
+     - Uses TplMgr.convertComponentToPage() / convertPageToComponent()
+     - Optional path via TplMgr.changePagePath() — auto-generated from name if omitted
+     - Guards: already-page, already-component
+     - 4 unit tests + 2 integration tests
+  4. **Data Tokens** — IMPLEMENTED (2026-02-26)
+     - Four tools: `list-data-tokens`, `create-data-token`, `update-data-token`, `remove-data-token`
+     - Creates DataToken via TplMgr.addDataToken(); rename via renameDataToken() with expression fixup
+     - Tokens hold JSON string values accessible as $ctx.tokenName in expressions
+     - 9 unit tests + 1 integration test (round-trip: create → list → update → remove)
+  5. **Extract to Component** — NOT IMPLEMENTED (complex — subtree extraction + instance replacement)
+  6. **Code Component Meta** — NOT IMPLEMENTED (read-only introspection)
+  7. **Custom Functions** — NOT IMPLEMENTED (read-only listing)
+  8. **A/B Testing (Splits)** — NOT IMPLEMENTED (CRUD for Split + SplitSlice)
+- **Total new**: 12 tools, 31 tests (24 unit + 5 integration + 2 integration for convert)
+- **Cumulative**: 86 tools, 975 tests (884 unit + 91 integration)
 
 ---
 
@@ -342,7 +359,7 @@ Phase 2 (Authoring):        2.1 State
 Phase 3 (Interactivity):    2.2 Interactions → CQ-2/CQ-3 Slot Gaps
 Phase 4 (Assets & Data):    3.1 Images → 3.2 Queries
 Phase 5 (Design System):    4.1 Mixins ✓ → 4.2 Animations ✓ → 4.3 Themes ✓
-Phase 6 (Remaining):        5.1 sub-features (reorder, global variants, convert, extract, etc.)
+Phase 6 (Remaining):        5.1 sub-features ✓(reorder, global variants, convert, data tokens) + remaining (extract, code meta, functions, splits)
 Phase 7 (Architecture):     6.1 STRAP → 6.2 Test Restructure → 7.2 Skills Rewrite
 Continuous:                 7.1 Skills updates after each phase; CQ-5/CQ-6/CQ-7 test gaps
 ```

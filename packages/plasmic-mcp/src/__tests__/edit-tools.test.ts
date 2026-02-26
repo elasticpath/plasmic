@@ -76,6 +76,18 @@ import {
   updateTheme,
   removeTheme,
   setActiveTheme,
+  reorderChildren,
+  convertToPage,
+  convertToComponent,
+  listDataTokens,
+  createDataToken,
+  updateDataToken,
+  removeDataToken,
+  listGlobalVariantGroups,
+  createGlobalVariantGroup,
+  addGlobalVariant,
+  removeGlobalVariantGroup,
+  renameGlobalVariant,
 } from "../edit-tools";
 import { setSession, clearSession } from "../session";
 import { initChangeTracker, disposeChangeTracker } from "../change-tracker";
@@ -105,6 +117,17 @@ import {
   mockRemoveAnimationSequence,
   mockRenameAnimationSequence,
   mockAddAnimation,
+  mockReorderChildren,
+  mockConvertComponentToPage,
+  mockConvertPageToComponent,
+  mockChangePagePath,
+  mockAddDataToken,
+  mockRenameDataToken,
+  mockDuplicateDataToken,
+  mockCreateGlobalVariantGroup,
+  mockCreateGlobalVariant,
+  mockRemoveGlobalVariantGroup,
+  mockRenameVariant,
 } from "../__mocks__/wab-tpl-mgr";
 import { mockMkTplTagX, mockMkTplInlinedText, mockMkTplComponentX } from "../__mocks__/wab-tpls";
 import { mockEnsureVariantSetting } from "../__mocks__/wab-variants";
@@ -10069,5 +10092,408 @@ describe("setActiveTheme", () => {
     initChangeTracker(session.site);
 
     await expect(setActiveTheme(api, 0)).rejects.toThrow(/out of range/);
+  });
+});
+
+// ==========================================================================
+// reorderChildren
+// ==========================================================================
+
+describe("reorderChildren", () => {
+  let api: ReturnType<typeof mockApiClient>;
+  beforeEach(() => { api = mockApiClient(); });
+  afterEach(() => { clearSession(); disposeChangeTracker(); clearNodeCache(); });
+
+  it("reorders children of a container", async () => {
+    const child1 = mkTag({ uuid: "c1", name: "First" });
+    const child2 = mkTag({ uuid: "c2", name: "Second" });
+    const child3 = mkTag({ uuid: "c3", name: "Third" });
+    const parent = mkTag({ uuid: "p1", name: "Container", children: [child1, child2, child3] });
+    const comp = mkComponent({ uuid: "comp1", name: "MyComp", tplTree: parent });
+    const site = { components: [comp] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await reorderChildren(api, "comp1", "Container", ["Third", "First", "Second"]);
+    expect(result.parentName).toBe("Container");
+    expect(mockReorderChildren).toHaveBeenCalled();
+  });
+
+  it("throws when parent has no children", async () => {
+    const parent = mkTag({ uuid: "p1", name: "Empty", children: [] });
+    const comp = mkComponent({ uuid: "comp1", name: "MyComp", tplTree: parent });
+    const site = { components: [comp] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(reorderChildren(api, "comp1", "Empty", [])).rejects.toThrow(/no children/);
+  });
+
+  it("throws when a childRef is not a direct child", async () => {
+    const child = mkTag({ uuid: "c1", name: "Child" });
+    const parent = mkTag({ uuid: "p1", name: "Container", children: [child] });
+    const comp = mkComponent({ uuid: "comp1", name: "MyComp", tplTree: parent });
+    const site = { components: [comp] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(reorderChildren(api, "comp1", "Container", ["Container"])).rejects.toThrow(/not a direct child/);
+  });
+});
+
+// ==========================================================================
+// convertToPage / convertToComponent
+// ==========================================================================
+
+describe("convertToPage", () => {
+  let api: ReturnType<typeof mockApiClient>;
+  beforeEach(() => { api = mockApiClient(); });
+  afterEach(() => { clearSession(); disposeChangeTracker(); clearNodeCache(); });
+
+  it("converts a component to a page", async () => {
+    const root = mkTag({ uuid: "r1", name: "Root" });
+    const comp = mkComponent({ uuid: "comp1", name: "MyComp", tplTree: root });
+    const site = { components: [comp] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await convertToPage(api, "comp1", "/my-page");
+    expect(result.componentName).toBe("MyComp");
+    expect(mockConvertComponentToPage).toHaveBeenCalled();
+    expect(mockChangePagePath).toHaveBeenCalled();
+  });
+
+  it("throws if already a page", async () => {
+    const root = mkTag({ uuid: "r1", name: "Root" });
+    const comp = mkComponent({ uuid: "comp1", name: "MyPage", tplTree: root });
+    comp.pageMeta = { path: "/existing" };
+    const site = { components: [comp] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(convertToPage(api, "comp1")).rejects.toThrow(/already a page/);
+  });
+});
+
+describe("convertToComponent", () => {
+  let api: ReturnType<typeof mockApiClient>;
+  beforeEach(() => { api = mockApiClient(); });
+  afterEach(() => { clearSession(); disposeChangeTracker(); clearNodeCache(); });
+
+  it("converts a page to a component", async () => {
+    const root = mkTag({ uuid: "r1", name: "Root" });
+    const comp = mkComponent({ uuid: "comp1", name: "MyPage", tplTree: root });
+    comp.pageMeta = { path: "/my-page" };
+    const site = { components: [comp] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await convertToComponent(api, "comp1");
+    expect(result.componentName).toBe("MyPage");
+    expect(mockConvertPageToComponent).toHaveBeenCalled();
+  });
+
+  it("throws if already a component", async () => {
+    const root = mkTag({ uuid: "r1", name: "Root" });
+    const comp = mkComponent({ uuid: "comp1", name: "MyComp", tplTree: root });
+    const site = { components: [comp] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(convertToComponent(api, "comp1")).rejects.toThrow(/already a component/);
+  });
+});
+
+// ==========================================================================
+// Data Tokens CRUD
+// ==========================================================================
+
+describe("listDataTokens", () => {
+  afterEach(() => { clearSession(); disposeChangeTracker(); clearNodeCache(); });
+
+  it("returns all data tokens", () => {
+    const site = {
+      components: [],
+      dataTokens: [
+        { uuid: "dt1", name: "API Key", value: '"abc123"', type: "Data" },
+        { uuid: "dt2", name: "Max Items", value: "50", type: "Data" },
+      ],
+    };
+    const session = makeSession({ site } as any);
+    setSession(session);
+
+    const result = listDataTokens();
+    expect(result.tokens).toHaveLength(2);
+    expect(result.tokens[0].name).toBe("API Key");
+    expect(result.tokens[1].value).toBe("50");
+  });
+
+  it("returns empty array when no data tokens", () => {
+    const site = { components: [], dataTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+
+    const result = listDataTokens();
+    expect(result.tokens).toHaveLength(0);
+  });
+});
+
+describe("createDataToken", () => {
+  let api: ReturnType<typeof mockApiClient>;
+  beforeEach(() => { api = mockApiClient(); });
+  afterEach(() => { clearSession(); disposeChangeTracker(); clearNodeCache(); });
+
+  it("creates a data token with name and value", async () => {
+    const site = { components: [], dataTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await createDataToken(api, "My Token", '"hello"');
+    expect(result.token.name).toBe("My Token");
+    expect(mockAddDataToken).toHaveBeenCalled();
+    expect(mockAddDataToken.mock.calls[0][0]).toMatchObject({ name: "My Token", value: '"hello"' });
+  });
+
+  it("defaults value to null", async () => {
+    const site = { components: [], dataTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await createDataToken(api, "Default Token");
+    const lastCall = mockAddDataToken.mock.calls[mockAddDataToken.mock.calls.length - 1];
+    expect(lastCall[0]).toMatchObject({ value: "null" });
+  });
+});
+
+describe("updateDataToken", () => {
+  let api: ReturnType<typeof mockApiClient>;
+  beforeEach(() => { api = mockApiClient(); });
+  afterEach(() => { clearSession(); disposeChangeTracker(); clearNodeCache(); });
+
+  it("updates name and value", async () => {
+    const token = { uuid: "dt1", name: "Old Name", value: "null", type: "Data" };
+    const site = { components: [], dataTokens: [token] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateDataToken(api, "Old Name", "New Name", '"updated"');
+    expect(mockRenameDataToken).toHaveBeenCalled();
+    expect(token.value).toBe('"updated"');
+  });
+
+  it("throws when neither name nor value provided", async () => {
+    const site = { components: [], dataTokens: [{ uuid: "dt1", name: "Token", value: "null", type: "Data" }] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(updateDataToken(api, "Token")).rejects.toThrow(/at least one/i);
+  });
+
+  it("throws when token not found", async () => {
+    const site = { components: [], dataTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(updateDataToken(api, "Nonexistent", "New")).rejects.toThrow(/not found/);
+  });
+});
+
+describe("removeDataToken", () => {
+  let api: ReturnType<typeof mockApiClient>;
+  beforeEach(() => { api = mockApiClient(); });
+  afterEach(() => { clearSession(); disposeChangeTracker(); clearNodeCache(); });
+
+  it("removes a data token by name", async () => {
+    const token = { uuid: "dt1", name: "Remove Me", value: "null", type: "Data" };
+    const site = { components: [], dataTokens: [token] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await removeDataToken(api, "Remove Me");
+    expect(result.removedName).toBe("Remove Me");
+    expect(site.dataTokens).toHaveLength(0);
+  });
+
+  it("throws when token not found", async () => {
+    const site = { components: [], dataTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(removeDataToken(api, "Nonexistent")).rejects.toThrow(/not found/);
+  });
+});
+
+// ==========================================================================
+// Global Variant Groups
+// ==========================================================================
+
+describe("listGlobalVariantGroups", () => {
+  afterEach(() => { clearSession(); disposeChangeTracker(); clearNodeCache(); });
+
+  it("returns all global variant groups", () => {
+    const site = {
+      components: [],
+      globalVariantGroups: [
+        {
+          uuid: "gvg1", param: { variable: { name: "Dark Mode" } },
+          type: "global-user-defined", multi: false,
+          variants: [{ uuid: "v1", name: "Dark" }, { uuid: "v2", name: "Light" }],
+        },
+        {
+          uuid: "gvg2", param: { variable: { name: "Screen" } },
+          type: "global-screen", multi: false,
+          variants: [{ uuid: "sv1", name: "Mobile", mediaQuery: "(max-width:768px)" }],
+        },
+      ],
+    };
+    const session = makeSession({ site } as any);
+    setSession(session);
+
+    const result = listGlobalVariantGroups();
+    expect(result.groups).toHaveLength(2);
+    expect(result.groups[0].name).toBe("Dark Mode");
+    expect(result.groups[0].variants).toHaveLength(2);
+    expect(result.groups[1].variants[0].mediaQuery).toBe("(max-width:768px)");
+  });
+
+  it("returns empty array when no groups", () => {
+    const site = { components: [], globalVariantGroups: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+
+    const result = listGlobalVariantGroups();
+    expect(result.groups).toHaveLength(0);
+  });
+});
+
+describe("createGlobalVariantGroup", () => {
+  let api: ReturnType<typeof mockApiClient>;
+  beforeEach(() => { api = mockApiClient(); });
+  afterEach(() => { clearSession(); disposeChangeTracker(); clearNodeCache(); });
+
+  it("creates a group with initial variants", async () => {
+    const site = { components: [], globalVariantGroups: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await createGlobalVariantGroup(api, "Theme", "single", ["Dark", "Light"]);
+    expect(mockCreateGlobalVariantGroup).toHaveBeenCalled();
+    expect(mockCreateGlobalVariant).toHaveBeenCalledTimes(2);
+  });
+
+  it("creates a multi group", async () => {
+    const site = { components: [], globalVariantGroups: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await createGlobalVariantGroup(api, "Features", "multi");
+    expect(result.group.multi).toBe(true);
+  });
+});
+
+describe("addGlobalVariant", () => {
+  let api: ReturnType<typeof mockApiClient>;
+  beforeEach(() => { api = mockApiClient(); });
+  afterEach(() => { clearSession(); disposeChangeTracker(); clearNodeCache(); });
+
+  it("adds a variant to an existing group", async () => {
+    const group = {
+      uuid: "gvg1", param: { variable: { name: "Theme" } },
+      type: "global-user-defined", multi: false, variants: [],
+    };
+    const site = { components: [], globalVariantGroups: [group] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await addGlobalVariant(api, "Theme", "Dark");
+    expect(mockCreateGlobalVariant).toHaveBeenCalled();
+    expect(result.variant.name).toBe("Dark");
+  });
+
+  it("throws when group not found", async () => {
+    const site = { components: [], globalVariantGroups: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(addGlobalVariant(api, "Nonexistent", "V1")).rejects.toThrow(/not found/);
+  });
+});
+
+describe("removeGlobalVariantGroup", () => {
+  let api: ReturnType<typeof mockApiClient>;
+  beforeEach(() => { api = mockApiClient(); });
+  afterEach(() => { clearSession(); disposeChangeTracker(); clearNodeCache(); });
+
+  it("removes a group", async () => {
+    const group = {
+      uuid: "gvg1", param: { variable: { name: "Theme" } },
+      type: "global-user-defined", multi: false, variants: [],
+    };
+    const site = { components: [], globalVariantGroups: [group] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await removeGlobalVariantGroup(api, "Theme");
+    expect(result.removedName).toBe("Theme");
+    expect(mockRemoveGlobalVariantGroup).toHaveBeenCalled();
+  });
+
+  it("throws when group not found", async () => {
+    const site = { components: [], globalVariantGroups: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(removeGlobalVariantGroup(api, "Nonexistent")).rejects.toThrow(/not found/);
+  });
+});
+
+describe("renameGlobalVariant", () => {
+  let api: ReturnType<typeof mockApiClient>;
+  beforeEach(() => { api = mockApiClient(); });
+  afterEach(() => { clearSession(); disposeChangeTracker(); clearNodeCache(); });
+
+  it("renames a global variant", async () => {
+    const group = {
+      uuid: "gvg1", param: { variable: { name: "Theme" } },
+      type: "global-user-defined", multi: false,
+      variants: [{ uuid: "v1", name: "Old Name" }],
+    };
+    const site = { components: [], globalVariantGroups: [group] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await renameGlobalVariant(api, "Old Name", "New Name");
+    expect(result.oldName).toBe("Old Name");
+    expect(mockRenameVariant).toHaveBeenCalled();
+  });
+
+  it("throws when variant not found", async () => {
+    const site = { components: [], globalVariantGroups: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(renameGlobalVariant(api, "Nonexistent", "New")).rejects.toThrow(/not found/);
   });
 });

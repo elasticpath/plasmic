@@ -96,6 +96,18 @@ import {
   updateTheme,
   removeTheme,
   setActiveTheme,
+  reorderChildren,
+  convertToPage,
+  convertToComponent,
+  listDataTokens,
+  createDataToken,
+  updateDataToken,
+  removeDataToken,
+  listGlobalVariantGroups,
+  createGlobalVariantGroup,
+  addGlobalVariant,
+  removeGlobalVariantGroup,
+  renameGlobalVariant,
 } from "./edit-tools.js";
 import { beginBatch, endBatch, isBatchActive, cancelBatch, cancelBatchWithRollback, getAccumulatedChanges } from "./batch-manager.js";
 import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
@@ -5606,6 +5618,445 @@ export function createServer(): McpServer {
         };
       } catch (err: any) {
         return handleMutationError("setting active theme", err);
+      }
+    }
+  );
+
+  // ========================================================================
+  // reorder-children
+  // ========================================================================
+
+  server.tool(
+    "reorder-children",
+    "Reorder the children of a container element. Provide child refs in desired order; unlisted children are appended at end.",
+    {
+      componentUuid: z.string().describe("UUID of the component"),
+      parentRef: z.string().describe("Reference to the parent container (UUID, name, path, or index)"),
+      childRefs: z.array(z.string()).describe("Ordered array of child references (UUID, name, path, or index)"),
+      dryRun: z.boolean().optional().describe("When true, preview changes without persisting"),
+    },
+    async ({ componentUuid, parentRef, childRefs, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            reorderChildren(apiClient, componentUuid, parentRef, childRefs)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    newOrder: result.newOrder,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await reorderChildren(apiClient, componentUuid, parentRef, childRefs);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  parentName: result.parentName,
+                  parentUuid: result.parentUuid,
+                  newOrder: result.newOrder,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("reordering children", err);
+      }
+    }
+  );
+
+  // ========================================================================
+  // convert-to-page
+  // ========================================================================
+
+  server.tool(
+    "convert-to-page",
+    "Convert a component to a page. Optionally specify a URL path.",
+    {
+      componentUuid: z.string().describe("UUID of the component to convert"),
+      path: z.string().optional().describe("URL path for the page (e.g., '/about'). Auto-generated from name if omitted."),
+    },
+    async ({ componentUuid, path }) => {
+      try {
+        const result = await convertToPage(apiClient, componentUuid, path);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  componentName: result.componentName,
+                  path: result.path,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("converting to page", err);
+      }
+    }
+  );
+
+  // ========================================================================
+  // convert-to-component
+  // ========================================================================
+
+  server.tool(
+    "convert-to-component",
+    "Convert a page back to a regular component. Removes pageMeta.",
+    {
+      componentUuid: z.string().describe("UUID of the page to convert"),
+    },
+    async ({ componentUuid }) => {
+      try {
+        const result = await convertToComponent(apiClient, componentUuid);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  componentName: result.componentName,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("converting to component", err);
+      }
+    }
+  );
+
+  // ========================================================================
+  // list-data-tokens
+  // ========================================================================
+
+  server.tool(
+    "list-data-tokens",
+    "List all data tokens in the project. Data tokens hold JSON values accessible as $ctx.tokenName in expressions.",
+    {},
+    async () => {
+      try {
+        const result = listDataTokens();
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("listing data tokens", err);
+      }
+    }
+  );
+
+  // ========================================================================
+  // create-data-token
+  // ========================================================================
+
+  server.tool(
+    "create-data-token",
+    "Create a new data token with a name and JSON value. Accessible in expressions as $ctx.tokenName.",
+    {
+      name: z.string().describe("Name for the data token"),
+      value: z.string().optional().describe("JSON value (e.g., '\"hello\"', '42', '{\"key\": true}'). Defaults to 'null'."),
+    },
+    async ({ name, value }) => {
+      try {
+        const result = await createDataToken(apiClient, name, value);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  token: result.token,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("creating data token", err);
+      }
+    }
+  );
+
+  // ========================================================================
+  // update-data-token
+  // ========================================================================
+
+  server.tool(
+    "update-data-token",
+    "Update a data token's name and/or value.",
+    {
+      tokenRef: z.string().describe("Token reference (UUID or name)"),
+      name: z.string().optional().describe("New name"),
+      value: z.string().optional().describe("New JSON value"),
+    },
+    async ({ tokenRef, name, value }) => {
+      try {
+        const result = await updateDataToken(apiClient, tokenRef, name, value);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  token: result.token,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("updating data token", err);
+      }
+    }
+  );
+
+  // ========================================================================
+  // remove-data-token
+  // ========================================================================
+
+  server.tool(
+    "remove-data-token",
+    "Remove a data token from the project.",
+    {
+      tokenRef: z.string().describe("Token reference (UUID or name)"),
+    },
+    async ({ tokenRef }) => {
+      try {
+        const result = await removeDataToken(apiClient, tokenRef);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  removedName: result.removedName,
+                  removedUuid: result.removedUuid,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("removing data token", err);
+      }
+    }
+  );
+
+  // ========================================================================
+  // list-global-variant-groups
+  // ========================================================================
+
+  server.tool(
+    "list-global-variant-groups",
+    "List all global variant groups (custom and screen breakpoints) with their variants.",
+    {},
+    async () => {
+      try {
+        const result = listGlobalVariantGroups();
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("listing global variant groups", err);
+      }
+    }
+  );
+
+  // ========================================================================
+  // create-global-variant-group
+  // ========================================================================
+
+  server.tool(
+    "create-global-variant-group",
+    "Create a global variant group (e.g., 'Dark Mode', 'Language'). Optionally provide initial variant names.",
+    {
+      name: z.string().describe("Name for the variant group"),
+      type: z.enum(["single", "multi"]).optional().describe("'single' (one active at a time, default) or 'multi' (multiple active)"),
+      initialVariants: z.array(z.string()).optional().describe("Names of variants to create immediately"),
+    },
+    async ({ name, type, initialVariants }) => {
+      try {
+        const result = await createGlobalVariantGroup(apiClient, name, type, initialVariants);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  group: result.group,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("creating global variant group", err);
+      }
+    }
+  );
+
+  // ========================================================================
+  // add-global-variant
+  // ========================================================================
+
+  server.tool(
+    "add-global-variant",
+    "Add a variant to an existing global variant group.",
+    {
+      groupRef: z.string().describe("Group reference (UUID or name)"),
+      name: z.string().describe("Name for the new variant"),
+    },
+    async ({ groupRef, name }) => {
+      try {
+        const result = await addGlobalVariant(apiClient, groupRef, name);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  variant: result.variant,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("adding global variant", err);
+      }
+    }
+  );
+
+  // ========================================================================
+  // remove-global-variant-group
+  // ========================================================================
+
+  server.tool(
+    "remove-global-variant-group",
+    "Remove an entire global variant group and all its variants.",
+    {
+      groupRef: z.string().describe("Group reference (UUID or name)"),
+    },
+    async ({ groupRef }) => {
+      try {
+        const result = await removeGlobalVariantGroup(apiClient, groupRef);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  removedName: result.removedName,
+                  removedUuid: result.removedUuid,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("removing global variant group", err);
+      }
+    }
+  );
+
+  // ========================================================================
+  // rename-global-variant
+  // ========================================================================
+
+  server.tool(
+    "rename-global-variant",
+    "Rename a global variant.",
+    {
+      variantRef: z.string().describe("Variant reference (UUID or name)"),
+      newName: z.string().describe("New name for the variant"),
+    },
+    async ({ variantRef, newName }) => {
+      try {
+        const result = await renameGlobalVariant(apiClient, variantRef, newName);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  oldName: result.oldName,
+                  newName: result.newName,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("renaming global variant", err);
       }
     }
   );

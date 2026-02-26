@@ -44,6 +44,8 @@ declare module "@/wab/shared/model/classes" {
     themes: any[];
     imageAssets: any[];
     projectDependencies: any[];
+    dataTokens: any[];
+    activeScreenVariantGroup: any;
   }
 
   export class ProjectDependency {
@@ -160,6 +162,9 @@ declare module "@/wab/shared/model/classes" {
   export function isKnownTheme(x: any): boolean;
   export function isKnownThemeStyle(x: any): boolean;
   export function isKnownThemeLayoutSettings(x: any): boolean;
+  export function isKnownDataToken(x: any): boolean;
+  export function isKnownPageMeta(x: any): boolean;
+  export function isKnownGlobalVariantGroup(x: any): boolean;
 
   /** Model class for Mixin — reusable style bundle stored at site level. */
   export class Mixin {
@@ -355,6 +360,64 @@ declare module "@/wab/shared/model/classes" {
     onChangeParam: any;
     tplNode: any;
     implicitState: any;
+  }
+
+  /** Model class for DataToken — site-level JSON data value referenced as $ctx.tokenName. */
+  export class DataToken {
+    constructor(args: {
+      name: string;
+      type?: "Data";
+      value?: string;
+      uuid: string;
+      variantedValues?: any[];
+      isRegistered?: boolean;
+      regKey?: any;
+    });
+    name: string;
+    readonly type: "Data";
+    value: string;
+    readonly uuid: string;
+    variantedValues: any[];
+    isRegistered: boolean;
+    regKey: any;
+  }
+
+  /** Model class for PageMeta — page-level SEO and routing metadata. */
+  export class PageMeta {
+    constructor(args: {
+      path: string;
+      params?: Record<string, string>;
+      query?: Record<string, string>;
+      title?: any;
+      description?: any;
+      canonical?: any;
+      roleId?: any;
+      openGraphImage?: any;
+    });
+    path: string;
+    params: Record<string, string>;
+    query: Record<string, string>;
+    title: any;
+    description: any;
+    canonical: any;
+    roleId: any;
+    openGraphImage: any;
+  }
+
+  /** Model class for GlobalVariantGroup — site-level variant group (custom or screen). */
+  export class GlobalVariantGroup {
+    constructor(args: {
+      uuid: string;
+      param: any;
+      variants?: any[];
+      multi?: boolean;
+      type?: string;
+    });
+    readonly uuid: string;
+    param: any;
+    variants: any[];
+    multi: boolean;
+    type: string;
   }
 }
 
@@ -580,6 +643,32 @@ declare module "@/wab/shared/TplMgr" {
       fillMode?: string,
       playState?: string,
     ): any;
+    /** Reorder children of a TplTag. Partial list supported — unlisted children appended at end. */
+    reorderChildren(tpl: any, reorderedChildren: any[]): void;
+    /** Convert a component to a page. Creates pageMeta with auto-generated path from name. */
+    convertComponentToPage(component: any): void;
+    /** Convert a page to a regular component. Removes pageMeta. */
+    convertPageToComponent(component: any): void;
+    /** Change the URL path of a page. Handles sanitization and uniqueness. */
+    changePagePath(page: any, path: string): void;
+    /** Add a data token to the site. Returns the created DataToken. */
+    addDataToken(opts: { name?: string; prefix?: string; value?: string }): any;
+    /** Rename a data token with expression fixup. */
+    renameDataToken(projectId: string, token: any, name: string): void;
+    /** Duplicate a data token with auto-generated unique name. */
+    duplicateDataToken(token: any): any;
+    /** Create a global variant group (user-defined). Returns the group. */
+    createGlobalVariantGroup(name?: string): any;
+    /** Create a variant in a global variant group. Returns the variant. */
+    createGlobalVariant(group: any, name?: string, extra?: { mediaQuery?: string | null }): any;
+    /** Create a screen variant with responsive breakpoint. Returns the variant. */
+    createScreenVariant(opts: { name: string; spec: any }): any;
+    /** Remove an entire global variant group and all its variants. */
+    removeGlobalVariantGroup(group: any): void;
+    /** Rename a single variant. */
+    renameVariant(variant: any, name?: string): void;
+    /** Rename a variant group. */
+    renameVariantGroup(group: any, name?: string): void;
   }
 }
 

@@ -654,6 +654,97 @@ export class Theme {
   }
 }
 
+export const isKnownDataToken = (obj: any): boolean =>
+  obj?._type === "DataToken";
+
+/** Mock constructor for DataToken — site-level JSON data value. */
+export class DataToken {
+  _type = "DataToken";
+  name: string;
+  type = "Data" as const;
+  value: string;
+  uuid: string;
+  variantedValues: any[];
+  isRegistered: boolean;
+  regKey: any;
+  constructor(args: {
+    name: string;
+    value?: string;
+    uuid: string;
+    variantedValues?: any[];
+    isRegistered?: boolean;
+    regKey?: any;
+  }) {
+    this.name = args.name;
+    this.value = args.value ?? "null";
+    this.uuid = args.uuid;
+    this.variantedValues = args.variantedValues ?? [];
+    this.isRegistered = args.isRegistered ?? false;
+    this.regKey = args.regKey ?? undefined;
+  }
+}
+
+export const isKnownPageMeta = (obj: any): boolean =>
+  obj?._type === "PageMeta";
+
+/** Mock constructor for PageMeta — page-level SEO and routing metadata. */
+export class PageMeta {
+  _type = "PageMeta";
+  path: string;
+  params: Record<string, string>;
+  query: Record<string, string>;
+  title: any;
+  description: any;
+  canonical: any;
+  roleId: any;
+  openGraphImage: any;
+  constructor(args: {
+    path: string;
+    params?: Record<string, string>;
+    query?: Record<string, string>;
+    title?: any;
+    description?: any;
+    canonical?: any;
+    roleId?: any;
+    openGraphImage?: any;
+  }) {
+    this.path = args.path;
+    this.params = args.params ?? {};
+    this.query = args.query ?? {};
+    this.title = args.title ?? null;
+    this.description = args.description ?? "";
+    this.canonical = args.canonical ?? null;
+    this.roleId = args.roleId ?? null;
+    this.openGraphImage = args.openGraphImage ?? null;
+  }
+}
+
+export const isKnownGlobalVariantGroup = (obj: any): boolean =>
+  obj?._type === "GlobalVariantGroup";
+
+/** Mock constructor for GlobalVariantGroup — site-level variant group (custom or screen breakpoints). */
+export class GlobalVariantGroup {
+  _type = "GlobalVariantGroup";
+  uuid: string;
+  param: any;
+  variants: any[];
+  multi: boolean;
+  type: string;
+  constructor(args: {
+    uuid: string;
+    param: any;
+    variants?: any[];
+    multi?: boolean;
+    type?: string;
+  }) {
+    this.uuid = args.uuid;
+    this.param = args.param;
+    this.variants = args.variants ?? [];
+    this.multi = args.multi ?? false;
+    this.type = args.type ?? "global-user-defined";
+  }
+}
+
 export class Site {
   static isKnown(obj: any): boolean {
     return obj?._type === "Site";

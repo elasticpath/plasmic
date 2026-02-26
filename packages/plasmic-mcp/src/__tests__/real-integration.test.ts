@@ -4346,6 +4346,210 @@ describe("themes", () => {
   });
 });
 
+// ==========================================================================
+// reorder-children
+// ==========================================================================
+
+describe("reorder-children", () => {
+  it("reorders children of a container", async () => {
+    const comp = discoveredComponents[0];
+
+    // Get root's children first
+    const treeResult = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    );
+    const tree = treeResult.tree ?? treeResult;
+
+    // Only test if root has at least 2 children
+    if (tree.children && tree.children.length >= 2) {
+      const childUuids = tree.children.map((c: any) => c.uuid);
+      const reversed = [...childUuids].reverse();
+
+      const result = parseResponse(
+        await client.callTool({
+          name: "reorder-children",
+          arguments: {
+            componentUuid: comp.uuid,
+            parentRef: tree.uuid,
+            childRefs: reversed,
+          },
+        })
+      );
+      expect(result.success).toBe(true);
+      expect(result.newOrder).toBeDefined();
+
+      // Undo
+      await client.callTool({ name: "undo", arguments: {} });
+    }
+  });
+});
+
+// ==========================================================================
+// convert-to-page / convert-to-component
+// ==========================================================================
+
+describe("convert page/component", () => {
+  it("converts a non-page component to page and back", async () => {
+    // Find a component that is NOT a page
+    const nonPage = discoveredComponents.find((c) => c.type === "component");
+    if (!nonPage) {
+      // Skip if no non-page components exist in fixture
+      return;
+    }
+
+    // Convert to page
+    const toPageResult = parseResponse(
+      await client.callTool({
+        name: "convert-to-page",
+        arguments: { componentUuid: nonPage.uuid, path: "/convert-test" },
+      })
+    );
+    expect(toPageResult.success).toBe(true);
+
+    // Convert back to component
+    const toCompResult = parseResponse(
+      await client.callTool({
+        name: "convert-to-component",
+        arguments: { componentUuid: nonPage.uuid },
+      })
+    );
+    expect(toCompResult.success).toBe(true);
+
+    // Undo both
+    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+
+  it("rejects converting an already-page component to page", async () => {
+    const page = discoveredComponents.find((c) => c.type === "page");
+    if (!page) return;
+
+    const result = await client.callTool({
+      name: "convert-to-page",
+      arguments: { componentUuid: page.uuid },
+    });
+    const parsed = parseResponse(result);
+    expect(
+      result.isError || (typeof parsed === "string" && parsed.includes("already a page"))
+    ).toBeTruthy();
+  });
+});
+
+// ==========================================================================
+// data tokens
+// ==========================================================================
+
+describe("data tokens", () => {
+  it("create → list → update → remove round-trip", async () => {
+    // Create
+    const createResult = parseResponse(
+      await client.callTool({
+        name: "create-data-token",
+        arguments: { name: "TestToken", value: '"hello"' },
+      })
+    );
+    expect(createResult.success).toBe(true);
+    expect(createResult.token.name).toBe("TestToken");
+
+    // List
+    const listResult = parseResponse(
+      await client.callTool({
+        name: "list-data-tokens",
+        arguments: {},
+      })
+    );
+    expect(listResult.tokens.some((t: any) => t.name === "TestToken")).toBe(true);
+
+    // Update
+    const updateResult = parseResponse(
+      await client.callTool({
+        name: "update-data-token",
+        arguments: { tokenRef: "TestToken", value: "42" },
+      })
+    );
+    expect(updateResult.success).toBe(true);
+    expect(updateResult.token.value).toBe("42");
+
+    // Remove
+    const removeResult = parseResponse(
+      await client.callTool({
+        name: "remove-data-token",
+        arguments: { tokenRef: "TestToken" },
+      })
+    );
+    expect(removeResult.success).toBe(true);
+
+    // Undo all
+    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+});
+
+// ==========================================================================
+// global variant groups
+// ==========================================================================
+
+describe("global variant groups", () => {
+  it("create → list → add-variant → rename → remove round-trip", async () => {
+    // Create group with initial variants
+    const createResult = parseResponse(
+      await client.callTool({
+        name: "create-global-variant-group",
+        arguments: { name: "Theme", initialVariants: ["Dark", "Light"] },
+      })
+    );
+    expect(createResult.success).toBe(true);
+    expect(createResult.group.variants).toHaveLength(2);
+
+    // List
+    const listResult = parseResponse(
+      await client.callTool({
+        name: "list-global-variant-groups",
+        arguments: {},
+      })
+    );
+    const found = listResult.groups.find((g: any) => g.name === "Theme");
+    expect(found).toBeDefined();
+
+    // Add variant
+    const addResult = parseResponse(
+      await client.callTool({
+        name: "add-global-variant",
+        arguments: { groupRef: "Theme", name: "High Contrast" },
+      })
+    );
+    expect(addResult.success).toBe(true);
+
+    // Rename variant
+    const renameResult = parseResponse(
+      await client.callTool({
+        name: "rename-global-variant",
+        arguments: { variantRef: "Dark", newName: "Dark Mode" },
+      })
+    );
+    expect(renameResult.success).toBe(true);
+
+    // Remove group
+    const removeResult = parseResponse(
+      await client.callTool({
+        name: "remove-global-variant-group",
+        arguments: { groupRef: "Theme" },
+      })
+    );
+    expect(removeResult.success).toBe(true);
+
+    // Undo all
+    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+});
+
 /** Walk a tree recursively to find a node by UUID. */
 function findNodeByUuid(tree: any, uuid: string): any {
   if (tree.uuid === uuid) return tree;

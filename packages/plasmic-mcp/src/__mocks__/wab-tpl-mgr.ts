@@ -80,6 +80,37 @@ export const mockAddAnimation = vi.fn((
     iterationCount, direction, fillMode, playState,
   };
 });
+export const mockReorderChildren = vi.fn();
+export const mockConvertComponentToPage = vi.fn();
+export const mockConvertPageToComponent = vi.fn();
+export const mockChangePagePath = vi.fn();
+export const mockAddDataToken = vi.fn((opts: any) => {
+  return { _type: "DataToken", name: opts?.name ?? "Unnamed Data Token", type: "Data", value: opts?.value ?? "null", uuid: "mock-data-token-uuid", variantedValues: [], isRegistered: false, regKey: undefined };
+});
+export const mockRenameDataToken = vi.fn();
+export const mockDuplicateDataToken = vi.fn((token: any) => {
+  return { ...token, uuid: "dup-data-token-uuid", name: token.name + " (copy)" };
+});
+export const mockCreateGlobalVariantGroup = vi.fn((_name?: string) => {
+  return {
+    _type: "GlobalVariantGroup", uuid: "mock-gvg-uuid",
+    param: { variable: { name: _name ?? "Unnamed Global Variant Group" } },
+    variants: [], multi: false, type: "global-user-defined",
+  };
+});
+export const mockCreateGlobalVariant = vi.fn((_group: any, _name?: string) => {
+  return { _type: "Variant", uuid: "mock-global-variant-uuid", name: _name ?? "Unnamed Variant", parent: _group, mediaQuery: null };
+});
+export const mockCreateScreenVariant = vi.fn((_opts: any) => {
+  return { _type: "Variant", uuid: "mock-screen-variant-uuid", name: _opts?.name ?? "Screen", parent: null, mediaQuery: "(min-width:768px)" };
+});
+export const mockRemoveGlobalVariantGroup = vi.fn();
+export const mockRenameVariant = vi.fn((variant: any, name: string) => {
+  variant.name = name;
+});
+export const mockRenameVariantGroup = vi.fn((group: any, name: string) => {
+  if (group.param?.variable) group.param.variable.name = name;
+});
 export const mockGetUniqueParamName = vi.fn(
   (_component: any, name?: string) => name ?? "Unnamed Prop"
 );
@@ -156,6 +187,58 @@ export class TplMgr {
 
   clearReferencesToRemovedQueries(removedQueries: string[] | string): void {
     mockClearReferencesToRemovedQueries(removedQueries);
+  }
+
+  reorderChildren(tpl: any, reorderedChildren: any[]): void {
+    mockReorderChildren(tpl, reorderedChildren);
+  }
+
+  convertComponentToPage(component: any): void {
+    mockConvertComponentToPage(component);
+  }
+
+  convertPageToComponent(component: any): void {
+    mockConvertPageToComponent(component);
+  }
+
+  changePagePath(page: any, path: string): void {
+    mockChangePagePath(page, path);
+  }
+
+  addDataToken(opts: any): any {
+    return mockAddDataToken(opts);
+  }
+
+  renameDataToken(projectId: string, token: any, name: string): void {
+    mockRenameDataToken(projectId, token, name);
+  }
+
+  duplicateDataToken(token: any): any {
+    return mockDuplicateDataToken(token);
+  }
+
+  createGlobalVariantGroup(name?: string): any {
+    return mockCreateGlobalVariantGroup(name);
+  }
+
+  createGlobalVariant(group: any, name?: string, extra?: any): any {
+    return mockCreateGlobalVariant(group, name, extra);
+  }
+
+  createScreenVariant(opts: any): any {
+    return mockCreateScreenVariant(opts);
+  }
+
+  removeGlobalVariantGroup(group: any): void {
+    mockRemoveGlobalVariantGroup(group);
+  }
+
+  renameVariant(variant: any, name?: string): void {
+    mockRenameVariant(variant, name);
+  }
+
+  renameVariantGroup(group: any, name?: string): void {
+    mockRenameVariantGroup(group, name);
   }
 
   addMixin(name?: string, mixin?: any): any {
