@@ -25,6 +25,7 @@ export const isKnownImageAssetRef = (obj: any): boolean =>
   obj?._type === "ImageAssetRef";
 export const isKnownStyleTokenRef = (obj: any): boolean =>
   obj?._type === "StyleTokenRef";
+export const isKnownRep = (obj: any): boolean => obj?._type === "Rep";
 
 /** Mock constructors for model classes used by edit-tools.ts */
 export class RawText {
@@ -84,6 +85,30 @@ export class RenderExpr {
   tpl: any[];
   constructor(args: { tpl: any[] }) {
     this.tpl = args.tpl;
+  }
+}
+
+/** Mock constructor for Var — named variable with unique UUID. */
+export class Var {
+  _type = "Var";
+  name: string;
+  uuid: string;
+  constructor(args: { name: string; uuid: string }) {
+    this.name = args.name;
+    this.uuid = args.uuid;
+  }
+}
+
+/** Mock constructor for Rep — data repetition binding (collection → element/index vars). */
+export class Rep {
+  _type = "Rep";
+  element: any;
+  index: any;
+  collection: any;
+  constructor(args: { element: any; index: any; collection: any }) {
+    this.element = args.element;
+    this.index = args.index;
+    this.collection = args.collection;
   }
 }
 

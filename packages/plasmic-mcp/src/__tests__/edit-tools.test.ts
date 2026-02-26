@@ -38,6 +38,7 @@ import {
   resolveTokenReferences,
   setVisibility,
   setDataCond,
+  setDataRep,
 } from "../edit-tools";
 import { setSession, clearSession } from "../session";
 import { initChangeTracker, disposeChangeTracker } from "../change-tracker";
@@ -5775,5 +5776,278 @@ describe("setDataCond", () => {
 
     expect(api.saveRevision).toHaveBeenCalledTimes(1);
     expect(result.save.revisionNum).toBe(11);
+  });
+});
+
+describe("setDataRep", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    clearNodeCache();
+    api = mockApiClient();
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+    mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
+  });
+
+  afterEach(() => {
+    disposeChangeTracker();
+    clearSession();
+    vi.restoreAllMocks();
+  });
+
+  function setupSession(component: any) {
+    const session = makeSession({ site: { components: [component] } });
+    setSession(session);
+    initChangeTracker(session.site);
+    return session;
+  }
+
+  it("sets data repetition with default variables", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Card" });
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setDataRep(api, "comp-1", "Card", "$queries.products.data");
+
+    expect(result.newDataRep).toEqual({
+      collection: "$queries.products.data",
+      elementVariable: "currentItem",
+      indexVariable: "currentIndex",
+    });
+    expect(result.previousDataRep).toBeNull();
+    expect(result.nodeName).toBe("Card");
+    expect(result.nodeUuid).toBe("node-1");
+    // Verify the Rep was set on the variant setting
+    const vs = node.vsettings[0];
+    expect(vs.dataRep).toBeTruthy();
+    expect(vs.dataRep._type).toBe("Rep");
+    expect(vs.dataRep.element._type).toBe("Var");
+    expect(vs.dataRep.element.name).toBe("currentItem");
+    expect(vs.dataRep.index._type).toBe("Var");
+    expect(vs.dataRep.index.name).toBe("currentIndex");
+    expect(vs.dataRep.collection._type).toBe("CustomCode");
+    expect(vs.dataRep.collection.code).toBe("$queries.products.data");
+  });
+
+  it("sets data repetition with custom variable names", async () => {
+    const node = mkTag({ uuid: "node-1", name: "ProductRow" });
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setDataRep(
+      api,
+      "comp-1",
+      "ProductRow",
+      "$ctx.products",
+      "product",
+      "idx"
+    );
+
+    expect(result.newDataRep).toEqual({
+      collection: "$ctx.products",
+      elementVariable: "product",
+      indexVariable: "idx",
+    });
+    const vs = node.vsettings[0];
+    expect(vs.dataRep.element.name).toBe("product");
+    expect(vs.dataRep.index.name).toBe("idx");
+  });
+
+  it("sets data repetition without index variable when null", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Item" });
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setDataRep(
+      api,
+      "comp-1",
+      "Item",
+      "[1,2,3]",
+      "num",
+      null
+    );
+
+    expect(result.newDataRep).toEqual({
+      collection: "[1,2,3]",
+      elementVariable: "num",
+    });
+    const vs = node.vsettings[0];
+    expect(vs.dataRep.index).toBeNull();
+  });
+
+  it("removes data repetition when collection is null", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Card" });
+    // Set up existing dataRep
+    node.vsettings[0].dataRep = {
+      _type: "Rep",
+      element: { _type: "Var", name: "item", uuid: "var-1" },
+      index: { _type: "Var", name: "idx", uuid: "var-2" },
+      collection: { _type: "CustomCode", code: "$ctx.items", fallback: null },
+    };
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setDataRep(api, "comp-1", "Card", null);
+
+    expect(result.newDataRep).toBeNull();
+    expect(result.previousDataRep).toEqual({
+      collection: "$ctx.items",
+      elementVariable: "item",
+      indexVariable: "idx",
+    });
+    expect(node.vsettings[0].dataRep).toBeNull();
+  });
+
+  it("reports previous ObjectPath collection", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Card" });
+    node.vsettings[0].dataRep = {
+      _type: "Rep",
+      element: { _type: "Var", name: "product", uuid: "var-1" },
+      index: null,
+      collection: { _type: "ObjectPath", path: ["$queries", "products", "data"], fallback: null },
+    };
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setDataRep(api, "comp-1", "Card", null);
+
+    expect(result.previousDataRep).toEqual({
+      collection: "$queries.products.data",
+      elementVariable: "product",
+    });
+  });
+
+  it("works on TplComponent nodes", async () => {
+    const compNode: any = {
+      _type: "TplComponent",
+      uuid: "tplcomp-1",
+      name: "ProductCard",
+      component: { name: "Card", uuid: "card-comp-uuid" },
+      vsettings: [{ rs: { values: {} }, args: [] }],
+    };
+    const root = mkTag({ uuid: "root-1", children: [compNode] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setDataRep(api, "comp-1", "ProductCard", "$ctx.items");
+
+    expect(result.newDataRep!.collection).toBe("$ctx.items");
+    expect(compNode.vsettings[0].dataRep._type).toBe("Rep");
+  });
+
+  it("rejects TplSlot nodes", async () => {
+    const slot: any = {
+      _type: "TplSlot",
+      uuid: "slot-1",
+      param: { variable: { name: "children" } },
+      defaultContents: [],
+    };
+    const root = mkTag({ uuid: "root-1", children: [slot] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    setupSession(comp);
+
+    await expect(
+      setDataRep(api, "comp-1", "slot-1", "$ctx.items")
+    ).rejects.toThrow(/not a TplTag or TplComponent/);
+  });
+
+  it("replaces existing dataRep with new one", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Card" });
+    node.vsettings[0].dataRep = {
+      _type: "Rep",
+      element: { _type: "Var", name: "oldItem", uuid: "var-1" },
+      index: { _type: "Var", name: "oldIdx", uuid: "var-2" },
+      collection: { _type: "CustomCode", code: "$ctx.oldItems", fallback: null },
+    };
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setDataRep(
+      api,
+      "comp-1",
+      "Card",
+      "$ctx.newItems",
+      "newItem",
+      "newIdx"
+    );
+
+    expect(result.previousDataRep).toEqual({
+      collection: "$ctx.oldItems",
+      elementVariable: "oldItem",
+      indexVariable: "oldIdx",
+    });
+    expect(result.newDataRep).toEqual({
+      collection: "$ctx.newItems",
+      elementVariable: "newItem",
+      indexVariable: "newIdx",
+    });
+    expect(node.vsettings[0].dataRep.element.name).toBe("newItem");
+  });
+
+  it("saves changes and returns revision", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Card" });
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setDataRep(api, "comp-1", "Card", "$ctx.items");
+
+    expect(api.saveRevision).toHaveBeenCalledTimes(1);
+    expect(result.save.revisionNum).toBe(11);
+  });
+
+  it("supports variant-aware repetition", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Card" });
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const mobileVariant = { uuid: "var-mobile", name: "Mobile" };
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).variants = [
+      { uuid: "var-base", name: "base", selectors: null },
+      mobileVariant,
+    ];
+    // Add variant to site globalVariantGroups for resolution
+    const session = makeSession({
+      site: {
+        components: [comp],
+        globalVariantGroups: [
+          { variants: [mobileVariant], param: { variable: { name: "Screen" } } },
+        ],
+      } as any,
+    });
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const mobileVs: any = { rs: { values: {} }, variants: [mobileVariant] };
+    mockEnsureVariantSetting.mockReturnValue(mobileVs);
+
+    const result = await setDataRep(
+      api,
+      "comp-1",
+      "Card",
+      "$ctx.mobileItems",
+      undefined,
+      undefined,
+      "Mobile"
+    );
+
+    expect(result.newDataRep!.collection).toBe("$ctx.mobileItems");
+    expect(mobileVs.dataRep._type).toBe("Rep");
   });
 });

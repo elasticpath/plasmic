@@ -3,7 +3,7 @@
 > **Goal**: Create Claude Code skills and workflows that can interact with Plasmic Studio
 > programmatically to create fully-featured pages from the Claude Code terminal.
 >
-> **Current state**: 36 MCP tools, 6 Claude Code skills, 699 tests (649 unit + 50 integration).
+> **Current state**: 37 MCP tools, 6 Claude Code skills, 719 tests (666 unit + 53 integration).
 > Zero TODOs/FIXMEs/skipped tests. All acceptance criteria in specs are unchecked (none implemented).
 >
 > **Last verified**: 2026-02-26 — full code search re-confirmed all statuses below.
@@ -43,16 +43,17 @@ Each is self-contained with no cross-spec dependencies.
   - `set-visibility` — hide/show elements per variant (uses WAB `setTplVisibility()`)
   - `set-data-cond` — attach JS conditional expressions (e.g., `$ctx.user.isLoggedIn`) to elements
 
-### 1.2 Data Repetition (Collection Rendering)
+### 1.2 Data Repetition (Collection Rendering) — IMPLEMENTED (2026-02-26)
 - **Spec**: `specs/gap-data-repetition.md` *(NEW — created during this review)*
-- **Status**: NOT IMPLEMENTED
-  - Verified: `dataRep` only appears in dead code (`cloneVSettings` line 2240 of edit-tools.ts)
-  - WAB backing confirmed: `Rep` model class in `classes.ts` with `element: Var`, `index: Var`, `collection: CustomCode | ObjectPath`; `VariantSetting.dataRep` field
+- **Status**: IMPLEMENTED
+  - `set-data-rep` tool: set/clear data repetition with collection expression, element/index variable names, variant support
+  - Tree reader surfaces `dataRep` field with `{ collection, elementVariable, indexVariable }` in full, summary, and node-details modes
+  - Rep/Var mock classes added for unit testing
+  - 10 unit tests (edit-tools) + 7 unit tests (tree-reader) + 3 integration tests = 20 new tests
+  - Total test count: 719 (666 unit + 53 integration)
 - **What**: One new node-level action:
   - `set-data-rep` — enable element repetition over a collection expression (e.g., `$queries.products.data`)
-- **Why Tier 1**: Data-driven list rendering (product grids, blog feeds, table rows) is fundamental to realistic page creation. Without it, every repeated element must be manually duplicated.
 - **Cross-tool integration**: Works with data queries (`$queries.x.data`), dynamic text (`$ctx.currentItem.field`), and conditional visibility (`$ctx.currentItem.isActive`)
-- **Effort**: Low-medium — single action, Rep object construction + Var creation
 
 ### 1.3 Token CRUD
 - **Spec**: `specs/gap-token-crud.md`
@@ -317,7 +318,7 @@ These are code health improvements discovered during analysis. No specs needed.
 ## Implementation Order Recommendation
 
 ```
-Phase 1 (Foundations):      1.1 Visibility → 1.2 Data Repetition → 1.3 Tokens → CQ-1 Dead Code
+Phase 1 (Foundations):      1.1 Visibility ✓ → 1.2 Data Repetition ✓ → 1.3 Tokens → CQ-1 Dead Code
 Phase 2 (Authoring):        1.4 Props → 1.5 Rich Text → 2.1 State
 Phase 3 (Interactivity):    2.2 Interactions → CQ-2/CQ-3 Slot Gaps
 Phase 4 (Assets & Data):    3.1 Images → 3.2 Queries

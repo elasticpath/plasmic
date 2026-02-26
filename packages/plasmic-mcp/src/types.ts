@@ -230,6 +230,12 @@ export interface TreeNode {
   visibility?: "notRendered" | "displayNone";
   /** Data condition expression for conditional rendering. Only present when a custom condition is set. */
   dataCond?: string;
+  /** Data repetition config. Only present when element repeats over a collection. */
+  dataRep?: {
+    collection: string;
+    elementVariable: string;
+    indexVariable?: string;
+  };
   children?: TreeNode[];
   /** Number of immediate children. Present in summary mode and when depth-truncated. */
   childCount?: number;

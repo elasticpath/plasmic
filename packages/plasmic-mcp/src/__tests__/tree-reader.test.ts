@@ -2482,3 +2482,212 @@ describe("visibility and dataCond output", () => {
     expect(result?.visibility).toBe("displayNone");
   });
 });
+
+describe("dataRep output", () => {
+  it("includes dataRep with CustomCode collection", () => {
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        uuid: "root-1",
+        tag: "div",
+        vsettings: [
+          {
+            rs: { values: {} },
+            dataRep: {
+              _type: "Rep",
+              element: { _type: "Var", name: "product", uuid: "var-1" },
+              index: { _type: "Var", name: "idx", uuid: "var-2" },
+              collection: {
+                _type: "CustomCode",
+                code: "$queries.products.data",
+                fallback: null,
+              },
+            },
+          },
+        ],
+        children: [],
+      },
+    };
+
+    const result = readComponentTree(component);
+    expect(result?.dataRep).toEqual({
+      collection: "$queries.products.data",
+      elementVariable: "product",
+      indexVariable: "idx",
+    });
+  });
+
+  it("includes dataRep with ObjectPath collection", () => {
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        uuid: "root-1",
+        tag: "div",
+        vsettings: [
+          {
+            rs: { values: {} },
+            dataRep: {
+              _type: "Rep",
+              element: { _type: "Var", name: "item", uuid: "var-1" },
+              index: null,
+              collection: {
+                _type: "ObjectPath",
+                path: ["$ctx", "items"],
+                fallback: null,
+              },
+            },
+          },
+        ],
+        children: [],
+      },
+    };
+
+    const result = readComponentTree(component);
+    expect(result?.dataRep).toEqual({
+      collection: "$ctx.items",
+      elementVariable: "item",
+    });
+  });
+
+  it("omits indexVariable when index is null", () => {
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        uuid: "root-1",
+        tag: "div",
+        vsettings: [
+          {
+            rs: { values: {} },
+            dataRep: {
+              _type: "Rep",
+              element: { _type: "Var", name: "item", uuid: "var-1" },
+              index: null,
+              collection: {
+                _type: "CustomCode",
+                code: "[1,2,3]",
+                fallback: null,
+              },
+            },
+          },
+        ],
+        children: [],
+      },
+    };
+
+    const result = readComponentTree(component);
+    expect(result?.dataRep).toBeDefined();
+    expect(result?.dataRep?.indexVariable).toBeUndefined();
+    expect(result?.dataRep?.elementVariable).toBe("item");
+  });
+
+  it("omits dataRep when not set", () => {
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        uuid: "root-1",
+        tag: "div",
+        vsettings: [{ rs: { values: {} } }],
+        children: [],
+      },
+    };
+
+    const result = readComponentTree(component);
+    expect(result?.dataRep).toBeUndefined();
+  });
+
+  it("includes dataRep in summary mode", () => {
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        uuid: "root-1",
+        tag: "div",
+        vsettings: [
+          {
+            rs: { values: {} },
+            dataRep: {
+              _type: "Rep",
+              element: { _type: "Var", name: "product", uuid: "var-1" },
+              index: { _type: "Var", name: "idx", uuid: "var-2" },
+              collection: {
+                _type: "CustomCode",
+                code: "$ctx.products",
+                fallback: null,
+              },
+            },
+          },
+        ],
+        children: [],
+      },
+    };
+
+    const result = readComponentTree(component, { summaryOnly: true });
+    expect(result?.dataRep).toEqual({
+      collection: "$ctx.products",
+      elementVariable: "product",
+      indexVariable: "idx",
+    });
+  });
+
+  it("includes dataRep in readNodeDetails", () => {
+    const tplNode: any = {
+      _type: "TplTag",
+      uuid: "node-1",
+      tag: "div",
+      vsettings: [
+        {
+          rs: { values: {} },
+          dataRep: {
+            _type: "Rep",
+            element: { _type: "Var", name: "card", uuid: "var-1" },
+            index: { _type: "Var", name: "i", uuid: "var-2" },
+            collection: {
+              _type: "CustomCode",
+              code: "$queries.cards",
+              fallback: null,
+            },
+          },
+        },
+      ],
+      children: [],
+    };
+
+    const result = readNodeDetails(tplNode);
+    expect(result?.dataRep).toEqual({
+      collection: "$queries.cards",
+      elementVariable: "card",
+      indexVariable: "i",
+    });
+  });
+
+  it("includes dataRep on TplComponent nodes", () => {
+    const component = {
+      tplTree: {
+        _type: "TplComponent",
+        uuid: "tplcomp-1",
+        component: { name: "Card", uuid: "card-uuid" },
+        vsettings: [
+          {
+            rs: { values: {} },
+            args: [],
+            dataRep: {
+              _type: "Rep",
+              element: { _type: "Var", name: "product", uuid: "var-1" },
+              index: null,
+              collection: {
+                _type: "CustomCode",
+                code: "$ctx.products",
+                fallback: null,
+              },
+            },
+          },
+        ],
+      },
+    };
+
+    const result = readComponentTree(component);
+    expect(result?.dataRep).toEqual({
+      collection: "$ctx.products",
+      elementVariable: "product",
+    });
+  });
+});

@@ -58,6 +58,7 @@ import {
   getValidStylePropertyNames,
   setVisibility,
   setDataCond,
+  setDataRep,
 } from "./edit-tools.js";
 import { beginBatch, endBatch, isBatchActive, cancelBatch, cancelBatchWithRollback, getAccumulatedChanges } from "./batch-manager.js";
 import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
@@ -2750,6 +2751,132 @@ export function createServer(): McpServer {
         };
       } catch (err: any) {
         return handleMutationError("setting data condition", err);
+      }
+    }
+  );
+
+  // --- set-data-rep ---
+  // Sets or removes data repetition on an element, enabling collection-based
+  // rendering (e.g., repeating a card for each product in an array).
+  // Creates a Rep object with element/index Var and a CustomCode collection expression.
+  server.tool(
+    "set-data-rep",
+    "Set data repetition on an element to repeat it for each item in a collection. " +
+      'Provide a JavaScript expression for the array (e.g., "$queries.products.data", "$ctx.items"). ' +
+      "Loop variables are accessible in descendant elements as $ctx.<elementVariable>. " +
+      "Pass collection as null to remove repetition.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component containing the node"),
+      nodeRef: z
+        .string()
+        .describe(
+          'Node reference: UUID, name (e.g., "ProductCard"), path (e.g., "Root.CardList"), or index (e.g., "#2")'
+        ),
+      collection: z
+        .string()
+        .nullable()
+        .describe(
+          'JavaScript expression for the array (e.g., "$queries.products.data", "$ctx.items", "[1,2,3]") or null to remove repetition'
+        ),
+      elementVariable: z
+        .string()
+        .optional()
+        .describe(
+          'Loop variable name for each item (default: "currentItem"). Accessible in descendants as $ctx.<name>.'
+        ),
+      indexVariable: z
+        .string()
+        .nullable()
+        .optional()
+        .describe(
+          'Loop variable name for the index (default: "currentIndex"). Pass null to omit index variable.'
+        ),
+      variant: z
+        .string()
+        .optional()
+        .describe(
+          'Target variant by name (e.g., "Mobile"), UUID, or selector. Omit for base variant. Note: dataRep is conventionally only set on the base variant.'
+        ),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe(
+          "When true, shows what would change without persisting. Model is left unchanged."
+        ),
+    },
+    async ({
+      componentUuid,
+      nodeRef,
+      collection,
+      elementVariable,
+      indexVariable,
+      variant,
+      dryRun,
+    }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            setDataRep(
+              apiClient,
+              componentUuid,
+              nodeRef,
+              collection,
+              elementVariable,
+              indexVariable,
+              variant
+            )
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    node: result.nodeName ?? result.nodeUuid,
+                    previousDataRep: result.previousDataRep,
+                    newDataRep: result.newDataRep,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await setDataRep(
+          apiClient,
+          componentUuid,
+          nodeRef,
+          collection,
+          elementVariable,
+          indexVariable,
+          variant
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  node: result.nodeName ?? result.nodeUuid,
+                  previousDataRep: result.previousDataRep,
+                  newDataRep: result.newDataRep,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("setting data repetition", err);
       }
     }
   );

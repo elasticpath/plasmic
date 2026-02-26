@@ -38,6 +38,8 @@ import {
   VarRef,
   RenderExpr,
   Arg,
+  Rep,
+  Var,
 } from "@/wab/shared/model/classes";
 import { RSH } from "@/wab/shared/RuleSetHelpers";
 import { TplMgr } from "@/wab/shared/TplMgr";
@@ -3024,4 +3026,144 @@ export async function setDataCond(
     previousCondition,
     newCondition: condition,
   };
+}
+
+// --- set-data-rep ---
+
+export interface DataRepInfo {
+  collection: string;
+  elementVariable: string;
+  indexVariable?: string;
+}
+
+export interface SetDataRepResult {
+  save: SaveResult;
+  nodeName?: string;
+  nodeUuid: string;
+  previousDataRep: DataRepInfo | null;
+  newDataRep: DataRepInfo | null;
+}
+
+/**
+ * Set or clear data repetition on an element.
+ *
+ * When collection is a non-null string, creates a Rep object with Var for
+ * element/index variables and a CustomCode expression for the collection.
+ * When collection is null, removes the dataRep from the VariantSetting.
+ *
+ * Note: In WAB, dataRep is stored on VariantSetting but is not truly
+ * variantable — it is conventionally set only on the base variant.
+ * We accept a variant parameter for API consistency, but omitting it
+ * (targeting the base variant) is the expected usage.
+ */
+export async function setDataRep(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  nodeRef: string,
+  collection: string | null,
+  elementVariable?: string,
+  indexVariable?: string | null,
+  variant?: string
+): Promise<SetDataRepResult> {
+  const component = findComponent(componentUuid);
+  const result = resolveNode(component, nodeRef);
+  const resolved = requireSingleNode(result, nodeRef);
+
+  const tpl = resolved.node;
+  if (!isKnownTplTag(tpl) && !isKnownTplComponent(tpl)) {
+    throw new Error(
+      `Node "${nodeRef}" is not a TplTag or TplComponent and cannot have data repetition set.`
+    );
+  }
+
+  const session = requireSession();
+  const tplMgr = new TplMgr({ site: session.site });
+  const resolvedVariant = variant
+    ? resolveVariant(session.site, component, variant)
+    : null;
+
+  const tracker = getChangeTracker();
+  let previousDataRep: DataRepInfo | null = null;
+
+  const changes = tracker.withRecording(() => {
+    const vs = resolvedVariant
+      ? ensureVariantSetting(tpl, [resolvedVariant])
+      : tplMgr.ensureBaseVariantSetting(tpl);
+
+    // Extract previous dataRep state
+    previousDataRep = extractDataRepInfo(vs);
+
+    if (collection === null) {
+      // Remove data repetition
+      vs.dataRep = null;
+    } else {
+      // Create Rep with Var for element/index and CustomCode for collection
+      const elemName = elementVariable ?? "currentItem";
+      const idxName = indexVariable !== null ? (indexVariable ?? "currentIndex") : undefined;
+
+      vs.dataRep = new Rep({
+        element: new Var({ name: elemName, uuid: randomUUID() }),
+        index: idxName ? new Var({ name: idxName, uuid: randomUUID() }) : null,
+        collection: new CustomCode({ code: collection, fallback: null }),
+      });
+    }
+  });
+
+  const newDataRep =
+    collection !== null
+      ? {
+          collection,
+          elementVariable: elementVariable ?? "currentItem",
+          ...(indexVariable !== null
+            ? { indexVariable: indexVariable ?? "currentIndex" }
+            : {}),
+        }
+      : null;
+
+  const componentIid = getComponentIid(component);
+  const variantLabel = resolvedVariant
+    ? ` [variant: ${resolvedVariant.name ?? variant}]`
+    : "";
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `set-data-rep: ${collection ?? "(removed)"} on ${resolved.name ?? nodeRef}${variantLabel}`,
+    componentIid ? [componentIid] : []
+  );
+
+  return {
+    save,
+    nodeName: resolved.name,
+    nodeUuid: resolved.uuid,
+    previousDataRep,
+    newDataRep,
+  };
+}
+
+/**
+ * Extract DataRepInfo from a VariantSetting's dataRep field.
+ */
+function extractDataRepInfo(vs: any): DataRepInfo | null {
+  const rep = vs?.dataRep;
+  if (!rep) return null;
+
+  let collection: string;
+  if (isKnownCustomCode(rep.collection)) {
+    collection = rep.collection.code;
+  } else if (isKnownObjectPath(rep.collection)) {
+    collection = rep.collection.path.join(".");
+  } else {
+    return null;
+  }
+
+  const info: DataRepInfo = {
+    collection,
+    elementVariable: rep.element?.name ?? "currentItem",
+  };
+
+  if (rep.index?.name) {
+    info.indexVariable = rep.index.name;
+  }
+
+  return info;
 }

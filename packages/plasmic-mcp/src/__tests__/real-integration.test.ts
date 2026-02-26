@@ -2761,6 +2761,150 @@ describe("visibility and conditional rendering", () => {
   });
 });
 
+describe("data repetition", () => {
+  it("set-data-rep → read back dataRep in tree → undo → verify removed", async () => {
+    const comp = discoveredComponents.find((c) => c.type === "page") ?? discoveredComponents[0];
+    if (!comp) return;
+
+    // Get the tree and find a TplTag node to repeat
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+    const target = findNamedNode(tree);
+    if (!target) return;
+
+    // Set data repetition
+    const setResult = await client.callTool({
+      name: "set-data-rep",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: target.uuid,
+        collection: "$ctx.items",
+        elementVariable: "item",
+        indexVariable: "idx",
+      },
+    });
+    expect(setResult.isError).toBeFalsy();
+    const setOutput = parseResponse(setResult);
+    expect(setOutput.success).toBe(true);
+    expect(setOutput.newDataRep).toEqual({
+      collection: "$ctx.items",
+      elementVariable: "item",
+      indexVariable: "idx",
+    });
+
+    // Read back via get-node-details and verify dataRep field
+    const detailResult = await client.callTool({
+      name: "get-node-details",
+      arguments: { componentUuid: comp.uuid, nodeRef: target.uuid },
+    });
+    const detail = parseResponse(detailResult);
+    expect(detail.node.dataRep).toBeDefined();
+    expect(detail.node.dataRep.collection).toBe("$ctx.items");
+    expect(detail.node.dataRep.elementVariable).toBe("item");
+    expect(detail.node.dataRep.indexVariable).toBe("idx");
+
+    // Undo the data repetition
+    const undoResult = await client.callTool({ name: "undo", arguments: {} });
+    expect(undoResult.isError).toBeFalsy();
+
+    // Verify dataRep is removed
+    const restoredDetail = parseResponse(
+      await client.callTool({
+        name: "get-node-details",
+        arguments: { componentUuid: comp.uuid, nodeRef: target.uuid },
+      })
+    );
+    expect(restoredDetail.node.dataRep).toBeUndefined();
+  });
+
+  it("set-data-rep null removes existing repetition", async () => {
+    const comp = discoveredComponents.find((c) => c.type === "page") ?? discoveredComponents[0];
+    if (!comp) return;
+
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+    const target = findNamedNode(tree);
+    if (!target) return;
+
+    // First set repetition
+    await client.callTool({
+      name: "set-data-rep",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: target.uuid,
+        collection: "$ctx.products",
+      },
+    });
+
+    // Now remove it
+    const removeResult = await client.callTool({
+      name: "set-data-rep",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: target.uuid,
+        collection: null,
+      },
+    });
+    expect(removeResult.isError).toBeFalsy();
+    const removeOutput = parseResponse(removeResult);
+    expect(removeOutput.newDataRep).toBeNull();
+    expect(removeOutput.previousDataRep).toBeTruthy();
+    expect(removeOutput.previousDataRep.collection).toBe("$ctx.products");
+
+    // Verify in tree that dataRep is gone
+    const detail = parseResponse(
+      await client.callTool({
+        name: "get-node-details",
+        arguments: { componentUuid: comp.uuid, nodeRef: target.uuid },
+      })
+    );
+    expect(detail.node.dataRep).toBeUndefined();
+
+    // Clean up: undo twice (remove + set)
+    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+
+  it("set-data-rep with default variable names", async () => {
+    const comp = discoveredComponents.find((c) => c.type === "page") ?? discoveredComponents[0];
+    if (!comp) return;
+
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+    const target = findNamedNode(tree);
+    if (!target) return;
+
+    // Set repetition without specifying variable names (use defaults)
+    const result = await client.callTool({
+      name: "set-data-rep",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: target.uuid,
+        collection: "[1,2,3]",
+      },
+    });
+    expect(result.isError).toBeFalsy();
+    const output = parseResponse(result);
+    expect(output.newDataRep.elementVariable).toBe("currentItem");
+    expect(output.newDataRep.indexVariable).toBe("currentIndex");
+
+    // Clean up
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+});
+
 /** Walk a tree recursively to find a node by UUID. */
 function findNodeByUuid(tree: any, uuid: string): any {
   if (tree.uuid === uuid) return tree;

@@ -202,6 +202,10 @@ function readTplTag(
   if (visInfo.visibility) node.visibility = visInfo.visibility;
   if (visInfo.dataCond) node.dataCond = visInfo.dataCond;
 
+  // Data repetition — structurally important, shown even in summary mode
+  const repInfo = extractDataRepInfo(vs);
+  if (repInfo) node.dataRep = repInfo;
+
   // In summary mode, skip styles, text, and attrs
   if (!options?.summaryOnly) {
     // CSS styles from the base variant's RuleSet
@@ -309,6 +313,11 @@ function readTplComponent(
   const compVisInfo = extractVisibilityInfo(vs, compRs);
   if (compVisInfo.visibility) node.visibility = compVisInfo.visibility;
   if (compVisInfo.dataCond) node.dataCond = compVisInfo.dataCond;
+
+  // Data repetition — structurally important, shown even in summary mode
+  const compRepInfo = extractDataRepInfo(vs);
+  if (compRepInfo) node.dataRep = compRepInfo;
+
   const slotArgs: any[] = [];
   const nonSlotArgs: any[] = [];
 
@@ -552,6 +561,38 @@ function extractVisibilityInfo(
   }
 
   return {};
+}
+
+/**
+ * Extract data repetition info from a variant setting's dataRep field.
+ * Returns a structured object with collection expression and variable names,
+ * or null if no repetition is set.
+ */
+function extractDataRepInfo(
+  vs: any
+): { collection: string; elementVariable: string; indexVariable?: string } | null {
+  const rep = vs?.dataRep;
+  if (!rep) return null;
+
+  let collection: string;
+  if (isKnownCustomCode(rep.collection)) {
+    collection = rep.collection.code;
+  } else if (isKnownObjectPath(rep.collection)) {
+    collection = rep.collection.path.join(".");
+  } else {
+    return null;
+  }
+
+  const result: { collection: string; elementVariable: string; indexVariable?: string } = {
+    collection,
+    elementVariable: rep.element?.name ?? "currentItem",
+  };
+
+  if (rep.index?.name) {
+    result.indexVariable = rep.index.name;
+  }
+
+  return result;
 }
 
 function deriveLayoutType(
