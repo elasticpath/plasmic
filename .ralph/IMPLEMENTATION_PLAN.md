@@ -1,13 +1,13 @@
 # Implementation Plan: Plasmic MCP Eval System
 
-> Last updated: 2026-02-26 (P0 + P1 implementation status update)
+> Last updated: 2026-02-26 (P2.1 medium scenarios implemented)
 > Source: `.ralph/specs/mcp-eval-framework.md`, `mcp-eval-scenarios.md`, `mcp-eval-grading.md`, `mcp-eval-visual-capture.md`
 
 ## Status Summary
 
 **P0 (Foundation): DONE.** All 4 sub-tasks implemented — directory scaffolding, MCP client adapter, scenario schema/loader, and eval runner with Claude client.
 **P1 (Core): DONE.** All 5 sub-tasks implemented — grader framework, 10 scenarios, JSON reporter, CLI, and CI workflow.
-**P2 (Enhancement): NOT STARTED — NEXT.** Medium/complex scenarios, visual capture, LLM judge, integration tier.
+**P2 (Enhancement): IN PROGRESS.** P2.1 done (20 medium scenarios). P2.2-P2.5 not started.
 **P3 (Polish): NOT STARTED.** Dashboard, human review, remaining scenarios, cost tracking.
 
 ### Codebase Health (verified 2026-02-26)
@@ -25,7 +25,7 @@
   - `evals/graders/index.ts` — Grader registry
   - `evals/graders/transcript-check.ts` — tool-sequence, tool-params, count, no-errors
   - `evals/graders/state-check.ts` — existence, property, structure, data
-  - `evals/scenarios/` — 10 YAML scenarios (one per domain + 2 cross-domain)
+  - `evals/scenarios/` — 30 YAML scenarios (10 simple + 20 medium in `medium.yaml`)
   - `evals/cli.ts` — CLI entry point with all flags
   - `evals/` CI workflow: `.github/workflows/plasmic-mcp-eval.yml`
 
@@ -238,20 +238,31 @@
 
 ## P2 — Enhancement (richer eval coverage)
 
-**Status: NOT STARTED**
+**Status: IN PROGRESS (P2.1 done)**
 
 ### P2.1: Medium-complexity scenarios (~20)
-- [ ] Cross-domain scenarios requiring 3-8 tool calls
-- [ ] Target: ~20 scenarios (spec requires ~20 medium)
-- [ ] Examples:
-  - Create a card component with image, title, description, then style it
-  - Create a button with hover and disabled style variants
-  - Style a heading with a design token reference and font size
-  - Create a component with a data-bound text element
-  - Build a navigation bar with multiple links and responsive variant
+- [x] Cross-domain scenarios requiring 3-8 tool calls
+- [x] 20 medium scenarios implemented in `evals/scenarios/medium.yaml`
+- [x] Domain coverage: component(9), node(15), inspect(10), design(5), variant(4), data(4), interaction(2)
+- [x] Grader coverage: tool-sequence(20), tool-params(35), existence(16), count(20), no-errors(20)
+- [x] All scenarios load correctly, tier/domain filtering verified
+- [x] 1197 tests still passing
+- **Scenarios**:
+  - component+node: medium-info-card, medium-page-with-sections, medium-clone-and-rename, medium-styled-card
+  - node+inspect: medium-styled-heading, medium-nested-layout
+  - design+node+inspect: medium-style-with-new-token, medium-create-mixin
+  - design: medium-create-color-palette
+  - component+variant: medium-button-with-hover, medium-variant-group
+  - variant+inspect: medium-screen-variant
+  - node+data+inspect: medium-dynamic-text, medium-conditional-element, medium-data-repetition
+  - node+interaction+inspect: medium-button-with-navigation
+  - design+component+node: medium-hero-with-token
+  - component+node+variant+design: medium-full-card
+  - data+inspect: medium-add-query
+  - component+node+interaction: medium-cta-button
 - **Spec**: mcp-eval-scenarios.md (Medium tier)
 - **Dependencies**: P1.2
-- **Files**: `evals/scenarios/cross-domain.yaml` (extended), new per-domain files
+- **Files**: `evals/scenarios/medium.yaml`
 
 ### P2.2: Complex end-to-end scenarios (~15)
 - [ ] Multi-domain workflows spanning 4+ domains, 8+ tool calls
@@ -403,12 +414,12 @@ The following gaps were identified between specs and this plan. Items above alre
 | Dashboard retention policy | GE7 | Added to P3.1 (90 days) |
 
 ### Scenario Count Targets (spec: 50-80 total)
-| Tier | Spec Target | Plan Target | Plan Item |
-|------|-------------|-------------|-----------|
-| Simple | ~20 | 10 (P1.2) + ~10 (P3.3) = ~20 | P1.2 + P3.3 |
-| Medium | ~20 | ~20 (P2.1) | P2.1 |
-| Complex | ~15-20 | ~15 (P2.2) | P2.2 |
-| **Total** | **50-80** | **~55** | |
+| Tier | Spec Target | Implemented | Remaining | Plan Item |
+|------|-------------|-------------|-----------|-----------|
+| Simple | ~20 | 10 (P1.2) | ~10 (P3.3) | P1.2 + P3.3 |
+| Medium | ~20 | **20 (P2.1)** | 0 | P2.1 ✓ |
+| Complex | ~15-20 | 0 | ~15 (P2.2) | P2.2 |
+| **Total** | **50-80** | **30** | **~25** | |
 
 ---
 

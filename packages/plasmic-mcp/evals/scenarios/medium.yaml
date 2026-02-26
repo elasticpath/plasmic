@@ -1,0 +1,729 @@
+# Medium-complexity scenarios (~20)
+# Cross-domain, 3-8 tool calls expected
+# Tests: multi-tool workflows that combine 2-3 STRAP domains
+#
+# Why medium tier: These scenarios go beyond single-domain operations to test
+# Claude's ability to orchestrate multi-step workflows across domain boundaries.
+# They require Claude to discover project state via inspect, create entities,
+# and then modify them — reflecting real user workflows.
+
+scenarios:
+  # ─────────────────────────────────────────────────────────────────────
+  # Component + Node: creating components and populating them with elements
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: medium-info-card
+    description: "Create a new reusable component called 'InfoCard'. Inside it, add a heading element that says 'Title', a paragraph that says 'Description text goes here', and a link element that says 'Learn More'."
+    domains:
+      - component
+      - node
+    tier: medium
+    timeout: 120
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: InfoCard
+      - type: existence
+        params:
+          entityType: component
+          name: InfoCard
+      - type: count
+        params:
+          min: 4
+          max: 15
+      - type: no-errors
+        params: {}
+
+  - id: medium-page-with-sections
+    description: "Create a new page called 'Services' at the URL path '/services'. Then add a heading element that says 'Our Services' and a horizontal rule (hr) element below it."
+    domains:
+      - component
+      - node
+    tier: medium
+    timeout: 120
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+      - type: tool-params
+        params:
+          tool: component
+          action: create-page
+          expected:
+            name: Services
+            path: /services
+      - type: existence
+        params:
+          entityType: page
+          name: Services
+      - type: count
+        params:
+          min: 3
+          max: 15
+      - type: no-errors
+        params: {}
+
+  - id: medium-clone-and-rename
+    description: "First list all pages in the project. Then clone the Homepage page to create a copy. Finally, rename the cloned page to 'About Us' with the URL path '/about-us'."
+    domains:
+      - component
+    tier: medium
+    timeout: 120
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+      - type: tool-params
+        params:
+          tool: component
+          action: clone
+          expected: {}
+      - type: tool-params
+        params:
+          tool: component
+          action: rename
+          expected:
+            newName: About Us
+      - type: existence
+        params:
+          entityType: page
+          name: About Us
+      - type: count
+        params:
+          min: 3
+          max: 12
+      - type: no-errors
+        params: {}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Node + Design: styling elements with various CSS properties
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: medium-styled-heading
+    description: "Inspect the Homepage component to find a heading element. Then style that heading with a font size of 48px, font weight of bold, and text alignment of center."
+    domains:
+      - node
+      - inspect
+    tier: medium
+    timeout: 120
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - inspect
+            - node
+      - type: tool-params
+        params:
+          tool: node
+          action: update-styles
+          expected: {}
+      - type: count
+        params:
+          min: 3
+          max: 10
+      - type: no-errors
+        params: {}
+
+  - id: medium-nested-layout
+    description: "Add a new container div element named 'ContentWrapper' to the Homepage component. Inside that container, add a heading that says 'Welcome' and a paragraph that says 'This is the content area'."
+    domains:
+      - node
+      - inspect
+    tier: medium
+    timeout: 120
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - inspect
+            - node
+      - type: tool-params
+        params:
+          tool: node
+          action: add
+          expected: {}
+      - type: count
+        params:
+          min: 4
+          max: 15
+      - type: no-errors
+        params: {}
+
+  - id: medium-style-with-new-token
+    description: "Create a new color token called 'brand-blue' with the value '#0066cc'. Then inspect the Homepage component to find the heading element, and style it with font size 32px and the color #0066cc."
+    domains:
+      - design
+      - node
+      - inspect
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+            - inspect
+            - node
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: brand-blue
+      - type: existence
+        params:
+          entityType: token
+          name: brand-blue
+      - type: tool-params
+        params:
+          tool: node
+          action: update-styles
+          expected: {}
+      - type: count
+        params:
+          min: 4
+          max: 12
+      - type: no-errors
+        params: {}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Design: creating multiple design system entities
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: medium-create-color-palette
+    description: "Create three color tokens for a design system: 'ds-primary' with value '#0066cc', 'ds-secondary' with value '#6c757d', and 'ds-accent' with value '#ff6b35'."
+    domains:
+      - design
+    tier: medium
+    timeout: 120
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: ds-primary
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: ds-secondary
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: ds-accent
+      - type: existence
+        params:
+          entityType: token
+          name: ds-primary
+      - type: existence
+        params:
+          entityType: token
+          name: ds-secondary
+      - type: existence
+        params:
+          entityType: token
+          name: ds-accent
+      - type: count
+        params:
+          min: 3
+          max: 10
+      - type: no-errors
+        params: {}
+
+  - id: medium-create-mixin
+    description: "Create a style mixin called 'card-shadow' with the following styles: border-radius of 8px, box-shadow of '0 2px 4px rgba(0,0,0,0.1)', and padding of 16px. Then inspect the Homepage to find an element and apply the mixin to it."
+    domains:
+      - design
+      - node
+      - inspect
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+            - inspect
+            - node
+      - type: tool-params
+        params:
+          tool: design
+          action: create-mixin
+          expected:
+            name: card-shadow
+      - type: existence
+        params:
+          entityType: mixin
+          name: card-shadow
+      - type: tool-params
+        params:
+          tool: node
+          action: apply-mixin
+          expected: {}
+      - type: count
+        params:
+          min: 4
+          max: 12
+      - type: no-errors
+        params: {}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Component + Variant: creating components with style variants
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: medium-button-with-hover
+    description: "Create a new reusable component called 'Button'. Add a text element inside it that says 'Click Me'. Then add a hover style variant to the Button component."
+    domains:
+      - component
+      - node
+      - variant
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+            - variant
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: Button
+      - type: existence
+        params:
+          entityType: component
+          name: Button
+      - type: tool-params
+        params:
+          tool: variant
+          action: create-style
+          expected: {}
+      - type: count
+        params:
+          min: 3
+          max: 12
+      - type: no-errors
+        params: {}
+
+  - id: medium-variant-group
+    description: "Create a new reusable component called 'Alert'. Then create a variant group on it called 'Severity' of type 'single' with initial variants: 'info', 'warning', and 'error'."
+    domains:
+      - component
+      - variant
+    tier: medium
+    timeout: 120
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - variant
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: Alert
+      - type: existence
+        params:
+          entityType: component
+          name: Alert
+      - type: tool-params
+        params:
+          tool: variant
+          action: create-group
+          expected:
+            name: Severity
+      - type: count
+        params:
+          min: 2
+          max: 10
+      - type: no-errors
+        params: {}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Variant + Inspect: managing variants on existing components
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: medium-screen-variant
+    description: "First list all components to find Homepage. Then create a new screen variant called 'Tablet' on the Homepage component with a max-width of 1024 pixels. Finally, list all variants on Homepage to verify it was created."
+    domains:
+      - variant
+      - inspect
+    tier: medium
+    timeout: 120
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - variant
+      - type: tool-params
+        params:
+          tool: variant
+          action: create-screen
+          expected:
+            name: Tablet
+      - type: count
+        params:
+          min: 3
+          max: 10
+      - type: no-errors
+        params: {}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Node + Data: data bindings and dynamic content
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: medium-dynamic-text
+    description: "Inspect the Homepage component to find the root container. Add a new text element to it. Then update that text element to display dynamic content bound to the expression '$ctx.userName' with a fallback value of 'Guest'."
+    domains:
+      - node
+      - data
+      - inspect
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - inspect
+            - node
+      - type: tool-params
+        params:
+          tool: node
+          action: add
+          expected: {}
+      - type: tool-params
+        params:
+          tool: node
+          action: update-text
+          expected: {}
+      - type: count
+        params:
+          min: 3
+          max: 12
+      - type: no-errors
+        params: {}
+
+  - id: medium-conditional-element
+    description: "Inspect the Homepage component structure to find all elements. Then add a new div element named 'Banner' with text 'Special Offer!'. Finally, set a data condition on the Banner so it only renders when '$ctx.showBanner' is true."
+    domains:
+      - node
+      - data
+      - inspect
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - inspect
+            - node
+            - data
+      - type: tool-params
+        params:
+          tool: node
+          action: add
+          expected: {}
+      - type: tool-params
+        params:
+          tool: data
+          action: set-data-cond
+          expected: {}
+      - type: count
+        params:
+          min: 4
+          max: 15
+      - type: no-errors
+        params: {}
+
+  - id: medium-data-repetition
+    description: "Inspect the Homepage component, then add a container div named 'ProductList'. Inside it, add a text element. Then set up data repetition on the ProductList container to repeat for each item in '$ctx.products', using 'product' as the element variable and 'index' as the index variable."
+    domains:
+      - node
+      - data
+      - inspect
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - inspect
+            - node
+            - data
+      - type: tool-params
+        params:
+          tool: node
+          action: add
+          expected: {}
+      - type: tool-params
+        params:
+          tool: data
+          action: set-data-rep
+          expected: {}
+      - type: count
+        params:
+          min: 5
+          max: 18
+      - type: no-errors
+        params: {}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Node + Interaction: adding event handlers
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: medium-button-with-navigation
+    description: "Inspect the Homepage component. Add a button element that says 'Go to About'. Then add an onClick event handler on that button that performs a navigation action to the URL '/about'."
+    domains:
+      - node
+      - interaction
+      - inspect
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - inspect
+            - node
+            - interaction
+      - type: tool-params
+        params:
+          tool: node
+          action: add
+          expected: {}
+      - type: tool-params
+        params:
+          tool: interaction
+          action: add
+          expected:
+            event: onClick
+      - type: count
+        params:
+          min: 4
+          max: 12
+      - type: no-errors
+        params: {}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Component + Node + Design: full component creation with styling
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: medium-styled-card
+    description: "Create a new reusable component called 'StyledCard'. Add a heading element that says 'Card Title' and a paragraph that says 'Card content here'. Then style the heading with font size 24px and font weight bold, and style the paragraph with font size 14px and color #666666."
+    domains:
+      - component
+      - node
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: StyledCard
+      - type: existence
+        params:
+          entityType: component
+          name: StyledCard
+      - type: tool-params
+        params:
+          tool: node
+          action: update-styles
+          expected: {}
+      - type: count
+        params:
+          min: 5
+          max: 18
+      - type: no-errors
+        params: {}
+
+  - id: medium-hero-with-token
+    description: "Create a color token called 'hero-blue' with the value '#1a73e8'. Then create a new reusable component called 'HeroBanner'. Add a heading inside it that says 'Welcome to Our Site'. Style the heading with font size 48px and color #1a73e8."
+    domains:
+      - design
+      - component
+      - node
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+            - component
+            - node
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: hero-blue
+      - type: existence
+        params:
+          entityType: token
+          name: hero-blue
+      - type: existence
+        params:
+          entityType: component
+          name: HeroBanner
+      - type: tool-params
+        params:
+          tool: node
+          action: update-styles
+          expected: {}
+      - type: count
+        params:
+          min: 4
+          max: 15
+      - type: no-errors
+        params: {}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Component + Node + Variant + Design: comprehensive component creation
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: medium-full-card
+    description: "Build a complete 'ProductCard' component: 1) Create the component. 2) Add a heading that says 'Product Name' and a paragraph that says '$99.99'. 3) Add a hover style variant to the component. 4) Create a color token called 'card-bg' with value '#f8f9fa'."
+    domains:
+      - component
+      - node
+      - variant
+      - design
+    tier: medium
+    timeout: 180
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+            - variant
+            - design
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: ProductCard
+      - type: existence
+        params:
+          entityType: component
+          name: ProductCard
+      - type: existence
+        params:
+          entityType: token
+          name: card-bg
+      - type: tool-params
+        params:
+          tool: variant
+          action: create-style
+          expected: {}
+      - type: count
+        params:
+          min: 5
+          max: 20
+      - type: no-errors
+        params: {}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Data + Inspect: adding data queries to existing components
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: medium-add-query
+    description: "List all components to find the Homepage. Then add a data query called 'fetchProducts' to the Homepage component. Finally, list queries on Homepage to verify it was added."
+    domains:
+      - data
+      - inspect
+    tier: medium
+    timeout: 120
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - data
+      - type: tool-params
+        params:
+          tool: data
+          action: add-query
+          expected:
+            name: fetchProducts
+      - type: count
+        params:
+          min: 3
+          max: 10
+      - type: no-errors
+        params: {}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Component + Node + Interaction: interactive component creation
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: medium-cta-button
+    description: "Create a new reusable component called 'CTAButton'. Add a text element inside it that says 'Sign Up Now'. Then add an onClick event handler on that text element that navigates to '/signup'."
+    domains:
+      - component
+      - node
+      - interaction
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+            - interaction
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: CTAButton
+      - type: existence
+        params:
+          entityType: component
+          name: CTAButton
+      - type: tool-params
+        params:
+          tool: interaction
+          action: add
+          expected:
+            event: onClick
+      - type: count
+        params:
+          min: 4
+          max: 15
+      - type: no-errors
+        params: {}
