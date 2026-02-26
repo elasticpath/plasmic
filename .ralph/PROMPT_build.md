@@ -1,9 +1,9 @@
 0a. Study `.ralph/specs/*` with up to 500 parallel Sonnet subagents to learn the application specifications.
 0b. Study @.ralph/IMPLEMENTATION_PLAN.md.
-0c. For reference, the application source code is in `plasmicpkgs/commerce-providers/elastic-path/src/*`.
+0c. For reference, the application source code is in `packages/plasmic-mcp/src/*`.
 
 1. Your task is to implement functionality per the specifications using parallel subagents. Follow @.ralph/IMPLEMENTATION_PLAN.md and choose the most important item to address. Before making changes, search the codebase (don't assume not implemented) using Sonnet subagents. You may use up to 500 parallel Sonnet subagents for searches/reads and only 1 Sonnet subagent for build/tests. Use Opus subagents when complex reasoning is needed (debugging, architectural decisions).
-2. After implementing functionality or resolving problems, run the tests for that unit of code that was improved: `cd plasmicpkgs/commerce-providers/elastic-path && yarn build` and `yarn test`. If functionality is missing then it's your job to add it as per the application specifications. Ultrathink.
+2. After implementing functionality or resolving problems, run the tests for that unit of code that was improved: `cd packages/plasmic-mcp && npm run build` and `npm test`. If functionality is missing then it's your job to add it as per the application specifications. Ultrathink.
 3. When you discover issues, immediately update @.ralph/IMPLEMENTATION_PLAN.md with your findings using a subagent. When resolved, update and remove the item.
 4. When the tests pass, update @.ralph/IMPLEMENTATION_PLAN.md, then stage changed files with explicit `git add <file1> <file2> ...` (never use `git add -A`, `git add .`, or `git add -u`), then `git commit` with a message describing the changes. After the commit, `git push`.
 
@@ -17,4 +17,4 @@
 999999999999. When @.ralph/IMPLEMENTATION_PLAN.md becomes large periodically clean out the items that are completed from the file using a subagent.
 9999999999999. If you find inconsistencies in the .ralph/specs/* then use an Opus subagent with 'ultrathink' requested to update the specs.
 99999999999999. IMPORTANT: Keep @.ralph/AGENTS.md operational only — status updates and progress notes belong in `IMPLEMENTATION_PLAN.md`. A bloated AGENTS.md pollutes every future loop's context.
-999999999999999. IMPORTANT: Always use explicit file paths with `git add` (e.g., `git add src/components/Foo.tsx`). NEVER use `git add -A`, `git add .`, or `git add -u`.
+999999999999999. IMPORTANT: Always use explicit file paths with `git add` (e.g., `git add packages/plasmic-mcp/src/server.ts`). NEVER use `git add -A`, `git add .`, or `git add -u`.

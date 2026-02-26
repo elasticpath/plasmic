@@ -1,0 +1,70 @@
+# MCP Eval Scenarios
+
+## Jobs to Be Done
+- As an MCP developer, I want a catalog of 50-80 task scenarios spanning all 8 STRAP domains and multiple complexity levels so that I can measure task success rate across the full capability surface.
+
+## Acceptance Criteria
+- [ ] Task scenarios are defined in YAML files compatible with Promptfoo's `promptfooconfig.yaml` format
+- [ ] Scenarios cover all 8 STRAP domains: project, inspect, component, node, variant, design, data, interaction
+- [ ] Three complexity tiers with approximate counts:
+  - **Simple** (~20 tasks): Single-domain, 1-3 tool calls expected. E.g., "List all color tokens", "Create an empty page called About"
+  - **Medium** (~20 tasks): Cross-domain, 3-8 tool calls. E.g., "Create a card component with an image, title, and description, then style it with 16px padding and rounded corners"
+  - **Complex** (~15-20 tasks): End-to-end workflows, 8+ tool calls spanning 4+ domains. E.g., "Build a product listing page with a data-bound product card repeated from a query, mobile variant, and add-to-cart click handler"
+- [ ] Each scenario specifies:
+  - `id`: Unique identifier (e.g., `design-list-tokens`, `page-hero-with-variants`)
+  - `description`: Natural-language task prompt (what the user would ask Claude)
+  - `domains`: Which STRAP domains are expected to be involved
+  - `tier`: simple | medium | complex
+  - `graders`: List of grader configs (state checks and/or LLM rubric)
+  - `timeout`: Max seconds before marking as timed out
+- [ ] Scenarios are organized by domain in separate YAML files (e.g., `evals/scenarios/component.yaml`, `evals/scenarios/cross-domain.yaml`)
+- [ ] A scenario index file lists all scenarios with their tier and domain tags for filtering
+
+## Happy Path
+1. Developer adds a new scenario to the appropriate YAML file
+2. Scenario includes a natural-language prompt and grader definitions
+3. `npm run eval` picks up the new scenario automatically
+4. Developer can filter runs by tier (`npm run eval -- --tier simple`) or domain (`npm run eval -- --domain component`)
+
+## Scenario Examples by Domain
+
+### Simple (single-domain)
+| Domain | Example prompt | Key assertion |
+|--------|---------------|---------------|
+| project | "Connect to project X and show me what's in it" | `project.set` called, `inspect.summary` returned |
+| inspect | "Show me the structure of the Homepage component" | Tree output contains expected node names |
+| component | "Create an empty page called Pricing at /pricing" | Page exists with name "Pricing" and path "/pricing" |
+| node | "Add a heading that says 'Hello World' to the Hero section" | Node exists as child of Hero with text "Hello World" |
+| variant | "List all variants on the Card component" | Variant list returned, matches expected count |
+| design | "List all color tokens in the project" | Token list returned with known tokens |
+| data | "Show me what queries are defined on the ProductList" | Query list returned |
+| interaction | "List the event handlers on the Submit button" | Handler list returned |
+
+### Medium (cross-domain)
+| Domains | Example prompt | Key assertions |
+|---------|---------------|----------------|
+| component + node | "Create a card component with image, title, and description" | Component exists, has 3+ children with expected types |
+| node + design | "Style the hero heading with the brand-primary token and 48px font size" | Styles applied, token reference correct |
+| component + variant | "Create a button component with hover and disabled style variants" | Component exists, 2 style variants created |
+| node + data | "Bind the product name to `$ctx.product.name` with fallback 'Untitled'" | Dynamic text set, fallback configured |
+
+### Complex (end-to-end)
+| Domains | Example prompt | Key assertions |
+|---------|---------------|----------------|
+| component + node + variant + design | "Build a responsive hero section: 64px heading on desktop, 32px on mobile, brand-primary color, centered layout" | Component, nodes, screen variant, token ref, styles all present |
+| component + node + data + interaction | "Create a product card with data-bound name/price, repeated from a products query, with an add-to-cart click handler" | Component, data rep, query, interaction all configured |
+| All 8 | "Build a complete pricing page: 3-tier pricing cards with feature lists, a toggle for monthly/annual billing, responsive layout, and a CTA that navigates to /signup" | Full page structure, variants, data bindings, interactions, design tokens |
+
+## Edge Cases
+| Scenario | Expected behaviour |
+|----------|-------------------|
+| Claude uses different tool sequence than expected | Pass if outcome is correct (grade outcomes, not paths) |
+| Claude creates extra nodes beyond what's asked | Pass if required nodes exist; extra nodes don't fail the eval |
+| Claude asks clarifying questions instead of acting | Mark as incomplete; log for human review |
+| Prompt is ambiguous and multiple interpretations are valid | LLM judge evaluates reasonableness; state check uses minimum viable criteria |
+
+## Out of Scope
+- Pixel-level screenshot diffing (visual eval is LLM-judged, not pixel-compared)
+- Performance benchmarking scenarios (load testing the MCP server)
+- Multi-user concurrent editing scenarios
+- Scenarios requiring real external data sources (APIs, databases)
