@@ -2,11 +2,11 @@
 
 ## Status Summary
 
-**All tasks complete**. P1-P9 fully implemented. Skill documentation updated for code component variants, dryRun, and inspect params.
+**All tasks complete**. P1-P9 fully implemented. All audit findings resolved. Skill documentation updated for code component variants, dryRun, and inspect params.
 
 - MCP server: 8 STRAP tools, 103 actions
 - Eval system: harness, graders, visual capture, dashboard, CI, 70 scenarios
-- Total tests: 1,418 (1,281 unit + 137 integration across 28 suites)
+- Total tests: 1,427 (1,290 unit + 137 integration across 28 suites)
 - Spec: `.ralph/specs/code-component-variant-support.md` — all acceptance criteria met
 
 ## Completed Priorities
@@ -20,18 +20,8 @@
 | P6 | Visual Capture Hardening | Defensive null checks, CSRF validation, selector constants, crash pattern expansion |
 | P7 | Report Archival | 90-day cleanup on server start + standalone `npm run eval:cleanup` |
 | P8 | Eval Resume/Skip | Git SHA tracking, scenario skip for passed results, `--force` override |
-| P9 | Contract & Doc Fixes | dryRun support for 5 component actions (rename/delete/convert-to-page/convert-to-component/update-page-meta), explicit dryRun rejection for 3 API-based actions (create-page/create/clone), `update-split` slices support, eval scenario childTags fix, skill doc accuracy (dryRun claim, code component variants, inspect params), INDEX.md regeneration (55→70 scenarios). 11 new tests. |
+| P9 | Contract & Doc Fixes | dryRun support for 5 component actions (rename/delete/convert-to-page/convert-to-component/update-page-meta), explicit dryRun rejection for 3 API-based actions (create-page/create/clone), `update-split` slices support, eval scenario childTags fix, skill doc accuracy (dryRun claim, code component variants, inspect params), INDEX.md regeneration (55→70 scenarios). Background longhands now compose into shorthand. `_cache` field removed from inspect.node response. `description` Zod annotation clarified. project-save-refresh eval guard (requiredMode: integration). Dashboard regression alerts show all grader results with badges, screenshots, and error details. 20 new tests. |
 
 ## Known Issues
 
 _None currently tracked._
-
-## Audit Findings (informational, not blocking)
-
-These items were identified during the P9 audit but do not require immediate action:
-
-- **Dashboard**: Grader results not displayed in UI (only first error shown). Screenshots captured but not served or displayed.
-- **`inspect.node` `_cache` field**: Internal debugging artifact exposed in response — harmless but undocumented.
-- **`description` field dual-purpose**: In component domain, the Zod `description` field serves both SEO page description and prop annotation purposes. The Zod annotation says "Page description for SEO" which is misleading for prop operations.
-- **`backgroundSize`/`backgroundPosition` etc. silently dropped**: Background longhands are collected into `skippedLonghands` in `sanitizeStyles()` and not applied.
-- **`project-save-refresh` eval scenario**: Always fails in mock mode because `project.refresh` reloads the static fixture, erasing in-memory changes. Only meaningful in integration mode but has no guard.
