@@ -22,6 +22,7 @@ import {
   readSubtree,
   countTreeNodes,
   countTplNodes,
+  truncateTreeToCharBudget,
 } from "../tree-reader";
 import { getValidStylePropertyNames } from "../edit-tools";
 
@@ -3140,5 +3141,235 @@ describe("getValidStylePropertyNames", () => {
     expect(names).toContain("aspect-ratio");
     expect(names).toContain("object-fit");
     expect(names).toContain("grid-template-columns");
+  });
+});
+
+// =============================================================================
+// truncateTreeToCharBudget — character-budget hard limit on tree JSON
+//
+// Why: Even with maxDepth defaults (P3), a wide component at depth 3 can
+// produce 15-20k tokens. This function is a safety net that prevents any
+// single inspect response from consuming excessive context window. It prunes
+// the TreeNode tree depth-first with breadth-first priority (shallow nodes
+// preserved over deeper ones), always producing valid JSON.
+// =============================================================================
+
+describe("truncateTreeToCharBudget", () => {
+  // Helper: build a TreeNode tree with predictable JSON size
+  function makeWideTree(childCount: number): import("../types").TreeNode {
+    const children: import("../types").TreeNode[] = [];
+    for (let i = 0; i < childCount; i++) {
+      children.push({
+        type: "tag",
+        tag: "div",
+        uuid: `child-${i}`,
+        name: `Child${i}`,
+        styles: { display: "flex", padding: "10px", margin: "5px" },
+      });
+    }
+    return {
+      type: "tag",
+      tag: "div",
+      uuid: "root",
+      name: "Root",
+      children,
+    };
+  }
+
+  function makeDeepTree(depth: number): import("../types").TreeNode {
+    if (depth === 0) {
+      return { type: "tag", tag: "span", uuid: "leaf", name: "Leaf" };
+    }
+    return {
+      type: "tag",
+      tag: "div",
+      uuid: `depth-${depth}`,
+      name: `Level${depth}`,
+      children: [makeDeepTree(depth - 1)],
+    };
+  }
+
+  it("returns tree unchanged when under budget", () => {
+    const tree: import("../types").TreeNode = {
+      type: "tag",
+      tag: "div",
+      uuid: "root",
+      name: "Root",
+      children: [
+        { type: "tag", tag: "h1", uuid: "h1", name: "Title" },
+      ],
+    };
+
+    const result = truncateTreeToCharBudget(tree, 50000);
+
+    expect(result.wasTruncated).toBe(false);
+    expect(result.nodesShown).toBe(2);
+    expect(result.tree).toEqual(tree); // unchanged
+  });
+
+  it("returns null tree with nodesShown 0 when tree is null", () => {
+    const result = truncateTreeToCharBudget(null, 1000);
+
+    expect(result.tree).toBeNull();
+    expect(result.nodesShown).toBe(0);
+    expect(result.wasTruncated).toBe(false);
+  });
+
+  it("prunes deepest level first (breadth-first priority)", () => {
+    // 3-level tree: root -> 2 children -> 2 grandchildren each
+    const tree: import("../types").TreeNode = {
+      type: "tag",
+      tag: "div",
+      uuid: "root",
+      name: "Root",
+      children: [
+        {
+          type: "tag",
+          tag: "section",
+          uuid: "a",
+          name: "A",
+          children: [
+            { type: "tag", tag: "h1", uuid: "a1", name: "A1", styles: { color: "red", fontSize: "24px" } },
+            { type: "tag", tag: "p", uuid: "a2", name: "A2", styles: { color: "blue", fontSize: "16px" } },
+          ],
+        },
+        {
+          type: "tag",
+          tag: "section",
+          uuid: "b",
+          name: "B",
+          children: [
+            { type: "tag", tag: "h2", uuid: "b1", name: "B1", styles: { color: "green" } },
+            { type: "tag", tag: "p", uuid: "b2", name: "B2", styles: { color: "purple" } },
+          ],
+        },
+      ],
+    };
+
+    // Set budget small enough to force grandchildren removal but large enough for root + children
+    const fullJson = JSON.stringify(tree);
+    const rootAndChildren: import("../types").TreeNode = {
+      ...tree,
+      children: tree.children!.map(c => ({
+        type: c.type,
+        tag: c.tag,
+        uuid: c.uuid,
+        name: c.name,
+        childCount: 2,
+      })),
+    };
+    const prunedSize = JSON.stringify(rootAndChildren).length;
+
+    // Budget between pruned size and full size
+    const result = truncateTreeToCharBudget(tree, prunedSize + 10);
+
+    expect(result.wasTruncated).toBe(true);
+    // Root + 2 children kept (grandchildren removed)
+    expect(result.nodesShown).toBe(3);
+    // Children should have childCount indicating pruned grandchildren
+    expect(result.tree!.children).toHaveLength(2);
+    expect(result.tree!.children![0].childCount).toBe(2);
+    expect(result.tree!.children![0].children).toBeUndefined();
+    expect(result.tree!.children![1].childCount).toBe(2);
+    expect(result.tree!.children![1].children).toBeUndefined();
+  });
+
+  it("truncates trailing siblings when width exceeds budget", () => {
+    const tree = makeWideTree(20);
+
+    // Set budget so only a few children fit
+    const rootOnly = JSON.stringify({ ...tree, children: undefined, childCount: 20 });
+    const oneChild = JSON.stringify({
+      ...tree,
+      children: [tree.children![0]],
+      childCount: 20,
+    });
+
+    // Budget that fits root + a few children but not all 20
+    const result = truncateTreeToCharBudget(tree, oneChild.length + 200);
+
+    expect(result.wasTruncated).toBe(true);
+    expect(result.nodesShown).toBeLessThan(21); // fewer than all 20+root
+    expect(result.nodesShown).toBeGreaterThan(1); // more than just root
+    // childCount should indicate original number of children
+    expect(result.tree!.childCount).toBe(20);
+  });
+
+  it("very tight maxChars returns just root with childCount", () => {
+    const tree = makeWideTree(50);
+    // Budget too small to fit even one child — root alone is ~65 chars
+    const result = truncateTreeToCharBudget(tree, 100);
+
+    expect(result.wasTruncated).toBe(true);
+    // Should be just root (no children fit)
+    expect(result.nodesShown).toBe(1);
+    expect(result.tree).toBeDefined();
+    expect(result.tree!.uuid).toBe("root");
+    // childCount indicates children were removed
+    expect(result.tree!.childCount).toBe(50);
+    expect(result.tree!.children).toBeUndefined();
+  });
+
+  it("always produces valid JSON", () => {
+    const tree = makeDeepTree(5);
+
+    // Very tight budget
+    const result = truncateTreeToCharBudget(tree, 200);
+
+    expect(result.wasTruncated).toBe(true);
+    // Should not throw — valid JSON
+    const json = JSON.stringify(result.tree);
+    expect(() => JSON.parse(json)).not.toThrow();
+  });
+
+  it("does not mutate the original tree", () => {
+    const tree = makeWideTree(10);
+    const originalJson = JSON.stringify(tree);
+
+    truncateTreeToCharBudget(tree, 100);
+
+    expect(JSON.stringify(tree)).toBe(originalJson);
+  });
+
+  it("handles single-node tree (never truncated even with tiny budget)", () => {
+    const tree: import("../types").TreeNode = {
+      type: "tag",
+      tag: "div",
+      uuid: "root",
+      name: "Root",
+    };
+
+    // Budget is smaller than the node itself — but a single node can't be truncated further
+    const result = truncateTreeToCharBudget(tree, 10);
+
+    // Single node with no children: either fits (wasTruncated=false) or
+    // doesn't fit but can't be reduced further (wasTruncated=true, nodesShown=1)
+    expect(result.tree).toBeDefined();
+    expect(result.nodesShown).toBe(1);
+  });
+
+  it("handles deep tree by progressively reducing depth", () => {
+    const tree = makeDeepTree(8); // 9 nodes deep
+
+    // Budget that can fit ~3 levels
+    const threeLevel = makeDeepTree(2);
+    const threeLevelSize = JSON.stringify(threeLevel).length;
+
+    const result = truncateTreeToCharBudget(tree, threeLevelSize + 50);
+
+    expect(result.wasTruncated).toBe(true);
+    expect(result.nodesShown).toBeLessThan(9); // fewer than all 9
+    expect(result.nodesShown).toBeGreaterThanOrEqual(2); // at least root + child
+  });
+
+  it("result JSON length is within budget when truncated", () => {
+    const tree = makeWideTree(30);
+    const budget = 2000;
+
+    const result = truncateTreeToCharBudget(tree, budget);
+
+    expect(result.wasTruncated).toBe(true);
+    const resultJson = JSON.stringify(result.tree);
+    expect(resultJson.length).toBeLessThanOrEqual(budget);
   });
 });

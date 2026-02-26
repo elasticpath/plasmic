@@ -580,6 +580,63 @@ describe("read workflows", () => {
     // But totalNodes should reflect the real tree depth
     expect(output.totalNodes).toBeGreaterThan(0);
   });
+
+  it("inspect.tree with small maxChars → char-budget truncation with hint", async () => {
+    const comp = discoveredComponents[0];
+
+    // Use unlimited depth but very tight character budget to force char truncation
+    const result = await client.callTool({
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid, maxDepth: -1, maxChars: 500 },
+    });
+
+    expect(result.isError).toBeFalsy();
+    const output = parseResponse(result);
+
+    // Should be truncated by character budget
+    expect(output.truncated).toBe(true);
+    expect(typeof output.nodesShown).toBe("number");
+    expect(typeof output.totalNodes).toBe("number");
+    expect(output.nodesShown).toBeLessThan(output.totalNodes);
+    // Hint should reference the char budget
+    expect(output.hint).toContain("500 chars");
+    expect(output.hint).toContain("inspect.subtree");
+  });
+
+  it("inspect.tree with maxChars: -1 → no char truncation (unlimited)", async () => {
+    const comp = discoveredComponents[0];
+
+    const result = await client.callTool({
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid, maxDepth: -1, maxChars: -1 },
+    });
+
+    expect(result.isError).toBeFalsy();
+    const output = parseResponse(result);
+
+    // With both unlimited, no truncation should occur
+    expect(output.truncated).toBe(false);
+    expect(typeof output.totalNodes).toBe("number");
+    expect(output.totalNodes).toBeGreaterThan(0);
+    expect(output.hint).toBeUndefined();
+  });
+
+  it("inspect.summary with small maxChars → char-budget truncation", async () => {
+    const comp = discoveredComponents[0];
+
+    const result = await client.callTool({
+      name: "inspect",
+      arguments: { action: "summary", componentUuid: comp.uuid, maxDepth: -1, maxChars: 300 },
+    });
+
+    expect(result.isError).toBeFalsy();
+    const output = parseResponse(result);
+
+    // Should be truncated by character budget
+    expect(output.truncated).toBe(true);
+    expect(typeof output.nodesShown).toBe("number");
+    expect(output.hint).toContain("300 chars");
+  });
 });
 
 // =========================================================================

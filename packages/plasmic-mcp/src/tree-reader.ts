@@ -184,6 +184,100 @@ export function countTplNodes(tpl: any): number {
   return count;
 }
 
+/**
+ * Truncate a TreeNode tree to fit within a character budget.
+ *
+ * Why: Even with maxDepth defaults, a wide component at depth 3 can produce
+ * 15-20k tokens. This function is a hard safety net that prevents any single
+ * inspect response from consuming excessive context window.
+ *
+ * Strategy (breadth-first priority — shallow nodes over deeper ones):
+ * 1. Progressively reduce effective depth, removing deepest levels first
+ * 2. If still over budget, truncate siblings (remove trailing children at root)
+ *
+ * Always produces valid JSON — prunes whole nodes, never cuts mid-object.
+ */
+export function truncateTreeToCharBudget(
+  tree: TreeNode | null,
+  maxChars: number
+): { tree: TreeNode | null; nodesShown: number; wasTruncated: boolean } {
+  if (!tree) return { tree: null, nodesShown: 0, wasTruncated: false };
+
+  let json = JSON.stringify(tree);
+  if (json.length <= maxChars) {
+    return { tree, nodesShown: countTreeNodes(tree), wasTruncated: false };
+  }
+
+  // Deep clone to avoid mutating the original
+  const pruned: TreeNode = JSON.parse(json);
+
+  // Phase 1: Progressively reduce depth (breadth-first priority)
+  // Stop at height 1 so Phase 2 can do fine-grained sibling truncation
+  let height = getTreeHeight(pruned);
+  while (height > 1) {
+    height--;
+    pruneTreeAtDepth(pruned, height, 0);
+    json = JSON.stringify(pruned);
+    if (json.length <= maxChars) break;
+  }
+
+  // Phase 2: Truncate trailing children at root level
+  json = JSON.stringify(pruned);
+  if (json.length > maxChars && pruned.children) {
+    pruned.childCount = pruned.childCount ?? pruned.children.length;
+    while (pruned.children.length > 0) {
+      pruned.children.pop();
+      json = JSON.stringify(pruned);
+      if (json.length <= maxChars) break;
+    }
+    if (pruned.children.length === 0) {
+      delete pruned.children;
+    }
+  }
+
+  return {
+    tree: pruned,
+    nodesShown: countTreeNodes(pruned),
+    wasTruncated: true,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Internal: Character budget helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Get the height of a TreeNode tree (longest path from root to leaf).
+ * Leaf node = 0, parent of leaves = 1, etc.
+ */
+function getTreeHeight(node: TreeNode): number {
+  if (!node.children || node.children.length === 0) return 0;
+  let max = 0;
+  for (const child of node.children) {
+    max = Math.max(max, getTreeHeight(child));
+  }
+  return max + 1;
+}
+
+/**
+ * Remove children from all nodes at or beyond a given depth.
+ * Nodes at the target depth get childCount set and children removed.
+ */
+function pruneTreeAtDepth(node: TreeNode, maxDepth: number, currentDepth: number): void {
+  if (currentDepth >= maxDepth) {
+    if (node.children && node.children.length > 0) {
+      node.childCount = node.children.length;
+      delete node.children;
+    }
+    return;
+  }
+  if (node.children) {
+    for (const child of node.children) {
+      pruneTreeAtDepth(child, maxDepth, currentDepth + 1);
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Internal: Tpl node reading
 // ---------------------------------------------------------------------------

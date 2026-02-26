@@ -116,6 +116,7 @@ describe("tool handlers", () => {
   let mockReadSubtree: ReturnType<typeof vi.fn>;
   let mockCountTreeNodes: ReturnType<typeof vi.fn>;
   let mockCountTplNodes: ReturnType<typeof vi.fn>;
+  let mockTruncateTreeToCharBudget: ReturnType<typeof vi.fn>;
   let mockReadTokens: ReturnType<typeof vi.fn>;
   let mockResolveNode: ReturnType<typeof vi.fn>;
   let mockRequireSingleNode: ReturnType<typeof vi.fn>;
@@ -181,6 +182,11 @@ describe("tool handlers", () => {
     mockReadSubtree = vi.fn();
     mockCountTreeNodes = vi.fn().mockReturnValue(10);
     mockCountTplNodes = vi.fn().mockReturnValue(10);
+    mockTruncateTreeToCharBudget = vi.fn().mockImplementation((tree: any, _maxChars: number) => ({
+      tree,
+      nodesShown: mockCountTreeNodes(tree),
+      wasTruncated: false,
+    }));
     mockReadTokens = vi.fn();
     mockResolveNode = vi.fn();
     mockRequireSingleNode = vi.fn();
@@ -276,6 +282,7 @@ describe("tool handlers", () => {
       readSubtree: (...args: any[]) => mockReadSubtree(...args),
       countTreeNodes: (...args: any[]) => mockCountTreeNodes(...args),
       countTplNodes: (...args: any[]) => mockCountTplNodes(...args),
+      truncateTreeToCharBudget: (...args: any[]) => mockTruncateTreeToCharBudget(...args),
     }));
 
     vi.doMock("../token-reader", () => ({
@@ -716,6 +723,100 @@ describe("tool handlers", () => {
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("not found");
       expect(result.content[0].text).toContain("list-components");
+    });
+
+    it("applies default maxChars: 15000 via truncateTreeToCharBudget", async () => {
+      const mockTree = { type: "tag", tag: "div" };
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Hero", tplTree: {} }],
+        },
+      });
+      mockReadComponentTree.mockReturnValue(mockTree);
+      mockCountTplNodes.mockReturnValue(5);
+      mockTruncateTreeToCharBudget.mockReturnValue({
+        tree: mockTree,
+        nodesShown: 5,
+        wasTruncated: false,
+      });
+
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: "comp-1" },
+      });
+
+      expect(mockTruncateTreeToCharBudget).toHaveBeenCalledWith(mockTree, 15000);
+    });
+
+    it("passes custom maxChars to truncateTreeToCharBudget", async () => {
+      const mockTree = { type: "tag", tag: "div" };
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Hero", tplTree: {} }],
+        },
+      });
+      mockReadComponentTree.mockReturnValue(mockTree);
+      mockCountTplNodes.mockReturnValue(5);
+      mockTruncateTreeToCharBudget.mockReturnValue({
+        tree: mockTree,
+        nodesShown: 5,
+        wasTruncated: false,
+      });
+
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: "comp-1", maxChars: 5000 },
+      });
+
+      expect(mockTruncateTreeToCharBudget).toHaveBeenCalledWith(mockTree, 5000);
+    });
+
+    it("maxChars: -1 skips char truncation (unlimited)", async () => {
+      const mockTree = { type: "tag", tag: "div" };
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Hero", tplTree: {} }],
+        },
+      });
+      mockReadComponentTree.mockReturnValue(mockTree);
+      mockCountTreeNodes.mockReturnValue(5);
+      mockCountTplNodes.mockReturnValue(5);
+
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: "comp-1", maxChars: -1 },
+      });
+
+      expect(mockTruncateTreeToCharBudget).not.toHaveBeenCalled();
+    });
+
+    it("includes char truncation hint when truncateTreeToCharBudget truncates", async () => {
+      const fullTree = { type: "tag", tag: "div", children: [{ type: "tag", tag: "h1" }] };
+      const truncatedTree = { type: "tag", tag: "div", childCount: 1 };
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Hero", tplTree: {} }],
+        },
+      });
+      mockReadComponentTree.mockReturnValue(fullTree);
+      mockCountTplNodes.mockReturnValue(10);
+      mockTruncateTreeToCharBudget.mockReturnValue({
+        tree: truncatedTree,
+        nodesShown: 1,
+        wasTruncated: true,
+      });
+
+      const result = await client.callTool({
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: "comp-1" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.truncated).toBe(true);
+      expect(output.nodesShown).toBe(1);
+      expect(output.totalNodes).toBe(10);
+      expect(output.hint).toContain("15000 chars");
+      expect(output.hint).toContain("inspect.subtree");
     });
   });
 

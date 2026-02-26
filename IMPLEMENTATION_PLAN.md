@@ -6,11 +6,11 @@ Goal: Claude Code skills and workflows that create Plasmic pages programmaticall
 
 - **MCP server**: 8 STRAP domain tools, ~99 actions, 4,844-line server.ts
 - **Skills**: 6 Claude Code skills (plasmic, plasmic-inspect, plasmic-edit, plasmic-create-page, plasmic-create-component, plasmic-patterns)
-- **Tests**: 1,134 passing (1011 unit + 123 integration), 0 skipped, 0 TODOs in code
+- **Tests**: 1,151 passing (1025 unit + 126 integration), 0 skipped, 0 TODOs in code
 - **Code quality**: Zero FIXMEs, zero HACK/XXX markers, zero placeholders, zero partial implementations
 - **Core page-creation workflow**: Functional end-to-end (project.set -> discover tokens -> build tree -> create-page -> enhance via /plasmic-edit -> save)
 
-P1, P2, and P3 are DONE. P4-P6 remain TODO.
+P1, P2, P3, and P4 are DONE. P5-P6 remain TODO.
 
 ---
 
@@ -37,9 +37,9 @@ The original spec only identified the `updateStyles()` gate as the problem, but 
 
 ### What was done
 
-- Replaced 13 of 14 `JSON.stringify(result, null, 2)` calls in `server.ts` with `JSON.stringify(result)` (compact output).
-- **Kept** pretty-printing for `inspect.export` at line 775 (`fs.writeFileSync` — human-readable file output).
-- All existing tests pass without changes because `JSON.parse` handles both formats identically.
+- Replaced `JSON.stringify(result, null, 2)` calls in `server.ts` with `JSON.stringify(result)` (compact output).
+- **Kept** pretty-printing for `inspect.export` file write (`fs.writeFileSync` — human-readable file output).
+- **P4 follow-up**: Fixed 3 remaining pretty-printed response calls missed in P2 (`inspect.node`, `inspect.subtree`, `inspect.export` response).
 
 ---
 
@@ -96,43 +96,35 @@ The original spec only identified the `updateStyles()` gate as the problem, but 
 
 ---
 
-## Priority 4: Response Truncation Safety Net (Hard Limit)
+## ~~Priority 4: Response Truncation Safety Net (Hard Limit)~~ DONE
 
 **Spec**: `specs/response-truncation.md`
 
-Even with maxDepth defaults, a 200-node component at depth 3 can produce 15-20k tokens. Character-budget truncation prevents catastrophic context consumption.
+### What was done
 
-### Current State
+- **Added `truncateTreeToCharBudget()` to `tree-reader.ts`** — takes a TreeNode and character budget, returns a pruned tree that fits within the budget. Two-phase algorithm: Phase 1 progressively reduces depth (breadth-first priority — shallow nodes preserved over deeper ones), Phase 2 truncates trailing siblings at root level. Always produces valid JSON — prunes whole nodes, never cuts mid-object.
+- **Added internal helpers** `getTreeHeight()` and `pruneTreeAtDepth()` for the truncation algorithm.
+- **Added `maxChars` parameter to inspect Zod schema** — default 15,000 characters (~4,000 tokens), `-1` for unlimited.
+- **Applied char-budget truncation in 3 inspect handlers**: `inspect.tree`, `inspect.summary`, `inspect.subtree`. Each builds the tree with maxDepth first, then applies character-budget truncation as a second layer.
+- **Truncation metadata** when char-budget truncates:
+  - `truncated: true`, `nodesShown`, `totalNodes`
+  - `hint` message references the char budget and guides to `inspect.subtree`
+  - When only maxDepth truncates (not chars), existing P3 metadata preserved
+- **Fixed 3 P2 regressions**: `inspect.node`, `inspect.subtree`, and `inspect.export` response were still using `JSON.stringify(result, null, 2)` (pretty-printed). Now compact.
+- **New tests added** (17 total):
+  - 9 `truncateTreeToCharBudget` unit tests (under budget, null tree, depth pruning, sibling truncation, tight budget, valid JSON, immutability, deep tree, result within budget)
+  - 5 server handler tests (default maxChars, custom maxChars, -1 unlimited, char truncation hint)
+  - 3 integration tests (small maxChars with hint, unlimited maxChars, summary with small maxChars)
 
-- Zero truncation logic exists anywhere in the codebase
-- No `maxChars` parameter in any Zod schema
-- No character budget enforcement in tree-reader or server handlers
+### Key design decision
 
-### Checklist
+The spec suggested depth-first serialization with accumulator. Instead, we use a post-serialization pruning approach: build the full tree (with maxDepth), serialize to JSON, check length, and progressively prune if over budget. This is simpler, always produces valid JSON, and naturally preserves breadth-first priority by removing the deepest levels first.
 
-- [ ] Add `maxChars` parameter to inspect Zod schema (default: 15,000 characters ~ 4,000 tokens)
-- [ ] Implement character-budget truncation in tree serialization:
-  - Serialize depth-first
-  - When accumulated output exceeds budget, stop adding nodes
-  - Replace remaining children with `"... N more nodes. Use inspect.subtree to drill in."`
-  - Ensure valid JSON is always produced (no mid-object cuts)
-- [ ] Add truncation metadata to response:
-  - `truncated: boolean`
-  - `nodesShown: number`
-  - `nodesTotal: number`
-  - `hint: string` with actionable guidance
-- [ ] Support `maxChars: -1` for unlimited (no truncation)
-- [ ] Unit tests:
-  - [ ] Response under budget: no truncation, `truncated: false`
-  - [ ] Response over budget: truncated with valid JSON and hint
-  - [ ] `maxChars: 500` returns just root + truncation hint
-  - [ ] `maxChars: -1` returns full response
-  - [ ] Truncation preserves breadth-first priority (higher-level nodes over deeper nodes)
-- [ ] Integration test: large component triggers truncation, response includes hint guiding to subtree
+### Test counts
 
-**Files**: `packages/plasmic-mcp/src/tree-reader.ts`, `packages/plasmic-mcp/src/server.ts` (inspect handlers), `packages/plasmic-mcp/src/types.ts` (TreeReadOptions)
-
-**Dependencies**: Should be done after Priority 3 (maxDepth defaults reduce how often truncation fires). Both should be done before Priority 5.
+- Unit: 1,025 tests (18 suites) — up from 1,011
+- Integration: 126 tests — up from 123
+- Total: 1,151 tests
 
 ---
 
@@ -228,9 +220,9 @@ Optional `format: "concise"` mode for inspect actions. Strips UUIDs (except root
 P1 (component instance styling)  -- DONE
 P2 (compact JSON)                -- DONE
 P3 (default maxDepth)            -- DONE
-P4 (response truncation)         -- after P3, safety net
+P4 (response truncation)         -- DONE
 P5 (skills progressive nav)      -- after P2-P4, references server features
 P6 (concise format)              -- after P3-P4, incremental optimization
 ```
 
-P4 is next. P4 adds a character-budget hard limit as a safety net on top of P3's maxDepth defaults. P5 depends on P2-P4. P6 can be done after P3-P4 but before or after P5 (P5 should be updated after P6 to reference `format: "concise"`).
+P5 is next. P5 updates skill documentation to formalize the progressive navigation pattern (orient → locate → detail → full) and reference the server features from P2-P4. P6 can be done before or after P5 (P5 should be updated after P6 to reference `format: "concise"`).

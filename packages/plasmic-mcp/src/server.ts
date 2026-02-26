@@ -38,6 +38,7 @@ import {
   readSubtree,
   countTreeNodes,
   countTplNodes,
+  truncateTreeToCharBudget,
 } from "./tree-reader.js";
 import { readTokens } from "./token-reader.js";
 import { resolveNode, requireSingleNode, invalidateNodeCache, clearNodeCache, getCacheMetrics } from "./node-resolver.js";
@@ -543,11 +544,12 @@ export function createServer(): McpServer {
       componentUuid: z.string().optional().describe("UUID of the component to inspect"),
       nodeRef: z.string().optional().describe("Node reference: UUID, name, path, or index"),
       maxDepth: z.number().optional().describe("Maximum tree depth to return. Defaults to 3 for tree, 2 for summary. Pass -1 for unlimited."),
+      maxChars: z.number().optional().describe("Character budget for response JSON. Defaults to 15000 (~4000 tokens). Pass -1 for unlimited."),
       excludeStyles: z.boolean().optional().describe("Strip styles from output to reduce size"),
       summaryOnly: z.boolean().optional().describe("Return compact outline (same as summary action)"),
       filter: z.string().optional().describe("Filter string for style-properties action"),
     },
-    async ({ action, componentUuid, nodeRef, maxDepth, excludeStyles, summaryOnly, filter }) => {
+    async ({ action, componentUuid, nodeRef, maxDepth, maxChars, excludeStyles, summaryOnly, filter }) => {
       try {
         switch (action) {
           case "tree": {
@@ -571,10 +573,11 @@ export function createServer(): McpServer {
 
             // Default maxDepth: 3 for tree; -1 means unlimited
             const effectiveMaxDepth = maxDepth === -1 ? undefined : (maxDepth ?? 3);
+            const effectiveMaxChars = maxChars === -1 ? undefined : (maxChars ?? 15000);
 
             // Build options — always pass styleTokens for token reference resolution
             const styleTokens = session.site.styleTokens;
-            const tree = readComponentTree(component, {
+            let tree = readComponentTree(component, {
               maxDepth: effectiveMaxDepth,
               excludeStyles: excludeStyles || undefined,
               summaryOnly: summaryOnly || undefined,
@@ -583,8 +586,18 @@ export function createServer(): McpServer {
 
             // Truncation metadata — count total Tpl nodes independently of maxDepth
             const totalNodes = component.tplTree ? countTplNodes(component.tplTree) : 0;
-            const nodesReturned = tree ? countTreeNodes(tree) : 0;
-            const truncated = nodesReturned < totalNodes;
+            let nodesShown = tree ? countTreeNodes(tree) : 0;
+            let charTruncated = false;
+
+            // Apply character-budget truncation
+            if (effectiveMaxChars !== undefined && tree) {
+              const truncResult = truncateTreeToCharBudget(tree, effectiveMaxChars);
+              tree = truncResult.tree;
+              nodesShown = truncResult.nodesShown;
+              charTruncated = truncResult.wasTruncated;
+            }
+
+            const truncated = nodesShown < totalNodes;
 
             const result: Record<string, unknown> = {
               name: component.name,
@@ -595,9 +608,14 @@ export function createServer(): McpServer {
 
             if (truncated) {
               result.truncated = true;
-              result.maxDepthApplied = effectiveMaxDepth;
+              result.nodesShown = nodesShown;
               result.totalNodes = totalNodes;
-              result.hint = "Use inspect.subtree or inspect.node to drill into specific sections";
+              if (charTruncated) {
+                result.hint = `Response truncated at ${effectiveMaxChars} chars. Use inspect.subtree with a nodeRef to see deeper sections, or pass maxDepth to limit tree depth.`;
+              } else {
+                result.maxDepthApplied = effectiveMaxDepth;
+                result.hint = "Use inspect.subtree or inspect.node to drill into specific sections";
+              }
             } else {
               result.truncated = false;
               result.totalNodes = totalNodes;
@@ -634,12 +652,23 @@ export function createServer(): McpServer {
 
             // Default maxDepth: 2 for summary; -1 means unlimited
             const effectiveMaxDepth = maxDepth === -1 ? undefined : (maxDepth ?? 2);
-            const tree = readComponentSummary(component, effectiveMaxDepth);
+            const effectiveMaxChars = maxChars === -1 ? undefined : (maxChars ?? 15000);
+            let tree = readComponentSummary(component, effectiveMaxDepth);
 
             // Truncation metadata — count total Tpl nodes independently of maxDepth
             const totalNodes = component.tplTree ? countTplNodes(component.tplTree) : 0;
-            const nodesReturned = tree ? countTreeNodes(tree) : 0;
-            const truncated = nodesReturned < totalNodes;
+            let nodesShown = tree ? countTreeNodes(tree) : 0;
+            let charTruncated = false;
+
+            // Apply character-budget truncation
+            if (effectiveMaxChars !== undefined && tree) {
+              const truncResult = truncateTreeToCharBudget(tree, effectiveMaxChars);
+              tree = truncResult.tree;
+              nodesShown = truncResult.nodesShown;
+              charTruncated = truncResult.wasTruncated;
+            }
+
+            const truncated = nodesShown < totalNodes;
 
             const result: Record<string, unknown> = {
               name: component.name,
@@ -650,9 +679,14 @@ export function createServer(): McpServer {
 
             if (truncated) {
               result.truncated = true;
-              result.maxDepthApplied = effectiveMaxDepth;
+              result.nodesShown = nodesShown;
               result.totalNodes = totalNodes;
-              result.hint = "Use inspect.subtree or inspect.node to drill into specific sections";
+              if (charTruncated) {
+                result.hint = `Response truncated at ${effectiveMaxChars} chars. Use inspect.subtree with a nodeRef to see deeper sections, or pass maxDepth to limit tree depth.`;
+              } else {
+                result.maxDepthApplied = effectiveMaxDepth;
+                result.hint = "Use inspect.subtree or inspect.node to drill into specific sections";
+              }
             } else {
               result.truncated = false;
               result.totalNodes = totalNodes;
@@ -696,17 +730,13 @@ export function createServer(): McpServer {
               content: [
                 {
                   type: "text" as const,
-                  text: JSON.stringify(
-                    {
-                      path: resolved.path,
-                      name: resolved.name,
-                      uuid: resolved.uuid,
-                      node,
-                      _cache: getCacheMetrics(),
-                    },
-                    null,
-                    2
-                  ),
+                  text: JSON.stringify({
+                    path: resolved.path,
+                    name: resolved.name,
+                    uuid: resolved.uuid,
+                    node,
+                    _cache: getCacheMetrics(),
+                  }),
                 },
               ],
             };
@@ -736,7 +766,8 @@ export function createServer(): McpServer {
             const resolved = requireSingleNode(resolveResult, nref);
             // No default maxDepth for subtree (targeted drill-down); -1 means unlimited
             const effectiveMaxDepth = maxDepth === -1 ? undefined : maxDepth;
-            const tree = readSubtree(
+            const effectiveMaxChars = maxChars === -1 ? undefined : (maxChars ?? 15000);
+            let tree = readSubtree(
               resolved.node,
               {
                 maxDepth: effectiveMaxDepth,
@@ -744,24 +775,36 @@ export function createServer(): McpServer {
                 styleTokens: session.site.styleTokens,
               }
             );
-            const nodeCount = tree ? countTreeNodes(tree) : 0;
+            let nodeCount = tree ? countTreeNodes(tree) : 0;
+            let charTruncated = false;
+
+            // Apply character-budget truncation
+            if (effectiveMaxChars !== undefined && tree) {
+              const truncResult = truncateTreeToCharBudget(tree, effectiveMaxChars);
+              tree = truncResult.tree;
+              nodeCount = truncResult.nodesShown;
+              charTruncated = truncResult.wasTruncated;
+            }
+
+            const result: Record<string, unknown> = {
+              component: component.name,
+              componentUuid: component.uuid,
+              subtreeRoot: resolved.name ?? resolved.uuid,
+              path: resolved.path,
+              nodeCount,
+              tree,
+            };
+
+            if (charTruncated) {
+              result.truncated = true;
+              result.hint = `Response truncated at ${effectiveMaxChars} chars. Use inspect.subtree with a deeper nodeRef to see specific sections.`;
+            }
 
             return {
               content: [
                 {
                   type: "text" as const,
-                  text: JSON.stringify(
-                    {
-                      component: component.name,
-                      componentUuid: component.uuid,
-                      subtreeRoot: resolved.name ?? resolved.uuid,
-                      path: resolved.path,
-                      nodeCount,
-                      tree,
-                    },
-                    null,
-                    2
-                  ),
+                  text: JSON.stringify(result),
                 },
               ],
             };
@@ -812,18 +855,14 @@ export function createServer(): McpServer {
               content: [
                 {
                   type: "text" as const,
-                  text: JSON.stringify(
-                    {
-                      name: component.name,
-                      uuid: component.uuid,
-                      path: component.pageMeta?.path,
-                      filePath,
-                      nodeCount,
-                      tree: summaryTree,
-                    },
-                    null,
-                    2
-                  ),
+                  text: JSON.stringify({
+                    name: component.name,
+                    uuid: component.uuid,
+                    path: component.pageMeta?.path,
+                    filePath,
+                    nodeCount,
+                    tree: summaryTree,
+                  }),
                 },
               ],
             };
