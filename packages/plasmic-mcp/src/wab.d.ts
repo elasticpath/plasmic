@@ -153,6 +153,25 @@ declare module "@/wab/shared/model/classes" {
   export function isKnownInteraction(x: any): boolean;
   export function isKnownComponentDataQuery(x: any): boolean;
   export function isKnownComponentServerQuery(x: any): boolean;
+  export function isKnownMixin(x: any): boolean;
+
+  /** Model class for Mixin — reusable style bundle stored at site level. */
+  export class Mixin {
+    constructor(args: {
+      name: string;
+      rs: any;
+      preview?: string | null;
+      uuid: string;
+      forTheme?: boolean;
+      variantedRs?: any[];
+    });
+    name: string;
+    rs: any;
+    preview: string | null;
+    uuid: string;
+    forTheme: boolean;
+    variantedRs: any[];
+  }
 
   /** Model class for ComponentDataQuery — client-side data query on a component. */
   export class ComponentDataQuery {
@@ -456,6 +475,14 @@ declare module "@/wab/shared/TplMgr" {
     removeComponentServerQuery(component: any, query: any): void;
     /** Clean up QueryInvalidationExpr references to removed queries. */
     clearReferencesToRemovedQueries(removedQueries: string[] | string): void;
+    /** Add a mixin to the site. Returns the created Mixin. */
+    addMixin(name?: string, mixin?: any): any;
+    /** Remove a mixin from site and clean up all element references. */
+    removeMixin(mixin: any): void;
+    /** Rename a mixin with automatic name deduplication. */
+    renameMixin(mixin: any, name: string): void;
+    /** Duplicate a mixin with auto-generated unique name. */
+    duplicateMixin(mixin: any): any;
   }
 }
 

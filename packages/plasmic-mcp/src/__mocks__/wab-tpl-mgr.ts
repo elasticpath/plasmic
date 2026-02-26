@@ -42,6 +42,16 @@ export const mockRemoveComponentServerQuery = vi.fn(
   }
 );
 export const mockClearReferencesToRemovedQueries = vi.fn();
+export const mockAddMixin = vi.fn((_name?: string) => {
+  return { _type: "Mixin", name: _name ?? "Unnamed Mixin", uuid: "mock-mixin-uuid", rs: { values: {}, mixins: [] }, forTheme: false, variantedRs: [] };
+});
+export const mockRemoveMixin = vi.fn();
+export const mockRenameMixin = vi.fn((mixin: any, name: string) => {
+  mixin.name = name;
+});
+export const mockDuplicateMixin = vi.fn((mixin: any) => {
+  return { ...mixin, uuid: "dup-mixin-uuid", name: mixin.name + " (copy)" };
+});
 export const mockGetUniqueParamName = vi.fn(
   (_component: any, name?: string) => name ?? "Unnamed Prop"
 );
@@ -118,5 +128,21 @@ export class TplMgr {
 
   clearReferencesToRemovedQueries(removedQueries: string[] | string): void {
     mockClearReferencesToRemovedQueries(removedQueries);
+  }
+
+  addMixin(name?: string, mixin?: any): any {
+    return mockAddMixin(name, mixin);
+  }
+
+  removeMixin(mixin: any): void {
+    mockRemoveMixin(mixin);
+  }
+
+  renameMixin(mixin: any, name: string): void {
+    mockRenameMixin(mixin, name);
+  }
+
+  duplicateMixin(mixin: any): any {
+    return mockDuplicateMixin(mixin);
   }
 }

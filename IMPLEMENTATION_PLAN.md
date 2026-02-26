@@ -3,10 +3,10 @@
 > **Goal**: Create Claude Code skills and workflows that can interact with Plasmic Studio
 > programmatically to create fully-featured pages from the Claude Code terminal.
 >
-> **Current state**: 57 MCP tools, 6 Claude Code skills, 873 tests (796 unit + 77 integration).
+> **Current state**: 63 MCP tools, 6 Claude Code skills, 900 tests (820 unit + 80 integration).
 > Zero TODOs/FIXMEs/skipped tests.
 >
-> **Last verified**: 2026-02-26 — 3.2 Data Queries implemented.
+> **Last verified**: 2026-02-26 — 4.1 Mixins implemented.
 
 ---
 
@@ -21,7 +21,7 @@ from `site.styleTokens`). The Token CRUD spec (1.3) must handle removal manually
 The MCP source lives entirely in `packages/plasmic-mcp/src/` (16 source files,
 ~8,200 lines). The `src/tools/` directory exists but is empty (created for future refactor).
 
-Key file sizes: `server.ts` (~3,950 lines), `edit-tools.ts` (~4,500 lines),
+Key file sizes: `server.ts` (~4,850 lines), `edit-tools.ts` (~5,600 lines),
 `tree-reader.ts` (~850 lines). Both `server.ts` and `edit-tools.ts` are large
 and will grow with each new feature — the STRAP consolidation (Tier 6) addresses this.
 
@@ -182,17 +182,18 @@ These features enable data-driven and media-rich pages.
 
 These features enable systematic design management but are not blocking for basic page creation.
 
-### 4.1 Mixins (Reusable Style Bundles)
+### 4.1 Mixins (Reusable Style Bundles) — IMPLEMENTED (2026-02-26)
 - **Spec**: `specs/gap-mixins.md`
-- **Status**: NOT IMPLEMENTED
-  - Verified: zero references to `addMixin`, `create-mixin` in MCP src/
-  - WAB backing confirmed: `TplMgr.addMixin()` (line 1748), `removeMixin()` (line 1766), `renameMixin()` (line 1775), `duplicateMixin()` (line 1783) in `shared/TplMgr.ts`
-- **What**: Four site-level + two node-level actions:
-  - `create-mixin`, `list-mixins`, `update-mixin`, `remove-mixin` — CRUD for reusable style bundles
-  - `apply-mixin`, `remove-mixin` (on node) — attach/detach mixin on element's VariantSetting
-- **Also requires**: Extend `get-node-details` to show applied mixins
-- **Effort**: Medium
-- **Tests needed**: Unit + integration (create → apply → update → verify propagation)
+- **Status**: IMPLEMENTED
+  - Six new tools: `list-mixins`, `create-mixin`, `update-mixin`, `remove-mixin`, `apply-mixin`, `detach-mixin`
+  - `list-mixins` returns all site-level mixins with uuid, name, styles, forTheme flag
+  - `create-mixin` via TplMgr.addMixin() with optional initial styles (CSS sanitized)
+  - `update-mixin` renames and/or updates styles; `remove-mixin` delegates to TplMgr.removeMixin()
+  - `apply-mixin` pushes mixin onto element's base VariantSetting rs.mixins[] (idempotent)
+  - `detach-mixin` splices mixin from rs.mixins[]; throws if not applied
+  - Mixin mock class, isKnownMixin type guard, TplMgr mock methods (addMixin, removeMixin, renameMixin, duplicateMixin)
+  - 27 unit tests (4 listMixins + 3 createMixin + 6 updateMixin + 3 removeMixin + 4 applyMixin + 4 detachMixin + 3 integration)
+  - Total test count: 900 (820 unit + 80 integration)
 
 ### 4.2 Animations
 - **Spec**: `specs/gap-animations.md`

@@ -59,6 +59,12 @@ import {
   addQuery,
   removeQuery,
   updateQuery,
+  listMixins,
+  createMixin,
+  updateMixin,
+  removeMixin,
+  applyMixin,
+  detachMixin,
 } from "../edit-tools";
 import { setSession, clearSession } from "../session";
 import { initChangeTracker, disposeChangeTracker } from "../change-tracker";
@@ -81,6 +87,9 @@ import {
   mockRenameParam,
   mockRemoveComponentQuery,
   mockRemoveComponentServerQuery,
+  mockAddMixin,
+  mockRemoveMixin,
+  mockRenameMixin,
 } from "../__mocks__/wab-tpl-mgr";
 import { mockMkTplTagX, mockMkTplInlinedText, mockMkTplComponentX } from "../__mocks__/wab-tpls";
 import { mockEnsureVariantSetting } from "../__mocks__/wab-variants";
@@ -8890,5 +8899,450 @@ describe("updateQuery", () => {
     await expect(
       updateQuery(api, "comp-1", "nonexistent", "newName")
     ).rejects.toThrow(/not found/);
+  });
+});
+
+// =============================================================================
+// Mixins — CRUD for reusable style bundles + apply/detach on elements
+// =============================================================================
+
+describe("listMixins", () => {
+  afterEach(() => {
+    clearSession();
+  });
+
+  it("returns empty array when no mixins exist", () => {
+    const site = { components: [], mixins: [] };
+    setSession(makeSession({ site } as any));
+    expect(listMixins()).toEqual([]);
+  });
+
+  it("returns all mixins with their properties", () => {
+    const site = {
+      components: [],
+      mixins: [
+        { uuid: "m1", name: "Button Styles", rs: { values: { "font-size": "16px", color: "#333" } }, forTheme: false },
+        { uuid: "m2", name: "Theme Base", rs: { values: { "background-color": "#fff" } }, forTheme: true },
+      ],
+    };
+    setSession(makeSession({ site } as any));
+    const result = listMixins();
+    expect(result).toHaveLength(2);
+    expect(result[0]).toEqual({
+      uuid: "m1",
+      name: "Button Styles",
+      styles: { "font-size": "16px", color: "#333" },
+      forTheme: false,
+    });
+    expect(result[1]).toEqual({
+      uuid: "m2",
+      name: "Theme Base",
+      styles: { "background-color": "#fff" },
+      forTheme: true,
+    });
+  });
+
+  it("handles mixins with empty rs.values", () => {
+    const site = {
+      components: [],
+      mixins: [{ uuid: "m1", name: "Empty", rs: { values: {} }, forTheme: false }],
+    };
+    setSession(makeSession({ site } as any));
+    const result = listMixins();
+    expect(result[0].styles).toEqual({});
+  });
+
+  it("handles undefined mixins array", () => {
+    const site = { components: [] };
+    setSession(makeSession({ site } as any));
+    const result = listMixins();
+    expect(result).toEqual([]);
+  });
+});
+
+describe("createMixin", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    api = mockApiClient();
+    mockWithRecording.mockReturnValue({
+      changes: [], newInsts: [], removedInsts: [],
+    });
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "100" });
+  });
+
+  afterEach(() => {
+    clearSession();
+    disposeChangeTracker();
+  });
+
+  it("creates a mixin with no styles", async () => {
+    const site = { components: [], mixins: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    mockAddMixin.mockReturnValue({
+      _type: "Mixin", uuid: "new-m1", name: "Card Styles",
+      rs: { values: {}, mixins: [] }, forTheme: false, variantedRs: [],
+    });
+
+    const result = await createMixin(api, "Card Styles");
+    expect(result.mixinUuid).toBe("new-m1");
+    expect(result.name).toBe("Card Styles");
+    expect(mockAddMixin).toHaveBeenCalled();
+    expect(mockAddMixin.mock.calls[0][0]).toBe("Card Styles");
+  });
+
+  it("creates a mixin with initial styles", async () => {
+    const site = { components: [], mixins: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const rsValues: Record<string, string> = {};
+    mockAddMixin.mockReturnValue({
+      _type: "Mixin", uuid: "new-m2", name: "Heading",
+      rs: { values: rsValues, mixins: [] }, forTheme: false, variantedRs: [],
+    });
+
+    const result = await createMixin(api, "Heading", { fontSize: "24px", fontWeight: "bold" });
+    expect(result.name).toBe("Heading");
+    // The styles should have been assigned to rs.values
+    expect(rsValues).toHaveProperty("fontSize", "24px");
+    expect(rsValues).toHaveProperty("fontWeight", "bold");
+  });
+
+  it("sanitizes shorthand styles", async () => {
+    const site = { components: [], mixins: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const rsValues: Record<string, string> = {};
+    mockAddMixin.mockReturnValue({
+      _type: "Mixin", uuid: "new-m3", name: "Padded",
+      rs: { values: rsValues, mixins: [] }, forTheme: false, variantedRs: [],
+    });
+
+    await createMixin(api, "Padded", { padding: "10px" });
+    // padding shorthand should be expanded
+    expect(rsValues).toHaveProperty("paddingTop", "10px");
+    expect(rsValues).toHaveProperty("paddingRight", "10px");
+    expect(rsValues).toHaveProperty("paddingBottom", "10px");
+    expect(rsValues).toHaveProperty("paddingLeft", "10px");
+    expect(rsValues).not.toHaveProperty("padding");
+  });
+});
+
+describe("updateMixin", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    api = mockApiClient();
+    mockWithRecording.mockReturnValue({
+      changes: [], newInsts: [], removedInsts: [],
+    });
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "100" });
+  });
+
+  afterEach(() => {
+    clearSession();
+    disposeChangeTracker();
+  });
+
+  it("renames a mixin", async () => {
+    const mixin = { uuid: "m1", name: "Old Name", rs: { values: {} }, forTheme: false };
+    const site = { components: [], mixins: [mixin] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateMixin(api, "Old Name", "New Name");
+    expect(result.updatedFields).toContain("name");
+    expect(mockRenameMixin).toHaveBeenCalledWith(mixin, "New Name");
+  });
+
+  it("updates styles", async () => {
+    const rsValues: Record<string, string> = { color: "red" };
+    const mixin = { uuid: "m1", name: "Styled", rs: { values: rsValues }, forTheme: false };
+    const site = { components: [], mixins: [mixin] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateMixin(api, "Styled", undefined, { fontSize: "18px" });
+    expect(result.updatedFields).toContain("styles");
+    expect(rsValues).toHaveProperty("fontSize", "18px");
+    // Existing styles should be preserved
+    expect(rsValues).toHaveProperty("color", "red");
+  });
+
+  it("updates both name and styles", async () => {
+    const rsValues: Record<string, string> = {};
+    const mixin = { uuid: "m1", name: "Mixin", rs: { values: rsValues }, forTheme: false };
+    const site = { components: [], mixins: [mixin] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateMixin(api, "m1", "Updated", { color: "blue" });
+    expect(result.updatedFields).toContain("name");
+    expect(result.updatedFields).toContain("styles");
+  });
+
+  it("throws when neither name nor styles provided", async () => {
+    const mixin = { uuid: "m1", name: "Test", rs: { values: {} }, forTheme: false };
+    const site = { components: [], mixins: [mixin] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      updateMixin(api, "Test", undefined, undefined)
+    ).rejects.toThrow(/At least/);
+  });
+
+  it("throws when mixin not found", async () => {
+    const site = { components: [], mixins: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      updateMixin(api, "nonexistent", "NewName")
+    ).rejects.toThrow(/not found/);
+  });
+
+  it("finds mixin by UUID", async () => {
+    const mixin = { uuid: "m1-uuid", name: "My Mixin", rs: { values: {} }, forTheme: false };
+    const site = { components: [], mixins: [mixin] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateMixin(api, "m1-uuid", "Renamed");
+    expect(result.mixinUuid).toBe("m1-uuid");
+    expect(mockRenameMixin).toHaveBeenCalledWith(mixin, "Renamed");
+  });
+});
+
+describe("removeMixin", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    api = mockApiClient();
+    mockWithRecording.mockReturnValue({
+      changes: [], newInsts: [], removedInsts: [],
+    });
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "100" });
+  });
+
+  afterEach(() => {
+    clearSession();
+    disposeChangeTracker();
+  });
+
+  it("removes a mixin by name", async () => {
+    const mixin = { uuid: "m1", name: "Old Mixin", rs: { values: {} }, forTheme: false };
+    const site = { components: [], mixins: [mixin] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await removeMixin(api, "Old Mixin");
+    expect(result.removedName).toBe("Old Mixin");
+    expect(result.removedUuid).toBe("m1");
+    expect(mockRemoveMixin).toHaveBeenCalledWith(mixin);
+  });
+
+  it("removes a mixin by UUID", async () => {
+    const mixin = { uuid: "m1-uuid", name: "Some Mixin", rs: { values: {} }, forTheme: false };
+    const site = { components: [], mixins: [mixin] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await removeMixin(api, "m1-uuid");
+    expect(result.removedUuid).toBe("m1-uuid");
+    expect(mockRemoveMixin).toHaveBeenCalledWith(mixin);
+  });
+
+  it("throws when mixin not found", async () => {
+    const site = { components: [], mixins: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      removeMixin(api, "nonexistent")
+    ).rejects.toThrow(/not found/);
+  });
+});
+
+describe("applyMixin", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    api = mockApiClient();
+    mockWithRecording.mockReturnValue({
+      changes: [], newInsts: [], removedInsts: [],
+    });
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "100" });
+  });
+
+  afterEach(() => {
+    clearSession();
+    disposeChangeTracker();
+    clearNodeCache();
+  });
+
+  it("applies a mixin to an element", async () => {
+    const root = mkTag({ uuid: "root-1", name: "Root" });
+    root.vsettings[0].rs.mixins = [];
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const mixin = { uuid: "m1", name: "Button", rs: { values: {} }, forTheme: false };
+    const site = { components: [comp], mixins: [mixin] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+
+    const result = await applyMixin(api, "comp-1", "Root", "Button");
+    expect(result.mixinName).toBe("Button");
+    expect(result.nodeUuid).toBe("root-1");
+    expect(root.vsettings[0].rs.mixins).toContain(mixin);
+  });
+
+  it("is idempotent — applying same mixin twice does not duplicate", async () => {
+    const mixin = { uuid: "m1", name: "Button", rs: { values: {} }, forTheme: false };
+    const root = mkTag({ uuid: "root-1", name: "Root" });
+    root.vsettings[0].rs.mixins = [mixin]; // already applied
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], mixins: [mixin] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+
+    await applyMixin(api, "comp-1", "Root", "Button");
+    expect(root.vsettings[0].rs.mixins).toHaveLength(1);
+  });
+
+  it("throws when mixin not found", async () => {
+    const root = mkTag({ uuid: "root-1", name: "Root" });
+    root.vsettings[0].rs.mixins = [];
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], mixins: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      applyMixin(api, "comp-1", "Root", "nonexistent")
+    ).rejects.toThrow(/not found/);
+  });
+
+  it("throws when component not found", async () => {
+    const site = { components: [], mixins: [{ uuid: "m1", name: "Test", rs: { values: {} }, forTheme: false }] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      applyMixin(api, "bad-comp", "Root", "Test")
+    ).rejects.toThrow(/not found/);
+  });
+});
+
+describe("detachMixin", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    api = mockApiClient();
+    mockWithRecording.mockReturnValue({
+      changes: [], newInsts: [], removedInsts: [],
+    });
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "100" });
+  });
+
+  afterEach(() => {
+    clearSession();
+    disposeChangeTracker();
+    clearNodeCache();
+  });
+
+  it("detaches a mixin from an element", async () => {
+    const mixin = { uuid: "m1", name: "Button", rs: { values: {} }, forTheme: false };
+    const root = mkTag({ uuid: "root-1", name: "Root" });
+    root.vsettings[0].rs.mixins = [mixin];
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], mixins: [mixin] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+
+    const result = await detachMixin(api, "comp-1", "Root", "Button");
+    expect(result.mixinName).toBe("Button");
+    expect(result.nodeUuid).toBe("root-1");
+    expect(root.vsettings[0].rs.mixins).toHaveLength(0);
+  });
+
+  it("throws when mixin is not applied to element", async () => {
+    const mixin = { uuid: "m1", name: "Button", rs: { values: {} }, forTheme: false };
+    const root = mkTag({ uuid: "root-1", name: "Root" });
+    root.vsettings[0].rs.mixins = [];
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], mixins: [mixin] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+
+    await expect(
+      detachMixin(api, "comp-1", "Root", "Button")
+    ).rejects.toThrow(/not applied/);
+  });
+
+  it("throws when mixin not found in site", async () => {
+    const root = mkTag({ uuid: "root-1", name: "Root" });
+    root.vsettings[0].rs.mixins = [];
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], mixins: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      detachMixin(api, "comp-1", "Root", "nonexistent")
+    ).rejects.toThrow(/not found/);
+  });
+
+  it("only removes the specified mixin, preserving others", async () => {
+    const mixin1 = { uuid: "m1", name: "One", rs: { values: {} }, forTheme: false };
+    const mixin2 = { uuid: "m2", name: "Two", rs: { values: {} }, forTheme: false };
+    const root = mkTag({ uuid: "root-1", name: "Root" });
+    root.vsettings[0].rs.mixins = [mixin1, mixin2];
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], mixins: [mixin1, mixin2] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+
+    await detachMixin(api, "comp-1", "Root", "One");
+    expect(root.vsettings[0].rs.mixins).toHaveLength(1);
+    expect(root.vsettings[0].rs.mixins[0]).toBe(mixin2);
   });
 });

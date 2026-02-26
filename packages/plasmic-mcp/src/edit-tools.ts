@@ -65,6 +65,8 @@ import {
   ComponentServerQuery,
   isKnownComponentDataQuery,
   isKnownComponentServerQuery,
+  Mixin,
+  isKnownMixin,
 } from "@/wab/shared/model/classes";
 import { RSH } from "@/wab/shared/RuleSetHelpers";
 import { TplMgr } from "@/wab/shared/TplMgr";
@@ -5348,4 +5350,268 @@ export async function updateQuery(
     name: validName,
     queryType,
   };
+}
+
+// =============================================================================
+// Mixins — CRUD for reusable style bundles + apply/remove on elements
+// =============================================================================
+
+export interface MixinInfo {
+  uuid: string;
+  name: string;
+  styles: Record<string, string>;
+  forTheme: boolean;
+}
+
+/**
+ * List all mixins in the current project.
+ */
+export function listMixins(): MixinInfo[] {
+  const session = requireSession();
+  return (session.site.mixins ?? []).map((m: any) => ({
+    uuid: m.uuid,
+    name: m.name,
+    styles: { ...(m.rs?.values ?? {}) },
+    forTheme: m.forTheme ?? false,
+  }));
+}
+
+export interface CreateMixinResult {
+  save: SaveResult;
+  mixinUuid: string;
+  name: string;
+}
+
+/**
+ * Find a mixin by name or UUID.
+ */
+function findMixin(site: any, mixinRef: string): any {
+  const mixin = (site.mixins ?? []).find(
+    (m: any) => m.uuid === mixinRef || m.name === mixinRef
+  );
+  if (!mixin) {
+    throw new Error(
+      `Mixin "${mixinRef}" not found. Use list-mixins to see available mixins.`
+    );
+  }
+  return mixin;
+}
+
+/**
+ * Create a new mixin with optional styles.
+ */
+export async function createMixin(
+  apiClient: PlasmicApiClient,
+  name: string,
+  styles?: Record<string, string>
+): Promise<CreateMixinResult> {
+  const session = requireSession();
+  const tracker = getChangeTracker();
+  const tplMgr = new TplMgr({ site: session.site });
+
+  const sanitized = styles ? sanitizeStyles(styles) : {};
+
+  let mixinUuid = "";
+  let mixinName = "";
+
+  const changes = tracker.withRecording(() => {
+    const mixin = tplMgr.addMixin(name);
+    mixinUuid = mixin.uuid;
+    mixinName = mixin.name;
+
+    // Apply styles to the mixin's RuleSet
+    if (Object.keys(sanitized).length > 0) {
+      const rs = mixin.rs;
+      if (rs && rs.values) {
+        Object.assign(rs.values, sanitized);
+      }
+    }
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `create-mixin: ${mixinName}`,
+    []
+  );
+
+  return { save, mixinUuid, name: mixinName };
+}
+
+export interface UpdateMixinResult {
+  save: SaveResult;
+  mixinUuid: string;
+  name: string;
+  updatedFields: string[];
+}
+
+/**
+ * Update a mixin's name and/or styles.
+ */
+export async function updateMixin(
+  apiClient: PlasmicApiClient,
+  mixinRef: string,
+  newName?: string,
+  styles?: Record<string, string>
+): Promise<UpdateMixinResult> {
+  const session = requireSession();
+  const tracker = getChangeTracker();
+  const tplMgr = new TplMgr({ site: session.site });
+  const mixin = findMixin(session.site, mixinRef);
+
+  if (!newName && !styles) {
+    throw new Error("At least a new name or styles must be provided for update-mixin.");
+  }
+
+  const sanitized = styles ? sanitizeStyles(styles) : undefined;
+  const updatedFields: string[] = [];
+
+  const changes = tracker.withRecording(() => {
+    if (newName) {
+      tplMgr.renameMixin(mixin, newName);
+      updatedFields.push("name");
+    }
+    if (sanitized) {
+      const rs = mixin.rs;
+      if (rs && rs.values) {
+        Object.assign(rs.values, sanitized);
+      }
+      updatedFields.push("styles");
+    }
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `update-mixin: ${mixin.name}`,
+    []
+  );
+
+  return { save, mixinUuid: mixin.uuid, name: mixin.name, updatedFields };
+}
+
+export interface RemoveMixinResult {
+  save: SaveResult;
+  removedName: string;
+  removedUuid: string;
+}
+
+/**
+ * Remove a mixin from the site. TplMgr.removeMixin handles reference cleanup.
+ */
+export async function removeMixin(
+  apiClient: PlasmicApiClient,
+  mixinRef: string
+): Promise<RemoveMixinResult> {
+  const session = requireSession();
+  const tracker = getChangeTracker();
+  const tplMgr = new TplMgr({ site: session.site });
+  const mixin = findMixin(session.site, mixinRef);
+
+  const removedName = mixin.name;
+  const removedUuid = mixin.uuid;
+
+  const changes = tracker.withRecording(() => {
+    tplMgr.removeMixin(mixin);
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `remove-mixin: ${removedName}`,
+    []
+  );
+
+  return { save, removedName, removedUuid };
+}
+
+export interface ApplyMixinResult {
+  save: SaveResult;
+  mixinName: string;
+  nodeUuid: string;
+}
+
+/**
+ * Apply a mixin to an element's base VariantSetting.
+ * Idempotent — applying the same mixin twice is a no-op.
+ */
+export async function applyMixin(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  nodeRef: string,
+  mixinRef: string
+): Promise<ApplyMixinResult> {
+  const component = findComponent(componentUuid);
+  const session = requireSession();
+  const nodeResult = resolveNode(component, nodeRef);
+  const resolved = requireSingleNode(nodeResult, nodeRef);
+  const tpl = resolved.node;
+
+  const mixin = findMixin(session.site, mixinRef);
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  const changes = tracker.withRecording(() => {
+    const baseVs = tplMgr.ensureBaseVariantSetting(tpl);
+    if (!baseVs.rs.mixins.includes(mixin)) {
+      baseVs.rs.mixins.push(mixin);
+    }
+  });
+
+  const componentIid = getComponentIid(component);
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `apply-mixin: ${mixin.name} on ${resolved.name ?? resolved.uuid}`,
+    componentIid ? [componentIid] : []
+  );
+
+  return { save, mixinName: mixin.name, nodeUuid: resolved.uuid };
+}
+
+export interface DetachMixinResult {
+  save: SaveResult;
+  mixinName: string;
+  nodeUuid: string;
+}
+
+/**
+ * Remove a mixin from an element's base VariantSetting.
+ */
+export async function detachMixin(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  nodeRef: string,
+  mixinRef: string
+): Promise<DetachMixinResult> {
+  const component = findComponent(componentUuid);
+  const session = requireSession();
+  const nodeResult = resolveNode(component, nodeRef);
+  const resolved = requireSingleNode(nodeResult, nodeRef);
+  const tpl = resolved.node;
+
+  const mixin = findMixin(session.site, mixinRef);
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  const changes = tracker.withRecording(() => {
+    const baseVs = tplMgr.ensureBaseVariantSetting(tpl);
+    const idx = baseVs.rs.mixins.indexOf(mixin);
+    if (idx < 0) {
+      throw new Error(
+        `Mixin "${mixin.name}" is not applied to this element. Use get-node-details to see applied mixins.`
+      );
+    }
+    baseVs.rs.mixins.splice(idx, 1);
+  });
+
+  const componentIid = getComponentIid(component);
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `detach-mixin: ${mixin.name} from ${resolved.name ?? resolved.uuid}`,
+    componentIid ? [componentIid] : []
+  );
+
+  return { save, mixinName: mixin.name, nodeUuid: resolved.uuid };
 }

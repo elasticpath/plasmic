@@ -79,6 +79,12 @@ import {
   addQuery,
   removeQuery,
   updateQuery,
+  listMixins,
+  createMixin,
+  updateMixin,
+  removeMixin,
+  applyMixin,
+  detachMixin,
 } from "./edit-tools.js";
 import { beginBatch, endBatch, isBatchActive, cancelBatch, cancelBatchWithRollback, getAccumulatedChanges } from "./batch-manager.js";
 import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
@@ -4507,6 +4513,388 @@ export function createServer(): McpServer {
         };
       } catch (err: any) {
         return handleMutationError("updating query", err);
+      }
+    }
+  );
+
+  // ─── Mixin tools ──────────────────────────────────────────────────────────
+
+  server.tool(
+    "list-mixins",
+    "List all mixins (reusable style bundles) in the active project. " +
+      "Returns name, UUID, styles, and forTheme flag for each mixin.",
+    {},
+    async () => {
+      try {
+        const mixins = listMixins();
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                { mixinCount: mixins.length, mixins },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [{ type: "text" as const, text: `Error: ${err.message}` }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "create-mixin",
+    "Create a new mixin (reusable style bundle). " +
+      "Optionally provide initial CSS styles. Mixin can later be applied to elements with apply-mixin.",
+    {
+      name: z.string().describe("Name for the new mixin"),
+      styles: z
+        .record(z.string())
+        .optional()
+        .describe(
+          "Optional CSS styles in camelCase format (e.g., {\"fontSize\": \"16px\", \"color\": \"#333\"})"
+        ),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting."),
+    },
+    async ({ name, styles, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            createMixin(apiClient, name, styles)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    mixinUuid: result.mixinUuid,
+                    name: result.name,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await createMixin(apiClient, name, styles);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  mixinUuid: result.mixinUuid,
+                  name: result.name,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("creating mixin", err);
+      }
+    }
+  );
+
+  server.tool(
+    "update-mixin",
+    "Update a mixin's name and/or styles. " +
+      "At least one of newName or styles must be provided.",
+    {
+      mixinRef: z
+        .string()
+        .describe("Mixin reference: current name or UUID"),
+      newName: z
+        .string()
+        .optional()
+        .describe("New name for the mixin"),
+      styles: z
+        .record(z.string())
+        .optional()
+        .describe(
+          "CSS styles to set/update in camelCase format (e.g., {\"fontSize\": \"18px\"})"
+        ),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting."),
+    },
+    async ({ mixinRef, newName, styles, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            updateMixin(apiClient, mixinRef, newName, styles)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    mixinUuid: result.mixinUuid,
+                    name: result.name,
+                    updatedFields: result.updatedFields,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await updateMixin(apiClient, mixinRef, newName, styles);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  mixinUuid: result.mixinUuid,
+                  name: result.name,
+                  updatedFields: result.updatedFields,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("updating mixin", err);
+      }
+    }
+  );
+
+  server.tool(
+    "remove-mixin",
+    "Remove a mixin from the project. The mixin will be detached from all elements that use it.",
+    {
+      mixinRef: z
+        .string()
+        .describe("Mixin reference: name or UUID"),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting."),
+    },
+    async ({ mixinRef, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            removeMixin(apiClient, mixinRef)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    removedName: result.removedName,
+                    removedUuid: result.removedUuid,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await removeMixin(apiClient, mixinRef);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  removedName: result.removedName,
+                  removedUuid: result.removedUuid,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("removing mixin", err);
+      }
+    }
+  );
+
+  server.tool(
+    "apply-mixin",
+    "Apply a mixin to an element's base variant setting. " +
+      "Idempotent — applying the same mixin twice is a no-op.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component containing the element"),
+      nodeRef: z
+        .string()
+        .describe(
+          "Node reference: UUID, name, path, or index"
+        ),
+      mixinRef: z
+        .string()
+        .describe("Mixin reference: name or UUID"),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting."),
+    },
+    async ({ componentUuid, nodeRef, mixinRef, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            applyMixin(apiClient, componentUuid, nodeRef, mixinRef)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    mixinName: result.mixinName,
+                    nodeUuid: result.nodeUuid,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await applyMixin(
+          apiClient,
+          componentUuid,
+          nodeRef,
+          mixinRef
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  mixinName: result.mixinName,
+                  nodeUuid: result.nodeUuid,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("applying mixin", err);
+      }
+    }
+  );
+
+  server.tool(
+    "detach-mixin",
+    "Remove a mixin from an element's base variant setting. " +
+      "Throws if the mixin is not currently applied to the element.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component containing the element"),
+      nodeRef: z
+        .string()
+        .describe(
+          "Node reference: UUID, name, path, or index"
+        ),
+      mixinRef: z
+        .string()
+        .describe("Mixin reference: name or UUID"),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting."),
+    },
+    async ({ componentUuid, nodeRef, mixinRef, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            detachMixin(apiClient, componentUuid, nodeRef, mixinRef)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    mixinName: result.mixinName,
+                    nodeUuid: result.nodeUuid,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await detachMixin(
+          apiClient,
+          componentUuid,
+          nodeRef,
+          mixinRef
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  mixinName: result.mixinName,
+                  nodeUuid: result.nodeUuid,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("detaching mixin", err);
       }
     }
   );

@@ -3926,6 +3926,164 @@ describe("data queries", () => {
   });
 });
 
+// =============================================================================
+// Mixins — integration tests for reusable style bundles
+// =============================================================================
+
+describe("mixins", () => {
+  it("create-mixin → list-mixins → apply-mixin → detach-mixin → remove-mixin round-trip", async () => {
+    const comp = discoveredComponents[0];
+
+    // List initial mixins (should be whatever the bundle has)
+    const initialList = parseResponse(
+      await client.callTool({ name: "list-mixins", arguments: {} })
+    );
+    const initialCount = initialList.mixinCount;
+
+    // Create a mixin with styles
+    const createResult = parseResponse(
+      await client.callTool({
+        name: "create-mixin",
+        arguments: {
+          name: "TestMixin",
+          styles: { fontSize: "20px", color: "#ff0000" },
+        },
+      })
+    );
+    expect(createResult.success).toBe(true);
+    expect(createResult.name).toBe("TestMixin");
+    const mixinUuid = createResult.mixinUuid;
+
+    // List again — should have one more
+    const afterCreate = parseResponse(
+      await client.callTool({ name: "list-mixins", arguments: {} })
+    );
+    expect(afterCreate.mixinCount).toBe(initialCount + 1);
+    const newMixin = afterCreate.mixins.find((m: any) => m.uuid === mixinUuid);
+    expect(newMixin).toBeDefined();
+    expect(newMixin.name).toBe("TestMixin");
+
+    // Get root node for apply/detach
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+    const rootUuid = tree.uuid;
+
+    // Apply mixin to root
+    const applyResult = parseResponse(
+      await client.callTool({
+        name: "apply-mixin",
+        arguments: {
+          componentUuid: comp.uuid,
+          nodeRef: rootUuid,
+          mixinRef: "TestMixin",
+        },
+      })
+    );
+    expect(applyResult.success).toBe(true);
+    expect(applyResult.mixinName).toBe("TestMixin");
+
+    // Detach mixin
+    const detachResult = parseResponse(
+      await client.callTool({
+        name: "detach-mixin",
+        arguments: {
+          componentUuid: comp.uuid,
+          nodeRef: rootUuid,
+          mixinRef: "TestMixin",
+        },
+      })
+    );
+    expect(detachResult.success).toBe(true);
+
+    // Remove mixin
+    const removeResult = parseResponse(
+      await client.callTool({
+        name: "remove-mixin",
+        arguments: { mixinRef: mixinUuid },
+      })
+    );
+    expect(removeResult.success).toBe(true);
+    expect(removeResult.removedName).toBe("TestMixin");
+
+    // List — back to original count
+    const afterRemove = parseResponse(
+      await client.callTool({ name: "list-mixins", arguments: {} })
+    );
+    expect(afterRemove.mixinCount).toBe(initialCount);
+  });
+
+  it("update-mixin renames and updates styles", async () => {
+    // Create a mixin
+    const createResult = parseResponse(
+      await client.callTool({
+        name: "create-mixin",
+        arguments: { name: "Updatable" },
+      })
+    );
+    expect(createResult.success).toBe(true);
+
+    // Update name and styles
+    const updateResult = parseResponse(
+      await client.callTool({
+        name: "update-mixin",
+        arguments: {
+          mixinRef: createResult.mixinUuid,
+          newName: "Updated",
+          styles: { fontWeight: "bold" },
+        },
+      })
+    );
+    expect(updateResult.success).toBe(true);
+    expect(updateResult.name).toBe("Updated");
+    expect(updateResult.updatedFields).toContain("name");
+    expect(updateResult.updatedFields).toContain("styles");
+
+    // Undo twice (update + create)
+    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+
+  it("detach-mixin rejects when mixin not applied", async () => {
+    const comp = discoveredComponents[0];
+
+    // Create a mixin but don't apply it
+    const createResult = parseResponse(
+      await client.callTool({
+        name: "create-mixin",
+        arguments: { name: "Unapplied" },
+      })
+    );
+
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+
+    // Try to detach — should fail
+    const detachResult = await client.callTool({
+      name: "detach-mixin",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: tree.uuid,
+        mixinRef: "Unapplied",
+      },
+    });
+    const parsed = parseResponse(detachResult);
+    expect(
+      detachResult.isError || (typeof parsed === "string" && parsed.includes("not applied"))
+    ).toBeTruthy();
+
+    // Undo create
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+});
+
 /** Walk a tree recursively to find a node by UUID. */
 function findNodeByUuid(tree: any, uuid: string): any {
   if (tree.uuid === uuid) return tree;

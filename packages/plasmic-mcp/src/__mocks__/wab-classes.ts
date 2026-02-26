@@ -500,6 +500,34 @@ export const isKnownComponentDataQuery = (obj: any): boolean =>
   obj?._type === "ComponentDataQuery";
 export const isKnownComponentServerQuery = (obj: any): boolean =>
   obj?._type === "ComponentServerQuery";
+export const isKnownMixin = (obj: any): boolean =>
+  obj?._type === "Mixin";
+
+/** Mock constructor for Mixin — reusable style bundle stored at site level. */
+export class Mixin {
+  _type = "Mixin";
+  name: string;
+  rs: any;
+  preview: string | null;
+  uuid: string;
+  forTheme: boolean;
+  variantedRs: any[];
+  constructor(args: {
+    name: string;
+    rs: any;
+    preview?: string | null;
+    uuid: string;
+    forTheme?: boolean;
+    variantedRs?: any[];
+  }) {
+    this.name = args.name;
+    this.rs = args.rs;
+    this.preview = args.preview ?? null;
+    this.uuid = args.uuid;
+    this.forTheme = args.forTheme ?? false;
+    this.variantedRs = args.variantedRs ?? [];
+  }
+}
 
 export class Site {
   static isKnown(obj: any): boolean {
