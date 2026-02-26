@@ -40,6 +40,35 @@ const MOBILE_VIEWPORT = { width: 375, height: 812 };
 const DEFAULT_NAVIGATION_TIMEOUT_MS = 60_000;
 const DEFAULT_ACTION_TIMEOUT_MS = 10_000;
 
+/**
+ * Studio frame selectors — centralized so they can be updated in one place
+ * when Plasmic changes its iframe structure. These mirror the selectors used
+ * in platform/wab/playwright/utils/studio-utils.ts.
+ */
+const SELECTORS = {
+  /** Outer iframe wrapping the Studio app */
+  outerFrame: "iframe.studio-frame",
+  /** Inner iframe containing the canvas editor */
+  innerFrame: "iframe.__wab_studio-frame",
+  /** Canvas container element inside the inner iframe */
+  canvasContainer: ".canvas-editor__canvas-container",
+  /** Rsbuild error overlay (dev builds) */
+  errorOverlay: ".rsbuild-error-overlay",
+} as const;
+
+/**
+ * Error message patterns that indicate a browser crash requiring relaunch.
+ * Expanded beyond the initial 3 to cover common Playwright/Chromium crash modes.
+ */
+const CRASH_PATTERNS = [
+  "Target closed",
+  "Browser closed",
+  "Protocol error",
+  "Target page, context or browser has been closed",
+  "Connection refused",
+  "Session closed",
+] as const;
+
 export interface VisualCaptureConfig {
   /** Run ID for organizing screenshots into per-run directories */
   runId: string;
@@ -174,6 +203,19 @@ export class VisualCapture {
   }
 
   /**
+   * Get the current page with a defensive null check. All page access in
+   * capture methods should go through this helper instead of using `this.page!`.
+   */
+  private requirePage(): Page {
+    if (!this.page) {
+      throw new Error(
+        "Visual capture page not initialized. Call initialize() first."
+      );
+    }
+    return this.page;
+  }
+
+  /**
    * Capture screenshots of Studio showing the result of a scenario.
    *
    * When componentUuid is provided (V10), navigates directly to that
@@ -201,6 +243,8 @@ export class VisualCapture {
     }
 
     try {
+      const page = this.requirePage();
+
       // Build Studio URL. When a componentUuid is available, navigate
       // directly to that component's arena (V10). Otherwise fall back
       // to the project overview.
@@ -215,10 +259,10 @@ export class VisualCapture {
         this.config.navigationTimeout ?? DEFAULT_NAVIGATION_TIMEOUT_MS;
 
       // Navigate to Studio and wait for canvas to load
-      await this.page!.setViewportSize(DESKTOP_VIEWPORT);
+      await page.setViewportSize(DESKTOP_VIEWPORT);
 
       try {
-        await this.page!.goto(studioUrl, { timeout, waitUntil: "load" });
+        await page.goto(studioUrl, { timeout, waitUntil: "load" });
         await this.waitForStudioCanvas(timeout);
       } catch (navErr: any) {
         // VE1: Studio fails to load — save whatever is visible, flag as failed
@@ -230,7 +274,7 @@ export class VisualCapture {
           `${scenarioId}-desktop.png`
         );
         try {
-          await this.page!.screenshot({ path: desktopPath, fullPage: false });
+          await page.screenshot({ path: desktopPath, fullPage: false });
         } catch {
           // Screenshot also failed — page might be blank
         }
@@ -248,28 +292,24 @@ export class VisualCapture {
         this.screenshotDir,
         `${scenarioId}-desktop.png`
       );
-      await this.page!.screenshot({ path: desktopPath, fullPage: false });
+      await page.screenshot({ path: desktopPath, fullPage: false });
 
       // Mobile screenshot (only for responsive scenarios)
       let mobilePath: string | null = null;
       if (needsMobileCapture(scenarioId, scenarioDescription)) {
-        await this.page!.setViewportSize(MOBILE_VIEWPORT);
+        await page.setViewportSize(MOBILE_VIEWPORT);
         // Brief wait for Studio to reflow at new viewport size
-        await this.page!.waitForTimeout(1000);
+        await page.waitForTimeout(1000);
         mobilePath = join(this.screenshotDir, `${scenarioId}-mobile.png`);
-        await this.page!.screenshot({ path: mobilePath, fullPage: false });
+        await page.screenshot({ path: mobilePath, fullPage: false });
         // Reset to desktop viewport for next scenario
-        await this.page!.setViewportSize(DESKTOP_VIEWPORT);
+        await page.setViewportSize(DESKTOP_VIEWPORT);
       }
 
       return { desktopPath, mobilePath, error: null };
     } catch (err: any) {
       // VE6: Browser crashes — relaunch, re-auth, continue from next scenario
-      if (
-        err.message.includes("Target closed") ||
-        err.message.includes("Browser closed") ||
-        err.message.includes("Protocol error")
-      ) {
+      if (CRASH_PATTERNS.some((p) => err.message.includes(p))) {
         console.error(
           `[visual] Browser crashed for ${scenarioId}. Relaunching...`
         );
@@ -311,32 +351,35 @@ export class VisualCapture {
    * (waitForFrameToLoad + goToProject).
    */
   private async waitForStudioCanvas(timeout: number): Promise<void> {
+    const page = this.requirePage();
+
     // Wait for outer iframe to appear
-    await this.page!.waitForSelector("iframe.studio-frame", {
+    await page.waitForSelector(SELECTORS.outerFrame, {
       timeout: Math.min(timeout, 40_000),
     });
 
     // Brief pause for iframe initialization
-    await this.page!.waitForTimeout(1000);
+    await page.waitForTimeout(1000);
 
-    // Dismiss rsbuild error overlay if present (dev builds show this on HMR errors)
+    // Dismiss rsbuild error overlay if present (dev builds show this on HMR errors).
+    // Timeout increased to 2000ms to handle slower Studio loads (P6.4).
     try {
-      const overlay = this.page!.locator(".rsbuild-error-overlay").first();
-      if (await overlay.isVisible({ timeout: 500 })) {
-        await this.page!.keyboard.press("Escape");
-        await this.page!.waitForTimeout(500);
+      const overlay = page.locator(SELECTORS.errorOverlay).first();
+      if (await overlay.isVisible({ timeout: 2000 })) {
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(500);
       }
     } catch {
       // Overlay not present — expected in normal operation
     }
 
     // Wait for canvas container inside nested iframes
-    const studioFrame = this.page!
-      .frameLocator("iframe.studio-frame")
-      .frameLocator("iframe.__wab_studio-frame");
+    const studioFrame = page
+      .frameLocator(SELECTORS.outerFrame)
+      .frameLocator(SELECTORS.innerFrame);
 
     await studioFrame
-      .locator(".canvas-editor__canvas-container")
+      .locator(SELECTORS.canvasContainer)
       .waitFor({ timeout, state: "attached" });
   }
 

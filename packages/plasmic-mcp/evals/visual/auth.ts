@@ -68,7 +68,15 @@ export async function authenticateStudio(
       `Failed to get CSRF token: ${csrfRes1.status()} ${text}`
     );
   }
-  const csrf1 = (await csrfRes1.json()).csrf;
+  const csrfBody1 = await csrfRes1.json();
+  const csrf1 = csrfBody1?.csrf;
+  if (!csrf1 || typeof csrf1 !== "string") {
+    await context.close();
+    throw new Error(
+      "CSRF response missing 'csrf' property. " +
+        `Got: ${JSON.stringify(csrfBody1).slice(0, 200)}`
+    );
+  }
 
   // Step 2: Login with CSRF token
   const loginRes = await request.post(`${config.host}/api/v1/auth/login`, {

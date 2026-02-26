@@ -4,7 +4,7 @@
 
 **Complete**: MCP server (8 STRAP tools, 103 actions), eval harness, graders, visual capture, dashboard, CI, 70 scenarios. P1-P4 fully complete. **P5 Dashboard Hardening fully complete** — XSS fix (data attributes + event delegation + escAttr()), fetch timeout (30s AbortController), Chart.js CDN fallback (onerror + guard), POST /api/overrides input validation (allowlist + type checks + length caps). Total tests: 1,407.
 
-**In progress**: P6-P8 hardening tasks. Next: P6 Visual Capture Hardening.
+**In progress**: P7-P8 hardening tasks. Next: P7 Eval Report Archival.
 
 **Goal**: Close remaining gaps in scenario coverage, grader utilization, test coverage, and robustness so the eval system reliably measures Claude's ability to complete Plasmic design tasks across all 8 STRAP domains.
 
@@ -84,28 +84,33 @@ _Impact: LOW-MEDIUM — security and reliability improvements for the results da
   - Files: `evals/dashboard/render.js`
   - AC: ✅ Malformed POST bodies return 400 with descriptive error
 
-### P6: Visual Capture Hardening — `evals/visual/`
+### P6: Visual Capture Hardening — `evals/visual/` ✅ COMPLETE
 _Impact: LOW-MEDIUM — defensive fixes to prevent silent failures in screenshot capture._
 
-- [ ] **P6.1 — Replace non-null assertions with defensive checks**
-  - Replace `this.page!.goto(...)` etc. with null guards that throw descriptive errors
+- [x] **P6.1 — Replace non-null assertions with defensive checks**
+  - Added `requirePage()` helper that throws descriptive error if page is null
+  - All `this.page!` usages replaced with `const page = this.requirePage()` + local `page` variable
   - Files: `evals/visual/capture.ts`
-  - AC: Every `this.page` / `this.browser` / `this.context` access has a null check; no `!` assertions remain
+  - AC: ✅ Zero `!` assertions remain; null page throws "Visual capture page not initialized"
 
-- [ ] **P6.2 — Add CSRF response validation**
-  - Validate that `csrfRes1.json()` has a `csrf` property before using it; throw descriptive error if missing
+- [x] **P6.2 — Add CSRF response validation**
+  - Validates `csrfBody1?.csrf` exists and is a string before using it
+  - Error message includes truncated response body for debugging
   - Files: `evals/visual/auth.ts`
-  - AC: Missing CSRF token produces a clear error message instead of `undefined` propagation
+  - AC: ✅ Missing CSRF token produces clear error with response body context
 
-- [ ] **P6.3 — Extract hardcoded frame selectors to constants**
-  - Move `.studio-frame`, `.__wab_studio-frame`, `.canvas-editor__canvas-container` to a `SELECTORS` const object
+- [x] **P6.3 — Extract hardcoded frame selectors to constants**
+  - Added `SELECTORS` const object with `outerFrame`, `innerFrame`, `canvasContainer`, `errorOverlay`
+  - All hardcoded selector strings replaced with `SELECTORS.*` references
   - Files: `evals/visual/capture.ts`
-  - AC: All frame selectors referenced via named constants; single point of update
+  - AC: ✅ All frame selectors via named constants; single point of update
 
-- [ ] **P6.4 — Expand crash detection patterns**
-  - Add patterns for common Playwright/browser crashes beyond the current 3; increase `isVisible()` timeout from 500ms to 2000ms
+- [x] **P6.4 — Expand crash detection patterns**
+  - Added `CRASH_PATTERNS` array with 6 patterns (was 3 inline): added "Target page, context or browser has been closed", "Connection refused", "Session closed"
+  - Crash detection now uses `CRASH_PATTERNS.some(p => err.message.includes(p))`
+  - Overlay `isVisible()` timeout increased from 500ms to 2000ms for slower Studio loads
   - Files: `evals/visual/capture.ts`
-  - AC: At least 6 error patterns trigger browser relaunch; overlay dismissal succeeds on slower Studio loads
+  - AC: ✅ 6 error patterns trigger relaunch; overlay timeout increased to 2000ms
 
 ### P7: Eval Report Archival — `evals/dashboard/render.js`, `evals/results/`
 _Impact: LOW — prevents unbounded disk usage from accumulated eval results and screenshots._
