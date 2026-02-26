@@ -413,6 +413,63 @@ export class NamedState {
   }
 }
 
+/** Mock constructor for EventHandler — event handler expression containing interactions. */
+export class EventHandler {
+  _type = "EventHandler";
+  interactions: any[];
+  constructor(args: { interactions: any[] }) {
+    this.interactions = args.interactions ?? [];
+  }
+}
+
+/** Mock constructor for Interaction — single action step within an EventHandler. */
+export class Interaction {
+  _type = "Interaction";
+  interactionName: string;
+  actionName: string;
+  args: any[];
+  condExpr: any;
+  conditionalMode: string;
+  uuid: string;
+  parent: any;
+  constructor(args: any) {
+    this.interactionName = args.interactionName;
+    this.actionName = args.actionName;
+    this.args = args.args ?? [];
+    this.condExpr = args.condExpr ?? null;
+    this.conditionalMode = args.conditionalMode ?? "always";
+    this.uuid = args.uuid;
+    this.parent = args.parent;
+  }
+}
+
+/** Mock constructor for NameArg — named argument binding (name → expr). */
+export class NameArg {
+  _type = "NameArg";
+  name: string;
+  expr: any;
+  constructor(args: { name: string; expr: any }) {
+    this.name = args.name;
+    this.expr = args.expr;
+  }
+}
+
+/** Mock constructor for FunctionExpr — anonymous function expression (for runCode actions). */
+export class FunctionExpr {
+  _type = "FunctionExpr";
+  argNames: string[];
+  bodyExpr: any;
+  constructor(args: { argNames: string[]; bodyExpr: any }) {
+    this.argNames = args.argNames ?? [];
+    this.bodyExpr = args.bodyExpr;
+  }
+}
+
+export const isKnownEventHandler = (obj: any): boolean =>
+  obj?._type === "EventHandler" || obj?._type === "GenericEventHandler";
+export const isKnownInteraction = (obj: any): boolean =>
+  obj?._type === "Interaction";
+
 export class Site {
   static isKnown(obj: any): boolean {
     return obj?._type === "Site";

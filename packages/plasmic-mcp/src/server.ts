@@ -72,6 +72,9 @@ import {
   addState,
   removeState,
   updateState,
+  listInteractions,
+  addInteraction,
+  removeInteraction,
 } from "./edit-tools.js";
 import { beginBatch, endBatch, isBatchActive, cancelBatch, cancelBatchWithRollback, getAccumulatedChanges } from "./batch-manager.js";
 import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
@@ -3994,6 +3997,241 @@ export function createServer(): McpServer {
         };
       } catch (err: any) {
         return handleMutationError("updating state", err);
+      }
+    }
+  );
+
+  // --- list-interactions ---
+  // List all interactions on a TplTag element.
+  server.tool(
+    "list-interactions",
+    "List all event handler interactions on an element. " +
+      "Returns event name, action, args, and condition for each interaction.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component containing the element"),
+      nodeRef: z
+        .string()
+        .describe(
+          'Element reference: UUID, name, path (e.g., "Root.Button"), or index (e.g., "#2")'
+        ),
+    },
+    async ({ componentUuid, nodeRef }) => {
+      try {
+        const session = requireSession();
+        const component = session.site.components?.find(
+          (c: any) => c.uuid === componentUuid
+        );
+        if (!component) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Component UUID "${componentUuid}" not found.`,
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        const interactions = listInteractions(component, nodeRef);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  componentUuid,
+                  nodeRef,
+                  interactionCount: interactions.length,
+                  interactions,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("listing interactions", err);
+      }
+    }
+  );
+
+  // --- add-interaction ---
+  // Add an event handler interaction to a TplTag element.
+  server.tool(
+    "add-interaction",
+    "Add an event handler interaction to an element. " +
+      "Supported actions: navigation (alias: navigateTo, goToPage), " +
+      "updateVariable (alias: setState), customFunction (alias: runCode). " +
+      "Events: onClick, onDoubleClick, onMouseEnter, onMouseLeave, " +
+      "onFocus, onBlur, onChange, onSubmit, onKeyDown, onKeyUp, onScroll, onLoad.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component containing the element"),
+      nodeRef: z
+        .string()
+        .describe('Element reference: UUID, name, path, or index'),
+      event: z
+        .string()
+        .describe('Event name (e.g., "onClick", "onChange", "onMouseEnter")'),
+      actionName: z
+        .string()
+        .describe(
+          'Action to perform: "navigation" (or "navigateTo"), ' +
+            '"updateVariable" (or "setState"), "customFunction" (or "runCode")'
+        ),
+      args: z
+        .record(z.string())
+        .describe(
+          'Action arguments as key-value pairs. ' +
+            'navigation: { "destination": "/about" }. ' +
+            'updateVariable: { "variable": "isOpen", "value": "!$state.isOpen" }. ' +
+            'customFunction: { "code": "console.log(\'clicked\')" }.'
+        ),
+      interactionName: z
+        .string()
+        .optional()
+        .describe('Optional human-readable step name (auto-generated if omitted)'),
+      condition: z
+        .string()
+        .optional()
+        .describe('Optional JS expression for conditional execution (e.g., "$ctx.isEnabled")'),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting."),
+    },
+    async ({ componentUuid, nodeRef, event, actionName, args, interactionName, condition, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            addInteraction(apiClient, componentUuid, nodeRef, event, actionName, args, interactionName, condition)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    interactionUuid: result.interactionUuid,
+                    event: result.event,
+                    actionName: result.actionName,
+                    interactionName: result.interactionName,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await addInteraction(
+          apiClient, componentUuid, nodeRef, event, actionName, args, interactionName, condition
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  interactionUuid: result.interactionUuid,
+                  event: result.event,
+                  actionName: result.actionName,
+                  interactionName: result.interactionName,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("adding interaction", err);
+      }
+    }
+  );
+
+  // --- remove-interaction ---
+  // Remove interaction(s) from an element's event handler.
+  server.tool(
+    "remove-interaction",
+    "Remove interaction(s) from an element's event handler. " +
+      "Remove a specific interaction by index, or all interactions for an event.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component containing the element"),
+      nodeRef: z
+        .string()
+        .describe('Element reference: UUID, name, path, or index'),
+      event: z
+        .string()
+        .describe('Event name (e.g., "onClick")'),
+      interactionIndex: z
+        .number()
+        .optional()
+        .describe("Index of the interaction to remove. Omit to remove all interactions for the event."),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting."),
+    },
+    async ({ componentUuid, nodeRef, event, interactionIndex, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            removeInteraction(apiClient, componentUuid, nodeRef, event, interactionIndex)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    removedCount: result.removedCount,
+                    event: result.event,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await removeInteraction(
+          apiClient, componentUuid, nodeRef, event, interactionIndex
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  removedCount: result.removedCount,
+                  event: result.event,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("removing interaction", err);
       }
     }
   );

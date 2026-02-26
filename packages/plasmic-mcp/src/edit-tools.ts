@@ -34,9 +34,11 @@ import {
   isKnownStyleMarker,
   isKnownNodeMarker,
   isKnownNamedState,
+  isKnownEventHandler,
   RawText,
   CustomCode,
   ExprText,
+  ObjectPath,
   RenderExpr,
   Arg,
   Rep,
@@ -45,6 +47,10 @@ import {
   StateParam,
   StateChangeHandlerParam,
   NamedState,
+  EventHandler,
+  Interaction,
+  NameArg,
+  FunctionExpr,
   Text as TextType,
   Num,
   BoolType,
@@ -4694,4 +4700,390 @@ export async function updateState(
     previousName,
     updatedFields,
   };
+}
+
+// --- Interactions & Event Handlers ---
+
+/** Valid HTML event names for TplTag elements. */
+const VALID_EVENTS = new Set([
+  "onClick", "onDoubleClick", "onMouseEnter", "onMouseLeave",
+  "onFocus", "onBlur", "onChange", "onSubmit",
+  "onKeyDown", "onKeyUp", "onScroll", "onLoad",
+]);
+
+/**
+ * Supported action names and their user-friendly aliases.
+ * Maps user-facing names to WAB internal action names.
+ */
+const ACTION_ALIASES: Record<string, string> = {
+  // WAB internal names (pass-through)
+  navigation: "navigation",
+  updateVariable: "updateVariable",
+  customFunction: "customFunction",
+  // User-friendly aliases
+  navigateTo: "navigation",
+  goToPage: "navigation",
+  setState: "updateVariable",
+  runCode: "customFunction",
+};
+
+/** Supported WAB action names. */
+const SUPPORTED_ACTIONS = new Set(["navigation", "updateVariable", "customFunction"]);
+
+/**
+ * Resolve a user-provided action name to a WAB internal action name.
+ * Accepts both WAB names and user-friendly aliases.
+ */
+function resolveActionName(actionName: string): string {
+  const resolved = ACTION_ALIASES[actionName];
+  if (resolved) return resolved;
+  if (SUPPORTED_ACTIONS.has(actionName)) return actionName;
+  throw new Error(
+    `Unknown action "${actionName}". Supported actions: ${[...SUPPORTED_ACTIONS].join(", ")}. ` +
+      `Aliases: navigateTo, goToPage, setState, runCode.`
+  );
+}
+
+export interface InteractionInfo {
+  index: number;
+  uuid: string;
+  event: string;
+  actionName: string;
+  interactionName: string;
+  conditionalMode: string;
+  condition?: string;
+  args: Record<string, string>;
+}
+
+/**
+ * List all interactions on a TplTag element.
+ *
+ * Read-only — scans the base VariantSetting attrs for EventHandler entries.
+ * Returns structured info for each interaction including event, action, args.
+ */
+export function listInteractions(
+  component: any,
+  nodeRef: string
+): InteractionInfo[] {
+  const session = requireSession();
+  const nodeResult = resolveNode(component, nodeRef);
+  const resolved = requireSingleNode(nodeResult, nodeRef);
+  const tpl = resolved.node;
+
+  if (!isKnownTplTag(tpl)) {
+    throw new Error(
+      `Cannot list interactions on a ${tpl._type ?? "non-TplTag"} node. Only TplTag elements support interactions.`
+    );
+  }
+
+  const tplMgr = new TplMgr({ site: session.site });
+  const baseVs = tplMgr.ensureBaseVariantSetting(tpl);
+  const attrs = baseVs.attrs ?? {};
+  const result: InteractionInfo[] = [];
+
+  for (const [event, expr] of Object.entries(attrs)) {
+    if (!event.startsWith("on") || !isKnownEventHandler(expr)) continue;
+    const handler = expr as any;
+    for (let i = 0; i < (handler.interactions?.length ?? 0); i++) {
+      const interaction = handler.interactions[i];
+      const info: InteractionInfo = {
+        index: i,
+        uuid: interaction.uuid ?? "unknown",
+        event,
+        actionName: interaction.actionName,
+        interactionName: interaction.interactionName,
+        conditionalMode: interaction.conditionalMode ?? "always",
+        args: {},
+      };
+
+      // Extract condition expression
+      if (interaction.condExpr) {
+        if (isKnownCustomCode(interaction.condExpr)) {
+          info.condition = interaction.condExpr.code;
+        } else if (isKnownObjectPath(interaction.condExpr)) {
+          info.condition = interaction.condExpr.path.join(".");
+        }
+      }
+
+      // Extract args
+      for (const arg of interaction.args ?? []) {
+        const argExpr = arg.expr;
+        if (isKnownCustomCode(argExpr)) {
+          info.args[arg.name] = argExpr.code;
+        } else if (isKnownObjectPath(argExpr)) {
+          info.args[arg.name] = argExpr.path.join(".");
+        } else if (argExpr?._type === "FunctionExpr" && argExpr.bodyExpr) {
+          if (isKnownCustomCode(argExpr.bodyExpr)) {
+            info.args[arg.name] = argExpr.bodyExpr.code;
+          }
+        }
+      }
+
+      result.push(info);
+    }
+  }
+
+  return result;
+}
+
+// --- add-interaction ---
+
+export interface AddInteractionResult {
+  save: SaveResult;
+  interactionUuid: string;
+  event: string;
+  actionName: string;
+  interactionName: string;
+}
+
+/**
+ * Build NameArg[] for the given action and user-provided args.
+ */
+function buildActionArgs(actionName: string, args: Record<string, string>): any[] {
+  const nameArgs: any[] = [];
+
+  switch (actionName) {
+    case "navigation": {
+      const destination = args.destination;
+      if (!destination) {
+        throw new Error('Action "navigation" requires a "destination" arg (URL or expression).');
+      }
+      nameArgs.push(new NameArg({
+        name: "destination",
+        expr: new CustomCode({ code: destination.startsWith('"') || destination.startsWith("'")
+          ? destination
+          : JSON.stringify(destination), fallback: null }),
+      }));
+      break;
+    }
+
+    case "updateVariable": {
+      const stateName = args.variable ?? args.state;
+      if (!stateName) {
+        throw new Error('Action "updateVariable" requires a "variable" (or "state") arg with the state name.');
+      }
+      const value = args.value;
+      if (value === undefined) {
+        throw new Error('Action "updateVariable" requires a "value" arg with the new value expression.');
+      }
+      const operation = args.operation ?? "newValue";
+
+      nameArgs.push(new NameArg({
+        name: "variable",
+        expr: new ObjectPath({ path: ["$state", stateName], fallback: null }),
+      }));
+      nameArgs.push(new NameArg({
+        name: "operation",
+        expr: new CustomCode({ code: JSON.stringify(operation), fallback: null }),
+      }));
+      nameArgs.push(new NameArg({
+        name: "value",
+        expr: new CustomCode({ code: value, fallback: null }),
+      }));
+      break;
+    }
+
+    case "customFunction": {
+      const code = args.customFunction ?? args.code;
+      if (!code) {
+        throw new Error('Action "customFunction" requires a "code" (or "customFunction") arg.');
+      }
+      nameArgs.push(new NameArg({
+        name: "customFunction",
+        expr: new FunctionExpr({
+          argNames: ["$steps"],
+          bodyExpr: new CustomCode({ code, fallback: null }),
+        }),
+      }));
+      break;
+    }
+
+    default:
+      throw new Error(`Unsupported action for arg building: ${actionName}`);
+  }
+
+  return nameArgs;
+}
+
+/**
+ * Add an interaction to a TplTag element's event handler.
+ *
+ * Creates or reuses an EventHandler on the base VariantSetting attrs,
+ * then creates an Interaction with the specified action and args.
+ *
+ * Supported actions: navigation (navigateTo), updateVariable (setState), customFunction (runCode).
+ * Events: onClick, onDoubleClick, onMouseEnter, onMouseLeave, onFocus, onBlur,
+ *         onChange, onSubmit, onKeyDown, onKeyUp, onScroll, onLoad.
+ */
+export async function addInteraction(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  nodeRef: string,
+  event: string,
+  actionName: string,
+  args?: Record<string, string>,
+  interactionName?: string,
+  condition?: string
+): Promise<AddInteractionResult> {
+  if (!VALID_EVENTS.has(event)) {
+    throw new Error(
+      `Unknown event "${event}". Available events: ${[...VALID_EVENTS].join(", ")}`
+    );
+  }
+
+  const resolvedAction = resolveActionName(actionName);
+
+  const component = findComponent(componentUuid);
+  const session = requireSession();
+  const nodeResult = resolveNode(component, nodeRef);
+  const resolved = requireSingleNode(nodeResult, nodeRef);
+  const tpl = resolved.node;
+
+  if (!isKnownTplTag(tpl)) {
+    throw new Error(
+      `Cannot add interactions to a ${tpl._type ?? "non-TplTag"} node. Only TplTag elements support interactions.`
+    );
+  }
+
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  // Build NameArgs for the action
+  const nameArgs = buildActionArgs(resolvedAction, args ?? {});
+
+  // Generate a default interaction name if not provided
+  const defaultName = interactionName ?? `${event} → ${resolvedAction}`;
+
+  let interactionUuid: string = "";
+
+  const changes = tracker.withRecording(() => {
+    const baseVs = tplMgr.ensureBaseVariantSetting(tpl);
+    if (!baseVs.attrs) baseVs.attrs = {};
+
+    // Get or create EventHandler
+    let handler = baseVs.attrs[event];
+    if (!handler || !isKnownEventHandler(handler)) {
+      handler = new EventHandler({ interactions: [] });
+      baseVs.attrs[event] = handler;
+    }
+
+    // Build condition expr if provided
+    const condExpr = condition
+      ? new CustomCode({ code: condition, fallback: null })
+      : null;
+
+    const conditionalMode = condition ? "expression" : "always";
+
+    interactionUuid = randomUUID();
+
+    // Create Interaction
+    const interaction = new Interaction({
+      interactionName: defaultName,
+      actionName: resolvedAction,
+      args: nameArgs,
+      condExpr,
+      conditionalMode,
+      uuid: interactionUuid,
+      parent: handler,
+    });
+
+    handler.interactions.push(interaction);
+  });
+
+  const componentIid = getComponentIid(component);
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `add-interaction: ${event} → ${resolvedAction} on ${component.name}`,
+    componentIid ? [componentIid] : []
+  );
+
+  return {
+    save,
+    interactionUuid,
+    event,
+    actionName: resolvedAction,
+    interactionName: defaultName,
+  };
+}
+
+// --- remove-interaction ---
+
+export interface RemoveInteractionResult {
+  save: SaveResult;
+  removedCount: number;
+  event: string;
+}
+
+/**
+ * Remove an interaction from a TplTag element's event handler.
+ *
+ * Can remove by interaction index within a specific event,
+ * or remove all interactions for an event (by omitting index).
+ * If the EventHandler becomes empty after removal, it is deleted from attrs.
+ */
+export async function removeInteraction(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  nodeRef: string,
+  event: string,
+  interactionIndex?: number
+): Promise<RemoveInteractionResult> {
+  const component = findComponent(componentUuid);
+  const session = requireSession();
+  const nodeResult = resolveNode(component, nodeRef);
+  const resolved = requireSingleNode(nodeResult, nodeRef);
+  const tpl = resolved.node;
+
+  if (!isKnownTplTag(tpl)) {
+    throw new Error(
+      `Cannot remove interactions from a ${tpl._type ?? "non-TplTag"} node.`
+    );
+  }
+
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+  let removedCount = 0;
+
+  const changes = tracker.withRecording(() => {
+    const baseVs = tplMgr.ensureBaseVariantSetting(tpl);
+    const handler = baseVs.attrs?.[event];
+    if (!handler || !isKnownEventHandler(handler)) {
+      throw new Error(
+        `No event handler for "${event}" on this element. Use list-interactions to see available interactions.`
+      );
+    }
+
+    const interactions = handler.interactions ?? [];
+
+    if (interactionIndex !== undefined) {
+      // Remove specific interaction by index
+      if (interactionIndex < 0 || interactionIndex >= interactions.length) {
+        throw new Error(
+          `Interaction index ${interactionIndex} out of range (0-${interactions.length - 1}).`
+        );
+      }
+      interactions.splice(interactionIndex, 1);
+      removedCount = 1;
+    } else {
+      // Remove all interactions for this event
+      removedCount = interactions.length;
+      interactions.length = 0;
+    }
+
+    // Clean up empty handler
+    if (interactions.length === 0 && baseVs.attrs) {
+      delete baseVs.attrs[event];
+    }
+  });
+
+  const componentIid = getComponentIid(component);
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `remove-interaction: ${event} on ${component.name} (removed ${removedCount})`,
+    componentIid ? [componentIid] : []
+  );
+
+  return { save, removedCount, event };
 }

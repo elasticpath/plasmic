@@ -3,10 +3,10 @@
 > **Goal**: Create Claude Code skills and workflows that can interact with Plasmic Studio
 > programmatically to create fully-featured pages from the Claude Code terminal.
 >
-> **Current state**: 50 MCP tools, 6 Claude Code skills, 828 tests (758 unit + 70 integration).
+> **Current state**: 53 MCP tools, 6 Claude Code skills, 855 tests (781 unit + 74 integration).
 > Zero TODOs/FIXMEs/skipped tests.
 >
-> **Last verified**: 2026-02-26 — 2.1 State Management implemented.
+> **Last verified**: 2026-02-26 — 2.2 Interactions & Event Handlers implemented.
 
 ---
 
@@ -122,20 +122,24 @@ These features make pages respond to user actions. State management must come be
   - 30 unit tests + 4 integration tests (full round-trip: add → list → update → remove → undo)
   - Key insight: Real WAB model requires separate type instances per parent (no sharing), and ArgType needs all fields including `name: "arg"` and `displayName: null`
 
-### 2.2 Interactions & Event Handlers
+### 2.2 Interactions & Event Handlers — IMPLEMENTED (2026-02-26)
 - **Spec**: `specs/gap-interactions.md`
-- **Status**: NOT IMPLEMENTED
-  - Verified: zero references to `EventHandler` wiring or interaction registration in MCP src/
-  - WAB backing confirmed: `EventHandler` (line 6289), `Interaction` (line 4437), `NameArg` (line 3967) in `classes.ts`
-- **What**: Four new actions in a new `interaction` domain:
-  - `add` — attach event handler (onClick, onMouseEnter, onChange, etc.) with action types: navigateTo, setState, runCode, scrollTo, openUrl, closeOverlay, etc.
-  - `list` — return all interactions on an element
-  - `update` — modify an existing interaction by index
-  - `remove` — remove by index or event name
-- **Dependencies**: `setState` action requires state management (2.1) to exist
-- **Also requires**: Extend `get-node-details` to surface `interactions` array
-- **Effort**: Large — complex action type dispatch, validation, arg wiring
-- **Tests needed**: Integration (add onClick → navigateTo → list → verify → undo; setState with state variable; multiple interactions on same event)
+- **Status**: IMPLEMENTED
+  - Three new tools: `list-interactions`, `add-interaction`, `remove-interaction`
+  - Supports 12 DOM events: onClick, onDoubleClick, onMouseEnter, onMouseLeave, onFocus, onBlur, onChange, onSubmit, onKeyDown, onKeyUp, onScroll, onLoad
+  - Three action types: `navigation` (go to URL/page), `updateVariable` (set state), `customFunction` (run JS code)
+  - User-friendly aliases: navigateTo/goToPage → navigation, setState → updateVariable, runCode → customFunction
+  - Conditional interactions via condition expression + conditionalMode
+  - EventHandler created/reused on TplTag variant settings attrs; Interaction model with NameArg array for action args
+  - FunctionExpr wrapping for customFunction bodyExpr; ObjectPath for state variable references
+  - Empty handlers cleaned up from attrs on last interaction removal
+  - Mock classes: EventHandler, Interaction, NameArg, FunctionExpr + isKnownEventHandler, isKnownInteraction type guards
+  - 21 unit tests + 4 integration tests (round-trip: add → list → remove; multiple actions; conditional; error validation)
+  - Total test count: 855 (781 unit + 74 integration)
+- **Design decisions**:
+  - `update-interaction` deferred — remove + re-add achieves the same result with simpler code
+  - WAB internal action names differ from user-friendly names; alias map bridges the gap
+  - Navigation destination auto-quoted if not already a string expression
 
 ---
 

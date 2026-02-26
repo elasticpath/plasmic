@@ -3589,6 +3589,203 @@ describe("state management", () => {
   });
 });
 
+// =========================================================================
+// Interactions & Event Handlers
+// =========================================================================
+
+describe("interactions", () => {
+  it("add-interaction → list-interactions → remove-interaction round-trip", async () => {
+    const comp = discoveredComponents[0];
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+
+    // Add a navigation interaction on onClick
+    const addResult = await client.callTool({
+      name: "add-interaction",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: tree.uuid,
+        event: "onClick",
+        actionName: "navigation",
+        args: { destination: "/about" },
+        interactionName: "Go to About",
+      },
+    });
+    expect(addResult.isError).toBeFalsy();
+    const addOutput = parseResponse(addResult);
+    expect(addOutput.success).toBe(true);
+    expect(addOutput.interactionUuid).toBeTruthy();
+    expect(addOutput.actionName).toBe("navigation");
+    expect(addOutput.interactionName).toBe("Go to About");
+
+    // List interactions
+    const listResult = await client.callTool({
+      name: "list-interactions",
+      arguments: { componentUuid: comp.uuid, nodeRef: tree.uuid },
+    });
+    expect(listResult.isError).toBeFalsy();
+    const listOutput = parseResponse(listResult);
+    expect(listOutput.interactionCount).toBeGreaterThanOrEqual(1);
+    const navInteraction = listOutput.interactions.find(
+      (i: any) => i.actionName === "navigation"
+    );
+    expect(navInteraction).toBeDefined();
+    expect(navInteraction.event).toBe("onClick");
+
+    // Remove the interaction
+    const removeResult = await client.callTool({
+      name: "remove-interaction",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: tree.uuid,
+        event: "onClick",
+        interactionIndex: 0,
+      },
+    });
+    expect(removeResult.isError).toBeFalsy();
+    const removeOutput = parseResponse(removeResult);
+    expect(removeOutput.success).toBe(true);
+    expect(removeOutput.removedCount).toBe(1);
+
+    // Verify empty
+    const listAfter = parseResponse(
+      await client.callTool({
+        name: "list-interactions",
+        arguments: { componentUuid: comp.uuid, nodeRef: tree.uuid },
+      })
+    );
+    expect(listAfter.interactionCount).toBe(0);
+  });
+
+  it("add multiple interaction types and verify", async () => {
+    const comp = discoveredComponents[0];
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+
+    // Add customFunction
+    const codeResult = await client.callTool({
+      name: "add-interaction",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: tree.uuid,
+        event: "onClick",
+        actionName: "runCode",
+        args: { code: "console.log('clicked')" },
+      },
+    });
+    expect(codeResult.isError).toBeFalsy();
+    const codeOutput = parseResponse(codeResult);
+    expect(codeOutput.actionName).toBe("customFunction");
+
+    // Add updateVariable using alias
+    const stateResult = await client.callTool({
+      name: "add-interaction",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: tree.uuid,
+        event: "onClick",
+        actionName: "setState",
+        args: { variable: "count", value: "$state.count + 1", operation: "newValue" },
+      },
+    });
+    expect(stateResult.isError).toBeFalsy();
+    const stateOutput = parseResponse(stateResult);
+    expect(stateOutput.actionName).toBe("updateVariable");
+
+    // List should show 2 interactions on onClick
+    const listResult = parseResponse(
+      await client.callTool({
+        name: "list-interactions",
+        arguments: { componentUuid: comp.uuid, nodeRef: tree.uuid },
+      })
+    );
+    const onClickInteractions = listResult.interactions.filter(
+      (i: any) => i.event === "onClick"
+    );
+    expect(onClickInteractions.length).toBeGreaterThanOrEqual(2);
+
+    // Undo twice to clean up
+    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+
+  it("add-interaction with condition expression", async () => {
+    const comp = discoveredComponents[0];
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+
+    const result = await client.callTool({
+      name: "add-interaction",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: tree.uuid,
+        event: "onClick",
+        actionName: "navigation",
+        args: { destination: "/dashboard" },
+        condition: "$state.isLoggedIn",
+        interactionName: "Conditional Nav",
+      },
+    });
+    expect(result.isError).toBeFalsy();
+    const output = parseResponse(result);
+    expect(output.interactionName).toBe("Conditional Nav");
+
+    // Verify condition via list
+    const listResult = parseResponse(
+      await client.callTool({
+        name: "list-interactions",
+        arguments: { componentUuid: comp.uuid, nodeRef: tree.uuid },
+      })
+    );
+    const conditional = listResult.interactions.find(
+      (i: any) => i.interactionName === "Conditional Nav"
+    );
+    expect(conditional).toBeDefined();
+    expect(conditional.conditionalMode).toBe("expression");
+    expect(conditional.condition).toBe("$state.isLoggedIn");
+
+    // Undo
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+
+  it("rejects invalid event name", async () => {
+    const comp = discoveredComponents[0];
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+
+    const result = await client.callTool({
+      name: "add-interaction",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: tree.uuid,
+        event: "onBogus",
+        actionName: "navigation",
+        args: { destination: "/" },
+      },
+    });
+    const output = parseResponse(result);
+    expect(
+      result.isError || (typeof output === "string" && output.includes("Unknown event"))
+    ).toBeTruthy();
+  });
+});
+
 /** Walk a tree recursively to find a node by UUID. */
 function findNodeByUuid(tree: any, uuid: string): any {
   if (tree.uuid === uuid) return tree;

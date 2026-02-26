@@ -149,6 +149,40 @@ declare module "@/wab/shared/model/classes" {
   export function isKnownNodeMarker(x: any): boolean;
   export function isKnownState(x: any): boolean;
   export function isKnownNamedState(x: any): boolean;
+  export function isKnownEventHandler(x: any): boolean;
+  export function isKnownInteraction(x: any): boolean;
+
+  /** Model class for EventHandler — event handler expression containing interactions. */
+  export class EventHandler {
+    constructor(args: { interactions: any[] });
+    interactions: any[];
+  }
+
+  /** Model class for Interaction — single action step within an EventHandler. */
+  export class Interaction {
+    constructor(args: any);
+    interactionName: string;
+    actionName: string;
+    args: any[];
+    condExpr: any;
+    conditionalMode: string;
+    uuid: string;
+    parent: any;
+  }
+
+  /** Model class for NameArg — named argument binding (name → expr). */
+  export class NameArg {
+    constructor(args: { name: string; expr: any });
+    name: string;
+    expr: any;
+  }
+
+  /** Model class for FunctionExpr — anonymous function expression. */
+  export class FunctionExpr {
+    constructor(args: { argNames: string[]; bodyExpr: any });
+    argNames: string[];
+    bodyExpr: any;
+  }
 
   /** Model class for state value parameter (extends Param pattern). */
   export class StateParam {
