@@ -28,6 +28,14 @@ jobs:
       - name: Install root dependencies
         run: yarn install --frozen-lockfile
 
+      - name: Install platform/wab dependencies
+        working-directory: platform/wab
+        run: yarn install --frozen-lockfile
+
+      - name: Generate required files (PEG parsers, model classes)
+        working-directory: platform/wab
+        run: make
+
       - name: TypeScript type-check
         working-directory: packages/plasmic-mcp
         run: npx tsc --noEmit
@@ -37,14 +45,6 @@ jobs:
         env:
           CI: true
         run: npm test
-
-      - name: Install platform/wab dependencies
-        working-directory: platform/wab
-        run: yarn install --frozen-lockfile
-
-      - name: Generate required files (PEG parsers, model classes)
-        working-directory: platform/wab
-        run: make
 
       - name: Build bundle
         working-directory: packages/plasmic-mcp
