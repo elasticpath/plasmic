@@ -5171,6 +5171,178 @@ describe("inspect.subtree", () => {
     expect(result.tree).toBeDefined();
     expect(result.tree.uuid).toBe(container!.uuid);
   });
+
+  it("includes totalNodes in subtree response", async () => {
+    const comp = discoveredComponents[0];
+    const treeResult = parseResponse(
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
+      })
+    );
+    const container = findFirstContainer(treeResult.tree);
+    expect(container).toBeTruthy();
+
+    const result = parseResponse(
+      await client.callTool({
+        name: "inspect",
+        arguments: {
+          action: "subtree",
+          componentUuid: comp.uuid,
+          nodeRef: container!.uuid,
+        },
+      })
+    );
+    expect(typeof result.totalNodes).toBe("number");
+    expect(result.totalNodes).toBeGreaterThan(0);
+    expect(result.nodeCount).toBe(result.totalNodes);
+  });
+
+  it("subtree with small maxChars → char-budget truncation with nodesShown and totalNodes", async () => {
+    const comp = discoveredComponents[0];
+    const treeResult = parseResponse(
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
+      })
+    );
+    const container = findFirstContainer(treeResult.tree);
+    expect(container).toBeTruthy();
+
+    const result = parseResponse(
+      await client.callTool({
+        name: "inspect",
+        arguments: {
+          action: "subtree",
+          componentUuid: comp.uuid,
+          nodeRef: container!.uuid,
+          maxChars: 100,
+        },
+      })
+    );
+    expect(result.truncated).toBe(true);
+    expect(typeof result.nodesShown).toBe("number");
+    expect(typeof result.totalNodes).toBe("number");
+    expect(result.nodesShown).toBeLessThanOrEqual(result.totalNodes);
+    expect(result.hint).toContain("100 chars");
+    expect(result.hint).toContain("inspect.subtree");
+  });
+});
+
+describe("truncation drill-in workflow", () => {
+  it("receives truncated tree → follows hint → drills in with subtree", async () => {
+    const comp = discoveredComponents[0];
+
+    // Step 1: Get a truncated tree with tight char budget
+    const truncResult = parseResponse(
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid, maxDepth: -1, maxChars: 500 },
+      })
+    );
+    expect(truncResult.truncated).toBe(true);
+    expect(truncResult.hint).toContain("inspect.subtree");
+
+    // Step 2: Find a node name from the truncated tree to drill into
+    const rootTree = truncResult.tree;
+    expect(rootTree).toBeDefined();
+    const targetName = rootTree.name || rootTree.uuid;
+    expect(targetName).toBeTruthy();
+
+    // Step 3: Follow the hint — drill in with subtree
+    const drillResult = parseResponse(
+      await client.callTool({
+        name: "inspect",
+        arguments: {
+          action: "subtree",
+          componentUuid: comp.uuid,
+          nodeRef: targetName,
+          maxChars: -1,
+        },
+      })
+    );
+    expect(drillResult.tree).toBeDefined();
+    expect(typeof drillResult.nodeCount).toBe("number");
+    expect(drillResult.nodeCount).toBeGreaterThan(0);
+  });
+});
+
+describe("compact JSON serialization", () => {
+  it("MCP responses use compact JSON without newlines or indentation", async () => {
+    const comp = discoveredComponents[0];
+
+    // Test tree response
+    const treeResult = await client.callTool({
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid, maxDepth: -1 },
+    });
+    expect(treeResult.isError).toBeFalsy();
+    const rawText = treeResult.content[0].text;
+
+    // Compact JSON should not contain newline-followed-by-spaces (indentation pattern)
+    expect(rawText).not.toMatch(/\n\s{2,}/);
+
+    // Should be valid JSON
+    expect(() => JSON.parse(rawText)).not.toThrow();
+
+    // Test summary response
+    const summaryResult = await client.callTool({
+      name: "inspect",
+      arguments: { action: "summary", componentUuid: comp.uuid, maxDepth: -1 },
+    });
+    expect(summaryResult.isError).toBeFalsy();
+    const summaryText = summaryResult.content[0].text;
+    expect(summaryText).not.toMatch(/\n\s{2,}/);
+    expect(() => JSON.parse(summaryText)).not.toThrow();
+  });
+});
+
+describe("concise format drill-in by child name", () => {
+  it("concise summary → find child by name → drill in with inspect.node", async () => {
+    const comp = discoveredComponents[0];
+
+    // Step 1: Get concise summary with enough depth to see children
+    const summaryResult = parseResponse(
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "summary", componentUuid: comp.uuid, maxDepth: -1, format: "concise" },
+      })
+    );
+    expect(summaryResult.tree).toBeDefined();
+    expect(summaryResult.tree.uuid).toBeTruthy(); // Root UUID preserved
+
+    // Step 2: Find a named child node in the concise output
+    let childName: string | undefined;
+    function findNamedChild(node: any) {
+      if (node.children) {
+        for (const child of node.children) {
+          if (child.name) {
+            childName = child.name;
+            return;
+          }
+          findNamedChild(child);
+          if (childName) return;
+        }
+      }
+    }
+    findNamedChild(summaryResult.tree);
+
+    // Only proceed if we found a named child (fixture may have named nodes)
+    if (childName) {
+      // Step 3: Drill in by child name using inspect.node
+      const nodeResult = parseResponse(
+        await client.callTool({
+          name: "inspect",
+          arguments: { action: "node", componentUuid: comp.uuid, nodeRef: childName },
+        })
+      );
+      // inspect.node always returns full format
+      expect(nodeResult.node).toBeDefined();
+      expect(nodeResult.node.uuid).toBeTruthy();
+      expect(nodeResult.node.type).toBeTruthy();
+      expect(nodeResult.node.name).toBe(childName);
+    }
+  });
 });
 
 describe("inspect.style-properties", () => {

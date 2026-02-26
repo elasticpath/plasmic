@@ -2317,12 +2317,139 @@ describe("tool handlers", () => {
       expect(output.subtreeRoot).toBe("Hero");
       expect(output.path).toBe("Root.Hero");
       expect(output.nodeCount).toBe(2);
+      expect(output.totalNodes).toBe(2);
       expect(output.tree).toEqual(mockTree);
       expect(mockReadSubtree).toHaveBeenCalledWith(mockNode, {
         maxDepth: undefined,
         excludeStyles: undefined,
         styleTokens: undefined,
       });
+    });
+
+    it("applies default maxChars: 15000 via truncateTreeToCharBudget", async () => {
+      const mockTree = { type: "tag", tag: "section", name: "Hero" };
+      const mockNode = {};
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Homepage" }],
+        },
+      });
+      mockResolveNode.mockReturnValue({
+        nodes: [{ node: mockNode, name: "Hero", uuid: "node-1", path: "Root.Hero" }],
+        isAmbiguous: false,
+      });
+      mockRequireSingleNode.mockReturnValue({
+        node: mockNode, name: "Hero", uuid: "node-1", path: "Root.Hero",
+      });
+      mockReadSubtree.mockReturnValue(mockTree);
+      mockCountTreeNodes.mockReturnValue(3);
+      mockTruncateTreeToCharBudget.mockReturnValue({
+        tree: mockTree,
+        nodesShown: 3,
+        wasTruncated: false,
+      });
+
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "subtree", componentUuid: "comp-1", nodeRef: "Hero" },
+      });
+
+      expect(mockTruncateTreeToCharBudget).toHaveBeenCalledWith(mockTree, 15000);
+    });
+
+    it("passes custom maxChars to truncateTreeToCharBudget", async () => {
+      const mockTree = { type: "tag", tag: "section", name: "Hero" };
+      const mockNode = {};
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Homepage" }],
+        },
+      });
+      mockResolveNode.mockReturnValue({
+        nodes: [{ node: mockNode, name: "Hero", uuid: "node-1", path: "Root.Hero" }],
+        isAmbiguous: false,
+      });
+      mockRequireSingleNode.mockReturnValue({
+        node: mockNode, name: "Hero", uuid: "node-1", path: "Root.Hero",
+      });
+      mockReadSubtree.mockReturnValue(mockTree);
+      mockCountTreeNodes.mockReturnValue(3);
+      mockTruncateTreeToCharBudget.mockReturnValue({
+        tree: mockTree,
+        nodesShown: 3,
+        wasTruncated: false,
+      });
+
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "subtree", componentUuid: "comp-1", nodeRef: "Hero", maxChars: 5000 },
+      });
+
+      expect(mockTruncateTreeToCharBudget).toHaveBeenCalledWith(mockTree, 5000);
+    });
+
+    it("maxChars: -1 skips char truncation on subtree (unlimited)", async () => {
+      const mockTree = { type: "tag", tag: "section", name: "Hero" };
+      const mockNode = {};
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Homepage" }],
+        },
+      });
+      mockResolveNode.mockReturnValue({
+        nodes: [{ node: mockNode, name: "Hero", uuid: "node-1", path: "Root.Hero" }],
+        isAmbiguous: false,
+      });
+      mockRequireSingleNode.mockReturnValue({
+        node: mockNode, name: "Hero", uuid: "node-1", path: "Root.Hero",
+      });
+      mockReadSubtree.mockReturnValue(mockTree);
+      mockCountTreeNodes.mockReturnValue(3);
+
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "subtree", componentUuid: "comp-1", nodeRef: "Hero", maxChars: -1 },
+      });
+
+      expect(mockTruncateTreeToCharBudget).not.toHaveBeenCalled();
+    });
+
+    it("includes char truncation metadata with nodesShown and totalNodes", async () => {
+      const fullTree = { type: "tag", tag: "section", name: "Hero", children: [{ type: "tag", tag: "h1" }, { type: "tag", tag: "p" }] };
+      const truncatedTree = { type: "tag", tag: "section", name: "Hero", childCount: 2 };
+      const mockNode = {};
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Homepage" }],
+        },
+      });
+      mockResolveNode.mockReturnValue({
+        nodes: [{ node: mockNode, name: "Hero", uuid: "node-1", path: "Root.Hero" }],
+        isAmbiguous: false,
+      });
+      mockRequireSingleNode.mockReturnValue({
+        node: mockNode, name: "Hero", uuid: "node-1", path: "Root.Hero",
+      });
+      mockReadSubtree.mockReturnValue(fullTree);
+      mockCountTreeNodes.mockReturnValue(8);
+      mockTruncateTreeToCharBudget.mockReturnValue({
+        tree: truncatedTree,
+        nodesShown: 1,
+        wasTruncated: true,
+      });
+
+      const result = await client.callTool({
+        name: "inspect",
+        arguments: { action: "subtree", componentUuid: "comp-1", nodeRef: "Hero" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.truncated).toBe(true);
+      expect(output.nodesShown).toBe(1);
+      expect(output.totalNodes).toBe(8);
+      expect(output.nodeCount).toBe(1);
+      expect(output.hint).toContain("15000 chars");
+      expect(output.hint).toContain("inspect.subtree");
     });
 
     it("passes maxDepth option when specified", async () => {

@@ -779,14 +779,15 @@ export function createServer(): McpServer {
                 styleTokens: session.site.styleTokens,
               }
             );
-            let nodeCount = tree ? countTreeNodes(tree) : 0;
+            const totalNodes = tree ? countTreeNodes(tree) : 0;
+            let nodesShown = totalNodes;
             let charTruncated = false;
 
             // Apply character-budget truncation
             if (effectiveMaxChars !== undefined && tree) {
               const truncResult = truncateTreeToCharBudget(tree, effectiveMaxChars);
               tree = truncResult.tree;
-              nodeCount = truncResult.nodesShown;
+              nodesShown = truncResult.nodesShown;
               charTruncated = truncResult.wasTruncated;
             }
 
@@ -798,12 +799,14 @@ export function createServer(): McpServer {
               componentUuid: component.uuid,
               subtreeRoot: resolved.name ?? resolved.uuid,
               path: resolved.path,
-              nodeCount,
+              nodeCount: nodesShown,
+              totalNodes,
               tree: outputTree,
             };
 
             if (charTruncated) {
               result.truncated = true;
+              result.nodesShown = nodesShown;
               result.hint = `Response truncated at ${effectiveMaxChars} chars. Use inspect.subtree with a deeper nodeRef to see specific sections.`;
             }
 

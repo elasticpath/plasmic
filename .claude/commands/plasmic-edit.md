@@ -3,7 +3,7 @@ You are editing an existing page or component in a Plasmic project.
 ## Available Tools
 
 ### Inspection (read before edit)
-- `inspect({ action: "summary", componentUuid, maxDepth: 2 })` — Compact outline (~2KB). **Start here** to orient.
+- `inspect({ action: "summary", componentUuid, maxDepth: 2, format: "concise" })` — Compact outline (~2KB). **Start here** to orient.
 - `inspect({ action: "node", componentUuid, nodeRef })` — Full details for one node. **Use to inspect before/after editing.**
 - `inspect({ action: "subtree", componentUuid, nodeRef, maxDepth: 2 })` — Targeted branch when you need a section's children.
 - `inspect({ action: "tree", componentUuid, maxDepth: 3 })` — Full tree (large). **Last resort** — always set maxDepth.
@@ -77,7 +77,7 @@ All edit tools accept `dryRun: true` to preview changes without persisting.
 
 ## Editing Workflow
 1. If no project is active, set one up.
-2. Call `inspect({ action: "summary", componentUuid, maxDepth: 2 })` to see the compact outline.
+2. Call `inspect({ action: "summary", componentUuid, maxDepth: 2, format: "concise" })` to see the compact outline.
 3. Identify the node(s) to modify. Use node names or UUIDs from the summary.
 4. Call `inspect({ action: "node", componentUuid, nodeRef })` to see current styles/text before editing.
 5. Choose the right tool for each edit (see sections below).
@@ -86,6 +86,8 @@ All edit tools accept `dryRun: true` to preview changes without persisting.
 8. If a save conflict occurs (412), explain and suggest `project({ action: "refresh" })`.
 
 **Verification rule**: After editing, always verify with `inspect.node` on the specific node you changed. Never use `inspect.tree` to confirm a single edit — it wastes thousands of context tokens to re-read an entire tree when you only need one node's state.
+
+**Following truncation hints**: If any inspect response contains `truncated: true`, read the `hint` field and follow its guidance — typically call `inspect.subtree` with a deeper `nodeRef` or pass `maxDepth` to control depth.
 
 ## Node References
 - **UUID**: exact match (from tree output)

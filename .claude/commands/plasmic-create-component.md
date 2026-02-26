@@ -5,7 +5,7 @@ You are creating a new reusable component (not a page) in a Plasmic project.
 - `project({ action: "list" })` — List accessible projects.
 - `component({ action: "list" })` — List existing pages and components.
 - `design({ action: "list-tokens", tokenType? })` — Get design tokens (colors, spacing, fonts). Use these values in styles for design system consistency.
-- `inspect({ action: "summary", componentUuid, maxDepth: 2 })` — Compact outline (type, tag, name, uuid, childCount — no styles/text). **Use first** to understand structure before cloning, referencing, or verifying after creation.
+- `inspect({ action: "summary", componentUuid, maxDepth: 2, format: "concise" })` — Compact outline (tag, name, cc — no styles/text). **Use first** to understand structure before cloning, referencing, or verifying after creation.
 - `inspect({ action: "node", componentUuid, nodeRef })` — Full details for a single node. Use after summary to drill into specific nodes.
 - `inspect({ action: "subtree", componentUuid, nodeRef, maxDepth: 2 })` — Targeted branch from a specific node downward. Use to inspect a section.
 - `inspect({ action: "tree", componentUuid, maxDepth: 3 })` — Full tree with styles/text. **Last resort** — always set maxDepth.
@@ -187,9 +187,9 @@ After creating the component, you can enhance it with these tools (delegate to `
 4. Determine whether to **create** (new from scratch) or **clone** (copy existing):
    - **Create**: Construct a PlasmicElement tree and call `component({ action: "create", name, body })`.
    - **Clone**: Find the source UUID and call `component({ action: "clone", sourceUuid, name })`. Add `path` only if the clone should be a page.
-5. When cloning or referencing, inspect the source with `inspect({ action: "summary", componentUuid, maxDepth: 2 })` first, then `inspect({ action: "node", componentUuid, nodeRef })` for specific nodes — avoid loading the full tree unnecessarily.
+5. When cloning or referencing, inspect the source with `inspect({ action: "summary", componentUuid, maxDepth: 2, format: "concise" })` first, then `inspect({ action: "node", componentUuid, nodeRef })` for specific nodes — avoid loading the full tree unnecessarily.
 6. Use PascalCase for component names (e.g., `HeroSection`, `ProductCard`).
-7. **Verify with a summary** — call `inspect({ action: "summary", componentUuid, maxDepth: 2 })` on the new component to confirm structure. Do NOT use `inspect.tree` for verification.
+7. **Verify with a summary** — call `inspect({ action: "summary", componentUuid, maxDepth: 2, format: "concise" })` on the new component to confirm structure. Do NOT use `inspect.tree` for verification. If the response says `truncated: true`, follow its `hint` to drill in with `inspect.subtree`.
 8. Report the result. Note any warnings from the API.
 9. If the user wants dynamic behavior (props, state, interactions, etc.), proceed with post-creation enhancement using `/plasmic-edit`.
 
