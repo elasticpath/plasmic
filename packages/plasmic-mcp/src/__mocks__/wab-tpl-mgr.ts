@@ -52,6 +52,34 @@ export const mockRenameMixin = vi.fn((mixin: any, name: string) => {
 export const mockDuplicateMixin = vi.fn((mixin: any) => {
   return { ...mixin, uuid: "dup-mixin-uuid", name: mixin.name + " (copy)" };
 });
+export const mockAddAnimationSequence = vi.fn((_name?: string) => {
+  return {
+    _type: "AnimationSequence", name: _name ?? "Unnamed Animation",
+    uuid: "mock-anim-seq-uuid", keyframes: [],
+  };
+});
+export const mockRemoveAnimationSequence = vi.fn();
+export const mockRenameAnimationSequence = vi.fn((seq: any, name: string) => {
+  seq.name = name;
+});
+export const mockDuplicateAnimationSequence = vi.fn((seq: any) => {
+  return { ...seq, uuid: "dup-anim-seq-uuid", name: seq.name + " (copy)", keyframes: [...seq.keyframes] };
+});
+export const mockAddAnimation = vi.fn((
+  sequence: any,
+  duration = "1s",
+  delay = "0s",
+  timingFunction = "ease",
+  iterationCount = "1",
+  direction = "normal",
+  fillMode = "none",
+  playState = "running",
+) => {
+  return {
+    _type: "Animation", sequence, duration, delay, timingFunction,
+    iterationCount, direction, fillMode, playState,
+  };
+});
 export const mockGetUniqueParamName = vi.fn(
   (_component: any, name?: string) => name ?? "Unnamed Prop"
 );
@@ -144,5 +172,34 @@ export class TplMgr {
 
   duplicateMixin(mixin: any): any {
     return mockDuplicateMixin(mixin);
+  }
+
+  addAnimationSequence(name?: string, animationSequence?: any): any {
+    return mockAddAnimationSequence(name, animationSequence);
+  }
+
+  removeAnimationSequence(sequence: any): void {
+    mockRemoveAnimationSequence(sequence);
+  }
+
+  renameAnimationSequence(sequence: any, name: string): void {
+    mockRenameAnimationSequence(sequence, name);
+  }
+
+  duplicateAnimationSequence(sequence: any): any {
+    return mockDuplicateAnimationSequence(sequence);
+  }
+
+  addAnimation(
+    sequence: any,
+    duration?: string,
+    delay?: string,
+    timingFunction?: string,
+    iterationCount?: string,
+    direction?: string,
+    fillMode?: string,
+    playState?: string,
+  ): any {
+    return mockAddAnimation(sequence, duration, delay, timingFunction, iterationCount, direction, fillMode, playState);
   }
 }

@@ -4084,6 +4084,152 @@ describe("mixins", () => {
   });
 });
 
+// =============================================================================
+// Animations — integration tests for animation sequences + node animations
+// =============================================================================
+
+describe("animations", () => {
+  it("create-animation-sequence → list → add-node-animation → remove-node-animation → remove-sequence", async () => {
+    const comp = discoveredComponents[0];
+
+    // List initial sequences
+    const initialList = parseResponse(
+      await client.callTool({ name: "list-animation-sequences", arguments: {} })
+    );
+    const initialCount = initialList.sequenceCount;
+
+    // Create a sequence with keyframes
+    const createResult = parseResponse(
+      await client.callTool({
+        name: "create-animation-sequence",
+        arguments: {
+          name: "FadeIn",
+          keyframes: [
+            { percentage: 0, styles: { opacity: "0" } },
+            { percentage: 100, styles: { opacity: "1" } },
+          ],
+        },
+      })
+    );
+    expect(createResult.success).toBe(true);
+    expect(createResult.name).toBe("FadeIn");
+
+    // List — should have one more
+    const afterCreate = parseResponse(
+      await client.callTool({ name: "list-animation-sequences", arguments: {} })
+    );
+    expect(afterCreate.sequenceCount).toBe(initialCount + 1);
+
+    // Get root node
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+
+    // Add animation to root
+    const addResult = parseResponse(
+      await client.callTool({
+        name: "add-node-animation",
+        arguments: {
+          componentUuid: comp.uuid,
+          nodeRef: tree.uuid,
+          seqRef: "FadeIn",
+          duration: "0.5s",
+          fillMode: "forwards",
+        },
+      })
+    );
+    expect(addResult.success).toBe(true);
+    expect(addResult.sequenceName).toBe("FadeIn");
+
+    // Remove animation from node
+    const removeNodeResult = parseResponse(
+      await client.callTool({
+        name: "remove-node-animation",
+        arguments: {
+          componentUuid: comp.uuid,
+          nodeRef: tree.uuid,
+        },
+      })
+    );
+    expect(removeNodeResult.success).toBe(true);
+    expect(removeNodeResult.removedCount).toBeGreaterThanOrEqual(1);
+
+    // Remove sequence
+    const removeSeqResult = parseResponse(
+      await client.callTool({
+        name: "remove-animation-sequence",
+        arguments: { seqRef: createResult.sequenceUuid },
+      })
+    );
+    expect(removeSeqResult.success).toBe(true);
+
+    // List — back to original count
+    const afterRemove = parseResponse(
+      await client.callTool({ name: "list-animation-sequences", arguments: {} })
+    );
+    expect(afterRemove.sequenceCount).toBe(initialCount);
+  });
+
+  it("update-animation-sequence renames and replaces keyframes", async () => {
+    // Create
+    const createResult = parseResponse(
+      await client.callTool({
+        name: "create-animation-sequence",
+        arguments: { name: "SlideUp" },
+      })
+    );
+    expect(createResult.success).toBe(true);
+
+    // Update
+    const updateResult = parseResponse(
+      await client.callTool({
+        name: "update-animation-sequence",
+        arguments: {
+          seqRef: createResult.sequenceUuid,
+          newName: "SlideDown",
+          keyframes: [
+            { percentage: 0, styles: { transform: "translateY(-100%)" } },
+            { percentage: 100, styles: { transform: "translateY(0)" } },
+          ],
+        },
+      })
+    );
+    expect(updateResult.success).toBe(true);
+    expect(updateResult.name).toBe("SlideDown");
+    expect(updateResult.updatedFields).toContain("name");
+    expect(updateResult.updatedFields).toContain("keyframes");
+
+    // Undo twice
+    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+
+  it("remove-node-animation rejects when no animations", async () => {
+    const comp = discoveredComponents[0];
+    const tree = parseResponse(
+      await client.callTool({
+        name: "get-component-tree",
+        arguments: { componentUuid: comp.uuid },
+      })
+    ).tree;
+
+    const result = await client.callTool({
+      name: "remove-node-animation",
+      arguments: {
+        componentUuid: comp.uuid,
+        nodeRef: tree.uuid,
+      },
+    });
+    const parsed = parseResponse(result);
+    expect(
+      result.isError || (typeof parsed === "string" && parsed.includes("No animations"))
+    ).toBeTruthy();
+  });
+});
+
 /** Walk a tree recursively to find a node by UUID. */
 function findNodeByUuid(tree: any, uuid: string): any {
   if (tree.uuid === uuid) return tree;

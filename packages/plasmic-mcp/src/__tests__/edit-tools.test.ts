@@ -65,6 +65,12 @@ import {
   removeMixin,
   applyMixin,
   detachMixin,
+  listAnimationSequences,
+  createAnimationSequence,
+  updateAnimationSequence,
+  removeAnimationSequence,
+  addNodeAnimation,
+  removeNodeAnimation,
 } from "../edit-tools";
 import { setSession, clearSession } from "../session";
 import { initChangeTracker, disposeChangeTracker } from "../change-tracker";
@@ -90,6 +96,10 @@ import {
   mockAddMixin,
   mockRemoveMixin,
   mockRenameMixin,
+  mockAddAnimationSequence,
+  mockRemoveAnimationSequence,
+  mockRenameAnimationSequence,
+  mockAddAnimation,
 } from "../__mocks__/wab-tpl-mgr";
 import { mockMkTplTagX, mockMkTplInlinedText, mockMkTplComponentX } from "../__mocks__/wab-tpls";
 import { mockEnsureVariantSetting } from "../__mocks__/wab-variants";
@@ -9344,5 +9354,434 @@ describe("detachMixin", () => {
     await detachMixin(api, "comp-1", "Root", "One");
     expect(root.vsettings[0].rs.mixins).toHaveLength(1);
     expect(root.vsettings[0].rs.mixins[0]).toBe(mixin2);
+  });
+});
+
+// =============================================================================
+// Animations — CRUD for animation sequences + apply/remove on elements
+// =============================================================================
+
+describe("listAnimationSequences", () => {
+  afterEach(() => {
+    clearSession();
+  });
+
+  it("returns empty array when no sequences exist", () => {
+    const site = { components: [], animationSequences: [] };
+    setSession(makeSession({ site } as any));
+    expect(listAnimationSequences()).toEqual([]);
+  });
+
+  it("returns all sequences with their properties", () => {
+    const site = {
+      components: [],
+      animationSequences: [
+        { uuid: "s1", name: "Fade In", keyframes: [{ percentage: 0 }, { percentage: 100 }] },
+        { uuid: "s2", name: "Slide Up", keyframes: [] },
+      ],
+    };
+    setSession(makeSession({ site } as any));
+    const result = listAnimationSequences();
+    expect(result).toHaveLength(2);
+    expect(result[0]).toEqual({ uuid: "s1", name: "Fade In", keyframeCount: 2 });
+    expect(result[1]).toEqual({ uuid: "s2", name: "Slide Up", keyframeCount: 0 });
+  });
+
+  it("handles undefined animationSequences array", () => {
+    const site = { components: [] };
+    setSession(makeSession({ site } as any));
+    expect(listAnimationSequences()).toEqual([]);
+  });
+});
+
+describe("createAnimationSequence", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    api = mockApiClient();
+    mockWithRecording.mockReturnValue({
+      changes: [], newInsts: [], removedInsts: [],
+    });
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "100" });
+  });
+
+  afterEach(() => {
+    clearSession();
+    disposeChangeTracker();
+  });
+
+  it("creates a sequence with no keyframes", async () => {
+    const site = { components: [], animationSequences: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    mockAddAnimationSequence.mockReturnValue({
+      _type: "AnimationSequence", uuid: "new-s1", name: "Bounce",
+      keyframes: [],
+    });
+
+    const result = await createAnimationSequence(api, "Bounce");
+    expect(result.sequenceUuid).toBe("new-s1");
+    expect(result.name).toBe("Bounce");
+    expect(mockAddAnimationSequence).toHaveBeenCalled();
+  });
+
+  it("creates a sequence with keyframes", async () => {
+    const site = { components: [], animationSequences: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const kfs: any[] = [];
+    mockAddAnimationSequence.mockReturnValue({
+      _type: "AnimationSequence", uuid: "new-s2", name: "Fade In",
+      keyframes: kfs,
+    });
+
+    const result = await createAnimationSequence(api, "Fade In", [
+      { percentage: 0, styles: { opacity: "0" } },
+      { percentage: 100, styles: { opacity: "1" } },
+    ]);
+    expect(result.name).toBe("Fade In");
+    expect(kfs).toHaveLength(2);
+    expect(kfs[0].percentage).toBe(0);
+    expect(kfs[1].percentage).toBe(100);
+  });
+
+  it("rejects invalid keyframe percentage", async () => {
+    const site = { components: [], animationSequences: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    mockAddAnimationSequence.mockReturnValue({
+      _type: "AnimationSequence", uuid: "s", name: "Bad", keyframes: [],
+    });
+
+    await expect(
+      createAnimationSequence(api, "Bad", [{ percentage: 150, styles: {} }])
+    ).rejects.toThrow(/0-100/);
+  });
+});
+
+describe("updateAnimationSequence", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    api = mockApiClient();
+    mockWithRecording.mockReturnValue({
+      changes: [], newInsts: [], removedInsts: [],
+    });
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "100" });
+  });
+
+  afterEach(() => {
+    clearSession();
+    disposeChangeTracker();
+  });
+
+  it("renames a sequence", async () => {
+    const seq = { uuid: "s1", name: "Old", keyframes: [] };
+    const site = { components: [], animationSequences: [seq] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateAnimationSequence(api, "Old", "New");
+    expect(result.updatedFields).toContain("name");
+    expect(mockRenameAnimationSequence).toHaveBeenCalledWith(seq, "New");
+  });
+
+  it("replaces keyframes", async () => {
+    const seq = { uuid: "s1", name: "Fade", keyframes: [{ percentage: 0 }] };
+    const site = { components: [], animationSequences: [seq] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateAnimationSequence(api, "Fade", undefined, [
+      { percentage: 0, styles: { opacity: "0" } },
+      { percentage: 50, styles: { opacity: "0.5" } },
+      { percentage: 100, styles: { opacity: "1" } },
+    ]);
+    expect(result.updatedFields).toContain("keyframes");
+    expect(seq.keyframes).toHaveLength(3);
+  });
+
+  it("throws when neither name nor keyframes provided", async () => {
+    const seq = { uuid: "s1", name: "Test", keyframes: [] };
+    const site = { components: [], animationSequences: [seq] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      updateAnimationSequence(api, "Test", undefined, undefined)
+    ).rejects.toThrow(/At least/);
+  });
+
+  it("throws when sequence not found", async () => {
+    const site = { components: [], animationSequences: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      updateAnimationSequence(api, "nonexistent", "New")
+    ).rejects.toThrow(/not found/);
+  });
+});
+
+describe("removeAnimationSequence", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    api = mockApiClient();
+    mockWithRecording.mockReturnValue({
+      changes: [], newInsts: [], removedInsts: [],
+    });
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "100" });
+  });
+
+  afterEach(() => {
+    clearSession();
+    disposeChangeTracker();
+  });
+
+  it("removes a sequence by name", async () => {
+    const seq = { uuid: "s1", name: "FadeOut", keyframes: [] };
+    const site = { components: [], animationSequences: [seq] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await removeAnimationSequence(api, "FadeOut");
+    expect(result.removedName).toBe("FadeOut");
+    expect(result.removedUuid).toBe("s1");
+    expect(mockRemoveAnimationSequence).toHaveBeenCalledWith(seq);
+  });
+
+  it("throws when sequence not found", async () => {
+    const site = { components: [], animationSequences: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      removeAnimationSequence(api, "nonexistent")
+    ).rejects.toThrow(/not found/);
+  });
+});
+
+describe("addNodeAnimation", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    api = mockApiClient();
+    mockWithRecording.mockReturnValue({
+      changes: [], newInsts: [], removedInsts: [],
+    });
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "100" });
+  });
+
+  afterEach(() => {
+    clearSession();
+    disposeChangeTracker();
+    clearNodeCache();
+  });
+
+  it("applies an animation to an element", async () => {
+    const seq = { uuid: "s1", name: "Bounce", keyframes: [] };
+    const root = mkTag({ uuid: "root-1", name: "Root" });
+    root.vsettings[0].rs.animations = null;
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], animationSequences: [seq] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    mockAddAnimation.mockReturnValue({
+      _type: "Animation", sequence: seq, duration: "1s", delay: "0s",
+      timingFunction: "ease", iterationCount: "1", direction: "normal",
+      fillMode: "none", playState: "running",
+    });
+
+    const result = await addNodeAnimation(api, "comp-1", "Root", "Bounce");
+    expect(result.sequenceName).toBe("Bounce");
+    expect(result.nodeUuid).toBe("root-1");
+    expect(root.vsettings[0].rs.animations).toHaveLength(1);
+    expect(mockAddAnimation).toHaveBeenCalled();
+  });
+
+  it("passes timing parameters", async () => {
+    const seq = { uuid: "s1", name: "Slide", keyframes: [] };
+    const root = mkTag({ uuid: "root-1", name: "Root" });
+    root.vsettings[0].rs.animations = [];
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], animationSequences: [seq] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    mockAddAnimation.mockReturnValue({ _type: "Animation", sequence: seq });
+
+    await addNodeAnimation(
+      api, "comp-1", "Root", "Slide",
+      "2s", "0.5s", "ease-in-out", "infinite", "alternate", "both", "running"
+    );
+    expect(mockAddAnimation).toHaveBeenCalledWith(
+      seq, "2s", "0.5s", "ease-in-out", "infinite", "alternate", "both", "running"
+    );
+  });
+
+  it("rejects invalid direction", async () => {
+    const seq = { uuid: "s1", name: "Seq", keyframes: [] };
+    const root = mkTag({ uuid: "root-1", name: "Root" });
+    root.vsettings[0].rs.animations = [];
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], animationSequences: [seq] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      addNodeAnimation(api, "comp-1", "Root", "Seq", undefined, undefined, undefined, undefined, "invalid-dir")
+    ).rejects.toThrow(/Invalid direction/);
+  });
+
+  it("throws when sequence not found", async () => {
+    const root = mkTag({ uuid: "root-1", name: "Root" });
+    root.vsettings[0].rs.animations = [];
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], animationSequences: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      addNodeAnimation(api, "comp-1", "Root", "nonexistent")
+    ).rejects.toThrow(/not found/);
+  });
+});
+
+describe("removeNodeAnimation", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    api = mockApiClient();
+    mockWithRecording.mockReturnValue({
+      changes: [], newInsts: [], removedInsts: [],
+    });
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "100" });
+  });
+
+  afterEach(() => {
+    clearSession();
+    disposeChangeTracker();
+    clearNodeCache();
+  });
+
+  it("removes all animations when no filter specified", async () => {
+    const seq = { uuid: "s1", name: "Seq", keyframes: [] };
+    const anim1 = { _type: "Animation", sequence: seq };
+    const anim2 = { _type: "Animation", sequence: seq };
+    const root = mkTag({ uuid: "root-1", name: "Root" });
+    root.vsettings[0].rs.animations = [anim1, anim2];
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], animationSequences: [seq] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+
+    const result = await removeNodeAnimation(api, "comp-1", "Root");
+    expect(result.removedCount).toBe(2);
+    expect(root.vsettings[0].rs.animations).toHaveLength(0);
+  });
+
+  it("removes animation by index", async () => {
+    const seq1 = { uuid: "s1", name: "Seq1", keyframes: [] };
+    const seq2 = { uuid: "s2", name: "Seq2", keyframes: [] };
+    const anim1 = { _type: "Animation", sequence: seq1 };
+    const anim2 = { _type: "Animation", sequence: seq2 };
+    const root = mkTag({ uuid: "root-1", name: "Root" });
+    root.vsettings[0].rs.animations = [anim1, anim2];
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], animationSequences: [seq1, seq2] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+
+    const result = await removeNodeAnimation(api, "comp-1", "Root", undefined, 0);
+    expect(result.removedCount).toBe(1);
+    expect(root.vsettings[0].rs.animations).toHaveLength(1);
+    expect(root.vsettings[0].rs.animations[0]).toBe(anim2);
+  });
+
+  it("removes animations by sequence reference", async () => {
+    const seq1 = { uuid: "s1", name: "Seq1", keyframes: [] };
+    const seq2 = { uuid: "s2", name: "Seq2", keyframes: [] };
+    const anim1 = { _type: "Animation", sequence: seq1 };
+    const anim2 = { _type: "Animation", sequence: seq2 };
+    const anim3 = { _type: "Animation", sequence: seq1 };
+    const root = mkTag({ uuid: "root-1", name: "Root" });
+    root.vsettings[0].rs.animations = [anim1, anim2, anim3];
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], animationSequences: [seq1, seq2] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+
+    const result = await removeNodeAnimation(api, "comp-1", "Root", "Seq1");
+    expect(result.removedCount).toBe(2);
+    expect(root.vsettings[0].rs.animations).toHaveLength(1);
+    expect(root.vsettings[0].rs.animations[0]).toBe(anim2);
+  });
+
+  it("throws when no animations exist", async () => {
+    const root = mkTag({ uuid: "root-1", name: "Root" });
+    root.vsettings[0].rs.animations = [];
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], animationSequences: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+
+    await expect(
+      removeNodeAnimation(api, "comp-1", "Root")
+    ).rejects.toThrow(/No animations/);
+  });
+
+  it("throws when animation index out of range", async () => {
+    const seq = { uuid: "s1", name: "Seq", keyframes: [] };
+    const anim = { _type: "Animation", sequence: seq };
+    const root = mkTag({ uuid: "root-1", name: "Root" });
+    root.vsettings[0].rs.animations = [anim];
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], animationSequences: [seq] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+
+    await expect(
+      removeNodeAnimation(api, "comp-1", "Root", undefined, 5)
+    ).rejects.toThrow(/out of range/);
   });
 });

@@ -85,6 +85,12 @@ import {
   removeMixin,
   applyMixin,
   detachMixin,
+  listAnimationSequences,
+  createAnimationSequence,
+  updateAnimationSequence,
+  removeAnimationSequence,
+  addNodeAnimation,
+  removeNodeAnimation,
 } from "./edit-tools.js";
 import { beginBatch, endBatch, isBatchActive, cancelBatch, cancelBatchWithRollback, getAccumulatedChanges } from "./batch-manager.js";
 import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
@@ -4895,6 +4901,407 @@ export function createServer(): McpServer {
         };
       } catch (err: any) {
         return handleMutationError("detaching mixin", err);
+      }
+    }
+  );
+
+  // ─── Animation tools ──────────────────────────────────────────────────────
+
+  server.tool(
+    "list-animation-sequences",
+    "List all animation sequences (named @keyframes definitions) in the active project. " +
+      "Returns name, UUID, and keyframe count for each.",
+    {},
+    async () => {
+      try {
+        const sequences = listAnimationSequences();
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                { sequenceCount: sequences.length, sequences },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [{ type: "text" as const, text: `Error: ${err.message}` }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "create-animation-sequence",
+    "Create a new animation sequence (@keyframes definition). " +
+      "Optionally provide keyframes as an array of { percentage: 0-100, styles: {...} }.",
+    {
+      name: z.string().describe("Name for the animation sequence"),
+      keyframes: z
+        .array(
+          z.object({
+            percentage: z.number().min(0).max(100).describe("Keyframe stop percentage (0-100)"),
+            styles: z.record(z.string()).describe("CSS styles at this keyframe stop"),
+          })
+        )
+        .optional()
+        .describe("Optional keyframes array. Each keyframe has a percentage (0-100) and styles."),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting."),
+    },
+    async ({ name, keyframes, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            createAnimationSequence(apiClient, name, keyframes)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    sequenceUuid: result.sequenceUuid,
+                    name: result.name,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await createAnimationSequence(apiClient, name, keyframes);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  sequenceUuid: result.sequenceUuid,
+                  name: result.name,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("creating animation sequence", err);
+      }
+    }
+  );
+
+  server.tool(
+    "update-animation-sequence",
+    "Update an animation sequence's name and/or keyframes. " +
+      "At least one of newName or keyframes must be provided. " +
+      "Providing keyframes replaces all existing keyframes.",
+    {
+      seqRef: z
+        .string()
+        .describe("Animation sequence reference: current name or UUID"),
+      newName: z
+        .string()
+        .optional()
+        .describe("New name for the animation sequence"),
+      keyframes: z
+        .array(
+          z.object({
+            percentage: z.number().min(0).max(100).describe("Keyframe stop percentage (0-100)"),
+            styles: z.record(z.string()).describe("CSS styles at this keyframe stop"),
+          })
+        )
+        .optional()
+        .describe("New keyframes (replaces existing). Each has percentage (0-100) and styles."),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting."),
+    },
+    async ({ seqRef, newName, keyframes, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            updateAnimationSequence(apiClient, seqRef, newName, keyframes)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    sequenceUuid: result.sequenceUuid,
+                    name: result.name,
+                    updatedFields: result.updatedFields,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await updateAnimationSequence(apiClient, seqRef, newName, keyframes);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  sequenceUuid: result.sequenceUuid,
+                  name: result.name,
+                  updatedFields: result.updatedFields,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("updating animation sequence", err);
+      }
+    }
+  );
+
+  server.tool(
+    "remove-animation-sequence",
+    "Remove an animation sequence from the project. " +
+      "All element animations referencing this sequence are automatically cleaned up.",
+    {
+      seqRef: z
+        .string()
+        .describe("Animation sequence reference: name or UUID"),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting."),
+    },
+    async ({ seqRef, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            removeAnimationSequence(apiClient, seqRef)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    removedName: result.removedName,
+                    removedUuid: result.removedUuid,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await removeAnimationSequence(apiClient, seqRef);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  removedName: result.removedName,
+                  removedUuid: result.removedUuid,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("removing animation sequence", err);
+      }
+    }
+  );
+
+  server.tool(
+    "add-node-animation",
+    "Apply an animation sequence to an element with timing parameters. " +
+      "Creates an Animation referencing the sequence and adds it to the element's base variant.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component containing the element"),
+      nodeRef: z
+        .string()
+        .describe("Node reference: UUID, name, path, or index"),
+      seqRef: z
+        .string()
+        .describe("Animation sequence reference: name or UUID"),
+      duration: z.string().optional().describe("Animation duration (default: '1s')"),
+      delay: z.string().optional().describe("Animation delay (default: '0s')"),
+      timingFunction: z.string().optional().describe("Timing function (default: 'ease')"),
+      iterationCount: z.string().optional().describe("Iteration count (default: '1', or 'infinite')"),
+      direction: z
+        .enum(["normal", "reverse", "alternate", "alternate-reverse"])
+        .optional()
+        .describe("Animation direction (default: 'normal')"),
+      fillMode: z
+        .enum(["none", "forwards", "backwards", "both"])
+        .optional()
+        .describe("Fill mode (default: 'none')"),
+      playState: z
+        .enum(["paused", "running"])
+        .optional()
+        .describe("Play state (default: 'running')"),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting."),
+    },
+    async ({ componentUuid, nodeRef, seqRef, duration, delay, timingFunction, iterationCount, direction, fillMode, playState, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            addNodeAnimation(apiClient, componentUuid, nodeRef, seqRef, duration, delay, timingFunction, iterationCount, direction, fillMode, playState)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    sequenceName: result.sequenceName,
+                    nodeUuid: result.nodeUuid,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await addNodeAnimation(
+          apiClient, componentUuid, nodeRef, seqRef,
+          duration, delay, timingFunction, iterationCount, direction, fillMode, playState
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  sequenceName: result.sequenceName,
+                  nodeUuid: result.nodeUuid,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("adding animation to element", err);
+      }
+    }
+  );
+
+  server.tool(
+    "remove-node-animation",
+    "Remove animation(s) from an element. " +
+      "Specify seqRef to remove by sequence, animationIndex to remove by position, " +
+      "or omit both to remove all animations.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component containing the element"),
+      nodeRef: z
+        .string()
+        .describe("Node reference: UUID, name, path, or index"),
+      seqRef: z
+        .string()
+        .optional()
+        .describe("Remove animations referencing this sequence (name or UUID)"),
+      animationIndex: z
+        .number()
+        .optional()
+        .describe("Remove the animation at this index (0-based)"),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting."),
+    },
+    async ({ componentUuid, nodeRef, seqRef, animationIndex, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            removeNodeAnimation(apiClient, componentUuid, nodeRef, seqRef, animationIndex)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    removedCount: result.removedCount,
+                    nodeUuid: result.nodeUuid,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await removeNodeAnimation(apiClient, componentUuid, nodeRef, seqRef, animationIndex);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  removedCount: result.removedCount,
+                  nodeUuid: result.nodeUuid,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("removing animation from element", err);
       }
     }
   );

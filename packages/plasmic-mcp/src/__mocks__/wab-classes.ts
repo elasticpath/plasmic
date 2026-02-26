@@ -529,6 +529,75 @@ export class Mixin {
   }
 }
 
+export const isKnownKeyFrame = (obj: any): boolean =>
+  obj?._type === "KeyFrame";
+export const isKnownAnimationSequence = (obj: any): boolean =>
+  obj?._type === "AnimationSequence";
+export const isKnownAnimation = (obj: any): boolean =>
+  obj?._type === "Animation";
+
+/** Mock constructor for KeyFrame — a percentage stop in an animation sequence. */
+export class KeyFrame {
+  _type = "KeyFrame";
+  uid: number;
+  percentage: number;
+  rs: any;
+  constructor(args: { percentage: number; rs: any }) {
+    this.uid = Math.floor(Math.random() * 1e9);
+    this.percentage = args.percentage;
+    this.rs = args.rs;
+  }
+}
+
+/** Mock constructor for AnimationSequence — site-level named @keyframes definition. */
+export class AnimationSequence {
+  _type = "AnimationSequence";
+  uid: number;
+  name: string;
+  uuid: string;
+  keyframes: KeyFrame[];
+  constructor(args: { name: string; uuid: string; keyframes?: KeyFrame[] }) {
+    this.uid = Math.floor(Math.random() * 1e9);
+    this.name = args.name;
+    this.uuid = args.uuid;
+    this.keyframes = args.keyframes ?? [];
+  }
+}
+
+/** Mock constructor for Animation — element-level application of an AnimationSequence with timing. */
+export class Animation {
+  _type = "Animation";
+  uid: number;
+  sequence: AnimationSequence;
+  duration: string;
+  timingFunction: string;
+  iterationCount: string;
+  direction: string;
+  delay: string;
+  fillMode: string;
+  playState: string;
+  constructor(args: {
+    sequence: AnimationSequence;
+    duration?: string;
+    timingFunction?: string;
+    iterationCount?: string;
+    direction?: string;
+    delay?: string;
+    fillMode?: string;
+    playState?: string;
+  }) {
+    this.uid = Math.floor(Math.random() * 1e9);
+    this.sequence = args.sequence;
+    this.duration = args.duration ?? "1s";
+    this.timingFunction = args.timingFunction ?? "ease";
+    this.iterationCount = args.iterationCount ?? "1";
+    this.direction = args.direction ?? "normal";
+    this.delay = args.delay ?? "0s";
+    this.fillMode = args.fillMode ?? "none";
+    this.playState = args.playState ?? "running";
+  }
+}
+
 export class Site {
   static isKnown(obj: any): boolean {
     return obj?._type === "Site";

@@ -67,6 +67,11 @@ import {
   isKnownComponentServerQuery,
   Mixin,
   isKnownMixin,
+  KeyFrame,
+  AnimationSequence,
+  Animation,
+  isKnownAnimationSequence,
+  isKnownAnimation,
 } from "@/wab/shared/model/classes";
 import { RSH } from "@/wab/shared/RuleSetHelpers";
 import { TplMgr } from "@/wab/shared/TplMgr";
@@ -5614,4 +5619,341 @@ export async function detachMixin(
   );
 
   return { save, mixinName: mixin.name, nodeUuid: resolved.uuid };
+}
+
+// =============================================================================
+// Animations — CRUD for animation sequences + apply/remove on elements
+// =============================================================================
+
+/** Valid CSS animation directions */
+const VALID_DIRECTIONS = ["normal", "reverse", "alternate", "alternate-reverse"] as const;
+/** Valid CSS animation fill modes */
+const VALID_FILL_MODES = ["none", "forwards", "backwards", "both"] as const;
+/** Valid CSS animation play states */
+const VALID_PLAY_STATES = ["paused", "running"] as const;
+
+export interface AnimationSequenceInfo {
+  uuid: string;
+  name: string;
+  keyframeCount: number;
+}
+
+export interface AnimationInfo {
+  sequenceUuid: string;
+  sequenceName: string;
+  duration: string;
+  delay: string;
+  timingFunction: string;
+  iterationCount: string;
+  direction: string;
+  fillMode: string;
+  playState: string;
+}
+
+/**
+ * List all animation sequences in the current project.
+ */
+export function listAnimationSequences(): AnimationSequenceInfo[] {
+  const session = requireSession();
+  return (session.site.animationSequences ?? []).map((s: any) => ({
+    uuid: s.uuid,
+    name: s.name,
+    keyframeCount: s.keyframes?.length ?? 0,
+  }));
+}
+
+/**
+ * Find an animation sequence by name or UUID.
+ */
+function findAnimationSequence(site: any, seqRef: string): any {
+  const seq = (site.animationSequences ?? []).find(
+    (s: any) => s.uuid === seqRef || s.name === seqRef
+  );
+  if (!seq) {
+    throw new Error(
+      `Animation sequence "${seqRef}" not found. Use list-animation-sequences to see available sequences.`
+    );
+  }
+  return seq;
+}
+
+export interface CreateAnimationSequenceResult {
+  save: SaveResult;
+  sequenceUuid: string;
+  name: string;
+}
+
+/**
+ * Create a new animation sequence with optional keyframes.
+ * Each keyframe is { percentage: 0-100, styles: Record<string,string> }.
+ */
+export async function createAnimationSequence(
+  apiClient: PlasmicApiClient,
+  name: string,
+  keyframes?: Array<{ percentage: number; styles: Record<string, string> }>
+): Promise<CreateAnimationSequenceResult> {
+  const session = requireSession();
+  const tracker = getChangeTracker();
+  const tplMgr = new TplMgr({ site: session.site });
+
+  let seqUuid = "";
+  let seqName = "";
+
+  const changes = tracker.withRecording(() => {
+    const seq = tplMgr.addAnimationSequence(name);
+    seqUuid = seq.uuid;
+    seqName = seq.name;
+
+    if (keyframes && keyframes.length > 0) {
+      for (const kf of keyframes) {
+        if (kf.percentage < 0 || kf.percentage > 100) {
+          throw new Error(`Keyframe percentage must be 0-100, got ${kf.percentage}`);
+        }
+        const sanitized = sanitizeStyles(kf.styles);
+        const rs = new RuleSet({ values: sanitized, mixins: [], animations: null });
+        const keyframe = new KeyFrame({ percentage: kf.percentage, rs });
+        seq.keyframes.push(keyframe);
+      }
+    }
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `create-animation-sequence: ${seqName}`,
+    []
+  );
+
+  return { save, sequenceUuid: seqUuid, name: seqName };
+}
+
+export interface UpdateAnimationSequenceResult {
+  save: SaveResult;
+  sequenceUuid: string;
+  name: string;
+  updatedFields: string[];
+}
+
+/**
+ * Update an animation sequence's name and/or keyframes.
+ */
+export async function updateAnimationSequence(
+  apiClient: PlasmicApiClient,
+  seqRef: string,
+  newName?: string,
+  keyframes?: Array<{ percentage: number; styles: Record<string, string> }>
+): Promise<UpdateAnimationSequenceResult> {
+  const session = requireSession();
+  const tracker = getChangeTracker();
+  const tplMgr = new TplMgr({ site: session.site });
+  const seq = findAnimationSequence(session.site, seqRef);
+
+  if (!newName && !keyframes) {
+    throw new Error("At least a new name or keyframes must be provided for update-animation-sequence.");
+  }
+
+  const updatedFields: string[] = [];
+
+  const changes = tracker.withRecording(() => {
+    if (newName) {
+      tplMgr.renameAnimationSequence(seq, newName);
+      updatedFields.push("name");
+    }
+    if (keyframes) {
+      seq.keyframes.length = 0; // clear existing
+      for (const kf of keyframes) {
+        if (kf.percentage < 0 || kf.percentage > 100) {
+          throw new Error(`Keyframe percentage must be 0-100, got ${kf.percentage}`);
+        }
+        const sanitized = sanitizeStyles(kf.styles);
+        const rs = new RuleSet({ values: sanitized, mixins: [], animations: null });
+        const keyframe = new KeyFrame({ percentage: kf.percentage, rs });
+        seq.keyframes.push(keyframe);
+      }
+      updatedFields.push("keyframes");
+    }
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `update-animation-sequence: ${seq.name}`,
+    []
+  );
+
+  return { save, sequenceUuid: seq.uuid, name: seq.name, updatedFields };
+}
+
+export interface RemoveAnimationSequenceResult {
+  save: SaveResult;
+  removedName: string;
+  removedUuid: string;
+}
+
+/**
+ * Remove an animation sequence. TplMgr handles cleanup of all element references.
+ */
+export async function removeAnimationSequence(
+  apiClient: PlasmicApiClient,
+  seqRef: string
+): Promise<RemoveAnimationSequenceResult> {
+  const session = requireSession();
+  const tracker = getChangeTracker();
+  const tplMgr = new TplMgr({ site: session.site });
+  const seq = findAnimationSequence(session.site, seqRef);
+
+  const removedName = seq.name;
+  const removedUuid = seq.uuid;
+
+  const changes = tracker.withRecording(() => {
+    tplMgr.removeAnimationSequence(seq);
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `remove-animation-sequence: ${removedName}`,
+    []
+  );
+
+  return { save, removedName, removedUuid };
+}
+
+export interface AddNodeAnimationResult {
+  save: SaveResult;
+  sequenceName: string;
+  nodeUuid: string;
+}
+
+/**
+ * Apply an animation to an element's base VariantSetting.
+ * Creates an Animation instance referencing the sequence with timing parameters,
+ * and pushes it onto the element's rs.animations[].
+ */
+export async function addNodeAnimation(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  nodeRef: string,
+  seqRef: string,
+  duration?: string,
+  delay?: string,
+  timingFunction?: string,
+  iterationCount?: string,
+  direction?: string,
+  fillMode?: string,
+  playState?: string,
+): Promise<AddNodeAnimationResult> {
+  const component = findComponent(componentUuid);
+  const session = requireSession();
+  const nodeResult = resolveNode(component, nodeRef);
+  const resolved = requireSingleNode(nodeResult, nodeRef);
+  const tpl = resolved.node;
+
+  const seq = findAnimationSequence(session.site, seqRef);
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  // Validate direction, fillMode, playState
+  if (direction && !VALID_DIRECTIONS.includes(direction as any)) {
+    throw new Error(`Invalid direction "${direction}". Valid: ${VALID_DIRECTIONS.join(", ")}`);
+  }
+  if (fillMode && !VALID_FILL_MODES.includes(fillMode as any)) {
+    throw new Error(`Invalid fillMode "${fillMode}". Valid: ${VALID_FILL_MODES.join(", ")}`);
+  }
+  if (playState && !VALID_PLAY_STATES.includes(playState as any)) {
+    throw new Error(`Invalid playState "${playState}". Valid: ${VALID_PLAY_STATES.join(", ")}`);
+  }
+
+  const changes = tracker.withRecording(() => {
+    const baseVs = tplMgr.ensureBaseVariantSetting(tpl);
+    const animation = tplMgr.addAnimation(
+      seq, duration, delay, timingFunction, iterationCount, direction, fillMode, playState
+    );
+    if (!baseVs.rs.animations) {
+      baseVs.rs.animations = [];
+    }
+    baseVs.rs.animations.push(animation);
+  });
+
+  const componentIid = getComponentIid(component);
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `add-animation: ${seq.name} on ${resolved.name ?? resolved.uuid}`,
+    componentIid ? [componentIid] : []
+  );
+
+  return { save, sequenceName: seq.name, nodeUuid: resolved.uuid };
+}
+
+export interface RemoveNodeAnimationResult {
+  save: SaveResult;
+  removedCount: number;
+  nodeUuid: string;
+}
+
+/**
+ * Remove animation(s) from an element's base VariantSetting.
+ * If seqRef is provided, removes only animations referencing that sequence.
+ * If animationIndex is provided, removes the animation at that index.
+ * If neither is provided, removes all animations.
+ */
+export async function removeNodeAnimation(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  nodeRef: string,
+  seqRef?: string,
+  animationIndex?: number,
+): Promise<RemoveNodeAnimationResult> {
+  const component = findComponent(componentUuid);
+  const session = requireSession();
+  const nodeResult = resolveNode(component, nodeRef);
+  const resolved = requireSingleNode(nodeResult, nodeRef);
+  const tpl = resolved.node;
+
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+  let removedCount = 0;
+
+  const changes = tracker.withRecording(() => {
+    const baseVs = tplMgr.ensureBaseVariantSetting(tpl);
+    const animations = baseVs.rs.animations;
+
+    if (!animations || animations.length === 0) {
+      throw new Error("No animations on this element to remove.");
+    }
+
+    if (animationIndex !== undefined) {
+      if (animationIndex < 0 || animationIndex >= animations.length) {
+        throw new Error(
+          `Animation index ${animationIndex} out of range (0-${animations.length - 1}).`
+        );
+      }
+      animations.splice(animationIndex, 1);
+      removedCount = 1;
+    } else if (seqRef) {
+      const seq = findAnimationSequence(session.site, seqRef);
+      const before = animations.length;
+      baseVs.rs.animations = animations.filter((a: any) => a.sequence !== seq);
+      removedCount = before - baseVs.rs.animations.length;
+      if (removedCount === 0) {
+        throw new Error(
+          `No animations referencing sequence "${seq.name}" found on this element.`
+        );
+      }
+    } else {
+      removedCount = animations.length;
+      baseVs.rs.animations = [];
+    }
+  });
+
+  const componentIid = getComponentIid(component);
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `remove-animation: ${removedCount} from ${resolved.name ?? resolved.uuid}`,
+    componentIid ? [componentIid] : []
+  );
+
+  return { save, removedCount, nodeUuid: resolved.uuid };
 }

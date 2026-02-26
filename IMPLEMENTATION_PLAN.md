@@ -3,10 +3,10 @@
 > **Goal**: Create Claude Code skills and workflows that can interact with Plasmic Studio
 > programmatically to create fully-featured pages from the Claude Code terminal.
 >
-> **Current state**: 63 MCP tools, 6 Claude Code skills, 900 tests (820 unit + 80 integration).
+> **Current state**: 69 MCP tools, 6 Claude Code skills, 924 tests (841 unit + 83 integration).
 > Zero TODOs/FIXMEs/skipped tests.
 >
-> **Last verified**: 2026-02-26 — 4.1 Mixins implemented.
+> **Last verified**: 2026-02-26 — 4.2 Animations implemented.
 
 ---
 
@@ -21,7 +21,7 @@ from `site.styleTokens`). The Token CRUD spec (1.3) must handle removal manually
 The MCP source lives entirely in `packages/plasmic-mcp/src/` (16 source files,
 ~8,200 lines). The `src/tools/` directory exists but is empty (created for future refactor).
 
-Key file sizes: `server.ts` (~4,850 lines), `edit-tools.ts` (~5,600 lines),
+Key file sizes: `server.ts` (~5,200 lines), `edit-tools.ts` (~5,900 lines),
 `tree-reader.ts` (~850 lines). Both `server.ts` and `edit-tools.ts` are large
 and will grow with each new feature — the STRAP consolidation (Tier 6) addresses this.
 
@@ -195,17 +195,19 @@ These features enable systematic design management but are not blocking for basi
   - 27 unit tests (4 listMixins + 3 createMixin + 6 updateMixin + 3 removeMixin + 4 applyMixin + 4 detachMixin + 3 integration)
   - Total test count: 900 (820 unit + 80 integration)
 
-### 4.2 Animations
+### 4.2 Animations — IMPLEMENTED (2026-02-26)
 - **Spec**: `specs/gap-animations.md`
-- **Status**: NOT IMPLEMENTED
-  - Verified: zero references to `AnimationSequence` in MCP src/
-  - WAB backing confirmed: `TplMgr.addAnimationSequence()` (line 1798), `removeAnimationSequence()` (line 1814) in `shared/TplMgr.ts`
-- **What**: Three site-level + two node-level actions:
-  - `create-animation`, `list-animations`, `remove-animation` — site-level keyframe sequences
-  - `add-animation`, `remove-animation` (on node) — apply sequence to element with timing options
-- **Also requires**: Extend `get-node-details` to show applied animations
-- **Effort**: Medium
-- **Tests needed**: Unit + integration (create → apply → read back → verify)
+- **Status**: IMPLEMENTED
+  - Six new tools: `list-animation-sequences`, `create-animation-sequence`, `update-animation-sequence`, `remove-animation-sequence`, `add-node-animation`, `remove-node-animation`
+  - `list-animation-sequences` returns all site-level @keyframes definitions with uuid, name, keyframeCount
+  - `create-animation-sequence` via TplMgr.addAnimationSequence() with optional keyframes (percentage 0-100, CSS styles)
+  - `update-animation-sequence` renames and/or replaces keyframes; `remove-animation-sequence` via TplMgr.removeAnimationSequence() with element cleanup
+  - `add-node-animation` creates Animation with timing params (duration, delay, timingFunction, iterationCount, direction, fillMode, playState) and pushes to element's rs.animations[]
+  - `remove-node-animation` supports removal by sequence ref, index, or all; validates empty/out-of-range
+  - Mock classes: KeyFrame, AnimationSequence, Animation + type guards
+  - TplMgr mock methods: addAnimationSequence, removeAnimationSequence, renameAnimationSequence, duplicateAnimationSequence, addAnimation
+  - 21 unit tests + 3 integration tests
+  - Total test count: 924 (841 unit + 83 integration)
 
 ### 4.3 Themes
 - **Spec**: `specs/gap-themes.md`

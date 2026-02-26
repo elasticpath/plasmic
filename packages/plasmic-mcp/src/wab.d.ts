@@ -154,6 +154,9 @@ declare module "@/wab/shared/model/classes" {
   export function isKnownComponentDataQuery(x: any): boolean;
   export function isKnownComponentServerQuery(x: any): boolean;
   export function isKnownMixin(x: any): boolean;
+  export function isKnownKeyFrame(x: any): boolean;
+  export function isKnownAnimationSequence(x: any): boolean;
+  export function isKnownAnimation(x: any): boolean;
 
   /** Model class for Mixin — reusable style bundle stored at site level. */
   export class Mixin {
@@ -171,6 +174,46 @@ declare module "@/wab/shared/model/classes" {
     uuid: string;
     forTheme: boolean;
     variantedRs: any[];
+  }
+
+  /** Model class for KeyFrame — a percentage stop in an animation sequence. */
+  export class KeyFrame {
+    constructor(args: { percentage: number; rs: any });
+    uid: number;
+    percentage: number;
+    rs: any;
+  }
+
+  /** Model class for AnimationSequence — site-level named @keyframes definition. */
+  export class AnimationSequence {
+    constructor(args: { name: string; uuid: string; keyframes?: KeyFrame[] });
+    uid: number;
+    name: string;
+    readonly uuid: string;
+    keyframes: KeyFrame[];
+  }
+
+  /** Model class for Animation — element-level application of an AnimationSequence with timing. */
+  export class Animation {
+    constructor(args: {
+      sequence: AnimationSequence;
+      duration?: string;
+      timingFunction?: string;
+      iterationCount?: string;
+      direction?: string;
+      delay?: string;
+      fillMode?: string;
+      playState?: string;
+    });
+    uid: number;
+    sequence: AnimationSequence;
+    duration: string;
+    timingFunction: string;
+    iterationCount: string;
+    direction: string;
+    delay: string;
+    fillMode: string;
+    playState: string;
   }
 
   /** Model class for ComponentDataQuery — client-side data query on a component. */
@@ -483,6 +526,25 @@ declare module "@/wab/shared/TplMgr" {
     renameMixin(mixin: any, name: string): void;
     /** Duplicate a mixin with auto-generated unique name. */
     duplicateMixin(mixin: any): any;
+    /** Create a new AnimationSequence with optional name; pushed to site.animationSequences. */
+    addAnimationSequence(name?: string, animationSequence?: any): any;
+    /** Remove an AnimationSequence and clean up all element Animation references. */
+    removeAnimationSequence(sequence: any): void;
+    /** Rename an AnimationSequence with unique name logic. */
+    renameAnimationSequence(sequence: any, name: string): void;
+    /** Deep-clone an AnimationSequence with new UUID and unique name. */
+    duplicateAnimationSequence(sequence: any): any;
+    /** Create an Animation instance (not yet attached to any RuleSet). */
+    addAnimation(
+      sequence: any,
+      duration?: string,
+      delay?: string,
+      timingFunction?: string,
+      iterationCount?: string,
+      direction?: string,
+      fillMode?: string,
+      playState?: string,
+    ): any;
   }
 }
 
