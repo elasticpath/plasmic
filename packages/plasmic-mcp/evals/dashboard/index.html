@@ -513,6 +513,10 @@
             <h2>Token Usage Trend</h2>
             <div class="chart-wrap"><canvas id="chart-tokens"></canvas></div>
           </div>
+          <div class="chart-section">
+            <h2>Quality Score Distribution (Latest Run)</h2>
+            <div class="chart-wrap"><canvas id="chart-quality-dist"></canvas></div>
+          </div>
         </div>
 
         <!-- Regression Alerts -->
@@ -725,6 +729,7 @@
       renderTierChart(latest);
       renderEfficiencyTrend(reports);
       renderTokenTrend(reports);
+      renderQualityDistribution(latest);
     }
 
     // --- Charts ---
@@ -947,6 +952,69 @@
             },
           },
           interaction: { mode: "index", intersect: false },
+        },
+      });
+    }
+
+    function renderQualityDistribution(report) {
+      const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, null: 0 };
+
+      for (const scenario of report.scenarios) {
+        const score = scenario.qualityScore;
+        if (score === null || score === undefined) {
+          counts.null++;
+        } else if (score >= 1 && score <= 5) {
+          counts[score]++;
+        }
+      }
+
+      const labels = ["1", "2", "3", "4", "5", "N/A"];
+      const data = [counts[1], counts[2], counts[3], counts[4], counts[5], counts.null];
+      const backgroundColors = [
+        "rgba(230,57,70,0.8)",   // 1 = danger red
+        "rgba(244,162,97,0.8)",  // 2 = warning orange
+        "rgba(255,190,11,0.8)",  // 3 = yellow
+        "rgba(69,123,157,0.8)",  // 4 = info blue
+        "rgba(46,196,182,0.8)",  // 5 = success green
+        "rgba(108,117,125,0.8)", // N/A = gray
+      ];
+      const borderColors = [
+        "#e63946",
+        "#f4a261",
+        "#ffbe0b",
+        "#457b9d",
+        "#2ec4b6",
+        "#6c757d",
+      ];
+
+      new Chart(document.getElementById("chart-quality-dist"), {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [{
+            label: "Scenarios",
+            data,
+            backgroundColor: backgroundColors,
+            borderColor: borderColors,
+            borderWidth: 1,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+          },
+          scales: {
+            x: {
+              title: { display: true, text: "Quality Score" },
+            },
+            y: {
+              beginAtZero: true,
+              ticks: { stepSize: 1 },
+              title: { display: true, text: "Count" },
+            },
+          },
         },
       });
     }

@@ -1,6 +1,6 @@
 # Implementation Plan: Plasmic MCP Eval System
 
-> Last updated: 2026-02-26 (P3.2 complete — all planned tasks done)
+> Last updated: 2026-02-26 (P4 spec alignment complete)
 > Source: `.ralph/specs/mcp-eval-framework.md`, `mcp-eval-scenarios.md`, `mcp-eval-grading.md`, `mcp-eval-visual-capture.md`
 
 ## Status Summary
@@ -9,6 +9,7 @@
 **P1 (Core): DONE.** All 5 sub-tasks implemented — grader framework, 10 scenarios, JSON reporter, CLI, and CI workflow.
 **P2 (Enhancement): DONE.** P2.1 done (20 medium scenarios). P2.2 done (15 complex scenarios). P2.3 done (visual capture). P2.4 done (LLM-as-Judge). P2.5 done (integration-tier MCP client).
 **P3 (Polish): DONE.** P3.1 done (dashboard). P3.2 done (human review workflow). P3.3 done (20 simple scenarios). P3.4 done (scenario validator). P3.5 done (cost tracking).
+**P4 (Spec Alignment): DONE.** Audit of all 59 spec acceptance criteria against implementation. 3 gaps resolved: quality score distribution chart added to dashboard, scenario index file generation wired up (`--index` flag), spec checkboxes updated to reflect implemented state. 2 spec corrections: Promptfoo → custom harness documented as intentional deviation, `inspect.preview-url` → direct URL construction with component arena params (richer navigation).
 
 ### Codebase Health (verified 2026-02-26)
 - Zero TODO/FIXME/HACK comments in `packages/plasmic-mcp/`
@@ -19,7 +20,7 @@
   - `evals/harness/mcp-client.ts` — McpEvalClient (mock mode via InMemoryTransport; integration mode via StdioClientTransport child process)
   - `evals/harness/types.ts` — EvalScenario, GraderConfig, SetupStep, TranscriptEntry, etc.
   - `evals/harness/scenario-loader.ts` — YAML loading, validation, filtering
-  - `evals/harness/scenario-validator.ts` — Standalone validator; unique IDs, valid domains, grader types, setup steps, tier targets
+  - `evals/harness/scenario-validator.ts` — Standalone validator; unique IDs, valid domains, grader types, setup steps, tier targets; `--index` flag generates `evals/scenarios/INDEX.md`
   - `evals/harness/runner.ts` — runScenario, runAll (returns RunAllResult with totalCostDollars); setup step failures abort scenario
   - `evals/harness/claude-client.ts` — Multi-turn conversation loop with timeout, tool routing; retries computed from transcript
   - `evals/harness/reporter.ts` — generateReport, saveReport, printSummary; aggregate includes totalCostDollars
@@ -29,7 +30,7 @@
   - `evals/graders/review-flags.ts` — Auto-flagging logic for human review (judge-disagrees, low-quality, new-scenario); applyReviewFlags mutates results
   - `evals/scenarios/` — 55 YAML scenarios (20 simple + 20 medium + 15 complex)
   - `evals/cli.ts` — CLI entry point with all flags; eval:validate script
-  - `evals/dashboard/index.html` — Static dashboard with Chart.js visualizations (6 charts, summary cards, regression alerts, error rate table, run history)
+  - `evals/dashboard/index.html` — Static dashboard with Chart.js visualizations (7 charts incl. quality score distribution, summary cards, regression alerts, error rate table, run history)
   - `evals/dashboard/render.js` — Node.js HTTP server; serves dashboard HTML and /api/reports endpoint with 90-day retention filter
   - `evals/visual/auth.ts` — Studio CSRF→login authentication for Playwright sessions
   - `evals/visual/capture.ts` — VisualCapture class: Playwright browser lifecycle, Studio navigation, desktop/mobile screenshots

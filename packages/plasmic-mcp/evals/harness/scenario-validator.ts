@@ -17,8 +17,15 @@
  * Can be run standalone: `npx tsx evals/harness/scenario-validator.ts`
  */
 
+import { writeFileSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import { loadScenarios } from "./scenario-loader.js";
 import type { EvalScenario, GraderConfig } from "./types.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const SCENARIOS_DIR = join(__dirname, "..", "scenarios");
 
 const VALID_DOMAINS = [
   "project",
@@ -286,6 +293,15 @@ if (
       .map(([d, n]) => `${d}=${n}`)
       .join(", ")}`
   );
+
+  // Generate scenario index file when --index flag is passed
+  if (process.argv.includes("--index")) {
+    const scenarios = loadScenarios();
+    const indexContent = generateScenarioIndex(scenarios);
+    const indexPath = join(SCENARIOS_DIR, "INDEX.md");
+    writeFileSync(indexPath, indexContent, "utf-8");
+    console.log(`\nScenario index written to: ${indexPath}`);
+  }
 
   if (result.valid) {
     console.log("\nResult: VALID");

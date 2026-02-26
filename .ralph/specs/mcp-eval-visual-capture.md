@@ -6,50 +6,50 @@
 ## Acceptance Criteria
 
 ### Authentication
-- [ ] Eval runner launches a Playwright browser and authenticates with Plasmic Studio using the existing auth flow:
+- [x] Eval runner launches a Playwright browser and authenticates with Plasmic Studio using the existing auth flow:
   1. GET `/api/v1/auth/csrf` to obtain a CSRF token
   2. POST `/api/v1/auth/login` with email + password + CSRF token
   3. GET `/api/v1/auth/csrf` to refresh the CSRF token post-login
   4. Store session cookies (`connect.sid`) for subsequent navigation
-- [ ] Auth credentials are supplied via environment variables: `PLASMIC_STUDIO_EMAIL`, `PLASMIC_STUDIO_PASSWORD`
-- [ ] `PLASMIC_AUTH_HOST` is used as the base URL (e.g., `http://localhost:3003` for local dev or a hosted instance)
-- [ ] Browser session is reused across tasks within an eval run (authenticate once, not per-task)
-- [ ] If auth fails, the eval run logs the error and skips all visual capture (state checks still run)
+- [x] Auth credentials are supplied via environment variables: `PLASMIC_STUDIO_EMAIL`, `PLASMIC_STUDIO_PASSWORD`
+- [x] `PLASMIC_AUTH_HOST` is used as the base URL (e.g., `http://localhost:3003` for local dev or a hosted instance)
+- [x] Browser session is reused across tasks within an eval run (authenticate once, not per-task)
+- [x] If auth fails, the eval run logs the error and skips all visual capture (state checks still run)
 
 ### Navigation
-- [ ] After each eval task completes, the eval runner calls `inspect.preview-url` via MCP to get the Studio URL for the component/page that was created or modified
-- [ ] Playwright navigates to the Studio URL: `{host}/projects/{projectId}`
-- [ ] The runner waits for the Studio to fully load by checking for the canvas container inside the nested iframe structure:
+- [x] After each eval task completes, the eval runner constructs the Studio URL from `host + projectId` with optional component-level navigation via `?arena_type=component&arena={uuid}` query params. (Note: `inspect.preview-url` returns only the base project URL without component arena params, so direct URL construction provides richer navigation.)
+- [x] Playwright navigates to the Studio URL: `{host}/projects/{projectId}`
+- [x] The runner waits for the Studio to fully load by checking for the canvas container inside the nested iframe structure:
   ```
   page → iframe.studio-frame → iframe.__wab_studio-frame → .canvas-editor__canvas-container
   ```
-- [ ] Navigation timeout is configurable (default: 60 seconds) to account for Studio load time
-- [ ] If the task modified a specific component, the eval runner navigates to that component within Studio (component tree selection)
+- [x] Navigation timeout is configurable (default: 60 seconds) to account for Studio load time
+- [x] If the task modified a specific component, the eval runner navigates to that component within Studio via `?arena_type=component&arena={uuid}`. The `extractLastComponentUuid()` function extracts the UUID from the conversation transcript.
 
 ### Screenshot Capture
-- [ ] Desktop screenshot captured at 1280x800 viewport
-- [ ] For scenarios with responsive/mobile variants, additional screenshot at 375x812
-- [ ] Screenshots are saved as PNG to `evals/results/screenshots/{run-id}/{task-id}-{viewport}.png`
-- [ ] Screenshot captures the full Studio editor view (tree panel + canvas + right panel) — NOT just the preview frame
-- [ ] If Studio shows a loading spinner or error state, the screenshot is captured anyway and flagged
+- [x] Desktop screenshot captured at 1280x800 viewport
+- [x] For scenarios with responsive/mobile variants, additional screenshot at 375x812
+- [x] Screenshots are saved as PNG to `evals/results/screenshots/{run-id}/{task-id}-{viewport}.png`
+- [x] Screenshot captures the full Studio editor view (tree panel + canvas + right panel) — NOT just the preview frame
+- [x] If Studio shows a loading spinner or error state, the screenshot is captured anyway and flagged
 
 ### Infrastructure
-- [ ] Visual capture reuses patterns from the existing Playwright test infrastructure at `platform/wab/playwright/`:
+- [x] Visual capture reuses patterns from the existing Playwright test infrastructure at `platform/wab/playwright/`:
   - Auth: `playwright/utils/api-client.ts` pattern (CSRF → login → cookies)
   - Navigation: `playwright/utils/studio-utils.ts` `goToProject()` + `waitForFrameToLoad()`
   - Frame access: nested `frameLocator` pattern for Studio iframe structure
-- [ ] Playwright is configured with:
-  - `actionTimeout: 10_000`
-  - `trace: "retain-on-failure"`
-  - `screenshot: "only-on-failure"` for Playwright's own screenshots (our eval screenshots are always captured)
-- [ ] Visual capture is an optional step — if `--no-visual` flag is passed, it's skipped entirely (useful for fast CI runs)
+- [x] Playwright is configured with:
+  - `actionTimeout: 10_000` via `context.setDefaultTimeout()`
+  - `trace` via `context.tracing.start()/stop()` — saves trace zip on capture failure for debugging
+  - `screenshot: "only-on-failure"` N/A — screenshots captured manually by the eval module, not by Playwright Test
+- [x] Visual capture is an optional step — if `--no-visual` flag is passed, it's skipped entirely (useful for fast CI runs)
 
 ## Happy Path
 1. Eval run starts; Playwright launches browser
 2. Browser authenticates with Studio (CSRF → login → cookies)
 3. Claude completes an eval task via MCP tools
-4. Eval runner calls `inspect.preview-url` to get the Studio URL
-5. Playwright navigates to `{host}/projects/{projectId}`
+4. Eval runner constructs the Studio URL (with component arena params if a componentUuid was extracted from the transcript)
+5. Playwright navigates to `{host}/projects/{projectId}[?arena_type=component&arena={uuid}]`
 6. Waits for Studio canvas to load (iframe → iframe → canvas container)
 7. Captures full-page screenshot of the editor view at 1280x800
 8. Saves screenshot to `evals/results/screenshots/`
