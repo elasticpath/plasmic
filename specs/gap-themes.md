@@ -23,15 +23,15 @@ Theme management in the `design` domain (site-level design system entities).
 - Creates a Theme on the site
 
 ### `design({ action: "update-theme" })`
-- **Parameters**: `themeRef` (name or UUID), `name?`, `defaultStyles?`
+- **Parameters**: `themeIndex` (integer from list-themes output), `name?`, `defaultStyles?`
 - Updates theme properties
 
 ### `design({ action: "remove-theme" })`
-- **Parameters**: `themeRef` (name or UUID)
+- **Parameters**: `themeIndex` (integer from list-themes output)
 - Removes theme from site
 
 ### `design({ action: "set-active-theme" })`
-- **Parameters**: `themeRef` (name or UUID)
+- **Parameters**: `themeIndex` (integer from list-themes output, or null to deactivate)
 - Sets the active theme for the project
 
 ## Acceptance Criteria

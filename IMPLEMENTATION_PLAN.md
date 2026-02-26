@@ -7,6 +7,10 @@
 > Zero TODOs/FIXMEs/skipped tests. Zero tsc errors. All code quality items complete.
 >
 > **Last verified**: 2026-02-26 — interaction.update implemented, spec inconsistencies fixed. All specs fully implemented.
+>
+> **Spec consistency pass** (2026-02-26): Fixed 4 gap spec → STRAP naming discrepancies:
+> `gap-mixins.md` remove-mixin→detach-mixin, `gap-themes.md` themeRef→themeIndex,
+> `gap-animations.md` added missing update-animation action, `test-restructure.md` added interaction.update.
 
 ---
 
@@ -25,6 +29,7 @@ Key file sizes: `server.ts` (~4,730 lines after STRAP consolidation), `edit-tool
 `tree-reader.ts` (~850 lines).
 
 Spec consistency: All 15 gap specs updated to reflect STRAP domain assignments (2026-02-26).
+Second pass fixed 4 naming discrepancies (detach-mixin, themeIndex, update-animation, interaction.update).
 STRAP spec updated for `component.extract` (Tier 5.1) and `interaction.update`.
 
 ---

@@ -21,7 +21,7 @@ src/__tests__/
   variant.test.ts        — variant domain actions (list, create-style, create-group, list-global-groups, create-global-group, add-global, remove-global-group, rename-global)
   design.test.ts         — design domain actions (list-tokens, create-token, update-token, remove-token, duplicate-token, list-mixins, create-mixin, update-mixin, remove-mixin, list-animations, create-animation, update-animation, remove-animation, list-themes, create-theme, update-theme, remove-theme, set-active-theme, list-assets, upload-asset, rename-asset, remove-asset); merged from token-reader.test.ts
   data.test.ts           — data domain actions (set-data-cond, set-data-rep, list-queries, add-query, update-query, remove-query, list-data-tokens, create-data-token, update-data-token, remove-data-token, list-splits, create-split, update-split, remove-split, get-code-meta, list-functions)
-  interaction.test.ts    — interaction domain actions (list, add, remove)
+  interaction.test.ts    — interaction domain actions (list, add, update, remove)
   # Shared helpers
   test-helpers.ts        — shared helper module (mkSite, mkComponent, mkPage, callTool, etc.)
   # Routing / transport tests (kept as single file)

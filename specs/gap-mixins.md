@@ -37,7 +37,7 @@ Mixin CRUD integrates into the `design` domain (site-level design system entitie
 - **Parameters**: `componentUuid`, `nodeRef`, `mixinRef`, `variant?`, `dryRun?`
 - Adds mixin to element's VariantSetting rs.mixins[]
 
-### `node({ action: "remove-mixin" })`
+### `node({ action: "detach-mixin" })`
 - **Parameters**: `componentUuid`, `nodeRef`, `mixinRef`, `variant?`, `dryRun?`
 - Removes mixin from element's rs.mixins[]
 

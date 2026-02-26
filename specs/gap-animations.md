@@ -25,6 +25,11 @@ Animation management as site-level operations in `design` domain, and element-le
 - **Parameters**: (none)
 - Returns: Array of `{ animationUuid, name, keyframeCount }`
 
+### `design({ action: "update-animation" })`
+- **Parameters**: `seqRef` (name or UUID), `newName?`, `keyframes?` (array of `{ percentage: number, styles: Record<string,string> }`)
+- Updates an existing animation sequence's name and/or keyframes
+- At least one of `newName` or `keyframes` must be provided
+
 ### `design({ action: "remove-animation" })`
 - **Parameters**: `animationRef` (name or UUID)
 - Removes sequence + cleans up element references
@@ -40,6 +45,7 @@ Animation management as site-level operations in `design` domain, and element-le
 ## Acceptance Criteria
 - [x] Can create animation sequence with keyframes
 - [x] Can list all animation sequences
+- [x] Can update animation sequence name and/or keyframes
 - [x] Can apply animation to element with timing options
 - [x] Can remove animation from element
 - [x] Can remove animation sequence from site
