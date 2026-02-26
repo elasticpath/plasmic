@@ -102,9 +102,13 @@ export const mockCreateGlobalVariant = vi.fn((_group: any, _name?: string) => {
   return { _type: "Variant", uuid: "mock-global-variant-uuid", name: _name ?? "Unnamed Variant", parent: _group, mediaQuery: null };
 });
 export const mockCreateScreenVariant = vi.fn((_opts: any) => {
-  return { _type: "Variant", uuid: "mock-screen-variant-uuid", name: _opts?.name ?? "Screen", parent: null, mediaQuery: "(min-width:768px)" };
+  const query = _opts?.spec?.query?.() ?? "(min-width:768px)";
+  return { _type: "Variant", uuid: "mock-screen-variant-uuid", name: _opts?.name ?? "Screen", parent: null, mediaQuery: query };
 });
 export const mockRemoveGlobalVariantGroup = vi.fn();
+export const mockUpdateScreenVariantQuery = vi.fn((variant: any, query: string) => {
+  variant.mediaQuery = query;
+});
 export const mockRenameVariant = vi.fn((variant: any, name: string) => {
   variant.name = name;
 });
@@ -251,6 +255,10 @@ export class TplMgr {
 
   removeGlobalVariantGroup(group: any): void {
     mockRemoveGlobalVariantGroup(group);
+  }
+
+  updateScreenVariantQuery(variant: any, query: string): void {
+    mockUpdateScreenVariantQuery(variant, query);
   }
 
   renameVariant(variant: any, name?: string): void {

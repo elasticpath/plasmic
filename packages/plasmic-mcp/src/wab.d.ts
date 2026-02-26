@@ -827,6 +827,8 @@ declare module "@/wab/shared/TplMgr" {
     createScreenVariant(opts: { name: string; spec: any }): any;
     /** Remove an entire global variant group and all its variants. */
     removeGlobalVariantGroup(group: any): void;
+    /** Update the CSS media query for a screen variant. */
+    updateScreenVariantQuery(variant: any, query: string): void;
     /** Rename a single variant. */
     renameVariant(variant: any, name?: string): void;
     /** Rename a variant group. */

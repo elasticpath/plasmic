@@ -5066,6 +5066,154 @@ describe("variant.create-group", () => {
   });
 });
 
+describe("variant.create-screen", () => {
+  it("creates a screen variant with min and max width", async () => {
+    const raw = await client.callTool({
+      name: "variant",
+      arguments: {
+        action: "create-screen",
+        name: "Tablet",
+        minWidth: 768,
+        maxWidth: 1024,
+      },
+    });
+    const result = parseResponse(raw);
+    expect(raw.isError).toBeFalsy();
+    expect(result.success).toBe(true);
+    expect(result.variantUuid).toBeTruthy();
+    expect(result.name).toBeTruthy();
+    expect(result.mediaQuery).toContain("768");
+    expect(typeof result.revision).toBe("number");
+
+    // Undo the screen variant creation
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+  });
+
+  it("returns error when neither minWidth nor maxWidth provided", async () => {
+    const raw = await client.callTool({
+      name: "variant",
+      arguments: {
+        action: "create-screen",
+        name: "Bad",
+      },
+    });
+    expect(raw.isError).toBe(true);
+  });
+});
+
+describe("variant.update-screen", () => {
+  it("updates an existing screen variant breakpoint", async () => {
+    // The fixture has a screen group with "Mobile only" variant.
+    // Find it via list-global-groups.
+    const listRaw = await client.callTool({
+      name: "variant",
+      arguments: { action: "list-global-groups" },
+    });
+    const listResult = parseResponse(listRaw);
+    const screenGroup = listResult.groups.find((g: any) => g.type === "global-screen");
+    expect(screenGroup).toBeTruthy();
+    expect(screenGroup.variants.length).toBeGreaterThan(0);
+    const screenVariant = screenGroup.variants[0];
+
+    // Now update it
+    const raw = await client.callTool({
+      name: "variant",
+      arguments: {
+        action: "update-screen",
+        variantRef: screenVariant.uuid,
+        minWidth: 320,
+        maxWidth: 768,
+      },
+    });
+    const result = parseResponse(raw);
+    expect(raw.isError).toBeFalsy();
+    expect(result.success).toBe(true);
+    expect(result.mediaQuery).toContain("320");
+    expect(result.mediaQuery).toContain("768");
+
+    // Undo
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+  });
+});
+
+describe("variant.rename", () => {
+  it("renames a component variant", async () => {
+    const comp = discoveredComponents[0];
+    // Create a variant group first
+    const groupRaw = await client.callTool({
+      name: "variant",
+      arguments: {
+        action: "create-group",
+        componentUuid: comp.uuid,
+        name: "RenameTest",
+        type: "single",
+        initialVariants: ["OriginalName"],
+      },
+    });
+    const groupResult = parseResponse(groupRaw);
+    expect(groupRaw.isError).toBeFalsy();
+    const variantUuid = groupResult.variants[0].uuid;
+
+    // Rename the variant
+    const raw = await client.callTool({
+      name: "variant",
+      arguments: {
+        action: "rename",
+        componentUuid: comp.uuid,
+        variantRef: variantUuid,
+        newName: "RenamedVariant",
+      },
+    });
+    const result = parseResponse(raw);
+    expect(raw.isError).toBeFalsy();
+    expect(result.success).toBe(true);
+    expect(result.oldName).toBe("OriginalName");
+
+    // Undo
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+  });
+});
+
+describe("variant.remove", () => {
+  it("removes a component variant", async () => {
+    const comp = discoveredComponents[0];
+    // Create a variant group first
+    const groupRaw = await client.callTool({
+      name: "variant",
+      arguments: {
+        action: "create-group",
+        componentUuid: comp.uuid,
+        name: "RemoveTest",
+        type: "single",
+        initialVariants: ["ToRemove"],
+      },
+    });
+    const groupResult = parseResponse(groupRaw);
+    expect(groupRaw.isError).toBeFalsy();
+    const variantUuid = groupResult.variants[0].uuid;
+
+    // Remove the variant
+    const raw = await client.callTool({
+      name: "variant",
+      arguments: {
+        action: "remove",
+        componentUuid: comp.uuid,
+        variantRef: variantUuid,
+      },
+    });
+    const result = parseResponse(raw);
+    expect(raw.isError).toBeFalsy();
+    expect(result.success).toBe(true);
+    expect(result.removedName).toBe("ToRemove");
+    expect(result.removedUuid).toBe(variantUuid);
+
+    // Undo
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+  });
+});
+
 /** Walk a tree recursively to find a node by UUID. */
 function findNodeByUuid(tree: any, uuid: string): any {
   if (tree.uuid === uuid) return tree;

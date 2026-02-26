@@ -11,6 +11,10 @@
  *   - addGlobalVariant
  *   - removeGlobalVariantGroup
  *   - renameGlobalVariant
+ *   - createScreenVariant
+ *   - updateScreenVariant
+ *   - renameVariant
+ *   - removeVariant
  */
 
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -25,6 +29,10 @@ import {
   addGlobalVariant,
   removeGlobalVariantGroup,
   renameGlobalVariant,
+  createScreenVariant as createScreenVariantAction,
+  updateScreenVariant,
+  renameVariant as renameVariantAction,
+  removeVariant as removeVariantAction,
 } from "../edit-tools";
 import { setSession, clearSession } from "../session";
 import { initChangeTracker, disposeChangeTracker } from "../change-tracker";
@@ -40,6 +48,9 @@ import {
   mockCreateGlobalVariant,
   mockRemoveGlobalVariantGroup,
   mockRenameVariant,
+  mockCreateScreenVariant,
+  mockUpdateScreenVariantQuery,
+  mockTryRemoveVariant,
 } from "../__mocks__/wab-tpl-mgr";
 import { mockApiClient, makeSession, mkTag, mkComponent } from "./test-helpers";
 
@@ -902,5 +913,370 @@ describe("renameGlobalVariant", () => {
     initChangeTracker(session.site);
 
     await expect(renameGlobalVariant(api, "Nonexistent", "New")).rejects.toThrow(/not found/);
+  });
+});
+
+// =============================================================================
+// createScreenVariant
+// =============================================================================
+
+describe("createScreenVariant", () => {
+  let api: ReturnType<typeof mockApiClient>;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api = mockApiClient();
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+    mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
+  });
+  afterEach(() => { clearSession(); disposeChangeTracker(); clearNodeCache(); });
+
+  it("creates a screen variant with minWidth only", async () => {
+    const site = { components: [], globalVariantGroups: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await createScreenVariantAction(api, "Tablet", 768);
+    expect(mockCreateScreenVariant).toHaveBeenCalledWith({
+      name: "Tablet",
+      spec: expect.objectContaining({ minWidth: 768, maxWidth: undefined }),
+    });
+    expect(result.name).toBe("Tablet");
+    expect(result.mediaQuery).toBe("(min-width:768px)");
+  });
+
+  it("creates a screen variant with maxWidth only", async () => {
+    const site = { components: [], globalVariantGroups: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await createScreenVariantAction(api, "Mobile", undefined, 480);
+    expect(mockCreateScreenVariant).toHaveBeenCalledWith({
+      name: "Mobile",
+      spec: expect.objectContaining({ minWidth: undefined, maxWidth: 480 }),
+    });
+    expect(result.mediaQuery).toBe("(max-width:480px)");
+  });
+
+  it("creates a screen variant with both minWidth and maxWidth", async () => {
+    const site = { components: [], globalVariantGroups: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await createScreenVariantAction(api, "Tablet", 768, 1024);
+    expect(result.mediaQuery).toBe("(min-width:768px) and (max-width:1024px)");
+  });
+
+  it("throws when neither minWidth nor maxWidth is provided", async () => {
+    const site = { components: [], globalVariantGroups: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(createScreenVariantAction(api, "Bad")).rejects.toThrow(/At least one of minWidth or maxWidth/);
+  });
+
+  it("throws when minWidth is negative", async () => {
+    const site = { components: [], globalVariantGroups: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(createScreenVariantAction(api, "Bad", -1)).rejects.toThrow(/non-negative/);
+  });
+
+  it("throws when minWidth > maxWidth", async () => {
+    const site = { components: [], globalVariantGroups: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(createScreenVariantAction(api, "Bad", 1024, 768)).rejects.toThrow(/less than or equal/);
+  });
+});
+
+// =============================================================================
+// updateScreenVariant
+// =============================================================================
+
+describe("updateScreenVariant", () => {
+  let api: ReturnType<typeof mockApiClient>;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api = mockApiClient();
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+    mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
+  });
+  afterEach(() => { clearSession(); disposeChangeTracker(); clearNodeCache(); });
+
+  it("updates a screen variant by UUID", async () => {
+    const screenGroup = {
+      uuid: "sg1", param: { variable: { name: "Screen" } },
+      type: "global-screen", multi: true,
+      variants: [{ uuid: "sv1", name: "Mobile", mediaQuery: "(max-width:480px)" }],
+    };
+    const site = { components: [], globalVariantGroups: [screenGroup] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateScreenVariant(api, "sv1", 320, 768);
+    expect(mockUpdateScreenVariantQuery).toHaveBeenCalledWith(
+      screenGroup.variants[0],
+      "(min-width:320px) and (max-width:768px)"
+    );
+    expect(result.mediaQuery).toBe("(min-width:320px) and (max-width:768px)");
+  });
+
+  it("updates a screen variant by name", async () => {
+    const screenGroup = {
+      uuid: "sg1", param: { variable: { name: "Screen" } },
+      type: "global-screen", multi: true,
+      variants: [{ uuid: "sv1", name: "Mobile", mediaQuery: "(max-width:480px)" }],
+    };
+    const site = { components: [], globalVariantGroups: [screenGroup] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateScreenVariant(api, "Mobile", undefined, 600);
+    expect(mockUpdateScreenVariantQuery).toHaveBeenCalled();
+    expect(result.mediaQuery).toBe("(max-width:600px)");
+  });
+
+  it("throws when screen variant not found", async () => {
+    const site = { components: [], globalVariantGroups: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(updateScreenVariant(api, "Nonexistent", 768)).rejects.toThrow(/not found/);
+  });
+
+  it("throws when neither minWidth nor maxWidth provided", async () => {
+    const screenGroup = {
+      uuid: "sg1", param: { variable: { name: "Screen" } },
+      type: "global-screen", multi: true,
+      variants: [{ uuid: "sv1", name: "Mobile", mediaQuery: "(max-width:480px)" }],
+    };
+    const site = { components: [], globalVariantGroups: [screenGroup] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(updateScreenVariant(api, "sv1")).rejects.toThrow(/At least one of minWidth or maxWidth/);
+  });
+
+  it("ignores non-screen groups when searching", async () => {
+    const userGroup = {
+      uuid: "ug1", param: { variable: { name: "Theme" } },
+      type: "global-user-defined", multi: false,
+      variants: [{ uuid: "v1", name: "Dark" }],
+    };
+    const site = { components: [], globalVariantGroups: [userGroup] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    // "Dark" exists but in a user-defined group, not screen
+    await expect(updateScreenVariant(api, "Dark", 768)).rejects.toThrow(/not found/);
+  });
+});
+
+// =============================================================================
+// renameVariant (component or global)
+// =============================================================================
+
+describe("renameVariant", () => {
+  let api: ReturnType<typeof mockApiClient>;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api = mockApiClient();
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+    mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
+  });
+  afterEach(() => { clearSession(); disposeChangeTracker(); clearNodeCache(); });
+
+  it("renames a global variant when no componentUuid provided", async () => {
+    const group = {
+      uuid: "gvg1", param: { variable: { name: "Theme" } },
+      type: "global-user-defined", multi: false,
+      variants: [{ uuid: "v1", name: "Dark" }],
+    };
+    const site = { components: [], globalVariantGroups: [group] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await renameVariantAction(api, "Dark", "Night");
+    expect(result.oldName).toBe("Dark");
+    expect(mockRenameVariant).toHaveBeenCalledWith(group.variants[0], "Night");
+  });
+
+  it("renames a component variant by UUID", async () => {
+    const variant = { uuid: "cv1", name: "Small" };
+    const component = {
+      uuid: "comp-1", name: "MyComp",
+      variantGroups: [{ uuid: "g1", variants: [variant], param: { variable: { name: "Size" } } }],
+      variants: [],
+    };
+    const site = { components: [component], globalVariantGroups: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await renameVariantAction(api, "cv1", "Extra Small", "comp-1");
+    expect(result.oldName).toBe("Small");
+    expect(mockRenameVariant).toHaveBeenCalledWith(variant, "Extra Small");
+  });
+
+  it("renames a component variant by name", async () => {
+    const variant = { uuid: "cv1", name: "Large" };
+    const component = {
+      uuid: "comp-1", name: "MyComp",
+      variantGroups: [{ uuid: "g1", variants: [variant], param: { variable: { name: "Size" } } }],
+      variants: [],
+    };
+    const site = { components: [component], globalVariantGroups: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await renameVariantAction(api, "Large", "Extra Large", "comp-1");
+    expect(result.oldName).toBe("Large");
+    expect(mockRenameVariant).toHaveBeenCalled();
+  });
+
+  it("throws when component not found", async () => {
+    const site = { components: [], globalVariantGroups: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(renameVariantAction(api, "v1", "New", "nonexistent")).rejects.toThrow(/not found/);
+  });
+
+  it("throws when component variant not found", async () => {
+    const component = {
+      uuid: "comp-1", name: "MyComp",
+      variantGroups: [], variants: [],
+    };
+    const site = { components: [component], globalVariantGroups: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(renameVariantAction(api, "nonexistent", "New", "comp-1")).rejects.toThrow(/not found/);
+  });
+});
+
+// =============================================================================
+// removeVariant (component or global)
+// =============================================================================
+
+describe("removeVariant", () => {
+  let api: ReturnType<typeof mockApiClient>;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api = mockApiClient();
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+    mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
+  });
+  afterEach(() => { clearSession(); disposeChangeTracker(); clearNodeCache(); });
+
+  it("removes a global variant", async () => {
+    const group = {
+      uuid: "gvg1", param: { variable: { name: "Theme" } },
+      type: "global-user-defined", multi: false,
+      variants: [{ uuid: "v1", name: "Dark" }],
+    };
+    const site = { components: [], globalVariantGroups: [group] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await removeVariantAction(api, "Dark");
+    expect(result.removedName).toBe("Dark");
+    expect(result.removedUuid).toBe("v1");
+    expect(mockTryRemoveVariant).toHaveBeenCalledWith(group.variants[0], undefined);
+  });
+
+  it("removes a component variant by UUID", async () => {
+    const baseVariant = { uuid: "base-uuid", name: "base" };
+    const variant = { uuid: "cv1", name: "Small" };
+    const component = {
+      uuid: "comp-1", name: "MyComp",
+      variantGroups: [{ uuid: "g1", variants: [variant], param: { variable: { name: "Size" } } }],
+      variants: [baseVariant],
+    };
+    const site = { components: [component], globalVariantGroups: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await removeVariantAction(api, "cv1", "comp-1");
+    expect(result.removedName).toBe("Small");
+    expect(mockTryRemoveVariant).toHaveBeenCalledWith(variant, component);
+  });
+
+  it("removes a component variant by name", async () => {
+    const baseVariant = { uuid: "base-uuid", name: "base" };
+    const variant = { uuid: "cv1", name: "Large" };
+    const component = {
+      uuid: "comp-1", name: "MyComp",
+      variantGroups: [{ uuid: "g1", variants: [variant], param: { variable: { name: "Size" } } }],
+      variants: [baseVariant],
+    };
+    const site = { components: [component], globalVariantGroups: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await removeVariantAction(api, "Large", "comp-1");
+    expect(result.removedName).toBe("Large");
+    expect(mockTryRemoveVariant).toHaveBeenCalled();
+  });
+
+  it("throws when trying to remove base variant", async () => {
+    const baseVariant = { uuid: "base-uuid", name: "base" };
+    const component = {
+      uuid: "comp-1", name: "MyComp",
+      variantGroups: [{ uuid: "g1", variants: [baseVariant], param: { variable: { name: "Base" } } }],
+      variants: [baseVariant],
+    };
+    const site = { components: [component], globalVariantGroups: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(removeVariantAction(api, "base", "comp-1")).rejects.toThrow(/Cannot remove the base variant/);
+  });
+
+  it("throws when component not found", async () => {
+    const site = { components: [], globalVariantGroups: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(removeVariantAction(api, "v1", "nonexistent")).rejects.toThrow(/not found/);
+  });
+
+  it("throws when variant not found in component", async () => {
+    const component = {
+      uuid: "comp-1", name: "MyComp",
+      variantGroups: [], variants: [],
+    };
+    const site = { components: [component], globalVariantGroups: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(removeVariantAction(api, "nonexistent", "comp-1")).rejects.toThrow(/not found/);
   });
 });

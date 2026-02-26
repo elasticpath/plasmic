@@ -116,28 +116,28 @@ This spec covers the smaller gap features that don't warrant individual spec fil
 - **Parameters**: `name`, `type?` (single | multi | toggle), `initialVariants?`
 - Creates a GlobalVariantGroup on the site
 
-### `variant({ action: "create-screen" })` -- Deferred -- not included in STRAP consolidation
+### `variant({ action: "create-screen" })`
 - **Parameters**: `name`, `minWidth?`, `maxWidth?`
 - Creates a screen variant (responsive breakpoint)
 
-### `variant({ action: "update-screen" })` -- Deferred -- not included in STRAP consolidation
+### `variant({ action: "update-screen" })`
 - **Parameters**: `variantUuid`, `minWidth?`, `maxWidth?`
 - Updates breakpoint media query
 
-### `variant({ action: "rename" })` -- Deferred -- not included in STRAP consolidation
+### `variant({ action: "rename" })`
 - **Parameters**: `componentUuid?`, `variantUuid`, `newName`
 - Renames a variant
 
-### `variant({ action: "remove" })` -- Deferred -- not included in STRAP consolidation
+### `variant({ action: "remove" })`
 - **Parameters**: `componentUuid?`, `variantUuid`
 - Removes a variant with cleanup
 
 ### Acceptance Criteria
 - [x] Can create global variant group (e.g., "Dark Mode")
-- [ ] Can create screen variant with media query (Deferred -- not included in STRAP consolidation)
-- [ ] Can update screen variant breakpoint (Deferred -- not included in STRAP consolidation)
-- [ ] Can rename any variant (Deferred -- not included in STRAP consolidation)
-- [ ] Can remove any variant with cleanup (Deferred -- not included in STRAP consolidation)
+- [x] Can create screen variant with media query
+- [x] Can update screen variant breakpoint
+- [x] Can rename any variant
+- [x] Can remove any variant with cleanup
 - [x] Undo support
 - [x] Integration + unit tests
 

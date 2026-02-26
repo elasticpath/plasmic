@@ -26,11 +26,11 @@ This yields **8 domains** with clear boundaries:
 | `inspect` | All read-only queries on component trees | 8 |
 | `component` | Component/page lifecycle, props, states | 18 |
 | `node` | Element mutations (structure, style, text, attrs, images, mixins, animations) | 15 |
-| `variant` | Variant management (component, global, style) | 8 |
+| `variant` | Variant management (component, global, style) | 12 |
 | `design` | Site-level design system (tokens, mixins, animations, themes, assets) | 22 |
 | `data` | Data flow (queries, data-tokens, data-rep, data-cond, splits, code meta) | 16 |
 | `interaction` | Event handlers | 4 |
-| **Total** | | **99 actions across 8 tools** |
+| **Total** | | **103 actions across 8 tools** |
 
 ### Decision: where does `set-image` live?
 
@@ -97,7 +97,7 @@ These operate on nodes (adding/removing Animation objects from a VariantSetting)
 
 Note: `component` has 18 actions including `extract` (added post-STRAP) plus props and states (list/add/update/remove for each = 7 extra). This is acceptable because props, states, and extract are intrinsic to component definition -- they define the component's interface, internal state, and structure. They do not exist independently at the site level.
 
-### 4. `node` -- Element mutations (14 actions)
+### 4. `node` -- Element mutations (15 actions)
 
 | Action | Replaces | Parameters |
 |--------|----------|------------|
@@ -117,7 +117,7 @@ Note: `component` has 18 actions including `extract` (added post-STRAP) plus pro
 | `add-animation` | add-node-animation | componentUuid, nodeRef, seqRef, duration?, delay?, timingFunction?, iterationCount?, direction?, fillMode?, playState?, dryRun? |
 | `remove-animation` | remove-node-animation | componentUuid, nodeRef, seqRef?, animationIndex?, dryRun? |
 
-### 5. `variant` -- Variant management (9 actions)
+### 5. `variant` -- Variant management (12 actions)
 
 | Action | Replaces | Parameters |
 |--------|----------|------------|
@@ -129,10 +129,14 @@ Note: `component` has 18 actions including `extract` (added post-STRAP) plus pro
 | `add-global` | add-global-variant | groupRef, name |
 | `remove-global-group` | remove-global-variant-group | groupRef |
 | `rename-global` | rename-global-variant | variantRef, newName |
+| `create-screen` | (new) | name, minWidth?, maxWidth? |
+| `update-screen` | (new) | variantUuid, minWidth?, maxWidth? |
+| `rename` | (new) | componentUuid?, variantUuid, newName |
+| `remove` | (new) | componentUuid?, variantUuid |
 
-Note: 8 actions. This is a clean split: component-level variant listing/creation plus global variant group CRUD.
+Note: 12 actions. This is a clean split: component-level variant listing/creation, global variant group CRUD, screen variant management, and general variant rename/remove.
 
-### 6. `design` -- Site-level design system (24 actions)
+### 6. `design` -- Site-level design system (22 actions)
 
 #### Tokens (5)
 
@@ -237,7 +241,7 @@ Total: 16 actions.
 | `update` | (new) | componentUuid, nodeRef, event, interactionIndex, actionName?, args?, condition?, interactionName?, dryRun? |
 | `remove` | remove-interaction | componentUuid, nodeRef, event, interactionIndex?, dryRun? |
 
-## Verification: Complete tool coverage (99 tools)
+## Verification: Complete tool coverage (103 tools)
 
 Every old tool is mapped exactly once. Here is the exhaustive cross-reference sorted alphabetically by old tool name:
 
@@ -343,7 +347,7 @@ Every old tool is mapped exactly once. Here is the exhaustive cross-reference so
 | 98 | upload-asset | design | upload-asset |
 | 99 | (new) | interaction | update |
 
-**Count: 98 old tools mapped to 99 actions across 8 domain tools. Row 99 is a new action with no predecessor tool.**
+**Count: 98 old tools mapped to 99 actions across 8 domain tools. Row 99 is a new action with no predecessor tool. An additional 4 variant actions (create-screen, update-screen, rename, remove) bring the total to 103 actions.**
 
 ## Action count per domain (final)
 
@@ -353,11 +357,11 @@ Every old tool is mapped exactly once. Here is the exhaustive cross-reference so
 | inspect | 8 |
 | component | 18 |
 | node | 15 |
-| variant | 8 |
+| variant | 12 |
 | design | 22 |
 | data | 16 |
 | interaction | 4 |
-| **Total** | **99** |
+| **Total** | **103** |
 
 ## Acceptance Criteria
 - [x] 98 old tools are removed from server.ts (99 total actions, 1 is new with no predecessor)

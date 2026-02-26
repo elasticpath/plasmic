@@ -13,7 +13,7 @@
  *   - inspect (8 actions): read-only queries on component trees
  *   - component (18 actions): component/page lifecycle, props, states
  *   - node (15 actions): element mutations (structure, style, text, attrs)
- *   - variant (8 actions): variant management (component, global, style)
+ *   - variant (12 actions): variant management (component, global, style, screen)
  *   - design (22 actions): site-level design system (tokens, mixins, etc.)
  *   - data (16 actions): data flow (queries, data-tokens, splits, etc.)
  *   - interaction (4 actions): event handlers
@@ -109,6 +109,10 @@ import {
   addGlobalVariant,
   removeGlobalVariantGroup,
   renameGlobalVariant,
+  createScreenVariant as createScreenVariantAction,
+  updateScreenVariant,
+  renameVariant as renameVariantAction,
+  removeVariant as removeVariantAction,
   getCodeComponentMeta,
   listCustomFunctions,
   listSplits,
@@ -2736,13 +2740,13 @@ export function createServer(): McpServer {
   );
 
   // ========================================================================
-  // DOMAIN 5: variant (8 actions)
+  // DOMAIN 5: variant (12 actions)
   // ========================================================================
 
   server.tool(
     "variant",
     "Variant management for components and global variant groups.\n" +
-      "Actions: list, create-style, create-group, list-global-groups, create-global-group, add-global, remove-global-group, rename-global.\n" +
+      "Actions: list, create-style, create-group, list-global-groups, create-global-group, add-global, remove-global-group, rename-global, create-screen, update-screen, rename, remove.\n" +
       "- list: List all variants for a component\n" +
       "- create-style: Create hover/focus/etc. style variant\n" +
       "- create-group: Create named variant group (Size, Theme, etc.)\n" +
@@ -2750,12 +2754,17 @@ export function createServer(): McpServer {
       "- create-global-group: Create a global variant group\n" +
       "- add-global: Add variant to a global group\n" +
       "- remove-global-group: Remove entire global variant group\n" +
-      "- rename-global: Rename a global variant",
+      "- rename-global: Rename a global variant\n" +
+      "- create-screen: Create a screen variant (responsive breakpoint)\n" +
+      "- update-screen: Update screen variant breakpoint dimensions\n" +
+      "- rename: Rename a variant (component or global)\n" +
+      "- remove: Remove a single variant (component or global)",
     {
       action: z.enum([
         "list", "create-style", "create-group",
         "list-global-groups", "create-global-group", "add-global",
         "remove-global-group", "rename-global",
+        "create-screen", "update-screen", "rename", "remove",
       ]),
       componentUuid: z.string().optional().describe("UUID of the component"),
       selector: z.string().optional().describe("CSS pseudo-class selector for create-style"),
@@ -2766,6 +2775,8 @@ export function createServer(): McpServer {
       groupRef: z.string().optional().describe("Group reference (UUID or name)"),
       variantRef: z.string().optional().describe("Variant reference (UUID or name)"),
       newName: z.string().optional().describe("New name for rename"),
+      minWidth: z.number().optional().describe("Minimum viewport width in pixels for screen variants"),
+      maxWidth: z.number().optional().describe("Maximum viewport width in pixels for screen variants"),
     },
     async (params) => {
       const { action } = params;
@@ -2966,11 +2977,107 @@ export function createServer(): McpServer {
             };
           }
 
+          case "create-screen": {
+            const screenName = requireParam(params.name, "name", "variant.create-screen");
+            const result = await createScreenVariantAction(
+              apiClient, screenName, params.minWidth, params.maxWidth
+            );
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      variantUuid: result.variantUuid,
+                      name: result.name,
+                      mediaQuery: result.mediaQuery,
+                      revision: result.save.revisionNum,
+                      message: `Created screen variant "${result.name}" with breakpoint ${result.mediaQuery}.`,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "update-screen": {
+            const vref = requireParam(params.variantRef, "variantRef", "variant.update-screen");
+            const result = await updateScreenVariant(apiClient, vref, params.minWidth, params.maxWidth);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      variantUuid: result.variantUuid,
+                      name: result.name,
+                      mediaQuery: result.mediaQuery,
+                      revision: result.save.revisionNum,
+                      message: `Updated screen variant "${result.name}" to ${result.mediaQuery}.`,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "rename": {
+            const vref = requireParam(params.variantRef, "variantRef", "variant.rename");
+            const nn = requireParam(params.newName, "newName", "variant.rename");
+            const result = await renameVariantAction(apiClient, vref, nn, params.componentUuid);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      oldName: result.oldName,
+                      newName: result.newName,
+                      variantUuid: result.variantUuid,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "remove": {
+            const vref = requireParam(params.variantRef, "variantRef", "variant.remove");
+            const result = await removeVariantAction(apiClient, vref, params.componentUuid);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      removedName: result.removedName,
+                      removedUuid: result.removedUuid,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
           default:
             throw new Error(`Unknown action '${action}' for variant tool.`);
         }
       } catch (err: any) {
-        if (["create-style", "create-group", "create-global-group", "add-global", "remove-global-group", "rename-global"].includes(action)) {
+        if (["create-style", "create-group", "create-global-group", "add-global", "remove-global-group", "rename-global", "create-screen", "update-screen", "rename", "remove"].includes(action)) {
           return handleMutationError(`variant.${action}`, err);
         }
         return {

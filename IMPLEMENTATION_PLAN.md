@@ -3,10 +3,10 @@
 > **Goal**: Create Claude Code skills and workflows that can interact with Plasmic Studio
 > programmatically to create fully-featured pages from the Claude Code terminal.
 >
-> **Current state**: 8 STRAP domain tools (consolidating 99 actions), 6 Claude Code skills (STRAP calling convention), 1083 tests (970 unit + 113 integration), 19 test files.
+> **Current state**: 8 STRAP domain tools (consolidating 103 actions), 6 Claude Code skills (STRAP calling convention), 1116 tests (998 unit + 118 integration), 19 test files.
 > Zero TODOs/FIXMEs/skipped tests. Zero tsc errors. All code quality items complete.
 >
-> **Last verified**: 2026-02-26 — interaction.update implemented, spec inconsistencies fixed. All specs fully implemented.
+> **Last verified**: 2026-02-26 — 4 new variant actions (create-screen, update-screen, rename, remove) implemented. variant domain now 12 actions. Test count updated.
 >
 > **Spec consistency pass** (2026-02-26): Fixed 4 gap spec → STRAP naming discrepancies:
 > `gap-mixins.md` remove-mixin→detach-mixin, `gap-themes.md` themeRef→themeIndex,
@@ -92,12 +92,13 @@ STRAP spec updated for `component.extract` (Tier 5.1) and `interaction.update`.
 ### 5.1 Remaining Features Bundle — IMPLEMENTED (8 of 8)
 - **Spec**: `specs/gap-remaining-features.md`
 - Sub-features done: Reorder Children, Global Variant Groups, Convert Page/Component, Data Tokens, Code Component Meta, Custom Functions, A/B Testing (Splits), Extract to Component
+- Previously deferred variant actions now implemented (2026-02-26): create-screen, update-screen, rename, remove — variant domain expanded from 8 to 12 actions
 
 ---
 
 ## Tier 6 — Architecture & Infrastructure
 
-### 6.1 STRAP Consolidation (99 Actions → 8 Domain Tools) — IMPLEMENTED
+### 6.1 STRAP Consolidation (103 Actions → 8 Domain Tools) — IMPLEMENTED
 - **Spec**: `specs/strap-consolidation.md`
 
 ### 6.2 Test Restructure — IMPLEMENTED

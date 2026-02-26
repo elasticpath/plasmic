@@ -132,6 +132,10 @@ describe("tool handlers", () => {
   let mockDeleteComponent: ReturnType<typeof vi.fn>;
   let mockCreateStyleVariant: ReturnType<typeof vi.fn>;
   let mockCreateVariantGroup: ReturnType<typeof vi.fn>;
+  let mockCreateScreenVariantAction: ReturnType<typeof vi.fn>;
+  let mockUpdateScreenVariant: ReturnType<typeof vi.fn>;
+  let mockRenameVariantAction: ReturnType<typeof vi.fn>;
+  let mockRemoveVariantAction: ReturnType<typeof vi.fn>;
   let mockBeginBatch: ReturnType<typeof vi.fn>;
   let mockEndBatch: ReturnType<typeof vi.fn>;
   let mockIsBatchActive: ReturnType<typeof vi.fn>;
@@ -192,6 +196,10 @@ describe("tool handlers", () => {
     mockDeleteComponent = vi.fn();
     mockCreateStyleVariant = vi.fn();
     mockCreateVariantGroup = vi.fn();
+    mockCreateScreenVariantAction = vi.fn();
+    mockUpdateScreenVariant = vi.fn();
+    mockRenameVariantAction = vi.fn();
+    mockRemoveVariantAction = vi.fn();
     mockUpdateAttrs = vi.fn();
     mockGetValidStylePropertyNames = vi.fn();
     mockBeginBatch = vi.fn();
@@ -298,6 +306,10 @@ describe("tool handlers", () => {
       deleteComponent: (...args: any[]) => mockDeleteComponent(...args),
       createStyleVariant: (...args: any[]) => mockCreateStyleVariant(...args),
       createVariantGroup: (...args: any[]) => mockCreateVariantGroup(...args),
+      createScreenVariant: (...args: any[]) => mockCreateScreenVariantAction(...args),
+      updateScreenVariant: (...args: any[]) => mockUpdateScreenVariant(...args),
+      renameVariant: (...args: any[]) => mockRenameVariantAction(...args),
+      removeVariant: (...args: any[]) => mockRemoveVariantAction(...args),
       updateAttrs: (...args: any[]) => mockUpdateAttrs(...args),
       getValidStylePropertyNames: () => mockGetValidStylePropertyNames(),
     }));
@@ -3099,6 +3111,152 @@ describe("tool handlers", () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("Error variant.create-group");
+    });
+  });
+
+  describe("variant.create-screen", () => {
+    it("creates a screen variant with breakpoint", async () => {
+      mockCreateScreenVariantAction.mockResolvedValue({
+        save: { revisionNum: 30, incremental: true },
+        variantUuid: "sv-1",
+        name: "Tablet",
+        mediaQuery: "(min-width:768px) and (max-width:1024px)",
+      });
+
+      const result = await client.callTool({
+        name: "variant",
+        arguments: {
+          action: "create-screen",
+          name: "Tablet",
+          minWidth: 768,
+          maxWidth: 1024,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.variantUuid).toBe("sv-1");
+      expect(output.name).toBe("Tablet");
+      expect(output.mediaQuery).toContain("768");
+      expect(output.revision).toBe(30);
+      expect(mockCreateScreenVariantAction).toHaveBeenCalledWith(
+        mockApiClient, "Tablet", 768, 1024
+      );
+    });
+
+    it("returns error when creation fails", async () => {
+      mockCreateScreenVariantAction.mockRejectedValue(
+        new Error("At least one of minWidth or maxWidth must be provided")
+      );
+
+      const result = await client.callTool({
+        name: "variant",
+        arguments: { action: "create-screen", name: "Bad" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Error variant.create-screen");
+    });
+  });
+
+  describe("variant.update-screen", () => {
+    it("updates a screen variant breakpoint", async () => {
+      mockUpdateScreenVariant.mockResolvedValue({
+        save: { revisionNum: 31, incremental: true },
+        variantUuid: "sv-1",
+        name: "Mobile",
+        mediaQuery: "(max-width:600px)",
+      });
+
+      const result = await client.callTool({
+        name: "variant",
+        arguments: {
+          action: "update-screen",
+          variantRef: "sv-1",
+          maxWidth: 600,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.mediaQuery).toBe("(max-width:600px)");
+      expect(mockUpdateScreenVariant).toHaveBeenCalledWith(
+        mockApiClient, "sv-1", undefined, 600
+      );
+    });
+  });
+
+  describe("variant.rename", () => {
+    it("renames a variant", async () => {
+      mockRenameVariantAction.mockResolvedValue({
+        save: { revisionNum: 32, incremental: true },
+        oldName: "Old",
+        newName: "New",
+        variantUuid: "v-1",
+      });
+
+      const result = await client.callTool({
+        name: "variant",
+        arguments: {
+          action: "rename",
+          variantRef: "v-1",
+          newName: "New",
+          componentUuid: "comp-1",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.oldName).toBe("Old");
+      expect(output.newName).toBe("New");
+      expect(mockRenameVariantAction).toHaveBeenCalledWith(
+        mockApiClient, "v-1", "New", "comp-1"
+      );
+    });
+  });
+
+  describe("variant.remove", () => {
+    it("removes a variant", async () => {
+      mockRemoveVariantAction.mockResolvedValue({
+        save: { revisionNum: 33, incremental: true },
+        removedName: "OldVariant",
+        removedUuid: "v-1",
+      });
+
+      const result = await client.callTool({
+        name: "variant",
+        arguments: {
+          action: "remove",
+          variantRef: "v-1",
+          componentUuid: "comp-1",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.removedName).toBe("OldVariant");
+      expect(output.removedUuid).toBe("v-1");
+      expect(mockRemoveVariantAction).toHaveBeenCalledWith(
+        mockApiClient, "v-1", "comp-1"
+      );
+    });
+
+    it("returns error when variant not found", async () => {
+      mockRemoveVariantAction.mockRejectedValue(
+        new Error('Variant "nonexistent" not found')
+      );
+
+      const result = await client.callTool({
+        name: "variant",
+        arguments: { action: "remove", variantRef: "nonexistent" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Error variant.remove");
     });
   });
 

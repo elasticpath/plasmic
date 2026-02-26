@@ -7233,6 +7233,320 @@ export async function renameGlobalVariant(
 }
 
 // ==========================================================================
+// create-screen (screen breakpoint variant)
+// ==========================================================================
+
+export interface CreateScreenVariantResult {
+  save: SaveResult;
+  variantUuid: string;
+  name: string;
+  mediaQuery: string;
+}
+
+/**
+ * Create a screen variant (responsive breakpoint).
+ * At least one of minWidth/maxWidth must be provided.
+ */
+export async function createScreenVariant(
+  apiClient: PlasmicApiClient,
+  name: string,
+  minWidth?: number,
+  maxWidth?: number,
+): Promise<CreateScreenVariantResult> {
+  if (minWidth === undefined && maxWidth === undefined) {
+    throw new Error("At least one of minWidth or maxWidth must be provided");
+  }
+  if (minWidth !== undefined && minWidth < 0) {
+    throw new Error("minWidth must be a non-negative number");
+  }
+  if (maxWidth !== undefined && maxWidth < 0) {
+    throw new Error("maxWidth must be a non-negative number");
+  }
+  if (minWidth !== undefined && maxWidth !== undefined && minWidth > maxWidth) {
+    throw new Error("minWidth must be less than or equal to maxWidth");
+  }
+
+  const session = requireSession();
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  // Build the ScreenSizeSpec-like object with a query() method
+  const spec = makeScreenSpec(minWidth, maxWidth);
+
+  let variant: any;
+  const changes = tracker.withRecording(() => {
+    variant = tplMgr.createScreenVariant({ name, spec });
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `create-screen-variant: ${name}`,
+    []
+  );
+
+  return {
+    save,
+    variantUuid: variant.uuid,
+    name: variant.name,
+    mediaQuery: variant.mediaQuery ?? spec.query(),
+  };
+}
+
+// ==========================================================================
+// update-screen (update screen breakpoint dimensions)
+// ==========================================================================
+
+export interface UpdateScreenVariantResult {
+  save: SaveResult;
+  variantUuid: string;
+  name: string;
+  mediaQuery: string;
+}
+
+/**
+ * Update the breakpoint dimensions of an existing screen variant.
+ * At least one of minWidth/maxWidth must be provided.
+ */
+export async function updateScreenVariant(
+  apiClient: PlasmicApiClient,
+  variantRef: string,
+  minWidth?: number,
+  maxWidth?: number,
+): Promise<UpdateScreenVariantResult> {
+  if (minWidth === undefined && maxWidth === undefined) {
+    throw new Error("At least one of minWidth or maxWidth must be provided");
+  }
+  if (minWidth !== undefined && minWidth < 0) {
+    throw new Error("minWidth must be a non-negative number");
+  }
+  if (maxWidth !== undefined && maxWidth < 0) {
+    throw new Error("maxWidth must be a non-negative number");
+  }
+  if (minWidth !== undefined && maxWidth !== undefined && minWidth > maxWidth) {
+    throw new Error("minWidth must be less than or equal to maxWidth");
+  }
+
+  const session = requireSession();
+  const variant = findScreenVariant(session.site, variantRef);
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  const spec = makeScreenSpec(minWidth, maxWidth);
+  const query = spec.query();
+
+  const changes = tracker.withRecording(() => {
+    tplMgr.updateScreenVariantQuery(variant, query);
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `update-screen-variant: ${variant.name}`,
+    []
+  );
+
+  return {
+    save,
+    variantUuid: variant.uuid,
+    name: variant.name,
+    mediaQuery: query,
+  };
+}
+
+// ==========================================================================
+// rename (variant — component or global)
+// ==========================================================================
+
+export interface RenameVariantResult {
+  save: SaveResult;
+  oldName: string;
+  newName: string;
+  variantUuid: string;
+}
+
+/**
+ * Rename a variant. If componentUuid is provided, looks up in that component's
+ * variant groups. Otherwise looks up in global variant groups.
+ */
+export async function renameVariant(
+  apiClient: PlasmicApiClient,
+  variantRef: string,
+  newName: string,
+  componentUuid?: string,
+): Promise<RenameVariantResult> {
+  const session = requireSession();
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  let variant: any;
+  if (componentUuid) {
+    const component = session.site.components?.find(
+      (c: any) => c.uuid === componentUuid
+    );
+    if (!component) {
+      throw new Error(`Component UUID "${componentUuid}" not found.`);
+    }
+    variant = findComponentVariant(component, variantRef);
+  } else {
+    const result = findGlobalVariant(session.site, variantRef);
+    variant = result.variant;
+  }
+
+  const oldName = variant.name ?? variant.selectors?.[0] ?? "unnamed";
+
+  const changes = tracker.withRecording(() => {
+    tplMgr.renameVariant(variant, newName);
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `rename-variant: ${oldName} → ${newName}`,
+    []
+  );
+
+  return { save, oldName, newName: variant.name, variantUuid: variant.uuid };
+}
+
+// ==========================================================================
+// remove (variant — component or global)
+// ==========================================================================
+
+export interface RemoveVariantResult {
+  save: SaveResult;
+  removedName: string;
+  removedUuid: string;
+}
+
+/**
+ * Remove a single variant. If componentUuid is provided, looks up in that
+ * component's variant groups. Otherwise looks up in global variant groups.
+ */
+export async function removeVariant(
+  apiClient: PlasmicApiClient,
+  variantRef: string,
+  componentUuid?: string,
+): Promise<RemoveVariantResult> {
+  const session = requireSession();
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  let variant: any;
+  let component: any = undefined;
+  if (componentUuid) {
+    component = session.site.components?.find(
+      (c: any) => c.uuid === componentUuid
+    );
+    if (!component) {
+      throw new Error(`Component UUID "${componentUuid}" not found.`);
+    }
+    variant = findComponentVariant(component, variantRef);
+  } else {
+    const result = findGlobalVariant(session.site, variantRef);
+    variant = result.variant;
+  }
+
+  // Prevent removing base variant
+  if (variant.name === "base" || variant.uuid === component?.variants?.[0]?.uuid) {
+    throw new Error("Cannot remove the base variant.");
+  }
+
+  const removedName = variant.name ?? variant.selectors?.[0] ?? "unnamed";
+  const removedUuid = variant.uuid;
+
+  const changes = tracker.withRecording(() => {
+    tplMgr.tryRemoveVariant(variant, component);
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `remove-variant: ${removedName}`,
+    []
+  );
+
+  return { save, removedName, removedUuid };
+}
+
+// ==========================================================================
+// Variant helpers (shared)
+// ==========================================================================
+
+/**
+ * Build a ScreenSizeSpec-like object from minWidth/maxWidth.
+ * Produces the same CSS media query format as the real ScreenSizeSpec.
+ */
+function makeScreenSpec(minWidth?: number, maxWidth?: number) {
+  return {
+    minWidth,
+    maxWidth,
+    query() {
+      const parts: string[] = [];
+      if (minWidth !== undefined) parts.push(`(min-width:${minWidth}px)`);
+      if (maxWidth !== undefined) parts.push(`(max-width:${maxWidth}px)`);
+      return parts.join(" and ");
+    },
+  };
+}
+
+/**
+ * Find a screen variant by UUID or name. Throws if not found or not a screen variant.
+ */
+function findScreenVariant(site: any, variantRef: string): any {
+  const groups: any[] = site.globalVariantGroups ?? [];
+  for (const g of groups) {
+    if (g.type !== "global-screen") continue;
+    for (const v of g.variants ?? []) {
+      if (v.uuid === variantRef) return v;
+    }
+  }
+  for (const g of groups) {
+    if (g.type !== "global-screen") continue;
+    const lower = variantRef.toLowerCase();
+    for (const v of g.variants ?? []) {
+      if ((v.name ?? "").toLowerCase() === lower) return v;
+    }
+  }
+  throw new Error(
+    `Screen variant "${variantRef}" not found. Use variant.list-global-groups to see available screen variants.`
+  );
+}
+
+/**
+ * Find a variant within a component's variant groups (including style variants).
+ * Searches by UUID first, then by name (case-insensitive).
+ */
+function findComponentVariant(component: any, variantRef: string): any {
+  // Search by UUID
+  for (const group of component.variantGroups ?? []) {
+    for (const v of group.variants ?? []) {
+      if (v.uuid === variantRef) return v;
+    }
+  }
+  for (const v of component.variants ?? []) {
+    if (v.uuid === variantRef) return v;
+  }
+
+  // Search by name (case-insensitive)
+  const lower = variantRef.toLowerCase();
+  for (const group of component.variantGroups ?? []) {
+    for (const v of group.variants ?? []) {
+      if ((v.name ?? "").toLowerCase() === lower) return v;
+    }
+  }
+  // Search style variants by selector
+  for (const v of component.variants ?? []) {
+    if (v.selectors?.some((s: string) => s.toLowerCase() === lower)) return v;
+    if ((v.name ?? "").toLowerCase() === lower) return v;
+  }
+
+  throw new Error(
+    `Variant "${variantRef}" not found in component "${component.name ?? component.uuid}".`
+  );
+}
+
+// ==========================================================================
 // get-code-component-meta (read-only)
 // ==========================================================================
 
