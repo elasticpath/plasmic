@@ -2905,6 +2905,130 @@ describe("data repetition", () => {
   });
 });
 
+describe("token CRUD", () => {
+  it("create-token → get-tokens → verify new token appears", async () => {
+    const createResult = await client.callTool({
+      name: "create-token",
+      arguments: {
+        name: "Test Color",
+        type: "Color",
+        value: "#FF00FF",
+      },
+    });
+    expect(createResult.isError).toBeFalsy();
+    const createOutput = parseResponse(createResult);
+    expect(createOutput.success).toBe(true);
+    expect(createOutput.tokenUuid).toBeTruthy();
+    expect(createOutput.name).toBe("Test Color");
+    expect(createOutput.tokenType).toBe("Color");
+
+    // Verify token appears in get-tokens
+    const tokensResult = await client.callTool({
+      name: "get-tokens",
+      arguments: { type: "Color" },
+    });
+    const tokensOutput = parseResponse(tokensResult);
+    const allTokens = Object.values(tokensOutput.tokens).flat() as any[];
+    const found = allTokens.find((t: any) => t.uuid === createOutput.tokenUuid);
+    expect(found).toBeTruthy();
+    expect(found.value).toBe("#FF00FF");
+
+    // Clean up
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+
+  it("update-token → verify value and name change", async () => {
+    // Create a token first
+    const createResult = parseResponse(
+      await client.callTool({
+        name: "create-token",
+        arguments: { name: "Temp Token", type: "Spacing", value: "8px" },
+      })
+    );
+
+    // Update value
+    const updateResult = await client.callTool({
+      name: "update-token",
+      arguments: {
+        tokenRef: createResult.tokenUuid,
+        value: "16px",
+        name: "Updated Token",
+      },
+    });
+    expect(updateResult.isError).toBeFalsy();
+    const updateOutput = parseResponse(updateResult);
+    expect(updateOutput.success).toBe(true);
+    expect(updateOutput.previousValue).toBe("8px");
+    expect(updateOutput.value).toBe("16px");
+    expect(updateOutput.previousName).toBe("Temp Token");
+
+    // Clean up (undo update + undo create)
+    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+
+  it("remove-token → verify token gone from get-tokens", async () => {
+    // Create a token
+    const createResult = parseResponse(
+      await client.callTool({
+        name: "create-token",
+        arguments: { name: "Removable", type: "Color", value: "#AABBCC" },
+      })
+    );
+    const tokenUuid = createResult.tokenUuid;
+
+    // Remove it
+    const removeResult = await client.callTool({
+      name: "remove-token",
+      arguments: { tokenRef: tokenUuid },
+    });
+    expect(removeResult.isError).toBeFalsy();
+    const removeOutput = parseResponse(removeResult);
+    expect(removeOutput.success).toBe(true);
+    expect(removeOutput.tokenUuid).toBe(tokenUuid);
+
+    // Verify gone from get-tokens
+    const tokensResult = parseResponse(
+      await client.callTool({ name: "get-tokens", arguments: {} })
+    );
+    const allTokens = Object.values(tokensResult.tokens).flat() as any[];
+    expect(allTokens.find((t: any) => t.uuid === tokenUuid)).toBeFalsy();
+
+    // Clean up (undo remove + undo create)
+    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+
+  it("duplicate-token → verify copy with new UUID", async () => {
+    // Create a token
+    const createResult = parseResponse(
+      await client.callTool({
+        name: "create-token",
+        arguments: { name: "Original", type: "Color", value: "#112233" },
+      })
+    );
+
+    // Duplicate it
+    const dupResult = await client.callTool({
+      name: "duplicate-token",
+      arguments: {
+        tokenRef: createResult.tokenUuid,
+        newName: "Copy of Original",
+      },
+    });
+    expect(dupResult.isError).toBeFalsy();
+    const dupOutput = parseResponse(dupResult);
+    expect(dupOutput.success).toBe(true);
+    expect(dupOutput.sourceUuid).toBe(createResult.tokenUuid);
+    expect(dupOutput.tokenUuid).not.toBe(createResult.tokenUuid);
+    expect(dupOutput.value).toBe("#112233");
+
+    // Clean up (undo duplicate + undo create)
+    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+});
+
 /** Walk a tree recursively to find a node by UUID. */
 function findNodeByUuid(tree: any, uuid: string): any {
   if (tree.uuid === uuid) return tree;

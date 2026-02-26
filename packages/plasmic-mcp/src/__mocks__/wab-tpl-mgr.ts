@@ -24,6 +24,9 @@ export const mockCreateStyleVariant = vi.fn();
 export const mockCreatePrivateStyleVariant = vi.fn();
 export const mockCreateVariantGroup = vi.fn();
 export const mockCreateVariant = vi.fn();
+export const mockAddStyleToken = vi.fn();
+export const mockRenameStyleToken = vi.fn();
+export const mockDuplicateStyleToken = vi.fn();
 
 export class TplMgr {
   constructor(_args: { site: any }) {}
@@ -58,5 +61,17 @@ export class TplMgr {
 
   createVariant(component: any, group: any, name?: string): any {
     return mockCreateVariant(component, group, name);
+  }
+
+  addStyleToken(opts: any): any {
+    return mockAddStyleToken(opts);
+  }
+
+  renameStyleToken(token: any, name: string): void {
+    mockRenameStyleToken(token, name);
+  }
+
+  duplicateStyleToken(token: any): any {
+    return mockDuplicateStyleToken(token);
   }
 }

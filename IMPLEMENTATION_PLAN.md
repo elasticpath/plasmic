@@ -3,7 +3,7 @@
 > **Goal**: Create Claude Code skills and workflows that can interact with Plasmic Studio
 > programmatically to create fully-featured pages from the Claude Code terminal.
 >
-> **Current state**: 37 MCP tools, 6 Claude Code skills, 719 tests (666 unit + 53 integration).
+> **Current state**: 41 MCP tools, 6 Claude Code skills, 738 tests (681 unit + 57 integration).
 > Zero TODOs/FIXMEs/skipped tests. All acceptance criteria in specs are unchecked (none implemented).
 >
 > **Last verified**: 2026-02-26 — full code search re-confirmed all statuses below.
@@ -55,20 +55,17 @@ Each is self-contained with no cross-spec dependencies.
   - `set-data-rep` — enable element repetition over a collection expression (e.g., `$queries.products.data`)
 - **Cross-tool integration**: Works with data queries (`$queries.x.data`), dynamic text (`$ctx.currentItem.field`), and conditional visibility (`$ctx.currentItem.isActive`)
 
-### 1.3 Token CRUD
+### 1.3 Token CRUD — IMPLEMENTED (2026-02-26)
 - **Spec**: `specs/gap-token-crud.md`
-- **Status**: NOT IMPLEMENTED
-  - Verified: zero references to `addStyleToken`, `create-token`, `remove-token` in MCP src/
-  - WAB backing confirmed: `TplMgr.addStyleToken()` (line 1879), `renameStyleToken()` (line 1898), `duplicateStyleToken()` (line 2145) in `shared/TplMgr.ts`
-  - **Note**: `removeStyleToken()` does NOT exist as a TplMgr method. Token removal must splice from `site.styleTokens[]` directly + clean up all referencing styles. See `code-components.ts` line 4646 for the pattern.
-- **What**: Four new site-level actions:
-  - `create-token` — name, type (Color/Spacing/Opacity/LineHeight/FontFamily/FontSize), value
-  - `update-token` — update value and/or name by ref (name or UUID)
-  - `remove-token` — delete token, resolve all referencing styles to literal values (manual array splice + reference cleanup)
-  - `duplicate-token` — clone with optional new name
-- **Note**: Existing `get-tokens` (read) and `token:Name` reference syntax in `update-styles` already work. New tokens must be immediately usable in both.
-- **Effort**: Medium — straightforward CRUD but token removal requires reference cleanup across all styles
-- **Tests needed**: Unit tests for all 4 operations + integration test (create → apply via update-styles → update → verify propagation)
+- **Status**: IMPLEMENTED
+  - Four new site-level tools: `create-token`, `update-token`, `remove-token`, `duplicate-token`
+  - `remove-token` walks all component styles and other tokens to inline references before removal
+  - TplMgr mock extended with `addStyleToken`, `renameStyleToken`, `duplicateStyleToken`
+  - StyleToken mock class added to wab-classes mock
+  - 15 unit tests + 4 integration tests = 19 new tests
+  - Total test count: 738 (681 unit + 57 integration)
+- **What**: Four site-level actions for full token lifecycle management
+  - Existing `get-tokens` (read) and `token:Name` reference syntax in `update-styles` already work with newly created tokens
 
 ### 1.4 Component Props Definition
 - **Spec**: `specs/gap-component-props.md`
@@ -318,7 +315,7 @@ These are code health improvements discovered during analysis. No specs needed.
 ## Implementation Order Recommendation
 
 ```
-Phase 1 (Foundations):      1.1 Visibility ✓ → 1.2 Data Repetition ✓ → 1.3 Tokens → CQ-1 Dead Code
+Phase 1 (Foundations):      1.1 Visibility ✓ → 1.2 Data Repetition ✓ → 1.3 Tokens ✓ → CQ-1 Dead Code
 Phase 2 (Authoring):        1.4 Props → 1.5 Rich Text → 2.1 State
 Phase 3 (Interactivity):    2.2 Interactions → CQ-2/CQ-3 Slot Gaps
 Phase 4 (Assets & Data):    3.1 Images → 3.2 Queries

@@ -39,6 +39,10 @@ import {
   setVisibility,
   setDataCond,
   setDataRep,
+  createToken,
+  updateToken,
+  removeToken,
+  duplicateToken,
 } from "../edit-tools";
 import { setSession, clearSession } from "../session";
 import { initChangeTracker, disposeChangeTracker } from "../change-tracker";
@@ -53,6 +57,9 @@ import {
   mockCreatePrivateStyleVariant,
   mockCreateVariantGroup,
   mockCreateVariant,
+  mockAddStyleToken,
+  mockRenameStyleToken,
+  mockDuplicateStyleToken,
 } from "../__mocks__/wab-tpl-mgr";
 import { mockMkTplTagX, mockMkTplInlinedText, mockMkTplComponentX } from "../__mocks__/wab-tpls";
 import { mockEnsureVariantSetting } from "../__mocks__/wab-variants";
@@ -6049,5 +6056,348 @@ describe("setDataRep", () => {
 
     expect(result.newDataRep!.collection).toBe("$ctx.mobileItems");
     expect(mobileVs.dataRep._type).toBe("Rep");
+  });
+});
+
+describe("createToken", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    clearNodeCache();
+    api = mockApiClient();
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+    mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
+  });
+
+  afterEach(() => {
+    disposeChangeTracker();
+    clearSession();
+    vi.restoreAllMocks();
+  });
+
+  it("creates a Color token via TplMgr.addStyleToken", async () => {
+    const site = { components: [], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const mockToken = {
+      uuid: "tok-1",
+      name: "Primary Blue",
+      type: "Color",
+      value: "#0066FF",
+    };
+    mockAddStyleToken.mockReturnValue(mockToken);
+
+    const result = await createToken(api, "Primary Blue", "Color", "#0066FF");
+
+    expect(mockAddStyleToken).toHaveBeenCalledWith({
+      name: "Primary Blue",
+      tokenType: "Color",
+      value: "#0066FF",
+    });
+    expect(result.tokenUuid).toBe("tok-1");
+    expect(result.name).toBe("Primary Blue");
+    expect(result.type).toBe("Color");
+    expect(result.value).toBe("#0066FF");
+    expect(result.save.revisionNum).toBe(11);
+  });
+
+  it("creates a Spacing token", async () => {
+    const site = { components: [], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    mockAddStyleToken.mockReturnValue({
+      uuid: "tok-2",
+      name: "Space MD",
+      type: "Spacing",
+      value: "16px",
+    });
+
+    const result = await createToken(api, "Space MD", "Spacing", "16px");
+
+    expect(result.type).toBe("Spacing");
+    expect(result.value).toBe("16px");
+  });
+});
+
+describe("updateToken", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    clearNodeCache();
+    api = mockApiClient();
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+    mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
+  });
+
+  afterEach(() => {
+    disposeChangeTracker();
+    clearSession();
+    vi.restoreAllMocks();
+  });
+
+  it("updates token value", async () => {
+    const token = { uuid: "tok-1", name: "Primary", type: "Color", value: "#0066FF" };
+    const site = { components: [], styleTokens: [token] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateToken(api, "Primary", "#FF0000");
+
+    expect(result.previousValue).toBe("#0066FF");
+    expect(result.value).toBe("#FF0000");
+    expect(token.value).toBe("#FF0000");
+  });
+
+  it("renames token via TplMgr", async () => {
+    const token = { uuid: "tok-1", name: "Primary", type: "Color", value: "#0066FF" };
+    const site = { components: [], styleTokens: [token] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    mockRenameStyleToken.mockImplementation((t: any, n: string) => {
+      t.name = n;
+    });
+
+    const result = await updateToken(api, "Primary", undefined, "Brand Blue");
+
+    expect(mockRenameStyleToken).toHaveBeenCalledWith(token, "Brand Blue");
+    expect(result.previousName).toBe("Primary");
+    expect(result.name).toBe("Brand Blue");
+  });
+
+  it("updates both value and name", async () => {
+    const token = { uuid: "tok-1", name: "Primary", type: "Color", value: "#0066FF" };
+    const site = { components: [], styleTokens: [token] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    mockRenameStyleToken.mockImplementation((t: any, n: string) => {
+      t.name = n;
+    });
+
+    const result = await updateToken(api, "tok-1", "#FF0000", "Danger");
+
+    expect(result.previousValue).toBe("#0066FF");
+    expect(result.previousName).toBe("Primary");
+    expect(result.value).toBe("#FF0000");
+    expect(result.name).toBe("Danger");
+  });
+
+  it("throws for non-existent token", async () => {
+    const site = { components: [], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(updateToken(api, "NonExistent", "#000")).rejects.toThrow(
+      /not found/
+    );
+  });
+
+  it("rejects dependency tokens", async () => {
+    const depToken = { uuid: "dep-tok-1", name: "DepColor", type: "Color", value: "#000" };
+    const site = {
+      components: [],
+      styleTokens: [],
+      projectDependencies: [{ site: { styleTokens: [depToken] } }],
+    };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(updateToken(api, "DepColor", "#FFF")).rejects.toThrow(
+      /dependency project/
+    );
+  });
+});
+
+describe("removeToken", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    clearNodeCache();
+    api = mockApiClient();
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+    mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
+  });
+
+  afterEach(() => {
+    disposeChangeTracker();
+    clearSession();
+    vi.restoreAllMocks();
+  });
+
+  it("removes token and splices from array", async () => {
+    const token = { uuid: "tok-1", name: "Primary", type: "Color", value: "#0066FF" };
+    const site = { components: [], styleTokens: [token] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await removeToken(api, "Primary");
+
+    expect(result.tokenUuid).toBe("tok-1");
+    expect(result.name).toBe("Primary");
+    expect(site.styleTokens).toHaveLength(0);
+  });
+
+  it("inlines token references in component styles", async () => {
+    const token = { uuid: "tok-1", name: "Primary", type: "Color", value: "#0066FF" };
+    const node = mkTag({
+      uuid: "node-1",
+      styles: { color: "var(--token-tok-1)" },
+    });
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [token] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await removeToken(api, "tok-1");
+
+    expect(result.inlinedCount).toBeGreaterThan(0);
+    expect(node.vsettings[0].rs.values.color).toBe("#0066FF");
+    expect(site.styleTokens).toHaveLength(0);
+  });
+
+  it("inlines token references in other tokens", async () => {
+    const primary = { uuid: "tok-1", name: "Primary", type: "Color", value: "#0066FF" };
+    const accent = {
+      uuid: "tok-2",
+      name: "Accent",
+      type: "Color",
+      value: "var(--token-tok-1)",
+    };
+    const site = { components: [], styleTokens: [primary, accent] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await removeToken(api, "Primary");
+
+    expect(accent.value).toBe("#0066FF");
+    expect(result.inlinedCount).toBe(1);
+    expect(site.styleTokens).toEqual([accent]);
+  });
+
+  it("throws for non-existent token", async () => {
+    const site = { components: [], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(removeToken(api, "NonExistent")).rejects.toThrow(/not found/);
+  });
+
+  it("rejects dependency tokens", async () => {
+    const depToken = { uuid: "dep-tok-1", name: "DepColor", type: "Color", value: "#000" };
+    const site = {
+      components: [],
+      styleTokens: [],
+      projectDependencies: [{ site: { styleTokens: [depToken] } }],
+    };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(removeToken(api, "DepColor")).rejects.toThrow(
+      /dependency project/
+    );
+  });
+});
+
+describe("duplicateToken", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    clearNodeCache();
+    api = mockApiClient();
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+    mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
+  });
+
+  afterEach(() => {
+    disposeChangeTracker();
+    clearSession();
+    vi.restoreAllMocks();
+  });
+
+  it("duplicates token via TplMgr", async () => {
+    const token = { uuid: "tok-1", name: "Primary", type: "Color", value: "#0066FF" };
+    const site = { components: [], styleTokens: [token] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const dupToken = {
+      uuid: "tok-2",
+      name: "Primary 2",
+      type: "Color",
+      value: "#0066FF",
+    };
+    mockDuplicateStyleToken.mockReturnValue(dupToken);
+
+    const result = await duplicateToken(api, "Primary");
+
+    expect(mockDuplicateStyleToken).toHaveBeenCalledWith(token);
+    expect(result.tokenUuid).toBe("tok-2");
+    expect(result.name).toBe("Primary 2");
+    expect(result.sourceUuid).toBe("tok-1");
+    expect(result.sourceName).toBe("Primary");
+  });
+
+  it("duplicates with custom name", async () => {
+    const token = { uuid: "tok-1", name: "Primary", type: "Color", value: "#0066FF" };
+    const site = { components: [], styleTokens: [token] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const dupToken = {
+      uuid: "tok-2",
+      name: "Primary 2",
+      type: "Color",
+      value: "#0066FF",
+    };
+    mockDuplicateStyleToken.mockReturnValue(dupToken);
+    mockRenameStyleToken.mockImplementation((t: any, n: string) => {
+      t.name = n;
+    });
+
+    const result = await duplicateToken(api, "Primary", "Secondary");
+
+    expect(mockRenameStyleToken).toHaveBeenCalledWith(dupToken, "Secondary");
+    expect(result.name).toBe("Secondary");
+  });
+
+  it("throws for non-existent token", async () => {
+    const site = { components: [], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(duplicateToken(api, "NonExistent")).rejects.toThrow(
+      /not found/
+    );
   });
 });

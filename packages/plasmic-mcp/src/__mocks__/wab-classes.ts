@@ -123,6 +123,35 @@ export class Arg {
   }
 }
 
+/** Mock constructor for StyleToken — design token (color, spacing, font, etc.). */
+export class StyleToken {
+  _type = "StyleToken";
+  name: string;
+  type: string;
+  value: string;
+  uuid: string;
+  variantedValues: any[];
+  isRegistered: boolean;
+  regKey: any;
+  constructor(args: {
+    name: string;
+    type: string;
+    value: string;
+    uuid: string;
+    variantedValues?: any[];
+    isRegistered?: boolean;
+    regKey?: any;
+  }) {
+    this.name = args.name;
+    this.type = args.type;
+    this.value = args.value;
+    this.uuid = args.uuid;
+    this.variantedValues = args.variantedValues ?? [];
+    this.isRegistered = args.isRegistered ?? false;
+    this.regKey = args.regKey ?? undefined;
+  }
+}
+
 export class Site {
   static isKnown(obj: any): boolean {
     return obj?._type === "Site";

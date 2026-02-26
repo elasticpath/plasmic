@@ -3167,3 +3167,264 @@ function extractDataRepInfo(vs: any): DataRepInfo | null {
 
   return info;
 }
+
+// --- Token CRUD ---
+
+export interface CreateTokenResult {
+  save: SaveResult;
+  tokenUuid: string;
+  name: string;
+  type: string;
+  value: string;
+}
+
+/**
+ * Create a new style token on the site.
+ */
+export async function createToken(
+  apiClient: PlasmicApiClient,
+  name: string,
+  tokenType: string,
+  value: string
+): Promise<CreateTokenResult> {
+  const session = requireSession();
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  let token: any;
+
+  const changes = tracker.withRecording(() => {
+    token = tplMgr.addStyleToken({
+      name,
+      tokenType,
+      value,
+    });
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `create-token: ${token.name} (${tokenType})`,
+    []
+  );
+
+  return {
+    save,
+    tokenUuid: token.uuid,
+    name: token.name,
+    type: token.type,
+    value: token.value,
+  };
+}
+
+export interface UpdateTokenResult {
+  save: SaveResult;
+  tokenUuid: string;
+  name: string;
+  previousName?: string;
+  previousValue?: string;
+  value: string;
+}
+
+/**
+ * Update a token's value and/or name.
+ */
+export async function updateToken(
+  apiClient: PlasmicApiClient,
+  tokenRef: string,
+  newValue?: string,
+  newName?: string
+): Promise<UpdateTokenResult> {
+  const session = requireSession();
+  const allTokens = getAllStyleTokens(session.site);
+  const token = findToken(allTokens, tokenRef);
+  if (!token) {
+    throw new Error(`Token "${tokenRef}" not found.`);
+  }
+
+  // Ensure token is local (not from a dependency)
+  const localTokens = session.site.styleTokens ?? [];
+  if (!localTokens.includes(token)) {
+    throw new Error(
+      `Token "${tokenRef}" is from a dependency project and cannot be modified.`
+    );
+  }
+
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  let previousValue: string | undefined;
+  let previousName: string | undefined;
+
+  const changes = tracker.withRecording(() => {
+    if (newValue !== undefined) {
+      previousValue = token.value;
+      token.value = newValue;
+    }
+    if (newName !== undefined) {
+      previousName = token.name;
+      tplMgr.renameStyleToken(token, newName);
+    }
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `update-token: ${token.name}`,
+    []
+  );
+
+  return {
+    save,
+    tokenUuid: token.uuid,
+    name: token.name,
+    previousName,
+    previousValue,
+    value: token.value,
+  };
+}
+
+export interface RemoveTokenResult {
+  save: SaveResult;
+  tokenUuid: string;
+  name: string;
+  inlinedCount: number;
+}
+
+/**
+ * Remove a token from the site. Inlines all references (in component styles
+ * and other tokens) to the token's current resolved value before removal.
+ */
+export async function removeToken(
+  apiClient: PlasmicApiClient,
+  tokenRef: string
+): Promise<RemoveTokenResult> {
+  const session = requireSession();
+  const allTokens = getAllStyleTokens(session.site);
+  const token = findToken(allTokens, tokenRef);
+  if (!token) {
+    throw new Error(`Token "${tokenRef}" not found.`);
+  }
+
+  const localTokens: any[] = session.site.styleTokens ?? [];
+  if (!localTokens.includes(token)) {
+    throw new Error(
+      `Token "${tokenRef}" is from a dependency project and cannot be removed.`
+    );
+  }
+
+  // Build a token value map for resolving references
+  const tokenValueMap = new Map<string, string>();
+  for (const t of allTokens) {
+    tokenValueMap.set(t.uuid, t.value);
+  }
+
+  // Resolve the token's value for inlining
+  const resolvedValue = resolveTokenValue(token.value, tokenValueMap);
+  const tokenRefStr = mkTokenRef(token.uuid);
+
+  const tracker = getChangeTracker();
+  let inlinedCount = 0;
+
+  const changes = tracker.withRecording(() => {
+    // 1. Inline references in other tokens' values
+    for (const t of localTokens) {
+      if (t === token) continue;
+      if (typeof t.value === "string" && t.value.includes(`--token-${token.uuid}`)) {
+        t.value = t.value.replace(tokenRefStr, resolvedValue);
+        inlinedCount++;
+      }
+    }
+
+    // 2. Inline references in component RuleSet values
+    for (const comp of session.site.components ?? []) {
+      if (!comp.tplTree) continue;
+      const tpls = flattenTpls(comp.tplTree);
+      for (const tpl of tpls) {
+        for (const vs of tpl.vsettings ?? []) {
+          const values = vs.rs?.values;
+          if (!values || typeof values !== "object") continue;
+          for (const [prop, val] of Object.entries(values)) {
+            if (typeof val === "string" && val.includes(`--token-${token.uuid}`)) {
+              values[prop] = (val as string).replace(tokenRefStr, resolvedValue);
+              inlinedCount++;
+            }
+          }
+        }
+      }
+    }
+
+    // 3. Remove token from the array
+    const idx = localTokens.indexOf(token);
+    if (idx >= 0) {
+      localTokens.splice(idx, 1);
+    }
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `remove-token: ${token.name}`,
+    []
+  );
+
+  return {
+    save,
+    tokenUuid: token.uuid,
+    name: token.name,
+    inlinedCount,
+  };
+}
+
+export interface DuplicateTokenResult {
+  save: SaveResult;
+  tokenUuid: string;
+  name: string;
+  sourceUuid: string;
+  sourceName: string;
+  value: string;
+}
+
+/**
+ * Duplicate an existing token with an optional new name.
+ */
+export async function duplicateToken(
+  apiClient: PlasmicApiClient,
+  tokenRef: string,
+  newName?: string
+): Promise<DuplicateTokenResult> {
+  const session = requireSession();
+  const allTokens = getAllStyleTokens(session.site);
+  const token = findToken(allTokens, tokenRef);
+  if (!token) {
+    throw new Error(`Token "${tokenRef}" not found.`);
+  }
+
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  let newToken: any;
+
+  const changes = tracker.withRecording(() => {
+    newToken = tplMgr.duplicateStyleToken(token);
+    if (newName) {
+      tplMgr.renameStyleToken(newToken, newName);
+    }
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `duplicate-token: ${token.name} → ${newToken.name}`,
+    []
+  );
+
+  return {
+    save,
+    tokenUuid: newToken.uuid,
+    name: newToken.name,
+    sourceUuid: token.uuid,
+    sourceName: token.name,
+    value: newToken.value,
+  };
+}

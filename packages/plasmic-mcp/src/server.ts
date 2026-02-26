@@ -59,6 +59,10 @@ import {
   setVisibility,
   setDataCond,
   setDataRep,
+  createToken,
+  updateToken,
+  removeToken,
+  duplicateToken,
 } from "./edit-tools.js";
 import { beginBatch, endBatch, isBatchActive, cancelBatch, cancelBatchWithRollback, getAccumulatedChanges } from "./batch-manager.js";
 import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
@@ -2751,6 +2755,342 @@ export function createServer(): McpServer {
         };
       } catch (err: any) {
         return handleMutationError("setting data condition", err);
+      }
+    }
+  );
+
+  // --- create-token ---
+  // Creates a new style token on the site's design system.
+  server.tool(
+    "create-token",
+    "Create a new design token (color, spacing, font, etc.) on the site. " +
+      'Example: name="Primary Blue", type="Color", value="#0066FF".',
+    {
+      name: z.string().describe("Token name (e.g., \"Primary Blue\", \"Space MD\")"),
+      type: z
+        .enum([
+          "Color",
+          "Spacing",
+          "Opacity",
+          "LineHeight",
+          "FontFamily",
+          "FontSize",
+        ])
+        .describe("Token type"),
+      value: z
+        .string()
+        .describe(
+          'CSS value for the token (e.g., "#0066FF", "16px", "Inter, sans-serif")'
+        ),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe(
+          "When true, shows what would change without persisting."
+        ),
+    },
+    async ({ name, type, value, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            createToken(apiClient, name, type, value)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    name: result.name,
+                    tokenType: result.type,
+                    value: result.value,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await createToken(apiClient, name, type, value);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  tokenUuid: result.tokenUuid,
+                  name: result.name,
+                  tokenType: result.type,
+                  value: result.value,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("creating token", err);
+      }
+    }
+  );
+
+  // --- update-token ---
+  // Updates a token's value and/or name.
+  server.tool(
+    "update-token",
+    "Update an existing design token's value and/or name. " +
+      "Provide tokenRef as the token name or UUID.",
+    {
+      tokenRef: z
+        .string()
+        .describe(
+          'Token reference: name (e.g., "Primary Blue") or UUID'
+        ),
+      value: z
+        .string()
+        .optional()
+        .describe(
+          'New CSS value (e.g., "#FF0000", "24px"). Omit to keep current value.'
+        ),
+      name: z
+        .string()
+        .optional()
+        .describe("New token name. Omit to keep current name."),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe(
+          "When true, shows what would change without persisting."
+        ),
+    },
+    async ({ tokenRef, value, name, dryRun }) => {
+      try {
+        if (!value && !name) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    error: true,
+                    message:
+                      "At least one of 'value' or 'name' must be provided.",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            updateToken(apiClient, tokenRef, value, name)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    tokenUuid: result.tokenUuid,
+                    name: result.name,
+                    previousName: result.previousName,
+                    previousValue: result.previousValue,
+                    value: result.value,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await updateToken(apiClient, tokenRef, value, name);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  tokenUuid: result.tokenUuid,
+                  name: result.name,
+                  previousName: result.previousName,
+                  previousValue: result.previousValue,
+                  value: result.value,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("updating token", err);
+      }
+    }
+  );
+
+  // --- remove-token ---
+  // Removes a token from the site and inlines all references to its resolved value.
+  server.tool(
+    "remove-token",
+    "Remove a design token from the site. All style references to this token " +
+      "are inlined to the token's current resolved value before removal.",
+    {
+      tokenRef: z
+        .string()
+        .describe(
+          'Token reference: name (e.g., "Primary Blue") or UUID'
+        ),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe(
+          "When true, shows what would change without persisting."
+        ),
+    },
+    async ({ tokenRef, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            removeToken(apiClient, tokenRef)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    tokenUuid: result.tokenUuid,
+                    name: result.name,
+                    inlinedCount: result.inlinedCount,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await removeToken(apiClient, tokenRef);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  tokenUuid: result.tokenUuid,
+                  name: result.name,
+                  inlinedCount: result.inlinedCount,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("removing token", err);
+      }
+    }
+  );
+
+  // --- duplicate-token ---
+  // Duplicates an existing token with an optional new name.
+  server.tool(
+    "duplicate-token",
+    "Duplicate an existing design token. Creates a copy with a new UUID " +
+      "and optionally a new name.",
+    {
+      tokenRef: z
+        .string()
+        .describe(
+          'Token reference: name (e.g., "Primary Blue") or UUID'
+        ),
+      newName: z
+        .string()
+        .optional()
+        .describe(
+          'Name for the duplicated token. If omitted, auto-generated from source name.'
+        ),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe(
+          "When true, shows what would change without persisting."
+        ),
+    },
+    async ({ tokenRef, newName, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            duplicateToken(apiClient, tokenRef, newName)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    tokenUuid: result.tokenUuid,
+                    name: result.name,
+                    sourceUuid: result.sourceUuid,
+                    sourceName: result.sourceName,
+                    value: result.value,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await duplicateToken(apiClient, tokenRef, newName);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  tokenUuid: result.tokenUuid,
+                  name: result.name,
+                  sourceUuid: result.sourceUuid,
+                  sourceName: result.sourceName,
+                  value: result.value,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("duplicating token", err);
       }
     }
   );
