@@ -11,11 +11,11 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 
 ### Discovery & Inspection
 - `component({ action: "list" })` — All pages and components with UUIDs and paths.
-- `inspect({ action: "summary", componentUuid, maxDepth? })` — Compact outline (~2KB). **Start here.**
+- `inspect({ action: "summary", componentUuid, maxDepth?, maxChars?, format? })` — Compact outline (~2KB). **Start here.**
 - `inspect({ action: "node", componentUuid, nodeRef })` — Full details for one node (~300B).
-- `inspect({ action: "tree", componentUuid, maxDepth?, excludeStyles?, summaryOnly? })` — Full tree with styles/text. **Last resort** — always set maxDepth.
+- `inspect({ action: "tree", componentUuid, maxDepth?, excludeStyles?, summaryOnly?, maxChars?, format? })` — Full tree with styles/text. **Last resort** — always set maxDepth.
 - `inspect({ action: "export", componentUuid })` — Write full tree to temp file. Use Read tool to inspect.
-- `inspect({ action: "subtree", componentUuid, nodeRef, maxDepth?, excludeStyles? })` — Subtree from a specific node.
+- `inspect({ action: "subtree", componentUuid, nodeRef, maxDepth?, excludeStyles?, maxChars?, format? })` — Subtree from a specific node.
 
 ### Design System (Read)
 - `design({ action: "list-tokens", tokenType? })` — Design tokens (Color, Spacing, FontSize, FontFamily, LineHeight, Opacity).
@@ -59,7 +59,7 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `variant({ action: "update-screen", variantRef, minWidth?, maxWidth? })` — Update a screen variant's breakpoints.
 - `variant({ action: "add-global", groupRef, name })` — Add variant to a global group.
 - `variant({ action: "remove-global-group", groupRef })` — Remove global group.
-- `variant({ action: "rename-global", groupRef, variantRef, newName })` — Rename variant in global group.
+- `variant({ action: "rename-global", variantRef, newName })` — Rename variant in global group.
 
 ### Node Editing
 - `node({ action: "update-text", componentUuid, nodeRef, text, variant?, dynamic?, fallback?, html? })` — Set text content. `dynamic: true` for JS expressions.
@@ -86,7 +86,7 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 
 ### Mixin CRUD
 - `design({ action: "create-mixin", name, styles? })` — New reusable style bundle.
-- `design({ action: "update-mixin", mixinRef, name?, styles? })` — Rename or update styles.
+- `design({ action: "update-mixin", mixinRef, newName?, styles? })` — Rename or update styles.
 - `design({ action: "remove-mixin", mixinRef })` — Delete mixin (cleans up references).
 - `node({ action: "apply-mixin", componentUuid, nodeRef, mixinRef })` — Apply mixin to element (idempotent).
 - `node({ action: "detach-mixin", componentUuid, nodeRef, mixinRef })` — Remove mixin from element.
@@ -110,7 +110,7 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `data({ action: "remove-data-token", tokenRef })` — Delete data token.
 
 ### Asset Management
-- `design({ action: "upload-asset", name, assetType?, url?, dataUri? })` — Upload image from URL or data URI.
+- `design({ action: "upload-asset", name, assetType, url?, dataUri? })` — Upload image from URL or data URI.
 - `design({ action: "rename-asset", assetRef, newName })` — Rename asset.
 - `design({ action: "remove-asset", assetRef })` — Delete asset (cleans up references).
 
@@ -130,7 +130,7 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 
 ### A/B Testing
 - `data({ action: "create-split", name, splitType, slices })` — New experiment or segment. `splitType`: "experiment" | "segment".
-- `data({ action: "update-split", splitRef, name?, slices?, status? })` — Update split.
+- `data({ action: "update-split", splitRef, name?, status? })` — Update split.
 - `data({ action: "remove-split", splitRef })` — Delete split.
 
 ### Utilities
@@ -138,7 +138,7 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `project({ action: "begin-batch" })` / `project({ action: "end-batch" })` — Group multiple edits into a single save.
 - `project({ action: "undo" })` — Revert the last operation.
 
-All edit tools accept `dryRun: true` to preview changes without persisting.
+All edit tools accept `dryRun: true` to preview changes without persisting. Exception: the `variant` domain does NOT support `dryRun`.
 
 ## Context Budget
 

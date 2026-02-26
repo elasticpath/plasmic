@@ -2201,6 +2201,7 @@ export function createServer(): McpServer {
             }
 
             const result = await reorderChildren(apiClient, cuuid, pRef, cRefs);
+            invalidateNodeCache(cuuid);
             return {
               content: [
                 {
@@ -4273,6 +4274,27 @@ export function createServer(): McpServer {
 
           case "create-data-token": {
             const dtName = requireParam(params.name, "name", "data.create-data-token");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                createDataToken(apiClient, dtName, params.value)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        token: result.token,
+                        message: "Dry run: no changes persisted",
+                      }
+                    ),
+                  },
+                ],
+              };
+            }
+
             const result = await createDataToken(apiClient, dtName, params.value);
             return {
               content: [
@@ -4292,6 +4314,27 @@ export function createServer(): McpServer {
 
           case "update-data-token": {
             const dtRef = requireParam(params.tokenRef, "tokenRef", "data.update-data-token");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                updateDataToken(apiClient, dtRef, params.name, params.value)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        token: result.token,
+                        message: "Dry run: no changes persisted",
+                      }
+                    ),
+                  },
+                ],
+              };
+            }
+
             const result = await updateDataToken(apiClient, dtRef, params.name, params.value);
             return {
               content: [
@@ -4311,6 +4354,28 @@ export function createServer(): McpServer {
 
           case "remove-data-token": {
             const dtRef = requireParam(params.tokenRef, "tokenRef", "data.remove-data-token");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                removeDataToken(apiClient, dtRef)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        removedName: result.removedName,
+                        removedUuid: result.removedUuid,
+                        message: "Dry run: no changes persisted",
+                      }
+                    ),
+                  },
+                ],
+              };
+            }
+
             const result = await removeDataToken(apiClient, dtRef);
             return {
               content: [
@@ -4343,6 +4408,26 @@ export function createServer(): McpServer {
             const sType = requireParam(params.splitType, "splitType", "data.create-split");
             const sSlices = requireParam(params.slices, "slices", "data.create-split");
 
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                createSplit(apiClient, sName, sType, sSlices)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        split: result.split,
+                        message: "Dry run: no changes persisted",
+                      }
+                    ),
+                  },
+                ],
+              };
+            }
+
             const result = await createSplit(apiClient, sName, sType, sSlices);
             return {
               content: [
@@ -4362,6 +4447,27 @@ export function createServer(): McpServer {
 
           case "update-split": {
             const sRef = requireParam(params.splitRef, "splitRef", "data.update-split");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                updateSplit(apiClient, sRef, params.name, params.status)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        split: result.split,
+                        message: "Dry run: no changes persisted",
+                      }
+                    ),
+                  },
+                ],
+              };
+            }
+
             const result = await updateSplit(apiClient, sRef, params.name, params.status);
             return {
               content: [
@@ -4381,6 +4487,28 @@ export function createServer(): McpServer {
 
           case "remove-split": {
             const sRef = requireParam(params.splitRef, "splitRef", "data.remove-split");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                removeSplit(apiClient, sRef)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        removedName: result.removedName,
+                        removedUuid: result.removedUuid,
+                        message: "Dry run: no changes persisted",
+                      }
+                    ),
+                  },
+                ],
+              };
+            }
+
             const result = await removeSplit(apiClient, sRef);
             return {
               content: [
@@ -4422,6 +4550,13 @@ export function createServer(): McpServer {
             throw new Error(`Unknown action '${action}' for data tool.`);
         }
       } catch (err: any) {
+        // Read-only actions should not cancel batch on error
+        if (["list-queries", "list-data-tokens", "list-splits", "get-code-meta", "list-functions"].includes(action)) {
+          return {
+            content: [{ type: "text" as const, text: `Error in data.${action}: ${err.message}` }],
+            isError: true,
+          };
+        }
         return handleMutationError(`data.${action}`, err);
       }
     }
@@ -4649,6 +4784,13 @@ export function createServer(): McpServer {
             throw new Error(`Unknown action '${action}' for interaction tool.`);
         }
       } catch (err: any) {
+        // Read-only list action should not cancel batch on error
+        if (action === "list") {
+          return {
+            content: [{ type: "text" as const, text: `Error in interaction.${action}: ${err.message}` }],
+            isError: true,
+          };
+        }
         return handleMutationError(`interaction.${action}`, err);
       }
     }

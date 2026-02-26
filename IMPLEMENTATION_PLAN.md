@@ -4,34 +4,13 @@ Goal: Claude Code skills and workflows that create Plasmic pages programmaticall
 
 ## Current State
 
-- **MCP server**: 8 STRAP domain tools, ~103 actions, ~4,650-line server.ts
+- **MCP server**: 8 STRAP domain tools, ~103 actions, ~4,800-line server.ts
 - **Skills**: 6 Claude Code skills (plasmic, plasmic-inspect, plasmic-edit, plasmic-create-page, plasmic-create-component, plasmic-patterns)
-- **Tests**: 1,184 passing (1047 unit + 137 integration), 0 skipped, 0 TODOs in code
+- **Tests**: 1,197 passing (1060 unit + 137 integration), 0 skipped, 0 TODOs in code
 - **Code quality**: Zero FIXMEs, zero HACK/XXX markers, zero placeholders, zero partial implementations
 - **Core page-creation workflow**: Functional end-to-end (project.set -> discover tokens -> build tree -> create-page -> enhance via /plasmic-edit -> save)
 
-All priorities (P1-P6) are DONE. All spec acceptance criteria are met.
-
----
-
-## Post-P6 Comprehensive Audit (completed)
-
-### P2 critical fix: compact JSON for all domains (134 remaining pretty-print calls)
-
-Full audit revealed the original P2 fix only converted ~6 inspect handlers to compact JSON. The remaining **134 `JSON.stringify(x, null, 2)` calls** across project, component, node, variant, design, data, and interaction domains were still pretty-printing. All 134 converted to `JSON.stringify(x)` — only the `inspect.export` file-write path retains `null, 2`. This satisfies the `response-compact-json.md` acceptance criterion: "Zero `JSON.stringify(x, null, 2)` calls in server.ts except for file-write paths."
-
-### Error handling fixes
-
-1. **`withDryRun` rollback logging**: Added `console.error` CRITICAL message when dry-run rollback fails (was silently swallowed with `catch (_) {}`).
-2. **`component.create-page/create/clone` batch safety**: Added these 3 mutation actions to the `handleMutationError` allowlist so batch is properly cancelled and changes rolled back on failure.
-3. **`design` list-action error format**: Changed `"Error: ${err.message}"` to `"Error in design.${action}: ${err.message}"` for consistency with the STRAP `"Error in domain.action: message"` pattern.
-
-### Test gap fills (4 new tests)
-
-1. **Non-inspect compact JSON**: Integration test verifying component.list, variant.list, and design.list-tokens responses use compact JSON.
-2. **Error response compactness**: Integration test verifying error responses don't contain indentation patterns.
-3. **maxDepth: 100 on shallow component**: Integration test confirming `truncated: false` when maxDepth vastly exceeds component depth.
-4. **Unnamed node concise format**: Unit test verifying unnamed nodes retain `tag` for identification when UUIDs are stripped.
+All priorities (P1-P7) are DONE. All spec acceptance criteria are met.
 
 ---
 
@@ -44,6 +23,46 @@ P3 (default maxDepth)            -- DONE (post-audit: maxDepth:100 edge case tes
 P4 (response truncation)         -- DONE
 P5 (skills progressive nav)      -- DONE
 P6 (concise format)              -- DONE (post-audit: unnamed node identification test)
+P7 (comprehensive audit fixes)   -- DONE (6 bugs fixed, 6 skill doc mismatches corrected, 13 new tests)
 ```
 
-All priorities complete. All spec acceptance criteria verified and met.
+---
+
+## P7: Comprehensive Audit (completed)
+
+Full codebase audit across server.ts, tree-reader.ts, edit-tools.ts, and all 6 skill files. Found and fixed 6 bugs, 6 skill documentation mismatches, and added 13 new tests.
+
+### Bug fixes
+
+1. **Data domain batch safety**: Read-only actions (`list-queries`, `list-data-tokens`, `list-splits`, `get-code-meta`, `list-functions`) were using `handleMutationError` which cancels active batch on error. Fixed to use simple error format that preserves batch state.
+2. **Interaction domain batch safety**: `interaction.list` (read-only) was using `handleMutationError`. Fixed to preserve batch state on error.
+3. **dryRun silently ignored**: 6 data/split mutation actions (`create-data-token`, `update-data-token`, `remove-data-token`, `create-split`, `update-split`, `remove-split`) accepted `dryRun: true` in the schema but silently performed real mutations. Added proper `withDryRun()` handling.
+4. **node.reorder cache invalidation**: `invalidateNodeCache(cuuid)` was missing after reorder — index-based node references would return wrong nodes until cache expired. Fixed.
+5. **TplComponent layoutType derivation**: `readTplComponent` in tree-reader.ts did not call `deriveLayoutType()` on component instance styles, unlike `readTplTag`. Component instances with flex styles now correctly report `layoutType`.
+6. **Unused imports**: Removed `isKnownVarRef`, `ThemeLayoutSettings`, `PageMeta` from edit-tools.ts.
+
+### Skill documentation fixes (plasmic.md)
+
+1. `design.update-mixin`: Changed `name?` → `newName?` (server reads `params.newName`)
+2. `design.upload-asset`: Changed `assetType?` → `assetType` (required by `requireParam()`)
+3. `variant.rename-global`: Removed `groupRef` (handler ignores it)
+4. `data.update-split`: Removed `slices?` (handler doesn't pass it through)
+5. `inspect` tool signatures: Added `maxChars?` and `format?` to summary, tree, subtree
+6. `dryRun` caveat: Added note that variant domain does NOT support dryRun
+
+### New tests (13)
+
+1. **Batch-safe read-only error handling** (4 tests): `data.list-data-tokens`, `data.list-splits`, `interaction.list` errors don't cancel batch; `data.create-data-token` mutation errors DO cancel batch.
+2. **dryRun for data-token/split mutations** (6 tests): All 6 data/split mutation actions return `dryRun: true` preview.
+3. **node.reorder cache invalidation** (2 tests): Reorder invalidates cache; reorder with dryRun does not.
+4. **TplComponent layoutType** (1 test): Component instance with flex styles derives `layoutType: "vbox"`.
+
+### Remaining audit observations (low severity, not blocking)
+
+- `withDryRun` potential double-undo on partial undo failure (line 172/180 in server.ts)
+- `create-page`/`create`/`clone` return success even when model reload fails
+- Missing "at least one field" validation for `update-mixin`, `update-animation`, `update-data-token`, `update-split`
+- `variant` domain has no `dryRun` support at all (schema doesn't include it)
+- `extractRichText` missing null guards on marker position/length
+- Phase 2 truncation only removes root-level children, cannot reduce below root size
+- SSRF risk in `uploadAsset` (fetches arbitrary URLs) — mitigated by trusted MCP context

@@ -582,6 +582,11 @@ function readTplComponent(
     }
   }
 
+  // Derive layout type from flex styles (same as TplTag)
+  if (node.styles) {
+    node.layoutType = deriveLayoutType(node.styles);
+  }
+
   // Non-slot args → attrs
   if (nonSlotArgs.length > 0) {
     const props: Record<string, unknown> = {};

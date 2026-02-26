@@ -154,6 +154,21 @@ describe("tool handlers", () => {
   let mockSaveFullBundle: ReturnType<typeof vi.fn>;
   let mockUpdateAttrs: ReturnType<typeof vi.fn>;
   let mockGetValidStylePropertyNames: ReturnType<typeof vi.fn>;
+  let mockReorderChildren: ReturnType<typeof vi.fn>;
+  let mockSetDataCond: ReturnType<typeof vi.fn>;
+  let mockSetDataRep: ReturnType<typeof vi.fn>;
+  let mockListDataTokens: ReturnType<typeof vi.fn>;
+  let mockCreateDataToken: ReturnType<typeof vi.fn>;
+  let mockUpdateDataToken: ReturnType<typeof vi.fn>;
+  let mockRemoveDataToken: ReturnType<typeof vi.fn>;
+  let mockListSplits: ReturnType<typeof vi.fn>;
+  let mockCreateSplit: ReturnType<typeof vi.fn>;
+  let mockUpdateSplit: ReturnType<typeof vi.fn>;
+  let mockRemoveSplit: ReturnType<typeof vi.fn>;
+  let mockListInteractions: ReturnType<typeof vi.fn>;
+  let mockAddInteraction: ReturnType<typeof vi.fn>;
+  let mockUpdateInteraction: ReturnType<typeof vi.fn>;
+  let mockRemoveInteraction: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     process.env = { ...savedEnv };
@@ -212,6 +227,21 @@ describe("tool handlers", () => {
     mockRemoveVariantAction = vi.fn();
     mockUpdateAttrs = vi.fn();
     mockGetValidStylePropertyNames = vi.fn();
+    mockReorderChildren = vi.fn();
+    mockSetDataCond = vi.fn();
+    mockSetDataRep = vi.fn();
+    mockListDataTokens = vi.fn();
+    mockCreateDataToken = vi.fn();
+    mockUpdateDataToken = vi.fn();
+    mockRemoveDataToken = vi.fn();
+    mockListSplits = vi.fn();
+    mockCreateSplit = vi.fn();
+    mockUpdateSplit = vi.fn();
+    mockRemoveSplit = vi.fn();
+    mockListInteractions = vi.fn();
+    mockAddInteraction = vi.fn();
+    mockUpdateInteraction = vi.fn();
+    mockRemoveInteraction = vi.fn();
     mockBeginBatch = vi.fn();
     mockEndBatch = vi.fn();
     mockIsBatchActive = vi.fn().mockReturnValue(false);
@@ -325,6 +355,21 @@ describe("tool handlers", () => {
       removeVariant: (...args: any[]) => mockRemoveVariantAction(...args),
       updateAttrs: (...args: any[]) => mockUpdateAttrs(...args),
       getValidStylePropertyNames: () => mockGetValidStylePropertyNames(),
+      reorderChildren: (...args: any[]) => mockReorderChildren(...args),
+      setDataCond: (...args: any[]) => mockSetDataCond(...args),
+      setDataRep: (...args: any[]) => mockSetDataRep(...args),
+      listDataTokens: () => mockListDataTokens(),
+      createDataToken: (...args: any[]) => mockCreateDataToken(...args),
+      updateDataToken: (...args: any[]) => mockUpdateDataToken(...args),
+      removeDataToken: (...args: any[]) => mockRemoveDataToken(...args),
+      listSplits: () => mockListSplits(),
+      createSplit: (...args: any[]) => mockCreateSplit(...args),
+      updateSplit: (...args: any[]) => mockUpdateSplit(...args),
+      removeSplit: (...args: any[]) => mockRemoveSplit(...args),
+      listInteractions: (...args: any[]) => mockListInteractions(...args),
+      addInteraction: (...args: any[]) => mockAddInteraction(...args),
+      updateInteraction: (...args: any[]) => mockUpdateInteraction(...args),
+      removeInteraction: (...args: any[]) => mockRemoveInteraction(...args),
     }));
 
     vi.doMock("../batch-manager", () => ({
@@ -3936,6 +3981,320 @@ describe("tool handlers", () => {
       expect(result.isError).toBeFalsy();
       expect(output.total).toBe(0);
       expect(output.properties).toEqual([]);
+    });
+  });
+
+  // =====================================================================
+  // P7: Batch-safe error handling for read-only data/interaction actions
+  // =====================================================================
+
+  describe("batch-safe error handling for read-only actions", () => {
+    it("data.list-data-tokens error does not cancel active batch", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { styleTokens: [] },
+        projectId: "proj-1",
+      });
+      mockIsBatchActive.mockReturnValue(true);
+      mockListDataTokens.mockImplementation(() => {
+        throw new Error("Token read failure");
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "list-data-tokens" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Error in data.list-data-tokens");
+      expect(result.content[0].text).toContain("Token read failure");
+      // CRITICAL: batch should NOT be cancelled for a read-only error
+      expect(mockCancelBatchWithRollback).not.toHaveBeenCalled();
+    });
+
+    it("data.list-splits error does not cancel active batch", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { splits: [] },
+        projectId: "proj-1",
+      });
+      mockIsBatchActive.mockReturnValue(true);
+      mockListSplits.mockImplementation(() => {
+        throw new Error("Split read failure");
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "list-splits" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Error in data.list-splits");
+      expect(mockCancelBatchWithRollback).not.toHaveBeenCalled();
+    });
+
+    it("interaction.list error does not cancel active batch", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Test" }],
+        },
+        projectId: "proj-1",
+      });
+      mockIsBatchActive.mockReturnValue(true);
+      mockListInteractions.mockImplementation(() => {
+        throw new Error("Interaction read failure");
+      });
+
+      const result = await client.callTool({
+        name: "interaction",
+        arguments: {
+          action: "list",
+          componentUuid: "comp-1",
+          nodeRef: "Button",
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Error in interaction.list");
+      expect(mockCancelBatchWithRollback).not.toHaveBeenCalled();
+    });
+
+    it("data mutation error DOES cancel active batch", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { styleTokens: [] },
+        projectId: "proj-1",
+      });
+      mockIsBatchActive.mockReturnValue(true);
+      mockCreateDataToken.mockRejectedValue(new Error("Token create failure"));
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "create-data-token", name: "myToken" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Batch cancelled");
+      expect(mockCancelBatchWithRollback).toHaveBeenCalled();
+    });
+  });
+
+  // =====================================================================
+  // P7: dryRun support for data-token and split mutations
+  // =====================================================================
+
+  describe("dryRun for data-token and split mutations", () => {
+    it("data.create-data-token with dryRun returns preview without saving", async () => {
+      mockIsBatchActive.mockReturnValue(false);
+      mockBeginBatch.mockReturnValue("dry-run-batch");
+      mockGetAccumulatedChanges.mockReturnValue({
+        changes: [{ changeNode: {} }],
+        newInsts: [],
+        removedInsts: [],
+      });
+      mockCreateDataToken.mockResolvedValue({
+        token: { name: "TestToken", value: "42" },
+        save: { revisionNum: 10, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "create-data-token", name: "TestToken", value: "42", dryRun: true },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.dryRun).toBe(true);
+      expect(output.token).toBeDefined();
+      expect(output.message).toContain("Dry run");
+    });
+
+    it("data.update-data-token with dryRun returns preview without saving", async () => {
+      mockIsBatchActive.mockReturnValue(false);
+      mockBeginBatch.mockReturnValue("dry-run-batch");
+      mockGetAccumulatedChanges.mockReturnValue({
+        changes: [{ changeNode: {} }],
+        newInsts: [],
+        removedInsts: [],
+      });
+      mockUpdateDataToken.mockResolvedValue({
+        token: { name: "Updated", value: "99" },
+        save: { revisionNum: 10, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "update-data-token", tokenRef: "TestToken", value: "99", dryRun: true },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.dryRun).toBe(true);
+      expect(output.token).toBeDefined();
+    });
+
+    it("data.remove-data-token with dryRun returns preview without saving", async () => {
+      mockIsBatchActive.mockReturnValue(false);
+      mockBeginBatch.mockReturnValue("dry-run-batch");
+      mockGetAccumulatedChanges.mockReturnValue({
+        changes: [{ changeNode: {} }],
+        newInsts: [],
+        removedInsts: [],
+      });
+      mockRemoveDataToken.mockResolvedValue({
+        removedName: "OldToken",
+        removedUuid: "tok-1",
+        save: { revisionNum: 10, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "remove-data-token", tokenRef: "OldToken", dryRun: true },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.dryRun).toBe(true);
+      expect(output.removedName).toBe("OldToken");
+    });
+
+    it("data.create-split with dryRun returns preview without saving", async () => {
+      mockIsBatchActive.mockReturnValue(false);
+      mockBeginBatch.mockReturnValue("dry-run-batch");
+      mockGetAccumulatedChanges.mockReturnValue({
+        changes: [{ changeNode: {} }],
+        newInsts: [],
+        removedInsts: [],
+      });
+      mockCreateSplit.mockResolvedValue({
+        split: { name: "TestSplit", type: "experiment" },
+        save: { revisionNum: 10, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: {
+          action: "create-split",
+          name: "TestSplit",
+          splitType: "experiment",
+          slices: [{ name: "control", prob: 50 }, { name: "variant", prob: 50 }],
+          dryRun: true,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.dryRun).toBe(true);
+      expect(output.split).toBeDefined();
+    });
+
+    it("data.update-split with dryRun returns preview without saving", async () => {
+      mockIsBatchActive.mockReturnValue(false);
+      mockBeginBatch.mockReturnValue("dry-run-batch");
+      mockGetAccumulatedChanges.mockReturnValue({
+        changes: [{ changeNode: {} }],
+        newInsts: [],
+        removedInsts: [],
+      });
+      mockUpdateSplit.mockResolvedValue({
+        split: { name: "RenamedSplit", status: "running" },
+        save: { revisionNum: 10, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "update-split", splitRef: "TestSplit", name: "RenamedSplit", dryRun: true },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.dryRun).toBe(true);
+      expect(output.split).toBeDefined();
+    });
+
+    it("data.remove-split with dryRun returns preview without saving", async () => {
+      mockIsBatchActive.mockReturnValue(false);
+      mockBeginBatch.mockReturnValue("dry-run-batch");
+      mockGetAccumulatedChanges.mockReturnValue({
+        changes: [{ changeNode: {} }],
+        newInsts: [],
+        removedInsts: [],
+      });
+      mockRemoveSplit.mockResolvedValue({
+        removedName: "OldSplit",
+        removedUuid: "split-1",
+        save: { revisionNum: 10, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "remove-split", splitRef: "OldSplit", dryRun: true },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.dryRun).toBe(true);
+      expect(output.removedName).toBe("OldSplit");
+    });
+  });
+
+  // =====================================================================
+  // P7: node.reorder invalidates node cache
+  // =====================================================================
+
+  describe("node.reorder cache invalidation", () => {
+    it("node.reorder invalidates node cache for the component", async () => {
+      mockReorderChildren.mockResolvedValue({
+        save: { revisionNum: 12, incremental: true },
+        parentName: "Container",
+        parentUuid: "parent-1",
+        newOrder: ["child-2", "child-1", "child-3"],
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "reorder",
+          componentUuid: "comp-1",
+          parentRef: "Container",
+          childRefs: ["child-2", "child-1", "child-3"],
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.newOrder).toEqual(["child-2", "child-1", "child-3"]);
+      expect(mockInvalidateNodeCache).toHaveBeenCalledWith("comp-1");
+    });
+
+    it("node.reorder with dryRun does not invalidate node cache", async () => {
+      mockIsBatchActive.mockReturnValue(false);
+      mockBeginBatch.mockReturnValue("dry-run-batch");
+      mockGetAccumulatedChanges.mockReturnValue({
+        changes: [{ changeNode: {} }],
+        newInsts: [],
+        removedInsts: [],
+      });
+      mockReorderChildren.mockResolvedValue({
+        save: { revisionNum: 12, incremental: true },
+        parentName: "Container",
+        parentUuid: "parent-1",
+        newOrder: ["child-2", "child-1", "child-3"],
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "reorder",
+          componentUuid: "comp-1",
+          parentRef: "Container",
+          childRefs: ["child-2", "child-1", "child-3"],
+          dryRun: true,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.dryRun).toBe(true);
+      expect(mockInvalidateNodeCache).not.toHaveBeenCalled();
     });
   });
 });

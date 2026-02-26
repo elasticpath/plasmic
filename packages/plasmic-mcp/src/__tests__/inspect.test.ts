@@ -1203,6 +1203,34 @@ describe("readComponentTree", () => {
 
       expect(readComponentTree(component)?.layoutType).toBe("box");
     });
+
+    it("derives layoutType on TplComponent instances with flex styles", () => {
+      const component = {
+        tplTree: {
+          _type: "TplComponent",
+          uuid: "comp-inst-1",
+          name: "MyCard",
+          component: { name: "Card", uuid: "card-def" },
+          vsettings: [
+            {
+              rs: {
+                values: {
+                  display: "flex",
+                  "flex-direction": "column",
+                  gap: "16px",
+                },
+              },
+              args: [],
+            },
+          ],
+        },
+      };
+
+      const result = readComponentTree(component);
+      expect(result).toBeDefined();
+      expect(result!.type).toBe("component");
+      expect(result!.layoutType).toBe("vbox");
+    });
   });
 
   describe("unknown node types", () => {
