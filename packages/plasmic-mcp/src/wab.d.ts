@@ -553,6 +553,27 @@ declare module "@/wab/shared/model/classes" {
     asset: any;
   }
 
+  /** Model class for CodeComponentVariantMeta — registered variant metadata from code components.
+   *  Comes from ComponentMeta.variants in code component registration. */
+  export class CodeComponentVariantMeta {
+    cssSelector: string;
+    displayName: string;
+  }
+
+  /** Model class for Variant — a variant state within a component or global group.
+   *  Code component variants have codeComponentName and codeComponentVariantKeys set. */
+  export class Variant {
+    readonly uuid: string;
+    name: string;
+    selectors: string[] | null | undefined;
+    codeComponentName: string | null | undefined;
+    codeComponentVariantKeys: string[] | null | undefined;
+    parent: any;
+    mediaQuery: string | null | undefined;
+    description: string | null | undefined;
+    forTpl: any;
+  }
+
   /** Model class for GlobalVariantGroup — site-level variant group (custom or screen). */
   export class GlobalVariantGroup {
     constructor(args: {
@@ -898,6 +919,9 @@ declare module "@/wab/shared/Variants" {
 
   /** Get the base variant for a component (component.variants[0]). */
   export function getBaseVariant(component: any): any;
+
+  /** Check if a variant is a code component variant (has codeComponentName and codeComponentVariantKeys). */
+  export function isCodeComponentVariant(variant: any): boolean;
 }
 
 declare module "@/wab/shared/core/components" {

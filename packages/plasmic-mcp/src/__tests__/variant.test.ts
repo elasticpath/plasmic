@@ -255,6 +255,179 @@ describe("edit-tools", () => {
       const result = resolveVariant(site, comp, "style-var-uuid");
       expect(result).toBe(styleVariant);
     });
+
+    // --- Code component variant resolution ---
+
+    /** Build a code component with registered variant meta */
+    function mkCodeComp(variants: Record<string, { cssSelector: string; displayName: string }>) {
+      return {
+        uuid: "code-comp-uuid",
+        name: "EPBundleOptionTrigger",
+        type: "code",
+        codeComponentMeta: {
+          importPath: "@/test",
+          importName: "EPBundleOptionTrigger",
+          variants,
+        },
+      };
+    }
+
+    /** Build a code component variant object */
+    function mkCCVariant(opts: {
+      uuid?: string;
+      key: string;
+      keys?: string[];
+      codeComponentName: string;
+    }) {
+      return {
+        uuid: opts.uuid ?? `cc-var-${opts.key}`,
+        name: null,
+        codeComponentName: opts.codeComponentName,
+        codeComponentVariantKeys: opts.keys ?? [opts.key],
+        selectors: null,
+        forTpl: null,
+        parent: null,
+        mediaQuery: null,
+      };
+    }
+
+    /** Build a component whose root wraps a code component */
+    function mkCompWithCodeRoot(
+      codeComp: any,
+      ccVariants: any[],
+      opts?: { uuid?: string; variantGroups?: any[] }
+    ) {
+      return {
+        uuid: opts?.uuid ?? "comp-uuid",
+        name: "TestComponent",
+        tplTree: {
+          _type: "TplComponent",
+          uuid: "tpl-root-uuid",
+          component: codeComp,
+          vsettings: [{ rs: { values: {} } }],
+          children: [],
+        },
+        variantGroups: opts?.variantGroups ?? [],
+        variants: ccVariants,
+        pageMeta: undefined,
+      };
+    }
+
+    it("resolves a code component variant by key (case-insensitive)", () => {
+      const codeComp = mkCodeComp({
+        selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+      });
+      const ccVar = mkCCVariant({ key: "selected", codeComponentName: "EPBundleOptionTrigger" });
+      const comp = mkCompWithCodeRoot(codeComp, [ccVar]);
+      const site = mkSite();
+
+      const result = resolveVariant(site, comp, "selected");
+      expect(result).toBe(ccVar);
+    });
+
+    it("resolves a code component variant by key case-insensitive", () => {
+      const codeComp = mkCodeComp({
+        selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+      });
+      const ccVar = mkCCVariant({ key: "selected", codeComponentName: "EPBundleOptionTrigger" });
+      const comp = mkCompWithCodeRoot(codeComp, [ccVar]);
+      const site = mkSite();
+
+      const result = resolveVariant(site, comp, "SELECTED");
+      expect(result).toBe(ccVar);
+    });
+
+    it("resolves a code component variant by display name", () => {
+      const codeComp = mkCodeComp({
+        selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+      });
+      const ccVar = mkCCVariant({ key: "selected", codeComponentName: "EPBundleOptionTrigger" });
+      const comp = mkCompWithCodeRoot(codeComp, [ccVar]);
+      const site = mkSite();
+
+      const result = resolveVariant(site, comp, "Selected");
+      expect(result).toBe(ccVar);
+    });
+
+    it("resolves a code component variant by display name case-insensitive", () => {
+      const codeComp = mkCodeComp({
+        hovered: { cssSelector: "[data-hovered]", displayName: "Hovered" },
+      });
+      const ccVar = mkCCVariant({ key: "hovered", codeComponentName: "EPBundleOptionTrigger" });
+      const comp = mkCompWithCodeRoot(codeComp, [ccVar]);
+      const site = mkSite();
+
+      const result = resolveVariant(site, comp, "hovered");
+      expect(result).toBe(ccVar);
+    });
+
+    it("resolves a code component variant by UUID", () => {
+      const codeComp = mkCodeComp({
+        selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+      });
+      const ccVar = mkCCVariant({
+        uuid: "cc-selected-uuid",
+        key: "selected",
+        codeComponentName: "EPBundleOptionTrigger",
+      });
+      const comp = mkCompWithCodeRoot(codeComp, [ccVar]);
+      const site = mkSite();
+
+      const result = resolveVariant(site, comp, "cc-selected-uuid");
+      expect(result).toBe(ccVar);
+    });
+
+    it("code component variant takes precedence over regular variant with same name", () => {
+      const codeComp = mkCodeComp({
+        selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+      });
+      const ccVar = mkCCVariant({ key: "selected", codeComponentName: "EPBundleOptionTrigger" });
+      const regularVar = mkVariant({ uuid: "regular-selected", name: "Selected" });
+      const comp = mkCompWithCodeRoot(codeComp, [ccVar], {
+        variantGroups: [{
+          uuid: "group-1",
+          param: { variable: { name: "State" } },
+          variants: [regularVar],
+        }],
+      });
+      const site = mkSite();
+
+      // "Selected" matches both the code component display name and regular variant name
+      const result = resolveVariant(site, comp, "Selected");
+      expect(result).toBe(ccVar);
+    });
+
+    it("does not resolve code component variants when root is not a code component", () => {
+      // tplTree is a TplTag, not TplComponent — no code component variants
+      const comp = {
+        variantGroups: [],
+        variants: [{
+          uuid: "cc-var-1",
+          name: null,
+          codeComponentName: "SomeComp",
+          codeComponentVariantKeys: ["selected"],
+          selectors: null,
+          forTpl: null,
+        }],
+        tplTree: { _type: "TplTag", uuid: "root-uuid" },
+      };
+      const site = mkSite();
+
+      // The code component variant search requires a TplComponent root with metas
+      expect(() => resolveVariant(site, comp, "selected")).toThrow("not found");
+    });
+
+    it("includes code component variant keys in not-found error message", () => {
+      const codeComp = mkCodeComp({
+        selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+      });
+      const ccVar = mkCCVariant({ key: "selected", codeComponentName: "EPBundleOptionTrigger" });
+      const comp = mkCompWithCodeRoot(codeComp, [ccVar]);
+      const site = mkSite();
+
+      expect(() => resolveVariant(site, comp, "nonexistent")).toThrow("selected");
+      expect(() => resolveVariant(site, comp, "nonexistent")).toThrow("Selected");
+    });
   });
 
   // --- listVariants ---
@@ -364,6 +537,152 @@ describe("edit-tools", () => {
       expect(result.globalVariants).toEqual([]);
       expect(result.componentVariants).toEqual([]);
       expect(result.styleVariants).toEqual([]);
+      expect(result.codeComponentVariants).toEqual([]);
+    });
+
+    it("lists code component variants with metadata", () => {
+      const codeComp = {
+        uuid: "code-comp-uuid",
+        codeComponentMeta: {
+          variants: {
+            selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+            hovered: { cssSelector: "[data-hovered]", displayName: "Hovered" },
+          },
+        },
+      };
+      const site = { globalVariantGroups: [] };
+      const comp = {
+        variantGroups: [],
+        variants: [
+          {
+            uuid: "cc-var-selected",
+            codeComponentName: "EPBundleOptionTrigger",
+            codeComponentVariantKeys: ["selected"],
+            selectors: null,
+          },
+          {
+            uuid: "cc-var-hovered",
+            codeComponentName: "EPBundleOptionTrigger",
+            codeComponentVariantKeys: ["hovered"],
+            selectors: null,
+          },
+        ],
+        tplTree: {
+          _type: "TplComponent",
+          component: codeComp,
+        },
+      };
+
+      const result = listVariants(site, comp);
+
+      expect(result.codeComponentVariants).toHaveLength(2);
+      expect(result.codeComponentVariants[0]).toEqual({
+        uuid: "cc-var-selected",
+        key: "selected",
+        displayName: "Selected",
+        cssSelector: "[data-selected]",
+        codeComponentName: "EPBundleOptionTrigger",
+      });
+      expect(result.codeComponentVariants[1]).toEqual({
+        uuid: "cc-var-hovered",
+        key: "hovered",
+        displayName: "Hovered",
+        cssSelector: "[data-hovered]",
+        codeComponentName: "EPBundleOptionTrigger",
+      });
+    });
+
+    it("marks invalid code component variants with stale keys", () => {
+      const codeComp = {
+        uuid: "code-comp-uuid",
+        codeComponentMeta: {
+          variants: {
+            selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+            // "oldkey" is not registered — variant should be marked invalid
+          },
+        },
+      };
+      const site = { globalVariantGroups: [] };
+      const comp = {
+        variantGroups: [],
+        variants: [
+          {
+            uuid: "cc-var-stale",
+            codeComponentName: "EPBundleOptionTrigger",
+            codeComponentVariantKeys: ["oldkey"],
+            selectors: null,
+          },
+        ],
+        tplTree: {
+          _type: "TplComponent",
+          component: codeComp,
+        },
+      };
+
+      const result = listVariants(site, comp);
+
+      expect(result.codeComponentVariants).toHaveLength(1);
+      expect(result.codeComponentVariants[0].invalid).toBe(true);
+      expect(result.codeComponentVariants[0].key).toBe("oldkey");
+      expect(result.codeComponentVariants[0].displayName).toBe("oldkey");
+    });
+
+    it("returns empty codeComponentVariants when root is not a code component", () => {
+      const site = { globalVariantGroups: [] };
+      const comp = {
+        variantGroups: [],
+        variants: [
+          {
+            uuid: "cc-var-1",
+            codeComponentName: "SomeComp",
+            codeComponentVariantKeys: ["selected"],
+            selectors: null,
+          },
+        ],
+        tplTree: { _type: "TplTag", uuid: "root" },
+      };
+
+      const result = listVariants(site, comp);
+
+      // Variant has codeComponentName but root is TplTag — all marked invalid
+      expect(result.codeComponentVariants).toHaveLength(1);
+      expect(result.codeComponentVariants[0].invalid).toBe(true);
+    });
+
+    it("does not include code component variants in styleVariants", () => {
+      const codeComp = {
+        uuid: "code-comp-uuid",
+        codeComponentMeta: {
+          variants: {
+            selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+          },
+        },
+      };
+      const site = { globalVariantGroups: [] };
+      const comp = {
+        variantGroups: [],
+        variants: [
+          {
+            uuid: "cc-var",
+            codeComponentName: "EPBundleOptionTrigger",
+            codeComponentVariantKeys: ["selected"],
+            selectors: null,
+          },
+          {
+            uuid: "style-var",
+            name: "hover",
+            selectors: [":hover"],
+          },
+        ],
+        tplTree: { _type: "TplComponent", component: codeComp },
+      };
+
+      const result = listVariants(site, comp);
+
+      expect(result.styleVariants).toHaveLength(1);
+      expect(result.styleVariants[0].uuid).toBe("style-var");
+      expect(result.codeComponentVariants).toHaveLength(1);
+      expect(result.codeComponentVariants[0].uuid).toBe("cc-var");
     });
 
     it("does not duplicate style variants found in both variantGroups and variants", () => {
@@ -564,6 +883,123 @@ describe("edit-tools", () => {
       await expect(
         createStyleVariant(api, "nonexistent", ":hover")
       ).rejects.toThrow("not found");
+    });
+
+    // --- Code component selector tests ---
+
+    it("accepts a registered code component selector", async () => {
+      const codeComp = {
+        uuid: "code-comp-uuid",
+        codeComponentMeta: {
+          variants: {
+            selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+          },
+        },
+      };
+      const root = {
+        _type: "TplComponent",
+        uuid: "tpl-root-uuid",
+        component: codeComp,
+        vsettings: [{ rs: { values: {} } }],
+        children: [],
+      };
+      const comp = {
+        uuid: "comp-1",
+        name: "TestComponent",
+        tplTree: root,
+        pageMeta: undefined,
+        variants: [],
+        variantGroups: [],
+      };
+      setupSession(comp);
+
+      const mockVariant = { uuid: "new-cc-var-uuid", selectors: ["[data-selected]"], forTpl: null };
+      mockCreateStyleVariant.mockReturnValue(mockVariant);
+
+      const result = await createStyleVariant(api, "comp-1", "[data-selected]");
+
+      expect(result.variantUuid).toBe("new-cc-var-uuid");
+      expect(result.selector).toBe("[data-selected]");
+      expect(result.scope).toBe("component");
+    });
+
+    it("rejects an unregistered attribute selector on a code component", async () => {
+      const codeComp = {
+        uuid: "code-comp-uuid",
+        codeComponentMeta: {
+          variants: {
+            selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+          },
+        },
+      };
+      const root = {
+        _type: "TplComponent",
+        uuid: "tpl-root-uuid",
+        component: codeComp,
+        vsettings: [{ rs: { values: {} } }],
+        children: [],
+      };
+      const comp = {
+        uuid: "comp-1",
+        name: "TestComponent",
+        tplTree: root,
+        pageMeta: undefined,
+        variants: [],
+        variantGroups: [],
+      };
+      setupSession(comp);
+
+      await expect(
+        createStyleVariant(api, "comp-1", "[data-foo]")
+      ).rejects.toThrow("Invalid selector");
+      // Error should list valid code component selectors
+      await expect(
+        createStyleVariant(api, "comp-1", "[data-foo]")
+      ).rejects.toThrow("[data-selected]");
+    });
+
+    it("rejects an attribute selector on a non-code-component", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+      (comp as any).variants = [];
+      setupSession(comp);
+
+      await expect(
+        createStyleVariant(api, "comp-1", "[data-selected]")
+      ).rejects.toThrow("Invalid selector");
+    });
+
+    it("still accepts standard pseudo-class selectors on code component wrappers", async () => {
+      const codeComp = {
+        uuid: "code-comp-uuid",
+        codeComponentMeta: {
+          variants: {
+            selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+          },
+        },
+      };
+      const root = {
+        _type: "TplComponent",
+        uuid: "tpl-root-uuid",
+        component: codeComp,
+        vsettings: [{ rs: { values: {} } }],
+        children: [],
+      };
+      const comp = {
+        uuid: "comp-1",
+        name: "TestComponent",
+        tplTree: root,
+        pageMeta: undefined,
+        variants: [],
+        variantGroups: [],
+      };
+      setupSession(comp);
+
+      const mockVariant = { uuid: "hover-uuid", selectors: [":hover"], forTpl: null };
+      mockCreateStyleVariant.mockReturnValue(mockVariant);
+
+      const result = await createStyleVariant(api, "comp-1", ":hover");
+      expect(result.selector).toBe(":hover");
     });
   });
 

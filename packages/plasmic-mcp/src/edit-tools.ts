@@ -1053,6 +1053,40 @@ async function saveOrAccumulate(
 // --- Variant resolution ---
 
 /**
+ * Check if a variant is a code component variant (has codeComponentName and codeComponentVariantKeys).
+ */
+function isCodeComponentVariant(variant: any): boolean {
+  return (
+    !!variant.codeComponentName &&
+    Array.isArray(variant.codeComponentVariantKeys) &&
+    variant.codeComponentVariantKeys.length > 0
+  );
+}
+
+/**
+ * Get code component variant metadata from the component's root TplComponent.
+ * Returns null if the component root is not a code component with registered variants.
+ *
+ * The variant meta is stored on the code component's codeComponentMeta.variants,
+ * keyed by variant key (e.g., "selected" → { cssSelector: "[data-selected]", displayName: "Selected" }).
+ */
+function getCodeComponentVariantMetas(
+  component: any
+): Record<string, { cssSelector: string; displayName: string }> | null {
+  const tplTree = component.tplTree;
+  // Root must be a TplComponent (wrapping a code component)
+  if (!tplTree || tplTree._type !== "TplComponent") return null;
+
+  const codeComp = tplTree.component;
+  if (!codeComp?.codeComponentMeta?.variants) return null;
+
+  const metas = codeComp.codeComponentMeta.variants;
+  if (typeof metas !== "object" || Object.keys(metas).length === 0) return null;
+
+  return metas;
+}
+
+/**
  * Collect all available variant names for error messages.
  */
 function collectAvailableVariantNames(site: any, component: any): string[] {
@@ -1070,6 +1104,19 @@ function collectAvailableVariantNames(site: any, component: any): string[] {
   for (const v of component.variants ?? []) {
     if (v.selectors?.length > 0) {
       names.push(v.selectors[0]);
+    }
+  }
+  // Include code component variant keys and display names
+  const ccMetas = getCodeComponentVariantMetas(component);
+  for (const v of component.variants ?? []) {
+    if (isCodeComponentVariant(v)) {
+      const keys: string[] = v.codeComponentVariantKeys;
+      for (const key of keys) {
+        names.push(key);
+        if (ccMetas?.[key]?.displayName) {
+          names.push(ccMetas[key].displayName);
+        }
+      }
     }
   }
   return names;
@@ -1134,8 +1181,29 @@ export function resolveVariant(site: any, component: any, variantStr: string): a
     );
   }
 
-  // 3. Search by name (case-insensitive)
+  // 3. Search by code component variant key or display name (case-insensitive).
+  //    Code component variants take precedence over regular name matches (matches Studio behavior).
   const lowerName = variantStr.toLowerCase();
+  const ccMetas = getCodeComponentVariantMetas(component);
+  if (ccMetas) {
+    for (const v of component.variants ?? []) {
+      if (isCodeComponentVariant(v)) {
+        const keys: string[] = v.codeComponentVariantKeys;
+        // Match by key (case-insensitive)
+        if (keys.some((k: string) => k.toLowerCase() === lowerName)) {
+          return v;
+        }
+        // Match by display name (case-insensitive)
+        for (const key of keys) {
+          if (ccMetas[key]?.displayName?.toLowerCase() === lowerName) {
+            return v;
+          }
+        }
+      }
+    }
+  }
+
+  // 4. Search by name (case-insensitive) in global and component variant groups
   const matches: Array<{ variant: any; source: string }> = [];
 
   for (const group of site.globalVariantGroups ?? []) {
@@ -1196,6 +1264,14 @@ export interface ListVariantsResult {
     name: string;
     selectors: string[];
     forTpl?: string;
+  }>;
+  codeComponentVariants: Array<{
+    uuid: string;
+    key: string;
+    displayName: string;
+    cssSelector: string;
+    codeComponentName: string;
+    invalid?: boolean;
   }>;
 }
 
@@ -1269,7 +1345,41 @@ export function listVariants(site: any, component: any): ListVariantsResult {
     }
   }
 
-  return { globalVariants, componentVariants, styleVariants };
+  // Enumerate code component variants (from component.variants where codeComponentName is set).
+  // These come from registered ComponentMeta.variants on the code component root.
+  const codeComponentVariants: ListVariantsResult["codeComponentVariants"] = [];
+  const ccMetas = getCodeComponentVariantMetas(component);
+
+  for (const v of component.variants ?? []) {
+    if (isCodeComponentVariant(v)) {
+      const keys: string[] = v.codeComponentVariantKeys;
+      // A variant is invalid if any of its keys are missing from the code component meta
+      const hasInvalidKey = !ccMetas || keys.some((k: string) => !ccMetas[k]);
+
+      // Build display name from meta entries (join multiple display names for multi-key variants)
+      const displayNames = keys
+        .map((k: string) => ccMetas?.[k]?.displayName)
+        .filter(Boolean);
+      const displayName =
+        displayNames.length > 0 ? displayNames.join(", ") : keys[0];
+
+      // Use first valid key's cssSelector
+      const firstValidMeta = keys
+        .map((k: string) => ccMetas?.[k])
+        .find(Boolean);
+
+      codeComponentVariants.push({
+        uuid: v.uuid,
+        key: keys[0],
+        displayName,
+        cssSelector: firstValidMeta?.cssSelector ?? "",
+        codeComponentName: v.codeComponentName,
+        ...(hasInvalidKey ? { invalid: true } : {}),
+      });
+    }
+  }
+
+  return { globalVariants, componentVariants, styleVariants, codeComponentVariants };
 }
 
 // --- update-text ---
@@ -3314,13 +3424,26 @@ export async function createStyleVariant(
   selector: string,
   nodeRef?: string
 ): Promise<CreateStyleVariantResult> {
-  if (!VALID_STYLE_SELECTORS.includes(selector)) {
-    throw new Error(
-      `Invalid selector "${selector}". Valid selectors: ${VALID_STYLE_SELECTORS.join(", ")}`
-    );
-  }
-
   const component = findComponent(componentUuid);
+
+  // Validate selector: standard pseudo-class or registered code component selector
+  if (!VALID_STYLE_SELECTORS.includes(selector)) {
+    const ccMetas = getCodeComponentVariantMetas(component);
+    if (ccMetas) {
+      const validCCSelectors = Object.values(ccMetas)
+        .map((m: any) => m.cssSelector)
+        .filter(Boolean);
+      if (!validCCSelectors.includes(selector)) {
+        throw new Error(
+          `Invalid selector "${selector}". Valid selectors: ${[...VALID_STYLE_SELECTORS, ...validCCSelectors].join(", ")}`
+        );
+      }
+    } else {
+      throw new Error(
+        `Invalid selector "${selector}". Valid selectors: ${VALID_STYLE_SELECTORS.join(", ")}`
+      );
+    }
+  }
   const session = requireSession();
   const tplMgr = new TplMgr({ site: session.site });
   const tracker = getChangeTracker();
