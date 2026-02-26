@@ -1429,7 +1429,7 @@ describe("tool handlers", () => {
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Error in component.create-page");
+      expect(result.content[0].text).toContain("Error component.create-page");
     });
   });
 
@@ -1543,7 +1543,7 @@ describe("tool handlers", () => {
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Error in component.create");
+      expect(result.content[0].text).toContain("Error component.create");
     });
   });
 
@@ -1715,7 +1715,7 @@ describe("tool handlers", () => {
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Error in component.clone");
+      expect(result.content[0].text).toContain("Error component.clone");
     });
   });
 

@@ -4,9 +4,9 @@ Goal: Claude Code skills and workflows that create Plasmic pages programmaticall
 
 ## Current State
 
-- **MCP server**: 8 STRAP domain tools, ~103 actions, ~4,900-line server.ts
+- **MCP server**: 8 STRAP domain tools, ~103 actions, ~4,650-line server.ts
 - **Skills**: 6 Claude Code skills (plasmic, plasmic-inspect, plasmic-edit, plasmic-create-page, plasmic-create-component, plasmic-patterns)
-- **Tests**: 1,180 passing (1046 unit + 134 integration), 0 skipped, 0 TODOs in code
+- **Tests**: 1,184 passing (1047 unit + 137 integration), 0 skipped, 0 TODOs in code
 - **Code quality**: Zero FIXMEs, zero HACK/XXX markers, zero placeholders, zero partial implementations
 - **Core page-creation workflow**: Functional end-to-end (project.set -> discover tokens -> build tree -> create-page -> enhance via /plasmic-edit -> save)
 
@@ -14,37 +14,24 @@ All priorities (P1-P6) are DONE. All spec acceptance criteria are met.
 
 ---
 
-## Post-P6 Cleanup (completed)
+## Post-P6 Comprehensive Audit (completed)
 
-- **Fixed `project.set` pretty-print**: Last remaining `JSON.stringify(x, null, 2)` in a non-file-write path. Changed to compact format to satisfy `response-compact-json.md` spec acceptance criterion: "Zero `JSON.stringify(x, null, 2)` calls in server.ts except for file-write paths."
-- **Fixed spec inconsistency**: `response-truncation.md` used `nodesTotal` while `response-default-maxdepth.md`, all code, all tests, and skills use `totalNodes`. Updated the spec to match.
+### P2 critical fix: compact JSON for all domains (134 remaining pretty-print calls)
 
----
+Full audit revealed the original P2 fix only converted ~6 inspect handlers to compact JSON. The remaining **134 `JSON.stringify(x, null, 2)` calls** across project, component, node, variant, design, data, and interaction domains were still pretty-printing. All 134 converted to `JSON.stringify(x)` — only the `inspect.export` file-write path retains `null, 2`. This satisfies the `response-compact-json.md` acceptance criterion: "Zero `JSON.stringify(x, null, 2)` calls in server.ts except for file-write paths."
 
-## Post-P6 Gap Audit (completed)
+### Error handling fixes
 
-Thorough verification of all 6 specs against implementation revealed and resolved:
+1. **`withDryRun` rollback logging**: Added `console.error` CRITICAL message when dry-run rollback fails (was silently swallowed with `catch (_) {}`).
+2. **`component.create-page/create/clone` batch safety**: Added these 3 mutation actions to the `handleMutationError` allowlist so batch is properly cancelled and changes rolled back on failure.
+3. **`design` list-action error format**: Changed `"Error: ${err.message}"` to `"Error in design.${action}: ${err.message}"` for consistency with the STRAP `"Error in domain.action: message"` pattern.
 
-### P4 bug fix: inspect.subtree char-truncation missing nodesShown/totalNodes
-The subtree handler only set `truncated: true` and `hint` when char-truncated, but omitted `nodesShown` and `totalNodes` — unlike the tree/summary handlers which include both. Fixed by tracking `totalNodes` before truncation and including `nodesShown`/`totalNodes` in the subtree response.
+### Test gap fills (4 new tests)
 
-### P4 test gap: subtree truncation unit + integration tests
-Added 4 unit tests: default maxChars 15000, custom maxChars, maxChars: -1 unlimited, char truncation metadata (nodesShown, totalNodes, hint). Added 2 integration tests: subtree totalNodes verification, subtree char-budget truncation with metadata.
-
-### P4 test gap: truncation drill-in workflow
-Added integration test that simulates the agent workflow: receive truncated tree → follow hint → drill in with inspect.subtree.
-
-### P2 test gap: compact JSON verification
-Added integration test that verifies MCP responses use compact JSON (no indentation patterns) and remain valid JSON.
-
-### P6 test gap: concise drill-in by child name
-Added integration test: concise summary → find named child → drill in with inspect.node using child name.
-
-### P5 skill gaps: format:concise and truncation hints
-Updated 3 skills:
-- **plasmic-edit.md**: Added `format: "concise"` to summary calls, added truncation hint guidance
-- **plasmic-create-page.md**: Added `format: "concise"` to summary call, added truncation hint guidance
-- **plasmic-create-component.md**: Added `format: "concise"` to all summary calls, added truncation hint guidance
+1. **Non-inspect compact JSON**: Integration test verifying component.list, variant.list, and design.list-tokens responses use compact JSON.
+2. **Error response compactness**: Integration test verifying error responses don't contain indentation patterns.
+3. **maxDepth: 100 on shallow component**: Integration test confirming `truncated: false` when maxDepth vastly exceeds component depth.
+4. **Unnamed node concise format**: Unit test verifying unnamed nodes retain `tag` for identification when UUIDs are stripped.
 
 ---
 
@@ -52,11 +39,11 @@ Updated 3 skills:
 
 ```
 P1 (component instance styling)  -- DONE
-P2 (compact JSON)                -- DONE (post-cleanup: project.set compact fix; post-audit: compact JSON integration test)
-P3 (default maxDepth)            -- DONE
-P4 (response truncation)         -- DONE (post-audit: subtree nodesShown/totalNodes fix + 6 new tests + drill-in workflow test)
-P5 (skills progressive nav)      -- DONE (post-audit: format:concise + truncation hints in 3 skills)
-P6 (concise format)              -- DONE (post-audit: concise drill-in by child name integration test)
+P2 (compact JSON)                -- DONE (post-audit: 134 remaining pretty-print calls fixed + 2 new integration tests)
+P3 (default maxDepth)            -- DONE (post-audit: maxDepth:100 edge case test)
+P4 (response truncation)         -- DONE
+P5 (skills progressive nav)      -- DONE
+P6 (concise format)              -- DONE (post-audit: unnamed node identification test)
 ```
 
 All priorities complete. All spec acceptance criteria verified and met.

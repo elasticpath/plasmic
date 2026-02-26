@@ -184,8 +184,11 @@ async function withDryRun<T>(fn: () => Promise<T>): Promise<T> {
         tracker.withRecording(() => {
           undoChanges(changes.changes);
         });
-      } catch (_) {
-        // Best-effort undo on error path
+      } catch (undoErr) {
+        console.error(
+          `[plasmic-mcp] CRITICAL: Dry-run rollback failed. ` +
+            `Use refresh-project to reload a clean model. (${undoErr})`
+        );
       }
     }
     cancelBatch();
@@ -362,9 +365,7 @@ export function createServer(): McpServer {
                       revision: save.revisionNum,
                       incremental: save.incremental,
                       message: `Full save completed at revision ${save.revisionNum}`,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -424,9 +425,7 @@ export function createServer(): McpServer {
                       componentCount: components.length,
                       pageCount: pages.length,
                       message: `Project refreshed at revision ${revisionNum}`,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -446,9 +445,7 @@ export function createServer(): McpServer {
                       batchId: bId,
                       message:
                         "Batch session started. Edits will accumulate until end-batch is called.",
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -467,9 +464,7 @@ export function createServer(): McpServer {
                       operationCount: result.operationCount,
                       revision: result.save.revisionNum,
                       message: `Batch saved: ${result.operationCount} operations in revision ${result.save.revisionNum}`,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -494,9 +489,7 @@ export function createServer(): McpServer {
                       revision: result.save.revisionNum,
                       remainingUndos: getUndoDepth(),
                       message: `Undone: ${result.undone}`,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -894,9 +887,7 @@ export function createServer(): McpServer {
                       total: props.length,
                       properties: props,
                       ...(filter ? { filter } : {}),
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -1160,9 +1151,7 @@ export function createServer(): McpServer {
                       uuid,
                       path: pagePath,
                       message: `Page "${pageName}" created at ${pagePath}`,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -1236,9 +1225,7 @@ export function createServer(): McpServer {
                       name: compName,
                       uuid,
                       message: `Component "${compName}" created`,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -1341,9 +1328,7 @@ export function createServer(): McpServer {
                       clonedFromUuid: srcUuid,
                       path: params.path,
                       message: `Component "${cloneName}" cloned from "${source.name}"${params.path ? ` at ${params.path}` : ""}`,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -1368,9 +1353,7 @@ export function createServer(): McpServer {
                       path: result.newPath,
                       revision: result.save.revisionNum,
                       message: `Renamed "${result.oldName}" → "${result.newName}"`,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -1391,9 +1374,7 @@ export function createServer(): McpServer {
                       deletedUuid: result.deletedUuid,
                       revision: result.save.revisionNum,
                       message: `Deleted "${result.deletedName}"`,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -1421,9 +1402,7 @@ export function createServer(): McpServer {
                         instanceUuid: result.instanceUuid,
                         containingComponentUuid: result.containingComponentUuid,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -1445,9 +1424,7 @@ export function createServer(): McpServer {
                       containingComponentUuid: result.containingComponentUuid,
                       revision: result.save.revisionNum,
                       message: `Extracted "${result.newComponentName}" from component`,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -1467,9 +1444,7 @@ export function createServer(): McpServer {
                       componentName: result.componentName,
                       path: result.path,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -1488,9 +1463,7 @@ export function createServer(): McpServer {
                       success: true,
                       componentName: result.componentName,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -1518,9 +1491,7 @@ export function createServer(): McpServer {
                       updatedFields: result.updatedFields,
                       revision: result.save.revisionNum,
                       message: `Updated page metadata: ${result.updatedFields.join(", ")}`,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -1557,9 +1528,7 @@ export function createServer(): McpServer {
                       componentUuid: component.uuid,
                       propCount: props.length,
                       props,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -1586,9 +1555,7 @@ export function createServer(): McpServer {
                         name: result.name,
                         propType: result.type,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -1609,9 +1576,7 @@ export function createServer(): McpServer {
                       name: result.name,
                       propType: result.type,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -1632,9 +1597,7 @@ export function createServer(): McpServer {
                         error: true,
                         message:
                           "At least one of 'name', 'defaultValue', or 'description' must be provided.",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -1658,9 +1621,7 @@ export function createServer(): McpServer {
                         previousName: result.previousName,
                         updatedFields: result.updatedFields,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -1682,9 +1643,7 @@ export function createServer(): McpServer {
                       previousName: result.previousName,
                       updatedFields: result.updatedFields,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -1710,9 +1669,7 @@ export function createServer(): McpServer {
                         removedUuid: result.removedUuid,
                         cleanedArgCount: result.cleanedArgCount,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -1731,9 +1688,7 @@ export function createServer(): McpServer {
                       removedUuid: result.removedUuid,
                       cleanedArgCount: result.cleanedArgCount,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -1770,9 +1725,7 @@ export function createServer(): McpServer {
                       componentName: component.name,
                       stateCount: states.length,
                       states,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -1802,9 +1755,7 @@ export function createServer(): McpServer {
                         variableType: result.variableType,
                         accessType: result.accessType,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -1827,9 +1778,7 @@ export function createServer(): McpServer {
                       variableType: result.variableType,
                       accessType: result.accessType,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -1850,9 +1799,7 @@ export function createServer(): McpServer {
                         error: true,
                         message:
                           "At least one of 'name', 'accessType', or 'initialValue' must be provided.",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -1876,9 +1823,7 @@ export function createServer(): McpServer {
                         previousName: result.previousName,
                         updatedFields: result.updatedFields,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -1900,9 +1845,7 @@ export function createServer(): McpServer {
                       previousName: result.previousName,
                       updatedFields: result.updatedFields,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -1928,9 +1871,7 @@ export function createServer(): McpServer {
                         removedUuid: result.removedUuid,
                         cleanedArgCount: result.cleanedArgCount,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -1949,9 +1890,7 @@ export function createServer(): McpServer {
                       removedUuid: result.removedUuid,
                       cleanedArgCount: result.cleanedArgCount,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -1962,7 +1901,7 @@ export function createServer(): McpServer {
             throw new Error(`Unknown action '${action}' for component tool.`);
         }
       } catch (err: any) {
-        if (["rename", "delete", "extract", "convert-to-page", "convert-to-component", "update-page-meta",
+        if (["create-page", "create", "clone", "rename", "delete", "extract", "convert-to-page", "convert-to-component", "update-page-meta",
              "add-prop", "update-prop", "remove-prop", "add-state", "update-state", "remove-state"].includes(action)) {
           return handleMutationError(`component.${action}`, err);
         }
@@ -2063,9 +2002,7 @@ export function createServer(): McpServer {
                         ...(result.slotName ? { slot: result.slotName } : {}),
                         position: result.position,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -2088,9 +2025,7 @@ export function createServer(): McpServer {
                       ...(result.slotName ? { slot: result.slotName } : {}),
                       position: result.position,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -2114,9 +2049,7 @@ export function createServer(): McpServer {
                         dryRun: true,
                         removed: result.removedName ?? result.removedUuid,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -2134,9 +2067,7 @@ export function createServer(): McpServer {
                       success: true,
                       removed: result.removedName ?? result.removedUuid,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -2164,9 +2095,7 @@ export function createServer(): McpServer {
                         ...(result.slotName ? { slot: result.slotName } : {}),
                         position: result.position,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -2189,9 +2118,7 @@ export function createServer(): McpServer {
                       ...(result.slotName ? { slot: result.slotName } : {}),
                       position: result.position,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -2218,9 +2145,7 @@ export function createServer(): McpServer {
                         originalUuid: result.originalUuid,
                         ...(result.slotName ? { slot: result.slotName } : {}),
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -2243,9 +2168,7 @@ export function createServer(): McpServer {
                       originalUuid: result.originalUuid,
                       ...(result.slotName ? { slot: result.slotName } : {}),
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -2270,9 +2193,7 @@ export function createServer(): McpServer {
                         dryRun: true,
                         newOrder: result.newOrder,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -2291,9 +2212,7 @@ export function createServer(): McpServer {
                       parentUuid: result.parentUuid,
                       newOrder: result.newOrder,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -2319,9 +2238,7 @@ export function createServer(): McpServer {
                         node: result.nodeName ?? result.nodeUuid,
                         updatedProperties: result.updatedProperties,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -2341,9 +2258,7 @@ export function createServer(): McpServer {
                       node: result.nodeName ?? result.nodeUuid,
                       updatedProperties: result.updatedProperties,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -2372,9 +2287,7 @@ export function createServer(): McpServer {
                         ...(result.dynamic ? { dynamic: true } : {}),
                         ...(result.fallback != null ? { fallback: result.fallback } : {}),
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -2395,9 +2308,7 @@ export function createServer(): McpServer {
                       ...(result.dynamic ? { dynamic: true } : {}),
                       ...(result.fallback != null ? { fallback: result.fallback } : {}),
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -2426,9 +2337,7 @@ export function createServer(): McpServer {
                         newText: result.newText,
                         markCount: result.markCount,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -2448,9 +2357,7 @@ export function createServer(): McpServer {
                       newText: result.newText,
                       markCount: result.markCount,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -2477,9 +2384,7 @@ export function createServer(): McpServer {
                         updatedAttributes: result.updatedAttributes,
                         removedAttributes: result.removedAttributes,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -2500,9 +2405,7 @@ export function createServer(): McpServer {
                       updatedAttributes: result.updatedAttributes,
                       removedAttributes: result.removedAttributes,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -2529,9 +2432,7 @@ export function createServer(): McpServer {
                         previousVisibility: result.previousVisibility,
                         newVisibility: result.newVisibility,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -2552,9 +2453,7 @@ export function createServer(): McpServer {
                       previousVisibility: result.previousVisibility,
                       newVisibility: result.newVisibility,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -2579,9 +2478,7 @@ export function createServer(): McpServer {
                         node: result.nodeName ?? result.nodeUuid,
                         imageSource: result.imageSource,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -2603,9 +2500,7 @@ export function createServer(): McpServer {
                       node: result.nodeName ?? result.nodeUuid,
                       imageSource: result.imageSource,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -2631,9 +2526,7 @@ export function createServer(): McpServer {
                         mixinName: result.mixinName,
                         nodeUuid: result.nodeUuid,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -2651,9 +2544,7 @@ export function createServer(): McpServer {
                       mixinName: result.mixinName,
                       nodeUuid: result.nodeUuid,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -2679,9 +2570,7 @@ export function createServer(): McpServer {
                         mixinName: result.mixinName,
                         nodeUuid: result.nodeUuid,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -2699,9 +2588,7 @@ export function createServer(): McpServer {
                       mixinName: result.mixinName,
                       nodeUuid: result.nodeUuid,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -2729,9 +2616,7 @@ export function createServer(): McpServer {
                         sequenceName: result.sequenceName,
                         nodeUuid: result.nodeUuid,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -2753,9 +2638,7 @@ export function createServer(): McpServer {
                       sequenceName: result.sequenceName,
                       nodeUuid: result.nodeUuid,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -2780,9 +2663,7 @@ export function createServer(): McpServer {
                         removedCount: result.removedCount,
                         nodeUuid: result.nodeUuid,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -2800,9 +2681,7 @@ export function createServer(): McpServer {
                       removedCount: result.removedCount,
                       nodeUuid: result.nodeUuid,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -2917,9 +2796,7 @@ export function createServer(): McpServer {
                         : {}),
                       revision: result.save.revisionNum,
                       message: `Created ${result.selector} variant (${result.scope}-level)${result.forTplName ? ` on ${result.forTplName}` : ""}. Use update-styles with variant: "${result.selector}" to apply styles.`,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -2947,9 +2824,7 @@ export function createServer(): McpServer {
                       variants: result.variants,
                       revision: result.save.revisionNum,
                       message: `Created variant group "${result.groupName}" (${result.type}) with ${result.variants.length} variant(s). Use update-styles/update-text with variant names to apply overrides.`,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -2980,9 +2855,7 @@ export function createServer(): McpServer {
                       success: true,
                       group: result.group,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -3002,9 +2875,7 @@ export function createServer(): McpServer {
                       success: true,
                       variant: result.variant,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -3024,9 +2895,7 @@ export function createServer(): McpServer {
                       removedName: result.removedName,
                       removedUuid: result.removedUuid,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -3047,9 +2916,7 @@ export function createServer(): McpServer {
                       oldName: result.oldName,
                       newName: result.newName,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -3073,9 +2940,7 @@ export function createServer(): McpServer {
                       mediaQuery: result.mediaQuery,
                       revision: result.save.revisionNum,
                       message: `Created screen variant "${result.name}" with breakpoint ${result.mediaQuery}.`,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -3097,9 +2962,7 @@ export function createServer(): McpServer {
                       mediaQuery: result.mediaQuery,
                       revision: result.save.revisionNum,
                       message: `Updated screen variant "${result.name}" to ${result.mediaQuery}.`,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -3121,9 +2984,7 @@ export function createServer(): McpServer {
                       newName: result.newName,
                       variantUuid: result.variantUuid,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -3143,9 +3004,7 @@ export function createServer(): McpServer {
                       removedName: result.removedName,
                       removedUuid: result.removedUuid,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -3266,9 +3125,7 @@ export function createServer(): McpServer {
                         tokenType: result.type,
                         value: result.value,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -3288,9 +3145,7 @@ export function createServer(): McpServer {
                       tokenType: result.type,
                       value: result.value,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -3310,9 +3165,7 @@ export function createServer(): McpServer {
                         error: true,
                         message:
                           "At least one of 'value' or 'name' must be provided.",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -3337,9 +3190,7 @@ export function createServer(): McpServer {
                         previousValue: result.previousValue,
                         value: result.value,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -3360,9 +3211,7 @@ export function createServer(): McpServer {
                       previousValue: result.previousValue,
                       value: result.value,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -3387,9 +3236,7 @@ export function createServer(): McpServer {
                         name: result.name,
                         inlinedCount: result.inlinedCount,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -3408,9 +3255,7 @@ export function createServer(): McpServer {
                       name: result.name,
                       inlinedCount: result.inlinedCount,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -3437,9 +3282,7 @@ export function createServer(): McpServer {
                         sourceName: result.sourceName,
                         value: result.value,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -3460,9 +3303,7 @@ export function createServer(): McpServer {
                       sourceName: result.sourceName,
                       value: result.value,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -3478,9 +3319,7 @@ export function createServer(): McpServer {
                 {
                   type: "text" as const,
                   text: JSON.stringify(
-                    { mixinCount: mixins.length, mixins },
-                    null,
-                    2
+                    { mixinCount: mixins.length, mixins }
                   ),
                 },
               ],
@@ -3504,9 +3343,7 @@ export function createServer(): McpServer {
                         mixinUuid: result.mixinUuid,
                         name: result.name,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -3524,9 +3361,7 @@ export function createServer(): McpServer {
                       mixinUuid: result.mixinUuid,
                       name: result.name,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -3551,9 +3386,7 @@ export function createServer(): McpServer {
                         name: result.name,
                         updatedFields: result.updatedFields,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -3572,9 +3405,7 @@ export function createServer(): McpServer {
                       name: result.name,
                       updatedFields: result.updatedFields,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -3598,9 +3429,7 @@ export function createServer(): McpServer {
                         removedName: result.removedName,
                         removedUuid: result.removedUuid,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -3618,9 +3447,7 @@ export function createServer(): McpServer {
                       removedName: result.removedName,
                       removedUuid: result.removedUuid,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -3636,9 +3463,7 @@ export function createServer(): McpServer {
                 {
                   type: "text" as const,
                   text: JSON.stringify(
-                    { sequenceCount: sequences.length, sequences },
-                    null,
-                    2
+                    { sequenceCount: sequences.length, sequences }
                   ),
                 },
               ],
@@ -3662,9 +3487,7 @@ export function createServer(): McpServer {
                         sequenceUuid: result.sequenceUuid,
                         name: result.name,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -3682,9 +3505,7 @@ export function createServer(): McpServer {
                       sequenceUuid: result.sequenceUuid,
                       name: result.name,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -3709,9 +3530,7 @@ export function createServer(): McpServer {
                         name: result.name,
                         updatedFields: result.updatedFields,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -3730,9 +3549,7 @@ export function createServer(): McpServer {
                       name: result.name,
                       updatedFields: result.updatedFields,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -3756,9 +3573,7 @@ export function createServer(): McpServer {
                         removedName: result.removedName,
                         removedUuid: result.removedUuid,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -3776,9 +3591,7 @@ export function createServer(): McpServer {
                       removedName: result.removedName,
                       removedUuid: result.removedUuid,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -3794,9 +3607,7 @@ export function createServer(): McpServer {
                 {
                   type: "text" as const,
                   text: JSON.stringify(
-                    { themeCount: themes.length, themes },
-                    null,
-                    2
+                    { themeCount: themes.length, themes }
                   ),
                 },
               ],
@@ -3817,9 +3628,7 @@ export function createServer(): McpServer {
                         dryRun: true,
                         themeIndex: result.themeIndex,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -3836,9 +3645,7 @@ export function createServer(): McpServer {
                       success: true,
                       themeIndex: result.themeIndex,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -3862,9 +3669,7 @@ export function createServer(): McpServer {
                         themeIndex: result.themeIndex,
                         updatedFields: result.updatedFields,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -3882,9 +3687,7 @@ export function createServer(): McpServer {
                       themeIndex: result.themeIndex,
                       updatedFields: result.updatedFields,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -3907,9 +3710,7 @@ export function createServer(): McpServer {
                         dryRun: true,
                         removedIndex: result.removedIndex,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -3926,9 +3727,7 @@ export function createServer(): McpServer {
                       success: true,
                       removedIndex: result.removedIndex,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -3954,9 +3753,7 @@ export function createServer(): McpServer {
                         dryRun: true,
                         activeThemeIndex: result.activeThemeIndex,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -3973,9 +3770,7 @@ export function createServer(): McpServer {
                       success: true,
                       activeThemeIndex: result.activeThemeIndex,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -4011,9 +3806,7 @@ export function createServer(): McpServer {
                         name: result.name,
                         assetType: result.type,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -4032,9 +3825,7 @@ export function createServer(): McpServer {
                       name: result.name,
                       assetType: result.type,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -4059,9 +3850,7 @@ export function createServer(): McpServer {
                         oldName: result.oldName,
                         newName: result.newName,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -4080,9 +3869,7 @@ export function createServer(): McpServer {
                       oldName: result.oldName,
                       newName: result.newName,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -4106,9 +3893,7 @@ export function createServer(): McpServer {
                         removedName: result.removedName,
                         removedUuid: result.removedUuid,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -4126,9 +3911,7 @@ export function createServer(): McpServer {
                       removedName: result.removedName,
                       removedUuid: result.removedUuid,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -4141,7 +3924,7 @@ export function createServer(): McpServer {
       } catch (err: any) {
         if (["list-tokens", "list-mixins", "list-animations", "list-themes", "list-assets"].includes(action)) {
           return {
-            content: [{ type: "text" as const, text: `Error: ${err.message}` }],
+            content: [{ type: "text" as const, text: `Error in design.${action}: ${err.message}` }],
             isError: true,
           };
         }
@@ -4223,9 +4006,7 @@ export function createServer(): McpServer {
                         previousCondition: result.previousCondition,
                         newCondition: result.newCondition,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -4246,9 +4027,7 @@ export function createServer(): McpServer {
                       previousCondition: result.previousCondition,
                       newCondition: result.newCondition,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -4281,9 +4060,7 @@ export function createServer(): McpServer {
                         previousDataRep: result.previousDataRep,
                         newDataRep: result.newDataRep,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -4305,9 +4082,7 @@ export function createServer(): McpServer {
                       previousDataRep: result.previousDataRep,
                       newDataRep: result.newDataRep,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -4343,9 +4118,7 @@ export function createServer(): McpServer {
                       componentName: component.name,
                       queryCount: queries.length,
                       queries,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -4372,9 +4145,7 @@ export function createServer(): McpServer {
                         name: result.name,
                         queryType: result.queryType,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -4393,9 +4164,7 @@ export function createServer(): McpServer {
                       name: result.name,
                       queryType: result.queryType,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -4422,9 +4191,7 @@ export function createServer(): McpServer {
                         name: result.name,
                         queryType: result.queryType,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -4443,9 +4210,7 @@ export function createServer(): McpServer {
                       name: result.name,
                       queryType: result.queryType,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -4471,9 +4236,7 @@ export function createServer(): McpServer {
                         removedUuid: result.removedUuid,
                         queryType: result.queryType,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -4492,9 +4255,7 @@ export function createServer(): McpServer {
                       removedUuid: result.removedUuid,
                       queryType: result.queryType,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -4522,9 +4283,7 @@ export function createServer(): McpServer {
                       success: true,
                       token: result.token,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -4543,9 +4302,7 @@ export function createServer(): McpServer {
                       success: true,
                       token: result.token,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -4565,9 +4322,7 @@ export function createServer(): McpServer {
                       removedName: result.removedName,
                       removedUuid: result.removedUuid,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -4598,9 +4353,7 @@ export function createServer(): McpServer {
                       success: true,
                       split: result.split,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -4619,9 +4372,7 @@ export function createServer(): McpServer {
                       success: true,
                       split: result.split,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -4641,9 +4392,7 @@ export function createServer(): McpServer {
                       removedName: result.removedName,
                       removedUuid: result.removedUuid,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -4736,9 +4485,7 @@ export function createServer(): McpServer {
                       nodeRef: nref,
                       interactionCount: interactions.length,
                       interactions,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -4768,9 +4515,7 @@ export function createServer(): McpServer {
                         actionName: result.actionName,
                         interactionName: result.interactionName,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -4792,9 +4537,7 @@ export function createServer(): McpServer {
                       actionName: result.actionName,
                       interactionName: result.interactionName,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -4829,9 +4572,7 @@ export function createServer(): McpServer {
                         actionName: result.actionName,
                         interactionName: result.interactionName,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -4851,9 +4592,7 @@ export function createServer(): McpServer {
                       actionName: result.actionName,
                       interactionName: result.interactionName,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],
@@ -4879,9 +4618,7 @@ export function createServer(): McpServer {
                         removedCount: result.removedCount,
                         event: result.event,
                         message: "Dry run: no changes persisted",
-                      },
-                      null,
-                      2
+                      }
                     ),
                   },
                 ],
@@ -4901,9 +4638,7 @@ export function createServer(): McpServer {
                       removedCount: result.removedCount,
                       event: result.event,
                       revision: result.save.revisionNum,
-                    },
-                    null,
-                    2
+                    }
                   ),
                 },
               ],

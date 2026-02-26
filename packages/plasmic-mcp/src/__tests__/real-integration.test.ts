@@ -5295,6 +5295,71 @@ describe("compact JSON serialization", () => {
     expect(summaryText).not.toMatch(/\n\s{2,}/);
     expect(() => JSON.parse(summaryText)).not.toThrow();
   });
+
+  it("non-inspect domain responses use compact JSON", async () => {
+    const comp = discoveredComponents[0];
+
+    // Test component.list response (non-inspect domain)
+    const listResult = await client.callTool({
+      name: "component",
+      arguments: { action: "list" },
+    });
+    expect(listResult.isError).toBeFalsy();
+    const listText = listResult.content[0].text;
+    expect(listText).not.toMatch(/\n\s{2,}/);
+    expect(() => JSON.parse(listText)).not.toThrow();
+
+    // Test variant.list response
+    const variantResult = await client.callTool({
+      name: "variant",
+      arguments: { action: "list", componentUuid: comp.uuid },
+    });
+    expect(variantResult.isError).toBeFalsy();
+    const variantText = variantResult.content[0].text;
+    expect(variantText).not.toMatch(/\n\s{2,}/);
+    expect(() => JSON.parse(variantText)).not.toThrow();
+
+    // Test design.list-tokens response
+    const tokenResult = await client.callTool({
+      name: "design",
+      arguments: { action: "list-tokens" },
+    });
+    expect(tokenResult.isError).toBeFalsy();
+    const tokenText = tokenResult.content[0].text;
+    expect(tokenText).not.toMatch(/\n\s{2,}/);
+    expect(() => JSON.parse(tokenText)).not.toThrow();
+  });
+
+  it("error responses use compact JSON", async () => {
+    // Trigger an error by using a non-existent componentUuid
+    const errResult = await client.callTool({
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: "non-existent-uuid" },
+    });
+    expect(errResult.isError).toBe(true);
+    const errText = errResult.content[0].text;
+
+    // Error text should not contain indentation patterns
+    expect(errText).not.toMatch(/\n\s{2,}/);
+  });
+});
+
+describe("maxDepth edge cases", () => {
+  it("maxDepth: 100 on shallow component → full tree, truncated: false", async () => {
+    const comp = discoveredComponents[0];
+    const result = parseResponse(
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid, maxDepth: 100 },
+      })
+    );
+    // A very large maxDepth should return the full tree with no truncation
+    expect(result.truncated).toBe(false);
+    expect(result.hint).toBeUndefined();
+    expect(result.tree).toBeDefined();
+    expect(typeof result.totalNodes).toBe("number");
+    expect(result.totalNodes).toBeGreaterThan(0);
+  });
 });
 
 describe("concise format drill-in by child name", () => {

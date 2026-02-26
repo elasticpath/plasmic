@@ -3602,4 +3602,38 @@ describe("toConciseFormat", () => {
     // Only uuid and tag should be present
     expect(Object.keys(result)).toEqual(["uuid", "tag"]);
   });
+
+  it("unnamed node retains tag for identification in concise mode", () => {
+    // When a node has no name, the agent needs tag to identify it
+    const tree: import("../types").TreeNode = {
+      type: "tag",
+      tag: "div",
+      uuid: "root-1",
+      name: "Root",
+      children: [
+        {
+          type: "tag",
+          tag: "section",
+          uuid: "child-1",
+          // No name — agent must use tag to identify
+          childCount: 2,
+        },
+        {
+          type: "tag",
+          tag: "footer",
+          uuid: "child-2",
+          // No name
+          childCount: 0,
+        },
+      ],
+    };
+    const result = toConciseFormat(tree);
+    // Children should retain tag even without name
+    expect(result.children).toBeDefined();
+    expect(result.children![0].tag).toBe("section");
+    expect(result.children![0].name).toBeUndefined();
+    expect(result.children![0].uuid).toBeUndefined(); // UUID stripped from non-root
+    expect(result.children![1].tag).toBe("footer");
+    // Agent can still reference by tag or position
+  });
 });
