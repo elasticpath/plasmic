@@ -429,7 +429,8 @@ export function resolveTokenReferences(
  *   - borderWidth → borderTopWidth/Right/Bottom/Left
  *   - borderStyle → borderTopStyle/Right/Bottom/Left
  *   - borderColor → borderTopColor/Right/Bottom/Left
- *   - background-* → consolidated to `background` shorthand
+ *   - backgroundColor/backgroundImage + longhands → composite `background` shorthand
+ *     (WAB site-invariants reject individual background-* longhands)
  *
  * Accepts both camelCase and kebab-case input.
  */
@@ -439,7 +440,12 @@ export function sanitizeStyles(
   const result: Record<string, string> = {};
   let bgColor: string | undefined;
   let bgImage: string | undefined;
-  const skippedLonghands: string[] = [];
+  let bgSize: string | undefined;
+  let bgPosition: string | undefined;
+  let bgRepeat: string | undefined;
+  let bgAttachment: string | undefined;
+  let bgOrigin: string | undefined;
+  let bgClip: string | undefined;
 
   for (const [key, value] of Object.entries(styles)) {
     switch (key) {
@@ -454,17 +460,27 @@ export function sanitizeStyles(
         break;
       case "backgroundSize":
       case "background-size":
+        bgSize = value;
+        break;
       case "backgroundPosition":
       case "background-position":
+        bgPosition = value;
+        break;
       case "backgroundRepeat":
       case "background-repeat":
+        bgRepeat = value;
+        break;
       case "backgroundAttachment":
       case "background-attachment":
+        bgAttachment = value;
+        break;
       case "backgroundOrigin":
       case "background-origin":
+        bgOrigin = value;
+        break;
       case "backgroundClip":
       case "background-clip":
-        skippedLonghands.push(key);
+        bgClip = value;
         break;
       case "background":
         result["background"] = value;
@@ -622,18 +638,56 @@ export function sanitizeStyles(
 
   // Don't override an explicit background shorthand
   if (!result["background"]) {
-    if (bgImage) {
-      result["background"] = bgImage;
-    } else if (bgColor) {
-      result["background"] = `linear-gradient(${bgColor}, ${bgColor})`;
-    }
-  }
+    const hasImageOrColor = bgImage || bgColor;
+    const hasLonghands = bgSize || bgPosition || bgRepeat || bgAttachment || bgOrigin || bgClip;
 
-  if (skippedLonghands.length > 0) {
-    console.error(
-      `[plasmic-mcp] Warning: Dropped unsupported background longhands: ${skippedLonghands.join(", ")}. ` +
-        `Use the "background" shorthand instead.`
-    );
+    if (hasImageOrColor) {
+      // Build composite background shorthand incorporating any longhands.
+      // WAB site-invariants reject individual background-* longhands, so
+      // everything must be consolidated into the `background` shorthand.
+      const parts: string[] = [];
+
+      // Image or gradient first
+      if (bgImage) {
+        parts.push(bgImage);
+      } else {
+        parts.push(`linear-gradient(${bgColor}, ${bgColor})`);
+      }
+
+      // Position and/or size (CSS requires position before "/ size")
+      if (bgPosition || bgSize) {
+        const pos = bgPosition || "0% 0%";
+        parts.push(bgSize ? `${pos} / ${bgSize}` : pos);
+      }
+
+      if (bgRepeat) parts.push(bgRepeat);
+      if (bgAttachment) parts.push(bgAttachment);
+
+      // Origin and clip: two <box> values = origin then clip; one = both
+      if (bgOrigin && bgClip && bgOrigin !== bgClip) {
+        parts.push(bgOrigin);
+        parts.push(bgClip);
+      } else if (bgOrigin) {
+        parts.push(bgOrigin);
+      } else if (bgClip) {
+        parts.push(bgClip);
+      }
+
+      result["background"] = parts.join(" ");
+    } else if (hasLonghands) {
+      // Longhands without image/color can't form a useful background shorthand.
+      // Warn so the caller knows their properties weren't applied.
+      const names = [
+        bgSize && "backgroundSize", bgPosition && "backgroundPosition",
+        bgRepeat && "backgroundRepeat", bgAttachment && "backgroundAttachment",
+        bgOrigin && "backgroundOrigin", bgClip && "backgroundClip",
+      ].filter(Boolean);
+      console.error(
+        `[plasmic-mcp] Warning: Background longhands (${names.join(", ")}) require ` +
+          `backgroundImage, backgroundColor, or background shorthand in the same call. ` +
+          `These properties were not applied.`
+      );
+    }
   }
 
   return result;

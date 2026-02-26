@@ -271,6 +271,40 @@ const server = createServer((req, res) => {
         res.end(JSON.stringify({ error: `Invalid JSON: ${e.message}` }));
       }
     });
+  } else if (url.pathname.startsWith("/api/screenshots/")) {
+    // Serve screenshot files: /api/screenshots/{runId}/{scenarioId}/{desktop|mobile}
+    // Screenshots are captured during eval runs and stored as PNG files.
+    const parts = url.pathname.slice("/api/screenshots/".length).split("/");
+    if (parts.length >= 3) {
+      const [runId, scenarioId, viewType] = parts;
+      // Validate path segments to prevent directory traversal
+      if (/^[a-zA-Z0-9_-]+$/.test(runId) && /^[a-zA-Z0-9_-]+$/.test(scenarioId) && /^(desktop|mobile)$/.test(viewType)) {
+        const screenshotPath = resolve(RESULTS_DIR, "screenshots", runId, scenarioId, `${viewType}.png`);
+        // Double-check the resolved path stays within RESULTS_DIR
+        if (screenshotPath.startsWith(RESULTS_DIR) && existsSync(screenshotPath)) {
+          try {
+            const data = readFileSync(screenshotPath);
+            res.writeHead(200, {
+              "Content-Type": "image/png",
+              "Cache-Control": "public, max-age=86400",
+            });
+            res.end(data);
+          } catch (e) {
+            res.writeHead(500, { "Content-Type": "text/plain" });
+            res.end(`Error reading screenshot: ${e.message}`);
+          }
+        } else {
+          res.writeHead(404, { "Content-Type": "text/plain" });
+          res.end("Screenshot not found");
+        }
+      } else {
+        res.writeHead(400, { "Content-Type": "text/plain" });
+        res.end("Invalid screenshot path parameters");
+      }
+    } else {
+      res.writeHead(400, { "Content-Type": "text/plain" });
+      res.end("Invalid screenshot path format: expected /api/screenshots/{runId}/{scenarioId}/{desktop|mobile}");
+    }
   } else {
     res.writeHead(404, { "Content-Type": "text/plain" });
     res.end("Not found");

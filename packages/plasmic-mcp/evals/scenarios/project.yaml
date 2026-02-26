@@ -99,6 +99,7 @@ scenarios:
       - component
     tier: medium
     timeout: 150
+    requiredMode: integration
     graders:
       - type: tool-sequence
         params:

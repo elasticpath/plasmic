@@ -353,7 +353,7 @@ describe("sanitizeStyles", () => {
     expect(result).toEqual({ background: "linear-gradient(blue, green)" });
   });
 
-  it("drops unsupported background longhands and logs warning", () => {
+  it("warns when background longhands provided without image or color", () => {
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const result = sanitizeStyles({
@@ -363,16 +363,16 @@ describe("sanitizeStyles", () => {
       fontSize: "16px",
     });
 
-    // Longhands are dropped, pass-through property preserved
+    // Longhands without image/color can't form a shorthand; warn but keep other props
     expect(result).toEqual({ fontSize: "16px" });
     expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Dropped unsupported background longhands")
+      expect.stringContaining("require backgroundImage, backgroundColor")
     );
 
     consoleSpy.mockRestore();
   });
 
-  it("drops all background longhand variants (camel + kebab)", () => {
+  it("warns for all background longhand variants (camel + kebab) without image", () => {
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const result = sanitizeStyles({
@@ -385,9 +385,78 @@ describe("sanitizeStyles", () => {
     });
 
     expect(Object.keys(result)).toHaveLength(0);
-    expect(consoleSpy).toHaveBeenCalled();
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining("require backgroundImage, backgroundColor")
+    );
 
     consoleSpy.mockRestore();
+  });
+
+  it("incorporates background longhands into composite shorthand with image", () => {
+    const result = sanitizeStyles({
+      backgroundImage: "url(img.png)",
+      backgroundSize: "cover",
+      backgroundPosition: "center",
+      backgroundRepeat: "no-repeat",
+    });
+    expect(result).toEqual({
+      background: "url(img.png) center / cover no-repeat",
+    });
+  });
+
+  it("incorporates background longhands into composite shorthand with color", () => {
+    const result = sanitizeStyles({
+      backgroundColor: "#fff",
+      backgroundSize: "contain",
+      backgroundPosition: "top left",
+      backgroundAttachment: "fixed",
+    });
+    expect(result).toEqual({
+      background: "linear-gradient(#fff, #fff) top left / contain fixed",
+    });
+  });
+
+  it("incorporates origin and clip into composite shorthand", () => {
+    const result = sanitizeStyles({
+      backgroundImage: "url(bg.png)",
+      backgroundOrigin: "padding-box",
+      backgroundClip: "content-box",
+    });
+    expect(result).toEqual({
+      background: "url(bg.png) padding-box content-box",
+    });
+  });
+
+  it("uses single box value when origin equals clip", () => {
+    const result = sanitizeStyles({
+      backgroundImage: "url(bg.png)",
+      backgroundOrigin: "border-box",
+      backgroundClip: "border-box",
+    });
+    expect(result).toEqual({
+      background: "url(bg.png) border-box",
+    });
+  });
+
+  it("adds default position when size provided without position", () => {
+    const result = sanitizeStyles({
+      backgroundImage: "url(bg.png)",
+      backgroundSize: "50% 50%",
+    });
+    // CSS requires position before "/ size"
+    expect(result).toEqual({
+      background: "url(bg.png) 0% 0% / 50% 50%",
+    });
+  });
+
+  it("explicit background shorthand overrides longhands", () => {
+    const result = sanitizeStyles({
+      background: "red",
+      backgroundSize: "cover",
+      backgroundImage: "url(bg.png)",
+    });
+    // Explicit shorthand takes precedence
+    expect(result).toEqual({ background: "red" });
   });
 
   // --- Pass-through and edge cases ---

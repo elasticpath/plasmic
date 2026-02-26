@@ -146,6 +146,28 @@ describe("loadScenarios — combined filtering", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Mode filtering (requiredMode)
+// ---------------------------------------------------------------------------
+describe("loadScenarios — requiredMode filtering", () => {
+  it("excludes integration-only scenarios in mock mode (default)", () => {
+    const scenarios = loadScenarios();
+    // project-save-refresh has requiredMode: integration
+    expect(scenarios.find((s) => s.id === "project-save-refresh")).toBeUndefined();
+  });
+
+  it("includes integration-only scenarios when integration: true", () => {
+    const scenarios = loadScenarios({ integration: true });
+    expect(scenarios.find((s) => s.id === "project-save-refresh")).toBeDefined();
+  });
+
+  it("preserves requiredMode field on normalized scenario", () => {
+    const scenarios = loadScenarios({ integration: true });
+    const sr = scenarios.find((s) => s.id === "project-save-refresh");
+    expect(sr?.requiredMode).toBe("integration");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Scenario normalization
 // ---------------------------------------------------------------------------
 describe("loadScenarios — normalization", () => {

@@ -148,6 +148,7 @@ function normalizeScenario(raw: any): EvalScenario {
       params: s.params ?? {},
     })),
     visual: raw.visual,
+    requiredMode: raw.requiredMode,
   };
 }
 
@@ -155,12 +156,13 @@ function filterScenarios(
   scenarios: EvalScenario[],
   options?: EvalOptions
 ): EvalScenario[] {
-  if (!options) return scenarios;
-
+  const currentMode = options?.integration ? "integration" : "mock";
   return scenarios.filter((s) => {
-    if (options.tier && s.tier !== options.tier) return false;
-    if (options.domain && !s.domains.includes(options.domain)) return false;
-    if (options.scenario && s.id !== options.scenario) return false;
+    // Always filter by requiredMode, even when no options provided (defaults to mock)
+    if (s.requiredMode && s.requiredMode !== currentMode) return false;
+    if (options?.tier && s.tier !== options.tier) return false;
+    if (options?.domain && !s.domains.includes(options.domain)) return false;
+    if (options?.scenario && s.id !== options.scenario) return false;
     return true;
   });
 }

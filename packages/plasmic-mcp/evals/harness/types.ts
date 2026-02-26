@@ -29,6 +29,10 @@ export interface EvalScenario {
   setup?: SetupStep[];
   /** Optional: LLM judge rubric (P2) */
   visual?: { rubric: string };
+  /** Optional: restrict scenario to a specific eval mode (mock or integration).
+   *  Omit to run in both. project-save-refresh requires integration because
+   *  mock mode reloads the static fixture on refresh, erasing in-memory changes. */
+  requiredMode?: "mock" | "integration";
 }
 
 export interface GraderConfig {

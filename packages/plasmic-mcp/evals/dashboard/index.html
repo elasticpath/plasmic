@@ -558,7 +558,13 @@
                   <td>${esc(s.tier)}</td>
                   <td>${s.domains.map(d => esc(d)).join(", ")}</td>
                   <td><span class="badge regression">REGRESSION</span></td>
-                  <td>${s.errors.length > 0 ? esc(s.errors[0].substring(0, 80)) : "&mdash;"}</td>
+                  <td>
+                    ${s.graderResults && s.graderResults.length > 0
+                      ? s.graderResults.filter(g => !g.passed).map(g =>
+                          '<div style="font-size:11px;margin-bottom:2px"><strong>' + esc(g.graderType) + ':</strong> ' + esc((g.message || '').substring(0, 80)) + '</div>'
+                        ).join("") || (s.errors.length > 0 ? esc(s.errors[0].substring(0, 80)) : "&mdash;")
+                      : s.errors.length > 0 ? esc(s.errors[0].substring(0, 80)) : "&mdash;"}
+                  </td>
                 </tr>
               `).join("")}
             </tbody>
@@ -713,13 +719,29 @@
                 </tr>
                 <tr class="detail-row" data-idx="${i}">
                   <td colspan="8">
-                    <div class="scenario-grid">
+                    <div style="display:flex;flex-direction:column;gap:8px;">
                       ${r.scenarios.map(s => `
-                        <div class="scenario-item">
-                          <span>${esc(s.id)}</span>
-                          <span class="badge ${s.success ? "pass" : s.errors.includes("Scenario timed out") ? "timeout" : "fail"}">
-                            ${s.success ? "PASS" : s.errors.includes("Scenario timed out") ? "TIMEOUT" : "FAIL"}
-                          </span>
+                        <div style="padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;">
+                          <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <strong style="font-size:13px;">${esc(s.id)}</strong>
+                            <span class="badge ${s.success ? "pass" : s.errors.includes("Scenario timed out") ? "timeout" : "fail"}">
+                              ${s.success ? "PASS" : s.errors.includes("Scenario timed out") ? "TIMEOUT" : "FAIL"}
+                            </span>
+                          </div>
+                          ${s.graderResults && s.graderResults.length > 0 ? '<div style="margin-top:6px;font-size:11px;">' +
+                            s.graderResults.map(g =>
+                              '<span style="display:inline-block;margin:2px 4px 2px 0;padding:1px 6px;border-radius:3px;background:' +
+                              (g.passed ? '#d4edda' : '#f8d7da') + ';color:' + (g.passed ? '#155724' : '#721c24') + ';">' +
+                              esc(g.graderType) + ': ' + (g.passed ? 'PASS' : 'FAIL') +
+                              '</span>'
+                            ).join('') + '</div>' : ''}
+                          ${s.screenshotPaths && (s.screenshotPaths.desktop || s.screenshotPaths.mobile) ? '<div style="margin-top:6px;display:flex;gap:8px;">' +
+                            (s.screenshotPaths.desktop ? '<div><div style="font-size:10px;color:var(--text-secondary)">Desktop</div><img src="/api/screenshots/' + escAttr(r.runId) + '/' + escAttr(s.id) + '/desktop" style="max-width:180px;border:1px solid var(--border);border-radius:4px;" alt="Desktop" onerror="this.style.display=\'none\'"></div>' : '') +
+                            (s.screenshotPaths.mobile ? '<div><div style="font-size:10px;color:var(--text-secondary)">Mobile</div><img src="/api/screenshots/' + escAttr(r.runId) + '/' + escAttr(s.id) + '/mobile" style="max-width:100px;border:1px solid var(--border);border-radius:4px;" alt="Mobile" onerror="this.style.display=\'none\'"></div>' : '') +
+                            '</div>' : ''}
+                          ${s.visualError ? '<div style="margin-top:4px;font-size:11px;color:var(--danger);">Visual: ' + esc(s.visualError) + '</div>' : ''}
+                          ${!s.success && s.errors.length > 0 ? '<div style="margin-top:4px;font-size:11px;color:var(--danger);max-height:60px;overflow-y:auto;">' +
+                            s.errors.map(e => '<div>' + esc(e.substring(0, 120)) + '</div>').join('') + '</div>' : ''}
                         </div>
                       `).join("")}
                     </div>

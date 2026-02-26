@@ -3164,15 +3164,8 @@ describe("tool handlers", () => {
   // Cache metrics in inspect.node
   // =====================================================================
 
-  describe("cache metrics", () => {
-    it("inspect.node includes cache metrics in response", async () => {
-      mockGetCacheMetrics.mockReturnValue({
-        hits: 5,
-        misses: 2,
-        hitRate: 71,
-        cachedComponents: 3,
-      });
-
+  describe("inspect.node response shape", () => {
+    it("does not expose internal _cache debug field", async () => {
       const mockNode = { fake: "tpl-node" };
       const mockResolved = {
         node: mockNode,
@@ -3198,12 +3191,11 @@ describe("tool handlers", () => {
 
       const output = parseResponse(result);
       expect(result.isError).toBeFalsy();
-      expect(output._cache).toEqual({
-        hits: 5,
-        misses: 2,
-        hitRate: 71,
-        cachedComponents: 3,
-      });
+      expect(output).toHaveProperty("path", "Root.Title");
+      expect(output).toHaveProperty("name", "Title");
+      expect(output).toHaveProperty("uuid", "node-1");
+      expect(output).toHaveProperty("node");
+      expect(output).not.toHaveProperty("_cache");
     });
   });
 

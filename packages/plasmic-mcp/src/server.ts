@@ -42,7 +42,7 @@ import {
   toConciseFormat,
 } from "./tree-reader.js";
 import { readTokens } from "./token-reader.js";
-import { resolveNode, requireSingleNode, invalidateNodeCache, clearNodeCache, getCacheMetrics } from "./node-resolver.js";
+import { resolveNode, requireSingleNode, invalidateNodeCache, clearNodeCache } from "./node-resolver.js";
 import { initChangeTracker, disposeChangeTracker, getChangeTracker } from "./change-tracker.js";
 import {
   updateText,
@@ -732,7 +732,6 @@ export function createServer(): McpServer {
                     name: resolved.name,
                     uuid: resolved.uuid,
                     node,
-                    _cache: getCacheMetrics(),
                   }),
                 },
               ],
@@ -1050,7 +1049,7 @@ export function createServer(): McpServer {
       force: z.boolean().optional().describe("Force deletion even with references"),
       nodeRef: z.string().optional().describe("Node reference for extract (UUID, name, path, or index)"),
       title: z.string().optional().describe("Page title for SEO"),
-      description: z.string().optional().describe("Page description for SEO"),
+      description: z.string().optional().describe("Page description for SEO (update-page-meta) or prop description (add-prop/update-prop)"),
       openGraphImage: z.string().optional().describe("Open Graph image URL"),
       canonical: z.string().optional().describe("Canonical URL for SEO"),
       propRef: z.string().optional().describe("Prop reference (name or UUID)"),
