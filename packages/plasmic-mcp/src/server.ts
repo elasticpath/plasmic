@@ -304,7 +304,7 @@ export function createServer(): McpServer {
               content: [
                 {
                   type: "text" as const,
-                  text: JSON.stringify(projects, null, 2),
+                  text: JSON.stringify(projects),
                 },
               ],
             };
@@ -343,7 +343,7 @@ export function createServer(): McpServer {
 
             return {
               content: [
-                { type: "text" as const, text: JSON.stringify(meta, null, 2) },
+                { type: "text" as const, text: JSON.stringify(meta) },
               ],
             };
           }
@@ -854,7 +854,7 @@ export function createServer(): McpServer {
 
             return {
               content: [
-                { type: "text" as const, text: JSON.stringify(result, null, 2) },
+                { type: "text" as const, text: JSON.stringify(result) },
               ],
             };
           }
@@ -922,7 +922,7 @@ export function createServer(): McpServer {
 
             return {
               content: [
-                { type: "text" as const, text: JSON.stringify(meta, null, 2) },
+                { type: "text" as const, text: JSON.stringify(meta) },
               ],
             };
           }
@@ -1008,7 +1008,7 @@ export function createServer(): McpServer {
 
             return {
               content: [
-                { type: "text" as const, text: JSON.stringify(result, null, 2) },
+                { type: "text" as const, text: JSON.stringify(result) },
               ],
             };
           }
@@ -2807,7 +2807,7 @@ export function createServer(): McpServer {
               content: [
                 {
                   type: "text" as const,
-                  text: JSON.stringify(result, null, 2),
+                  text: JSON.stringify(result),
                 },
               ],
             };
@@ -2883,7 +2883,7 @@ export function createServer(): McpServer {
               content: [
                 {
                   type: "text" as const,
-                  text: JSON.stringify(result, null, 2),
+                  text: JSON.stringify(result),
                 },
               ],
             };
@@ -3162,7 +3162,7 @@ export function createServer(): McpServer {
             const result = readTokens(session.site.styleTokens, params.tokenType);
             return {
               content: [
-                { type: "text" as const, text: JSON.stringify(result, null, 2) },
+                { type: "text" as const, text: JSON.stringify(result) },
               ],
             };
           }
@@ -3909,7 +3909,7 @@ export function createServer(): McpServer {
             const result = listAssets(params.assetType);
             return {
               content: [
-                { type: "text" as const, text: JSON.stringify(result, null, 2) },
+                { type: "text" as const, text: JSON.stringify(result) },
               ],
             };
           }
@@ -4426,7 +4426,7 @@ export function createServer(): McpServer {
             const result = listDataTokens();
             return {
               content: [
-                { type: "text" as const, text: JSON.stringify(result, null, 2) },
+                { type: "text" as const, text: JSON.stringify(result) },
               ],
             };
           }
@@ -4499,7 +4499,7 @@ export function createServer(): McpServer {
             const result = listSplits();
             return {
               content: [
-                { type: "text" as const, text: JSON.stringify(result, null, 2) },
+                { type: "text" as const, text: JSON.stringify(result) },
               ],
             };
           }
@@ -4576,7 +4576,7 @@ export function createServer(): McpServer {
             const result = getCodeComponentMeta(cuuid);
             return {
               content: [
-                { type: "text" as const, text: JSON.stringify(result, null, 2) },
+                { type: "text" as const, text: JSON.stringify(result) },
               ],
             };
           }
@@ -4585,7 +4585,7 @@ export function createServer(): McpServer {
             const result = listCustomFunctions();
             return {
               content: [
-                { type: "text" as const, text: JSON.stringify(result, null, 2) },
+                { type: "text" as const, text: JSON.stringify(result) },
               ],
             };
           }

@@ -1076,6 +1076,96 @@ describe("node.add with component instances", () => {
 });
 
 // =========================================================================
+// Component Instance Styling (P1)
+// WAB's RSH handles TplComponent with forTag="div", so styles on component
+// instances are meaningful — Studio allows this. The MCP gate was widened
+// from TplTag-only to TplTag || TplComponent to match Studio behavior.
+// =========================================================================
+
+describe("node.update-styles on TplComponent instance", () => {
+  it("add component instance → style it → read back → verify styles applied", async () => {
+    if (discoveredComponents.length < 2) {
+      return;
+    }
+
+    const targetPage =
+      discoveredComponents.find((c) => c.type === "page") ??
+      discoveredComponents[0];
+    const referencedComp = discoveredComponents.find(
+      (c) => c.uuid !== targetPage.uuid
+    )!;
+
+    // Get the root container
+    const treeResult = await client.callTool({
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: targetPage.uuid },
+    });
+    const tree = parseResponse(treeResult).tree;
+
+    // Add a component instance
+    const addResult = await client.callTool({
+      name: "node",
+      arguments: {
+        action: "add",
+        componentUuid: targetPage.uuid,
+        parentRef: tree.uuid,
+        child: { type: "component", name: referencedComp.name },
+      },
+    });
+    expect(addResult.isError).toBeFalsy();
+
+    // Get the newly added child's UUID
+    const afterAdd = await client.callTool({
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: targetPage.uuid },
+    });
+    const afterAddTree = parseResponse(afterAdd).tree;
+    const instanceNode =
+      afterAddTree.children[afterAddTree.children.length - 1];
+    expect(instanceNode.type).toBe("component");
+
+    // Apply styles to the TplComponent instance
+    const styleResult = await client.callTool({
+      name: "node",
+      arguments: {
+        action: "update-styles",
+        componentUuid: targetPage.uuid,
+        nodeRef: instanceNode.uuid,
+        styles: { width: "200px", opacity: "0.8" },
+      },
+    });
+    expect(styleResult.isError).toBeFalsy();
+    const styleOutput = parseResponse(styleResult);
+    expect(styleOutput.success).toBe(true);
+    expect(styleOutput.updatedProperties).toContain("width");
+    expect(styleOutput.updatedProperties).toContain("opacity");
+
+    // Verify via inspect.node — RSH stores in kebab-case
+    const detailResult = await client.callTool({
+      name: "inspect",
+      arguments: {
+        action: "node",
+        componentUuid: targetPage.uuid,
+        nodeRef: instanceNode.uuid,
+      },
+    });
+    const detail = parseResponse(detailResult);
+    expect(detail.node.styles["width"]).toBe("200px");
+    expect(detail.node.styles["opacity"]).toBe("0.8");
+
+    // Clean up
+    await client.callTool({
+      name: "node",
+      arguments: {
+        action: "remove",
+        componentUuid: targetPage.uuid,
+        nodeRef: instanceNode.uuid,
+      },
+    });
+  });
+});
+
+// =========================================================================
 // Variant Workflows (P1.2)
 // =========================================================================
 

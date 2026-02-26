@@ -1,187 +1,223 @@
-# Implementation Plan — Plasmic MCP Claude Code Skills
+# Implementation Plan
 
-> **Goal**: Create Claude Code skills and workflows that can interact with Plasmic Studio
-> programmatically to create fully-featured pages from the Claude Code terminal.
->
-> **Current state**: 8 STRAP domain tools (consolidating 103 actions), 6 Claude Code skills (STRAP calling convention), 1116 tests (998 unit + 118 integration), 19 test files. Zero TODOs/FIXMEs/skipped tests. Zero tsc errors. All code quality items complete.
->
-> **Last verified**: 2026-02-26 — All 1116 tests pass, tsc clean. Skills audit pass 3 complete. Vitest workspace deprecation resolved.
->
-> **Spec consistency pass 1** (2026-02-26): Fixed 4 gap spec → STRAP naming discrepancies:
-> `gap-mixins.md` remove-mixin→detach-mixin, `gap-themes.md` themeRef→themeIndex,
-> `gap-animations.md` added missing update-animation action, `test-restructure.md` added interaction.update.
->
-> **Spec consistency pass 2** (2026-02-26): Fixed 9 remaining gap spec → implementation discrepancies:
-> `gap-visibility-and-conditional.md` "customCode"→"displayNone", `gap-data-repetition.md` "node domain"→"data domain",
-> `gap-token-crud.md` type→tokenType, `gap-images-and-assets.md` type→assetType,
-> `gap-interactions.md` added event+interactionName params to update, `gap-animations.md` animationRef→seqRef+animationIndex,
-> `gap-data-queries.md` update-query name? made required+removed op?, `gap-remaining-features.md` newName→name for extract,
-> splits weight→prob+added splitType+added update-split action.
+Goal: Claude Code skills and workflows that create Plasmic pages programmatically from the terminal.
+
+## Current State
+
+- **MCP server**: 8 STRAP domain tools, ~99 actions, 4,844-line server.ts
+- **Skills**: 6 Claude Code skills (plasmic, plasmic-inspect, plasmic-edit, plasmic-create-page, plasmic-create-component, plasmic-patterns)
+- **Tests**: 1,118 passing (999 unit + 119 integration), 0 skipped, 0 TODOs in code
+- **Code quality**: Zero FIXMEs, zero HACK/XXX markers, zero placeholders, zero partial implementations
+- **Core page-creation workflow**: Functional end-to-end (project.set -> discover tokens -> build tree -> create-page -> enhance via /plasmic-edit -> save)
+
+P1 and P2 are DONE. P3-P6 remain TODO.
 
 ---
 
-## Verification Summary
+## ~~Priority 1: Fix Component Instance Styling (Functional Blocker)~~ DONE
 
-All WAB backing functions referenced in specs have been confirmed to exist in
-`platform/wab/src/wab/shared/` with one exception: **`removeStyleToken()` does NOT
-exist as a TplMgr method**. Token removal is done via direct array manipulation
-(see `code-components.ts` line 4646 for a local `removeToken` pattern that splices
-from `site.styleTokens`). The Token CRUD spec (1.3) handles removal manually.
+**Spec**: `specs/fix-component-instance-styles.md`
 
-The MCP source lives entirely in `packages/plasmic-mcp/src/` (16 source files,
-~8,200 lines). The `src/tools/` directory exists but is empty (created for future refactor).
+### What was done
 
-Key file sizes: `server.ts` (~4,730 lines after STRAP consolidation), `edit-tools.ts` (~5,900 lines),
-`tree-reader.ts` (~850 lines).
+- **Widened `updateStyles()` gate** in `edit-tools.ts` from TplTag-only to `!isKnownTplTag(tpl) && !isKnownTplComponent(tpl)` — matching setVisibility/setDataCond/setDataRep pattern. Error message now says "Only HTML elements and component instances support styling."
+- **Fixed tree-reader**: `readTplComponent()` in `tree-reader.ts` was not reading styles from component instances. Added CSS style reading from `compRs.values` (the base variant's RuleSet) — same pattern as `readTplTag()`. This was a **hidden bug**: styles could be written via `updateStyles` but never read back by `inspect.node` or `inspect.tree`.
+- **Unit tests**: Replaced TplComponent rejection test with TplComponent success test. Added TplSlot rejection test.
+- **Integration test**: Full end-to-end test — add component instance → style it → read back via inspect.node → verify styles applied → clean up.
 
-Spec consistency: All 15 gap specs updated to reflect STRAP domain assignments (2026-02-26).
-Pass 1 fixed 4 naming discrepancies (detach-mixin, themeIndex, update-animation, interaction.update).
-Pass 2 fixed 9 remaining discrepancies (displayNone, data domain header, tokenType, assetType, interaction.update params, seqRef/animationIndex, update-query name required, extract name, splits prob/splitType/update-split).
-STRAP spec updated for `component.extract` (Tier 5.1) and `interaction.update`.
+### Key learning
+
+The original spec only identified the `updateStyles()` gate as the problem, but the tree-reader also had a gap: `readTplComponent()` never read styles from `vs.rs.values`. Both the write path (edit-tools.ts) AND the read path (tree-reader.ts) needed fixing for complete functionality.
 
 ---
 
-## Tier 1 — Core Page-Building Gaps
+## ~~Priority 2: Compact JSON Responses (Quick Win)~~ DONE
 
-### 1.1 Visibility & Conditional Rendering — IMPLEMENTED
-- **Spec**: `specs/gap-visibility-and-conditional.md`
+**Spec**: `specs/response-compact-json.md`
 
-### 1.2 Data Repetition (Collection Rendering) — IMPLEMENTED
-- **Spec**: `specs/gap-data-repetition.md`
+### What was done
 
-### 1.3 Token CRUD — IMPLEMENTED
-- **Spec**: `specs/gap-token-crud.md`
-
-### 1.4 Component Props Definition — IMPLEMENTED
-- **Spec**: `specs/gap-component-props.md`
-
-### 1.5 Rich Text Formatting — IMPLEMENTED
-- **Spec**: `specs/gap-rich-text.md`
+- Replaced 13 of 14 `JSON.stringify(result, null, 2)` calls in `server.ts` with `JSON.stringify(result)` (compact output).
+- **Kept** pretty-printing for `inspect.export` at line 775 (`fs.writeFileSync` — human-readable file output).
+- All existing tests pass without changes because `JSON.parse` handles both formats identically.
 
 ---
 
-## Tier 2 — Interactive Pages
+## Priority 3: Default maxDepth on Inspect Actions (Context Safety)
 
-### 2.1 State Management — IMPLEMENTED
-- **Spec**: `specs/gap-state-management.md`
+**Spec**: `specs/response-default-maxdepth.md`
 
-### 2.2 Interactions & Event Handlers — IMPLEMENTED
-- **Spec**: `specs/gap-interactions.md`
-- All 4 actions implemented: list, add, update, remove (update added 2026-02-26)
+Currently `maxDepth` defaults to unlimited. The tree-reader at line 269 has `shouldRecurse = maxDepth === undefined || depth < maxDepth` -- unlimited by default. A deeply nested 500-node component returns all 500 nodes, filling the context window.
 
----
+### Current Behavior (from tree-reader.ts)
 
-## Tier 3 — Asset & Data Management
+- Line 65: `readComponentSummary(component, { summaryOnly: true, maxDepth })` -- maxDepth passed through, no default
+- Line 269: `options?.maxDepth === undefined || depth < options.maxDepth` -- unlimited when undefined
+- Line 349, 351, 380, 444: Same pattern for slot overrides and nested trees
+- Zod schema (server.ts:544): `maxDepth: z.number().optional()` -- no validation of -1
 
-### 3.1 Images & Assets — IMPLEMENTED
-- **Spec**: `specs/gap-images-and-assets.md`
+### Checklist
 
-### 3.2 Data Queries — IMPLEMENTED
-- **Spec**: `specs/gap-data-queries.md`
+- [ ] Default `maxDepth: 2` on `inspect.summary` (root -> children -> grandchildren) in the summary handler
+- [ ] Default `maxDepth: 3` on `inspect.tree` in the tree handler
+- [ ] Keep unlimited default on `inspect.subtree` and `inspect.node` (targeted drill-down tools)
+- [ ] Add `maxDepth: -1` support to mean "unlimited" -- convert -1 to undefined before passing to tree-reader
+- [ ] Add truncation metadata to response when maxDepth truncates:
+  - `truncated: boolean`
+  - `maxDepthApplied: number`
+  - `totalNodes: number` (requires a count traversal)
+  - `hint: string` (e.g., "Use inspect.subtree or inspect.node to drill into specific sections")
+- [ ] Update tree-reader to count total nodes independently of maxDepth for the metadata
+- [ ] Update existing tests that expect full-depth results to pass explicit `maxDepth: -1`
+- [ ] Add new tests:
+  - [ ] summary without maxDepth returns depth-2 tree
+  - [ ] tree without maxDepth returns depth-3 tree
+  - [ ] `maxDepth: -1` returns full unlimited tree
+  - [ ] `maxDepth: 0` returns only root with childCount
+  - [ ] shallow component (depth < maxDepth) returns `truncated: false`
+  - [ ] truncation hint is present when `truncated: true`
 
----
+**Files**: `packages/plasmic-mcp/src/tree-reader.ts` (lines 65, 269, 349, 351, 380, 444), `packages/plasmic-mcp/src/server.ts` (inspect handlers around lines 544-1011)
 
-## Tier 4 — Design System Features
-
-### 4.1 Mixins (Reusable Style Bundles) — IMPLEMENTED
-- **Spec**: `specs/gap-mixins.md`
-
-### 4.2 Animations — IMPLEMENTED
-- **Spec**: `specs/gap-animations.md`
-
-### 4.3 Themes — IMPLEMENTED
-- **Spec**: `specs/gap-themes.md`
-
----
-
-## Tier 5 — Remaining Features
-
-### 5.1 Remaining Features Bundle — IMPLEMENTED (8 of 8)
-- **Spec**: `specs/gap-remaining-features.md`
-- Sub-features done: Reorder Children, Global Variant Groups, Convert Page/Component, Data Tokens, Code Component Meta, Custom Functions, A/B Testing (Splits), Extract to Component
-- Previously deferred variant actions now implemented (2026-02-26): create-screen, update-screen, rename, remove — variant domain expanded from 8 to 12 actions
+**Dependencies**: None, but should be done before Priority 5 (skills reference these features).
 
 ---
 
-## Tier 6 — Architecture & Infrastructure
+## Priority 4: Response Truncation Safety Net (Hard Limit)
 
-### 6.1 STRAP Consolidation (103 Actions → 8 Domain Tools) — IMPLEMENTED
-- **Spec**: `specs/strap-consolidation.md`
+**Spec**: `specs/response-truncation.md`
 
-### 6.2 Test Restructure — IMPLEMENTED
-- **Spec**: `specs/test-restructure.md`
+Even with maxDepth defaults, a 200-node component at depth 3 can produce 15-20k tokens. Character-budget truncation prevents catastrophic context consumption.
 
----
+### Current State
 
-## Tier 7 — Skills Updates
+- Zero truncation logic exists anywhere in the codebase
+- No `maxChars` parameter in any Zod schema
+- No character budget enforcement in tree-reader or server handlers
 
-### 7.1 Update Skills for New Features (Pre-STRAP) — IMPLEMENTED
-- All 6 skills updated to cover all 98 tools
+### Checklist
 
-### 7.2 Rewrite Skills for STRAP (Post-Consolidation) — IMPLEMENTED
-- All 6 skills rewritten to use `domain({ action: "..." })` calling convention
+- [ ] Add `maxChars` parameter to inspect Zod schema (default: 15,000 characters ~ 4,000 tokens)
+- [ ] Implement character-budget truncation in tree serialization:
+  - Serialize depth-first
+  - When accumulated output exceeds budget, stop adding nodes
+  - Replace remaining children with `"... N more nodes. Use inspect.subtree to drill in."`
+  - Ensure valid JSON is always produced (no mid-object cuts)
+- [ ] Add truncation metadata to response:
+  - `truncated: boolean`
+  - `nodesShown: number`
+  - `nodesTotal: number`
+  - `hint: string` with actionable guidance
+- [ ] Support `maxChars: -1` for unlimited (no truncation)
+- [ ] Unit tests:
+  - [ ] Response under budget: no truncation, `truncated: false`
+  - [ ] Response over budget: truncated with valid JSON and hint
+  - [ ] `maxChars: 500` returns just root + truncation hint
+  - [ ] `maxChars: -1` returns full response
+  - [ ] Truncation preserves breadth-first priority (higher-level nodes over deeper nodes)
+- [ ] Integration test: large component triggers truncation, response includes hint guiding to subtree
 
-### 7.3 Skills Audit — Parameter Name Alignment — IMPLEMENTED
-- Audited all 6 skills against server.ts Zod schemas
-- **25+ parameter mismatches fixed** across 5 skill files (plasmic.md, plasmic-edit.md, plasmic-patterns.md, plasmic-inspect.md, plasmic-create-page.md was clean, plasmic-create-component.md was clean)
-- Key fixes: `visibility`→`visible`, `expr`→`condition`, `elementVar`→`elementVariable`, `indexVar`→`indexVariable`, `initVal`→`initialValue`, `body/serverSide`→`queryType`, `action`→`actionName`, `eventIndex`→`interactionIndex`, `sequenceRef`→`seqRef`, `offset`→`percentage`, `tagStyles`→`themeStyles`, `src`→`url` (upload-asset), removed non-existent `nameFilter` param
-- **6 missing actions added**: `interaction.update`, `variant.create-screen`, `variant.update-screen`, `variant.rename`, `variant.remove`, `component.extract`
-- **Why**: Wrong parameter names in skills cause tool calls to fail with Zod validation errors when Claude Code uses them to interact with Plasmic. This was the highest-priority fix.
+**Files**: `packages/plasmic-mcp/src/tree-reader.ts`, `packages/plasmic-mcp/src/server.ts` (inspect handlers), `packages/plasmic-mcp/src/types.ts` (TreeReadOptions)
 
-### 7.4 Skills Audit Pass 2 — Deep Cross-Validation — IMPLEMENTED
-- Second pass auditing all 6 skills against server.ts Zod schemas + handler `requireParam()` calls
-- **11 mismatches fixed** across 2 skill files (plasmic.md: 8 fixes, plasmic-edit.md: 3 fixes)
-- **Critical fixes** (would cause runtime failures):
-  - `data.create-split`: `type`→`splitType` (plasmic.md)
-  - `interaction.remove`: added missing required `event` parameter (plasmic.md + plasmic-edit.md)
-  - `data.create-data-token`: removed non-existent `type` parameter (plasmic.md)
-- **Accuracy fixes**:
-  - `variant.create-screen`: removed unused `groupRef`, added `minWidth?`/`maxWidth?` (plasmic.md)
-  - `variant.update-screen`: removed unused `groupRef`/`name?`, added `minWidth?`/`maxWidth?` (plasmic.md)
-  - `interaction.add`: `args?`→`args` (required per server) (plasmic.md + plasmic-edit.md)
-  - `component.add-state`: `accessType`→`accessType?` (optional per server) (plasmic.md)
-  - `component.update-state`: removed `variableType?` (handler ignores it) (plasmic.md)
-- **Spec fixes**: `gap-interactions.md` remove params clarified (`event` required), `gap-remaining-features.md` removed stale `type?` from create-data-token
-- **Why**: The first audit (7.3) caught parameter renames but missed required/optional mismatches, unused params, and params not passed through by handlers. This pass verified every parameter against both the Zod schema AND the handler's `requireParam()` calls.
-
-### 7.5 Skills Audit Pass 3 — Runtime Accuracy & Spec Alignment — IMPLEMENTED
-- Third pass auditing all 6 skills + server.ts comments + spec consistency
-- **1 critical fix** (would cause tool failures): `interaction.list` `nodeRef` shown as optional in 3 skills but is required per `requireParam()` — fixed in plasmic.md, plasmic-inspect.md, plasmic-edit.md
-- **Documentation gaps fixed**:
-  - Added missing `playState?` (paused/running) parameter to `node.add-animation` in plasmic.md and plasmic-edit.md
-  - Added `inspect.style-properties` to plasmic-inspect.md (was missing from tool listing)
-  - Fixed `variant.rename` and `variant.remove` showing `componentUuid` as required (it's optional per handler)
-- **Server.ts comment fixes**: Updated action count 99→103 (header), 17→18 (component domain section)
-- **Spec consistency fixes**:
-  - `gap-visibility-and-conditional.md`: Removed contradictory Out of Scope bullet about CSS display:none
-  - `strap-consolidation.md`: Fixed 4 parameter names in mapping tables (type→tokenType, type→assetType)
-  - `test-restructure.md`: Updated test count from 1046 to 1116
-- **Vitest migration**: Replaced deprecated `vitest.workspace.ts` with `vitest.config.ts` using `test.projects`
+**Dependencies**: Should be done after Priority 3 (maxDepth defaults reduce how often truncation fires). Both should be done before Priority 5.
 
 ---
 
-## Code Quality Items
+## Priority 5: Skills Progressive Navigation (Best Practices)
 
-| Item | Status | Description |
-|------|--------|-------------|
-| CQ-1 Dead Clone Code Removal | DONE | Removed 7 dead functions (~165 lines); all tests pass |
-| CQ-2 moveChild Slot Support | DONE | Added optional `slot` param to `moveChild()`, mirroring `addChild()` semantics |
-| CQ-3 cloneChild Slot Support | DONE | Added optional `slot` param to `cloneChild()`, mirroring `addChild()` semantics |
-| CQ-4 tree-reader Base-Variant-Only | N/A | Known limitation; variant param considered lower priority — no action taken |
-| CQ-5 Integration Test Coverage Gaps | DONE | 12 new integration tests covering 11 previously untested tools |
-| CQ-6 server.test.ts Unit Test Gaps | DONE | 5 new unit tests covering 3 gaps (variant.list, dryRun paths, end-batch error) |
-| CQ-7 addChild Password Auto-Attribute | DONE | `type: "password"` now auto-sets attribute; remaining element-type tests deferred |
-| CQ-8 wab.d.ts Type Declaration Gaps | DONE | Fixed 20 tsc errors; `tsc --noEmit` passes with zero errors |
+**Spec**: `specs/skills-progressive-navigation.md`
+
+The progressive navigation pattern is IMPLIED but not FORMALIZED in any skill. `plasmic-inspect.md` is closest (lines 50-54: "summary first, then node, then tree only when explicitly needed"). But multiple skills show `inspect.tree` without maxDepth, and none reference `format: "concise"` or truncation hints.
+
+### Checklist
+
+- [ ] Update `plasmic.md` (router):
+  - [ ] Add "Context Budget" section explaining MCP response costs
+  - [ ] Add guidance: "Use the most targeted inspect action available"
+  - [ ] Priority ordering: inspect.node > inspect.summary > inspect.subtree > inspect.tree (last resort)
+- [ ] Update `plasmic-inspect.md`:
+  - [ ] Add explicit 4-step navigation pattern: Orient -> Locate -> Detail -> Full
+  - [ ] Add `format: "concise"` references (depends on P6 being done, or document as upcoming)
+  - [ ] Add guidance on following truncation hints
+  - [ ] Add AVOID section: no `inspect.tree` without maxDepth
+- [ ] Update `plasmic-edit.md`:
+  - [ ] Add targeted verification: "After editing, use inspect.node on the edited node, NOT inspect.tree"
+  - [ ] Remove or qualify any references to inspect.tree for verification
+- [ ] Update `plasmic-create-page.md`:
+  - [ ] Add post-creation verification: "Verify with inspect.summary (maxDepth: 1-2), not full tree"
+- [ ] Update `plasmic-create-component.md`:
+  - [ ] Same post-creation verification guidance
+  - [ ] Update line 190: recommend summary before tree for clone inspection
+- [ ] Ensure no skill instructs `inspect.tree` without maxDepth
+- [ ] Add references to `format: "concise"` where appropriate (once P6 is implemented)
+- [ ] Add guidance on following truncation hints (once P4 is implemented)
+
+**Files**: `.claude/commands/plasmic.md`, `.claude/commands/plasmic-inspect.md`, `.claude/commands/plasmic-edit.md`, `.claude/commands/plasmic-create-page.md`, `.claude/commands/plasmic-create-component.md`
+
+**Dependencies**: Should be implemented AFTER P2-P4 so referenced features actually exist. Can partially implement (maxDepth guidance) before P6 (format: "concise").
 
 ---
 
-## Implementation Order (Completed)
+## Priority 6: Concise Response Format (Incremental Optimization)
 
-All phases are complete. The order followed was:
+**Spec**: `specs/response-concise-format.md`
 
-1. Foundations (Tiers 1–2): Visibility, Data Repetition, Tokens, Props, Rich Text, State, Interactions
-2. Assets & Data (Tier 3): Images, Queries
-3. Design System (Tier 4): Mixins, Animations, Themes
-4. Remaining Features (Tier 5): Reorder, Global Variants, Convert, Data Tokens, Code Meta, Custom Functions, Splits
-5. Architecture (Tiers 6–7): STRAP consolidation, Skills rewrite, Test restructure
-6. Code Quality (CQ-1 through CQ-8): Applied throughout
+Optional `format: "concise"` mode for inspect actions. Strips UUIDs (except root), abbreviates keys (`childCount` -> `cc`), replaces detail with booleans (`dataCond` -> `conditional: true`). ~70% token reduction for orientation-only queries.
+
+### Checklist
+
+- [ ] Add `format: z.enum(["concise", "full"]).optional()` to inspect Zod schema
+- [ ] Implement concise serialization in tree-reader:
+  - Strip UUIDs from all nodes except root
+  - Abbreviate keys: `childCount` -> `cc`, `componentName` -> `comp`, `componentUuid` -> `compId`
+  - Replace `visibility` with `hidden: true`
+  - Replace `dataCond` expression with `conditional: true`
+  - Replace `dataRep` object with `repeats: true`
+  - Drop `type` field (inferable from tag/componentName/slotName presence)
+  - Drop `nodeType` field
+- [ ] Root node always includes UUID (needed for subsequent calls)
+- [ ] Default to `format: "full"` (backward compatible)
+- [ ] Measure: 50-node concise summary should be under 3 KB
+- [ ] Unit tests:
+  - [ ] Concise format strips UUIDs from non-root nodes
+  - [ ] Concise format abbreviates keys correctly
+  - [ ] Concise format replaces detail fields with booleans
+  - [ ] Root node retains UUID in concise format
+  - [ ] Full format is unchanged (backward compatible)
+- [ ] Integration test: concise summary -> identify node by name -> drill in with inspect.node
+
+**Files**: `packages/plasmic-mcp/src/tree-reader.ts`, `packages/plasmic-mcp/src/types.ts`, `packages/plasmic-mcp/src/server.ts` (inspect handlers)
+
+**Dependencies**: None functionally, but should be implemented after P3 and P4 for maximum combined effect. Skills (P5) should reference this after it exists.
+
+---
+
+## Confirmed Not Needed (Investigated and Dismissed)
+
+- **Publishing/deployment**: `project.save` already persists changes to Plasmic API; publishing to CDN is a Studio concern
+- **Global component library browsing**: `findComponentByNameOrUuid()` resolves both local and dependency components; users import packages in Studio
+- **Cross-project imports**: Outside MCP scope; handled by Studio's package system
+- **PlasmicElement pre-validation**: Server API validates on create-page; `plasmicElementToTpl()` validates on node.add -- WAB produces clear validation errors
+- **Onboarding skill**: Router skill already handles "no project set" case with project.list flow
+- **End-to-end docs**: Skills ARE the workflow docs; progressive navigation spec (P5) addresses remaining gaps
+- **Create-page integration test with body**: Unit test covers this; not a spec-level concern
+- **Error message improvements for self-correction**: Reviewed all error patterns -- existing error messages are descriptive and actionable (e.g., "Node X is not a TplTag and cannot have styles updated" tells the agent exactly what went wrong). The `handleMutationError()` pattern (7 call sites in server.ts) wraps WAB errors with domain context (`Error in domain.action: message`). No changes needed beyond P1 gate removals which will let WAB produce its own natural errors.
+- **Additional PlasmicElement patterns**: `plasmic-patterns.md` already covers hero, feature grid, card, form, nav, footer, pricing, testimonial, CTA, and gallery. Post-creation enhancement recipes cover data-driven grids, counters, conditionals, navigation, forms with state, rich text, and animations. Coverage is comprehensive for the target use case.
+- **Batch operation guidance in skills**: `plasmic-edit.md` (line 84) already instructs "For 3+ edits, wrap in begin-batch/end-batch". Sufficient.
+- **Additional skill for design system management**: Router skill (plasmic.md) handles token/mixin/animation/theme CRUD directly with clear routing patterns. A dedicated skill would duplicate content without adding value.
+- **Streaming responses**: MCP SDK does not support streaming tool results. Character-budget truncation (P4) is the appropriate mitigation.
+
+---
+
+## Execution Order
+
+```
+P1 (component instance styling)  -- DONE
+P2 (compact JSON)                -- DONE
+P3 (default maxDepth)            -- standalone, context safety
+P4 (response truncation)         -- after P3, safety net
+P5 (skills progressive nav)      -- after P2-P4, references server features
+P6 (concise format)              -- after P3-P4, incremental optimization
+```
+
+P3 is next. P3 and P4 are sequential. P5 depends on P2-P4. P6 can be done after P3-P4 but before or after P5 (P5 should be updated after P6 to reference `format: "concise"`).

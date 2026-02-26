@@ -1953,13 +1953,13 @@ export async function updateStyles(
   const result = resolveNode(component, nodeRef);
   const resolved = requireSingleNode(result, nodeRef);
 
-  if (!isKnownTplTag(resolved.node)) {
+  const tpl = resolved.node;
+  if (!isKnownTplTag(tpl) && !isKnownTplComponent(tpl)) {
     throw new Error(
-      `Node "${nodeRef}" is not a TplTag and cannot have styles updated.`
+      `Node "${nodeRef}" is a ${tpl?._type ?? "unknown"} and cannot have styles updated. Only HTML elements and component instances support styling.`
     );
   }
 
-  const tpl = resolved.node;
   const session = requireSession();
   const tplMgr = new TplMgr({ site: session.site });
 

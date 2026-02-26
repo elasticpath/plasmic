@@ -358,6 +358,27 @@ function readTplComponent(
     return node;
   }
 
+  // CSS styles from the base variant's RuleSet — component instances can have
+  // styles applied via RSH (forTag="div"), matching Studio behavior.
+  if (
+    !options?.excludeStyles &&
+    compRs?.values &&
+    typeof compRs.values === "object"
+  ) {
+    const values = { ...compRs.values };
+    delete values["plasmic-display-none"];
+    if (Object.keys(values).length > 0) {
+      node.styles = values;
+
+      if (options?.styleTokens?.length) {
+        const tokenRefs = resolveStyleTokenRefs(values, options.styleTokens);
+        if (Object.keys(tokenRefs).length > 0) {
+          node.tokenRefs = tokenRefs;
+        }
+      }
+    }
+  }
+
   // Non-slot args → attrs
   if (nonSlotArgs.length > 0) {
     const props: Record<string, unknown> = {};

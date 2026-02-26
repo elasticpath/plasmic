@@ -1078,23 +1078,49 @@ describe("edit-tools", () => {
       expect(node.vsettings[0].rs.values.color).toBe("red");
     });
 
-    it("rejects style update on non-TplTag", async () => {
+    it("applies styles to TplComponent instances", async () => {
       const compNode = {
         _type: "TplComponent",
         uuid: "tpl-comp-1",
-        name: "Sub",
-        component: { name: "Other", uuid: "other-uuid" },
-        vsettings: [],
+        name: "CardInstance",
+        component: { name: "Card", uuid: "card-uuid" },
+        vsettings: [{ rs: { values: {} }, args: [] }],
         children: [],
       };
       const root = mkTag({ uuid: "root-1", children: [compNode] });
       const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      const result = await updateStyles(api, "comp-1", "tpl-comp-1", {
+        padding: "16px",
+      });
+
+      expect(result.nodeName).toBe("CardInstance");
+      expect(result.nodeUuid).toBe("tpl-comp-1");
+      expect(result.updatedProperties.length).toBeGreaterThan(0);
+    });
+
+    it("rejects style update on TplSlot", async () => {
+      const slotNode = {
+        _type: "TplSlot",
+        uuid: "slot-1",
+        name: "content",
+        vsettings: [],
+        children: [],
+        param: { name: "content" },
+      };
+      const root = mkTag({ uuid: "root-1", children: [slotNode] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
       setupSession(comp);
 
       await expect(
-        updateStyles(api, "comp-1", "tpl-comp-1", { color: "blue" })
-      ).rejects.toThrow("not a TplTag");
+        updateStyles(api, "comp-1", "slot-1", { color: "blue" })
+      ).rejects.toThrow(
+        "Only HTML elements and component instances support styling"
+      );
     });
 
     it("saves with correct modifiedComponentIids", async () => {
