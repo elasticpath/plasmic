@@ -6,8 +6,8 @@
 ## Status Summary
 
 **P0 (Foundation): DONE.** All 4 sub-tasks implemented — directory scaffolding, MCP client adapter, scenario schema/loader, and eval runner with Claude client.
-**P1 (Core): P1.1-P1.4 DONE.** Grader framework, 10 scenarios, JSON reporter, and CLI all implemented. **P1.5 (CI workflow) is NEXT.**
-**P2 (Enhancement): NOT STARTED.** Medium/complex scenarios, visual capture, LLM judge, integration tier.
+**P1 (Core): DONE.** All 5 sub-tasks implemented — grader framework, 10 scenarios, JSON reporter, CLI, and CI workflow.
+**P2 (Enhancement): NOT STARTED — NEXT.** Medium/complex scenarios, visual capture, LLM judge, integration tier.
 **P3 (Polish): NOT STARTED.** Dashboard, human review, remaining scenarios, cost tracking.
 
 ### Codebase Health (verified 2026-02-26)
@@ -27,6 +27,7 @@
   - `evals/graders/state-check.ts` — existence, property, structure, data
   - `evals/scenarios/` — 10 YAML scenarios (one per domain + 2 cross-domain)
   - `evals/cli.ts` — CLI entry point with all flags
+  - `evals/` CI workflow: `.github/workflows/plasmic-mcp-eval.yml`
 
 ### Reusable Infrastructure (already exists)
 - `createServer()` export from `server.ts` — returns `McpServer` with all 8 tools
@@ -120,7 +121,7 @@
 
 ## P1 — Core (minimum viable eval system)
 
-**Status: P1.1-P1.4 DONE, P1.5 NEXT**
+**Status: DONE**
 
 ### P1.1: State-check grader framework
 - [x] Implement programmatic graders that validate project state after task completes
@@ -221,14 +222,14 @@
 - **Dependencies**: P0.4, P1.1, P1.2, P1.3
 - **Files**: `evals/cli.ts`, `packages/plasmic-mcp/package.json` (scripts)
 
-### P1.5: CI workflow for mock-tier evals ← NEXT PRIORITY
-- [ ] Add eval step to `.github/workflows/` (new `plasmic-mcp-eval.yml` or extend existing)
-- [ ] Runs on PRs touching `packages/plasmic-mcp/`
-- [ ] Requires `ANTHROPIC_API_KEY` secret (for Claude API calls during eval)
-- [ ] Runs `npm run eval -- --tier simple` first (fast feedback), then full mock tier
-- [ ] Posts summary as PR check annotation
-- [ ] Blocks merge if success rate < 90% (configurable via env var `EVAL_THRESHOLD`)
-- [ ] Cost controls: simple tier only on every PR, full suite nightly
+### P1.5: CI workflow for mock-tier evals
+- [x] Add eval step to `.github/workflows/` (new `plasmic-mcp-eval.yml` or extend existing)
+- [x] Runs on PRs touching `packages/plasmic-mcp/`
+- [x] Requires `ANTHROPIC_API_KEY` secret (for Claude API calls during eval)
+- [x] Runs `npm run eval -- --tier simple` first (fast feedback), then full mock tier
+- [x] Posts summary as PR check annotation
+- [x] Blocks merge if success rate < 90% (configurable via env var `EVAL_THRESHOLD`)
+- [x] Cost controls: simple tier only on every PR, full suite nightly
 - **Spec**: mcp-eval-framework.md (CI)
 - **Dependencies**: P1.4
 - **Files**: `.github/workflows/plasmic-mcp-eval.yml`
@@ -471,4 +472,4 @@ P0.1 (scaffolding)
                               P2.2   P2.4
 ```
 
-The minimum shippable unit (P0 + P1.1-P1.4) is **DONE**: a working `npm run eval` that runs 10 simple scenarios in mock mode with state-check grading and produces a JSON report. Next step is P1.5 (CI workflow), then P2/P3 layer on top.
+P0 + P1 are **DONE**: a working `npm run eval` that runs 10 simple scenarios in mock mode with state-check grading, produces a JSON report, and runs in CI on every PR. Next: P2/P3 add richer coverage, visual capture, LLM judge, and integration tier.
