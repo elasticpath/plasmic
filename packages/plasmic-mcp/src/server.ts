@@ -91,6 +91,11 @@ import {
   removeAnimationSequence,
   addNodeAnimation,
   removeNodeAnimation,
+  listThemes,
+  createTheme,
+  updateTheme,
+  removeTheme,
+  setActiveTheme,
 } from "./edit-tools.js";
 import { beginBatch, endBatch, isBatchActive, cancelBatch, cancelBatchWithRollback, getAccumulatedChanges } from "./batch-manager.js";
 import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
@@ -5302,6 +5307,305 @@ export function createServer(): McpServer {
         };
       } catch (err: any) {
         return handleMutationError("removing animation from element", err);
+      }
+    }
+  );
+
+  // ─── Theme tools ──────────────────────────────────────────────────────────
+
+  server.tool(
+    "list-themes",
+    "List all themes in the active project. " +
+      "Returns index, active status, default typography, and per-tag style overrides. " +
+      "Themes are referenced by index (they have no name or UUID).",
+    {},
+    async () => {
+      try {
+        const themes = listThemes();
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                { themeCount: themes.length, themes },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [{ type: "text" as const, text: `Error: ${err.message}` }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "create-theme",
+    "Create a new theme with default typography styles and optional per-tag overrides. " +
+      "Valid tag selectors: a, blockquote, code, em, h1-h6, i, li, ol, p, pre, strong, ul. " +
+      "Pseudo-selectors like :hover can be appended (e.g., 'a:hover').",
+    {
+      defaultStyles: z
+        .record(z.string())
+        .optional()
+        .describe("Default typography CSS styles (fontSize, fontFamily, color, etc.)"),
+      themeStyles: z
+        .array(
+          z.object({
+            selector: z.string().describe("HTML tag selector (e.g., 'h1', 'a:hover')"),
+            styles: z.record(z.string()).describe("CSS styles for this selector"),
+          })
+        )
+        .optional()
+        .describe("Per-tag style overrides"),
+      setActive: z
+        .boolean()
+        .optional()
+        .describe("Set the new theme as active immediately"),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting."),
+    },
+    async ({ defaultStyles, themeStyles, setActive, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            createTheme(apiClient, defaultStyles, themeStyles, setActive)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    themeIndex: result.themeIndex,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await createTheme(apiClient, defaultStyles, themeStyles, setActive);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  themeIndex: result.themeIndex,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("creating theme", err);
+      }
+    }
+  );
+
+  server.tool(
+    "update-theme",
+    "Update a theme's default typography and/or per-tag style overrides. " +
+      "At least one of defaultStyles or themeStyles must be provided. " +
+      "For themeStyles, existing selectors are updated, new selectors are added.",
+    {
+      themeIndex: z.number().describe("Index of the theme (from list-themes)"),
+      defaultStyles: z
+        .record(z.string())
+        .optional()
+        .describe("Default typography CSS styles to update"),
+      themeStyles: z
+        .array(
+          z.object({
+            selector: z.string().describe("HTML tag selector (e.g., 'h1', 'a:hover')"),
+            styles: z.record(z.string()).describe("CSS styles for this selector"),
+          })
+        )
+        .optional()
+        .describe("Per-tag style overrides to update or add"),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting."),
+    },
+    async ({ themeIndex, defaultStyles, themeStyles, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            updateTheme(apiClient, themeIndex, defaultStyles, themeStyles)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    themeIndex: result.themeIndex,
+                    updatedFields: result.updatedFields,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await updateTheme(apiClient, themeIndex, defaultStyles, themeStyles);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  themeIndex: result.themeIndex,
+                  updatedFields: result.updatedFields,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("updating theme", err);
+      }
+    }
+  );
+
+  server.tool(
+    "remove-theme",
+    "Remove a theme from the project. Cannot remove the active theme — " +
+      "use set-active-theme first to switch to another theme.",
+    {
+      themeIndex: z.number().describe("Index of the theme to remove (from list-themes)"),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting."),
+    },
+    async ({ themeIndex, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            removeTheme(apiClient, themeIndex)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    removedIndex: result.removedIndex,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await removeTheme(apiClient, themeIndex);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  removedIndex: result.removedIndex,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("removing theme", err);
+      }
+    }
+  );
+
+  server.tool(
+    "set-active-theme",
+    "Set the active theme by index. Pass themeIndex: null to deactivate all themes.",
+    {
+      themeIndex: z
+        .number()
+        .nullable()
+        .describe("Index of the theme to activate, or null to deactivate all"),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe("When true, shows what would change without persisting."),
+    },
+    async ({ themeIndex, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            setActiveTheme(apiClient, themeIndex)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    activeThemeIndex: result.activeThemeIndex,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await setActiveTheme(apiClient, themeIndex);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  activeThemeIndex: result.activeThemeIndex,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("setting active theme", err);
       }
     }
   );

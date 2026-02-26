@@ -598,6 +598,62 @@ export class Animation {
   }
 }
 
+export const isKnownTheme = (obj: any): boolean =>
+  obj?._type === "Theme";
+export const isKnownThemeStyle = (obj: any): boolean =>
+  obj?._type === "ThemeStyle";
+export const isKnownThemeLayoutSettings = (obj: any): boolean =>
+  obj?._type === "ThemeLayoutSettings";
+
+/** Mock constructor for ThemeLayoutSettings — layout defaults. */
+export class ThemeLayoutSettings {
+  _type = "ThemeLayoutSettings";
+  uid: number;
+  rs: any;
+  constructor(args: { rs: any }) {
+    this.uid = Math.floor(Math.random() * 1e9);
+    this.rs = args.rs;
+  }
+}
+
+/** Mock constructor for ThemeStyle — per-selector CSS override within a theme. */
+export class ThemeStyle {
+  _type = "ThemeStyle";
+  uid: number;
+  selector: string;
+  style: any; // Mixin
+  constructor(args: { selector: string; style: any }) {
+    this.uid = Math.floor(Math.random() * 1e9);
+    this.selector = args.selector;
+    this.style = args.style;
+  }
+}
+
+/** Mock constructor for Theme — a site-level theme with typography and per-tag overrides. */
+export class Theme {
+  _type = "Theme";
+  uid: number;
+  defaultStyle: any; // Mixin
+  styles: ThemeStyle[];
+  layout: ThemeLayoutSettings | null;
+  addItemPrefs: Record<string, any>;
+  active: boolean;
+  constructor(args: {
+    defaultStyle: any;
+    styles?: ThemeStyle[];
+    layout?: ThemeLayoutSettings | null;
+    addItemPrefs?: Record<string, any>;
+    active?: boolean;
+  }) {
+    this.uid = Math.floor(Math.random() * 1e9);
+    this.defaultStyle = args.defaultStyle;
+    this.styles = args.styles ?? [];
+    this.layout = args.layout ?? null;
+    this.addItemPrefs = args.addItemPrefs ?? {};
+    this.active = args.active ?? false;
+  }
+}
+
 export class Site {
   static isKnown(obj: any): boolean {
     return obj?._type === "Site";

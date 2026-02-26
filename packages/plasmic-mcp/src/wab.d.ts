@@ -157,6 +157,9 @@ declare module "@/wab/shared/model/classes" {
   export function isKnownKeyFrame(x: any): boolean;
   export function isKnownAnimationSequence(x: any): boolean;
   export function isKnownAnimation(x: any): boolean;
+  export function isKnownTheme(x: any): boolean;
+  export function isKnownThemeStyle(x: any): boolean;
+  export function isKnownThemeLayoutSettings(x: any): boolean;
 
   /** Model class for Mixin — reusable style bundle stored at site level. */
   export class Mixin {
@@ -214,6 +217,38 @@ declare module "@/wab/shared/model/classes" {
     delay: string;
     fillMode: string;
     playState: string;
+  }
+
+  /** Model class for ThemeLayoutSettings — layout defaults for a theme. */
+  export class ThemeLayoutSettings {
+    constructor(args: { rs: any });
+    uid: number;
+    rs: any;
+  }
+
+  /** Model class for ThemeStyle — per-selector CSS override within a theme. */
+  export class ThemeStyle {
+    constructor(args: { selector: string; style: any });
+    uid: number;
+    readonly selector: string;
+    style: any;
+  }
+
+  /** Model class for Theme — a site-level theme with typography defaults and per-tag overrides. */
+  export class Theme {
+    constructor(args: {
+      defaultStyle: any;
+      styles?: ThemeStyle[];
+      layout?: ThemeLayoutSettings | null;
+      addItemPrefs?: Record<string, any>;
+      active?: boolean;
+    });
+    uid: number;
+    defaultStyle: any;
+    styles: ThemeStyle[];
+    layout: ThemeLayoutSettings | null | undefined;
+    addItemPrefs: Record<string, any>;
+    readonly active: boolean;
   }
 
   /** Model class for ComponentDataQuery — client-side data query on a component. */

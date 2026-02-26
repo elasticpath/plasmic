@@ -71,6 +71,11 @@ import {
   removeAnimationSequence,
   addNodeAnimation,
   removeNodeAnimation,
+  listThemes,
+  createTheme,
+  updateTheme,
+  removeTheme,
+  setActiveTheme,
 } from "../edit-tools";
 import { setSession, clearSession } from "../session";
 import { initChangeTracker, disposeChangeTracker } from "../change-tracker";
@@ -9783,5 +9788,286 @@ describe("removeNodeAnimation", () => {
     await expect(
       removeNodeAnimation(api, "comp-1", "Root", undefined, 5)
     ).rejects.toThrow(/out of range/);
+  });
+});
+
+// =============================================================================
+// Themes — CRUD for site-level themes
+// =============================================================================
+
+describe("listThemes", () => {
+  afterEach(() => {
+    clearSession();
+  });
+
+  it("returns empty array when no themes exist", () => {
+    const site = { components: [], themes: [] };
+    setSession(makeSession({ site } as any));
+    expect(listThemes()).toEqual([]);
+  });
+
+  it("returns themes with active status and styles", () => {
+    const theme1 = {
+      defaultStyle: { name: "Default Typography", rs: { values: { fontSize: "16px" } } },
+      styles: [{ selector: "h1", style: { rs: { values: { fontSize: "32px" } } } }],
+    };
+    const theme2 = {
+      defaultStyle: { name: "Custom Typography", rs: { values: { fontSize: "14px" } } },
+      styles: [],
+    };
+    const site = { components: [], themes: [theme1, theme2], activeTheme: theme1 };
+    setSession(makeSession({ site } as any));
+
+    const result = listThemes();
+    expect(result).toHaveLength(2);
+    expect(result[0].index).toBe(0);
+    expect(result[0].isActive).toBe(true);
+    expect(result[0].defaultStyleName).toBe("Default Typography");
+    expect(result[0].defaultStyles).toEqual({ fontSize: "16px" });
+    expect(result[0].themeStyles).toHaveLength(1);
+    expect(result[0].themeStyles[0].selector).toBe("h1");
+    expect(result[1].isActive).toBe(false);
+  });
+});
+
+describe("createTheme", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    api = mockApiClient();
+    mockWithRecording.mockReturnValue({
+      changes: [], newInsts: [], removedInsts: [],
+    });
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "100" });
+  });
+
+  afterEach(() => {
+    clearSession();
+    disposeChangeTracker();
+  });
+
+  it("creates a theme with default styles", async () => {
+    const site = { components: [], themes: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await createTheme(api, { fontSize: "16px" });
+    expect(result.themeIndex).toBe(0);
+    expect(site.themes).toHaveLength(1);
+    expect(site.themes[0].defaultStyle.rs.values).toHaveProperty("fontSize", "16px");
+  });
+
+  it("creates a theme with per-tag overrides", async () => {
+    const site = { components: [], themes: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await createTheme(api, undefined, [
+      { selector: "h1", styles: { fontSize: "32px" } },
+      { selector: "a", styles: { color: "blue" } },
+    ]);
+    expect(result.themeIndex).toBe(0);
+    expect(site.themes[0].styles).toHaveLength(2);
+  });
+
+  it("sets theme as active when setActive is true", async () => {
+    const site = { components: [], themes: [], activeTheme: null };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await createTheme(api, undefined, undefined, true);
+    expect(site.activeTheme).toBe(site.themes[0]);
+  });
+
+  it("rejects invalid selector", async () => {
+    const site = { components: [], themes: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      createTheme(api, undefined, [{ selector: "div", styles: { color: "red" } }])
+    ).rejects.toThrow(/Invalid selector/);
+  });
+});
+
+describe("updateTheme", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    api = mockApiClient();
+    mockWithRecording.mockReturnValue({
+      changes: [], newInsts: [], removedInsts: [],
+    });
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "100" });
+  });
+
+  afterEach(() => {
+    clearSession();
+    disposeChangeTracker();
+  });
+
+  it("updates default styles", async () => {
+    const defaultStyle = { name: "Default", rs: { values: { fontSize: "16px" } } };
+    const theme = { defaultStyle, styles: [] };
+    const site = { components: [], themes: [theme] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateTheme(api, 0, { fontSize: "18px", color: "red" });
+    expect(result.updatedFields).toContain("defaultStyles");
+    expect(defaultStyle.rs.values).toHaveProperty("fontSize", "18px");
+    expect(defaultStyle.rs.values).toHaveProperty("color", "red");
+  });
+
+  it("updates existing ThemeStyle", async () => {
+    const h1Style = { selector: "h1", style: { rs: { values: { fontSize: "32px" } } } };
+    const theme = { defaultStyle: { name: "D", rs: { values: {} } }, styles: [h1Style] };
+    const site = { components: [], themes: [theme] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await updateTheme(api, 0, undefined, [{ selector: "h1", styles: { fontSize: "36px" } }]);
+    expect(h1Style.style.rs.values).toHaveProperty("fontSize", "36px");
+  });
+
+  it("adds new ThemeStyle for unknown selector", async () => {
+    const theme = { defaultStyle: { name: "D", rs: { values: {} } }, styles: [] };
+    const site = { components: [], themes: [theme] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await updateTheme(api, 0, undefined, [{ selector: "h2", styles: { fontSize: "28px" } }]);
+    expect(theme.styles).toHaveLength(1);
+    expect((theme.styles[0] as any).selector).toBe("h2");
+  });
+
+  it("throws when theme index out of range", async () => {
+    const site = { components: [], themes: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(updateTheme(api, 0, { color: "red" })).rejects.toThrow(/out of range/);
+  });
+
+  it("throws when neither field provided", async () => {
+    const theme = { defaultStyle: { name: "D", rs: { values: {} } }, styles: [] };
+    const site = { components: [], themes: [theme] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(updateTheme(api, 0)).rejects.toThrow(/At least/);
+  });
+});
+
+describe("removeTheme", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    api = mockApiClient();
+    mockWithRecording.mockReturnValue({
+      changes: [], newInsts: [], removedInsts: [],
+    });
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "100" });
+  });
+
+  afterEach(() => {
+    clearSession();
+    disposeChangeTracker();
+  });
+
+  it("removes an inactive theme", async () => {
+    const theme1 = { defaultStyle: {}, styles: [] };
+    const theme2 = { defaultStyle: {}, styles: [] };
+    const site = { components: [], themes: [theme1, theme2], activeTheme: theme1 };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await removeTheme(api, 1);
+    expect(result.removedIndex).toBe(1);
+    expect(site.themes).toHaveLength(1);
+  });
+
+  it("throws when removing active theme", async () => {
+    const theme = { defaultStyle: {}, styles: [] };
+    const site = { components: [], themes: [theme], activeTheme: theme };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(removeTheme(api, 0)).rejects.toThrow(/active theme/);
+  });
+
+  it("throws when index out of range", async () => {
+    const site = { components: [], themes: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(removeTheme(api, 0)).rejects.toThrow(/out of range/);
+  });
+});
+
+describe("setActiveTheme", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    api = mockApiClient();
+    mockWithRecording.mockReturnValue({
+      changes: [], newInsts: [], removedInsts: [],
+    });
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "100" });
+  });
+
+  afterEach(() => {
+    clearSession();
+    disposeChangeTracker();
+  });
+
+  it("sets a theme as active", async () => {
+    const theme1 = { defaultStyle: {}, styles: [] };
+    const theme2 = { defaultStyle: {}, styles: [] };
+    const site = { components: [], themes: [theme1, theme2], activeTheme: theme1 };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await setActiveTheme(api, 1);
+    expect(result.activeThemeIndex).toBe(1);
+    expect(site.activeTheme).toBe(theme2);
+  });
+
+  it("deactivates all themes when null", async () => {
+    const theme = { defaultStyle: {}, styles: [] };
+    const site = { components: [], themes: [theme], activeTheme: theme };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await setActiveTheme(api, null);
+    expect(result.activeThemeIndex).toBe(-1);
+    expect(site.activeTheme).toBeNull();
+  });
+
+  it("throws when index out of range", async () => {
+    const site = { components: [], themes: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(setActiveTheme(api, 0)).rejects.toThrow(/out of range/);
   });
 });

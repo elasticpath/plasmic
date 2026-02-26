@@ -72,6 +72,9 @@ import {
   Animation,
   isKnownAnimationSequence,
   isKnownAnimation,
+  Theme,
+  ThemeStyle,
+  ThemeLayoutSettings,
 } from "@/wab/shared/model/classes";
 import { RSH } from "@/wab/shared/RuleSetHelpers";
 import { TplMgr } from "@/wab/shared/TplMgr";
@@ -5956,4 +5959,305 @@ export async function removeNodeAnimation(
   );
 
   return { save, removedCount, nodeUuid: resolved.uuid };
+}
+
+// =============================================================================
+// Themes — CRUD for site-level themes (typography + per-tag overrides)
+// =============================================================================
+
+/** Valid CSS selectors for ThemeStyle entries. */
+const THEMABLE_TAGS = [
+  "a", "blockquote", "code", "em", "h1", "h2", "h3", "h4", "h5", "h6",
+  "i", "li", "ol", "p", "pre", "strong", "ul",
+] as const;
+
+export interface ThemeStyleInfo {
+  selector: string;
+  styles: Record<string, string>;
+}
+
+export interface ThemeInfo {
+  index: number;
+  isActive: boolean;
+  defaultStyleName: string;
+  defaultStyles: Record<string, string>;
+  themeStyles: ThemeStyleInfo[];
+}
+
+/**
+ * List all themes in the current project.
+ * Themes don't have names/UUIDs — they are referenced by index in site.themes[].
+ */
+export function listThemes(): ThemeInfo[] {
+  const session = requireSession();
+  const themes = session.site.themes ?? [];
+  const activeTheme = session.site.activeTheme;
+
+  return themes.map((t: any, idx: number) => ({
+    index: idx,
+    isActive: t === activeTheme,
+    defaultStyleName: t.defaultStyle?.name ?? "Unnamed",
+    defaultStyles: { ...(t.defaultStyle?.rs?.values ?? {}) },
+    themeStyles: (t.styles ?? []).map((ts: any) => ({
+      selector: ts.selector,
+      styles: { ...(ts.style?.rs?.values ?? {}) },
+    })),
+  }));
+}
+
+export interface CreateThemeResult {
+  save: SaveResult;
+  themeIndex: number;
+}
+
+/**
+ * Create a new theme with default typography styles and optional per-tag overrides.
+ */
+export async function createTheme(
+  apiClient: PlasmicApiClient,
+  defaultStyles?: Record<string, string>,
+  themeStyles?: Array<{ selector: string; styles: Record<string, string> }>,
+  setActive?: boolean,
+): Promise<CreateThemeResult> {
+  const session = requireSession();
+  const tracker = getChangeTracker();
+
+  // Validate selectors
+  if (themeStyles) {
+    for (const ts of themeStyles) {
+      const baseTag = ts.selector.split(":")[0];
+      if (!THEMABLE_TAGS.includes(baseTag as any)) {
+        throw new Error(
+          `Invalid selector "${ts.selector}". Valid base tags: ${THEMABLE_TAGS.join(", ")}`
+        );
+      }
+    }
+  }
+
+  let themeIndex = -1;
+
+  const changes = tracker.withRecording(() => {
+    const sanitizedDefault = defaultStyles ? sanitizeStyles(defaultStyles) : {};
+
+    const defaultMixin = new Mixin({
+      name: "Custom Typography",
+      rs: new RuleSet({ values: sanitizedDefault, mixins: [], animations: null }),
+      preview: null,
+      uuid: randomUUID().slice(0, 8),
+      forTheme: true,
+      variantedRs: [],
+    });
+
+    const styles: any[] = [];
+    if (themeStyles) {
+      for (const ts of themeStyles) {
+        const sanitized = sanitizeStyles(ts.styles);
+        const mixin = new Mixin({
+          name: `Theme "${ts.selector}"`,
+          rs: new RuleSet({ values: sanitized, mixins: [], animations: null }),
+          preview: null,
+          uuid: randomUUID().slice(0, 8),
+          forTheme: true,
+          variantedRs: [],
+        });
+        styles.push(new ThemeStyle({ selector: ts.selector, style: mixin }));
+      }
+    }
+
+    const theme = new Theme({
+      defaultStyle: defaultMixin,
+      styles,
+      layout: null,
+      addItemPrefs: {},
+      active: false,
+    });
+
+    if (!session.site.themes) {
+      session.site.themes = [];
+    }
+    session.site.themes.push(theme);
+    themeIndex = session.site.themes.length - 1;
+
+    if (setActive) {
+      session.site.activeTheme = theme;
+    }
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `create-theme: index ${themeIndex}`,
+    []
+  );
+
+  return { save, themeIndex };
+}
+
+export interface UpdateThemeResult {
+  save: SaveResult;
+  themeIndex: number;
+  updatedFields: string[];
+}
+
+/**
+ * Update a theme's default typography styles and/or per-tag overrides.
+ */
+export async function updateTheme(
+  apiClient: PlasmicApiClient,
+  themeIndex: number,
+  defaultStyles?: Record<string, string>,
+  themeStyles?: Array<{ selector: string; styles: Record<string, string> }>,
+): Promise<UpdateThemeResult> {
+  const session = requireSession();
+  const tracker = getChangeTracker();
+  const themes = session.site.themes ?? [];
+
+  if (themeIndex < 0 || themeIndex >= themes.length) {
+    throw new Error(
+      `Theme index ${themeIndex} out of range (0-${themes.length - 1}). Use list-themes to see available themes.`
+    );
+  }
+
+  if (!defaultStyles && !themeStyles) {
+    throw new Error("At least defaultStyles or themeStyles must be provided for update-theme.");
+  }
+
+  // Validate selectors
+  if (themeStyles) {
+    for (const ts of themeStyles) {
+      const baseTag = ts.selector.split(":")[0];
+      if (!THEMABLE_TAGS.includes(baseTag as any)) {
+        throw new Error(
+          `Invalid selector "${ts.selector}". Valid base tags: ${THEMABLE_TAGS.join(", ")}`
+        );
+      }
+    }
+  }
+
+  const updatedFields: string[] = [];
+
+  const changes = tracker.withRecording(() => {
+    const theme = themes[themeIndex];
+
+    if (defaultStyles) {
+      const sanitized = sanitizeStyles(defaultStyles);
+      if (theme.defaultStyle?.rs?.values) {
+        Object.assign(theme.defaultStyle.rs.values, sanitized);
+      }
+      updatedFields.push("defaultStyles");
+    }
+
+    if (themeStyles) {
+      for (const ts of themeStyles) {
+        // Find existing ThemeStyle for this selector, or create new one
+        let existing = theme.styles.find((s: any) => s.selector === ts.selector);
+        const sanitized = sanitizeStyles(ts.styles);
+
+        if (existing) {
+          if (existing.style?.rs?.values) {
+            Object.assign(existing.style.rs.values, sanitized);
+          }
+        } else {
+          const mixin = new Mixin({
+            name: `Theme "${ts.selector}"`,
+            rs: new RuleSet({ values: sanitized, mixins: [], animations: null }),
+            preview: null,
+            uuid: randomUUID().slice(0, 8),
+            forTheme: true,
+            variantedRs: [],
+          });
+          theme.styles.push(new ThemeStyle({ selector: ts.selector, style: mixin }));
+        }
+      }
+      updatedFields.push("themeStyles");
+    }
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `update-theme: index ${themeIndex}`,
+    []
+  );
+
+  return { save, themeIndex, updatedFields };
+}
+
+export interface RemoveThemeResult {
+  save: SaveResult;
+  removedIndex: number;
+}
+
+/**
+ * Remove a theme from the project. Cannot remove the active theme.
+ */
+export async function removeTheme(
+  apiClient: PlasmicApiClient,
+  themeIndex: number,
+): Promise<RemoveThemeResult> {
+  const session = requireSession();
+  const tracker = getChangeTracker();
+  const themes = session.site.themes ?? [];
+
+  if (themeIndex < 0 || themeIndex >= themes.length) {
+    throw new Error(
+      `Theme index ${themeIndex} out of range (0-${themes.length - 1}). Use list-themes to see available themes.`
+    );
+  }
+
+  const theme = themes[themeIndex];
+  if (theme === session.site.activeTheme) {
+    throw new Error(
+      "Cannot remove the active theme. Use set-active-theme to switch to another theme first."
+    );
+  }
+
+  const changes = tracker.withRecording(() => {
+    themes.splice(themeIndex, 1);
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `remove-theme: index ${themeIndex}`,
+    []
+  );
+
+  return { save, removedIndex: themeIndex };
+}
+
+export interface SetActiveThemeResult {
+  save: SaveResult;
+  activeThemeIndex: number;
+}
+
+/**
+ * Set the active theme by index. Pass null to deactivate all themes.
+ */
+export async function setActiveTheme(
+  apiClient: PlasmicApiClient,
+  themeIndex: number | null,
+): Promise<SetActiveThemeResult> {
+  const session = requireSession();
+  const tracker = getChangeTracker();
+  const themes = session.site.themes ?? [];
+
+  if (themeIndex !== null && (themeIndex < 0 || themeIndex >= themes.length)) {
+    throw new Error(
+      `Theme index ${themeIndex} out of range (0-${themes.length - 1}). Use list-themes to see available themes.`
+    );
+  }
+
+  const changes = tracker.withRecording(() => {
+    session.site.activeTheme = themeIndex !== null ? themes[themeIndex] : null;
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `set-active-theme: index ${themeIndex ?? "none"}`,
+    []
+  );
+
+  return { save, activeThemeIndex: themeIndex ?? -1 };
 }

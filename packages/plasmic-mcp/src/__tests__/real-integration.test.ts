@@ -4230,6 +4230,122 @@ describe("animations", () => {
   });
 });
 
+// =============================================================================
+// Themes — integration tests for site-level theme management
+// =============================================================================
+
+describe("themes", () => {
+  it("list-themes → create-theme → set-active-theme → remove-theme round-trip", async () => {
+    // List initial themes
+    const initialList = parseResponse(
+      await client.callTool({ name: "list-themes", arguments: {} })
+    );
+    const initialCount = initialList.themeCount;
+    expect(initialCount).toBeGreaterThanOrEqual(1); // Projects always have a default theme
+
+    // Create a new theme with h1 override
+    const createResult = parseResponse(
+      await client.callTool({
+        name: "create-theme",
+        arguments: {
+          defaultStyles: { fontSize: "14px", fontFamily: "sans-serif" },
+          themeStyles: [
+            { selector: "h1", styles: { fontSize: "40px" } },
+          ],
+        },
+      })
+    );
+    expect(createResult.success).toBe(true);
+    const newIndex = createResult.themeIndex;
+
+    // List — should have one more
+    const afterCreate = parseResponse(
+      await client.callTool({ name: "list-themes", arguments: {} })
+    );
+    expect(afterCreate.themeCount).toBe(initialCount + 1);
+
+    // Set the new theme as active
+    const setResult = parseResponse(
+      await client.callTool({
+        name: "set-active-theme",
+        arguments: { themeIndex: newIndex },
+      })
+    );
+    expect(setResult.success).toBe(true);
+
+    // Verify active
+    const afterSet = parseResponse(
+      await client.callTool({ name: "list-themes", arguments: {} })
+    );
+    const activeTheme = afterSet.themes.find((t: any) => t.isActive);
+    expect(activeTheme).toBeDefined();
+    expect(activeTheme.index).toBe(newIndex);
+
+    // Switch back to original active (index 0)
+    await client.callTool({
+      name: "set-active-theme",
+      arguments: { themeIndex: 0 },
+    });
+
+    // Remove the new theme (now inactive)
+    const removeResult = parseResponse(
+      await client.callTool({
+        name: "remove-theme",
+        arguments: { themeIndex: newIndex },
+      })
+    );
+    expect(removeResult.success).toBe(true);
+
+    // List — back to original count
+    const afterRemove = parseResponse(
+      await client.callTool({ name: "list-themes", arguments: {} })
+    );
+    expect(afterRemove.themeCount).toBe(initialCount);
+  });
+
+  it("update-theme modifies default styles and adds tag override", async () => {
+    // Create a new theme so we don't mess with the default
+    const createResult = parseResponse(
+      await client.callTool({
+        name: "create-theme",
+        arguments: { defaultStyles: { fontSize: "16px" } },
+      })
+    );
+    expect(createResult.success).toBe(true);
+
+    // Update it
+    const updateResult = parseResponse(
+      await client.callTool({
+        name: "update-theme",
+        arguments: {
+          themeIndex: createResult.themeIndex,
+          defaultStyles: { color: "#333" },
+          themeStyles: [{ selector: "h2", styles: { fontSize: "28px" } }],
+        },
+      })
+    );
+    expect(updateResult.success).toBe(true);
+    expect(updateResult.updatedFields).toContain("defaultStyles");
+    expect(updateResult.updatedFields).toContain("themeStyles");
+
+    // Undo twice (update + create)
+    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+
+  it("remove-theme rejects removing the active theme", async () => {
+    // The first theme (index 0) is typically active
+    const result = await client.callTool({
+      name: "remove-theme",
+      arguments: { themeIndex: 0 },
+    });
+    const parsed = parseResponse(result);
+    expect(
+      result.isError || (typeof parsed === "string" && parsed.includes("active theme"))
+    ).toBeTruthy();
+  });
+});
+
 /** Walk a tree recursively to find a node by UUID. */
 function findNodeByUuid(tree: any, uuid: string): any {
   if (tree.uuid === uuid) return tree;

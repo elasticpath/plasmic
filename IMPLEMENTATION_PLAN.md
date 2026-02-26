@@ -3,10 +3,10 @@
 > **Goal**: Create Claude Code skills and workflows that can interact with Plasmic Studio
 > programmatically to create fully-featured pages from the Claude Code terminal.
 >
-> **Current state**: 69 MCP tools, 6 Claude Code skills, 924 tests (841 unit + 83 integration).
+> **Current state**: 74 MCP tools, 6 Claude Code skills, 944 tests (858 unit + 86 integration).
 > Zero TODOs/FIXMEs/skipped tests.
 >
-> **Last verified**: 2026-02-26 — 4.2 Animations implemented.
+> **Last verified**: 2026-02-26 — 4.3 Themes implemented.
 
 ---
 
@@ -209,16 +209,21 @@ These features enable systematic design management but are not blocking for basi
   - 21 unit tests + 3 integration tests
   - Total test count: 924 (841 unit + 83 integration)
 
-### 4.3 Themes
+### 4.3 Themes — IMPLEMENTED (2026-02-26)
 - **Spec**: `specs/gap-themes.md`
-- **Status**: NOT IMPLEMENTED
-  - Verified: only a doc string example mentioning "Theme" exists in MCP src/
-  - WAB backing confirmed: `Theme` (line 2897), `ThemeStyle` (line 2957) in `classes.ts`; `Site.themes[]`, `Site.activeTheme`
-- **What**: Five site-level actions:
-  - `list-themes`, `create-theme`, `update-theme`, `remove-theme`, `set-active-theme`
-- **Dependencies**: Implicit relationship with token and mixin systems
-- **Effort**: Medium — CRUD plus active-theme toggle
-- **Tests needed**: Unit + integration (create → set active → read tokens → verify override)
+- **Status**: IMPLEMENTED
+  - Five new tools: `list-themes`, `create-theme`, `update-theme`, `remove-theme`, `set-active-theme`
+  - `list-themes` returns all themes with index, isActive flag, defaultStyleName, defaultStyles map, and themeStyles array (selector + styles)
+  - `create-theme` creates Theme with a Mixin (forTheme: true) for default styles, optional ThemeStyle[] for per-tag overrides, optional setActive flag
+  - `update-theme` updates default styles and/or tag-specific ThemeStyle entries; creates new ThemeStyle if selector not found
+  - `remove-theme` guards against removing active theme; splices from site.themes[]
+  - `set-active-theme` sets site.activeTheme WeakRef (or null to deactivate)
+  - Themes have no name or UUID — referenced by array index in site.themes[]
+  - THEMABLE_TAGS validation: a, blockquote, code, em, h1-h6, i, li, ol, p, pre, strong, ul
+  - No TplMgr methods — direct manipulation within ChangeRecorder
+  - Mock classes: ThemeLayoutSettings, ThemeStyle, Theme + type guards (isKnownTheme, isKnownThemeStyle, isKnownThemeLayoutSettings)
+  - 17 unit tests + 3 integration tests (round-trip: list → create → set-active → remove; update default + tag styles; reject removing active theme)
+  - Total test count: 944 (858 unit + 86 integration)
 
 ---
 
@@ -336,7 +341,7 @@ Phase 1 (Foundations):      1.1 Visibility ✓ → 1.2 Data Repetition ✓ → 1
 Phase 2 (Authoring):        2.1 State
 Phase 3 (Interactivity):    2.2 Interactions → CQ-2/CQ-3 Slot Gaps
 Phase 4 (Assets & Data):    3.1 Images → 3.2 Queries
-Phase 5 (Design System):    4.1 Mixins → 4.2 Animations → 4.3 Themes
+Phase 5 (Design System):    4.1 Mixins ✓ → 4.2 Animations ✓ → 4.3 Themes ✓
 Phase 6 (Remaining):        5.1 sub-features (reorder, global variants, convert, extract, etc.)
 Phase 7 (Architecture):     6.1 STRAP → 6.2 Test Restructure → 7.2 Skills Rewrite
 Continuous:                 7.1 Skills updates after each phase; CQ-5/CQ-6/CQ-7 test gaps
