@@ -78,6 +78,8 @@ scenarios:
           max: 25
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Verify the HeroSection component tree shows a heading and paragraph as direct children with correct text. The design system panel should list the brand-primary token, and the variant list should show a Mobile screen breakpoint. In the property inspector, the heading should display font-size 64px and the paragraph font-size 20px."
 
   # ─────────────────────────────────────────────────────────────────────
   # Product Card with Data Binding
@@ -146,6 +148,8 @@ scenarios:
           max: 28
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Verify the ProductCard component tree shows the root element marked with a repeat/loop indicator, with heading and paragraph children visible. The data panel should list the fetchProducts query, and the heading's interaction panel should show an onClick handler pointing to '/products'."
 
   # ─────────────────────────────────────────────────────────────────────
   # Navigation Bar with Hover States
@@ -230,6 +234,8 @@ scenarios:
           max: 30
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Verify the NavBar component tree shows the brand heading and two link elements (Home, About) as siblings. The variant panel should list a hover style variant, and the About link's interaction panel should show an onClick handler. The design system panel should list both nav-bg and nav-link tokens."
 
   # ─────────────────────────────────────────────────────────────────────
   # Blog Post Template
@@ -304,6 +310,8 @@ scenarios:
           max: 30
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Verify the BlogPost page appears in the pages list at path /blog/post, with its tree showing a heading followed by two paragraph elements. The property inspector should show font-size 36px and font-weight bold on the heading, and the variant list should include a Mobile screen breakpoint. The blog-text token should appear in the design system panel."
 
   # ─────────────────────────────────────────────────────────────────────
   # Contact Form with Validation States
@@ -379,6 +387,8 @@ scenarios:
           max: 30
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Verify the ContactForm component tree shows the 'Get in Touch' heading plus Name, Email, and Send Message text elements as children. The variant panel should list the State group with 'default' and 'submitted' options, and the Send Message element's interaction panel should show an onClick handler navigating to '/thank-you'."
 
   # ─────────────────────────────────────────────────────────────────────
   # Feature Grid with Data Binding
@@ -453,6 +463,8 @@ scenarios:
           max: 30
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Verify the FeatureGrid component tree shows a heading at the top and a GridContainer below it with a repeat indicator, containing a 'Feature Name' text child. The data panel should list the fetchFeatures query, and the heading's property inspector should show font-size 32px and font-weight bold."
 
   # ─────────────────────────────────────────────────────────────────────
   # Testimonial Component with Design System
@@ -541,6 +553,8 @@ scenarios:
           max: 30
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Verify the TestimonialCard root element shows the card-base mixin applied in the style panel and a repeat indicator in the tree. The variant panel should list a hover style variant, the design system panel should show both the testimonial-bg token and card-base mixin, and the paragraph's property inspector should show font-size 18px and font-style italic."
 
   # ─────────────────────────────────────────────────────────────────────
   # Dashboard Layout with Multiple Sections
@@ -621,6 +635,8 @@ scenarios:
           max: 30
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Verify the Dashboard page tree shows two top-level containers (Sidebar and MainContent) each with their own heading children, plus a paragraph inside MainContent. The variant list should include a Mobile screen breakpoint, and both sidebar-bg and content-bg tokens should appear in the design system panel. The Sidebar heading inspector should show font-size 20px and color #ffffff."
 
   # ─────────────────────────────────────────────────────────────────────
   # Product Listing Page
@@ -713,6 +729,8 @@ scenarios:
           max: 35
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Verify the Products page tree shows the heading followed by a ProductGrid container with a repeat indicator and a 'Product' text child. The data panel should list the getProducts query, the variant list should include a Tablet screen breakpoint, and the heading's interaction panel should show an onClick handler. The heading inspector should display font-size 36px."
 
   # ─────────────────────────────────────────────────────────────────────
   # Footer with Design System Integration
@@ -803,6 +821,8 @@ scenarios:
           max: 30
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Verify the SiteFooter component tree shows three children: copyright text, Privacy Policy link, and Terms of Service link. The design system panel should list footer-bg and footer-text tokens plus the footer-link mixin, and the Privacy Policy link's interaction panel should show an onClick handler navigating to '/privacy'. The copyright text inspector should show font-size 14px."
 
   # ─────────────────────────────────────────────────────────────────────
   # Modal Dialog Component
@@ -878,6 +898,8 @@ scenarios:
           max: 30
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Verify the Modal component tree shows a nested structure: ModalOverlay containing ModalContent, which contains a heading ('Dialog Title') and a 'Close' text element. The variant panel should show an 'Open' toggle variant group, the design system should list the overlay-bg token, and the Close element's interaction panel should show an onClick handler."
 
   # ─────────────────────────────────────────────────────────────────────
   # Alert Banner with Severity Variants and Conditional Rendering
@@ -963,6 +985,8 @@ scenarios:
           max: 30
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Verify the AlertBanner tree shows a heading and a paragraph, with the paragraph displaying a conditional rendering indicator (visibility condition icon). The variant panel should list the Severity group with info, warning, and danger options, and the design system panel should show alert-info and alert-danger tokens. The heading inspector should display font-size 18px and font-weight bold."
 
   # ─────────────────────────────────────────────────────────────────────
   # Team Page with Data-Driven Cards
@@ -1050,6 +1074,8 @@ scenarios:
           max: 35
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Verify the Team page tree shows a heading followed by a TeamGrid container with a repeat indicator and a 'Team Member' text child inside. The data panel should list the fetchTeam query, the variant list should include a Mobile screen breakpoint, and the heading inspector should show font-size 36px, font-weight bold, and color #2b2d42."
 
   # ─────────────────────────────────────────────────────────────────────
   # Landing Page with Full Feature Set
@@ -1160,6 +1186,8 @@ scenarios:
           max: 40
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Verify the Landing page tree shows heading, paragraph, 'Get Started Free' CTA text, and a FeatureList container with a repeat indicator in the correct order. The design system panel should list both landing-primary and landing-dark tokens, the variant list should include a Mobile breakpoint, the data panel should show the getFeatures query, and the CTA element's interaction panel should show an onClick handler navigating to '/signup'."
 
   # ─────────────────────────────────────────────────────────────────────
   # Pricing Section with Variant Toggle
@@ -1259,3 +1287,5 @@ scenarios:
           max: 35
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Verify the PricingSection tree shows the heading and three pricing tier text elements (Basic, Pro, Enterprise), with the Pro element displaying a conditional rendering indicator. The variant panel should list the Billing toggle group, the Enterprise element's interaction panel should show an onClick handler, and the design system should list pricing-bg and pricing-highlight tokens."

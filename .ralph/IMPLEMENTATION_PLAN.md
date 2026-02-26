@@ -1,13 +1,13 @@
 # Implementation Plan: Plasmic MCP Eval System
 
-> Last updated: 2026-02-26 (P2.3, P2.5, P3.1, P3.3, P3.4, P3.5 complete)
+> Last updated: 2026-02-26 (P2.3, P2.4, P2.5, P3.1, P3.3, P3.4, P3.5 complete)
 > Source: `.ralph/specs/mcp-eval-framework.md`, `mcp-eval-scenarios.md`, `mcp-eval-grading.md`, `mcp-eval-visual-capture.md`
 
 ## Status Summary
 
 **P0 (Foundation): DONE.** All 4 sub-tasks implemented — directory scaffolding, MCP client adapter, scenario schema/loader, and eval runner with Claude client.
 **P1 (Core): DONE.** All 5 sub-tasks implemented — grader framework, 10 scenarios, JSON reporter, CLI, and CI workflow.
-**P2 (Enhancement): PARTIAL.** P2.1 done (20 medium scenarios). P2.2 done (15 complex scenarios). P2.3 done (visual capture). P2.4 not started. P2.5 done (integration-tier MCP client).
+**P2 (Enhancement): DONE.** P2.1 done (20 medium scenarios). P2.2 done (15 complex scenarios). P2.3 done (visual capture). P2.4 done (LLM-as-Judge). P2.5 done (integration-tier MCP client).
 **P3 (Polish): PARTIAL.** P3.1 done (dashboard). P3.2 (human review) not started. P3.3 done (20 simple scenarios). P3.4 done (scenario validator). P3.5 done (cost tracking).
 
 ### Codebase Health (verified 2026-02-26)
@@ -243,7 +243,7 @@
 
 ## P2 — Enhancement (richer eval coverage)
 
-**Status: PARTIAL (P2.1, P2.2, P2.3, P2.5 done; P2.4 not started)**
+**Status: DONE (P2.1, P2.2, P2.3, P2.4, P2.5 done)**
 
 ### P2.1: Medium-complexity scenarios (~20) — DONE
 - [x] 20 medium scenarios in `evals/scenarios/medium.yaml` covering all 8 STRAP domains.
@@ -280,22 +280,24 @@
 - **Dependencies**: P1.4, running Plasmic Studio instance
 - **Files**: `evals/visual/capture.ts`, `evals/visual/auth.ts`
 
-### P2.4: LLM-as-Judge grading (Tier 2)
-- [ ] After visual capture, feed screenshot + transcript + rubric to multimodal Claude for quality scoring
-- [ ] Input: screenshot PNG(s), task prompt, full transcript, task-specific rubric
-- [ ] Model selection: Sonnet for simple/medium, Opus for complex (configurable)
-- [ ] Output: 1-5 quality score + text rationale
+### P2.4: LLM-as-Judge grading (Tier 2) — DONE
+- [x] After visual capture, feed screenshot + transcript + rubric to multimodal Claude for quality scoring
+- [x] Input: screenshot PNG(s), task prompt, full transcript, task-specific rubric
+- [x] Model selection: Sonnet for simple/medium, Opus for complex (configurable via --judge-model)
+- [x] Output: 1-5 quality score + text rationale
   - 5 = Exceptional (exceeds expectations)
   - 4 = Good (all requirements met, minor improvements possible)
   - 3 = Adequate (core requirements met, notable gaps)
   - 2 = Below expectations (partial completion)
   - 1 = Failed (wrong approach or significant errors)
-- [ ] Score is advisory (not used for CI pass/fail), stored in report alongside state-check results
-- [ ] Rubric defined per-scenario in YAML `visual.rubric` field
-- [ ] Fallback: if LLM judge API call fails, `qualityScore = null`, log warning, continue (spec GE3)
+- [x] Score is advisory (not used for CI pass/fail), stored in report alongside state-check results
+- [x] Rubric defined per-scenario in YAML `visual.rubric` field
+- [x] Fallback: if LLM judge API call fails, `qualityScore = null`, log warning, continue (spec GE3)
+- [x] **Implementation**: `evals/graders/llm-judge.ts` — `runLlmJudge()` reads screenshot PNGs, sends multimodal message to Claude with task description + rubric + condensed transcript. Parses structured SCORE/RATIONALE response. Model selection: tier-based (Sonnet for simple/medium, Opus for complex), overridable via `--judge-model` CLI flag. Cost tracked separately in ScenarioResult and included in report totals. Judge disabled in mock tier (no screenshots) or with `--no-judge` flag.
+- [x] Visual rubrics added to all 35 medium + complex scenarios in YAML.
 - **Spec**: mcp-eval-grading.md (Tier 2)
 - **Dependencies**: P2.3 (screenshots exist)
-- **Files**: `evals/graders/llm-judge.ts`
+- **Files**: `evals/graders/llm-judge.ts`, `evals/harness/runner.ts` (JudgeConfig, wiring), `evals/harness/types.ts` (new fields), `evals/cli.ts` (--no-judge, --judge-model), `evals/harness/reporter.ts` (quality column), scenario YAMLs (rubrics)
 
 ### P2.5: Integration-tier MCP client (real Plasmic server) — DONE
 - [x] Connect eval harness to a real running MCP server via stdio transport
@@ -448,4 +450,4 @@ P0.1 (scaffolding)
                               P2.2   P2.4
 ```
 
-P0 + P1 are **DONE**: a working `npm run eval` that runs simple scenarios in mock mode with state-check grading, produces a JSON report, and runs in CI on every PR. P2.1 + P2.2 are **DONE**: 35 additional scenarios (20 medium + 15 complex) covering all 8 STRAP domains. P2.3 is **DONE**: visual capture module (`evals/visual/capture.ts`, `evals/visual/auth.ts`) with Playwright browser lifecycle, Studio CSRF→login authentication, iframe chain navigation, desktop (1280x800) and mobile (375x812) screenshots saved to `evals/results/screenshots/{runId}/`. P2.5 is **DONE**: integration-tier MCP client using StdioClientTransport to spawn the MCP server as a child process, connecting to a real Plasmic server with real auth credentials. CLI supports `--integration`, `--project-id`, and auto-detects project via `project.list`. P3.1 + P3.3 + P3.4 + P3.5 are **DONE**: eval results dashboard (`npm run eval:dashboard`), 20 simple scenarios total (up from 10), standalone scenario validator (`npm run eval:validate`), and model-aware cost tracking in reports. Total: 55 scenarios. Next: P2.4 adds LLM judge. P3.2 adds human review workflow.
+P0 + P1 are **DONE**: a working `npm run eval` that runs simple scenarios in mock mode with state-check grading, produces a JSON report, and runs in CI on every PR. P2.1 + P2.2 are **DONE**: 35 additional scenarios (20 medium + 15 complex) covering all 8 STRAP domains. P2.3 is **DONE**: visual capture module (`evals/visual/capture.ts`, `evals/visual/auth.ts`) with Playwright browser lifecycle, Studio CSRF→login authentication, iframe chain navigation, desktop (1280x800) and mobile (375x812) screenshots saved to `evals/results/screenshots/{runId}/`. P2.4 is **DONE**: LLM-as-Judge grader (`evals/graders/llm-judge.ts`) with multimodal Claude scoring (1-5), tier-based model selection (Sonnet/Opus), `--judge-model` and `--no-judge` CLI flags, cost tracking, and visual rubrics added to all 35 medium + complex scenarios. P2.5 is **DONE**: integration-tier MCP client using StdioClientTransport to spawn the MCP server as a child process, connecting to a real Plasmic server with real auth credentials. CLI supports `--integration`, `--project-id`, and auto-detects project via `project.list`. P3.1 + P3.3 + P3.4 + P3.5 are **DONE**: eval results dashboard (`npm run eval:dashboard`), 20 simple scenarios total (up from 10), standalone scenario validator (`npm run eval:validate`), and model-aware cost tracking in reports. Total: 55 scenarios. Next: P3.2 adds human review workflow.

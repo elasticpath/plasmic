@@ -20,6 +20,13 @@ import type { McpEvalClient } from "./mcp-client.js";
 import type { ClaudeClient } from "./claude-client.js";
 import type { VisualCapture } from "../visual/capture.js";
 import { runGraders } from "../graders/index.js";
+import { runLlmJudge } from "../graders/llm-judge.js";
+
+export interface JudgeConfig {
+  apiKey: string;
+  /** Override model for all scenarios (ignores tier-based selection) */
+  model?: string;
+}
 
 const SYSTEM_PROMPT = `You are an expert Plasmic developer. You have access to MCP tools that let you create, edit, and inspect Plasmic projects.
 
@@ -41,7 +48,8 @@ export async function runScenario(
   scenario: EvalScenario,
   mcpClient: McpEvalClient,
   claudeClient: ClaudeClient,
-  visualCapture?: VisualCapture
+  visualCapture?: VisualCapture,
+  judgeConfig?: JudgeConfig
 ): Promise<ScenarioResult> {
   const startTime = Date.now();
   const errors: string[] = [];
@@ -163,12 +171,58 @@ export async function runScenario(
       }
     }
 
+    // LLM Judge — visual quality scoring (Tier 2).
+    // Runs after visual capture when screenshots exist and judge is configured.
+    // Scores are advisory (not used for CI pass/fail) — they complement
+    // deterministic state checks with qualitative visual assessment.
+    let qualityScore: number | null = null;
+    let qualityRationale: string | undefined;
+    let judgeModel: string | undefined;
+    let judgeTokensInput: number | undefined;
+    let judgeTokensOutput: number | undefined;
+
+    if (
+      judgeConfig &&
+      screenshotPaths &&
+      (screenshotPaths.desktop || screenshotPaths.mobile)
+    ) {
+      try {
+        const judgeResult = await runLlmJudge({
+          apiKey: judgeConfig.apiKey,
+          scenarioTier: scenario.tier,
+          taskDescription: scenario.description,
+          rubric: scenario.visual?.rubric,
+          transcript: conversationResult.transcript,
+          screenshotPaths,
+          model: judgeConfig.model,
+        });
+
+        if (judgeResult) {
+          qualityScore = judgeResult.score;
+          qualityRationale = judgeResult.rationale;
+          judgeModel = judgeResult.model;
+          judgeTokensInput = judgeResult.inputTokens;
+          judgeTokensOutput = judgeResult.outputTokens;
+          console.error(
+            `[judge] ${scenario.id}: score ${judgeResult.score}/5 — ${judgeResult.rationale.substring(0, 80)}`
+          );
+        }
+      } catch (err: any) {
+        // Judge errors are never fatal (spec GE3)
+        console.error(`[judge] ${scenario.id}: error — ${err.message}`);
+      }
+    }
+
     return {
       id: scenario.id,
       tier: scenario.tier,
       domains: scenario.domains,
       success,
-      qualityScore: null, // LLM judge not yet implemented (P2.4)
+      qualityScore,
+      qualityRationale,
+      judgeModel,
+      judgeTokensInput,
+      judgeTokensOutput,
       toolCalls: conversationResult.toolCallCount,
       tokensInput: conversationResult.totalInputTokens,
       tokensOutput: conversationResult.totalOutputTokens,
@@ -239,7 +293,8 @@ export async function runAll(
   ) => void,
   maxCostDollars?: number,
   model?: string,
-  visualCapture?: VisualCapture
+  visualCapture?: VisualCapture,
+  judgeConfig?: JudgeConfig
 ): Promise<RunAllResult> {
   const results: ScenarioResult[] = [];
   let totalCost = 0;
@@ -260,12 +315,20 @@ export async function runAll(
       `[eval] Running scenario ${i + 1}/${scenarios.length}: ${scenario.id}`
     );
 
-    const result = await runScenario(scenario, mcpClient, claudeClient, visualCapture);
+    const result = await runScenario(scenario, mcpClient, claudeClient, visualCapture, judgeConfig);
     results.push(result);
 
     const inputCost = (result.tokensInput / 1_000_000) * pricing.input;
     const outputCost = (result.tokensOutput / 1_000_000) * pricing.output;
     totalCost += inputCost + outputCost;
+
+    // Include LLM judge cost (may use a different model/pricing than eval)
+    if (result.judgeTokensInput && result.judgeTokensOutput && result.judgeModel) {
+      const judgePricing = getModelPricing(result.judgeModel);
+      totalCost +=
+        (result.judgeTokensInput / 1_000_000) * judgePricing.input +
+        (result.judgeTokensOutput / 1_000_000) * judgePricing.output;
+    }
 
     if (onProgress) {
       onProgress(i + 1, scenarios.length, result);

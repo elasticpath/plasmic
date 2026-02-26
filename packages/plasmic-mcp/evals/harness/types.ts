@@ -98,6 +98,14 @@ export interface ScenarioResult {
   screenshotPaths?: ScreenshotPaths;
   /** Error message from visual capture, null on success or if skipped */
   visualError?: string;
+  /** Brief rationale from LLM judge explaining the quality score */
+  qualityRationale?: string;
+  /** Model used for LLM judge scoring */
+  judgeModel?: string;
+  /** Input tokens consumed by the LLM judge call */
+  judgeTokensInput?: number;
+  /** Output tokens consumed by the LLM judge call */
+  judgeTokensOutput?: number;
 }
 
 // --- Report ---
@@ -150,4 +158,8 @@ export interface EvalOptions {
   threshold?: number;
   /** Project ID for integration mode. Falls back to EVAL_PROJECT_ID env var, then auto-detect. */
   projectId?: string;
+  /** Skip LLM judge quality scoring */
+  noJudge?: boolean;
+  /** Override model for LLM judge (ignores tier-based selection) */
+  judgeModel?: string;
 }

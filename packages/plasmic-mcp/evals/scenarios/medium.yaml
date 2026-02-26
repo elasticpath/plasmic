@@ -41,6 +41,8 @@ scenarios:
           max: 15
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Check that InfoCard component appears in tree with heading, paragraph, and link children. Canvas should display all three text elements with 'Title', 'Description text goes here', and 'Learn More' visible."
 
   - id: medium-page-with-sections
     description: "Create a new page called 'Services' at the URL path '/services'. Then add a heading element that says 'Our Services' and a horizontal rule (hr) element below it."
@@ -72,6 +74,8 @@ scenarios:
           max: 15
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Check that the Services page tree contains a heading node and an hr node as siblings. Canvas should show 'Our Services' text followed by a horizontal divider line."
 
   - id: medium-clone-and-rename
     description: "First list all pages in the project. Then clone the Homepage page to create a copy. Finally, rename the cloned page to 'About Us' with the URL path '/about-us'."
@@ -105,6 +109,8 @@ scenarios:
           max: 12
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Check that 'About Us' appears in the pages list in the left panel alongside Homepage. The page tree structure should mirror the original Homepage layout."
 
   # ─────────────────────────────────────────────────────────────────────
   # Node + Design: styling elements with various CSS properties
@@ -134,6 +140,8 @@ scenarios:
           max: 10
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Select the heading element on Homepage and verify the right-side style panel shows font-size 48px, font-weight bold, and text-align center. Canvas should render the heading visibly larger, bold, and centered."
 
   - id: medium-nested-layout
     description: "Add a new container div element named 'ContentWrapper' to the Homepage component. Inside that container, add a heading that says 'Welcome' and a paragraph that says 'This is the content area'."
@@ -159,6 +167,8 @@ scenarios:
           max: 15
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Check the tree panel shows a 'ContentWrapper' div with a heading and paragraph nested inside it. Canvas should display 'Welcome' and 'This is the content area' stacked within the container."
 
   - id: medium-style-with-new-token
     description: "Create a new color token called 'brand-blue' with the value '#0066cc'. Then inspect the Homepage component to find the heading element, and style it with font size 32px and the color #0066cc."
@@ -196,6 +206,8 @@ scenarios:
           max: 12
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Verify 'brand-blue' token appears in the design tokens panel. The Homepage heading on canvas should render at 32px in a medium blue (#0066cc) color."
 
   # ─────────────────────────────────────────────────────────────────────
   # Design: creating multiple design system entities
@@ -248,6 +260,8 @@ scenarios:
           max: 10
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Open the design tokens panel and verify all three tokens (ds-primary, ds-secondary, ds-accent) appear with their respective blue, grey, and orange color swatches."
 
   - id: medium-create-mixin
     description: "Create a style mixin called 'card-shadow' with the following styles: border-radius of 8px, box-shadow of '0 2px 4px rgba(0,0,0,0.1)', and padding of 16px. Then inspect the Homepage to find an element and apply the mixin to it."
@@ -285,6 +299,8 @@ scenarios:
           max: 12
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Check that 'card-shadow' mixin appears in the mixins panel. The target element on Homepage canvas should show rounded corners, a subtle drop shadow, and 16px internal spacing."
 
   # ─────────────────────────────────────────────────────────────────────
   # Component + Variant: creating components with style variants
@@ -326,6 +342,8 @@ scenarios:
           max: 12
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Check that Button component appears in the components list with a text child node in the tree. The variants panel should show a hover style variant entry."
 
   - id: medium-variant-group
     description: "Create a new reusable component called 'Alert'. Then create a variant group on it called 'Severity' of type 'single' with initial variants: 'info', 'warning', and 'error'."
@@ -362,6 +380,8 @@ scenarios:
           max: 10
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Open the Alert component and check the variants panel shows a 'Severity' group with three selectable variants: info, warning, and error."
 
   # ─────────────────────────────────────────────────────────────────────
   # Variant + Inspect: managing variants on existing components
@@ -392,6 +412,8 @@ scenarios:
           max: 10
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Check the Homepage variants panel shows a 'Tablet' screen variant with a max-width breakpoint indicator. The responsive preview toolbar should include the Tablet breakpoint option."
 
   # ─────────────────────────────────────────────────────────────────────
   # Node + Data: data bindings and dynamic content
@@ -427,6 +449,8 @@ scenarios:
           max: 12
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Select the new text element on Homepage and verify its content shows a dynamic expression indicator in the editor. Canvas should display the fallback text 'Guest' since no runtime context is active."
 
   - id: medium-conditional-element
     description: "Inspect the Homepage component structure to find all elements. Then add a new div element named 'Banner' with text 'Special Offer!'. Finally, set a data condition on the Banner so it only renders when '$ctx.showBanner' is true."
@@ -459,6 +483,8 @@ scenarios:
           max: 15
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Check the tree panel shows a 'Banner' div with a conditional rendering indicator (eye icon or dashed outline). The element should show 'Special Offer!' text and a data condition expression visible in the right panel."
 
   - id: medium-data-repetition
     description: "Inspect the Homepage component, then add a container div named 'ProductList'. Inside it, add a text element. Then set up data repetition on the ProductList container to repeat for each item in '$ctx.products', using 'product' as the element variable and 'index' as the index variable."
@@ -491,6 +517,8 @@ scenarios:
           max: 18
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Check that the 'ProductList' container in the tree shows a repeat/loop indicator. The right panel for that element should display the repetition configuration with collection '$ctx.products' and variable 'product'."
 
   # ─────────────────────────────────────────────────────────────────────
   # Node + Interaction: adding event handlers
@@ -528,6 +556,8 @@ scenarios:
           max: 12
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Select the button element on Homepage canvas — it should display 'Go to About'. The interactions panel on the right should show an onClick handler with navigation to '/about'."
 
   # ─────────────────────────────────────────────────────────────────────
   # Component + Node + Design: full component creation with styling
@@ -567,6 +597,8 @@ scenarios:
           max: 18
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Check the StyledCard component tree shows a heading and paragraph as children. Canvas should display 'Card Title' in bold at 24px and 'Card content here' in grey (#666666) at 14px."
 
   - id: medium-hero-with-token
     description: "Create a color token called 'hero-blue' with the value '#1a73e8'. Then create a new reusable component called 'HeroBanner'. Add a heading inside it that says 'Welcome to Our Site'. Style the heading with font size 48px and color #1a73e8."
@@ -608,6 +640,8 @@ scenarios:
           max: 15
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Verify 'hero-blue' token is listed in the design tokens panel. The HeroBanner component canvas should show a large (48px) heading reading 'Welcome to Our Site' rendered in Google blue (#1a73e8)."
 
   # ─────────────────────────────────────────────────────────────────────
   # Component + Node + Variant + Design: comprehensive component creation
@@ -655,6 +689,8 @@ scenarios:
           max: 20
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Check that ProductCard tree contains heading and paragraph nodes, the variants panel shows a hover variant, and 'card-bg' appears in design tokens. Canvas should display 'Product Name' and '$99.99' text elements."
 
   # ─────────────────────────────────────────────────────────────────────
   # Data + Inspect: adding data queries to existing components
@@ -685,6 +721,8 @@ scenarios:
           max: 10
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Select Homepage and open the queries panel — a 'fetchProducts' query entry should be visible. No visible canvas change is expected, but the query should be inspectable in the data panel."
 
   # ─────────────────────────────────────────────────────────────────────
   # Component + Node + Interaction: interactive component creation
@@ -727,3 +765,5 @@ scenarios:
           max: 15
       - type: no-errors
         params: {}
+    visual:
+      rubric: "Check the CTAButton component tree has a single text child displaying 'Sign Up Now' on canvas. Selecting that text element should reveal an onClick interaction configured to navigate to '/signup' in the interactions panel."

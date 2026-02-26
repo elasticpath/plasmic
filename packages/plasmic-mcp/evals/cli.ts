@@ -24,7 +24,7 @@
 import { loadScenarios } from "./harness/scenario-loader.js";
 import { McpEvalClient } from "./harness/mcp-client.js";
 import { ClaudeClient } from "./harness/claude-client.js";
-import { runAll } from "./harness/runner.js";
+import { runAll, type JudgeConfig } from "./harness/runner.js";
 import {
   generateReport,
   generateRunId,
@@ -67,6 +67,12 @@ function parseArgs(args: string[]): EvalOptions & { help?: boolean } {
       case "--project-id":
         options.projectId = args[++i];
         break;
+      case "--no-judge":
+        options.noJudge = true;
+        break;
+      case "--judge-model":
+        options.judgeModel = args[++i];
+        break;
       case "--help":
       case "-h":
         options.help = true;
@@ -86,7 +92,9 @@ Options:
   --scenario <id>                 Run a single scenario by ID
   --integration                   Use integration tier (requires running Plasmic)
   --project-id <id>               Project ID for integration tier (or set EVAL_PROJECT_ID)
-  --no-visual                     Skip visual capture
+  --no-visual                     Skip visual capture (screenshots)
+  --no-judge                      Skip LLM judge quality scoring
+  --judge-model <model-id>        Override judge model (default: tier-based selection)
   --max-cost <dollars>            Abort if projected cost exceeds $N (default: $5)
   --model <model-id>              Claude model to use (default: claude-sonnet-4-20250514)
   --threshold <0-1>               Success rate threshold (default: 0.9)
@@ -183,6 +191,17 @@ async function main(): Promise<void> {
       `[eval] MCP client ready (project: ${mcpClient.getProjectId()})`
     );
 
+    // LLM Judge config — only in integration mode with visual capture enabled.
+    // The judge needs screenshots to assess visual quality. Mock mode has no
+    // real Studio to screenshot, so the judge is always skipped there.
+    let judgeConfig: JudgeConfig | undefined;
+    if (mode === "integration" && !options.noVisual && !options.noJudge) {
+      judgeConfig = {
+        apiKey,
+        model: options.judgeModel,
+      };
+    }
+
     // Initialize visual capture if configured
     if (visualCapture) {
       console.error("[eval] Initializing visual capture (Playwright)...");
@@ -198,6 +217,14 @@ async function main(): Promise<void> {
       }
     }
 
+    // Disable judge if visual capture failed to initialize
+    if (!visualCapture && judgeConfig) {
+      console.error(
+        "[eval] LLM judge disabled: visual capture not available."
+      );
+      judgeConfig = undefined;
+    }
+
     // Run scenarios
     const { results, totalCostDollars } = await runAll(
       scenarios,
@@ -206,14 +233,16 @@ async function main(): Promise<void> {
       (completed, total, result) => {
         const status = result.success ? "PASS" : "FAIL";
         const visual = result.screenshotPaths?.desktop ? " [screenshot]" : "";
+        const judge = result.qualityScore !== null ? ` [quality: ${result.qualityScore}/5]` : "";
         console.error(
           `[eval] [${completed}/${total}] ${result.id}: ${status} ` +
-            `(${result.toolCalls} tools, ${(result.durationMs / 1000).toFixed(1)}s)${visual}`
+            `(${result.toolCalls} tools, ${(result.durationMs / 1000).toFixed(1)}s)${visual}${judge}`
         );
       },
       maxCost,
       model,
-      visualCapture
+      visualCapture,
+      judgeConfig
     );
 
     // Generate and save report

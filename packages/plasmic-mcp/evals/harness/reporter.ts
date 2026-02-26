@@ -133,30 +133,64 @@ export function printSummary(report: EvalReport): void {
   console.error(
     `  Est. Cost:   $${aggregate.totalCostDollars.toFixed(4)}`
   );
+  if (aggregate.meanQualityScore !== null) {
+    console.error(
+      `  Mean Quality: ${aggregate.meanQualityScore.toFixed(1)}/5`
+    );
+  }
   console.error("");
 
-  // Per-scenario table
-  console.error(
-    "  " +
-      "Scenario".padEnd(35) +
-      "Result".padEnd(10) +
-      "Tools".padEnd(8) +
-      "Duration".padEnd(12) +
-      "Errors"
-  );
-  console.error("  " + "-".repeat(75));
+  // Per-scenario table — include Quality column if any scenarios have scores
+  const hasQuality = report.scenarios.some((s) => s.qualityScore !== null);
+
+  if (hasQuality) {
+    console.error(
+      "  " +
+        "Scenario".padEnd(35) +
+        "Result".padEnd(10) +
+        "Quality".padEnd(10) +
+        "Tools".padEnd(8) +
+        "Duration".padEnd(12) +
+        "Errors"
+    );
+    console.error("  " + "-".repeat(85));
+  } else {
+    console.error(
+      "  " +
+        "Scenario".padEnd(35) +
+        "Result".padEnd(10) +
+        "Tools".padEnd(8) +
+        "Duration".padEnd(12) +
+        "Errors"
+    );
+    console.error("  " + "-".repeat(75));
+  }
 
   for (const s of report.scenarios) {
     const result = s.success ? "PASS" : "FAIL";
     const duration = `${(s.durationMs / 1000).toFixed(1)}s`;
-    console.error(
-      "  " +
-        s.id.padEnd(35) +
-        result.padEnd(10) +
-        String(s.toolCalls).padEnd(8) +
-        duration.padEnd(12) +
-        (s.errors.length > 0 ? s.errors[0].substring(0, 30) : "")
-    );
+    const quality = s.qualityScore !== null ? `${s.qualityScore}/5` : "-";
+
+    if (hasQuality) {
+      console.error(
+        "  " +
+          s.id.padEnd(35) +
+          result.padEnd(10) +
+          quality.padEnd(10) +
+          String(s.toolCalls).padEnd(8) +
+          duration.padEnd(12) +
+          (s.errors.length > 0 ? s.errors[0].substring(0, 30) : "")
+      );
+    } else {
+      console.error(
+        "  " +
+          s.id.padEnd(35) +
+          result.padEnd(10) +
+          String(s.toolCalls).padEnd(8) +
+          duration.padEnd(12) +
+          (s.errors.length > 0 ? s.errors[0].substring(0, 30) : "")
+      );
+    }
   }
 
   // Domain breakdown
