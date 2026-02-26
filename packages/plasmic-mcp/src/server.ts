@@ -4,19 +4,19 @@
  * Uses McpServer from @modelcontextprotocol/sdk with Zod schemas for input
  * validation. All tools are registered before the transport connects.
  *
- * Tools use three patterns:
- *   - HTTP-only (list-projects, create-page): call Plasmic REST API directly
- *   - Model-read (list-components, get-component-tree, get-component-summary,
- *     get-node-details, export-component-tree, get-project-meta): read from
- *     the in-memory Site model (requires set-project first)
- *   - Session-setup (set-project): fetch bundle → unbundle → store in session
+ * STRAP architecture: 97 actions consolidated into 8 domain tools.
+ * Each domain tool uses an `action` discriminator to route to the
+ * appropriate handler function.
  *
- * M3 additions:
- *   - get-component-summary: compact tree outline (~2KB vs ~15KB)
- *   - get-node-details: full details for a single node (~300B)
- *   - export-component-tree: full tree to temp file, returns path + summary
- *   - get-component-tree enhanced with maxDepth, excludeStyles, summaryOnly
- *   - Node resolver cache invalidation on structural edits / project reload
+ * Domains:
+ *   - project (8 actions): session lifecycle, persistence, batch, undo
+ *   - inspect (8 actions): read-only queries on component trees
+ *   - component (17 actions): component/page lifecycle, props, states
+ *   - node (15 actions): element mutations (structure, style, text, attrs)
+ *   - variant (8 actions): variant management (component, global, style)
+ *   - design (22 actions): site-level design system (tokens, mixins, etc.)
+ *   - data (16 actions): data flow (queries, data-tokens, splits, etc.)
+ *   - interaction (3 actions): event handlers
  *
  * CRITICAL: Never use console.log() — stdout is the JSON-RPC transport.
  * All logging goes through console.error().
@@ -127,6 +127,17 @@ import { undoChanges } from "@/wab/shared/core/undo-util";
 import type { TreeReadOptions } from "./types.js";
 
 /**
+ * Validate that a required parameter is present for a given action.
+ * Throws a descriptive error if the value is undefined or null.
+ */
+function requireParam<T>(value: T | undefined, paramName: string, actionName: string): T {
+  if (value === undefined || value === null) {
+    throw new Error(`Missing required parameter '${paramName}' for '${actionName}' action`);
+  }
+  return value;
+}
+
+/**
  * Execute an edit function in dry-run mode: performs the mutation in-memory,
  * captures what changed, then reverts the model to its original state without
  * saving to the server. Uses batch mode to suppress auto-saves.
@@ -200,71 +211,302 @@ export function createServer(): McpServer {
 
   console.error(`[plasmic-mcp] Authenticated as ${auth.user} against ${auth.host}`);
 
-  // --- set-project ---
-  // Fetches the project bundle from the Plasmic API, unbundles it into a live
-  // in-memory Site model, and stores it as the active session. Must be called
-  // before any model-reading tools.
+  // ========================================================================
+  // DOMAIN 1: project (8 actions)
+  // ========================================================================
+
   server.tool(
-    "set-project",
-    "Load a Plasmic project into memory for reading and editing. Must be called before model-reading tools.",
-    { projectId: z.string().describe("The Plasmic project ID") },
-    async ({ projectId }) => {
+    "project",
+    "Project session lifecycle, persistence, batch operations, and undo.\n" +
+      "Actions: set, list, get-meta, save, refresh, begin-batch, end-batch, undo.\n" +
+      "- set: Load a project into memory (required before other tools)\n" +
+      "- list: List all accessible projects\n" +
+      "- get-meta: Get project metadata (name, counts, pages, components)\n" +
+      "- save: Force full save to server\n" +
+      "- refresh: Reload project from server\n" +
+      "- begin-batch: Start accumulating edits\n" +
+      "- end-batch: Save accumulated edits in one revision\n" +
+      "- undo: Revert most recent edit",
+    {
+      action: z.enum(["set", "list", "get-meta", "save", "refresh", "begin-batch", "end-batch", "undo"]),
+      projectId: z.string().optional().describe("The Plasmic project ID (required for 'set')"),
+      batchId: z.string().optional().describe("Optional batch ID for verification (used by 'end-batch')"),
+    },
+    async ({ action, projectId, batchId }) => {
       try {
-        // Clean up previous session state before loading new project
-        cancelBatch();
-        clearUndoStack();
-        disposeChangeTracker();
-        clearNodeCache();
+        switch (action) {
+          case "set": {
+            const pid = requireParam(projectId, "projectId", "project.set");
+            // Clean up previous session state before loading new project
+            cancelBatch();
+            clearUndoStack();
+            disposeChangeTracker();
+            clearNodeCache();
 
-        const {
-          site,
-          bundler,
-          projectName,
-          revisionNum,
-          modelVersion,
-          hostlessDataVersion,
-        } = await loadProject(apiClient, projectId);
+            const {
+              site,
+              bundler,
+              projectName,
+              revisionNum,
+              modelVersion,
+              hostlessDataVersion,
+            } = await loadProject(apiClient, pid);
 
-        setSession({
-          projectId,
-          projectName,
-          site,
-          bundler,
-          revisionNum,
-          modelVersion,
-          hostlessDataVersion,
-          projectUuid: projectId,
-        });
+            setSession({
+              projectId: pid,
+              projectName,
+              site,
+              bundler,
+              revisionNum,
+              modelVersion,
+              hostlessDataVersion,
+              projectUuid: pid,
+            });
 
-        // Initialize change tracking for incremental saves (M2)
-        initChangeTracker(site);
+            // Initialize change tracking for incremental saves (M2)
+            initChangeTracker(site);
 
-        const components = site.components ?? [];
-        const pages = components.filter((c: any) => c.pageMeta?.path);
+            const components = site.components ?? [];
+            const pages = components.filter((c: any) => c.pageMeta?.path);
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
+            return {
+              content: [
                 {
-                  projectId,
-                  projectName,
-                  componentCount: components.length,
-                  pageCount: pages.length,
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      projectId: pid,
+                      projectName,
+                      componentCount: components.length,
+                      pageCount: pages.length,
+                    },
+                    null,
+                    2
+                  ),
                 },
-                null,
-                2
-              ),
-            },
-          ],
-        };
+              ],
+            };
+          }
+
+          case "list": {
+            const response = await apiClient.listProjects();
+            const projects = response.projects.map((p) => ({
+              id: p.id,
+              name: p.name,
+            }));
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(projects, null, 2),
+                },
+              ],
+            };
+          }
+
+          case "get-meta": {
+            const session = requireSession();
+            const site = session.site;
+            const components = site.components ?? [];
+            const pages = components.filter((c: any) => c.pageMeta?.path);
+
+            const meta: Record<string, unknown> = {
+              projectId: session.projectId,
+              projectName: session.projectName,
+              componentCount: components.length,
+              pageCount: pages.length,
+              pages: pages.map((c: any) => ({
+                uuid: c.uuid,
+                name: c.name,
+                path: c.pageMeta?.path,
+              })),
+              components: components
+                .filter((c: any) => !c.pageMeta?.path)
+                .map((c: any) => ({
+                  uuid: c.uuid,
+                  name: c.name,
+                })),
+            };
+
+            if (site.styleTokens?.length > 0) {
+              meta.tokenCount = site.styleTokens.length;
+            }
+            if (site.globalVariantGroups?.length > 0) {
+              meta.globalVariantGroupCount = site.globalVariantGroups.length;
+            }
+
+            return {
+              content: [
+                { type: "text" as const, text: JSON.stringify(meta, null, 2) },
+              ],
+            };
+          }
+
+          case "save": {
+            requireSession();
+            const saveManager = new SaveManager(apiClient);
+            const save = await saveManager.saveFullBundle();
+
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      revision: save.revisionNum,
+                      incremental: save.incremental,
+                      message: `Full save completed at revision ${save.revisionNum}`,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "refresh": {
+            const session = requireSession();
+
+            // Cancel any active batch (changes are discarded)
+            cancelBatch();
+
+            // Dispose current change tracker
+            disposeChangeTracker();
+
+            // Clear undo stack (model state is being replaced)
+            clearUndoStack();
+
+            // Clear node resolver cache (model is being replaced)
+            clearNodeCache();
+
+            const {
+              site,
+              bundler,
+              projectName,
+              revisionNum,
+              modelVersion,
+              hostlessDataVersion,
+            } = await loadProject(apiClient, session.projectId);
+
+            setSession({
+              projectId: session.projectId,
+              projectName,
+              site,
+              bundler,
+              revisionNum,
+              modelVersion,
+              hostlessDataVersion,
+              projectUuid: session.projectId,
+            });
+
+            // Re-initialize change tracking
+            initChangeTracker(site);
+
+            const components = site.components ?? [];
+            const pages = components.filter((c: any) => c.pageMeta?.path);
+
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      projectName,
+                      revisionNum,
+                      componentCount: components.length,
+                      pageCount: pages.length,
+                      message: `Project refreshed at revision ${revisionNum}`,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "begin-batch": {
+            requireSession();
+            const bId = beginBatch();
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      batchId: bId,
+                      message:
+                        "Batch session started. Edits will accumulate until end-batch is called.",
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "end-batch": {
+            const result = await endBatch(apiClient, batchId);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      operationCount: result.operationCount,
+                      revision: result.save.revisionNum,
+                      message: `Batch saved: ${result.operationCount} operations in revision ${result.save.revisionNum}`,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "undo": {
+            if (isBatchActive()) {
+              throw new Error(
+                "Cannot undo during a batch session. Call end-batch first, then undo."
+              );
+            }
+            const result = await undoOperation(apiClient);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      undone: result.undone,
+                      revision: result.save.revisionNum,
+                      remainingUndos: getUndoDepth(),
+                      message: `Undone: ${result.undone}`,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          default:
+            throw new Error(`Unknown action '${action}' for project tool. Available: set, list, get-meta, save, refresh, begin-batch, end-batch, undo`);
+        }
       } catch (err: any) {
         return {
           content: [
             {
               type: "text" as const,
-              text: `Error loading project: ${err.message}`,
+              text: `Error in project.${action}: ${err.message}`,
             },
           ],
           isError: true,
@@ -273,34 +515,421 @@ export function createServer(): McpServer {
     }
   );
 
-  // --- list-projects ---
-  // HTTP call to list all projects accessible with current credentials.
-  // No active project required.
+  // ========================================================================
+  // DOMAIN 2: inspect (8 actions)
+  // ========================================================================
+
   server.tool(
-    "list-projects",
-    "List all Plasmic projects accessible with current credentials",
-    {},
-    async () => {
+    "inspect",
+    "Read-only queries on component trees, nodes, style properties, and page metadata.\n" +
+      "Actions: tree, summary, node, subtree, export, style-properties, preview-url, page-meta.\n" +
+      "- tree: Full element tree with styles, text, layout\n" +
+      "- summary: Compact outline (type, tag, name, uuid, childCount)\n" +
+      "- node: Full details for a single node\n" +
+      "- subtree: Tree from a specific node downward\n" +
+      "- export: Write full tree to temp file\n" +
+      "- style-properties: List valid CSS property names\n" +
+      "- preview-url: Get preview and studio URLs\n" +
+      "- page-meta: Read page SEO metadata",
+    {
+      action: z.enum(["tree", "summary", "node", "subtree", "export", "style-properties", "preview-url", "page-meta"]),
+      componentUuid: z.string().optional().describe("UUID of the component to inspect"),
+      nodeRef: z.string().optional().describe("Node reference: UUID, name, path, or index"),
+      maxDepth: z.number().optional().describe("Maximum tree depth to return"),
+      excludeStyles: z.boolean().optional().describe("Strip styles from output to reduce size"),
+      summaryOnly: z.boolean().optional().describe("Return compact outline (same as summary action)"),
+      filter: z.string().optional().describe("Filter string for style-properties action"),
+    },
+    async ({ action, componentUuid, nodeRef, maxDepth, excludeStyles, summaryOnly, filter }) => {
       try {
-        const response = await apiClient.listProjects();
-        const projects = response.projects.map((p) => ({
-          id: p.id,
-          name: p.name,
-        }));
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(projects, null, 2),
-            },
-          ],
-        };
+        switch (action) {
+          case "tree": {
+            const cuuid = requireParam(componentUuid, "componentUuid", "inspect.tree");
+            const session = requireSession();
+            const component = session.site.components?.find(
+              (c: any) => c.uuid === cuuid
+            );
+
+            if (!component) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: `Component UUID "${cuuid}" not found in project. Use list-components to see available components.`,
+                  },
+                ],
+                isError: true,
+              };
+            }
+
+            // Build options — always pass styleTokens for token reference resolution
+            const styleTokens = session.site.styleTokens;
+            const hasOptions =
+              maxDepth !== undefined || excludeStyles || summaryOnly || styleTokens?.length > 0;
+            const tree = hasOptions
+              ? readComponentTree(component, {
+                  maxDepth,
+                  excludeStyles: excludeStyles || undefined,
+                  summaryOnly: summaryOnly || undefined,
+                  styleTokens,
+                } as TreeReadOptions)
+              : readComponentTree(component);
+
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      name: component.name,
+                      uuid: component.uuid,
+                      path: component.pageMeta?.path,
+                      tree,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "summary": {
+            const cuuid = requireParam(componentUuid, "componentUuid", "inspect.summary");
+            const session = requireSession();
+            const component = session.site.components?.find(
+              (c: any) => c.uuid === cuuid
+            );
+
+            if (!component) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: `Component UUID "${cuuid}" not found in project. Use list-components to see available components.`,
+                  },
+                ],
+                isError: true,
+              };
+            }
+
+            const tree = readComponentSummary(component, maxDepth);
+
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      name: component.name,
+                      uuid: component.uuid,
+                      path: component.pageMeta?.path,
+                      tree,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "node": {
+            const cuuid = requireParam(componentUuid, "componentUuid", "inspect.node");
+            const nref = requireParam(nodeRef, "nodeRef", "inspect.node");
+            const session = requireSession();
+            const component = session.site.components?.find(
+              (c: any) => c.uuid === cuuid
+            );
+
+            if (!component) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: `Component UUID "${cuuid}" not found in project. Use list-components to see available components.`,
+                  },
+                ],
+                isError: true,
+              };
+            }
+
+            const resolveResult = resolveNode(component, nref);
+            const resolved = requireSingleNode(resolveResult, nref);
+            const node = readNodeDetails(resolved.node, session.site.styleTokens);
+
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      path: resolved.path,
+                      name: resolved.name,
+                      uuid: resolved.uuid,
+                      node,
+                      _cache: getCacheMetrics(),
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "subtree": {
+            const cuuid = requireParam(componentUuid, "componentUuid", "inspect.subtree");
+            const nref = requireParam(nodeRef, "nodeRef", "inspect.subtree");
+            const session = requireSession();
+            const component = session.site.components?.find(
+              (c: any) => c.uuid === cuuid
+            );
+
+            if (!component) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: `Component UUID "${cuuid}" not found in project. Use list-components to see available components.`,
+                  },
+                ],
+                isError: true,
+              };
+            }
+
+            const resolveResult = resolveNode(component, nref);
+            const resolved = requireSingleNode(resolveResult, nref);
+            const tree = readSubtree(
+              resolved.node,
+              {
+                maxDepth,
+                excludeStyles: excludeStyles || undefined,
+                styleTokens: session.site.styleTokens,
+              }
+            );
+            const nodeCount = tree ? countTreeNodes(tree) : 0;
+
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      component: component.name,
+                      componentUuid: component.uuid,
+                      subtreeRoot: resolved.name ?? resolved.uuid,
+                      path: resolved.path,
+                      nodeCount,
+                      tree,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "export": {
+            const cuuid = requireParam(componentUuid, "componentUuid", "inspect.export");
+            const session = requireSession();
+            const component = session.site.components?.find(
+              (c: any) => c.uuid === cuuid
+            );
+
+            if (!component) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: `Component UUID "${cuuid}" not found in project. Use list-components to see available components.`,
+                  },
+                ],
+                isError: true,
+              };
+            }
+
+            // Full tree for the file (with token resolution)
+            const fullTree = readComponentTree(component, {
+              styleTokens: session.site.styleTokens,
+            });
+            const fullData = {
+              name: component.name,
+              uuid: component.uuid,
+              path: component.pageMeta?.path,
+              tree: fullTree,
+            };
+
+            // Write to temp file (overwrite per component UUID)
+            const filePath = path.join(
+              os.tmpdir(),
+              `plasmic-tree-${cuuid}.json`
+            );
+            fs.writeFileSync(filePath, JSON.stringify(fullData, null, 2), "utf-8");
+
+            // Compact summary for the response
+            const summaryTree = readComponentSummary(component);
+            const nodeCount = countTreeNodes(fullTree);
+
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      name: component.name,
+                      uuid: component.uuid,
+                      path: component.pageMeta?.path,
+                      filePath,
+                      nodeCount,
+                      tree: summaryTree,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "style-properties": {
+            const allProps = getValidStylePropertyNames();
+            let props = allProps;
+            if (filter) {
+              const lower = filter.toLowerCase();
+              props = allProps.filter((p) => p.includes(lower));
+            }
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      total: props.length,
+                      properties: props,
+                      ...(filter ? { filter } : {}),
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "preview-url": {
+            const cuuid = requireParam(componentUuid, "componentUuid", "inspect.preview-url");
+            const session = requireSession();
+            const component = session.site.components?.find(
+              (c: any) => c.uuid === cuuid
+            );
+
+            if (!component) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: `Component UUID "${cuuid}" not found. Use list-components to see available components.`,
+                  },
+                ],
+                isError: true,
+              };
+            }
+
+            const host = auth.host.replace(/\/$/, ""); // Normalize trailing slash
+            const studioUrl = `${host}/projects/${session.projectId}`;
+
+            const result: Record<string, string> = { studioUrl };
+
+            if (component.pageMeta?.path) {
+              result.previewUrl = `${host}/projects/${session.projectId}/preview${component.pageMeta.path}`;
+            }
+
+            return {
+              content: [
+                { type: "text" as const, text: JSON.stringify(result, null, 2) },
+              ],
+            };
+          }
+
+          case "page-meta": {
+            const cuuid = requireParam(componentUuid, "componentUuid", "inspect.page-meta");
+            const session = requireSession();
+            const component = session.site.components?.find(
+              (c: any) => c.uuid === cuuid
+            );
+
+            if (!component) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: `Component UUID "${cuuid}" not found. Use list-components to see available components.`,
+                  },
+                ],
+                isError: true,
+              };
+            }
+
+            if (!component.pageMeta) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: `Component "${component.name}" is not a page — no page metadata available.`,
+                  },
+                ],
+                isError: true,
+              };
+            }
+
+            const pm = component.pageMeta;
+
+            // Extract text from pageMeta fields that may be strings or TemplatedStrings
+            const extractText = (value: any): string | null => {
+              if (value === null || value === undefined) return null;
+              if (typeof value === "string") return value;
+              // TemplatedString: text is an array of parts
+              if (Array.isArray(value?.text)) {
+                return value.text
+                  .map((part: any) => (typeof part === "string" ? part : ""))
+                  .join("");
+              }
+              // RawText or similar with .text as a string
+              if (typeof value?.text === "string") return value.text;
+              return String(value);
+            };
+
+            const meta = {
+              name: component.name,
+              uuid: component.uuid,
+              path: pm.path,
+              title: extractText(pm.title),
+              description: extractText(pm.description),
+              openGraphImage: extractText(pm.openGraphImage),
+              canonical: extractText(pm.canonical),
+              params: pm.params ?? {},
+              query: pm.query ?? {},
+              roleId: pm.roleId ?? null,
+            };
+
+            return {
+              content: [
+                { type: "text" as const, text: JSON.stringify(meta, null, 2) },
+              ],
+            };
+          }
+
+          default:
+            throw new Error(`Unknown action '${action}' for inspect tool. Available: tree, summary, node, subtree, export, style-properties, preview-url, page-meta`);
+        }
       } catch (err: any) {
         return {
           content: [
             {
               type: "text" as const,
-              text: `Error listing projects: ${err.message}`,
+              text: `Error in inspect.${action}: ${err.message}`,
             },
           ],
           isError: true,
@@ -309,2327 +938,898 @@ export function createServer(): McpServer {
     }
   );
 
-  // --- get-project-meta ---
-  // Reads project metadata from the in-memory model. Requires active project.
-  server.tool(
-    "get-project-meta",
-    "Get metadata about the active Plasmic project (name, counts, pages, components, tokens)",
-    {},
-    async () => {
-      try {
-        const session = requireSession();
-        const site = session.site;
-        const components = site.components ?? [];
-        const pages = components.filter((c: any) => c.pageMeta?.path);
+  // ========================================================================
+  // DOMAIN 3: component (17 actions)
+  // ========================================================================
 
-        const meta: Record<string, unknown> = {
-          projectId: session.projectId,
-          projectName: session.projectName,
-          componentCount: components.length,
-          pageCount: pages.length,
-          pages: pages.map((c: any) => ({
-            uuid: c.uuid,
-            name: c.name,
-            path: c.pageMeta?.path,
-          })),
-          components: components
-            .filter((c: any) => !c.pageMeta?.path)
-            .map((c: any) => ({
+  server.tool(
+    "component",
+    "Component and page lifecycle, props, and states.\n" +
+      "Actions: list, create-page, create, clone, rename, delete, convert-to-page, convert-to-component, update-page-meta, list-props, add-prop, update-prop, remove-prop, list-states, add-state, update-state, remove-state.\n" +
+      "- list: List all pages and components\n" +
+      "- create-page: Create a new page with PlasmicElement tree\n" +
+      "- create: Create a new reusable component\n" +
+      "- clone: Duplicate an existing page or component\n" +
+      "- rename: Rename a page or component\n" +
+      "- delete: Delete a page or component\n" +
+      "- convert-to-page/convert-to-component: Convert between page and component\n" +
+      "- update-page-meta: Set page SEO metadata\n" +
+      "- list-props/add-prop/update-prop/remove-prop: Manage component props\n" +
+      "- list-states/add-state/update-state/remove-state: Manage component states",
+    {
+      action: z.enum([
+        "list", "create-page", "create", "clone", "rename", "delete",
+        "convert-to-page", "convert-to-component", "update-page-meta",
+        "list-props", "add-prop", "update-prop", "remove-prop",
+        "list-states", "add-state", "update-state", "remove-state",
+      ]),
+      componentUuid: z.string().optional().describe("UUID of the component"),
+      name: z.string().optional().describe("Name for create/rename/add-prop/add-state actions"),
+      path: z.string().optional().describe("URL path for pages"),
+      body: z.any().optional().describe("PlasmicElement JSON tree for create-page/create"),
+      sourceUuid: z.string().optional().describe("UUID of source for clone"),
+      newName: z.string().optional().describe("New name for rename"),
+      newPath: z.string().optional().describe("New URL path for rename"),
+      force: z.boolean().optional().describe("Force deletion even with references"),
+      title: z.string().optional().describe("Page title for SEO"),
+      description: z.string().optional().describe("Page description for SEO"),
+      openGraphImage: z.string().optional().describe("Open Graph image URL"),
+      canonical: z.string().optional().describe("Canonical URL for SEO"),
+      propRef: z.string().optional().describe("Prop reference (name or UUID)"),
+      type: z.string().optional().describe("Type for add-prop or add-state"),
+      defaultValue: z.string().optional().describe("Default value for prop or initial value for state"),
+      stateRef: z.string().optional().describe("State reference (name or UUID)"),
+      variableType: z.string().optional().describe("State variable type"),
+      accessType: z.string().optional().describe("State access type"),
+      initialValue: z.string().optional().describe("State initial value"),
+      dryRun: z.boolean().optional().describe("Preview changes without persisting"),
+    },
+    async (params) => {
+      const { action } = params;
+      try {
+        switch (action) {
+          case "list": {
+            const session = requireSession();
+            const components = session.site.components ?? [];
+            const result = components.map((c: any) => ({
               uuid: c.uuid,
               name: c.name,
-            })),
-        };
+              type: c.pageMeta?.path ? "page" : "component",
+              path: c.pageMeta?.path ?? undefined,
+            }));
 
-        if (site.styleTokens?.length > 0) {
-          meta.tokenCount = site.styleTokens.length;
-        }
-        if (site.globalVariantGroups?.length > 0) {
-          meta.globalVariantGroupCount = site.globalVariantGroups.length;
-        }
-
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify(meta, null, 2) },
-          ],
-        };
-      } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error getting project meta: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // --- list-components ---
-  // Reads component list from in-memory model. Requires active project.
-  server.tool(
-    "list-components",
-    "List all pages and components in the active project with UUIDs and paths",
-    {},
-    async () => {
-      try {
-        const session = requireSession();
-        const components = session.site.components ?? [];
-        const result = components.map((c: any) => ({
-          uuid: c.uuid,
-          name: c.name,
-          type: c.pageMeta?.path ? "page" : "component",
-          path: c.pageMeta?.path ?? undefined,
-        }));
-
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify(result, null, 2) },
-          ],
-        };
-      } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error listing components: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // --- get-component-tree ---
-  // Reads a component's element tree directly from the in-memory Tpl model.
-  // Uses the custom tree reader (NOT the degraded tplToPlasmicElements function).
-  // M3: enhanced with optional params for context-efficient querying.
-  server.tool(
-    "get-component-tree",
-    "Get the full element tree of a component with HTML tags, CSS styles, text, images, and layout",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component to inspect"),
-      maxDepth: z
-        .number()
-        .optional()
-        .describe("Stop recursing after N levels. Deeper children replaced with childCount."),
-      excludeStyles: z
-        .boolean()
-        .optional()
-        .describe("Strip styles from output to reduce size."),
-      summaryOnly: z
-        .boolean()
-        .optional()
-        .describe("Return compact outline (same as get-component-summary)."),
-    },
-    async ({ componentUuid, maxDepth, excludeStyles, summaryOnly }) => {
-      try {
-        const session = requireSession();
-        const component = session.site.components?.find(
-          (c: any) => c.uuid === componentUuid
-        );
-
-        if (!component) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Component UUID "${componentUuid}" not found in project. Use list-components to see available components.`,
-              },
-            ],
-            isError: true,
-          };
-        }
-
-        // Build options — always pass styleTokens for token reference resolution
-        const styleTokens = session.site.styleTokens;
-        const hasOptions =
-          maxDepth !== undefined || excludeStyles || summaryOnly || styleTokens?.length > 0;
-        const tree = hasOptions
-          ? readComponentTree(component, {
-              maxDepth,
-              excludeStyles: excludeStyles || undefined,
-              summaryOnly: summaryOnly || undefined,
-              styleTokens,
-            } as TreeReadOptions)
-          : readComponentTree(component);
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  name: component.name,
-                  uuid: component.uuid,
-                  path: component.pageMeta?.path,
-                  tree,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error reading component tree: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // --- get-component-summary ---
-  // M3: Returns a compact outline (~2KB) of a component's node tree.
-  // Contains type, tag, name, uuid, and childCount per node — no styles,
-  // attrs, or text. Use get-node-details to inspect specific nodes.
-  server.tool(
-    "get-component-summary",
-    "Get a compact outline of a component's node tree (type, tag, name, uuid, childCount). No styles or text. Use get-node-details for specific nodes.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component to inspect"),
-      maxDepth: z
-        .number()
-        .optional()
-        .describe("Maximum tree depth to return. Omit for full outline."),
-    },
-    async ({ componentUuid, maxDepth }) => {
-      try {
-        const session = requireSession();
-        const component = session.site.components?.find(
-          (c: any) => c.uuid === componentUuid
-        );
-
-        if (!component) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Component UUID "${componentUuid}" not found in project. Use list-components to see available components.`,
-              },
-            ],
-            isError: true,
-          };
-        }
-
-        const tree = readComponentSummary(component, maxDepth);
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  name: component.name,
-                  uuid: component.uuid,
-                  path: component.pageMeta?.path,
-                  tree,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error reading component summary: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // --- get-node-details ---
-  // M3: Returns full details for a single node (~300B), with immediate
-  // children shown as summaries. Uses existing node-resolver for targeting.
-  server.tool(
-    "get-node-details",
-    "Get full details (styles, text, attrs) for a single node. Children shown as summaries. Use node UUID, name, path, or index.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component containing the node"),
-      nodeRef: z
-        .string()
-        .describe(
-          'Node reference: UUID, name (e.g., "Hero Title"), path (e.g., "HeroSection.Title"), or index (e.g., "#2")'
-        ),
-    },
-    async ({ componentUuid, nodeRef }) => {
-      try {
-        const session = requireSession();
-        const component = session.site.components?.find(
-          (c: any) => c.uuid === componentUuid
-        );
-
-        if (!component) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Component UUID "${componentUuid}" not found in project. Use list-components to see available components.`,
-              },
-            ],
-            isError: true,
-          };
-        }
-
-        const resolveResult = resolveNode(component, nodeRef);
-        const resolved = requireSingleNode(resolveResult, nodeRef);
-        const node = readNodeDetails(resolved.node, session.site.styleTokens);
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  path: resolved.path,
-                  name: resolved.name,
-                  uuid: resolved.uuid,
-                  node,
-                  _cache: getCacheMetrics(),
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error reading node details: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // --- export-component-tree ---
-  // M3: Writes the full tree JSON to a temp file and returns the file path
-  // plus a compact summary. Same UUID always maps to the same file path
-  // (overwrites previous export). For complex restructuring where the
-  // developer needs full accuracy available via Read tool.
-  server.tool(
-    "export-component-tree",
-    "Write full component tree JSON to a temp file. Returns file path + compact summary. Use Read tool to inspect sections.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component to export"),
-    },
-    async ({ componentUuid }) => {
-      try {
-        const session = requireSession();
-        const component = session.site.components?.find(
-          (c: any) => c.uuid === componentUuid
-        );
-
-        if (!component) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Component UUID "${componentUuid}" not found in project. Use list-components to see available components.`,
-              },
-            ],
-            isError: true,
-          };
-        }
-
-        // Full tree for the file (with token resolution)
-        const fullTree = readComponentTree(component, {
-          styleTokens: session.site.styleTokens,
-        });
-        const fullData = {
-          name: component.name,
-          uuid: component.uuid,
-          path: component.pageMeta?.path,
-          tree: fullTree,
-        };
-
-        // Write to temp file (overwrite per component UUID)
-        const filePath = path.join(
-          os.tmpdir(),
-          `plasmic-tree-${componentUuid}.json`
-        );
-        fs.writeFileSync(filePath, JSON.stringify(fullData, null, 2), "utf-8");
-
-        // Compact summary for the response
-        const summaryTree = readComponentSummary(component);
-        const nodeCount = countTreeNodes(fullTree);
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  name: component.name,
-                  uuid: component.uuid,
-                  path: component.pageMeta?.path,
-                  filePath,
-                  nodeCount,
-                  tree: summaryTree,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error exporting component tree: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // --- get-subtree ---
-  // Returns the full tree from a specific node downward, identified by UUID,
-  // name, path, or index. Useful when the developer knows which section they
-  // need and wants to avoid the full component tree. Supports maxDepth to
-  // limit how deep the subtree goes.
-  server.tool(
-    "get-subtree",
-    "Get the full tree from a specific node downward. Use node UUID, name, path, or index to target the subtree root.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component containing the node"),
-      nodeRef: z
-        .string()
-        .describe(
-          'Node reference: UUID, name (e.g., "Hero"), path (e.g., "Root.Hero"), or index (e.g., "#0")'
-        ),
-      maxDepth: z
-        .number()
-        .optional()
-        .describe("Maximum depth below the target node. Omit for full subtree."),
-      excludeStyles: z
-        .boolean()
-        .optional()
-        .describe("Strip styles from output to reduce size."),
-    },
-    async ({ componentUuid, nodeRef, maxDepth, excludeStyles }) => {
-      try {
-        const session = requireSession();
-        const component = session.site.components?.find(
-          (c: any) => c.uuid === componentUuid
-        );
-
-        if (!component) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Component UUID "${componentUuid}" not found in project. Use list-components to see available components.`,
-              },
-            ],
-            isError: true,
-          };
-        }
-
-        const resolveResult = resolveNode(component, nodeRef);
-        const resolved = requireSingleNode(resolveResult, nodeRef);
-        const tree = readSubtree(
-          resolved.node,
-          {
-            maxDepth,
-            excludeStyles: excludeStyles || undefined,
-            styleTokens: session.site.styleTokens,
+            return {
+              content: [
+                { type: "text" as const, text: JSON.stringify(result, null, 2) },
+              ],
+            };
           }
-        );
-        const nodeCount = tree ? countTreeNodes(tree) : 0;
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  component: component.name,
-                  componentUuid: component.uuid,
-                  subtreeRoot: resolved.name ?? resolved.uuid,
-                  path: resolved.path,
-                  nodeCount,
-                  tree,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error reading subtree: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
+          case "create-page": {
+            const pageName = requireParam(params.name, "name", "component.create-page");
+            const pagePath = requireParam(params.path, "path", "component.create-page");
+            const session = requireSession();
 
-  // --- get-tokens ---
-  // Reads design tokens (colors, spacing, typography, etc.) from the in-memory
-  // model. Returns token names, types, and values so Claude can use the project's
-  // design system when creating pages. Resolves token references to final values.
-  server.tool(
-    "get-tokens",
-    "Get design tokens (colors, spacing, fonts) from the active project's design system",
-    {
-      type: z
-        .enum(["Color", "Spacing", "Opacity", "LineHeight", "FontFamily", "FontSize"])
-        .optional()
-        .describe("Filter by token type. Omit to get all tokens."),
-    },
-    async ({ type: tokenType }) => {
-      try {
-        const session = requireSession();
-        const result = readTokens(session.site.styleTokens, tokenType);
+            const apiResponse = await apiClient.updateProject(session.projectId, {
+              newComponents: [{ name: pageName, path: pagePath, body: params.body }],
+            });
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error getting tokens: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
+            // Extract UUID from API response if available
+            let uuid: string | null =
+              apiResponse?.result?.newComponents?.[0]?.uuid ?? null;
 
-  // --- create-page ---
-  // Creates a new page via REST API (POST /api/v1/projects/:projectId).
-  // The body is a PlasmicElement tree which the server converts to Tpl nodes
-  // via elementSchemaToTpl. After creation, reloads the model so the new
-  // page appears in subsequent list-components / get-component-tree calls.
-  server.tool(
-    "create-page",
-    "Create a new page in the active Plasmic project with a PlasmicElement tree",
-    {
-      name: z
-        .string()
-        .describe("Page name in PascalCase (e.g., 'ProductListing')"),
-      path: z
-        .string()
-        .describe("URL path with leading slash (e.g., '/products')"),
-      body: z.any().describe("PlasmicElement JSON tree defining the page structure"),
-    },
-    async ({ name, path: pagePath, body }) => {
-      try {
-        const session = requireSession();
+            // Reload model so the new page is visible in subsequent queries
+            try {
+              disposeChangeTracker();
+              clearNodeCache();
+              const {
+                site,
+                bundler,
+                projectName,
+                revisionNum: newRevisionNum,
+                modelVersion: newModelVersion,
+                hostlessDataVersion: newHostlessDataVersion,
+              } = await loadProject(apiClient, session.projectId);
+              setSession({
+                projectId: session.projectId,
+                projectName,
+                site,
+                bundler,
+                revisionNum: newRevisionNum,
+                modelVersion: newModelVersion,
+                hostlessDataVersion: newHostlessDataVersion,
+                projectUuid: session.projectId,
+              });
+              initChangeTracker(site);
 
-        const apiResponse = await apiClient.updateProject(session.projectId, {
-          newComponents: [{ name, path: pagePath, body }],
-        });
+              // Fallback: look up UUID from reloaded model if API didn't provide it
+              if (!uuid) {
+                const newComp = site.components?.find(
+                  (c: any) => c.name === pageName && c.pageMeta?.path === pagePath
+                );
+                if (newComp) {
+                  uuid = newComp.uuid;
+                }
+              }
 
-        // Extract UUID from API response if available
-        let uuid: string | null =
-          apiResponse?.result?.newComponents?.[0]?.uuid ?? null;
-
-        // Reload model so the new page is visible in subsequent queries
-        try {
-          disposeChangeTracker();
-          clearNodeCache();
-          const {
-            site,
-            bundler,
-            projectName,
-            revisionNum: newRevisionNum,
-            modelVersion: newModelVersion,
-            hostlessDataVersion: newHostlessDataVersion,
-          } = await loadProject(apiClient, session.projectId);
-          setSession({
-            projectId: session.projectId,
-            projectName,
-            site,
-            bundler,
-            revisionNum: newRevisionNum,
-            modelVersion: newModelVersion,
-            hostlessDataVersion: newHostlessDataVersion,
-            projectUuid: session.projectId,
-          });
-          initChangeTracker(site);
-
-          // Fallback: look up UUID from reloaded model if API didn't provide it
-          if (!uuid) {
-            const newComp = site.components?.find(
-              (c: any) => c.name === name && c.pageMeta?.path === pagePath
-            );
-            if (newComp) {
-              uuid = newComp.uuid;
+              console.error(
+                "[plasmic-mcp] Model reloaded after page creation"
+              );
+            } catch (reloadErr) {
+              console.error(
+                "[plasmic-mcp] Warning: Could not reload model after page creation:",
+                reloadErr
+              );
             }
+
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      name: pageName,
+                      uuid,
+                      path: pagePath,
+                      message: `Page "${pageName}" created at ${pagePath}`,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
           }
 
-          console.error(
-            "[plasmic-mcp] Model reloaded after page creation"
-          );
-        } catch (reloadErr) {
-          console.error(
-            "[plasmic-mcp] Warning: Could not reload model after page creation:",
-            reloadErr
-          );
-        }
+          case "create": {
+            const compName = requireParam(params.name, "name", "component.create");
+            if (compName.length < 1) throw new Error("Component name is required");
+            const session = requireSession();
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  name,
-                  uuid,
-                  path: pagePath,
-                  message: `Page "${name}" created at ${pagePath}`,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error creating page: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
+            const apiResponse = await apiClient.updateProject(session.projectId, {
+              newComponents: [{ name: compName, body: params.body }],
+            });
 
-  // --- create-component ---
-  // Creates a new reusable component (not a page) via REST API.
-  // Same pattern as create-page but without the path parameter.
-  // Without a path, the server creates ComponentType.Plain instead of ComponentType.Page.
-  server.tool(
-    "create-component",
-    "Create a new reusable component in the active Plasmic project with a PlasmicElement tree",
-    {
-      name: z
-        .string()
-        .min(1, "Component name is required")
-        .describe("Component name in PascalCase (e.g., 'HeroSection')"),
-      body: z
-        .any()
-        .describe("PlasmicElement JSON tree defining the component structure"),
-    },
-    async ({ name, body }) => {
-      try {
-        const session = requireSession();
+            // Extract UUID from API response if available
+            let uuid: string | null =
+              apiResponse?.result?.newComponents?.[0]?.uuid ?? null;
 
-        const apiResponse = await apiClient.updateProject(session.projectId, {
-          newComponents: [{ name, body }],
-        });
+            // Reload model so the new component is visible in subsequent queries
+            try {
+              disposeChangeTracker();
+              clearNodeCache();
+              const {
+                site,
+                bundler,
+                projectName,
+                revisionNum: newRevisionNum,
+                modelVersion: newModelVersion,
+                hostlessDataVersion: newHostlessDataVersion,
+              } = await loadProject(apiClient, session.projectId);
+              setSession({
+                projectId: session.projectId,
+                projectName,
+                site,
+                bundler,
+                revisionNum: newRevisionNum,
+                modelVersion: newModelVersion,
+                hostlessDataVersion: newHostlessDataVersion,
+                projectUuid: session.projectId,
+              });
+              initChangeTracker(site);
 
-        // Extract UUID from API response if available
-        let uuid: string | null =
-          apiResponse?.result?.newComponents?.[0]?.uuid ?? null;
+              // Fallback: look up UUID from reloaded model if API didn't provide it
+              if (!uuid) {
+                const newComp = site.components?.find(
+                  (c: any) => c.name === compName
+                );
+                if (newComp) {
+                  uuid = newComp.uuid;
+                }
+              }
 
-        // Reload model so the new component is visible in subsequent queries
-        try {
-          disposeChangeTracker();
-          clearNodeCache();
-          const {
-            site,
-            bundler,
-            projectName,
-            revisionNum: newRevisionNum,
-            modelVersion: newModelVersion,
-            hostlessDataVersion: newHostlessDataVersion,
-          } = await loadProject(apiClient, session.projectId);
-          setSession({
-            projectId: session.projectId,
-            projectName,
-            site,
-            bundler,
-            revisionNum: newRevisionNum,
-            modelVersion: newModelVersion,
-            hostlessDataVersion: newHostlessDataVersion,
-            projectUuid: session.projectId,
-          });
-          initChangeTracker(site);
-
-          // Fallback: look up UUID from reloaded model if API didn't provide it
-          if (!uuid) {
-            const newComp = site.components?.find(
-              (c: any) => c.name === name
-            );
-            if (newComp) {
-              uuid = newComp.uuid;
+              console.error(
+                "[plasmic-mcp] Model reloaded after component creation"
+              );
+            } catch (reloadErr) {
+              console.error(
+                "[plasmic-mcp] Warning: Could not reload model after component creation:",
+                reloadErr
+              );
             }
+
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      name: compName,
+                      uuid,
+                      message: `Component "${compName}" created`,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
           }
 
-          console.error(
-            "[plasmic-mcp] Model reloaded after component creation"
-          );
-        } catch (reloadErr) {
-          console.error(
-            "[plasmic-mcp] Warning: Could not reload model after component creation:",
-            reloadErr
-          );
-        }
+          case "clone": {
+            const srcUuid = requireParam(params.sourceUuid, "sourceUuid", "component.clone");
+            if (srcUuid.length < 1) throw new Error("Source UUID is required");
+            const cloneName = requireParam(params.name, "name", "component.clone");
+            if (cloneName.length < 1) throw new Error("Clone name is required");
+            const session = requireSession();
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  name,
-                  uuid,
-                  message: `Component "${name}" created`,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error creating component: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // --- clone-component ---
-  // Duplicates an existing component or page via REST API.
-  // Uses the cloneFrom field on NewComponentReq to deep-clone the source.
-  // The server's tplMgr.cloneComponent() copies the entire Tpl tree.
-  server.tool(
-    "clone-component",
-    "Duplicate an existing page or component. Creates a deep copy with a new name.",
-    {
-      sourceUuid: z
-        .string()
-        .min(1, "Source UUID is required")
-        .describe("UUID of the component or page to clone (from list-components)"),
-      name: z
-        .string()
-        .min(1, "Clone name is required")
-        .describe("Name for the cloned component in PascalCase (e.g., 'HeroSectionV2')"),
-      path: z
-        .string()
-        .optional()
-        .describe("URL path for the clone if it should be a page (e.g., '/products-v2'). Omit to create a non-page component."),
-    },
-    async ({ sourceUuid, name, path: clonePath }) => {
-      try {
-        const session = requireSession();
-
-        // Verify source exists
-        const source = session.site.components?.find(
-          (c: any) => c.uuid === sourceUuid
-        );
-        if (!source) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Error: Source component UUID "${sourceUuid}" not found. Use list-components to see available components.`,
-              },
-            ],
-            isError: true,
-          };
-        }
-
-        const req: any = {
-          name,
-          cloneFrom: { uuid: sourceUuid },
-        };
-        if (clonePath) {
-          req.path = clonePath;
-        }
-
-        const apiResponse = await apiClient.updateProject(session.projectId, {
-          newComponents: [req],
-        });
-
-        // Extract UUID from API response if available
-        let uuid: string | null =
-          apiResponse?.result?.newComponents?.[0]?.uuid ?? null;
-
-        // Reload model so the clone is visible in subsequent queries
-        try {
-          disposeChangeTracker();
-          clearNodeCache();
-          const {
-            site,
-            bundler,
-            projectName,
-            revisionNum: newRevisionNum,
-            modelVersion: newModelVersion,
-            hostlessDataVersion: newHostlessDataVersion,
-          } = await loadProject(apiClient, session.projectId);
-          setSession({
-            projectId: session.projectId,
-            projectName,
-            site,
-            bundler,
-            revisionNum: newRevisionNum,
-            modelVersion: newModelVersion,
-            hostlessDataVersion: newHostlessDataVersion,
-            projectUuid: session.projectId,
-          });
-          initChangeTracker(site);
-
-          // Fallback: look up UUID from reloaded model if API didn't provide it
-          if (!uuid) {
-            const newComp = site.components?.find(
-              (c: any) => c.name === name
+            // Verify source exists
+            const source = session.site.components?.find(
+              (c: any) => c.uuid === srcUuid
             );
-            if (newComp) {
-              uuid = newComp.uuid;
+            if (!source) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: `Error: Source component UUID "${srcUuid}" not found. Use list-components to see available components.`,
+                  },
+                ],
+                isError: true,
+              };
             }
+
+            const req: any = {
+              name: cloneName,
+              cloneFrom: { uuid: srcUuid },
+            };
+            if (params.path) {
+              req.path = params.path;
+            }
+
+            const apiResponse = await apiClient.updateProject(session.projectId, {
+              newComponents: [req],
+            });
+
+            // Extract UUID from API response if available
+            let uuid: string | null =
+              apiResponse?.result?.newComponents?.[0]?.uuid ?? null;
+
+            // Reload model so the clone is visible in subsequent queries
+            try {
+              disposeChangeTracker();
+              clearNodeCache();
+              const {
+                site,
+                bundler,
+                projectName,
+                revisionNum: newRevisionNum,
+                modelVersion: newModelVersion,
+                hostlessDataVersion: newHostlessDataVersion,
+              } = await loadProject(apiClient, session.projectId);
+              setSession({
+                projectId: session.projectId,
+                projectName,
+                site,
+                bundler,
+                revisionNum: newRevisionNum,
+                modelVersion: newModelVersion,
+                hostlessDataVersion: newHostlessDataVersion,
+                projectUuid: session.projectId,
+              });
+              initChangeTracker(site);
+
+              // Fallback: look up UUID from reloaded model if API didn't provide it
+              if (!uuid) {
+                const newComp = site.components?.find(
+                  (c: any) => c.name === cloneName
+                );
+                if (newComp) {
+                  uuid = newComp.uuid;
+                }
+              }
+
+              console.error(
+                "[plasmic-mcp] Model reloaded after component cloning"
+              );
+            } catch (reloadErr) {
+              console.error(
+                "[plasmic-mcp] Warning: Could not reload model after component cloning:",
+                reloadErr
+              );
+            }
+
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      name: cloneName,
+                      uuid,
+                      clonedFrom: source.name,
+                      clonedFromUuid: srcUuid,
+                      path: params.path,
+                      message: `Component "${cloneName}" cloned from "${source.name}"${params.path ? ` at ${params.path}` : ""}`,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
           }
 
-          console.error(
-            "[plasmic-mcp] Model reloaded after component cloning"
-          );
-        } catch (reloadErr) {
-          console.error(
-            "[plasmic-mcp] Warning: Could not reload model after component cloning:",
-            reloadErr
-          );
-        }
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
+          case "rename": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "component.rename");
+            const nn = requireParam(params.newName, "newName", "component.rename");
+            if (nn.length < 1) throw new Error("New name is required");
+            const result = await renameComponent(apiClient, cuuid, nn, params.newPath);
+            return {
+              content: [
                 {
-                  success: true,
-                  name,
-                  uuid,
-                  clonedFrom: source.name,
-                  clonedFromUuid: sourceUuid,
-                  path: clonePath,
-                  message: `Component "${name}" cloned from "${source.name}"${clonePath ? ` at ${clonePath}` : ""}`,
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      oldName: result.oldName,
+                      newName: result.newName,
+                      uuid: result.componentUuid,
+                      path: result.newPath,
+                      revision: result.save.revisionNum,
+                      message: `Renamed "${result.oldName}" → "${result.newName}"`,
+                    },
+                    null,
+                    2
+                  ),
                 },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error cloning component: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // --- list-variants ---
-  // Returns all variant groups and variants for a component and the project.
-  // Organized into: global variants (screen breakpoints, user-defined),
-  // component variants (custom groups), and style variants (hover, focus, etc.).
-  server.tool(
-    "list-variants",
-    "List all variants for a component: global (breakpoints), component (custom), and style (hover/focus). Use variant names or UUIDs with update-styles/update-text.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component to list variants for"),
-    },
-    async ({ componentUuid }) => {
-      try {
-        const session = requireSession();
-        const component = session.site.components?.find(
-          (c: any) => c.uuid === componentUuid
-        );
-
-        if (!component) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Component UUID "${componentUuid}" not found. Use list-components to see available components.`,
-              },
-            ],
-            isError: true,
-          };
-        }
-
-        const result = listVariants(session.site, component);
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error listing variants: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // --- create-style-variant ---
-  // Creates a new CSS interaction state variant (hover, focus, pressed, etc.)
-  // on a component or scoped to a specific element. Required before applying
-  // styles to interaction states that don't exist yet. After creation, use
-  // update-styles with the variant selector to apply styles.
-  server.tool(
-    "create-style-variant",
-    "Create a new interaction state variant (hover, focus, pressed, etc.). Use on a component or scoped to a specific element. After creation, use update-styles with the variant selector.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component to add the style variant to"),
-      selector: z
-        .string()
-        .describe(
-          'CSS pseudo-class selector: ":hover", ":active", ":focus", ":focus-visible", ":focus-within", ":disabled", ":visited", ":link", or "::placeholder"'
-        ),
-      nodeRef: z
-        .string()
-        .optional()
-        .describe(
-          "Node reference (UUID, name, path, or index) to scope the variant to a specific element. Omit for a component-level variant."
-        ),
-    },
-    async ({ componentUuid, selector, nodeRef }) => {
-      try {
-        const result = await createStyleVariant(
-          apiClient,
-          componentUuid,
-          selector,
-          nodeRef
-        );
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  variantUuid: result.variantUuid,
-                  selector: result.selector,
-                  scope: result.scope,
-                  ...(result.forTplName
-                    ? { element: result.forTplName }
-                    : {}),
-                  ...(result.forTplUuid
-                    ? { elementUuid: result.forTplUuid }
-                    : {}),
-                  revision: result.save.revisionNum,
-                  message: `Created ${result.selector} variant (${result.scope}-level)${result.forTplName ? ` on ${result.forTplName}` : ""}. Use update-styles with variant: "${result.selector}" to apply styles.`,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("creating style variant", err);
-      }
-    }
-  );
-
-  // --- create-variant-group ---
-  // Creates a named variant group on a component with optional initial variants.
-  // Variant groups define custom component states (e.g., Size: Small/Medium/Large).
-  // Three types: single-choice, multi-choice, and toggle (standalone boolean).
-  server.tool(
-    "create-variant-group",
-    'Create a named variant group on a component (e.g., "Size" with "Small"/"Large" variants). Supports single-choice, multi-choice, and toggle types.',
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component to add the variant group to"),
-      name: z
-        .string()
-        .min(1, "Group name is required")
-        .describe(
-          'Name for the variant group (e.g., "Size", "Theme", "State")'
-        ),
-      type: z
-        .enum(["single", "multi", "toggle"])
-        .optional()
-        .describe(
-          'Group type: "single" (one active at a time, default), "multi" (multiple active), or "toggle" (boolean on/off, auto-creates one variant)'
-        ),
-      initialVariants: z
-        .array(z.string().min(1))
-        .optional()
-        .describe(
-          'Names of variants to create immediately (e.g., ["Small", "Medium", "Large"])'
-        ),
-    },
-    async ({ componentUuid, name, type: groupType, initialVariants }) => {
-      try {
-        const result = await createVariantGroup(
-          apiClient,
-          componentUuid,
-          name,
-          groupType,
-          initialVariants
-        );
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  groupUuid: result.groupUuid,
-                  groupName: result.groupName,
-                  type: result.type,
-                  variants: result.variants,
-                  revision: result.save.revisionNum,
-                  message: `Created variant group "${result.groupName}" (${result.type}) with ${result.variants.length} variant(s). Use update-styles/update-text with variant names to apply overrides.`,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("creating variant group", err);
-      }
-    }
-  );
-
-  // --- update-text ---
-  // Updates text content on a TplTag node. Targets the base variant by default;
-  // when `variant` is provided, targets that specific variant's VariantSetting.
-  // When `dynamic` is true, creates an ExprText with CustomCode expression for
-  // data-bound text (e.g., "$ctx.product.name"). Supports dry-run mode.
-  server.tool(
-    "update-text",
-    "Update the text content of an element in a component. Finds the node by UUID, name, path, or index. " +
-    "Set dynamic: true to bind text to a JavaScript expression (e.g., \"$ctx.product.name\").",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component containing the node"),
-      nodeRef: z
-        .string()
-        .describe(
-          'Node reference: UUID, name (e.g., "Hero Title"), path (e.g., "HeroSection.Title"), or index (e.g., "#2")'
-        ),
-      text: z.string().describe("The new text content. When dynamic is true, this is a JavaScript expression string (e.g., \"$ctx.product.name\")."),
-      variant: z
-        .string()
-        .optional()
-        .describe('Target variant by name (e.g., "Mobile"), UUID, or selector (e.g., ":hover"). Omit for base variant.'),
-      dynamic: z
-        .boolean()
-        .optional()
-        .describe("When true, creates an ExprText with a CustomCode expression instead of static RawText. The text value is treated as a JavaScript expression."),
-      fallback: z
-        .string()
-        .optional()
-        .describe("Fallback text displayed when the dynamic expression evaluates to null/undefined. Only used when dynamic is true."),
-      html: z
-        .boolean()
-        .optional()
-        .describe("When true with dynamic text, the expression result is rendered as HTML. Defaults to false."),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting. Model is left unchanged."),
-    },
-    async ({ componentUuid, nodeRef, text, variant, dynamic, fallback, html, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            updateText(apiClient, componentUuid, nodeRef, text, variant, dynamic, fallback, html)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    node: result.nodeName ?? result.nodeUuid,
-                    previousText: result.previousText,
-                    newText: result.newText,
-                    ...(result.dynamic ? { dynamic: true } : {}),
-                    ...(result.fallback != null ? { fallback: result.fallback } : {}),
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await updateText(apiClient, componentUuid, nodeRef, text, variant, dynamic, fallback, html);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  node: result.nodeName ?? result.nodeUuid,
-                  previousText: result.previousText,
-                  newText: result.newText,
-                  ...(result.dynamic ? { dynamic: true } : {}),
-                  ...(result.fallback != null ? { fallback: result.fallback } : {}),
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("updating text", err);
-      }
-    }
-  );
-
-  // --- update-rich-text ---
-  // Updates text content with inline formatting marks (bold, italic, links, etc.).
-  // Creates RawText with StyleMarkers and NodeMarkers for rich text content.
-  // Supports dry-run mode.
-  server.tool(
-    "update-rich-text",
-    "Update the text content of an element with inline formatting marks (bold, italic, underline, strikethrough, link, code). " +
-    "Provide a flat text string and an array of marks with start/end positions and type. " +
-    "Link marks require an 'href' property. Overlapping marks are allowed (e.g., bold + link on same range).",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component containing the node"),
-      nodeRef: z
-        .string()
-        .describe(
-          'Node reference: UUID, name (e.g., "Hero Title"), path (e.g., "HeroSection.Title"), or index (e.g., "#2")'
-        ),
-      text: z.string().describe("The plain text content (without formatting). Mark positions refer to this text."),
-      marks: z
-        .array(
-          z.object({
-            start: z.number().describe("Start position in the text (0-indexed, inclusive)"),
-            end: z.number().describe("End position in the text (0-indexed, exclusive)"),
-            type: z
-              .enum(["bold", "italic", "underline", "strikethrough", "link", "code"])
-              .describe("The mark type"),
-            href: z
-              .string()
-              .optional()
-              .describe("URL for link marks (required when type is 'link')"),
-          })
-        )
-        .describe("Array of inline formatting marks to apply to the text"),
-      variant: z
-        .string()
-        .optional()
-        .describe('Target variant by name (e.g., "Mobile"), UUID, or selector (e.g., ":hover"). Omit for base variant.'),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting. Model is left unchanged."),
-    },
-    async ({ componentUuid, nodeRef, text, marks, variant, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            updateRichText(apiClient, componentUuid, nodeRef, text, marks, variant)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    node: result.nodeName ?? result.nodeUuid,
-                    previousText: result.previousText,
-                    newText: result.newText,
-                    markCount: result.markCount,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await updateRichText(apiClient, componentUuid, nodeRef, text, marks, variant);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  node: result.nodeName ?? result.nodeUuid,
-                  previousText: result.previousText,
-                  newText: result.newText,
-                  markCount: result.markCount,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("updating rich text", err);
-      }
-    }
-  );
-
-  // --- update-styles ---
-  // Updates CSS styles on a TplTag node. Targets the base variant by default;
-  // when `variant` is provided, targets that specific variant's VariantSetting.
-  // Supports dry-run mode.
-  server.tool(
-    "update-styles",
-    "Update CSS styles on an element in a component. Uses camelCase property names (e.g., fontSize, backgroundColor). " +
-    "Note: backgroundColor maps to the background shorthand internally. Border/outline shorthands are expanded to longhands. " +
-    "Use list-style-properties to see all valid property names. " +
-    "Values can reference design tokens with \"token:TokenName\" or \"token:uuid\" (e.g., {\"color\": \"token:Primary Blue\"}).",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component containing the node"),
-      nodeRef: z
-        .string()
-        .describe(
-          'Node reference: UUID, name, path, or index'
-        ),
-      styles: z
-        .record(z.string())
-        .describe(
-          'CSS properties in camelCase format (e.g., {"fontSize": "24px", "backgroundColor": "#ff0000"})'
-        ),
-      variant: z
-        .string()
-        .optional()
-        .describe('Target variant by name (e.g., "Mobile"), UUID, or selector (e.g., ":hover"). Omit for base variant.'),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting. Model is left unchanged."),
-    },
-    async ({ componentUuid, nodeRef, styles, variant, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            updateStyles(apiClient, componentUuid, nodeRef, styles, variant)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    node: result.nodeName ?? result.nodeUuid,
-                    updatedProperties: result.updatedProperties,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await updateStyles(
-          apiClient,
-          componentUuid,
-          nodeRef,
-          styles,
-          variant
-        );
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  node: result.nodeName ?? result.nodeUuid,
-                  updatedProperties: result.updatedProperties,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("updating styles", err);
-      }
-    }
-  );
-
-  // --- update-attrs ---
-  // Updates HTML attributes on a TplTag node. Targets the base variant by default;
-  // when `variant` is provided, targets that specific variant's VariantSetting.
-  // Supports standard HTML, ARIA, and data-* attributes. Rejects event handlers.
-  // Pass null as value to remove an attribute.
-  server.tool(
-    "update-attrs",
-    "Update HTML attributes on an element. Supports standard HTML attrs (id, class, href, etc.), ARIA attrs (role, aria-label, etc.), and data-* attrs. Pass null to remove an attribute. Dynamic values: prefix with $ or wrap in {{...}}.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component containing the node"),
-      nodeRef: z
-        .string()
-        .describe(
-          'Node reference: UUID, name (e.g., "Hero Title"), path (e.g., "HeroSection.Title"), or index (e.g., "#2")'
-        ),
-      attrs: z
-        .record(z.any())
-        .describe(
-          'HTML attributes to set. Static values: {"href": "/about", "aria-label": "Nav"}. Dynamic: {"href": "$props.url"} or {"href": "{{props.url}}"}. Remove: {"title": null}'
-        ),
-      variant: z
-        .string()
-        .optional()
-        .describe('Target variant by name (e.g., "Mobile"), UUID, or selector (e.g., ":hover"). Omit for base variant.'),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting. Model is left unchanged."),
-    },
-    async ({ componentUuid, nodeRef, attrs, variant, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            updateAttrs(apiClient, componentUuid, nodeRef, attrs, variant)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    node: result.nodeName ?? result.nodeUuid,
-                    updatedAttributes: result.updatedAttributes,
-                    removedAttributes: result.removedAttributes,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await updateAttrs(
-          apiClient,
-          componentUuid,
-          nodeRef,
-          attrs,
-          variant
-        );
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  node: result.nodeName ?? result.nodeUuid,
-                  updatedAttributes: result.updatedAttributes,
-                  removedAttributes: result.removedAttributes,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("updating attributes", err);
-      }
-    }
-  );
-
-  // --- add-child ---
-  // Converts PlasmicElement JSON to TplTag nodes and inserts into parent.
-  // Supports slot targeting: when parentRef is a TplComponent, use the `slot`
-  // field to specify which named slot to add content to (defaults to "children").
-  // M3: invalidates node resolver cache for the component (structural edit).
-  // Supports dry-run mode (no cache invalidation in dry-run).
-  server.tool(
-    "add-child",
-    "Add a new child element to a container node or a named slot on a component instance. " +
-      "Accepts PlasmicElement JSON (vbox, text, img, button, component types). " +
-      "When parentRef is a component instance, use the `slot` field to target a specific slot (defaults to \"children\").",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component containing the parent node"),
-      parentRef: z
-        .string()
-        .describe("Reference to the parent node (UUID, name, path, or index)"),
-      child: z.any().describe("PlasmicElement JSON defining the new child"),
-      position: z
-        .union([z.string(), z.number()])
-        .optional()
-        .describe(
-          'Where to insert: "first", "last" (default), or a numeric index'
-        ),
-      slot: z
-        .string()
-        .optional()
-        .describe(
-          "Target slot name on a component instance (e.g., \"header\", \"footer\"). " +
-            "Only valid when parentRef is a TplComponent. Defaults to \"children\" if omitted."
-        ),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting. Model is left unchanged."),
-    },
-    async ({ componentUuid, parentRef, child, position, slot, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            addChild(apiClient, componentUuid, parentRef, child, position, slot)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    parent: result.parentName ?? result.parentUuid,
-                    ...(result.slotName ? { slot: result.slotName } : {}),
-                    position: result.position,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await addChild(
-          apiClient,
-          componentUuid,
-          parentRef,
-          child,
-          position,
-          slot
-        );
-        // Structural edit: invalidate node resolver cache for this component
-        invalidateNodeCache(componentUuid);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  parent: result.parentName ?? result.parentUuid,
-                  ...(result.slotName ? { slot: result.slotName } : {}),
-                  position: result.position,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("adding child", err);
-      }
-    }
-  );
-
-  // --- remove-child ---
-  // Removes a node from its parent's children array.
-  // M3: invalidates node resolver cache for the component (structural edit).
-  // Supports dry-run mode (no cache invalidation in dry-run).
-  server.tool(
-    "remove-child",
-    "Remove an element from a component. Cannot remove the component's root node.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component containing the node"),
-      nodeRef: z
-        .string()
-        .describe("Reference to the node to remove (UUID, name, path, or index)"),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting. Model is left unchanged."),
-    },
-    async ({ componentUuid, nodeRef, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            removeChild(apiClient, componentUuid, nodeRef)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    removed: result.removedName ?? result.removedUuid,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await removeChild(apiClient, componentUuid, nodeRef);
-        // Structural edit: invalidate node resolver cache for this component
-        invalidateNodeCache(componentUuid);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  removed: result.removedName ?? result.removedUuid,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("removing child", err);
-      }
-    }
-  );
-
-  // --- move-child ---
-  // Moves a node from its current parent to a new parent.
-  // M3: invalidates node resolver cache for the component (structural edit).
-  // Supports dry-run mode (no cache invalidation in dry-run).
-  server.tool(
-    "move-child",
-    "Move an element to a new parent within the same component. Detects and prevents cycles. " +
-      "When newParentRef is a component instance, use the `slot` field to target a specific slot (defaults to \"children\").",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component containing the nodes"),
-      nodeRef: z
-        .string()
-        .describe("Reference to the node to move (UUID, name, path, or index)"),
-      newParentRef: z
-        .string()
-        .describe("Reference to the new parent node"),
-      position: z
-        .union([z.string(), z.number()])
-        .optional()
-        .describe(
-          'Where to insert: "first", "last" (default), or a numeric index'
-        ),
-      slot: z
-        .string()
-        .optional()
-        .describe(
-          "Target slot name on a component instance (e.g., \"header\", \"footer\"). " +
-            "Only valid when newParentRef is a TplComponent. Defaults to \"children\" if omitted."
-        ),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting. Model is left unchanged."),
-    },
-    async ({ componentUuid, nodeRef, newParentRef, position, slot, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            moveChild(apiClient, componentUuid, nodeRef, newParentRef, position, slot)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    moved: result.movedName ?? result.movedUuid,
-                    newParent: result.newParentName ?? result.newParentUuid,
-                    ...(result.slotName ? { slot: result.slotName } : {}),
-                    position: result.position,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await moveChild(
-          apiClient,
-          componentUuid,
-          nodeRef,
-          newParentRef,
-          position,
-          slot
-        );
-        // Structural edit: invalidate node resolver cache for this component
-        invalidateNodeCache(componentUuid);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  moved: result.movedName ?? result.movedUuid,
-                  newParent: result.newParentName ?? result.newParentUuid,
-                  ...(result.slotName ? { slot: result.slotName } : {}),
-                  position: result.position,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("moving child", err);
-      }
-    }
-  );
-
-  // --- clone-child ---
-  // Duplicates a node and all its descendants within a component.
-  // By default the clone is inserted as the next sibling of the original.
-  // Supports dry-run mode (no persistence or cache invalidation in dry-run).
-  server.tool(
-    "clone-child",
-    "Duplicate an existing element and all its descendants. Creates a deep copy with new UUIDs. " +
-      "Clone is inserted as a sibling after the original by default. " +
-      "When parentRef is a component instance, use the `slot` field to target a specific slot (defaults to \"children\").",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component containing the node"),
-      nodeRef: z
-        .string()
-        .describe(
-          "Reference to the node to clone (UUID, name, path, or index)"
-        ),
-      newName: z
-        .string()
-        .optional()
-        .describe(
-          'Name for the cloned node. Defaults to "Original Name (copy)" if the original has a name.'
-        ),
-      parentRef: z
-        .string()
-        .optional()
-        .describe(
-          "Reference to a different parent to insert the clone into. If omitted, clone is inserted as a sibling of the original."
-        ),
-      position: z
-        .union([z.string(), z.number()])
-        .optional()
-        .describe(
-          'Where to insert the clone: "first", "last" (default), or a numeric index. Only used with parentRef.'
-        ),
-      slot: z
-        .string()
-        .optional()
-        .describe(
-          "Target slot name on a component instance (e.g., \"header\", \"footer\"). " +
-            "Only valid when parentRef is a TplComponent. Defaults to \"children\" if omitted."
-        ),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe(
-          "When true, shows what would change without persisting. Model is left unchanged."
-        ),
-    },
-    async ({ componentUuid, nodeRef, newName, parentRef, position, slot, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            cloneChild(apiClient, componentUuid, nodeRef, newName, parentRef, position, slot)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    cloned: result.clonedName ?? result.clonedUuid,
-                    clonedUuid: result.clonedUuid,
-                    originalUuid: result.originalUuid,
-                    ...(result.slotName ? { slot: result.slotName } : {}),
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await cloneChild(
-          apiClient,
-          componentUuid,
-          nodeRef,
-          newName,
-          parentRef,
-          position,
-          slot
-        );
-        // Structural edit: invalidate node resolver cache for this component
-        invalidateNodeCache(componentUuid);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  cloned: result.clonedName ?? result.clonedUuid,
-                  clonedUuid: result.clonedUuid,
-                  originalUuid: result.originalUuid,
-                  ...(result.slotName ? { slot: result.slotName } : {}),
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("cloning child", err);
-      }
-    }
-  );
-
-  // --- begin-batch ---
-  // Starts a batch edit session. Subsequent edit operations accumulate changes
-  // without saving. Use end-batch to save all changes in a single revision.
-  server.tool(
-    "begin-batch",
-    "Start a batch edit session. Edits will be accumulated and saved together when end-batch is called.",
-    {},
-    async () => {
-      try {
-        requireSession();
-        const batchId = beginBatch();
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  batchId,
-                  message:
-                    "Batch session started. Edits will accumulate until end-batch is called.",
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error starting batch: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // --- end-batch ---
-  // Saves all accumulated changes from a batch session in a single revision.
-  server.tool(
-    "end-batch",
-    "End a batch edit session and save all accumulated changes in a single revision.",
-    {
-      batchId: z
-        .string()
-        .optional()
-        .describe("Optional batch ID for verification"),
-    },
-    async ({ batchId }) => {
-      try {
-        const result = await endBatch(apiClient, batchId);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  operationCount: result.operationCount,
-                  revision: result.save.revisionNum,
-                  message: `Batch saved: ${result.operationCount} operations in revision ${result.save.revisionNum}`,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error ending batch: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // --- undo ---
-  // Reverts the most recent edit operation by applying inverse mutations.
-  server.tool(
-    "undo",
-    "Undo the most recent edit operation. Reverts the model change and saves.",
-    {},
-    async () => {
-      try {
-        if (isBatchActive()) {
-          throw new Error(
-            "Cannot undo during a batch session. Call end-batch first, then undo."
-          );
-        }
-        const result = await undoOperation(apiClient);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  undone: result.undone,
-                  revision: result.save.revisionNum,
-                  remainingUndos: getUndoDepth(),
-                  message: `Undone: ${result.undone}`,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error undoing: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // --- list-style-properties ---
-  // Returns the full list of valid CSS property names accepted by update-styles.
-  // Helps Claude discover correct property names and avoid trial-and-error.
-  server.tool(
-    "list-style-properties",
-    "Returns all valid CSS property names accepted by update-styles. Use this to discover correct property names when styling elements.",
-    {
-      filter: z
-        .string()
-        .optional()
-        .describe('Optional filter to search property names (e.g., "border", "flex"). Returns only matching properties.'),
-    },
-    async ({ filter }) => {
-      try {
-        const allProps = getValidStylePropertyNames();
-        let props = allProps;
-        if (filter) {
-          const lower = filter.toLowerCase();
-          props = allProps.filter((p) => p.includes(lower));
-        }
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  total: props.length,
-                  properties: props,
-                  ...(filter ? { filter } : {}),
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error listing style properties: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // --- save-project ---
-  // Force a full (non-incremental) save of the current in-memory model.
-  // Useful as a checkpoint after a series of incremental saves, when the
-  // developer suspects drift between in-memory model and server, or as a
-  // "force sync" operation. Unlike incremental saves (which only send deltas),
-  // this sends the complete model state.
-  server.tool(
-    "save-project",
-    "Force a full save of the current in-memory model to the server. Useful as a checkpoint or to reconcile drift after incremental saves.",
-    {},
-    async () => {
-      try {
-        requireSession();
-        const saveManager = new SaveManager(apiClient);
-        const save = await saveManager.saveFullBundle();
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  revision: save.revisionNum,
-                  incremental: save.incremental,
-                  message: `Full save completed at revision ${save.revisionNum}`,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error saving project: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // --- refresh-project ---
-  // Re-fetches the project bundle to sync with server state.
-  // Useful after 412 conflicts or when another user has made changes.
-  // M3: clears node resolver cache (model is fully replaced).
-  server.tool(
-    "refresh-project",
-    "Reload the project from the server to sync with latest changes. Clears undo history.",
-    {},
-    async () => {
-      try {
-        const session = requireSession();
-
-        // Cancel any active batch (changes are discarded)
-        cancelBatch();
-
-        // Dispose current change tracker
-        disposeChangeTracker();
-
-        // Clear undo stack (model state is being replaced)
-        clearUndoStack();
-
-        // Clear node resolver cache (model is being replaced)
-        clearNodeCache();
-
-        const {
-          site,
-          bundler,
-          projectName,
-          revisionNum,
-          modelVersion,
-          hostlessDataVersion,
-        } = await loadProject(apiClient, session.projectId);
-
-        setSession({
-          projectId: session.projectId,
-          projectName,
-          site,
-          bundler,
-          revisionNum,
-          modelVersion,
-          hostlessDataVersion,
-          projectUuid: session.projectId,
-        });
-
-        // Re-initialize change tracking
-        initChangeTracker(site);
-
-        const components = site.components ?? [];
-        const pages = components.filter((c: any) => c.pageMeta?.path);
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  projectName,
-                  revisionNum,
-                  componentCount: components.length,
-                  pageCount: pages.length,
-                  message: `Project refreshed at revision ${revisionNum}`,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error refreshing project: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // --- rename-component ---
-  // Renames a page or component. Uses TplMgr.renameComponent() which
-  // handles name deduplication automatically. Optionally updates the page
-  // URL path. Client-side model mutation + save.
-  server.tool(
-    "rename-component",
-    "Rename a page or component. Handles name deduplication automatically. Optionally update the page URL path.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component or page to rename"),
-      newName: z
-        .string()
-        .min(1, "New name is required")
-        .describe("New name for the component (PascalCase recommended)"),
-      newPath: z
-        .string()
-        .optional()
-        .describe("New URL path for pages (e.g., '/landing'). Only applies to page components."),
-    },
-    async ({ componentUuid, newName, newPath }) => {
-      try {
-        const result = await renameComponent(
-          apiClient,
-          componentUuid,
-          newName,
-          newPath
-        );
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  oldName: result.oldName,
-                  newName: result.newName,
-                  uuid: result.componentUuid,
-                  path: result.newPath,
-                  revision: result.save.revisionNum,
-                  message: `Renamed "${result.oldName}" → "${result.newName}"`,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("renaming component", err);
-      }
-    }
-  );
-
-  // --- update-page-meta ---
-  // Sets page-level SEO metadata (title, description, OG image, canonical,
-  // path). Only fields explicitly provided are updated. Throws if the target
-  // component is not a page.
-  server.tool(
-    "update-page-meta",
-    "Set page SEO metadata: title, description, Open Graph image, canonical URL, and/or page path. Only provided fields are updated.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the page component"),
-      title: z
-        .string()
-        .optional()
-        .describe("Page title for SEO (e.g., 'Welcome to My Site')"),
-      description: z
-        .string()
-        .optional()
-        .describe("Page description for SEO meta tag"),
-      openGraphImage: z
-        .string()
-        .optional()
-        .describe("Open Graph image URL for social sharing"),
-      canonical: z
-        .string()
-        .optional()
-        .describe("Canonical URL for SEO"),
-      path: z
-        .string()
-        .optional()
-        .describe("Update the page URL path (e.g., '/about-us')"),
-    },
-    async ({ componentUuid, title, description, openGraphImage, canonical, path: pagePath }) => {
-      try {
-        const result = await updatePageMeta(apiClient, componentUuid, {
-          title,
-          description,
-          openGraphImage,
-          canonical,
-          path: pagePath,
-        });
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  component: result.componentName,
-                  uuid: result.componentUuid,
-                  updatedFields: result.updatedFields,
-                  revision: result.save.revisionNum,
-                  message: `Updated page metadata: ${result.updatedFields.join(", ")}`,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("updating page metadata", err);
-      }
-    }
-  );
-
-  // --- get-page-meta ---
-  // Reads page-level metadata including SEO fields. Unlike get-project-meta
-  // which only shows path, this surfaces title, description, OG image, etc.
-  server.tool(
-    "get-page-meta",
-    "Read page metadata including SEO fields (title, description, Open Graph image, canonical URL). Only works on page components.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the page component"),
-    },
-    async ({ componentUuid }) => {
-      try {
-        const session = requireSession();
-        const component = session.site.components?.find(
-          (c: any) => c.uuid === componentUuid
-        );
-
-        if (!component) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Component UUID "${componentUuid}" not found. Use list-components to see available components.`,
-              },
-            ],
-            isError: true,
-          };
-        }
-
-        if (!component.pageMeta) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Component "${component.name}" is not a page — no page metadata available.`,
-              },
-            ],
-            isError: true,
-          };
-        }
-
-        const pm = component.pageMeta;
-
-        // Extract text from pageMeta fields that may be strings or TemplatedStrings
-        const extractText = (value: any): string | null => {
-          if (value === null || value === undefined) return null;
-          if (typeof value === "string") return value;
-          // TemplatedString: text is an array of parts
-          if (Array.isArray(value?.text)) {
-            return value.text
-              .map((part: any) => (typeof part === "string" ? part : ""))
-              .join("");
+              ],
+            };
           }
-          // RawText or similar with .text as a string
-          if (typeof value?.text === "string") return value.text;
-          return String(value);
-        };
 
-        const meta = {
-          name: component.name,
-          uuid: component.uuid,
-          path: pm.path,
-          title: extractText(pm.title),
-          description: extractText(pm.description),
-          openGraphImage: extractText(pm.openGraphImage),
-          canonical: extractText(pm.canonical),
-          params: pm.params ?? {},
-          query: pm.query ?? {},
-          roleId: pm.roleId ?? null,
-        };
+          case "delete": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "component.delete");
+            const result = await deleteComponent(apiClient, cuuid, params.force);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      deletedName: result.deletedName,
+                      deletedUuid: result.deletedUuid,
+                      revision: result.save.revisionNum,
+                      message: `Deleted "${result.deletedName}"`,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
 
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify(meta, null, 2) },
-          ],
-        };
+          case "convert-to-page": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "component.convert-to-page");
+            const result = await convertToPage(apiClient, cuuid, params.path);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      componentName: result.componentName,
+                      path: result.path,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "convert-to-component": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "component.convert-to-component");
+            const result = await convertToComponent(apiClient, cuuid);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      componentName: result.componentName,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "update-page-meta": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "component.update-page-meta");
+            const result = await updatePageMeta(apiClient, cuuid, {
+              title: params.title,
+              description: params.description,
+              openGraphImage: params.openGraphImage,
+              canonical: params.canonical,
+              path: params.path,
+            });
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      component: result.componentName,
+                      uuid: result.componentUuid,
+                      updatedFields: result.updatedFields,
+                      revision: result.save.revisionNum,
+                      message: `Updated page metadata: ${result.updatedFields.join(", ")}`,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "list-props": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "component.list-props");
+            const session = requireSession();
+            const component = session.site.components?.find(
+              (c: any) => c.uuid === cuuid
+            );
+
+            if (!component) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: `Component UUID "${cuuid}" not found. Use list-components to see available components.`,
+                  },
+                ],
+                isError: true,
+              };
+            }
+
+            const props = listProps(component);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      component: component.name,
+                      componentUuid: component.uuid,
+                      propCount: props.length,
+                      props,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "add-prop": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "component.add-prop");
+            const propName = requireParam(params.name, "name", "component.add-prop");
+            const propType = requireParam(params.type, "type", "component.add-prop") as any;
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                addProp(apiClient, cuuid, propName, propType, params.defaultValue, params.description)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        paramUuid: result.paramUuid,
+                        name: result.name,
+                        propType: result.type,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await addProp(
+              apiClient, cuuid, propName, propType, params.defaultValue, params.description
+            );
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      paramUuid: result.paramUuid,
+                      name: result.name,
+                      propType: result.type,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "update-prop": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "component.update-prop");
+            const pRef = requireParam(params.propRef, "propRef", "component.update-prop");
+
+            if (!params.name && params.defaultValue === undefined && params.description === undefined) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        error: true,
+                        message:
+                          "At least one of 'name', 'defaultValue', or 'description' must be provided.",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+                isError: true,
+              };
+            }
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                updateProp(apiClient, cuuid, pRef, params.name, params.defaultValue, params.description)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        paramUuid: result.paramUuid,
+                        name: result.name,
+                        previousName: result.previousName,
+                        updatedFields: result.updatedFields,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await updateProp(
+              apiClient, cuuid, pRef, params.name, params.defaultValue, params.description
+            );
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      paramUuid: result.paramUuid,
+                      name: result.name,
+                      previousName: result.previousName,
+                      updatedFields: result.updatedFields,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "remove-prop": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "component.remove-prop");
+            const pRef = requireParam(params.propRef, "propRef", "component.remove-prop");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                removeProp(apiClient, cuuid, pRef)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        removedName: result.removedName,
+                        removedUuid: result.removedUuid,
+                        cleanedArgCount: result.cleanedArgCount,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await removeProp(apiClient, cuuid, pRef);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      removedName: result.removedName,
+                      removedUuid: result.removedUuid,
+                      cleanedArgCount: result.cleanedArgCount,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "list-states": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "component.list-states");
+            const session = requireSession();
+            const component = session.site.components?.find(
+              (c: any) => c.uuid === cuuid
+            );
+
+            if (!component) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: `Component UUID "${cuuid}" not found. Use list-components to see available components.`,
+                  },
+                ],
+                isError: true,
+              };
+            }
+
+            const states = listStates(component);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      componentUuid: cuuid,
+                      componentName: component.name,
+                      stateCount: states.length,
+                      states,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "add-state": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "component.add-state");
+            const stateName = requireParam(params.name, "name", "component.add-state");
+            const varType = requireParam(params.variableType, "variableType", "component.add-state") as any;
+            const accType = (params.accessType ?? "private") as any;
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                addState(apiClient, cuuid, stateName, varType, accType, params.initialValue)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        stateUuid: result.stateUuid,
+                        paramUuid: result.paramUuid,
+                        name: result.name,
+                        variableType: result.variableType,
+                        accessType: result.accessType,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await addState(
+              apiClient, cuuid, stateName, varType, accType, params.initialValue
+            );
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      stateUuid: result.stateUuid,
+                      paramUuid: result.paramUuid,
+                      name: result.name,
+                      variableType: result.variableType,
+                      accessType: result.accessType,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "update-state": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "component.update-state");
+            const sRef = requireParam(params.stateRef, "stateRef", "component.update-state");
+
+            if (!params.name && params.accessType === undefined && params.initialValue === undefined) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        error: true,
+                        message:
+                          "At least one of 'name', 'accessType', or 'initialValue' must be provided.",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+                isError: true,
+              };
+            }
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                updateState(apiClient, cuuid, sRef, params.name, params.accessType as any, params.initialValue)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        stateUuid: result.stateUuid,
+                        name: result.name,
+                        previousName: result.previousName,
+                        updatedFields: result.updatedFields,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await updateState(
+              apiClient, cuuid, sRef, params.name, params.accessType as any, params.initialValue
+            );
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      stateUuid: result.stateUuid,
+                      name: result.name,
+                      previousName: result.previousName,
+                      updatedFields: result.updatedFields,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "remove-state": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "component.remove-state");
+            const sRef = requireParam(params.stateRef, "stateRef", "component.remove-state");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                removeState(apiClient, cuuid, sRef)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        removedName: result.removedName,
+                        removedUuid: result.removedUuid,
+                        cleanedArgCount: result.cleanedArgCount,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await removeState(apiClient, cuuid, sRef);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      removedName: result.removedName,
+                      removedUuid: result.removedUuid,
+                      cleanedArgCount: result.cleanedArgCount,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          default:
+            throw new Error(`Unknown action '${action}' for component tool.`);
+        }
       } catch (err: any) {
+        if (["rename", "delete", "convert-to-page", "convert-to-component", "update-page-meta",
+             "add-prop", "update-prop", "remove-prop", "add-state", "update-state", "remove-state"].includes(action)) {
+          return handleMutationError(`component.${action}`, err);
+        }
         return {
           content: [
             {
               type: "text" as const,
-              text: `Error reading page metadata: ${err.message}`,
+              text: `Error in component.${action}: ${err.message}`,
             },
           ],
           isError: true,
@@ -2638,56 +1838,1088 @@ export function createServer(): McpServer {
     }
   );
 
-  // --- get-preview-url ---
-  // Constructs preview and studio URLs from the auth host, project ID, and
-  // page path. No server call needed — purely computed from session state.
+  // ========================================================================
+  // DOMAIN 4: node (15 actions)
+  // ========================================================================
+
   server.tool(
-    "get-preview-url",
-    "Get preview and studio URLs for a page or component. No server call needed.",
+    "node",
+    "Element mutations within a component.\n" +
+      "Actions: add, remove, move, clone, reorder, update-styles, update-text, update-rich-text, update-attrs, set-visibility, set-image, apply-mixin, detach-mixin, add-animation, remove-animation.\n" +
+      "- add/remove/move/clone/reorder: Structural changes to element tree\n" +
+      "- update-styles: Set CSS styles on an element\n" +
+      "- update-text/update-rich-text: Set text content\n" +
+      "- update-attrs: Set HTML attributes\n" +
+      "- set-visibility: Show/hide elements per variant\n" +
+      "- set-image: Set image source (asset or URL)\n" +
+      "- apply-mixin/detach-mixin: Apply or remove style mixins\n" +
+      "- add-animation/remove-animation: Apply or remove animations\n" +
+      "Use inspect tool for read-only queries.",
     {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component or page"),
+      action: z.enum([
+        "add", "remove", "move", "clone", "reorder",
+        "update-styles", "update-text", "update-rich-text", "update-attrs",
+        "set-visibility", "set-image", "apply-mixin", "detach-mixin",
+        "add-animation", "remove-animation",
+      ]),
+      componentUuid: z.string().optional().describe("UUID of the component"),
+      nodeRef: z.string().optional().describe("Node reference: UUID, name, path, or index"),
+      parentRef: z.string().optional().describe("Parent node reference (for add, reorder, clone)"),
+      newParentRef: z.string().optional().describe("New parent reference (for move)"),
+      child: z.any().optional().describe("PlasmicElement JSON for add action"),
+      position: z.union([z.string(), z.number()]).optional().describe("Insert position: 'first', 'last', or index"),
+      slot: z.string().optional().describe("Target slot name on component instance"),
+      newName: z.string().optional().describe("Name for cloned node"),
+      childRefs: z.array(z.string()).optional().describe("Ordered child refs for reorder"),
+      styles: z.record(z.string()).optional().describe("CSS styles in camelCase"),
+      text: z.string().optional().describe("Text content or expression"),
+      marks: z.array(z.object({
+        start: z.number(),
+        end: z.number(),
+        type: z.enum(["bold", "italic", "underline", "strikethrough", "link", "code"]),
+        href: z.string().optional(),
+      })).optional().describe("Rich text formatting marks"),
+      attrs: z.record(z.any()).optional().describe("HTML attributes to set"),
+      variant: z.string().optional().describe("Target variant by name, UUID, or selector"),
+      dynamic: z.boolean().optional().describe("Create dynamic text expression"),
+      fallback: z.string().optional().describe("Fallback for dynamic text"),
+      html: z.boolean().optional().describe("Render dynamic text as HTML"),
+      visible: z.union([z.boolean(), z.literal("displayNone")]).optional().describe("Visibility state"),
+      assetRef: z.string().optional().describe("Image asset reference for set-image"),
+      src: z.string().optional().describe("Raw image URL for set-image"),
+      mixinRef: z.string().optional().describe("Mixin reference for apply/detach"),
+      seqRef: z.string().optional().describe("Animation sequence reference"),
+      duration: z.string().optional().describe("Animation duration"),
+      delay: z.string().optional().describe("Animation delay"),
+      timingFunction: z.string().optional().describe("Animation timing function"),
+      iterationCount: z.string().optional().describe("Animation iteration count"),
+      direction: z.enum(["normal", "reverse", "alternate", "alternate-reverse"]).optional().describe("Animation direction"),
+      fillMode: z.enum(["none", "forwards", "backwards", "both"]).optional().describe("Animation fill mode"),
+      playState: z.enum(["paused", "running"]).optional().describe("Animation play state"),
+      animationIndex: z.number().optional().describe("Animation index for removal"),
+      dryRun: z.boolean().optional().describe("Preview changes without persisting"),
     },
-    async ({ componentUuid }) => {
+    async (params) => {
+      const { action } = params;
       try {
-        const session = requireSession();
-        const component = session.site.components?.find(
-          (c: any) => c.uuid === componentUuid
-        );
+        switch (action) {
+          case "add": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "node.add");
+            const pRef = requireParam(params.parentRef, "parentRef", "node.add");
 
-        if (!component) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Component UUID "${componentUuid}" not found. Use list-components to see available components.`,
-              },
-            ],
-            isError: true,
-          };
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                addChild(apiClient, cuuid, pRef, params.child, params.position, params.slot)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        parent: result.parentName ?? result.parentUuid,
+                        ...(result.slotName ? { slot: result.slotName } : {}),
+                        position: result.position,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await addChild(
+              apiClient, cuuid, pRef, params.child, params.position, params.slot
+            );
+            // Structural edit: invalidate node resolver cache for this component
+            invalidateNodeCache(cuuid);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      parent: result.parentName ?? result.parentUuid,
+                      ...(result.slotName ? { slot: result.slotName } : {}),
+                      position: result.position,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "remove": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "node.remove");
+            const nref = requireParam(params.nodeRef, "nodeRef", "node.remove");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                removeChild(apiClient, cuuid, nref)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        removed: result.removedName ?? result.removedUuid,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await removeChild(apiClient, cuuid, nref);
+            invalidateNodeCache(cuuid);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      removed: result.removedName ?? result.removedUuid,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "move": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "node.move");
+            const nref = requireParam(params.nodeRef, "nodeRef", "node.move");
+            const npRef = requireParam(params.newParentRef, "newParentRef", "node.move");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                moveChild(apiClient, cuuid, nref, npRef, params.position, params.slot)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        moved: result.movedName ?? result.movedUuid,
+                        newParent: result.newParentName ?? result.newParentUuid,
+                        ...(result.slotName ? { slot: result.slotName } : {}),
+                        position: result.position,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await moveChild(
+              apiClient, cuuid, nref, npRef, params.position, params.slot
+            );
+            invalidateNodeCache(cuuid);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      moved: result.movedName ?? result.movedUuid,
+                      newParent: result.newParentName ?? result.newParentUuid,
+                      ...(result.slotName ? { slot: result.slotName } : {}),
+                      position: result.position,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "clone": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "node.clone");
+            const nref = requireParam(params.nodeRef, "nodeRef", "node.clone");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                cloneChild(apiClient, cuuid, nref, params.newName, params.parentRef, params.position, params.slot)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        cloned: result.clonedName ?? result.clonedUuid,
+                        clonedUuid: result.clonedUuid,
+                        originalUuid: result.originalUuid,
+                        ...(result.slotName ? { slot: result.slotName } : {}),
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await cloneChild(
+              apiClient, cuuid, nref, params.newName, params.parentRef, params.position, params.slot
+            );
+            invalidateNodeCache(cuuid);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      cloned: result.clonedName ?? result.clonedUuid,
+                      clonedUuid: result.clonedUuid,
+                      originalUuid: result.originalUuid,
+                      ...(result.slotName ? { slot: result.slotName } : {}),
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "reorder": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "node.reorder");
+            const pRef = requireParam(params.parentRef, "parentRef", "node.reorder");
+            const cRefs = requireParam(params.childRefs, "childRefs", "node.reorder");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                reorderChildren(apiClient, cuuid, pRef, cRefs)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        newOrder: result.newOrder,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await reorderChildren(apiClient, cuuid, pRef, cRefs);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      parentName: result.parentName,
+                      parentUuid: result.parentUuid,
+                      newOrder: result.newOrder,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "update-styles": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "node.update-styles");
+            const nref = requireParam(params.nodeRef, "nodeRef", "node.update-styles");
+            const sty = requireParam(params.styles, "styles", "node.update-styles");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                updateStyles(apiClient, cuuid, nref, sty, params.variant)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        node: result.nodeName ?? result.nodeUuid,
+                        updatedProperties: result.updatedProperties,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await updateStyles(
+              apiClient, cuuid, nref, sty, params.variant
+            );
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      node: result.nodeName ?? result.nodeUuid,
+                      updatedProperties: result.updatedProperties,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "update-text": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "node.update-text");
+            const nref = requireParam(params.nodeRef, "nodeRef", "node.update-text");
+            const txt = requireParam(params.text, "text", "node.update-text");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                updateText(apiClient, cuuid, nref, txt, params.variant, params.dynamic, params.fallback, params.html)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        node: result.nodeName ?? result.nodeUuid,
+                        previousText: result.previousText,
+                        newText: result.newText,
+                        ...(result.dynamic ? { dynamic: true } : {}),
+                        ...(result.fallback != null ? { fallback: result.fallback } : {}),
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await updateText(apiClient, cuuid, nref, txt, params.variant, params.dynamic, params.fallback, params.html);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      node: result.nodeName ?? result.nodeUuid,
+                      previousText: result.previousText,
+                      newText: result.newText,
+                      ...(result.dynamic ? { dynamic: true } : {}),
+                      ...(result.fallback != null ? { fallback: result.fallback } : {}),
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "update-rich-text": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "node.update-rich-text");
+            const nref = requireParam(params.nodeRef, "nodeRef", "node.update-rich-text");
+            const txt = requireParam(params.text, "text", "node.update-rich-text");
+            const mrks = requireParam(params.marks, "marks", "node.update-rich-text");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                updateRichText(apiClient, cuuid, nref, txt, mrks, params.variant)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        node: result.nodeName ?? result.nodeUuid,
+                        previousText: result.previousText,
+                        newText: result.newText,
+                        markCount: result.markCount,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await updateRichText(apiClient, cuuid, nref, txt, mrks, params.variant);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      node: result.nodeName ?? result.nodeUuid,
+                      previousText: result.previousText,
+                      newText: result.newText,
+                      markCount: result.markCount,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "update-attrs": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "node.update-attrs");
+            const nref = requireParam(params.nodeRef, "nodeRef", "node.update-attrs");
+            const at = requireParam(params.attrs, "attrs", "node.update-attrs");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                updateAttrs(apiClient, cuuid, nref, at, params.variant)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        node: result.nodeName ?? result.nodeUuid,
+                        updatedAttributes: result.updatedAttributes,
+                        removedAttributes: result.removedAttributes,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await updateAttrs(
+              apiClient, cuuid, nref, at, params.variant
+            );
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      node: result.nodeName ?? result.nodeUuid,
+                      updatedAttributes: result.updatedAttributes,
+                      removedAttributes: result.removedAttributes,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "set-visibility": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "node.set-visibility");
+            const nref = requireParam(params.nodeRef, "nodeRef", "node.set-visibility");
+            const vis = requireParam(params.visible, "visible", "node.set-visibility");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                setVisibility(apiClient, cuuid, nref, vis, params.variant)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        node: result.nodeName ?? result.nodeUuid,
+                        previousVisibility: result.previousVisibility,
+                        newVisibility: result.newVisibility,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await setVisibility(
+              apiClient, cuuid, nref, vis, params.variant
+            );
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      node: result.nodeName ?? result.nodeUuid,
+                      previousVisibility: result.previousVisibility,
+                      newVisibility: result.newVisibility,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "set-image": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "node.set-image");
+            const nref = requireParam(params.nodeRef, "nodeRef", "node.set-image");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                setImage(apiClient, cuuid, nref, { assetRef: params.assetRef, src: params.src }, params.variant)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        node: result.nodeName ?? result.nodeUuid,
+                        imageSource: result.imageSource,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await setImage(
+              apiClient, cuuid, nref,
+              { assetRef: params.assetRef, src: params.src },
+              params.variant
+            );
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      node: result.nodeName ?? result.nodeUuid,
+                      imageSource: result.imageSource,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "apply-mixin": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "node.apply-mixin");
+            const nref = requireParam(params.nodeRef, "nodeRef", "node.apply-mixin");
+            const mref = requireParam(params.mixinRef, "mixinRef", "node.apply-mixin");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                applyMixin(apiClient, cuuid, nref, mref)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        mixinName: result.mixinName,
+                        nodeUuid: result.nodeUuid,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await applyMixin(apiClient, cuuid, nref, mref);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      mixinName: result.mixinName,
+                      nodeUuid: result.nodeUuid,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "detach-mixin": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "node.detach-mixin");
+            const nref = requireParam(params.nodeRef, "nodeRef", "node.detach-mixin");
+            const mref = requireParam(params.mixinRef, "mixinRef", "node.detach-mixin");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                detachMixin(apiClient, cuuid, nref, mref)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        mixinName: result.mixinName,
+                        nodeUuid: result.nodeUuid,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await detachMixin(apiClient, cuuid, nref, mref);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      mixinName: result.mixinName,
+                      nodeUuid: result.nodeUuid,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "add-animation": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "node.add-animation");
+            const nref = requireParam(params.nodeRef, "nodeRef", "node.add-animation");
+            const sref = requireParam(params.seqRef, "seqRef", "node.add-animation");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                addNodeAnimation(apiClient, cuuid, nref, sref,
+                  params.duration, params.delay, params.timingFunction,
+                  params.iterationCount, params.direction, params.fillMode, params.playState)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        sequenceName: result.sequenceName,
+                        nodeUuid: result.nodeUuid,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await addNodeAnimation(
+              apiClient, cuuid, nref, sref,
+              params.duration, params.delay, params.timingFunction,
+              params.iterationCount, params.direction, params.fillMode, params.playState
+            );
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      sequenceName: result.sequenceName,
+                      nodeUuid: result.nodeUuid,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "remove-animation": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "node.remove-animation");
+            const nref = requireParam(params.nodeRef, "nodeRef", "node.remove-animation");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                removeNodeAnimation(apiClient, cuuid, nref, params.seqRef, params.animationIndex)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        removedCount: result.removedCount,
+                        nodeUuid: result.nodeUuid,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await removeNodeAnimation(apiClient, cuuid, nref, params.seqRef, params.animationIndex);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      removedCount: result.removedCount,
+                      nodeUuid: result.nodeUuid,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          default:
+            throw new Error(`Unknown action '${action}' for node tool.`);
         }
-
-        const host = auth.host.replace(/\/$/, ""); // Normalize trailing slash
-        const studioUrl = `${host}/projects/${session.projectId}`;
-
-        const result: Record<string, string> = { studioUrl };
-
-        if (component.pageMeta?.path) {
-          result.previewUrl = `${host}/projects/${session.projectId}/preview${component.pageMeta.path}`;
-        }
-
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify(result, null, 2) },
-          ],
-        };
       } catch (err: any) {
+        return handleMutationError(`node.${action}`, err);
+      }
+    }
+  );
+
+  // ========================================================================
+  // DOMAIN 5: variant (8 actions)
+  // ========================================================================
+
+  server.tool(
+    "variant",
+    "Variant management for components and global variant groups.\n" +
+      "Actions: list, create-style, create-group, list-global-groups, create-global-group, add-global, remove-global-group, rename-global.\n" +
+      "- list: List all variants for a component\n" +
+      "- create-style: Create hover/focus/etc. style variant\n" +
+      "- create-group: Create named variant group (Size, Theme, etc.)\n" +
+      "- list-global-groups: List global variant groups\n" +
+      "- create-global-group: Create a global variant group\n" +
+      "- add-global: Add variant to a global group\n" +
+      "- remove-global-group: Remove entire global variant group\n" +
+      "- rename-global: Rename a global variant",
+    {
+      action: z.enum([
+        "list", "create-style", "create-group",
+        "list-global-groups", "create-global-group", "add-global",
+        "remove-global-group", "rename-global",
+      ]),
+      componentUuid: z.string().optional().describe("UUID of the component"),
+      selector: z.string().optional().describe("CSS pseudo-class selector for create-style"),
+      nodeRef: z.string().optional().describe("Node reference to scope style variant"),
+      name: z.string().optional().describe("Name for variant group or variant"),
+      type: z.enum(["single", "multi", "toggle"]).optional().describe("Group type"),
+      initialVariants: z.array(z.string()).optional().describe("Initial variant names"),
+      groupRef: z.string().optional().describe("Group reference (UUID or name)"),
+      variantRef: z.string().optional().describe("Variant reference (UUID or name)"),
+      newName: z.string().optional().describe("New name for rename"),
+    },
+    async (params) => {
+      const { action } = params;
+      try {
+        switch (action) {
+          case "list": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "variant.list");
+            const session = requireSession();
+            const component = session.site.components?.find(
+              (c: any) => c.uuid === cuuid
+            );
+
+            if (!component) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: `Component UUID "${cuuid}" not found. Use list-components to see available components.`,
+                  },
+                ],
+                isError: true,
+              };
+            }
+
+            const result = listVariants(session.site, component);
+
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(result, null, 2),
+                },
+              ],
+            };
+          }
+
+          case "create-style": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "variant.create-style");
+            const sel = requireParam(params.selector, "selector", "variant.create-style");
+
+            const result = await createStyleVariant(
+              apiClient, cuuid, sel, params.nodeRef
+            );
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      variantUuid: result.variantUuid,
+                      selector: result.selector,
+                      scope: result.scope,
+                      ...(result.forTplName
+                        ? { element: result.forTplName }
+                        : {}),
+                      ...(result.forTplUuid
+                        ? { elementUuid: result.forTplUuid }
+                        : {}),
+                      revision: result.save.revisionNum,
+                      message: `Created ${result.selector} variant (${result.scope}-level)${result.forTplName ? ` on ${result.forTplName}` : ""}. Use update-styles with variant: "${result.selector}" to apply styles.`,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "create-group": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "variant.create-group");
+            const gname = requireParam(params.name, "name", "variant.create-group");
+            if (gname.length < 1) throw new Error("Group name is required");
+
+            const result = await createVariantGroup(
+              apiClient, cuuid, gname, params.type, params.initialVariants
+            );
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      groupUuid: result.groupUuid,
+                      groupName: result.groupName,
+                      type: result.type,
+                      variants: result.variants,
+                      revision: result.save.revisionNum,
+                      message: `Created variant group "${result.groupName}" (${result.type}) with ${result.variants.length} variant(s). Use update-styles/update-text with variant names to apply overrides.`,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "list-global-groups": {
+            const result = listGlobalVariantGroups();
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(result, null, 2),
+                },
+              ],
+            };
+          }
+
+          case "create-global-group": {
+            const gname = requireParam(params.name, "name", "variant.create-global-group");
+            const result = await createGlobalVariantGroup(apiClient, gname, params.type as any, params.initialVariants);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      group: result.group,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "add-global": {
+            const gref = requireParam(params.groupRef, "groupRef", "variant.add-global");
+            const vname = requireParam(params.name, "name", "variant.add-global");
+            const result = await addGlobalVariant(apiClient, gref, vname);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      variant: result.variant,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "remove-global-group": {
+            const gref = requireParam(params.groupRef, "groupRef", "variant.remove-global-group");
+            const result = await removeGlobalVariantGroup(apiClient, gref);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      removedName: result.removedName,
+                      removedUuid: result.removedUuid,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "rename-global": {
+            const vref = requireParam(params.variantRef, "variantRef", "variant.rename-global");
+            const nn = requireParam(params.newName, "newName", "variant.rename-global");
+            const result = await renameGlobalVariant(apiClient, vref, nn);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      oldName: result.oldName,
+                      newName: result.newName,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          default:
+            throw new Error(`Unknown action '${action}' for variant tool.`);
+        }
+      } catch (err: any) {
+        if (["create-style", "create-group", "create-global-group", "add-global", "remove-global-group", "rename-global"].includes(action)) {
+          return handleMutationError(`variant.${action}`, err);
+        }
         return {
           content: [
             {
               type: "text" as const,
-              text: `Error getting preview URL: ${err.message}`,
+              text: `Error in variant.${action}: ${err.message}`,
             },
           ],
           isError: true,
@@ -2696,3918 +2928,1689 @@ export function createServer(): McpServer {
     }
   );
 
-  // --- delete-component ---
-  // Deletes a component or page from the project. Checks for references
-  // from other components; if references exist and force is not true, throws
-  // an error listing the referencing components. Uses TplMgr.removeComponent()
-  // for the actual deletion.
-  server.tool(
-    "delete-component",
-    "Delete a page or component. Checks for references from other components. Use force: true to override reference check.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component or page to delete"),
-      force: z
-        .boolean()
-        .optional()
-        .describe("Override reference check and force deletion"),
-    },
-    async ({ componentUuid, force }) => {
-      try {
-        const result = await deleteComponent(apiClient, componentUuid, force);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  deletedName: result.deletedName,
-                  deletedUuid: result.deletedUuid,
-                  revision: result.save.revisionNum,
-                  message: `Deleted "${result.deletedName}"`,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("deleting component", err);
-      }
-    }
-  );
-
-  // --- set-visibility ---
-  // Controls element visibility per variant: show, hide (not rendered), or
-  // display:none (CSS hidden). Uses dataCond + PLASMIC_DISPLAY_NONE marker
-  // on the VariantSetting to match Studio's internal visibility model.
-  server.tool(
-    "set-visibility",
-    "Set element visibility per variant. Use to hide/show elements for responsive layouts " +
-      "or conditional rendering. visible=true shows element, visible=false removes from render, " +
-      'visible="displayNone" hides via CSS display:none.',
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component containing the node"),
-      nodeRef: z
-        .string()
-        .describe(
-          'Node reference: UUID, name (e.g., "Hero Title"), path (e.g., "HeroSection.Title"), or index (e.g., "#2")'
-        ),
-      visible: z
-        .union([z.boolean(), z.literal("displayNone")])
-        .describe(
-          'Visibility state: true (show), false (not rendered), or "displayNone" (CSS hidden)'
-        ),
-      variant: z
-        .string()
-        .optional()
-        .describe(
-          'Target variant by name (e.g., "Mobile"), UUID, or selector (e.g., ":hover"). Omit for base variant.'
-        ),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe(
-          "When true, shows what would change without persisting. Model is left unchanged."
-        ),
-    },
-    async ({ componentUuid, nodeRef, visible, variant, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            setVisibility(apiClient, componentUuid, nodeRef, visible, variant)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    node: result.nodeName ?? result.nodeUuid,
-                    previousVisibility: result.previousVisibility,
-                    newVisibility: result.newVisibility,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await setVisibility(
-          apiClient,
-          componentUuid,
-          nodeRef,
-          visible,
-          variant
-        );
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  node: result.nodeName ?? result.nodeUuid,
-                  previousVisibility: result.previousVisibility,
-                  newVisibility: result.newVisibility,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("setting visibility", err);
-      }
-    }
-  );
-
-  // --- set-data-cond ---
-  // Sets or removes a JavaScript condition expression for conditional rendering.
-  // The condition is evaluated at render time — the element only renders when truthy.
-  // Separate from set-visibility: visibility is a simple tri-state toggle, while
-  // data-cond enables arbitrary JS-based conditional logic.
-  server.tool(
-    "set-data-cond",
-    "Set a data condition expression for conditional rendering on an element. " +
-      'The condition is a JavaScript expression evaluated at render time (e.g., "$ctx.user.isLoggedIn"). ' +
-      "Pass null to remove the condition.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component containing the node"),
-      nodeRef: z
-        .string()
-        .describe(
-          'Node reference: UUID, name (e.g., "Hero Title"), path (e.g., "HeroSection.Title"), or index (e.g., "#2")'
-        ),
-      condition: z
-        .string()
-        .nullable()
-        .describe(
-          'JavaScript condition expression (e.g., "$ctx.showBanner") or null to remove'
-        ),
-      variant: z
-        .string()
-        .optional()
-        .describe(
-          'Target variant by name (e.g., "Mobile"), UUID, or selector (e.g., ":hover"). Omit for base variant.'
-        ),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe(
-          "When true, shows what would change without persisting. Model is left unchanged."
-        ),
-    },
-    async ({ componentUuid, nodeRef, condition, variant, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            setDataCond(
-              apiClient,
-              componentUuid,
-              nodeRef,
-              condition,
-              variant
-            )
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    node: result.nodeName ?? result.nodeUuid,
-                    previousCondition: result.previousCondition,
-                    newCondition: result.newCondition,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await setDataCond(
-          apiClient,
-          componentUuid,
-          nodeRef,
-          condition,
-          variant
-        );
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  node: result.nodeName ?? result.nodeUuid,
-                  previousCondition: result.previousCondition,
-                  newCondition: result.newCondition,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("setting data condition", err);
-      }
-    }
-  );
-
-  // --- create-token ---
-  // Creates a new style token on the site's design system.
-  server.tool(
-    "create-token",
-    "Create a new design token (color, spacing, font, etc.) on the site. " +
-      'Example: name="Primary Blue", type="Color", value="#0066FF".',
-    {
-      name: z.string().describe("Token name (e.g., \"Primary Blue\", \"Space MD\")"),
-      type: z
-        .enum([
-          "Color",
-          "Spacing",
-          "Opacity",
-          "LineHeight",
-          "FontFamily",
-          "FontSize",
-        ])
-        .describe("Token type"),
-      value: z
-        .string()
-        .describe(
-          'CSS value for the token (e.g., "#0066FF", "16px", "Inter, sans-serif")'
-        ),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe(
-          "When true, shows what would change without persisting."
-        ),
-    },
-    async ({ name, type, value, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            createToken(apiClient, name, type, value)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    name: result.name,
-                    tokenType: result.type,
-                    value: result.value,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await createToken(apiClient, name, type, value);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  tokenUuid: result.tokenUuid,
-                  name: result.name,
-                  tokenType: result.type,
-                  value: result.value,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("creating token", err);
-      }
-    }
-  );
-
-  // --- update-token ---
-  // Updates a token's value and/or name.
-  server.tool(
-    "update-token",
-    "Update an existing design token's value and/or name. " +
-      "Provide tokenRef as the token name or UUID.",
-    {
-      tokenRef: z
-        .string()
-        .describe(
-          'Token reference: name (e.g., "Primary Blue") or UUID'
-        ),
-      value: z
-        .string()
-        .optional()
-        .describe(
-          'New CSS value (e.g., "#FF0000", "24px"). Omit to keep current value.'
-        ),
-      name: z
-        .string()
-        .optional()
-        .describe("New token name. Omit to keep current name."),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe(
-          "When true, shows what would change without persisting."
-        ),
-    },
-    async ({ tokenRef, value, name, dryRun }) => {
-      try {
-        if (!value && !name) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    error: true,
-                    message:
-                      "At least one of 'value' or 'name' must be provided.",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-            isError: true,
-          };
-        }
-
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            updateToken(apiClient, tokenRef, value, name)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    tokenUuid: result.tokenUuid,
-                    name: result.name,
-                    previousName: result.previousName,
-                    previousValue: result.previousValue,
-                    value: result.value,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await updateToken(apiClient, tokenRef, value, name);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  tokenUuid: result.tokenUuid,
-                  name: result.name,
-                  previousName: result.previousName,
-                  previousValue: result.previousValue,
-                  value: result.value,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("updating token", err);
-      }
-    }
-  );
-
-  // --- remove-token ---
-  // Removes a token from the site and inlines all references to its resolved value.
-  server.tool(
-    "remove-token",
-    "Remove a design token from the site. All style references to this token " +
-      "are inlined to the token's current resolved value before removal.",
-    {
-      tokenRef: z
-        .string()
-        .describe(
-          'Token reference: name (e.g., "Primary Blue") or UUID'
-        ),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe(
-          "When true, shows what would change without persisting."
-        ),
-    },
-    async ({ tokenRef, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            removeToken(apiClient, tokenRef)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    tokenUuid: result.tokenUuid,
-                    name: result.name,
-                    inlinedCount: result.inlinedCount,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await removeToken(apiClient, tokenRef);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  tokenUuid: result.tokenUuid,
-                  name: result.name,
-                  inlinedCount: result.inlinedCount,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("removing token", err);
-      }
-    }
-  );
-
-  // --- duplicate-token ---
-  // Duplicates an existing token with an optional new name.
-  server.tool(
-    "duplicate-token",
-    "Duplicate an existing design token. Creates a copy with a new UUID " +
-      "and optionally a new name.",
-    {
-      tokenRef: z
-        .string()
-        .describe(
-          'Token reference: name (e.g., "Primary Blue") or UUID'
-        ),
-      newName: z
-        .string()
-        .optional()
-        .describe(
-          'Name for the duplicated token. If omitted, auto-generated from source name.'
-        ),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe(
-          "When true, shows what would change without persisting."
-        ),
-    },
-    async ({ tokenRef, newName, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            duplicateToken(apiClient, tokenRef, newName)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    tokenUuid: result.tokenUuid,
-                    name: result.name,
-                    sourceUuid: result.sourceUuid,
-                    sourceName: result.sourceName,
-                    value: result.value,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await duplicateToken(apiClient, tokenRef, newName);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  tokenUuid: result.tokenUuid,
-                  name: result.name,
-                  sourceUuid: result.sourceUuid,
-                  sourceName: result.sourceName,
-                  value: result.value,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("duplicating token", err);
-      }
-    }
-  );
-
-  // --- set-data-rep ---
-  // Sets or removes data repetition on an element, enabling collection-based
-  // rendering (e.g., repeating a card for each product in an array).
-  // Creates a Rep object with element/index Var and a CustomCode collection expression.
-  server.tool(
-    "set-data-rep",
-    "Set data repetition on an element to repeat it for each item in a collection. " +
-      'Provide a JavaScript expression for the array (e.g., "$queries.products.data", "$ctx.items"). ' +
-      "Loop variables are accessible in descendant elements as $ctx.<elementVariable>. " +
-      "Pass collection as null to remove repetition.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component containing the node"),
-      nodeRef: z
-        .string()
-        .describe(
-          'Node reference: UUID, name (e.g., "ProductCard"), path (e.g., "Root.CardList"), or index (e.g., "#2")'
-        ),
-      collection: z
-        .string()
-        .nullable()
-        .describe(
-          'JavaScript expression for the array (e.g., "$queries.products.data", "$ctx.items", "[1,2,3]") or null to remove repetition'
-        ),
-      elementVariable: z
-        .string()
-        .optional()
-        .describe(
-          'Loop variable name for each item (default: "currentItem"). Accessible in descendants as $ctx.<name>.'
-        ),
-      indexVariable: z
-        .string()
-        .nullable()
-        .optional()
-        .describe(
-          'Loop variable name for the index (default: "currentIndex"). Pass null to omit index variable.'
-        ),
-      variant: z
-        .string()
-        .optional()
-        .describe(
-          'Target variant by name (e.g., "Mobile"), UUID, or selector. Omit for base variant. Note: dataRep is conventionally only set on the base variant.'
-        ),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe(
-          "When true, shows what would change without persisting. Model is left unchanged."
-        ),
-    },
-    async ({
-      componentUuid,
-      nodeRef,
-      collection,
-      elementVariable,
-      indexVariable,
-      variant,
-      dryRun,
-    }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            setDataRep(
-              apiClient,
-              componentUuid,
-              nodeRef,
-              collection,
-              elementVariable,
-              indexVariable,
-              variant
-            )
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    node: result.nodeName ?? result.nodeUuid,
-                    previousDataRep: result.previousDataRep,
-                    newDataRep: result.newDataRep,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await setDataRep(
-          apiClient,
-          componentUuid,
-          nodeRef,
-          collection,
-          elementVariable,
-          indexVariable,
-          variant
-        );
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  node: result.nodeName ?? result.nodeUuid,
-                  previousDataRep: result.previousDataRep,
-                  newDataRep: result.newDataRep,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("setting data repetition", err);
-      }
-    }
-  );
-
-  // --- list-props ---
-  // Lists all props (params) defined on a component. Read-only — no mutation.
-  // Returns structured info including type, kind, metadata for each param.
-  server.tool(
-    "list-props",
-    "List all props defined on a component: name, type, kind (prop/slot/state), " +
-      "description, default value. Use this to understand a component's interface.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component to list props for"),
-    },
-    async ({ componentUuid }) => {
-      try {
-        const session = requireSession();
-        const component = session.site.components?.find(
-          (c: any) => c.uuid === componentUuid
-        );
-
-        if (!component) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Component UUID "${componentUuid}" not found. Use list-components to see available components.`,
-              },
-            ],
-            isError: true,
-          };
-        }
-
-        const props = listProps(component);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  component: component.name,
-                  componentUuid: component.uuid,
-                  propCount: props.length,
-                  props,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error listing props: ${err.message}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // --- add-prop ---
-  // Creates a new prop (PropParam) on a component definition.
-  // Supported types: text, number, boolean, object, href, eventHandler.
-  server.tool(
-    "add-prop",
-    "Add a prop to a component definition. The prop becomes part of the component's " +
-      "interface and can be set on instances, used in dynamic text ($props.name), " +
-      "or used in data conditions ($props.showIcon).",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component to add the prop to"),
-      name: z
-        .string()
-        .describe(
-          'Prop name (valid JS identifier, e.g., "title", "showIcon", "itemCount")'
-        ),
-      type: z
-        .enum(["text", "number", "boolean", "object", "href", "eventHandler"])
-        .describe("Prop type"),
-      defaultValue: z
-        .string()
-        .optional()
-        .describe(
-          'Default value for the prop. For text: the string value (e.g., "Untitled"). ' +
-            'For number: numeric string (e.g., "42"). For boolean: "true" or "false".'
-        ),
-      description: z
-        .string()
-        .optional()
-        .describe("Description of the prop shown in Studio"),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe(
-          "When true, shows what would change without persisting."
-        ),
-    },
-    async ({ componentUuid, name, type, defaultValue, description, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            addProp(apiClient, componentUuid, name, type, defaultValue, description)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    paramUuid: result.paramUuid,
-                    name: result.name,
-                    propType: result.type,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await addProp(
-          apiClient, componentUuid, name, type, defaultValue, description
-        );
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  paramUuid: result.paramUuid,
-                  name: result.name,
-                  propType: result.type,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("adding prop", err);
-      }
-    }
-  );
-
-  // --- remove-prop ---
-  // Removes a prop from a component definition. Cleans up Args on instances.
-  server.tool(
-    "remove-prop",
-    "Remove a prop from a component definition. All Arg overrides on instances " +
-      "referencing this prop are cleaned up automatically.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component to remove the prop from"),
-      propRef: z
-        .string()
-        .describe(
-          'Prop reference: name (e.g., "title") or UUID'
-        ),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe(
-          "When true, shows what would change without persisting."
-        ),
-    },
-    async ({ componentUuid, propRef, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            removeProp(apiClient, componentUuid, propRef)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    removedName: result.removedName,
-                    removedUuid: result.removedUuid,
-                    cleanedArgCount: result.cleanedArgCount,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await removeProp(apiClient, componentUuid, propRef);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  removedName: result.removedName,
-                  removedUuid: result.removedUuid,
-                  cleanedArgCount: result.cleanedArgCount,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("removing prop", err);
-      }
-    }
-  );
-
-  // --- update-prop ---
-  // Updates a prop's name, default value, and/or description.
-  server.tool(
-    "update-prop",
-    "Update an existing prop's name, default value, and/or description. " +
-      "Type cannot be changed — use remove-prop + add-prop instead.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component containing the prop"),
-      propRef: z
-        .string()
-        .describe(
-          'Prop reference: name (e.g., "title") or UUID'
-        ),
-      name: z
-        .string()
-        .optional()
-        .describe("New prop name. Omit to keep current name."),
-      defaultValue: z
-        .string()
-        .optional()
-        .describe(
-          'New default value (same format as add-prop). Omit to keep current default.'
-        ),
-      description: z
-        .string()
-        .optional()
-        .describe("New description. Omit to keep current. Pass empty string to clear."),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe(
-          "When true, shows what would change without persisting."
-        ),
-    },
-    async ({ componentUuid, propRef, name, defaultValue, description, dryRun }) => {
-      try {
-        if (!name && defaultValue === undefined && description === undefined) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    error: true,
-                    message:
-                      "At least one of 'name', 'defaultValue', or 'description' must be provided.",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-            isError: true,
-          };
-        }
-
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            updateProp(apiClient, componentUuid, propRef, name, defaultValue, description)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    paramUuid: result.paramUuid,
-                    name: result.name,
-                    previousName: result.previousName,
-                    updatedFields: result.updatedFields,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await updateProp(
-          apiClient, componentUuid, propRef, name, defaultValue, description
-        );
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  paramUuid: result.paramUuid,
-                  name: result.name,
-                  previousName: result.previousName,
-                  updatedFields: result.updatedFields,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("updating prop", err);
-      }
-    }
-  );
-
-  // --- list-states ---
-  // List all named states on a component.
-  server.tool(
-    "list-states",
-    "List all named state variables on a component. " +
-      "Returns name, variableType, accessType, and initialValue for each state.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component to list states for (from list-components)"),
-    },
-    async ({ componentUuid }) => {
-      try {
-        const session = requireSession();
-        const component = session.site.components?.find(
-          (c: any) => c.uuid === componentUuid
-        );
-
-        if (!component) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Component UUID "${componentUuid}" not found. Use list-components to see available components.`,
-              },
-            ],
-            isError: true,
-          };
-        }
-
-        const states = listStates(component);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  componentUuid,
-                  componentName: component.name,
-                  stateCount: states.length,
-                  states,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("listing states", err);
-      }
-    }
-  );
-
-  // --- add-state ---
-  // Create a new named state variable on a component.
-  server.tool(
-    "add-state",
-    "Create a new named state variable on a component. " +
-      "Supported variable types: text, number, boolean, array, object. " +
-      "Access types: private (default), readonly, writable. " +
-      "The state is usable in dynamic text ($state.name), data-cond, and interactions.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component to add the state to"),
-      name: z
-        .string()
-        .describe('State variable name (e.g., "isOpen", "count", "searchQuery")'),
-      variableType: z
-        .enum(["text", "number", "boolean", "array", "object"])
-        .describe("Type of the state variable"),
-      accessType: z
-        .enum(["private", "readonly", "writable"])
-        .optional()
-        .describe(
-          'Access type: "private" (default, internal only), "readonly" (exposed as read-only prop), "writable" (exposed as read-write prop)'
-        ),
-      initialValue: z
-        .string()
-        .optional()
-        .describe(
-          'Initial value as a string: text is auto-quoted, number/boolean validated. E.g., "false", "0", "hello"'
-        ),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe(
-          "When true, shows what would change without persisting."
-        ),
-    },
-    async ({ componentUuid, name, variableType, accessType, initialValue, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            addState(apiClient, componentUuid, name, variableType, accessType ?? "private", initialValue)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    stateUuid: result.stateUuid,
-                    paramUuid: result.paramUuid,
-                    name: result.name,
-                    variableType: result.variableType,
-                    accessType: result.accessType,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await addState(
-          apiClient, componentUuid, name, variableType, accessType ?? "private", initialValue
-        );
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  stateUuid: result.stateUuid,
-                  paramUuid: result.paramUuid,
-                  name: result.name,
-                  variableType: result.variableType,
-                  accessType: result.accessType,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("adding state", err);
-      }
-    }
-  );
-
-  // --- remove-state ---
-  // Remove a named state from a component with cleanup.
-  server.tool(
-    "remove-state",
-    "Remove a named state variable from a component. " +
-      "Cleans up associated params and arg bindings on TplComponent instances.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component containing the state"),
-      stateRef: z
-        .string()
-        .describe(
-          'State reference: name (e.g., "isOpen") or param UUID'
-        ),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe(
-          "When true, shows what would change without persisting."
-        ),
-    },
-    async ({ componentUuid, stateRef, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            removeState(apiClient, componentUuid, stateRef)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    removedName: result.removedName,
-                    removedUuid: result.removedUuid,
-                    cleanedArgCount: result.cleanedArgCount,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await removeState(apiClient, componentUuid, stateRef);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  removedName: result.removedName,
-                  removedUuid: result.removedUuid,
-                  cleanedArgCount: result.cleanedArgCount,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("removing state", err);
-      }
-    }
-  );
-
-  // --- update-state ---
-  // Update a state's name, access type, and/or initial value.
-  server.tool(
-    "update-state",
-    "Update a state variable's name, access type, and/or initial value. " +
-      "Variable type cannot be changed — use remove-state + add-state instead.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component containing the state"),
-      stateRef: z
-        .string()
-        .describe(
-          'State reference: name (e.g., "isOpen") or param UUID'
-        ),
-      name: z
-        .string()
-        .optional()
-        .describe("New state name. Omit to keep current name."),
-      accessType: z
-        .enum(["private", "readonly", "writable"])
-        .optional()
-        .describe(
-          'New access type. Omit to keep current. When changed to "writable", the state param becomes an external prop.'
-        ),
-      initialValue: z
-        .string()
-        .optional()
-        .describe(
-          'New initial value (same format as add-state). Omit to keep current.'
-        ),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe(
-          "When true, shows what would change without persisting."
-        ),
-    },
-    async ({ componentUuid, stateRef, name, accessType, initialValue, dryRun }) => {
-      try {
-        if (!name && accessType === undefined && initialValue === undefined) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    error: true,
-                    message:
-                      "At least one of 'name', 'accessType', or 'initialValue' must be provided.",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-            isError: true,
-          };
-        }
-
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            updateState(apiClient, componentUuid, stateRef, name, accessType, initialValue)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    stateUuid: result.stateUuid,
-                    name: result.name,
-                    previousName: result.previousName,
-                    updatedFields: result.updatedFields,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await updateState(
-          apiClient, componentUuid, stateRef, name, accessType, initialValue
-        );
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  stateUuid: result.stateUuid,
-                  name: result.name,
-                  previousName: result.previousName,
-                  updatedFields: result.updatedFields,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("updating state", err);
-      }
-    }
-  );
-
-  // --- list-interactions ---
-  // List all interactions on a TplTag element.
-  server.tool(
-    "list-interactions",
-    "List all event handler interactions on an element. " +
-      "Returns event name, action, args, and condition for each interaction.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component containing the element"),
-      nodeRef: z
-        .string()
-        .describe(
-          'Element reference: UUID, name, path (e.g., "Root.Button"), or index (e.g., "#2")'
-        ),
-    },
-    async ({ componentUuid, nodeRef }) => {
-      try {
-        const session = requireSession();
-        const component = session.site.components?.find(
-          (c: any) => c.uuid === componentUuid
-        );
-        if (!component) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Component UUID "${componentUuid}" not found.`,
-              },
-            ],
-            isError: true,
-          };
-        }
-
-        const interactions = listInteractions(component, nodeRef);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  componentUuid,
-                  nodeRef,
-                  interactionCount: interactions.length,
-                  interactions,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("listing interactions", err);
-      }
-    }
-  );
-
-  // --- add-interaction ---
-  // Add an event handler interaction to a TplTag element.
-  server.tool(
-    "add-interaction",
-    "Add an event handler interaction to an element. " +
-      "Supported actions: navigation (alias: navigateTo, goToPage), " +
-      "updateVariable (alias: setState), customFunction (alias: runCode). " +
-      "Events: onClick, onDoubleClick, onMouseEnter, onMouseLeave, " +
-      "onFocus, onBlur, onChange, onSubmit, onKeyDown, onKeyUp, onScroll, onLoad.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component containing the element"),
-      nodeRef: z
-        .string()
-        .describe('Element reference: UUID, name, path, or index'),
-      event: z
-        .string()
-        .describe('Event name (e.g., "onClick", "onChange", "onMouseEnter")'),
-      actionName: z
-        .string()
-        .describe(
-          'Action to perform: "navigation" (or "navigateTo"), ' +
-            '"updateVariable" (or "setState"), "customFunction" (or "runCode")'
-        ),
-      args: z
-        .record(z.string())
-        .describe(
-          'Action arguments as key-value pairs. ' +
-            'navigation: { "destination": "/about" }. ' +
-            'updateVariable: { "variable": "isOpen", "value": "!$state.isOpen" }. ' +
-            'customFunction: { "code": "console.log(\'clicked\')" }.'
-        ),
-      interactionName: z
-        .string()
-        .optional()
-        .describe('Optional human-readable step name (auto-generated if omitted)'),
-      condition: z
-        .string()
-        .optional()
-        .describe('Optional JS expression for conditional execution (e.g., "$ctx.isEnabled")'),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting."),
-    },
-    async ({ componentUuid, nodeRef, event, actionName, args, interactionName, condition, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            addInteraction(apiClient, componentUuid, nodeRef, event, actionName, args, interactionName, condition)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    interactionUuid: result.interactionUuid,
-                    event: result.event,
-                    actionName: result.actionName,
-                    interactionName: result.interactionName,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await addInteraction(
-          apiClient, componentUuid, nodeRef, event, actionName, args, interactionName, condition
-        );
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  interactionUuid: result.interactionUuid,
-                  event: result.event,
-                  actionName: result.actionName,
-                  interactionName: result.interactionName,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("adding interaction", err);
-      }
-    }
-  );
-
-  // --- remove-interaction ---
-  // Remove interaction(s) from an element's event handler.
-  server.tool(
-    "remove-interaction",
-    "Remove interaction(s) from an element's event handler. " +
-      "Remove a specific interaction by index, or all interactions for an event.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component containing the element"),
-      nodeRef: z
-        .string()
-        .describe('Element reference: UUID, name, path, or index'),
-      event: z
-        .string()
-        .describe('Event name (e.g., "onClick")'),
-      interactionIndex: z
-        .number()
-        .optional()
-        .describe("Index of the interaction to remove. Omit to remove all interactions for the event."),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting."),
-    },
-    async ({ componentUuid, nodeRef, event, interactionIndex, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            removeInteraction(apiClient, componentUuid, nodeRef, event, interactionIndex)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    removedCount: result.removedCount,
-                    event: result.event,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await removeInteraction(
-          apiClient, componentUuid, nodeRef, event, interactionIndex
-        );
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  removedCount: result.removedCount,
-                  event: result.event,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("removing interaction", err);
-      }
-    }
-  );
-
-  // --- list-queries ---
-  // List all data queries on a component.
-  server.tool(
-    "list-queries",
-    "List all data queries on a component. " +
-      "Returns both client-side (dataQuery) and server-side (serverQuery) queries.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component to list queries for"),
-    },
-    async ({ componentUuid }) => {
-      try {
-        const session = requireSession();
-        const component = session.site.components?.find(
-          (c: any) => c.uuid === componentUuid
-        );
-        if (!component) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Component not found: ${componentUuid}`,
-              },
-            ],
-            isError: true,
-          };
-        }
-
-        const queries = listQueries(component);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  componentUuid,
-                  componentName: component.name,
-                  queryCount: queries.length,
-                  queries,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("listing queries", err);
-      }
-    }
-  );
-
-  // --- add-query ---
-  // Add a data query to a component.
-  server.tool(
-    "add-query",
-    "Add a data query to a component. " +
-      "Creates a ComponentDataQuery (client-side) or ComponentServerQuery (server-side). " +
-      "Query results are accessible via $queries.queryName in expressions.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component to add the query to"),
-      name: z
-        .string()
-        .describe('Query name (must be a valid JS identifier, e.g., "products", "userData")'),
-      queryType: z
-        .enum(["dataQuery", "serverQuery"])
-        .optional()
-        .describe('Type of query: "dataQuery" (client-side, default) or "serverQuery" (server-side)'),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting."),
-    },
-    async ({ componentUuid, name, queryType, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            addQuery(apiClient, componentUuid, name, queryType ?? "dataQuery")
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    queryUuid: result.queryUuid,
-                    name: result.name,
-                    queryType: result.queryType,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await addQuery(
-          apiClient, componentUuid, name, queryType ?? "dataQuery"
-        );
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  queryUuid: result.queryUuid,
-                  name: result.name,
-                  queryType: result.queryType,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("adding query", err);
-      }
-    }
-  );
-
-  // --- remove-query ---
-  // Remove a data query from a component.
-  server.tool(
-    "remove-query",
-    "Remove a data query from a component. " +
-      "Cleans up query invalidation references. " +
-      "Expressions using $queries.queryName will break at runtime after removal.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component containing the query"),
-      queryRef: z
-        .string()
-        .describe("Query reference: name or UUID"),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting."),
-    },
-    async ({ componentUuid, queryRef, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            removeQuery(apiClient, componentUuid, queryRef)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    removedName: result.removedName,
-                    removedUuid: result.removedUuid,
-                    queryType: result.queryType,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await removeQuery(apiClient, componentUuid, queryRef);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  removedName: result.removedName,
-                  removedUuid: result.removedUuid,
-                  queryType: result.queryType,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("removing query", err);
-      }
-    }
-  );
-
-  // --- update-query ---
-  // Rename a data query on a component.
-  server.tool(
-    "update-query",
-    "Rename a data query on a component. " +
-      "Updates the query name. Existing $queries.oldName references will need manual update.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component containing the query"),
-      queryRef: z
-        .string()
-        .describe("Query reference: current name or UUID"),
-      name: z
-        .string()
-        .describe("New query name (must be a valid JS identifier)"),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting."),
-    },
-    async ({ componentUuid, queryRef, name, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            updateQuery(apiClient, componentUuid, queryRef, name)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    queryUuid: result.queryUuid,
-                    name: result.name,
-                    queryType: result.queryType,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await updateQuery(apiClient, componentUuid, queryRef, name);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  queryUuid: result.queryUuid,
-                  name: result.name,
-                  queryType: result.queryType,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("updating query", err);
-      }
-    }
-  );
-
-  // ─── Mixin tools ──────────────────────────────────────────────────────────
-
-  server.tool(
-    "list-mixins",
-    "List all mixins (reusable style bundles) in the active project. " +
-      "Returns name, UUID, styles, and forTheme flag for each mixin.",
-    {},
-    async () => {
-      try {
-        const mixins = listMixins();
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { mixinCount: mixins.length, mixins },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return {
-          content: [{ type: "text" as const, text: `Error: ${err.message}` }],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  server.tool(
-    "create-mixin",
-    "Create a new mixin (reusable style bundle). " +
-      "Optionally provide initial CSS styles. Mixin can later be applied to elements with apply-mixin.",
-    {
-      name: z.string().describe("Name for the new mixin"),
-      styles: z
-        .record(z.string())
-        .optional()
-        .describe(
-          "Optional CSS styles in camelCase format (e.g., {\"fontSize\": \"16px\", \"color\": \"#333\"})"
-        ),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting."),
-    },
-    async ({ name, styles, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            createMixin(apiClient, name, styles)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    mixinUuid: result.mixinUuid,
-                    name: result.name,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await createMixin(apiClient, name, styles);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  mixinUuid: result.mixinUuid,
-                  name: result.name,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("creating mixin", err);
-      }
-    }
-  );
-
-  server.tool(
-    "update-mixin",
-    "Update a mixin's name and/or styles. " +
-      "At least one of newName or styles must be provided.",
-    {
-      mixinRef: z
-        .string()
-        .describe("Mixin reference: current name or UUID"),
-      newName: z
-        .string()
-        .optional()
-        .describe("New name for the mixin"),
-      styles: z
-        .record(z.string())
-        .optional()
-        .describe(
-          "CSS styles to set/update in camelCase format (e.g., {\"fontSize\": \"18px\"})"
-        ),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting."),
-    },
-    async ({ mixinRef, newName, styles, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            updateMixin(apiClient, mixinRef, newName, styles)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    mixinUuid: result.mixinUuid,
-                    name: result.name,
-                    updatedFields: result.updatedFields,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await updateMixin(apiClient, mixinRef, newName, styles);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  mixinUuid: result.mixinUuid,
-                  name: result.name,
-                  updatedFields: result.updatedFields,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("updating mixin", err);
-      }
-    }
-  );
-
-  server.tool(
-    "remove-mixin",
-    "Remove a mixin from the project. The mixin will be detached from all elements that use it.",
-    {
-      mixinRef: z
-        .string()
-        .describe("Mixin reference: name or UUID"),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting."),
-    },
-    async ({ mixinRef, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            removeMixin(apiClient, mixinRef)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    removedName: result.removedName,
-                    removedUuid: result.removedUuid,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await removeMixin(apiClient, mixinRef);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  removedName: result.removedName,
-                  removedUuid: result.removedUuid,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("removing mixin", err);
-      }
-    }
-  );
-
-  server.tool(
-    "apply-mixin",
-    "Apply a mixin to an element's base variant setting. " +
-      "Idempotent — applying the same mixin twice is a no-op.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component containing the element"),
-      nodeRef: z
-        .string()
-        .describe(
-          "Node reference: UUID, name, path, or index"
-        ),
-      mixinRef: z
-        .string()
-        .describe("Mixin reference: name or UUID"),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting."),
-    },
-    async ({ componentUuid, nodeRef, mixinRef, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            applyMixin(apiClient, componentUuid, nodeRef, mixinRef)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    mixinName: result.mixinName,
-                    nodeUuid: result.nodeUuid,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await applyMixin(
-          apiClient,
-          componentUuid,
-          nodeRef,
-          mixinRef
-        );
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  mixinName: result.mixinName,
-                  nodeUuid: result.nodeUuid,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("applying mixin", err);
-      }
-    }
-  );
-
-  server.tool(
-    "detach-mixin",
-    "Remove a mixin from an element's base variant setting. " +
-      "Throws if the mixin is not currently applied to the element.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component containing the element"),
-      nodeRef: z
-        .string()
-        .describe(
-          "Node reference: UUID, name, path, or index"
-        ),
-      mixinRef: z
-        .string()
-        .describe("Mixin reference: name or UUID"),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting."),
-    },
-    async ({ componentUuid, nodeRef, mixinRef, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            detachMixin(apiClient, componentUuid, nodeRef, mixinRef)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    mixinName: result.mixinName,
-                    nodeUuid: result.nodeUuid,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await detachMixin(
-          apiClient,
-          componentUuid,
-          nodeRef,
-          mixinRef
-        );
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  mixinName: result.mixinName,
-                  nodeUuid: result.nodeUuid,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("detaching mixin", err);
-      }
-    }
-  );
-
-  // ─── Animation tools ──────────────────────────────────────────────────────
-
-  server.tool(
-    "list-animation-sequences",
-    "List all animation sequences (named @keyframes definitions) in the active project. " +
-      "Returns name, UUID, and keyframe count for each.",
-    {},
-    async () => {
-      try {
-        const sequences = listAnimationSequences();
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { sequenceCount: sequences.length, sequences },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return {
-          content: [{ type: "text" as const, text: `Error: ${err.message}` }],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  server.tool(
-    "create-animation-sequence",
-    "Create a new animation sequence (@keyframes definition). " +
-      "Optionally provide keyframes as an array of { percentage: 0-100, styles: {...} }.",
-    {
-      name: z.string().describe("Name for the animation sequence"),
-      keyframes: z
-        .array(
-          z.object({
-            percentage: z.number().min(0).max(100).describe("Keyframe stop percentage (0-100)"),
-            styles: z.record(z.string()).describe("CSS styles at this keyframe stop"),
-          })
-        )
-        .optional()
-        .describe("Optional keyframes array. Each keyframe has a percentage (0-100) and styles."),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting."),
-    },
-    async ({ name, keyframes, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            createAnimationSequence(apiClient, name, keyframes)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    sequenceUuid: result.sequenceUuid,
-                    name: result.name,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await createAnimationSequence(apiClient, name, keyframes);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  sequenceUuid: result.sequenceUuid,
-                  name: result.name,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("creating animation sequence", err);
-      }
-    }
-  );
-
-  server.tool(
-    "update-animation-sequence",
-    "Update an animation sequence's name and/or keyframes. " +
-      "At least one of newName or keyframes must be provided. " +
-      "Providing keyframes replaces all existing keyframes.",
-    {
-      seqRef: z
-        .string()
-        .describe("Animation sequence reference: current name or UUID"),
-      newName: z
-        .string()
-        .optional()
-        .describe("New name for the animation sequence"),
-      keyframes: z
-        .array(
-          z.object({
-            percentage: z.number().min(0).max(100).describe("Keyframe stop percentage (0-100)"),
-            styles: z.record(z.string()).describe("CSS styles at this keyframe stop"),
-          })
-        )
-        .optional()
-        .describe("New keyframes (replaces existing). Each has percentage (0-100) and styles."),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting."),
-    },
-    async ({ seqRef, newName, keyframes, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            updateAnimationSequence(apiClient, seqRef, newName, keyframes)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    sequenceUuid: result.sequenceUuid,
-                    name: result.name,
-                    updatedFields: result.updatedFields,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await updateAnimationSequence(apiClient, seqRef, newName, keyframes);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  sequenceUuid: result.sequenceUuid,
-                  name: result.name,
-                  updatedFields: result.updatedFields,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("updating animation sequence", err);
-      }
-    }
-  );
-
-  server.tool(
-    "remove-animation-sequence",
-    "Remove an animation sequence from the project. " +
-      "All element animations referencing this sequence are automatically cleaned up.",
-    {
-      seqRef: z
-        .string()
-        .describe("Animation sequence reference: name or UUID"),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting."),
-    },
-    async ({ seqRef, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            removeAnimationSequence(apiClient, seqRef)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    removedName: result.removedName,
-                    removedUuid: result.removedUuid,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await removeAnimationSequence(apiClient, seqRef);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  removedName: result.removedName,
-                  removedUuid: result.removedUuid,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("removing animation sequence", err);
-      }
-    }
-  );
-
-  server.tool(
-    "add-node-animation",
-    "Apply an animation sequence to an element with timing parameters. " +
-      "Creates an Animation referencing the sequence and adds it to the element's base variant.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component containing the element"),
-      nodeRef: z
-        .string()
-        .describe("Node reference: UUID, name, path, or index"),
-      seqRef: z
-        .string()
-        .describe("Animation sequence reference: name or UUID"),
-      duration: z.string().optional().describe("Animation duration (default: '1s')"),
-      delay: z.string().optional().describe("Animation delay (default: '0s')"),
-      timingFunction: z.string().optional().describe("Timing function (default: 'ease')"),
-      iterationCount: z.string().optional().describe("Iteration count (default: '1', or 'infinite')"),
-      direction: z
-        .enum(["normal", "reverse", "alternate", "alternate-reverse"])
-        .optional()
-        .describe("Animation direction (default: 'normal')"),
-      fillMode: z
-        .enum(["none", "forwards", "backwards", "both"])
-        .optional()
-        .describe("Fill mode (default: 'none')"),
-      playState: z
-        .enum(["paused", "running"])
-        .optional()
-        .describe("Play state (default: 'running')"),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting."),
-    },
-    async ({ componentUuid, nodeRef, seqRef, duration, delay, timingFunction, iterationCount, direction, fillMode, playState, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            addNodeAnimation(apiClient, componentUuid, nodeRef, seqRef, duration, delay, timingFunction, iterationCount, direction, fillMode, playState)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    sequenceName: result.sequenceName,
-                    nodeUuid: result.nodeUuid,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await addNodeAnimation(
-          apiClient, componentUuid, nodeRef, seqRef,
-          duration, delay, timingFunction, iterationCount, direction, fillMode, playState
-        );
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  sequenceName: result.sequenceName,
-                  nodeUuid: result.nodeUuid,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("adding animation to element", err);
-      }
-    }
-  );
-
-  server.tool(
-    "remove-node-animation",
-    "Remove animation(s) from an element. " +
-      "Specify seqRef to remove by sequence, animationIndex to remove by position, " +
-      "or omit both to remove all animations.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component containing the element"),
-      nodeRef: z
-        .string()
-        .describe("Node reference: UUID, name, path, or index"),
-      seqRef: z
-        .string()
-        .optional()
-        .describe("Remove animations referencing this sequence (name or UUID)"),
-      animationIndex: z
-        .number()
-        .optional()
-        .describe("Remove the animation at this index (0-based)"),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting."),
-    },
-    async ({ componentUuid, nodeRef, seqRef, animationIndex, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            removeNodeAnimation(apiClient, componentUuid, nodeRef, seqRef, animationIndex)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    removedCount: result.removedCount,
-                    nodeUuid: result.nodeUuid,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await removeNodeAnimation(apiClient, componentUuid, nodeRef, seqRef, animationIndex);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  removedCount: result.removedCount,
-                  nodeUuid: result.nodeUuid,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("removing animation from element", err);
-      }
-    }
-  );
-
-  // ─── Theme tools ──────────────────────────────────────────────────────────
-
-  server.tool(
-    "list-themes",
-    "List all themes in the active project. " +
-      "Returns index, active status, default typography, and per-tag style overrides. " +
-      "Themes are referenced by index (they have no name or UUID).",
-    {},
-    async () => {
-      try {
-        const themes = listThemes();
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { themeCount: themes.length, themes },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return {
-          content: [{ type: "text" as const, text: `Error: ${err.message}` }],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  server.tool(
-    "create-theme",
-    "Create a new theme with default typography styles and optional per-tag overrides. " +
-      "Valid tag selectors: a, blockquote, code, em, h1-h6, i, li, ol, p, pre, strong, ul. " +
-      "Pseudo-selectors like :hover can be appended (e.g., 'a:hover').",
-    {
-      defaultStyles: z
-        .record(z.string())
-        .optional()
-        .describe("Default typography CSS styles (fontSize, fontFamily, color, etc.)"),
-      themeStyles: z
-        .array(
-          z.object({
-            selector: z.string().describe("HTML tag selector (e.g., 'h1', 'a:hover')"),
-            styles: z.record(z.string()).describe("CSS styles for this selector"),
-          })
-        )
-        .optional()
-        .describe("Per-tag style overrides"),
-      setActive: z
-        .boolean()
-        .optional()
-        .describe("Set the new theme as active immediately"),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting."),
-    },
-    async ({ defaultStyles, themeStyles, setActive, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            createTheme(apiClient, defaultStyles, themeStyles, setActive)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    themeIndex: result.themeIndex,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await createTheme(apiClient, defaultStyles, themeStyles, setActive);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  themeIndex: result.themeIndex,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("creating theme", err);
-      }
-    }
-  );
-
-  server.tool(
-    "update-theme",
-    "Update a theme's default typography and/or per-tag style overrides. " +
-      "At least one of defaultStyles or themeStyles must be provided. " +
-      "For themeStyles, existing selectors are updated, new selectors are added.",
-    {
-      themeIndex: z.number().describe("Index of the theme (from list-themes)"),
-      defaultStyles: z
-        .record(z.string())
-        .optional()
-        .describe("Default typography CSS styles to update"),
-      themeStyles: z
-        .array(
-          z.object({
-            selector: z.string().describe("HTML tag selector (e.g., 'h1', 'a:hover')"),
-            styles: z.record(z.string()).describe("CSS styles for this selector"),
-          })
-        )
-        .optional()
-        .describe("Per-tag style overrides to update or add"),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting."),
-    },
-    async ({ themeIndex, defaultStyles, themeStyles, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            updateTheme(apiClient, themeIndex, defaultStyles, themeStyles)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    themeIndex: result.themeIndex,
-                    updatedFields: result.updatedFields,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await updateTheme(apiClient, themeIndex, defaultStyles, themeStyles);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  themeIndex: result.themeIndex,
-                  updatedFields: result.updatedFields,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("updating theme", err);
-      }
-    }
-  );
-
-  server.tool(
-    "remove-theme",
-    "Remove a theme from the project. Cannot remove the active theme — " +
-      "use set-active-theme first to switch to another theme.",
-    {
-      themeIndex: z.number().describe("Index of the theme to remove (from list-themes)"),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting."),
-    },
-    async ({ themeIndex, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            removeTheme(apiClient, themeIndex)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    removedIndex: result.removedIndex,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await removeTheme(apiClient, themeIndex);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  removedIndex: result.removedIndex,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("removing theme", err);
-      }
-    }
-  );
-
-  server.tool(
-    "set-active-theme",
-    "Set the active theme by index. Pass themeIndex: null to deactivate all themes.",
-    {
-      themeIndex: z
-        .number()
-        .nullable()
-        .describe("Index of the theme to activate, or null to deactivate all"),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting."),
-    },
-    async ({ themeIndex, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            setActiveTheme(apiClient, themeIndex)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    activeThemeIndex: result.activeThemeIndex,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await setActiveTheme(apiClient, themeIndex);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  activeThemeIndex: result.activeThemeIndex,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("setting active theme", err);
-      }
-    }
-  );
-
   // ========================================================================
-  // reorder-children
+  // DOMAIN 6: design (22 actions)
   // ========================================================================
 
   server.tool(
-    "reorder-children",
-    "Reorder the children of a container element. Provide child refs in desired order; unlisted children are appended at end.",
+    "design",
+    "Site-level design system management: tokens, mixins, animations, themes, assets.\n" +
+      "Actions: list-tokens, create-token, update-token, remove-token, duplicate-token, " +
+      "list-mixins, create-mixin, update-mixin, remove-mixin, " +
+      "list-animations, create-animation, update-animation, remove-animation, " +
+      "list-themes, create-theme, update-theme, remove-theme, set-active-theme, " +
+      "list-assets, upload-asset, rename-asset, remove-asset.\n" +
+      "Tokens: design system values (colors, spacing, fonts)\n" +
+      "Mixins: reusable style bundles\n" +
+      "Animations: @keyframes definitions\n" +
+      "Themes: typography defaults and per-tag overrides\n" +
+      "Assets: image and icon management",
     {
-      componentUuid: z.string().describe("UUID of the component"),
-      parentRef: z.string().describe("Reference to the parent container (UUID, name, path, or index)"),
-      childRefs: z.array(z.string()).describe("Ordered array of child references (UUID, name, path, or index)"),
-      dryRun: z.boolean().optional().describe("When true, preview changes without persisting"),
-    },
-    async ({ componentUuid, parentRef, childRefs, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            reorderChildren(apiClient, componentUuid, parentRef, childRefs)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    newOrder: result.newOrder,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const result = await reorderChildren(apiClient, componentUuid, parentRef, childRefs);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  parentName: result.parentName,
-                  parentUuid: result.parentUuid,
-                  newOrder: result.newOrder,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("reordering children", err);
-      }
-    }
-  );
-
-  // ========================================================================
-  // convert-to-page
-  // ========================================================================
-
-  server.tool(
-    "convert-to-page",
-    "Convert a component to a page. Optionally specify a URL path.",
-    {
-      componentUuid: z.string().describe("UUID of the component to convert"),
-      path: z.string().optional().describe("URL path for the page (e.g., '/about'). Auto-generated from name if omitted."),
-    },
-    async ({ componentUuid, path }) => {
-      try {
-        const result = await convertToPage(apiClient, componentUuid, path);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  componentName: result.componentName,
-                  path: result.path,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("converting to page", err);
-      }
-    }
-  );
-
-  // ========================================================================
-  // convert-to-component
-  // ========================================================================
-
-  server.tool(
-    "convert-to-component",
-    "Convert a page back to a regular component. Removes pageMeta.",
-    {
-      componentUuid: z.string().describe("UUID of the page to convert"),
-    },
-    async ({ componentUuid }) => {
-      try {
-        const result = await convertToComponent(apiClient, componentUuid);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  componentName: result.componentName,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("converting to component", err);
-      }
-    }
-  );
-
-  // ========================================================================
-  // list-data-tokens
-  // ========================================================================
-
-  server.tool(
-    "list-data-tokens",
-    "List all data tokens in the project. Data tokens hold JSON values accessible as $ctx.tokenName in expressions.",
-    {},
-    async () => {
-      try {
-        const result = listDataTokens();
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("listing data tokens", err);
-      }
-    }
-  );
-
-  // ========================================================================
-  // create-data-token
-  // ========================================================================
-
-  server.tool(
-    "create-data-token",
-    "Create a new data token with a name and JSON value. Accessible in expressions as $ctx.tokenName.",
-    {
-      name: z.string().describe("Name for the data token"),
-      value: z.string().optional().describe("JSON value (e.g., '\"hello\"', '42', '{\"key\": true}'). Defaults to 'null'."),
-    },
-    async ({ name, value }) => {
-      try {
-        const result = await createDataToken(apiClient, name, value);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  token: result.token,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("creating data token", err);
-      }
-    }
-  );
-
-  // ========================================================================
-  // update-data-token
-  // ========================================================================
-
-  server.tool(
-    "update-data-token",
-    "Update a data token's name and/or value.",
-    {
-      tokenRef: z.string().describe("Token reference (UUID or name)"),
-      name: z.string().optional().describe("New name"),
-      value: z.string().optional().describe("New JSON value"),
-    },
-    async ({ tokenRef, name, value }) => {
-      try {
-        const result = await updateDataToken(apiClient, tokenRef, name, value);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  token: result.token,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("updating data token", err);
-      }
-    }
-  );
-
-  // ========================================================================
-  // remove-data-token
-  // ========================================================================
-
-  server.tool(
-    "remove-data-token",
-    "Remove a data token from the project.",
-    {
-      tokenRef: z.string().describe("Token reference (UUID or name)"),
-    },
-    async ({ tokenRef }) => {
-      try {
-        const result = await removeDataToken(apiClient, tokenRef);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  removedName: result.removedName,
-                  removedUuid: result.removedUuid,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("removing data token", err);
-      }
-    }
-  );
-
-  // ========================================================================
-  // list-global-variant-groups
-  // ========================================================================
-
-  server.tool(
-    "list-global-variant-groups",
-    "List all global variant groups (custom and screen breakpoints) with their variants.",
-    {},
-    async () => {
-      try {
-        const result = listGlobalVariantGroups();
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("listing global variant groups", err);
-      }
-    }
-  );
-
-  // ========================================================================
-  // create-global-variant-group
-  // ========================================================================
-
-  server.tool(
-    "create-global-variant-group",
-    "Create a global variant group (e.g., 'Dark Mode', 'Language'). Optionally provide initial variant names.",
-    {
-      name: z.string().describe("Name for the variant group"),
-      type: z.enum(["single", "multi"]).optional().describe("'single' (one active at a time, default) or 'multi' (multiple active)"),
-      initialVariants: z.array(z.string()).optional().describe("Names of variants to create immediately"),
-    },
-    async ({ name, type, initialVariants }) => {
-      try {
-        const result = await createGlobalVariantGroup(apiClient, name, type, initialVariants);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  group: result.group,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("creating global variant group", err);
-      }
-    }
-  );
-
-  // ========================================================================
-  // add-global-variant
-  // ========================================================================
-
-  server.tool(
-    "add-global-variant",
-    "Add a variant to an existing global variant group.",
-    {
-      groupRef: z.string().describe("Group reference (UUID or name)"),
-      name: z.string().describe("Name for the new variant"),
-    },
-    async ({ groupRef, name }) => {
-      try {
-        const result = await addGlobalVariant(apiClient, groupRef, name);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  variant: result.variant,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("adding global variant", err);
-      }
-    }
-  );
-
-  // ========================================================================
-  // remove-global-variant-group
-  // ========================================================================
-
-  server.tool(
-    "remove-global-variant-group",
-    "Remove an entire global variant group and all its variants.",
-    {
-      groupRef: z.string().describe("Group reference (UUID or name)"),
-    },
-    async ({ groupRef }) => {
-      try {
-        const result = await removeGlobalVariantGroup(apiClient, groupRef);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  removedName: result.removedName,
-                  removedUuid: result.removedUuid,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("removing global variant group", err);
-      }
-    }
-  );
-
-  // ========================================================================
-  // rename-global-variant
-  // ========================================================================
-
-  server.tool(
-    "rename-global-variant",
-    "Rename a global variant.",
-    {
-      variantRef: z.string().describe("Variant reference (UUID or name)"),
-      newName: z.string().describe("New name for the variant"),
-    },
-    async ({ variantRef, newName }) => {
-      try {
-        const result = await renameGlobalVariant(apiClient, variantRef, newName);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  oldName: result.oldName,
-                  newName: result.newName,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("renaming global variant", err);
-      }
-    }
-  );
-
-  // ========================================================================
-  // get-code-component-meta
-  // ========================================================================
-
-  server.tool(
-    "get-code-component-meta",
-    "Get metadata for a code component (import path, display name, sub-components, etc.). Returns isCodeComponent: false for non-code components.",
-    {
-      componentUuid: z.string().describe("UUID of the component to inspect"),
-    },
-    async ({ componentUuid }) => {
-      try {
-        const result = getCodeComponentMeta(componentUuid);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("getting code component meta", err);
-      }
-    }
-  );
-
-  // ========================================================================
-  // list-custom-functions
-  // ========================================================================
-
-  server.tool(
-    "list-custom-functions",
-    "List all custom functions registered in the project. Shows name, import path, parameters, and whether it's a query function.",
-    {},
-    async () => {
-      try {
-        const result = listCustomFunctions();
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("listing custom functions", err);
-      }
-    }
-  );
-
-  // ========================================================================
-  // list-splits
-  // ========================================================================
-
-  server.tool(
-    "list-splits",
-    "List all A/B tests and segments in the project.",
-    {},
-    async () => {
-      try {
-        const result = listSplits();
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("listing splits", err);
-      }
-    }
-  );
-
-  // ========================================================================
-  // create-split
-  // ========================================================================
-
-  server.tool(
-    "create-split",
-    "Create a new A/B test (experiment) or segment with weighted slices.",
-    {
-      name: z.string().describe("Name for the split"),
-      splitType: z.enum(["experiment", "segment"]).describe("'experiment' for probability-based A/B tests, 'segment' for condition-based"),
-      slices: z.array(z.object({
-        name: z.string().describe("Slice name (e.g., 'Control', 'Variant A')"),
-        prob: z.number().optional().describe("Weight percentage for experiments (auto-calculated if omitted)"),
-        cond: z.string().optional().describe("Condition JSON string for segments"),
-      })).describe("Array of slice definitions"),
-    },
-    async ({ name, splitType, slices }) => {
-      try {
-        const result = await createSplit(apiClient, name, splitType, slices);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  split: result.split,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("creating split", err);
-      }
-    }
-  );
-
-  // ========================================================================
-  // update-split
-  // ========================================================================
-
-  server.tool(
-    "update-split",
-    "Update a split's name and/or status (new, running, stopped).",
-    {
-      splitRef: z.string().describe("Split reference (UUID or name)"),
-      name: z.string().optional().describe("New name"),
-      status: z.enum(["new", "running", "stopped"]).optional().describe("New status"),
-    },
-    async ({ splitRef, name, status }) => {
-      try {
-        const result = await updateSplit(apiClient, splitRef, name, status);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  split: result.split,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("updating split", err);
-      }
-    }
-  );
-
-  // ========================================================================
-  // remove-split
-  // ========================================================================
-
-  server.tool(
-    "remove-split",
-    "Remove an A/B test or segment.",
-    {
-      splitRef: z.string().describe("Split reference (UUID or name)"),
-    },
-    async ({ splitRef }) => {
-      try {
-        const result = await removeSplit(apiClient, splitRef);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  removedName: result.removedName,
-                  removedUuid: result.removedUuid,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("removing split", err);
-      }
-    }
-  );
-
-  // ========================================================================
-  // list-assets
-  // ========================================================================
-
-  server.tool(
-    "list-assets",
-    "List all image assets in the project. Optionally filter by type (picture or icon).",
-    {
-      type: z
-        .enum(["picture", "icon"])
-        .optional()
-        .describe("Filter by asset type. Omit to list all assets."),
-    },
-    async ({ type }) => {
-      try {
-        const result = listAssets(type);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("listing assets", err);
-      }
-    }
-  );
-
-  // ========================================================================
-  // upload-asset
-  // ========================================================================
-
-  server.tool(
-    "upload-asset",
-    'Upload an image asset from a URL or inline dataUri. Type is "picture" (photos, screenshots) or "icon" (SVG icons).',
-    {
-      name: z.string().describe("Name for the asset (e.g., \"Hero Banner\", \"Logo\")"),
-      type: z
-        .enum(["picture", "icon"])
-        .describe('Asset type: "picture" for images, "icon" for SVG icons'),
-      url: z
-        .string()
-        .optional()
-        .describe("URL to fetch the image from (will be converted to dataUri)"),
-      dataUri: z
-        .string()
-        .optional()
-        .describe("Inline data URI (e.g., data:image/png;base64,...)"),
+      action: z.enum([
+        "list-tokens", "create-token", "update-token", "remove-token", "duplicate-token",
+        "list-mixins", "create-mixin", "update-mixin", "remove-mixin",
+        "list-animations", "create-animation", "update-animation", "remove-animation",
+        "list-themes", "create-theme", "update-theme", "remove-theme", "set-active-theme",
+        "list-assets", "upload-asset", "rename-asset", "remove-asset",
+      ]),
+      // Token params
+      tokenRef: z.string().optional().describe("Token reference (name or UUID)"),
+      tokenType: z.enum(["Color", "Spacing", "Opacity", "LineHeight", "FontFamily", "FontSize"]).optional().describe("Token type filter or creation type"),
+      value: z.string().optional().describe("Token value or CSS value"),
+      name: z.string().optional().describe("Name for create/rename operations"),
+      newName: z.string().optional().describe("New name for update/rename operations"),
+      // Mixin params
+      mixinRef: z.string().optional().describe("Mixin reference (name or UUID)"),
+      styles: z.record(z.string()).optional().describe("CSS styles in camelCase format"),
+      // Animation params
+      seqRef: z.string().optional().describe("Animation sequence reference (name or UUID)"),
+      keyframes: z.array(z.object({
+        percentage: z.number().describe("Keyframe stop percentage (0-100)"),
+        styles: z.record(z.string()).describe("CSS styles at this keyframe stop"),
+      })).optional().describe("Keyframes array for animation sequences"),
+      // Theme params
+      themeIndex: z.number().nullable().optional().describe("Theme index (from list-themes)"),
+      defaultStyles: z.record(z.string()).optional().describe("Default typography CSS styles"),
+      themeStyles: z.array(z.object({
+        selector: z.string().describe("HTML tag selector"),
+        styles: z.record(z.string()).describe("CSS styles for selector"),
+      })).optional().describe("Per-tag style overrides"),
+      setActive: z.boolean().optional().describe("Set new theme as active"),
+      // Asset params
+      assetRef: z.string().optional().describe("Asset reference (UUID or name)"),
+      assetType: z.enum(["picture", "icon"]).optional().describe("Asset type filter or creation type"),
+      url: z.string().optional().describe("URL to fetch image from"),
+      dataUri: z.string().optional().describe("Inline data URI"),
       width: z.number().optional().describe("Image width in pixels"),
       height: z.number().optional().describe("Image height in pixels"),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting."),
+      // Common
+      dryRun: z.boolean().optional().describe("Preview changes without persisting"),
     },
-    async ({ name, type: assetType, url, dataUri, width, height, dryRun }) => {
+    async (params) => {
+      const { action } = params;
       try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            uploadAsset(apiClient, name, assetType, { url, dataUri, width, height })
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
+        switch (action) {
+          // ── Tokens ──
+
+          case "list-tokens": {
+            const session = requireSession();
+            const result = readTokens(session.site.styleTokens, params.tokenType);
+            return {
+              content: [
+                { type: "text" as const, text: JSON.stringify(result, null, 2) },
+              ],
+            };
+          }
+
+          case "create-token": {
+            const tName = requireParam(params.name, "name", "design.create-token");
+            const tType = requireParam(params.tokenType, "tokenType", "design.create-token");
+            const tValue = requireParam(params.value, "value", "design.create-token");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                createToken(apiClient, tName, tType, tValue)
+              );
+              return {
+                content: [
                   {
-                    dryRun: true,
-                    name: result.name,
-                    assetType: result.type,
-                    message: "Dry run: no changes persisted",
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        name: result.name,
+                        tokenType: result.type,
+                        value: result.value,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
                   },
-                  null,
-                  2
-                ),
-              },
-            ],
+                ],
+              };
+            }
+
+            const result = await createToken(apiClient, tName, tType, tValue);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      tokenUuid: result.tokenUuid,
+                      name: result.name,
+                      tokenType: result.type,
+                      value: result.value,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "update-token": {
+            const tRef = requireParam(params.tokenRef, "tokenRef", "design.update-token");
+
+            if (!params.value && !params.name) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        error: true,
+                        message:
+                          "At least one of 'value' or 'name' must be provided.",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+                isError: true,
+              };
+            }
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                updateToken(apiClient, tRef, params.value, params.name)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        tokenUuid: result.tokenUuid,
+                        name: result.name,
+                        previousName: result.previousName,
+                        previousValue: result.previousValue,
+                        value: result.value,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await updateToken(apiClient, tRef, params.value, params.name);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      tokenUuid: result.tokenUuid,
+                      name: result.name,
+                      previousName: result.previousName,
+                      previousValue: result.previousValue,
+                      value: result.value,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "remove-token": {
+            const tRef = requireParam(params.tokenRef, "tokenRef", "design.remove-token");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                removeToken(apiClient, tRef)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        tokenUuid: result.tokenUuid,
+                        name: result.name,
+                        inlinedCount: result.inlinedCount,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await removeToken(apiClient, tRef);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      tokenUuid: result.tokenUuid,
+                      name: result.name,
+                      inlinedCount: result.inlinedCount,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "duplicate-token": {
+            const tRef = requireParam(params.tokenRef, "tokenRef", "design.duplicate-token");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                duplicateToken(apiClient, tRef, params.newName)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        tokenUuid: result.tokenUuid,
+                        name: result.name,
+                        sourceUuid: result.sourceUuid,
+                        sourceName: result.sourceName,
+                        value: result.value,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await duplicateToken(apiClient, tRef, params.newName);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      tokenUuid: result.tokenUuid,
+                      name: result.name,
+                      sourceUuid: result.sourceUuid,
+                      sourceName: result.sourceName,
+                      value: result.value,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          // ── Mixins ──
+
+          case "list-mixins": {
+            const mixins = listMixins();
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    { mixinCount: mixins.length, mixins },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "create-mixin": {
+            const mName = requireParam(params.name, "name", "design.create-mixin");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                createMixin(apiClient, mName, params.styles)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        mixinUuid: result.mixinUuid,
+                        name: result.name,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await createMixin(apiClient, mName, params.styles);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      mixinUuid: result.mixinUuid,
+                      name: result.name,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "update-mixin": {
+            const mRef = requireParam(params.mixinRef, "mixinRef", "design.update-mixin");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                updateMixin(apiClient, mRef, params.newName, params.styles)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        mixinUuid: result.mixinUuid,
+                        name: result.name,
+                        updatedFields: result.updatedFields,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await updateMixin(apiClient, mRef, params.newName, params.styles);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      mixinUuid: result.mixinUuid,
+                      name: result.name,
+                      updatedFields: result.updatedFields,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "remove-mixin": {
+            const mRef = requireParam(params.mixinRef, "mixinRef", "design.remove-mixin");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                removeMixin(apiClient, mRef)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        removedName: result.removedName,
+                        removedUuid: result.removedUuid,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await removeMixin(apiClient, mRef);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      removedName: result.removedName,
+                      removedUuid: result.removedUuid,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          // ── Animations ──
+
+          case "list-animations": {
+            const sequences = listAnimationSequences();
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    { sequenceCount: sequences.length, sequences },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "create-animation": {
+            const aName = requireParam(params.name, "name", "design.create-animation");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                createAnimationSequence(apiClient, aName, params.keyframes)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        sequenceUuid: result.sequenceUuid,
+                        name: result.name,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await createAnimationSequence(apiClient, aName, params.keyframes);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      sequenceUuid: result.sequenceUuid,
+                      name: result.name,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "update-animation": {
+            const sRef = requireParam(params.seqRef, "seqRef", "design.update-animation");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                updateAnimationSequence(apiClient, sRef, params.newName, params.keyframes)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        sequenceUuid: result.sequenceUuid,
+                        name: result.name,
+                        updatedFields: result.updatedFields,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await updateAnimationSequence(apiClient, sRef, params.newName, params.keyframes);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      sequenceUuid: result.sequenceUuid,
+                      name: result.name,
+                      updatedFields: result.updatedFields,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "remove-animation": {
+            const sRef = requireParam(params.seqRef, "seqRef", "design.remove-animation");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                removeAnimationSequence(apiClient, sRef)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        removedName: result.removedName,
+                        removedUuid: result.removedUuid,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await removeAnimationSequence(apiClient, sRef);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      removedName: result.removedName,
+                      removedUuid: result.removedUuid,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          // ── Themes ──
+
+          case "list-themes": {
+            const themes = listThemes();
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    { themeCount: themes.length, themes },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "create-theme": {
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                createTheme(apiClient, params.defaultStyles, params.themeStyles, params.setActive)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        themeIndex: result.themeIndex,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await createTheme(apiClient, params.defaultStyles, params.themeStyles, params.setActive);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      themeIndex: result.themeIndex,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "update-theme": {
+            const tIdx = requireParam(params.themeIndex, "themeIndex", "design.update-theme");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                updateTheme(apiClient, tIdx as number, params.defaultStyles, params.themeStyles)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        themeIndex: result.themeIndex,
+                        updatedFields: result.updatedFields,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await updateTheme(apiClient, tIdx as number, params.defaultStyles, params.themeStyles);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      themeIndex: result.themeIndex,
+                      updatedFields: result.updatedFields,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "remove-theme": {
+            const tIdx = requireParam(params.themeIndex, "themeIndex", "design.remove-theme");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                removeTheme(apiClient, tIdx as number)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        removedIndex: result.removedIndex,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await removeTheme(apiClient, tIdx as number);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      removedIndex: result.removedIndex,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "set-active-theme": {
+            // themeIndex can be null (deactivate) or number
+            if (params.themeIndex === undefined) {
+              throw new Error("Missing required parameter 'themeIndex' for 'design.set-active-theme' action");
+            }
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                setActiveTheme(apiClient, params.themeIndex as number | null)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        activeThemeIndex: result.activeThemeIndex,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await setActiveTheme(apiClient, params.themeIndex as number | null);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      activeThemeIndex: result.activeThemeIndex,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          // ── Assets ──
+
+          case "list-assets": {
+            const result = listAssets(params.assetType);
+            return {
+              content: [
+                { type: "text" as const, text: JSON.stringify(result, null, 2) },
+              ],
+            };
+          }
+
+          case "upload-asset": {
+            const aName = requireParam(params.name, "name", "design.upload-asset");
+            const aType = requireParam(params.assetType, "assetType", "design.upload-asset");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                uploadAsset(apiClient, aName, aType, { url: params.url, dataUri: params.dataUri, width: params.width, height: params.height })
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        name: result.name,
+                        assetType: result.type,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await uploadAsset(apiClient, aName, aType, { url: params.url, dataUri: params.dataUri, width: params.width, height: params.height });
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      assetUuid: result.assetUuid,
+                      name: result.name,
+                      assetType: result.type,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "rename-asset": {
+            const aRef = requireParam(params.assetRef, "assetRef", "design.rename-asset");
+            const nn = requireParam(params.newName, "newName", "design.rename-asset");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                renameAsset(apiClient, aRef, nn)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        oldName: result.oldName,
+                        newName: result.newName,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await renameAsset(apiClient, aRef, nn);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      assetUuid: result.assetUuid,
+                      oldName: result.oldName,
+                      newName: result.newName,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "remove-asset": {
+            const aRef = requireParam(params.assetRef, "assetRef", "design.remove-asset");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                removeAsset(apiClient, aRef)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        removedName: result.removedName,
+                        removedUuid: result.removedUuid,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await removeAsset(apiClient, aRef);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      removedName: result.removedName,
+                      removedUuid: result.removedUuid,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          default:
+            throw new Error(`Unknown action '${action}' for design tool.`);
+        }
+      } catch (err: any) {
+        if (["list-tokens", "list-mixins", "list-animations", "list-themes", "list-assets"].includes(action)) {
+          return {
+            content: [{ type: "text" as const, text: `Error: ${err.message}` }],
+            isError: true,
           };
         }
-
-        const result = await uploadAsset(apiClient, name, assetType, { url, dataUri, width, height });
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  assetUuid: result.assetUuid,
-                  name: result.name,
-                  assetType: result.type,
-                  revision: result.save.revisionNum,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("uploading asset", err);
+        return handleMutationError(`design.${action}`, err);
       }
     }
   );
 
   // ========================================================================
-  // rename-asset
+  // DOMAIN 7: data (16 actions)
   // ========================================================================
 
   server.tool(
-    "rename-asset",
-    "Rename an image asset by UUID or name.",
+    "data",
+    "Data flow: conditions, repetition, queries, data tokens, splits, code introspection.\n" +
+      "Actions: set-data-cond, set-data-rep, list-queries, add-query, update-query, remove-query, " +
+      "list-data-tokens, create-data-token, update-data-token, remove-data-token, " +
+      "list-splits, create-split, update-split, remove-split, get-code-meta, list-functions.\n" +
+      "- set-data-cond: Conditional rendering expression\n" +
+      "- set-data-rep: Repeat element for each item in collection\n" +
+      "- Queries: Manage component data queries\n" +
+      "- Data tokens: Site-level JSON values ($ctx.tokenName)\n" +
+      "- Splits: A/B tests and segments\n" +
+      "- get-code-meta/list-functions: Code component introspection",
     {
-      assetRef: z.string().describe("Asset reference (UUID or name)"),
-      newName: z.string().describe("New name for the asset"),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting."),
+      action: z.enum([
+        "set-data-cond", "set-data-rep",
+        "list-queries", "add-query", "update-query", "remove-query",
+        "list-data-tokens", "create-data-token", "update-data-token", "remove-data-token",
+        "list-splits", "create-split", "update-split", "remove-split",
+        "get-code-meta", "list-functions",
+      ]),
+      componentUuid: z.string().optional().describe("UUID of the component"),
+      nodeRef: z.string().optional().describe("Node reference"),
+      condition: z.string().nullable().optional().describe("JS condition expression or null to remove"),
+      collection: z.string().nullable().optional().describe("JS array expression or null to remove repetition"),
+      elementVariable: z.string().optional().describe("Loop variable name for each item"),
+      indexVariable: z.string().nullable().optional().describe("Loop variable name for index"),
+      variant: z.string().optional().describe("Target variant"),
+      name: z.string().optional().describe("Name for create/rename operations"),
+      queryRef: z.string().optional().describe("Query reference (name or UUID)"),
+      queryType: z.enum(["dataQuery", "serverQuery"]).optional().describe("Query type"),
+      tokenRef: z.string().optional().describe("Data token reference (UUID or name)"),
+      value: z.string().optional().describe("Value for data token or token update"),
+      splitRef: z.string().optional().describe("Split reference (UUID or name)"),
+      splitType: z.enum(["experiment", "segment"]).optional().describe("Split type"),
+      slices: z.array(z.object({
+        name: z.string(),
+        prob: z.number().optional(),
+        cond: z.string().optional(),
+      })).optional().describe("Slice definitions for splits"),
+      status: z.enum(["new", "running", "stopped"]).optional().describe("Split status"),
+      dryRun: z.boolean().optional().describe("Preview changes without persisting"),
     },
-    async ({ assetRef, newName, dryRun }) => {
+    async (params) => {
+      const { action } = params;
       try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            renameAsset(apiClient, assetRef, newName)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    dryRun: true,
-                    oldName: result.oldName,
-                    newName: result.newName,
-                    message: "Dry run: no changes persisted",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
+        switch (action) {
+          case "set-data-cond": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "data.set-data-cond");
+            const nref = requireParam(params.nodeRef, "nodeRef", "data.set-data-cond");
+            // condition can be null (to remove), so we check for undefined specifically
+            if (params.condition === undefined) {
+              throw new Error("Missing required parameter 'condition' for 'data.set-data-cond' action");
+            }
 
-        const result = await renameAsset(apiClient, assetRef, newName);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                setDataCond(apiClient, cuuid, nref, params.condition!, params.variant)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        node: result.nodeName ?? result.nodeUuid,
+                        previousCondition: result.previousCondition,
+                        newCondition: result.newCondition,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await setDataCond(
+              apiClient, cuuid, nref, params.condition!, params.variant
+            );
+            return {
+              content: [
                 {
-                  success: true,
-                  assetUuid: result.assetUuid,
-                  oldName: result.oldName,
-                  newName: result.newName,
-                  revision: result.save.revisionNum,
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      node: result.nodeName ?? result.nodeUuid,
+                      previousCondition: result.previousCondition,
+                      newCondition: result.newCondition,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
                 },
-                null,
-                2
-              ),
-            },
-          ],
-        };
+              ],
+            };
+          }
+
+          case "set-data-rep": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "data.set-data-rep");
+            const nref = requireParam(params.nodeRef, "nodeRef", "data.set-data-rep");
+            // collection can be null (to remove), so we check for undefined specifically
+            if (params.collection === undefined) {
+              throw new Error("Missing required parameter 'collection' for 'data.set-data-rep' action");
+            }
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                setDataRep(
+                  apiClient, cuuid, nref, params.collection!,
+                  params.elementVariable, params.indexVariable, params.variant
+                )
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        node: result.nodeName ?? result.nodeUuid,
+                        previousDataRep: result.previousDataRep,
+                        newDataRep: result.newDataRep,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await setDataRep(
+              apiClient, cuuid, nref, params.collection!,
+              params.elementVariable, params.indexVariable, params.variant
+            );
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      node: result.nodeName ?? result.nodeUuid,
+                      previousDataRep: result.previousDataRep,
+                      newDataRep: result.newDataRep,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "list-queries": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "data.list-queries");
+            const session = requireSession();
+            const component = session.site.components?.find(
+              (c: any) => c.uuid === cuuid
+            );
+            if (!component) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: `Component not found: ${cuuid}`,
+                  },
+                ],
+                isError: true,
+              };
+            }
+
+            const queries = listQueries(component);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      componentUuid: cuuid,
+                      componentName: component.name,
+                      queryCount: queries.length,
+                      queries,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "add-query": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "data.add-query");
+            const qName = requireParam(params.name, "name", "data.add-query");
+            const qType = params.queryType ?? "dataQuery";
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                addQuery(apiClient, cuuid, qName, qType)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        queryUuid: result.queryUuid,
+                        name: result.name,
+                        queryType: result.queryType,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await addQuery(apiClient, cuuid, qName, qType);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      queryUuid: result.queryUuid,
+                      name: result.name,
+                      queryType: result.queryType,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "update-query": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "data.update-query");
+            const qRef = requireParam(params.queryRef, "queryRef", "data.update-query");
+            const qName = requireParam(params.name, "name", "data.update-query");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                updateQuery(apiClient, cuuid, qRef, qName)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        queryUuid: result.queryUuid,
+                        name: result.name,
+                        queryType: result.queryType,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await updateQuery(apiClient, cuuid, qRef, qName);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      queryUuid: result.queryUuid,
+                      name: result.name,
+                      queryType: result.queryType,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "remove-query": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "data.remove-query");
+            const qRef = requireParam(params.queryRef, "queryRef", "data.remove-query");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                removeQuery(apiClient, cuuid, qRef)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        removedName: result.removedName,
+                        removedUuid: result.removedUuid,
+                        queryType: result.queryType,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await removeQuery(apiClient, cuuid, qRef);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      removedName: result.removedName,
+                      removedUuid: result.removedUuid,
+                      queryType: result.queryType,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "list-data-tokens": {
+            const result = listDataTokens();
+            return {
+              content: [
+                { type: "text" as const, text: JSON.stringify(result, null, 2) },
+              ],
+            };
+          }
+
+          case "create-data-token": {
+            const dtName = requireParam(params.name, "name", "data.create-data-token");
+            const result = await createDataToken(apiClient, dtName, params.value);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      token: result.token,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "update-data-token": {
+            const dtRef = requireParam(params.tokenRef, "tokenRef", "data.update-data-token");
+            const result = await updateDataToken(apiClient, dtRef, params.name, params.value);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      token: result.token,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "remove-data-token": {
+            const dtRef = requireParam(params.tokenRef, "tokenRef", "data.remove-data-token");
+            const result = await removeDataToken(apiClient, dtRef);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      removedName: result.removedName,
+                      removedUuid: result.removedUuid,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "list-splits": {
+            const result = listSplits();
+            return {
+              content: [
+                { type: "text" as const, text: JSON.stringify(result, null, 2) },
+              ],
+            };
+          }
+
+          case "create-split": {
+            const sName = requireParam(params.name, "name", "data.create-split");
+            const sType = requireParam(params.splitType, "splitType", "data.create-split");
+            const sSlices = requireParam(params.slices, "slices", "data.create-split");
+
+            const result = await createSplit(apiClient, sName, sType, sSlices);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      split: result.split,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "update-split": {
+            const sRef = requireParam(params.splitRef, "splitRef", "data.update-split");
+            const result = await updateSplit(apiClient, sRef, params.name, params.status);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      split: result.split,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "remove-split": {
+            const sRef = requireParam(params.splitRef, "splitRef", "data.remove-split");
+            const result = await removeSplit(apiClient, sRef);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      removedName: result.removedName,
+                      removedUuid: result.removedUuid,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "get-code-meta": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "data.get-code-meta");
+            const result = getCodeComponentMeta(cuuid);
+            return {
+              content: [
+                { type: "text" as const, text: JSON.stringify(result, null, 2) },
+              ],
+            };
+          }
+
+          case "list-functions": {
+            const result = listCustomFunctions();
+            return {
+              content: [
+                { type: "text" as const, text: JSON.stringify(result, null, 2) },
+              ],
+            };
+          }
+
+          default:
+            throw new Error(`Unknown action '${action}' for data tool.`);
+        }
       } catch (err: any) {
-        return handleMutationError("renaming asset", err);
+        return handleMutationError(`data.${action}`, err);
       }
     }
   );
 
   // ========================================================================
-  // remove-asset
+  // DOMAIN 8: interaction (3 actions)
   // ========================================================================
 
   server.tool(
-    "remove-asset",
-    "Remove an image asset and clean up all element references.",
+    "interaction",
+    "Event handler interactions on elements.\n" +
+      "Actions: list, add, remove.\n" +
+      "- list: List all interactions on an element\n" +
+      "- add: Add an event handler (navigation, updateVariable, customFunction)\n" +
+      "- remove: Remove interaction(s) from an element",
     {
-      assetRef: z.string().describe("Asset reference (UUID or name)"),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting."),
+      action: z.enum(["list", "add", "remove"]),
+      componentUuid: z.string().optional().describe("UUID of the component"),
+      nodeRef: z.string().optional().describe("Element reference"),
+      event: z.string().optional().describe("Event name (e.g., onClick, onChange)"),
+      actionName: z.string().optional().describe("Action: navigation, updateVariable, customFunction"),
+      args: z.record(z.string()).optional().describe("Action arguments as key-value pairs"),
+      interactionName: z.string().optional().describe("Human-readable step name"),
+      condition: z.string().optional().describe("JS expression for conditional execution"),
+      interactionIndex: z.number().optional().describe("Index of interaction to remove"),
+      dryRun: z.boolean().optional().describe("Preview changes without persisting"),
     },
-    async ({ assetRef, dryRun }) => {
+    async (params) => {
+      const { action } = params;
       try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            removeAsset(apiClient, assetRef)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
+        switch (action) {
+          case "list": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "interaction.list");
+            const nref = requireParam(params.nodeRef, "nodeRef", "interaction.list");
+            const session = requireSession();
+            const component = session.site.components?.find(
+              (c: any) => c.uuid === cuuid
+            );
+            if (!component) {
+              return {
+                content: [
                   {
-                    dryRun: true,
-                    removedName: result.removedName,
-                    removedUuid: result.removedUuid,
-                    message: "Dry run: no changes persisted",
+                    type: "text" as const,
+                    text: `Component UUID "${cuuid}" not found.`,
                   },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
+                ],
+                isError: true,
+              };
+            }
 
-        const result = await removeAsset(apiClient, assetRef);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
+            const interactions = listInteractions(component, nref);
+            return {
+              content: [
                 {
-                  success: true,
-                  removedName: result.removedName,
-                  removedUuid: result.removedUuid,
-                  revision: result.save.revisionNum,
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      componentUuid: cuuid,
+                      nodeRef: nref,
+                      interactionCount: interactions.length,
+                      interactions,
+                    },
+                    null,
+                    2
+                  ),
                 },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return handleMutationError("removing asset", err);
-      }
-    }
-  );
+              ],
+            };
+          }
 
-  // ========================================================================
-  // set-image
-  // ========================================================================
+          case "add": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "interaction.add");
+            const nref = requireParam(params.nodeRef, "nodeRef", "interaction.add");
+            const evt = requireParam(params.event, "event", "interaction.add");
+            const actName = requireParam(params.actionName, "actionName", "interaction.add");
+            const argz = requireParam(params.args, "args", "interaction.add");
 
-  server.tool(
-    "set-image",
-    "Set the image source on an element. For <img> tags, sets the src attribute. " +
-      "For other elements, sets background-image. Use assetRef for project assets or src for raw URLs.",
-    {
-      componentUuid: z
-        .string()
-        .describe("UUID of the component containing the element"),
-      nodeRef: z
-        .string()
-        .describe(
-          'Node reference: UUID, name (e.g., "Hero Image"), path, or index'
-        ),
-      assetRef: z
-        .string()
-        .optional()
-        .describe("Image asset reference (UUID or name). Mutually exclusive with src."),
-      src: z
-        .string()
-        .optional()
-        .describe("Raw image URL. Mutually exclusive with assetRef."),
-      variant: z
-        .string()
-        .optional()
-        .describe(
-          'Target variant by name, UUID, or selector. Omit for base variant.'
-        ),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("When true, shows what would change without persisting."),
-    },
-    async ({ componentUuid, nodeRef, assetRef, src, variant, dryRun }) => {
-      try {
-        if (dryRun) {
-          const result = await withDryRun(() =>
-            setImage(apiClient, componentUuid, nodeRef, { assetRef, src }, variant)
-          );
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                addInteraction(apiClient, cuuid, nref, evt, actName, argz, params.interactionName, params.condition)
+              );
+              return {
+                content: [
                   {
-                    dryRun: true,
-                    node: result.nodeName ?? result.nodeUuid,
-                    imageSource: result.imageSource,
-                    message: "Dry run: no changes persisted",
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        interactionUuid: result.interactionUuid,
+                        event: result.event,
+                        actionName: result.actionName,
+                        interactionName: result.interactionName,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
                   },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
+                ],
+              };
+            }
 
-        const result = await setImage(
-          apiClient,
-          componentUuid,
-          nodeRef,
-          { assetRef, src },
-          variant
-        );
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
+            const result = await addInteraction(
+              apiClient, cuuid, nref, evt, actName, argz, params.interactionName, params.condition
+            );
+            return {
+              content: [
                 {
-                  success: true,
-                  node: result.nodeName ?? result.nodeUuid,
-                  imageSource: result.imageSource,
-                  revision: result.save.revisionNum,
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      interactionUuid: result.interactionUuid,
+                      event: result.event,
+                      actionName: result.actionName,
+                      interactionName: result.interactionName,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
                 },
-                null,
-                2
-              ),
-            },
-          ],
-        };
+              ],
+            };
+          }
+
+          case "remove": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "interaction.remove");
+            const nref = requireParam(params.nodeRef, "nodeRef", "interaction.remove");
+            const evt = requireParam(params.event, "event", "interaction.remove");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                removeInteraction(apiClient, cuuid, nref, evt, params.interactionIndex)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        removedCount: result.removedCount,
+                        event: result.event,
+                        message: "Dry run: no changes persisted",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await removeInteraction(
+              apiClient, cuuid, nref, evt, params.interactionIndex
+            );
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      removedCount: result.removedCount,
+                      event: result.event,
+                      revision: result.save.revisionNum,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+
+          default:
+            throw new Error(`Unknown action '${action}' for interaction tool.`);
+        }
       } catch (err: any) {
-        return handleMutationError("setting image", err);
+        return handleMutationError(`interaction.${action}`, err);
       }
     }
   );

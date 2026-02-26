@@ -3,8 +3,8 @@
  *
  * Two test suites:
  *   1. createServer — smoke tests for server construction and auth (existing)
- *   2. tool handlers — verifies all 17 MCP tool handlers by connecting a real
- *      Client ↔ Server pair via InMemoryTransport and calling each tool
+ *   2. tool handlers — verifies all 8 STRAP domain tool handlers by connecting
+ *      a real Client <-> Server pair via InMemoryTransport and calling each tool
  *
  * The tool handler tests mock every module that server.ts imports (model-loader,
  * session, edit-tools, etc.) to isolate the wiring logic in server.ts. Individual
@@ -355,10 +355,10 @@ describe("tool handlers", () => {
   }
 
   // =====================================================================
-  // Session Setup Tools
+  // Session Setup Tools (project domain)
   // =====================================================================
 
-  describe("set-project", () => {
+  describe("project.set", () => {
     it("loads project, stores session, and returns metadata", async () => {
       const mockSite = {
         components: [
@@ -378,8 +378,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "set-project",
-        arguments: { projectId: "proj-123" },
+        name: "project",
+        arguments: { action: "set", projectId: "proj-123" },
       });
 
       const output = parseResponse(result);
@@ -410,17 +410,17 @@ describe("tool handlers", () => {
       mockLoadProject.mockRejectedValue(new Error("Network timeout"));
 
       const result = await client.callTool({
-        name: "set-project",
-        arguments: { projectId: "bad-proj" },
+        name: "project",
+        arguments: { action: "set", projectId: "bad-proj" },
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Error loading project");
+      expect(result.content[0].text).toContain("Error in project.set");
       expect(result.content[0].text).toContain("Network timeout");
     });
   });
 
-  describe("list-projects", () => {
+  describe("project.list", () => {
     it("returns accessible projects from API", async () => {
       mockApiClient.listProjects.mockResolvedValue({
         projects: [
@@ -430,8 +430,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "list-projects",
-        arguments: {},
+        name: "project",
+        arguments: { action: "list" },
       });
 
       const output = parseResponse(result);
@@ -445,20 +445,20 @@ describe("tool handlers", () => {
       mockApiClient.listProjects.mockRejectedValue(new Error("Unauthorized"));
 
       const result = await client.callTool({
-        name: "list-projects",
-        arguments: {},
+        name: "project",
+        arguments: { action: "list" },
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Error listing projects");
+      expect(result.content[0].text).toContain("Error in project.list");
     });
   });
 
   // =====================================================================
-  // Model Read Tools
+  // Model Read Tools (project + inspect domains)
   // =====================================================================
 
-  describe("get-project-meta", () => {
+  describe("project.get-meta", () => {
     it("returns project metadata with pages, components, and counts", async () => {
       mockRequireSession.mockReturnValue({
         projectId: "proj-123",
@@ -475,8 +475,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "get-project-meta",
-        arguments: {},
+        name: "project",
+        arguments: { action: "get-meta" },
       });
 
       const output = parseResponse(result);
@@ -508,8 +508,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "get-project-meta",
-        arguments: {},
+        name: "project",
+        arguments: { action: "get-meta" },
       });
 
       const output = parseResponse(result);
@@ -523,8 +523,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "get-project-meta",
-        arguments: {},
+        name: "project",
+        arguments: { action: "get-meta" },
       });
 
       expect(result.isError).toBe(true);
@@ -532,7 +532,7 @@ describe("tool handlers", () => {
     });
   });
 
-  describe("list-components", () => {
+  describe("component.list", () => {
     it("returns pages and components with types", async () => {
       mockRequireSession.mockReturnValue({
         site: {
@@ -544,8 +544,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "list-components",
-        arguments: {},
+        name: "component",
+        arguments: { action: "list" },
       });
 
       const output = parseResponse(result);
@@ -557,7 +557,7 @@ describe("tool handlers", () => {
     });
   });
 
-  describe("get-component-tree", () => {
+  describe("inspect.tree", () => {
     it("returns component tree for valid UUID", async () => {
       const mockTree = {
         type: "tag",
@@ -575,8 +575,8 @@ describe("tool handlers", () => {
       mockReadComponentTree.mockReturnValue(mockTree);
 
       const result = await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: "comp-1" },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: "comp-1" },
       });
 
       const output = parseResponse(result);
@@ -599,8 +599,9 @@ describe("tool handlers", () => {
       mockReadComponentTree.mockReturnValue({ type: "tag", tag: "div" });
 
       await client.callTool({
-        name: "get-component-tree",
+        name: "inspect",
         arguments: {
+          action: "tree",
           componentUuid: "comp-1",
           maxDepth: 2,
           excludeStyles: true,
@@ -624,8 +625,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: "nonexistent" },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: "nonexistent" },
       });
 
       expect(result.isError).toBe(true);
@@ -635,10 +636,10 @@ describe("tool handlers", () => {
   });
 
   // =====================================================================
-  // M3: Context-Efficient Query Tools
+  // M3: Context-Efficient Query Tools (inspect domain)
   // =====================================================================
 
-  describe("get-component-summary", () => {
+  describe("inspect.summary", () => {
     it("returns compact tree outline via readComponentSummary", async () => {
       const mockSummary = {
         type: "tag",
@@ -662,8 +663,8 @@ describe("tool handlers", () => {
       mockReadComponentSummary.mockReturnValue(mockSummary);
 
       const result = await client.callTool({
-        name: "get-component-summary",
-        arguments: { componentUuid: "comp-1" },
+        name: "inspect",
+        arguments: { action: "summary", componentUuid: "comp-1" },
       });
 
       const output = parseResponse(result);
@@ -687,8 +688,8 @@ describe("tool handlers", () => {
       mockReadComponentSummary.mockReturnValue({ type: "tag", tag: "div" });
 
       await client.callTool({
-        name: "get-component-summary",
-        arguments: { componentUuid: "comp-1", maxDepth: 3 },
+        name: "inspect",
+        arguments: { action: "summary", componentUuid: "comp-1", maxDepth: 3 },
       });
 
       expect(mockReadComponentSummary).toHaveBeenCalledWith(
@@ -703,8 +704,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "get-component-summary",
-        arguments: { componentUuid: "nonexistent" },
+        name: "inspect",
+        arguments: { action: "summary", componentUuid: "nonexistent" },
       });
 
       expect(result.isError).toBe(true);
@@ -712,7 +713,7 @@ describe("tool handlers", () => {
     });
   });
 
-  describe("get-node-details", () => {
+  describe("inspect.node", () => {
     it("resolves node and returns full details", async () => {
       const mockNode = { fake: "tpl-node" };
       const mockResolved = {
@@ -745,8 +746,8 @@ describe("tool handlers", () => {
       mockReadNodeDetails.mockReturnValue(mockDetails);
 
       const result = await client.callTool({
-        name: "get-node-details",
-        arguments: { componentUuid: "comp-1", nodeRef: "Hero Title" },
+        name: "inspect",
+        arguments: { action: "node", componentUuid: "comp-1", nodeRef: "Hero Title" },
       });
 
       const output = parseResponse(result);
@@ -777,12 +778,12 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "get-node-details",
-        arguments: { componentUuid: "comp-1", nodeRef: "Missing" },
+        name: "inspect",
+        arguments: { action: "node", componentUuid: "comp-1", nodeRef: "Missing" },
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Error reading node details");
+      expect(result.content[0].text).toContain("Error in inspect.node");
     });
 
     it("returns error for unknown component UUID", async () => {
@@ -791,8 +792,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "get-node-details",
-        arguments: { componentUuid: "nonexistent", nodeRef: "Title" },
+        name: "inspect",
+        arguments: { action: "node", componentUuid: "nonexistent", nodeRef: "Title" },
       });
 
       expect(result.isError).toBe(true);
@@ -800,7 +801,7 @@ describe("tool handlers", () => {
     });
   });
 
-  describe("export-component-tree", () => {
+  describe("inspect.export", () => {
     it("writes full tree to temp file and returns summary", async () => {
       const mockFullTree = {
         type: "tag",
@@ -825,8 +826,8 @@ describe("tool handlers", () => {
       mockCountTreeNodes.mockReturnValue(2);
 
       const result = await client.callTool({
-        name: "export-component-tree",
-        arguments: { componentUuid: "comp-1" },
+        name: "inspect",
+        arguments: { action: "export", componentUuid: "comp-1" },
       });
 
       const output = parseResponse(result);
@@ -853,8 +854,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "export-component-tree",
-        arguments: { componentUuid: "nonexistent" },
+        name: "inspect",
+        arguments: { action: "export", componentUuid: "nonexistent" },
       });
 
       expect(result.isError).toBe(true);
@@ -867,7 +868,7 @@ describe("tool handlers", () => {
   // =====================================================================
 
   describe("cache invalidation", () => {
-    it("add-child invalidates node cache for the component", async () => {
+    it("node.add invalidates node cache for the component", async () => {
       mockAddChild.mockResolvedValue({
         save: { revisionNum: 8, incremental: true },
         parentName: "Container",
@@ -876,8 +877,9 @@ describe("tool handlers", () => {
       });
 
       await client.callTool({
-        name: "add-child",
+        name: "node",
         arguments: {
+          action: "add",
           componentUuid: "comp-1",
           parentRef: "Container",
           child: { type: "text", value: "Hello" },
@@ -887,7 +889,7 @@ describe("tool handlers", () => {
       expect(mockInvalidateNodeCache).toHaveBeenCalledWith("comp-1");
     });
 
-    it("remove-child invalidates node cache for the component", async () => {
+    it("node.remove invalidates node cache for the component", async () => {
       mockRemoveChild.mockResolvedValue({
         save: { revisionNum: 9, incremental: true },
         removedName: "OldSection",
@@ -895,8 +897,9 @@ describe("tool handlers", () => {
       });
 
       await client.callTool({
-        name: "remove-child",
+        name: "node",
         arguments: {
+          action: "remove",
           componentUuid: "comp-1",
           nodeRef: "OldSection",
         },
@@ -905,7 +908,7 @@ describe("tool handlers", () => {
       expect(mockInvalidateNodeCache).toHaveBeenCalledWith("comp-1");
     });
 
-    it("move-child invalidates node cache for the component", async () => {
+    it("node.move invalidates node cache for the component", async () => {
       mockMoveChild.mockResolvedValue({
         save: { revisionNum: 10, incremental: true },
         movedName: "Title",
@@ -916,8 +919,9 @@ describe("tool handlers", () => {
       });
 
       await client.callTool({
-        name: "move-child",
+        name: "node",
         arguments: {
+          action: "move",
           componentUuid: "comp-1",
           nodeRef: "Title",
           newParentRef: "Hero",
@@ -927,7 +931,7 @@ describe("tool handlers", () => {
       expect(mockInvalidateNodeCache).toHaveBeenCalledWith("comp-1");
     });
 
-    it("refresh-project clears entire node cache", async () => {
+    it("project.refresh clears entire node cache", async () => {
       mockRequireSession.mockReturnValue({
         projectId: "proj-123",
       });
@@ -941,14 +945,14 @@ describe("tool handlers", () => {
       });
 
       await client.callTool({
-        name: "refresh-project",
-        arguments: {},
+        name: "project",
+        arguments: { action: "refresh" },
       });
 
       expect(mockClearNodeCache).toHaveBeenCalled();
     });
 
-    it("set-project clears entire node cache", async () => {
+    it("project.set clears entire node cache", async () => {
       mockLoadProject.mockResolvedValue({
         site: { components: [] },
         bundler: {},
@@ -959,8 +963,8 @@ describe("tool handlers", () => {
       });
 
       await client.callTool({
-        name: "set-project",
-        arguments: { projectId: "new-proj" },
+        name: "project",
+        arguments: { action: "set", projectId: "new-proj" },
       });
 
       expect(mockClearNodeCache).toHaveBeenCalled();
@@ -971,7 +975,7 @@ describe("tool handlers", () => {
   // Remaining existing tools (tokens, create-page, edits, batch, undo)
   // =====================================================================
 
-  describe("get-tokens", () => {
+  describe("design.list-tokens", () => {
     it("returns all tokens when no filter specified", async () => {
       const tokenResult = {
         tokenCount: 3,
@@ -987,8 +991,8 @@ describe("tool handlers", () => {
       mockReadTokens.mockReturnValue(tokenResult);
 
       const result = await client.callTool({
-        name: "get-tokens",
-        arguments: {},
+        name: "design",
+        arguments: { action: "list-tokens" },
       });
 
       const output = parseResponse(result);
@@ -1008,15 +1012,15 @@ describe("tool handlers", () => {
       mockReadTokens.mockReturnValue({ tokenCount: 1, tokens: {} });
 
       await client.callTool({
-        name: "get-tokens",
-        arguments: { type: "Color" },
+        name: "design",
+        arguments: { action: "list-tokens", tokenType: "Color" },
       });
 
       expect(mockReadTokens).toHaveBeenCalledWith([{ uuid: "t1" }], "Color");
     });
   });
 
-  describe("create-page", () => {
+  describe("component.create-page", () => {
     it("creates page via API and returns UUID from API response", async () => {
       const newSite = {
         components: [
@@ -1043,8 +1047,8 @@ describe("tool handlers", () => {
       const body = { type: "vbox", children: [{ type: "text", value: "Hello" }] };
 
       const result = await client.callTool({
-        name: "create-page",
-        arguments: { name: "Products", path: "/products", body },
+        name: "component",
+        arguments: { action: "create-page", name: "Products", path: "/products", body },
       });
 
       const output = parseResponse(result);
@@ -1089,8 +1093,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "create-page",
-        arguments: { name: "Products", path: "/products", body: {} },
+        name: "component",
+        arguments: { action: "create-page", name: "Products", path: "/products", body: {} },
       });
 
       const output = parseResponse(result);
@@ -1107,8 +1111,8 @@ describe("tool handlers", () => {
       mockLoadProject.mockRejectedValue(new Error("Reload failed"));
 
       const result = await client.callTool({
-        name: "create-page",
-        arguments: { name: "Test", path: "/test", body: {} },
+        name: "component",
+        arguments: { action: "create-page", name: "Test", path: "/test", body: {} },
       });
 
       // Should succeed — reload failure is swallowed
@@ -1123,16 +1127,16 @@ describe("tool handlers", () => {
       mockApiClient.updateProject.mockRejectedValue(new Error("Bad request"));
 
       const result = await client.callTool({
-        name: "create-page",
-        arguments: { name: "Test", path: "/test", body: {} },
+        name: "component",
+        arguments: { action: "create-page", name: "Test", path: "/test", body: {} },
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Error creating page");
+      expect(result.content[0].text).toContain("Error in component.create-page");
     });
   });
 
-  describe("create-component", () => {
+  describe("component.create", () => {
     it("creates component via API and returns UUID from API response", async () => {
       const newSite = {
         components: [
@@ -1159,8 +1163,8 @@ describe("tool handlers", () => {
       const body = { type: "vbox", children: [{ type: "text", value: "Hero" }] };
 
       const result = await client.callTool({
-        name: "create-component",
-        arguments: { name: "HeroSection", body },
+        name: "component",
+        arguments: { action: "create", name: "HeroSection", body },
       });
 
       const output = parseResponse(result);
@@ -1204,8 +1208,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "create-component",
-        arguments: { name: "HeroSection", body: {} },
+        name: "component",
+        arguments: { action: "create", name: "HeroSection", body: {} },
       });
 
       const output = parseResponse(result);
@@ -1222,8 +1226,8 @@ describe("tool handlers", () => {
       mockLoadProject.mockRejectedValue(new Error("Reload failed"));
 
       const result = await client.callTool({
-        name: "create-component",
-        arguments: { name: "Test", body: {} },
+        name: "component",
+        arguments: { action: "create", name: "Test", body: {} },
       });
 
       const output = parseResponse(result);
@@ -1237,16 +1241,16 @@ describe("tool handlers", () => {
       mockApiClient.updateProject.mockRejectedValue(new Error("Bad request"));
 
       const result = await client.callTool({
-        name: "create-component",
-        arguments: { name: "Test", body: {} },
+        name: "component",
+        arguments: { action: "create", name: "Test", body: {} },
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Error creating component");
+      expect(result.content[0].text).toContain("Error in component.create");
     });
   });
 
-  describe("clone-component", () => {
+  describe("component.clone", () => {
     it("clones component via API and returns UUID from API response", async () => {
       const newSite = {
         components: [
@@ -1276,8 +1280,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "clone-component",
-        arguments: { sourceUuid: "orig-comp", name: "OriginalCopy" },
+        name: "component",
+        arguments: { action: "clone", sourceUuid: "orig-comp", name: "OriginalCopy" },
       });
 
       const output = parseResponse(result);
@@ -1325,8 +1329,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "clone-component",
-        arguments: { sourceUuid: "orig-comp", name: "OriginalCopy" },
+        name: "component",
+        arguments: { action: "clone", sourceUuid: "orig-comp", name: "OriginalCopy" },
       });
 
       const output = parseResponse(result);
@@ -1356,8 +1360,9 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "clone-component",
+        name: "component",
         arguments: {
+          action: "clone",
           sourceUuid: "page-1",
           name: "HomepageV2",
           path: "/v2",
@@ -1387,8 +1392,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "clone-component",
-        arguments: { sourceUuid: "nonexistent", name: "Clone" },
+        name: "component",
+        arguments: { action: "clone", sourceUuid: "nonexistent", name: "Clone" },
       });
 
       expect(result.isError).toBe(true);
@@ -1408,16 +1413,16 @@ describe("tool handlers", () => {
       mockApiClient.updateProject.mockRejectedValue(new Error("Server error"));
 
       const result = await client.callTool({
-        name: "clone-component",
-        arguments: { sourceUuid: "comp-1", name: "Clone" },
+        name: "component",
+        arguments: { action: "clone", sourceUuid: "comp-1", name: "Clone" },
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Error cloning component");
+      expect(result.content[0].text).toContain("Error in component.clone");
     });
   });
 
-  describe("update-text", () => {
+  describe("node.update-text", () => {
     it("delegates to updateText and returns structured result", async () => {
       mockUpdateText.mockResolvedValue({
         save: { revisionNum: 6, incremental: true },
@@ -1428,8 +1433,9 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "update-text",
+        name: "node",
         arguments: {
+          action: "update-text",
           componentUuid: "comp-1",
           nodeRef: "Title",
           text: "New text",
@@ -1461,8 +1467,9 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "update-text",
+        name: "node",
         arguments: {
+          action: "update-text",
           componentUuid: "comp-1",
           nodeRef: "Price",
           text: "$ctx.product.price",
@@ -1493,8 +1500,9 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "update-text",
+        name: "node",
         arguments: {
+          action: "update-text",
           componentUuid: "comp-1",
           nodeRef: "uuid-abc",
           text: "Updated",
@@ -1511,8 +1519,9 @@ describe("tool handlers", () => {
       );
 
       const result = await client.callTool({
-        name: "update-text",
+        name: "node",
         arguments: {
+          action: "update-text",
           componentUuid: "comp-1",
           nodeRef: "Missing",
           text: "text",
@@ -1520,11 +1529,11 @@ describe("tool handlers", () => {
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Error updating text");
+      expect(result.content[0].text).toContain("Error node.update-text");
     });
   });
 
-  describe("update-styles", () => {
+  describe("node.update-styles", () => {
     it("delegates to updateStyles and returns updated properties", async () => {
       mockUpdateStyles.mockResolvedValue({
         save: { revisionNum: 7, incremental: true },
@@ -1534,8 +1543,9 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "update-styles",
+        name: "node",
         arguments: {
+          action: "update-styles",
           componentUuid: "comp-1",
           nodeRef: "Hero",
           styles: { fontSize: "24px", color: "#ff0000" },
@@ -1556,8 +1566,9 @@ describe("tool handlers", () => {
       );
 
       const result = await client.callTool({
-        name: "update-styles",
+        name: "node",
         arguments: {
+          action: "update-styles",
           componentUuid: "comp-1",
           nodeRef: "slot-node",
           styles: { color: "red" },
@@ -1565,11 +1576,11 @@ describe("tool handlers", () => {
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Error updating styles");
+      expect(result.content[0].text).toContain("Error node.update-styles");
     });
   });
 
-  describe("add-child", () => {
+  describe("node.add", () => {
     it("delegates to addChild with default position", async () => {
       mockAddChild.mockResolvedValue({
         save: { revisionNum: 8, incremental: true },
@@ -1582,8 +1593,9 @@ describe("tool handlers", () => {
       const childElement = { type: "text", value: "New paragraph" };
 
       const result = await client.callTool({
-        name: "add-child",
+        name: "node",
         arguments: {
+          action: "add",
           componentUuid: "comp-1",
           parentRef: "Container",
           child: childElement,
@@ -1611,8 +1623,9 @@ describe("tool handlers", () => {
       });
 
       await client.callTool({
-        name: "add-child",
+        name: "node",
         arguments: {
+          action: "add",
           componentUuid: "comp-1",
           parentRef: "Container",
           child: { type: "text", value: "First" },
@@ -1636,8 +1649,9 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "add-child",
+        name: "node",
         arguments: {
+          action: "add",
           componentUuid: "comp-1",
           parentRef: "Card",
           child: { type: "text", value: "Header" },
@@ -1657,7 +1671,7 @@ describe("tool handlers", () => {
     });
   });
 
-  describe("remove-child", () => {
+  describe("node.remove", () => {
     it("delegates to removeChild and returns removed node info", async () => {
       mockRemoveChild.mockResolvedValue({
         save: { revisionNum: 9, incremental: true },
@@ -1666,8 +1680,9 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "remove-child",
+        name: "node",
         arguments: {
+          action: "remove",
           componentUuid: "comp-1",
           nodeRef: "OldSection",
         },
@@ -1685,7 +1700,7 @@ describe("tool handlers", () => {
     });
   });
 
-  describe("move-child", () => {
+  describe("node.move", () => {
     it("delegates to moveChild and returns result", async () => {
       mockMoveChild.mockResolvedValue({
         save: { revisionNum: 10, incremental: true },
@@ -1697,8 +1712,9 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "move-child",
+        name: "node",
         arguments: {
+          action: "move",
           componentUuid: "comp-1",
           nodeRef: "Title",
           newParentRef: "Hero",
@@ -1725,8 +1741,9 @@ describe("tool handlers", () => {
       );
 
       const result = await client.callTool({
-        name: "move-child",
+        name: "node",
         arguments: {
+          action: "move",
           componentUuid: "comp-1",
           nodeRef: "Parent",
           newParentRef: "Child",
@@ -1734,11 +1751,11 @@ describe("tool handlers", () => {
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Error moving child");
+      expect(result.content[0].text).toContain("Error node.move");
     });
   });
 
-  describe("clone-child", () => {
+  describe("node.clone", () => {
     it("delegates to cloneChild and returns structured result", async () => {
       mockCloneChild.mockResolvedValue({
         save: { revisionNum: 12, incremental: true },
@@ -1748,8 +1765,9 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "clone-child",
+        name: "node",
         arguments: {
+          action: "clone",
           componentUuid: "comp-1",
           nodeRef: "Card",
         },
@@ -1777,8 +1795,9 @@ describe("tool handlers", () => {
       });
 
       await client.callTool({
-        name: "clone-child",
+        name: "node",
         arguments: {
+          action: "clone",
           componentUuid: "comp-1",
           nodeRef: "Source",
           newName: "CustomName",
@@ -1798,30 +1817,31 @@ describe("tool handlers", () => {
       );
 
       const result = await client.callTool({
-        name: "clone-child",
+        name: "node",
         arguments: {
+          action: "clone",
           componentUuid: "comp-1",
           nodeRef: "Root",
         },
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Error cloning child");
+      expect(result.content[0].text).toContain("Error node.clone");
     });
   });
 
   // =====================================================================
-  // Batch / Workflow Tools
+  // Batch / Workflow Tools (project domain)
   // =====================================================================
 
-  describe("begin-batch", () => {
+  describe("project.begin-batch", () => {
     it("starts batch session and returns batch ID", async () => {
       mockRequireSession.mockReturnValue({ projectId: "proj-123" });
       mockBeginBatch.mockReturnValue("batch-uuid-123");
 
       const result = await client.callTool({
-        name: "begin-batch",
-        arguments: {},
+        name: "project",
+        arguments: { action: "begin-batch" },
       });
 
       const output = parseResponse(result);
@@ -1838,8 +1858,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "begin-batch",
-        arguments: {},
+        name: "project",
+        arguments: { action: "begin-batch" },
       });
 
       expect(result.isError).toBe(true);
@@ -1847,7 +1867,7 @@ describe("tool handlers", () => {
     });
   });
 
-  describe("end-batch", () => {
+  describe("project.end-batch", () => {
     it("saves accumulated changes and returns operation count", async () => {
       mockEndBatch.mockResolvedValue({
         save: { revisionNum: 11, incremental: true },
@@ -1855,8 +1875,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "end-batch",
-        arguments: { batchId: "batch-123" },
+        name: "project",
+        arguments: { action: "end-batch", batchId: "batch-123" },
       });
 
       const output = parseResponse(result);
@@ -1876,15 +1896,15 @@ describe("tool handlers", () => {
       });
 
       await client.callTool({
-        name: "end-batch",
-        arguments: {},
+        name: "project",
+        arguments: { action: "end-batch" },
       });
 
       expect(mockEndBatch).toHaveBeenCalledWith(mockApiClient, undefined);
     });
   });
 
-  describe("undo", () => {
+  describe("project.undo", () => {
     it("undoes last operation and returns result", async () => {
       mockIsBatchActive.mockReturnValue(false);
       mockUndoOperation.mockResolvedValue({
@@ -1894,8 +1914,8 @@ describe("tool handlers", () => {
       mockGetUndoDepth.mockReturnValue(2);
 
       const result = await client.callTool({
-        name: "undo",
-        arguments: {},
+        name: "project",
+        arguments: { action: "undo" },
       });
 
       const output = parseResponse(result);
@@ -1912,8 +1932,8 @@ describe("tool handlers", () => {
       mockIsBatchActive.mockReturnValue(true);
 
       const result = await client.callTool({
-        name: "undo",
-        arguments: {},
+        name: "project",
+        arguments: { action: "undo" },
       });
 
       expect(result.isError).toBe(true);
@@ -1928,8 +1948,8 @@ describe("tool handlers", () => {
       mockUndoOperation.mockRejectedValue(new Error("Nothing to undo."));
 
       const result = await client.callTool({
-        name: "undo",
-        arguments: {},
+        name: "project",
+        arguments: { action: "undo" },
       });
 
       expect(result.isError).toBe(true);
@@ -1938,10 +1958,10 @@ describe("tool handlers", () => {
   });
 
   // =====================================================================
-  // get-subtree tool
+  // inspect.subtree tool
   // =====================================================================
 
-  describe("get-subtree", () => {
+  describe("inspect.subtree", () => {
     it("resolves node and returns subtree via readSubtree", async () => {
       const mockNode = { fake: "tpl-node" };
       const mockResolved = {
@@ -1976,8 +1996,8 @@ describe("tool handlers", () => {
       mockCountTreeNodes.mockReturnValue(2);
 
       const result = await client.callTool({
-        name: "get-subtree",
-        arguments: { componentUuid: "comp-1", nodeRef: "Hero" },
+        name: "inspect",
+        arguments: { action: "subtree", componentUuid: "comp-1", nodeRef: "Hero" },
       });
 
       const output = parseResponse(result);
@@ -2015,8 +2035,8 @@ describe("tool handlers", () => {
       mockCountTreeNodes.mockReturnValue(1);
 
       await client.callTool({
-        name: "get-subtree",
-        arguments: { componentUuid: "comp-1", nodeRef: "Root", maxDepth: 1 },
+        name: "inspect",
+        arguments: { action: "subtree", componentUuid: "comp-1", nodeRef: "Root", maxDepth: 1 },
       });
 
       expect(mockReadSubtree).toHaveBeenCalledWith({}, { maxDepth: 1 });
@@ -2042,8 +2062,8 @@ describe("tool handlers", () => {
       mockCountTreeNodes.mockReturnValue(1);
 
       await client.callTool({
-        name: "get-subtree",
-        arguments: { componentUuid: "comp-1", nodeRef: "Root", excludeStyles: true },
+        name: "inspect",
+        arguments: { action: "subtree", componentUuid: "comp-1", nodeRef: "Root", excludeStyles: true },
       });
 
       expect(mockReadSubtree).toHaveBeenCalledWith({}, { excludeStyles: true });
@@ -2069,8 +2089,8 @@ describe("tool handlers", () => {
       mockCountTreeNodes.mockReturnValue(1);
 
       await client.callTool({
-        name: "get-subtree",
-        arguments: { componentUuid: "comp-1", nodeRef: "Root", maxDepth: 2, excludeStyles: true },
+        name: "inspect",
+        arguments: { action: "subtree", componentUuid: "comp-1", nodeRef: "Root", maxDepth: 2, excludeStyles: true },
       });
 
       expect(mockReadSubtree).toHaveBeenCalledWith({}, { maxDepth: 2, excludeStyles: true });
@@ -2082,8 +2102,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "get-subtree",
-        arguments: { componentUuid: "nonexistent", nodeRef: "Hero" },
+        name: "inspect",
+        arguments: { action: "subtree", componentUuid: "nonexistent", nodeRef: "Hero" },
       });
 
       expect(result.isError).toBe(true);
@@ -2102,12 +2122,12 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "get-subtree",
-        arguments: { componentUuid: "comp-1", nodeRef: "Missing" },
+        name: "inspect",
+        arguments: { action: "subtree", componentUuid: "comp-1", nodeRef: "Missing" },
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Error reading subtree");
+      expect(result.content[0].text).toContain("Error in inspect.subtree");
     });
   });
 
@@ -2116,28 +2136,28 @@ describe("tool handlers", () => {
   // =====================================================================
 
   describe("Zod validation", () => {
-    it("create-component rejects empty name", async () => {
+    it("component.create rejects empty name", async () => {
       const result = await client.callTool({
-        name: "create-component",
-        arguments: { name: "", body: { type: "vbox" } },
+        name: "component",
+        arguments: { action: "create", name: "", body: { type: "vbox" } },
       });
 
       expect(result.isError).toBe(true);
     });
 
-    it("clone-component rejects empty name", async () => {
+    it("component.clone rejects empty name", async () => {
       const result = await client.callTool({
-        name: "clone-component",
-        arguments: { sourceUuid: "some-uuid", name: "" },
+        name: "component",
+        arguments: { action: "clone", sourceUuid: "some-uuid", name: "" },
       });
 
       expect(result.isError).toBe(true);
     });
 
-    it("clone-component rejects empty sourceUuid", async () => {
+    it("component.clone rejects empty sourceUuid", async () => {
       const result = await client.callTool({
-        name: "clone-component",
-        arguments: { sourceUuid: "", name: "CloneName" },
+        name: "component",
+        arguments: { action: "clone", sourceUuid: "", name: "CloneName" },
       });
 
       expect(result.isError).toBe(true);
@@ -2145,10 +2165,10 @@ describe("tool handlers", () => {
   });
 
   // =====================================================================
-  // save-project tool
+  // project.save tool
   // =====================================================================
 
-  describe("save-project", () => {
+  describe("project.save", () => {
     it("performs a full save and returns revision info", async () => {
       mockRequireSession.mockReturnValue({
         projectId: "proj-123",
@@ -2156,8 +2176,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "save-project",
-        arguments: {},
+        name: "project",
+        arguments: { action: "save" },
       });
 
       const output = parseResponse(result);
@@ -2175,12 +2195,12 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "save-project",
-        arguments: {},
+        name: "project",
+        arguments: { action: "save" },
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Error saving project");
+      expect(result.content[0].text).toContain("Error in project.save");
     });
 
     it("returns error when save fails", async () => {
@@ -2188,8 +2208,8 @@ describe("tool handlers", () => {
       mockSaveFullBundle.mockRejectedValue(new Error("Site invariant violation"));
 
       const result = await client.callTool({
-        name: "save-project",
-        arguments: {},
+        name: "project",
+        arguments: { action: "save" },
       });
 
       expect(result.isError).toBe(true);
@@ -2202,7 +2222,7 @@ describe("tool handlers", () => {
   // =====================================================================
 
   describe("dry-run mode", () => {
-    it("update-text with dryRun returns preview without saving", async () => {
+    it("node.update-text with dryRun returns preview without saving", async () => {
       mockIsBatchActive.mockReturnValue(false);
       mockBeginBatch.mockReturnValue("dry-run-batch");
       mockGetAccumulatedChanges.mockReturnValue({
@@ -2219,8 +2239,9 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "update-text",
+        name: "node",
         arguments: {
+          action: "update-text",
           componentUuid: "comp-1",
           nodeRef: "Title",
           text: "New",
@@ -2240,7 +2261,7 @@ describe("tool handlers", () => {
       expect(mockCancelBatch).toHaveBeenCalled();
     });
 
-    it("update-styles with dryRun returns preview without saving", async () => {
+    it("node.update-styles with dryRun returns preview without saving", async () => {
       mockIsBatchActive.mockReturnValue(false);
       mockBeginBatch.mockReturnValue("dry-run-batch");
       mockGetAccumulatedChanges.mockReturnValue({
@@ -2256,8 +2277,9 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "update-styles",
+        name: "node",
         arguments: {
+          action: "update-styles",
           componentUuid: "comp-1",
           nodeRef: "Hero",
           styles: { fontSize: "24px", color: "#ff0000" },
@@ -2272,7 +2294,7 @@ describe("tool handlers", () => {
       expect(output.updatedProperties).toEqual(["fontSize", "color"]);
     });
 
-    it("add-child with dryRun does not invalidate node cache", async () => {
+    it("node.add with dryRun does not invalidate node cache", async () => {
       mockIsBatchActive.mockReturnValue(false);
       mockBeginBatch.mockReturnValue("dry-run-batch");
       mockGetAccumulatedChanges.mockReturnValue({
@@ -2288,8 +2310,9 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "add-child",
+        name: "node",
         arguments: {
+          action: "add",
           componentUuid: "comp-1",
           parentRef: "Container",
           child: { type: "text", value: "Test" },
@@ -2308,8 +2331,9 @@ describe("tool handlers", () => {
       mockIsBatchActive.mockReturnValue(true);
 
       const result = await client.callTool({
-        name: "update-text",
+        name: "node",
         arguments: {
+          action: "update-text",
           componentUuid: "comp-1",
           nodeRef: "Title",
           text: "New",
@@ -2323,11 +2347,11 @@ describe("tool handlers", () => {
   });
 
   // =====================================================================
-  // Cache metrics in get-node-details
+  // Cache metrics in inspect.node
   // =====================================================================
 
   describe("cache metrics", () => {
-    it("get-node-details includes cache metrics in response", async () => {
+    it("inspect.node includes cache metrics in response", async () => {
       mockGetCacheMetrics.mockReturnValue({
         hits: 5,
         misses: 2,
@@ -2354,8 +2378,8 @@ describe("tool handlers", () => {
       mockReadNodeDetails.mockReturnValue({ type: "tag", tag: "h1" });
 
       const result = await client.callTool({
-        name: "get-node-details",
-        arguments: { componentUuid: "comp-1", nodeRef: "Title" },
+        name: "inspect",
+        arguments: { action: "node", componentUuid: "comp-1", nodeRef: "Title" },
       });
 
       const output = parseResponse(result);
@@ -2370,10 +2394,10 @@ describe("tool handlers", () => {
   });
 
   // =====================================================================
-  // Management Tools
+  // Management Tools (component domain)
   // =====================================================================
 
-  describe("rename-component", () => {
+  describe("component.rename", () => {
     it("renames a component and returns old/new names", async () => {
       mockRenameComponent.mockResolvedValue({
         save: { revisionNum: 11, incremental: true },
@@ -2384,8 +2408,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "rename-component",
-        arguments: { componentUuid: "comp-1", newName: "LandingPage" },
+        name: "component",
+        arguments: { action: "rename", componentUuid: "comp-1", newName: "LandingPage" },
       });
 
       const output = parseResponse(result);
@@ -2413,8 +2437,9 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "rename-component",
+        name: "component",
         arguments: {
+          action: "rename",
           componentUuid: "page-1",
           newName: "LandingPage",
           newPath: "/landing",
@@ -2438,25 +2463,25 @@ describe("tool handlers", () => {
       );
 
       const result = await client.callTool({
-        name: "rename-component",
-        arguments: { componentUuid: "nonexistent", newName: "Foo" },
+        name: "component",
+        arguments: { action: "rename", componentUuid: "nonexistent", newName: "Foo" },
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Error renaming component");
+      expect(result.content[0].text).toContain("Error component.rename");
     });
 
     it("rejects empty name via Zod validation", async () => {
       const result = await client.callTool({
-        name: "rename-component",
-        arguments: { componentUuid: "comp-1", newName: "" },
+        name: "component",
+        arguments: { action: "rename", componentUuid: "comp-1", newName: "" },
       });
 
       expect(result.isError).toBe(true);
     });
   });
 
-  describe("update-page-meta", () => {
+  describe("component.update-page-meta", () => {
     it("updates page metadata fields and returns updated list", async () => {
       mockUpdatePageMeta.mockResolvedValue({
         save: { revisionNum: 13, incremental: true },
@@ -2466,8 +2491,9 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "update-page-meta",
+        name: "component",
         arguments: {
+          action: "update-page-meta",
           componentUuid: "page-1",
           title: "Welcome to My Site",
           description: "A great landing page",
@@ -2502,8 +2528,9 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "update-page-meta",
+        name: "component",
         arguments: {
+          action: "update-page-meta",
           componentUuid: "page-1",
           title: "Welcome",
           description: "Landing page",
@@ -2524,8 +2551,9 @@ describe("tool handlers", () => {
       );
 
       const result = await client.callTool({
-        name: "update-page-meta",
+        name: "component",
         arguments: {
+          action: "update-page-meta",
           componentUuid: "comp-header",
           title: "Should Fail",
         },
@@ -2536,7 +2564,7 @@ describe("tool handlers", () => {
     });
   });
 
-  describe("get-page-meta", () => {
+  describe("inspect.page-meta", () => {
     it("returns page metadata for a page component", async () => {
       mockRequireSession.mockReturnValue({
         site: {
@@ -2560,8 +2588,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "get-page-meta",
-        arguments: { componentUuid: "page-1" },
+        name: "inspect",
+        arguments: { action: "page-meta", componentUuid: "page-1" },
       });
 
       const output = parseResponse(result);
@@ -2598,8 +2626,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "get-page-meta",
-        arguments: { componentUuid: "page-2" },
+        name: "inspect",
+        arguments: { action: "page-meta", componentUuid: "page-2" },
       });
 
       const output = parseResponse(result);
@@ -2620,8 +2648,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "get-page-meta",
-        arguments: { componentUuid: "comp-1" },
+        name: "inspect",
+        arguments: { action: "page-meta", componentUuid: "comp-1" },
       });
 
       expect(result.isError).toBe(true);
@@ -2634,8 +2662,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "get-page-meta",
-        arguments: { componentUuid: "nonexistent" },
+        name: "inspect",
+        arguments: { action: "page-meta", componentUuid: "nonexistent" },
       });
 
       expect(result.isError).toBe(true);
@@ -2643,7 +2671,7 @@ describe("tool handlers", () => {
     });
   });
 
-  describe("get-preview-url", () => {
+  describe("inspect.preview-url", () => {
     it("returns preview and studio URLs for a page", async () => {
       mockRequireSession.mockReturnValue({
         projectId: "proj-123",
@@ -2659,8 +2687,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "get-preview-url",
-        arguments: { componentUuid: "page-1" },
+        name: "inspect",
+        arguments: { action: "preview-url", componentUuid: "page-1" },
       });
 
       const output = parseResponse(result);
@@ -2684,8 +2712,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "get-preview-url",
-        arguments: { componentUuid: "comp-1" },
+        name: "inspect",
+        arguments: { action: "preview-url", componentUuid: "comp-1" },
       });
 
       const output = parseResponse(result);
@@ -2703,8 +2731,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "get-preview-url",
-        arguments: { componentUuid: "nonexistent" },
+        name: "inspect",
+        arguments: { action: "preview-url", componentUuid: "nonexistent" },
       });
 
       expect(result.isError).toBe(true);
@@ -2712,7 +2740,7 @@ describe("tool handlers", () => {
     });
   });
 
-  describe("delete-component", () => {
+  describe("component.delete", () => {
     it("deletes a component and returns success", async () => {
       mockDeleteComponent.mockResolvedValue({
         save: { revisionNum: 15, incremental: true },
@@ -2721,8 +2749,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "delete-component",
-        arguments: { componentUuid: "comp-old" },
+        name: "component",
+        arguments: { action: "delete", componentUuid: "comp-old" },
       });
 
       const output = parseResponse(result);
@@ -2746,8 +2774,8 @@ describe("tool handlers", () => {
       });
 
       await client.callTool({
-        name: "delete-component",
-        arguments: { componentUuid: "comp-ref", force: true },
+        name: "component",
+        arguments: { action: "delete", componentUuid: "comp-ref", force: true },
       });
 
       expect(mockDeleteComponent).toHaveBeenCalledWith(
@@ -2763,8 +2791,8 @@ describe("tool handlers", () => {
       );
 
       const result = await client.callTool({
-        name: "delete-component",
-        arguments: { componentUuid: "comp-card" },
+        name: "component",
+        arguments: { action: "delete", componentUuid: "comp-card" },
       });
 
       expect(result.isError).toBe(true);
@@ -2772,7 +2800,7 @@ describe("tool handlers", () => {
     });
   });
 
-  describe("create-style-variant", () => {
+  describe("variant.create-style", () => {
     it("creates a component-level style variant", async () => {
       mockCreateStyleVariant.mockResolvedValue({
         save: { revisionNum: 20, incremental: true },
@@ -2782,8 +2810,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "create-style-variant",
-        arguments: { componentUuid: "comp-1", selector: ":hover" },
+        name: "variant",
+        arguments: { action: "create-style", componentUuid: "comp-1", selector: ":hover" },
       });
 
       const output = parseResponse(result);
@@ -2810,8 +2838,9 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "create-style-variant",
+        name: "variant",
         arguments: {
+          action: "create-style",
           componentUuid: "comp-1",
           selector: ":focus",
           nodeRef: "Button",
@@ -2834,16 +2863,16 @@ describe("tool handlers", () => {
       );
 
       const result = await client.callTool({
-        name: "create-style-variant",
-        arguments: { componentUuid: "comp-1", selector: ":hover" },
+        name: "variant",
+        arguments: { action: "create-style", componentUuid: "comp-1", selector: ":hover" },
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Error creating style variant");
+      expect(result.content[0].text).toContain("Error variant.create-style");
     });
   });
 
-  describe("create-variant-group", () => {
+  describe("variant.create-group", () => {
     it("creates a single-choice variant group with initial variants", async () => {
       mockCreateVariantGroup.mockResolvedValue({
         save: { revisionNum: 22, incremental: true },
@@ -2857,8 +2886,9 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "create-variant-group",
+        name: "variant",
         arguments: {
+          action: "create-group",
           componentUuid: "comp-1",
           name: "Size",
           type: "single",
@@ -2889,8 +2919,9 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "create-variant-group",
+        name: "variant",
         arguments: {
+          action: "create-group",
           componentUuid: "comp-1",
           name: "isActive",
           type: "toggle",
@@ -2914,8 +2945,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "create-variant-group",
-        arguments: { componentUuid: "comp-1", name: "Theme" },
+        name: "variant",
+        arguments: { action: "create-group", componentUuid: "comp-1", name: "Theme" },
       });
 
       const output = parseResponse(result);
@@ -2932,16 +2963,16 @@ describe("tool handlers", () => {
       );
 
       const result = await client.callTool({
-        name: "create-variant-group",
-        arguments: { componentUuid: "nonexistent", name: "Size" },
+        name: "variant",
+        arguments: { action: "create-group", componentUuid: "nonexistent", name: "Size" },
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Error creating variant group");
+      expect(result.content[0].text).toContain("Error variant.create-group");
     });
   });
 
-  describe("refresh-project", () => {
+  describe("project.refresh", () => {
     it("reloads project, clears state, and returns metadata", async () => {
       const refreshedSite = {
         components: [
@@ -2965,8 +2996,8 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "refresh-project",
-        arguments: {},
+        name: "project",
+        arguments: { action: "refresh" },
       });
 
       const output = parseResponse(result);
@@ -2994,16 +3025,16 @@ describe("tool handlers", () => {
       mockLoadProject.mockRejectedValue(new Error("Server unavailable"));
 
       const result = await client.callTool({
-        name: "refresh-project",
-        arguments: {},
+        name: "project",
+        arguments: { action: "refresh" },
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Error refreshing project");
+      expect(result.content[0].text).toContain("Error in project.refresh");
     });
   });
 
-  describe("update-attrs", () => {
+  describe("node.update-attrs", () => {
     it("delegates to updateAttrs and returns updated/removed attributes", async () => {
       mockUpdateAttrs.mockResolvedValue({
         save: { revisionNum: 12, incremental: true },
@@ -3014,8 +3045,9 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "update-attrs",
+        name: "node",
         arguments: {
+          action: "update-attrs",
           componentUuid: "comp-1",
           nodeRef: "Hero Link",
           attrs: { href: "/about", "aria-label": "About page", title: null },
@@ -3041,8 +3073,9 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "update-attrs",
+        name: "node",
         arguments: {
+          action: "update-attrs",
           componentUuid: "comp-1",
           nodeRef: "Image",
           attrs: { alt: "New description" },
@@ -3068,8 +3101,9 @@ describe("tool handlers", () => {
       });
 
       const result = await client.callTool({
-        name: "update-attrs",
+        name: "node",
         arguments: {
+          action: "update-attrs",
           componentUuid: "comp-1",
           nodeRef: "Nav",
           attrs: { "aria-expanded": "true" },
@@ -3093,8 +3127,9 @@ describe("tool handlers", () => {
       );
 
       const result = await client.callTool({
-        name: "update-attrs",
+        name: "node",
         arguments: {
+          action: "update-attrs",
           componentUuid: "comp-1",
           nodeRef: "Button",
           attrs: { onclick: "alert()" },
@@ -3102,11 +3137,11 @@ describe("tool handlers", () => {
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Error updating attributes");
+      expect(result.content[0].text).toContain("Error node.update-attrs");
     });
   });
 
-  describe("list-style-properties", () => {
+  describe("inspect.style-properties", () => {
     it("returns all valid style property names", async () => {
       mockGetValidStylePropertyNames.mockReturnValue([
         "color",
@@ -3117,8 +3152,8 @@ describe("tool handlers", () => {
       ]);
 
       const result = await client.callTool({
-        name: "list-style-properties",
-        arguments: {},
+        name: "inspect",
+        arguments: { action: "style-properties" },
       });
 
       const output = parseResponse(result);
@@ -3143,8 +3178,8 @@ describe("tool handlers", () => {
       ]);
 
       const result = await client.callTool({
-        name: "list-style-properties",
-        arguments: { filter: "border" },
+        name: "inspect",
+        arguments: { action: "style-properties", filter: "border" },
       });
 
       const output = parseResponse(result);
@@ -3165,8 +3200,8 @@ describe("tool handlers", () => {
       ]);
 
       const result = await client.callTool({
-        name: "list-style-properties",
-        arguments: { filter: "zzz" },
+        name: "inspect",
+        arguments: { action: "style-properties", filter: "zzz" },
       });
 
       const output = parseResponse(result);

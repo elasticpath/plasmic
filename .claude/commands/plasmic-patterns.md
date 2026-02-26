@@ -1,4 +1,4 @@
-PlasmicElement pattern library for building pages and components. These are validated, server-compatible patterns that work with the `create-page` and `create-component` tools.
+PlasmicElement pattern library for building pages and components. These are validated, server-compatible patterns that work with the `component({ action: "create-page" })` and `component({ action: "create" })` tools.
 
 ## CSS Rules
 
@@ -6,8 +6,8 @@ PlasmicElement pattern library for building pages and components. These are vali
 - **Values are strings**: `"16px"`, `"#ff0000"`, `"1px solid #ccc"`
 - **Border shorthand supported**: `border: "1px solid #ccc"` auto-expands to longhands. Also works: `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `outline`.
 - **No shorthand `transition`**: Use `transitionProperty`, `transitionDuration` separately
-- **Use design tokens**: Call `get-tokens()` first and use `token:TokenName` values instead of hardcoded colors/spacing (e.g., `"color": "token:Brand Primary"`)
-- **Dynamic text**: Use `update-text` with `dynamic: true` to bind text to JS expressions like `$ctx.product.name`
+- **Use design tokens**: Call `design({ action: "list-tokens" })` first and use `token:TokenName` values instead of hardcoded colors/spacing (e.g., `"color": "token:Brand Primary"`)
+- **Dynamic text**: Use `node({ action: "update-text" })` with `dynamic: true` to bind text to JS expressions like `$ctx.product.name`
 
 ## Valid Element Types
 
@@ -388,7 +388,7 @@ Alternate section backgrounds (`#ffffff` / `#f8f9fa`) for visual rhythm. Use con
 
 ## Referencing Existing Components
 
-If the project has reusable components (found via `list-components`), reference them by name or UUID:
+If the project has reusable components (found via `component({ action: "list" })`), reference them by name or UUID:
 
 ```json
 {
@@ -423,13 +423,13 @@ With slot children (content passed into the component's default "children" slot)
 
 The `kind` field resolves the component by name or UUID, just like `name` on `type: "component"`. Use `default-component` when referencing Plasmic's built-in components (Button, etc.) by their kind identifier.
 
-Works with both `add-child` (inserts into an existing page/component) and `create-page`/`create-component` (within the element tree body). Components from dependency packages are also resolved automatically.
+Works with both `node({ action: "add" })` (inserts into an existing page/component) and `component({ action: "create-page" })`/`component({ action: "create" })` (within the element tree body). Components from dependency packages are also resolved automatically.
 
-Props must match the component's actual parameter names exactly (case-sensitive). Use `get-component-summary` to inspect a component's structure, then `get-node-details` for specific nodes. Use `get-component-tree` only when you need the full tree with all styles.
+Props must match the component's actual parameter names exactly (case-sensitive). Use `inspect({ action: "summary" })` to inspect a component's structure, then `inspect({ action: "node" })` for specific nodes. Use `inspect({ action: "tree" })` only when you need the full tree with all styles.
 
 ## Using Design Tokens in Styles
 
-After calling `get-tokens()`, reference tokens by name instead of hardcoding values:
+After calling `design({ action: "list-tokens" })`, reference tokens by name instead of hardcoding values:
 
 ```json
 {
@@ -479,61 +479,61 @@ Valid text tags: `div`, `h1`-`h6`, `p`, `span`, `label`, `a`, `blockquote`, `pre
 
 ## Targeting Named Slots on Component Instances
 
-When using `add-child` with a component instance as the parent, use the `slot` parameter to target a specific slot:
+When using `node({ action: "add" })` with a component instance as the parent, use the `slot` parameter to target a specific slot:
 
 ```
-add-child(componentUuid, "CardInstance", child, slot: "icon")
+node({ action: "add", componentUuid, parentRef: "CardInstance", child, slot: "icon" })
 ```
 
 If `slot` is omitted and the parent is a TplComponent, content goes to the `"children"` slot by default.
 
 ## Post-Creation Enhancement Recipes
 
-After creating a page or component with `create-page`/`create-component`, use these tool sequences to add dynamic behavior. These use `/plasmic-edit` tools.
+After creating a page or component with `component({ action: "create-page" })`/`component({ action: "create" })`, use these tool sequences to add dynamic behavior. These use `/plasmic-edit` tools.
 
 ### Data-Driven Product Grid
 Create a product grid that renders from a data query:
 1. Create page with a card container and one template card
-2. `add-query(uuid, "products", body: "await fetch('/api/products').then(r => r.json())")`
-3. `set-data-rep(uuid, "ProductCard", "$queries.products.data")` — repeat card for each product
-4. `update-text(uuid, "CardTitle", "$ctx.currentItem.name", dynamic: true, fallback: "Product")`
-5. `update-text(uuid, "CardPrice", "$ctx.currentItem.price", dynamic: true)`
-6. `set-image(uuid, "CardImage", src: "$ctx.currentItem.imageUrl")` — dynamic image
+2. `data({ action: "add-query", uuid, name: "products", body: "await fetch('/api/products').then(r => r.json())" })`
+3. `data({ action: "set-data-rep", uuid, nodeRef: "ProductCard", collection: "$queries.products.data" })` — repeat card for each product
+4. `node({ action: "update-text", uuid, nodeRef: "CardTitle", text: "$ctx.currentItem.name", dynamic: true, fallback: "Product" })`
+5. `node({ action: "update-text", uuid, nodeRef: "CardPrice", text: "$ctx.currentItem.price", dynamic: true })`
+6. `node({ action: "set-image", uuid, nodeRef: "CardImage", src: "$ctx.currentItem.imageUrl" })` — dynamic image
 
 ### Interactive Counter
 Add state and interactions to a button:
-1. `add-state(uuid, "count", "number", "private", initVal: "0")`
-2. `update-text(uuid, "CountLabel", "$state.count", dynamic: true, fallback: "0")`
-3. `add-interaction(uuid, "IncrementBtn", "onClick", "updateVariable", { variable: "count", operation: "newValue", value: "$state.count + 1" })`
+1. `component({ action: "add-state", uuid, name: "count", variableType: "number", accessType: "private", initVal: "0" })`
+2. `node({ action: "update-text", uuid, nodeRef: "CountLabel", text: "$state.count", dynamic: true, fallback: "0" })`
+3. `interaction({ action: "add", uuid, nodeRef: "IncrementBtn", trigger: "onClick", actionType: "updateVariable", args: { variable: "count", operation: "newValue", value: "$state.count + 1" } })`
 
 ### Conditional Sections
 Show/hide content based on conditions:
-1. `set-data-cond(uuid, "AdminPanel", "$ctx.user.role === 'admin'")` — admin-only section
-2. `set-data-cond(uuid, "EmptyState", "$queries.items.data.length === 0")` — show when no data
-3. `set-visibility(uuid, "DesktopNav", "notRendered", variant: "Mobile")` — hide on mobile
+1. `data({ action: "set-data-cond", uuid, nodeRef: "AdminPanel", dataCond: "$ctx.user.role === 'admin'" })` — admin-only section
+2. `data({ action: "set-data-cond", uuid, nodeRef: "EmptyState", dataCond: "$queries.items.data.length === 0" })` — show when no data
+3. `node({ action: "set-visibility", uuid, nodeRef: "DesktopNav", visibility: "notRendered", variant: "Mobile" })` — hide on mobile
 
 ### Navigation Links
 Add click-to-navigate behavior:
-1. `add-interaction(uuid, "AboutLink", "onClick", "navigation", { destination: "'/about'" })`
-2. `add-interaction(uuid, "LoginBtn", "onClick", "navigation", { destination: "'/login'" })`
+1. `interaction({ action: "add", uuid, nodeRef: "AboutLink", trigger: "onClick", actionType: "navigation", args: { destination: "'/about'" } })`
+2. `interaction({ action: "add", uuid, nodeRef: "LoginBtn", trigger: "onClick", actionType: "navigation", args: { destination: "'/login'" } })`
 
 ### Form with Validation State
 Create a form with input tracking:
-1. `add-state(uuid, "email", "text", "private", initVal: "''")`
-2. `add-state(uuid, "isValid", "boolean", "private", initVal: "false")`
-3. `add-interaction(uuid, "EmailInput", "onChange", "updateVariable", { variable: "email", operation: "newValue", value: "$event.target.value" })`
-4. `add-interaction(uuid, "SubmitBtn", "onClick", "customFunction", { code: "if ($state.isValid) { fetch('/api/submit', { method: 'POST', body: JSON.stringify({ email: $state.email }) }) }" })`
+1. `component({ action: "add-state", uuid, name: "email", variableType: "text", accessType: "private", initVal: "''" })`
+2. `component({ action: "add-state", uuid, name: "isValid", variableType: "boolean", accessType: "private", initVal: "false" })`
+3. `interaction({ action: "add", uuid, nodeRef: "EmailInput", trigger: "onChange", actionType: "updateVariable", args: { variable: "email", operation: "newValue", value: "$event.target.value" } })`
+4. `interaction({ action: "add", uuid, nodeRef: "SubmitBtn", trigger: "onClick", actionType: "customFunction", args: { code: "if ($state.isValid) { fetch('/api/submit', { method: 'POST', body: JSON.stringify({ email: $state.email }) }) }" } })`
 
 ### Rich Text Content
 Apply inline formatting after creation:
-1. `update-rich-text(uuid, "Intro", "Welcome to our amazing platform", marks: [{ type: "bold", start: 15, end: 22 }, { type: "italic", start: 23, end: 31 }])`
-2. `update-rich-text(uuid, "CTA", "Click here to get started", marks: [{ type: "link", start: 6, end: 10, href: "/signup" }])`
+1. `node({ action: "update-rich-text", uuid, nodeRef: "Intro", text: "Welcome to our amazing platform", marks: [{ type: "bold", start: 15, end: 22 }, { type: "italic", start: 23, end: 31 }] })`
+2. `node({ action: "update-rich-text", uuid, nodeRef: "CTA", text: "Click here to get started", marks: [{ type: "link", start: 6, end: 10, href: "/signup" }] })`
 
 ### Animated Hero
 Apply entrance animations:
-1. `create-animation-sequence("fade-in-up", keyframes: [{ offset: 0, styles: { opacity: "0", transform: "translateY(20px)" } }, { offset: 100, styles: { opacity: "1", transform: "translateY(0)" } }])`
-2. `add-node-animation(uuid, "HeroTitle", "fade-in-up", duration: "0.8s", timingFunction: "ease-out")`
-3. `add-node-animation(uuid, "HeroSubtitle", "fade-in-up", duration: "0.8s", delay: "0.2s", timingFunction: "ease-out")`
+1. `design({ action: "create-animation", name: "fade-in-up", keyframes: [{ offset: 0, styles: { opacity: "0", transform: "translateY(20px)" } }, { offset: 100, styles: { opacity: "1", transform: "translateY(0)" } }] })`
+2. `node({ action: "add-animation", uuid, nodeRef: "HeroTitle", animationName: "fade-in-up", duration: "0.8s", timingFunction: "ease-out" })`
+3. `node({ action: "add-animation", uuid, nodeRef: "HeroSubtitle", animationName: "fade-in-up", duration: "0.8s", delay: "0.2s", timingFunction: "ease-out" })`
 
 ## User's Request
 $ARGUMENTS

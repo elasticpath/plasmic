@@ -1,16 +1,16 @@
 You are creating a new reusable component (not a page) in a Plasmic project.
 
 ## Available Tools
-- `set-project(projectId)` — Load a project. Call first if no project is active.
-- `list-projects()` — List accessible projects.
-- `list-components()` — List existing pages and components.
-- `get-tokens(type?)` — Get design tokens (colors, spacing, fonts). Use these values in styles for design system consistency.
-- `get-component-summary(componentUuid)` — Compact outline of a component (type, tag, name, uuid, childCount — no styles/text). **Use first** to understand structure before cloning or referencing.
-- `get-node-details(componentUuid, nodeRef)` — Full details for a single node. Use after summary to drill into specific nodes.
-- `get-component-tree(componentUuid, maxDepth?, excludeStyles?, summaryOnly?)` — Full tree with all styles/text. Use only when you need the complete structure.
-- `get-subtree(componentUuid, nodeRef, maxDepth?, excludeStyles?)` — Full tree from a specific node downward.
-- `create-component(name, body)` — Create a reusable component with a PlasmicElement tree.
-- `clone-component(sourceUuid, name, path?)` — Duplicate an existing component or page.
+- `project({ action: "set", projectId })` — Load a project. Call first if no project is active.
+- `project({ action: "list" })` — List accessible projects.
+- `component({ action: "list" })` — List existing pages and components.
+- `design({ action: "list-tokens", tokenType? })` — Get design tokens (colors, spacing, fonts). Use these values in styles for design system consistency.
+- `inspect({ action: "summary", componentUuid })` — Compact outline of a component (type, tag, name, uuid, childCount — no styles/text). **Use first** to understand structure before cloning or referencing.
+- `inspect({ action: "node", componentUuid, nodeRef })` — Full details for a single node. Use after summary to drill into specific nodes.
+- `inspect({ action: "tree", componentUuid, maxDepth?, excludeStyles?, summaryOnly? })` — Full tree with all styles/text. Use only when you need the complete structure.
+- `inspect({ action: "subtree", componentUuid, nodeRef, maxDepth?, excludeStyles? })` — Full tree from a specific node downward.
+- `component({ action: "create", name, body })` — Create a reusable component with a PlasmicElement tree.
+- `component({ action: "clone", sourceUuid, name, path? })` — Duplicate an existing component or page.
 
 ## When to Create vs Clone
 
@@ -20,12 +20,12 @@ You are creating a new reusable component (not a page) in a Plasmic project.
 
 **Clone** when the developer wants to copy an existing component:
 - "duplicate the header", "copy the homepage as a starting point"
-- Find the source UUID via `list-components`, then call `clone-component`
+- Find the source UUID via `component({ action: "list" })`, then call `component({ action: "clone", ... })`
 - If the clone should be a page, pass a `path`; otherwise omit `path` to create a plain component
 
 ## PlasmicElement Type Reference
 
-Same as `/plasmic-create-page`. The `create-component` tool accepts a PlasmicElement tree as `body`.
+Same as `/plasmic-create-page`. The `component({ action: "create", ... })` tool accepts a PlasmicElement tree as `body`.
 
 ### Element Types
 
@@ -84,10 +84,10 @@ Same as `/plasmic-create-page`. The `create-component` tool accepts a PlasmicEle
 ```
 
 **Adding children to named slots after creation:**
-Use `add-child` with the `slot` parameter to target a specific slot on a component instance:
+Use `node({ action: "add", ... })` with the `slot` parameter to target a specific slot on a component instance:
 ```
-add-child(componentUuid, "CardInstance", child, slot: "icon")
-add-child(componentUuid, "CardInstance", child, slot: "footer")
+node({ action: "add", componentUuid, parentRef: "CardInstance", child, slot: "icon" })
+node({ action: "add", componentUuid, parentRef: "CardInstance", child, slot: "footer" })
 ```
 Omitting `slot` defaults to the `"children"` slot. The `slot` parameter only works when the parent is a TplComponent.
 
@@ -168,26 +168,26 @@ For more patterns (grids, forms, pricing, testimonials, CTAs), see `/plasmic-pat
 ## Post-Creation Enhancement
 
 After creating the component, you can enhance it with these tools (delegate to `/plasmic-edit`):
-- **Component props**: Define parameters with `add-prop` (text/number/boolean/object/href/eventHandler), then use `$props.propName` in dynamic text
-- **State management**: Add component state with `add-state` (private/readonly/writable), then use `$state.stateName` in expressions
-- **Interactions**: Add onClick/onChange/etc. handlers with `add-interaction` — navigate, update state, or run custom code
-- **Dynamic data**: Bind text to expressions with `update-text(dynamic: true)` or `update-rich-text`
-- **Visibility**: Conditionally show/hide elements with `set-visibility` or `set-data-cond`
-- **Data repetition**: Repeat elements with `set-data-rep` (e.g., `$queries.products.data`)
-- **Data queries**: Add data sources with `add-query`
-- **Images**: Set images from assets with `set-image`
-- **Animations**: Attach CSS animations with `add-node-animation`
-- **Mixins**: Apply reusable style bundles with `apply-mixin`
-- **Variant groups**: Add size/theme variants with `create-variant-group`
+- **Component props**: Define parameters with `component({ action: "add-prop", ... })` (text/number/boolean/object/href/eventHandler), then use `$props.propName` in dynamic text
+- **State management**: Add component state with `component({ action: "add-state", ... })` (private/readonly/writable), then use `$state.stateName` in expressions
+- **Interactions**: Add onClick/onChange/etc. handlers with `interaction({ action: "add", ... })` — navigate, update state, or run custom code
+- **Dynamic data**: Bind text to expressions with `node({ action: "update-text", ... dynamic: true })` or `node({ action: "update-rich-text", ... })`
+- **Visibility**: Conditionally show/hide elements with `node({ action: "set-visibility", ... })` or `data({ action: "set-data-cond", ... })`
+- **Data repetition**: Repeat elements with `data({ action: "set-data-rep", ... })` (e.g., `$queries.products.data`)
+- **Data queries**: Add data sources with `data({ action: "add-query", ... })`
+- **Images**: Set images from assets with `node({ action: "set-image", ... })`
+- **Animations**: Attach CSS animations with `node({ action: "add-animation", ... })`
+- **Mixins**: Apply reusable style bundles with `node({ action: "apply-mixin", ... })`
+- **Variant groups**: Add size/theme variants with `variant({ action: "create-group", ... })`
 
 ## Instructions
-1. If no project is active, call `list-projects` and ask the user which project, then `set-project`.
-2. Call `list-components` to see existing components (avoid name conflicts, find clone sources).
-3. Call `get-tokens` to discover design tokens. Use token values in styles.
+1. If no project is active, call `project({ action: "list" })` and ask the user which project, then `project({ action: "set", projectId })`.
+2. Call `component({ action: "list" })` to see existing components (avoid name conflicts, find clone sources).
+3. Call `design({ action: "list-tokens" })` to discover design tokens. Use token values in styles.
 4. Determine whether to **create** (new from scratch) or **clone** (copy existing):
-   - **Create**: Construct a PlasmicElement tree and call `create-component(name, body)`.
-   - **Clone**: Find the source UUID and call `clone-component(sourceUuid, name)`. Add `path` only if the clone should be a page.
-5. When cloning or referencing, inspect the source with `get-component-summary` first, then `get-node-details` for specific nodes — avoid loading the full tree unnecessarily.
+   - **Create**: Construct a PlasmicElement tree and call `component({ action: "create", name, body })`.
+   - **Clone**: Find the source UUID and call `component({ action: "clone", sourceUuid, name })`. Add `path` only if the clone should be a page.
+5. When cloning or referencing, inspect the source with `inspect({ action: "summary", componentUuid })` first, then `inspect({ action: "node", componentUuid, nodeRef })` for specific nodes — avoid loading the full tree unnecessarily.
 6. Use PascalCase for component names (e.g., `HeroSection`, `ProductCard`).
 7. Report the result. Note any warnings from the API.
 8. If the user wants dynamic behavior (props, state, interactions, etc.), proceed with post-creation enhancement using `/plasmic-edit`.

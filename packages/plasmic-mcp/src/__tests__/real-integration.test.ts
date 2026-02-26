@@ -264,8 +264,8 @@ beforeEach(async () => {
 
   // Load the project using the real model-loader → real FastBundler.unbundle()
   const setResult = await client.callTool({
-    name: "set-project",
-    arguments: { projectId: fixtureProjectId },
+    name: "project",
+    arguments: { action: "set", projectId: fixtureProjectId },
   });
 
   // If set-project fails, the fixture may be incompatible. Report clearly.
@@ -281,8 +281,8 @@ beforeEach(async () => {
 
   // Discover the project's components for use in individual tests
   const listResult = await client.callTool({
-    name: "list-components",
-    arguments: {},
+    name: "component",
+    arguments: { action: "list" },
   });
   discoveredComponents = parseResponse(listResult);
 });
@@ -301,7 +301,7 @@ afterEach(async () => {
 // =========================================================================
 
 describe("read workflows", () => {
-  it("set-project → list-components → verify real component names/UUIDs from bundle fixture", async () => {
+  it("project.set → component.list → verify real component names/UUIDs from bundle fixture", async () => {
     // discoveredComponents is populated in beforeEach
     expect(Array.isArray(discoveredComponents)).toBe(true);
     expect(discoveredComponents.length).toBeGreaterThan(0);
@@ -324,12 +324,12 @@ describe("read workflows", () => {
     }
   });
 
-  it("get-component-tree → verify real UUIDs, styles, text from real TplTag instances", async () => {
+  it("inspect.tree → verify real UUIDs, styles, text from real TplTag instances", async () => {
     // Use the first component
     const comp = discoveredComponents[0];
     const result = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
 
     expect(result.isError).toBeFalsy();
@@ -348,11 +348,11 @@ describe("read workflows", () => {
     expect(nodeCount).toBeGreaterThan(0);
   });
 
-  it("get-component-summary → compact output with uuid/name/childCount, NO styles/text", async () => {
+  it("inspect.summary → compact output with uuid/name/childCount, NO styles/text", async () => {
     const comp = discoveredComponents[0];
     const result = await client.callTool({
-      name: "get-component-summary",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "summary", componentUuid: comp.uuid },
     });
 
     expect(result.isError).toBeFalsy();
@@ -377,13 +377,13 @@ describe("read workflows", () => {
     assertNoStylesOrText(tree);
   });
 
-  it("get-node-details on a named node → full styles/text/attrs present", async () => {
+  it("inspect.node on a named node → full styles/text/attrs present", async () => {
     const comp = discoveredComponents[0];
 
     // First get the full tree to discover a named node
     const treeResult = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const textNode = findFirstTextNode(tree);
@@ -397,9 +397,8 @@ describe("read workflows", () => {
       }
 
       const result = await client.callTool({
-        name: "get-node-details",
-        arguments: {
-          componentUuid: comp.uuid,
+        name: "inspect",
+        arguments: { action: "node", componentUuid: comp.uuid,
           nodeRef: namedNode.uuid,
         },
       });
@@ -414,9 +413,8 @@ describe("read workflows", () => {
 
     // Use the text node's UUID
     const result = await client.callTool({
-      name: "get-node-details",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "inspect",
+      arguments: { action: "node", componentUuid: comp.uuid,
         nodeRef: textNode.uuid,
       },
     });
@@ -437,8 +435,8 @@ describe("read workflows", () => {
 
     for (const comp of discoveredComponents) {
       const treeResult = await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       });
       if (!treeResult.isError) {
         const tree = parseResponse(treeResult).tree;
@@ -453,12 +451,12 @@ describe("read workflows", () => {
     }
 
     const fullResult = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: bestComp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: bestComp.uuid },
     });
     const summaryResult = await client.callTool({
-      name: "get-component-summary",
-      arguments: { componentUuid: bestComp.uuid },
+      name: "inspect",
+      arguments: { action: "summary", componentUuid: bestComp.uuid },
     });
 
     const fullSize = fullResult.content[0].text.length;
@@ -477,12 +475,11 @@ describe("read workflows", () => {
     }
   });
 
-  it("get-component-tree with maxDepth:1 → children truncated with childCount", async () => {
+  it("inspect.tree with maxDepth:1 → children truncated with childCount", async () => {
     const comp = discoveredComponents[0];
     const result = await client.callTool({
-      name: "get-component-tree",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid,
         maxDepth: 1,
       },
     });
@@ -509,13 +506,13 @@ describe("read workflows", () => {
 // =========================================================================
 
 describe("edit workflows", () => {
-  it("update-text → get-node-details → verify new text content", async () => {
+  it("node.update-text → inspect.node → verify new text content", async () => {
     const comp = discoveredComponents[0];
 
     // Discover a text node
     const treeResult = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const textNode = findFirstTextNode(tree);
@@ -529,9 +526,8 @@ describe("edit workflows", () => {
 
     // Update the text
     const editResult = await client.callTool({
-      name: "update-text",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "update-text", componentUuid: comp.uuid,
         nodeRef: textNode.uuid,
         text: newText,
       },
@@ -545,9 +541,8 @@ describe("edit workflows", () => {
 
     // Verify the change by reading node details
     const detailResult = await client.callTool({
-      name: "get-node-details",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "inspect",
+      arguments: { action: "node", componentUuid: comp.uuid,
         nodeRef: textNode.uuid,
       },
     });
@@ -556,13 +551,13 @@ describe("edit workflows", () => {
     expect(detail.node.text).toBe(newText);
   });
 
-  it("update-styles → get-node-details → verify new styles", async () => {
+  it("node.update-styles → inspect.node → verify new styles", async () => {
     const comp = discoveredComponents[0];
 
     // Discover a node with existing styles
     const treeResult = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
 
@@ -575,9 +570,8 @@ describe("edit workflows", () => {
     //   padding: "99px" → paddingTop/Right/Bottom/Left: "99px"
     //   gap: "42px" → row-gap: "42px", column-gap: "42px"
     const editResult = await client.callTool({
-      name: "update-styles",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "update-styles", componentUuid: comp.uuid,
         nodeRef: targetUuid,
         styles: { padding: "99px", gap: "42px" },
       },
@@ -593,9 +587,8 @@ describe("edit workflows", () => {
     // Verify the change via node details.
     // RSH.merge() normalizes to kebab-case, so stored keys are kebab-case.
     const detailResult = await client.callTool({
-      name: "get-node-details",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "inspect",
+      arguments: { action: "node", componentUuid: comp.uuid,
         nodeRef: targetUuid,
       },
     });
@@ -613,19 +606,19 @@ describe("edit workflows", () => {
 // =========================================================================
 
 describe("batch workflows", () => {
-  it("begin-batch → multiple edits → end-batch → verify all changes applied", async () => {
+  it("project.begin-batch → multiple edits → project.end-batch → verify all changes applied", async () => {
     const comp = discoveredComponents[0];
     const treeResult = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const textNode = findFirstTextNode(tree);
 
     // Begin batch
     const batchResult = await client.callTool({
-      name: "begin-batch",
-      arguments: {},
+      name: "project",
+      arguments: { action: "begin-batch" },
     });
     const batchOutput = parseResponse(batchResult);
     expect(batchResult.isError).toBeFalsy();
@@ -633,9 +626,8 @@ describe("batch workflows", () => {
 
     // Edit 1: update styles on root (margin shorthand → expanded to longhands)
     const styleResult = await client.callTool({
-      name: "update-styles",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "update-styles", componentUuid: comp.uuid,
         nodeRef: tree.uuid,
         styles: { margin: "77px" },
       },
@@ -645,9 +637,8 @@ describe("batch workflows", () => {
     // Edit 2: update text if available
     if (textNode) {
       const textResult = await client.callTool({
-        name: "update-text",
-        arguments: {
-          componentUuid: comp.uuid,
+        name: "node",
+        arguments: { action: "update-text", componentUuid: comp.uuid,
           nodeRef: textNode.uuid,
           text: "Batched Text Update",
         },
@@ -657,8 +648,8 @@ describe("batch workflows", () => {
 
     // End batch — saves all at once
     const endResult = await client.callTool({
-      name: "end-batch",
-      arguments: { batchId: batchOutput.batchId },
+      name: "project",
+      arguments: { action: "end-batch", batchId: batchOutput.batchId },
     });
     const endOutput = parseResponse(endResult);
     expect(endResult.isError).toBeFalsy();
@@ -666,9 +657,8 @@ describe("batch workflows", () => {
 
     // Verify style change persisted
     const rootDetail = await client.callTool({
-      name: "get-node-details",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "inspect",
+      arguments: { action: "node", componentUuid: comp.uuid,
         nodeRef: tree.uuid,
       },
     });
@@ -679,9 +669,8 @@ describe("batch workflows", () => {
     // Verify text change persisted (if applicable)
     if (textNode) {
       const textDetail = await client.callTool({
-        name: "get-node-details",
-        arguments: {
-          componentUuid: comp.uuid,
+        name: "inspect",
+        arguments: { action: "node", componentUuid: comp.uuid,
           nodeRef: textNode.uuid,
         },
       });
@@ -698,8 +687,8 @@ describe("undo workflows", () => {
   it("edit → verify → undo → verify reverted", async () => {
     const comp = discoveredComponents[0];
     const treeResult = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const textNode = findFirstTextNode(tree);
@@ -713,9 +702,8 @@ describe("undo workflows", () => {
 
     // Make an edit
     const editResult = await client.callTool({
-      name: "update-text",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "update-text", componentUuid: comp.uuid,
         nodeRef: textNode.uuid,
         text: "Text Before Undo",
       },
@@ -724,9 +712,8 @@ describe("undo workflows", () => {
 
     // Verify edit applied
     const afterEdit = await client.callTool({
-      name: "get-node-details",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "inspect",
+      arguments: { action: "node", componentUuid: comp.uuid,
         nodeRef: textNode.uuid,
       },
     });
@@ -734,8 +721,8 @@ describe("undo workflows", () => {
 
     // Call undo
     const undoResult = await client.callTool({
-      name: "undo",
-      arguments: {},
+      name: "project",
+      arguments: { action: "undo" },
     });
 
     expect(undoResult.isError).toBeFalsy();
@@ -744,9 +731,8 @@ describe("undo workflows", () => {
 
     // Verify the text reverted to original
     const afterUndo = await client.callTool({
-      name: "get-node-details",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "inspect",
+      arguments: { action: "node", componentUuid: comp.uuid,
         nodeRef: textNode.uuid,
       },
     });
@@ -764,8 +750,8 @@ describe("node resolution", () => {
 
     // Discover a named node from the tree
     const treeResult = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const namedNode = findNamedNode(tree);
@@ -777,18 +763,16 @@ describe("node resolution", () => {
 
     // Resolve by UUID
     const byUuid = await client.callTool({
-      name: "get-node-details",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "inspect",
+      arguments: { action: "node", componentUuid: comp.uuid,
         nodeRef: namedNode.uuid,
       },
     });
 
     // Resolve by name
     const byName = await client.callTool({
-      name: "get-node-details",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "inspect",
+      arguments: { action: "node", componentUuid: comp.uuid,
         nodeRef: namedNode.name,
       },
     });
@@ -806,9 +790,8 @@ describe("node resolution", () => {
     // If the node has a path, verify path resolution too
     if (uuidOutput.path) {
       const byPath = await client.callTool({
-        name: "get-node-details",
-        arguments: {
-          componentUuid: comp.uuid,
+        name: "inspect",
+        arguments: { action: "node", componentUuid: comp.uuid,
           nodeRef: uuidOutput.path,
         },
       });
@@ -819,17 +802,17 @@ describe("node resolution", () => {
 });
 
 // =========================================================================
-// Nice-to-have: add-child / remove-child
+// Nice-to-have: node.add / node.remove
 // =========================================================================
 
-describe("add-child and remove-child", () => {
-  it("add-child → verify in tree → remove-child → verify gone", async () => {
+describe("node.add and node.remove", () => {
+  it("node.add → verify in tree → node.remove → verify gone", async () => {
     const comp = discoveredComponents[0];
 
     // Find a container node
     const treeResult = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const container = findFirstContainer(tree);
@@ -842,9 +825,8 @@ describe("add-child and remove-child", () => {
 
     // Add a new text child to the root
     const addResult = await client.callTool({
-      name: "add-child",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "add", componentUuid: comp.uuid,
         parentRef: tree.uuid,
         child: { type: "text", value: "Integration Test Child" },
       },
@@ -855,8 +837,8 @@ describe("add-child and remove-child", () => {
 
     // Verify the new child appears in the tree
     const afterAdd = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
     const afterAddTree = parseResponse(afterAdd).tree;
     expect(afterAddTree.children.length).toBe(initialChildCount + 1);
@@ -867,9 +849,8 @@ describe("add-child and remove-child", () => {
 
     // Remove the newly added child
     const removeResult = await client.callTool({
-      name: "remove-child",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "remove", componentUuid: comp.uuid,
         nodeRef: newChild.uuid,
       },
     });
@@ -877,8 +858,8 @@ describe("add-child and remove-child", () => {
 
     // Verify it's gone
     const afterRemove = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
     const afterRemoveTree = parseResponse(afterRemove).tree;
     expect(afterRemoveTree.children.length).toBe(initialChildCount);
@@ -886,11 +867,11 @@ describe("add-child and remove-child", () => {
 });
 
 // =========================================================================
-// Component Instance via add-child
+// Component Instance via node.add
 // =========================================================================
 
-describe("add-child with component instances", () => {
-  it("add-child type:'component' → verify TplComponent in tree → remove-child", async () => {
+describe("node.add with component instances", () => {
+  it("node.add type:'component' → verify TplComponent in tree → node.remove", async () => {
     // Need at least 2 components: one to edit, one to reference as an instance
     if (discoveredComponents.length < 2) {
       return;
@@ -906,17 +887,16 @@ describe("add-child with component instances", () => {
 
     // Get the tree to find the root container
     const treeResult = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: targetPage.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: targetPage.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const initialChildCount = tree.children?.length ?? 0;
 
     // Add a component instance as a child of the root
     const addResult = await client.callTool({
-      name: "add-child",
-      arguments: {
-        componentUuid: targetPage.uuid,
+      name: "node",
+      arguments: { action: "add", componentUuid: targetPage.uuid,
         parentRef: tree.uuid,
         child: { type: "component", name: referencedComp.name },
       },
@@ -928,8 +908,8 @@ describe("add-child with component instances", () => {
 
     // Verify the new child is a TplComponent instance in the tree
     const afterAdd = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: targetPage.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: targetPage.uuid },
     });
     const afterAddTree = parseResponse(afterAdd).tree;
     expect(afterAddTree.children.length).toBe(initialChildCount + 1);
@@ -943,9 +923,8 @@ describe("add-child with component instances", () => {
 
     // Clean up: remove the added component instance
     const removeResult = await client.callTool({
-      name: "remove-child",
-      arguments: {
-        componentUuid: targetPage.uuid,
+      name: "node",
+      arguments: { action: "remove", componentUuid: targetPage.uuid,
         nodeRef: newChild.uuid,
       },
     });
@@ -953,14 +932,14 @@ describe("add-child with component instances", () => {
 
     // Verify it's gone
     const afterRemove = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: targetPage.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: targetPage.uuid },
     });
     const afterRemoveTree = parseResponse(afterRemove).tree;
     expect(afterRemoveTree.children.length).toBe(initialChildCount);
   });
 
-  it("add-child type:'component' with props → verify props in tree output", async () => {
+  it("node.add type:'component' with props → verify props in tree output", async () => {
     // Need at least 2 components: one to edit, one to reference as an instance
     if (discoveredComponents.length < 2) {
       return;
@@ -978,17 +957,16 @@ describe("add-child with component instances", () => {
     // List variants to find param names on the referenced component
     // We need to know what props are available - get the tree to check structure
     const treeResult = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: targetPage.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: targetPage.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const initialChildCount = tree.children?.length ?? 0;
 
     // Add a component instance with props (title is a common PropParam)
     const addResult = await client.callTool({
-      name: "add-child",
-      arguments: {
-        componentUuid: targetPage.uuid,
+      name: "node",
+      arguments: { action: "add", componentUuid: targetPage.uuid,
         parentRef: tree.uuid,
         child: {
           type: "component",
@@ -1014,8 +992,8 @@ describe("add-child with component instances", () => {
 
     // Verify the new child has the prop value in tree output
     const afterAdd = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: targetPage.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: targetPage.uuid },
     });
     const afterAddTree = parseResponse(afterAdd).tree;
     expect(afterAddTree.children.length).toBe(initialChildCount + 1);
@@ -1030,16 +1008,15 @@ describe("add-child with component instances", () => {
 
     // Clean up: remove the added component instance
     const removeResult = await client.callTool({
-      name: "remove-child",
-      arguments: {
-        componentUuid: targetPage.uuid,
+      name: "node",
+      arguments: { action: "remove", componentUuid: targetPage.uuid,
         nodeRef: newChild.uuid,
       },
     });
     expect(removeResult.isError).toBeFalsy();
   });
 
-  it("add-child type:'component' with unknown prop name → descriptive error", async () => {
+  it("node.add type:'component' with unknown prop name → descriptive error", async () => {
     if (discoveredComponents.length < 2) {
       return;
     }
@@ -1052,15 +1029,14 @@ describe("add-child with component instances", () => {
     )!;
 
     const treeResult = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: targetPage.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: targetPage.uuid },
     });
     const tree = parseResponse(treeResult).tree;
 
     const addResult = await client.callTool({
-      name: "add-child",
-      arguments: {
-        componentUuid: targetPage.uuid,
+      name: "node",
+      arguments: { action: "add", componentUuid: targetPage.uuid,
         parentRef: tree.uuid,
         child: {
           type: "component",
@@ -1076,18 +1052,17 @@ describe("add-child with component instances", () => {
     expect(errorText).toContain("totallyBogus_XYZ");
   });
 
-  it("add-child type:'component' with unknown name → error with available names", async () => {
+  it("node.add type:'component' with unknown name → error with available names", async () => {
     const comp = discoveredComponents[0];
     const treeResult = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
 
     const addResult = await client.callTool({
-      name: "add-child",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "add", componentUuid: comp.uuid,
         parentRef: tree.uuid,
         child: { type: "component", name: "NonExistentComponent_XYZ" },
       },
@@ -1105,12 +1080,12 @@ describe("add-child with component instances", () => {
 // =========================================================================
 
 describe("variant workflows", () => {
-  it("list-variants → returns global variant groups from fixture", async () => {
+  it("variant.list → returns global variant groups from fixture", async () => {
     const comp = discoveredComponents[0];
 
     const result = await client.callTool({
-      name: "list-variants",
-      arguments: { componentUuid: comp.uuid },
+      name: "variant",
+      arguments: { action: "list", componentUuid: comp.uuid },
     });
 
     expect(result.isError).toBeFalsy();
@@ -1140,13 +1115,13 @@ describe("variant workflows", () => {
     }
   });
 
-  it("update-styles with variant → applies to non-base variant setting", async () => {
+  it("node.update-styles with variant → applies to non-base variant setting", async () => {
     const comp = discoveredComponents[0];
 
     // First list variants to find a real variant to target
     const variantResult = await client.callTool({
-      name: "list-variants",
-      arguments: { componentUuid: comp.uuid },
+      name: "variant",
+      arguments: { action: "list", componentUuid: comp.uuid },
     });
     const variants = parseResponse(variantResult);
 
@@ -1178,16 +1153,15 @@ describe("variant workflows", () => {
 
     // Get tree to find target node
     const treeResult = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
 
     // Apply styles to the variant (by UUID for precision)
     const editResult = await client.callTool({
-      name: "update-styles",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "update-styles", componentUuid: comp.uuid,
         nodeRef: tree.uuid,
         styles: { color: "red", fontSize: "12px" },
         variant: targetVariantUuid,
@@ -1201,20 +1175,19 @@ describe("variant workflows", () => {
     expect(editOutput.updatedProperties).toContain("fontSize");
   });
 
-  it("update-styles without variant → backward compatible base editing", async () => {
+  it("node.update-styles without variant → backward compatible base editing", async () => {
     const comp = discoveredComponents[0];
 
     const treeResult = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
 
     // Update styles without variant (should use base variant)
     const editResult = await client.callTool({
-      name: "update-styles",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "update-styles", componentUuid: comp.uuid,
         nodeRef: tree.uuid,
         styles: { opacity: "0.5" },
       },
@@ -1226,28 +1199,26 @@ describe("variant workflows", () => {
 
     // Verify via node details (reads base variant)
     const detailResult = await client.callTool({
-      name: "get-node-details",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "inspect",
+      arguments: { action: "node", componentUuid: comp.uuid,
         nodeRef: tree.uuid,
       },
     });
     expect(parseResponse(detailResult).node.styles["opacity"]).toBe("0.5");
   });
 
-  it("update-styles with unknown variant → returns error", async () => {
+  it("node.update-styles with unknown variant → returns error", async () => {
     const comp = discoveredComponents[0];
 
     const treeResult = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
 
     const editResult = await client.callTool({
-      name: "update-styles",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "update-styles", componentUuid: comp.uuid,
         nodeRef: tree.uuid,
         styles: { color: "blue" },
         variant: "NonExistentVariant_XYZ",
@@ -1262,25 +1233,24 @@ describe("variant workflows", () => {
 });
 
 // =========================================================================
-// Nice-to-have: refresh-project
+// Nice-to-have: project.refresh
 // =========================================================================
 
-describe("refresh-project", () => {
-  it("refresh-project → session still valid → can list-components and read tree", async () => {
+describe("project.refresh", () => {
+  it("project.refresh → session still valid → can component.list and read tree", async () => {
     // Make an edit first
     const comp = discoveredComponents[0];
     const treeResult = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const textNode = findFirstTextNode(tree);
 
     if (textNode) {
       const editResult = await client.callTool({
-        name: "update-text",
-        arguments: {
-          componentUuid: comp.uuid,
+        name: "node",
+        arguments: { action: "update-text", componentUuid: comp.uuid,
           nodeRef: textNode.uuid,
           text: "Pre-refresh text",
         },
@@ -1290,8 +1260,8 @@ describe("refresh-project", () => {
 
     // Refresh the project
     const refreshResult = await client.callTool({
-      name: "refresh-project",
-      arguments: {},
+      name: "project",
+      arguments: { action: "refresh" },
     });
     expect(refreshResult.isError).toBeFalsy();
     const refreshOutput = parseResponse(refreshResult);
@@ -1300,8 +1270,8 @@ describe("refresh-project", () => {
 
     // Verify session still works: list-components
     const listResult = await client.callTool({
-      name: "list-components",
-      arguments: {},
+      name: "component",
+      arguments: { action: "list" },
     });
     expect(listResult.isError).toBeFalsy();
     const components = parseResponse(listResult);
@@ -1309,15 +1279,15 @@ describe("refresh-project", () => {
 
     // Verify session still works: get-component-tree
     const newTreeResult = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
     expect(newTreeResult.isError).toBeFalsy();
 
     // Verify undo stack was cleared
     const undoResult = await client.callTool({
-      name: "undo",
-      arguments: {},
+      name: "project",
+      arguments: { action: "undo" },
     });
     expect(undoResult.isError).toBe(true);
     expect(undoResult.content[0].text).toContain("Nothing to undo");
@@ -1328,14 +1298,14 @@ describe("refresh-project", () => {
 // Move-child
 // =========================================================================
 
-describe("move-child", () => {
-  it("move-child → verify new parent → undo → verify original position", async () => {
+describe("node.move", () => {
+  it("node.move → verify new parent → undo → verify original position", async () => {
     const comp = discoveredComponents[0];
 
     // Get tree to find containers
     const treeResult = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
 
@@ -1347,9 +1317,8 @@ describe("move-child", () => {
 
     // Add two containers: a source section with a child, and a destination section
     const addSource = await client.callTool({
-      name: "add-child",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "add", componentUuid: comp.uuid,
         parentRef: tree.uuid,
         child: {
           type: "box",
@@ -1360,9 +1329,8 @@ describe("move-child", () => {
     expect(addSource.isError).toBeFalsy();
 
     const addDest = await client.callTool({
-      name: "add-child",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "add", componentUuid: comp.uuid,
         parentRef: tree.uuid,
         child: { type: "box", children: [] },
       },
@@ -1371,8 +1339,8 @@ describe("move-child", () => {
 
     // Re-read tree to get UUIDs of the new containers
     const afterSetup = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
     const setupTree = parseResponse(afterSetup).tree;
     const sourceContainer = setupTree.children[setupTree.children.length - 2];
@@ -1388,9 +1356,8 @@ describe("move-child", () => {
 
     // Move the text node from source to dest
     const moveResult = await client.callTool({
-      name: "move-child",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "move", componentUuid: comp.uuid,
         nodeRef: movableNode.uuid,
         newParentRef: destContainer.uuid,
       },
@@ -1402,8 +1369,8 @@ describe("move-child", () => {
 
     // Verify: source now has 0 children, dest has 1
     const afterMove = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
     const movedTree = parseResponse(afterMove).tree;
     const srcAfter = movedTree.children[movedTree.children.length - 2];
@@ -1415,14 +1382,14 @@ describe("move-child", () => {
 
     // Undo → node should move back to source
     const undoResult = await client.callTool({
-      name: "undo",
-      arguments: {},
+      name: "project",
+      arguments: { action: "undo" },
     });
     expect(undoResult.isError).toBeFalsy();
 
     const afterUndo = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
     const undoneTree = parseResponse(afterUndo).tree;
     const srcAfterUndo = undoneTree.children[undoneTree.children.length - 2];
@@ -1434,12 +1401,12 @@ describe("move-child", () => {
 
     // Clean up: remove the two temporary containers
     await client.callTool({
-      name: "remove-child",
-      arguments: { componentUuid: comp.uuid, nodeRef: sourceContainer.uuid },
+      name: "node",
+      arguments: { action: "remove", componentUuid: comp.uuid, nodeRef: sourceContainer.uuid },
     });
     await client.callTool({
-      name: "remove-child",
-      arguments: { componentUuid: comp.uuid, nodeRef: destContainer.uuid },
+      name: "node",
+      arguments: { action: "remove", componentUuid: comp.uuid, nodeRef: destContainer.uuid },
     });
   });
 });
@@ -1449,15 +1416,14 @@ describe("move-child", () => {
 // =========================================================================
 
 describe("management tools", () => {
-  it("rename-component → verify new name in list-components", async () => {
+  it("component.rename → verify new name in component.list", async () => {
     const comp = discoveredComponents[0];
     const originalName = comp.name;
 
     // Rename the component
     const renameResult = await client.callTool({
-      name: "rename-component",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "component",
+      arguments: { action: "rename", componentUuid: comp.uuid,
         newName: "RenamedTestComponent",
       },
     });
@@ -1469,8 +1435,8 @@ describe("management tools", () => {
 
     // Verify rename persisted via list-components
     const listResult = await client.callTool({
-      name: "list-components",
-      arguments: {},
+      name: "component",
+      arguments: { action: "list" },
     });
     const components = parseResponse(listResult);
     const renamed = components.find((c: any) => c.uuid === comp.uuid);
@@ -1479,15 +1445,15 @@ describe("management tools", () => {
 
     // Undo to restore original name
     const undoResult = await client.callTool({
-      name: "undo",
-      arguments: {},
+      name: "project",
+      arguments: { action: "undo" },
     });
     expect(undoResult.isError).toBeFalsy();
 
     // Verify name restored
     const afterUndo = await client.callTool({
-      name: "list-components",
-      arguments: {},
+      name: "component",
+      arguments: { action: "list" },
     });
     const restored = parseResponse(afterUndo).find(
       (c: any) => c.uuid === comp.uuid
@@ -1495,15 +1461,15 @@ describe("management tools", () => {
     expect(restored.name).toBe(originalName);
   });
 
-  it("get-page-meta → returns page metadata for a page component", async () => {
+  it("inspect.page-meta → returns page metadata for a page component", async () => {
     const page = discoveredComponents.find((c) => c.type === "page");
     if (!page) {
       return;
     }
 
     const result = await client.callTool({
-      name: "get-page-meta",
-      arguments: { componentUuid: page.uuid },
+      name: "inspect",
+      arguments: { action: "page-meta", componentUuid: page.uuid },
     });
 
     expect(result.isError).toBeFalsy();
@@ -1512,7 +1478,7 @@ describe("management tools", () => {
     expect(typeof output.path).toBe("string");
   });
 
-  it("update-page-meta → verify changes via get-page-meta", async () => {
+  it("component.update-page-meta → verify changes via inspect.page-meta", async () => {
     const page = discoveredComponents.find((c) => c.type === "page");
     if (!page) {
       return;
@@ -1520,16 +1486,15 @@ describe("management tools", () => {
 
     // Get original metadata
     const beforeResult = await client.callTool({
-      name: "get-page-meta",
-      arguments: { componentUuid: page.uuid },
+      name: "inspect",
+      arguments: { action: "page-meta", componentUuid: page.uuid },
     });
     const beforeMeta = parseResponse(beforeResult);
 
     // Update metadata
     const updateResult = await client.callTool({
-      name: "update-page-meta",
-      arguments: {
-        componentUuid: page.uuid,
+      name: "component",
+      arguments: { action: "update-page-meta", componentUuid: page.uuid,
         title: "Integration Test Title",
         description: "Integration test description",
       },
@@ -1541,8 +1506,8 @@ describe("management tools", () => {
 
     // Verify changes via get-page-meta
     const afterResult = await client.callTool({
-      name: "get-page-meta",
-      arguments: { componentUuid: page.uuid },
+      name: "inspect",
+      arguments: { action: "page-meta", componentUuid: page.uuid },
     });
     const afterMeta = parseResponse(afterResult);
     expect(afterMeta.title).toBe("Integration Test Title");
@@ -1550,29 +1515,29 @@ describe("management tools", () => {
 
     // Undo to restore
     const undoResult = await client.callTool({
-      name: "undo",
-      arguments: {},
+      name: "project",
+      arguments: { action: "undo" },
     });
     expect(undoResult.isError).toBeFalsy();
 
     // Verify restoration
     const restoredResult = await client.callTool({
-      name: "get-page-meta",
-      arguments: { componentUuid: page.uuid },
+      name: "inspect",
+      arguments: { action: "page-meta", componentUuid: page.uuid },
     });
     const restoredMeta = parseResponse(restoredResult);
     expect(restoredMeta.title).toBe(beforeMeta.title);
   });
 
-  it("get-page-meta on non-page → returns error", async () => {
+  it("inspect.page-meta on non-page → returns error", async () => {
     const nonPage = discoveredComponents.find((c) => c.type === "component");
     if (!nonPage) {
       return;
     }
 
     const result = await client.callTool({
-      name: "get-page-meta",
-      arguments: { componentUuid: nonPage.uuid },
+      name: "inspect",
+      arguments: { action: "page-meta", componentUuid: nonPage.uuid },
     });
 
     expect(result.isError).toBe(true);
@@ -1580,12 +1545,12 @@ describe("management tools", () => {
     expect(errorText).toContain("not a page");
   });
 
-  it("get-preview-url → returns preview and studio URLs", async () => {
+  it("inspect.preview-url → returns preview and studio URLs", async () => {
     const comp = discoveredComponents[0];
 
     const result = await client.callTool({
-      name: "get-preview-url",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "preview-url", componentUuid: comp.uuid },
     });
 
     expect(result.isError).toBeFalsy();
@@ -1596,12 +1561,12 @@ describe("management tools", () => {
     expect(output.studioUrl).toContain("/projects/");
   });
 
-  it("delete-component → removes component → undo restores it", async () => {
+  it("component.delete → removes component → undo restores it", async () => {
     // First add a temporary child we can delete, to avoid destroying fixture components
     const comp = discoveredComponents[0];
     const treeResult = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
 
@@ -1622,8 +1587,8 @@ describe("management tools", () => {
     }
 
     const deleteResult = await client.callTool({
-      name: "delete-component",
-      arguments: { componentUuid: targetComp.uuid },
+      name: "component",
+      arguments: { action: "delete", componentUuid: targetComp.uuid },
     });
 
     if (deleteResult.isError) {
@@ -1635,8 +1600,8 @@ describe("management tools", () => {
     } else {
       // If it succeeded, verify the component is gone
       const afterDelete = await client.callTool({
-        name: "list-components",
-        arguments: {},
+        name: "component",
+        arguments: { action: "list" },
       });
       const remaining = parseResponse(afterDelete);
       const found = remaining.find((c: any) => c.uuid === targetComp.uuid);
@@ -1644,15 +1609,15 @@ describe("management tools", () => {
 
       // Undo the deletion
       const undoResult = await client.callTool({
-        name: "undo",
-        arguments: {},
+        name: "project",
+        arguments: { action: "undo" },
       });
       expect(undoResult.isError).toBeFalsy();
 
       // Verify restoration
       const afterUndo = await client.callTool({
-        name: "list-components",
-        arguments: {},
+        name: "component",
+        arguments: { action: "list" },
       });
       const restored = parseResponse(afterUndo).find(
         (c: any) => c.uuid === targetComp.uuid
@@ -1676,17 +1641,16 @@ describe("slot override traversal", () => {
     if (!page || !referencedComp) return;
 
     const treeResult = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: page.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: page.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const initialChildCount = tree.children?.length ?? 0;
 
     // Add a component instance to the page
     const addCompResult = await client.callTool({
-      name: "add-child",
-      arguments: {
-        componentUuid: page.uuid,
+      name: "node",
+      arguments: { action: "add", componentUuid: page.uuid,
         parentRef: tree.uuid,
         child: { type: "component", name: referencedComp.name },
       },
@@ -1696,8 +1660,8 @@ describe("slot override traversal", () => {
     // Re-read tree to get the component instance UUID
     const afterAddTree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: page.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: page.uuid },
       })
     ).tree;
     const compInstance =
@@ -1706,9 +1670,8 @@ describe("slot override traversal", () => {
 
     // Try adding a text child to the default "children" slot
     const addSlotResult = await client.callTool({
-      name: "add-child",
-      arguments: {
-        componentUuid: page.uuid,
+      name: "node",
+      arguments: { action: "add", componentUuid: page.uuid,
         parentRef: compInstance.uuid,
         slot: "children",
         child: { type: "text", value: "Slot Override Text" },
@@ -1719,8 +1682,8 @@ describe("slot override traversal", () => {
       // Component may not have a "children" slot — skip gracefully
       // Clean up
       await client.callTool({
-        name: "remove-child",
-        arguments: { componentUuid: page.uuid, nodeRef: compInstance.uuid },
+        name: "node",
+        arguments: { action: "remove", componentUuid: page.uuid, nodeRef: compInstance.uuid },
       });
       return;
     }
@@ -1728,8 +1691,8 @@ describe("slot override traversal", () => {
     // Re-read tree — the override text should be visible under the component instance
     const afterSlotTree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: page.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: page.uuid },
       })
     ).tree;
     const updatedInstance =
@@ -1748,12 +1711,12 @@ describe("slot override traversal", () => {
 
     // Clean up
     await client.callTool({
-      name: "remove-child",
-      arguments: { componentUuid: page.uuid, nodeRef: compInstance.uuid },
+      name: "node",
+      arguments: { action: "remove", componentUuid: page.uuid, nodeRef: compInstance.uuid },
     });
   });
 
-  it("update-text on node inside slot override → verify change", async () => {
+  it("node.update-text on node inside slot override → verify change", async () => {
     const page = discoveredComponents.find((c) => c.type === "page");
     const referencedComp = discoveredComponents.find(
       (c) => c.type === "component"
@@ -1762,16 +1725,15 @@ describe("slot override traversal", () => {
 
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: page.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: page.uuid },
       })
     ).tree;
 
     // Add component instance + slot content
     await client.callTool({
-      name: "add-child",
-      arguments: {
-        componentUuid: page.uuid,
+      name: "node",
+      arguments: { action: "add", componentUuid: page.uuid,
         parentRef: tree.uuid,
         child: { type: "component", name: referencedComp.name },
       },
@@ -1779,16 +1741,15 @@ describe("slot override traversal", () => {
 
     const afterAdd = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: page.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: page.uuid },
       })
     ).tree;
     const compInstance = afterAdd.children[afterAdd.children.length - 1];
 
     const addSlotResult = await client.callTool({
-      name: "add-child",
-      arguments: {
-        componentUuid: page.uuid,
+      name: "node",
+      arguments: { action: "add", componentUuid: page.uuid,
         parentRef: compInstance.uuid,
         slot: "children",
         child: { type: "text", value: "Original Slot Text" },
@@ -1797,8 +1758,8 @@ describe("slot override traversal", () => {
 
     if (addSlotResult.isError) {
       await client.callTool({
-        name: "remove-child",
-        arguments: { componentUuid: page.uuid, nodeRef: compInstance.uuid },
+        name: "node",
+        arguments: { action: "remove", componentUuid: page.uuid, nodeRef: compInstance.uuid },
       });
       return;
     }
@@ -1806,8 +1767,8 @@ describe("slot override traversal", () => {
     // Get the override text node UUID
     const withSlot = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: page.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: page.uuid },
       })
     ).tree;
     const instance = withSlot.children[withSlot.children.length - 1];
@@ -1818,9 +1779,8 @@ describe("slot override traversal", () => {
 
     // Update text on the override node
     const editResult = await client.callTool({
-      name: "update-text",
-      arguments: {
-        componentUuid: page.uuid,
+      name: "node",
+      arguments: { action: "update-text", componentUuid: page.uuid,
         nodeRef: textNode.uuid,
         text: "Updated Slot Text",
       },
@@ -1830,16 +1790,16 @@ describe("slot override traversal", () => {
     // Verify the change
     const detail = parseResponse(
       await client.callTool({
-        name: "get-node-details",
-        arguments: { componentUuid: page.uuid, nodeRef: textNode.uuid },
+        name: "inspect",
+        arguments: { action: "node", componentUuid: page.uuid, nodeRef: textNode.uuid },
       })
     );
     expect(detail.node.text).toBe("Updated Slot Text");
 
     // Clean up
     await client.callTool({
-      name: "remove-child",
-      arguments: { componentUuid: page.uuid, nodeRef: compInstance.uuid },
+      name: "node",
+      arguments: { action: "remove", componentUuid: page.uuid, nodeRef: compInstance.uuid },
     });
   });
 });
@@ -1853,16 +1813,15 @@ describe("error recovery", () => {
     const comp = discoveredComponents[0];
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
 
     // Attempt mutation with invalid nodeRef — should fail
     const failResult = await client.callTool({
-      name: "update-styles",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "update-styles", componentUuid: comp.uuid,
         nodeRef: "bogus-uuid-that-does-not-exist",
         styles: { color: "red" },
       },
@@ -1871,9 +1830,8 @@ describe("error recovery", () => {
 
     // Model should still be clean — next mutation should succeed without refresh
     const successResult = await client.callTool({
-      name: "update-styles",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "update-styles", componentUuid: comp.uuid,
         nodeRef: tree.uuid,
         styles: { opacity: "0.9" },
       },
@@ -1884,8 +1842,8 @@ describe("error recovery", () => {
     // Verify the style applied
     const detail = parseResponse(
       await client.callTool({
-        name: "get-node-details",
-        arguments: { componentUuid: comp.uuid, nodeRef: tree.uuid },
+        name: "inspect",
+        arguments: { action: "node", componentUuid: comp.uuid, nodeRef: tree.uuid },
       })
     );
     expect(detail.node.styles["opacity"]).toBe("0.9");
@@ -1897,19 +1855,18 @@ describe("error recovery", () => {
 // =========================================================================
 
 describe("element tags", () => {
-  it("add-child with tag:'section' → verify tag in tree", async () => {
+  it("node.add with tag:'section' → verify tag in tree", async () => {
     const comp = discoveredComponents[0];
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
 
     const addResult = await client.callTool({
-      name: "add-child",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "add", componentUuid: comp.uuid,
         parentRef: tree.uuid,
         child: { type: "box", tag: "section", children: [] },
       },
@@ -1919,8 +1876,8 @@ describe("element tags", () => {
     // Re-read tree and verify tag
     const afterTree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
     const newChild = afterTree.children[afterTree.children.length - 1];
@@ -1928,24 +1885,23 @@ describe("element tags", () => {
 
     // Clean up
     await client.callTool({
-      name: "remove-child",
-      arguments: { componentUuid: comp.uuid, nodeRef: newChild.uuid },
+      name: "node",
+      arguments: { action: "remove", componentUuid: comp.uuid, nodeRef: newChild.uuid },
     });
   });
 
-  it("add-child text with tag:'h1' → verify tag in tree", async () => {
+  it("node.add text with tag:'h1' → verify tag in tree", async () => {
     const comp = discoveredComponents[0];
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
 
     const addResult = await client.callTool({
-      name: "add-child",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "add", componentUuid: comp.uuid,
         parentRef: tree.uuid,
         child: { type: "text", tag: "h1", value: "Heading" },
       },
@@ -1954,8 +1910,8 @@ describe("element tags", () => {
 
     const afterTree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
     const newChild = afterTree.children[afterTree.children.length - 1];
@@ -1964,24 +1920,23 @@ describe("element tags", () => {
 
     // Clean up
     await client.callTool({
-      name: "remove-child",
-      arguments: { componentUuid: comp.uuid, nodeRef: newChild.uuid },
+      name: "node",
+      arguments: { action: "remove", componentUuid: comp.uuid, nodeRef: newChild.uuid },
     });
   });
 
-  it("add-child with unsafe tag 'script' → error", async () => {
+  it("node.add with unsafe tag 'script' → error", async () => {
     const comp = discoveredComponents[0];
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
 
     const addResult = await client.callTool({
-      name: "add-child",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "add", componentUuid: comp.uuid,
         parentRef: tree.uuid,
         child: { type: "box", tag: "script", children: [] },
       },
@@ -1992,23 +1947,22 @@ describe("element tags", () => {
 });
 
 // =========================================================================
-// update-attrs (P3)
+// node.update-attrs (P3)
 // =========================================================================
 
-describe("update-attrs", () => {
-  it("set role + aria-label → read back via get-node-details", async () => {
+describe("node.update-attrs", () => {
+  it("set role + aria-label → read back via inspect.node", async () => {
     const comp = discoveredComponents[0];
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
 
     const attrResult = await client.callTool({
-      name: "update-attrs",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "update-attrs", componentUuid: comp.uuid,
         nodeRef: tree.uuid,
         attrs: { role: "navigation", "aria-label": "Main menu" },
       },
@@ -2022,8 +1976,8 @@ describe("update-attrs", () => {
     // Read back
     const detail = parseResponse(
       await client.callTool({
-        name: "get-node-details",
-        arguments: { componentUuid: comp.uuid, nodeRef: tree.uuid },
+        name: "inspect",
+        arguments: { action: "node", componentUuid: comp.uuid, nodeRef: tree.uuid },
       })
     );
     expect(detail.node.attrs.role).toBe("navigation");
@@ -2034,15 +1988,14 @@ describe("update-attrs", () => {
     const comp = discoveredComponents[0];
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
 
     const attrResult = await client.callTool({
-      name: "update-attrs",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "update-attrs", componentUuid: comp.uuid,
         nodeRef: tree.uuid,
         attrs: { "data-testid": "hero-section" },
       },
@@ -2051,8 +2004,8 @@ describe("update-attrs", () => {
 
     const detail = parseResponse(
       await client.callTool({
-        name: "get-node-details",
-        arguments: { componentUuid: comp.uuid, nodeRef: tree.uuid },
+        name: "inspect",
+        arguments: { action: "node", componentUuid: comp.uuid, nodeRef: tree.uuid },
       })
     );
     expect(detail.node.attrs["data-testid"]).toBe("hero-section");
@@ -2062,16 +2015,15 @@ describe("update-attrs", () => {
     const comp = discoveredComponents[0];
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
 
     // Set an attribute first
     await client.callTool({
-      name: "update-attrs",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "update-attrs", componentUuid: comp.uuid,
         nodeRef: tree.uuid,
         attrs: { "data-remove-me": "present" },
       },
@@ -2080,17 +2032,16 @@ describe("update-attrs", () => {
     // Verify it's there
     let detail = parseResponse(
       await client.callTool({
-        name: "get-node-details",
-        arguments: { componentUuid: comp.uuid, nodeRef: tree.uuid },
+        name: "inspect",
+        arguments: { action: "node", componentUuid: comp.uuid, nodeRef: tree.uuid },
       })
     );
     expect(detail.node.attrs["data-remove-me"]).toBe("present");
 
     // Remove it
     const removeResult = await client.callTool({
-      name: "update-attrs",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "update-attrs", componentUuid: comp.uuid,
         nodeRef: tree.uuid,
         attrs: { "data-remove-me": null },
       },
@@ -2100,8 +2051,8 @@ describe("update-attrs", () => {
     // Verify it's gone
     detail = parseResponse(
       await client.callTool({
-        name: "get-node-details",
-        arguments: { componentUuid: comp.uuid, nodeRef: tree.uuid },
+        name: "inspect",
+        arguments: { action: "node", componentUuid: comp.uuid, nodeRef: tree.uuid },
       })
     );
     expect(detail.node.attrs?.["data-remove-me"]).toBeUndefined();
@@ -2111,15 +2062,14 @@ describe("update-attrs", () => {
     const comp = discoveredComponents[0];
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
 
     const result = await client.callTool({
-      name: "update-attrs",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "update-attrs", componentUuid: comp.uuid,
         nodeRef: tree.uuid,
         attrs: { onclick: "alert(1)" },
       },
@@ -2134,19 +2084,18 @@ describe("update-attrs", () => {
 // =========================================================================
 
 describe("border shorthand", () => {
-  it("update-styles with border shorthand → verify longhands in tree", async () => {
+  it("node.update-styles with border shorthand → verify longhands in tree", async () => {
     const comp = discoveredComponents[0];
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
 
     const editResult = await client.callTool({
-      name: "update-styles",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "update-styles", componentUuid: comp.uuid,
         nodeRef: tree.uuid,
         styles: { border: "2px solid red" },
       },
@@ -2155,8 +2104,8 @@ describe("border shorthand", () => {
 
     const detail = parseResponse(
       await client.callTool({
-        name: "get-node-details",
-        arguments: { componentUuid: comp.uuid, nodeRef: tree.uuid },
+        name: "inspect",
+        arguments: { action: "node", componentUuid: comp.uuid, nodeRef: tree.uuid },
       })
     );
 
@@ -2168,19 +2117,18 @@ describe("border shorthand", () => {
     }
   });
 
-  it("update-styles with borderRadius → verify corner longhands", async () => {
+  it("node.update-styles with borderRadius → verify corner longhands", async () => {
     const comp = discoveredComponents[0];
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
 
     const editResult = await client.callTool({
-      name: "update-styles",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "update-styles", componentUuid: comp.uuid,
         nodeRef: tree.uuid,
         styles: { borderRadius: "12px" },
       },
@@ -2189,8 +2137,8 @@ describe("border shorthand", () => {
 
     const detail = parseResponse(
       await client.callTool({
-        name: "get-node-details",
-        arguments: { componentUuid: comp.uuid, nodeRef: tree.uuid },
+        name: "inspect",
+        arguments: { action: "node", componentUuid: comp.uuid, nodeRef: tree.uuid },
       })
     );
 
@@ -2206,11 +2154,11 @@ describe("border shorthand", () => {
 // =========================================================================
 
 describe("token references in styles", () => {
-  it("get-tokens → apply token:Name → verify resolved value", async () => {
+  it("design.list-tokens → apply token:Name → verify resolved value", async () => {
     // Get available tokens
     const tokenResult = await client.callTool({
-      name: "get-tokens",
-      arguments: {},
+      name: "design",
+      arguments: { action: "list-tokens" },
     });
     expect(tokenResult.isError).toBeFalsy();
     const tokenOutput = parseResponse(tokenResult);
@@ -2228,16 +2176,15 @@ describe("token references in styles", () => {
     const comp = discoveredComponents[0];
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
 
     // Apply the token reference
     const editResult = await client.callTool({
-      name: "update-styles",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "update-styles", componentUuid: comp.uuid,
         nodeRef: tree.uuid,
         styles: { color: `token:${token.name}` },
       },
@@ -2247,8 +2194,8 @@ describe("token references in styles", () => {
     // Verify the resolved value is applied
     const detail = parseResponse(
       await client.callTool({
-        name: "get-node-details",
-        arguments: { componentUuid: comp.uuid, nodeRef: tree.uuid },
+        name: "inspect",
+        arguments: { action: "node", componentUuid: comp.uuid, nodeRef: tree.uuid },
       })
     );
     // The stored value should be a var(--token-uuid) or the resolved CSS value
@@ -2261,12 +2208,12 @@ describe("token references in styles", () => {
 // =========================================================================
 
 describe("data bindings", () => {
-  it("update-text dynamic:true → verify expression in node details", async () => {
+  it("node.update-text dynamic:true → verify expression in node details", async () => {
     const comp = discoveredComponents[0];
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
     const textNode = findFirstTextNode(tree);
@@ -2276,9 +2223,8 @@ describe("data bindings", () => {
 
     // Set dynamic text
     const editResult = await client.callTool({
-      name: "update-text",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "update-text", componentUuid: comp.uuid,
         nodeRef: textNode.uuid,
         text: "$ctx.product.name",
         dynamic: true,
@@ -2289,8 +2235,8 @@ describe("data bindings", () => {
     // Verify expression in node details
     const detail = parseResponse(
       await client.callTool({
-        name: "get-node-details",
-        arguments: { componentUuid: comp.uuid, nodeRef: textNode.uuid },
+        name: "inspect",
+        arguments: { action: "node", componentUuid: comp.uuid, nodeRef: textNode.uuid },
       })
     );
     expect(detail.node.dynamic).toBe(true);
@@ -2298,9 +2244,8 @@ describe("data bindings", () => {
 
     // Convert back to static text
     const staticResult = await client.callTool({
-      name: "update-text",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "update-text", componentUuid: comp.uuid,
         nodeRef: textNode.uuid,
         text: "Static again",
       },
@@ -2309,29 +2254,28 @@ describe("data bindings", () => {
 
     const afterStatic = parseResponse(
       await client.callTool({
-        name: "get-node-details",
-        arguments: { componentUuid: comp.uuid, nodeRef: textNode.uuid },
+        name: "inspect",
+        arguments: { action: "node", componentUuid: comp.uuid, nodeRef: textNode.uuid },
       })
     );
     expect(afterStatic.node.text).toBe("Static again");
     expect(afterStatic.node.dynamic).toBeFalsy();
   });
 
-  it("update-text dynamic:true with fallback → verify fallback in output", async () => {
+  it("node.update-text dynamic:true with fallback → verify fallback in output", async () => {
     const comp = discoveredComponents[0];
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
     const textNode = findFirstTextNode(tree);
     if (!textNode) return;
 
     const editResult = await client.callTool({
-      name: "update-text",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "update-text", componentUuid: comp.uuid,
         nodeRef: textNode.uuid,
         text: "$ctx.user.email",
         dynamic: true,
@@ -2342,8 +2286,8 @@ describe("data bindings", () => {
 
     const detail = parseResponse(
       await client.callTool({
-        name: "get-node-details",
-        arguments: { componentUuid: comp.uuid, nodeRef: textNode.uuid },
+        name: "inspect",
+        arguments: { action: "node", componentUuid: comp.uuid, nodeRef: textNode.uuid },
       })
     );
     expect(detail.node.dynamic).toBe(true);
@@ -2351,7 +2295,7 @@ describe("data bindings", () => {
     expect(detail.node.fallback).toBeTruthy();
 
     // Undo to restore original
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 });
 
@@ -2360,20 +2304,19 @@ describe("data bindings", () => {
 // =========================================================================
 
 describe("node cloning", () => {
-  it("clone-child → verify clone with new UUID → undo → verify removed", async () => {
+  it("node.clone → verify clone with new UUID → undo → verify removed", async () => {
     const comp = discoveredComponents[0];
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
 
     // Add a styled text child to clone
     const addResult = await client.callTool({
-      name: "add-child",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "add", componentUuid: comp.uuid,
         parentRef: tree.uuid,
         child: { type: "text", value: "Clone Me" },
       },
@@ -2383,8 +2326,8 @@ describe("node cloning", () => {
     // Get the new child's UUID
     const afterAdd = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
     const originalNode = afterAdd.children[afterAdd.children.length - 1];
@@ -2393,9 +2336,8 @@ describe("node cloning", () => {
 
     // Clone it
     const cloneResult = await client.callTool({
-      name: "clone-child",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "clone", componentUuid: comp.uuid,
         nodeRef: originalNode.uuid,
       },
     });
@@ -2408,8 +2350,8 @@ describe("node cloning", () => {
     // Verify clone in tree
     const afterClone = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
     expect(afterClone.children.length).toBe(childCountBeforeClone + 1);
@@ -2423,16 +2365,16 @@ describe("node cloning", () => {
 
     // Undo the clone
     const undoResult = await client.callTool({
-      name: "undo",
-      arguments: {},
+      name: "project",
+      arguments: { action: "undo" },
     });
     expect(undoResult.isError).toBeFalsy();
 
     // Verify clone is gone
     const afterUndo = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
     expect(afterUndo.children.length).toBe(childCountBeforeClone);
@@ -2443,25 +2385,24 @@ describe("node cloning", () => {
 
     // Clean up: remove the original added node
     await client.callTool({
-      name: "remove-child",
-      arguments: { componentUuid: comp.uuid, nodeRef: originalNode.uuid },
+      name: "node",
+      arguments: { action: "remove", componentUuid: comp.uuid, nodeRef: originalNode.uuid },
     });
   });
 
-  it("clone-child with newName → verify name in tree", async () => {
+  it("node.clone with newName → verify name in tree", async () => {
     const comp = discoveredComponents[0];
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
 
     // Add a child to clone
     await client.callTool({
-      name: "add-child",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "add", componentUuid: comp.uuid,
         parentRef: tree.uuid,
         child: { type: "text", value: "Named Clone Source" },
       },
@@ -2469,17 +2410,16 @@ describe("node cloning", () => {
 
     const afterAdd = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
     const sourceNode = afterAdd.children[afterAdd.children.length - 1];
 
     // Clone with custom name
     const cloneResult = await client.callTool({
-      name: "clone-child",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "clone", componentUuid: comp.uuid,
         nodeRef: sourceNode.uuid,
         newName: "My Custom Clone",
       },
@@ -2491,8 +2431,8 @@ describe("node cloning", () => {
     // Verify name in tree
     const afterClone = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
     const clone = afterClone.children.find(
@@ -2503,12 +2443,12 @@ describe("node cloning", () => {
 
     // Clean up
     await client.callTool({
-      name: "remove-child",
-      arguments: { componentUuid: comp.uuid, nodeRef: cloneOutput.clonedUuid },
+      name: "node",
+      arguments: { action: "remove", componentUuid: comp.uuid, nodeRef: cloneOutput.clonedUuid },
     });
     await client.callTool({
-      name: "remove-child",
-      arguments: { componentUuid: comp.uuid, nodeRef: sourceNode.uuid },
+      name: "node",
+      arguments: { action: "remove", componentUuid: comp.uuid, nodeRef: sourceNode.uuid },
     });
   });
 });
@@ -2516,22 +2456,22 @@ describe("node cloning", () => {
 // =========================================================================
 // Visibility & Conditional Rendering
 //
-// These tests verify the full MCP protocol path for set-visibility and
-// set-data-cond: real model mutations via ChangeRecorder, real tree-reader
+// These tests verify the full MCP protocol path for node.set-visibility and
+// data.set-data-cond: real model mutations via ChangeRecorder, real tree-reader
 // output, and real undo support. This catches bugs that mocked tests miss
 // (e.g., WAB model class constructors, RuleSet internal state).
 // =========================================================================
 
 describe("visibility and conditional rendering", () => {
-  it("set-visibility false → read back notRendered → undo → verify restored", async () => {
+  it("node.set-visibility false → read back notRendered → undo → verify restored", async () => {
     const comp = discoveredComponents.find((c) => c.type === "page") ?? discoveredComponents[0];
     if (!comp) return;
 
     // Get the tree and find a TplTag node to hide
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
 
@@ -2541,8 +2481,8 @@ describe("visibility and conditional rendering", () => {
 
     // Hide the element
     const hideResult = await client.callTool({
-      name: "set-visibility",
-      arguments: { componentUuid: comp.uuid, nodeRef: target.uuid, visible: false },
+      name: "node",
+      arguments: { action: "set-visibility", componentUuid: comp.uuid, nodeRef: target.uuid, visible: false },
     });
     expect(hideResult.isError).toBeFalsy();
     const hideOutput = parseResponse(hideResult);
@@ -2551,8 +2491,8 @@ describe("visibility and conditional rendering", () => {
 
     // Read back via get-node-details and verify visibility field
     const detailResult = await client.callTool({
-      name: "get-node-details",
-      arguments: { componentUuid: comp.uuid, nodeRef: target.uuid },
+      name: "inspect",
+      arguments: { action: "node", componentUuid: comp.uuid, nodeRef: target.uuid },
     });
     const detail = parseResponse(detailResult);
     expect(detail.node.visibility).toBe("notRendered");
@@ -2560,35 +2500,35 @@ describe("visibility and conditional rendering", () => {
     // Also verify in full tree
     const hiddenTree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
     const hiddenNode = findNodeByUuid(hiddenTree, target.uuid);
     expect(hiddenNode?.visibility).toBe("notRendered");
 
     // Undo the visibility change
-    const undoResult = await client.callTool({ name: "undo", arguments: {} });
+    const undoResult = await client.callTool({ name: "project", arguments: { action: "undo" } });
     expect(undoResult.isError).toBeFalsy();
 
     // Verify the element is visible again (no visibility field)
     const restoredDetail = parseResponse(
       await client.callTool({
-        name: "get-node-details",
-        arguments: { componentUuid: comp.uuid, nodeRef: target.uuid },
+        name: "inspect",
+        arguments: { action: "node", componentUuid: comp.uuid, nodeRef: target.uuid },
       })
     );
     expect(restoredDetail.node.visibility).toBeUndefined();
   });
 
-  it("set-visibility displayNone → verify displayNone in tree", async () => {
+  it("node.set-visibility displayNone → verify displayNone in tree", async () => {
     const comp = discoveredComponents.find((c) => c.type === "page") ?? discoveredComponents[0];
     if (!comp) return;
 
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
     const target = findNamedNode(tree);
@@ -2596,8 +2536,8 @@ describe("visibility and conditional rendering", () => {
 
     // Set display:none visibility
     const result = await client.callTool({
-      name: "set-visibility",
-      arguments: { componentUuid: comp.uuid, nodeRef: target.uuid, visible: "displayNone" },
+      name: "node",
+      arguments: { action: "set-visibility", componentUuid: comp.uuid, nodeRef: target.uuid, visible: "displayNone" },
     });
     expect(result.isError).toBeFalsy();
     expect(parseResponse(result).newVisibility).toBe("displayNone");
@@ -2605,24 +2545,24 @@ describe("visibility and conditional rendering", () => {
     // Read back and verify
     const detail = parseResponse(
       await client.callTool({
-        name: "get-node-details",
-        arguments: { componentUuid: comp.uuid, nodeRef: target.uuid },
+        name: "inspect",
+        arguments: { action: "node", componentUuid: comp.uuid, nodeRef: target.uuid },
       })
     );
     expect(detail.node.visibility).toBe("displayNone");
 
     // Clean up: restore visibility
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 
-  it("set-data-cond → read back expression → undo → verify removed", async () => {
+  it("data.set-data-cond → read back expression → undo → verify removed", async () => {
     const comp = discoveredComponents.find((c) => c.type === "page") ?? discoveredComponents[0];
     if (!comp) return;
 
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
     const target = findNamedNode(tree);
@@ -2630,9 +2570,8 @@ describe("visibility and conditional rendering", () => {
 
     // Set a data condition
     const condResult = await client.callTool({
-      name: "set-data-cond",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "data",
+      arguments: { action: "set-data-cond", componentUuid: comp.uuid,
         nodeRef: target.uuid,
         condition: "$ctx.user.isLoggedIn",
       },
@@ -2645,35 +2584,35 @@ describe("visibility and conditional rendering", () => {
     // Read back and verify dataCond appears in node details
     const detail = parseResponse(
       await client.callTool({
-        name: "get-node-details",
-        arguments: { componentUuid: comp.uuid, nodeRef: target.uuid },
+        name: "inspect",
+        arguments: { action: "node", componentUuid: comp.uuid, nodeRef: target.uuid },
       })
     );
     expect(detail.node.dataCond).toBe("$ctx.user.isLoggedIn");
     expect(detail.node.visibility).toBeUndefined(); // custom expression, not a visibility state
 
     // Undo
-    const undoResult = await client.callTool({ name: "undo", arguments: {} });
+    const undoResult = await client.callTool({ name: "project", arguments: { action: "undo" } });
     expect(undoResult.isError).toBeFalsy();
 
     // Verify condition is removed
     const restoredDetail = parseResponse(
       await client.callTool({
-        name: "get-node-details",
-        arguments: { componentUuid: comp.uuid, nodeRef: target.uuid },
+        name: "inspect",
+        arguments: { action: "node", componentUuid: comp.uuid, nodeRef: target.uuid },
       })
     );
     expect(restoredDetail.node.dataCond).toBeUndefined();
   });
 
-  it("set-data-cond null → removes existing condition", async () => {
+  it("data.set-data-cond null → removes existing condition", async () => {
     const comp = discoveredComponents.find((c) => c.type === "page") ?? discoveredComponents[0];
     if (!comp) return;
 
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
     const target = findNamedNode(tree);
@@ -2681,9 +2620,8 @@ describe("visibility and conditional rendering", () => {
 
     // Set a condition first
     await client.callTool({
-      name: "set-data-cond",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "data",
+      arguments: { action: "set-data-cond", componentUuid: comp.uuid,
         nodeRef: target.uuid,
         condition: "$ctx.showBanner",
       },
@@ -2691,9 +2629,8 @@ describe("visibility and conditional rendering", () => {
 
     // Now remove it
     const removeResult = await client.callTool({
-      name: "set-data-cond",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "data",
+      arguments: { action: "set-data-cond", componentUuid: comp.uuid,
         nodeRef: target.uuid,
         condition: null,
       },
@@ -2706,25 +2643,25 @@ describe("visibility and conditional rendering", () => {
     // Verify it's gone
     const detail = parseResponse(
       await client.callTool({
-        name: "get-node-details",
-        arguments: { componentUuid: comp.uuid, nodeRef: target.uuid },
+        name: "inspect",
+        arguments: { action: "node", componentUuid: comp.uuid, nodeRef: target.uuid },
       })
     );
     expect(detail.node.dataCond).toBeUndefined();
 
     // Clean up both operations
-    await client.callTool({ name: "undo", arguments: {} });
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 
-  it("set-visibility false → set-visibility true → verify restored", async () => {
+  it("node.set-visibility false → node.set-visibility true → verify restored", async () => {
     const comp = discoveredComponents.find((c) => c.type === "page") ?? discoveredComponents[0];
     if (!comp) return;
 
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
     const target = findNamedNode(tree);
@@ -2732,14 +2669,14 @@ describe("visibility and conditional rendering", () => {
 
     // Hide
     await client.callTool({
-      name: "set-visibility",
-      arguments: { componentUuid: comp.uuid, nodeRef: target.uuid, visible: false },
+      name: "node",
+      arguments: { action: "set-visibility", componentUuid: comp.uuid, nodeRef: target.uuid, visible: false },
     });
 
     // Show again
     const showResult = await client.callTool({
-      name: "set-visibility",
-      arguments: { componentUuid: comp.uuid, nodeRef: target.uuid, visible: true },
+      name: "node",
+      arguments: { action: "set-visibility", componentUuid: comp.uuid, nodeRef: target.uuid, visible: true },
     });
     expect(showResult.isError).toBeFalsy();
     const showOutput = parseResponse(showResult);
@@ -2749,28 +2686,28 @@ describe("visibility and conditional rendering", () => {
     // Verify visibility is back to default (field absent)
     const detail = parseResponse(
       await client.callTool({
-        name: "get-node-details",
-        arguments: { componentUuid: comp.uuid, nodeRef: target.uuid },
+        name: "inspect",
+        arguments: { action: "node", componentUuid: comp.uuid, nodeRef: target.uuid },
       })
     );
     expect(detail.node.visibility).toBeUndefined();
 
     // Clean up
-    await client.callTool({ name: "undo", arguments: {} });
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 });
 
 describe("data repetition", () => {
-  it("set-data-rep → read back dataRep in tree → undo → verify removed", async () => {
+  it("data.set-data-rep → read back dataRep in tree → undo → verify removed", async () => {
     const comp = discoveredComponents.find((c) => c.type === "page") ?? discoveredComponents[0];
     if (!comp) return;
 
     // Get the tree and find a TplTag node to repeat
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
     const target = findNamedNode(tree);
@@ -2778,9 +2715,8 @@ describe("data repetition", () => {
 
     // Set data repetition
     const setResult = await client.callTool({
-      name: "set-data-rep",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "data",
+      arguments: { action: "set-data-rep", componentUuid: comp.uuid,
         nodeRef: target.uuid,
         collection: "$ctx.items",
         elementVariable: "item",
@@ -2798,8 +2734,8 @@ describe("data repetition", () => {
 
     // Read back via get-node-details and verify dataRep field
     const detailResult = await client.callTool({
-      name: "get-node-details",
-      arguments: { componentUuid: comp.uuid, nodeRef: target.uuid },
+      name: "inspect",
+      arguments: { action: "node", componentUuid: comp.uuid, nodeRef: target.uuid },
     });
     const detail = parseResponse(detailResult);
     expect(detail.node.dataRep).toBeDefined();
@@ -2808,27 +2744,27 @@ describe("data repetition", () => {
     expect(detail.node.dataRep.indexVariable).toBe("idx");
 
     // Undo the data repetition
-    const undoResult = await client.callTool({ name: "undo", arguments: {} });
+    const undoResult = await client.callTool({ name: "project", arguments: { action: "undo" } });
     expect(undoResult.isError).toBeFalsy();
 
     // Verify dataRep is removed
     const restoredDetail = parseResponse(
       await client.callTool({
-        name: "get-node-details",
-        arguments: { componentUuid: comp.uuid, nodeRef: target.uuid },
+        name: "inspect",
+        arguments: { action: "node", componentUuid: comp.uuid, nodeRef: target.uuid },
       })
     );
     expect(restoredDetail.node.dataRep).toBeUndefined();
   });
 
-  it("set-data-rep null removes existing repetition", async () => {
+  it("data.set-data-rep null removes existing repetition", async () => {
     const comp = discoveredComponents.find((c) => c.type === "page") ?? discoveredComponents[0];
     if (!comp) return;
 
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
     const target = findNamedNode(tree);
@@ -2836,9 +2772,8 @@ describe("data repetition", () => {
 
     // First set repetition
     await client.callTool({
-      name: "set-data-rep",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "data",
+      arguments: { action: "set-data-rep", componentUuid: comp.uuid,
         nodeRef: target.uuid,
         collection: "$ctx.products",
       },
@@ -2846,9 +2781,8 @@ describe("data repetition", () => {
 
     // Now remove it
     const removeResult = await client.callTool({
-      name: "set-data-rep",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "data",
+      arguments: { action: "set-data-rep", componentUuid: comp.uuid,
         nodeRef: target.uuid,
         collection: null,
       },
@@ -2862,25 +2796,25 @@ describe("data repetition", () => {
     // Verify in tree that dataRep is gone
     const detail = parseResponse(
       await client.callTool({
-        name: "get-node-details",
-        arguments: { componentUuid: comp.uuid, nodeRef: target.uuid },
+        name: "inspect",
+        arguments: { action: "node", componentUuid: comp.uuid, nodeRef: target.uuid },
       })
     );
     expect(detail.node.dataRep).toBeUndefined();
 
     // Clean up: undo twice (remove + set)
-    await client.callTool({ name: "undo", arguments: {} });
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 
-  it("set-data-rep with default variable names", async () => {
+  it("data.set-data-rep with default variable names", async () => {
     const comp = discoveredComponents.find((c) => c.type === "page") ?? discoveredComponents[0];
     if (!comp) return;
 
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
     const target = findNamedNode(tree);
@@ -2888,9 +2822,8 @@ describe("data repetition", () => {
 
     // Set repetition without specifying variable names (use defaults)
     const result = await client.callTool({
-      name: "set-data-rep",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "data",
+      arguments: { action: "set-data-rep", componentUuid: comp.uuid,
         nodeRef: target.uuid,
         collection: "[1,2,3]",
       },
@@ -2901,17 +2834,16 @@ describe("data repetition", () => {
     expect(output.newDataRep.indexVariable).toBe("currentIndex");
 
     // Clean up
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 });
 
 describe("token CRUD", () => {
-  it("create-token → get-tokens → verify new token appears", async () => {
+  it("design.create-token → design.list-tokens → verify new token appears", async () => {
     const createResult = await client.callTool({
-      name: "create-token",
-      arguments: {
-        name: "Test Color",
-        type: "Color",
+      name: "design",
+      arguments: { action: "create-token", name: "Test Color",
+        tokenType: "Color",
         value: "#FF00FF",
       },
     });
@@ -2924,8 +2856,8 @@ describe("token CRUD", () => {
 
     // Verify token appears in get-tokens
     const tokensResult = await client.callTool({
-      name: "get-tokens",
-      arguments: { type: "Color" },
+      name: "design",
+      arguments: { action: "list-tokens", tokenType: "Color" },
     });
     const tokensOutput = parseResponse(tokensResult);
     const allTokens = Object.values(tokensOutput.tokens).flat() as any[];
@@ -2934,23 +2866,22 @@ describe("token CRUD", () => {
     expect(found.value).toBe("#FF00FF");
 
     // Clean up
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 
-  it("update-token → verify value and name change", async () => {
+  it("design.update-token → verify value and name change", async () => {
     // Create a token first
     const createResult = parseResponse(
       await client.callTool({
-        name: "create-token",
-        arguments: { name: "Temp Token", type: "Spacing", value: "8px" },
+        name: "design",
+        arguments: { action: "create-token", name: "Temp Token", tokenType: "Spacing", value: "8px" },
       })
     );
 
     // Update value
     const updateResult = await client.callTool({
-      name: "update-token",
-      arguments: {
-        tokenRef: createResult.tokenUuid,
+      name: "design",
+      arguments: { action: "update-token", tokenRef: createResult.tokenUuid,
         value: "16px",
         name: "Updated Token",
       },
@@ -2963,24 +2894,24 @@ describe("token CRUD", () => {
     expect(updateOutput.previousName).toBe("Temp Token");
 
     // Clean up (undo update + undo create)
-    await client.callTool({ name: "undo", arguments: {} });
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 
-  it("remove-token → verify token gone from get-tokens", async () => {
+  it("design.remove-token → verify token gone from design.list-tokens", async () => {
     // Create a token
     const createResult = parseResponse(
       await client.callTool({
-        name: "create-token",
-        arguments: { name: "Removable", type: "Color", value: "#AABBCC" },
+        name: "design",
+        arguments: { action: "create-token", name: "Removable", tokenType: "Color", value: "#AABBCC" },
       })
     );
     const tokenUuid = createResult.tokenUuid;
 
     // Remove it
     const removeResult = await client.callTool({
-      name: "remove-token",
-      arguments: { tokenRef: tokenUuid },
+      name: "design",
+      arguments: { action: "remove-token", tokenRef: tokenUuid },
     });
     expect(removeResult.isError).toBeFalsy();
     const removeOutput = parseResponse(removeResult);
@@ -2989,30 +2920,29 @@ describe("token CRUD", () => {
 
     // Verify gone from get-tokens
     const tokensResult = parseResponse(
-      await client.callTool({ name: "get-tokens", arguments: {} })
+      await client.callTool({ name: "design", arguments: { action: "list-tokens" } })
     );
     const allTokens = Object.values(tokensResult.tokens).flat() as any[];
     expect(allTokens.find((t: any) => t.uuid === tokenUuid)).toBeFalsy();
 
     // Clean up (undo remove + undo create)
-    await client.callTool({ name: "undo", arguments: {} });
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 
-  it("duplicate-token → verify copy with new UUID", async () => {
+  it("design.duplicate-token → verify copy with new UUID", async () => {
     // Create a token
     const createResult = parseResponse(
       await client.callTool({
-        name: "create-token",
-        arguments: { name: "Original", type: "Color", value: "#112233" },
+        name: "design",
+        arguments: { action: "create-token", name: "Original", tokenType: "Color", value: "#112233" },
       })
     );
 
     // Duplicate it
     const dupResult = await client.callTool({
-      name: "duplicate-token",
-      arguments: {
-        tokenRef: createResult.tokenUuid,
+      name: "design",
+      arguments: { action: "duplicate-token", tokenRef: createResult.tokenUuid,
         newName: "Copy of Original",
       },
     });
@@ -3024,8 +2954,8 @@ describe("token CRUD", () => {
     expect(dupOutput.value).toBe("#112233");
 
     // Clean up (undo duplicate + undo create)
-    await client.callTool({ name: "undo", arguments: {} });
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 });
 
@@ -3034,13 +2964,13 @@ describe("token CRUD", () => {
 // =========================================================================
 
 describe("component props", () => {
-  it("list-props → returns existing params from component", async () => {
+  it("component.list-props → returns existing params from component", async () => {
     // Find a component that has params (e.g., a code component with props)
     const compsWithParams = [];
     for (const comp of discoveredComponents) {
       const listResult = await client.callTool({
-        name: "list-props",
-        arguments: { componentUuid: comp.uuid },
+        name: "component",
+        arguments: { action: "list-props", componentUuid: comp.uuid },
       });
       const output = parseResponse(listResult);
       if (output.propCount > 0) {
@@ -3063,7 +2993,7 @@ describe("component props", () => {
     }
   });
 
-  it("add-prop → list-props → verify, then undo", async () => {
+  it("component.add-prop → component.list-props → verify, then undo", async () => {
     // Use the Homepage page (user-created, safe to modify)
     const page = discoveredComponents.find((c: any) => c.type === "page");
     expect(page).toBeTruthy();
@@ -3071,17 +3001,16 @@ describe("component props", () => {
     // Get initial prop count
     const beforeResult = parseResponse(
       await client.callTool({
-        name: "list-props",
-        arguments: { componentUuid: page!.uuid },
+        name: "component",
+        arguments: { action: "list-props", componentUuid: page!.uuid },
       })
     );
     const beforeCount = beforeResult.propCount;
 
     // Add a text prop
     const addResult = await client.callTool({
-      name: "add-prop",
-      arguments: {
-        componentUuid: page!.uuid,
+      name: "component",
+      arguments: { action: "add-prop", componentUuid: page!.uuid,
         name: "testTitle",
         type: "text",
         defaultValue: "Hello",
@@ -3097,8 +3026,8 @@ describe("component props", () => {
     // Verify prop appears in list-props
     const afterResult = parseResponse(
       await client.callTool({
-        name: "list-props",
-        arguments: { componentUuid: page!.uuid },
+        name: "component",
+        arguments: { action: "list-props", componentUuid: page!.uuid },
       })
     );
     expect(afterResult.propCount).toBe(beforeCount + 1);
@@ -3111,19 +3040,18 @@ describe("component props", () => {
     expect(newProp.description).toBe("A test prop");
 
     // Clean up
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 
-  it("add-prop → update-prop → verify rename and description", async () => {
+  it("component.add-prop → component.update-prop → verify rename and description", async () => {
     const page = discoveredComponents.find((c: any) => c.type === "page");
     expect(page).toBeTruthy();
 
     // Add a prop
     const addResult = parseResponse(
       await client.callTool({
-        name: "add-prop",
-        arguments: {
-          componentUuid: page!.uuid,
+        name: "component",
+        arguments: { action: "add-prop", componentUuid: page!.uuid,
           name: "tempProp",
           type: "boolean",
           defaultValue: "false",
@@ -3133,9 +3061,8 @@ describe("component props", () => {
 
     // Update the prop's name and description
     const updateResult = await client.callTool({
-      name: "update-prop",
-      arguments: {
-        componentUuid: page!.uuid,
+      name: "component",
+      arguments: { action: "update-prop", componentUuid: page!.uuid,
         propRef: addResult.paramUuid,
         name: "isVisible",
         description: "Controls visibility",
@@ -3151,8 +3078,8 @@ describe("component props", () => {
     // Verify via list-props
     const listResult = parseResponse(
       await client.callTool({
-        name: "list-props",
-        arguments: { componentUuid: page!.uuid },
+        name: "component",
+        arguments: { action: "list-props", componentUuid: page!.uuid },
       })
     );
     const updatedProp = listResult.props.find(
@@ -3163,20 +3090,19 @@ describe("component props", () => {
     expect(updatedProp.description).toBe("Controls visibility");
 
     // Clean up (undo update + undo add)
-    await client.callTool({ name: "undo", arguments: {} });
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 
-  it("add-prop → remove-prop → verify removed", async () => {
+  it("component.add-prop → component.remove-prop → verify removed", async () => {
     const page = discoveredComponents.find((c: any) => c.type === "page");
     expect(page).toBeTruthy();
 
     // Add a prop
     const addResult = parseResponse(
       await client.callTool({
-        name: "add-prop",
-        arguments: {
-          componentUuid: page!.uuid,
+        name: "component",
+        arguments: { action: "add-prop", componentUuid: page!.uuid,
           name: "toRemove",
           type: "number",
           defaultValue: "0",
@@ -3186,9 +3112,8 @@ describe("component props", () => {
 
     // Remove it
     const removeResult = await client.callTool({
-      name: "remove-prop",
-      arguments: {
-        componentUuid: page!.uuid,
+      name: "component",
+      arguments: { action: "remove-prop", componentUuid: page!.uuid,
         propRef: addResult.paramUuid,
       },
     });
@@ -3200,8 +3125,8 @@ describe("component props", () => {
     // Verify prop is gone
     const listResult = parseResponse(
       await client.callTool({
-        name: "list-props",
-        arguments: { componentUuid: page!.uuid },
+        name: "component",
+        arguments: { action: "list-props", componentUuid: page!.uuid },
       })
     );
     const found = listResult.props.find(
@@ -3210,18 +3135,17 @@ describe("component props", () => {
     expect(found).toBeFalsy();
 
     // Clean up (undo remove + undo add)
-    await client.callTool({ name: "undo", arguments: {} });
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 
-  it("add-prop rejects reserved names", async () => {
+  it("component.add-prop rejects reserved names", async () => {
     const page = discoveredComponents.find((c: any) => c.type === "page");
     expect(page).toBeTruthy();
 
     const result = await client.callTool({
-      name: "add-prop",
-      arguments: {
-        componentUuid: page!.uuid,
+      name: "component",
+      arguments: { action: "add-prop", componentUuid: page!.uuid,
         name: "children",
         type: "text",
       },
@@ -3233,20 +3157,20 @@ describe("component props", () => {
 });
 
 // =============================================================================
-// Rich text formatting — update-rich-text tool integration tests
+// Rich text formatting — node.update-rich-text tool integration tests
 //
 // Validates that rich text marks (bold, italic, link, code) are correctly
 // applied to real WAB model objects and can be read back via the tree-reader.
 // (e.g., WAB model class constructors, RuleSet/StyleMarker/NodeMarker state).
 // =============================================================================
 describe("rich text", () => {
-  it("update-rich-text with bold mark → read back → verify marks", async () => {
+  it("node.update-rich-text with bold mark → read back → verify marks", async () => {
     const comp = discoveredComponents[0];
 
     // Find a text node
     const treeResult = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const textNode = findFirstTextNode(tree);
@@ -3254,9 +3178,8 @@ describe("rich text", () => {
 
     // Set rich text with a bold mark
     const editResult = await client.callTool({
-      name: "update-rich-text",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "update-rich-text", componentUuid: comp.uuid,
         nodeRef: textNode.uuid,
         text: "Hello bold world",
         marks: [{ start: 6, end: 10, type: "bold" }],
@@ -3269,8 +3192,8 @@ describe("rich text", () => {
 
     // Read back via get-component-tree and verify marks
     const readResult = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
     const readTree = parseResponse(readResult).tree;
     const updatedNode = findNodeByUuid(readTree, textNode.uuid);
@@ -3280,25 +3203,24 @@ describe("rich text", () => {
     expect(updatedNode.marks).toContainEqual({ start: 6, end: 10, type: "bold" });
 
     // Undo and verify
-    const undoResult = await client.callTool({ name: "undo", arguments: {} });
+    const undoResult = await client.callTool({ name: "project", arguments: { action: "undo" } });
     expect(undoResult.isError).toBeFalsy();
   });
 
-  it("update-rich-text with bold + italic → verify multiple marks", async () => {
+  it("node.update-rich-text with bold + italic → verify multiple marks", async () => {
     const comp = discoveredComponents[0];
 
     const treeResult = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const textNode = findFirstTextNode(tree);
     if (!textNode) return;
 
     const editResult = await client.callTool({
-      name: "update-rich-text",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "update-rich-text", componentUuid: comp.uuid,
         nodeRef: textNode.uuid,
         text: "Hello styled world",
         marks: [
@@ -3313,32 +3235,31 @@ describe("rich text", () => {
 
     // Read back and verify marks
     const readResult = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
     const readTree = parseResponse(readResult).tree;
     const updatedNode = findNodeByUuid(readTree, textNode.uuid);
     expect(updatedNode.marks).toHaveLength(2);
 
     // Undo
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 
-  it("update-rich-text with link mark → verify node marker and text reconstruction", async () => {
+  it("node.update-rich-text with link mark → verify node marker and text reconstruction", async () => {
     const comp = discoveredComponents[0];
 
     const treeResult = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const textNode = findFirstTextNode(tree);
     if (!textNode) return;
 
     const editResult = await client.callTool({
-      name: "update-rich-text",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "update-rich-text", componentUuid: comp.uuid,
         nodeRef: textNode.uuid,
         text: "Click here for info",
         marks: [{ start: 6, end: 10, type: "link", href: "/about" }],
@@ -3350,8 +3271,8 @@ describe("rich text", () => {
 
     // Read back — text should be reconstructed ("Click here for info", not "Click [child] for info")
     const readResult = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
     const readTree = parseResponse(readResult).tree;
     const updatedNode = findNodeByUuid(readTree, textNode.uuid);
@@ -3364,15 +3285,15 @@ describe("rich text", () => {
     });
 
     // Undo
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 
-  it("update-rich-text validates mark errors", async () => {
+  it("node.update-rich-text validates mark errors", async () => {
     const comp = discoveredComponents[0];
 
     const treeResult = await client.callTool({
-      name: "get-component-tree",
-      arguments: { componentUuid: comp.uuid },
+      name: "inspect",
+      arguments: { action: "tree", componentUuid: comp.uuid },
     });
     const tree = parseResponse(treeResult).tree;
     const textNode = findFirstTextNode(tree);
@@ -3380,9 +3301,8 @@ describe("rich text", () => {
 
     // Mark extending beyond text length
     const result = await client.callTool({
-      name: "update-rich-text",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "update-rich-text", componentUuid: comp.uuid,
         nodeRef: textNode.uuid,
         text: "Short",
         marks: [{ start: 2, end: 50, type: "bold" }],
@@ -3404,8 +3324,8 @@ describe("state management", () => {
 
     // List states — should be empty initially
     const listResult1 = await client.callTool({
-      name: "list-states",
-      arguments: { componentUuid: comp.uuid },
+      name: "component",
+      arguments: { action: "list-states", componentUuid: comp.uuid },
     });
     const list1 = parseResponse(listResult1);
     expect(list1.stateCount).toBe(0);
@@ -3413,9 +3333,8 @@ describe("state management", () => {
 
     // Add a boolean state
     const addResult = await client.callTool({
-      name: "add-state",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "component",
+      arguments: { action: "add-state", componentUuid: comp.uuid,
         name: "isOpen",
         variableType: "boolean",
         accessType: "private",
@@ -3431,8 +3350,8 @@ describe("state management", () => {
 
     // List states — should have one
     const listResult2 = await client.callTool({
-      name: "list-states",
-      arguments: { componentUuid: comp.uuid },
+      name: "component",
+      arguments: { action: "list-states", componentUuid: comp.uuid },
     });
     const list2 = parseResponse(listResult2);
     expect(list2.stateCount).toBe(1);
@@ -3442,8 +3361,8 @@ describe("state management", () => {
 
     // Remove the state
     const removeResult = await client.callTool({
-      name: "remove-state",
-      arguments: { componentUuid: comp.uuid, stateRef: "isOpen" },
+      name: "component",
+      arguments: { action: "remove-state", componentUuid: comp.uuid, stateRef: "isOpen" },
     });
     const removed = parseResponse(removeResult);
     expect(removed.success).toBe(true);
@@ -3451,26 +3370,26 @@ describe("state management", () => {
 
     // List states — should be empty again
     const listResult3 = await client.callTool({
-      name: "list-states",
-      arguments: { componentUuid: comp.uuid },
+      name: "component",
+      arguments: { action: "list-states", componentUuid: comp.uuid },
     });
     const list3 = parseResponse(listResult3);
     expect(list3.stateCount).toBe(0);
 
     // Undo the remove
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
 
     // List states — should have the state back
     const listResult4 = await client.callTool({
-      name: "list-states",
-      arguments: { componentUuid: comp.uuid },
+      name: "component",
+      arguments: { action: "list-states", componentUuid: comp.uuid },
     });
     const list4 = parseResponse(listResult4);
     expect(list4.stateCount).toBe(1);
     expect(list4.states[0].name).toBe("isOpen");
 
     // Undo the add to clean up
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 
   it("add multiple state types and verify", async () => {
@@ -3478,9 +3397,8 @@ describe("state management", () => {
 
     // Add text state
     const textResult = await client.callTool({
-      name: "add-state",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "component",
+      arguments: { action: "add-state", componentUuid: comp.uuid,
         name: "searchQuery",
         variableType: "text",
         initialValue: "hello",
@@ -3490,9 +3408,8 @@ describe("state management", () => {
 
     // Add number state
     const numResult = await client.callTool({
-      name: "add-state",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "component",
+      arguments: { action: "add-state", componentUuid: comp.uuid,
         name: "count",
         variableType: "number",
         initialValue: "42",
@@ -3502,8 +3419,8 @@ describe("state management", () => {
 
     // List should show 2 states
     const listResult = await client.callTool({
-      name: "list-states",
-      arguments: { componentUuid: comp.uuid },
+      name: "component",
+      arguments: { action: "list-states", componentUuid: comp.uuid },
     });
     const list = parseResponse(listResult);
     expect(list.stateCount).toBe(2);
@@ -3512,8 +3429,8 @@ describe("state management", () => {
     expect(names).toEqual(["count", "searchQuery"]);
 
     // Undo both
-    await client.callTool({ name: "undo", arguments: {} });
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 
   it("update state access type and initial value", async () => {
@@ -3521,9 +3438,8 @@ describe("state management", () => {
 
     // Add state
     await client.callTool({
-      name: "add-state",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "component",
+      arguments: { action: "add-state", componentUuid: comp.uuid,
         name: "value",
         variableType: "text",
         accessType: "private",
@@ -3532,9 +3448,8 @@ describe("state management", () => {
 
     // Update to writable
     const updateResult = await client.callTool({
-      name: "update-state",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "component",
+      arguments: { action: "update-state", componentUuid: comp.uuid,
         stateRef: "value",
         accessType: "writable",
         initialValue: "default",
@@ -3547,16 +3462,16 @@ describe("state management", () => {
 
     // Verify via list
     const listResult = await client.callTool({
-      name: "list-states",
-      arguments: { componentUuid: comp.uuid },
+      name: "component",
+      arguments: { action: "list-states", componentUuid: comp.uuid },
     });
     const list = parseResponse(listResult);
     expect(list.states[0].accessType).toBe("writable");
     expect(list.states[0].initialValue).toBe('"default"');
 
     // Undo update, then undo add
-    await client.callTool({ name: "undo", arguments: {} });
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 
   it("rejects duplicate state name", async () => {
@@ -3564,9 +3479,8 @@ describe("state management", () => {
 
     // Add first state
     await client.callTool({
-      name: "add-state",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "component",
+      arguments: { action: "add-state", componentUuid: comp.uuid,
         name: "isOpen",
         variableType: "boolean",
       },
@@ -3574,9 +3488,8 @@ describe("state management", () => {
 
     // Try to add duplicate
     const dupResult = await client.callTool({
-      name: "add-state",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "component",
+      arguments: { action: "add-state", componentUuid: comp.uuid,
         name: "isOpen",
         variableType: "boolean",
       },
@@ -3585,7 +3498,7 @@ describe("state management", () => {
     expect(dup.error || (typeof dup === "string" && dup.includes("already exists"))).toBeTruthy();
 
     // Undo
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 });
 
@@ -3594,20 +3507,19 @@ describe("state management", () => {
 // =========================================================================
 
 describe("interactions", () => {
-  it("add-interaction → list-interactions → remove-interaction round-trip", async () => {
+  it("interaction.add → interaction.list → interaction.remove round-trip", async () => {
     const comp = discoveredComponents[0];
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
 
     // Add a navigation interaction on onClick
     const addResult = await client.callTool({
-      name: "add-interaction",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "interaction",
+      arguments: { action: "add", componentUuid: comp.uuid,
         nodeRef: tree.uuid,
         event: "onClick",
         actionName: "navigation",
@@ -3624,8 +3536,8 @@ describe("interactions", () => {
 
     // List interactions
     const listResult = await client.callTool({
-      name: "list-interactions",
-      arguments: { componentUuid: comp.uuid, nodeRef: tree.uuid },
+      name: "interaction",
+      arguments: { action: "list", componentUuid: comp.uuid, nodeRef: tree.uuid },
     });
     expect(listResult.isError).toBeFalsy();
     const listOutput = parseResponse(listResult);
@@ -3638,9 +3550,8 @@ describe("interactions", () => {
 
     // Remove the interaction
     const removeResult = await client.callTool({
-      name: "remove-interaction",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "interaction",
+      arguments: { action: "remove", componentUuid: comp.uuid,
         nodeRef: tree.uuid,
         event: "onClick",
         interactionIndex: 0,
@@ -3654,8 +3565,8 @@ describe("interactions", () => {
     // Verify empty
     const listAfter = parseResponse(
       await client.callTool({
-        name: "list-interactions",
-        arguments: { componentUuid: comp.uuid, nodeRef: tree.uuid },
+        name: "interaction",
+        arguments: { action: "list", componentUuid: comp.uuid, nodeRef: tree.uuid },
       })
     );
     expect(listAfter.interactionCount).toBe(0);
@@ -3665,16 +3576,15 @@ describe("interactions", () => {
     const comp = discoveredComponents[0];
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
 
     // Add customFunction
     const codeResult = await client.callTool({
-      name: "add-interaction",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "interaction",
+      arguments: { action: "add", componentUuid: comp.uuid,
         nodeRef: tree.uuid,
         event: "onClick",
         actionName: "runCode",
@@ -3687,9 +3597,8 @@ describe("interactions", () => {
 
     // Add updateVariable using alias
     const stateResult = await client.callTool({
-      name: "add-interaction",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "interaction",
+      arguments: { action: "add", componentUuid: comp.uuid,
         nodeRef: tree.uuid,
         event: "onClick",
         actionName: "setState",
@@ -3703,8 +3612,8 @@ describe("interactions", () => {
     // List should show 2 interactions on onClick
     const listResult = parseResponse(
       await client.callTool({
-        name: "list-interactions",
-        arguments: { componentUuid: comp.uuid, nodeRef: tree.uuid },
+        name: "interaction",
+        arguments: { action: "list", componentUuid: comp.uuid, nodeRef: tree.uuid },
       })
     );
     const onClickInteractions = listResult.interactions.filter(
@@ -3713,23 +3622,22 @@ describe("interactions", () => {
     expect(onClickInteractions.length).toBeGreaterThanOrEqual(2);
 
     // Undo twice to clean up
-    await client.callTool({ name: "undo", arguments: {} });
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 
-  it("add-interaction with condition expression", async () => {
+  it("interaction.add with condition expression", async () => {
     const comp = discoveredComponents[0];
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
 
     const result = await client.callTool({
-      name: "add-interaction",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "interaction",
+      arguments: { action: "add", componentUuid: comp.uuid,
         nodeRef: tree.uuid,
         event: "onClick",
         actionName: "navigation",
@@ -3745,8 +3653,8 @@ describe("interactions", () => {
     // Verify condition via list
     const listResult = parseResponse(
       await client.callTool({
-        name: "list-interactions",
-        arguments: { componentUuid: comp.uuid, nodeRef: tree.uuid },
+        name: "interaction",
+        arguments: { action: "list", componentUuid: comp.uuid, nodeRef: tree.uuid },
       })
     );
     const conditional = listResult.interactions.find(
@@ -3757,22 +3665,21 @@ describe("interactions", () => {
     expect(conditional.condition).toBe("$state.isLoggedIn");
 
     // Undo
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 
   it("rejects invalid event name", async () => {
     const comp = discoveredComponents[0];
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
 
     const result = await client.callTool({
-      name: "add-interaction",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "interaction",
+      arguments: { action: "add", componentUuid: comp.uuid,
         nodeRef: tree.uuid,
         event: "onBogus",
         actionName: "navigation",
@@ -3791,14 +3698,13 @@ describe("interactions", () => {
 // =========================================================================
 
 describe("data queries", () => {
-  it("add-query → list-queries → remove-query round-trip", async () => {
+  it("data.add-query → data.list-queries → data.remove-query round-trip", async () => {
     const comp = discoveredComponents[0];
 
     // Add a data query
     const addResult = await client.callTool({
-      name: "add-query",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "data",
+      arguments: { action: "add-query", componentUuid: comp.uuid,
         name: "products",
       },
     });
@@ -3812,8 +3718,8 @@ describe("data queries", () => {
     // List queries
     const listResult = parseResponse(
       await client.callTool({
-        name: "list-queries",
-        arguments: { componentUuid: comp.uuid },
+        name: "data",
+        arguments: { action: "list-queries", componentUuid: comp.uuid },
       })
     );
     expect(listResult.queryCount).toBeGreaterThanOrEqual(1);
@@ -3825,9 +3731,8 @@ describe("data queries", () => {
 
     // Remove the query
     const removeResult = await client.callTool({
-      name: "remove-query",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "data",
+      arguments: { action: "remove-query", componentUuid: comp.uuid,
         queryRef: "products",
       },
     });
@@ -3839,8 +3744,8 @@ describe("data queries", () => {
     // Verify empty
     const listAfter = parseResponse(
       await client.callTool({
-        name: "list-queries",
-        arguments: { componentUuid: comp.uuid },
+        name: "data",
+        arguments: { action: "list-queries", componentUuid: comp.uuid },
       })
     );
     const productsAfter = (listAfter.queries ?? []).find(
@@ -3849,23 +3754,21 @@ describe("data queries", () => {
     expect(productsAfter).toBeUndefined();
   });
 
-  it("add-query → update-query → verify rename", async () => {
+  it("data.add-query → data.update-query → verify rename", async () => {
     const comp = discoveredComponents[0];
 
     // Add a data query
     await client.callTool({
-      name: "add-query",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "data",
+      arguments: { action: "add-query", componentUuid: comp.uuid,
         name: "oldName",
       },
     });
 
     // Update the query name
     const updateResult = await client.callTool({
-      name: "update-query",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "data",
+      arguments: { action: "update-query", componentUuid: comp.uuid,
         queryRef: "oldName",
         name: "newName",
       },
@@ -3878,8 +3781,8 @@ describe("data queries", () => {
     // Verify via list
     const listResult = parseResponse(
       await client.callTool({
-        name: "list-queries",
-        arguments: { componentUuid: comp.uuid },
+        name: "data",
+        arguments: { action: "list-queries", componentUuid: comp.uuid },
       })
     );
     const renamed = listResult.queries.find(
@@ -3892,8 +3795,8 @@ describe("data queries", () => {
     expect(old).toBeUndefined();
 
     // Undo twice
-    await client.callTool({ name: "undo", arguments: {} });
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 
   it("rejects duplicate query name", async () => {
@@ -3901,18 +3804,16 @@ describe("data queries", () => {
 
     // Add first query
     await client.callTool({
-      name: "add-query",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "data",
+      arguments: { action: "add-query", componentUuid: comp.uuid,
         name: "myQuery",
       },
     });
 
     // Try duplicate
     const dupResult = await client.callTool({
-      name: "add-query",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "data",
+      arguments: { action: "add-query", componentUuid: comp.uuid,
         name: "myQuery",
       },
     });
@@ -3922,7 +3823,7 @@ describe("data queries", () => {
     ).toBeTruthy();
 
     // Undo
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 });
 
@@ -3931,21 +3832,20 @@ describe("data queries", () => {
 // =============================================================================
 
 describe("mixins", () => {
-  it("create-mixin → list-mixins → apply-mixin → detach-mixin → remove-mixin round-trip", async () => {
+  it("design.create-mixin → design.list-mixins → node.apply-mixin → node.detach-mixin → design.remove-mixin round-trip", async () => {
     const comp = discoveredComponents[0];
 
     // List initial mixins (should be whatever the bundle has)
     const initialList = parseResponse(
-      await client.callTool({ name: "list-mixins", arguments: {} })
+      await client.callTool({ name: "design", arguments: { action: "list-mixins" } })
     );
     const initialCount = initialList.mixinCount;
 
     // Create a mixin with styles
     const createResult = parseResponse(
       await client.callTool({
-        name: "create-mixin",
-        arguments: {
-          name: "TestMixin",
+        name: "design",
+        arguments: { action: "create-mixin", name: "TestMixin",
           styles: { fontSize: "20px", color: "#ff0000" },
         },
       })
@@ -3956,7 +3856,7 @@ describe("mixins", () => {
 
     // List again — should have one more
     const afterCreate = parseResponse(
-      await client.callTool({ name: "list-mixins", arguments: {} })
+      await client.callTool({ name: "design", arguments: { action: "list-mixins" } })
     );
     expect(afterCreate.mixinCount).toBe(initialCount + 1);
     const newMixin = afterCreate.mixins.find((m: any) => m.uuid === mixinUuid);
@@ -3966,8 +3866,8 @@ describe("mixins", () => {
     // Get root node for apply/detach
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
     const rootUuid = tree.uuid;
@@ -3975,9 +3875,8 @@ describe("mixins", () => {
     // Apply mixin to root
     const applyResult = parseResponse(
       await client.callTool({
-        name: "apply-mixin",
-        arguments: {
-          componentUuid: comp.uuid,
+        name: "node",
+        arguments: { action: "apply-mixin", componentUuid: comp.uuid,
           nodeRef: rootUuid,
           mixinRef: "TestMixin",
         },
@@ -3989,9 +3888,8 @@ describe("mixins", () => {
     // Detach mixin
     const detachResult = parseResponse(
       await client.callTool({
-        name: "detach-mixin",
-        arguments: {
-          componentUuid: comp.uuid,
+        name: "node",
+        arguments: { action: "detach-mixin", componentUuid: comp.uuid,
           nodeRef: rootUuid,
           mixinRef: "TestMixin",
         },
@@ -4002,8 +3900,8 @@ describe("mixins", () => {
     // Remove mixin
     const removeResult = parseResponse(
       await client.callTool({
-        name: "remove-mixin",
-        arguments: { mixinRef: mixinUuid },
+        name: "design",
+        arguments: { action: "remove-mixin", mixinRef: mixinUuid },
       })
     );
     expect(removeResult.success).toBe(true);
@@ -4011,17 +3909,17 @@ describe("mixins", () => {
 
     // List — back to original count
     const afterRemove = parseResponse(
-      await client.callTool({ name: "list-mixins", arguments: {} })
+      await client.callTool({ name: "design", arguments: { action: "list-mixins" } })
     );
     expect(afterRemove.mixinCount).toBe(initialCount);
   });
 
-  it("update-mixin renames and updates styles", async () => {
+  it("design.update-mixin renames and updates styles", async () => {
     // Create a mixin
     const createResult = parseResponse(
       await client.callTool({
-        name: "create-mixin",
-        arguments: { name: "Updatable" },
+        name: "design",
+        arguments: { action: "create-mixin", name: "Updatable" },
       })
     );
     expect(createResult.success).toBe(true);
@@ -4029,9 +3927,8 @@ describe("mixins", () => {
     // Update name and styles
     const updateResult = parseResponse(
       await client.callTool({
-        name: "update-mixin",
-        arguments: {
-          mixinRef: createResult.mixinUuid,
+        name: "design",
+        arguments: { action: "update-mixin", mixinRef: createResult.mixinUuid,
           newName: "Updated",
           styles: { fontWeight: "bold" },
         },
@@ -4043,33 +3940,32 @@ describe("mixins", () => {
     expect(updateResult.updatedFields).toContain("styles");
 
     // Undo twice (update + create)
-    await client.callTool({ name: "undo", arguments: {} });
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 
-  it("detach-mixin rejects when mixin not applied", async () => {
+  it("node.detach-mixin rejects when mixin not applied", async () => {
     const comp = discoveredComponents[0];
 
     // Create a mixin but don't apply it
     const createResult = parseResponse(
       await client.callTool({
-        name: "create-mixin",
-        arguments: { name: "Unapplied" },
+        name: "design",
+        arguments: { action: "create-mixin", name: "Unapplied" },
       })
     );
 
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
 
     // Try to detach — should fail
     const detachResult = await client.callTool({
-      name: "detach-mixin",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "detach-mixin", componentUuid: comp.uuid,
         nodeRef: tree.uuid,
         mixinRef: "Unapplied",
       },
@@ -4080,7 +3976,7 @@ describe("mixins", () => {
     ).toBeTruthy();
 
     // Undo create
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 });
 
@@ -4089,21 +3985,20 @@ describe("mixins", () => {
 // =============================================================================
 
 describe("animations", () => {
-  it("create-animation-sequence → list → add-node-animation → remove-node-animation → remove-sequence", async () => {
+  it("design.create-animation → list → node.add-animation → node.remove-animation → remove-sequence", async () => {
     const comp = discoveredComponents[0];
 
     // List initial sequences
     const initialList = parseResponse(
-      await client.callTool({ name: "list-animation-sequences", arguments: {} })
+      await client.callTool({ name: "design", arguments: { action: "list-animations" } })
     );
     const initialCount = initialList.sequenceCount;
 
     // Create a sequence with keyframes
     const createResult = parseResponse(
       await client.callTool({
-        name: "create-animation-sequence",
-        arguments: {
-          name: "FadeIn",
+        name: "design",
+        arguments: { action: "create-animation", name: "FadeIn",
           keyframes: [
             { percentage: 0, styles: { opacity: "0" } },
             { percentage: 100, styles: { opacity: "1" } },
@@ -4116,24 +4011,23 @@ describe("animations", () => {
 
     // List — should have one more
     const afterCreate = parseResponse(
-      await client.callTool({ name: "list-animation-sequences", arguments: {} })
+      await client.callTool({ name: "design", arguments: { action: "list-animations" } })
     );
     expect(afterCreate.sequenceCount).toBe(initialCount + 1);
 
     // Get root node
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
 
     // Add animation to root
     const addResult = parseResponse(
       await client.callTool({
-        name: "add-node-animation",
-        arguments: {
-          componentUuid: comp.uuid,
+        name: "node",
+        arguments: { action: "add-animation", componentUuid: comp.uuid,
           nodeRef: tree.uuid,
           seqRef: "FadeIn",
           duration: "0.5s",
@@ -4147,9 +4041,8 @@ describe("animations", () => {
     // Remove animation from node
     const removeNodeResult = parseResponse(
       await client.callTool({
-        name: "remove-node-animation",
-        arguments: {
-          componentUuid: comp.uuid,
+        name: "node",
+        arguments: { action: "remove-animation", componentUuid: comp.uuid,
           nodeRef: tree.uuid,
         },
       })
@@ -4160,25 +4053,25 @@ describe("animations", () => {
     // Remove sequence
     const removeSeqResult = parseResponse(
       await client.callTool({
-        name: "remove-animation-sequence",
-        arguments: { seqRef: createResult.sequenceUuid },
+        name: "design",
+        arguments: { action: "remove-animation", seqRef: createResult.sequenceUuid },
       })
     );
     expect(removeSeqResult.success).toBe(true);
 
     // List — back to original count
     const afterRemove = parseResponse(
-      await client.callTool({ name: "list-animation-sequences", arguments: {} })
+      await client.callTool({ name: "design", arguments: { action: "list-animations" } })
     );
     expect(afterRemove.sequenceCount).toBe(initialCount);
   });
 
-  it("update-animation-sequence renames and replaces keyframes", async () => {
+  it("design.update-animation renames and replaces keyframes", async () => {
     // Create
     const createResult = parseResponse(
       await client.callTool({
-        name: "create-animation-sequence",
-        arguments: { name: "SlideUp" },
+        name: "design",
+        arguments: { action: "create-animation", name: "SlideUp" },
       })
     );
     expect(createResult.success).toBe(true);
@@ -4186,9 +4079,8 @@ describe("animations", () => {
     // Update
     const updateResult = parseResponse(
       await client.callTool({
-        name: "update-animation-sequence",
-        arguments: {
-          seqRef: createResult.sequenceUuid,
+        name: "design",
+        arguments: { action: "update-animation", seqRef: createResult.sequenceUuid,
           newName: "SlideDown",
           keyframes: [
             { percentage: 0, styles: { transform: "translateY(-100%)" } },
@@ -4203,23 +4095,22 @@ describe("animations", () => {
     expect(updateResult.updatedFields).toContain("keyframes");
 
     // Undo twice
-    await client.callTool({ name: "undo", arguments: {} });
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 
-  it("remove-node-animation rejects when no animations", async () => {
+  it("node.remove-animation rejects when no animations", async () => {
     const comp = discoveredComponents[0];
     const tree = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     ).tree;
 
     const result = await client.callTool({
-      name: "remove-node-animation",
-      arguments: {
-        componentUuid: comp.uuid,
+      name: "node",
+      arguments: { action: "remove-animation", componentUuid: comp.uuid,
         nodeRef: tree.uuid,
       },
     });
@@ -4235,10 +4126,10 @@ describe("animations", () => {
 // =============================================================================
 
 describe("themes", () => {
-  it("list-themes → create-theme → set-active-theme → remove-theme round-trip", async () => {
+  it("design.list-themes → design.create-theme → design.set-active-theme → design.remove-theme round-trip", async () => {
     // List initial themes
     const initialList = parseResponse(
-      await client.callTool({ name: "list-themes", arguments: {} })
+      await client.callTool({ name: "design", arguments: { action: "list-themes" } })
     );
     const initialCount = initialList.themeCount;
     expect(initialCount).toBeGreaterThanOrEqual(1); // Projects always have a default theme
@@ -4246,9 +4137,8 @@ describe("themes", () => {
     // Create a new theme with h1 override
     const createResult = parseResponse(
       await client.callTool({
-        name: "create-theme",
-        arguments: {
-          defaultStyles: { fontSize: "14px", fontFamily: "sans-serif" },
+        name: "design",
+        arguments: { action: "create-theme", defaultStyles: { fontSize: "14px", fontFamily: "sans-serif" },
           themeStyles: [
             { selector: "h1", styles: { fontSize: "40px" } },
           ],
@@ -4260,22 +4150,22 @@ describe("themes", () => {
 
     // List — should have one more
     const afterCreate = parseResponse(
-      await client.callTool({ name: "list-themes", arguments: {} })
+      await client.callTool({ name: "design", arguments: { action: "list-themes" } })
     );
     expect(afterCreate.themeCount).toBe(initialCount + 1);
 
     // Set the new theme as active
     const setResult = parseResponse(
       await client.callTool({
-        name: "set-active-theme",
-        arguments: { themeIndex: newIndex },
+        name: "design",
+        arguments: { action: "set-active-theme", themeIndex: newIndex },
       })
     );
     expect(setResult.success).toBe(true);
 
     // Verify active
     const afterSet = parseResponse(
-      await client.callTool({ name: "list-themes", arguments: {} })
+      await client.callTool({ name: "design", arguments: { action: "list-themes" } })
     );
     const activeTheme = afterSet.themes.find((t: any) => t.isActive);
     expect(activeTheme).toBeDefined();
@@ -4283,32 +4173,32 @@ describe("themes", () => {
 
     // Switch back to original active (index 0)
     await client.callTool({
-      name: "set-active-theme",
-      arguments: { themeIndex: 0 },
+      name: "design",
+      arguments: { action: "set-active-theme", themeIndex: 0 },
     });
 
     // Remove the new theme (now inactive)
     const removeResult = parseResponse(
       await client.callTool({
-        name: "remove-theme",
-        arguments: { themeIndex: newIndex },
+        name: "design",
+        arguments: { action: "remove-theme", themeIndex: newIndex },
       })
     );
     expect(removeResult.success).toBe(true);
 
     // List — back to original count
     const afterRemove = parseResponse(
-      await client.callTool({ name: "list-themes", arguments: {} })
+      await client.callTool({ name: "design", arguments: { action: "list-themes" } })
     );
     expect(afterRemove.themeCount).toBe(initialCount);
   });
 
-  it("update-theme modifies default styles and adds tag override", async () => {
+  it("design.update-theme modifies default styles and adds tag override", async () => {
     // Create a new theme so we don't mess with the default
     const createResult = parseResponse(
       await client.callTool({
-        name: "create-theme",
-        arguments: { defaultStyles: { fontSize: "16px" } },
+        name: "design",
+        arguments: { action: "create-theme", defaultStyles: { fontSize: "16px" } },
       })
     );
     expect(createResult.success).toBe(true);
@@ -4316,9 +4206,8 @@ describe("themes", () => {
     // Update it
     const updateResult = parseResponse(
       await client.callTool({
-        name: "update-theme",
-        arguments: {
-          themeIndex: createResult.themeIndex,
+        name: "design",
+        arguments: { action: "update-theme", themeIndex: createResult.themeIndex,
           defaultStyles: { color: "#333" },
           themeStyles: [{ selector: "h2", styles: { fontSize: "28px" } }],
         },
@@ -4329,15 +4218,15 @@ describe("themes", () => {
     expect(updateResult.updatedFields).toContain("themeStyles");
 
     // Undo twice (update + create)
-    await client.callTool({ name: "undo", arguments: {} });
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 
-  it("remove-theme rejects removing the active theme", async () => {
+  it("design.remove-theme rejects removing the active theme", async () => {
     // The first theme (index 0) is typically active
     const result = await client.callTool({
-      name: "remove-theme",
-      arguments: { themeIndex: 0 },
+      name: "design",
+      arguments: { action: "remove-theme", themeIndex: 0 },
     });
     const parsed = parseResponse(result);
     expect(
@@ -4347,18 +4236,18 @@ describe("themes", () => {
 });
 
 // ==========================================================================
-// reorder-children
+// node.reorder
 // ==========================================================================
 
-describe("reorder-children", () => {
+describe("node.reorder", () => {
   it("reorders children of a container", async () => {
     const comp = discoveredComponents[0];
 
     // Get root's children first
     const treeResult = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     );
     const tree = treeResult.tree ?? treeResult;
@@ -4370,9 +4259,8 @@ describe("reorder-children", () => {
 
       const result = parseResponse(
         await client.callTool({
-          name: "reorder-children",
-          arguments: {
-            componentUuid: comp.uuid,
+          name: "node",
+          arguments: { action: "reorder", componentUuid: comp.uuid,
             parentRef: tree.uuid,
             childRefs: reversed,
           },
@@ -4382,13 +4270,13 @@ describe("reorder-children", () => {
       expect(result.newOrder).toBeDefined();
 
       // Undo
-      await client.callTool({ name: "undo", arguments: {} });
+      await client.callTool({ name: "project", arguments: { action: "undo" } });
     }
   });
 });
 
 // ==========================================================================
-// convert-to-page / convert-to-component
+// component.convert-to-page / component.convert-to-component
 // ==========================================================================
 
 describe("convert page/component", () => {
@@ -4403,8 +4291,8 @@ describe("convert page/component", () => {
     // Convert to page
     const toPageResult = parseResponse(
       await client.callTool({
-        name: "convert-to-page",
-        arguments: { componentUuid: nonPage.uuid, path: "/convert-test" },
+        name: "component",
+        arguments: { action: "convert-to-page", componentUuid: nonPage.uuid, path: "/convert-test" },
       })
     );
     expect(toPageResult.success).toBe(true);
@@ -4412,15 +4300,15 @@ describe("convert page/component", () => {
     // Convert back to component
     const toCompResult = parseResponse(
       await client.callTool({
-        name: "convert-to-component",
-        arguments: { componentUuid: nonPage.uuid },
+        name: "component",
+        arguments: { action: "convert-to-component", componentUuid: nonPage.uuid },
       })
     );
     expect(toCompResult.success).toBe(true);
 
     // Undo both
-    await client.callTool({ name: "undo", arguments: {} });
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 
   it("rejects converting an already-page component to page", async () => {
@@ -4428,8 +4316,8 @@ describe("convert page/component", () => {
     if (!page) return;
 
     const result = await client.callTool({
-      name: "convert-to-page",
-      arguments: { componentUuid: page.uuid },
+      name: "component",
+      arguments: { action: "convert-to-page", componentUuid: page.uuid },
     });
     const parsed = parseResponse(result);
     expect(
@@ -4447,8 +4335,8 @@ describe("data tokens", () => {
     // Create
     const createResult = parseResponse(
       await client.callTool({
-        name: "create-data-token",
-        arguments: { name: "TestToken", value: '"hello"' },
+        name: "data",
+        arguments: { action: "create-data-token", name: "TestToken", value: '"hello"' },
       })
     );
     expect(createResult.success).toBe(true);
@@ -4457,8 +4345,8 @@ describe("data tokens", () => {
     // List
     const listResult = parseResponse(
       await client.callTool({
-        name: "list-data-tokens",
-        arguments: {},
+        name: "data",
+        arguments: { action: "list-data-tokens" },
       })
     );
     expect(listResult.tokens.some((t: any) => t.name === "TestToken")).toBe(true);
@@ -4466,8 +4354,8 @@ describe("data tokens", () => {
     // Update
     const updateResult = parseResponse(
       await client.callTool({
-        name: "update-data-token",
-        arguments: { tokenRef: "TestToken", value: "42" },
+        name: "data",
+        arguments: { action: "update-data-token", tokenRef: "TestToken", value: "42" },
       })
     );
     expect(updateResult.success).toBe(true);
@@ -4476,16 +4364,16 @@ describe("data tokens", () => {
     // Remove
     const removeResult = parseResponse(
       await client.callTool({
-        name: "remove-data-token",
-        arguments: { tokenRef: "TestToken" },
+        name: "data",
+        arguments: { action: "remove-data-token", tokenRef: "TestToken" },
       })
     );
     expect(removeResult.success).toBe(true);
 
     // Undo all
-    await client.callTool({ name: "undo", arguments: {} });
-    await client.callTool({ name: "undo", arguments: {} });
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 });
 
@@ -4498,8 +4386,8 @@ describe("global variant groups", () => {
     // Create group with initial variants
     const createResult = parseResponse(
       await client.callTool({
-        name: "create-global-variant-group",
-        arguments: { name: "Theme", initialVariants: ["Dark", "Light"] },
+        name: "variant",
+        arguments: { action: "create-global-group", name: "Theme", initialVariants: ["Dark", "Light"] },
       })
     );
     expect(createResult.success).toBe(true);
@@ -4508,8 +4396,8 @@ describe("global variant groups", () => {
     // List
     const listResult = parseResponse(
       await client.callTool({
-        name: "list-global-variant-groups",
-        arguments: {},
+        name: "variant",
+        arguments: { action: "list-global-groups" },
       })
     );
     const found = listResult.groups.find((g: any) => g.name === "Theme");
@@ -4518,8 +4406,8 @@ describe("global variant groups", () => {
     // Add variant
     const addResult = parseResponse(
       await client.callTool({
-        name: "add-global-variant",
-        arguments: { groupRef: "Theme", name: "High Contrast" },
+        name: "variant",
+        arguments: { action: "add-global", groupRef: "Theme", name: "High Contrast" },
       })
     );
     expect(addResult.success).toBe(true);
@@ -4527,8 +4415,8 @@ describe("global variant groups", () => {
     // Rename variant
     const renameResult = parseResponse(
       await client.callTool({
-        name: "rename-global-variant",
-        arguments: { variantRef: "Dark", newName: "Dark Mode" },
+        name: "variant",
+        arguments: { action: "rename-global", variantRef: "Dark", newName: "Dark Mode" },
       })
     );
     expect(renameResult.success).toBe(true);
@@ -4536,17 +4424,17 @@ describe("global variant groups", () => {
     // Remove group
     const removeResult = parseResponse(
       await client.callTool({
-        name: "remove-global-variant-group",
-        arguments: { groupRef: "Theme" },
+        name: "variant",
+        arguments: { action: "remove-global-group", groupRef: "Theme" },
       })
     );
     expect(removeResult.success).toBe(true);
 
     // Undo all
-    await client.callTool({ name: "undo", arguments: {} });
-    await client.callTool({ name: "undo", arguments: {} });
-    await client.callTool({ name: "undo", arguments: {} });
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 });
 
@@ -4555,23 +4443,23 @@ describe("global variant groups", () => {
 // ==========================================================================
 
 describe("read-only introspection", () => {
-  it("get-code-component-meta returns isCodeComponent: false for regular component", async () => {
+  it("data.get-code-meta returns isCodeComponent: false for regular component", async () => {
     const comp = discoveredComponents[0];
     const result = parseResponse(
       await client.callTool({
-        name: "get-code-component-meta",
-        arguments: { componentUuid: comp.uuid },
+        name: "data",
+        arguments: { action: "get-code-meta", componentUuid: comp.uuid },
       })
     );
     // Our fixture has regular components, not code components
     expect(result.isCodeComponent).toBe(false);
   });
 
-  it("list-custom-functions returns an array", async () => {
+  it("data.list-functions returns an array", async () => {
     const result = parseResponse(
       await client.callTool({
-        name: "list-custom-functions",
-        arguments: {},
+        name: "data",
+        arguments: { action: "list-functions" },
       })
     );
     expect(Array.isArray(result.functions)).toBe(true);
@@ -4586,9 +4474,8 @@ describe("splits", () => {
   it("create → list → update → remove round-trip", async () => {
     // Create
     const createRaw = await client.callTool({
-      name: "create-split",
-      arguments: {
-        name: "CTA Experiment",
+      name: "data",
+      arguments: { action: "create-split", name: "CTA Experiment",
         splitType: "experiment",
         slices: [
           { name: "Control", prob: 50 },
@@ -4607,8 +4494,8 @@ describe("splits", () => {
     // List
     const listResult = parseResponse(
       await client.callTool({
-        name: "list-splits",
-        arguments: {},
+        name: "data",
+        arguments: { action: "list-splits" },
       })
     );
     expect(listResult.splits.some((s: any) => s.name === "CTA Experiment")).toBe(true);
@@ -4616,8 +4503,8 @@ describe("splits", () => {
     // Update
     const updateResult = parseResponse(
       await client.callTool({
-        name: "update-split",
-        arguments: { splitRef: "CTA Experiment", status: "running" },
+        name: "data",
+        arguments: { action: "update-split", splitRef: "CTA Experiment", status: "running" },
       })
     );
     expect(updateResult.success).toBe(true);
@@ -4626,16 +4513,16 @@ describe("splits", () => {
     // Remove
     const removeResult = parseResponse(
       await client.callTool({
-        name: "remove-split",
-        arguments: { splitRef: "CTA Experiment" },
+        name: "data",
+        arguments: { action: "remove-split", splitRef: "CTA Experiment" },
       })
     );
     expect(removeResult.success).toBe(true);
 
     // Undo all
-    await client.callTool({ name: "undo", arguments: {} });
-    await client.callTool({ name: "undo", arguments: {} });
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 });
 
@@ -4643,10 +4530,9 @@ describe("image assets", () => {
   it("upload → list → rename → remove round-trip", async () => {
     // Upload an asset from dataUri
     const uploadRaw = await client.callTool({
-      name: "upload-asset",
-      arguments: {
-        name: "Test Image",
-        type: "picture",
+      name: "design",
+      arguments: { action: "upload-asset", name: "Test Image",
+        assetType: "picture",
         dataUri: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==",
         width: 100,
         height: 50,
@@ -4664,7 +4550,7 @@ describe("image assets", () => {
 
     // List — should include our asset
     const listResult = parseResponse(
-      await client.callTool({ name: "list-assets", arguments: {} })
+      await client.callTool({ name: "design", arguments: { action: "list-assets" } })
     );
     expect(listResult.assets.some((a: any) => a.uuid === assetUuid)).toBe(true);
     const found = listResult.assets.find((a: any) => a.uuid === assetUuid);
@@ -4673,15 +4559,15 @@ describe("image assets", () => {
     // Rename
     const renameResult = parseResponse(
       await client.callTool({
-        name: "rename-asset",
-        arguments: { assetRef: assetUuid, newName: "Renamed Image" },
+        name: "design",
+        arguments: { action: "rename-asset", assetRef: assetUuid, newName: "Renamed Image" },
       })
     );
     expect(renameResult.success).toBe(true);
 
     // Verify rename took effect
     const listAfterRename = parseResponse(
-      await client.callTool({ name: "list-assets", arguments: {} })
+      await client.callTool({ name: "design", arguments: { action: "list-assets" } })
     );
     const renamed = listAfterRename.assets.find((a: any) => a.uuid === assetUuid);
     expect(renamed.name).toBe("Renamed Image");
@@ -4689,31 +4575,31 @@ describe("image assets", () => {
     // Remove
     const removeResult = parseResponse(
       await client.callTool({
-        name: "remove-asset",
-        arguments: { assetRef: assetUuid },
+        name: "design",
+        arguments: { action: "remove-asset", assetRef: assetUuid },
       })
     );
     expect(removeResult.success).toBe(true);
 
     // Verify removed
     const listAfterRemove = parseResponse(
-      await client.callTool({ name: "list-assets", arguments: {} })
+      await client.callTool({ name: "design", arguments: { action: "list-assets" } })
     );
     expect(listAfterRemove.assets.some((a: any) => a.uuid === assetUuid)).toBe(false);
 
     // Undo all (remove, rename, upload = 3 undos)
-    await client.callTool({ name: "undo", arguments: {} });
-    await client.callTool({ name: "undo", arguments: {} });
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 
-  it("set-image sets src on an img element with raw URL", async () => {
+  it("node.set-image sets src on an img element with raw URL", async () => {
     // Add an img child, then use set-image to set its src attribute
     const comp = discoveredComponents[0];
     const summaryResult = parseResponse(
       await client.callTool({
-        name: "get-component-summary",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "summary", componentUuid: comp.uuid },
       })
     );
     const rootUuid = summaryResult.tree.uuid;
@@ -4721,9 +4607,8 @@ describe("image assets", () => {
     // Add an img child to the root
     const addResult = parseResponse(
       await client.callTool({
-        name: "add-child",
-        arguments: {
-          componentUuid: comp.uuid,
+        name: "node",
+        arguments: { action: "add", componentUuid: comp.uuid,
           parentRef: rootUuid,
           child: { type: "img" },
         },
@@ -4734,8 +4619,8 @@ describe("image assets", () => {
     // Find the img node UUID from the updated tree
     const afterAdd = parseResponse(
       await client.callTool({
-        name: "get-component-tree",
-        arguments: { componentUuid: comp.uuid },
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid },
       })
     );
     function findImg(node: any): string | null {
@@ -4751,9 +4636,8 @@ describe("image assets", () => {
 
     const setResult = parseResponse(
       await client.callTool({
-        name: "set-image",
-        arguments: {
-          componentUuid: comp.uuid,
+        name: "node",
+        arguments: { action: "set-image", componentUuid: comp.uuid,
           nodeRef: imgUuid!,
           src: "https://example.com/photo.jpg",
         },
@@ -4766,23 +4650,22 @@ describe("image assets", () => {
     expect(setResult.imageSource).toBe("https://example.com/photo.jpg");
 
     // Undo both the set-image and add-child
-    await client.callTool({ name: "undo", arguments: {} });
-    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
 
-  it("list-assets with type filter", async () => {
+  it("design.list-assets with type filter", async () => {
     const listResult = parseResponse(
-      await client.callTool({ name: "list-assets", arguments: { type: "icon" } })
+      await client.callTool({ name: "design", arguments: { action: "list-assets", assetType: "icon" } })
     );
     expect(Array.isArray(listResult.assets)).toBe(true);
   });
 
-  it("upload-asset rejects missing source", async () => {
+  it("design.upload-asset rejects missing source", async () => {
     const raw = await client.callTool({
-      name: "upload-asset",
-      arguments: {
-        name: "Bad Upload",
-        type: "picture",
+      name: "design",
+      arguments: { action: "upload-asset", name: "Bad Upload",
+        assetType: "picture",
       },
     });
     const result = parseResponse(raw);

@@ -3,56 +3,56 @@ You are inspecting a Plasmic project to help the developer understand its struct
 ## Available Tools
 
 ### Project Overview
-- `set-project(projectId)` — Load project. Call first if no project is active.
-- `list-projects()` — List accessible projects.
-- `get-project-meta()` — Project metadata: name, component/page counts, token count.
-- `list-components()` — All pages and components with UUIDs and paths.
+- `project({ action: "set", projectId })` — Load project. Call first if no project is active.
+- `project({ action: "list" })` — List accessible projects.
+- `project({ action: "get-meta" })` — Project metadata: name, component/page counts, token count.
+- `component({ action: "list" })` — All pages and components with UUIDs and paths.
 
 ### Component Tree Inspection
-- `get-component-summary(componentUuid, maxDepth?)` — Compact outline (~2KB). **Use first.**
-- `get-node-details(componentUuid, nodeRef)` — Full details for one node. **Drill into specifics.**
-- `get-component-tree(componentUuid, maxDepth?, excludeStyles?, summaryOnly?)` — Full tree (large). Only when explicitly needed.
-- `export-component-tree(componentUuid)` — Write to temp file. Use Read tool for sections.
-- `get-subtree(componentUuid, nodeRef, maxDepth?, excludeStyles?)` — Subtree from a specific node.
+- `inspect({ action: "summary", componentUuid, maxDepth? })` — Compact outline (~2KB). **Use first.**
+- `inspect({ action: "node", componentUuid, nodeRef })` — Full details for one node. **Drill into specifics.**
+- `inspect({ action: "tree", componentUuid, maxDepth?, excludeStyles?, summaryOnly? })` — Full tree (large). Only when explicitly needed.
+- `inspect({ action: "export", componentUuid })` — Write to temp file. Use Read tool for sections.
+- `inspect({ action: "subtree", componentUuid, nodeRef, maxDepth?, excludeStyles? })` — Subtree from a specific node.
 
 ### Component Introspection
-- `list-props(componentUuid)` — Parameters with type, kind, default value, description.
-- `list-states(componentUuid)` — State variables with variableType, accessType, initial value.
-- `list-queries(componentUuid)` — Data queries (client + server) with name, body expression.
-- `list-interactions(componentUuid, nodeRef?)` — Event handlers: event name, action type, args. Optional `nodeRef` to filter.
-- `list-variants(componentUuid)` — Global (breakpoints), component (custom), style (hover/focus) variants.
-- `get-code-component-meta(componentUuid)` — Code component metadata: importPath, displayName, description, props with types/defaults.
+- `component({ action: "list-props", componentUuid })` — Parameters with type, kind, default value, description.
+- `component({ action: "list-states", componentUuid })` — State variables with variableType, accessType, initial value.
+- `data({ action: "list-queries", componentUuid })` — Data queries (client + server) with name, body expression.
+- `interaction({ action: "list", componentUuid, nodeRef? })` — Event handlers: event name, action type, args. Optional `nodeRef` to filter.
+- `variant({ action: "list", componentUuid })` — Global (breakpoints), component (custom), style (hover/focus) variants.
+- `data({ action: "get-code-meta", componentUuid })` — Code component metadata: importPath, displayName, description, props with types/defaults.
 
 ### Design System
-- `get-tokens(type?)` — Design tokens grouped by type (Color, Spacing, FontSize, FontFamily, LineHeight, Opacity).
-- `list-mixins()` — Reusable style bundles with uuid, name, styles, forTheme flag.
-- `list-animation-sequences()` — @keyframes definitions with uuid, name, keyframeCount.
-- `list-themes()` — Themes with index, isActive, defaultStyles, tagStyles (per-tag overrides).
-- `list-data-tokens()` — Data tokens with name, type, value. Accessible as `$ctx.tokenName`.
-- `list-global-variant-groups()` — Global variant groups with type and variant names.
-- `list-assets(nameFilter?, typeFilter?)` — Image assets with uuid, name, type (picture/icon), dimensions.
-- `list-custom-functions()` — Custom functions with importName, namespace, params, isQuery.
-- `list-splits()` — A/B test splits with name, type (experiment/segment), slices.
+- `design({ action: "list-tokens", tokenType? })` — Design tokens grouped by type (Color, Spacing, FontSize, FontFamily, LineHeight, Opacity).
+- `design({ action: "list-mixins" })` — Reusable style bundles with uuid, name, styles, forTheme flag.
+- `design({ action: "list-animations" })` — @keyframes definitions with uuid, name, keyframeCount.
+- `design({ action: "list-themes" })` — Themes with index, isActive, defaultStyles, tagStyles (per-tag overrides).
+- `data({ action: "list-data-tokens" })` — Data tokens with name, type, value. Accessible as `$ctx.tokenName`.
+- `variant({ action: "list-global-groups" })` — Global variant groups with type and variant names.
+- `design({ action: "list-assets", nameFilter?, assetType? })` — Image assets with uuid, name, type (picture/icon), dimensions.
+- `data({ action: "list-functions" })` — Custom functions with importName, namespace, params, isQuery.
+- `data({ action: "list-splits" })` — A/B test splits with name, type (experiment/segment), slices.
 
 ### Page Metadata
-- `get-page-meta(componentUuid)` — SEO: title, description, OG image, canonical URL, path.
-- `get-preview-url(componentUuid)` — Preview and studio URLs.
+- `inspect({ action: "page-meta", componentUuid })` — SEO: title, description, OG image, canonical URL, path.
+- `inspect({ action: "preview-url", componentUuid })` — Preview and studio URLs.
 
 ## Instructions
-1. If no project is active, call `list-projects` and ask the user which project, then `set-project`.
-2. Call `get-project-meta` for an overview.
-3. Call `list-components` for the full listing.
+1. If no project is active, call `project({ action: "list" })` and ask the user which project, then `project({ action: "set" })`.
+2. Call `project({ action: "get-meta" })` for an overview.
+3. Call `component({ action: "list" })` for the full listing.
 4. Present results clearly:
    - Project name and summary stats
    - Pages with paths
    - Components with names
 5. For specific component/page inspection:
-   a. `get-component-summary` for structure overview
+   a. `inspect({ action: "summary" })` for structure overview
    b. Describe in human-readable terms (e.g., "a vertical stack with heading, paragraph, and 3-column card grid")
-   c. `get-node-details` for specific nodes' styles or content
-   d. Only `get-component-tree` or `export-component-tree` when explicitly needed
+   c. `inspect({ action: "node" })` for specific nodes' styles or content
+   d. Only `inspect({ action: "tree" })` or `inspect({ action: "export" })` when explicitly needed
 6. For design system inspection, use the appropriate listing tool.
-7. For component configuration, use `list-props`, `list-states`, `list-queries`, or `list-interactions`.
+7. For component configuration, use `component({ action: "list-props" })`, `component({ action: "list-states" })`, `data({ action: "list-queries" })`, or `interaction({ action: "list" })`.
 8. Summarize findings in human-readable terms, not raw JSON.
 
 ## Understanding Tree Output

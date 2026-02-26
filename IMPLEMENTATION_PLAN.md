@@ -3,10 +3,10 @@
 > **Goal**: Create Claude Code skills and workflows that can interact with Plasmic Studio
 > programmatically to create fully-featured pages from the Claude Code terminal.
 >
-> **Current state**: 97 MCP tools, 6 Claude Code skills (updated to cover all 97 tools), 1026 tests (928 unit + 98 integration).
+> **Current state**: 8 STRAP domain tools (consolidating 97 actions), 6 Claude Code skills (STRAP calling convention), 1026 tests (928 unit + 98 integration).
 > Zero TODOs/FIXMEs/skipped tests.
 >
-> **Last verified**: 2026-02-26 — CQ-2, CQ-3, CQ-7 implemented. Tier 7.1 skills update complete.
+> **Last verified**: 2026-02-26 — Tier 6.1 STRAP consolidation and Tier 7.2 skills rewrite complete.
 
 ---
 
@@ -21,9 +21,8 @@ from `site.styleTokens`). The Token CRUD spec (1.3) must handle removal manually
 The MCP source lives entirely in `packages/plasmic-mcp/src/` (16 source files,
 ~8,200 lines). The `src/tools/` directory exists but is empty (created for future refactor).
 
-Key file sizes: `server.ts` (~5,200 lines), `edit-tools.ts` (~5,900 lines),
-`tree-reader.ts` (~850 lines). Both `server.ts` and `edit-tools.ts` are large
-and will grow with each new feature — the STRAP consolidation (Tier 6) addresses this.
+Key file sizes: `server.ts` (~4,600 lines after STRAP consolidation), `edit-tools.ts` (~5,900 lines),
+`tree-reader.ts` (~850 lines).
 
 ---
 
@@ -282,23 +281,27 @@ These features enable systematic design management but are not blocking for basi
 
 These are breaking changes that should be done after feature work stabilizes.
 
-### 6.1 STRAP Consolidation (34 Tools → 6 Domain Tools)
+### 6.1 STRAP Consolidation (97 Tools → 8 Domain Tools) — IMPLEMENTED (2026-02-26)
 - **Spec**: `specs/strap-consolidation.md`
-- **Status**: NOT STARTED — all 34 individual tools still registered in server.ts
-- **What**: Rewrite `server.ts` routing to collapse tools into 6 domain tools:
-  - `project` (8 actions), `inspect` (8 actions), `component` (8+ actions), `node` (11+ actions), `variant` (8 actions), `interaction` (4 actions)
-- **Scope**: Server routing ONLY — no changes to internal `edit-tools.ts`, `tree-reader.ts`, etc.
-- **Impact**: Breaking change — all skills must be rewritten for new calling convention
-- **Rationale**: Reduces LLM tool-selection errors (6 tools vs 34), makes adding new features scalable
-- **Effort**: Large — all schemas, routing, error handling, tests, skills rewritten
-- **Recommendation**: Do this AFTER Tiers 1-5 features land, so new features ship with old tool names first, then consolidate all at once
+- **Status**: IMPLEMENTED
+  - 97 individual `server.tool()` calls replaced with 8 domain tools, each with `action: z.enum([...])` discriminator
+  - 8 domains: `project` (8), `inspect` (8), `component` (17), `node` (15), `variant` (8), `design` (22), `data` (16), `interaction` (3)
+  - Original 6-domain spec expanded to 8 domains: added `design` (site-level design system: tokens, mixins, animations, themes, assets) and `data` (queries, data-tokens, data-rep, data-cond, splits, code meta)
+  - Flat Zod schemas with `requireParam()` handler-level validation (MCP SDK doesn't support discriminated unions in `server.tool()`)
+  - Parameter renames to avoid ambiguity in flat schemas: `type` → `tokenType` (design tokens), `type` → `assetType` (design assets)
+  - `server.ts` reduced from ~6,600 lines to ~4,600 lines
+  - All 1026 tests updated and passing; `npm run build` succeeds
+- **Key decisions**:
+  - `set-image`, `apply-mixin`, `detach-mixin`, `add-node-animation`, `remove-node-animation` → `node` domain (they operate on elements, not site-level entities)
+  - `set-data-cond`, `set-data-rep` → `data` domain (data flow, not element structure)
+  - Error format: `"Error in domain.action: message"` (catch blocks) and `"Error domain.action: message"` (handleMutationError)
 
 ### 6.2 Test Restructure
 - **Spec**: `specs/test-restructure.md`
 - **Status**: NOT STARTED — tests still organized by module (server.test.ts, edit-tools.test.ts, etc.)
-- **What**: Restructure tests to match 6 STRAP domains: `project.test.ts`, `inspect.test.ts`, `component.test.ts`, `node.test.ts`, `variant.test.ts`, `interaction.test.ts`
-- **Dependencies**: Depends on STRAP consolidation (6.1) being complete
-- **Effort**: Large but mechanical — move tests, update calling conventions, add new tests for gap features
+- **What**: Restructure tests to match 8 STRAP domains: `project.test.ts`, `inspect.test.ts`, `component.test.ts`, `node.test.ts`, `variant.test.ts`, `design.test.ts`, `data.test.ts`, `interaction.test.ts`
+- **Dependencies**: STRAP consolidation (6.1) complete ✓
+- **Effort**: Large but mechanical — split existing server.test.ts and edit-tools.test.ts by domain
 
 ---
 
@@ -313,10 +316,16 @@ These are breaking changes that should be done after feature work stabilizes.
   - `plasmic-create-component.md` — added "Post-Creation Enhancement" section documenting props, state, interactions, dynamic data, visibility, data repetition, queries, images, animations, mixins, variant groups
   - `plasmic-patterns.md` — added "Post-Creation Enhancement Recipes" with 7 workflow patterns: Data-Driven Product Grid, Interactive Counter, Conditional Sections, Navigation Links, Form with Validation State, Rich Text Content, Animated Hero
 
-### 7.2 Rewrite Skills for STRAP (Post-Consolidation)
-- **What**: Rewrite all 6 skills to use `domain({ action: "..." })` calling convention
-- **Dependencies**: STRAP consolidation (6.1) must be complete
-- **Effort**: Large — all tool references change
+### 7.2 Rewrite Skills for STRAP (Post-Consolidation) — IMPLEMENTED (2026-02-26)
+- **Status**: IMPLEMENTED
+  - All 6 skills rewritten to use `domain({ action: "..." })` calling convention
+  - `plasmic.md` — all tool references converted, routing instructions updated
+  - `plasmic-inspect.md` — all listing/introspection tools converted
+  - `plasmic-edit.md` — all 40+ tool references and inline examples converted
+  - `plasmic-create-page.md` — Available Tools, Post-Creation Enhancement, Instructions sections updated
+  - `plasmic-create-component.md` — Available Tools, Slot Content examples, Post-Creation Enhancement, Instructions sections updated
+  - `plasmic-patterns.md` — CSS Rules, Referencing Components, Named Slots, all 7 Post-Creation Enhancement Recipes updated
+  - Parameter renames applied: `type` → `tokenType`, `typeFilter` → `assetType`
 
 ---
 
@@ -385,7 +394,7 @@ Phase 3 (Interactivity):    2.2 Interactions ✓ → CQ-2/CQ-3 Slot Gaps ✓ →
 Phase 4 (Assets & Data):    3.1 Images ✓ → 3.2 Queries ✓
 Phase 5 (Design System):    4.1 Mixins ✓ → 4.2 Animations ✓ → 4.3 Themes ✓
 Phase 6 (Remaining):        5.1 sub-features ✓(reorder, global variants, convert, data tokens, code meta, custom functions, splits) — extract-to-component skipped
-Phase 7 (Architecture):     6.1 STRAP → 6.2 Test Restructure → 7.2 Skills Rewrite
+Phase 7 (Architecture):     6.1 STRAP ✓ → 7.2 Skills Rewrite ✓ → 6.2 Test Restructure
 Continuous:                 CQ-5/CQ-6/CQ-7 test gaps
 ```
 

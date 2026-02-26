@@ -1,17 +1,17 @@
 You are creating a new page in a Plasmic project.
 
 ## Available Tools
-- `set-project(projectId)` — Load a project. Call first if no project is active.
-- `list-projects()` — List accessible projects.
-- `list-components()` — List existing pages and components.
-- `get-tokens(type?)` — Get design tokens (colors, spacing, fonts). Use these values in styles for design system consistency.
-- `get-component-summary(componentUuid)` — Compact outline of a component. Use to understand existing components before referencing them.
-- `get-node-details(componentUuid, nodeRef)` — Full details for a single node in a component.
-- `create-page(name, path, body)` — Create a page with a PlasmicElement tree.
+- `project({ action: "set", projectId })` — Load a project. Call first if no project is active.
+- `project({ action: "list" })` — List accessible projects.
+- `component({ action: "list" })` — List existing pages and components.
+- `design({ action: "list-tokens", tokenType? })` — Get design tokens (colors, spacing, fonts). Use these values in styles for design system consistency.
+- `inspect({ action: "summary", componentUuid })` — Compact outline of a component. Use to understand existing components before referencing them.
+- `inspect({ action: "node", componentUuid, nodeRef })` — Full details for a single node in a component.
+- `component({ action: "create-page", name, path, body })` — Create a page with a PlasmicElement tree.
 
 ## PlasmicElement Type Reference
 
-A PlasmicElement is a recursive JSON structure. The `create-page` tool accepts this as the `body` parameter.
+A PlasmicElement is a recursive JSON structure. The `component({ action: "create-page" })` tool accepts this as the `body` parameter.
 
 ### Element Types
 
@@ -115,24 +115,24 @@ For more patterns (grids, cards, forms, pricing, testimonials, footers, navigati
 ## Post-Creation Enhancement
 
 After creating the page, you can enhance it with these tools (delegate to `/plasmic-edit`):
-- **Dynamic data**: Bind text to expressions with `update-text(dynamic: true)` or `update-rich-text` for formatted text
-- **Visibility**: Conditionally show/hide sections with `set-visibility` or `set-data-cond`
-- **Data repetition**: Repeat elements over collections with `set-data-rep` (e.g., product cards from `$queries.products.data`)
-- **Interactions**: Add onClick handlers, navigation, state updates with `add-interaction`
-- **Images**: Set images from uploaded assets with `set-image`
-- **Animations**: Attach CSS animations with `add-node-animation`
-- **Mixins**: Apply reusable style bundles with `apply-mixin`
-- **State management**: Add component state with `add-state`, then reference in interactions and dynamic text
-- **Data queries**: Add data sources with `add-query`, then use `$queries.name.data` in expressions
-- **Component props**: Define parameters with `add-prop` for reusable components
+- **Dynamic data**: Bind text to expressions with `node({ action: "update-text", dynamic: true })` or `node({ action: "update-rich-text" })` for formatted text
+- **Visibility**: Conditionally show/hide sections with `node({ action: "set-visibility" })` or `data({ action: "set-data-cond" })`
+- **Data repetition**: Repeat elements over collections with `data({ action: "set-data-rep" })` (e.g., product cards from `$queries.products.data`)
+- **Interactions**: Add onClick handlers, navigation, state updates with `interaction({ action: "add" })`
+- **Images**: Set images from uploaded assets with `node({ action: "set-image" })`
+- **Animations**: Attach CSS animations with `node({ action: "add-animation" })`
+- **Mixins**: Apply reusable style bundles with `node({ action: "apply-mixin" })`
+- **State management**: Add component state with `component({ action: "add-state" })`, then reference in interactions and dynamic text
+- **Data queries**: Add data sources with `data({ action: "add-query" })`, then use `$queries.name.data` in expressions
+- **Component props**: Define parameters with `component({ action: "add-prop" })` for reusable components
 
 ## Instructions
-1. If no project is active, call `list-projects` and ask the user which project, then `set-project`.
-2. Call `list-components` to see existing pages (avoid path conflicts).
-3. Call `get-tokens` to discover the project's design tokens. Use token values (colors, spacing, fonts) in styles instead of hardcoding values.
+1. If no project is active, call `project({ action: "list" })` and ask the user which project, then `project({ action: "set", projectId })`.
+2. Call `component({ action: "list" })` to see existing pages (avoid path conflicts).
+3. Call `design({ action: "list-tokens" })` to discover the project's design tokens. Use token values (colors, spacing, fonts) in styles instead of hardcoding values.
 4. Based on the user's description, construct a PlasmicElement tree using the project's design tokens.
 5. Choose a reasonable page name (PascalCase) and path (kebab-case with leading slash).
-6. Call `create-page` with the constructed tree.
+6. Call `component({ action: "create-page", name, path, body })` with the constructed tree.
 7. Report the result. Note any warnings from the API.
 8. If the user wants dynamic behavior (interactions, data binding, etc.), proceed with post-creation enhancement using `/plasmic-edit`.
 
