@@ -43,7 +43,7 @@ Modify an existing interaction.
 
 ### `interaction({ action: "remove" })`
 Remove an interaction from an element.
-- **Parameters**: `componentUuid`, `nodeRef`, `interactionIndex` or `event` (remove all for event), `dryRun?`
+- **Parameters**: `componentUuid`, `nodeRef`, `event` (required), `interactionIndex?` (omit to remove all for that event), `dryRun?`
 
 ## Acceptance Criteria
 - [x] Can add onClick → navigateTo interaction

@@ -77,7 +77,7 @@ This spec covers the smaller gap features that don't warrant individual spec fil
 ## 4. Data Tokens
 
 ### `data({ action: "create-data-token" })`
-- **Parameters**: `name`, `value` (JSON string), `type?` (default "Data")
+- **Parameters**: `name`, `value?` (JSON string)
 - Creates a DataToken on the site
 
 ### `data({ action: "list-data-tokens" })`

@@ -55,8 +55,8 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `variant({ action: "rename", componentUuid, variantRef, newName })` — Rename a component-level variant.
 - `variant({ action: "remove", componentUuid, variantRef })` — Remove a component-level variant.
 - `variant({ action: "create-global-group", name, type?, initialVariants? })` — Site-level variant group.
-- `variant({ action: "create-screen", groupRef, name })` — Add a screen breakpoint variant to a global group.
-- `variant({ action: "update-screen", groupRef, variantRef, name? })` — Update a screen variant.
+- `variant({ action: "create-screen", name, minWidth?, maxWidth? })` — Add a screen breakpoint variant.
+- `variant({ action: "update-screen", variantRef, minWidth?, maxWidth? })` — Update a screen variant's breakpoints.
 - `variant({ action: "add-global", groupRef, name })` — Add variant to a global group.
 - `variant({ action: "remove-global-group", groupRef })` — Remove global group.
 - `variant({ action: "rename-global", groupRef, variantRef, newName })` — Rename variant in global group.
@@ -105,7 +105,7 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `design({ action: "set-active-theme", themeIndex? })` — Set active theme (`null` deactivates).
 
 ### Data Token CRUD
-- `data({ action: "create-data-token", name, type, value })` — New data token accessible as `$ctx.tokenName`.
+- `data({ action: "create-data-token", name, value? })` — New data token accessible as `$ctx.tokenName`.
 - `data({ action: "update-data-token", tokenRef, name?, value? })` — Rename or change value.
 - `data({ action: "remove-data-token", tokenRef })` — Delete data token.
 
@@ -118,18 +118,18 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `component({ action: "add-prop", componentUuid, name, type, defaultValue?, description? })` — Add prop (text/number/boolean/object/href/eventHandler).
 - `component({ action: "remove-prop", componentUuid, propRef })` — Remove prop.
 - `component({ action: "update-prop", componentUuid, propRef, name?, defaultValue?, description? })` — Update prop.
-- `component({ action: "add-state", componentUuid, name, variableType, accessType, initialValue? })` — Add state (text/number/boolean/array/object; private/readonly/writable).
+- `component({ action: "add-state", componentUuid, name, variableType, accessType?, initialValue? })` — Add state (text/number/boolean/array/object; private/readonly/writable).
 - `component({ action: "remove-state", componentUuid, stateRef })` — Remove state variable.
-- `component({ action: "update-state", componentUuid, stateRef, name?, variableType?, accessType?, initialValue? })` — Update state.
+- `component({ action: "update-state", componentUuid, stateRef, name?, accessType?, initialValue? })` — Update state.
 - `data({ action: "add-query", componentUuid, name, queryType? })` — Add data query (queryType: "dataQuery" | "serverQuery", default "dataQuery").
 - `data({ action: "remove-query", componentUuid, queryRef })` — Remove query.
 - `data({ action: "update-query", componentUuid, queryRef, name })` — Rename query.
-- `interaction({ action: "add", componentUuid, nodeRef, event, actionName, args?, condition?, interactionName? })` — Add event handler.
+- `interaction({ action: "add", componentUuid, nodeRef, event, actionName, args, condition?, interactionName? })` — Add event handler.
 - `interaction({ action: "update", componentUuid, nodeRef, event, interactionIndex, actionName?, args?, condition?, interactionName? })` — Update existing handler.
-- `interaction({ action: "remove", componentUuid, nodeRef, interactionIndex? })` — Remove handler(s).
+- `interaction({ action: "remove", componentUuid, nodeRef, event, interactionIndex? })` — Remove handler(s). `event` required; omit `interactionIndex` to remove all for that event.
 
 ### A/B Testing
-- `data({ action: "create-split", name, type, slices })` — New experiment or segment.
+- `data({ action: "create-split", name, splitType, slices })` — New experiment or segment. `splitType`: "experiment" | "segment".
 - `data({ action: "update-split", splitRef, name?, slices?, status? })` — Update split.
 - `data({ action: "remove-split", splitRef })` — Delete split.
 

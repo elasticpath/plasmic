@@ -42,9 +42,9 @@ You are editing an existing page or component in a Plasmic project.
 - `node({ action: "set-image", componentUuid, nodeRef, src?, assetRef?, variant? })` — Set image from URL or uploaded asset.
 
 ### Interactions
-- `interaction({ action: "add", componentUuid, nodeRef, event, actionName, args?, condition?, interactionName? })` — Add event handler.
+- `interaction({ action: "add", componentUuid, nodeRef, event, actionName, args, condition?, interactionName? })` — Add event handler.
 - `interaction({ action: "update", componentUuid, nodeRef, event, interactionIndex, actionName?, args?, condition?, interactionName? })` — Update existing handler.
-- `interaction({ action: "remove", componentUuid, nodeRef, interactionIndex? })` — Remove handler(s).
+- `interaction({ action: "remove", componentUuid, nodeRef, event, interactionIndex? })` — Remove handler(s). `event` required; omit `interactionIndex` to remove all for that event.
 
 ### Mixins (on nodes)
 - `node({ action: "apply-mixin", componentUuid, nodeRef, mixinRef })` — Apply mixin to element.
@@ -220,7 +220,7 @@ interaction({ action: "add", componentUuid: uuid, nodeRef: "Btn", event: "onClic
 
 **Update:** `interaction({ action: "update", componentUuid: uuid, nodeRef: "Btn", event: "onClick", interactionIndex: 0, args: { destination: "'/new-path'" } })` modifies an existing handler.
 
-**Remove:** `interaction({ action: "remove", componentUuid: uuid, nodeRef: "Btn" })` removes all handlers on that node, or specify `interactionIndex` for a specific one.
+**Remove:** `interaction({ action: "remove", componentUuid: uuid, nodeRef: "Btn", event: "onClick" })` removes all onClick handlers, or specify `interactionIndex` for a specific one.
 
 ## Mixin Application
 Apply reusable style bundles to elements:

@@ -6,7 +6,7 @@
 > **Current state**: 8 STRAP domain tools (consolidating 103 actions), 6 Claude Code skills (STRAP calling convention), 1116 tests (998 unit + 118 integration), 19 test files.
 > Zero TODOs/FIXMEs/skipped tests. Zero tsc errors. All code quality items complete.
 >
-> **Last verified**: 2026-02-26 — All 1116 tests pass, tsc clean. Skills audit complete.
+> **Last verified**: 2026-02-26 — All 1116 tests pass, tsc clean. Skills audit pass 2 complete.
 >
 > **Spec consistency pass 1** (2026-02-26): Fixed 4 gap spec → STRAP naming discrepancies:
 > `gap-mixins.md` remove-mixin→detach-mixin, `gap-themes.md` themeRef→themeIndex,
@@ -128,6 +128,22 @@ STRAP spec updated for `component.extract` (Tier 5.1) and `interaction.update`.
 - Key fixes: `visibility`→`visible`, `expr`→`condition`, `elementVar`→`elementVariable`, `indexVar`→`indexVariable`, `initVal`→`initialValue`, `body/serverSide`→`queryType`, `action`→`actionName`, `eventIndex`→`interactionIndex`, `sequenceRef`→`seqRef`, `offset`→`percentage`, `tagStyles`→`themeStyles`, `src`→`url` (upload-asset), removed non-existent `nameFilter` param
 - **6 missing actions added**: `interaction.update`, `variant.create-screen`, `variant.update-screen`, `variant.rename`, `variant.remove`, `component.extract`
 - **Why**: Wrong parameter names in skills cause tool calls to fail with Zod validation errors when Claude Code uses them to interact with Plasmic. This was the highest-priority fix.
+
+### 7.4 Skills Audit Pass 2 — Deep Cross-Validation — IMPLEMENTED
+- Second pass auditing all 6 skills against server.ts Zod schemas + handler `requireParam()` calls
+- **11 mismatches fixed** across 2 skill files (plasmic.md: 8 fixes, plasmic-edit.md: 3 fixes)
+- **Critical fixes** (would cause runtime failures):
+  - `data.create-split`: `type`→`splitType` (plasmic.md)
+  - `interaction.remove`: added missing required `event` parameter (plasmic.md + plasmic-edit.md)
+  - `data.create-data-token`: removed non-existent `type` parameter (plasmic.md)
+- **Accuracy fixes**:
+  - `variant.create-screen`: removed unused `groupRef`, added `minWidth?`/`maxWidth?` (plasmic.md)
+  - `variant.update-screen`: removed unused `groupRef`/`name?`, added `minWidth?`/`maxWidth?` (plasmic.md)
+  - `interaction.add`: `args?`→`args` (required per server) (plasmic.md + plasmic-edit.md)
+  - `component.add-state`: `accessType`→`accessType?` (optional per server) (plasmic.md)
+  - `component.update-state`: removed `variableType?` (handler ignores it) (plasmic.md)
+- **Spec fixes**: `gap-interactions.md` remove params clarified (`event` required), `gap-remaining-features.md` removed stale `type?` from create-data-token
+- **Why**: The first audit (7.3) caught parameter renames but missed required/optional mismatches, unused params, and params not passed through by handlers. This pass verified every parameter against both the Zod schema AND the handler's `requireParam()` calls.
 
 ---
 
