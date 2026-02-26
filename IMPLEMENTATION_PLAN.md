@@ -3,10 +3,10 @@
 > **Goal**: Create Claude Code skills and workflows that can interact with Plasmic Studio
 > programmatically to create fully-featured pages from the Claude Code terminal.
 >
-> **Current state**: 41 MCP tools, 6 Claude Code skills, 738 tests (681 unit + 57 integration).
-> Zero TODOs/FIXMEs/skipped tests. All acceptance criteria in specs are unchecked (none implemented).
+> **Current state**: 45 MCP tools, 6 Claude Code skills, 772 tests (710 unit + 62 integration).
+> Zero TODOs/FIXMEs/skipped tests.
 >
-> **Last verified**: 2026-02-26 — full code search re-confirmed all statuses below.
+> **Last verified**: 2026-02-26 — 1.4 Component Props Definition implemented.
 
 ---
 
@@ -21,7 +21,7 @@ from `site.styleTokens`). The Token CRUD spec (1.3) must handle removal manually
 The MCP source lives entirely in `packages/plasmic-mcp/src/` (16 source files,
 ~8,200 lines). The `src/tools/` directory exists but is empty (created for future refactor).
 
-Key file sizes: `server.ts` (~2,560 lines), `edit-tools.ts` (~2,810 lines),
+Key file sizes: `server.ts` (~3,570 lines), `edit-tools.ts` (~3,700 lines),
 `tree-reader.ts` (~620 lines). Both `server.ts` and `edit-tools.ts` are large
 and will grow with each new feature — the STRAP consolidation (Tier 6) addresses this.
 
@@ -67,19 +67,21 @@ Each is self-contained with no cross-spec dependencies.
 - **What**: Four site-level actions for full token lifecycle management
   - Existing `get-tokens` (read) and `token:Name` reference syntax in `update-styles` already work with newly created tokens
 
-### 1.4 Component Props Definition
+### 1.4 Component Props Definition — IMPLEMENTED (2026-02-26)
 - **Spec**: `specs/gap-component-props.md`
-- **Status**: NOT IMPLEMENTED
-  - Verified: zero references to `add-prop`, `list-props`, `remove-prop` in MCP src/
-  - WAB backing confirmed: `Component.params[]` (Param hierarchy: SlotParam, StateParam, PropParam, etc.), `TplMgr.renameParam()`, `getUniqueParamName()`
-- **What**: Four new component-level actions:
-  - `add-prop` — define a typed param (text/number/boolean/object/slot/href/eventHandler) with optional default
-  - `list-props` — list all params on a component
-  - `remove-prop` — delete param and clean up instance references
-  - `update-prop` — rename or change default (type cannot be changed)
-- **Dependencies**: Slot props must be targetable by existing `add-child` slot parameter (already works)
-- **Effort**: Medium — prop CRUD + slot creation + instance cleanup on removal
-- **Tests needed**: Unit + integration (add prop → set on instance → read back → verify)
+- **Status**: IMPLEMENTED
+  - Four new component-level tools: `list-props`, `add-prop`, `remove-prop`, `update-prop`
+  - `list-props` is read-only; reads component.params and returns structured info (type, kind, isSlot, isState, defaultExpr)
+  - `add-prop` creates PropParam with type objects (Text, Num, BoolType, AnyType, HrefType, FunctionType); validates reserved names and default values per type
+  - `remove-prop` walks all TplComponent instances to clean up Args before splicing from params; rejects removal of StateParam/StateChangeHandlerParam
+  - `update-prop` uses TplMgr.renameParam() for name changes (handles $props.x expression patching); updates defaultExpr and description
+  - PropParam mock class + 6 WAB type mock classes added to wab-classes; TplMgr mock extended with getUniqueParamName/renameParam
+  - 29 unit tests + 5 integration tests = 34 new tests
+  - Total test count: 772 (710 unit + 62 integration)
+- **What**: Four component-level actions for full prop lifecycle management
+  - Supported prop types: text, number, boolean, object, href, eventHandler
+  - Slot type support deferred (requires TplSlot tree creation infrastructure)
+- **Cross-tool integration**: Props usable in dynamic text (`$props.title`), data conditions (`$props.showIcon`), and settable on instances via `add-child` props
 
 ### 1.5 Rich Text Formatting
 - **Spec**: `specs/gap-rich-text.md`
@@ -315,8 +317,8 @@ These are code health improvements discovered during analysis. No specs needed.
 ## Implementation Order Recommendation
 
 ```
-Phase 1 (Foundations):      1.1 Visibility ✓ → 1.2 Data Repetition ✓ → 1.3 Tokens ✓ → CQ-1 Dead Code ✓
-Phase 2 (Authoring):        1.4 Props → 1.5 Rich Text → 2.1 State
+Phase 1 (Foundations):      1.1 Visibility ✓ → 1.2 Data Repetition ✓ → 1.3 Tokens ✓ → CQ-1 Dead Code ✓ → 1.4 Props ✓
+Phase 2 (Authoring):        1.5 Rich Text → 2.1 State
 Phase 3 (Interactivity):    2.2 Interactions → CQ-2/CQ-3 Slot Gaps
 Phase 4 (Assets & Data):    3.1 Images → 3.2 Queries
 Phase 5 (Design System):    4.1 Mixins → 4.2 Animations → 4.3 Themes

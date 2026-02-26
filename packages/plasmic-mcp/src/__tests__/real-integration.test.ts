@@ -3029,6 +3029,209 @@ describe("token CRUD", () => {
   });
 });
 
+// =========================================================================
+// Component Props CRUD
+// =========================================================================
+
+describe("component props", () => {
+  it("list-props → returns existing params from component", async () => {
+    // Find a component that has params (e.g., a code component with props)
+    const compsWithParams = [];
+    for (const comp of discoveredComponents) {
+      const listResult = await client.callTool({
+        name: "list-props",
+        arguments: { componentUuid: comp.uuid },
+      });
+      const output = parseResponse(listResult);
+      if (output.propCount > 0) {
+        compsWithParams.push({ comp, props: output.props });
+        break;
+      }
+    }
+
+    if (compsWithParams.length > 0) {
+      const { props } = compsWithParams[0];
+      expect(Array.isArray(props)).toBe(true);
+      expect(props.length).toBeGreaterThan(0);
+      // Every prop should have required fields
+      for (const prop of props) {
+        expect(prop.uuid).toBeTruthy();
+        expect(prop.name).toBeTruthy();
+        expect(prop.type).toBeTruthy();
+        expect(prop.paramKind).toBeTruthy();
+      }
+    }
+  });
+
+  it("add-prop → list-props → verify, then undo", async () => {
+    // Use the Homepage page (user-created, safe to modify)
+    const page = discoveredComponents.find((c: any) => c.type === "page");
+    expect(page).toBeTruthy();
+
+    // Get initial prop count
+    const beforeResult = parseResponse(
+      await client.callTool({
+        name: "list-props",
+        arguments: { componentUuid: page!.uuid },
+      })
+    );
+    const beforeCount = beforeResult.propCount;
+
+    // Add a text prop
+    const addResult = await client.callTool({
+      name: "add-prop",
+      arguments: {
+        componentUuid: page!.uuid,
+        name: "testTitle",
+        type: "text",
+        defaultValue: "Hello",
+        description: "A test prop",
+      },
+    });
+    expect(addResult.isError).toBeFalsy();
+    const addOutput = parseResponse(addResult);
+    expect(addOutput.success).toBe(true);
+    expect(addOutput.paramUuid).toBeTruthy();
+    expect(addOutput.propType).toBe("text");
+
+    // Verify prop appears in list-props
+    const afterResult = parseResponse(
+      await client.callTool({
+        name: "list-props",
+        arguments: { componentUuid: page!.uuid },
+      })
+    );
+    expect(afterResult.propCount).toBe(beforeCount + 1);
+    const newProp = afterResult.props.find(
+      (p: any) => p.uuid === addOutput.paramUuid
+    );
+    expect(newProp).toBeTruthy();
+    expect(newProp.name).toBe("testTitle");
+    expect(newProp.type).toBe("text");
+    expect(newProp.description).toBe("A test prop");
+
+    // Clean up
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+
+  it("add-prop → update-prop → verify rename and description", async () => {
+    const page = discoveredComponents.find((c: any) => c.type === "page");
+    expect(page).toBeTruthy();
+
+    // Add a prop
+    const addResult = parseResponse(
+      await client.callTool({
+        name: "add-prop",
+        arguments: {
+          componentUuid: page!.uuid,
+          name: "tempProp",
+          type: "boolean",
+          defaultValue: "false",
+        },
+      })
+    );
+
+    // Update the prop's name and description
+    const updateResult = await client.callTool({
+      name: "update-prop",
+      arguments: {
+        componentUuid: page!.uuid,
+        propRef: addResult.paramUuid,
+        name: "isVisible",
+        description: "Controls visibility",
+      },
+    });
+    expect(updateResult.isError).toBeFalsy();
+    const updateOutput = parseResponse(updateResult);
+    expect(updateOutput.success).toBe(true);
+    expect(updateOutput.previousName).toBe("tempProp");
+    expect(updateOutput.updatedFields).toContain("name");
+    expect(updateOutput.updatedFields).toContain("description");
+
+    // Verify via list-props
+    const listResult = parseResponse(
+      await client.callTool({
+        name: "list-props",
+        arguments: { componentUuid: page!.uuid },
+      })
+    );
+    const updatedProp = listResult.props.find(
+      (p: any) => p.uuid === addResult.paramUuid
+    );
+    expect(updatedProp).toBeTruthy();
+    expect(updatedProp.name).toBe("isVisible");
+    expect(updatedProp.description).toBe("Controls visibility");
+
+    // Clean up (undo update + undo add)
+    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+
+  it("add-prop → remove-prop → verify removed", async () => {
+    const page = discoveredComponents.find((c: any) => c.type === "page");
+    expect(page).toBeTruthy();
+
+    // Add a prop
+    const addResult = parseResponse(
+      await client.callTool({
+        name: "add-prop",
+        arguments: {
+          componentUuid: page!.uuid,
+          name: "toRemove",
+          type: "number",
+          defaultValue: "0",
+        },
+      })
+    );
+
+    // Remove it
+    const removeResult = await client.callTool({
+      name: "remove-prop",
+      arguments: {
+        componentUuid: page!.uuid,
+        propRef: addResult.paramUuid,
+      },
+    });
+    expect(removeResult.isError).toBeFalsy();
+    const removeOutput = parseResponse(removeResult);
+    expect(removeOutput.success).toBe(true);
+    expect(removeOutput.removedName).toBe("toRemove");
+
+    // Verify prop is gone
+    const listResult = parseResponse(
+      await client.callTool({
+        name: "list-props",
+        arguments: { componentUuid: page!.uuid },
+      })
+    );
+    const found = listResult.props.find(
+      (p: any) => p.uuid === addResult.paramUuid
+    );
+    expect(found).toBeFalsy();
+
+    // Clean up (undo remove + undo add)
+    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+
+  it("add-prop rejects reserved names", async () => {
+    const page = discoveredComponents.find((c: any) => c.type === "page");
+    expect(page).toBeTruthy();
+
+    const result = await client.callTool({
+      name: "add-prop",
+      arguments: {
+        componentUuid: page!.uuid,
+        name: "children",
+        type: "text",
+      },
+    });
+    expect(result.isError).toBe(true);
+    const text = (result.content as any)[0]?.text ?? "";
+    expect(text).toMatch(/reserved/i);
+  });
+});
+
 /** Walk a tree recursively to find a node by UUID. */
 function findNodeByUuid(tree: any, uuid: string): any {
   if (tree.uuid === uuid) return tree;

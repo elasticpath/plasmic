@@ -9,6 +9,8 @@
  * - createPrivateStyleVariant: element-scoped interaction state
  * - createVariantGroup: named variant group with state/param setup
  * - createVariant: add variant to existing group
+ * - getUniqueParamName: param name deduplication
+ * - renameParam: rename param + fix expressions
  */
 
 import { vi } from "vitest";
@@ -27,6 +29,16 @@ export const mockCreateVariant = vi.fn();
 export const mockAddStyleToken = vi.fn();
 export const mockRenameStyleToken = vi.fn();
 export const mockDuplicateStyleToken = vi.fn();
+export const mockGetUniqueParamName = vi.fn(
+  (_component: any, name?: string) => name ?? "Unnamed Prop"
+);
+export const mockRenameParam = vi.fn(
+  (_component: any, param: any, name: string) => {
+    if (param.variable) {
+      param.variable.name = name;
+    }
+  }
+);
 
 export class TplMgr {
   constructor(_args: { site: any }) {}
@@ -73,5 +85,13 @@ export class TplMgr {
 
   duplicateStyleToken(token: any): any {
     return mockDuplicateStyleToken(token);
+  }
+
+  getUniqueParamName(component: any, name?: string): string {
+    return mockGetUniqueParamName(component, name);
+  }
+
+  renameParam(component: any, param: any, name: string): void {
+    mockRenameParam(component, param, name);
   }
 }

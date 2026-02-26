@@ -26,6 +26,16 @@ export const isKnownImageAssetRef = (obj: any): boolean =>
 export const isKnownStyleTokenRef = (obj: any): boolean =>
   obj?._type === "StyleTokenRef";
 export const isKnownRep = (obj: any): boolean => obj?._type === "Rep";
+export const isKnownPropParam = (obj: any): boolean =>
+  obj?._type === "PropParam";
+export const isKnownSlotParam = (obj: any): boolean =>
+  obj?._type === "SlotParam";
+export const isKnownStateParam = (obj: any): boolean =>
+  obj?._type === "StateParam";
+export const isKnownStateChangeHandlerParam = (obj: any): boolean =>
+  obj?._type === "StateChangeHandlerParam";
+export const isKnownGlobalVariantGroupParam = (obj: any): boolean =>
+  obj?._type === "GlobalVariantGroupParam";
 
 /** Mock constructors for model classes used by edit-tools.ts */
 export class RawText {
@@ -149,6 +159,89 @@ export class StyleToken {
     this.variantedValues = args.variantedValues ?? [];
     this.isRegistered = args.isRegistered ?? false;
     this.regKey = args.regKey ?? undefined;
+  }
+}
+
+/** Mock constructor for PropParam — component prop definition. */
+export class PropParam {
+  _type = "PropParam";
+  variable: any;
+  uuid: string;
+  type: any;
+  advanced: boolean;
+  enumValues: any[];
+  origin: any;
+  exportType: string;
+  defaultExpr: any;
+  previewExpr: any;
+  propEffect: any;
+  description: any;
+  displayName: any;
+  about: any;
+  isRepeated: any;
+  isMainContentSlot: boolean;
+  required: boolean;
+  mergeWithParent: boolean;
+  isLocalizable: boolean;
+  constructor(args: any) {
+    this.variable = args.variable;
+    this.uuid = args.uuid;
+    this.type = args.type;
+    this.advanced = args.advanced ?? false;
+    this.enumValues = args.enumValues ?? [];
+    this.origin = args.origin ?? null;
+    this.exportType = args.exportType ?? "External";
+    this.defaultExpr = args.defaultExpr ?? null;
+    this.previewExpr = args.previewExpr ?? null;
+    this.propEffect = args.propEffect ?? null;
+    this.description = args.description ?? null;
+    this.displayName = args.displayName ?? null;
+    this.about = args.about ?? null;
+    this.isRepeated = args.isRepeated ?? null;
+    this.isMainContentSlot = args.isMainContentSlot ?? false;
+    this.required = args.required ?? false;
+    this.mergeWithParent = args.mergeWithParent ?? false;
+    this.isLocalizable = args.isLocalizable ?? false;
+  }
+}
+
+/** Mock type constructors — used by addProp to create type objects for params. */
+export class Text {
+  _type = "Text";
+  name = "text";
+  constructor(_args: any) {}
+}
+
+export class Num {
+  _type = "Num";
+  name = "num";
+  constructor(_args: any) {}
+}
+
+export class BoolType {
+  _type = "BoolType";
+  name = "bool";
+  constructor(_args: any) {}
+}
+
+export class AnyType {
+  _type = "AnyType";
+  name = "any";
+  constructor(_args: any) {}
+}
+
+export class HrefType {
+  _type = "HrefType";
+  name = "href";
+  constructor(_args: any) {}
+}
+
+export class FunctionType {
+  _type = "FunctionType";
+  name = "func";
+  params: any[];
+  constructor(args: any) {
+    this.params = args.params ?? [];
   }
 }
 

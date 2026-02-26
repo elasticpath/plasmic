@@ -38,6 +38,13 @@ import {
   Arg,
   Rep,
   Var,
+  PropParam,
+  Text as TextType,
+  Num,
+  BoolType,
+  AnyType,
+  HrefType,
+  FunctionType,
 } from "@/wab/shared/model/classes";
 import { RSH } from "@/wab/shared/RuleSetHelpers";
 import { TplMgr } from "@/wab/shared/TplMgr";
@@ -3259,5 +3266,431 @@ export async function duplicateToken(
     sourceUuid: token.uuid,
     sourceName: token.name,
     value: newToken.value,
+  };
+}
+
+// --- Component Props ---
+
+/** Reserved prop names that conflict with React/Plasmic internals. */
+const RESERVED_PROP_NAMES = new Set([
+  "children", "key", "ref", "className", "style",
+]);
+
+/** Map from WAB type name to user-facing type string. */
+const WAB_TYPE_TO_USER: Record<string, string> = {
+  text: "text",
+  bool: "boolean",
+  num: "number",
+  any: "object",
+  img: "image",
+  href: "href",
+  func: "eventHandler",
+  renderable: "slot",
+  renderFunc: "slot",
+  choice: "choice",
+  color: "color",
+  dateString: "dateString",
+  dateRangeStrings: "dateRangeStrings",
+  queryData: "queryData",
+};
+
+/** Supported user-facing prop types for addProp. */
+const SUPPORTED_PROP_TYPES = new Set([
+  "text", "number", "boolean", "object", "href", "eventHandler",
+]);
+
+export interface PropInfo {
+  uuid: string;
+  name: string;
+  type: string;
+  paramKind: string;
+  exportType: string;
+  description?: string;
+  displayName?: string;
+  required: boolean;
+  isSlot: boolean;
+  isState: boolean;
+  defaultExpr?: string;
+}
+
+/**
+ * List all props (params) on a component.
+ *
+ * Read-only — no mutation or save. Returns structured info for each param
+ * including name, type, kind (prop/slot/state), and metadata.
+ */
+export function listProps(component: any): PropInfo[] {
+  return (component.params ?? []).map((param: any) => {
+    const typeName = param.type?.name;
+    const userType = WAB_TYPE_TO_USER[typeName] ?? typeName ?? "unknown";
+
+    // Determine param kind from typeTag (real WAB) or _type (mock)
+    const tag = param.typeTag ?? param._type;
+    const kindMap: Record<string, string> = {
+      PropParam: "prop",
+      SlotParam: "slot",
+      StateParam: "state",
+      StateChangeHandlerParam: "stateChangeHandler",
+      GlobalVariantGroupParam: "globalVariantGroup",
+    };
+    const paramKind = kindMap[tag] ?? "unknown";
+
+    // Extract default expression if present
+    let defaultExpr: string | undefined;
+    if (param.defaultExpr) {
+      if (isKnownCustomCode(param.defaultExpr)) {
+        defaultExpr = param.defaultExpr.code;
+      } else if (isKnownObjectPath(param.defaultExpr)) {
+        defaultExpr = param.defaultExpr.path.join(".");
+      }
+    }
+
+    const info: PropInfo = {
+      uuid: param.uuid,
+      name: param.variable?.name,
+      type: userType,
+      paramKind,
+      exportType: param.exportType ?? "External",
+      required: param.required ?? false,
+      isSlot: paramKind === "slot" || userType === "slot",
+      isState: paramKind === "state" || paramKind === "stateChangeHandler",
+    };
+
+    if (param.description) info.description = param.description;
+    if (param.displayName) info.displayName = param.displayName;
+    if (defaultExpr) info.defaultExpr = defaultExpr;
+
+    return info;
+  });
+}
+
+// --- add-prop ---
+
+export interface AddPropResult {
+  save: SaveResult;
+  paramUuid: string;
+  name: string;
+  type: string;
+}
+
+/**
+ * Create the WAB type object for a given user-facing prop type string.
+ */
+function createPropType(propType: string): any {
+  switch (propType) {
+    case "text": return new TextType({ name: "text" });
+    case "number": return new Num({ name: "num" });
+    case "boolean": return new BoolType({ name: "bool" });
+    case "object": return new AnyType({ name: "any" });
+    case "href": return new HrefType({ name: "href" });
+    case "eventHandler": return new FunctionType({ name: "func", params: [] });
+    default:
+      throw new Error(`Unsupported prop type: ${propType}`);
+  }
+}
+
+/**
+ * Convert a user-provided default value to a CustomCode expression,
+ * wrapping as needed based on the prop type.
+ */
+function toDefaultExpr(propType: string, defaultValue: string): any {
+  let code: string;
+  switch (propType) {
+    case "text":
+      code = JSON.stringify(defaultValue);
+      break;
+    case "number": {
+      const num = Number(defaultValue);
+      if (isNaN(num)) {
+        throw new Error(
+          `Invalid default value for number prop: "${defaultValue}". Must be a valid number.`
+        );
+      }
+      code = String(num);
+      break;
+    }
+    case "boolean":
+      if (defaultValue !== "true" && defaultValue !== "false") {
+        throw new Error(
+          `Invalid default value for boolean prop: "${defaultValue}". Must be "true" or "false".`
+        );
+      }
+      code = defaultValue;
+      break;
+    default:
+      code = defaultValue;
+  }
+  return new CustomCode({ code, fallback: null });
+}
+
+/**
+ * Add a prop (parameter) to a component definition.
+ *
+ * Creates a PropParam with the specified type and pushes it to component.params.
+ * Supported types: text, number, boolean, object, href, eventHandler.
+ *
+ * The defaultValue is automatically wrapped for the prop type:
+ *   - text: wrapped in quotes ("Untitled" → code: '"Untitled"')
+ *   - number: validated and used as-is ("42" → code: '42')
+ *   - boolean: validated and used as-is ("true" → code: 'true')
+ *   - object/href/eventHandler: passed through as-is
+ */
+export async function addProp(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  name: string,
+  propType: string,
+  defaultValue?: string,
+  description?: string
+): Promise<AddPropResult> {
+  if (RESERVED_PROP_NAMES.has(name)) {
+    throw new Error(
+      `Prop name "${name}" is reserved. Reserved names: ${[...RESERVED_PROP_NAMES].join(", ")}`
+    );
+  }
+
+  if (!SUPPORTED_PROP_TYPES.has(propType)) {
+    throw new Error(
+      `Invalid prop type "${propType}". Supported types: ${[...SUPPORTED_PROP_TYPES].join(", ")}`
+    );
+  }
+
+  const component = findComponent(componentUuid);
+  const session = requireSession();
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  // Deduplicate name
+  const uniqueName = tplMgr.getUniqueParamName(component, name);
+
+  // Create WAB type object
+  const typeObj = createPropType(propType);
+
+  // Create default expression if provided
+  const defaultExpr = defaultValue !== undefined
+    ? toDefaultExpr(propType, defaultValue)
+    : null;
+
+  let param: any;
+
+  const changes = tracker.withRecording(() => {
+    param = new PropParam({
+      variable: new Var({ name: uniqueName, uuid: randomUUID() }),
+      uuid: randomUUID(),
+      type: typeObj,
+      advanced: false,
+      enumValues: [],
+      origin: null,
+      exportType: "External",
+      defaultExpr,
+      previewExpr: null,
+      propEffect: null,
+      description: description ?? null,
+      displayName: null,
+      about: null,
+      isRepeated: null,
+      isMainContentSlot: false,
+      required: false,
+      mergeWithParent: false,
+      isLocalizable: false,
+    });
+
+    if (!component.params) component.params = [];
+    component.params.push(param);
+  });
+
+  const componentIid = getComponentIid(component);
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `add-prop: ${uniqueName} (${propType}) on ${component.name}`,
+    componentIid ? [componentIid] : []
+  );
+
+  return {
+    save,
+    paramUuid: param!.uuid,
+    name: uniqueName,
+    type: propType,
+  };
+}
+
+// --- remove-prop ---
+
+export interface RemovePropResult {
+  save: SaveResult;
+  removedName: string;
+  removedUuid: string;
+  cleanedArgCount: number;
+}
+
+/**
+ * Find a param on a component by name or UUID.
+ */
+function findParam(component: any, propRef: string): any | null {
+  return (component.params ?? []).find(
+    (p: any) => p.uuid === propRef || p.variable?.name === propRef
+  ) ?? null;
+}
+
+/**
+ * Remove a prop from a component definition.
+ *
+ * Cleans up Arg objects on all TplComponent instances across the project
+ * that reference this param. Splices the param from component.params.
+ *
+ * Cannot remove StateParam or StateChangeHandlerParam via this tool
+ * (those should be managed through state management tools).
+ */
+export async function removeProp(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  propRef: string
+): Promise<RemovePropResult> {
+  const component = findComponent(componentUuid);
+  const session = requireSession();
+
+  const param = findParam(component, propRef);
+  if (!param) {
+    throw new Error(
+      `Prop "${propRef}" not found on component "${component.name}". ` +
+        `Use list-props to see available props.`
+    );
+  }
+
+  const tag = param.typeTag ?? param._type;
+  if (tag === "StateParam" || tag === "StateChangeHandlerParam") {
+    throw new Error(
+      `Cannot remove state param "${param.variable.name}" via remove-prop. ` +
+        `State params should be managed through state management tools.`
+    );
+  }
+
+  const tracker = getChangeTracker();
+  let cleanedArgCount = 0;
+
+  const changes = tracker.withRecording(() => {
+    // Clean up Args on all TplComponent instances referencing this component
+    for (const comp of session.site.components ?? []) {
+      if (!comp.tplTree) continue;
+      const tpls = flattenTpls(comp.tplTree);
+      for (const tpl of tpls) {
+        if (isKnownTplComponent(tpl) && tpl.component === component) {
+          for (const vs of tpl.vsettings ?? []) {
+            const args = vs.args ?? [];
+            for (let i = args.length - 1; i >= 0; i--) {
+              if (args[i].param === param) {
+                args.splice(i, 1);
+                cleanedArgCount++;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Remove from component.params
+    const idx = (component.params ?? []).indexOf(param);
+    if (idx >= 0) {
+      component.params.splice(idx, 1);
+    }
+  });
+
+  const componentIid = getComponentIid(component);
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `remove-prop: ${param.variable.name} from ${component.name}`,
+    componentIid ? [componentIid] : []
+  );
+
+  return {
+    save,
+    removedName: param.variable.name,
+    removedUuid: param.uuid,
+    cleanedArgCount,
+  };
+}
+
+// --- update-prop ---
+
+export interface UpdatePropResult {
+  save: SaveResult;
+  paramUuid: string;
+  name: string;
+  previousName?: string;
+  updatedFields: string[];
+}
+
+/**
+ * Update a prop's name, default value, and/or description.
+ *
+ * Type cannot be changed via update — use remove-prop + add-prop instead.
+ * Uses TplMgr.renameParam() for name changes, which handles expression
+ * patching ($props.oldName → $props.newName) across the component.
+ */
+export async function updateProp(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  propRef: string,
+  newName?: string,
+  defaultValue?: string,
+  description?: string
+): Promise<UpdatePropResult> {
+  const component = findComponent(componentUuid);
+  const session = requireSession();
+
+  const param = findParam(component, propRef);
+  if (!param) {
+    throw new Error(
+      `Prop "${propRef}" not found on component "${component.name}". ` +
+        `Use list-props to see available props.`
+    );
+  }
+
+  if (newName !== undefined && RESERVED_PROP_NAMES.has(newName)) {
+    throw new Error(
+      `Prop name "${newName}" is reserved. Reserved names: ${[...RESERVED_PROP_NAMES].join(", ")}`
+    );
+  }
+
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+  const updatedFields: string[] = [];
+  let previousName: string | undefined;
+
+  const changes = tracker.withRecording(() => {
+    if (newName !== undefined) {
+      previousName = param.variable.name;
+      tplMgr.renameParam(component, param, newName);
+      updatedFields.push("name");
+    }
+    if (defaultValue !== undefined) {
+      // Derive prop type from param.type.name to wrap correctly
+      const wabTypeName = param.type?.name;
+      const userType = WAB_TYPE_TO_USER[wabTypeName] ?? wabTypeName ?? "text";
+      param.defaultExpr = toDefaultExpr(userType, defaultValue);
+      updatedFields.push("defaultValue");
+    }
+    if (description !== undefined) {
+      param.description = description || null;
+      updatedFields.push("description");
+    }
+  });
+
+  const componentIid = getComponentIid(component);
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `update-prop: ${param.variable.name} on ${component.name} [${updatedFields.join(", ")}]`,
+    componentIid ? [componentIid] : []
+  );
+
+  return {
+    save,
+    paramUuid: param.uuid,
+    name: param.variable.name,
+    previousName,
+    updatedFields,
   };
 }

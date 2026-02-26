@@ -63,6 +63,10 @@ import {
   updateToken,
   removeToken,
   duplicateToken,
+  listProps,
+  addProp,
+  removeProp,
+  updateProp,
 } from "./edit-tools.js";
 import { beginBatch, endBatch, isBatchActive, cancelBatch, cancelBatchWithRollback, getAccumulatedChanges } from "./batch-manager.js";
 import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
@@ -3217,6 +3221,344 @@ export function createServer(): McpServer {
         };
       } catch (err: any) {
         return handleMutationError("setting data repetition", err);
+      }
+    }
+  );
+
+  // --- list-props ---
+  // Lists all props (params) defined on a component. Read-only — no mutation.
+  // Returns structured info including type, kind, metadata for each param.
+  server.tool(
+    "list-props",
+    "List all props defined on a component: name, type, kind (prop/slot/state), " +
+      "description, default value. Use this to understand a component's interface.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component to list props for"),
+    },
+    async ({ componentUuid }) => {
+      try {
+        const session = requireSession();
+        const component = session.site.components?.find(
+          (c: any) => c.uuid === componentUuid
+        );
+
+        if (!component) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Component UUID "${componentUuid}" not found. Use list-components to see available components.`,
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        const props = listProps(component);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  component: component.name,
+                  componentUuid: component.uuid,
+                  propCount: props.length,
+                  props,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error listing props: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // --- add-prop ---
+  // Creates a new prop (PropParam) on a component definition.
+  // Supported types: text, number, boolean, object, href, eventHandler.
+  server.tool(
+    "add-prop",
+    "Add a prop to a component definition. The prop becomes part of the component's " +
+      "interface and can be set on instances, used in dynamic text ($props.name), " +
+      "or used in data conditions ($props.showIcon).",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component to add the prop to"),
+      name: z
+        .string()
+        .describe(
+          'Prop name (valid JS identifier, e.g., "title", "showIcon", "itemCount")'
+        ),
+      type: z
+        .enum(["text", "number", "boolean", "object", "href", "eventHandler"])
+        .describe("Prop type"),
+      defaultValue: z
+        .string()
+        .optional()
+        .describe(
+          'Default value for the prop. For text: the string value (e.g., "Untitled"). ' +
+            'For number: numeric string (e.g., "42"). For boolean: "true" or "false".'
+        ),
+      description: z
+        .string()
+        .optional()
+        .describe("Description of the prop shown in Studio"),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe(
+          "When true, shows what would change without persisting."
+        ),
+    },
+    async ({ componentUuid, name, type, defaultValue, description, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            addProp(apiClient, componentUuid, name, type, defaultValue, description)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    paramUuid: result.paramUuid,
+                    name: result.name,
+                    propType: result.type,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await addProp(
+          apiClient, componentUuid, name, type, defaultValue, description
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  paramUuid: result.paramUuid,
+                  name: result.name,
+                  propType: result.type,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("adding prop", err);
+      }
+    }
+  );
+
+  // --- remove-prop ---
+  // Removes a prop from a component definition. Cleans up Args on instances.
+  server.tool(
+    "remove-prop",
+    "Remove a prop from a component definition. All Arg overrides on instances " +
+      "referencing this prop are cleaned up automatically.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component to remove the prop from"),
+      propRef: z
+        .string()
+        .describe(
+          'Prop reference: name (e.g., "title") or UUID'
+        ),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe(
+          "When true, shows what would change without persisting."
+        ),
+    },
+    async ({ componentUuid, propRef, dryRun }) => {
+      try {
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            removeProp(apiClient, componentUuid, propRef)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    removedName: result.removedName,
+                    removedUuid: result.removedUuid,
+                    cleanedArgCount: result.cleanedArgCount,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await removeProp(apiClient, componentUuid, propRef);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  removedName: result.removedName,
+                  removedUuid: result.removedUuid,
+                  cleanedArgCount: result.cleanedArgCount,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("removing prop", err);
+      }
+    }
+  );
+
+  // --- update-prop ---
+  // Updates a prop's name, default value, and/or description.
+  server.tool(
+    "update-prop",
+    "Update an existing prop's name, default value, and/or description. " +
+      "Type cannot be changed — use remove-prop + add-prop instead.",
+    {
+      componentUuid: z
+        .string()
+        .describe("UUID of the component containing the prop"),
+      propRef: z
+        .string()
+        .describe(
+          'Prop reference: name (e.g., "title") or UUID'
+        ),
+      name: z
+        .string()
+        .optional()
+        .describe("New prop name. Omit to keep current name."),
+      defaultValue: z
+        .string()
+        .optional()
+        .describe(
+          'New default value (same format as add-prop). Omit to keep current default.'
+        ),
+      description: z
+        .string()
+        .optional()
+        .describe("New description. Omit to keep current. Pass empty string to clear."),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe(
+          "When true, shows what would change without persisting."
+        ),
+    },
+    async ({ componentUuid, propRef, name, defaultValue, description, dryRun }) => {
+      try {
+        if (!name && defaultValue === undefined && description === undefined) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    error: true,
+                    message:
+                      "At least one of 'name', 'defaultValue', or 'description' must be provided.",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        if (dryRun) {
+          const result = await withDryRun(() =>
+            updateProp(apiClient, componentUuid, propRef, name, defaultValue, description)
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    dryRun: true,
+                    paramUuid: result.paramUuid,
+                    name: result.name,
+                    previousName: result.previousName,
+                    updatedFields: result.updatedFields,
+                    message: "Dry run: no changes persisted",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const result = await updateProp(
+          apiClient, componentUuid, propRef, name, defaultValue, description
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  paramUuid: result.paramUuid,
+                  name: result.name,
+                  previousName: result.previousName,
+                  updatedFields: result.updatedFields,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("updating prop", err);
       }
     }
   );

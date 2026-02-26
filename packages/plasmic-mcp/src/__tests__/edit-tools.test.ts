@@ -43,6 +43,10 @@ import {
   updateToken,
   removeToken,
   duplicateToken,
+  listProps,
+  addProp,
+  removeProp,
+  updateProp,
 } from "../edit-tools";
 import { setSession, clearSession } from "../session";
 import { initChangeTracker, disposeChangeTracker } from "../change-tracker";
@@ -60,6 +64,8 @@ import {
   mockAddStyleToken,
   mockRenameStyleToken,
   mockDuplicateStyleToken,
+  mockGetUniqueParamName,
+  mockRenameParam,
 } from "../__mocks__/wab-tpl-mgr";
 import { mockMkTplTagX, mockMkTplInlinedText, mockMkTplComponentX } from "../__mocks__/wab-tpls";
 import { mockEnsureVariantSetting } from "../__mocks__/wab-variants";
@@ -6399,5 +6405,592 @@ describe("duplicateToken", () => {
     await expect(duplicateToken(api, "NonExistent")).rejects.toThrow(
       /not found/
     );
+  });
+});
+
+// =============================================================================
+// Component Props CRUD
+// =============================================================================
+
+describe("listProps", () => {
+  it("returns empty array for component with no params", () => {
+    const comp = { params: [] };
+    const result = listProps(comp);
+    expect(result).toEqual([]);
+  });
+
+  it("lists PropParam with correct fields", () => {
+    const comp = {
+      params: [
+        {
+          _type: "PropParam",
+          uuid: "p1",
+          variable: { name: "title" },
+          type: { name: "text" },
+          exportType: "External",
+          required: false,
+          description: "Page title",
+          displayName: "Title",
+          defaultExpr: null,
+        },
+      ],
+    };
+    const result = listProps(comp);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({
+      uuid: "p1",
+      name: "title",
+      type: "text",
+      paramKind: "prop",
+      exportType: "External",
+      required: false,
+      isSlot: false,
+      isState: false,
+      description: "Page title",
+      displayName: "Title",
+    });
+  });
+
+  it("maps WAB type names to user-facing types", () => {
+    const comp = {
+      params: [
+        { _type: "PropParam", uuid: "p1", variable: { name: "a" }, type: { name: "bool" }, exportType: "External", required: false },
+        { _type: "PropParam", uuid: "p2", variable: { name: "b" }, type: { name: "num" }, exportType: "External", required: false },
+        { _type: "PropParam", uuid: "p3", variable: { name: "c" }, type: { name: "any" }, exportType: "External", required: false },
+        { _type: "PropParam", uuid: "p4", variable: { name: "d" }, type: { name: "img" }, exportType: "External", required: false },
+        { _type: "PropParam", uuid: "p5", variable: { name: "e" }, type: { name: "href" }, exportType: "External", required: false },
+        { _type: "PropParam", uuid: "p6", variable: { name: "f" }, type: { name: "func" }, exportType: "External", required: false },
+      ],
+    };
+    const result = listProps(comp);
+    expect(result.map((p: any) => p.type)).toEqual([
+      "boolean", "number", "object", "image", "href", "eventHandler",
+    ]);
+  });
+
+  it("identifies slot params", () => {
+    const comp = {
+      params: [
+        { _type: "SlotParam", uuid: "s1", variable: { name: "children" }, type: { name: "renderable" }, exportType: "External", required: false },
+      ],
+    };
+    const result = listProps(comp);
+    expect(result[0].isSlot).toBe(true);
+    expect(result[0].paramKind).toBe("slot");
+  });
+
+  it("identifies state params", () => {
+    const comp = {
+      params: [
+        { _type: "StateParam", uuid: "st1", variable: { name: "count" }, type: { name: "num" }, exportType: "Internal", required: false },
+        { _type: "StateChangeHandlerParam", uuid: "sch1", variable: { name: "onChange" }, type: { name: "func" }, exportType: "Internal", required: false },
+      ],
+    };
+    const result = listProps(comp);
+    expect(result[0].isState).toBe(true);
+    expect(result[0].paramKind).toBe("state");
+    expect(result[1].isState).toBe(true);
+    expect(result[1].paramKind).toBe("stateChangeHandler");
+  });
+
+  it("extracts CustomCode default expression", () => {
+    const comp = {
+      params: [
+        {
+          _type: "PropParam",
+          uuid: "p1",
+          variable: { name: "title" },
+          type: { name: "text" },
+          exportType: "External",
+          required: false,
+          defaultExpr: { _type: "CustomCode", code: '"Hello"', fallback: null },
+        },
+      ],
+    };
+    const result = listProps(comp);
+    expect(result[0].defaultExpr).toBe('"Hello"');
+  });
+
+  it("handles component with undefined params", () => {
+    const comp = {};
+    const result = listProps(comp);
+    expect(result).toEqual([]);
+  });
+});
+
+describe("addProp", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    clearNodeCache();
+    api = mockApiClient();
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+    mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
+  });
+
+  afterEach(() => {
+    disposeChangeTracker();
+    clearSession();
+    vi.restoreAllMocks();
+  });
+
+  it("creates a text prop with default value", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await addProp(api, "comp-1", "title", "text", "Untitled");
+
+    expect(result.name).toBe("title");
+    expect(result.type).toBe("text");
+    expect(result.paramUuid).toBeDefined();
+    expect(comp.params).toHaveLength(1);
+    expect(comp.params[0]._type).toBe("PropParam");
+    expect(comp.params[0].variable.name).toBe("title");
+    expect(comp.params[0].type._type).toBe("Text");
+    expect(comp.params[0].defaultExpr._type).toBe("CustomCode");
+    expect(comp.params[0].defaultExpr.code).toBe('"Untitled"');
+    expect(mockGetUniqueParamName).toHaveBeenCalledWith(comp, "title");
+  });
+
+  it("creates a boolean prop", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await addProp(api, "comp-1", "showIcon", "boolean", "true");
+
+    expect(result.type).toBe("boolean");
+    expect(comp.params[0].type._type).toBe("BoolType");
+    expect(comp.params[0].defaultExpr.code).toBe("true");
+  });
+
+  it("creates a number prop", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await addProp(api, "comp-1", "count", "number", "42");
+
+    expect(result.type).toBe("number");
+    expect(comp.params[0].type._type).toBe("Num");
+    expect(comp.params[0].defaultExpr.code).toBe("42");
+  });
+
+  it("creates a prop without default value", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await addProp(api, "comp-1", "data", "object");
+
+    expect(comp.params[0].type._type).toBe("AnyType");
+    expect(comp.params[0].defaultExpr).toBeNull();
+  });
+
+  it("creates an href prop", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await addProp(api, "comp-1", "link", "href");
+
+    expect(comp.params[0].type._type).toBe("HrefType");
+  });
+
+  it("creates an eventHandler prop", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await addProp(api, "comp-1", "onClick", "eventHandler");
+
+    expect(comp.params[0].type._type).toBe("FunctionType");
+  });
+
+  it("rejects reserved prop names", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(addProp(api, "comp-1", "children", "text")).rejects.toThrow(
+      /reserved/
+    );
+    await expect(addProp(api, "comp-1", "key", "text")).rejects.toThrow(
+      /reserved/
+    );
+    await expect(addProp(api, "comp-1", "ref", "text")).rejects.toThrow(
+      /reserved/
+    );
+    await expect(addProp(api, "comp-1", "className", "text")).rejects.toThrow(
+      /reserved/
+    );
+  });
+
+  it("rejects invalid prop type", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(addProp(api, "comp-1", "x", "slot")).rejects.toThrow(
+      /Invalid prop type/
+    );
+  });
+
+  it("rejects invalid boolean default", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      addProp(api, "comp-1", "flag", "boolean", "yes")
+    ).rejects.toThrow(/Must be "true" or "false"/);
+  });
+
+  it("rejects invalid number default", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      addProp(api, "comp-1", "count", "number", "abc")
+    ).rejects.toThrow(/Must be a valid number/);
+  });
+
+  it("sets description when provided", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await addProp(api, "comp-1", "title", "text", undefined, "The page title");
+
+    expect(comp.params[0].description).toBe("The page title");
+  });
+});
+
+describe("removeProp", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    clearNodeCache();
+    api = mockApiClient();
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+    mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
+  });
+
+  afterEach(() => {
+    disposeChangeTracker();
+    clearSession();
+    vi.restoreAllMocks();
+  });
+
+  it("removes a prop by name", async () => {
+    const param = {
+      _type: "PropParam",
+      uuid: "p1",
+      variable: { name: "title" },
+      type: { name: "text" },
+    };
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [param];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await removeProp(api, "comp-1", "title");
+
+    expect(result.removedName).toBe("title");
+    expect(result.removedUuid).toBe("p1");
+    expect(comp.params).toHaveLength(0);
+  });
+
+  it("removes a prop by UUID", async () => {
+    const param = {
+      _type: "PropParam",
+      uuid: "p1",
+      variable: { name: "title" },
+      type: { name: "text" },
+    };
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [param];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await removeProp(api, "comp-1", "p1");
+
+    expect(result.removedName).toBe("title");
+    expect(comp.params).toHaveLength(0);
+  });
+
+  it("cleans up Args on component instances", async () => {
+    const param = {
+      _type: "PropParam",
+      uuid: "p1",
+      variable: { name: "title" },
+      type: { name: "text" },
+    };
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [param];
+
+    // Another component has a TplComponent instance referencing comp
+    const instanceNode = {
+      _type: "TplComponent",
+      uuid: "inst-1",
+      component: comp,
+      vsettings: [
+        {
+          args: [
+            { param, expr: { _type: "CustomCode", code: '"Hello"' } },
+          ],
+        },
+      ],
+      children: [],
+    };
+    const otherRoot = mkTag({ uuid: "other-root", children: [instanceNode] });
+    const otherComp = mkComponent({ uuid: "other-comp", tplTree: otherRoot });
+
+    const site = { components: [comp, otherComp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await removeProp(api, "comp-1", "title");
+
+    expect(result.cleanedArgCount).toBe(1);
+    expect(instanceNode.vsettings[0].args).toHaveLength(0);
+  });
+
+  it("throws for non-existent prop", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(removeProp(api, "comp-1", "nonExistent")).rejects.toThrow(
+      /not found/
+    );
+  });
+
+  it("rejects removal of state params", async () => {
+    const param = {
+      _type: "StateParam",
+      uuid: "st1",
+      variable: { name: "count" },
+      type: { name: "num" },
+    };
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [param];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(removeProp(api, "comp-1", "count")).rejects.toThrow(
+      /state param/i
+    );
+  });
+});
+
+describe("updateProp", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    clearNodeCache();
+    api = mockApiClient();
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+    mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
+  });
+
+  afterEach(() => {
+    disposeChangeTracker();
+    clearSession();
+    vi.restoreAllMocks();
+  });
+
+  it("renames a prop via TplMgr.renameParam", async () => {
+    const param = {
+      _type: "PropParam",
+      uuid: "p1",
+      variable: { name: "title" },
+      type: { name: "text" },
+    };
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [param];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateProp(api, "comp-1", "title", "heading");
+
+    expect(mockRenameParam).toHaveBeenCalledWith(comp, param, "heading");
+    expect(result.previousName).toBe("title");
+    expect(result.updatedFields).toContain("name");
+  });
+
+  it("updates default value", async () => {
+    const param = {
+      _type: "PropParam",
+      uuid: "p1",
+      variable: { name: "title" },
+      type: { name: "text" },
+      defaultExpr: null,
+    };
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [param];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateProp(api, "comp-1", "title", undefined, "New Default");
+
+    expect(result.updatedFields).toContain("defaultValue");
+    expect(param.defaultExpr._type).toBe("CustomCode");
+    expect(param.defaultExpr.code).toBe('"New Default"');
+  });
+
+  it("updates description", async () => {
+    const param = {
+      _type: "PropParam",
+      uuid: "p1",
+      variable: { name: "title" },
+      type: { name: "text" },
+      description: null,
+    };
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [param];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateProp(
+      api, "comp-1", "title", undefined, undefined, "Page heading"
+    );
+
+    expect(result.updatedFields).toContain("description");
+    expect(param.description).toBe("Page heading");
+  });
+
+  it("clears description with empty string", async () => {
+    const param = {
+      _type: "PropParam",
+      uuid: "p1",
+      variable: { name: "title" },
+      type: { name: "text" },
+      description: "Old desc",
+    };
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [param];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await updateProp(api, "comp-1", "title", undefined, undefined, "");
+
+    expect(param.description).toBeNull();
+  });
+
+  it("throws for non-existent prop", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      updateProp(api, "comp-1", "nonExistent", "newName")
+    ).rejects.toThrow(/not found/);
+  });
+
+  it("rejects reserved name for rename", async () => {
+    const param = {
+      _type: "PropParam",
+      uuid: "p1",
+      variable: { name: "title" },
+      type: { name: "text" },
+    };
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [param];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      updateProp(api, "comp-1", "title", "children")
+    ).rejects.toThrow(/reserved/);
   });
 });
