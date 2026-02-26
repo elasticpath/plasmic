@@ -55,7 +55,7 @@ You are editing an existing page or component in a Plasmic project.
 - `node({ action: "remove-animation", componentUuid, nodeRef, seqRef?, animationIndex? })` — Detach animation.
 
 ### Variants
-- `variant({ action: "create-style", componentUuid, selector, nodeRef? })` — Create :hover, :focus, etc.
+- `variant({ action: "create-style", componentUuid, selector, nodeRef? })` — Create :hover, :focus, etc. Also accepts code component selectors like `[data-selected]` when the component root is a registered code component with variants.
 - `variant({ action: "create-group", componentUuid, name, type?, initialVariants? })` — Named group.
 - `variant({ action: "rename", variantRef, newName, componentUuid? })` — Rename a component-level variant.
 - `variant({ action: "remove", variantRef, componentUuid? })` — Remove a component-level variant.
@@ -262,8 +262,10 @@ Valid types: `img`, `text`, `box`, `vbox`, `hbox`, `page-section`, `button`, `in
 ## Variant Editing Workflow
 1. Call `variant({ action: "list", componentUuid })` to see available variants.
 2. Identify variant by name (e.g., "Mobile"), UUID, or selector (e.g., ":hover").
+   - **Code component variants** (e.g., "Selected", "Pressed") appear in the `codeComponentVariants` array. Target them by key (e.g., `"selected"`), display name (e.g., `"Selected"`), or UUID.
 3. **If it doesn't exist**, create it:
    - Interactive states: `variant({ action: "create-style", componentUuid: uuid, selector: ":hover" })`
+   - Code component states: `variant({ action: "create-style", componentUuid: uuid, selector: "[data-selected]" })` — only works when the component root is a registered code component with that selector
    - Custom groups: `variant({ action: "create-group", componentUuid: uuid, name: "Size", type: "single", initialVariants: ["Small", "Medium", "Large"] })`
 4. Pass `variant` to any edit tool: `node({ action: "update-styles", componentUuid: uuid, nodeRef: "Title", styles: { "fontSize": "24px" }, variant: "Mobile" })`
 5. Omit `variant` to edit the base (default).
