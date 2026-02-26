@@ -111,6 +111,7 @@ export const mockRenameVariant = vi.fn((variant: any, name: string) => {
 export const mockRenameVariantGroup = vi.fn((group: any, name: string) => {
   if (group.param?.variable) group.param.variable.name = name;
 });
+export const mockRemoveSplit = vi.fn();
 export const mockGetUniqueParamName = vi.fn(
   (_component: any, name?: string) => name ?? "Unnamed Prop"
 );
@@ -239,6 +240,10 @@ export class TplMgr {
 
   renameVariantGroup(group: any, name?: string): void {
     mockRenameVariantGroup(group, name);
+  }
+
+  removeSplit(split: any): void {
+    mockRemoveSplit(split);
   }
 
   addMixin(name?: string, mixin?: any): any {

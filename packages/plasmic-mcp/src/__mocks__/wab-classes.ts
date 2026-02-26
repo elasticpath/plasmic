@@ -745,6 +745,79 @@ export class GlobalVariantGroup {
   }
 }
 
+export const isKnownSplit = (obj: any): boolean =>
+  obj?._type === "Split";
+export const isKnownRandomSplitSlice = (obj: any): boolean =>
+  obj?._type === "RandomSplitSlice";
+export const isKnownSegmentSplitSlice = (obj: any): boolean =>
+  obj?._type === "SegmentSplitSlice";
+
+/** Mock constructor for RandomSplitSlice — probability-based A/B test bucket. */
+export class RandomSplitSlice {
+  _type = "RandomSplitSlice";
+  uuid: string;
+  name: string;
+  prob: number;
+  contents: any[];
+  externalId: any;
+  constructor(args: { uuid: string; name: string; prob: number; contents?: any[]; externalId?: any }) {
+    this.uuid = args.uuid;
+    this.name = args.name;
+    this.prob = args.prob;
+    this.contents = args.contents ?? [];
+    this.externalId = args.externalId ?? null;
+  }
+}
+
+/** Mock constructor for SegmentSplitSlice — condition-based segment bucket. */
+export class SegmentSplitSlice {
+  _type = "SegmentSplitSlice";
+  uuid: string;
+  name: string;
+  cond: string;
+  contents: any[];
+  externalId: any;
+  constructor(args: { uuid: string; name: string; cond?: string; contents?: any[]; externalId?: any }) {
+    this.uuid = args.uuid;
+    this.name = args.name;
+    this.cond = args.cond ?? "{}";
+    this.contents = args.contents ?? [];
+    this.externalId = args.externalId ?? null;
+  }
+}
+
+/** Mock constructor for Split — A/B test or segment definition. */
+export class Split {
+  _type = "Split";
+  uuid: string;
+  name: string;
+  splitType: string;
+  slices: any[];
+  status: string;
+  targetEvents: string[];
+  description: any;
+  externalId: any;
+  constructor(args: {
+    uuid: string;
+    name: string;
+    splitType?: string;
+    slices?: any[];
+    status?: string;
+    targetEvents?: string[];
+    description?: any;
+    externalId?: any;
+  }) {
+    this.uuid = args.uuid;
+    this.name = args.name;
+    this.splitType = args.splitType ?? "experiment";
+    this.slices = args.slices ?? [];
+    this.status = args.status ?? "new";
+    this.targetEvents = args.targetEvents ?? [];
+    this.description = args.description ?? null;
+    this.externalId = args.externalId ?? null;
+  }
+}
+
 export class Site {
   static isKnown(obj: any): boolean {
     return obj?._type === "Site";

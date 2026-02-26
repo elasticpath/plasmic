@@ -46,6 +46,8 @@ declare module "@/wab/shared/model/classes" {
     projectDependencies: any[];
     dataTokens: any[];
     activeScreenVariantGroup: any;
+    customFunctions: any[];
+    splits: any[];
   }
 
   export class ProjectDependency {
@@ -165,6 +167,9 @@ declare module "@/wab/shared/model/classes" {
   export function isKnownDataToken(x: any): boolean;
   export function isKnownPageMeta(x: any): boolean;
   export function isKnownGlobalVariantGroup(x: any): boolean;
+  export function isKnownSplit(x: any): boolean;
+  export function isKnownRandomSplitSlice(x: any): boolean;
+  export function isKnownSegmentSplitSlice(x: any): boolean;
 
   /** Model class for Mixin — reusable style bundle stored at site level. */
   export class Mixin {
@@ -402,6 +407,48 @@ declare module "@/wab/shared/model/classes" {
     canonical: any;
     roleId: any;
     openGraphImage: any;
+  }
+
+  /** Model class for RandomSplitSlice — probability-based A/B test bucket. */
+  export class RandomSplitSlice {
+    constructor(args: { uuid: string; name: string; prob: number; contents?: any[]; externalId?: any });
+    readonly uuid: string;
+    name: string;
+    prob: number;
+    contents: any[];
+    externalId: any;
+  }
+
+  /** Model class for SegmentSplitSlice — condition-based segment bucket. */
+  export class SegmentSplitSlice {
+    constructor(args: { uuid: string; name: string; cond?: string; contents?: any[]; externalId?: any });
+    readonly uuid: string;
+    name: string;
+    cond: string;
+    contents: any[];
+    externalId: any;
+  }
+
+  /** Model class for Split — A/B test or segment definition. */
+  export class Split {
+    constructor(args: {
+      uuid: string;
+      name: string;
+      splitType?: string;
+      slices?: any[];
+      status?: string;
+      targetEvents?: string[];
+      description?: any;
+      externalId?: any;
+    });
+    readonly uuid: string;
+    name: string;
+    splitType: string;
+    slices: any[];
+    status: string;
+    targetEvents: string[];
+    description: any;
+    externalId: any;
   }
 
   /** Model class for GlobalVariantGroup — site-level variant group (custom or screen). */
@@ -669,6 +716,8 @@ declare module "@/wab/shared/TplMgr" {
     renameVariant(variant: any, name?: string): void;
     /** Rename a variant group. */
     renameVariantGroup(group: any, name?: string): void;
+    /** Remove a split from the site. */
+    removeSplit(split: any): void;
   }
 }
 

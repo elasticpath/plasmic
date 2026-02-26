@@ -108,6 +108,12 @@ import {
   addGlobalVariant,
   removeGlobalVariantGroup,
   renameGlobalVariant,
+  getCodeComponentMeta,
+  listCustomFunctions,
+  listSplits,
+  createSplit,
+  updateSplit,
+  removeSplit,
 } from "./edit-tools.js";
 import { beginBatch, endBatch, isBatchActive, cancelBatch, cancelBatchWithRollback, getAccumulatedChanges } from "./batch-manager.js";
 import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
@@ -6057,6 +6063,197 @@ export function createServer(): McpServer {
         };
       } catch (err: any) {
         return handleMutationError("renaming global variant", err);
+      }
+    }
+  );
+
+  // ========================================================================
+  // get-code-component-meta
+  // ========================================================================
+
+  server.tool(
+    "get-code-component-meta",
+    "Get metadata for a code component (import path, display name, sub-components, etc.). Returns isCodeComponent: false for non-code components.",
+    {
+      componentUuid: z.string().describe("UUID of the component to inspect"),
+    },
+    async ({ componentUuid }) => {
+      try {
+        const result = getCodeComponentMeta(componentUuid);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("getting code component meta", err);
+      }
+    }
+  );
+
+  // ========================================================================
+  // list-custom-functions
+  // ========================================================================
+
+  server.tool(
+    "list-custom-functions",
+    "List all custom functions registered in the project. Shows name, import path, parameters, and whether it's a query function.",
+    {},
+    async () => {
+      try {
+        const result = listCustomFunctions();
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("listing custom functions", err);
+      }
+    }
+  );
+
+  // ========================================================================
+  // list-splits
+  // ========================================================================
+
+  server.tool(
+    "list-splits",
+    "List all A/B tests and segments in the project.",
+    {},
+    async () => {
+      try {
+        const result = listSplits();
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("listing splits", err);
+      }
+    }
+  );
+
+  // ========================================================================
+  // create-split
+  // ========================================================================
+
+  server.tool(
+    "create-split",
+    "Create a new A/B test (experiment) or segment with weighted slices.",
+    {
+      name: z.string().describe("Name for the split"),
+      splitType: z.enum(["experiment", "segment"]).describe("'experiment' for probability-based A/B tests, 'segment' for condition-based"),
+      slices: z.array(z.object({
+        name: z.string().describe("Slice name (e.g., 'Control', 'Variant A')"),
+        prob: z.number().optional().describe("Weight percentage for experiments (auto-calculated if omitted)"),
+        cond: z.string().optional().describe("Condition JSON string for segments"),
+      })).describe("Array of slice definitions"),
+    },
+    async ({ name, splitType, slices }) => {
+      try {
+        const result = await createSplit(apiClient, name, splitType, slices);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  split: result.split,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("creating split", err);
+      }
+    }
+  );
+
+  // ========================================================================
+  // update-split
+  // ========================================================================
+
+  server.tool(
+    "update-split",
+    "Update a split's name and/or status (new, running, stopped).",
+    {
+      splitRef: z.string().describe("Split reference (UUID or name)"),
+      name: z.string().optional().describe("New name"),
+      status: z.enum(["new", "running", "stopped"]).optional().describe("New status"),
+    },
+    async ({ splitRef, name, status }) => {
+      try {
+        const result = await updateSplit(apiClient, splitRef, name, status);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  split: result.split,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("updating split", err);
+      }
+    }
+  );
+
+  // ========================================================================
+  // remove-split
+  // ========================================================================
+
+  server.tool(
+    "remove-split",
+    "Remove an A/B test or segment.",
+    {
+      splitRef: z.string().describe("Split reference (UUID or name)"),
+    },
+    async ({ splitRef }) => {
+      try {
+        const result = await removeSplit(apiClient, splitRef);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  removedName: result.removedName,
+                  removedUuid: result.removedUuid,
+                  revision: result.save.revisionNum,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return handleMutationError("removing split", err);
       }
     }
   );

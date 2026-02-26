@@ -80,6 +80,9 @@ import {
   PageMeta,
   GlobalVariantGroup,
   isKnownGlobalVariantGroup,
+  Split,
+  RandomSplitSlice,
+  SegmentSplitSlice,
 } from "@/wab/shared/model/classes";
 import { RSH } from "@/wab/shared/RuleSetHelpers";
 import { TplMgr } from "@/wab/shared/TplMgr";
@@ -6822,4 +6825,319 @@ export async function renameGlobalVariant(
   );
 
   return { save, oldName, newName: variant.name };
+}
+
+// ==========================================================================
+// get-code-component-meta (read-only)
+// ==========================================================================
+
+export interface CodeComponentMetaInfo {
+  isCodeComponent: boolean;
+  importPath?: string;
+  importName?: string;
+  displayName?: string;
+  description?: string;
+  isHostLess?: boolean;
+  isContext?: boolean;
+  providesData?: boolean;
+  hasRef?: boolean;
+  isRepeatable?: boolean;
+  subComponents?: string[];
+}
+
+/**
+ * Get code component metadata for a component.
+ * Returns null-like info if the component is not a code component.
+ */
+export function getCodeComponentMeta(
+  componentUuid: string,
+): CodeComponentMetaInfo {
+  const component = findComponent(componentUuid);
+
+  if (!component.codeComponentMeta || component.type !== "code") {
+    return { isCodeComponent: false };
+  }
+
+  const meta = component.codeComponentMeta;
+  return {
+    isCodeComponent: true,
+    importPath: meta.importPath,
+    importName: meta.importName,
+    displayName: meta.displayName ?? undefined,
+    description: meta.description ?? undefined,
+    isHostLess: meta.isHostLess ?? false,
+    isContext: meta.isContext ?? false,
+    providesData: meta.providesData ?? false,
+    hasRef: meta.hasRef ?? false,
+    isRepeatable: meta.isRepeatable ?? false,
+    subComponents: (component.subComps ?? []).map((c: any) => c.name),
+  };
+}
+
+// ==========================================================================
+// list-custom-functions (read-only)
+// ==========================================================================
+
+export interface CustomFunctionInfo {
+  name: string;
+  importPath: string;
+  namespace?: string;
+  displayName?: string;
+  isDefaultExport: boolean;
+  isQuery: boolean;
+  params: Array<{ argName: string; displayName?: string; type?: string }>;
+}
+
+export interface ListCustomFunctionsResult {
+  functions: CustomFunctionInfo[];
+}
+
+/**
+ * List all custom functions registered in the project.
+ */
+export function listCustomFunctions(): ListCustomFunctionsResult {
+  const session = requireSession();
+  const fns: any[] = session.site.customFunctions ?? [];
+  return {
+    functions: fns.map((f: any) => ({
+      name: f.importName,
+      importPath: f.importPath,
+      namespace: f.namespace ?? undefined,
+      displayName: f.displayName ?? undefined,
+      isDefaultExport: f.defaultExport ?? false,
+      isQuery: f.isQuery ?? false,
+      params: (f.params ?? []).map((p: any) => ({
+        argName: p.argName,
+        displayName: p.displayName ?? undefined,
+        type: p.type?.name ?? p.type?._type ?? undefined,
+      })),
+    })),
+  };
+}
+
+// ==========================================================================
+// A/B Testing (Splits) CRUD
+// ==========================================================================
+
+function findSplit(site: any, splitRef: string): any {
+  const splits: any[] = site.splits ?? [];
+  const byUuid = splits.find((s: any) => s.uuid === splitRef);
+  if (byUuid) return byUuid;
+  const lower = splitRef.toLowerCase();
+  const byName = splits.find((s: any) => s.name.toLowerCase() === lower);
+  if (byName) return byName;
+  const names = splits.map((s: any) => s.name).join(", ");
+  throw new Error(
+    `Split "${splitRef}" not found. Available: [${names}]`
+  );
+}
+
+export interface SplitSliceInfo {
+  uuid: string;
+  name: string;
+  prob?: number;
+  cond?: string;
+}
+
+export interface SplitInfo {
+  uuid: string;
+  name: string;
+  splitType: string;
+  status: string;
+  slices: SplitSliceInfo[];
+  description?: string;
+}
+
+export interface ListSplitsResult {
+  splits: SplitInfo[];
+}
+
+/**
+ * List all A/B tests and segments.
+ */
+export function listSplits(): ListSplitsResult {
+  const session = requireSession();
+  const splits: any[] = session.site.splits ?? [];
+  return {
+    splits: splits.map((s: any) => ({
+      uuid: s.uuid,
+      name: s.name,
+      splitType: s.splitType,
+      status: s.status,
+      description: s.description ?? undefined,
+      slices: (s.slices ?? []).map((sl: any) => ({
+        uuid: sl.uuid,
+        name: sl.name,
+        ...(sl.prob !== undefined ? { prob: sl.prob } : {}),
+        ...(sl.cond !== undefined ? { cond: sl.cond } : {}),
+      })),
+    })),
+  };
+}
+
+export interface CreateSplitResult {
+  save: SaveResult;
+  split: SplitInfo;
+}
+
+/**
+ * Create a new A/B test or segment with weighted/conditioned slices.
+ */
+export async function createSplit(
+  apiClient: PlasmicApiClient,
+  name: string,
+  splitType: "experiment" | "segment",
+  slices: Array<{ name: string; prob?: number; cond?: string }>,
+): Promise<CreateSplitResult> {
+  if (slices.length === 0) {
+    throw new Error("At least one slice is required.");
+  }
+
+  const session = requireSession();
+  const tracker = getChangeTracker();
+
+  const splitSlices = slices.map((sl) => {
+    if (splitType === "experiment") {
+      return new RandomSplitSlice({
+        uuid: randomUUID(),
+        name: sl.name,
+        prob: sl.prob ?? Math.round(100 / slices.length),
+        externalId: undefined,
+        contents: [],
+      });
+    } else {
+      return new SegmentSplitSlice({
+        uuid: randomUUID(),
+        name: sl.name,
+        cond: sl.cond ?? "{}",
+        externalId: undefined,
+        contents: [],
+      });
+    }
+  });
+
+  const split = new Split({
+    uuid: randomUUID(),
+    name,
+    splitType,
+    slices: splitSlices,
+    status: "new",
+    targetEvents: [],
+    description: undefined,
+    externalId: undefined,
+  });
+
+  const changes = tracker.withRecording(() => {
+    if (!session.site.splits) session.site.splits = [];
+    session.site.splits.push(split);
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `create-split: ${name}`,
+    []
+  );
+
+  return {
+    save,
+    split: {
+      uuid: split.uuid,
+      name: split.name,
+      splitType: split.splitType,
+      status: split.status,
+      slices: splitSlices.map((sl: any) => ({
+        uuid: sl.uuid,
+        name: sl.name,
+        ...(sl.prob !== undefined ? { prob: sl.prob } : {}),
+        ...(sl.cond !== undefined ? { cond: sl.cond } : {}),
+      })),
+    },
+  };
+}
+
+export interface UpdateSplitResult {
+  save: SaveResult;
+  split: SplitInfo;
+}
+
+/**
+ * Update a split's name and/or status.
+ */
+export async function updateSplit(
+  apiClient: PlasmicApiClient,
+  splitRef: string,
+  newName?: string,
+  newStatus?: "new" | "running" | "stopped",
+): Promise<UpdateSplitResult> {
+  if (!newName && !newStatus) {
+    throw new Error("At least one of name or status must be provided.");
+  }
+
+  const session = requireSession();
+  const split = findSplit(session.site, splitRef);
+  const tracker = getChangeTracker();
+
+  const changes = tracker.withRecording(() => {
+    if (newName) split.name = newName;
+    if (newStatus) split.status = newStatus;
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `update-split: ${split.name}`,
+    []
+  );
+
+  return {
+    save,
+    split: {
+      uuid: split.uuid,
+      name: split.name,
+      splitType: split.splitType,
+      status: split.status,
+      slices: (split.slices ?? []).map((sl: any) => ({
+        uuid: sl.uuid,
+        name: sl.name,
+        ...(sl.prob !== undefined ? { prob: sl.prob } : {}),
+        ...(sl.cond !== undefined ? { cond: sl.cond } : {}),
+      })),
+    },
+  };
+}
+
+export interface RemoveSplitResult {
+  save: SaveResult;
+  removedName: string;
+  removedUuid: string;
+}
+
+/**
+ * Remove a split from the site.
+ */
+export async function removeSplit(
+  apiClient: PlasmicApiClient,
+  splitRef: string,
+): Promise<RemoveSplitResult> {
+  const session = requireSession();
+  const split = findSplit(session.site, splitRef);
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  const removedName = split.name;
+  const removedUuid = split.uuid;
+
+  const changes = tracker.withRecording(() => {
+    tplMgr.removeSplit(split);
+  });
+
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `remove-split: ${removedName}`,
+    []
+  );
+
+  return { save, removedName, removedUuid };
 }

@@ -4550,6 +4550,95 @@ describe("global variant groups", () => {
   });
 });
 
+// ==========================================================================
+// code component meta + custom functions (read-only)
+// ==========================================================================
+
+describe("read-only introspection", () => {
+  it("get-code-component-meta returns isCodeComponent: false for regular component", async () => {
+    const comp = discoveredComponents[0];
+    const result = parseResponse(
+      await client.callTool({
+        name: "get-code-component-meta",
+        arguments: { componentUuid: comp.uuid },
+      })
+    );
+    // Our fixture has regular components, not code components
+    expect(result.isCodeComponent).toBe(false);
+  });
+
+  it("list-custom-functions returns an array", async () => {
+    const result = parseResponse(
+      await client.callTool({
+        name: "list-custom-functions",
+        arguments: {},
+      })
+    );
+    expect(Array.isArray(result.functions)).toBe(true);
+  });
+});
+
+// ==========================================================================
+// splits
+// ==========================================================================
+
+describe("splits", () => {
+  it("create → list → update → remove round-trip", async () => {
+    // Create
+    const createRaw = await client.callTool({
+      name: "create-split",
+      arguments: {
+        name: "CTA Experiment",
+        splitType: "experiment",
+        slices: [
+          { name: "Control", prob: 50 },
+          { name: "Big Button", prob: 50 },
+        ],
+      },
+    });
+    const createResult = parseResponse(createRaw);
+    if (!createResult?.success) {
+      process.stderr.write(`create-split error: ${JSON.stringify(createResult)}\n`);
+      process.stderr.write(`createRaw: ${JSON.stringify(createRaw)}\n`);
+    }
+    expect(createResult.success).toBe(true);
+    expect(createResult.split.slices).toHaveLength(2);
+
+    // List
+    const listResult = parseResponse(
+      await client.callTool({
+        name: "list-splits",
+        arguments: {},
+      })
+    );
+    expect(listResult.splits.some((s: any) => s.name === "CTA Experiment")).toBe(true);
+
+    // Update
+    const updateResult = parseResponse(
+      await client.callTool({
+        name: "update-split",
+        arguments: { splitRef: "CTA Experiment", status: "running" },
+      })
+    );
+    expect(updateResult.success).toBe(true);
+    expect(updateResult.split.status).toBe("running");
+
+    // Remove
+    const removeResult = parseResponse(
+      await client.callTool({
+        name: "remove-split",
+        arguments: { splitRef: "CTA Experiment" },
+      })
+    );
+    expect(removeResult.success).toBe(true);
+
+    // Undo all
+    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "undo", arguments: {} });
+    await client.callTool({ name: "undo", arguments: {} });
+  });
+});
+
 /** Walk a tree recursively to find a node by UUID. */
 function findNodeByUuid(tree: any, uuid: string): any {
   if (tree.uuid === uuid) return tree;

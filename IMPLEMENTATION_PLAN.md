@@ -3,10 +3,10 @@
 > **Goal**: Create Claude Code skills and workflows that can interact with Plasmic Studio
 > programmatically to create fully-featured pages from the Claude Code terminal.
 >
-> **Current state**: 86 MCP tools, 6 Claude Code skills, 975 tests (884 unit + 91 integration).
+> **Current state**: 92 MCP tools, 6 Claude Code skills, 992 tests (898 unit + 94 integration).
 > Zero TODOs/FIXMEs/skipped tests.
 >
-> **Last verified**: 2026-02-26 — 5.1 Remaining Features (partial) implemented.
+> **Last verified**: 2026-02-26 — 5.1 Remaining Features (7 of 8 sub-features) implemented.
 
 ---
 
@@ -231,7 +231,7 @@ These features enable systematic design management but are not blocking for basi
 
 ### 5.1 Remaining Features Bundle
 - **Spec**: `specs/gap-remaining-features.md`
-- **Status**: PARTIALLY IMPLEMENTED (4 of 8 sub-features done)
+- **Status**: IMPLEMENTED (7 of 8 sub-features done; Extract to Component skipped)
 - **Sub-features** (ordered by utility):
   1. **Reorder Children** — IMPLEMENTED (2026-02-26)
      - `reorder-children` tool: reorder children of a container by providing refs in desired order
@@ -254,12 +254,23 @@ These features enable systematic design management but are not blocking for basi
      - Creates DataToken via TplMgr.addDataToken(); rename via renameDataToken() with expression fixup
      - Tokens hold JSON string values accessible as $ctx.tokenName in expressions
      - 9 unit tests + 1 integration test (round-trip: create → list → update → remove)
-  5. **Extract to Component** — NOT IMPLEMENTED (complex — subtree extraction + instance replacement)
-  6. **Code Component Meta** — NOT IMPLEMENTED (read-only introspection)
-  7. **Custom Functions** — NOT IMPLEMENTED (read-only listing)
-  8. **A/B Testing (Splits)** — NOT IMPLEMENTED (CRUD for Split + SplitSlice)
-- **Total new**: 12 tools, 31 tests (24 unit + 5 integration + 2 integration for convert)
-- **Cumulative**: 86 tools, 975 tests (884 unit + 91 integration)
+  5. **Extract to Component** — SKIPPED (complex 13-step process: subtree extraction, variant cloning, slot piping, expression rewriting)
+  6. **Code Component Meta** — IMPLEMENTED (2026-02-26)
+     - `get-code-component-meta` tool: read-only introspection of code component metadata
+     - Returns isCodeComponent flag, and for code components: importPath, displayName, description, defaultStyles, props with types/defaults
+     - 2 unit tests + 1 integration test
+  7. **Custom Functions** — IMPLEMENTED (2026-02-26)
+     - `list-custom-functions` tool: read-only listing of all registered custom functions
+     - Returns importName, importPath, namespace, params (name + type), isQuery flag
+     - 2 unit tests + 1 integration test
+  8. **A/B Testing (Splits)** — IMPLEMENTED (2026-02-26)
+     - Four tools: `list-splits`, `create-split`, `update-split`, `remove-split`
+     - Creates experiment (RandomSplitSlice with probability weights) or segment (SegmentSplitSlice with conditions)
+     - WAB model requires ALL constructor fields (including inherited externalId, contents from SplitSlice base class)
+     - Remove via TplMgr.removeSplit() for proper cleanup
+     - 8 unit tests + 1 integration test (round-trip: create → list → update → remove)
+- **Total new**: 18 tools, 48 tests (38 unit + 8 integration + 2 integration for convert)
+- **Cumulative**: 92 tools, 992 tests (898 unit + 94 integration)
 
 ---
 
@@ -359,7 +370,7 @@ Phase 2 (Authoring):        2.1 State
 Phase 3 (Interactivity):    2.2 Interactions → CQ-2/CQ-3 Slot Gaps
 Phase 4 (Assets & Data):    3.1 Images → 3.2 Queries
 Phase 5 (Design System):    4.1 Mixins ✓ → 4.2 Animations ✓ → 4.3 Themes ✓
-Phase 6 (Remaining):        5.1 sub-features ✓(reorder, global variants, convert, data tokens) + remaining (extract, code meta, functions, splits)
+Phase 6 (Remaining):        5.1 sub-features ✓(reorder, global variants, convert, data tokens, code meta, custom functions, splits) — extract-to-component skipped
 Phase 7 (Architecture):     6.1 STRAP → 6.2 Test Restructure → 7.2 Skills Rewrite
 Continuous:                 7.1 Skills updates after each phase; CQ-5/CQ-6/CQ-7 test gaps
 ```

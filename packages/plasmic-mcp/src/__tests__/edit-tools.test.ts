@@ -88,6 +88,12 @@ import {
   addGlobalVariant,
   removeGlobalVariantGroup,
   renameGlobalVariant,
+  getCodeComponentMeta,
+  listCustomFunctions,
+  listSplits,
+  createSplit,
+  updateSplit,
+  removeSplit,
 } from "../edit-tools";
 import { setSession, clearSession } from "../session";
 import { initChangeTracker, disposeChangeTracker } from "../change-tracker";
@@ -128,6 +134,7 @@ import {
   mockCreateGlobalVariant,
   mockRemoveGlobalVariantGroup,
   mockRenameVariant,
+  mockRemoveSplit,
 } from "../__mocks__/wab-tpl-mgr";
 import { mockMkTplTagX, mockMkTplInlinedText, mockMkTplComponentX } from "../__mocks__/wab-tpls";
 import { mockEnsureVariantSetting } from "../__mocks__/wab-variants";
@@ -10495,5 +10502,250 @@ describe("renameGlobalVariant", () => {
     initChangeTracker(session.site);
 
     await expect(renameGlobalVariant(api, "Nonexistent", "New")).rejects.toThrow(/not found/);
+  });
+});
+
+// ==========================================================================
+// getCodeComponentMeta
+// ==========================================================================
+
+describe("getCodeComponentMeta", () => {
+  afterEach(() => { clearSession(); disposeChangeTracker(); clearNodeCache(); });
+
+  it("returns metadata for a code component", () => {
+    const root = mkTag({ uuid: "r1", name: "Root" });
+    const comp = mkComponent({ uuid: "comp1", name: "CodeButton", tplTree: root });
+    comp.type = "code";
+    comp.codeComponentMeta = {
+      importPath: "@my-lib/button",
+      importName: "Button",
+      displayName: "My Button",
+      description: "A custom button",
+      isHostLess: true,
+      isContext: false,
+      providesData: false,
+      hasRef: true,
+      isRepeatable: true,
+    };
+    comp.subComps = [{ name: "ButtonIcon" }, { name: "ButtonLabel" }];
+    const site = { components: [comp] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+
+    const result = getCodeComponentMeta("comp1");
+    expect(result.isCodeComponent).toBe(true);
+    expect(result.importPath).toBe("@my-lib/button");
+    expect(result.importName).toBe("Button");
+    expect(result.subComponents).toEqual(["ButtonIcon", "ButtonLabel"]);
+  });
+
+  it("returns isCodeComponent: false for regular component", () => {
+    const root = mkTag({ uuid: "r1", name: "Root" });
+    const comp = mkComponent({ uuid: "comp1", name: "MyComp", tplTree: root });
+    const site = { components: [comp] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+
+    const result = getCodeComponentMeta("comp1");
+    expect(result.isCodeComponent).toBe(false);
+    expect(result.importPath).toBeUndefined();
+  });
+});
+
+// ==========================================================================
+// listCustomFunctions
+// ==========================================================================
+
+describe("listCustomFunctions", () => {
+  afterEach(() => { clearSession(); disposeChangeTracker(); clearNodeCache(); });
+
+  it("returns all custom functions", () => {
+    const site = {
+      components: [],
+      customFunctions: [
+        {
+          importName: "fetchProducts",
+          importPath: "@mylib/api",
+          namespace: "api",
+          displayName: "Fetch Products",
+          defaultExport: false,
+          isQuery: true,
+          params: [
+            { argName: "limit", displayName: "Limit", type: { _type: "Num", name: "num" } },
+          ],
+        },
+      ],
+    };
+    const session = makeSession({ site } as any);
+    setSession(session);
+
+    const result = listCustomFunctions();
+    expect(result.functions).toHaveLength(1);
+    expect(result.functions[0].name).toBe("fetchProducts");
+    expect(result.functions[0].namespace).toBe("api");
+    expect(result.functions[0].isQuery).toBe(true);
+    expect(result.functions[0].params[0].argName).toBe("limit");
+  });
+
+  it("returns empty array when no functions", () => {
+    const site = { components: [], customFunctions: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+
+    const result = listCustomFunctions();
+    expect(result.functions).toHaveLength(0);
+  });
+});
+
+// ==========================================================================
+// Splits CRUD
+// ==========================================================================
+
+describe("listSplits", () => {
+  afterEach(() => { clearSession(); disposeChangeTracker(); clearNodeCache(); });
+
+  it("returns all splits", () => {
+    const site = {
+      components: [],
+      splits: [
+        {
+          uuid: "s1", name: "Homepage Test", splitType: "experiment", status: "running",
+          slices: [
+            { uuid: "sl1", name: "Control", prob: 50 },
+            { uuid: "sl2", name: "Variant A", prob: 50 },
+          ],
+        },
+      ],
+    };
+    const session = makeSession({ site } as any);
+    setSession(session);
+
+    const result = listSplits();
+    expect(result.splits).toHaveLength(1);
+    expect(result.splits[0].name).toBe("Homepage Test");
+    expect(result.splits[0].slices).toHaveLength(2);
+    expect(result.splits[0].slices[0].prob).toBe(50);
+  });
+
+  it("returns empty array when no splits", () => {
+    const site = { components: [], splits: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+
+    const result = listSplits();
+    expect(result.splits).toHaveLength(0);
+  });
+});
+
+describe("createSplit", () => {
+  let api: ReturnType<typeof mockApiClient>;
+  beforeEach(() => { api = mockApiClient(); });
+  afterEach(() => { clearSession(); disposeChangeTracker(); clearNodeCache(); });
+
+  it("creates an experiment split with weighted slices", async () => {
+    const site = { components: [], splits: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await createSplit(api, "CTA Test", "experiment", [
+      { name: "Control", prob: 50 },
+      { name: "Big Button", prob: 50 },
+    ]);
+    expect(result.split.name).toBe("CTA Test");
+    expect(result.split.splitType).toBe("experiment");
+    expect(result.split.slices).toHaveLength(2);
+    expect(result.split.slices[0].prob).toBe(50);
+  });
+
+  it("creates a segment split", async () => {
+    const site = { components: [], splits: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await createSplit(api, "Region", "segment", [
+      { name: "US", cond: '{"country":"US"}' },
+      { name: "EU", cond: '{"country":"EU"}' },
+    ]);
+    expect(result.split.splitType).toBe("segment");
+    expect(result.split.slices[0].cond).toBe('{"country":"US"}');
+  });
+
+  it("throws when no slices provided", async () => {
+    const site = { components: [], splits: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(createSplit(api, "Empty", "experiment", [])).rejects.toThrow(/At least one/);
+  });
+
+  it("auto-calculates equal probabilities when prob not provided", async () => {
+    const site = { components: [], splits: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await createSplit(api, "Even Split", "experiment", [
+      { name: "A" },
+      { name: "B" },
+      { name: "C" },
+    ]);
+    expect(result.split.slices[0].prob).toBe(33);
+  });
+});
+
+describe("updateSplit", () => {
+  let api: ReturnType<typeof mockApiClient>;
+  beforeEach(() => { api = mockApiClient(); });
+  afterEach(() => { clearSession(); disposeChangeTracker(); clearNodeCache(); });
+
+  it("updates name and status", async () => {
+    const split = { uuid: "s1", name: "Old Name", splitType: "experiment", status: "new", slices: [] };
+    const site = { components: [], splits: [split] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateSplit(api, "Old Name", "New Name", "running");
+    expect(result.split.name).toBe("New Name");
+    expect(result.split.status).toBe("running");
+  });
+
+  it("throws when neither name nor status provided", async () => {
+    const site = { components: [], splits: [{ uuid: "s1", name: "Test", splitType: "experiment", status: "new", slices: [] }] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(updateSplit(api, "Test")).rejects.toThrow(/at least one/i);
+  });
+});
+
+describe("removeSplit", () => {
+  let api: ReturnType<typeof mockApiClient>;
+  beforeEach(() => { api = mockApiClient(); });
+  afterEach(() => { clearSession(); disposeChangeTracker(); clearNodeCache(); });
+
+  it("removes a split", async () => {
+    const split = { uuid: "s1", name: "Old Test", splitType: "experiment", status: "new", slices: [] };
+    const site = { components: [], splits: [split] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await removeSplit(api, "Old Test");
+    expect(result.removedName).toBe("Old Test");
+    expect(mockRemoveSplit).toHaveBeenCalled();
+  });
+
+  it("throws when split not found", async () => {
+    const site = { components: [], splits: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(removeSplit(api, "Nonexistent")).rejects.toThrow(/not found/);
   });
 });
