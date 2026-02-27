@@ -3356,16 +3356,17 @@ export function createServer(): McpServer {
 
           case "list-tokens": {
             const session = requireSession();
-            const result: Record<string, unknown> = readTokens(session.site.styleTokens, params.tokenType);
+            const tokensResult = readTokens(session.site.styleTokens, params.tokenType);
 
             // Enrich with dev host registered tokens when available
             const regTokens = session.registryData?.tokens;
+            let devHostTokens: Array<Record<string, unknown>> | undefined;
             if (Array.isArray(regTokens) && regTokens.length > 0) {
               const filtered = params.tokenType
                 ? regTokens.filter((t: any) => t.type === params.tokenType)
                 : regTokens;
               if (filtered.length > 0) {
-                result.devHostTokens = filtered.map((t: any) => ({
+                devHostTokens = filtered.map((t: any) => ({
                   name: t.name,
                   value: t.value,
                   type: t.type,
@@ -3374,6 +3375,10 @@ export function createServer(): McpServer {
                 }));
               }
             }
+
+            const result = devHostTokens
+              ? { ...tokensResult, devHostTokens }
+              : tokensResult;
 
             return {
               content: [
@@ -4827,24 +4832,28 @@ export function createServer(): McpServer {
 
           case "list-functions": {
             const session = requireSession();
-            const result: Record<string, unknown> = listCustomFunctions();
+            const functionsResult = listCustomFunctions();
 
             // Enrich with dev host registered functions when available
             const regFunctions = session.registryData?.functions;
-            if (Array.isArray(regFunctions) && regFunctions.length > 0) {
-              result.devHostFunctions = regFunctions.map((f: any) => ({
-                name: f.name,
-                ...(f.namespace && { namespace: f.namespace }),
-                ...(f.displayName && { displayName: f.displayName }),
-                ...(f.description && { description: f.description }),
-                ...(f.importPath && { importPath: f.importPath }),
-                ...(f.isDefaultExport !== undefined && { isDefaultExport: f.isDefaultExport }),
-                ...(f.isQuery !== undefined && { isQuery: f.isQuery }),
-                ...(f.typescriptDeclaration && { typescriptDeclaration: f.typescriptDeclaration }),
-                ...(Array.isArray(f.params) && f.params.length > 0 && { params: f.params }),
-                ...(f.returnValue && { returnValue: f.returnValue }),
-              }));
-            }
+            const devHostFunctions = Array.isArray(regFunctions) && regFunctions.length > 0
+              ? regFunctions.map((f: any) => ({
+                  name: f.name,
+                  ...(f.namespace && { namespace: f.namespace }),
+                  ...(f.displayName && { displayName: f.displayName }),
+                  ...(f.description && { description: f.description }),
+                  ...(f.importPath && { importPath: f.importPath }),
+                  ...(f.isDefaultExport !== undefined && { isDefaultExport: f.isDefaultExport }),
+                  ...(f.isQuery !== undefined && { isQuery: f.isQuery }),
+                  ...(f.typescriptDeclaration && { typescriptDeclaration: f.typescriptDeclaration }),
+                  ...(Array.isArray(f.params) && f.params.length > 0 && { params: f.params }),
+                  ...(f.returnValue && { returnValue: f.returnValue }),
+                }))
+              : undefined;
+
+            const result = devHostFunctions
+              ? { ...functionsResult, devHostFunctions }
+              : functionsResult;
 
             return {
               content: [
