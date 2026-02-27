@@ -119,3 +119,414 @@ scenarios:
         params: {}
     visual:
       rubric: "Select the text element in ActionCard — the interactions panel should show an onClick handler configured to navigate to '/details'."
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # P11.3 — Missing data action coverage scenarios
+  # Each scenario tests a single data action that previously had zero
+  # eval coverage. Covers query lifecycle, data tokens, splits, and
+  # code introspection.
+  # ═══════════════════════════════════════════════════════════════════════
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: data.update-query — modify an existing query's configuration
+  # Why: Query updates are how users iterate on data fetching logic.
+  # Without coverage, query modification bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: data-update-query
+    description: "Create a reusable component called 'QueryUpdateTest'. Add a data query called 'fetchData' to it. Then update that query using data.update-query to rename it to 'fetchUpdatedData'."
+    domains:
+      - data
+      - component
+    tier: medium
+    timeout: 120
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - data
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: QueryUpdateTest
+      - type: tool-params
+        params:
+          tool: data
+          action: add-query
+          expected:
+            name: fetchData
+      - type: tool-params
+        params:
+          tool: data
+          action: update-query
+          expected: {}
+      - type: count
+        params:
+          min: 3
+          max: 12
+      - type: no-errors
+        params: {}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: data.remove-query — delete a query from a component
+  # Why: Query cleanup prevents unused queries from accumulating.
+  # Without coverage, removal failures or stale bindings go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: data-remove-query
+    description: "Create a reusable component called 'QueryRemoveTest'. Add a data query called 'tempQuery' to it. Then delete it using data.remove-query. List queries to verify it was removed."
+    domains:
+      - data
+      - component
+    tier: medium
+    timeout: 120
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - data
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: QueryRemoveTest
+      - type: tool-params
+        params:
+          tool: data
+          action: add-query
+          expected:
+            name: tempQuery
+      - type: tool-params
+        params:
+          tool: data
+          action: remove-query
+          expected: {}
+      - type: count
+        params:
+          min: 4
+          max: 12
+      - type: no-errors
+        params: {}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: data.list-data-tokens — list site-level data tokens
+  # Why: Data token discovery is the first step in token workflows.
+  # Without coverage, listing bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: data-list-data-tokens
+    description: "List all site-level data tokens defined in the project."
+    domains:
+      - data
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - data
+      - type: tool-params
+        params:
+          tool: data
+          action: list-data-tokens
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 1
+          max: 5
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: data.create-data-token — create a site-level JSON token
+  # Why: Data tokens provide site-wide configuration values accessible
+  # via $ctx. Without coverage, creation bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: data-create-data-token
+    description: "Create a site-level data token called 'siteConfig' with a JSON value of '{\"siteName\": \"My App\"}' using data.create-data-token."
+    domains:
+      - data
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - data
+      - type: tool-params
+        params:
+          tool: data
+          action: create-data-token
+          expected:
+            name: siteConfig
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 1
+          max: 5
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: data.update-data-token — update a data token's value
+  # Why: Token value updates are how site config evolves. Without
+  # coverage, update failures go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: data-update-data-token
+    description: "Create a data token called 'apiUrl' with value '\"https://api.example.com/v1\"'. Then update its value to '\"https://api.example.com/v2\"' using data.update-data-token."
+    domains:
+      - data
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - data
+      - type: tool-params
+        params:
+          tool: data
+          action: create-data-token
+          expected:
+            name: apiUrl
+      - type: tool-params
+        params:
+          tool: data
+          action: update-data-token
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 2
+          max: 8
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: data.remove-data-token — delete a data token
+  # Why: Token cleanup prevents unused config from accumulating.
+  # Without coverage, removal failures go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: data-remove-data-token
+    description: "Create a data token called 'tempToken' with value '\"temporary\"'. Then delete it using data.remove-data-token. List data tokens to verify it was removed."
+    domains:
+      - data
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - data
+      - type: tool-params
+        params:
+          tool: data
+          action: create-data-token
+          expected:
+            name: tempToken
+      - type: tool-params
+        params:
+          tool: data
+          action: remove-data-token
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 3
+          max: 8
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: data.list-splits — list A/B test experiments
+  # Why: Split discovery is needed before managing experiments.
+  # Without coverage, listing bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: data-list-splits
+    description: "List all A/B test splits defined in the project."
+    domains:
+      - data
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - data
+      - type: tool-params
+        params:
+          tool: data
+          action: list-splits
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 1
+          max: 5
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: data.create-split — create an A/B test experiment
+  # Why: A/B testing is a core experimentation feature. Without
+  # coverage, split creation bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: data-create-split
+    description: "Create an A/B test experiment called 'ButtonColorTest' with two slices: 'Control' (50% probability) and 'Variant' (50% probability), using data.create-split with splitType 'experiment'."
+    domains:
+      - data
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - data
+      - type: tool-params
+        params:
+          tool: data
+          action: create-split
+          expected:
+            name: ButtonColorTest
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 1
+          max: 5
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: data.update-split — update split slice probabilities
+  # Why: Slice probability adjustments are how users tune experiments.
+  # Without coverage, update failures go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: data-update-split
+    description: "Create an A/B test split called 'UpdateTest' with two slices: 'A' (50%) and 'B' (50%). Then update it using data.update-split to change probabilities to 'A' (70%) and 'B' (30%)."
+    domains:
+      - data
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - data
+      - type: tool-params
+        params:
+          tool: data
+          action: create-split
+          expected:
+            name: UpdateTest
+      - type: tool-params
+        params:
+          tool: data
+          action: update-split
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 2
+          max: 8
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: data.remove-split — delete an A/B test split
+  # Why: Split cleanup is needed when experiments conclude. Without
+  # coverage, removal failures go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: data-remove-split
+    description: "Create an A/B test split called 'TempSplit' with two slices: 'X' and 'Y'. Then delete it using data.remove-split. List splits to confirm it was removed."
+    domains:
+      - data
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - data
+      - type: tool-params
+        params:
+          tool: data
+          action: create-split
+          expected:
+            name: TempSplit
+      - type: tool-params
+        params:
+          tool: data
+          action: remove-split
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 3
+          max: 8
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: data.get-code-meta — inspect code component metadata
+  # Why: Code component introspection is needed for integration
+  # workflows. Without coverage, metadata bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: data-get-code-meta
+    description: "Find a component in the project and use data.get-code-meta to inspect its code component metadata."
+    domains:
+      - data
+      - component
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - data
+      - type: tool-params
+        params:
+          tool: data
+          action: get-code-meta
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 2
+          max: 8
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: data.list-functions — list available custom functions
+  # Why: Function discovery is needed for interaction wiring. Without
+  # coverage, function listing bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: data-list-functions
+    description: "List all available custom functions defined in the project using data.list-functions."
+    domains:
+      - data
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - data
+      - type: tool-params
+        params:
+          tool: data
+          action: list-functions
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 1
+          max: 5

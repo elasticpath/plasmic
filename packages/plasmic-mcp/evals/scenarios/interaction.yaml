@@ -169,3 +169,109 @@ scenarios:
         params: {}
     visual:
       rubric: "Select the input element in SearchInput — the interactions panel should show an onChange handler calling 'handleSearch'."
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # P11.7 — Missing interaction action coverage scenarios
+  # ═══════════════════════════════════════════════════════════════════════
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: interaction.update — modify an existing handler
+  # Why: Handler updates are how users iterate on behavior. Without
+  # coverage, update failures (wrong index, lost args) go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: interaction-update-handler
+    description: "Create a new reusable component called 'UpdateHandler'. Add a button element with text 'Go'. Add an onClick handler that navigates to '/old-target'. Then update that handler using interaction.update to change the navigation target to '/new-target'."
+    domains:
+      - interaction
+      - component
+      - node
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+            - interaction
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: UpdateHandler
+      - type: existence
+        params:
+          entityType: component
+          name: UpdateHandler
+      - type: tool-params
+        params:
+          tool: interaction
+          action: add
+          expected:
+            event: onClick
+      - type: tool-params
+        params:
+          tool: interaction
+          action: update
+          expected: {}
+      - type: count
+        params:
+          min: 5
+          max: 18
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "Select the button in UpdateHandler — the interactions panel should show an onClick handler navigating to '/new-target' (not '/old-target')."
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: interaction.remove — remove an event handler
+  # Why: Handler removal must cleanly unbind events. Without coverage,
+  # orphaned handlers or index bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: interaction-remove-handler
+    description: "Create a new reusable component called 'RemoveHandler'. Add a button element with text 'Delete Me'. Add an onClick handler that navigates to '/somewhere'. Then remove that handler using interaction.remove. List interactions to verify it was removed."
+    domains:
+      - interaction
+      - component
+      - node
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+            - interaction
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: RemoveHandler
+      - type: existence
+        params:
+          entityType: component
+          name: RemoveHandler
+      - type: tool-params
+        params:
+          tool: interaction
+          action: add
+          expected:
+            event: onClick
+      - type: tool-params
+        params:
+          tool: interaction
+          action: remove
+          expected: {}
+      - type: count
+        params:
+          min: 5
+          max: 18
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "Select the button in RemoveHandler — the interactions panel should show no onClick handlers (the previously added handler should have been removed)."

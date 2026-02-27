@@ -5,12 +5,12 @@
 **Comprehensive audit date: 2026-02-27**
 
 - MCP server: 8 STRAP tools, 103 actions -- ALL fully implemented, zero TODOs/FIXMEs
-- Eval system: harness, graders, visual capture, dashboard, CI, ~70 scenarios across 12 YAML files
+- Eval system: harness, graders, visual capture, dashboard, CI, ~135 scenarios across 20 YAML files
 - Total tests: ~1,470 (1,312 unit across 27 suites + 137 integration in 1 suite + 21 plasmic-registry tests)
 - Eval tests: 182 across 9 files (no tests exist that catch any P12 or P13 bug)
-- **Action coverage: 38/103 (36.9%)** -- 65 actions have zero eval scenarios
-- **Unfixed items: P11 (65 scenarios) + P12 (8 runner bugs) + P13 (9 grader bugs) + P14 (7 infra improvements)**
-- **Priority order: P11 > P12 > P13 > P14**
+- **Action coverage: ~98% (103/103 actions have eval scenarios)**
+- **Unfixed items: P12 (8 runner bugs) + P13 (9 grader bugs) + P14 (7 infra improvements)**
+- **Priority order: P12 > P13 > P14**
 
 ## Completed Priorities
 
@@ -25,109 +25,11 @@
 | P8 | Eval Resume/Skip | Git SHA tracking, scenario skip for passed results, `--force` override |
 | P9 | Contract & Doc Fixes | dryRun support for 5 component actions, explicit dryRun rejection for 3 API-based actions, `update-split` slices support, eval scenario childTags fix, skill doc accuracy, INDEX.md regeneration (55->70 scenarios), dashboard regression alerts with full grader results. 20 new tests. |
 | P10 | Dev Host Variant Sync | Dev host variant sync -- `@elasticpath/plasmic-registry` package, dev host API route, `devhost-sync.ts` MCP module, session state extension, 22 MCP unit tests + 21 registry tests, README docs |
+| P11 | Scenario Coverage Expansion | 65 missing scenarios added across 8 domain YAML files (11 node + 16 design + 12 data + 10 component + 8 variant + 5 inspect + 2 interaction + 1 project). INDEX.md regenerated (70 -> 135 scenarios: 66 simple + 50 medium + 19 complex). Action coverage ~98% (103/103). All 1312 unit tests pass including scenario loader validation. |
 
 ---
 
 ## Outstanding Work
-
-### P11 -- CRITICAL: Scenario Coverage Expansion
-
-Target: 38/103 -> 95+/103 (90%+ action coverage). This is the primary goal of the eval system -- we cannot measure task success rate for actions we do not test.
-
-#### P11.1 -- Node domain (11 missing actions)
-
-- [ ] `node.remove` -- "Remove a paragraph element from a section"
-- [ ] `node.move` -- "Move an element from one section to another"
-- [ ] `node.clone` -- "Clone a button element within its parent"
-- [ ] `node.reorder` -- "Reorder children within a container"
-- [ ] `node.update-rich-text` -- "Add bold and italic formatting to a paragraph"
-- [ ] `node.update-attrs` -- "Set data attributes and ARIA labels on a button"
-- [ ] `node.set-visibility` -- "Hide an element on the base variant"
-- [ ] `node.set-image` -- "Set an image source URL on an img element"
-- [ ] `node.detach-mixin` -- "Remove a previously applied mixin from an element"
-- [ ] `node.add-animation` -- "Attach a fade-in animation to a heading"
-- [ ] `node.remove-animation` -- "Remove an animation from an element"
-
-#### P11.2 -- Design domain (16 missing actions)
-
-- [ ] `design.remove-token` -- "Delete an unused color token"
-- [ ] `design.duplicate-token` -- "Duplicate an existing spacing token"
-- [ ] `design.list-mixins` -- "List all available style mixins"
-- [ ] `design.update-mixin` -- "Update styles on an existing mixin"
-- [ ] `design.remove-mixin` -- "Delete a mixin that is no longer used"
-- [ ] `design.list-animations` -- "List all animation sequences"
-- [ ] `design.update-animation` -- "Change keyframes on an existing animation"
-- [ ] `design.remove-animation` -- "Delete an animation sequence"
-- [ ] `design.list-themes` -- "List all typography themes"
-- [ ] `design.create-theme` -- "Create a new typography theme with default styles"
-- [ ] `design.update-theme` -- "Update per-tag style overrides on a theme"
-- [ ] `design.remove-theme` -- "Delete a theme"
-- [ ] `design.set-active-theme` -- "Set the active typography theme"
-- [ ] `design.list-assets` -- "List all image and icon assets"
-- [ ] `design.rename-asset` -- "Rename an uploaded image asset"
-- [ ] `design.remove-asset` -- "Delete an image asset"
-
-#### P11.3 -- Data domain (12 missing actions)
-
-- [ ] `data.update-query` -- "Modify an existing data query's configuration"
-- [ ] `data.remove-query` -- "Delete a data query from a component"
-- [ ] `data.list-data-tokens` -- "List all site-level data tokens"
-- [ ] `data.create-data-token` -- "Create a JSON data token for site configuration"
-- [ ] `data.update-data-token` -- "Update an existing data token value"
-- [ ] `data.remove-data-token` -- "Delete a data token"
-- [ ] `data.list-splits` -- "List all A/B test experiments"
-- [ ] `data.create-split` -- "Create an A/B test experiment with two slices"
-- [ ] `data.update-split` -- "Update slice probabilities on a split"
-- [ ] `data.remove-split` -- "Delete an A/B test split"
-- [ ] `data.get-code-meta` -- "Inspect code component metadata"
-- [ ] `data.list-functions` -- "List available custom functions"
-
-#### P11.4 -- Component domain (10 missing actions)
-
-- [ ] `component.delete` -- "Delete an unused component"
-- [ ] `component.convert-to-page` -- "Convert a component to a page"
-- [ ] `component.convert-to-component` -- "Convert a page to a reusable component"
-- [ ] `component.list-props` -- "List all props on a component"
-- [ ] `component.add-prop` -- "Add a text prop to a component"
-- [ ] `component.update-prop` -- "Update a prop's default value"
-- [ ] `component.remove-prop` -- "Remove a prop from a component"
-- [ ] `component.list-states` -- "List all states on a component"
-- [ ] `component.add-state` -- "Add a boolean state to a component"
-- [ ] `component.remove-state` -- "Remove a state from a component"
-
-#### P11.5 -- Variant domain (8 missing actions)
-
-- [ ] `variant.list-global-groups` -- "List global variant groups"
-- [ ] `variant.create-global-group` -- "Create a global Theme variant group"
-- [ ] `variant.add-global` -- "Add a 'Dark' variant to a global Theme group"
-- [ ] `variant.remove-global-group` -- "Delete a global variant group"
-- [ ] `variant.rename-global` -- "Rename a global variant"
-- [ ] `variant.update-screen` -- "Update a screen variant breakpoint range"
-- [ ] `variant.rename` -- "Rename a style variant"
-- [ ] `variant.remove` -- "Remove a style variant"
-
-#### P11.6 -- Inspect domain (5 missing actions)
-
-- [ ] `inspect.subtree` -- "Inspect the subtree of a specific section"
-- [ ] `inspect.export` -- "Export the full component tree to a file"
-- [ ] `inspect.style-properties` -- "List valid CSS property names"
-- [ ] `inspect.preview-url` -- "Get the Studio and preview URLs"
-- [ ] `inspect.page-meta` -- "Read page SEO metadata"
-
-#### P11.7 -- Interaction domain (2 missing actions)
-
-- [ ] `interaction.update` -- "Modify an existing onClick handler's navigation target"
-- [ ] `interaction.remove` -- "Remove an event handler from a button"
-
-#### P11.8 -- Project domain (1 missing action)
-
-- [ ] `project.set` -- "Load a project by ID" (currently only tested implicitly as setup)
-
-#### P11.9 -- Update INDEX.md
-
-- [ ] Regenerate `evals/scenarios/INDEX.md` to reflect expanded scenario count (70 -> ~135)
-
----
 
 ### P12 -- HIGH: Eval Runner Robustness
 
@@ -180,7 +82,7 @@ Quality of life, accuracy, and developer experience improvements. All 7 items un
 
 | # | Issue | Severity | Location | Status | Description |
 |---|-------|----------|----------|--------|-------------|
-| 1 | Action coverage gap | Critical | `evals/scenarios/` | UNFIXED | 65/103 actions (63.1%) have zero eval scenarios (P10 dev host sync adds no new MCP actions) |
+| 1 | Action coverage gap | Resolved | `evals/scenarios/` | FIXED (P11) | 103/103 actions (~98%) now have eval scenarios. 135 scenarios across 20 YAML files. |
 | 2 | property grader numeric crash | Bug | `state-check.ts:279` | UNFIXED (P14.1) | `.toLowerCase()` on numeric style values throws TypeError |
 | 3 | Tool execution no timeout | Bug | `claude-client.ts:158-163` | UNFIXED (P12.1) | `onToolCall` awaited with no timeout; hangs indefinitely |
 | 4 | saveReport no fallback | Bug | `reporter.ts:122-126` | UNFIXED (P12.2) | Filesystem error loses all results |

@@ -179,3 +179,446 @@ scenarios:
         params: {}
     visual:
       rubric: "GridLayout component tree should show exactly three div children as direct descendants of the root container."
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # P11.1 — Missing action coverage scenarios
+  # Each scenario below tests a single node action that previously had zero
+  # eval coverage. Simple-tier scenarios keep setup minimal; medium-tier
+  # scenarios are used when the action requires multi-step setup.
+  # ═══════════════════════════════════════════════════════════════════════
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: node.remove — verify an element can be removed from a component
+  # Why: Covers the inverse of node.add; without this, regressions in
+  # element removal (e.g., dangling refs) would go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: node-remove-element
+    description: "In the Homepage component, first inspect the tree to find a child element. Then remove that child element from its parent using node.remove."
+    domains:
+      - node
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - inspect
+            - node
+      - type: tool-params
+        params:
+          tool: node
+          action: remove
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 3
+          max: 10
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: node.move — relocate an element to a different parent
+  # Why: Structural moves are a core editing operation. Without coverage,
+  # bugs in parent reassignment or index calculation go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: node-move-element
+    description: "Create a new reusable component called 'MoveTest'. Add two container divs inside it called 'SectionA' and 'SectionB'. Add a paragraph with text 'Movable' inside SectionA. Then move that paragraph from SectionA into SectionB using node.move."
+    domains:
+      - node
+      - component
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: MoveTest
+      - type: existence
+        params:
+          entityType: component
+          name: MoveTest
+      - type: tool-params
+        params:
+          tool: node
+          action: move
+          expected: {}
+      - type: count
+        params:
+          min: 6
+          max: 20
+      - type: no-errors
+        params: {}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: node.clone — duplicate an element within its parent
+  # Why: Cloning is the fastest way to replicate UI patterns. Without
+  # coverage, bugs in deep-copy or style duplication go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: node-clone-element
+    description: "In the Homepage component, inspect the tree to find an element. Then clone that element within its parent using node.clone."
+    domains:
+      - node
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - inspect
+            - node
+      - type: tool-params
+        params:
+          tool: node
+          action: clone
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 3
+          max: 10
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: node.reorder — rearrange children within a container
+  # Why: Reordering is essential for layout control. Without coverage,
+  # bugs in index-based repositioning go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: node-reorder-children
+    description: "Create a new reusable component called 'ReorderTest'. Add three text elements inside it: 'First', 'Second', and 'Third'. Then use node.reorder to rearrange the children so 'Third' comes first."
+    domains:
+      - node
+      - component
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: ReorderTest
+      - type: existence
+        params:
+          entityType: component
+          name: ReorderTest
+      - type: tool-params
+        params:
+          tool: node
+          action: reorder
+          expected: {}
+      - type: count
+        params:
+          min: 5
+          max: 18
+      - type: no-errors
+        params: {}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: node.update-rich-text — apply formatting marks to text
+  # Why: Rich text is how users create styled content. Without coverage,
+  # bugs in mark application (bold, italic, links) go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: node-update-rich-text
+    description: "Create a new reusable component called 'RichTextTest'. Add a paragraph element with text 'Hello bold world'. Then use node.update-rich-text to make the word 'bold' bold (characters 6-10)."
+    domains:
+      - node
+      - component
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: RichTextTest
+      - type: existence
+        params:
+          entityType: component
+          name: RichTextTest
+      - type: tool-params
+        params:
+          tool: node
+          action: update-rich-text
+          expected: {}
+      - type: count
+        params:
+          min: 3
+          max: 15
+      - type: no-errors
+        params: {}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: node.update-attrs — set HTML attributes on an element
+  # Why: Attributes control accessibility (aria-*), data binding
+  # (data-*), and behavior. Without coverage, attribute mutations
+  # may silently fail.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: node-update-attrs
+    description: "Create a new reusable component called 'AttrTest'. Add a button element inside it with text 'Click me'. Then use node.update-attrs to set data-testid to 'submit-btn' and aria-label to 'Submit form' on the button."
+    domains:
+      - node
+      - component
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: AttrTest
+      - type: existence
+        params:
+          entityType: component
+          name: AttrTest
+      - type: tool-params
+        params:
+          tool: node
+          action: update-attrs
+          expected: {}
+      - type: count
+        params:
+          min: 3
+          max: 15
+      - type: no-errors
+        params: {}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: node.set-visibility — hide an element
+  # Why: Conditional visibility is core to responsive and interactive
+  # design. Without coverage, visibility state bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: node-set-visibility
+    description: "Create a new reusable component called 'VisibilityTest'. Add a paragraph element with text 'Hidden content'. Then use node.set-visibility to hide that paragraph (set visible to false)."
+    domains:
+      - node
+      - component
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: VisibilityTest
+      - type: existence
+        params:
+          entityType: component
+          name: VisibilityTest
+      - type: tool-params
+        params:
+          tool: node
+          action: set-visibility
+          expected: {}
+      - type: count
+        params:
+          min: 3
+          max: 15
+      - type: no-errors
+        params: {}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: node.set-image — set an image source URL
+  # Why: Image elements are fundamental. Without coverage, bugs in
+  # image source assignment (URL vs asset ref) go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: node-set-image
+    description: "Create a new reusable component called 'ImageTest'. Add an img element inside it. Then use node.set-image to set its source URL to 'https://via.placeholder.com/200x200'."
+    domains:
+      - node
+      - component
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: ImageTest
+      - type: existence
+        params:
+          entityType: component
+          name: ImageTest
+      - type: tool-params
+        params:
+          tool: node
+          action: set-image
+          expected: {}
+      - type: count
+        params:
+          min: 3
+          max: 15
+      - type: no-errors
+        params: {}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: node.detach-mixin — remove a mixin from an element
+  # Why: Mixin detachment is the inverse of apply-mixin. Without
+  # coverage, stale mixin references could persist after detach.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: node-detach-mixin
+    description: "Create a style mixin called 'TempShadow' with box-shadow '0 2px 4px rgba(0,0,0,0.1)'. Then create a new reusable component called 'DetachTest', add a div inside it, apply the 'TempShadow' mixin to that div, and finally detach the mixin from the div using node.detach-mixin."
+    domains:
+      - node
+      - design
+      - component
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+            - component
+            - node
+      - type: tool-params
+        params:
+          tool: design
+          action: create-mixin
+          expected:
+            name: TempShadow
+      - type: tool-params
+        params:
+          tool: node
+          action: apply-mixin
+          expected: {}
+      - type: tool-params
+        params:
+          tool: node
+          action: detach-mixin
+          expected: {}
+      - type: count
+        params:
+          min: 5
+          max: 20
+      - type: no-errors
+        params: {}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: node.add-animation — attach an animation to an element
+  # Why: Animations bring UI to life. Without coverage, bugs in
+  # animation attachment (wrong ref, missing keyframes) go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: node-add-animation
+    description: "First create an animation sequence called 'SlideIn' with keyframes at 0% (transform: 'translateX(-100%)') and 100% (transform: 'translateX(0)'). Then create a reusable component called 'AnimTest', add a heading inside it, and attach the 'SlideIn' animation to the heading using node.add-animation with duration '0.5s'."
+    domains:
+      - node
+      - design
+      - component
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+            - component
+            - node
+      - type: tool-params
+        params:
+          tool: design
+          action: create-animation
+          expected:
+            name: SlideIn
+      - type: tool-params
+        params:
+          tool: node
+          action: add-animation
+          expected: {}
+      - type: count
+        params:
+          min: 4
+          max: 18
+      - type: no-errors
+        params: {}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: node.remove-animation — remove an animation from an element
+  # Why: Animation removal is the inverse of add-animation. Without
+  # coverage, orphaned animation references could cause rendering bugs.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: node-remove-animation
+    description: "Create an animation called 'Bounce' with keyframes at 0% (transform: 'translateY(0)') and 50% (transform: 'translateY(-20px)') and 100% (transform: 'translateY(0)'). Create a reusable component called 'RemoveAnimTest', add a div inside it, and attach the 'Bounce' animation. Then remove the animation from the div using node.remove-animation."
+    domains:
+      - node
+      - design
+      - component
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+            - component
+            - node
+      - type: tool-params
+        params:
+          tool: design
+          action: create-animation
+          expected:
+            name: Bounce
+      - type: tool-params
+        params:
+          tool: node
+          action: add-animation
+          expected: {}
+      - type: tool-params
+        params:
+          tool: node
+          action: remove-animation
+          expected: {}
+      - type: count
+        params:
+          min: 5
+          max: 20
+      - type: no-errors
+        params: {}

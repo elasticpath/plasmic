@@ -1,5 +1,10 @@
 # Component domain scenarios
-# Tests: page creation, component management
+# Tests: page creation, component management, props, states, lifecycle operations
+#
+# Why full component lifecycle coverage matters: The component domain controls
+# creation, deletion, conversion, extraction, and prop/state management. Without
+# scenarios for each operation, regressions in deletion cleanup, page↔component
+# conversion, or prop/state wiring would go completely undetected.
 scenarios:
   - id: component-create-page
     description: "Create a new page called 'About' with the URL path '/about'."
@@ -25,3 +30,373 @@ scenarios:
         params:
           entityType: page
           name: About
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # P11.4 — Missing component action coverage scenarios
+  # ═══════════════════════════════════════════════════════════════════════
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: component.delete — delete an unused component
+  # Why: Component deletion must cleanly remove references and free
+  # resources. Without coverage, dangling refs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: component-delete
+    description: "Create a new reusable component called 'ToDelete'. Then delete it using component.delete. List components to verify it was removed."
+    domains:
+      - component
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: ToDelete
+      - type: tool-params
+        params:
+          tool: component
+          action: delete
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 3
+          max: 8
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: component.convert-to-page — convert component to page
+  # Why: Component↔page conversion is a key workflow. Without coverage,
+  # metadata loss during conversion goes undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: component-convert-to-page
+    description: "Create a new reusable component called 'ConvertMe'. Then convert it to a page using component.convert-to-page with path '/converted'. List components to verify it now appears as a page."
+    domains:
+      - component
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: ConvertMe
+      - type: tool-params
+        params:
+          tool: component
+          action: convert-to-page
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 3
+          max: 8
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: component.convert-to-component — convert page to component
+  # Why: The inverse of convert-to-page. Without coverage, page→
+  # component conversion bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: component-convert-to-component
+    description: "Create a new page called 'TempPage' at path '/temp'. Then convert it to a reusable component using component.convert-to-component. List components to verify it now appears as a component."
+    domains:
+      - component
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+      - type: tool-params
+        params:
+          tool: component
+          action: create-page
+          expected:
+            name: TempPage
+      - type: tool-params
+        params:
+          tool: component
+          action: convert-to-component
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 3
+          max: 8
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: component.list-props — list all props on a component
+  # Why: Prop discovery is needed before prop management. Without
+  # coverage, prop listing bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: component-list-props
+    description: "Find a component in the project, then list all its props using component.list-props."
+    domains:
+      - component
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+      - type: tool-params
+        params:
+          tool: component
+          action: list-props
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 2
+          max: 8
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: component.add-prop — add a prop to a component
+  # Why: Props are how components accept external data. Without
+  # coverage, prop creation bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: component-add-prop
+    description: "Create a new reusable component called 'PropTest'. Then add a text prop called 'title' with default value 'Hello' using component.add-prop. List props to verify it exists."
+    domains:
+      - component
+    tier: medium
+    timeout: 120
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: PropTest
+      - type: existence
+        params:
+          entityType: component
+          name: PropTest
+      - type: tool-params
+        params:
+          tool: component
+          action: add-prop
+          expected:
+            name: title
+      - type: count
+        params:
+          min: 3
+          max: 12
+      - type: no-errors
+        params: {}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: component.update-prop — update a prop's default value
+  # Why: Prop updates are how defaults evolve. Without coverage,
+  # default value update failures go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: component-update-prop
+    description: "Create a reusable component called 'PropUpdateTest'. Add a text prop called 'label' with default value 'Old'. Then update it using component.update-prop to change the default value to 'New'."
+    domains:
+      - component
+    tier: medium
+    timeout: 120
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: PropUpdateTest
+      - type: tool-params
+        params:
+          tool: component
+          action: add-prop
+          expected:
+            name: label
+      - type: tool-params
+        params:
+          tool: component
+          action: update-prop
+          expected: {}
+      - type: count
+        params:
+          min: 3
+          max: 12
+      - type: no-errors
+        params: {}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: component.remove-prop — remove a prop from a component
+  # Why: Prop removal must cleanly unbind references. Without coverage,
+  # dangling prop bindings go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: component-remove-prop
+    description: "Create a reusable component called 'PropRemoveTest'. Add a text prop called 'tempProp'. Then remove it using component.remove-prop. List props to verify it was removed."
+    domains:
+      - component
+    tier: medium
+    timeout: 120
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: PropRemoveTest
+      - type: tool-params
+        params:
+          tool: component
+          action: add-prop
+          expected:
+            name: tempProp
+      - type: tool-params
+        params:
+          tool: component
+          action: remove-prop
+          expected: {}
+      - type: count
+        params:
+          min: 4
+          max: 12
+      - type: no-errors
+        params: {}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: component.list-states — list all states on a component
+  # Why: State discovery is needed before state management. Without
+  # coverage, state listing bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: component-list-states
+    description: "Find a component in the project, then list all its states using component.list-states."
+    domains:
+      - component
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+      - type: tool-params
+        params:
+          tool: component
+          action: list-states
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 2
+          max: 8
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: component.add-state — add a state to a component
+  # Why: States enable interactive behavior. Without coverage,
+  # state creation bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: component-add-state
+    description: "Create a new reusable component called 'StateTest'. Then add a boolean state called 'isOpen' with initial value 'false' using component.add-state. List states to verify it exists."
+    domains:
+      - component
+    tier: medium
+    timeout: 120
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: StateTest
+      - type: existence
+        params:
+          entityType: component
+          name: StateTest
+      - type: tool-params
+        params:
+          tool: component
+          action: add-state
+          expected:
+            name: isOpen
+      - type: count
+        params:
+          min: 3
+          max: 12
+      - type: no-errors
+        params: {}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: component.remove-state — remove a state from a component
+  # Why: State removal must cleanly unbind references. Without coverage,
+  # dangling state references go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: component-remove-state
+    description: "Create a reusable component called 'StateRemoveTest'. Add a boolean state called 'tempState' with initial value 'false'. Then remove it using component.remove-state. List states to verify it was removed."
+    domains:
+      - component
+    tier: medium
+    timeout: 120
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: StateRemoveTest
+      - type: tool-params
+        params:
+          tool: component
+          action: add-state
+          expected:
+            name: tempState
+      - type: tool-params
+        params:
+          tool: component
+          action: remove-state
+          expected: {}
+      - type: count
+        params:
+          min: 4
+          max: 12
+      - type: no-errors
+        params: {}

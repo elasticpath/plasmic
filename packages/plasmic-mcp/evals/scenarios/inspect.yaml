@@ -1,5 +1,10 @@
 # Inspect domain scenarios
-# Tests: component tree inspection, structure understanding
+# Tests: component tree inspection, structure understanding, exports, metadata
+#
+# Why comprehensive inspect coverage matters: The inspect domain is how Claude
+# (and users) understand component structure before making changes. Without
+# scenarios for subtree, export, style-properties, preview-url, and page-meta,
+# regressions in tree traversal, file export, or metadata reading go undetected.
 scenarios:
   - id: inspect-summary
     description: "Show me the structure of the Homepage component. List its child elements and their types."
@@ -13,6 +18,159 @@ scenarios:
           tools:
             - component
             - inspect
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 2
+          max: 8
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # P11.6 — Missing inspect action coverage scenarios
+  # ═══════════════════════════════════════════════════════════════════════
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: inspect.subtree — inspect a specific subtree
+  # Why: Subtree inspection lets users focus on a section of a component.
+  # Without coverage, subtree traversal bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: inspect-subtree
+    description: "Find the Homepage component and inspect its tree to identify a child element. Then use inspect.subtree to get the detailed subtree of that specific child node."
+    domains:
+      - inspect
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - inspect
+      - type: tool-params
+        params:
+          tool: inspect
+          action: subtree
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 3
+          max: 10
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: inspect.export — export component tree to a file
+  # Why: Tree export enables offline analysis and debugging. Without
+  # coverage, file write or serialization bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: inspect-export
+    description: "Find the Homepage component and export its full element tree to a file using inspect.export."
+    domains:
+      - inspect
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - inspect
+      - type: tool-params
+        params:
+          tool: inspect
+          action: export
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 2
+          max: 8
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: inspect.style-properties — list valid CSS property names
+  # Why: Property discovery helps Claude use correct CSS names. Without
+  # coverage, property listing bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: inspect-style-properties
+    description: "List all valid CSS property names that can be used with node.update-styles using inspect.style-properties."
+    domains:
+      - inspect
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - inspect
+      - type: tool-params
+        params:
+          tool: inspect
+          action: style-properties
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 1
+          max: 5
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: inspect.preview-url — get Studio and preview URLs
+  # Why: URL generation is needed for visual capture and debugging.
+  # Without coverage, URL construction bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: inspect-preview-url
+    description: "Find a component in the project, then get its Studio and preview URLs using inspect.preview-url."
+    domains:
+      - inspect
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - inspect
+      - type: tool-params
+        params:
+          tool: inspect
+          action: preview-url
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 2
+          max: 8
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: inspect.page-meta — read page SEO metadata
+  # Why: SEO metadata reading is the read complement to update-page-meta.
+  # Without coverage, metadata retrieval bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: inspect-page-meta
+    description: "Find the Homepage page, then read its SEO metadata (title, description) using inspect.page-meta."
+    domains:
+      - inspect
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - inspect
+      - type: tool-params
+        params:
+          tool: inspect
+          action: page-meta
+          expected: {}
       - type: no-errors
         params: {}
       - type: count
