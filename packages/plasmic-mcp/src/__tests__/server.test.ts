@@ -1656,6 +1656,46 @@ describe("tool handlers", () => {
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("Error component.create-page");
     });
+
+    it("preserves registryData in session after reload", async () => {
+      const registryData = {
+        components: [{ name: "EPButton" }],
+        contexts: [{ name: "ShopContext" }],
+        functions: [],
+        tokens: [{ name: "Primary", value: "#ff0000", type: "Color" }],
+        traits: [],
+      };
+
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        projectName: "Test Project",
+      });
+      mockApiClient.updateProject.mockResolvedValue({
+        result: { newComponents: [{ uuid: "page-uuid" }] },
+      });
+      mockLoadProject.mockResolvedValue({
+        site: { components: [] },
+        bundler: {},
+        projectName: "Test Project",
+        revisionNum: 6,
+        modelVersion: 2,
+        hostlessDataVersion: 0,
+      });
+      mockSyncFromDevHost.mockResolvedValue({
+        devHostSynced: true,
+        syncedVariantComponents: ["EPButton"],
+        registryData,
+      });
+
+      await client.callTool({
+        name: "component",
+        arguments: { action: "create-page", name: "Test", path: "/test", body: {} },
+      });
+
+      expect(mockSetSession).toHaveBeenCalledWith(
+        expect.objectContaining({ registryData })
+      );
+    });
   });
 
   describe("component.create", () => {
@@ -1769,6 +1809,46 @@ describe("tool handlers", () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("Error component.create");
+    });
+
+    it("preserves registryData in session after reload", async () => {
+      const registryData = {
+        components: [{ name: "EPButton" }],
+        contexts: [],
+        functions: [{ name: "formatPrice" }],
+        tokens: [],
+        traits: [{ trait: "interactive", meta: { type: "boolean" } }],
+      };
+
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        projectName: "Test Project",
+      });
+      mockApiClient.updateProject.mockResolvedValue({
+        result: { newComponents: [{ uuid: "comp-uuid" }] },
+      });
+      mockLoadProject.mockResolvedValue({
+        site: { components: [] },
+        bundler: {},
+        projectName: "Test Project",
+        revisionNum: 7,
+        modelVersion: 3,
+        hostlessDataVersion: 0,
+      });
+      mockSyncFromDevHost.mockResolvedValue({
+        devHostSynced: true,
+        syncedVariantComponents: [],
+        registryData,
+      });
+
+      await client.callTool({
+        name: "component",
+        arguments: { action: "create", name: "HeroSection", body: {} },
+      });
+
+      expect(mockSetSession).toHaveBeenCalledWith(
+        expect.objectContaining({ registryData })
+      );
     });
   });
 
@@ -1941,6 +2021,55 @@ describe("tool handlers", () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("Error component.clone");
+    });
+
+    it("preserves registryData in session after reload", async () => {
+      const registryData = {
+        components: [{ name: "EPButton" }],
+        contexts: [{ name: "ShopContext" }],
+        functions: [],
+        tokens: [],
+        traits: [],
+      };
+
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        site: {
+          components: [
+            { uuid: "comp-1", name: "Source" },
+          ],
+        },
+      });
+      mockApiClient.updateProject.mockResolvedValue({
+        result: { newComponents: [{ uuid: "clone-uuid" }] },
+      });
+      mockLoadProject.mockResolvedValue({
+        site: {
+          components: [
+            { uuid: "comp-1", name: "Source" },
+            { uuid: "clone-uuid", name: "SourceClone" },
+          ],
+        },
+        bundler: {},
+        projectName: "Test Project",
+        revisionNum: 8,
+        modelVersion: 4,
+        hostlessDataVersion: 0,
+      });
+      mockSyncFromDevHost.mockResolvedValue({
+        devHostSynced: true,
+        syncedVariantComponents: [],
+        registryData,
+      });
+
+      await client.callTool({
+        name: "component",
+        arguments: { action: "clone", sourceUuid: "comp-1", name: "SourceClone" },
+      });
+
+      expect(mockSetSession).toHaveBeenCalledWith(
+        expect.objectContaining({ registryData })
+      );
     });
   });
 
@@ -2210,6 +2339,85 @@ describe("tool handlers", () => {
         mockApiClient, "comp-1", "Card",
         { type: "text", value: "Header" }, undefined, "header"
       );
+    });
+
+    it("includes warnings from addChild in response", async () => {
+      mockAddChild.mockResolvedValue({
+        save: { revisionNum: 8, incremental: true },
+        parentName: "Container",
+        parentUuid: "node-3",
+        newNodeUuid: "new-1",
+        position: "last",
+        warnings: ['Component "AccordionItem" is designed to be used inside "Accordion" but is being added to "Container"'],
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "add",
+          componentUuid: "comp-1",
+          parentRef: "Container",
+          child: { type: "component", name: "AccordionItem" },
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(output.success).toBe(true);
+      expect(output.warnings).toEqual([
+        'Component "AccordionItem" is designed to be used inside "Accordion" but is being added to "Container"',
+      ]);
+    });
+
+    it("omits warnings field when addChild returns no warnings", async () => {
+      mockAddChild.mockResolvedValue({
+        save: { revisionNum: 8, incremental: true },
+        parentName: "Container",
+        parentUuid: "node-3",
+        newNodeUuid: "new-1",
+        position: "last",
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "add",
+          componentUuid: "comp-1",
+          parentRef: "Container",
+          child: { type: "text", value: "Hello" },
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(output.success).toBe(true);
+      expect(output.warnings).toBeUndefined();
+    });
+
+    it("includes warnings in dry run response", async () => {
+      mockIsBatchActive.mockReturnValue(false);
+      mockBeginBatch.mockReturnValue("dry-run-batch");
+      mockGetAccumulatedChanges.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
+      mockAddChild.mockResolvedValue({
+        save: { revisionNum: 8, incremental: true },
+        parentName: "Container",
+        parentUuid: "node-3",
+        position: "last",
+        warnings: ["parentComponentName mismatch"],
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "add",
+          componentUuid: "comp-1",
+          parentRef: "Container",
+          child: { type: "text", value: "Test" },
+          dryRun: true,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(output.dryRun).toBe(true);
+      expect(output.warnings).toEqual(["parentComponentName mismatch"]);
     });
   });
 

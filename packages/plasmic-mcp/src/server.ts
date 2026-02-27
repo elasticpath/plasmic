@@ -1188,6 +1188,7 @@ export function createServer(): McpServer {
                 hostUrl: reloadedHostUrl,
                 devHostSynced: syncResult.devHostSynced,
                 syncedVariantComponents: syncResult.syncedVariantComponents,
+                registryData: syncResult.registryData,
               });
               initChangeTracker(site);
 
@@ -1282,6 +1283,7 @@ export function createServer(): McpServer {
                 hostUrl: reloadedHostUrl,
                 devHostSynced: syncResult.devHostSynced,
                 syncedVariantComponents: syncResult.syncedVariantComponents,
+                registryData: syncResult.registryData,
               });
               initChangeTracker(site);
 
@@ -1401,6 +1403,7 @@ export function createServer(): McpServer {
                 hostUrl: reloadedHostUrl,
                 devHostSynced: syncResult.devHostSynced,
                 syncedVariantComponents: syncResult.syncedVariantComponents,
+                registryData: syncResult.registryData,
               });
               initChangeTracker(site);
 
@@ -2233,6 +2236,7 @@ export function createServer(): McpServer {
                         ...(result.slotName ? { slot: result.slotName } : {}),
                         position: result.position,
                         message: "Dry run: no changes persisted",
+                        ...(result.warnings?.length ? { warnings: result.warnings } : {}),
                       }
                     ),
                   },
@@ -2256,6 +2260,7 @@ export function createServer(): McpServer {
                       ...(result.slotName ? { slot: result.slotName } : {}),
                       position: result.position,
                       revision: result.save.revisionNum,
+                      ...(result.warnings?.length ? { warnings: result.warnings } : {}),
                     }
                   ),
                 },

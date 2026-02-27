@@ -2086,6 +2086,391 @@ describe("edit-tools", () => {
     });
   });
 
+  // --- add-child with registry enrichment ---
+
+  describe("addChild with registry enrichment", () => {
+    /** Build a TplComponent-like node (as returned by mkTplComponentX mock) */
+    function mkTplComponent(opts: {
+      uuid?: string;
+      name?: string;
+      componentName: string;
+      componentUuid: string;
+    }): any {
+      return {
+        _type: "TplComponent",
+        uuid: opts.uuid ?? `tpl-comp-${Math.random().toString(36).slice(2, 8)}`,
+        name: opts.name ?? null,
+        component: { name: opts.componentName, uuid: opts.componentUuid },
+        vsettings: [{ rs: { values: {} }, args: [] }],
+        children: [],
+      };
+    }
+
+    it("applies defaultStyles from registry when adding a component instance", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const cardComp = {
+        uuid: "card-uuid",
+        name: "Card",
+        tplTree: mkTag({ uuid: "card-root" }),
+        params: [],
+      };
+
+      const newTplComp = mkTplComponent({
+        uuid: "new-tpl-comp-1",
+        componentName: "Card",
+        componentUuid: "card-uuid",
+      });
+      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} } }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      // Session includes registryData with defaultStyles for "Card"
+      const session = makeSession({
+        site: { components: [owningComp, cardComp] },
+        registryData: {
+          components: [
+            {
+              name: "Card",
+              defaultStyles: { color: "red", fontSize: "16px" },
+            },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      const result = await addChild(api, "comp-1", "Section", {
+        type: "component",
+        name: "Card",
+      });
+
+      expect(result.parentName).toBe("Section");
+      expect(result.newNodeUuid).toBe("new-tpl-comp-1");
+
+      // Verify defaultStyles were applied via RSH.merge
+      // Note: mock RSH stores keys as-is (no kebab-case normalization)
+      const vs = newTplComp.vsettings[0];
+      expect(vs.rs.values.color).toBe("red");
+      expect(vs.rs.values.fontSize).toBe("16px");
+    });
+
+    it("matches registry components with $dev suffix", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      // Site model has name without $dev
+      const buttonComp = {
+        uuid: "btn-uuid",
+        name: "EPButton",
+        tplTree: mkTag({ uuid: "btn-root" }),
+        params: [],
+      };
+
+      const newTplComp = mkTplComponent({
+        uuid: "new-btn-1",
+        componentName: "EPButton",
+        componentUuid: "btn-uuid",
+      });
+      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} } }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      // Registry has $dev suffix
+      const session = makeSession({
+        site: { components: [owningComp, buttonComp] },
+        registryData: {
+          components: [
+            {
+              name: "EPButton$dev",
+              defaultStyles: { color: "blue" },
+            },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      await addChild(api, "comp-1", "Section", {
+        type: "component",
+        name: "EPButton",
+      });
+
+      // Should match despite $dev suffix
+      const vs = newTplComp.vsettings[0];
+      expect(vs.rs.values.color).toBe("blue");
+    });
+
+    it("works normally when session has no registryData", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const cardComp = {
+        uuid: "card-uuid",
+        name: "Card",
+        tplTree: mkTag({ uuid: "card-root" }),
+        params: [],
+      };
+
+      const newTplComp = mkTplComponent({
+        uuid: "new-card-1",
+        componentName: "Card",
+        componentUuid: "card-uuid",
+      });
+      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} } }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      // No registryData on session
+      const session = makeSession({
+        site: { components: [owningComp, cardComp] },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      const result = await addChild(api, "comp-1", "Section", {
+        type: "component",
+        name: "Card",
+      });
+
+      expect(result.parentName).toBe("Section");
+      expect(result.newNodeUuid).toBe("new-card-1");
+      // No styles applied — rs.values should be empty
+      expect(newTplComp.vsettings[0].rs.values).toEqual({});
+    });
+
+    it("returns warning when parentComponentName does not match", async () => {
+      // The parent is a TplComponent "Accordion"
+      const accordionComp = {
+        uuid: "accordion-uuid",
+        name: "Accordion",
+        tplTree: mkTag({ uuid: "acc-root" }),
+        params: [{
+          variable: { name: "children" },
+          tplSlot: true,
+        }],
+      };
+
+      // The owning component wraps an Accordion
+      const accordionTpl: any = {
+        _type: "TplComponent",
+        uuid: "acc-tpl-1",
+        name: "MyAccordion",
+        component: accordionComp,
+        vsettings: [{ variants: [], rs: { values: {} }, args: [] }],
+        children: [],
+      };
+      const root = mkTag({ uuid: "root-1", children: [accordionTpl] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      // AccordionItem should be inside "Accordion" according to registry
+      const itemComp = {
+        uuid: "item-uuid",
+        name: "AccordionItem",
+        tplTree: mkTag({ uuid: "item-root" }),
+        params: [],
+      };
+
+      const newTplComp = mkTplComponent({
+        uuid: "new-item-1",
+        componentName: "AccordionItem",
+        componentUuid: "item-uuid",
+      });
+      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} }, args: [] }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      // Registry says AccordionItem should be inside "EPAccordion"
+      const session = makeSession({
+        site: { components: [owningComp, accordionComp, itemComp] },
+        registryData: {
+          components: [
+            {
+              name: "AccordionItem",
+              parentComponentName: "EPAccordion",
+            },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      const result = await addChild(
+        api, "comp-1", "MyAccordion",
+        { type: "component", name: "AccordionItem" },
+        undefined,
+        "children"
+      );
+
+      // Should succeed but with warning
+      expect(result.newNodeUuid).toBe("new-item-1");
+      expect(result.warnings).toBeDefined();
+      expect(result.warnings!.length).toBe(1);
+      expect(result.warnings![0]).toContain("AccordionItem");
+      expect(result.warnings![0]).toContain("EPAccordion");
+      expect(result.warnings![0]).toContain("Accordion");
+    });
+
+    it("returns no warning when parentComponentName matches", async () => {
+      // Parent is correct "Accordion" (matches "Accordion" in registry)
+      const accordionComp = {
+        uuid: "accordion-uuid",
+        name: "Accordion",
+        tplTree: mkTag({ uuid: "acc-root" }),
+        params: [{
+          variable: { name: "children" },
+          tplSlot: true,
+        }],
+      };
+
+      const accordionTpl: any = {
+        _type: "TplComponent",
+        uuid: "acc-tpl-1",
+        name: "MyAccordion",
+        component: accordionComp,
+        vsettings: [{ variants: [], rs: { values: {} }, args: [] }],
+        children: [],
+      };
+      const root = mkTag({ uuid: "root-1", children: [accordionTpl] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const itemComp = {
+        uuid: "item-uuid",
+        name: "AccordionItem",
+        tplTree: mkTag({ uuid: "item-root" }),
+        params: [],
+      };
+
+      const newTplComp = mkTplComponent({
+        uuid: "new-item-1",
+        componentName: "AccordionItem",
+        componentUuid: "item-uuid",
+      });
+      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} }, args: [] }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      // Registry parentComponentName matches the actual parent
+      const session = makeSession({
+        site: { components: [owningComp, accordionComp, itemComp] },
+        registryData: {
+          components: [
+            {
+              name: "AccordionItem",
+              parentComponentName: "Accordion",
+            },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      const result = await addChild(
+        api, "comp-1", "MyAccordion",
+        { type: "component", name: "AccordionItem" },
+        undefined,
+        "children"
+      );
+
+      expect(result.newNodeUuid).toBe("new-item-1");
+      expect(result.warnings).toBeUndefined();
+    });
+
+    it("returns warning when adding component with parentComponentName to a TplTag parent", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const itemComp = {
+        uuid: "item-uuid",
+        name: "AccordionItem",
+        tplTree: mkTag({ uuid: "item-root" }),
+        params: [],
+      };
+
+      const newTplComp = mkTplComponent({
+        uuid: "new-item-1",
+        componentName: "AccordionItem",
+        componentUuid: "item-uuid",
+      });
+      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} } }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      const session = makeSession({
+        site: { components: [owningComp, itemComp] },
+        registryData: {
+          components: [
+            {
+              name: "AccordionItem",
+              parentComponentName: "Accordion",
+            },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      const result = await addChild(api, "comp-1", "Section", {
+        type: "component",
+        name: "AccordionItem",
+      });
+
+      expect(result.newNodeUuid).toBe("new-item-1");
+      expect(result.warnings).toBeDefined();
+      expect(result.warnings!.length).toBe(1);
+      expect(result.warnings![0]).toContain("non-component container");
+    });
+  });
+
   // --- remove-child ---
 
   describe("removeChild", () => {

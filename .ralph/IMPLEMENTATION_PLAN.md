@@ -174,6 +174,50 @@ Correctness issues and hardening that should be addressed but are not blocking t
 
 ---
 
+## P28 -- Registry-Enriched Component Creation (node.add)
+
+When the MCP server adds a code component instance to a page via `node.add`, it should use registry metadata to enrich the created instance. This addresses three spec acceptance criteria that were previously unimplemented.
+
+- [x] **Bug fix: `registryData` dropped from session in `component.create-page`, `component.create`, and `component.clone` handlers**
+  - These three handlers call `syncFromDevHost()` after reloading the project model, but their `setSession()` calls omitted `registryData: syncResult.registryData`. This caused `session.registryData` to become `undefined` after any page/component creation or clone, silently breaking `design.list-tokens` devHostTokens and `data.list-functions` devHostFunctions enrichment.
+  - Fixed by adding `registryData: syncResult.registryData` to all three `setSession()` calls, matching the correct pattern in `project.set` and `project.refresh`.
+  - Why this matters: without this fix, any operation after create-page/create/clone would lose access to dev host tokens, functions, and other registry data.
+
+- [x] **Apply `defaultStyles` from registry when adding code component instances**
+  - When `plasmicElementToTpl()` creates a TplComponent, it now looks up the component in `session.registryData.components` and applies `defaultStyles` via `RSH.merge(sanitizeStyles(...))`.
+  - `findRegistryComponent()` helper matches by name with `$dev` suffix handling (strips `$dev` from both registry and site model names before comparing).
+  - Registry data is threaded through `plasmicElementToTpl()` as an optional `registryComponents` parameter, passed from `addChild()` which reads it from `session.registryData?.components`.
+  - Non-fatal: if `ensureBaseVariantSetting` or RSH.merge fails, a warning is logged and the component is created without default styles.
+  - Why this matters: code components often register `defaultStyles` (e.g., width, padding, display) that make instances render correctly. Without this, users must manually set these styles every time.
+
+- [x] **Validate `parentComponentName` when adding component instances**
+  - When `addChild()` processes a component-type child element, it checks the registry for `parentComponentName` on the child component.
+  - If the parent doesn't match, a warning is returned in `AddChildResult.warnings[]` and logged to stderr.
+  - Validation is non-blocking: the component is still added (the user might have a valid reason), but the warning alerts them to potential misuse.
+  - Handles `$dev` suffix in both parent and child names.
+  - Three cases: TplComponent parent matches (no warning), TplComponent parent doesn't match (warning), TplTag parent (warning about non-component container).
+  - `node.add` handler surfaces `warnings` in the JSON response for both normal and dry-run modes.
+  - Why this matters: components like AccordionItem are designed to only work inside Accordion. Without validation, the AI model might place them in arbitrary containers, causing rendering issues.
+
+- [ ] **Populate slot `defaultValue` from registry when creating component instances** (future)
+  - When a code component registers slot props with `defaultValue`, the MCP should populate those slots automatically if the user doesn't provide explicit children.
+  - Deferred: more complex to implement (requires parsing `defaultValue` as PlasmicElement trees).
+  - Spec reference: "Populate default slot content (from `props.children.defaultValue`)"
+
+### P28 Tests
+
+- [x] server.test.ts: 3 tests for `node.add` warning surface (with warnings, without warnings, dry-run with warnings)
+- [x] server.test.ts: 3 tests for `registryData` preservation in `component.create-page`, `component.create`, `component.clone` (verify `setSession` called with `registryData`)
+- [x] node.test.ts: 6 tests for registry enrichment in `addChild`:
+  - applies defaultStyles from registry
+  - matches registry components with $dev suffix
+  - works normally without registryData
+  - returns warning for parentComponentName mismatch
+  - no warning when parentComponentName matches
+  - returns warning when adding to TplTag parent with parentComponentName
+
+---
+
 ## Dependency Graph Summary
 
 ```
@@ -218,10 +262,11 @@ P5: _type/typeTag bug (independent, can be done anytime)
 10. ~~TTL cache (P4)~~ **DONE**
 11. ~~Future registry data usage in MCP (P4) -- contexts, functions, tokens, traits~~ **DONE**
 12. ~~P27 registry enrichment -- session.registryData, design.list-tokens devHostTokens, data.list-functions devHostFunctions, project.set/refresh devHostRegistry summary~~ **DONE**
+13. ~~P28 registryData drop bug fix + defaultStyles enrichment + parentComponentName validation~~ **DONE**
 
 ---
 
-## Current Source Code Summary (verified 2026-02-27, updated after P1/P2/P3/P4/partial-P5/P27)
+## Current Source Code Summary (verified 2026-02-27, updated after P1/P2/P3/P4/partial-P5/P27/P28)
 
 ### packages/plasmic-mcp-registry/ (renamed from plasmic-registry)
 - **package.json**: name `@elasticpath/plasmic-mcp-registry`, v0.2.0, zero runtime deps, CommonJS output, `exports` field with `"."` and `"./next"` subpaths
@@ -249,17 +294,28 @@ P5: _type/typeTag bug (independent, can be done anytime)
 - **`getCodeComponentVariantMetas()`**: uses `tplTree?.typeTag ?? tplTree?._type` (fixed from `_type` only)
 - **Contexts/functions/tokens/traits**: parsed from `FullRegistryData` and stored in `session.registryData` for use by MCP tool handlers
 
+### packages/plasmic-mcp/src/edit-tools.ts (P28 changes)
+- **`findRegistryComponent()`**: matches registry component entries by name with `$dev` suffix handling
+- **`plasmicElementToTpl()`**: now accepts optional `registryComponents` parameter; applies `defaultStyles` from registry after `mkTplComponentX` creates TplComponent instances
+- **`addChild()`**: passes `session.registryData?.components` to `plasmicElementToTpl`; validates `parentComponentName` from registry and returns non-fatal `warnings[]`
+- **`AddChildResult`**: new optional `warnings?: string[]` field for parentComponentName mismatches
+
+### packages/plasmic-mcp/src/server.ts (P28 changes)
+- **`component.create-page`**, **`component.create`**, **`component.clone`**: `setSession()` calls now include `registryData: syncResult.registryData` (was missing, causing session.registryData to become undefined after these operations)
+- **`node.add` handler**: surfaces `result.warnings` in JSON response (both normal and dry-run modes)
+
 ### packages/plasmic-mcp/src/session.ts
 - **`Session`** now has `registryData: FullRegistryData | null` field (added in P27)
 - Populated after each `syncFromDevHost()` call; cleared on `set-project` cleanup
-- Consumed by `design.list-tokens` (devHostTokens), `data.list-functions` (devHostFunctions), and `project.set`/`project.refresh` summary responses
+- Consumed by `design.list-tokens` (devHostTokens), `data.list-functions` (devHostFunctions), `project.set`/`project.refresh` summary responses, and `addChild` (defaultStyles + parentComponentName validation)
 
-### Test counts (as of P1/P2/P3/P4/partial-P5/P27 completion)
+### Test counts (as of P1/P2/P3/P4/partial-P5/P27/P28 completion)
 - packages/plasmic-mcp-registry: 75 tests (5 suites) -- 21 existing + 54 new
 - plasmicpkgs-dev: 6 tests (1 suite) -- all updated and passing
-- packages/plasmic-mcp: 1680 tests (31 suites) -- all passing
+- packages/plasmic-mcp: 1692 tests (31 suites) -- all passing
   - devhost-sync.test.ts: 35 tests (was 31 -- added 4 for P27 registryData in SyncResult)
-  - server.test.ts: 261 tests (was 248 -- added 13 for P27 devHostTokens/devHostFunctions/devHostRegistry summary)
+  - server.test.ts: 267 tests (was 261 -- added 6 for P28: 3 node.add warnings + 3 registryData preservation)
+  - node.test.ts: added 6 tests for P28 registry enrichment (defaultStyles, $dev matching, no registryData, parentComponentName mismatch/match/TplTag)
 
 ### Host registration global shapes (packages/host/src/register*.ts)
 | Registry | Global | Entry Shape | Non-serializable |

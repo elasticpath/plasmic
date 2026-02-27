@@ -2296,6 +2296,30 @@ export interface AddChildResult {
   position: string | number;
   /** Set when child was added to a named slot on a TplComponent. */
   slotName?: string;
+  /** Non-fatal warnings (e.g., parentComponentName mismatch). */
+  warnings?: string[];
+}
+
+/**
+ * Find a registry component entry by matching component name.
+ * Handles $dev suffix: a registry entry "MyComponent$dev" matches
+ * site model component "MyComponent" and vice versa.
+ */
+function findRegistryComponent(
+  registryComponents: any[],
+  componentName: string
+): any | null {
+  if (!registryComponents?.length) return null;
+  return registryComponents.find((c: any) => {
+    if (!c?.name) return false;
+    const regName = c.name.endsWith("$dev")
+      ? c.name.slice(0, -4)
+      : c.name;
+    const siteName = componentName.endsWith("$dev")
+      ? componentName.slice(0, -4)
+      : componentName;
+    return regName === siteName;
+  }) ?? null;
 }
 
 /**
@@ -2313,7 +2337,8 @@ export interface AddChildResult {
 function plasmicElementToTpl(
   element: PlasmicElement,
   tplMgr: TplMgr,
-  baseVariant: any
+  baseVariant: any,
+  registryComponents?: any[]
 ): any {
   // String elements become text nodes
   if (typeof element === "string") {
@@ -2337,7 +2362,7 @@ function plasmicElementToTpl(
       : [];
 
     const childTpls = childElements.map((child) =>
-      plasmicElementToTpl(child, tplMgr, baseVariant)
+      plasmicElementToTpl(child, tplMgr, baseVariant, registryComponents)
     );
 
     // Convert props to args dict for mkTplComponentX.
@@ -2391,6 +2416,27 @@ function plasmicElementToTpl(
       ...(childTpls.length > 0 ? { children: childTpls } : {}),
       ...(args ? { args } : {}),
     });
+
+    // Apply defaultStyles from dev host registry if available.
+    // When a code component registers defaultStyles (e.g., width, padding),
+    // they should be applied to new instances so the component renders
+    // correctly without requiring the user to manually set them.
+    if (registryComponents) {
+      const regComp = findRegistryComponent(registryComponents, targetComponent.name);
+      if (regComp?.defaultStyles && typeof regComp.defaultStyles === "object") {
+        try {
+          const vs = tplMgr.ensureBaseVariantSetting(tpl);
+          const rsh = RSH(vs.rs, tpl);
+          rsh.merge(sanitizeStyles(regComp.defaultStyles));
+        } catch (e) {
+          // Non-fatal: log and continue without default styles
+          console.error(
+            `[plasmic-mcp] Warning: Could not apply defaultStyles for "${targetComponent.name}":`,
+            e
+          );
+        }
+      }
+    }
 
     return tpl;
   }
@@ -2463,7 +2509,7 @@ function plasmicElementToTpl(
     : [];
 
   const childTpls = childElements.map((child) =>
-    plasmicElementToTpl(child, tplMgr, baseVariant)
+    plasmicElementToTpl(child, tplMgr, baseVariant, registryComponents)
   );
 
   const tpl = mkTplTagX(tag, { baseVariant, styles: {} }, ...childTpls);
@@ -2556,6 +2602,43 @@ export async function addChild(
 
   const session = requireSession();
   const tplMgr = new TplMgr({ site: session.site });
+  const registryComponents: any[] | undefined =
+    session.registryData?.components;
+  const warnings: string[] = [];
+
+  // Validate parentComponentName from registry: if the child element is a
+  // component with a registered parentComponentName, warn when the insertion
+  // target doesn't match. This catches misplaced components early (e.g.,
+  // AccordionItem outside Accordion) without blocking the operation.
+  if (typeof child === "object" && (child.type === "component" || child.type === "default-component") && registryComponents) {
+    const childCompRef = child.type === "component"
+      ? (child as any).name
+      : (child as any).kind;
+    if (childCompRef) {
+      const regEntry = findRegistryComponent(registryComponents, childCompRef);
+      if (regEntry?.parentComponentName) {
+        const expectedParent = regEntry.parentComponentName;
+        let actualParent: string | null = null;
+        if (isKnownTplComponent(resolved.node)) {
+          actualParent = resolved.node.component?.name;
+        }
+        if (actualParent) {
+          // Compare with $dev suffix handling
+          const stripDev = (n: string) => n.endsWith("$dev") ? n.slice(0, -4) : n;
+          if (stripDev(expectedParent) !== stripDev(actualParent)) {
+            const msg = `Component "${childCompRef}" is designed to be used inside "${expectedParent}" but is being added to "${actualParent}"`;
+            warnings.push(msg);
+            console.error(`[plasmic-mcp] Warning: ${msg}`);
+          }
+        } else {
+          // Parent is a TplTag, not a component — may still be valid (inside a slot)
+          const msg = `Component "${childCompRef}" is designed to be used inside "${expectedParent}" but is being added to a non-component container`;
+          warnings.push(msg);
+          console.error(`[plasmic-mcp] Warning: ${msg}`);
+        }
+      }
+    }
+  }
 
   // --- TplComponent parent: add to slot ---
   if (isKnownTplComponent(resolved.node)) {
@@ -2611,7 +2694,7 @@ export async function addChild(
     let newTpl: any;
 
     const changes = tracker.withRecording(() => {
-      newTpl = plasmicElementToTpl(child, tplMgr, baseVariant);
+      newTpl = plasmicElementToTpl(child, tplMgr, baseVariant, registryComponents);
 
       if (slotArg) {
         // Slot already has a RenderExpr — insert into its tpl array
@@ -2643,6 +2726,7 @@ export async function addChild(
       newNodeUuid: newTpl?.uuid,
       position: position ?? "last",
       slotName,
+      ...(warnings.length > 0 ? { warnings } : {}),
     };
   }
 
@@ -2679,7 +2763,7 @@ export async function addChild(
   let newTpl: any;
 
   const changes = tracker.withRecording(() => {
-    newTpl = plasmicElementToTpl(child, tplMgr, baseVariant);
+    newTpl = plasmicElementToTpl(child, tplMgr, baseVariant, registryComponents);
     insertChild(parent, newTpl, position);
   });
 
@@ -2697,6 +2781,7 @@ export async function addChild(
     parentUuid: resolved.uuid,
     newNodeUuid: newTpl?.uuid,
     position: position ?? "last",
+    ...(warnings.length > 0 ? { warnings } : {}),
   };
 }
 
