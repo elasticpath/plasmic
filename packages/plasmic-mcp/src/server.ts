@@ -483,6 +483,7 @@ export function createServer(): McpServer {
 
           case "end-batch": {
             const result = await endBatch(apiClient, batchId);
+            const batchRevision = result.save?.revisionNum ?? null;
             return {
               content: [
                 {
@@ -491,8 +492,10 @@ export function createServer(): McpServer {
                     {
                       success: true,
                       operationCount: result.operationCount,
-                      revision: result.save.revisionNum,
-                      message: `Batch saved: ${result.operationCount} operations in revision ${result.save.revisionNum}`,
+                      ...(batchRevision !== null && { revision: batchRevision }),
+                      message: batchRevision !== null
+                        ? `Batch saved: ${result.operationCount} operations in revision ${batchRevision}`
+                        : `Batch completed: ${result.operationCount} operations`,
                     }
                   ),
                 },
@@ -507,6 +510,7 @@ export function createServer(): McpServer {
               );
             }
             const result = await undoOperation(apiClient);
+            const undoRevision = result.save?.revisionNum ?? null;
             return {
               content: [
                 {
@@ -515,7 +519,7 @@ export function createServer(): McpServer {
                     {
                       success: true,
                       undone: result.undone,
-                      revision: result.save.revisionNum,
+                      ...(undoRevision !== null && { revision: undoRevision }),
                       remainingUndos: getUndoDepth(),
                       message: `Undone: ${result.undone}`,
                     }
@@ -872,9 +876,11 @@ export function createServer(): McpServer {
             };
 
             // Write to temp file (overwrite per component UUID)
+            // Sanitize UUID to prevent path traversal — only allow alphanumeric, hyphens, underscores
+            const safeCuuid = cuuid.replace(/[^a-zA-Z0-9_-]/g, "_");
             const filePath = path.join(
               os.tmpdir(),
-              `plasmic-tree-${cuuid}.json`
+              `plasmic-tree-${safeCuuid}.json`
             );
             fs.writeFileSync(filePath, JSON.stringify(fullData, null, 2), "utf-8");
 
@@ -1141,7 +1147,12 @@ export function createServer(): McpServer {
                 revisionNum: newRevisionNum,
                 modelVersion: newModelVersion,
                 hostlessDataVersion: newHostlessDataVersion,
+                hostUrl: reloadedHostUrl,
               } = await loadProject(apiClient, session.projectId);
+
+              // Re-sync code component variants from the dev host (non-fatal)
+              const syncResult = await syncFromDevHost(site, reloadedHostUrl);
+
               setSession({
                 projectId: session.projectId,
                 projectName,
@@ -1151,6 +1162,9 @@ export function createServer(): McpServer {
                 modelVersion: newModelVersion,
                 hostlessDataVersion: newHostlessDataVersion,
                 projectUuid: session.projectId,
+                hostUrl: reloadedHostUrl,
+                devHostSynced: syncResult.devHostSynced,
+                syncedVariantComponents: syncResult.syncedVariantComponents,
               });
               initChangeTracker(site);
 
@@ -1227,7 +1241,12 @@ export function createServer(): McpServer {
                 revisionNum: newRevisionNum,
                 modelVersion: newModelVersion,
                 hostlessDataVersion: newHostlessDataVersion,
+                hostUrl: reloadedHostUrl,
               } = await loadProject(apiClient, session.projectId);
+
+              // Re-sync code component variants from the dev host (non-fatal)
+              const syncResult = await syncFromDevHost(site, reloadedHostUrl);
+
               setSession({
                 projectId: session.projectId,
                 projectName,
@@ -1237,6 +1256,9 @@ export function createServer(): McpServer {
                 modelVersion: newModelVersion,
                 hostlessDataVersion: newHostlessDataVersion,
                 projectUuid: session.projectId,
+                hostUrl: reloadedHostUrl,
+                devHostSynced: syncResult.devHostSynced,
+                syncedVariantComponents: syncResult.syncedVariantComponents,
               });
               initChangeTracker(site);
 
@@ -1304,7 +1326,7 @@ export function createServer(): McpServer {
                 content: [
                   {
                     type: "text" as const,
-                    text: `Error: Source component UUID "${srcUuid}" not found. Use list-components to see available components.`,
+                    text: JSON.stringify({ error: true, message: `Source component UUID "${srcUuid}" not found. Use list-components to see available components.` }),
                   },
                 ],
                 isError: true,
@@ -1338,7 +1360,12 @@ export function createServer(): McpServer {
                 revisionNum: newRevisionNum,
                 modelVersion: newModelVersion,
                 hostlessDataVersion: newHostlessDataVersion,
+                hostUrl: reloadedHostUrl,
               } = await loadProject(apiClient, session.projectId);
+
+              // Re-sync code component variants from the dev host (non-fatal)
+              const syncResult = await syncFromDevHost(site, reloadedHostUrl);
+
               setSession({
                 projectId: session.projectId,
                 projectName,
@@ -1348,6 +1375,9 @@ export function createServer(): McpServer {
                 modelVersion: newModelVersion,
                 hostlessDataVersion: newHostlessDataVersion,
                 projectUuid: session.projectId,
+                hostUrl: reloadedHostUrl,
+                devHostSynced: syncResult.devHostSynced,
+                syncedVariantComponents: syncResult.syncedVariantComponents,
               });
               initChangeTracker(site);
 
@@ -1492,6 +1522,7 @@ export function createServer(): McpServer {
             const cuuid = requireParam(params.componentUuid, "componentUuid", "component.extract");
             const nRef = requireParam(params.nodeRef, "nodeRef", "component.extract");
             const eName = requireParam(params.name, "name", "component.extract");
+            if (eName.length < 1) throw new Error("Component name is required for component.extract");
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
@@ -1573,6 +1604,7 @@ export function createServer(): McpServer {
                       componentName: result.componentName,
                       path: result.path,
                       revision: result.save.revisionNum,
+                      message: `Converted "${result.componentName}" to page at ${result.path}`,
                     }
                   ),
                 },
@@ -1613,6 +1645,7 @@ export function createServer(): McpServer {
                       success: true,
                       componentName: result.componentName,
                       revision: result.save.revisionNum,
+                      message: `Converted "${result.componentName}" to component`,
                     }
                   ),
                 },
@@ -2940,7 +2973,11 @@ export function createServer(): McpServer {
               content: [
                 {
                   type: "text" as const,
-                  text: JSON.stringify(result),
+                  text: JSON.stringify({
+                    componentUuid: cuuid,
+                    componentName: component.name,
+                    ...result,
+                  }),
                 },
               ],
             };
@@ -3545,6 +3582,9 @@ export function createServer(): McpServer {
 
           case "update-mixin": {
             const mRef = requireParam(params.mixinRef, "mixinRef", "design.update-mixin");
+            if (params.newName === undefined && params.styles === undefined) {
+              throw new Error("At least one of newName or styles must be provided for design.update-mixin");
+            }
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
@@ -3689,6 +3729,9 @@ export function createServer(): McpServer {
 
           case "update-animation": {
             const sRef = requireParam(params.seqRef, "seqRef", "design.update-animation");
+            if (params.newName === undefined && params.keyframes === undefined) {
+              throw new Error("At least one of newName or keyframes must be provided for design.update-animation");
+            }
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
@@ -4275,7 +4318,7 @@ export function createServer(): McpServer {
                 content: [
                   {
                     type: "text" as const,
-                    text: `Component not found: ${cuuid}`,
+                    text: `Component UUID "${cuuid}" not found. Use list-components to see available components.`,
                   },
                 ],
                 isError: true,
@@ -4488,6 +4531,9 @@ export function createServer(): McpServer {
 
           case "update-data-token": {
             const dtRef = requireParam(params.tokenRef, "tokenRef", "data.update-data-token");
+            if (params.name === undefined && params.value === undefined) {
+              throw new Error("At least one of name or value must be provided for data.update-data-token");
+            }
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
@@ -4621,6 +4667,9 @@ export function createServer(): McpServer {
 
           case "update-split": {
             const sRef = requireParam(params.splitRef, "splitRef", "data.update-split");
+            if (params.name === undefined && params.status === undefined && params.slices === undefined) {
+              throw new Error("At least one of name, status, or slices must be provided for data.update-split");
+            }
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
@@ -4864,6 +4913,10 @@ export function createServer(): McpServer {
             if (params.args !== undefined) updates.args = params.args;
             if (params.condition !== undefined) updates.condition = params.condition;
             if (params.interactionName !== undefined) updates.interactionName = params.interactionName;
+
+            if (Object.keys(updates).length === 0) {
+              throw new Error("At least one of actionName, args, condition, or interactionName must be provided for interaction.update");
+            }
 
             if (params.dryRun) {
               const result = await withDryRun(() =>

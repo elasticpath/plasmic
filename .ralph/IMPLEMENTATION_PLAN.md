@@ -6,11 +6,11 @@
 
 - MCP server: 8 STRAP tools, 103 actions -- ALL fully implemented, zero TODOs/FIXMEs
 - Eval system: harness, graders, visual capture, dashboard, CI, ~135 scenarios across 20 YAML files
-- Total tests: ~1,623 (1,486 unit across 31 suites + 137 integration)
+- Total tests: ~1,643 (1,494 unit across 31 suites + 149 integration)
 - Eval tests: 249 across 10 files (21 new added in P15)
 - **Action coverage: ~98% (103/103 actions have eval scenarios)**
 - **All known issues resolved**
-- **Priority order: P1-P21 completed**
+- **Priority order: P1-P23 completed**
 
 ## Completed Priorities
 
@@ -37,12 +37,13 @@
 | P20 | Server Handler Test Coverage | 62 new server handler tests covering 48 previously-untested actions across all 8 STRAP domains. Added 47 missing edit-tools mock declarations + devhost-sync mock to test infrastructure. Fixed syncFromDevHost mock return shape (SyncResult not undefined). Domains covered: component props/states (list-props, add-prop, update-prop, remove-prop, list-states, add-state, update-state, remove-state, extract), node (update-rich-text, set-visibility, set-image, apply-mixin, detach-mixin, add-animation, remove-animation), design (list-mixins, create-mixin, update-mixin, remove-mixin, list-animations, create-animation, update-animation, remove-animation, list-themes, create-theme, update-theme, remove-theme, set-active-theme, duplicate-token, upload-asset, rename-asset, remove-asset), data (set-data-cond, set-data-rep, list-queries, add-query, update-query, remove-query, get-code-meta, list-functions), interaction (list, add, update, remove), variant globals (list-global-groups, create-global-group, add-global, remove-global-group, rename-global). All 1617 tests pass. |
 | P21 | Error Handling Hardening | `err:any` → `err:unknown` type-narrowing across 4 source files (server.ts 10 blocks, api-client.ts 2 blocks, save-manager.ts 3 blocks, edit-tools.ts 1 block) with `errorMessage()` helper in server.ts so non-Error thrown values produce readable messages. Undo rollback on save failure: undo-manager.ts reverse-reverses the model and re-pushes the op when save fails after in-memory apply. Session recovery after failed reload: server.ts create-page/create/clone handlers now re-initialize the change tracker on the existing session site on reload error, preventing "not initialized" on subsequent mutations. Auth file parse error distinction: auth.ts readAuthFile() now warns via console.error on JSON parse errors vs silently ignoring them (ENOENT still silent). Process-level catch: index.ts main() has .catch() guard for unhandled startup errors. 6 new tests (undo save-failure rollback x2, auth malformed JSON warning, auth ENOENT no-warning, server non-Error read-only, server non-Error mutation). All 1623 tests pass. |
 | P22 | Spec-Implementation Alignment & CC Variant Test Gaps | Spec audit found 3 gaps: (1) Spec used `syncedComponents` field name but implementation uses `syncedVariantComponents` — updated spec to match. (2) No test exercised the `updateStyles` → `resolveVariant` → CC variant path — added 2 unit tests in `node.test.ts`: CC variant by key name and by display name (case-insensitive), both verifying `ensureVariantSetting` is called with the correct variant and styles applied. Tests structure TplComponent root with RenderExpr slot overrides so node-resolver can traverse children. (3) Integration test `ensureVariantObjects` path never exercised because fixture lacks TplComponent-rooted wrappers — added 2 integration tests in `devhost-sync-integration.test.ts` using synthetic wrapper components: variant creation + resolution by CC key/display name, and idempotency (no duplicate variants on repeated sync). All 1478 unit + 149 integration tests pass. |
+| P23 | Server Hardening | Session state preservation in create-page/create/clone reload (dev host sync), null-safe revision handling in undo/end-batch, "at least one field" validation for 5 update handlers, UUID sanitization in inspect.export, response format consistency (clone error JSON, convert-to-page/component messages, variant.list wrapper, data.list-queries error format), component.extract empty-name guard. 16 new tests. All 1494 unit + 149 integration tests pass. |
 
 ---
 
 ## Outstanding Work
 
-*No outstanding work items. All known issues resolved (P1-P22).*
+*No outstanding work items. All known issues resolved (P1-P23).*
 
 ---
 
@@ -90,9 +91,18 @@
 | 38 | Failed reload leaves session with disposed change tracker | Bug | `src/server.ts` | FIXED (P21) | create-page/create/clone handlers reload session after API call; if reload fails, change tracker is disposed and subsequent mutations throw "not initialized". Now re-initializes tracker on existing session site on error. |
 | 39 | auth.ts silently swallows JSON parse errors | Bug | `src/auth.ts` | FIXED (P21) | readAuthFile() caught all errors identically — malformed .plasmic.auth JSON was silently ignored. Now distinguishes ENOENT (expected, silent) from JSON parse errors (warns via console.error). |
 | 40 | index.ts main() has no process-level error catch | Risk | `src/index.ts` | FIXED (P21) | Unhandled startup errors (bad config, port bind failure) would crash with raw stack trace. main() now has .catch() guard that logs cleanly and exits with code 1. |
+| 41 | setSession missing dev host sync state after create-page/create/clone reload | High | server.ts lines 1145, 1231, 1342 | FIXED (P23) | Model reload in create-page, create, and clone handlers called setSession without hostUrl, devHostSynced, or syncedVariantComponents. After creating a page/component, dev host variant data was silently lost. Now calls syncFromDevHost after reload and passes all fields to setSession. |
+| 42 | project.undo and project.end-batch crash on null result.save | Medium | server.ts lines 494, 518 | FIXED (P23) | Accessed result.save.revisionNum without null guard. If undoOperation or endBatch returns { save: null }, TypeError crashes the handler. Now uses optional chaining with fallback. |
+| 43 | update-mixin, update-animation, update-data-token, update-split, interaction.update accept empty updates | Low-Medium | server.ts | FIXED (P23) | Five update handlers had no "at least one field" guard. Calling with only the ref/identifier silently produced no-ops or passed undefined to edit-tools. Now validates that at least one updatable field is provided. |
+| 44 | inspect.export path traversal via componentUuid | Low-Medium | server.ts line 876 | FIXED (P23) | File path constructed from user-supplied componentUuid. A UUID containing ../ could write to arbitrary filesystem paths. Now sanitizes UUID to [a-zA-Z0-9_-] only. |
+| 45 | component.clone error uses inconsistent plain text format | Low | server.ts line 1307 | FIXED (P23) | Clone source-not-found error returned plain text while all other errors use JSON.stringify format. Now returns JSON { error: true, message: "..." }. |
+| 46 | convert-to-page and convert-to-component responses missing message field | Low | server.ts lines 1565-1580, 1606-1620 | FIXED (P23) | Live (non-dryRun) responses lacked human-readable message field that all other mutation responses include. Added descriptive messages. |
+| 47 | variant.list returns unwrapped result | Low | server.ts line 2943 | FIXED (P23) | Directly serialized listVariants return value without wrapper, unlike all other list actions. Now wraps with componentUuid and componentName. |
+| 48 | data.list-queries uses inconsistent error format | Low | server.ts line 4278 | FIXED (P23) | "Component not found: uuid" differed from standard "Component UUID \"uuid\" not found. Use list-components to see available components." pattern. Updated to use consistent format. |
+| 49 | component.extract accepts empty name | Low | server.ts line 1494 | FIXED (P23) | No length check on name parameter, unlike create and clone. Empty string would be passed to extractToComponent. Added length < 1 validation. |
 
 ---
 
 ## Issue Discovery Log
 
-Issues 1-20 identified P1-P9. Issues 22-27 discovered 2026-02-27 audit. Issues 20-21 resolved P14. Issues 19, 22, 24, 26, 27 resolved P15. Issue 28 discovered and resolved P16. Issues 23, 25 resolved P17. Issues 29-31 discovered and resolved P18 (spec audit gap analysis). Issues 32-34 discovered and resolved P19 (spec-vs-implementation audit). Issue 35 discovered and resolved P20 (server handler coverage audit). Issues 36-40 discovered and resolved P21 (error handling hardening audit).
+Issues 1-20 identified P1-P9. Issues 22-27 discovered 2026-02-27 audit. Issues 20-21 resolved P14. Issues 19, 22, 24, 26, 27 resolved P15. Issue 28 discovered and resolved P16. Issues 23, 25 resolved P17. Issues 29-31 discovered and resolved P18 (spec audit gap analysis). Issues 32-34 discovered and resolved P19 (spec-vs-implementation audit). Issue 35 discovered and resolved P20 (server handler coverage audit). Issues 36-40 discovered and resolved P21 (error handling hardening audit). Issues 41-49 discovered and resolved P23 (server hardening audit).

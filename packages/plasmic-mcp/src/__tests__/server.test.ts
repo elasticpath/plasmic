@@ -6288,4 +6288,387 @@ describe("tool handlers", () => {
       expect(output.revision).toBe(49);
     });
   });
+
+  // =====================================================================
+  // P23: Session state preservation, null guards, validation, security
+  // =====================================================================
+
+  describe("P23: create-page reload preserves dev host sync state", () => {
+    it("calls syncFromDevHost after model reload and passes hostUrl to setSession", async () => {
+      const newSite = {
+        components: [
+          { uuid: "new-page", name: "Products", pageMeta: { path: "/products" } },
+        ],
+      };
+
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        projectName: "Test Project",
+        site: { components: [] },
+      });
+      mockApiClient.updateProject.mockResolvedValue({
+        result: { newComponents: [{ uuid: "api-page-uuid" }] },
+      });
+      mockLoadProject.mockResolvedValue({
+        site: newSite,
+        bundler: {},
+        projectName: "Test Project",
+        revisionNum: 6,
+        modelVersion: 2,
+        hostlessDataVersion: 0,
+        hostUrl: "http://localhost:3000",
+      });
+      mockSyncFromDevHost.mockResolvedValue({
+        devHostSynced: true,
+        syncedVariantComponents: ["EPButton"],
+      });
+
+      await client.callTool({
+        name: "component",
+        arguments: { action: "create-page", name: "Products", path: "/products", body: {} },
+      });
+
+      // syncFromDevHost was called with the reloaded hostUrl
+      expect(mockSyncFromDevHost).toHaveBeenCalledWith(newSite, "http://localhost:3000");
+
+      // setSession includes dev host sync fields
+      expect(mockSetSession).toHaveBeenCalledWith(expect.objectContaining({
+        hostUrl: "http://localhost:3000",
+        devHostSynced: true,
+        syncedVariantComponents: ["EPButton"],
+      }));
+    });
+  });
+
+  describe("P23: component.create reload preserves dev host sync state", () => {
+    it("calls syncFromDevHost after model reload and passes hostUrl to setSession", async () => {
+      const newSite = {
+        components: [{ uuid: "new-comp", name: "Widget" }],
+      };
+
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        projectName: "Test Project",
+        site: { components: [] },
+      });
+      mockApiClient.updateProject.mockResolvedValue({
+        result: { newComponents: [{ uuid: "api-comp-uuid" }] },
+      });
+      mockLoadProject.mockResolvedValue({
+        site: newSite,
+        bundler: {},
+        projectName: "Test Project",
+        revisionNum: 7,
+        modelVersion: 2,
+        hostlessDataVersion: 0,
+        hostUrl: "http://localhost:3001",
+      });
+      mockSyncFromDevHost.mockResolvedValue({
+        devHostSynced: true,
+        syncedVariantComponents: ["EPInput"],
+      });
+
+      await client.callTool({
+        name: "component",
+        arguments: { action: "create", name: "Widget" },
+      });
+
+      expect(mockSyncFromDevHost).toHaveBeenCalledWith(newSite, "http://localhost:3001");
+      expect(mockSetSession).toHaveBeenCalledWith(expect.objectContaining({
+        hostUrl: "http://localhost:3001",
+        devHostSynced: true,
+        syncedVariantComponents: ["EPInput"],
+      }));
+    });
+  });
+
+  describe("P23: component.clone reload preserves dev host sync state", () => {
+    it("calls syncFromDevHost after model reload and passes hostUrl to setSession", async () => {
+      const newSite = {
+        components: [
+          { uuid: "src-uuid", name: "Original" },
+          { uuid: "clone-uuid", name: "ClonedWidget" },
+        ],
+      };
+
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        projectName: "Test Project",
+        site: {
+          components: [{ uuid: "src-uuid", name: "Original" }],
+        },
+      });
+      mockApiClient.updateProject.mockResolvedValue({
+        result: { newComponents: [{ uuid: "api-clone-uuid" }] },
+      });
+      mockLoadProject.mockResolvedValue({
+        site: newSite,
+        bundler: {},
+        projectName: "Test Project",
+        revisionNum: 8,
+        modelVersion: 2,
+        hostlessDataVersion: 0,
+        hostUrl: "http://localhost:3002",
+      });
+      mockSyncFromDevHost.mockResolvedValue({
+        devHostSynced: false,
+        syncedVariantComponents: [],
+      });
+
+      await client.callTool({
+        name: "component",
+        arguments: { action: "clone", sourceUuid: "src-uuid", name: "ClonedWidget" },
+      });
+
+      expect(mockSyncFromDevHost).toHaveBeenCalledWith(newSite, "http://localhost:3002");
+      expect(mockSetSession).toHaveBeenCalledWith(expect.objectContaining({
+        hostUrl: "http://localhost:3002",
+        devHostSynced: false,
+        syncedVariantComponents: [],
+      }));
+    });
+  });
+
+  describe("P23: project.undo null-safe revision handling", () => {
+    it("omits revision field when result.save is null", async () => {
+      mockIsBatchActive.mockReturnValue(false);
+      mockUndoOperation.mockResolvedValue({
+        undone: "removed node",
+        save: null,
+      });
+      mockGetUndoDepth.mockReturnValue(0);
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "undo" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.undone).toBe("removed node");
+      expect(output.revision).toBeUndefined();
+    });
+  });
+
+  describe("P23: project.end-batch null-safe revision handling", () => {
+    it("omits revision field when result.save is null", async () => {
+      mockEndBatch.mockResolvedValue({
+        operationCount: 0,
+        save: null,
+      });
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "end-batch" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.operationCount).toBe(0);
+      expect(output.revision).toBeUndefined();
+      expect(output.message).toContain("0 operations");
+    });
+  });
+
+  describe("P23: update-mixin requires at least one updatable field", () => {
+    it("returns error when only mixinRef is provided", async () => {
+      const result = await client.callTool({
+        name: "design",
+        arguments: { action: "update-mixin", mixinRef: "ButtonBase" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("At least one of");
+    });
+  });
+
+  describe("P23: update-animation requires at least one updatable field", () => {
+    it("returns error when only seqRef is provided", async () => {
+      const result = await client.callTool({
+        name: "design",
+        arguments: { action: "update-animation", seqRef: "fadeIn" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("At least one of");
+    });
+  });
+
+  describe("P23: update-data-token requires at least one updatable field", () => {
+    it("returns error when only tokenRef is provided", async () => {
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "update-data-token", tokenRef: "TestToken" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("At least one of");
+    });
+  });
+
+  describe("P23: update-split requires at least one updatable field", () => {
+    it("returns error when only splitRef is provided", async () => {
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "update-split", splitRef: "TestSplit" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("At least one of");
+    });
+  });
+
+  describe("P23: interaction.update requires at least one updatable field", () => {
+    it("returns error when no update fields are provided", async () => {
+      const result = await client.callTool({
+        name: "interaction",
+        arguments: {
+          action: "update",
+          componentUuid: "comp-1",
+          nodeRef: "Button",
+          event: "onClick",
+          interactionIndex: 0,
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("At least one of");
+    });
+  });
+
+  describe("P23: component.extract rejects empty name", () => {
+    it("returns error when name is empty string", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        site: { components: [{ uuid: "comp-1" }] },
+      });
+
+      const result = await client.callTool({
+        name: "component",
+        arguments: {
+          action: "extract",
+          componentUuid: "comp-1",
+          nodeRef: "Header",
+          name: "",
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("name is required");
+    });
+  });
+
+  describe("P23: variant.list response includes component metadata wrapper", () => {
+    it("wraps listVariants result with componentUuid and componentName", async () => {
+      const mockVariantData = {
+        globalVariants: [],
+        componentVariants: [],
+        styleVariants: [],
+      };
+      mockListVariants.mockReturnValue(mockVariantData);
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Homepage" }],
+        },
+      });
+
+      const result = await client.callTool({
+        name: "variant",
+        arguments: { action: "list", componentUuid: "comp-1" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.componentUuid).toBe("comp-1");
+      expect(output.componentName).toBe("Homepage");
+    });
+  });
+
+  describe("P23: clone error uses JSON format", () => {
+    it("returns JSON-formatted error when source not found", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        site: { components: [] },
+      });
+
+      const result = await client.callTool({
+        name: "component",
+        arguments: { action: "clone", sourceUuid: "missing", name: "Clone" },
+      });
+
+      expect(result.isError).toBe(true);
+      // Should be valid JSON, not plain text
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.error).toBe(true);
+      expect(parsed.message).toContain("not found");
+    });
+  });
+
+  describe("P23: convert-to-page response includes message field", () => {
+    it("returns a human-readable message in the response", async () => {
+      mockConvertToPage.mockResolvedValue({
+        componentName: "About",
+        path: "/about",
+        save: { revisionNum: 50, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "component",
+        arguments: { action: "convert-to-page", componentUuid: "comp-1", path: "/about" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.message).toContain("Converted");
+      expect(output.message).toContain("About");
+    });
+  });
+
+  describe("P23: convert-to-component response includes message field", () => {
+    it("returns a human-readable message in the response", async () => {
+      mockConvertToComponent.mockResolvedValue({
+        componentName: "SharedHeader",
+        save: { revisionNum: 51, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "component",
+        arguments: { action: "convert-to-component", componentUuid: "comp-1" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.message).toContain("Converted");
+      expect(output.message).toContain("SharedHeader");
+    });
+  });
+
+  describe("P23: inspect.export sanitizes UUID in file path", () => {
+    it("strips path traversal characters from UUID in temp file path", async () => {
+      const maliciousUuid = "../../../etc/passwd";
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: maliciousUuid, name: "Evil" }],
+          styleTokens: [],
+        },
+      });
+      mockReadComponentTree.mockReturnValue({ type: "tag", tag: "div" });
+      mockReadComponentSummary.mockReturnValue({ type: "tag", tag: "div" });
+      mockCountTreeNodes.mockReturnValue(1);
+
+      const result = await client.callTool({
+        name: "inspect",
+        arguments: { action: "export", componentUuid: maliciousUuid },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      // The file path should contain the sanitized UUID, not the original
+      expect(output.filePath).not.toContain("..");
+      expect(output.filePath).toContain("plasmic-tree-");
+      expect(output.filePath).toContain("_______etc_passwd");
+    });
+  });
 });
