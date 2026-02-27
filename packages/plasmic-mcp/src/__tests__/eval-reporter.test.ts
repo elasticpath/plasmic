@@ -11,7 +11,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { ScenarioResult, EvalReport } from "../../evals/harness/types.js";
 
-// Mock fs and review-flags before importing reporter
+// Mock fs, child_process, and review-flags before importing reporter
 vi.mock("fs", () => ({
   writeFileSync: vi.fn(),
   readFileSync: vi.fn(),
@@ -20,18 +20,22 @@ vi.mock("fs", () => ({
   existsSync: vi.fn(() => false),
 }));
 
+vi.mock("child_process", () => ({
+  execSync: vi.fn(),
+}));
+
 vi.mock("../../evals/graders/review-flags.js", () => ({
   applyReviewFlags: vi.fn(() => 0),
 }));
 
 // Import after mocks
-const { generateRunId, generateReport, loadPreviousReport } = await import(
-  "../../evals/harness/reporter.js"
-);
+const { generateRunId, generateReport, loadPreviousReport, getGitSha, findPassedScenarioIds } =
+  await import("../../evals/harness/reporter.js");
 const { applyReviewFlags } = await import(
   "../../evals/graders/review-flags.js"
 );
 const fs = await import("fs");
+const childProcess = await import("child_process");
 
 /** Helper to create a minimal ScenarioResult */
 function makeResult(overrides: Partial<ScenarioResult> = {}): ScenarioResult {
@@ -353,5 +357,110 @@ describe("loadPreviousReport", () => {
     (fs.readdirSync as any).mockReturnValue(["2026-02-27-120000.json"]);
     (fs.readFileSync as any).mockReturnValue("not json");
     expect(loadPreviousReport()).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getGitSha — P14.2 (dirty-tree detection)
+// ---------------------------------------------------------------------------
+describe("getGitSha", () => {
+  it("returns clean SHA when working tree is clean", () => {
+    (childProcess.execSync as any)
+      .mockReturnValueOnce("abc123def456\n")  // git rev-parse HEAD
+      .mockReturnValueOnce("");                // git diff --quiet HEAD (success)
+
+    expect(getGitSha()).toBe("abc123def456");
+  });
+
+  it("P14.2: appends -dirty when working tree has uncommitted changes", () => {
+    (childProcess.execSync as any)
+      .mockReturnValueOnce("abc123def456\n")   // git rev-parse HEAD
+      .mockImplementationOnce(() => {           // git diff --quiet HEAD fails
+        throw new Error("exit code 1");
+      });
+
+    expect(getGitSha()).toBe("abc123def456-dirty");
+  });
+
+  it("returns undefined when git is unavailable", () => {
+    (childProcess.execSync as any).mockImplementation(() => {
+      throw new Error("git not found");
+    });
+
+    expect(getGitSha()).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// findPassedScenarioIds — P14.3 (scenario content hashing)
+// ---------------------------------------------------------------------------
+describe("findPassedScenarioIds", () => {
+  it("returns Map of passed scenario IDs with hashes", () => {
+    const report = {
+      gitSha: "abc123",
+      scenarios: [
+        { id: "s1", success: true, scenarioHash: "hash1" },
+        { id: "s2", success: false },
+        { id: "s3", success: true, scenarioHash: "hash3" },
+      ],
+    };
+    (fs.existsSync as any).mockReturnValue(true);
+    (fs.readdirSync as any).mockReturnValue(["report.json"]);
+    (fs.readFileSync as any).mockReturnValue(JSON.stringify(report));
+
+    const result = findPassedScenarioIds("abc123");
+
+    expect(result).toBeInstanceOf(Map);
+    expect(result.size).toBe(2);
+    expect(result.get("s1")).toBe("hash1");
+    expect(result.has("s2")).toBe(false);
+    expect(result.get("s3")).toBe("hash3");
+  });
+
+  it("returns undefined hash for pre-P14.3 reports", () => {
+    const report = {
+      gitSha: "abc123",
+      scenarios: [
+        { id: "s1", success: true },  // no scenarioHash field
+      ],
+    };
+    (fs.existsSync as any).mockReturnValue(true);
+    (fs.readdirSync as any).mockReturnValue(["report.json"]);
+    (fs.readFileSync as any).mockReturnValue(JSON.stringify(report));
+
+    const result = findPassedScenarioIds("abc123");
+
+    expect(result.has("s1")).toBe(true);
+    expect(result.get("s1")).toBeUndefined();
+  });
+
+  it("skips reports with non-matching git SHA", () => {
+    const report = {
+      gitSha: "other-sha",
+      scenarios: [{ id: "s1", success: true }],
+    };
+    (fs.existsSync as any).mockReturnValue(true);
+    (fs.readdirSync as any).mockReturnValue(["report.json"]);
+    (fs.readFileSync as any).mockReturnValue(JSON.stringify(report));
+
+    const result = findPassedScenarioIds("abc123");
+    expect(result.size).toBe(0);
+  });
+
+  it("returns empty Map when no results dir", () => {
+    (fs.existsSync as any).mockReturnValue(false);
+
+    const result = findPassedScenarioIds("abc123");
+    expect(result).toBeInstanceOf(Map);
+    expect(result.size).toBe(0);
+  });
+
+  it("skips malformed report files", () => {
+    (fs.existsSync as any).mockReturnValue(true);
+    (fs.readdirSync as any).mockReturnValue(["bad.json"]);
+    (fs.readFileSync as any).mockReturnValue("not json");
+
+    const result = findPassedScenarioIds("abc123");
+    expect(result.size).toBe(0);
   });
 });

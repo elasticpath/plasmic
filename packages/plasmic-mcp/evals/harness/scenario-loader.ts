@@ -10,6 +10,7 @@
  */
 
 import { readFileSync, readdirSync, statSync } from "fs";
+import { createHash } from "crypto";
 import { resolve, dirname, extname } from "path";
 import { fileURLToPath } from "url";
 import { parse as parseYaml } from "yaml";
@@ -133,7 +134,7 @@ function validateScenario(raw: any, seenIds: Set<string>): string[] {
 }
 
 function normalizeScenario(raw: any): EvalScenario {
-  return {
+  const scenario: EvalScenario = {
     id: raw.id,
     description: raw.description ?? "",
     domains: raw.domains ?? [],
@@ -150,6 +151,31 @@ function normalizeScenario(raw: any): EvalScenario {
     visual: raw.visual,
     requiredMode: raw.requiredMode,
   };
+  // P14.3: Hash the meaningful scenario content for change detection.
+  // When a scenario's description, graders, setup, etc. change, the hash changes,
+  // causing resume/skip to re-run the scenario instead of reusing stale results.
+  // Uses first 16 hex chars (64 bits) — sufficient for change detection, not crypto.
+  scenario.contentHash = computeContentHash(scenario);
+  return scenario;
+}
+
+/**
+ * P14.3: Compute a deterministic hash of a scenario's behavioral content.
+ * Excludes `id` (the hash is stored per-ID) and `contentHash` itself.
+ * Only includes fields that affect scenario execution or grading.
+ */
+function computeContentHash(scenario: EvalScenario): string {
+  const hashInput = JSON.stringify({
+    description: scenario.description,
+    domains: scenario.domains,
+    tier: scenario.tier,
+    graders: scenario.graders,
+    timeout: scenario.timeout,
+    setup: scenario.setup,
+    requiredMode: scenario.requiredMode,
+    visual: scenario.visual,
+  });
+  return createHash("sha256").update(hashInput).digest("hex").slice(0, 16);
 }
 
 function filterScenarios(

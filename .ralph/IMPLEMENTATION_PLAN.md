@@ -6,11 +6,11 @@
 
 - MCP server: 8 STRAP tools, 103 actions -- ALL fully implemented, zero TODOs/FIXMEs
 - Eval system: harness, graders, visual capture, dashboard, CI, ~135 scenarios across 20 YAML files
-- Total tests: ~1,491 (1,356 unit across 29 suites + 137 integration in 1 suite + 21 plasmic-registry tests)
-- Eval tests: 203 across 10 files
+- Total tests: ~1,539 (1,381 unit across 29 suites + 137 integration in 1 suite + 21 plasmic-registry tests)
+- Eval tests: 228 across 10 files (25 new added in P14)
 - **Action coverage: ~98% (103/103 actions have eval scenarios)**
-- **Unfixed items: P14 (7 infra improvements)**
-- **Priority order: P14**
+- **Unfixed items: none**
+- **Priority order: all priorities completed**
 
 ## Completed Priorities
 
@@ -28,6 +28,7 @@
 | P11 | Scenario Coverage Expansion | 65 missing scenarios added across 8 domain YAML files (11 node + 16 design + 12 data + 10 component + 8 variant + 5 inspect + 2 interaction + 1 project). INDEX.md regenerated (70 -> 135 scenarios: 66 simple + 50 medium + 19 complex). Action coverage ~98% (103/103). All 1312 unit tests pass including scenario loader validation. |
 | P12 | Eval Runner Robustness | Eval runner robustness — tool execution timeout (Promise.race on onToolCall), saveReport fallback (try/catch with stderr), visual capture wall-clock cap (30s Promise.race), MCP server cleanup (server.close before null), MAX_TURNS exhaustion flag (maxTurnsExhausted field on ConversationResult), Playwright tracing stop/restart on success, console.error suppression try/finally, desktopPath null until screenshot succeeds. 5 new tests. |
 | P13 | Eval Grader Quality | Property grader numeric coercion (P13.1), existence grader exact matching + page/component separation (P13.2/P13.3), tool-params exact matching (P13.4), LLM judge readFileSync try/catch + multi-digit score regex (P13.5/P13.6), review-flags independent low-quality (P13.7), loadPreviousReport scenarios validation (P13.8), data grader name/queryType/event filtering (P13.9). New eval-llm-judge test file (16 tests). |
+| P14 | Eval Infrastructure Improvements | Partial re-run report merging (P14.1), dirty-tree detection (P14.2), scenario content hashing (P14.3), CLI argument validation (P14.4), scenario validator integration-only gap (P14.5), regression detection flag (P14.6), high-retry-count flag (P14.7). 25 new tests. All 1381 unit tests pass. |
 
 ---
 
@@ -64,17 +65,17 @@ False positives and false negatives make eval results unreliable. All 9 items fi
 
 ---
 
-### P14 -- MEDIUM: Eval Infrastructure Improvements
+### P14 -- MEDIUM: Eval Infrastructure Improvements (COMPLETED)
 
-Quality of life, accuracy, and developer experience improvements. All 7 items unfixed.
+Quality of life, accuracy, and developer experience improvements. All 7 items fixed. 25 new tests added (40 review-flags tests total, 20 scenario-loader tests, reporter tests for getGitSha and findPassedScenarioIds). All 1381 unit tests pass. Build and typecheck clean.
 
-- [ ] **P14.1 -- Partial re-run report merging** `evals/cli.ts:263-296`, `evals/harness/reporter.ts`. When resume/skip filters scenarios, the report contains only newly-run results. The success rate is calculated over the partial set, giving a misleading number. **Fix:** after running, merge results with skipped-as-passed results from the previous report before calling `generateReport()`.
-- [ ] **P14.2 -- Dirty-tree detection** `evals/harness/reporter.ts:305-311`. `getGitSha()` returns `HEAD` commit even with uncommitted changes. Skip logic fires incorrectly when the working tree is dirty. **Fix:** run `git diff --quiet HEAD` after `git rev-parse HEAD`; if it fails, append `-dirty` to the SHA string.
-- [ ] **P14.3 -- Scenario content hashing** `evals/harness/reporter.ts:318-343`. `findPassedScenarioIds()` compares scenario IDs only, not content. Modifying a scenario's graders or description does not trigger re-evaluation. **Fix:** include a SHA256 hash of the scenario YAML content in the report's per-scenario results, and compare hashes (not just IDs) during skip.
-- [ ] **P14.4 -- CLI argument validation** `evals/cli.ts:41-90`. `--tier` value is not validated; a typo like `--tier simpel` results in zero scenarios with a confusing "No scenarios found" error. Unknown flags are silently ignored. **Fix:** validate `--tier` against `["simple", "medium", "complex"]`, warn on unrecognized flags.
-- [ ] **P14.5 -- Scenario validator integration-only gap** `evals/harness/scenario-loader.ts`. `loadScenarios()` with default options skips scenarios with `requiredMode: "integration"`. The `eval:validate` npm script never checks these. **Fix:** in the validator, call `loadScenarios({ integration: true })` or load without mode filtering, then validate all scenarios.
-- [ ] **P14.6 -- Regression detection flag** `evals/graders/review-flags.ts`. No flag is raised when a scenario transitions from passing (previous report) to failing (current run). **Fix:** add a `regression` review flag by comparing current `success` against previous report's result for the same scenario ID.
-- [ ] **P14.7 -- High-retry-count flag** `evals/graders/review-flags.ts`. Scenarios that pass but required many retries are not flagged. High retries suggest fragility. **Fix:** add a `high-retries` review flag when `retries > 3` (configurable threshold).
+- [x] **P14.1 -- Partial re-run report merging** `evals/cli.ts:263-296`, `evals/harness/reporter.ts`. cli.ts now merges skipped-as-passed results from the previous report into newly-run results before generating the final report. Success rate now reflects the full scenario suite, not just newly-run scenarios.
+- [x] **P14.2 -- Dirty-tree detection** `evals/harness/reporter.ts:305-311`. `getGitSha()` now runs `git diff --quiet HEAD` after getting the SHA. If it fails (uncommitted changes), appends `-dirty` to the SHA string, preventing incorrect skip logic on dirty working trees.
+- [x] **P14.3 -- Scenario content hashing** `evals/harness/scenario-loader.ts`. Computes a SHA256 hash of each scenario's behavioral content (description, graders, setup, etc.). Stored as `contentHash` on EvalScenario and `scenarioHash` on ScenarioResult in reports. `findPassedScenarioIds()` now returns `Map<string, string|undefined>` and cli.ts compares hashes during skip, forcing re-runs when scenario content changes.
+- [x] **P14.4 -- CLI argument validation** `evals/cli.ts:41-90`. `parseArgs()` now validates `--tier` against `["simple", "medium", "complex"]` with a clear error message, and warns on unrecognized flags.
+- [x] **P14.5 -- Scenario validator integration-only gap** `evals/harness/scenario-loader.ts`. `validateAllScenarios()` now loads both mock and integration scenarios, merging by ID, so integration-only scenarios (like project-save-refresh) are validated.
+- [x] **P14.6 -- Regression detection flag** `evals/graders/review-flags.ts`. Added "regression" ReviewFlag. `computeReviewFlags()` accepts previousScenarioSuccess map; fires when scenario was passing in previous run but now fails. `applyReviewFlags` builds the success map from the previous report.
+- [x] **P14.7 -- High-retry-count flag** `evals/graders/review-flags.ts`. Added "high-retries" ReviewFlag. Fires when a passing scenario has retries > 3, surfacing fragile scenarios for human review.
 
 ---
 
@@ -103,8 +104,8 @@ Quality of life, accuracy, and developer experience improvements. All 7 items un
 | 17 | console.error suppression leak | Bug | `mcp-client.ts:155-185` | FIXED (P12.7) | No try/finally around mock init |
 | 18 | desktopPath on screenshot failure | Bug | `capture.ts:272-287` | FIXED (P12.8) | Returns path even when screenshot write fails |
 | 19 | Integration mode state leak | Risk | `mcp-client.ts:357-361` | KNOWN | project.save in one scenario pollutes next |
-| 20 | Partial re-run misleading rate | Risk | `cli.ts:263-296` | UNFIXED (P14.1) | Report excludes skipped-as-passed results |
-| 21 | Dirty-tree detection | Risk | `reporter.ts:305-311` | UNFIXED (P14.2) | Skip fires incorrectly on dirty trees |
+| 20 | Partial re-run misleading rate | Risk | `cli.ts:263-296` | FIXED (P14.1) | Report now merges skipped-as-passed results before generating final report |
+| 21 | Dirty-tree detection | Risk | `reporter.ts:305-311` | FIXED (P14.2) | `getGitSha()` appends `-dirty` when working tree has uncommitted changes |
 | 22 | resolveComponentUuid substring match | Bug | `state-check.ts:564-565` | UNFIXED | Same `.includes()` bug as P13.2, can resolve wrong component |
 | 23 | findNodeByName no cycle guard | Risk | `state-check.ts:580-589` | LOW | No cycle protection in recursive tree walk |
 | 24 | MODEL_PRICING stale keys | Risk | `runner.ts:267-271` | UNFIXED | Latest model IDs not listed; falls through to Opus pricing |
@@ -116,7 +117,7 @@ Quality of life, accuracy, and developer experience improvements. All 7 items un
 
 ## Issue Discovery Log
 
-Issues 1-20 were identified through P1-P9 work and early analysis. Issues 22-27 were discovered in the 2026-02-27 comprehensive audit:
+Issues 1-20 were identified through P1-P9 work and early analysis. Issues 22-27 were discovered in the 2026-02-27 comprehensive audit. Issues 20-21 were resolved in P14.
 
 - **#22 resolveComponentUuid substring match**: Uses same `name.includes()` pattern as P13.2. When multiple components share a name prefix (e.g., "Card" and "CardList"), the resolver picks the first match, which may be wrong.
 - **#23 findNodeByName no cycle guard**: WAB model should not have cycles, but there is no defensive guard. Low risk but worth noting.

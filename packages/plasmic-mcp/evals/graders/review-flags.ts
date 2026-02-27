@@ -6,12 +6,14 @@
  * from human judgment — disagreements between automated graders, low quality
  * scores, and new scenarios without established baselines.
  *
- * Flag criteria (from spec Tier 3):
+ * Flag criteria:
  *   1. "judge-disagrees" — state check and LLM judge disagree:
  *      - State passes but judge scores <= 2 (may be a false positive)
  *      - State fails but judge scores >= 4 (may be a false negative)
  *   2. "low-quality" — LLM judge scores <= 2 regardless of state check
  *   3. "new-scenario" — scenario ID not present in the previous run
+ *   4. "regression" — scenario was passing in previous run but now fails (P14.6)
+ *   5. "high-retries" — scenario passed but required >3 error-retry cycles (P14.7)
  */
 
 import type { ScenarioResult, EvalReport } from "../harness/types.js";
@@ -20,7 +22,9 @@ import type { ScenarioResult, EvalReport } from "../harness/types.js";
 export type ReviewFlag =
   | "judge-disagrees"
   | "low-quality"
-  | "new-scenario";
+  | "new-scenario"
+  | "regression"
+  | "high-retries";
 
 /**
  * Compute review flags for a single scenario result.
@@ -30,7 +34,8 @@ export type ReviewFlag =
  */
 export function computeReviewFlags(
   result: ScenarioResult,
-  previousScenarioIds?: Set<string>
+  previousScenarioIds?: Set<string>,
+  previousScenarioSuccess?: Map<string, boolean>
 ): ReviewFlag[] {
   const flags: ReviewFlag[] = [];
 
@@ -63,6 +68,24 @@ export function computeReviewFlags(
     flags.push("new-scenario");
   }
 
+  // Flag 4: Regression — scenario was passing in previous run but now fails.
+  // P14.6: Catching regressions early surfaces which changes broke previously-
+  // working scenarios, preventing silent quality erosion across runs.
+  if (previousScenarioSuccess && previousScenarioSuccess.has(result.id)) {
+    const wasPassing = previousScenarioSuccess.get(result.id);
+    if (wasPassing && !result.success) {
+      flags.push("regression");
+    }
+  }
+
+  // Flag 5: High retries — scenario passed but required many error-retry cycles.
+  // P14.7: Fragile scenarios that pass by luck after multiple retries need human
+  // attention even though they're technically passing. High retries suggest the
+  // scenario definition or graders are miscalibrated.
+  if (result.success && result.retries > 3) {
+    flags.push("high-retries");
+  }
+
   return flags;
 }
 
@@ -80,9 +103,15 @@ export function applyReviewFlags(
     ? new Set(previousReport.scenarios.map((s) => s.id))
     : undefined;
 
+  // P14.6: Build success map for regression detection — maps scenario ID
+  // to whether it was passing in the previous run.
+  const previousSuccess = previousReport
+    ? new Map(previousReport.scenarios.map((s) => [s.id, s.success]))
+    : undefined;
+
   let flagged = 0;
   for (const result of results) {
-    const flags = computeReviewFlags(result, previousIds);
+    const flags = computeReviewFlags(result, previousIds, previousSuccess);
     if (flags.length > 0) {
       result.needsReview = true;
       result.reviewFlags = flags;

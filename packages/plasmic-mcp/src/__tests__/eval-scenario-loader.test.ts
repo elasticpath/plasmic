@@ -187,4 +187,30 @@ describe("loadScenarios — normalization", () => {
       expect(s.timeout).toBeGreaterThan(0);
     }
   });
+
+  it("P14.3: every scenario has a contentHash", () => {
+    const scenarios = loadScenarios();
+    for (const s of scenarios) {
+      expect(s.contentHash).toBeDefined();
+      expect(typeof s.contentHash).toBe("string");
+      expect(s.contentHash!.length).toBe(16); // 16 hex chars (64 bits)
+    }
+  });
+
+  it("P14.3: same scenario produces same contentHash", () => {
+    const scenarios1 = loadScenarios();
+    const scenarios2 = loadScenarios();
+    // Same YAML content should produce identical hashes
+    for (let i = 0; i < scenarios1.length; i++) {
+      expect(scenarios1[i].contentHash).toBe(scenarios2[i].contentHash);
+    }
+  });
+
+  it("P14.3: different scenario IDs can have different contentHashes", () => {
+    const scenarios = loadScenarios();
+    const hashes = new Set(scenarios.map((s) => s.contentHash));
+    // Most scenarios should have unique content (and thus unique hashes)
+    // Allow some collisions but require at least 80% unique
+    expect(hashes.size).toBeGreaterThan(scenarios.length * 0.8);
+  });
 });

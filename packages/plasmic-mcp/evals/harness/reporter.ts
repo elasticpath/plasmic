@@ -316,10 +316,22 @@ export function saveOverride(
 /**
  * Get the current git commit SHA. Returns undefined if not in a git repo
  * or git is unavailable (e.g., CI container without git).
+ *
+ * P14.2: Appends "-dirty" when the working tree has uncommitted changes.
+ * Without this, skip logic fires incorrectly — the code being evaluated
+ * doesn't match what HEAD points to, so reusing results from a clean HEAD
+ * would give misleading pass rates.
  */
 export function getGitSha(): string | undefined {
   try {
-    return execSync("git rev-parse HEAD", { encoding: "utf-8" }).trim();
+    const sha = execSync("git rev-parse HEAD", { encoding: "utf-8" }).trim();
+    try {
+      execSync("git diff --quiet HEAD", { encoding: "utf-8" });
+    } catch {
+      // Non-zero exit means uncommitted changes exist
+      return `${sha}-dirty`;
+    }
+    return sha;
   } catch {
     return undefined;
   }
@@ -329,9 +341,16 @@ export function getGitSha(): string | undefined {
  * Find scenario IDs that already passed in a previous run with the same git SHA.
  * Used for resume/skip: interrupted runs can be resumed without re-running
  * scenarios that already succeeded at this commit.
+ *
+ * P14.3: Returns a Map of scenario ID → content hash (from scenarioHash field).
+ * This enables the caller to detect when a scenario's content has changed since
+ * the passing result, forcing a re-run instead of reusing stale results.
+ * The hash may be undefined for reports generated before P14.3.
  */
-export function findPassedScenarioIds(gitSha: string): Set<string> {
-  const passed = new Set<string>();
+export function findPassedScenarioIds(
+  gitSha: string
+): Map<string, string | undefined> {
+  const passed = new Map<string, string | undefined>();
   if (!existsSync(RESULTS_DIR)) return passed;
 
   const files = readdirSync(RESULTS_DIR).filter(
@@ -345,7 +364,7 @@ export function findPassedScenarioIds(gitSha: string): Set<string> {
       if (report.gitSha === gitSha && report.scenarios) {
         for (const s of report.scenarios) {
           if (s.success) {
-            passed.add(s.id);
+            passed.set(s.id, s.scenarioHash);
           }
         }
       }

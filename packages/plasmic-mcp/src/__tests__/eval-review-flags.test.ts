@@ -190,6 +190,74 @@ describe("computeReviewFlags", () => {
     });
   });
 
+  describe("regression flag (P14.6)", () => {
+    it("flags when scenario was passing but now fails", () => {
+      const result = makeResult({ id: "regressed", success: false });
+      const previousSuccess = new Map([["regressed", true]]);
+      const flags = computeReviewFlags(result, undefined, previousSuccess);
+      expect(flags).toContain("regression");
+    });
+
+    it("does NOT flag when scenario was already failing", () => {
+      const result = makeResult({ id: "still-failing", success: false });
+      const previousSuccess = new Map([["still-failing", false]]);
+      const flags = computeReviewFlags(result, undefined, previousSuccess);
+      expect(flags).not.toContain("regression");
+    });
+
+    it("does NOT flag when scenario still passes", () => {
+      const result = makeResult({ id: "still-passing", success: true });
+      const previousSuccess = new Map([["still-passing", true]]);
+      const flags = computeReviewFlags(result, undefined, previousSuccess);
+      expect(flags).not.toContain("regression");
+    });
+
+    it("does NOT flag for new scenarios (not in previous)", () => {
+      const result = makeResult({ id: "new-scenario", success: false });
+      const previousSuccess = new Map([["other", true]]);
+      const flags = computeReviewFlags(result, undefined, previousSuccess);
+      expect(flags).not.toContain("regression");
+    });
+
+    it("does NOT flag when previousScenarioSuccess is undefined", () => {
+      const result = makeResult({ id: "any", success: false });
+      const flags = computeReviewFlags(result, undefined, undefined);
+      expect(flags).not.toContain("regression");
+    });
+  });
+
+  describe("high-retries flag (P14.7)", () => {
+    it("flags when scenario passes with retries > 3", () => {
+      const result = makeResult({ success: true, retries: 4 });
+      const flags = computeReviewFlags(result);
+      expect(flags).toContain("high-retries");
+    });
+
+    it("flags when scenario passes with retries = 5", () => {
+      const result = makeResult({ success: true, retries: 5 });
+      const flags = computeReviewFlags(result);
+      expect(flags).toContain("high-retries");
+    });
+
+    it("does NOT flag when retries <= 3", () => {
+      const result = makeResult({ success: true, retries: 3 });
+      const flags = computeReviewFlags(result);
+      expect(flags).not.toContain("high-retries");
+    });
+
+    it("does NOT flag when retries = 0", () => {
+      const result = makeResult({ success: true, retries: 0 });
+      const flags = computeReviewFlags(result);
+      expect(flags).not.toContain("high-retries");
+    });
+
+    it("does NOT flag when scenario fails (even with high retries)", () => {
+      const result = makeResult({ success: false, retries: 10 });
+      const flags = computeReviewFlags(result);
+      expect(flags).not.toContain("high-retries");
+    });
+  });
+
   describe("combined flags", () => {
     it("can have multiple flags simultaneously", () => {
       const result = makeResult({
@@ -208,6 +276,24 @@ describe("computeReviewFlags", () => {
       const previousIds = new Set(["test-scenario"]);
       const flags = computeReviewFlags(result, previousIds);
       expect(flags).toEqual([]);
+    });
+
+    it("regression and new-scenario are mutually exclusive", () => {
+      // A scenario can't regress if it's new (not in previous run)
+      const result = makeResult({ id: "brand-new", success: false });
+      const previousIds = new Set(["other"]);
+      const previousSuccess = new Map([["other", true]]);
+      const flags = computeReviewFlags(result, previousIds, previousSuccess);
+      expect(flags).toContain("new-scenario");
+      expect(flags).not.toContain("regression");
+    });
+
+    it("regression and high-retries cannot coexist (high-retries requires success)", () => {
+      const result = makeResult({ id: "regressed", success: false, retries: 10 });
+      const previousSuccess = new Map([["regressed", true]]);
+      const flags = computeReviewFlags(result, undefined, previousSuccess);
+      expect(flags).toContain("regression");
+      expect(flags).not.toContain("high-retries");
     });
   });
 });
@@ -278,5 +364,34 @@ describe("applyReviewFlags", () => {
     // Verify the original array was mutated
     expect(results[0].needsReview).toBe(true);
     expect(results[0].reviewFlags).toContain("new-scenario");
+  });
+
+  it("P14.6: detects regression from previous report", () => {
+    const results = [
+      makeResult({ id: "s1", success: false }), // was passing, now fails
+      makeResult({ id: "s2", success: true }),   // still passing
+    ];
+
+    // Previous report has s1 passing
+    const previousReport = makeReport(["s1", "s2"]);
+
+    applyReviewFlags(results, previousReport);
+
+    expect(results[0].needsReview).toBe(true);
+    expect(results[0].reviewFlags).toContain("regression");
+    expect(results[1].needsReview).toBe(false);
+  });
+
+  it("P14.7: flags high-retries via applyReviewFlags", () => {
+    const results = [
+      makeResult({ id: "fragile", success: true, retries: 5 }),
+      makeResult({ id: "stable", success: true, retries: 1 }),
+    ];
+
+    applyReviewFlags(results);
+
+    expect(results[0].needsReview).toBe(true);
+    expect(results[0].reviewFlags).toContain("high-retries");
+    expect(results[1].needsReview).toBe(false);
   });
 });

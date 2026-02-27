@@ -88,6 +88,7 @@ export async function runScenario(
           retries: 0,
           transcript: [],
           graderResults: [],
+          scenarioHash: scenario.contentHash,
         };
       }
     }
@@ -250,6 +251,7 @@ export async function runScenario(
       graderResults,
       screenshotPaths,
       visualError,
+      scenarioHash: scenario.contentHash,
     };
   } catch (err: any) {
     // Fatal error — still produce a result so partial reports can be saved (GE6)
@@ -267,6 +269,7 @@ export async function runScenario(
       retries: 0,
       transcript: [],
       graderResults: [],
+      scenarioHash: scenario.contentHash,
     };
   }
 }
