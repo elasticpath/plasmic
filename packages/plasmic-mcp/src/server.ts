@@ -482,6 +482,7 @@ export function createServer(): McpServer {
           }
 
           case "end-batch": {
+            requireSession();
             const result = await endBatch(apiClient, batchId);
             const batchRevision = result.save?.revisionNum ?? null;
             return {
@@ -504,6 +505,7 @@ export function createServer(): McpServer {
           }
 
           case "undo": {
+            requireSession();
             if (isBatchActive()) {
               throw new Error(
                 "Cannot undo during a batch session. Call end-batch first, then undo."
@@ -588,7 +590,7 @@ export function createServer(): McpServer {
                 content: [
                   {
                     type: "text" as const,
-                    text: `Component UUID "${cuuid}" not found in project. Use list-components to see available components.`,
+                    text: `Component UUID "${cuuid}" not found in project. Use component tool with action 'list' to see available components.`,
                   },
                 ],
                 isError: true,
@@ -670,7 +672,7 @@ export function createServer(): McpServer {
                 content: [
                   {
                     type: "text" as const,
-                    text: `Component UUID "${cuuid}" not found in project. Use list-components to see available components.`,
+                    text: `Component UUID "${cuuid}" not found in project. Use component tool with action 'list' to see available components.`,
                   },
                 ],
                 isError: true,
@@ -745,7 +747,7 @@ export function createServer(): McpServer {
                 content: [
                   {
                     type: "text" as const,
-                    text: `Component UUID "${cuuid}" not found in project. Use list-components to see available components.`,
+                    text: `Component UUID "${cuuid}" not found in project. Use component tool with action 'list' to see available components.`,
                   },
                 ],
                 isError: true,
@@ -784,7 +786,7 @@ export function createServer(): McpServer {
                 content: [
                   {
                     type: "text" as const,
-                    text: `Component UUID "${cuuid}" not found in project. Use list-components to see available components.`,
+                    text: `Component UUID "${cuuid}" not found in project. Use component tool with action 'list' to see available components.`,
                   },
                 ],
                 isError: true,
@@ -857,7 +859,7 @@ export function createServer(): McpServer {
                 content: [
                   {
                     type: "text" as const,
-                    text: `Component UUID "${cuuid}" not found in project. Use list-components to see available components.`,
+                    text: `Component UUID "${cuuid}" not found in project. Use component tool with action 'list' to see available components.`,
                   },
                 ],
                 isError: true,
@@ -940,7 +942,7 @@ export function createServer(): McpServer {
                 content: [
                   {
                     type: "text" as const,
-                    text: `Component UUID "${cuuid}" not found. Use list-components to see available components.`,
+                    text: `Component UUID "${cuuid}" not found. Use component tool with action 'list' to see available components.`,
                   },
                 ],
                 isError: true,
@@ -975,7 +977,7 @@ export function createServer(): McpServer {
                 content: [
                   {
                     type: "text" as const,
-                    text: `Component UUID "${cuuid}" not found. Use list-components to see available components.`,
+                    text: `Component UUID "${cuuid}" not found. Use component tool with action 'list' to see available components.`,
                   },
                 ],
                 isError: true,
@@ -1326,7 +1328,7 @@ export function createServer(): McpServer {
                 content: [
                   {
                     type: "text" as const,
-                    text: JSON.stringify({ error: true, message: `Source component UUID "${srcUuid}" not found. Use list-components to see available components.` }),
+                    text: JSON.stringify({ error: true, message: `Source component UUID "${srcUuid}" not found. Use component tool with action 'list' to see available components.` }),
                   },
                 ],
                 isError: true,
@@ -1717,7 +1719,7 @@ export function createServer(): McpServer {
                 content: [
                   {
                     type: "text" as const,
-                    text: `Component UUID "${cuuid}" not found. Use list-components to see available components.`,
+                    text: `Component UUID "${cuuid}" not found. Use component tool with action 'list' to see available components.`,
                   },
                 ],
                 isError: true,
@@ -1914,7 +1916,7 @@ export function createServer(): McpServer {
                 content: [
                   {
                     type: "text" as const,
-                    text: `Component UUID "${cuuid}" not found. Use list-components to see available components.`,
+                    text: `Component UUID "${cuuid}" not found. Use component tool with action 'list' to see available components.`,
                   },
                 ],
                 isError: true,
@@ -2193,10 +2195,11 @@ export function createServer(): McpServer {
           case "add": {
             const cuuid = requireParam(params.componentUuid, "componentUuid", "node.add");
             const pRef = requireParam(params.parentRef, "parentRef", "node.add");
+            const childBody = requireParam(params.child, "child", "node.add");
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                addChild(apiClient, cuuid, pRef, params.child, params.position, params.slot)
+                addChild(apiClient, cuuid, pRef, childBody, params.position, params.slot)
               );
               return {
                 content: [
@@ -2217,7 +2220,7 @@ export function createServer(): McpServer {
             }
 
             const result = await addChild(
-              apiClient, cuuid, pRef, params.child, params.position, params.slot
+              apiClient, cuuid, pRef, childBody, params.position, params.slot
             );
             // Structural edit: invalidate node resolver cache for this component
             invalidateNodeCache(cuuid);
@@ -2672,6 +2675,24 @@ export function createServer(): McpServer {
             const cuuid = requireParam(params.componentUuid, "componentUuid", "node.set-image");
             const nref = requireParam(params.nodeRef, "nodeRef", "node.set-image");
 
+            if (!params.assetRef && !params.src) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        error: true,
+                        message:
+                          "At least one of 'assetRef' or 'src' must be provided.",
+                      }
+                    ),
+                  },
+                ],
+                isError: true,
+              };
+            }
+
             if (params.dryRun) {
               const result = await withDryRun(() =>
                 setImage(apiClient, cuuid, nref, { assetRef: params.assetRef, src: params.src }, params.variant)
@@ -2960,7 +2981,7 @@ export function createServer(): McpServer {
                 content: [
                   {
                     type: "text" as const,
-                    text: `Component UUID "${cuuid}" not found. Use list-components to see available components.`,
+                    text: `Component UUID "${cuuid}" not found. Use component tool with action 'list' to see available components.`,
                   },
                 ],
                 isError: true,
@@ -3367,7 +3388,7 @@ export function createServer(): McpServer {
           case "update-token": {
             const tRef = requireParam(params.tokenRef, "tokenRef", "design.update-token");
 
-            if (!params.value && !params.name) {
+            if (params.value === undefined && !params.name) {
               return {
                 content: [
                   {
@@ -4318,7 +4339,7 @@ export function createServer(): McpServer {
                 content: [
                   {
                     type: "text" as const,
-                    text: `Component UUID "${cuuid}" not found. Use list-components to see available components.`,
+                    text: `Component UUID "${cuuid}" not found. Use component tool with action 'list' to see available components.`,
                   },
                 ],
                 isError: true,

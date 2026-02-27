@@ -766,7 +766,7 @@ describe("tool handlers", () => {
 
     it("returns error when no active project", async () => {
       mockRequireSession.mockImplementation(() => {
-        throw new Error("No active project. Use the set-project tool first.");
+        throw new Error("No active project. Use project tool with action 'set' first.");
       });
 
       const result = await client.callTool({
@@ -947,7 +947,7 @@ describe("tool handlers", () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("not found");
-      expect(result.content[0].text).toContain("list-components");
+      expect(result.content[0].text).toContain("component tool");
     });
 
     it("applies default maxChars: 15000 via truncateTreeToCharBudget", async () => {
@@ -1917,7 +1917,7 @@ describe("tool handlers", () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("not found");
-      expect(result.content[0].text).toContain("list-components");
+      expect(result.content[0].text).toContain("component tool");
     });
 
     it("returns error when API call fails", async () => {
@@ -6669,6 +6669,131 @@ describe("tool handlers", () => {
       expect(output.filePath).not.toContain("..");
       expect(output.filePath).toContain("plasmic-tree-");
       expect(output.filePath).toContain("_______etc_passwd");
+    });
+  });
+
+  // =========================================================================
+  // P24: Code quality & safety hardening
+  // =========================================================================
+
+  describe("P24: node.add requires child parameter", () => {
+    it("returns error when child parameter is missing", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { components: [] },
+        bundler: {},
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "add",
+          componentUuid: "comp-1",
+          parentRef: "root",
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("child");
+    });
+  });
+
+  describe("P24: design.update-token accepts empty string value", () => {
+    it("does not reject value of empty string", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { components: [] },
+        bundler: {},
+      });
+      mockUpdateToken.mockResolvedValue({
+        save: { revisionNum: 5 },
+        tokenUuid: "t1",
+        name: "Token",
+        updatedFields: ["value"],
+      });
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: {
+          action: "update-token",
+          tokenRef: "MyToken",
+          value: "",
+        },
+      });
+
+      // Should NOT return the "at least one of" error
+      expect(result.isError).toBeFalsy();
+      expect(mockUpdateToken).toHaveBeenCalled();
+    });
+  });
+
+  describe("P24: node.set-image requires assetRef or src", () => {
+    it("returns error when neither assetRef nor src provided", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { components: [] },
+        bundler: {},
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "set-image",
+          componentUuid: "comp-1",
+          nodeRef: "img-1",
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("assetRef");
+      expect(result.content[0].text).toContain("src");
+    });
+  });
+
+  describe("P24: project.end-batch requires session", () => {
+    it("returns error when no session is active", async () => {
+      mockRequireSession.mockImplementation(() => {
+        throw new Error("No active project. Use project tool with action 'set' first.");
+      });
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "end-batch" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("No active project");
+    });
+  });
+
+  describe("P24: project.undo requires session", () => {
+    it("returns error when no session is active", async () => {
+      mockRequireSession.mockImplementation(() => {
+        throw new Error("No active project. Use project tool with action 'set' first.");
+      });
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "undo" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("No active project");
+    });
+  });
+
+  describe("P24: error messages reference correct STRAP tool names", () => {
+    it("component not found message references component tool", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { components: [] },
+        bundler: {},
+      });
+
+      const result = await client.callTool({
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: "nonexistent" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("component tool");
+      expect(result.content[0].text).not.toContain("list-components");
     });
   });
 });

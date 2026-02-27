@@ -2483,6 +2483,50 @@ describe("edit-tools", () => {
         moveChild(api, "comp-1", "Movable", "tpl-comp-1", undefined, "sidebar")
       ).rejects.toThrow('Slot "sidebar" not found on component "Card". Available slots: children');
     });
+
+    it("detects cycles through TplComponent slot overrides", async () => {
+      // Outer contains a TplComponent with a slot override containing Inner
+      const innerChild = mkTag({ uuid: "inner-1", name: "Inner" });
+      const tplComp = {
+        _type: "TplComponent",
+        uuid: "tc-1",
+        name: "Wrapper",
+        children: [],
+        vsettings: [
+          {
+            variants: [],
+            args: [
+              {
+                param: { paramName: "children", uuid: "p1" },
+                expr: {
+                  _type: "RenderExpr",
+                  tpl: [innerChild],
+                },
+              },
+            ],
+            rs: { values: {} },
+          },
+        ],
+        component: { name: "Card", uuid: "card-1", params: [{ paramName: "children", uuid: "p1", tplSlot: {} }] },
+      };
+      const outerParent = mkTag({
+        uuid: "outer-1",
+        name: "Outer",
+        children: [tplComp],
+      });
+      const root = mkTag({
+        uuid: "root-1",
+        children: [outerParent],
+      });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      setupSession(comp);
+
+      // Try to move Outer into its descendant Inner (hidden inside a slot override)
+      await expect(
+        moveChild(api, "comp-1", "Outer", "Inner")
+      ).rejects.toThrow('Cannot move "Outer" into its own descendant "Inner"');
+    });
   });
 
   describe("variant-aware updateStyles", () => {
@@ -5853,5 +5897,25 @@ describe("setImage", () => {
     await expect(
       setImage(api, "comp-1", "tc-1", { src: "https://example.com/img.jpg" })
     ).rejects.toThrow(/TplTag element/);
+  });
+
+  it("escapes quotes and backslashes in raw URL for background CSS", async () => {
+    const divNode = mkTag({ uuid: "div-1", tag: "div" });
+    const root = mkTag({ uuid: "root-1", children: [divNode] });
+    const comp = { uuid: "comp-1", name: "TestComp", tplTree: root };
+    const site = { components: [comp], imageAssets: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await setImage(api, "comp-1", "div-1", {
+      src: 'https://example.com/img"with"quotes.jpg',
+    });
+
+    expect(result.imageSource).toBe('https://example.com/img"with"quotes.jpg');
+    const bgValue = divNode.vsettings[0].rs.values["background"];
+    // Quotes in the URL must be escaped to prevent malformed CSS
+    expect(bgValue).toContain('\\"');
+    expect(bgValue).not.toContain('""');
   });
 });

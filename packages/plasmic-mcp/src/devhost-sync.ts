@@ -139,10 +139,13 @@ export function syncVariantMetadata(
       string,
       { cssSelector: string; displayName: string }
     > = {};
-    for (const [key, { cssSelector, displayName }] of Object.entries(
-      regComp.variants
-    )) {
-      variantMetas[key] = { cssSelector, displayName };
+    for (const [key, val] of Object.entries(regComp.variants)) {
+      if (val && typeof val === "object") {
+        variantMetas[key] = {
+          cssSelector: (val as any).cssSelector ?? "",
+          displayName: (val as any).displayName ?? key,
+        };
+      }
     }
     codeComp.codeComponentMeta.variants = variantMetas;
 

@@ -6,11 +6,11 @@
 
 - MCP server: 8 STRAP tools, 103 actions -- ALL fully implemented, zero TODOs/FIXMEs
 - Eval system: harness, graders, visual capture, dashboard, CI, ~135 scenarios across 20 YAML files
-- Total tests: ~1,643 (1,494 unit across 31 suites + 149 integration)
+- Total tests: ~1,655 (1,506 unit across 31 suites + 149 integration)
 - Eval tests: 249 across 10 files (21 new added in P15)
 - **Action coverage: ~98% (103/103 actions have eval scenarios)**
 - **All known issues resolved**
-- **Priority order: P1-P23 completed**
+- **Priority order: P1-P24 completed**
 
 ## Completed Priorities
 
@@ -38,12 +38,13 @@
 | P21 | Error Handling Hardening | `err:any` → `err:unknown` type-narrowing across 4 source files (server.ts 10 blocks, api-client.ts 2 blocks, save-manager.ts 3 blocks, edit-tools.ts 1 block) with `errorMessage()` helper in server.ts so non-Error thrown values produce readable messages. Undo rollback on save failure: undo-manager.ts reverse-reverses the model and re-pushes the op when save fails after in-memory apply. Session recovery after failed reload: server.ts create-page/create/clone handlers now re-initialize the change tracker on the existing session site on reload error, preventing "not initialized" on subsequent mutations. Auth file parse error distinction: auth.ts readAuthFile() now warns via console.error on JSON parse errors vs silently ignoring them (ENOENT still silent). Process-level catch: index.ts main() has .catch() guard for unhandled startup errors. 6 new tests (undo save-failure rollback x2, auth malformed JSON warning, auth ENOENT no-warning, server non-Error read-only, server non-Error mutation). All 1623 tests pass. |
 | P22 | Spec-Implementation Alignment & CC Variant Test Gaps | Spec audit found 3 gaps: (1) Spec used `syncedComponents` field name but implementation uses `syncedVariantComponents` — updated spec to match. (2) No test exercised the `updateStyles` → `resolveVariant` → CC variant path — added 2 unit tests in `node.test.ts`: CC variant by key name and by display name (case-insensitive), both verifying `ensureVariantSetting` is called with the correct variant and styles applied. Tests structure TplComponent root with RenderExpr slot overrides so node-resolver can traverse children. (3) Integration test `ensureVariantObjects` path never exercised because fixture lacks TplComponent-rooted wrappers — added 2 integration tests in `devhost-sync-integration.test.ts` using synthetic wrapper components: variant creation + resolution by CC key/display name, and idempotency (no duplicate variants on repeated sync). All 1478 unit + 149 integration tests pass. |
 | P23 | Server Hardening | Session state preservation in create-page/create/clone reload (dev host sync), null-safe revision handling in undo/end-batch, "at least one field" validation for 5 update handlers, UUID sanitization in inspect.export, response format consistency (clone error JSON, convert-to-page/component messages, variant.list wrapper, data.list-queries error format), component.extract empty-name guard. 16 new tests. All 1494 unit + 149 integration tests pass. |
+| P24 | Code Quality & Safety Hardening | 13 correctness/safety fixes: `removeToken` `.replace()` → `.replaceAll()` (silent broken var refs), `isAncestorOf` missing slot traversal (cycle detection bypass), `setImage` unsafe vsettings access + URL injection + plain-object RuleSet, dead code reordering (non-serializable function detection), `node.add` missing child requireParam, `design.update-token` falsy value check, `node.set-image` missing source guard, `project.end-batch`/`project.undo` missing requireSession, obsolete tool name references (6 files), `deriveLayoutType` ignores reverse flex, devhost-sync variant entry null guard, mock `ensureBaseVariantSetting` default impl. 12 new tests. All 1506 unit + 149 integration tests pass. |
 
 ---
 
 ## Outstanding Work
 
-*No outstanding work items. All known issues resolved (P1-P23).*
+*No outstanding work items. All known issues resolved (P1-P24).*
 
 ---
 
@@ -100,9 +101,22 @@
 | 47 | variant.list returns unwrapped result | Low | server.ts line 2943 | FIXED (P23) | Directly serialized listVariants return value without wrapper, unlike all other list actions. Now wraps with componentUuid and componentName. |
 | 48 | data.list-queries uses inconsistent error format | Low | server.ts line 4278 | FIXED (P23) | "Component not found: uuid" differed from standard "Component UUID \"uuid\" not found. Use list-components to see available components." pattern. Updated to use consistent format. |
 | 49 | component.extract accepts empty name | Low | server.ts line 1494 | FIXED (P23) | No length check on name parameter, unlike create and clone. Empty string would be passed to extractToComponent. Added length < 1 validation. |
+| 50 | removeToken .replace() only inlines first occurrence | Bug | edit-tools.ts:4190,4205 | FIXED (P24) | Used `.replace()` instead of `.replaceAll()` — only the first occurrence of a token reference in CSS values was inlined, silently leaving broken `var(--token-...)` references in the model. |
+| 51 | isAncestorOf missing slot traversal | Bug | edit-tools.ts:1019 | FIXED (P24) | Cycle detection in `moveChild` only traversed direct children. Descendants inside TplComponent slot overrides were invisible, allowing tree cycles to be introduced. |
+| 52 | setImage uses vsettings?.[0] instead of ensureBaseVariantSetting | Bug | edit-tools.ts:8304 | FIXED (P24) | Accessed `vsettings?.[0]` directly. When vsettings is empty (no base variant setting exists yet), this produces undefined and crashes with TypeError instead of creating the setting. |
+| 53 | setImage URL injected into CSS without escaping | Bug | edit-tools.ts:8342 | FIXED (P24) | Raw user-supplied URL was interpolated into a CSS `url()` value without escaping quotes or backslashes, corrupting the model for URLs containing those characters. |
+| 54 | setVisibility/setImage create plain objects instead of RuleSet instances | Bug | edit-tools.ts:3743,8337 | FIXED (P24) | Both handlers constructed plain `{ values: {} }` objects for RuleSet instead of calling the WAB model constructor, causing WAB model validation failures. |
+| 55 | Dead code: unreachable non-serializable function detection | Bug | edit-tools.ts:2361 | FIXED (P24) | The `code === undefined` check was placed after a branch that already handled the undefined case, making it unreachable and failing to detect non-serializable function values. Reordered to run first. |
+| 56 | node.add missing requireParam for child parameter | Bug | server.ts:2193 | FIXED (P24) | The `child` parameter had no `requireParam()` validation. Omitting it produced cryptic downstream errors instead of a clear "missing required parameter" message. |
+| 57 | design.update-token falsy check rejects value: "" | Bug | server.ts:3370 | FIXED (P24) | Guard used `if (!value)` which rejected legitimate empty-string values. Changed to `=== undefined` so clearing a token value to an empty string is permitted. |
+| 58 | node.set-image missing source guard | Bug | server.ts:2671 | FIXED (P24) | No validation that at least one of `assetRef` or `src` was provided. Calls with neither would silently produce a no-op or crash downstream. Now validates before calling setImage. |
+| 59 | project.end-batch and project.undo missing requireSession | Bug | server.ts:484,506 | FIXED (P24) | Neither handler called `requireSession()` before accessing session state. When no project was loaded, the resulting error was unclear. Now validates session is present upfront. |
+| 60 | Obsolete tool name references in 6 source files | DX | session.ts, server.ts, edit-tools.ts, change-tracker.ts, node-resolver.ts, + tests | FIXED (P24) | Error messages and comments still referenced old tool names (`set-project`, `list-components`) from pre-STRAP architecture. Updated to current STRAP names (`project.set`, `component tool with action 'list'`). |
+| 61 | deriveLayoutType ignores column-reverse/row-reverse | Bug | tree-reader.ts:832 | FIXED (P24) | Layout type derivation only checked `column` and `row`, not their `-reverse` variants. Flex containers with `flex-direction: column-reverse` or `row-reverse` were reported with incorrect layout types. |
+| 62 | devhost-sync crashes on malformed variant entries | Bug | devhost-sync.ts:142 | FIXED (P24) | Destructuring variant entries without a null/type guard. Non-object variant values (null, string, number) in the registry caused a TypeError crash during sync. Added null and object-type guard. |
 
 ---
 
 ## Issue Discovery Log
 
-Issues 1-20 identified P1-P9. Issues 22-27 discovered 2026-02-27 audit. Issues 20-21 resolved P14. Issues 19, 22, 24, 26, 27 resolved P15. Issue 28 discovered and resolved P16. Issues 23, 25 resolved P17. Issues 29-31 discovered and resolved P18 (spec audit gap analysis). Issues 32-34 discovered and resolved P19 (spec-vs-implementation audit). Issue 35 discovered and resolved P20 (server handler coverage audit). Issues 36-40 discovered and resolved P21 (error handling hardening audit). Issues 41-49 discovered and resolved P23 (server hardening audit).
+Issues 1-20 identified P1-P9. Issues 22-27 discovered 2026-02-27 audit. Issues 20-21 resolved P14. Issues 19, 22, 24, 26, 27 resolved P15. Issue 28 discovered and resolved P16. Issues 23, 25 resolved P17. Issues 29-31 discovered and resolved P18 (spec audit gap analysis). Issues 32-34 discovered and resolved P19 (spec-vs-implementation audit). Issue 35 discovered and resolved P20 (server handler coverage audit). Issues 36-40 discovered and resolved P21 (error handling hardening audit). Issues 41-49 discovered and resolved P23 (server hardening audit). Issues 50-62 discovered and resolved P24 (code quality and safety hardening audit).

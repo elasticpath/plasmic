@@ -306,6 +306,34 @@ describe("syncVariantMetadata", () => {
 
     expect(synced).toEqual(["CompA$dev", "CompB$dev"]);
   });
+
+  it("handles malformed variant entries gracefully (non-object values)", () => {
+    const cc = mkCodeComponent("BrokenComp$dev");
+    const site = mkSite([cc]);
+
+    // Registry contains malformed data: string instead of { cssSelector, displayName }
+    const synced = syncVariantMetadata(site, [
+      {
+        name: "BrokenComp$dev",
+        variants: {
+          good: { cssSelector: ".good", displayName: "Good" },
+          bad: "not-an-object" as any,
+          worse: null as any,
+        },
+      },
+    ]);
+
+    expect(synced).toEqual(["BrokenComp$dev"]);
+    // The good variant is synced, malformed ones are skipped
+    expect(cc.codeComponentMeta.variants).toHaveProperty("good");
+    expect(cc.codeComponentMeta.variants.good).toEqual({
+      cssSelector: ".good",
+      displayName: "Good",
+    });
+    // Malformed entries should not be present
+    expect(cc.codeComponentMeta.variants).not.toHaveProperty("bad");
+    expect(cc.codeComponentMeta.variants).not.toHaveProperty("worse");
+  });
 });
 
 // --- ensureVariantObjects tests ---

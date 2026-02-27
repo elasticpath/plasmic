@@ -92,7 +92,7 @@ export function invalidateNodeCache(componentUuid: string): void {
   nodeCache.delete(componentUuid);
 }
 
-/** Clear the entire node cache (after set-project or refresh-project). */
+/** Clear the entire node cache (after project.set or project.refresh). */
 export function clearNodeCache(): void {
   nodeCache.clear();
 }

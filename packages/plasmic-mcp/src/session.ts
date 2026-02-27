@@ -2,7 +2,7 @@
  * Session state for the MCP server.
  *
  * Holds the active project's live model (Site object graph from FastBundler.unbundle)
- * and bundler instance. Cleared and repopulated when set-project is called.
+ * and bundler instance. Cleared and repopulated when project.set is called.
  *
  * Uses `any` for Site and bundler types to keep this module lightweight —
  * the model-loader and tree-reader modules handle the actual typed interactions.
@@ -39,7 +39,7 @@ export function getSession(): Session | null {
 
 export function requireSession(): Session {
   if (!currentSession) {
-    throw new Error("No active project. Use the set-project tool first.");
+    throw new Error("No active project. Use project tool with action 'set' first.");
   }
   return currentSession;
 }

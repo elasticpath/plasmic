@@ -50,7 +50,7 @@ describe("session", () => {
 
   it("requireSession throws with actionable message when no session", () => {
     expect(() => requireSession()).toThrow("No active project");
-    expect(() => requireSession()).toThrow("set-project");
+    expect(() => requireSession()).toThrow("project");
   });
 
   it("requireSession returns the session when set", () => {

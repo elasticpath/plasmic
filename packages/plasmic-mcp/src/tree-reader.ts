@@ -833,8 +833,8 @@ function deriveLayoutType(
   styles: Record<string, string>
 ): "vbox" | "hbox" | "box" {
   const flexDirection = styles["flexDirection"] || styles["flex-direction"];
-  if (flexDirection === "column") {return "vbox";}
-  if (flexDirection === "row") {return "hbox";}
+  if (flexDirection === "column" || flexDirection === "column-reverse") {return "vbox";}
+  if (flexDirection === "row" || flexDirection === "row-reverse") {return "hbox";}
 
   const display = styles["display"];
   if (display === "flex" || display === "inline-flex") {

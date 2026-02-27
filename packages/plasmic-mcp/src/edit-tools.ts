@@ -890,7 +890,7 @@ function findComponent(componentUuid: string): any {
   );
   if (!component) {
     throw new Error(
-      `Component UUID "${componentUuid}" not found. Use list-components to see available components.`
+      `Component UUID "${componentUuid}" not found. Use component tool with action 'list' to see available components.`
     );
   }
   return component;
@@ -1018,9 +1018,22 @@ function findParentRecursive(
  */
 function isAncestorOf(ancestor: any, descendant: any): boolean {
   if (ancestor === descendant) {return true;}
+  // Traverse regular children (TplTag)
   const children = ancestor.children ?? [];
   for (const child of children) {
     if (isAncestorOf(child, descendant)) {return true;}
+  }
+  // Traverse slot override children (TplComponent)
+  if (ancestor.vsettings) {
+    for (const vs of ancestor.vsettings) {
+      for (const arg of vs.args ?? []) {
+        if (isKnownRenderExpr(arg.expr)) {
+          for (const tpl of arg.expr.tpl ?? []) {
+            if (isAncestorOf(tpl, descendant)) {return true;}
+          }
+        }
+      }
+    }
   }
   return false;
 }
@@ -2356,14 +2369,16 @@ function plasmicElementToTpl(
             `Use the "children" field to pass slot content instead.`
           );
         }
-        // Convert value to CustomCode expression (same as WAB's codeLit)
-        const code = value === undefined ? "undefined" : JSON.stringify(value);
-        if (code === undefined) {
+        // Convert value to CustomCode expression (same as WAB's codeLit).
+        // JSON.stringify returns undefined for functions/symbols; guard against that.
+        const serialized = JSON.stringify(value);
+        if (serialized === undefined) {
           throw new Error(
             `Prop "${key}" on component "${targetComponent.name}" has a ` +
             `non-serializable value (${typeof value}).`
           );
         }
+        const code = value === undefined ? "undefined" : serialized;
         args[key] = new CustomCode({ code, fallback: null });
       }
     }
@@ -3740,7 +3755,7 @@ export async function setVisibility(
     } else if (visible === "displayNone") {
       // Display none: dataCond = true + display-none marker
       vs.dataCond = new CustomCode({ code: "true", fallback: null });
-      if (!vs.rs) vs.rs = { values: {} };
+      if (!vs.rs) vs.rs = new RuleSet({ values: {}, mixins: [], animations: null });
       if (!vs.rs.values) vs.rs.values = {};
       vs.rs.values["plasmic-display-none"] = "true";
     }
@@ -4187,7 +4202,7 @@ export async function removeToken(
     for (const t of localTokens) {
       if (t === token) continue;
       if (typeof t.value === "string" && t.value.includes(`--token-${token.uuid}`)) {
-        t.value = t.value.replace(tokenRefStr, resolvedValue);
+        t.value = t.value.replaceAll(tokenRefStr, resolvedValue);
         inlinedCount++;
       }
     }
@@ -4202,7 +4217,7 @@ export async function removeToken(
           if (!values || typeof values !== "object") continue;
           for (const [prop, val] of Object.entries(values)) {
             if (typeof val === "string" && val.includes(`--token-${token.uuid}`)) {
-              values[prop] = (val as string).replace(tokenRefStr, resolvedValue);
+              values[prop] = (val as string).replaceAll(tokenRefStr, resolvedValue);
               inlinedCount++;
             }
           }
@@ -8301,8 +8316,6 @@ export async function setImage(
     ? resolveVariant(session.site, component, variant)
     : null;
 
-  const baseVs = resolved.node.vsettings?.[0];
-
   const tag = resolved.node.tag;
   const isImgTag = tag === "img";
   let imageSource = "";
@@ -8319,7 +8332,7 @@ export async function setImage(
   const changes = tracker.withRecording(() => {
     const vs = resolvedVariant
       ? ensureVariantSetting(resolved.node, [resolvedVariant])
-      : baseVs;
+      : tplMgr.ensureBaseVariantSetting(resolved.node);
 
     if (isImgTag) {
       // For img elements, set the src attr
@@ -8334,13 +8347,13 @@ export async function setImage(
       }
     } else {
       // For non-img elements, set background CSS
-      if (!vs.rs) vs.rs = { values: {}, mixins: [] };
+      if (!vs.rs) vs.rs = new RuleSet({ values: {}, mixins: [], animations: null });
       if (!vs.rs.values) vs.rs.values = {};
-      if (asset) {
-        vs.rs.values["background"] = `url("${asset.dataUri ?? ""}")`;
-      } else {
-        vs.rs.values["background"] = `url("${opts.src}")`;
-      }
+      // Escape quotes and backslashes in URL to prevent malformed CSS
+      const escapedUrl = asset
+        ? (asset.dataUri ?? "")
+        : (opts.src ?? "").replace(/["\\]/g, "\\$&");
+      vs.rs.values["background"] = `url("${escapedUrl}")`;
     }
   });
 
