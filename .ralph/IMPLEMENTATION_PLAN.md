@@ -6,11 +6,11 @@
 
 - MCP server: 8 STRAP tools, 103 actions -- ALL fully implemented, zero TODOs/FIXMEs
 - Eval system: harness, graders, visual capture, dashboard, CI, ~135 scenarios across 20 YAML files
-- Total tests: ~1,570 (1,402 unit across 29 suites + 147 integration in 2 suites + 21 plasmic-registry tests)
+- Total tests: ~1,575 (1,407 unit across 29 suites + 147 integration in 2 suites + 21 plasmic-registry tests)
 - Eval tests: 249 across 10 files (21 new added in P15)
 - **Action coverage: ~98% (103/103 actions have eval scenarios)**
-- **Unfixed items: #23 (low), #25 (DX)**
-- **Priority order: P1-P16 completed**
+- **All known issues resolved**
+- **Priority order: P1-P17 completed**
 
 ## Completed Priorities
 
@@ -31,12 +31,13 @@
 | P14 | Eval Infrastructure Improvements | Partial re-run report merging (P14.1), dirty-tree detection (P14.2), scenario content hashing (P14.3), CLI argument validation (P14.4), scenario validator integration-only gap (P14.5), regression detection flag (P14.6), high-retry-count flag (P14.7). 25 new tests. All 1381 unit tests pass. |
 | P15 | Remaining Bug Fixes & Test Gaps | resolveComponentUuid exact matching (#22), API client session state leak (#19), undo stack MAX_UNDO_DEPTH=50 (#27), MODEL_PRICING versioned IDs (#24), reporter test coverage — saveReport/printSummary/loadOverrides/saveOverride + clearSessionState + undo depth (#26). 21 new tests. All 1402 unit tests pass. |
 | P16 | Dev Host Sync Integration Tests | devhost-sync integration tests against real WAB model classes (10 tests). Bug fix: `findWrapperComponents` `_type` → `typeTag ?? _type` for real WAB instance compatibility (#28). Tests verify: syncVariantMetadata on real MobX-observed components, ensureVariantObjects with real TplComponent detection, listVariants/resolveVariant end-to-end with synced data. All 1402 unit + 147 integration tests pass. |
+| P17 | Final Defensive Fixes | Cycle guard for `flattenWithPaths` in node-resolver.ts (#23): visited-UUID Set + MAX_TREE_DEPTH=200 depth limit prevent infinite recursion on malformed models. `.env.example` for eval system (#25): documents all required/optional env vars for new developer onboarding. 5 new tests. All 1407 unit + 147 integration tests pass. |
 
 ---
 
 ## Outstanding Work
 
-*No outstanding work items. All known bugs resolved (P1-P15). Remaining items #23 and #25 are low-priority.*
+*No outstanding work items. All known issues resolved (P1-P17).*
 
 ---
 
@@ -66,9 +67,9 @@
 | 20 | Partial re-run misleading rate | Risk | `cli.ts:263-296` | FIXED (P14.1) | Report now merges skipped-as-passed results before generating final report |
 | 21 | Dirty-tree detection | Risk | `reporter.ts:305-311` | FIXED (P14.2) | `getGitSha()` appends `-dirty` when working tree has uncommitted changes |
 | 22 | resolveComponentUuid substring match | Bug | `state-check.ts:651-652` | FIXED (P15) | Replaced `.includes()` with `matchEntityName()` exact matching |
-| 23 | findNodeByName no cycle guard | Risk | `state-check.ts:580-589` | LOW | No cycle protection in recursive tree walk |
+| 23 | flattenWithPaths no cycle guard | Risk | `node-resolver.ts:223` | FIXED (P17) | Added visited-UUID Set + MAX_TREE_DEPTH=200 depth limit. 5 new tests. |
 | 24 | MODEL_PRICING stale keys | Risk | `runner.ts:280-287` | FIXED (P15) | Added versioned model ID entries (claude-sonnet-4, claude-haiku-4, claude-opus-4) |
-| 25 | No .env.example for eval | DX | `evals/` | UNFIXED | Env vars documented only in cli.ts parseArgs and README |
+| 25 | No .env.example for eval | DX | `evals/` | FIXED (P17) | Created `evals/.env.example` documenting all required/optional env vars (ANTHROPIC_API_KEY, PLASMIC_AUTH_*, EVAL_PROJECT_ID, PLASMIC_STUDIO_*, EVAL_DASHBOARD_PORT). |
 | 26 | No tests for saveReport/loadPreviousReport | Gap | `evals/harness/reporter.ts` | FIXED (P15) | Added 21 tests: saveReport (4), printSummary (7), loadOverrides (3), saveOverride (3), clearSessionState (1), undo depth limit (3) |
 | 27 | Unbounded undo stack | Risk | `src/undo-manager.ts` | FIXED (P15) | Added MAX_UNDO_DEPTH=50 limit, oldest ops dropped when exceeded |
 | 28 | findWrapperComponents _type check | Bug | `src/devhost-sync.ts:169` | FIXED (P16) | Checked `_type` but real WAB instances use `typeTag` getter. Changed to `typeTag ?? _type` fallback. |
@@ -77,8 +78,4 @@
 
 ## Issue Discovery Log
 
-Issues 1-20 identified P1-P9. Issues 22-27 discovered 2026-02-27 audit. Issues 20-21 resolved P14. Issues 19, 22, 24, 26, 27 resolved P15. Issue 28 discovered and resolved P16.
-
-- **#23 findNodeByName no cycle guard**: WAB model should not have cycles, but there is no defensive guard. Low risk.
-- **#25 No .env.example**: New developers must read `cli.ts` source to discover required/optional env vars. A `.env.example` file would improve onboarding.
-- **#28 findWrapperComponents _type check**: `devhost-sync.ts` checked `root?._type === "TplComponent"` but real WAB model instances expose type via `typeTag` getter, not `_type` property. Unit tests passed because mocks use `_type`, but integration against real WAB classes would silently fail to find any wrapper components. Fixed to use `root?.typeTag ?? root?._type` fallback pattern (same as edit-tools.ts).
+Issues 1-20 identified P1-P9. Issues 22-27 discovered 2026-02-27 audit. Issues 20-21 resolved P14. Issues 19, 22, 24, 26, 27 resolved P15. Issue 28 discovered and resolved P16. Issues 23, 25 resolved P17.

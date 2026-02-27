@@ -214,17 +214,44 @@ export function requireSingleNode(
 }
 
 /**
+ * Maximum tree depth to prevent stack overflow on malformed models.
+ * WAB models are typically < 30 levels deep; 200 is a generous safety limit.
+ */
+const MAX_TREE_DEPTH = 200;
+
+/**
  * Flatten the Tpl tree into a list of nodes with path metadata.
  *
  * For TplComponent nodes, slot override children are traversed with the slot
  * name inserted as a path segment: e.g., Card.children.Title. This matches
  * Studio's tplChildren() traversal via getSlotArgs() → RenderExpr.tpl[].
+ *
+ * Cycle protection: a visited-UUID Set prevents infinite recursion if the
+ * in-memory model ever contains a cycle (e.g., due to model corruption).
+ * A depth limit guards against stack overflow from extremely deep trees.
  */
 function flattenWithPaths(
   tpl: any,
   component: any,
-  parentPath = ""
+  parentPath = "",
+  visited: Set<string> = new Set(),
+  depth = 0
 ): ResolvedNode[] {
+  // Cycle guard: skip nodes we've already visited
+  const nodeId = tpl.uuid;
+  if (nodeId && visited.has(nodeId)) {
+    return [];
+  }
+
+  // Depth guard: prevent stack overflow on extremely deep or cyclic trees
+  if (depth > MAX_TREE_DEPTH) {
+    return [];
+  }
+
+  if (nodeId) {
+    visited.add(nodeId);
+  }
+
   const result: ResolvedNode[] = [];
   const name = getNodeName(tpl);
   const segment = name || tpl.uuid || "node";
@@ -247,7 +274,7 @@ function flattenWithPaths(
           const slotName = arg.param?.variable?.name ?? "slot";
           const slotPath = `${currentPath}.${slotName}`;
           for (const child of arg.expr.tpl ?? []) {
-            result.push(...flattenWithPaths(child, component, slotPath));
+            result.push(...flattenWithPaths(child, component, slotPath, visited, depth + 1));
           }
         }
       }
@@ -255,7 +282,7 @@ function flattenWithPaths(
   } else {
     const children = getChildren(tpl);
     for (const child of children) {
-      result.push(...flattenWithPaths(child, component, currentPath));
+      result.push(...flattenWithPaths(child, component, currentPath, visited, depth + 1));
     }
   }
 
