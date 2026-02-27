@@ -39,6 +39,9 @@ const MOBILE_VIEWPORT = { width: 375, height: 812 };
 
 const DEFAULT_NAVIGATION_TIMEOUT_MS = 60_000;
 const DEFAULT_ACTION_TIMEOUT_MS = 10_000;
+/** P12.3: Wall-clock cap per capture() call. Prevents unbounded hangs when
+ *  multiple nested iframe waits each consume the full navigation timeout. */
+const DEFAULT_CAPTURE_TIMEOUT_MS = 30_000;
 
 /**
  * Studio frame selectors — centralized so they can be updated in one place
@@ -242,74 +245,23 @@ export class VisualCapture {
       };
     }
 
+    // P12.3: Wall-clock cap for the entire capture operation. Without this,
+    // nested iframe waits can each consume the full navigation timeout,
+    // causing the capture to hang for minutes.
+    const captureTimeout = DEFAULT_CAPTURE_TIMEOUT_MS;
     try {
-      const page = this.requirePage();
-
-      // Build Studio URL. When a componentUuid is available, navigate
-      // directly to that component's arena (V10). Otherwise fall back
-      // to the project overview.
-      const host = this.config.authConfig.host.replace(/\/$/, "");
-      const projectId = mcpClient.getProjectId();
-      let studioUrl = `${host}/projects/${projectId}`;
-      if (componentUuid) {
-        studioUrl += `?arena_type=component&arena=${encodeURIComponent(componentUuid)}`;
-      }
-
-      const timeout =
-        this.config.navigationTimeout ?? DEFAULT_NAVIGATION_TIMEOUT_MS;
-
-      // Navigate to Studio and wait for canvas to load
-      await page.setViewportSize(DESKTOP_VIEWPORT);
-
-      try {
-        await page.goto(studioUrl, { timeout, waitUntil: "load" });
-        await this.waitForStudioCanvas(timeout);
-      } catch (navErr: any) {
-        // VE1: Studio fails to load — save whatever is visible, flag as failed
-        console.error(
-          `[visual] Studio navigation failed for ${scenarioId}: ${navErr.message}`
-        );
-        const desktopPath = join(
-          this.screenshotDir,
-          `${scenarioId}-desktop.png`
-        );
-        try {
-          await page.screenshot({ path: desktopPath, fullPage: false });
-        } catch {
-          // Screenshot also failed — page might be blank
-        }
-        // V18: Save trace on failure for debugging, then restart tracing
-        await this.saveTraceOnFailure(scenarioId);
-        return {
-          desktopPath,
-          mobilePath: null,
-          error: `Navigation failed: ${navErr.message}`,
-        };
-      }
-
-      // Desktop screenshot (always captured)
-      const desktopPath = join(
-        this.screenshotDir,
-        `${scenarioId}-desktop.png`
-      );
-      await page.screenshot({ path: desktopPath, fullPage: false });
-
-      // Mobile screenshot (only for responsive scenarios)
-      let mobilePath: string | null = null;
-      if (needsMobileCapture(scenarioId, scenarioDescription)) {
-        await page.setViewportSize(MOBILE_VIEWPORT);
-        // Brief wait for Studio to reflow at new viewport size
-        await page.waitForTimeout(1000);
-        mobilePath = join(this.screenshotDir, `${scenarioId}-mobile.png`);
-        await page.screenshot({ path: mobilePath, fullPage: false });
-        // Reset to desktop viewport for next scenario
-        await page.setViewportSize(DESKTOP_VIEWPORT);
-      }
-
-      return { desktopPath, mobilePath, error: null };
+      return await Promise.race([
+        this.captureInner(scenarioId, scenarioDescription, mcpClient, componentUuid),
+        new Promise<CaptureResult>((_, reject) =>
+          setTimeout(
+            () => reject(new Error("Capture wall-clock timeout")),
+            captureTimeout
+          )
+        ),
+      ]);
     } catch (err: any) {
       // VE6: Browser crashes — relaunch, re-auth, continue from next scenario
-      if (CRASH_PATTERNS.some((p) => err.message.includes(p))) {
+      if (CRASH_PATTERNS.some((p) => err.message?.includes(p))) {
         console.error(
           `[visual] Browser crashed for ${scenarioId}. Relaunching...`
         );
@@ -330,7 +282,7 @@ export class VisualCapture {
         }
       }
 
-      // Save trace for non-crash failures too
+      // Save trace for non-crash failures too (including wall-clock timeout)
       await this.saveTraceOnFailure(scenarioId);
       return {
         desktopPath: null,
@@ -338,6 +290,90 @@ export class VisualCapture {
         error: `Capture failed: ${err.message}`,
       };
     }
+  }
+
+  /** Inner capture logic, separated for P12.3 wall-clock timeout wrapping. */
+  private async captureInner(
+    scenarioId: string,
+    scenarioDescription: string,
+    mcpClient: McpEvalClient,
+    componentUuid?: string
+  ): Promise<CaptureResult> {
+    const page = this.requirePage();
+
+    // Build Studio URL. When a componentUuid is available, navigate
+    // directly to that component's arena (V10). Otherwise fall back
+    // to the project overview.
+    const host = this.config.authConfig.host.replace(/\/$/, "");
+    const projectId = mcpClient.getProjectId();
+    let studioUrl = `${host}/projects/${projectId}`;
+    if (componentUuid) {
+      studioUrl += `?arena_type=component&arena=${encodeURIComponent(componentUuid)}`;
+    }
+
+    const timeout =
+      this.config.navigationTimeout ?? DEFAULT_NAVIGATION_TIMEOUT_MS;
+
+    // Navigate to Studio and wait for canvas to load
+    await page.setViewportSize(DESKTOP_VIEWPORT);
+
+    try {
+      await page.goto(studioUrl, { timeout, waitUntil: "load" });
+      await this.waitForStudioCanvas(timeout);
+    } catch (navErr: any) {
+      // VE1: Studio fails to load — save whatever is visible, flag as failed
+      console.error(
+        `[visual] Studio navigation failed for ${scenarioId}: ${navErr.message}`
+      );
+      // P12.8: Initialize desktopPath as null, only set after successful
+      // screenshot write. Previously returned the path even when screenshot
+      // threw, causing the LLM judge to read a nonexistent file.
+      let desktopPath: string | null = null;
+      const targetPath = join(
+        this.screenshotDir,
+        `${scenarioId}-desktop.png`
+      );
+      try {
+        await page.screenshot({ path: targetPath, fullPage: false });
+        desktopPath = targetPath;
+      } catch {
+        // Screenshot also failed — page might be blank
+      }
+      // V18: Save trace on failure for debugging, then restart tracing
+      await this.saveTraceOnFailure(scenarioId);
+      return {
+        desktopPath,
+        mobilePath: null,
+        error: `Navigation failed: ${navErr.message}`,
+      };
+    }
+
+    // Desktop screenshot (always captured)
+    const desktopPath = join(
+      this.screenshotDir,
+      `${scenarioId}-desktop.png`
+    );
+    await page.screenshot({ path: desktopPath, fullPage: false });
+
+    // Mobile screenshot (only for responsive scenarios)
+    let mobilePath: string | null = null;
+    if (needsMobileCapture(scenarioId, scenarioDescription)) {
+      await page.setViewportSize(MOBILE_VIEWPORT);
+      // Brief wait for Studio to reflow at new viewport size
+      await page.waitForTimeout(1000);
+      mobilePath = join(this.screenshotDir, `${scenarioId}-mobile.png`);
+      await page.screenshot({ path: mobilePath, fullPage: false });
+      // Reset to desktop viewport for next scenario
+      await page.setViewportSize(DESKTOP_VIEWPORT);
+    }
+
+    // P12.6: Stop and restart tracing after each successful capture.
+    // Without this, tracing runs continuously from initialize() and the
+    // trace buffer grows unbounded for the entire eval run. Only the
+    // failure path (saveTraceOnFailure) stopped tracing before this fix.
+    await this.resetTracing();
+
+    return { desktopPath, mobilePath, error: null };
   }
 
   /**
@@ -381,6 +417,23 @@ export class VisualCapture {
     await studioFrame
       .locator(SELECTORS.canvasContainer)
       .waitFor({ timeout, state: "attached" });
+  }
+
+  /**
+   * P12.6: Stop and discard the current trace, then restart for the next
+   * scenario. Called after each successful capture to prevent unbounded
+   * trace buffer growth.
+   */
+  private async resetTracing(): Promise<void> {
+    if (!this.context) return;
+    try {
+      // Stop without saving (discard) — successful captures don't need traces
+      await this.context.tracing.stop();
+      // Restart for the next scenario
+      await this.context.tracing.start({ screenshots: true, snapshots: true });
+    } catch {
+      // Tracing reset failed — non-fatal, continue
+    }
   }
 
   /**

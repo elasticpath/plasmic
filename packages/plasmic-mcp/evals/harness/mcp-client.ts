@@ -151,7 +151,10 @@ export class McpEvalClient {
       return new Response("Not Found", { status: 404 });
     }) as typeof global.fetch;
 
-    // Suppress console.error from model-loader, change-tracker, MCP server logs
+    // Suppress console.error from model-loader, change-tracker, MCP server logs.
+    // P12.7: Wrapped in try/finally so console.error is always restored, even
+    // if dynamic imports or server creation throw. Without this, a failure during
+    // initialization permanently suppresses console.error for the process.
     const originalConsoleError = console.error;
     const suppressedConsoleError = (...args: any[]) => {
       const msg = String(args[0] ?? "");
@@ -163,26 +166,28 @@ export class McpEvalClient {
     };
     console.error = suppressedConsoleError;
 
-    // Dynamic imports — server.ts imports WAB modules that need the mocked fetch
-    // to be in place before they make any HTTP calls.
-    const { createServer } = await import("../../src/server.js");
-    const { InMemoryTransport } = await import(
-      "@modelcontextprotocol/sdk/inMemory.js"
-    );
-    const { Client } = await import(
-      "@modelcontextprotocol/sdk/client/index.js"
-    );
+    try {
+      // Dynamic imports — server.ts imports WAB modules that need the mocked fetch
+      // to be in place before they make any HTTP calls.
+      const { createServer } = await import("../../src/server.js");
+      const { InMemoryTransport } = await import(
+        "@modelcontextprotocol/sdk/inMemory.js"
+      );
+      const { Client } = await import(
+        "@modelcontextprotocol/sdk/client/index.js"
+      );
 
-    this.server = createServer();
-    const [clientTransport, serverTransport] =
-      InMemoryTransport.createLinkedPair();
-    await this.server.connect(serverTransport);
+      this.server = createServer();
+      const [clientTransport, serverTransport] =
+        InMemoryTransport.createLinkedPair();
+      await this.server.connect(serverTransport);
 
-    this.client = new Client({ name: "eval-client", version: "1.0" });
-    await this.client.connect(clientTransport);
-
-    // Restore console.error
-    console.error = originalConsoleError;
+      this.client = new Client({ name: "eval-client", version: "1.0" });
+      await this.client.connect(clientTransport);
+    } finally {
+      // Restore console.error
+      console.error = originalConsoleError;
+    }
   }
 
   /**
@@ -389,6 +394,16 @@ export class McpEvalClient {
       this.originalFetch = null;
     }
 
+    // P12.4: Close the MCP server before nulling. Without this, the
+    // InMemoryTransport server and its resources remain open, leaking
+    // memory across scenarios.
+    if (this.server) {
+      try {
+        await this.server.close();
+      } catch {
+        // Server may already be closed
+      }
+    }
     this.server = null;
   }
 }

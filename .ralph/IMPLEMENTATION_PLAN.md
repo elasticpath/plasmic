@@ -6,11 +6,11 @@
 
 - MCP server: 8 STRAP tools, 103 actions -- ALL fully implemented, zero TODOs/FIXMEs
 - Eval system: harness, graders, visual capture, dashboard, CI, ~135 scenarios across 20 YAML files
-- Total tests: ~1,470 (1,312 unit across 27 suites + 137 integration in 1 suite + 21 plasmic-registry tests)
-- Eval tests: 182 across 9 files (no tests exist that catch any P12 or P13 bug)
+- Total tests: ~1,475 (1,312 unit across 27 suites + 137 integration in 1 suite + 21 plasmic-registry tests)
+- Eval tests: 187 across 9 files
 - **Action coverage: ~98% (103/103 actions have eval scenarios)**
-- **Unfixed items: P12 (8 runner bugs) + P13 (9 grader bugs) + P14 (7 infra improvements)**
-- **Priority order: P12 > P13 > P14**
+- **Unfixed items: P13 (9 grader bugs) + P14 (7 infra improvements)**
+- **Priority order: P13 > P14**
 
 ## Completed Priorities
 
@@ -26,23 +26,24 @@
 | P9 | Contract & Doc Fixes | dryRun support for 5 component actions, explicit dryRun rejection for 3 API-based actions, `update-split` slices support, eval scenario childTags fix, skill doc accuracy, INDEX.md regeneration (55->70 scenarios), dashboard regression alerts with full grader results. 20 new tests. |
 | P10 | Dev Host Variant Sync | Dev host variant sync -- `@elasticpath/plasmic-registry` package, dev host API route, `devhost-sync.ts` MCP module, session state extension, 22 MCP unit tests + 21 registry tests, README docs |
 | P11 | Scenario Coverage Expansion | 65 missing scenarios added across 8 domain YAML files (11 node + 16 design + 12 data + 10 component + 8 variant + 5 inspect + 2 interaction + 1 project). INDEX.md regenerated (70 -> 135 scenarios: 66 simple + 50 medium + 19 complex). Action coverage ~98% (103/103). All 1312 unit tests pass including scenario loader validation. |
+| P12 | Eval Runner Robustness | Eval runner robustness — tool execution timeout (Promise.race on onToolCall), saveReport fallback (try/catch with stderr), visual capture wall-clock cap (30s Promise.race), MCP server cleanup (server.close before null), MAX_TURNS exhaustion flag (maxTurnsExhausted field on ConversationResult), Playwright tracing stop/restart on success, console.error suppression try/finally, desktopPath null until screenshot succeeds. 5 new tests. |
 
 ---
 
 ## Outstanding Work
 
-### P12 -- HIGH: Eval Runner Robustness
+### P12 -- HIGH: Eval Runner Robustness (COMPLETED)
 
-Hangs, data loss, and misleading results undermine eval reliability. All 8 items unfixed.
+Hangs, data loss, and misleading results undermine eval reliability. All 8 items fixed.
 
-- [ ] **P12.1 -- Tool execution timeout** `evals/harness/claude-client.ts:158-163`. `onToolCall()` is awaited with no `Promise.race`. A hanging Plasmic API call in integration mode blocks the entire process indefinitely. **Fix:** wrap `await onToolCall(...)` in `Promise.race` with `remainingMs` countdown, same pattern as the API call on line 92.
-- [ ] **P12.2 -- saveReport fallback** `evals/harness/reporter.ts:122-126`. `writeFileSync` has no try/catch. Disk full or permission errors lose all results. **Fix:** wrap in try/catch, fallback to `process.stderr.write(JSON.stringify(report))` so results are not silently lost.
-- [ ] **P12.3 -- Visual capture hang** `evals/visual/capture.ts:266,381-383`. `waitForStudioCanvas()` passes the full `timeout` (60s) to nested iframe waits. The `capture()` method itself has no wall-clock cap. **Fix:** add a per-capture wall-clock timeout (e.g., 30s total) via `Promise.race` in the `capture()` method.
-- [ ] **P12.4 -- InMemoryTransport server cleanup** `evals/harness/mcp-client.ts:365-393`. `close()` nulls `this.server` (line 392) but never calls `server.close()`. The MCP server and its InMemoryTransport remain open. **Fix:** call `await this.server.close()` before nulling, guarded by try/catch like the client close.
-- [ ] **P12.5 -- MAX_TURNS exhaustion flag** `evals/harness/claude-client.ts:81,196-204`. When the 25-turn `MAX_TURNS` limit is hit, the loop exits silently. `timedOut` stays `false`, no error is recorded, and the result looks like success. **Fix:** add a `maxTurnsExhausted: boolean` field to `ConversationResult` (set true when loop exits without `end_turn`/`timedOut`), and handle it in `runner.ts` like `incomplete`.
-- [ ] **P12.6 -- Playwright tracing unbounded growth** `evals/visual/capture.ts:172,309`. `tracing.start()` is called once in `initialize()`. On success paths (line 309), `tracing.stop()` is never called -- only the failure path calls `saveTraceOnFailure()`. Trace buffer grows for the entire run. **Fix:** call `tracing.stop()` then `tracing.start()` after each successful capture, or stop+discard on success.
-- [ ] **P12.7 -- console.error suppression leak** `evals/harness/mcp-client.ts:155-185`. `console.error` is patched to `suppressedConsoleError` at line 164, then dynamic imports and server creation happen (lines 168-182). If any of those throw, the suppression is never undone (restore is at line 185). **Fix:** wrap lines 168-183 in try/finally that always restores `console.error`.
-- [ ] **P12.8 -- desktopPath returned when screenshot failed** `evals/visual/capture.ts:272-287`. In the nav-failure path, `desktopPath` is set at line 272 and returned at line 284 even if `page.screenshot()` throws at line 277 (the catch is empty). The LLM judge then reads a nonexistent file. **Fix:** initialize `desktopPath` as `null`, only set it after successful screenshot write.
+- [x] **P12.1 -- Tool execution timeout** `evals/harness/claude-client.ts:158-163`. `onToolCall()` is awaited with no `Promise.race`. A hanging Plasmic API call in integration mode blocks the entire process indefinitely. **Fix:** wrap `await onToolCall(...)` in `Promise.race` with `remainingMs` countdown, same pattern as the API call on line 92.
+- [x] **P12.2 -- saveReport fallback** `evals/harness/reporter.ts:122-126`. `writeFileSync` has no try/catch. Disk full or permission errors lose all results. **Fix:** wrap in try/catch, fallback to `process.stderr.write(JSON.stringify(report))` so results are not silently lost.
+- [x] **P12.3 -- Visual capture hang** `evals/visual/capture.ts:266,381-383`. `waitForStudioCanvas()` passes the full `timeout` (60s) to nested iframe waits. The `capture()` method itself has no wall-clock cap. **Fix:** add a per-capture wall-clock timeout (e.g., 30s total) via `Promise.race` in the `capture()` method.
+- [x] **P12.4 -- InMemoryTransport server cleanup** `evals/harness/mcp-client.ts:365-393`. `close()` nulls `this.server` (line 392) but never calls `server.close()`. The MCP server and its InMemoryTransport remain open. **Fix:** call `await this.server.close()` before nulling, guarded by try/catch like the client close.
+- [x] **P12.5 -- MAX_TURNS exhaustion flag** `evals/harness/claude-client.ts:81,196-204`. When the 25-turn `MAX_TURNS` limit is hit, the loop exits silently. `timedOut` stays `false`, no error is recorded, and the result looks like success. **Fix:** add a `maxTurnsExhausted: boolean` field to `ConversationResult` (set true when loop exits without `end_turn`/`timedOut`), and handle it in `runner.ts` like `incomplete`.
+- [x] **P12.6 -- Playwright tracing unbounded growth** `evals/visual/capture.ts:172,309`. `tracing.start()` is called once in `initialize()`. On success paths (line 309), `tracing.stop()` is never called -- only the failure path calls `saveTraceOnFailure()`. Trace buffer grows for the entire run. **Fix:** call `tracing.stop()` then `tracing.start()` after each successful capture, or stop+discard on success.
+- [x] **P12.7 -- console.error suppression leak** `evals/harness/mcp-client.ts:155-185`. `console.error` is patched to `suppressedConsoleError` at line 164, then dynamic imports and server creation happen (lines 168-182). If any of those throw, the suppression is never undone (restore is at line 185). **Fix:** wrap lines 168-183 in try/finally that always restores `console.error`.
+- [x] **P12.8 -- desktopPath returned when screenshot failed** `evals/visual/capture.ts:272-287`. In the nav-failure path, `desktopPath` is set at line 272 and returned at line 284 even if `page.screenshot()` throws at line 277 (the catch is empty). The LLM judge then reads a nonexistent file. **Fix:** initialize `desktopPath` as `null`, only set it after successful screenshot write.
 
 ---
 
@@ -84,9 +85,9 @@ Quality of life, accuracy, and developer experience improvements. All 7 items un
 |---|-------|----------|----------|--------|-------------|
 | 1 | Action coverage gap | Resolved | `evals/scenarios/` | FIXED (P11) | 103/103 actions (~98%) now have eval scenarios. 135 scenarios across 20 YAML files. |
 | 2 | property grader numeric crash | Bug | `state-check.ts:279` | UNFIXED (P14.1) | `.toLowerCase()` on numeric style values throws TypeError |
-| 3 | Tool execution no timeout | Bug | `claude-client.ts:158-163` | UNFIXED (P12.1) | `onToolCall` awaited with no timeout; hangs indefinitely |
-| 4 | saveReport no fallback | Bug | `reporter.ts:122-126` | UNFIXED (P12.2) | Filesystem error loses all results |
-| 5 | Visual capture can hang | Bug | `capture.ts:266,381-383` | UNFIXED (P12.3) | Canvas wait uses full timeout per layer, unbounded total |
+| 3 | Tool execution no timeout | Bug | `claude-client.ts:158-163` | FIXED (P12.1) | `onToolCall` awaited with no timeout; hangs indefinitely |
+| 4 | saveReport no fallback | Bug | `reporter.ts:122-126` | FIXED (P12.2) | Filesystem error loses all results |
+| 5 | Visual capture can hang | Bug | `capture.ts:266,381-383` | FIXED (P12.3) | Canvas wait uses full timeout per layer, unbounded total |
 | 6 | LLM judge readFileSync crash | Bug | `llm-judge.ts:104-117` | UNFIXED (P13.5) | Screenshot read outside try/catch |
 | 7 | LLM judge score regex | Bug | `llm-judge.ts:190` | UNFIXED (P13.6) | `\d` matches one digit; SCORE:10 -> 1 |
 | 8 | existence grader false positives | Risk | `state-check.ts:72-73` | UNFIXED (P14.2) | Substring matching on entity names |
@@ -95,11 +96,11 @@ Quality of life, accuracy, and developer experience improvements. All 7 items un
 | 11 | review-flags low-quality gap | Bug | `review-flags.ts:51-58` | UNFIXED (P13.7) | success+score=1 never gets low-quality flag |
 | 12 | loadPreviousReport no scenarios check | Bug | `reporter.ts:259` | UNFIXED (P13.8) | Missing `Array.isArray(report.scenarios)` guard |
 | 13 | data grader count-only | Risk | `state-check.ts:460-531` | UNFIXED (P13.9) | Queries/interactions graders validate count, not content |
-| 14 | MCP server cleanup leak | Bug | `mcp-client.ts:392` | UNFIXED (P12.4) | `server.close()` never called before nulling |
-| 15 | MAX_TURNS looks like success | Bug | `claude-client.ts:81,196` | UNFIXED (P12.5) | 25-turn exit has no exhaustion flag |
-| 16 | Playwright tracing unbounded | Bug | `capture.ts:172,309` | UNFIXED (P12.6) | Success path never stops tracing |
-| 17 | console.error suppression leak | Bug | `mcp-client.ts:155-185` | UNFIXED (P12.7) | No try/finally around mock init |
-| 18 | desktopPath on screenshot failure | Bug | `capture.ts:272-287` | UNFIXED (P12.8) | Returns path even when screenshot write fails |
+| 14 | MCP server cleanup leak | Bug | `mcp-client.ts:392` | FIXED (P12.4) | `server.close()` never called before nulling |
+| 15 | MAX_TURNS looks like success | Bug | `claude-client.ts:81,196` | FIXED (P12.5) | 25-turn exit has no exhaustion flag |
+| 16 | Playwright tracing unbounded | Bug | `capture.ts:172,309` | FIXED (P12.6) | Success path never stops tracing |
+| 17 | console.error suppression leak | Bug | `mcp-client.ts:155-185` | FIXED (P12.7) | No try/finally around mock init |
+| 18 | desktopPath on screenshot failure | Bug | `capture.ts:272-287` | FIXED (P12.8) | Returns path even when screenshot write fails |
 | 19 | Integration mode state leak | Risk | `mcp-client.ts:357-361` | KNOWN | project.save in one scenario pollutes next |
 | 20 | Partial re-run misleading rate | Risk | `cli.ts:263-296` | UNFIXED (P14.1) | Report excludes skipped-as-passed results |
 | 21 | Dirty-tree detection | Risk | `reporter.ts:305-311` | UNFIXED (P14.2) | Skip fires incorrectly on dirty trees |

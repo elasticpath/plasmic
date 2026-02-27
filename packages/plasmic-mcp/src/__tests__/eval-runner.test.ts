@@ -76,6 +76,7 @@ function mockClaudeClient(
     finalText: "Done!",
     timedOut: false,
     incomplete: false,
+    maxTurnsExhausted: false,
     ...overrides,
   };
   return {
@@ -198,6 +199,7 @@ describe("runScenario — setup steps", () => {
         finalText: "",
         timedOut: false,
         incomplete: false,
+        maxTurnsExhausted: false,
       };
     });
 
@@ -264,6 +266,16 @@ describe("runScenario — timeout and incomplete", () => {
     expect(result.errors.some((e) => e.includes("clarifying questions"))).toBe(
       true
     );
+  });
+
+  it("marks scenario as failed when MAX_TURNS exhausted (P12.5)", async () => {
+    const mcpClient = mockMcpClient();
+    const claudeClient = mockClaudeClient({ maxTurnsExhausted: true });
+
+    const result = await runScenario(makeScenario(), mcpClient, claudeClient);
+
+    expect(result.success).toBe(false);
+    expect(result.errors.some((e) => e.includes("MAX_TURNS"))).toBe(true);
   });
 });
 

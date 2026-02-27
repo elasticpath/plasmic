@@ -135,9 +135,11 @@ export async function runScenario(
       ? false
       : conversationResult.incomplete
         ? false
-        : graderResults.length === 0
-          ? true // No graders = pass (warned during scenario load per EC6)
-          : graderResults.every((g) => g.passed);
+        : conversationResult.maxTurnsExhausted
+          ? false
+          : graderResults.length === 0
+            ? true // No graders = pass (warned during scenario load per EC6)
+            : graderResults.every((g) => g.passed);
 
     if (conversationResult.timedOut) {
       errors.push("Scenario timed out");
@@ -145,6 +147,14 @@ export async function runScenario(
     if (conversationResult.incomplete) {
       errors.push(
         "Claude asked clarifying questions instead of completing the task"
+      );
+    }
+    // P12.5: Flag when the 25-turn limit was hit without Claude finishing.
+    // Without this, exhaustion silently looks like success — no timeout error,
+    // no grader failure, just an empty response.
+    if (conversationResult.maxTurnsExhausted) {
+      errors.push(
+        "MAX_TURNS limit (25) exhausted without Claude ending the conversation"
       );
     }
 

@@ -118,11 +118,23 @@ export function generateReport(
   };
 }
 
-/** Save report to evals/results/{runId}.json */
+/** Save report to evals/results/{runId}.json.
+ *  P12.2: Wraps writeFileSync in try/catch so disk-full or permission errors
+ *  don't silently lose all results. Falls back to stderr JSON dump. */
 export function saveReport(report: EvalReport): string {
   mkdirSync(RESULTS_DIR, { recursive: true });
   const filePath = resolve(RESULTS_DIR, `${report.runId}.json`);
-  writeFileSync(filePath, JSON.stringify(report, null, 2));
+  try {
+    writeFileSync(filePath, JSON.stringify(report, null, 2));
+  } catch (err: any) {
+    // Filesystem write failed — dump the report to stderr so results
+    // are not silently lost (can be piped to a file or captured by CI).
+    process.stderr.write(
+      `[eval] CRITICAL: Failed to save report to ${filePath}: ${err.message}\n`
+    );
+    process.stderr.write(JSON.stringify(report) + "\n");
+    return filePath; // Return the intended path even though write failed
+  }
   return filePath;
 }
 
