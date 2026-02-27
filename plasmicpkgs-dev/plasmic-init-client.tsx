@@ -22,6 +22,7 @@ function register() {
   registerStrapi(PLASMIC);
   registerStrapiComponents(PLASMIC);
   registerCommerce(PLASMIC);
+  registerShopify(PLASMIC);
   registerVideo(PLASMIC);
 }
 

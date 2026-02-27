@@ -2417,12 +2417,13 @@ function plasmicElementToTpl(
       ...(args ? { args } : {}),
     });
 
-    // Apply defaultStyles from dev host registry if available.
-    // When a code component registers defaultStyles (e.g., width, padding),
-    // they should be applied to new instances so the component renders
-    // correctly without requiring the user to manually set them.
+    // Apply registry enrichments from dev host if available.
+    // Code components register metadata (defaultStyles, slot defaultValues)
+    // that should be applied to new instances so they render correctly.
     if (registryComponents) {
       const regComp = findRegistryComponent(registryComponents, targetComponent.name);
+
+      // 1. Apply defaultStyles (e.g., width, padding, display).
       if (regComp?.defaultStyles && typeof regComp.defaultStyles === "object") {
         try {
           const vs = tplMgr.ensureBaseVariantSetting(tpl);
@@ -2434,6 +2435,77 @@ function plasmicElementToTpl(
             `[plasmic-mcp] Warning: Could not apply defaultStyles for "${targetComponent.name}":`,
             e
           );
+        }
+      }
+
+      // 2. Populate default slot content from registry props[slotName].defaultValue.
+      // When a code component registers slot props with defaultValue (PlasmicElement
+      // trees), those defaults are populated for slots that don't already have
+      // explicit content from the user. This ensures components like Accordion
+      // render with meaningful placeholder content out of the box.
+      if (regComp?.props && typeof regComp.props === "object") {
+        const componentParams: any[] = targetComponent.params ?? [];
+
+        for (const [propName, propMeta] of Object.entries(
+          regComp.props as Record<string, any>
+        )) {
+          if (propMeta?.type !== "slot" || propMeta?.defaultValue == null) continue;
+
+          // Find matching slot param on the WAB component model
+          const slotParam = componentParams.find(
+            (p: any) => p.tplSlot && p.variable?.name === propName
+          );
+          if (!slotParam) continue;
+
+          try {
+            const vs = tplMgr.ensureBaseVariantSetting(tpl);
+
+            // Skip if slot already has content (from explicit children or args)
+            const existingArg = (vs.args ?? []).find(
+              (a: any) =>
+                a.param === slotParam ||
+                a.param?.variable?.name === propName
+            );
+            if (existingArg) continue;
+
+            // Normalize defaultValue to array of PlasmicElements
+            const rawDefaults = Array.isArray(propMeta.defaultValue)
+              ? propMeta.defaultValue
+              : [propMeta.defaultValue];
+
+            // Filter to valid PlasmicElements (strings or objects with type field)
+            const validElements = rawDefaults.filter(
+              (elt: unknown) =>
+                typeof elt === "string" ||
+                (typeof elt === "object" && elt !== null && "type" in elt)
+            );
+            if (validElements.length === 0) continue;
+
+            // Convert each PlasmicElement to a TplNode recursively
+            const defaultTpls = validElements.map((elt: PlasmicElement) =>
+              plasmicElementToTpl(elt, tplMgr, baseVariant, registryComponents)
+            );
+
+            // Wire into the TplComponent as a slot arg
+            const renderExpr = new RenderExpr({ tpl: defaultTpls });
+            const newArg = new Arg({ param: slotParam, expr: renderExpr });
+            if (!vs.args) {
+              vs.args = [];
+            }
+            vs.args.push(newArg);
+
+            // Set parent pointers for tree traversal
+            for (const child of defaultTpls) {
+              child.parent = tpl;
+            }
+          } catch (e) {
+            // Non-fatal: log and continue without this slot's defaults
+            console.error(
+              `[plasmic-mcp] Warning: Could not populate default slot content ` +
+                `for "${targetComponent.name}.${propName}":`,
+              e
+            );
+          }
         }
       }
     }

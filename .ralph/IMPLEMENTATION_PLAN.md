@@ -168,7 +168,7 @@ Correctness issues and hardening that should be addressed but are not blocking t
   - Fixed: `getCodeComponentVariantMetas()` now uses `tplTree?.typeTag ?? tplTree?._type` pattern, matching `findWrapperComponents` in `devhost-sync.ts`
   - Impact: `getCodeComponentVariantMetas` previously silently returned `null` on real WAB instances; now correctly handles both `typeTag` (real WAB) and `_type` (mocked/plain objects)
   - Depends on: nothing (standalone fix)
-- [ ] **Investigate `registerShopify` asymmetry** in `plasmicpkgs-dev` -- `registerShopify` is called in `plasmic-init-server.ts` but NOT in `plasmic-init-client.tsx`. This means Shopify components appear in the registry API but not in the canvas host. May be intentional (Shopify hooks don't work in client context) but should be documented.
+- [x] **Fix `registerShopify` asymmetry** in `plasmicpkgs-dev` -- `registerShopify(PLASMIC)` was called in `plasmic-init-server.ts` but the corresponding call was missing from `plasmic-init-client.tsx` (the import was present but the call was absent). Fixed by adding the missing call. This was a bug introduced in P19 when the server-side gap was fixed but the client-side was not mirrored.
 - [x] **Defensive JSON handling in new serializers** -- ensure `serializeContextMeta` and `serializeFunctionMeta` have the same `try/catch` fallback as `serializeComponentMeta` (returns `{ name: "" }` on circular reference or JSON.stringify failure)
   - Already implemented -- all three serializers have `try/catch` with `{ name: "" }` fallback
 
@@ -199,22 +199,33 @@ When the MCP server adds a code component instance to a page via `node.add`, it 
   - `node.add` handler surfaces `warnings` in the JSON response for both normal and dry-run modes.
   - Why this matters: components like AccordionItem are designed to only work inside Accordion. Without validation, the AI model might place them in arbitrary containers, causing rendering issues.
 
-- [ ] **Populate slot `defaultValue` from registry when creating component instances** (future)
-  - When a code component registers slot props with `defaultValue`, the MCP should populate those slots automatically if the user doesn't provide explicit children.
-  - Deferred: more complex to implement (requires parsing `defaultValue` as PlasmicElement trees).
+- [x] **Populate slot `defaultValue` from registry when creating component instances**
+  - When `plasmicElementToTpl()` creates a TplComponent, it now iterates registry `props` for slot-type entries with `defaultValue`. For each slot that has no explicit content, it recursively converts the `defaultValue` PlasmicElement(s) to TplNodes via `plasmicElementToTpl` and wires them as `Arg` + `RenderExpr` in the base variant setting.
+  - Handles all slot types: `children` (default slot), named slots (`header`, `footer`, etc.)
+  - Explicit children from the user take priority — defaults are only applied to unfilled slots.
+  - Non-slot props with `defaultValue` are correctly ignored (only `type: "slot"` props are processed).
+  - Slots referenced in registry but absent from the WAB model are silently skipped.
+  - Non-fatal: if conversion fails (e.g., defaultValue references a missing component), a warning is logged and the slot is left empty.
+  - Parent pointers set correctly for tree traversal.
   - Spec reference: "Populate default slot content (from `props.children.defaultValue`)"
+  - Why this matters: components like Button or Card register meaningful default slot content (e.g., "Click me" text). Without this, every new instance renders empty, requiring the user to manually add content that the component author already provided.
 
 ### P28 Tests
 
 - [x] server.test.ts: 3 tests for `node.add` warning surface (with warnings, without warnings, dry-run with warnings)
 - [x] server.test.ts: 3 tests for `registryData` preservation in `component.create-page`, `component.create`, `component.clone` (verify `setSession` called with `registryData`)
-- [x] node.test.ts: 6 tests for registry enrichment in `addChild`:
+- [x] node.test.ts: 11 tests for registry enrichment in `addChild`:
   - applies defaultStyles from registry
   - matches registry components with $dev suffix
   - works normally without registryData
   - returns warning for parentComponentName mismatch
   - no warning when parentComponentName matches
   - returns warning when adding to TplTag parent with parentComponentName
+  - populates slot defaultValue from registry when no explicit children provided
+  - populates named slot defaults from registry (multiple slots)
+  - does not override explicit children with slot defaults
+  - skips slot defaults for slots that don't exist in WAB model
+  - handles non-slot props with defaultValue without treating them as slots
 
 ---
 
@@ -263,10 +274,11 @@ P5: _type/typeTag bug (independent, can be done anytime)
 11. ~~Future registry data usage in MCP (P4) -- contexts, functions, tokens, traits~~ **DONE**
 12. ~~P27 registry enrichment -- session.registryData, design.list-tokens devHostTokens, data.list-functions devHostFunctions, project.set/refresh devHostRegistry summary~~ **DONE**
 13. ~~P28 registryData drop bug fix + defaultStyles enrichment + parentComponentName validation~~ **DONE**
+14. ~~P29 slot defaultValue population from registry + registerShopify asymmetry fix~~ **DONE**
 
 ---
 
-## Current Source Code Summary (verified 2026-02-27, updated after P1/P2/P3/P4/partial-P5/P27/P28)
+## Current Source Code Summary (verified 2026-02-27, updated after P1/P2/P3/P4/P5/P27/P28/P29)
 
 ### packages/plasmic-mcp-registry/ (renamed from plasmic-registry)
 - **package.json**: name `@elasticpath/plasmic-mcp-registry`, v0.2.0, zero runtime deps, CommonJS output, `exports` field with `"."` and `"./next"` subpaths
@@ -294,9 +306,9 @@ P5: _type/typeTag bug (independent, can be done anytime)
 - **`getCodeComponentVariantMetas()`**: uses `tplTree?.typeTag ?? tplTree?._type` (fixed from `_type` only)
 - **Contexts/functions/tokens/traits**: parsed from `FullRegistryData` and stored in `session.registryData` for use by MCP tool handlers
 
-### packages/plasmic-mcp/src/edit-tools.ts (P28 changes)
+### packages/plasmic-mcp/src/edit-tools.ts (P28/P29 changes)
 - **`findRegistryComponent()`**: matches registry component entries by name with `$dev` suffix handling
-- **`plasmicElementToTpl()`**: now accepts optional `registryComponents` parameter; applies `defaultStyles` from registry after `mkTplComponentX` creates TplComponent instances
+- **`plasmicElementToTpl()`**: now accepts optional `registryComponents` parameter; applies `defaultStyles` from registry after `mkTplComponentX` creates TplComponent instances; populates slot `defaultValue` from registry for unfilled slots (recursively converts PlasmicElement trees to TplNodes and wires as `Arg` + `RenderExpr`)
 - **`addChild()`**: passes `session.registryData?.components` to `plasmicElementToTpl`; validates `parentComponentName` from registry and returns non-fatal `warnings[]`
 - **`AddChildResult`**: new optional `warnings?: string[]` field for parentComponentName mismatches
 
@@ -309,13 +321,13 @@ P5: _type/typeTag bug (independent, can be done anytime)
 - Populated after each `syncFromDevHost()` call; cleared on `set-project` cleanup
 - Consumed by `design.list-tokens` (devHostTokens), `data.list-functions` (devHostFunctions), `project.set`/`project.refresh` summary responses, and `addChild` (defaultStyles + parentComponentName validation)
 
-### Test counts (as of P1/P2/P3/P4/partial-P5/P27/P28 completion)
+### Test counts (as of P1/P2/P3/P4/P5/P27/P28/P29 completion)
 - packages/plasmic-mcp-registry: 75 tests (5 suites) -- 21 existing + 54 new
 - plasmicpkgs-dev: 6 tests (1 suite) -- all updated and passing
-- packages/plasmic-mcp: 1692 tests (31 suites) -- all passing
+- packages/plasmic-mcp: 1697 tests (31 suites) -- all passing
   - devhost-sync.test.ts: 35 tests (was 31 -- added 4 for P27 registryData in SyncResult)
   - server.test.ts: 267 tests (was 261 -- added 6 for P28: 3 node.add warnings + 3 registryData preservation)
-  - node.test.ts: added 6 tests for P28 registry enrichment (defaultStyles, $dev matching, no registryData, parentComponentName mismatch/match/TplTag)
+  - node.test.ts: added 11 tests for P28/P29 registry enrichment (defaultStyles, $dev matching, no registryData, parentComponentName mismatch/match/TplTag, slot defaultValue population, named slot defaults, explicit children override, missing slot skip, non-slot prop handling)
 
 ### Host registration global shapes (packages/host/src/register*.ts)
 | Registry | Global | Entry Shape | Non-serializable |

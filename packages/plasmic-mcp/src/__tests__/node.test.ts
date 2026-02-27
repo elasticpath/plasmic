@@ -2469,6 +2469,415 @@ describe("edit-tools", () => {
       expect(result.warnings!.length).toBe(1);
       expect(result.warnings![0]).toContain("non-component container");
     });
+
+    it("populates slot defaultValue from registry when no explicit children provided", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      // Card component has a "children" slot param in the WAB model
+      const childrenSlotParam = {
+        variable: { name: "children" },
+        tplSlot: { _type: "TplSlot" },
+      };
+      const cardComp = {
+        uuid: "card-uuid",
+        name: "Card",
+        tplTree: mkTag({ uuid: "card-root" }),
+        params: [childrenSlotParam],
+      };
+
+      const newTplComp = mkTplComponent({
+        uuid: "new-card-1",
+        componentName: "Card",
+        componentUuid: "card-uuid",
+      });
+      // Override component to include slot params
+      newTplComp.component = cardComp;
+      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} }, args: [] }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      // Mock for the text node created from defaultValue
+      const defaultTextTpl = {
+        _type: "TplTag",
+        uuid: "default-text-1",
+        tag: "div",
+        vsettings: [{ rs: { values: {} } }],
+      };
+      mockMkTplInlinedText.mockReturnValue(defaultTextTpl);
+
+      // Registry has slot defaultValue for "children"
+      const session = makeSession({
+        site: { components: [owningComp, cardComp] },
+        registryData: {
+          components: [
+            {
+              name: "Card",
+              props: {
+                children: {
+                  type: "slot",
+                  defaultValue: { type: "text", value: "Default card content" },
+                },
+              },
+            },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      const result = await addChild(api, "comp-1", "Section", {
+        type: "component",
+        name: "Card",
+      });
+
+      expect(result.newNodeUuid).toBe("new-card-1");
+
+      // Verify the children slot was populated with default content
+      const vs = newTplComp.vsettings[0];
+      expect(vs.args.length).toBe(1);
+      expect(vs.args[0].param).toBe(childrenSlotParam);
+      expect(vs.args[0].expr._type).toBe("RenderExpr");
+      expect(vs.args[0].expr.tpl).toHaveLength(1);
+      expect(vs.args[0].expr.tpl[0]).toBe(defaultTextTpl);
+      // Parent pointer set
+      expect(defaultTextTpl.parent).toBe(newTplComp);
+    });
+
+    it("populates named slot defaults from registry", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      // Card component has both "children" and "header" slot params
+      const childrenSlotParam = {
+        variable: { name: "children" },
+        tplSlot: { _type: "TplSlot" },
+      };
+      const headerSlotParam = {
+        variable: { name: "header" },
+        tplSlot: { _type: "TplSlot" },
+      };
+      const cardComp = {
+        uuid: "card-uuid",
+        name: "Card",
+        tplTree: mkTag({ uuid: "card-root" }),
+        params: [childrenSlotParam, headerSlotParam],
+      };
+
+      const newTplComp = mkTplComponent({
+        uuid: "new-card-1",
+        componentName: "Card",
+        componentUuid: "card-uuid",
+      });
+      newTplComp.component = cardComp;
+      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} }, args: [] }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      // Two different text nodes for two different slots
+      const bodyTextTpl = {
+        _type: "TplTag",
+        uuid: "body-text-1",
+        tag: "div",
+        vsettings: [{ rs: { values: {} } }],
+      };
+      const headerTextTpl = {
+        _type: "TplTag",
+        uuid: "header-text-1",
+        tag: "div",
+        vsettings: [{ rs: { values: {} } }],
+      };
+      mockMkTplInlinedText
+        .mockReturnValueOnce(bodyTextTpl)
+        .mockReturnValueOnce(headerTextTpl);
+
+      // Registry has defaultValues for both slots
+      const session = makeSession({
+        site: { components: [owningComp, cardComp] },
+        registryData: {
+          components: [
+            {
+              name: "Card",
+              props: {
+                children: {
+                  type: "slot",
+                  defaultValue: { type: "text", value: "Body content" },
+                },
+                header: {
+                  type: "slot",
+                  defaultValue: { type: "text", value: "Header content" },
+                },
+              },
+            },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      await addChild(api, "comp-1", "Section", {
+        type: "component",
+        name: "Card",
+      });
+
+      // Both slots should be populated
+      const vs = newTplComp.vsettings[0];
+      expect(vs.args.length).toBe(2);
+
+      const childrenArg = vs.args.find((a: any) => a.param === childrenSlotParam);
+      expect(childrenArg).toBeDefined();
+      expect(childrenArg.expr.tpl[0]).toBe(bodyTextTpl);
+
+      const headerArg = vs.args.find((a: any) => a.param === headerSlotParam);
+      expect(headerArg).toBeDefined();
+      expect(headerArg.expr.tpl[0]).toBe(headerTextTpl);
+    });
+
+    it("does not override explicit children with slot defaults", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const childrenSlotParam = {
+        variable: { name: "children" },
+        tplSlot: { _type: "TplSlot" },
+      };
+      const cardComp = {
+        uuid: "card-uuid",
+        name: "Card",
+        tplTree: mkTag({ uuid: "card-root" }),
+        params: [childrenSlotParam],
+      };
+
+      // mkTplComponentX receives explicit children and creates an arg for them
+      const explicitChildTpl = {
+        _type: "TplTag",
+        uuid: "explicit-child-1",
+        tag: "div",
+        vsettings: [{ rs: { values: {} } }],
+      };
+      const newTplComp = mkTplComponent({
+        uuid: "new-card-1",
+        componentName: "Card",
+        componentUuid: "card-uuid",
+      });
+      newTplComp.component = cardComp;
+      // Simulate that mkTplComponentX created an arg for the "children" slot
+      // because explicit children were provided via PlasmicElement.children
+      newTplComp.vsettings[0].args = [{
+        _type: "Arg",
+        param: childrenSlotParam,
+        expr: { _type: "RenderExpr", tpl: [explicitChildTpl] },
+      }];
+      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} }, args: [] }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      // The child element that the user explicitly provides
+      const childTextTpl = {
+        _type: "TplTag",
+        uuid: "user-text-1",
+        tag: "div",
+        vsettings: [{ rs: { values: {} } }],
+      };
+      mockMkTplInlinedText.mockReturnValue(childTextTpl);
+
+      // Registry has defaultValue, but user provides explicit children
+      const session = makeSession({
+        site: { components: [owningComp, cardComp] },
+        registryData: {
+          components: [
+            {
+              name: "Card",
+              props: {
+                children: {
+                  type: "slot",
+                  defaultValue: { type: "text", value: "Should NOT appear" },
+                },
+              },
+            },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      await addChild(api, "comp-1", "Section", {
+        type: "component",
+        name: "Card",
+        children: [{ type: "text", value: "User content" }],
+      });
+
+      // Should still have only the explicit children arg, not the default
+      const vs = newTplComp.vsettings[0];
+      expect(vs.args.length).toBe(1);
+      expect(vs.args[0].expr.tpl[0]).toBe(explicitChildTpl);
+    });
+
+    it("skips slot defaults for slots that don't exist in WAB model", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      // Component has only "children" slot, no "footer" slot
+      const childrenSlotParam = {
+        variable: { name: "children" },
+        tplSlot: { _type: "TplSlot" },
+      };
+      const cardComp = {
+        uuid: "card-uuid",
+        name: "Card",
+        tplTree: mkTag({ uuid: "card-root" }),
+        params: [childrenSlotParam],
+      };
+
+      const newTplComp = mkTplComponent({
+        uuid: "new-card-1",
+        componentName: "Card",
+        componentUuid: "card-uuid",
+      });
+      newTplComp.component = cardComp;
+      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} }, args: [] }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      const defaultTextTpl = {
+        _type: "TplTag",
+        uuid: "default-text-1",
+        tag: "div",
+        vsettings: [{ rs: { values: {} } }],
+      };
+      mockMkTplInlinedText.mockReturnValue(defaultTextTpl);
+
+      // Registry has defaultValue for "footer" slot that doesn't exist in WAB model
+      // AND "children" which does exist
+      const session = makeSession({
+        site: { components: [owningComp, cardComp] },
+        registryData: {
+          components: [
+            {
+              name: "Card",
+              props: {
+                children: {
+                  type: "slot",
+                  defaultValue: { type: "text", value: "Body" },
+                },
+                footer: {
+                  type: "slot",
+                  defaultValue: { type: "text", value: "Footer text" },
+                },
+              },
+            },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      await addChild(api, "comp-1", "Section", {
+        type: "component",
+        name: "Card",
+      });
+
+      // Only "children" should be populated (footer slot doesn't exist)
+      const vs = newTplComp.vsettings[0];
+      expect(vs.args.length).toBe(1);
+      expect(vs.args[0].param).toBe(childrenSlotParam);
+    });
+
+    it("handles non-slot props with defaultValue without treating them as slots", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const cardComp = {
+        uuid: "card-uuid",
+        name: "Card",
+        tplTree: mkTag({ uuid: "card-root" }),
+        params: [],
+      };
+
+      const newTplComp = mkTplComponent({
+        uuid: "new-card-1",
+        componentName: "Card",
+        componentUuid: "card-uuid",
+      });
+      newTplComp.component = cardComp;
+      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} }, args: [] }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      // Registry has a non-slot prop with a defaultValue (e.g., a string prop)
+      const session = makeSession({
+        site: { components: [owningComp, cardComp] },
+        registryData: {
+          components: [
+            {
+              name: "Card",
+              props: {
+                title: {
+                  type: "string",
+                  defaultValue: "Untitled",
+                },
+              },
+            },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      await addChild(api, "comp-1", "Section", {
+        type: "component",
+        name: "Card",
+      });
+
+      // No slot args should be created (title is type "string", not "slot")
+      const vs = newTplComp.vsettings[0];
+      expect(vs.args.length).toBe(0);
+    });
   });
 
   // --- remove-child ---
