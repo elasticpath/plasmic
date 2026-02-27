@@ -115,6 +115,19 @@ describe("fetchDevHostRegistry", () => {
     );
   });
 
+  it("returns null and logs warning on timeout (AbortError)", async () => {
+    const abortError = new DOMException("The operation was aborted", "AbortError");
+    globalThis.fetch = vi
+      .fn()
+      .mockRejectedValue(abortError) as any;
+
+    const result = await fetchDevHostRegistry("http://localhost:3388");
+    expect(result).toBeNull();
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("aborted")
+    );
+  });
+
   it("returns null and logs warning on non-ok response", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,

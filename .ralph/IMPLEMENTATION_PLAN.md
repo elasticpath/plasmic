@@ -2,15 +2,15 @@
 
 ## Status Summary
 
-**Comprehensive audit date: 2026-02-27**
+**Comprehensive audit date: 2026-02-28**
 
 - MCP server: 8 STRAP tools, 103 actions -- ALL fully implemented, zero TODOs/FIXMEs
 - Eval system: harness, graders, visual capture, dashboard, CI, ~135 scenarios across 20 YAML files
-- Total tests: ~1,575 (1,407 unit across 29 suites + 147 integration in 2 suites + 21 plasmic-registry tests)
+- Total tests: ~1,603 (1,418 unit across 31 suites + 147 integration in 2 suites + 21 plasmic-registry tests + 6 plasmicpkgs-dev route tests)
 - Eval tests: 249 across 10 files (21 new added in P15)
 - **Action coverage: ~98% (103/103 actions have eval scenarios)**
 - **All known issues resolved**
-- **Priority order: P1-P17 completed**
+- **Priority order: P1-P18 completed**
 
 ## Completed Priorities
 
@@ -32,12 +32,13 @@
 | P15 | Remaining Bug Fixes & Test Gaps | resolveComponentUuid exact matching (#22), API client session state leak (#19), undo stack MAX_UNDO_DEPTH=50 (#27), MODEL_PRICING versioned IDs (#24), reporter test coverage — saveReport/printSummary/loadOverrides/saveOverride + clearSessionState + undo depth (#26). 21 new tests. All 1402 unit tests pass. |
 | P16 | Dev Host Sync Integration Tests | devhost-sync integration tests against real WAB model classes (10 tests). Bug fix: `findWrapperComponents` `_type` → `typeTag ?? _type` for real WAB instance compatibility (#28). Tests verify: syncVariantMetadata on real MobX-observed components, ensureVariantObjects with real TplComponent detection, listVariants/resolveVariant end-to-end with synced data. All 1402 unit + 147 integration tests pass. |
 | P17 | Final Defensive Fixes | Cycle guard for `flattenWithPaths` in node-resolver.ts (#23): visited-UUID Set + MAX_TREE_DEPTH=200 depth limit prevent infinite recursion on malformed models. `.env.example` for eval system (#25): documents all required/optional env vars for new developer onboarding. 5 new tests. All 1407 unit + 147 integration tests pass. |
+| P18 | Dev Host Wiring & Test Gaps | Fixed `@elasticpath/plasmic-registry` not in Yarn workspaces (#29) — route.ts import would fail at runtime. Added package to root `workspaces[]` + `plasmicpkgs-dev/package.json` dependencies. Added `fetchDevHostRegistry()` timeout (AbortError) unit test (#30). Added 6 API route handler tests in `plasmicpkgs-dev/__tests__/` (#31) — response shape, variant data, serialization safety, empty registry, error handling. All 1555 MCP unit + 147 integration + 21 registry + 6 route tests pass. |
 
 ---
 
 ## Outstanding Work
 
-*No outstanding work items. All known issues resolved (P1-P17).*
+*No outstanding work items. All known issues resolved (P1-P18).*
 
 ---
 
@@ -73,9 +74,12 @@
 | 26 | No tests for saveReport/loadPreviousReport | Gap | `evals/harness/reporter.ts` | FIXED (P15) | Added 21 tests: saveReport (4), printSummary (7), loadOverrides (3), saveOverride (3), clearSessionState (1), undo depth limit (3) |
 | 27 | Unbounded undo stack | Risk | `src/undo-manager.ts` | FIXED (P15) | Added MAX_UNDO_DEPTH=50 limit, oldest ops dropped when exceeded |
 | 28 | findWrapperComponents _type check | Bug | `src/devhost-sync.ts:169` | FIXED (P16) | Checked `_type` but real WAB instances use `typeTag` getter. Changed to `typeTag ?? _type` fallback. |
+| 29 | plasmic-registry not in Yarn workspaces | Bug | `package.json`, `plasmicpkgs-dev/package.json` | FIXED (P18) | `@elasticpath/plasmic-registry` not listed in root `workspaces[]` and not in `plasmicpkgs-dev` dependencies. API route `import { getComponentRegistry }` would fail at runtime with module-not-found. |
+| 30 | No timeout test for fetchDevHostRegistry | Gap | `devhost-sync.test.ts` | FIXED (P18) | No unit test covering AbortController timeout (AbortError) path in `fetchDevHostRegistry()`. Added test mocking `DOMException("AbortError")`. |
+| 31 | No API route tests in plasmicpkgs-dev | Gap | `plasmicpkgs-dev/` | FIXED (P18) | No test infrastructure or tests for `/api/plasmic-registry` route handler. Added vitest config + 6 tests covering response shape, variant data, serialization, empty registry, and error handling. |
 
 ---
 
 ## Issue Discovery Log
 
-Issues 1-20 identified P1-P9. Issues 22-27 discovered 2026-02-27 audit. Issues 20-21 resolved P14. Issues 19, 22, 24, 26, 27 resolved P15. Issue 28 discovered and resolved P16. Issues 23, 25 resolved P17.
+Issues 1-20 identified P1-P9. Issues 22-27 discovered 2026-02-27 audit. Issues 20-21 resolved P14. Issues 19, 22, 24, 26, 27 resolved P15. Issue 28 discovered and resolved P16. Issues 23, 25 resolved P17. Issues 29-31 discovered and resolved P18 (spec audit gap analysis).

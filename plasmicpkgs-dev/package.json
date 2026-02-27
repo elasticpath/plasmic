@@ -4,9 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "dev-inspect": "NODE_OPTIONS='--inspect' next dev"
+    "dev-inspect": "NODE_OPTIONS='--inspect' next dev",
+    "test": "vitest run"
   },
   "dependencies": {
+    "@elasticpath/plasmic-registry": "0.1.0",
     "@plasmicapp/loader-nextjs": "1.0.449",
     "@plasmicpkgs/cms": "0.0.10",
     "@plasmicpkgs/commerce": "0.0.232",
@@ -24,6 +26,7 @@
   "devDependencies": {
     "@types/node": "^22",
     "@types/react": "^19",
-    "@types/react-dom": "^19"
+    "@types/react-dom": "^19",
+    "vitest": "^2.1.0"
   }
 }
