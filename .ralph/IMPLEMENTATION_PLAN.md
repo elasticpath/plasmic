@@ -2,7 +2,7 @@
 
 Spec: `.ralph/specs/plasmic-mcp-registry-nextjs-wrapper.md`
 
-Last verified: 2026-02-27 (updated after P1, P2, P3, and partial P4/P5 completion)
+Last verified: 2026-02-27 (updated after P1, P2, P3, P4, and partial P5 completion)
 
 ---
 
@@ -151,12 +151,11 @@ Updates to `packages/plasmic-mcp/src/devhost-sync.ts` to consume the full regist
   - Cache invalidated on: explicit refresh (`project.refresh`), TTL expiry
   - `clearRegistryCache()` exported and called on `project.refresh`; `server.ts` imports `clearRegistryCache` and calls it before `syncFromDevHost` on refresh
   - Depends on: nothing (can be implemented independently)
-- [ ] **Use contexts, functions, tokens, traits from registry** -- currently only components are used (for variant sync). Future MCP features may use:
-  - Contexts: for understanding provider hierarchy and `globalActions`
-  - Functions: for data binding and custom function signatures
-  - Tokens: for design token resolution (colors, spacing, fonts)
-  - Traits: for trait-based component queries
-  - Note: this is lower priority since the current MCP server only needs variant data from components. Other registry data is forward-looking.
+- [x] **Use contexts, functions, tokens, traits from registry** -- registry data is now stored in the session and surfaced via MCP tool responses:
+  - Registry data stored in `session.registryData` after each `syncFromDevHost()` call
+  - `design.list-tokens` enriched with `devHostTokens` from registry (color/spacing/font tokens visible to the model)
+  - `data.list-functions` enriched with `devHostFunctions` from registry (custom function signatures visible to the model)
+  - `project.set` and `project.refresh` responses include `devHostRegistry` summary: `{ contextCount, functionCount, tokenCount, traitCount }`
   - Depends on: `FullRegistryResponse` parsing above
 
 ---
@@ -170,7 +169,8 @@ Correctness issues and hardening that should be addressed but are not blocking t
   - Impact: `getCodeComponentVariantMetas` previously silently returned `null` on real WAB instances; now correctly handles both `typeTag` (real WAB) and `_type` (mocked/plain objects)
   - Depends on: nothing (standalone fix)
 - [ ] **Investigate `registerShopify` asymmetry** in `plasmicpkgs-dev` -- `registerShopify` is called in `plasmic-init-server.ts` but NOT in `plasmic-init-client.tsx`. This means Shopify components appear in the registry API but not in the canvas host. May be intentional (Shopify hooks don't work in client context) but should be documented.
-- [ ] **Defensive JSON handling in new serializers** -- ensure `serializeContextMeta` and `serializeFunctionMeta` have the same `try/catch` fallback as `serializeComponentMeta` (returns `{ name: "" }` on circular reference or JSON.stringify failure)
+- [x] **Defensive JSON handling in new serializers** -- ensure `serializeContextMeta` and `serializeFunctionMeta` have the same `try/catch` fallback as `serializeComponentMeta` (returns `{ name: "" }` on circular reference or JSON.stringify failure)
+  - Already implemented -- all three serializers have `try/catch` with `{ name: "" }` fallback
 
 ---
 
@@ -216,11 +216,12 @@ P5: _type/typeTag bug (independent, can be done anytime)
 8. ~~`_type`/`typeTag` bug fix (P5) -- quick fix, high correctness value~~ **DONE**
 9. ~~MCP server `FullRegistryResponse` parsing (P4)~~ **DONE**
 10. ~~TTL cache (P4)~~ **DONE**
-11. Future registry data usage in MCP (P4) -- contexts, functions, tokens, traits
+11. ~~Future registry data usage in MCP (P4) -- contexts, functions, tokens, traits~~ **DONE**
+12. ~~P27 registry enrichment -- session.registryData, design.list-tokens devHostTokens, data.list-functions devHostFunctions, project.set/refresh devHostRegistry summary~~ **DONE**
 
 ---
 
-## Current Source Code Summary (verified 2026-02-27, updated after P1/P2/P3/partial-P4/P5)
+## Current Source Code Summary (verified 2026-02-27, updated after P1/P2/P3/P4/partial-P5/P27)
 
 ### packages/plasmic-mcp-registry/ (renamed from plasmic-registry)
 - **package.json**: name `@elasticpath/plasmic-mcp-registry`, v0.2.0, zero runtime deps, CommonJS output, `exports` field with `"."` and `"./next"` subpaths
@@ -244,16 +245,21 @@ P5: _type/typeTag bug (independent, can be done anytime)
 - **TTL cache**: default 60s, configurable via `PLASMIC_REGISTRY_CACHE_TTL_MS` env var. Cache key is normalized `hostUrl`. `clearRegistryCache()` exported and called on `project.refresh`.
 - **syncVariantMetadata()**: overwrites CC variant metadata from registry (dev host is source of truth)
 - **ensureVariantObjects()**: creates missing variant objects on wrapper components
-- **syncFromDevHost()**: orchestrator called from 5 locations in server.ts
+- **syncFromDevHost()**: orchestrator called from 5 locations in server.ts. `SyncResult` now includes `registryData: FullRegistryData | null`, stored in session after sync.
 - **`getCodeComponentVariantMetas()`**: uses `tplTree?.typeTag ?? tplTree?._type` (fixed from `_type` only)
-- **Contexts/functions/tokens/traits**: parsed and available in `FullRegistryData` but not yet consumed beyond components (P4 future work)
+- **Contexts/functions/tokens/traits**: parsed from `FullRegistryData` and stored in `session.registryData` for use by MCP tool handlers
 
-### Test counts (as of P1/P2/P3/partial-P4/P5 completion)
+### packages/plasmic-mcp/src/session.ts
+- **`Session`** now has `registryData: FullRegistryData | null` field (added in P27)
+- Populated after each `syncFromDevHost()` call; cleared on `set-project` cleanup
+- Consumed by `design.list-tokens` (devHostTokens), `data.list-functions` (devHostFunctions), and `project.set`/`project.refresh` summary responses
+
+### Test counts (as of P1/P2/P3/P4/partial-P5/P27 completion)
 - packages/plasmic-mcp-registry: 75 tests (5 suites) -- 21 existing + 54 new
 - plasmicpkgs-dev: 6 tests (1 suite) -- all updated and passing
-- packages/plasmic-mcp: 1663 tests (31 suites) -- all passing
-  - devhost-sync.test.ts: 31 tests (was 23)
-  - server.test.ts: 248 tests (was 241 -- added 7 including clearRegistryCache tests)
+- packages/plasmic-mcp: 1680 tests (31 suites) -- all passing
+  - devhost-sync.test.ts: 35 tests (was 31 -- added 4 for P27 registryData in SyncResult)
+  - server.test.ts: 261 tests (was 248 -- added 13 for P27 devHostTokens/devHostFunctions/devHostRegistry summary)
 
 ### Host registration global shapes (packages/host/src/register*.ts)
 | Registry | Global | Entry Shape | Non-serializable |

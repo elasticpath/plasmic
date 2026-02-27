@@ -287,6 +287,7 @@ export function createServer(): McpServer {
               hostUrl,
               devHostSynced: syncResult.devHostSynced,
               syncedVariantComponents: syncResult.syncedVariantComponents,
+              registryData: syncResult.registryData,
             });
 
             // Initialize change tracking for incremental saves (M2)
@@ -307,6 +308,14 @@ export function createServer(): McpServer {
                     ...(syncResult.devHostSynced && {
                       devHostSynced: true,
                       syncedVariantComponents: syncResult.syncedVariantComponents,
+                      ...(syncResult.registryData && {
+                        devHostRegistry: {
+                          contextCount: syncResult.registryData.contexts?.length ?? 0,
+                          functionCount: syncResult.registryData.functions?.length ?? 0,
+                          tokenCount: syncResult.registryData.tokens?.length ?? 0,
+                          traitCount: syncResult.registryData.traits?.length ?? 0,
+                        },
+                      }),
                     }),
                   }),
                 },
@@ -433,6 +442,7 @@ export function createServer(): McpServer {
               hostUrl,
               devHostSynced: syncResult.devHostSynced,
               syncedVariantComponents: syncResult.syncedVariantComponents,
+              registryData: syncResult.registryData,
             });
 
             // Re-initialize change tracking
@@ -456,6 +466,14 @@ export function createServer(): McpServer {
                       ...(syncResult.devHostSynced && {
                         devHostSynced: true,
                         syncedVariantComponents: syncResult.syncedVariantComponents,
+                        ...(syncResult.registryData && {
+                          devHostRegistry: {
+                            contextCount: syncResult.registryData.contexts?.length ?? 0,
+                            functionCount: syncResult.registryData.functions?.length ?? 0,
+                            tokenCount: syncResult.registryData.tokens?.length ?? 0,
+                            traitCount: syncResult.registryData.traits?.length ?? 0,
+                          },
+                        }),
                       }),
                     }
                   ),
@@ -3333,7 +3351,25 @@ export function createServer(): McpServer {
 
           case "list-tokens": {
             const session = requireSession();
-            const result = readTokens(session.site.styleTokens, params.tokenType);
+            const result: Record<string, unknown> = readTokens(session.site.styleTokens, params.tokenType);
+
+            // Enrich with dev host registered tokens when available
+            const regTokens = session.registryData?.tokens;
+            if (Array.isArray(regTokens) && regTokens.length > 0) {
+              const filtered = params.tokenType
+                ? regTokens.filter((t: any) => t.type === params.tokenType)
+                : regTokens;
+              if (filtered.length > 0) {
+                result.devHostTokens = filtered.map((t: any) => ({
+                  name: t.name,
+                  value: t.value,
+                  type: t.type,
+                  ...(t.displayName && { displayName: t.displayName }),
+                  ...(t.selector && { selector: t.selector }),
+                }));
+              }
+            }
+
             return {
               content: [
                 { type: "text" as const, text: JSON.stringify(result) },
@@ -4785,7 +4821,26 @@ export function createServer(): McpServer {
           }
 
           case "list-functions": {
-            const result = listCustomFunctions();
+            const session = requireSession();
+            const result: Record<string, unknown> = listCustomFunctions();
+
+            // Enrich with dev host registered functions when available
+            const regFunctions = session.registryData?.functions;
+            if (Array.isArray(regFunctions) && regFunctions.length > 0) {
+              result.devHostFunctions = regFunctions.map((f: any) => ({
+                name: f.name,
+                ...(f.namespace && { namespace: f.namespace }),
+                ...(f.displayName && { displayName: f.displayName }),
+                ...(f.description && { description: f.description }),
+                ...(f.importPath && { importPath: f.importPath }),
+                ...(f.isDefaultExport !== undefined && { isDefaultExport: f.isDefaultExport }),
+                ...(f.isQuery !== undefined && { isQuery: f.isQuery }),
+                ...(f.typescriptDeclaration && { typescriptDeclaration: f.typescriptDeclaration }),
+                ...(Array.isArray(f.params) && f.params.length > 0 && { params: f.params }),
+                ...(f.returnValue && { returnValue: f.returnValue }),
+              }));
+            }
+
             return {
               content: [
                 { type: "text" as const, text: JSON.stringify(result) },

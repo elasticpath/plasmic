@@ -6823,4 +6823,397 @@ describe("tool handlers", () => {
       expect(result.content[0].text).not.toContain("list-components");
     });
   });
+
+  // =========================================================================
+  // P27: Dev host registry data enrichment
+  // =========================================================================
+
+  describe("P27: design.list-tokens includes dev host tokens", () => {
+    it("includes devHostTokens when session has registry data with tokens", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { styleTokens: [{ uuid: "t1" }] },
+        registryData: {
+          components: [],
+          contexts: [],
+          functions: [],
+          tokens: [
+            { name: "Brand Primary", value: "#0066cc", type: "Color" },
+            { name: "Base Spacing", value: "8px", type: "Spacing" },
+          ],
+          traits: [],
+        },
+      });
+      mockReadTokens.mockReturnValue({
+        tokenCount: 1,
+        tokens: { Color: [{ uuid: "t1", name: "Site Blue", type: "Color", value: "#0000ff" }] },
+      });
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: { action: "list-tokens" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.tokenCount).toBe(1);
+      expect(output.devHostTokens).toHaveLength(2);
+      expect(output.devHostTokens[0]).toEqual({ name: "Brand Primary", value: "#0066cc", type: "Color" });
+      expect(output.devHostTokens[1]).toEqual({ name: "Base Spacing", value: "8px", type: "Spacing" });
+    });
+
+    it("filters devHostTokens by tokenType when specified", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { styleTokens: [] },
+        registryData: {
+          components: [],
+          contexts: [],
+          functions: [],
+          tokens: [
+            { name: "Brand Primary", value: "#0066cc", type: "Color" },
+            { name: "Base Spacing", value: "8px", type: "Spacing" },
+          ],
+          traits: [],
+        },
+      });
+      mockReadTokens.mockReturnValue({ tokenCount: 0, tokens: {} });
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: { action: "list-tokens", tokenType: "Color" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostTokens).toHaveLength(1);
+      expect(output.devHostTokens[0].name).toBe("Brand Primary");
+    });
+
+    it("omits devHostTokens when session has no registry data", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { styleTokens: [{ uuid: "t1" }] },
+      });
+      mockReadTokens.mockReturnValue({
+        tokenCount: 1,
+        tokens: { Color: [{ uuid: "t1", name: "Blue", type: "Color", value: "#0000ff" }] },
+      });
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: { action: "list-tokens" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostTokens).toBeUndefined();
+    });
+
+    it("omits devHostTokens when registry has empty tokens array", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { styleTokens: [] },
+        registryData: {
+          components: [],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      mockReadTokens.mockReturnValue({ tokenCount: 0, tokens: {} });
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: { action: "list-tokens" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostTokens).toBeUndefined();
+    });
+
+    it("includes displayName and selector when present on dev host tokens", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { styleTokens: [] },
+        registryData: {
+          components: [],
+          contexts: [],
+          functions: [],
+          tokens: [
+            { name: "Heading", value: "'Inter', sans-serif", type: "FontFamily", displayName: "Heading Font", selector: ".heading" },
+          ],
+          traits: [],
+        },
+      });
+      mockReadTokens.mockReturnValue({ tokenCount: 0, tokens: {} });
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: { action: "list-tokens" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostTokens).toHaveLength(1);
+      expect(output.devHostTokens[0]).toEqual({
+        name: "Heading",
+        value: "'Inter', sans-serif",
+        type: "FontFamily",
+        displayName: "Heading Font",
+        selector: ".heading",
+      });
+    });
+  });
+
+  describe("P27: data.list-functions includes dev host functions", () => {
+    it("includes devHostFunctions when session has registry data with functions", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {},
+        registryData: {
+          components: [],
+          contexts: [],
+          functions: [
+            { name: "formatPrice", namespace: "commerce", importPath: "@pkg/utils", isQuery: false },
+            { name: "fetchProducts", description: "Fetches products from API", importPath: "@pkg/api", isQuery: true },
+          ],
+          tokens: [],
+          traits: [],
+        },
+      });
+      mockListCustomFunctions.mockReturnValue({ functions: [] });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "list-functions" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.functions).toEqual([]);
+      expect(output.devHostFunctions).toHaveLength(2);
+      expect(output.devHostFunctions[0]).toEqual({
+        name: "formatPrice",
+        namespace: "commerce",
+        importPath: "@pkg/utils",
+        isQuery: false,
+      });
+      expect(output.devHostFunctions[1]).toEqual({
+        name: "fetchProducts",
+        description: "Fetches products from API",
+        importPath: "@pkg/api",
+        isQuery: true,
+      });
+    });
+
+    it("omits devHostFunctions when session has no registry data", async () => {
+      mockRequireSession.mockReturnValue({ site: {} });
+      mockListCustomFunctions.mockReturnValue({ functions: [] });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "list-functions" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostFunctions).toBeUndefined();
+    });
+
+    it("omits devHostFunctions when registry has empty functions array", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {},
+        registryData: {
+          components: [],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      mockListCustomFunctions.mockReturnValue({ functions: [] });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "list-functions" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostFunctions).toBeUndefined();
+    });
+
+    it("includes optional fields on dev host functions when present", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {},
+        registryData: {
+          components: [],
+          contexts: [],
+          functions: [
+            {
+              name: "calculateTax",
+              displayName: "Tax Calculator",
+              description: "Calculates tax amount",
+              importPath: "@pkg/tax",
+              isDefaultExport: true,
+              typescriptDeclaration: "(amount: number) => number",
+              params: [{ name: "amount", type: "number" }],
+              returnValue: { type: "number" },
+            },
+          ],
+          tokens: [],
+          traits: [],
+        },
+      });
+      mockListCustomFunctions.mockReturnValue({ functions: [] });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "list-functions" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostFunctions).toHaveLength(1);
+      expect(output.devHostFunctions[0]).toEqual({
+        name: "calculateTax",
+        displayName: "Tax Calculator",
+        description: "Calculates tax amount",
+        importPath: "@pkg/tax",
+        isDefaultExport: true,
+        typescriptDeclaration: "(amount: number) => number",
+        params: [{ name: "amount", type: "number" }],
+        returnValue: { type: "number" },
+      });
+    });
+  });
+
+  describe("P27: project.set includes devHostRegistry summary", () => {
+    it("includes devHostRegistry counts when sync succeeds with registry data", async () => {
+      mockLoadProject.mockResolvedValue({
+        site: { components: [] },
+        bundler: {},
+        projectName: "Test",
+        revisionNum: 1,
+        modelVersion: 1,
+        hostlessDataVersion: 0,
+        hostUrl: "http://localhost:3000",
+      });
+      mockSyncFromDevHost.mockResolvedValue({
+        devHostSynced: true,
+        syncedVariantComponents: ["EPButton"],
+        registryData: {
+          components: [{ name: "EPButton" }],
+          contexts: [{ name: "ShopContext" }, { name: "ThemeContext" }],
+          functions: [{ name: "formatPrice" }],
+          tokens: [{ name: "Primary", value: "#ff0000", type: "Color" }],
+          traits: [{ trait: "interactive", meta: { type: "boolean" } }],
+        },
+      });
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "set", projectId: "proj-456" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostSynced).toBe(true);
+      expect(output.devHostRegistry).toEqual({
+        contextCount: 2,
+        functionCount: 1,
+        tokenCount: 1,
+        traitCount: 1,
+      });
+    });
+
+    it("omits devHostRegistry when sync fails", async () => {
+      mockLoadProject.mockResolvedValue({
+        site: { components: [] },
+        bundler: {},
+        projectName: "Test",
+        revisionNum: 1,
+        modelVersion: 1,
+        hostlessDataVersion: 0,
+      });
+      mockSyncFromDevHost.mockResolvedValue({
+        devHostSynced: false,
+        syncedVariantComponents: [],
+      });
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "set", projectId: "proj-456" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostSynced).toBeUndefined();
+      expect(output.devHostRegistry).toBeUndefined();
+    });
+
+    it("stores registryData in session via setSession", async () => {
+      const registryData = {
+        components: [{ name: "EPButton" }],
+        contexts: [{ name: "ShopContext" }],
+        functions: [],
+        tokens: [],
+        traits: [],
+      };
+
+      mockLoadProject.mockResolvedValue({
+        site: { components: [] },
+        bundler: {},
+        projectName: "Test",
+        revisionNum: 1,
+        modelVersion: 1,
+        hostlessDataVersion: 0,
+        hostUrl: "http://localhost:3000",
+      });
+      mockSyncFromDevHost.mockResolvedValue({
+        devHostSynced: true,
+        syncedVariantComponents: [],
+        registryData,
+      });
+
+      await client.callTool({
+        name: "project",
+        arguments: { action: "set", projectId: "proj-456" },
+      });
+
+      expect(mockSetSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          registryData,
+        })
+      );
+    });
+  });
+
+  describe("P27: project.refresh includes devHostRegistry summary", () => {
+    it("includes devHostRegistry counts in refresh response", async () => {
+      mockRequireSession.mockReturnValue({ projectId: "proj-123" });
+      mockLoadProject.mockResolvedValue({
+        site: { components: [] },
+        bundler: {},
+        projectName: "Test",
+        revisionNum: 10,
+        modelVersion: 1,
+        hostlessDataVersion: 0,
+        hostUrl: "http://localhost:3000",
+      });
+      mockSyncFromDevHost.mockResolvedValue({
+        devHostSynced: true,
+        syncedVariantComponents: [],
+        registryData: {
+          components: [],
+          contexts: [{ name: "ShopContext" }],
+          functions: [{ name: "fn1" }, { name: "fn2" }],
+          tokens: [],
+          traits: [{ trait: "responsive" }],
+        },
+      });
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "refresh" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostSynced).toBe(true);
+      expect(output.devHostRegistry).toEqual({
+        contextCount: 1,
+        functionCount: 2,
+        tokenCount: 0,
+        traitCount: 1,
+      });
+    });
+  });
 });

@@ -29,6 +29,8 @@ export interface Session {
   devHostSynced?: boolean;
   /** Names of code components whose variants were synced from the dev host. */
   syncedVariantComponents?: string[];
+  /** Full registry data from the dev host (contexts, functions, tokens, traits). */
+  registryData?: any;
 }
 
 let currentSession: Session | null = null;

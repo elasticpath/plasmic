@@ -45,6 +45,8 @@ export interface FullRegistryData {
 export interface SyncResult {
   devHostSynced: boolean;
   syncedVariantComponents: string[];
+  /** Full registry data from the dev host (available when devHostSynced is true). */
+  registryData?: FullRegistryData;
 }
 
 const FETCH_TIMEOUT_MS = 5_000;
@@ -326,7 +328,7 @@ export async function syncFromDevHost(
   hostUrl: string | undefined
 ): Promise<SyncResult> {
   if (!hostUrl) {
-    return { devHostSynced: false, syncedVariantComponents: [] };
+    return { devHostSynced: false, syncedVariantComponents: [], registryData: undefined };
   }
 
   console.error(`[plasmic-mcp] Syncing variants from dev host: ${hostUrl}`);
@@ -336,7 +338,7 @@ export async function syncFromDevHost(
     console.error(
       `[plasmic-mcp] Dev host sync: skipped (fetch failed or no data)`
     );
-    return { devHostSynced: false, syncedVariantComponents: [] };
+    return { devHostSynced: false, syncedVariantComponents: [], registryData: undefined };
   }
 
   // Filter to only variant-bearing components — discard the rest immediately
@@ -348,7 +350,7 @@ export async function syncFromDevHost(
     console.error(
       `[plasmic-mcp] Dev host sync: no variant-bearing components found`
     );
-    return { devHostSynced: true, syncedVariantComponents: [] };
+    return { devHostSynced: true, syncedVariantComponents: [], registryData: registry };
   }
 
   console.error(
@@ -362,5 +364,5 @@ export async function syncFromDevHost(
     `[plasmic-mcp] Dev host sync complete: synced ${syncedNames.length} component(s): ${syncedNames.join(", ")}`
   );
 
-  return { devHostSynced: true, syncedVariantComponents: syncedNames };
+  return { devHostSynced: true, syncedVariantComponents: syncedNames, registryData: registry };
 }

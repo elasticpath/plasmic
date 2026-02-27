@@ -715,4 +715,83 @@ describe("syncFromDevHost", () => {
     expect(wrapper.variants).toHaveLength(2);
     expect(wrapper.variants[1].codeComponentVariantKeys).toEqual(["selected"]);
   });
+
+  it("includes registryData in result when sync succeeds", async () => {
+    const cc = mkCodeComponent("EPButton$dev");
+    const wrapper = mkWrapperComponent("Wrapper", cc);
+    const site = mkSite([cc, wrapper]);
+
+    const registryResponse = {
+      components: [
+        {
+          name: "EPButton$dev",
+          variants: {
+            selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+          },
+        },
+      ],
+      contexts: [{ name: "ShopContext", importPath: "@pkg/shop" }],
+      functions: [{ name: "formatPrice", importPath: "@pkg/utils" }],
+      tokens: [{ name: "Primary", value: "#ff0000", type: "Color" }],
+      traits: [{ trait: "interactive", meta: { type: "boolean" } }],
+    };
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(registryResponse),
+    }) as any;
+
+    const result = await syncFromDevHost(site, "http://localhost:3388");
+
+    expect(result.devHostSynced).toBe(true);
+    expect(result.registryData).not.toBeUndefined();
+    expect(result.registryData!.components).toHaveLength(1);
+    expect(result.registryData!.contexts).toHaveLength(1);
+    expect(result.registryData!.contexts[0]).toEqual({ name: "ShopContext", importPath: "@pkg/shop" });
+    expect(result.registryData!.functions).toHaveLength(1);
+    expect(result.registryData!.tokens).toHaveLength(1);
+    expect(result.registryData!.traits).toHaveLength(1);
+  });
+
+  it("includes registryData even when no variant-bearing components", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          components: [{ name: "PlainComp" }],
+          contexts: [{ name: "ThemeContext" }],
+          functions: [],
+          tokens: [{ name: "Accent", value: "#00ff00", type: "Color" }],
+          traits: [],
+        }),
+    }) as any;
+
+    const site = mkSite([]);
+    const result = await syncFromDevHost(site, "http://localhost:3388");
+
+    expect(result.devHostSynced).toBe(true);
+    expect(result.syncedVariantComponents).toEqual([]);
+    expect(result.registryData).not.toBeUndefined();
+    expect(result.registryData!.contexts).toHaveLength(1);
+    expect(result.registryData!.tokens).toHaveLength(1);
+  });
+
+  it("returns registryData=undefined when fetch fails", async () => {
+    globalThis.fetch = vi
+      .fn()
+      .mockRejectedValue(new Error("ECONNREFUSED")) as any;
+
+    const site = mkSite([]);
+    const result = await syncFromDevHost(site, "http://localhost:3388");
+
+    expect(result.devHostSynced).toBe(false);
+    expect(result.registryData).toBeUndefined();
+  });
+
+  it("returns registryData=undefined when hostUrl is empty", async () => {
+    const site = mkSite([]);
+    const result = await syncFromDevHost(site, undefined);
+
+    expect(result.registryData).toBeUndefined();
+  });
 });
