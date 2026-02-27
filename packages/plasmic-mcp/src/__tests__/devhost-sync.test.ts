@@ -16,6 +16,7 @@ import {
   syncVariantMetadata,
   ensureVariantObjects,
   syncFromDevHost,
+  clearRegistryCache,
 } from "../devhost-sync";
 
 // Suppress console.error in tests
@@ -70,13 +71,15 @@ describe("fetchDevHostRegistry", () => {
 
   beforeEach(() => {
     originalFetch = globalThis.fetch;
+    // Clear cache between tests to prevent cross-test interference
+    clearRegistryCache();
   });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
   });
 
-  it("returns parsed components on successful fetch", async () => {
+  it("returns FullRegistryData with components on successful fetch", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: () =>
@@ -93,14 +96,42 @@ describe("fetchDevHostRegistry", () => {
     }) as any;
 
     const result = await fetchDevHostRegistry("http://localhost:3388");
-    expect(result).toHaveLength(1);
-    expect(result![0].name).toBe("MyButton");
-    expect(result![0].variants!.pressed.cssSelector).toBe(":active");
+    expect(result).not.toBeNull();
+    expect(result!.components).toHaveLength(1);
+    expect(result!.components[0].name).toBe("MyButton");
+    expect(result!.components[0].variants!.pressed.cssSelector).toBe(":active");
+    // Non-component registries default to [] when not in response
+    expect(result!.contexts).toEqual([]);
+    expect(result!.functions).toEqual([]);
+    expect(result!.tokens).toEqual([]);
+    expect(result!.traits).toEqual([]);
 
     expect(globalThis.fetch).toHaveBeenCalledWith(
       "http://localhost:3388/api/plasmic-registry",
       expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
+  });
+
+  it("returns full FullRegistryData when all five registries present", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          components: [{ name: "Btn" }],
+          contexts: [{ name: "ThemeCtx" }],
+          functions: [{ name: "fetchData" }],
+          tokens: [{ name: "primary", value: "#000", type: "color" }],
+          traits: [{ trait: "size", meta: { type: "choice", options: ["sm", "lg"] } }],
+        }),
+    }) as any;
+
+    const result = await fetchDevHostRegistry("http://localhost:3388");
+    expect(result!.components).toHaveLength(1);
+    expect(result!.contexts).toHaveLength(1);
+    expect(result!.contexts[0]).toEqual({ name: "ThemeCtx" });
+    expect(result!.functions).toHaveLength(1);
+    expect(result!.tokens).toHaveLength(1);
+    expect(result!.traits).toHaveLength(1);
   });
 
   it("returns null and logs warning on network error", async () => {
@@ -175,6 +206,128 @@ describe("fetchDevHostRegistry", () => {
       "http://localhost:3388/api/plasmic-registry",
       expect.any(Object)
     );
+  });
+});
+
+// --- TTL cache tests ---
+
+describe("fetchDevHostRegistry cache", () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    clearRegistryCache();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("returns cached data on second call within TTL", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ components: [{ name: "Cached" }] }),
+    });
+    globalThis.fetch = mockFetch as any;
+
+    const result1 = await fetchDevHostRegistry("http://localhost:3388");
+    const result2 = await fetchDevHostRegistry("http://localhost:3388");
+
+    expect(result1!.components[0].name).toBe("Cached");
+    expect(result2!.components[0].name).toBe("Cached");
+    // Only one network call — second was served from cache
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses separate cache entries for different hostUrls", async () => {
+    let callCount = 0;
+    globalThis.fetch = vi.fn().mockImplementation(() => {
+      callCount++;
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ components: [{ name: `Comp${callCount}` }] }),
+      });
+    }) as any;
+
+    const result1 = await fetchDevHostRegistry("http://localhost:3388");
+    const result2 = await fetchDevHostRegistry("http://localhost:3389");
+
+    expect(result1!.components[0].name).toBe("Comp1");
+    expect(result2!.components[0].name).toBe("Comp2");
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("clearRegistryCache(hostUrl) clears only that entry", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ components: [{ name: "X" }] }),
+    });
+    globalThis.fetch = mockFetch as any;
+
+    await fetchDevHostRegistry("http://localhost:3388");
+    await fetchDevHostRegistry("http://localhost:3389");
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+
+    // Clear only 3388
+    clearRegistryCache("http://localhost:3388");
+
+    await fetchDevHostRegistry("http://localhost:3388"); // should re-fetch
+    await fetchDevHostRegistry("http://localhost:3389"); // should use cache
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("clearRegistryCache() with no args clears all entries", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ components: [{ name: "X" }] }),
+    });
+    globalThis.fetch = mockFetch as any;
+
+    await fetchDevHostRegistry("http://localhost:3388");
+    await fetchDevHostRegistry("http://localhost:3389");
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+
+    clearRegistryCache(); // clear all
+
+    await fetchDevHostRegistry("http://localhost:3388");
+    await fetchDevHostRegistry("http://localhost:3389");
+    expect(mockFetch).toHaveBeenCalledTimes(4);
+  });
+
+  it("does not cache failed fetches (null results)", async () => {
+    const mockFetch = vi.fn()
+      .mockRejectedValueOnce(new Error("network fail"))
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ components: [{ name: "Recovered" }] }),
+      });
+    globalThis.fetch = mockFetch as any;
+
+    const result1 = await fetchDevHostRegistry("http://localhost:3388");
+    expect(result1).toBeNull();
+
+    const result2 = await fetchDevHostRegistry("http://localhost:3388");
+    expect(result2!.components[0].name).toBe("Recovered");
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("respects PLASMIC_REGISTRY_CACHE_TTL_MS env variable", async () => {
+    // Set TTL to 0 to effectively disable caching
+    process.env.PLASMIC_REGISTRY_CACHE_TTL_MS = "0";
+
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ components: [{ name: "X" }] }),
+    });
+    globalThis.fetch = mockFetch as any;
+
+    await fetchDevHostRegistry("http://localhost:3388");
+    await fetchDevHostRegistry("http://localhost:3388");
+
+    // Both calls should hit the network since TTL=0
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+
+    delete process.env.PLASMIC_REGISTRY_CACHE_TTL_MS;
   });
 });
 
@@ -480,6 +633,7 @@ describe("syncFromDevHost", () => {
 
   beforeEach(() => {
     originalFetch = globalThis.fetch;
+    clearRegistryCache();
   });
 
   afterEach(() => {

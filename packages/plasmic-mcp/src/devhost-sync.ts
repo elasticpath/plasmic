@@ -28,6 +28,19 @@ interface RegistryComponent {
   [key: string]: unknown;
 }
 
+/**
+ * Full registry data from the dev host /api/plasmic-registry endpoint.
+ * Contains all five Plasmic registries. Backward-compatible: if the response
+ * only has `components` (old endpoint), the other arrays default to [].
+ */
+export interface FullRegistryData {
+  components: RegistryComponent[];
+  contexts: Record<string, unknown>[];
+  functions: Record<string, unknown>[];
+  tokens: Record<string, unknown>[];
+  traits: Record<string, unknown>[];
+}
+
 /** Result of a dev host sync attempt. */
 export interface SyncResult {
   devHostSynced: boolean;
@@ -36,17 +49,74 @@ export interface SyncResult {
 
 const FETCH_TIMEOUT_MS = 5_000;
 
+// --- In-memory cache for dev host registry responses ---
+// Why: The dev host is fetched on project.set, project.refresh, and after
+// every component.create-page/create/clone (5 call sites). Without caching,
+// each call triggers a 1-5s network round-trip. The cache avoids redundant
+// fetches within the TTL window while still allowing explicit invalidation.
+
+interface CacheEntry {
+  data: FullRegistryData;
+  timestamp: number;
+}
+
+const registryCache = new Map<string, CacheEntry>();
+const DEFAULT_CACHE_TTL_MS = 60_000; // 60 seconds
+
+/** Read the configured cache TTL from environment, defaulting to 60s. */
+function getCacheTtlMs(): number {
+  const env =
+    typeof process !== "undefined"
+      ? process.env.PLASMIC_REGISTRY_CACHE_TTL_MS
+      : undefined;
+  if (env) {
+    const parsed = parseInt(env, 10);
+    if (!isNaN(parsed) && parsed >= 0) return parsed;
+  }
+  return DEFAULT_CACHE_TTL_MS;
+}
+
 /**
- * Fetches the component registry from a dev host's /api/plasmic-registry endpoint.
+ * Clear the in-memory registry cache.
+ * If `hostUrl` is provided, only that entry is cleared.
+ * Otherwise, the entire cache is cleared.
  *
- * Returns the array of component metadata, or null on any failure (non-fatal).
- * The full response is discarded after extracting the components array —
- * callers should filter to only variant-bearing entries immediately.
+ * Called from server.ts on `project.refresh` to force a fresh fetch.
+ */
+export function clearRegistryCache(hostUrl?: string): void {
+  if (hostUrl) {
+    registryCache.delete(normalizeUrl(hostUrl));
+  } else {
+    registryCache.clear();
+  }
+}
+
+/**
+ * Fetches the full registry from a dev host's /api/plasmic-registry endpoint.
+ *
+ * Returns all five registries (components, contexts, functions, tokens, traits),
+ * or null on any failure (non-fatal). Results are cached with a configurable TTL
+ * to avoid redundant network calls across the 5 call sites in server.ts.
+ *
+ * Backward-compatible: if the response only has `components` (old endpoint format),
+ * the other registry arrays default to [].
  */
 export async function fetchDevHostRegistry(
   hostUrl: string
-): Promise<RegistryComponent[] | null> {
-  const url = normalizeUrl(hostUrl) + "/api/plasmic-registry";
+): Promise<FullRegistryData | null> {
+  const normalizedHost = normalizeUrl(hostUrl);
+  const url = normalizedHost + "/api/plasmic-registry";
+
+  // Check cache before fetching
+  const ttl = getCacheTtlMs();
+  const cached = registryCache.get(normalizedHost);
+  if (cached && Date.now() - cached.timestamp < ttl) {
+    console.error(
+      `[plasmic-mcp] Dev host sync: using cached registry for ${normalizedHost}`
+    );
+    return cached.data;
+  }
+
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -72,7 +142,19 @@ export async function fetchDevHostRegistry(
       return null;
     }
 
-    return data.components as RegistryComponent[];
+    // Parse the full registry shape with backward compatibility
+    const result: FullRegistryData = {
+      components: data.components as RegistryComponent[],
+      contexts: Array.isArray(data.contexts) ? data.contexts : [],
+      functions: Array.isArray(data.functions) ? data.functions : [],
+      tokens: Array.isArray(data.tokens) ? data.tokens : [],
+      traits: Array.isArray(data.traits) ? data.traits : [],
+    };
+
+    // Cache the result
+    registryCache.set(normalizedHost, { data: result, timestamp: Date.now() });
+
+    return result;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(
@@ -249,8 +331,8 @@ export async function syncFromDevHost(
 
   console.error(`[plasmic-mcp] Syncing variants from dev host: ${hostUrl}`);
 
-  const components = await fetchDevHostRegistry(hostUrl);
-  if (!components) {
+  const registry = await fetchDevHostRegistry(hostUrl);
+  if (!registry) {
     console.error(
       `[plasmic-mcp] Dev host sync: skipped (fetch failed or no data)`
     );
@@ -258,7 +340,7 @@ export async function syncFromDevHost(
   }
 
   // Filter to only variant-bearing components — discard the rest immediately
-  const variantComponents = components.filter(
+  const variantComponents = registry.components.filter(
     (c) => c.variants && Object.keys(c.variants).length > 0
   );
 

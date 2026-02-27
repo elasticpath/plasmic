@@ -31,7 +31,7 @@ import { PlasmicApiClient } from "./api-client.js";
 import { getAuth } from "./auth.js";
 import { requireSession, setSession } from "./session.js";
 import { loadProject } from "./model-loader.js";
-import { syncFromDevHost } from "./devhost-sync.js";
+import { syncFromDevHost, clearRegistryCache } from "./devhost-sync.js";
 import {
   readComponentTree,
   readComponentSummary,
@@ -414,6 +414,9 @@ export function createServer(): McpServer {
               hostlessDataVersion,
               hostUrl,
             } = await loadProject(apiClient, session.projectId);
+
+            // Clear registry cache to force fresh fetch on explicit refresh
+            clearRegistryCache(hostUrl);
 
             // Re-sync code component variants from the dev host (non-fatal)
             const syncResult = await syncFromDevHost(site, hostUrl);

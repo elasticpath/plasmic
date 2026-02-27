@@ -1142,7 +1142,9 @@ function getCodeComponentVariantMetas(
 ): Record<string, { cssSelector: string; displayName: string }> | null {
   const tplTree = component.tplTree;
   // Root must be a TplComponent (wrapping a code component)
-  if (!tplTree || tplTree._type !== "TplComponent") return null;
+  // Use typeTag (real WAB instances) with _type fallback (duck-typed mocks)
+  const tag = tplTree?.typeTag ?? tplTree?._type;
+  if (!tplTree || tag !== "TplComponent") return null;
 
   const codeComp = tplTree.component;
   if (!codeComp?.codeComponentMeta?.variants) return null;

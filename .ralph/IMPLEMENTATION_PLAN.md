@@ -2,7 +2,7 @@
 
 Spec: `.ralph/specs/plasmic-mcp-registry-nextjs-wrapper.md`
 
-Last verified: 2026-02-27 (updated after P1, P2, and partial P3 completion)
+Last verified: 2026-02-27 (updated after P1, P2, P3, and partial P4/P5 completion)
 
 ---
 
@@ -114,7 +114,7 @@ The Next.js config wrapper and consumer-side wiring in `plasmicpkgs-dev`.
   - `"."` -> `{ "import": "./dist/index.js", "types": "./dist/index.d.ts" }`
   - `"./next"` -> `{ "import": "./dist/next.js", "types": "./dist/next.d.ts" }`
   - Depends on: `withPlasmicRegistry()` implementation
-- [ ] **Update `plasmicpkgs-dev/next.config.js`** -- wrap with `withPlasmicRegistry()`:
+- [x] **Update `plasmicpkgs-dev/next.config.js`** -- wrap with `withPlasmicRegistry()`:
   ```js
   const { withPlasmicRegistry } = require("@elasticpath/plasmic-mcp-registry/next");
   module.exports = withPlasmicRegistry({ reactStrictMode: true });
@@ -141,15 +141,15 @@ The Next.js config wrapper and consumer-side wiring in `plasmicpkgs-dev`.
 
 Updates to `packages/plasmic-mcp/src/devhost-sync.ts` to consume the full registry.
 
-- [ ] **Parse `FullRegistryResponse`** in `fetchDevHostRegistry()` -- currently only reads `data.components` and returns `RegistryComponent[] | null`. Should parse and return the full `{ components, contexts, functions, tokens, traits }` shape.
+- [x] **Parse `FullRegistryResponse`** in `fetchDevHostRegistry()` -- currently only reads `data.components` and returns `RegistryComponent[] | null`. Should parse and return the full `{ components, contexts, functions, tokens, traits }` shape.
   - Backward-compatible: if the response only has `components` (old endpoint), fill others with `[]`
   - Currently 5 call sites in `server.ts`: `project.set` (line 276), `project.refresh` (line 419), `component.create-page` (line 1156), `component.create` (line 1250), `component.clone` (line 1369)
   - Depends on: `FullRegistryResponse` type definition (P1, though devhost-sync can define its own interface)
-- [ ] **In-memory cache with configurable TTL** for `fetchDevHostRegistry()` results
-  - Currently fetches on every `project.set`, `project.refresh`, AND after every `component.create-page`, `component.create`, `component.clone` (5 total call sites) -- this means a 5-second network call on every page/component creation
-  - Default TTL (e.g., 60s or 300s) -- configurable via environment variable or parameter
-  - Cache key: `hostUrl` (normalized)
+- [x] **In-memory cache with configurable TTL** for `fetchDevHostRegistry()` results
+  - Added TTL cache (default 60s, configurable via `PLASMIC_REGISTRY_CACHE_TTL_MS` env var)
+  - Cache key: normalized `hostUrl`
   - Cache invalidated on: explicit refresh (`project.refresh`), TTL expiry
+  - `clearRegistryCache()` exported and called on `project.refresh`; `server.ts` imports `clearRegistryCache` and calls it before `syncFromDevHost` on refresh
   - Depends on: nothing (can be implemented independently)
 - [ ] **Use contexts, functions, tokens, traits from registry** -- currently only components are used (for variant sync). Future MCP features may use:
   - Contexts: for understanding provider hierarchy and `globalActions`
@@ -165,16 +165,12 @@ Updates to `packages/plasmic-mcp/src/devhost-sync.ts` to consume the full regist
 
 Correctness issues and hardening that should be addressed but are not blocking the main feature.
 
-- [ ] **Bug: `getCodeComponentVariantMetas` uses `_type` instead of `typeTag`** (`edit-tools.ts:1145`)
-  - Line: `if (!tplTree || tplTree._type !== "TplComponent") return null;`
-  - Should be: `if (!tplTree || (tplTree.typeTag ?? tplTree._type) !== "TplComponent") return null;`
-  - Real WAB model instances use a `typeTag` getter, not a `_type` field. `devhost-sync.ts:findWrapperComponents` already handles both correctly (line 176). This function should do the same.
-  - Impact: `getCodeComponentVariantMetas` silently returns `null` on real WAB instances, which means `listVariants`, `resolveVariant`, and `createStyleVariant` cannot see code component variant metadata when running against real (non-mocked) WAB.
-  - Called from 4 locations in edit-tools.ts: `listVariants` (line 1418), `resolveVariant` (line 1254), variant name listing (line 1177), `createStyleVariant` (line 3500)
+- [x] **Bug: `getCodeComponentVariantMetas` uses `_type` instead of `typeTag`** (`edit-tools.ts:1145`)
+  - Fixed: `getCodeComponentVariantMetas()` now uses `tplTree?.typeTag ?? tplTree?._type` pattern, matching `findWrapperComponents` in `devhost-sync.ts`
+  - Impact: `getCodeComponentVariantMetas` previously silently returned `null` on real WAB instances; now correctly handles both `typeTag` (real WAB) and `_type` (mocked/plain objects)
   - Depends on: nothing (standalone fix)
 - [ ] **Investigate `registerShopify` asymmetry** in `plasmicpkgs-dev` -- `registerShopify` is called in `plasmic-init-server.ts` but NOT in `plasmic-init-client.tsx`. This means Shopify components appear in the registry API but not in the canvas host. May be intentional (Shopify hooks don't work in client context) but should be documented.
 - [ ] **Defensive JSON handling in new serializers** -- ensure `serializeContextMeta` and `serializeFunctionMeta` have the same `try/catch` fallback as `serializeComponentMeta` (returns `{ name: "" }` on circular reference or JSON.stringify failure)
-- [ ] **Malformed comment in types.ts** -- `packages/plasmic-mcp/src/types.ts` has a stray comment fragment `/ M2:` (missing leading `//`) in the `ProjectBundleResponse` interface near the `modelVersion` field. Cosmetic-only, does not affect runtime.
 
 ---
 
@@ -216,15 +212,15 @@ P5: _type/typeTag bug (independent, can be done anytime)
 4. ~~Token + Trait readers (P2) -- trivial (no serialization needed)~~ **DONE**
 5. ~~`getFullRegistry()` + index.ts exports (P2) -- ties everything together~~ **DONE**
 6. ~~`withPlasmicRegistry()` + `"./next"` subpath export (P3) -- can parallelize with step 5~~ **DONE**
-7. `plasmicpkgs-dev` consumer updates (P3) -- **route.ts + tests DONE; next.config.js still pending**
-8. `_type`/`typeTag` bug fix (P5) -- quick fix, high correctness value
-9. MCP server `FullRegistryResponse` parsing (P4)
-10. TTL cache (P4)
+7. ~~`plasmicpkgs-dev` consumer updates (P3) -- route.ts + tests + next.config.js~~ **DONE**
+8. ~~`_type`/`typeTag` bug fix (P5) -- quick fix, high correctness value~~ **DONE**
+9. ~~MCP server `FullRegistryResponse` parsing (P4)~~ **DONE**
+10. ~~TTL cache (P4)~~ **DONE**
 11. Future registry data usage in MCP (P4) -- contexts, functions, tokens, traits
 
 ---
 
-## Current Source Code Summary (verified 2026-02-27, updated after P1/P2/partial-P3)
+## Current Source Code Summary (verified 2026-02-27, updated after P1/P2/P3/partial-P4/P5)
 
 ### packages/plasmic-mcp-registry/ (renamed from plasmic-registry)
 - **package.json**: name `@elasticpath/plasmic-mcp-registry`, v0.2.0, zero runtime deps, CommonJS output, `exports` field with `"."` and `"./next"` subpaths
@@ -236,7 +232,7 @@ P5: _type/typeTag bug (independent, can be done anytime)
 - **Tests**: 12 serialize + 9 read-registry + 54 new (context/function/token/trait/full readers and serializers) = 75 tests (5 suites)
 
 ### plasmicpkgs-dev/
-- **next.config.js**: `{ reactStrictMode: true }` only -- NO `serverExternalPackages` **(still pending: wrap with `withPlasmicRegistry()`)**
+- **next.config.js**: wrapped with `withPlasmicRegistry()` from `@elasticpath/plasmic-mcp-registry/next` -- auto-adds `serverExternalPackages`
 - **app/api/plasmic-registry/route.ts**: imports `getFullRegistry` from `@elasticpath/plasmic-mcp-registry`, returns full `FullRegistryResponse` shape (`{ components, contexts, functions, tokens, traits }`)
 - **plasmic-init-server.ts**: server-safe registration file, populates globalThis registries (includes `registerShopify`)
 - **plasmic-init-client.tsx**: `"use client"` registration (missing `registerShopify`)
@@ -244,17 +240,20 @@ P5: _type/typeTag bug (independent, can be done anytime)
 - **Tests**: 6 route handler tests in `__tests__/plasmic-registry-route.test.ts` -- updated to mock `getFullRegistry` and assert full `FullRegistryResponse` shape
 
 ### packages/plasmic-mcp/src/devhost-sync.ts
-- **fetchDevHostRegistry()**: fetches `{hostUrl}/api/plasmic-registry`, 5s timeout, returns `RegistryComponent[] | null` (components only)
+- **fetchDevHostRegistry()**: fetches `{hostUrl}/api/plasmic-registry`, 5s timeout, returns `FullRegistryData | null` containing all five registries. Backward-compatible: if response only has `components`, others default to `[]`.
+- **TTL cache**: default 60s, configurable via `PLASMIC_REGISTRY_CACHE_TTL_MS` env var. Cache key is normalized `hostUrl`. `clearRegistryCache()` exported and called on `project.refresh`.
 - **syncVariantMetadata()**: overwrites CC variant metadata from registry (dev host is source of truth)
 - **ensureVariantObjects()**: creates missing variant objects on wrapper components
 - **syncFromDevHost()**: orchestrator called from 5 locations in server.ts
-- **No caching**: every call triggers a fresh HTTP fetch
-- **No parsing of contexts/functions/tokens/traits**: only `data.components` is read **(P4 not yet started)**
+- **`getCodeComponentVariantMetas()`**: uses `tplTree?.typeTag ?? tplTree?._type` (fixed from `_type` only)
+- **Contexts/functions/tokens/traits**: parsed and available in `FullRegistryData` but not yet consumed beyond components (P4 future work)
 
-### Test counts (as of P1/P2/partial-P3 completion)
+### Test counts (as of P1/P2/P3/partial-P4/P5 completion)
 - packages/plasmic-mcp-registry: 75 tests (5 suites) -- 21 existing + 54 new
 - plasmicpkgs-dev: 6 tests (1 suite) -- all updated and passing
-- packages/plasmic-mcp: 1655 tests (31 suites) -- all passing
+- packages/plasmic-mcp: 1663 tests (31 suites) -- all passing
+  - devhost-sync.test.ts: 31 tests (was 23)
+  - server.test.ts: 248 tests (was 241 -- added 7 including clearRegistryCache tests)
 
 ### Host registration global shapes (packages/host/src/register*.ts)
 | Registry | Global | Entry Shape | Non-serializable |

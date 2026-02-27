@@ -221,6 +221,7 @@ describe("tool handlers", () => {
   let mockGetCodeComponentMeta: ReturnType<typeof vi.fn>;
   let mockListCustomFunctions: ReturnType<typeof vi.fn>;
   let mockSyncFromDevHost: ReturnType<typeof vi.fn>;
+  let mockClearRegistryCache: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     process.env = { ...savedEnv };
@@ -347,6 +348,7 @@ describe("tool handlers", () => {
     mockGetCodeComponentMeta = vi.fn();
     mockListCustomFunctions = vi.fn();
     mockSyncFromDevHost = vi.fn().mockResolvedValue({ devHostSynced: false, syncedVariantComponents: [] });
+    mockClearRegistryCache = vi.fn();
     mockBeginBatch = vi.fn();
     mockEndBatch = vi.fn();
     mockIsBatchActive = vi.fn().mockReturnValue(false);
@@ -552,6 +554,7 @@ describe("tool handlers", () => {
 
     vi.doMock("../devhost-sync", () => ({
       syncFromDevHost: (...args: any[]) => mockSyncFromDevHost(...args),
+      clearRegistryCache: (...args: any[]) => mockClearRegistryCache(...args),
     }));
 
     // --- Create server and connect transport ---
@@ -4189,14 +4192,38 @@ describe("tool handlers", () => {
       expect(output.componentCount).toBe(2);
       expect(output.pageCount).toBe(1);
 
-      // Verify cleanup sequence: cancel batch → dispose tracker → clear undo → clear cache → load → session → init tracker
+      // Verify cleanup sequence: cancel batch → dispose tracker → clear undo → clear cache → clear registry cache → load → session → init tracker
       expect(mockCancelBatch).toHaveBeenCalled();
       expect(mockDisposeChangeTracker).toHaveBeenCalled();
       expect(mockClearUndoStack).toHaveBeenCalled();
       expect(mockClearNodeCache).toHaveBeenCalled();
+      expect(mockClearRegistryCache).toHaveBeenCalled();
       expect(mockLoadProject).toHaveBeenCalledWith(mockApiClient, "proj-123");
       expect(mockSetSession).toHaveBeenCalled();
       expect(mockInitChangeTracker).toHaveBeenCalledWith(refreshedSite);
+    });
+
+    it("clears registry cache with hostUrl on refresh", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+      });
+      mockLoadProject.mockResolvedValue({
+        site: { components: [] },
+        bundler: {},
+        projectName: "Test",
+        revisionNum: 15,
+        modelVersion: 3,
+        hostlessDataVersion: 1,
+        hostUrl: "http://localhost:3000",
+      });
+
+      await client.callTool({
+        name: "project",
+        arguments: { action: "refresh" },
+      });
+
+      // clearRegistryCache should be called with the hostUrl from loadProject
+      expect(mockClearRegistryCache).toHaveBeenCalledWith("http://localhost:3000");
     });
 
     it("returns error on reload failure", async () => {
