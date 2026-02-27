@@ -1,4 +1,4 @@
-import "../../../plasmic-init-server";
+import "@/plasmic-register";
 import { getFullRegistry } from "@elasticpath/plasmic-mcp-registry";
 
 export function GET() {

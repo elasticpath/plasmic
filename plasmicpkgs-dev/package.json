@@ -3,16 +3,17 @@
   "version": "0.0.40",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --port 3001",
     "dev-inspect": "NODE_OPTIONS='--inspect' next dev",
     "test": "vitest run"
   },
   "dependencies": {
-    "@elasticpath/plasmic-mcp-registry": "0.2.0",
     "@plasmicapp/loader-nextjs": "1.0.449",
     "@plasmicpkgs/cms": "0.0.10",
     "@plasmicpkgs/commerce": "0.0.232",
     "@plasmicpkgs/commerce-shopify": "0.0.240",
+    "@elasticpath/plasmic-ep-commerce-elastic-path": "0.0.3",
+    "@elasticpath/plasmic-mcp-registry": "file:../packages/plasmic-mcp-registry",
     "@plasmicpkgs/fetch": "0.0.24",
     "@plasmicpkgs/graphql": "0.0.18",
     "@plasmicpkgs/plasmic-basic-components": "0.0.263",

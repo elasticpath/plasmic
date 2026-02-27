@@ -7,7 +7,7 @@
  * the correct response shape and handles errors gracefully — ensuring
  * the MCP sync can rely on a stable API contract.
  *
- * Mocks plasmic-init-server (side-effect registration) and
+ * Mocks plasmic-register (side-effect registration) and
  * @elasticpath/plasmic-mcp-registry to isolate route handler logic.
  */
 
@@ -19,7 +19,7 @@ const { mockGetFullRegistry } = vi.hoisted(() => ({
 }));
 
 // Mock the side-effect import (component registration)
-vi.mock("../plasmic-init-server", () => ({}));
+vi.mock("../plasmic-register", () => ({}));
 
 // Mock the registry module
 vi.mock("@elasticpath/plasmic-mcp-registry", () => ({
