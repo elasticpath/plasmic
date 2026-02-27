@@ -6,11 +6,11 @@
 
 - MCP server: 8 STRAP tools, 103 actions -- ALL fully implemented, zero TODOs/FIXMEs
 - Eval system: harness, graders, visual capture, dashboard, CI, ~135 scenarios across 20 YAML files
-- Total tests: ~1,603 (1,418 unit across 31 suites + 147 integration in 2 suites + 21 plasmic-registry tests + 6 plasmicpkgs-dev route tests)
+- Total tests: ~1,617 (1,480 unit across 31 suites + 137 integration)
 - Eval tests: 249 across 10 files (21 new added in P15)
 - **Action coverage: ~98% (103/103 actions have eval scenarios)**
 - **All known issues resolved**
-- **Priority order: P1-P19 completed**
+- **Priority order: P1-P20 completed**
 
 ## Completed Priorities
 
@@ -34,12 +34,13 @@
 | P17 | Final Defensive Fixes | Cycle guard for `flattenWithPaths` in node-resolver.ts (#23): visited-UUID Set + MAX_TREE_DEPTH=200 depth limit prevent infinite recursion on malformed models. `.env.example` for eval system (#25): documents all required/optional env vars for new developer onboarding. 5 new tests. All 1407 unit + 147 integration tests pass. |
 | P18 | Dev Host Wiring & Test Gaps | Fixed `@elasticpath/plasmic-registry` not in Yarn workspaces (#29) — route.ts import would fail at runtime. Added package to root `workspaces[]` + `plasmicpkgs-dev/package.json` dependencies. Added `fetchDevHostRegistry()` timeout (AbortError) unit test (#30). Added 6 API route handler tests in `plasmicpkgs-dev/__tests__/` (#31) — response shape, variant data, serialization safety, empty registry, error handling. All 1555 MCP unit + 147 integration + 21 registry + 6 route tests pass. |
 | P19 | Skill Docs & Registration Completeness | Spec-vs-implementation audit found 3 gaps: (1) Claude skill files had zero mention of dev host sync — users couldn't discover CC variant styling prerequisites. Added dev host sync sections to `plasmic.md` (project.set/refresh docs + new section), `plasmic-edit.md` (variant workflow guidance), `plasmic-inspect.md` (variant.list note). (2) `plasmic-init-server.ts` missing `registerShopify` that client version had — Shopify commerce components invisible to registry API. Added import + registration call. (3) README `project.refresh` re-sync behavior was parenthetical — expanded to explicit documentation. All 1408 unit + 147 integration + 21 registry + 6 route tests pass. |
+| P20 | Server Handler Test Coverage | 62 new server handler tests covering 48 previously-untested actions across all 8 STRAP domains. Added 47 missing edit-tools mock declarations + devhost-sync mock to test infrastructure. Fixed syncFromDevHost mock return shape (SyncResult not undefined). Domains covered: component props/states (list-props, add-prop, update-prop, remove-prop, list-states, add-state, update-state, remove-state, extract), node (update-rich-text, set-visibility, set-image, apply-mixin, detach-mixin, add-animation, remove-animation), design (list-mixins, create-mixin, update-mixin, remove-mixin, list-animations, create-animation, update-animation, remove-animation, list-themes, create-theme, update-theme, remove-theme, set-active-theme, duplicate-token, upload-asset, rename-asset, remove-asset), data (set-data-cond, set-data-rep, list-queries, add-query, update-query, remove-query, get-code-meta, list-functions), interaction (list, add, update, remove), variant globals (list-global-groups, create-global-group, add-global, remove-global-group, rename-global). All 1617 tests pass. |
 
 ---
 
 ## Outstanding Work
 
-*No outstanding work items. All known issues resolved (P1-P19).*
+*No outstanding work items. All known issues resolved (P1-P20).*
 
 ---
 
@@ -81,9 +82,10 @@
 | 32 | Skill docs missing dev host sync awareness | DX | `.claude/commands/` | FIXED (P19) | All 6 skill files had zero mention of dev host sync, hostUrl, or devHostSynced. Users couldn't discover that CC variant styling requires a running dev host. Added docs to plasmic.md, plasmic-edit.md, plasmic-inspect.md. |
 | 33 | plasmic-init-server.ts missing registerShopify | Bug | `plasmicpkgs-dev/plasmic-init-server.ts` | FIXED (P19) | Server init was missing `registerShopify` from `@plasmicpkgs/commerce-shopify` that the client version (`plasmic-init-client.tsx`) included. Shopify commerce components would be invisible to the registry API response. |
 | 34 | README project.refresh sync docs ambiguous | DX | `packages/plasmic-mcp/README.md` | FIXED (P19) | `project.refresh` re-sync behavior documented only parenthetically as "(and project.refresh)". Expanded to explicit explanation that refresh re-queries dev host and replaces previous sync results. |
+| 35 | Server handler test coverage gap | Resolved | `server.test.ts` | FIXED (P20) | 48 handler actions had zero server-level test coverage. Added 62 tests + 47 mock declarations + devhost-sync mock. |
 
 ---
 
 ## Issue Discovery Log
 
-Issues 1-20 identified P1-P9. Issues 22-27 discovered 2026-02-27 audit. Issues 20-21 resolved P14. Issues 19, 22, 24, 26, 27 resolved P15. Issue 28 discovered and resolved P16. Issues 23, 25 resolved P17. Issues 29-31 discovered and resolved P18 (spec audit gap analysis). Issues 32-34 discovered and resolved P19 (spec-vs-implementation audit).
+Issues 1-20 identified P1-P9. Issues 22-27 discovered 2026-02-27 audit. Issues 20-21 resolved P14. Issues 19, 22, 24, 26, 27 resolved P15. Issue 28 discovered and resolved P16. Issues 23, 25 resolved P17. Issues 29-31 discovered and resolved P18 (spec audit gap analysis). Issues 32-34 discovered and resolved P19 (spec-vs-implementation audit). Issue 35 discovered and resolved P20 (server handler coverage audit).
