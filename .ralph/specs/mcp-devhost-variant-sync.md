@@ -202,7 +202,7 @@ These work correctly when data is present. After the sync populates the data, th
 - [ ] After sync, `node.update-styles` with `variant="selected"` resolves successfully
 - [ ] Sync failure (dev host not running, network error, timeout) is non-fatal — logs a warning, project still loads
 - [ ] Sync uses a 5-second HTTP timeout
-- [ ] Session sync state is minimal: `{ devHostSynced: boolean, syncedComponents: string[] }`
+- [ ] Session sync state is minimal: `{ devHostSynced: boolean, syncedVariantComponents: string[] }`
 
 ### MCP Sync Tests
 - [ ] Unit test: `fetchDevHostRegistry()` — successful fetch returns parsed components
@@ -261,7 +261,7 @@ These work correctly when data is present. After the sync populates the data, th
 11. Sets `codeComponentMeta.variants` on each (mirroring `syncCodeComponentsVariants()`)
 12. Finds wrapper components whose `tplTree.component` references those code components
 13. Creates `Variant` objects for each variant key (mirroring `createCodeComponentVariant()`)
-14. Records sync state: `{ devHostSynced: true, syncedComponents: ["...$dev", "...$dev", "...$dev"] }`
+14. Records sync state: `{ devHostSynced: true, syncedVariantComponents: ["...$dev", "...$dev", "...$dev"] }`
 15. User calls `variant.list` on "Bundle Option Card" → sees `codeComponentVariants: [{ key: "selected", displayName: "Selected", ... }]`
 16. User calls `node.update-styles` with `variant="selected"` → styles applied successfully
 

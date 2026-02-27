@@ -2548,6 +2548,143 @@ describe("edit-tools", () => {
       // Should have set the style on the mobile VS
       expect(mobileVs.rs.values).toHaveProperty("fontSize", "14px");
     });
+
+    it("targets a code component variant by key name (synced via devhost-sync)", async () => {
+      // This tests the full updateStyles → resolveVariant → CC variant path.
+      // In production, devhost-sync populates codeComponentMeta.variants on the
+      // code component and creates Variant objects on wrapper components. This test
+      // verifies that updateStyles correctly resolves a CC variant key and applies
+      // styles to the corresponding variant setting.
+
+      // 1. Build the code component with synced variant metadata
+      const codeComp = {
+        name: "EPBundleOptionTrigger",
+        codeComponentMeta: {
+          variants: {
+            selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+            disabled: { cssSelector: ":disabled", displayName: "Disabled" },
+          },
+        },
+      };
+
+      // 2. Build the CC variant object (created by ensureVariantObjects in devhost-sync)
+      const ccVariant = {
+        uuid: "cc-var-selected",
+        name: "",
+        codeComponentName: "EPBundleOptionTrigger",
+        codeComponentVariantKeys: ["selected"],
+        selectors: null,
+        parent: null,
+        mediaQuery: null,
+      };
+
+      // 3. Build a child node to style — placed inside a slot override on the
+      //    TplComponent root so the node-resolver can traverse it.
+      //    The resolver handles TplComponent children via vsettings[0].args[].expr.tpl[].
+      const node = mkTag({ uuid: "styled-1", name: "Box", styles: { color: "red" } });
+
+      // 4. Build the wrapper component — tplTree root is TplComponent referencing codeComp.
+      //    Child node is inside a slot override (RenderExpr) so the node-resolver finds it.
+      const comp = {
+        uuid: "comp-1",
+        name: "BundleOptionCard",
+        tplTree: {
+          _type: "TplComponent",
+          uuid: "root-tpl",
+          component: codeComp,
+          vsettings: [{
+            rs: { values: {} },
+            args: [{
+              param: { variable: { name: "children" } },
+              expr: { _type: "RenderExpr", tpl: [node] },
+            }],
+          }],
+          children: [],
+        },
+        variantGroups: [],
+        variants: [ccVariant],
+        pageMeta: undefined,
+      };
+
+      // 5. Set up mock variant setting target
+      const ccVs = { rs: { values: {} }, variants: [ccVariant] };
+      mockEnsureVariantSetting.mockReturnValue(ccVs);
+
+      const session = makeSession({
+        site: { components: [comp], globalVariantGroups: [] },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      // 6. Call updateStyles with CC variant key "selected"
+      await updateStyles(api, "comp-1", "Box", { color: "blue" }, "selected");
+
+      // 7. Verify ensureVariantSetting was called with the CC variant
+      expect(mockEnsureVariantSetting).toHaveBeenCalledWith(node, [ccVariant]);
+      expect(ccVs.rs.values).toHaveProperty("color", "blue");
+    });
+
+    it("targets a code component variant by display name (case-insensitive)", async () => {
+      // Tests the CC variant display name resolution path in resolveVariant.
+      // Users may reference variants by display name (e.g., "Selected") rather
+      // than by internal key (e.g., "selected").
+
+      const codeComp = {
+        name: "EPButton$dev",
+        codeComponentMeta: {
+          variants: {
+            isPressed: { cssSelector: ":active", displayName: "Pressed State" },
+          },
+        },
+      };
+
+      const ccVariant = {
+        uuid: "cc-var-pressed",
+        name: "",
+        codeComponentName: "EPButton$dev",
+        codeComponentVariantKeys: ["isPressed"],
+        selectors: null,
+        parent: null,
+        mediaQuery: null,
+      };
+
+      const node = mkTag({ uuid: "styled-1", name: "Inner" });
+      const comp = {
+        uuid: "comp-1",
+        name: "ButtonWrapper",
+        tplTree: {
+          _type: "TplComponent",
+          uuid: "root-tpl",
+          component: codeComp,
+          vsettings: [{
+            rs: { values: {} },
+            args: [{
+              param: { variable: { name: "children" } },
+              expr: { _type: "RenderExpr", tpl: [node] },
+            }],
+          }],
+          children: [],
+        },
+        variantGroups: [],
+        variants: [ccVariant],
+        pageMeta: undefined,
+      };
+
+      const ccVs = { rs: { values: {} }, variants: [ccVariant] };
+      mockEnsureVariantSetting.mockReturnValue(ccVs);
+
+      const session = makeSession({
+        site: { components: [comp], globalVariantGroups: [] },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      // Resolve by display name — case-insensitive
+      await updateStyles(api, "comp-1", "Inner", { opacity: "0.5" }, "pressed state");
+
+      expect(mockEnsureVariantSetting).toHaveBeenCalledWith(node, [ccVariant]);
+      expect(ccVs.rs.values).toHaveProperty("opacity", "0.5");
+    });
   });
 
   describe("variant-aware updateText", () => {

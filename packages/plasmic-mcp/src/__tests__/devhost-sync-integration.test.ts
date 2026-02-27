@@ -479,6 +479,155 @@ describe("devhost-sync real WAB integration", () => {
   });
 
   // -----------------------------------------------------------------------
+  // ensureVariantObjects with synthetic TplComponent wrapper
+  // -----------------------------------------------------------------------
+
+  describe("ensureVariantObjects with synthetic wrapper", () => {
+    it("creates variant objects that resolveVariant can find by CC key", () => {
+      // The fixture lacks TplComponent-rooted wrappers, so ensureVariantObjects's
+      // creation path is never exercised. This test creates a synthetic wrapper
+      // component (duck-typed with _type: "TplComponent") and verifies that
+      // ensureVariantObjects creates variants that resolveVariant can resolve
+      // by code component variant key — the exact path used by updateStyles.
+
+      const codeComp = components[0];
+      if (!codeComp) return;
+
+      // Make it a code component with variant metadata
+      if (!codeComp.codeComponentMeta) {
+        codeComp.codeComponentMeta = { variants: {} };
+      }
+
+      // Create a synthetic wrapper whose tplTree looks like a TplComponent
+      // wrapping our code component. Uses _type (duck-typing) since we can't
+      // construct a real TplComponent without WAB class initializer overhead.
+      const syntheticWrapper: any = {
+        uuid: "synthetic-wrapper-uuid",
+        name: "SyntheticWrapper",
+        tplTree: {
+          _type: "TplComponent",
+          typeTag: "TplComponent",
+          uuid: "synthetic-tpl-root",
+          component: codeComp,
+          vsettings: [{ rs: { values: {} } }],
+          children: [],
+        },
+        variantGroups: [],
+        variants: [],
+        pageMeta: undefined,
+      };
+
+      // Push into site.components so findWrapperComponents can find it
+      components.push(syntheticWrapper);
+
+      const registryData = [
+        {
+          name: codeComp.name,
+          variants: {
+            synSelected: {
+              cssSelector: "[data-syn-selected]",
+              displayName: "Synthetic Selected",
+            },
+            synFocused: {
+              cssSelector: ":focus-visible",
+              displayName: "Synthetic Focused",
+            },
+          },
+        },
+      ];
+
+      // Step 1: Sync variant metadata
+      syncVariantMetadata(site, registryData);
+      expect(codeComp.codeComponentMeta.variants).toHaveProperty("synSelected");
+      expect(codeComp.codeComponentMeta.variants).toHaveProperty("synFocused");
+
+      // Step 2: Create variant objects on the synthetic wrapper
+      ensureVariantObjects(site, registryData);
+      expect(syntheticWrapper.variants).toHaveLength(2);
+
+      // Verify variant object shape matches devhost-sync output
+      const selVariant = syntheticWrapper.variants.find(
+        (v: any) =>
+          v.codeComponentVariantKeys?.[0] === "synSelected"
+      );
+      expect(selVariant).toBeDefined();
+      expect(selVariant.name).toBe("");
+      expect(selVariant.codeComponentName).toBe(codeComp.name);
+      expect(selVariant.uuid).toBeTruthy();
+
+      // Step 3: resolveVariant should find by CC variant key
+      // This is the exact resolution path that updateStyles uses
+      const resolved = resolveVariant(site, syntheticWrapper, "synSelected");
+      expect(resolved).toBe(selVariant);
+
+      // Step 4: resolveVariant should find by display name (case-insensitive)
+      const resolvedByDisplay = resolveVariant(
+        site,
+        syntheticWrapper,
+        "synthetic focused"
+      );
+      expect(resolvedByDisplay.codeComponentVariantKeys).toEqual(["synFocused"]);
+
+      // Clean up: remove synthetic wrapper from components
+      const idx = components.indexOf(syntheticWrapper);
+      if (idx >= 0) components.splice(idx, 1);
+    });
+
+    it("does not create duplicate variant objects on repeated sync", () => {
+      // Verifies idempotency: running ensureVariantObjects twice with the
+      // same data should not create duplicate variants.
+
+      const codeComp = components[0];
+      if (!codeComp) return;
+
+      if (!codeComp.codeComponentMeta) {
+        codeComp.codeComponentMeta = { variants: {} };
+      }
+
+      const syntheticWrapper: any = {
+        uuid: "synthetic-dedup-uuid",
+        name: "SyntheticDedupWrapper",
+        tplTree: {
+          _type: "TplComponent",
+          typeTag: "TplComponent",
+          uuid: "synthetic-dedup-tpl-root",
+          component: codeComp,
+          vsettings: [{ rs: { values: {} } }],
+          children: [],
+        },
+        variantGroups: [],
+        variants: [],
+        pageMeta: undefined,
+      };
+
+      components.push(syntheticWrapper);
+
+      const registryData = [
+        {
+          name: codeComp.name,
+          variants: {
+            dedupKey: {
+              cssSelector: "[data-dedup]",
+              displayName: "Dedup Test",
+            },
+          },
+        },
+      ];
+
+      // Run ensureVariantObjects twice
+      ensureVariantObjects(site, registryData);
+      expect(syntheticWrapper.variants).toHaveLength(1);
+
+      ensureVariantObjects(site, registryData);
+      expect(syntheticWrapper.variants).toHaveLength(1); // No duplicates
+
+      // Clean up
+      const idx = components.indexOf(syntheticWrapper);
+      if (idx >= 0) components.splice(idx, 1);
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // Full sync flow on real model (end-to-end within a single site)
   // -----------------------------------------------------------------------
 
