@@ -28,11 +28,22 @@ interface UndoOperation {
   changes: ModelChange[];
 }
 
+/**
+ * Maximum number of undo operations retained. When the limit is reached,
+ * the oldest operation is dropped. This prevents unbounded memory growth
+ * during long editing sessions where each operation may carry a full
+ * ModelChange[] array.
+ */
+export const MAX_UNDO_DEPTH = 50;
+
 let undoStack: UndoOperation[] = [];
 
 /**
  * Push an operation onto the undo stack.
  * Called after each successful edit tool save.
+ *
+ * When the stack exceeds MAX_UNDO_DEPTH, the oldest operation is dropped
+ * to bound memory usage.
  */
 export function pushUndoOperation(
   description: string,
@@ -42,6 +53,14 @@ export function pushUndoOperation(
     description,
     changes: changes.changes,
   });
+
+  if (undoStack.length > MAX_UNDO_DEPTH) {
+    const dropped = undoStack.shift()!;
+    console.error(
+      `[plasmic-mcp] Undo stack limit (${MAX_UNDO_DEPTH}) reached, dropped oldest: "${dropped.description}"`
+    );
+  }
+
   console.error(
     `[plasmic-mcp] Undo stack: pushed "${description}" (depth: ${undoStack.length})`
   );

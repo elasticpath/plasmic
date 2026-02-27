@@ -375,6 +375,43 @@ describe("PlasmicApiClient", () => {
     });
   });
 
+  describe("clearSessionState", () => {
+    it("clears cookies and CSRF token so subsequent requests start fresh", async () => {
+      // First, establish cookies and CSRF via a mock response
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: mockHeaders(["session=abc123; Path=/"]),
+        json: () => Promise.resolve({ csrf: "tok-1" }),
+      });
+      await client.ensureCsrfToken();
+
+      // Verify cookies and CSRF are sent in the next request
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: mockHeaders(),
+        json: () => Promise.resolve({ projects: [], perms: [] }),
+      });
+      await client.listProjects();
+      const headersWithState = mockFetch.mock.calls[1][1].headers;
+      expect(headersWithState["Cookie"]).toContain("session=abc123");
+      expect(headersWithState["x-csrf-token"]).toBe("tok-1");
+
+      // Clear session state
+      client.clearSessionState();
+
+      // Next request should not include cookies or CSRF
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: mockHeaders(),
+        json: () => Promise.resolve({ projects: [], perms: [] }),
+      });
+      await client.listProjects();
+      const headersAfterClear = mockFetch.mock.calls[2][1].headers;
+      expect(headersAfterClear).not.toHaveProperty("Cookie");
+      expect(headersAfterClear).not.toHaveProperty("x-csrf-token");
+    });
+  });
+
   describe("listProjects error guidance", () => {
     it("includes auth and connectivity guidance on failure", async () => {
       mockFetch.mockResolvedValue({

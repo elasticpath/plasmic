@@ -19,6 +19,7 @@ import {
   undo,
   getUndoDepth,
   clearUndoStack,
+  MAX_UNDO_DEPTH,
 } from "../undo-manager";
 
 // Mock API client
@@ -174,6 +175,33 @@ describe("getUndoDepth", () => {
     expect(getUndoDepth()).toBe(1);
     pushUndoOperation("b", emptyRecordedChanges());
     expect(getUndoDepth()).toBe(2);
+  });
+});
+
+describe("MAX_UNDO_DEPTH enforcement", () => {
+  it("drops the oldest operation when depth exceeds limit", () => {
+    for (let i = 0; i < MAX_UNDO_DEPTH + 5; i++) {
+      pushUndoOperation(`op-${i}`, emptyRecordedChanges());
+    }
+    expect(getUndoDepth()).toBe(MAX_UNDO_DEPTH);
+  });
+
+  it("preserves the most recent operations after overflow", async () => {
+    setupSession();
+    const api = mockApiClient();
+    for (let i = 0; i < MAX_UNDO_DEPTH + 3; i++) {
+      pushUndoOperation(`op-${i}`, emptyRecordedChanges());
+    }
+    // The most recent should be op-(MAX_UNDO_DEPTH+2)
+    const result = await undo(api);
+    expect(result.undone).toBe(`op-${MAX_UNDO_DEPTH + 2}`);
+  });
+
+  it("does not exceed limit even with many pushes", () => {
+    for (let i = 0; i < 200; i++) {
+      pushUndoOperation(`op-${i}`, emptyRecordedChanges());
+    }
+    expect(getUndoDepth()).toBe(MAX_UNDO_DEPTH);
   });
 });
 

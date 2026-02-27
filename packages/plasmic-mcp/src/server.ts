@@ -251,6 +251,7 @@ export function createServer(): McpServer {
           case "set": {
             const pid = requireParam(projectId, "projectId", "project.set");
             // Clean up previous session state before loading new project
+            apiClient.clearSessionState();
             cancelBatch();
             clearUndoStack();
             disposeChangeTracker();

@@ -188,6 +188,7 @@ describe("tool handlers", () => {
       getProjectBundle: vi.fn(),
       updateProject: vi.fn(),
       saveRevision: vi.fn(),
+      clearSessionState: vi.fn(),
     };
 
     mockLoadProject = vi.fn();

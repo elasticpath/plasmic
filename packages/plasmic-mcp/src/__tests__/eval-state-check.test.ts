@@ -796,7 +796,7 @@ describe("property grader — componentName resolution", () => {
     const config: GraderConfig = {
       type: "property",
       params: {
-        componentName: "card component",
+        componentName: "My Card Component",
         nodeRef: "heading",
         styles: { color: "red" },
       },

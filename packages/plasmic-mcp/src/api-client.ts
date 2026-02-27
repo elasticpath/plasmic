@@ -185,6 +185,16 @@ export class PlasmicApiClient {
     console.error("[plasmic-mcp] CSRF token obtained");
   }
 
+  /**
+   * Clear accumulated cookies and cached CSRF token.
+   * Called on project.set to prevent session state from one project
+   * leaking into API calls for the next project.
+   */
+  clearSessionState(): void {
+    this.cookies.clear();
+    this.csrfToken = undefined;
+  }
+
   async listProjects(): Promise<ListProjectsResponse> {
     try {
       return await this.request<ListProjectsResponse>(

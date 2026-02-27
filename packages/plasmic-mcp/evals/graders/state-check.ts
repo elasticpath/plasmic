@@ -649,7 +649,7 @@ async function resolveComponentUuid(
     const data = JSON.parse(result.content);
     const items = [...(data.pages ?? []), ...(data.components ?? [])];
     const match = items.find((item: any) =>
-      item.name?.toLowerCase().includes(componentName.toLowerCase())
+      matchEntityName(item.name, componentName, true)
     );
     if (!match?.uuid) {
       return {
