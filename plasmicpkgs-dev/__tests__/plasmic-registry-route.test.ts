@@ -8,22 +8,22 @@
  * the MCP sync can rely on a stable API contract.
  *
  * Mocks plasmic-init-server (side-effect registration) and
- * @elasticpath/plasmic-registry to isolate route handler logic.
+ * @elasticpath/plasmic-mcp-registry to isolate route handler logic.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // vi.hoisted() runs before vi.mock() hoisting — safe to reference in factories
-const { mockGetComponentRegistry } = vi.hoisted(() => ({
-  mockGetComponentRegistry: vi.fn(),
+const { mockGetFullRegistry } = vi.hoisted(() => ({
+  mockGetFullRegistry: vi.fn(),
 }));
 
 // Mock the side-effect import (component registration)
 vi.mock("../plasmic-init-server", () => ({}));
 
 // Mock the registry module
-vi.mock("@elasticpath/plasmic-registry", () => ({
-  getComponentRegistry: mockGetComponentRegistry,
+vi.mock("@elasticpath/plasmic-mcp-registry", () => ({
+  getFullRegistry: mockGetFullRegistry,
 }));
 
 // Import the route handler AFTER mocks are set up
@@ -31,50 +31,72 @@ import { GET } from "../app/api/plasmic-registry/route";
 
 describe("/api/plasmic-registry route", () => {
   beforeEach(() => {
-    mockGetComponentRegistry.mockReset();
+    mockGetFullRegistry.mockReset();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("returns JSON response with components array", async () => {
-    const mockComponents = [
-      {
-        name: "EPButton$dev",
-        props: { children: { type: "slot" } },
-        variants: {
-          selected: { cssSelector: "[data-selected]", displayName: "Selected" },
-          hovered: { cssSelector: ":hover", displayName: "Hovered" },
+  it("returns JSON response with full registry shape", async () => {
+    const mockRegistry = {
+      components: [
+        {
+          name: "EPButton$dev",
+          props: { children: { type: "slot" } },
+          variants: {
+            selected: {
+              cssSelector: "[data-selected]",
+              displayName: "Selected",
+            },
+            hovered: { cssSelector: ":hover", displayName: "Hovered" },
+          },
         },
-      },
-      {
-        name: "EPCard$dev",
-        props: { title: { type: "string" } },
-      },
-    ];
-    mockGetComponentRegistry.mockReturnValue(mockComponents);
+        {
+          name: "EPCard$dev",
+          props: { title: { type: "string" } },
+        },
+      ],
+      contexts: [],
+      functions: [],
+      tokens: [],
+      traits: [],
+    };
+    mockGetFullRegistry.mockReturnValue(mockRegistry);
 
     const response = GET();
     expect(response.status).toBe(200);
 
     const body = await response.json();
     expect(body).toHaveProperty("components");
+    expect(body).toHaveProperty("contexts");
+    expect(body).toHaveProperty("functions");
+    expect(body).toHaveProperty("tokens");
+    expect(body).toHaveProperty("traits");
     expect(Array.isArray(body.components)).toBe(true);
     expect(body.components).toHaveLength(2);
   });
 
   it("includes EP bundle components with variants in response", async () => {
-    const mockComponents = [
-      {
-        name: "EPButton$dev",
-        variants: {
-          selected: { cssSelector: "[data-selected]", displayName: "Selected" },
-          disabled: { cssSelector: ":disabled", displayName: "Disabled" },
+    const mockRegistry = {
+      components: [
+        {
+          name: "EPButton$dev",
+          variants: {
+            selected: {
+              cssSelector: "[data-selected]",
+              displayName: "Selected",
+            },
+            disabled: { cssSelector: ":disabled", displayName: "Disabled" },
+          },
         },
-      },
-    ];
-    mockGetComponentRegistry.mockReturnValue(mockComponents);
+      ],
+      contexts: [],
+      functions: [],
+      tokens: [],
+      traits: [],
+    };
+    mockGetFullRegistry.mockReturnValue(mockRegistry);
 
     const response = GET();
     const body = await response.json();
@@ -93,18 +115,25 @@ describe("/api/plasmic-registry route", () => {
   });
 
   it("response does not contain function fields (serialization safety)", async () => {
-    // Simulate what serializeComponentMeta strips — functions should not
-    // appear in the registry output because the serialize step removes them.
-    const mockComponents = [
-      {
-        name: "EPButton$dev",
-        props: { label: { type: "string", defaultValue: "Click" } },
-        variants: {
-          selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+    const mockRegistry = {
+      components: [
+        {
+          name: "EPButton$dev",
+          props: { label: { type: "string", defaultValue: "Click" } },
+          variants: {
+            selected: {
+              cssSelector: "[data-selected]",
+              displayName: "Selected",
+            },
+          },
         },
-      },
-    ];
-    mockGetComponentRegistry.mockReturnValue(mockComponents);
+      ],
+      contexts: [],
+      functions: [],
+      tokens: [],
+      traits: [],
+    };
+    mockGetFullRegistry.mockReturnValue(mockRegistry);
 
     const response = GET();
     const body = await response.json();
@@ -118,16 +147,26 @@ describe("/api/plasmic-registry route", () => {
     );
   });
 
-  it("returns empty components array when no registrations exist", async () => {
-    mockGetComponentRegistry.mockReturnValue([]);
+  it("returns empty arrays when no registrations exist", async () => {
+    mockGetFullRegistry.mockReturnValue({
+      components: [],
+      contexts: [],
+      functions: [],
+      tokens: [],
+      traits: [],
+    });
 
     const response = GET();
     const body = await response.json();
     expect(body.components).toEqual([]);
+    expect(body.contexts).toEqual([]);
+    expect(body.functions).toEqual([]);
+    expect(body.tokens).toEqual([]);
+    expect(body.traits).toEqual([]);
   });
 
-  it("returns 500 with error message when getComponentRegistry throws", async () => {
-    mockGetComponentRegistry.mockImplementation(() => {
+  it("returns 500 with error message when getFullRegistry throws", async () => {
+    mockGetFullRegistry.mockImplementation(() => {
       throw new Error("Registry initialization failed");
     });
 
@@ -140,7 +179,7 @@ describe("/api/plasmic-registry route", () => {
   });
 
   it("returns 500 with generic message for non-Error exceptions", async () => {
-    mockGetComponentRegistry.mockImplementation(() => {
+    mockGetFullRegistry.mockImplementation(() => {
       throw "string error";
     });
 

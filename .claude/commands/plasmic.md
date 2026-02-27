@@ -146,7 +146,7 @@ Code component variants (e.g., "Selected", "Disabled" states) only exist at runt
 
 **How to check sync status**: The `project.set` response includes `devHostSynced: true/false` and `syncedVariantComponents: [...]`. If `devHostSynced` is `false`, code component variants won't be available for styling.
 
-**If code component variants are missing**: Verify the dev host is running at the configured `hostUrl` and exposes a `/api/plasmic-registry` endpoint (requires the `@elasticpath/plasmic-registry` package). Then call `project({ action: "refresh" })` to re-sync.
+**If code component variants are missing**: Verify the dev host is running at the configured `hostUrl` and exposes a `/api/plasmic-registry` endpoint (requires the `@elasticpath/plasmic-mcp-registry` package). Then call `project({ action: "refresh" })` to re-sync.
 
 **Styling code component variants**: After sync, call `variant({ action: "list", componentUuid })` to see `codeComponentVariants`, then pass the variant key or display name to `node({ action: "update-styles", ..., variant: "selected" })`.
 

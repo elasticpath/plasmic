@@ -1,122 +1,266 @@
-# Plasmic MCP Eval System -- Implementation Plan
+# @elasticpath/plasmic-mcp-registry -- Implementation Plan
 
-## Status Summary
+Spec: `.ralph/specs/plasmic-mcp-registry-nextjs-wrapper.md`
 
-**Comprehensive audit date: 2026-02-28**
-
-- MCP server: 8 STRAP tools, 103 actions -- ALL fully implemented, zero TODOs/FIXMEs
-- Eval system: harness, graders, visual capture, dashboard, CI, ~135 scenarios across 20 YAML files
-- Total tests: ~1,655 (1,506 unit across 31 suites + 149 integration)
-- Eval tests: 249 across 10 files (21 new added in P15)
-- **Action coverage: ~98% (103/103 actions have eval scenarios)**
-- **All known issues resolved**
-- **Priority order: P1-P24 completed**
-
-## Completed Priorities
-
-| Priority | Area | Summary |
-|----------|------|---------|
-| P1-P2 | MCP Server & Eval Core | STRAP architecture, eval harness, graders, scenarios |
-| P3 | Eval Unit Tests | 182 tests across 9 eval module files |
-| P4 | Code Component Variants | `variant.list` CC output, `resolveVariant()` by key/displayName, `create-style` CC selectors, type declarations, 3 eval scenarios, skill doc updates |
-| P5 | Dashboard Hardening | XSS fix, fetch timeout, Chart.js CDN fallback, POST input validation |
-| P6 | Visual Capture Hardening | Defensive null checks, CSRF validation, selector constants, crash pattern expansion |
-| P7 | Report Archival | 90-day cleanup on server start + standalone `npm run eval:cleanup` |
-| P8 | Eval Resume/Skip | Git SHA tracking, scenario skip for passed results, `--force` override |
-| P9 | Contract & Doc Fixes | dryRun support for 5 component actions, explicit dryRun rejection for 3 API-based actions, `update-split` slices support, eval scenario childTags fix, skill doc accuracy, INDEX.md regeneration (55->70 scenarios), dashboard regression alerts with full grader results. 20 new tests. |
-| P10 | Dev Host Variant Sync | Dev host variant sync -- `@elasticpath/plasmic-registry` package, dev host API route, `devhost-sync.ts` MCP module, session state extension, 22 MCP unit tests + 10 integration tests + 21 registry tests, README docs |
-| P11 | Scenario Coverage Expansion | 65 missing scenarios added across 8 domain YAML files (11 node + 16 design + 12 data + 10 component + 8 variant + 5 inspect + 2 interaction + 1 project). INDEX.md regenerated (70 -> 135 scenarios: 66 simple + 50 medium + 19 complex). Action coverage ~98% (103/103). All 1312 unit tests pass including scenario loader validation. |
-| P12 | Eval Runner Robustness | Eval runner robustness — tool execution timeout (Promise.race on onToolCall), saveReport fallback (try/catch with stderr), visual capture wall-clock cap (30s Promise.race), MCP server cleanup (server.close before null), MAX_TURNS exhaustion flag (maxTurnsExhausted field on ConversationResult), Playwright tracing stop/restart on success, console.error suppression try/finally, desktopPath null until screenshot succeeds. 5 new tests. |
-| P13 | Eval Grader Quality | Property grader numeric coercion (P13.1), existence grader exact matching + page/component separation (P13.2/P13.3), tool-params exact matching (P13.4), LLM judge readFileSync try/catch + multi-digit score regex (P13.5/P13.6), review-flags independent low-quality (P13.7), loadPreviousReport scenarios validation (P13.8), data grader name/queryType/event filtering (P13.9). New eval-llm-judge test file (16 tests). |
-| P14 | Eval Infrastructure Improvements | Partial re-run report merging (P14.1), dirty-tree detection (P14.2), scenario content hashing (P14.3), CLI argument validation (P14.4), scenario validator integration-only gap (P14.5), regression detection flag (P14.6), high-retry-count flag (P14.7). 25 new tests. All 1381 unit tests pass. |
-| P15 | Remaining Bug Fixes & Test Gaps | resolveComponentUuid exact matching (#22), API client session state leak (#19), undo stack MAX_UNDO_DEPTH=50 (#27), MODEL_PRICING versioned IDs (#24), reporter test coverage — saveReport/printSummary/loadOverrides/saveOverride + clearSessionState + undo depth (#26). 21 new tests. All 1402 unit tests pass. |
-| P16 | Dev Host Sync Integration Tests | devhost-sync integration tests against real WAB model classes (10 tests). Bug fix: `findWrapperComponents` `_type` → `typeTag ?? _type` for real WAB instance compatibility (#28). Tests verify: syncVariantMetadata on real MobX-observed components, ensureVariantObjects with real TplComponent detection, listVariants/resolveVariant end-to-end with synced data. All 1402 unit + 147 integration tests pass. |
-| P17 | Final Defensive Fixes | Cycle guard for `flattenWithPaths` in node-resolver.ts (#23): visited-UUID Set + MAX_TREE_DEPTH=200 depth limit prevent infinite recursion on malformed models. `.env.example` for eval system (#25): documents all required/optional env vars for new developer onboarding. 5 new tests. All 1407 unit + 147 integration tests pass. |
-| P18 | Dev Host Wiring & Test Gaps | Fixed `@elasticpath/plasmic-registry` not in Yarn workspaces (#29) — route.ts import would fail at runtime. Added package to root `workspaces[]` + `plasmicpkgs-dev/package.json` dependencies. Added `fetchDevHostRegistry()` timeout (AbortError) unit test (#30). Added 6 API route handler tests in `plasmicpkgs-dev/__tests__/` (#31) — response shape, variant data, serialization safety, empty registry, error handling. All 1555 MCP unit + 147 integration + 21 registry + 6 route tests pass. |
-| P19 | Skill Docs & Registration Completeness | Spec-vs-implementation audit found 3 gaps: (1) Claude skill files had zero mention of dev host sync — users couldn't discover CC variant styling prerequisites. Added dev host sync sections to `plasmic.md` (project.set/refresh docs + new section), `plasmic-edit.md` (variant workflow guidance), `plasmic-inspect.md` (variant.list note). (2) `plasmic-init-server.ts` missing `registerShopify` that client version had — Shopify commerce components invisible to registry API. Added import + registration call. (3) README `project.refresh` re-sync behavior was parenthetical — expanded to explicit documentation. All 1408 unit + 147 integration + 21 registry + 6 route tests pass. |
-| P20 | Server Handler Test Coverage | 62 new server handler tests covering 48 previously-untested actions across all 8 STRAP domains. Added 47 missing edit-tools mock declarations + devhost-sync mock to test infrastructure. Fixed syncFromDevHost mock return shape (SyncResult not undefined). Domains covered: component props/states (list-props, add-prop, update-prop, remove-prop, list-states, add-state, update-state, remove-state, extract), node (update-rich-text, set-visibility, set-image, apply-mixin, detach-mixin, add-animation, remove-animation), design (list-mixins, create-mixin, update-mixin, remove-mixin, list-animations, create-animation, update-animation, remove-animation, list-themes, create-theme, update-theme, remove-theme, set-active-theme, duplicate-token, upload-asset, rename-asset, remove-asset), data (set-data-cond, set-data-rep, list-queries, add-query, update-query, remove-query, get-code-meta, list-functions), interaction (list, add, update, remove), variant globals (list-global-groups, create-global-group, add-global, remove-global-group, rename-global). All 1617 tests pass. |
-| P21 | Error Handling Hardening | `err:any` → `err:unknown` type-narrowing across 4 source files (server.ts 10 blocks, api-client.ts 2 blocks, save-manager.ts 3 blocks, edit-tools.ts 1 block) with `errorMessage()` helper in server.ts so non-Error thrown values produce readable messages. Undo rollback on save failure: undo-manager.ts reverse-reverses the model and re-pushes the op when save fails after in-memory apply. Session recovery after failed reload: server.ts create-page/create/clone handlers now re-initialize the change tracker on the existing session site on reload error, preventing "not initialized" on subsequent mutations. Auth file parse error distinction: auth.ts readAuthFile() now warns via console.error on JSON parse errors vs silently ignoring them (ENOENT still silent). Process-level catch: index.ts main() has .catch() guard for unhandled startup errors. 6 new tests (undo save-failure rollback x2, auth malformed JSON warning, auth ENOENT no-warning, server non-Error read-only, server non-Error mutation). All 1623 tests pass. |
-| P22 | Spec-Implementation Alignment & CC Variant Test Gaps | Spec audit found 3 gaps: (1) Spec used `syncedComponents` field name but implementation uses `syncedVariantComponents` — updated spec to match. (2) No test exercised the `updateStyles` → `resolveVariant` → CC variant path — added 2 unit tests in `node.test.ts`: CC variant by key name and by display name (case-insensitive), both verifying `ensureVariantSetting` is called with the correct variant and styles applied. Tests structure TplComponent root with RenderExpr slot overrides so node-resolver can traverse children. (3) Integration test `ensureVariantObjects` path never exercised because fixture lacks TplComponent-rooted wrappers — added 2 integration tests in `devhost-sync-integration.test.ts` using synthetic wrapper components: variant creation + resolution by CC key/display name, and idempotency (no duplicate variants on repeated sync). All 1478 unit + 149 integration tests pass. |
-| P23 | Server Hardening | Session state preservation in create-page/create/clone reload (dev host sync), null-safe revision handling in undo/end-batch, "at least one field" validation for 5 update handlers, UUID sanitization in inspect.export, response format consistency (clone error JSON, convert-to-page/component messages, variant.list wrapper, data.list-queries error format), component.extract empty-name guard. 16 new tests. All 1494 unit + 149 integration tests pass. |
-| P24 | Code Quality & Safety Hardening | 13 correctness/safety fixes: `removeToken` `.replace()` → `.replaceAll()` (silent broken var refs), `isAncestorOf` missing slot traversal (cycle detection bypass), `setImage` unsafe vsettings access + URL injection + plain-object RuleSet, dead code reordering (non-serializable function detection), `node.add` missing child requireParam, `design.update-token` falsy value check, `node.set-image` missing source guard, `project.end-batch`/`project.undo` missing requireSession, obsolete tool name references (6 files), `deriveLayoutType` ignores reverse flex, devhost-sync variant entry null guard, mock `ensureBaseVariantSetting` default impl. 12 new tests. All 1506 unit + 149 integration tests pass. |
+Last verified: 2026-02-27 (updated after P1, P2, and partial P3 completion)
 
 ---
 
-## Outstanding Work
+## P1 -- Foundation (types, package structure)
 
-*No outstanding work items. All known issues resolved (P1-P24).*
+These items establish the package identity and type contracts that everything else depends on.
 
----
-
-## Known Issues
-
-| # | Issue | Severity | Location | Status | Description |
-|---|-------|----------|----------|--------|-------------|
-| 1 | Action coverage gap | Resolved | `evals/scenarios/` | FIXED (P11) | 103/103 actions (~98%) now have eval scenarios. 135 scenarios across 20 YAML files. |
-| 2 | property grader numeric crash | Bug | `state-check.ts:279` | FIXED (P13.1) | `.toLowerCase()` on numeric style values throws TypeError |
-| 3 | Tool execution no timeout | Bug | `claude-client.ts:158-163` | FIXED (P12.1) | `onToolCall` awaited with no timeout; hangs indefinitely |
-| 4 | saveReport no fallback | Bug | `reporter.ts:122-126` | FIXED (P12.2) | Filesystem error loses all results |
-| 5 | Visual capture can hang | Bug | `capture.ts:266,381-383` | FIXED (P12.3) | Canvas wait uses full timeout per layer, unbounded total |
-| 6 | LLM judge readFileSync crash | Bug | `llm-judge.ts:104-117` | FIXED (P13.5) | Screenshot read outside try/catch |
-| 7 | LLM judge score regex | Bug | `llm-judge.ts:190` | FIXED (P13.6) | `\d` matches one digit; SCORE:10 -> 1 |
-| 8 | existence grader false positives | Risk | `state-check.ts:72-73` | FIXED (P13.2) | Substring matching on entity names |
-| 9 | existence grader page/component conflation | Risk | `state-check.ts:60-87` | FIXED (P13.3) | Both entityTypes search merged list |
-| 10 | tool-params substring false positives | Risk | `transcript-check.ts:136-138` | FIXED (P13.4) | `includes()` matches partials |
-| 11 | review-flags low-quality gap | Bug | `review-flags.ts:51-58` | FIXED (P13.7) | success+score=1 never gets low-quality flag |
-| 12 | loadPreviousReport no scenarios check | Bug | `reporter.ts:259` | FIXED (P13.8) | Missing `Array.isArray(report.scenarios)` guard |
-| 13 | data grader count-only | Risk | `state-check.ts:460-531` | FIXED (P13.9) | Queries/interactions graders validate count, not content |
-| 14 | MCP server cleanup leak | Bug | `mcp-client.ts:392` | FIXED (P12.4) | `server.close()` never called before nulling |
-| 15 | MAX_TURNS looks like success | Bug | `claude-client.ts:81,196` | FIXED (P12.5) | 25-turn exit has no exhaustion flag |
-| 16 | Playwright tracing unbounded | Bug | `capture.ts:172,309` | FIXED (P12.6) | Success path never stops tracing |
-| 17 | console.error suppression leak | Bug | `mcp-client.ts:155-185` | FIXED (P12.7) | No try/finally around mock init |
-| 18 | desktopPath on screenshot failure | Bug | `capture.ts:272-287` | FIXED (P12.8) | Returns path even when screenshot write fails |
-| 19 | Integration mode state leak | Risk | `api-client.ts:41-45` | FIXED (P15) | API client cookies/CSRF leaked between project.set calls. Added `clearSessionState()` called in project.set handler. |
-| 20 | Partial re-run misleading rate | Risk | `cli.ts:263-296` | FIXED (P14.1) | Report now merges skipped-as-passed results before generating final report |
-| 21 | Dirty-tree detection | Risk | `reporter.ts:305-311` | FIXED (P14.2) | `getGitSha()` appends `-dirty` when working tree has uncommitted changes |
-| 22 | resolveComponentUuid substring match | Bug | `state-check.ts:651-652` | FIXED (P15) | Replaced `.includes()` with `matchEntityName()` exact matching |
-| 23 | flattenWithPaths no cycle guard | Risk | `node-resolver.ts:223` | FIXED (P17) | Added visited-UUID Set + MAX_TREE_DEPTH=200 depth limit. 5 new tests. |
-| 24 | MODEL_PRICING stale keys | Risk | `runner.ts:280-287` | FIXED (P15) | Added versioned model ID entries (claude-sonnet-4, claude-haiku-4, claude-opus-4) |
-| 25 | No .env.example for eval | DX | `evals/` | FIXED (P17) | Created `evals/.env.example` documenting all required/optional env vars (ANTHROPIC_API_KEY, PLASMIC_AUTH_*, EVAL_PROJECT_ID, PLASMIC_STUDIO_*, EVAL_DASHBOARD_PORT). |
-| 26 | No tests for saveReport/loadPreviousReport | Gap | `evals/harness/reporter.ts` | FIXED (P15) | Added 21 tests: saveReport (4), printSummary (7), loadOverrides (3), saveOverride (3), clearSessionState (1), undo depth limit (3) |
-| 27 | Unbounded undo stack | Risk | `src/undo-manager.ts` | FIXED (P15) | Added MAX_UNDO_DEPTH=50 limit, oldest ops dropped when exceeded |
-| 28 | findWrapperComponents _type check | Bug | `src/devhost-sync.ts:169` | FIXED (P16) | Checked `_type` but real WAB instances use `typeTag` getter. Changed to `typeTag ?? _type` fallback. |
-| 29 | plasmic-registry not in Yarn workspaces | Bug | `package.json`, `plasmicpkgs-dev/package.json` | FIXED (P18) | `@elasticpath/plasmic-registry` not listed in root `workspaces[]` and not in `plasmicpkgs-dev` dependencies. API route `import { getComponentRegistry }` would fail at runtime with module-not-found. |
-| 30 | No timeout test for fetchDevHostRegistry | Gap | `devhost-sync.test.ts` | FIXED (P18) | No unit test covering AbortController timeout (AbortError) path in `fetchDevHostRegistry()`. Added test mocking `DOMException("AbortError")`. |
-| 31 | No API route tests in plasmicpkgs-dev | Gap | `plasmicpkgs-dev/` | FIXED (P18) | No test infrastructure or tests for `/api/plasmic-registry` route handler. Added vitest config + 6 tests covering response shape, variant data, serialization, empty registry, and error handling. |
-| 32 | Skill docs missing dev host sync awareness | DX | `.claude/commands/` | FIXED (P19) | All 6 skill files had zero mention of dev host sync, hostUrl, or devHostSynced. Users couldn't discover that CC variant styling requires a running dev host. Added docs to plasmic.md, plasmic-edit.md, plasmic-inspect.md. |
-| 33 | plasmic-init-server.ts missing registerShopify | Bug | `plasmicpkgs-dev/plasmic-init-server.ts` | FIXED (P19) | Server init was missing `registerShopify` from `@plasmicpkgs/commerce-shopify` that the client version (`plasmic-init-client.tsx`) included. Shopify commerce components would be invisible to the registry API response. |
-| 34 | README project.refresh sync docs ambiguous | DX | `packages/plasmic-mcp/README.md` | FIXED (P19) | `project.refresh` re-sync behavior documented only parenthetically as "(and project.refresh)". Expanded to explicit explanation that refresh re-queries dev host and replaces previous sync results. |
-| 35 | Server handler test coverage gap | Resolved | `server.test.ts` | FIXED (P20) | 48 handler actions had zero server-level test coverage. Added 62 tests + 47 mock declarations + devhost-sync mock. |
-| 36 | `err:any` catch blocks | Bug | `server.ts`, `api-client.ts`, `save-manager.ts`, `edit-tools.ts` | FIXED (P21) | 16 catch blocks typed `err: any` — non-Error thrown values produce "undefined" in messages. Added `errorMessage()` helper + `err: unknown` narrowing across all 4 files. |
-| 37 | Undo save failure leaves model diverged | Bug | `src/undo-manager.ts` | FIXED (P21) | When save fails after in-memory undo apply, model is diverged from server with no retry path. Now rolls back (reverse-reverse) and re-pushes op for retry. |
-| 38 | Failed reload leaves session with disposed change tracker | Bug | `src/server.ts` | FIXED (P21) | create-page/create/clone handlers reload session after API call; if reload fails, change tracker is disposed and subsequent mutations throw "not initialized". Now re-initializes tracker on existing session site on error. |
-| 39 | auth.ts silently swallows JSON parse errors | Bug | `src/auth.ts` | FIXED (P21) | readAuthFile() caught all errors identically — malformed .plasmic.auth JSON was silently ignored. Now distinguishes ENOENT (expected, silent) from JSON parse errors (warns via console.error). |
-| 40 | index.ts main() has no process-level error catch | Risk | `src/index.ts` | FIXED (P21) | Unhandled startup errors (bad config, port bind failure) would crash with raw stack trace. main() now has .catch() guard that logs cleanly and exits with code 1. |
-| 41 | setSession missing dev host sync state after create-page/create/clone reload | High | server.ts lines 1145, 1231, 1342 | FIXED (P23) | Model reload in create-page, create, and clone handlers called setSession without hostUrl, devHostSynced, or syncedVariantComponents. After creating a page/component, dev host variant data was silently lost. Now calls syncFromDevHost after reload and passes all fields to setSession. |
-| 42 | project.undo and project.end-batch crash on null result.save | Medium | server.ts lines 494, 518 | FIXED (P23) | Accessed result.save.revisionNum without null guard. If undoOperation or endBatch returns { save: null }, TypeError crashes the handler. Now uses optional chaining with fallback. |
-| 43 | update-mixin, update-animation, update-data-token, update-split, interaction.update accept empty updates | Low-Medium | server.ts | FIXED (P23) | Five update handlers had no "at least one field" guard. Calling with only the ref/identifier silently produced no-ops or passed undefined to edit-tools. Now validates that at least one updatable field is provided. |
-| 44 | inspect.export path traversal via componentUuid | Low-Medium | server.ts line 876 | FIXED (P23) | File path constructed from user-supplied componentUuid. A UUID containing ../ could write to arbitrary filesystem paths. Now sanitizes UUID to [a-zA-Z0-9_-] only. |
-| 45 | component.clone error uses inconsistent plain text format | Low | server.ts line 1307 | FIXED (P23) | Clone source-not-found error returned plain text while all other errors use JSON.stringify format. Now returns JSON { error: true, message: "..." }. |
-| 46 | convert-to-page and convert-to-component responses missing message field | Low | server.ts lines 1565-1580, 1606-1620 | FIXED (P23) | Live (non-dryRun) responses lacked human-readable message field that all other mutation responses include. Added descriptive messages. |
-| 47 | variant.list returns unwrapped result | Low | server.ts line 2943 | FIXED (P23) | Directly serialized listVariants return value without wrapper, unlike all other list actions. Now wraps with componentUuid and componentName. |
-| 48 | data.list-queries uses inconsistent error format | Low | server.ts line 4278 | FIXED (P23) | "Component not found: uuid" differed from standard "Component UUID \"uuid\" not found. Use list-components to see available components." pattern. Updated to use consistent format. |
-| 49 | component.extract accepts empty name | Low | server.ts line 1494 | FIXED (P23) | No length check on name parameter, unlike create and clone. Empty string would be passed to extractToComponent. Added length < 1 validation. |
-| 50 | removeToken .replace() only inlines first occurrence | Bug | edit-tools.ts:4190,4205 | FIXED (P24) | Used `.replace()` instead of `.replaceAll()` — only the first occurrence of a token reference in CSS values was inlined, silently leaving broken `var(--token-...)` references in the model. |
-| 51 | isAncestorOf missing slot traversal | Bug | edit-tools.ts:1019 | FIXED (P24) | Cycle detection in `moveChild` only traversed direct children. Descendants inside TplComponent slot overrides were invisible, allowing tree cycles to be introduced. |
-| 52 | setImage uses vsettings?.[0] instead of ensureBaseVariantSetting | Bug | edit-tools.ts:8304 | FIXED (P24) | Accessed `vsettings?.[0]` directly. When vsettings is empty (no base variant setting exists yet), this produces undefined and crashes with TypeError instead of creating the setting. |
-| 53 | setImage URL injected into CSS without escaping | Bug | edit-tools.ts:8342 | FIXED (P24) | Raw user-supplied URL was interpolated into a CSS `url()` value without escaping quotes or backslashes, corrupting the model for URLs containing those characters. |
-| 54 | setVisibility/setImage create plain objects instead of RuleSet instances | Bug | edit-tools.ts:3743,8337 | FIXED (P24) | Both handlers constructed plain `{ values: {} }` objects for RuleSet instead of calling the WAB model constructor, causing WAB model validation failures. |
-| 55 | Dead code: unreachable non-serializable function detection | Bug | edit-tools.ts:2361 | FIXED (P24) | The `code === undefined` check was placed after a branch that already handled the undefined case, making it unreachable and failing to detect non-serializable function values. Reordered to run first. |
-| 56 | node.add missing requireParam for child parameter | Bug | server.ts:2193 | FIXED (P24) | The `child` parameter had no `requireParam()` validation. Omitting it produced cryptic downstream errors instead of a clear "missing required parameter" message. |
-| 57 | design.update-token falsy check rejects value: "" | Bug | server.ts:3370 | FIXED (P24) | Guard used `if (!value)` which rejected legitimate empty-string values. Changed to `=== undefined` so clearing a token value to an empty string is permitted. |
-| 58 | node.set-image missing source guard | Bug | server.ts:2671 | FIXED (P24) | No validation that at least one of `assetRef` or `src` was provided. Calls with neither would silently produce a no-op or crash downstream. Now validates before calling setImage. |
-| 59 | project.end-batch and project.undo missing requireSession | Bug | server.ts:484,506 | FIXED (P24) | Neither handler called `requireSession()` before accessing session state. When no project was loaded, the resulting error was unclear. Now validates session is present upfront. |
-| 60 | Obsolete tool name references in 6 source files | DX | session.ts, server.ts, edit-tools.ts, change-tracker.ts, node-resolver.ts, + tests | FIXED (P24) | Error messages and comments still referenced old tool names (`set-project`, `list-components`) from pre-STRAP architecture. Updated to current STRAP names (`project.set`, `component tool with action 'list'`). |
-| 61 | deriveLayoutType ignores column-reverse/row-reverse | Bug | tree-reader.ts:832 | FIXED (P24) | Layout type derivation only checked `column` and `row`, not their `-reverse` variants. Flex containers with `flex-direction: column-reverse` or `row-reverse` were reported with incorrect layout types. |
-| 62 | devhost-sync crashes on malformed variant entries | Bug | devhost-sync.ts:142 | FIXED (P24) | Destructuring variant entries without a null/type guard. Non-object variant values (null, string, number) in the registry caused a TypeError crash during sync. Added null and object-type guard. |
+- [x] `SerializedComponentMeta` type (`packages/plasmic-registry/src/types.ts`)
+  - 30+ fields including `variants`, `props`, `states`, `figmaMappings`, `styleSections`, index signature for extra JSON-safe fields
+- [x] `RegistryResponse` type (components-only shape `{ components: SerializedComponentMeta[] }`, will be superseded by `FullRegistryResponse`)
+- [x] **Package rename**: directory `packages/plasmic-registry/` -> `packages/plasmic-mcp-registry/`, npm name -> `@elasticpath/plasmic-mcp-registry`, version bumped to 0.2.0
+  - Update `package.json` name field (currently `@elasticpath/plasmic-registry`)
+  - Update `plasmicpkgs-dev/package.json` dependency reference
+  - Update `plasmicpkgs-dev/app/api/plasmic-registry/route.ts` import (currently `import { getComponentRegistry } from "@elasticpath/plasmic-registry"`)
+  - Update `plasmicpkgs-dev/__tests__/plasmic-registry-route.test.ts` mock (currently `vi.mock("@elasticpath/plasmic-registry", ...)`)
+  - Update any workspace/monorepo references
+  - Rationale: must happen first so all new code uses the correct package name; existing tests must still pass after rename
+- [x] **New types**: `SerializedContextMeta` -- mirrors `GlobalContextMeta` minus `component` ref and function fields
+  - Fields to preserve: `name`, `displayName?`, `description?`, `importName?`, `importPath`, `isDefaultExport?`, `refProp?`, `providesData?`, `props` (with functions stripped), `globalActions` (with function-bearing `parameters[].type` stripped)
+  - Non-serializable: `component` ref is at entry level (same pattern as components); props may contain function callbacks (`hidden`, `validator`, `control`, `options`, `defaultValueHint`, `readOnly`, `onSearch`)
+  - Depends on: package rename (so file lives in correct package)
+- [x] **New types**: `SerializedFunctionMeta` -- mirrors `CustomFunctionMeta` minus `function` ref and `fnContext` callback
+  - Fields to preserve: `name`, `namespace?`, `displayName?`, `description?`, `typescriptDeclaration?`, `isQuery?`, `importPath`, `isDefaultExport?`, `params?`, `returnValue?`
+  - Non-serializable: `function` ref is at entry level (not meta level); `meta.fnContext` is a function returning `{ dataKey, fetcher }`
+  - Depends on: package rename
+- [x] **New types**: `TokenRegistration` with `TokenType` -- define local equivalent of `@plasmicapp/host/registerToken`'s `TokenRegistration`
+  - Shape: `{ name: string, value: string, type: TokenType, displayName?: string, selector?: string }` where `TokenType = "color" | "spacing" | "font-family" | "font-size" | "line-height" | "opacity"`
+  - Note: already fully serializable, no stripping needed. Entries are stored DIRECTLY in the global array (no `{ meta }` wrapper -- unlike the other registries)
+  - Decision: define local interfaces (zero deps on `@plasmicapp/host`, same approach as `SerializedComponentMeta`)
+  - Depends on: package rename
+- [x] **New types**: `TraitRegistration` with `BasicTrait` and `ChoiceTrait` -- define local equivalent of `@plasmicapp/host/registerTrait`'s `TraitRegistration`
+  - Shape: `{ trait: string, meta: TraitMeta }` where `TraitMeta = BasicTrait | ChoiceTrait`
+  - `BasicTrait = { label?: string, type: "text" | "number" | "boolean" }`
+  - `ChoiceTrait = { label?: string, type: "choice", options: string[] }` (options is a plain `string[]`, NOT a function unlike `ChoiceType` in prop types)
+  - Note: already fully serializable, no stripping needed
+  - Depends on: package rename
+- [x] **New types**: `FullRegistryResponse` -- `{ components: SerializedComponentMeta[], contexts: SerializedContextMeta[], functions: SerializedFunctionMeta[], tokens: TokenRegistration[], traits: TraitRegistration[] }`
+  - Supersedes `RegistryResponse` (which only has `components`)
+  - Depends on: all five type definitions above
+- [x] **Package `"exports"` field** added with both `"."` and `"./next"` subpaths
 
 ---
 
-## Issue Discovery Log
+## P2 -- Core Functionality (registry readers + serialization)
 
-Issues 1-20 identified P1-P9. Issues 22-27 discovered 2026-02-27 audit. Issues 20-21 resolved P14. Issues 19, 22, 24, 26, 27 resolved P15. Issue 28 discovered and resolved P16. Issues 23, 25 resolved P17. Issues 29-31 discovered and resolved P18 (spec audit gap analysis). Issues 32-34 discovered and resolved P19 (spec-vs-implementation audit). Issue 35 discovered and resolved P20 (server handler coverage audit). Issues 36-40 discovered and resolved P21 (error handling hardening audit). Issues 41-49 discovered and resolved P23 (server hardening audit). Issues 50-62 discovered and resolved P24 (code quality and safety hardening audit).
+Registry readers and their serialization logic. Each reader follows the same pattern as the existing `getComponentRegistry()`: read from `globalThis`, serialize, return typed array.
+
+- [x] `serializeComponentMeta()` -- strips 6 top-level fields (`figmaPropsTransform`, `treeLabel`, `componentHelpers`, `refActions`, `actions`, `templates`) + top-level functions + JSON roundtrip for nested function stripping
+  - Located in `packages/plasmic-registry/src/serialize.ts`
+  - Has `try/catch` with `{ name: "" }` fallback on circular reference or JSON.stringify failure
+- [x] `getComponentRegistry()` -- reads `__PlasmicComponentRegistry`, destructures `{ meta }` from each entry (discarding `component` ref), calls `serializeComponentMeta(meta)`, returns `SerializedComponentMeta[]`
+  - Located in `packages/plasmic-registry/src/read-registry.ts`
+- [x] **`serializeContextMeta()`** -- strips nested function callbacks in `props`, function refs in `globalActions[].parameters`, then JSON roundtrip
+  - Key insight: `GlobalContextMeta.props` entries may contain callback functions (`hidden`, `validator`, `control`, `options` when function, `defaultValueHint`, `readOnly`, `onSearch`). JSON roundtrip strips these. `globalActions` entries have `parameters` arrays containing `FunctionParam` which may have function fields.
+  - Implementation: no explicit top-level fields to strip (unlike components which have 6 explicit fields). The `component` ref is at entry level, handled by the reader. Just needs JSON roundtrip + null guard + try/catch fallback.
+  - Depends on: `SerializedContextMeta` type (P1)
+- [x] **`getContextRegistry()`** -- reads `globalThis.__PlasmicContextRegistry`, destructures `{ meta }` from each entry (discarding `component` ref), maps through `serializeContextMeta(entry.meta)`, returns `SerializedContextMeta[]`
+  - Defensive: return `[]` if global is null/undefined/not-array
+  - Depends on: `serializeContextMeta()`
+- [x] **`serializeFunctionMeta()`** -- strips `fnContext` from meta (a callback returning `{ dataKey, fetcher }`), then JSON roundtrip
+  - Key insight: `fnContext` is the only explicitly non-serializable field on `CustomFunctionMeta` itself. The `function` ref is at entry level (not meta level), handled by the reader. `params` array entries may have function fields (`control`, `hidden`) -- JSON roundtrip handles these.
+  - Depends on: `SerializedFunctionMeta` type (P1)
+- [x] **`getFunctionRegistry()`** -- reads `globalThis.__PlasmicFunctionsRegistry`, destructures `{ meta }` from each entry (discarding `function` ref), maps through `serializeFunctionMeta(entry.meta)`, returns `SerializedFunctionMeta[]`
+  - Defensive: return `[]` if global is null/undefined/not-array
+  - Depends on: `serializeFunctionMeta()`
+- [x] **`getTokenRegistry()`** -- reads `globalThis.__PlasmicTokenRegistry`, returns `TokenRegistration[]` as-is (no serialization needed -- flat shape with name/value/type/displayName/selector, already JSON-safe)
+  - Defensive: return `[]` if global is null/undefined
+  - Note: token entries are stored DIRECTLY in the array (no `{ meta }` wrapper). Each entry IS the `TokenRegistration`.
+  - Depends on: `TokenRegistration` type (P1)
+- [x] **`getTraitRegistry()`** -- reads `globalThis.__PlasmicTraitRegistry`, returns `TraitRegistration[]` as-is (no serialization needed -- fully serializable, `ChoiceTrait.options` is plain `string[]`)
+  - Defensive: return `[]` if global is null/undefined
+  - Note: entries have shape `{ trait: string, meta: TraitMeta }`. Unlike tokens, traits DO have a meta wrapper.
+  - Depends on: `TraitRegistration` type (P1)
+- [x] **`getFullRegistry()`** -- convenience function calling all five readers, returns `FullRegistryResponse`
+  - Depends on: all five reader functions above + `FullRegistryResponse` type (P1)
+- [x] **Update `index.ts` exports** -- export all new readers, serializers, and types from the package root
+  - Currently exports: `getComponentRegistry`, `serializeComponentMeta`, `SerializedComponentMeta`, `RegistryResponse`
+  - Add: `getContextRegistry`, `getFunctionRegistry`, `getTokenRegistry`, `getTraitRegistry`, `getFullRegistry`, `serializeContextMeta`, `serializeFunctionMeta`, `SerializedContextMeta`, `SerializedFunctionMeta`, `TokenRegistration`, `TraitRegistration`, `FullRegistryResponse`
+  - Depends on: all reader functions
+
+### P2 Tests
+
+- [x] Existing `serialize.test.ts` (12 test cases for `serializeComponentMeta`)
+- [x] Existing `read-registry.test.ts` (9 test cases for `getComponentRegistry`)
+- [x] Unit tests for `serializeContextMeta()` -- 9 test cases (preserves fields, strips function callbacks in props, strips globalActions functions, null/undefined/non-object input, empty meta, circular reference fallback, top-level functions)
+- [x] Unit tests for `getContextRegistry()` -- 5 test cases (empty, not array, correct shape, strips component ref, malformed entries)
+- [x] Unit tests for `serializeFunctionMeta()` -- 9 test cases (preserves fields, strips fnContext, strips function params, null/undefined/non-object, empty, circular, top-level functions)
+- [x] Unit tests for `getFunctionRegistry()` -- 5 test cases (empty, not array, correct shape, strips function ref and fnContext, malformed entries)
+- [x] Unit tests for `getTokenRegistry()` -- 4 test cases (empty, not array, preserves all fields, filters malformed, all token types)
+- [x] Unit tests for `getTraitRegistry()` -- 4 test cases (empty, not array, BasicTrait, ChoiceTrait, filters malformed)
+- [x] Unit tests for `getFullRegistry()` -- 3 test cases (all five populated, all empty, mixed)
+
+---
+
+## P3 -- Integration (Next.js wrapper, package exports, consumer updates)
+
+The Next.js config wrapper and consumer-side wiring in `plasmicpkgs-dev`.
+
+- [x] **`withPlasmicRegistry()` function** -- new file `src/next.ts`, exported from `@elasticpath/plasmic-mcp-registry/next` subpath
+  - Reads consumer's `package.json` (via `fs.readFileSync` + `JSON.parse`, relative to `process.cwd()`)
+  - Auto-detects dependencies matching: `@plasmicpkgs/*`, `@elasticpath/plasmic-*`, `@plasmicapp/host`
+  - Scans both `dependencies` and `devDependencies`
+  - Merges detected packages into `config.serverExternalPackages` (deduplicates)
+  - Returns the merged NextConfig
+  - Zero Next.js npm dependency -- uses only Node.js built-ins (`fs`, `path`)
+  - `console.warn` if `package.json` cannot be read; proceeds without auto-detected packages
+  - Depends on: package rename (P1)
+- [x] **Package `"exports"` field in `package.json`** -- both `"."` and `"./next"` subpaths with types/require/import conditions
+  - `"."` -> `{ "import": "./dist/index.js", "types": "./dist/index.d.ts" }`
+  - `"./next"` -> `{ "import": "./dist/next.js", "types": "./dist/next.d.ts" }`
+  - Depends on: `withPlasmicRegistry()` implementation
+- [ ] **Update `plasmicpkgs-dev/next.config.js`** -- wrap with `withPlasmicRegistry()`:
+  ```js
+  const { withPlasmicRegistry } = require("@elasticpath/plasmic-mcp-registry/next");
+  module.exports = withPlasmicRegistry({ reactStrictMode: true });
+  ```
+  - Currently has NO `serverExternalPackages` -- the wrapper will add them
+  - Depends on: `withPlasmicRegistry()` + package exports
+- [x] **Update `plasmicpkgs-dev/app/api/plasmic-registry/route.ts`** -- change import from `@elasticpath/plasmic-registry` to `@elasticpath/plasmic-mcp-registry`, call `getFullRegistry()` instead of `getComponentRegistry()`, return `FullRegistryResponse` shape
+  - Currently: `import { getComponentRegistry } from "@elasticpath/plasmic-registry"` → `return Response.json({ components: getComponentRegistry() })`
+  - Now: `import { getFullRegistry } from "@elasticpath/plasmic-mcp-registry"` → `return Response.json(getFullRegistry())`
+  - Depends on: package rename (P1) + `getFullRegistry()` (P2)
+- [x] **Update `plasmicpkgs-dev` test suite** -- existing route handler tests (6 cases in `__tests__/plasmic-registry-route.test.ts`) must be updated
+  - Update mock from `@elasticpath/plasmic-registry` to `@elasticpath/plasmic-mcp-registry`
+  - Update expected response shape from `{ components }` to `{ components, contexts, functions, tokens, traits }`
+  - Mock `getFullRegistry` instead of `getComponentRegistry`
+  - Depends on: route.ts update
+
+### P3 Tests
+
+- [x] Unit tests for `withPlasmicRegistry()` -- 11 test cases (auto-detect `@plasmicpkgs/*`, auto-detect `@elasticpath/plasmic-*`, auto-detect `@plasmicapp/host`, scans devDependencies, excludes non-Plasmic packages, merges with existing serverExternalPackages no dupes, empty config `{}`, no config arg, passes through other keys, no packages found, console.warn on read failure)
+
+---
+
+## P4 -- MCP Server Consumption
+
+Updates to `packages/plasmic-mcp/src/devhost-sync.ts` to consume the full registry.
+
+- [ ] **Parse `FullRegistryResponse`** in `fetchDevHostRegistry()` -- currently only reads `data.components` and returns `RegistryComponent[] | null`. Should parse and return the full `{ components, contexts, functions, tokens, traits }` shape.
+  - Backward-compatible: if the response only has `components` (old endpoint), fill others with `[]`
+  - Currently 5 call sites in `server.ts`: `project.set` (line 276), `project.refresh` (line 419), `component.create-page` (line 1156), `component.create` (line 1250), `component.clone` (line 1369)
+  - Depends on: `FullRegistryResponse` type definition (P1, though devhost-sync can define its own interface)
+- [ ] **In-memory cache with configurable TTL** for `fetchDevHostRegistry()` results
+  - Currently fetches on every `project.set`, `project.refresh`, AND after every `component.create-page`, `component.create`, `component.clone` (5 total call sites) -- this means a 5-second network call on every page/component creation
+  - Default TTL (e.g., 60s or 300s) -- configurable via environment variable or parameter
+  - Cache key: `hostUrl` (normalized)
+  - Cache invalidated on: explicit refresh (`project.refresh`), TTL expiry
+  - Depends on: nothing (can be implemented independently)
+- [ ] **Use contexts, functions, tokens, traits from registry** -- currently only components are used (for variant sync). Future MCP features may use:
+  - Contexts: for understanding provider hierarchy and `globalActions`
+  - Functions: for data binding and custom function signatures
+  - Tokens: for design token resolution (colors, spacing, fonts)
+  - Traits: for trait-based component queries
+  - Note: this is lower priority since the current MCP server only needs variant data from components. Other registry data is forward-looking.
+  - Depends on: `FullRegistryResponse` parsing above
+
+---
+
+## P5 -- Bug Fixes and Polish
+
+Correctness issues and hardening that should be addressed but are not blocking the main feature.
+
+- [ ] **Bug: `getCodeComponentVariantMetas` uses `_type` instead of `typeTag`** (`edit-tools.ts:1145`)
+  - Line: `if (!tplTree || tplTree._type !== "TplComponent") return null;`
+  - Should be: `if (!tplTree || (tplTree.typeTag ?? tplTree._type) !== "TplComponent") return null;`
+  - Real WAB model instances use a `typeTag` getter, not a `_type` field. `devhost-sync.ts:findWrapperComponents` already handles both correctly (line 176). This function should do the same.
+  - Impact: `getCodeComponentVariantMetas` silently returns `null` on real WAB instances, which means `listVariants`, `resolveVariant`, and `createStyleVariant` cannot see code component variant metadata when running against real (non-mocked) WAB.
+  - Called from 4 locations in edit-tools.ts: `listVariants` (line 1418), `resolveVariant` (line 1254), variant name listing (line 1177), `createStyleVariant` (line 3500)
+  - Depends on: nothing (standalone fix)
+- [ ] **Investigate `registerShopify` asymmetry** in `plasmicpkgs-dev` -- `registerShopify` is called in `plasmic-init-server.ts` but NOT in `plasmic-init-client.tsx`. This means Shopify components appear in the registry API but not in the canvas host. May be intentional (Shopify hooks don't work in client context) but should be documented.
+- [ ] **Defensive JSON handling in new serializers** -- ensure `serializeContextMeta` and `serializeFunctionMeta` have the same `try/catch` fallback as `serializeComponentMeta` (returns `{ name: "" }` on circular reference or JSON.stringify failure)
+- [ ] **Malformed comment in types.ts** -- `packages/plasmic-mcp/src/types.ts` has a stray comment fragment `/ M2:` (missing leading `//`) in the `ProjectBundleResponse` interface near the `modelVersion` field. Cosmetic-only, does not affect runtime.
+
+---
+
+## Dependency Graph Summary
+
+```
+P1: Package rename
+ |
+ +-> P1: New types (SerializedContextMeta, SerializedFunctionMeta, TokenRegistration, TraitRegistration, FullRegistryResponse)
+      |
+      +-> P2: Serializers (serializeContextMeta, serializeFunctionMeta)
+      |    |
+      |    +-> P2: Readers (getContextRegistry, getFunctionRegistry, getTokenRegistry, getTraitRegistry)
+      |         |
+      |         +-> P2: getFullRegistry()
+      |              |
+      |              +-> P3: Package exports ("." and "./next")
+      |              |
+      |              +-> P3: plasmicpkgs-dev route.ts update
+      |              |
+      |              +-> P4: MCP server FullRegistryResponse parsing
+      |
+      +-> P3: withPlasmicRegistry() (independent of readers, only needs package identity)
+           |
+           +-> P3: plasmicpkgs-dev next.config.js update
+
+P4: TTL cache (independent, can be done anytime)
+
+P5: _type/typeTag bug (independent, can be done anytime)
+```
+
+---
+
+## Suggested Implementation Order
+
+1. ~~Package rename (P1) -- establishes correct identity for all subsequent work~~ **DONE**
+2. ~~New types (P1) -- type contracts for all new code~~ **DONE**
+3. ~~Context + Function serializers and readers (P2) -- most complex new logic~~ **DONE**
+4. ~~Token + Trait readers (P2) -- trivial (no serialization needed)~~ **DONE**
+5. ~~`getFullRegistry()` + index.ts exports (P2) -- ties everything together~~ **DONE**
+6. ~~`withPlasmicRegistry()` + `"./next"` subpath export (P3) -- can parallelize with step 5~~ **DONE**
+7. `plasmicpkgs-dev` consumer updates (P3) -- **route.ts + tests DONE; next.config.js still pending**
+8. `_type`/`typeTag` bug fix (P5) -- quick fix, high correctness value
+9. MCP server `FullRegistryResponse` parsing (P4)
+10. TTL cache (P4)
+11. Future registry data usage in MCP (P4) -- contexts, functions, tokens, traits
+
+---
+
+## Current Source Code Summary (verified 2026-02-27, updated after P1/P2/partial-P3)
+
+### packages/plasmic-mcp-registry/ (renamed from plasmic-registry)
+- **package.json**: name `@elasticpath/plasmic-mcp-registry`, v0.2.0, zero runtime deps, CommonJS output, `exports` field with `"."` and `"./next"` subpaths
+- **src/types.ts**: `SerializedComponentMeta` (30+ fields), `RegistryResponse` (components-only), `SerializedContextMeta`, `SerializedFunctionMeta`, `TokenRegistration`, `TokenType`, `BasicTrait`, `ChoiceTrait`, `TraitRegistration`, `FullRegistryResponse`
+- **src/serialize.ts**: `serializeComponentMeta()`, `serializeContextMeta()`, `serializeFunctionMeta()` -- all with null guard + try/catch fallback
+- **src/read-registry.ts**: `getComponentRegistry()`, `getContextRegistry()`, `getFunctionRegistry()`, `getTokenRegistry()`, `getTraitRegistry()`, `getFullRegistry()`
+- **src/next.ts**: `withPlasmicRegistry()` -- auto-detects Plasmic packages from consumer's `package.json`, merges into `serverExternalPackages`
+- **src/index.ts**: re-exports all public API (6 reader functions, 3 serializers, all types)
+- **Tests**: 12 serialize + 9 read-registry + 54 new (context/function/token/trait/full readers and serializers) = 75 tests (5 suites)
+
+### plasmicpkgs-dev/
+- **next.config.js**: `{ reactStrictMode: true }` only -- NO `serverExternalPackages` **(still pending: wrap with `withPlasmicRegistry()`)**
+- **app/api/plasmic-registry/route.ts**: imports `getFullRegistry` from `@elasticpath/plasmic-mcp-registry`, returns full `FullRegistryResponse` shape (`{ components, contexts, functions, tokens, traits }`)
+- **plasmic-init-server.ts**: server-safe registration file, populates globalThis registries (includes `registerShopify`)
+- **plasmic-init-client.tsx**: `"use client"` registration (missing `registerShopify`)
+- **package.json**: deps include `@elasticpath/plasmic-mcp-registry`, 8 `@plasmicpkgs/*` packages, `@plasmicapp/loader-nextjs`
+- **Tests**: 6 route handler tests in `__tests__/plasmic-registry-route.test.ts` -- updated to mock `getFullRegistry` and assert full `FullRegistryResponse` shape
+
+### packages/plasmic-mcp/src/devhost-sync.ts
+- **fetchDevHostRegistry()**: fetches `{hostUrl}/api/plasmic-registry`, 5s timeout, returns `RegistryComponent[] | null` (components only)
+- **syncVariantMetadata()**: overwrites CC variant metadata from registry (dev host is source of truth)
+- **ensureVariantObjects()**: creates missing variant objects on wrapper components
+- **syncFromDevHost()**: orchestrator called from 5 locations in server.ts
+- **No caching**: every call triggers a fresh HTTP fetch
+- **No parsing of contexts/functions/tokens/traits**: only `data.components` is read **(P4 not yet started)**
+
+### Test counts (as of P1/P2/partial-P3 completion)
+- packages/plasmic-mcp-registry: 75 tests (5 suites) -- 21 existing + 54 new
+- plasmicpkgs-dev: 6 tests (1 suite) -- all updated and passing
+- packages/plasmic-mcp: 1655 tests (31 suites) -- all passing
+
+### Host registration global shapes (packages/host/src/register*.ts)
+| Registry | Global | Entry Shape | Non-serializable |
+|----------|--------|-------------|-----------------|
+| Components | `__PlasmicComponentRegistry` | `{ component, meta }` | `component` (React), 6 meta fields, nested fn callbacks in props/states |
+| Contexts | `__PlasmicContextRegistry` | `{ component, meta }` | `component` (React), nested fn callbacks in props, globalActions params |
+| Functions | `__PlasmicFunctionsRegistry` | `{ function, meta }` | `function` (the fn), `meta.fnContext` |
+| Tokens | `__PlasmicTokenRegistry` | `TokenRegistration` directly | NONE (fully serializable) |
+| Traits | `__PlasmicTraitRegistry` | `{ trait, meta }` | NONE (fully serializable) |

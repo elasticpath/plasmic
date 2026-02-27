@@ -6,7 +6,7 @@
  * code component variant data (e.g., "Selected", "Disabled" states).
  * Studio gets this data by connecting to the dev host via iframe. The MCP
  * has no browser, so it fetches the same data via an HTTP API route
- * (`/api/plasmic-registry`) exposed by the `@elasticpath/plasmic-registry`
+ * (`/api/plasmic-registry`) exposed by the `@elasticpath/plasmic-mcp-registry`
  * package running in the dev host app.
  *
  * The sync:

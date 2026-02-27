@@ -334,7 +334,7 @@ Sync failure is non-fatal — if the dev host is offline or returns an error, th
 ### Prerequisites
 
 - The Plasmic project must have `hostUrl` set in project settings (e.g., `http://localhost:3388`)
-- The dev host app must expose a `/api/plasmic-registry` endpoint using `@elasticpath/plasmic-registry`
+- The dev host app must expose a `/api/plasmic-registry` endpoint using `@elasticpath/plasmic-mcp-registry`
 
 ### Setting Up the Dev Host API Route
 
@@ -343,10 +343,10 @@ Install the registry package and add an API route to your Next.js dev host app:
 ```typescript
 // app/api/plasmic-registry/route.ts
 import "../../../plasmic-init-server";
-import { getComponentRegistry } from "@elasticpath/plasmic-registry";
+import { getFullRegistry } from "@elasticpath/plasmic-mcp-registry";
 
 export function GET() {
-  return Response.json({ components: getComponentRegistry() });
+  return Response.json(getFullRegistry());
 }
 ```
 

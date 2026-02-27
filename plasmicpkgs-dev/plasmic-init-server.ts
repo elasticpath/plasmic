@@ -4,7 +4,7 @@
  * This file mirrors plasmic-init-client.tsx but can be imported from
  * server-side API routes (which cannot import "use client" modules).
  * It populates globalThis.__PlasmicComponentRegistry so that
- * @elasticpath/plasmic-registry can read the registered component metadata.
+ * @elasticpath/plasmic-mcp-registry can read the registered component metadata.
  */
 import { PLASMIC } from "@/plasmic-init";
 import { registerWithDevMeta } from "@/plasmic-register-dev-meta";
