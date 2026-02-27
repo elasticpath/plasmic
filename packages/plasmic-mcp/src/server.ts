@@ -3363,10 +3363,10 @@ export function createServer(): McpServer {
             let devHostTokens: Array<Record<string, unknown>> | undefined;
             if (Array.isArray(regTokens) && regTokens.length > 0) {
               const filtered = params.tokenType
-                ? regTokens.filter((t: any) => t.type === params.tokenType)
+                ? regTokens.filter((t) => t.type === params.tokenType)
                 : regTokens;
               if (filtered.length > 0) {
-                devHostTokens = filtered.map((t: any) => ({
+                devHostTokens = filtered.map((t) => ({
                   name: t.name,
                   value: t.value,
                   type: t.type,
@@ -4837,7 +4837,7 @@ export function createServer(): McpServer {
             // Enrich with dev host registered functions when available
             const regFunctions = session.registryData?.functions;
             const devHostFunctions = Array.isArray(regFunctions) && regFunctions.length > 0
-              ? regFunctions.map((f: any) => ({
+              ? regFunctions.map((f) => ({
                   name: f.name,
                   ...(f.namespace && { namespace: f.namespace }),
                   ...(f.displayName && { displayName: f.displayName }),

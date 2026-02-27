@@ -72,7 +72,8 @@ export async function loadProject(
   const revisionNum = response.rev.revision;
   const modelVersion = response.modelVersion ?? 0;
   const hostlessDataVersion = response.hostlessDataVersion ?? 0;
-  const hostUrl = response.project?.hostUrl;
+  // Dev host URL: prefer project settings, fall back to env var (spec requirement)
+  const hostUrl = response.project?.hostUrl ?? process.env.PLASMIC_DEV_HOST_URL;
 
   const bundler = new FastBundler(meta, classesModule);
 

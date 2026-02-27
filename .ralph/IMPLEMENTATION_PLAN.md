@@ -2,7 +2,7 @@
 
 Spec: `.ralph/specs/plasmic-mcp-registry-nextjs-wrapper.md`
 
-Last verified: 2026-02-27 (P1-P5, P27-P30 all complete)
+Last verified: 2026-02-27 (P1-P5, P27-P31 all complete)
 
 ---
 
@@ -84,7 +84,24 @@ Last verified: 2026-02-27 (P1-P5, P27-P30 all complete)
 
 ---
 
-## Current Source Code Summary (verified 2026-02-27, updated after P1-P5/P27-P30)
+## P31 -- Type-safe registryData + hostUrl env var fallback (DONE)
+
+Why: `session.registryData` was typed as `any`, cascading type unsafety to every consumer (server.ts, edit-tools.ts). The spec also requires "Dev host URL sourced from MCP server configuration (environment variable or project settings)" but only project settings were implemented.
+
+- [x] **Strongly-typed `FullRegistryData`**: Replaced `Record<string, unknown>[]` for contexts/functions/tokens/traits with dedicated interfaces (`RegistryContext`, `RegistryFunction`, `RegistryToken`, `RegistryTrait`). Types mirror the canonical interfaces from `@elasticpath/plasmic-mcp-registry` (SerializedContextMeta, etc.) without a runtime dependency.
+- [x] **Exported `RegistryComponent`**: Added `defaultStyles`, `parentComponentName`, `props` fields to the interface and exported it for use by `edit-tools.ts`.
+- [x] **Type-safe `Session.registryData`**: Changed from `registryData?: any` to `registryData?: FullRegistryData | null` via `import type` from `devhost-sync.js`.
+- [x] **`PLASMIC_DEV_HOST_URL` env var fallback**: In `model-loader.ts`, `hostUrl` now falls back to `process.env.PLASMIC_DEV_HOST_URL` when the Plasmic project has no configured host URL. Project settings always take priority.
+- [x] **Removed `as any` casts**:
+  - `devhost-sync.ts`: removed `(val as any).cssSelector` / `(val as any).displayName` (lines 229-230) — TypeScript now narrows correctly from the typed `variants` record.
+  - `server.ts`: removed `(t: any)` in `design.list-tokens` and `(f: any)` in `data.list-functions` — `RegistryToken` and `RegistryFunction` types propagate from session.
+  - `edit-tools.ts`: `findRegistryComponent()` now typed as `(RegistryComponent[], string) => RegistryComponent | null`; `plasmicElementToTpl()` registryComponents param typed as `RegistryComponent[]`.
+- [x] **Tests**: 4 new tests in `model-loader.test.ts` for hostUrl sourcing: project settings, env var fallback, project takes priority over env var, undefined when neither set.
+- [x] **1701 tests passing** (31 suites), build and typecheck clean.
+
+---
+
+## Current Source Code Summary (verified 2026-02-27, updated after P1-P5/P27-P31)
 
 ### packages/plasmic-mcp-registry/ (renamed from plasmic-registry)
 - **package.json**: name `@elasticpath/plasmic-mcp-registry`, v0.2.0, zero runtime deps, CommonJS output, `exports` field with `"."` and `"./next"` subpaths
@@ -104,35 +121,39 @@ Last verified: 2026-02-27 (P1-P5, P27-P30 all complete)
 - **Tests**: 6 route handler tests in `__tests__/plasmic-registry-route.test.ts` -- updated to mock `getFullRegistry` and assert full `FullRegistryResponse` shape
 
 ### packages/plasmic-mcp/src/devhost-sync.ts
+- **Typed interfaces**: `RegistryComponent` (exported, with `defaultStyles`, `parentComponentName`, `props` fields), `RegistryContext`, `RegistryFunction`, `RegistryToken`, `RegistryTrait` — all strongly typed, mirror canonical types from `@elasticpath/plasmic-mcp-registry` without runtime dependency. `FullRegistryData` uses these typed arrays instead of `Record<string, unknown>[]`.
 - **fetchDevHostRegistry()**: fetches `{hostUrl}/api/plasmic-registry`, 5s timeout, returns `FullRegistryData | null` containing all five registries. Backward-compatible: if response only has `components`, others default to `[]`.
 - **TTL cache**: default 60s, configurable via `PLASMIC_REGISTRY_CACHE_TTL_MS` env var. Cache key is normalized `hostUrl`. `clearRegistryCache()` exported and called on `project.refresh`.
 - **syncVariantMetadata()**: overwrites CC variant metadata from registry (dev host is source of truth)
 - **ensureVariantObjects()**: creates missing variant objects on wrapper components
 - **syncFromDevHost()**: orchestrator called from 5 locations in server.ts. `SyncResult` now includes `registryData: FullRegistryData | null`, stored in session after sync.
 - **`getCodeComponentVariantMetas()`**: uses `tplTree?.typeTag ?? tplTree?._type` (fixed from `_type` only)
-- **Contexts/functions/tokens/traits**: parsed from `FullRegistryData` and stored in `session.registryData` for use by MCP tool handlers
 
-### packages/plasmic-mcp/src/edit-tools.ts (P27-P29 changes)
-- **`findRegistryComponent()`**: matches registry component entries by name with `$dev` suffix handling
-- **`plasmicElementToTpl()`**: now accepts optional `registryComponents` parameter; applies `defaultStyles` from registry after `mkTplComponentX` creates TplComponent instances; populates slot `defaultValue` from registry for unfilled slots (recursively converts PlasmicElement trees to TplNodes and wires as `Arg` + `RenderExpr`)
+### packages/plasmic-mcp/src/edit-tools.ts (P27-P29, P31 changes)
+- **`findRegistryComponent()`**: typed `(RegistryComponent[], string) => RegistryComponent | null`; matches by name with `$dev` suffix handling (P31: import from devhost-sync.ts)
+- **`plasmicElementToTpl()`**: accepts optional `registryComponents?: RegistryComponent[]` parameter; applies `defaultStyles` from registry after `mkTplComponentX` creates TplComponent instances; populates slot `defaultValue` from registry for unfilled slots (recursively converts PlasmicElement trees to TplNodes and wires as `Arg` + `RenderExpr`)
 - **`addChild()`**: passes `session.registryData?.components` to `plasmicElementToTpl`; validates `parentComponentName` from registry and returns non-fatal `warnings[]`
 - **`AddChildResult`**: new optional `warnings?: string[]` field for parentComponentName mismatches
 
-### packages/plasmic-mcp/src/server.ts (P27-P30 changes)
+### packages/plasmic-mcp/src/server.ts (P27-P31 changes)
 - **`component.create-page`**, **`component.create`**, **`component.clone`**: `setSession()` calls now include `registryData: syncResult.registryData` (was missing, causing session.registryData to become undefined after these operations)
 - **`node.add` handler**: surfaces `result.warnings` in JSON response (both normal and dry-run modes)
-- **`data.list-functions` handler**: enriched result built with spread pattern (fixes `ListCustomFunctionsResult` type error -- interface lacks index signature; P30)
-- **`design.list-tokens` handler**: enriched result built with spread pattern for consistency and type robustness (P30)
+- **`data.list-functions` handler**: enriched result built with spread pattern; `(f: any)` casts removed (P31 — `RegistryFunction` type flows from session)
+- **`design.list-tokens` handler**: enriched result built with spread pattern; `(t: any)` casts removed (P31 — `RegistryToken` type flows from session)
 
 ### packages/plasmic-mcp/src/session.ts
-- **`Session`** now has `registryData: FullRegistryData | null` field (added in P27)
+- **`Session.registryData`**: typed as `FullRegistryData | null` via `import type` from `devhost-sync.js` (P31; was `any` in P27). Provides type safety to all consumers.
 - Populated after each `syncFromDevHost()` call; cleared on `set-project` cleanup
 - Consumed by `design.list-tokens` (devHostTokens), `data.list-functions` (devHostFunctions), `project.set`/`project.refresh` summary responses, and `addChild` (defaultStyles + parentComponentName validation)
 
-### Test counts (as of P1-P5/P27-P30 completion)
+### packages/plasmic-mcp/src/model-loader.ts (P31 change)
+- **`hostUrl` resolution**: `response.project?.hostUrl ?? process.env.PLASMIC_DEV_HOST_URL` — project settings take priority, env var provides fallback for projects without a configured host URL
+
+### Test counts (as of P1-P5/P27-P31 completion)
 - packages/plasmic-mcp-registry: 75 tests (5 suites)
 - plasmicpkgs-dev: 6 tests (1 suite) -- all passing
-- packages/plasmic-mcp: 1697 tests (31 suites) -- all passing
+- packages/plasmic-mcp: 1701 tests (31 suites) -- all passing
+  - model-loader.test.ts: added 4 tests for P31 hostUrl sourcing (project settings, env var fallback, project priority over env, undefined when neither)
   - devhost-sync.test.ts: 35 tests (added 4 for P27 registryData in SyncResult)
   - server.test.ts: 267 tests (added 6 for P28: 3 node.add warnings + 3 registryData preservation)
   - node.test.ts: added 11 tests for P28/P29 registry enrichment (defaultStyles, $dev matching, no registryData, parentComponentName mismatch/match/TplTag, slot defaultValue population, named slot defaults, explicit children override, missing slot skip, non-slot prop handling)

@@ -181,4 +181,87 @@ describe("loadProject", () => {
     expect(result.modelVersion).toBe(0);
     expect(result.hostlessDataVersion).toBe(0);
   });
+
+  // P31: PLASMIC_DEV_HOST_URL env var fallback
+  it("returns hostUrl from project settings when available", async () => {
+    const mockSite = { _type: "Site", components: [] };
+
+    mockGetProjectBundle.mockResolvedValue({
+      rev: { data: JSON.stringify({}), revision: 1 },
+      project: { id: "proj1", name: "Test", hostUrl: "http://localhost:3001" },
+    });
+    mockUnbundle.mockReturnValue(mockSite);
+
+    const result = await loadProject(mockApiClient, "proj1");
+
+    expect(result.hostUrl).toBe("http://localhost:3001");
+  });
+
+  it("falls back to PLASMIC_DEV_HOST_URL env var when project has no hostUrl", async () => {
+    const mockSite = { _type: "Site", components: [] };
+
+    mockGetProjectBundle.mockResolvedValue({
+      rev: { data: JSON.stringify({}), revision: 1 },
+      project: { id: "proj1", name: "Test" },
+      // no hostUrl in project settings
+    });
+    mockUnbundle.mockReturnValue(mockSite);
+
+    const original = process.env.PLASMIC_DEV_HOST_URL;
+    try {
+      process.env.PLASMIC_DEV_HOST_URL = "http://localhost:4000";
+      const result = await loadProject(mockApiClient, "proj1");
+      expect(result.hostUrl).toBe("http://localhost:4000");
+    } finally {
+      if (original === undefined) {
+        delete process.env.PLASMIC_DEV_HOST_URL;
+      } else {
+        process.env.PLASMIC_DEV_HOST_URL = original;
+      }
+    }
+  });
+
+  it("prefers project hostUrl over PLASMIC_DEV_HOST_URL env var", async () => {
+    const mockSite = { _type: "Site", components: [] };
+
+    mockGetProjectBundle.mockResolvedValue({
+      rev: { data: JSON.stringify({}), revision: 1 },
+      project: { id: "proj1", name: "Test", hostUrl: "http://from-project:3001" },
+    });
+    mockUnbundle.mockReturnValue(mockSite);
+
+    const original = process.env.PLASMIC_DEV_HOST_URL;
+    try {
+      process.env.PLASMIC_DEV_HOST_URL = "http://from-env:4000";
+      const result = await loadProject(mockApiClient, "proj1");
+      expect(result.hostUrl).toBe("http://from-project:3001");
+    } finally {
+      if (original === undefined) {
+        delete process.env.PLASMIC_DEV_HOST_URL;
+      } else {
+        process.env.PLASMIC_DEV_HOST_URL = original;
+      }
+    }
+  });
+
+  it("returns undefined hostUrl when neither project nor env var provides one", async () => {
+    const mockSite = { _type: "Site", components: [] };
+
+    mockGetProjectBundle.mockResolvedValue({
+      rev: { data: JSON.stringify({}), revision: 1 },
+      project: { id: "proj1", name: "Test" },
+    });
+    mockUnbundle.mockReturnValue(mockSite);
+
+    const original = process.env.PLASMIC_DEV_HOST_URL;
+    try {
+      delete process.env.PLASMIC_DEV_HOST_URL;
+      const result = await loadProject(mockApiClient, "proj1");
+      expect(result.hostUrl).toBeUndefined();
+    } finally {
+      if (original !== undefined) {
+        process.env.PLASMIC_DEV_HOST_URL = original;
+      }
+    }
+  });
 });

@@ -14,6 +14,8 @@
  * - projectUuid: bundle UUID required as argument to fastBundle()
  */
 
+import type { FullRegistryData } from "./devhost-sync.js";
+
 export interface Session {
   projectId: string;
   projectName: string;
@@ -23,14 +25,14 @@ export interface Session {
   modelVersion: number;
   hostlessDataVersion: number;
   projectUuid: string;
-  /** Dev host URL from project settings (null if not configured). */
+  /** Dev host URL from project settings or PLASMIC_DEV_HOST_URL env var. */
   hostUrl?: string;
   /** Whether dev host variant sync completed successfully. */
   devHostSynced?: boolean;
   /** Names of code components whose variants were synced from the dev host. */
   syncedVariantComponents?: string[];
-  /** Full registry data from the dev host (contexts, functions, tokens, traits). */
-  registryData?: any;
+  /** Full registry data from the dev host (all five registries). */
+  registryData?: FullRegistryData | null;
 }
 
 let currentSession: Session | null = null;

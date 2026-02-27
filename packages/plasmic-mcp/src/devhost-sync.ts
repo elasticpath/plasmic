@@ -21,10 +21,65 @@
  * out, the project still loads normally without CC variant data.
  */
 
-/** Shape of a component entry from the registry API response. */
-interface RegistryComponent {
+/**
+ * Shape of a component entry from the registry API response.
+ * Fields mirror SerializedComponentMeta from @elasticpath/plasmic-mcp-registry
+ * but are defined locally to avoid a runtime dependency.
+ */
+export interface RegistryComponent {
   name: string;
   variants?: Record<string, { cssSelector: string; displayName: string }>;
+  defaultStyles?: Record<string, string>;
+  parentComponentName?: string;
+  props?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+/** Serialized context entry from the registry endpoint. */
+export interface RegistryContext {
+  name: string;
+  displayName?: string;
+  description?: string;
+  importName?: string;
+  importPath?: string;
+  props?: Record<string, unknown>;
+  globalActions?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+/** Serialized function entry from the registry endpoint. */
+export interface RegistryFunction {
+  name: string;
+  namespace?: string;
+  displayName?: string;
+  description?: string;
+  importPath?: string;
+  isDefaultExport?: boolean;
+  isQuery?: boolean;
+  typescriptDeclaration?: string;
+  params?: Array<Record<string, unknown>>;
+  returnValue?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+/** Token registration from the registry endpoint (fully serializable). */
+export interface RegistryToken {
+  name: string;
+  value: string;
+  type: string;
+  displayName?: string;
+  selector?: string;
+  [key: string]: unknown;
+}
+
+/** Trait registration from the registry endpoint (fully serializable). */
+export interface RegistryTrait {
+  trait: string;
+  meta: {
+    label?: string;
+    type: string;
+    options?: string[];
+  };
   [key: string]: unknown;
 }
 
@@ -32,13 +87,17 @@ interface RegistryComponent {
  * Full registry data from the dev host /api/plasmic-registry endpoint.
  * Contains all five Plasmic registries. Backward-compatible: if the response
  * only has `components` (old endpoint), the other arrays default to [].
+ *
+ * Types mirror the canonical interfaces from @elasticpath/plasmic-mcp-registry
+ * (SerializedComponentMeta, SerializedContextMeta, etc.) but are defined locally
+ * to avoid a runtime dependency on the registry package.
  */
 export interface FullRegistryData {
   components: RegistryComponent[];
-  contexts: Record<string, unknown>[];
-  functions: Record<string, unknown>[];
-  tokens: Record<string, unknown>[];
-  traits: Record<string, unknown>[];
+  contexts: RegistryContext[];
+  functions: RegistryFunction[];
+  tokens: RegistryToken[];
+  traits: RegistryTrait[];
 }
 
 /** Result of a dev host sync attempt. */
@@ -226,8 +285,8 @@ export function syncVariantMetadata(
     for (const [key, val] of Object.entries(regComp.variants)) {
       if (val && typeof val === "object") {
         variantMetas[key] = {
-          cssSelector: (val as any).cssSelector ?? "",
-          displayName: (val as any).displayName ?? key,
+          cssSelector: val.cssSelector ?? "",
+          displayName: val.displayName ?? key,
         };
       }
     }

@@ -109,6 +109,7 @@ import {
   resolveTokenValue,
 } from "./token-reader.js";
 import type { StyleTokenType } from "./types.js";
+import type { RegistryComponent } from "./devhost-sync.js";
 
 // --- Tag Validation ---
 
@@ -2306,11 +2307,11 @@ export interface AddChildResult {
  * site model component "MyComponent" and vice versa.
  */
 function findRegistryComponent(
-  registryComponents: any[],
+  registryComponents: RegistryComponent[],
   componentName: string
-): any | null {
+): RegistryComponent | null {
   if (!registryComponents?.length) return null;
-  return registryComponents.find((c: any) => {
+  return registryComponents.find((c) => {
     if (!c?.name) return false;
     const regName = c.name.endsWith("$dev")
       ? c.name.slice(0, -4)
@@ -2338,7 +2339,7 @@ function plasmicElementToTpl(
   element: PlasmicElement,
   tplMgr: TplMgr,
   baseVariant: any,
-  registryComponents?: any[]
+  registryComponents?: RegistryComponent[]
 ): any {
   // String elements become text nodes
   if (typeof element === "string") {
@@ -2674,8 +2675,7 @@ export async function addChild(
 
   const session = requireSession();
   const tplMgr = new TplMgr({ site: session.site });
-  const registryComponents: any[] | undefined =
-    session.registryData?.components;
+  const registryComponents = session.registryData?.components;
   const warnings: string[] = [];
 
   // Validate parentComponentName from registry: if the child element is a
