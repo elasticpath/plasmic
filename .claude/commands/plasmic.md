@@ -3,8 +3,8 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 ## Tools (8 domain tools)
 
 ### Session & Project
-- `project({ action: "set", projectId })` — Load project into memory. Must be called first.
-- `project({ action: "refresh" })` — Reload from server (clears undo history).
+- `project({ action: "set", projectId })` — Load project into memory. Must be called first. If the project has a `hostUrl` (dev host), the MCP automatically syncs code component variant metadata — the response includes `devHostSynced` and `syncedVariantComponents` fields.
+- `project({ action: "refresh" })` — Reload from server (clears undo history). Re-runs dev host sync if `hostUrl` is configured.
 - `project({ action: "save" })` — Force save current in-memory model to server.
 - `project({ action: "list" })` — List all accessible projects. No active project required.
 - `project({ action: "get-meta" })` — Project metadata: name, counts, tokens, global variant groups.
@@ -139,6 +139,16 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `project({ action: "undo" })` — Revert the last operation.
 
 Most edit tools accept `dryRun: true` to preview changes without persisting. Exceptions: the `variant` domain does NOT support `dryRun`, and `component.create-page`, `component.create`, and `component.clone` reject `dryRun` because they create server-side components via the API.
+
+## Dev Host Variant Sync
+
+Code component variants (e.g., "Selected", "Disabled" states) only exist at runtime in the dev host — they are not stored in the persisted project bundle. The MCP automatically syncs this data on `project.set` and `project.refresh` when the project has a `hostUrl` configured.
+
+**How to check sync status**: The `project.set` response includes `devHostSynced: true/false` and `syncedVariantComponents: [...]`. If `devHostSynced` is `false`, code component variants won't be available for styling.
+
+**If code component variants are missing**: Verify the dev host is running at the configured `hostUrl` and exposes a `/api/plasmic-registry` endpoint (requires the `@elasticpath/plasmic-registry` package). Then call `project({ action: "refresh" })` to re-sync.
+
+**Styling code component variants**: After sync, call `variant({ action: "list", componentUuid })` to see `codeComponentVariants`, then pass the variant key or display name to `node({ action: "update-styles", ..., variant: "selected" })`.
 
 ## Context Budget
 

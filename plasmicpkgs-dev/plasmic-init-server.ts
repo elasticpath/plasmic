@@ -10,6 +10,7 @@ import { PLASMIC } from "@/plasmic-init";
 import { registerWithDevMeta } from "@/plasmic-register-dev-meta";
 import { registerAllCmsFunctions as registerPlasmicCms } from "@plasmicpkgs/cms";
 import { registerAll as registerCommerce } from "@plasmicpkgs/commerce";
+import { registerAll as registerShopify } from "@plasmicpkgs/commerce-shopify";
 import { registerFetch } from "@plasmicpkgs/fetch";
 import { registerGraphQL } from "@plasmicpkgs/graphql";
 import { registerVideo } from "@plasmicpkgs/plasmic-basic-components";
@@ -25,6 +26,7 @@ function register() {
   registerStrapi(PLASMIC);
   registerStrapiComponents(PLASMIC);
   registerCommerce(PLASMIC);
+  registerShopify(PLASMIC);
   registerVideo(PLASMIC);
 }
 

@@ -10,7 +10,7 @@
 - Eval tests: 249 across 10 files (21 new added in P15)
 - **Action coverage: ~98% (103/103 actions have eval scenarios)**
 - **All known issues resolved**
-- **Priority order: P1-P18 completed**
+- **Priority order: P1-P19 completed**
 
 ## Completed Priorities
 
@@ -33,12 +33,13 @@
 | P16 | Dev Host Sync Integration Tests | devhost-sync integration tests against real WAB model classes (10 tests). Bug fix: `findWrapperComponents` `_type` → `typeTag ?? _type` for real WAB instance compatibility (#28). Tests verify: syncVariantMetadata on real MobX-observed components, ensureVariantObjects with real TplComponent detection, listVariants/resolveVariant end-to-end with synced data. All 1402 unit + 147 integration tests pass. |
 | P17 | Final Defensive Fixes | Cycle guard for `flattenWithPaths` in node-resolver.ts (#23): visited-UUID Set + MAX_TREE_DEPTH=200 depth limit prevent infinite recursion on malformed models. `.env.example` for eval system (#25): documents all required/optional env vars for new developer onboarding. 5 new tests. All 1407 unit + 147 integration tests pass. |
 | P18 | Dev Host Wiring & Test Gaps | Fixed `@elasticpath/plasmic-registry` not in Yarn workspaces (#29) — route.ts import would fail at runtime. Added package to root `workspaces[]` + `plasmicpkgs-dev/package.json` dependencies. Added `fetchDevHostRegistry()` timeout (AbortError) unit test (#30). Added 6 API route handler tests in `plasmicpkgs-dev/__tests__/` (#31) — response shape, variant data, serialization safety, empty registry, error handling. All 1555 MCP unit + 147 integration + 21 registry + 6 route tests pass. |
+| P19 | Skill Docs & Registration Completeness | Spec-vs-implementation audit found 3 gaps: (1) Claude skill files had zero mention of dev host sync — users couldn't discover CC variant styling prerequisites. Added dev host sync sections to `plasmic.md` (project.set/refresh docs + new section), `plasmic-edit.md` (variant workflow guidance), `plasmic-inspect.md` (variant.list note). (2) `plasmic-init-server.ts` missing `registerShopify` that client version had — Shopify commerce components invisible to registry API. Added import + registration call. (3) README `project.refresh` re-sync behavior was parenthetical — expanded to explicit documentation. All 1408 unit + 147 integration + 21 registry + 6 route tests pass. |
 
 ---
 
 ## Outstanding Work
 
-*No outstanding work items. All known issues resolved (P1-P18).*
+*No outstanding work items. All known issues resolved (P1-P19).*
 
 ---
 
@@ -77,9 +78,12 @@
 | 29 | plasmic-registry not in Yarn workspaces | Bug | `package.json`, `plasmicpkgs-dev/package.json` | FIXED (P18) | `@elasticpath/plasmic-registry` not listed in root `workspaces[]` and not in `plasmicpkgs-dev` dependencies. API route `import { getComponentRegistry }` would fail at runtime with module-not-found. |
 | 30 | No timeout test for fetchDevHostRegistry | Gap | `devhost-sync.test.ts` | FIXED (P18) | No unit test covering AbortController timeout (AbortError) path in `fetchDevHostRegistry()`. Added test mocking `DOMException("AbortError")`. |
 | 31 | No API route tests in plasmicpkgs-dev | Gap | `plasmicpkgs-dev/` | FIXED (P18) | No test infrastructure or tests for `/api/plasmic-registry` route handler. Added vitest config + 6 tests covering response shape, variant data, serialization, empty registry, and error handling. |
+| 32 | Skill docs missing dev host sync awareness | DX | `.claude/commands/` | FIXED (P19) | All 6 skill files had zero mention of dev host sync, hostUrl, or devHostSynced. Users couldn't discover that CC variant styling requires a running dev host. Added docs to plasmic.md, plasmic-edit.md, plasmic-inspect.md. |
+| 33 | plasmic-init-server.ts missing registerShopify | Bug | `plasmicpkgs-dev/plasmic-init-server.ts` | FIXED (P19) | Server init was missing `registerShopify` from `@plasmicpkgs/commerce-shopify` that the client version (`plasmic-init-client.tsx`) included. Shopify commerce components would be invisible to the registry API response. |
+| 34 | README project.refresh sync docs ambiguous | DX | `packages/plasmic-mcp/README.md` | FIXED (P19) | `project.refresh` re-sync behavior documented only parenthetically as "(and project.refresh)". Expanded to explicit explanation that refresh re-queries dev host and replaces previous sync results. |
 
 ---
 
 ## Issue Discovery Log
 
-Issues 1-20 identified P1-P9. Issues 22-27 discovered 2026-02-27 audit. Issues 20-21 resolved P14. Issues 19, 22, 24, 26, 27 resolved P15. Issue 28 discovered and resolved P16. Issues 23, 25 resolved P17. Issues 29-31 discovered and resolved P18 (spec audit gap analysis).
+Issues 1-20 identified P1-P9. Issues 22-27 discovered 2026-02-27 audit. Issues 20-21 resolved P14. Issues 19, 22, 24, 26, 27 resolved P15. Issue 28 discovered and resolved P16. Issues 23, 25 resolved P17. Issues 29-31 discovered and resolved P18 (spec audit gap analysis). Issues 32-34 discovered and resolved P19 (spec-vs-implementation audit).

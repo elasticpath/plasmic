@@ -321,7 +321,7 @@ Code component variants (e.g., "Selected", "Disabled" states) are not stored in 
 
 ### How It Works
 
-On `project.set` (and `project.refresh`), if the project has a `hostUrl` configured:
+On `project.set`, if the project has a `hostUrl` configured, dev host sync runs automatically. On `project.refresh`, the dev host is re-queried and fresh variant data replaces the previous sync results. Steps:
 
 1. MCP fetches `{hostUrl}/api/plasmic-registry` (5-second timeout)
 2. Extracts only variant-bearing components from the response
