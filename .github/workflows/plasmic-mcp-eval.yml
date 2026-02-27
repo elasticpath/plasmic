@@ -1,0 +1,212 @@
+# CI workflow for Plasmic MCP eval system.
+#
+# Why this exists: The eval system tests whether Claude can correctly use the
+# 8 STRAP domain tools by running multi-turn conversations against a mock MCP
+# server. This catches regressions in tool schemas, descriptions, and behavior
+# that unit tests don't cover — unit tests verify tool correctness, evals
+# verify tool usability by an LLM.
+#
+# Cost controls: Simple tier (~10 scenarios) runs on every PR for fast feedback.
+# Full mock tier runs nightly and on manual dispatch to keep API costs low.
+# The --max-cost flag prevents runaway spending.
+
+name: Plasmic MCP Evals
+
+on:
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: 'Scenario tier filter (blank = all)'
+        required: false
+        type: choice
+        options:
+          - ''
+          - simple
+          - medium
+          - complex
+      threshold:
+        description: 'Success rate threshold (0-1)'
+        required: false
+        default: '0.9'
+      max-cost:
+        description: 'Max cost in dollars'
+        required: false
+        default: '5'
+
+  pull_request:
+    branches: [master]
+    paths:
+      - 'packages/plasmic-mcp/**'
+      - '.github/workflows/plasmic-mcp-eval.yml'
+
+  schedule:
+    # Nightly at 03:00 UTC — runs full mock tier
+    - cron: '0 3 * * *'
+
+jobs:
+  eval:
+    name: MCP Eval (${{ github.event_name == 'schedule' && 'nightly' || github.event_name == 'pull_request' && 'PR' || 'manual' }})
+    runs-on: ubuntu-latest
+    # Skip on forks where the secret won't be available
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    timeout-minutes: 30
+
+    env:
+      EVAL_THRESHOLD: ${{ inputs.threshold || '0.9' }}
+      EVAL_MAX_COST: ${{ inputs.max-cost || '5' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        uses: ./.github/actions/setup-env
+
+      - name: Install root dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Install platform/wab dependencies
+        working-directory: platform/wab
+        run: yarn install --frozen-lockfile
+
+      - name: Generate required files (PEG parsers, model classes)
+        working-directory: platform/wab
+        run: make
+
+      # PR runs: simple tier only (fast feedback, lower cost)
+      # Nightly / manual: full mock tier or specified tier
+      - name: Run evals
+        id: run-eval
+        working-directory: packages/plasmic-mcp
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CI: true
+        run: |
+          TIER_FLAG=""
+          THRESHOLD="${EVAL_THRESHOLD}"
+
+          # PR: always simple tier
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            TIER_FLAG="--tier simple"
+          fi
+
+          # Manual dispatch: use specified tier
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.tier }}" ]; then
+            TIER_FLAG="--tier ${{ inputs.tier }}"
+          fi
+
+          # Run the eval, capturing exit code
+          set +e
+          npx tsx evals/cli.ts \
+            $TIER_FLAG \
+            --threshold "$THRESHOLD" \
+            --max-cost "$EVAL_MAX_COST" \
+            2>&1 | tee /tmp/eval-output.txt
+          EVAL_EXIT=$?
+          set -e
+
+          echo "exit_code=$EVAL_EXIT" >> "$GITHUB_OUTPUT"
+
+          # Find the report JSON (most recent file in evals/results/)
+          REPORT_FILE=$(ls -t evals/results/*.json 2>/dev/null | head -1)
+          if [ -n "$REPORT_FILE" ]; then
+            echo "report_file=$REPORT_FILE" >> "$GITHUB_OUTPUT"
+
+            # Extract key metrics for downstream steps
+            SUCCESS_RATE=$(jq -r '.aggregate.successRate' "$REPORT_FILE")
+            TOTAL=$(jq -r '.aggregate.total' "$REPORT_FILE")
+            PASSED=$(jq -r '.aggregate.passed' "$REPORT_FILE")
+            FAILED=$(jq -r '.aggregate.failed' "$REPORT_FILE")
+            TIMED_OUT=$(jq -r '.aggregate.timedOut' "$REPORT_FILE")
+            MODEL=$(jq -r '.model' "$REPORT_FILE")
+            RUN_ID=$(jq -r '.runId' "$REPORT_FILE")
+
+            echo "success_rate=$SUCCESS_RATE" >> "$GITHUB_OUTPUT"
+            echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+            echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
+            echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
+            echo "timed_out=$TIMED_OUT" >> "$GITHUB_OUTPUT"
+            echo "model=$MODEL" >> "$GITHUB_OUTPUT"
+            echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Post eval summary
+        if: always() && steps.run-eval.outputs.report_file != ''
+        working-directory: packages/plasmic-mcp
+        run: |
+          REPORT="${{ steps.run-eval.outputs.report_file }}"
+          SUCCESS_RATE="${{ steps.run-eval.outputs.success_rate }}"
+          TOTAL="${{ steps.run-eval.outputs.total }}"
+          PASSED="${{ steps.run-eval.outputs.passed }}"
+          FAILED="${{ steps.run-eval.outputs.failed }}"
+          TIMED_OUT="${{ steps.run-eval.outputs.timed_out }}"
+          MODEL="${{ steps.run-eval.outputs.model }}"
+          RUN_ID="${{ steps.run-eval.outputs.run_id }}"
+          THRESHOLD="${EVAL_THRESHOLD}"
+
+          # Calculate percentage
+          RATE_PCT=$(echo "$SUCCESS_RATE * 100" | bc -l | xargs printf "%.1f")
+          THRESHOLD_PCT=$(echo "$THRESHOLD * 100" | bc -l | xargs printf "%.1f")
+
+          # Status emoji based on pass/fail
+          if [ "${{ steps.run-eval.outputs.exit_code }}" = "0" ]; then
+            STATUS="✅ Passed"
+          else
+            STATUS="❌ Failed"
+          fi
+
+          # Build step summary
+          {
+            echo "### Plasmic MCP Eval Results"
+            echo ""
+            echo "**Status:** ${STATUS}"
+            echo ""
+            echo "| Metric | Value |"
+            echo "|--------|-------|"
+            echo "| Run ID | \`${RUN_ID}\` |"
+            echo "| Model | \`${MODEL}\` |"
+            echo "| Success Rate | **${RATE_PCT}%** (threshold: ${THRESHOLD_PCT}%) |"
+            echo "| Passed | ${PASSED} |"
+            echo "| Failed | ${FAILED} |"
+            echo "| Timed Out | ${TIMED_OUT} |"
+            echo "| Total | ${TOTAL} |"
+            echo ""
+
+            # Per-scenario breakdown
+            echo "<details>"
+            echo "<summary>Scenario Details</summary>"
+            echo ""
+            echo "| Scenario | Result | Tools | Duration | Errors |"
+            echo "|----------|--------|-------|----------|--------|"
+            jq -r '.scenarios[] | "| \(.id) | \(if .success then "✅" else "❌" end) | \(.toolCalls) | \((.durationMs / 1000 * 10 | floor) / 10)s | \(if (.errors | length) > 0 then .errors[0][:50] else "-" end) |"' "$REPORT"
+            echo ""
+            echo "</details>"
+
+            # Domain breakdown
+            echo ""
+            echo "<details>"
+            echo "<summary>Domain Breakdown</summary>"
+            echo ""
+            echo "| Domain | Passed | Total | Rate |"
+            echo "|--------|--------|-------|------|"
+            jq -r '.aggregate.byDomain | to_entries[] | "| \(.key) | \(.value.passed) | \(.value.total) | \((.value.successRate * 100 * 10 | floor) / 10)% |"' "$REPORT"
+            echo ""
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload eval report
+        if: always() && steps.run-eval.outputs.report_file != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report-${{ steps.run-eval.outputs.run_id || 'unknown' }}
+          path: packages/plasmic-mcp/evals/results/*.json
+          retention-days: 90
+
+      - name: Check threshold
+        if: always()
+        run: |
+          EXIT_CODE="${{ steps.run-eval.outputs.exit_code }}"
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "::error::Eval failed with exit code $EXIT_CODE. Success rate below threshold."
+            exit 1
+          fi

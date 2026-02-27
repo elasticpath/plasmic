@@ -43,5 +43,10 @@ dist/
 # Playwright test results
 test-results/
 playwright-report/
+.playwright-mcp/
 
 .history/
+
+# Eval system results (regenerated on each run)
+packages/plasmic-mcp/evals/results/*.json
+packages/plasmic-mcp/evals/results/screenshots/

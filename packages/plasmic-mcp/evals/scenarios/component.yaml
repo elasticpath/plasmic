@@ -1,0 +1,27 @@
+# Component domain scenarios
+# Tests: page creation, component management
+scenarios:
+  - id: component-create-page
+    description: "Create a new page called 'About' with the URL path '/about'."
+    domains:
+      - component
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+      - type: tool-params
+        params:
+          tool: component
+          action: create-page
+          expected:
+            name: About
+            path: /about
+      - type: no-errors
+        params: {}
+      - type: existence
+        params:
+          entityType: page
+          name: About

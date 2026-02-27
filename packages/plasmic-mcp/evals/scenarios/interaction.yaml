@@ -1,0 +1,171 @@
+# Interaction domain scenarios
+# Tests: event handler listing, conditional handlers, multi-handler chains, form events
+#
+# Why these scenarios matter: Interactions connect UI to behavior — clicks,
+# form submissions, navigation. Without medium-tier coverage, we only validate
+# that Claude can list handlers (simple tier) but not that it can wire up the
+# multi-step patterns users actually need: conditional execution, chained
+# handlers, and form event bindings.
+scenarios:
+  - id: interaction-list
+    description: "List all event handlers on the first interactive element in the Homepage component. First inspect the Homepage to find an element, then list its interactions."
+    domains:
+      - interaction
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - inspect
+            - interaction
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 3
+          max: 10
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: onClick with condition expression
+  # Tests: add a conditional event handler that only fires under a condition
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: interaction-conditional-click
+    description: "Create a new reusable component called 'CondButton'. Add a text element inside it that says 'Submit'. Then add an onClick event handler on that text element that navigates to '/success', but only when the condition '$ctx.isValid' is true."
+    domains:
+      - interaction
+      - component
+      - node
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+            - interaction
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: CondButton
+      - type: existence
+        params:
+          entityType: component
+          name: CondButton
+      - type: tool-params
+        params:
+          tool: interaction
+          action: add
+          expected:
+            event: onClick
+      - type: count
+        params:
+          min: 4
+          max: 15
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "Select the text element in CondButton — the interactions panel should show an onClick handler with navigation to '/success' and a condition expression '$ctx.isValid'."
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: multi-handler chain (onClick → updateVariable → navigation)
+  # Tests: adding multiple handlers on a single event
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: interaction-multi-handler
+    description: "Create a new reusable component called 'MultiAction'. Add a text element that says 'Buy Now'. Then add two onClick event handlers on that element: first one should call a custom function named 'trackClick', and the second should navigate to '/checkout'."
+    domains:
+      - interaction
+      - component
+      - node
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+            - interaction
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: MultiAction
+      - type: existence
+        params:
+          entityType: component
+          name: MultiAction
+      - type: tool-params
+        params:
+          tool: interaction
+          action: add
+          expected:
+            event: onClick
+            actionName: customFunction
+      - type: tool-params
+        params:
+          tool: interaction
+          action: add
+          expected:
+            event: onClick
+            actionName: navigation
+      - type: count
+        params:
+          min: 5
+          max: 18
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "Select the 'Buy Now' text element — the interactions panel should list two onClick handlers: one calling 'trackClick' custom function, and one navigating to '/checkout'."
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: form onChange with variable update
+  # Tests: non-click event handlers on form elements
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: interaction-onchange-handler
+    description: "Create a new reusable component called 'SearchInput'. Add a text input element inside it. Then add an onChange event handler on that input element that calls a custom function named 'handleSearch'."
+    domains:
+      - interaction
+      - component
+      - node
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+            - interaction
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: SearchInput
+      - type: existence
+        params:
+          entityType: component
+          name: SearchInput
+      - type: tool-params
+        params:
+          tool: interaction
+          action: add
+          expected:
+            event: onChange
+      - type: count
+        params:
+          min: 4
+          max: 15
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "Select the input element in SearchInput — the interactions panel should show an onChange handler calling 'handleSearch'."

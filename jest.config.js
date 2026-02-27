@@ -12,6 +12,7 @@ module.exports = {
     "<rootDir>/platform/loader-tests",
     "<rootDir>/platform/wab",
     "<rootDir>/packages/plume-stories",
+    "<rootDir>/packages/plasmic-mcp", // Has its own jest.config.js with @/wab/ mocks
     "<rootDir>/plasmicpkgs/wordpress", // Uses Vitest, not Jest
     "/node_modules/",
   ],

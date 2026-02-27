@@ -1,0 +1,260 @@
+# Project domain scenarios
+# Tests: project listing, metadata retrieval, batch operations, save/refresh, undo
+#
+# Why these scenarios matter: The project domain controls session lifecycle
+# (set, save, refresh), transactional editing (begin-batch/end-batch), and
+# undo — operations that underpin every other domain. Without coverage here,
+# regressions in batch or undo logic could silently corrupt eval results
+# across all domains.
+scenarios:
+  - id: project-list
+    description: "List all available Plasmic projects and tell me their names."
+    domains:
+      - project
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - project
+      - type: tool-params
+        params:
+          tool: project
+          action: list
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 1
+          max: 5
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: batch operation workflow
+  # Tests: begin-batch → multiple edits → end-batch as a single revision
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: project-batch-workflow
+    description: "Use batch operations to make multiple edits as a single revision. First, get project metadata to understand the current state. Then begin a batch operation. Inside the batch, create a new color token called 'batch-red' with value '#ff0000' and another called 'batch-blue' with value '#0000ff'. Finally, end the batch to commit both edits as one revision."
+    domains:
+      - project
+      - design
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - project
+            - design
+      - type: tool-params
+        params:
+          tool: project
+          action: begin-batch
+          expected: {}
+      - type: tool-params
+        params:
+          tool: project
+          action: end-batch
+          expected: {}
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: batch-red
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: batch-blue
+      - type: existence
+        params:
+          entityType: token
+          name: batch-red
+      - type: existence
+        params:
+          entityType: token
+          name: batch-blue
+      - type: count
+        params:
+          min: 4
+          max: 15
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "Verify both 'batch-red' and 'batch-blue' tokens appear in the design tokens panel with their respective red and blue color swatches."
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: save and refresh cycle with state verification
+  # Tests: save → refresh → verify state is preserved across reload
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: project-save-refresh
+    description: "Test the project save and refresh cycle. First, create a new reusable component called 'PersistTest'. Then save the project. After saving, refresh the project to reload from the server. Finally, list all components to verify 'PersistTest' still exists after the refresh."
+    domains:
+      - project
+      - component
+    tier: medium
+    timeout: 150
+    requiredMode: integration
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - project
+            - component
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: PersistTest
+      - type: tool-params
+        params:
+          tool: project
+          action: save
+          expected: {}
+      - type: tool-params
+        params:
+          tool: project
+          action: refresh
+          expected: {}
+      - type: existence
+        params:
+          entityType: component
+          name: PersistTest
+      - type: count
+        params:
+          min: 4
+          max: 15
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "After refresh, verify the component list still shows 'PersistTest'. The project should appear unchanged after the save-refresh cycle."
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Complex: multi-step undo with state assertions
+  # Tests: create entities → undo each → verify rollback
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: project-multi-undo
+    description: >
+      Test multi-step undo to verify rollback of sequential edits:
+      1) List components to see the initial state.
+      2) Create a new reusable component called 'UndoTestA'.
+      3) Create another component called 'UndoTestB'.
+      4) Create a color token called 'undo-green' with value '#00ff00'.
+      5) Undo the last operation (should remove the token).
+      6) Undo again (should remove UndoTestB).
+      7) List all components to verify UndoTestA still exists but UndoTestB does not.
+      8) List design tokens to verify 'undo-green' does not exist.
+    domains:
+      - project
+      - component
+      - design
+    tier: complex
+    timeout: 240
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - project
+            - component
+            - design
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: UndoTestA
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: UndoTestB
+      - type: tool-params
+        params:
+          tool: project
+          action: undo
+          expected: {}
+      - type: existence
+        params:
+          entityType: component
+          name: UndoTestA
+      - type: count
+        params:
+          min: 8
+          max: 25
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "After two undos, verify that UndoTestA appears in the component list but UndoTestB does not. The design tokens panel should not show 'undo-green'."
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Complex: project state inspection after compound mutations
+  # Tests: create multiple entities across domains → inspect full state
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: project-compound-state
+    description: >
+      Perform compound mutations across multiple domains and verify the final state:
+      1) Get the project metadata to understand the starting state.
+      2) Begin a batch operation.
+      3) Create a color token called 'compound-primary' with value '#1a73e8'.
+      4) Create a spacing token called 'compound-gap' with value '16px'.
+      5) Create a new reusable component called 'CompoundWidget'.
+      6) Add a heading element inside CompoundWidget that says 'Widget Title'.
+      7) End the batch.
+      8) Inspect the CompoundWidget component tree to verify it contains the heading.
+      9) List all design tokens to verify both tokens exist.
+    domains:
+      - project
+      - design
+      - component
+      - node
+      - inspect
+    tier: complex
+    timeout: 240
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - project
+            - design
+            - component
+            - node
+            - inspect
+      - type: tool-params
+        params:
+          tool: project
+          action: begin-batch
+          expected: {}
+      - type: tool-params
+        params:
+          tool: project
+          action: end-batch
+          expected: {}
+      - type: existence
+        params:
+          entityType: token
+          name: compound-primary
+      - type: existence
+        params:
+          entityType: token
+          name: compound-gap
+      - type: existence
+        params:
+          entityType: component
+          name: CompoundWidget
+      - type: count
+        params:
+          min: 9
+          max: 30
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "Verify CompoundWidget appears in the component list with a heading child in its tree. Both 'compound-primary' and 'compound-gap' should appear in the design tokens panel."

@@ -1,0 +1,121 @@
+# Data domain scenarios
+# Tests: query listing, data binding inspection, query/interaction verification
+#
+# Why the data grader matters here: The `data` grader type queries actual project
+# state to verify queries and interactions were wired up — not just that the right
+# tool was called. This catches cases where Claude calls add-query with correct
+# params but the query doesn't persist (e.g., wrong componentUuid).
+scenarios:
+  - id: data-list-queries
+    description: "Show me what data queries are defined on the Homepage component. First find the Homepage, then list its queries."
+    domains:
+      - data
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - data
+      - type: tool-params
+        params:
+          tool: data
+          action: list-queries
+          expected: {}
+      - type: no-errors
+        params: {}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: data grader (queries) — verify query was actually added
+  # Tests: data grader validates query state after add-query
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: data-verify-query
+    description: "Create a new reusable component called 'DataWidget'. Then add a data query called 'fetchItems' to the DataWidget component. Finally, list queries on DataWidget to verify the query exists."
+    domains:
+      - data
+      - component
+    tier: medium
+    timeout: 120
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - data
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: DataWidget
+      - type: existence
+        params:
+          entityType: component
+          name: DataWidget
+      - type: tool-params
+        params:
+          tool: data
+          action: add-query
+          expected:
+            name: fetchItems
+      - type: data
+        params:
+          componentName: DataWidget
+          checkType: queries
+          minCount: 1
+      - type: count
+        params:
+          min: 3
+          max: 12
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "Open the DataWidget component — the data queries panel should show 'fetchItems' as a configured query."
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: data grader (interactions) — verify handler was wired up
+  # Tests: data grader validates interaction state on a specific element
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: data-verify-interaction
+    description: "Create a new reusable component called 'ActionCard'. Add a text element inside it that says 'Click here'. Then add an onClick event handler on that text element that navigates to '/details'. Finally, list the interactions on that element to verify the handler exists."
+    domains:
+      - data
+      - component
+      - node
+      - interaction
+    tier: medium
+    timeout: 150
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+            - interaction
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: ActionCard
+      - type: existence
+        params:
+          entityType: component
+          name: ActionCard
+      - type: tool-params
+        params:
+          tool: interaction
+          action: add
+          expected:
+            event: onClick
+      - type: count
+        params:
+          min: 5
+          max: 18
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "Select the text element in ActionCard — the interactions panel should show an onClick handler configured to navigate to '/details'."

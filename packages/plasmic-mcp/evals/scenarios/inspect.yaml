@@ -1,0 +1,21 @@
+# Inspect domain scenarios
+# Tests: component tree inspection, structure understanding
+scenarios:
+  - id: inspect-summary
+    description: "Show me the structure of the Homepage component. List its child elements and their types."
+    domains:
+      - inspect
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - inspect
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 2
+          max: 8

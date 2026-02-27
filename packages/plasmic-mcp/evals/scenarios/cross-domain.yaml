@@ -1,0 +1,52 @@
+# Cross-domain scenarios
+# Tests: multi-tool workflows combining component + node + design
+scenarios:
+  - id: component-node-card
+    description: "Create a new reusable component called 'Card' with a heading that says 'Card Title' and a paragraph that says 'Card description goes here'."
+    domains:
+      - component
+      - node
+    tier: simple
+    timeout: 120
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+      - type: existence
+        params:
+          entityType: component
+          name: Card
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 3
+          max: 15
+
+  - id: node-design-style
+    description: "Style the first heading element in the Homepage component with a font size of 48px and blue color (#0000ff). First inspect the Homepage to find the heading, then apply the styles."
+    domains:
+      - node
+      - design
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - inspect
+            - node
+      - type: tool-params
+        params:
+          tool: node
+          action: update-styles
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 3
+          max: 10

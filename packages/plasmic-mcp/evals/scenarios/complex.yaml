@@ -1,0 +1,1291 @@
+# Complex end-to-end scenarios (~15)
+# Multi-domain workflows spanning 4+ domains, 8+ tool calls
+# Tests: comprehensive workflows that mirror real user projects
+#
+# Why complex tier: These scenarios test Claude's ability to orchestrate
+# sophisticated multi-domain workflows that span the full STRAP surface.
+# They require planning, sequencing dependent operations (create before
+# style, component before variant), and maintaining context across many
+# tool calls — reflecting the kind of work users actually do in Plasmic.
+
+scenarios:
+  # ─────────────────────────────────────────────────────────────────────
+  # Responsive Hero Section
+  # Domains: component + node + variant + design
+  # Expected flow: create token → create component → add nodes → style →
+  #   create screen variant → style variant
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: complex-responsive-hero
+    description: >
+      Build a responsive hero section for a landing page:
+      1) Create a color token called 'brand-primary' with value '#1a73e8'.
+      2) Create a new reusable component called 'HeroSection'.
+      3) Add a heading element inside it that says 'Welcome to Our Platform'.
+      4) Add a paragraph below the heading that says 'Build amazing things with our tools'.
+      5) Style the heading with font size 64px, font weight bold, color #1a73e8, and text alignment center.
+      6) Style the paragraph with font size 20px, color #555555, and text alignment center.
+      7) Create a screen variant called 'Mobile' on HeroSection with max-width 768 pixels.
+    domains:
+      - component
+      - node
+      - variant
+      - design
+    tier: complex
+    timeout: 240
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+            - component
+            - node
+            - variant
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: brand-primary
+      - type: existence
+        params:
+          entityType: token
+          name: brand-primary
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: HeroSection
+      - type: existence
+        params:
+          entityType: component
+          name: HeroSection
+      - type: tool-params
+        params:
+          tool: node
+          action: update-styles
+          expected: {}
+      - type: tool-params
+        params:
+          tool: variant
+          action: create-screen
+          expected:
+            name: Mobile
+      - type: count
+        params:
+          min: 8
+          max: 25
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "Verify the HeroSection component tree shows a heading and paragraph as direct children with correct text. The design system panel should list the brand-primary token, and the variant list should show a Mobile screen breakpoint. In the property inspector, the heading should display font-size 64px and the paragraph font-size 20px."
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Product Card with Data Binding
+  # Domains: component + node + data + interaction
+  # Expected flow: create component → add nodes → add query →
+  #   set data rep → set dynamic text → add click handler
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: complex-product-card-data
+    description: >
+      Create a data-driven product card:
+      1) Create a new reusable component called 'ProductCard'.
+      2) Add a heading element inside it that says 'Product Name'.
+      3) Add a paragraph element that says '$0.00'.
+      4) Add a data query called 'fetchProducts' on the ProductCard component.
+      5) Set up data repetition on the root element of ProductCard to repeat
+         for each item in '$queries.fetchProducts.data', using 'product'
+         as the element variable.
+      6) Add an onClick event handler on the heading that performs a
+         navigation action to the URL '/products'.
+    domains:
+      - component
+      - node
+      - data
+      - interaction
+    tier: complex
+    timeout: 240
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+            - data
+            - interaction
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: ProductCard
+      - type: existence
+        params:
+          entityType: component
+          name: ProductCard
+      - type: tool-params
+        params:
+          tool: data
+          action: add-query
+          expected:
+            name: fetchProducts
+      - type: tool-params
+        params:
+          tool: data
+          action: set-data-rep
+          expected: {}
+      - type: tool-params
+        params:
+          tool: interaction
+          action: add
+          expected:
+            event: onClick
+      - type: count
+        params:
+          min: 8
+          max: 28
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "Verify the ProductCard component tree shows the root element marked with a repeat/loop indicator, with heading and paragraph children visible. The data panel should list the fetchProducts query, and the heading's interaction panel should show an onClick handler pointing to '/products'."
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Navigation Bar with Hover States
+  # Domains: component + node + variant + design + interaction
+  # Expected flow: create tokens → create component → add links →
+  #   style links → create hover variant → add navigation handlers
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: complex-navbar
+    description: >
+      Build a navigation bar component:
+      1) Create a color token called 'nav-bg' with value '#ffffff'.
+      2) Create a color token called 'nav-link' with value '#333333'.
+      3) Create a new reusable component called 'NavBar'.
+      4) Add a heading element inside it that says 'MyBrand'.
+      5) Add a link element that says 'Home'.
+      6) Add another link element that says 'About'.
+      7) Style the heading with font size 24px and font weight bold.
+      8) Create a hover style variant on the NavBar component.
+      9) Add an onClick event handler on the 'About' link that navigates to '/about'.
+    domains:
+      - component
+      - node
+      - variant
+      - design
+      - interaction
+    tier: complex
+    timeout: 240
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+            - component
+            - node
+            - variant
+            - interaction
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: nav-bg
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: nav-link
+      - type: existence
+        params:
+          entityType: token
+          name: nav-bg
+      - type: existence
+        params:
+          entityType: token
+          name: nav-link
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: NavBar
+      - type: existence
+        params:
+          entityType: component
+          name: NavBar
+      - type: tool-params
+        params:
+          tool: variant
+          action: create-style
+          expected: {}
+      - type: tool-params
+        params:
+          tool: interaction
+          action: add
+          expected:
+            event: onClick
+      - type: count
+        params:
+          min: 10
+          max: 30
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "Verify the NavBar component tree shows the brand heading and two link elements (Home, About) as siblings. The variant panel should list a hover style variant, and the About link's interaction panel should show an onClick handler. The design system panel should list both nav-bg and nav-link tokens."
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Blog Post Template
+  # Domains: component + node + design + variant + inspect
+  # Expected flow: inspect project → create page → add sections →
+  #   create tokens → style → create screen variant
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: complex-blog-template
+    description: >
+      Create a blog post page template:
+      1) List all existing pages to see what's in the project.
+      2) Create a new page called 'BlogPost' at the path '/blog/post'.
+      3) Add a heading element that says 'Article Title'.
+      4) Add a paragraph element that says 'Published on January 1, 2026'.
+      5) Add another paragraph element that says 'Article body content goes here...'.
+      6) Create a color token called 'blog-text' with value '#2d3748'.
+      7) Style the first heading with font size 36px, font weight bold, and color #2d3748.
+      8) Style the date paragraph with font size 14px and color #718096.
+      9) Create a screen variant called 'Mobile' on the BlogPost page with max-width 768 pixels.
+    domains:
+      - component
+      - node
+      - design
+      - variant
+      - inspect
+    tier: complex
+    timeout: 240
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+            - design
+            - variant
+      - type: tool-params
+        params:
+          tool: component
+          action: create-page
+          expected:
+            name: BlogPost
+            path: /blog/post
+      - type: existence
+        params:
+          entityType: page
+          name: BlogPost
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: blog-text
+      - type: existence
+        params:
+          entityType: token
+          name: blog-text
+      - type: tool-params
+        params:
+          tool: node
+          action: update-styles
+          expected: {}
+      - type: tool-params
+        params:
+          tool: variant
+          action: create-screen
+          expected:
+            name: Mobile
+      - type: count
+        params:
+          min: 9
+          max: 30
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "Verify the BlogPost page appears in the pages list at path /blog/post, with its tree showing a heading followed by two paragraph elements. The property inspector should show font-size 36px and font-weight bold on the heading, and the variant list should include a Mobile screen breakpoint. The blog-text token should appear in the design system panel."
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Contact Form with Validation States
+  # Domains: component + node + variant + design + interaction
+  # Expected flow: create tokens → create component → add form elements →
+  #   style → create variant group for states → add submit handler
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: complex-contact-form
+    description: >
+      Build a contact form component:
+      1) Create a color token called 'form-border' with value '#dee2e6'.
+      2) Create a new reusable component called 'ContactForm'.
+      3) Add a heading inside it that says 'Get in Touch'.
+      4) Add a text element that says 'Name'.
+      5) Add a text element that says 'Email'.
+      6) Add a text element that says 'Send Message'.
+      7) Style the heading with font size 28px, font weight bold, and text alignment center.
+      8) Create a variant group called 'State' of type 'single' with initial variants 'default' and 'submitted'.
+      9) Add an onClick event handler on the 'Send Message' element that performs a navigation action to '/thank-you'.
+    domains:
+      - component
+      - node
+      - variant
+      - design
+      - interaction
+    tier: complex
+    timeout: 240
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+            - component
+            - node
+            - variant
+            - interaction
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: form-border
+      - type: existence
+        params:
+          entityType: token
+          name: form-border
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: ContactForm
+      - type: existence
+        params:
+          entityType: component
+          name: ContactForm
+      - type: tool-params
+        params:
+          tool: variant
+          action: create-group
+          expected:
+            name: State
+      - type: tool-params
+        params:
+          tool: interaction
+          action: add
+          expected:
+            event: onClick
+      - type: count
+        params:
+          min: 9
+          max: 30
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "Verify the ContactForm component tree shows the 'Get in Touch' heading plus Name, Email, and Send Message text elements as children. The variant panel should list the State group with 'default' and 'submitted' options, and the Send Message element's interaction panel should show an onClick handler navigating to '/thank-you'."
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Feature Grid with Data Binding
+  # Domains: component + node + data + design + inspect
+  # Expected flow: inspect project → create tokens → create component →
+  #   add container + children → create query → set data rep
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: complex-feature-grid
+    description: >
+      Build a data-driven feature grid:
+      1) Inspect the Homepage component to understand its structure.
+      2) Create a color token called 'feature-bg' with value '#f0f4f8'.
+      3) Create a new reusable component called 'FeatureGrid'.
+      4) Add a heading inside it that says 'Our Features'.
+      5) Add a container div element named 'GridContainer' below the heading.
+      6) Inside the GridContainer, add a text element that says 'Feature Name'.
+      7) Style the heading with font size 32px, font weight bold, and text alignment center.
+      8) Add a data query called 'fetchFeatures' to the FeatureGrid component.
+      9) Set up data repetition on the GridContainer to repeat for each item in '$queries.fetchFeatures.data', using 'feature' as the element variable.
+    domains:
+      - component
+      - node
+      - data
+      - design
+      - inspect
+    tier: complex
+    timeout: 240
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - inspect
+            - design
+            - component
+            - node
+            - data
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: feature-bg
+      - type: existence
+        params:
+          entityType: token
+          name: feature-bg
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: FeatureGrid
+      - type: existence
+        params:
+          entityType: component
+          name: FeatureGrid
+      - type: tool-params
+        params:
+          tool: data
+          action: add-query
+          expected:
+            name: fetchFeatures
+      - type: tool-params
+        params:
+          tool: data
+          action: set-data-rep
+          expected: {}
+      - type: count
+        params:
+          min: 9
+          max: 30
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "Verify the FeatureGrid component tree shows a heading at the top and a GridContainer below it with a repeat indicator, containing a 'Feature Name' text child. The data panel should list the fetchFeatures query, and the heading's property inspector should show font-size 32px and font-weight bold."
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Testimonial Component with Design System
+  # Domains: component + node + data + design + variant
+  # Expected flow: create tokens → create mixin → create component →
+  #   add elements → apply mixin → set data rep → create hover variant
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: complex-testimonial
+    description: >
+      Build a testimonial display component:
+      1) Create a color token called 'testimonial-bg' with value '#fafafa'.
+      2) Create a style mixin called 'card-base' with border-radius 12px and padding 24px.
+      3) Create a new reusable component called 'TestimonialCard'.
+      4) Add a paragraph inside it that says 'This product changed my life!'.
+      5) Add a text element that says '— Jane Smith'.
+      6) Apply the 'card-base' mixin to the root element of the TestimonialCard.
+      7) Style the paragraph with font size 18px and font-style italic.
+      8) Create a hover style variant on the TestimonialCard component.
+      9) Set up data repetition on the root element to repeat for each item in '$ctx.testimonials', using 'testimonial' as the element variable.
+    domains:
+      - component
+      - node
+      - data
+      - design
+      - variant
+    tier: complex
+    timeout: 240
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+            - component
+            - node
+            - data
+            - variant
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: testimonial-bg
+      - type: existence
+        params:
+          entityType: token
+          name: testimonial-bg
+      - type: tool-params
+        params:
+          tool: design
+          action: create-mixin
+          expected:
+            name: card-base
+      - type: existence
+        params:
+          entityType: mixin
+          name: card-base
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: TestimonialCard
+      - type: existence
+        params:
+          entityType: component
+          name: TestimonialCard
+      - type: tool-params
+        params:
+          tool: node
+          action: apply-mixin
+          expected: {}
+      - type: tool-params
+        params:
+          tool: variant
+          action: create-style
+          expected: {}
+      - type: tool-params
+        params:
+          tool: data
+          action: set-data-rep
+          expected: {}
+      - type: count
+        params:
+          min: 10
+          max: 30
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "Verify the TestimonialCard root element shows the card-base mixin applied in the style panel and a repeat indicator in the tree. The variant panel should list a hover style variant, the design system panel should show both the testimonial-bg token and card-base mixin, and the paragraph's property inspector should show font-size 18px and font-style italic."
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Dashboard Layout with Multiple Sections
+  # Domains: component + node + design + variant + inspect
+  # Expected flow: create tokens → create page → inspect →
+  #   add sections → style → create screen variant
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: complex-dashboard-layout
+    description: >
+      Build a dashboard page layout:
+      1) Create a color token called 'sidebar-bg' with value '#1e293b'.
+      2) Create a color token called 'content-bg' with value '#f1f5f9'.
+      3) Create a new page called 'Dashboard' at the path '/dashboard'.
+      4) Add a container div named 'Sidebar' to the Dashboard page.
+      5) Add a heading inside the Sidebar that says 'Dashboard'.
+      6) Add another container div named 'MainContent' to the Dashboard page.
+      7) Add a heading inside MainContent that says 'Overview'.
+      8) Add a paragraph inside MainContent that says 'Welcome to your dashboard'.
+      9) Style the Sidebar heading with font size 20px, font weight bold, and color #ffffff.
+      10) Create a screen variant called 'Mobile' on the Dashboard page with max-width 768 pixels.
+    domains:
+      - component
+      - node
+      - design
+      - variant
+      - inspect
+    tier: complex
+    timeout: 240
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+            - component
+            - node
+            - variant
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: sidebar-bg
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: content-bg
+      - type: existence
+        params:
+          entityType: token
+          name: sidebar-bg
+      - type: existence
+        params:
+          entityType: token
+          name: content-bg
+      - type: tool-params
+        params:
+          tool: component
+          action: create-page
+          expected:
+            name: Dashboard
+            path: /dashboard
+      - type: existence
+        params:
+          entityType: page
+          name: Dashboard
+      - type: tool-params
+        params:
+          tool: variant
+          action: create-screen
+          expected:
+            name: Mobile
+      - type: count
+        params:
+          min: 10
+          max: 30
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "Verify the Dashboard page tree shows two top-level containers (Sidebar and MainContent) each with their own heading children, plus a paragraph inside MainContent. The variant list should include a Mobile screen breakpoint, and both sidebar-bg and content-bg tokens should appear in the design system panel. The Sidebar heading inspector should show font-size 20px and color #ffffff."
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Product Listing Page
+  # Domains: component + node + data + design + variant + interaction
+  # Expected flow: create tokens → create page → add elements →
+  #   style → add query → set data rep → create screen variant →
+  #   add click handler
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: complex-product-listing
+    description: >
+      Build a product listing page:
+      1) Create a color token called 'listing-accent' with value '#e63946'.
+      2) Create a new page called 'Products' at the path '/products'.
+      3) Add a heading element that says 'Our Products'.
+      4) Add a container div named 'ProductGrid' below the heading.
+      5) Inside the ProductGrid, add a text element that says 'Product'.
+      6) Style the heading with font size 36px, font weight bold, and text alignment center.
+      7) Add a data query called 'getProducts' to the Products page.
+      8) Set up data repetition on the ProductGrid to repeat for each item
+         in '$queries.getProducts.data', using 'item' as the element variable.
+      9) Create a screen variant called 'Tablet' on the Products page with max-width 1024 pixels.
+      10) Add an onClick event handler on the heading that navigates to '/'.
+    domains:
+      - component
+      - node
+      - data
+      - design
+      - variant
+      - interaction
+    tier: complex
+    timeout: 240
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+            - component
+            - node
+            - data
+            - variant
+            - interaction
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: listing-accent
+      - type: existence
+        params:
+          entityType: token
+          name: listing-accent
+      - type: tool-params
+        params:
+          tool: component
+          action: create-page
+          expected:
+            name: Products
+            path: /products
+      - type: existence
+        params:
+          entityType: page
+          name: Products
+      - type: tool-params
+        params:
+          tool: data
+          action: add-query
+          expected:
+            name: getProducts
+      - type: tool-params
+        params:
+          tool: data
+          action: set-data-rep
+          expected: {}
+      - type: tool-params
+        params:
+          tool: variant
+          action: create-screen
+          expected:
+            name: Tablet
+      - type: tool-params
+        params:
+          tool: interaction
+          action: add
+          expected:
+            event: onClick
+      - type: count
+        params:
+          min: 10
+          max: 35
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "Verify the Products page tree shows the heading followed by a ProductGrid container with a repeat indicator and a 'Product' text child. The data panel should list the getProducts query, the variant list should include a Tablet screen breakpoint, and the heading's interaction panel should show an onClick handler. The heading inspector should display font-size 36px."
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Footer with Design System Integration
+  # Domains: component + node + design + interaction + inspect
+  # Expected flow: inspect project → create tokens → create mixin →
+  #   create component → add elements → apply mixin → style →
+  #   add navigation handlers
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: complex-footer
+    description: >
+      Build a footer component with design system integration:
+      1) List all existing components to see the project structure.
+      2) Create a color token called 'footer-bg' with value '#1a1a2e'.
+      3) Create a color token called 'footer-text' with value '#e0e0e0'.
+      4) Create a style mixin called 'footer-link' with color #e0e0e0 and text-decoration none.
+      5) Create a new reusable component called 'SiteFooter'.
+      6) Add a text element inside it that says '© 2026 MyCompany'.
+      7) Add a link element that says 'Privacy Policy'.
+      8) Add a link element that says 'Terms of Service'.
+      9) Style the copyright text with font size 14px and text alignment center.
+      10) Add an onClick event handler on the 'Privacy Policy' link that navigates to '/privacy'.
+    domains:
+      - component
+      - node
+      - design
+      - interaction
+      - inspect
+    tier: complex
+    timeout: 240
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+            - design
+            - interaction
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: footer-bg
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: footer-text
+      - type: existence
+        params:
+          entityType: token
+          name: footer-bg
+      - type: existence
+        params:
+          entityType: token
+          name: footer-text
+      - type: tool-params
+        params:
+          tool: design
+          action: create-mixin
+          expected:
+            name: footer-link
+      - type: existence
+        params:
+          entityType: mixin
+          name: footer-link
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: SiteFooter
+      - type: existence
+        params:
+          entityType: component
+          name: SiteFooter
+      - type: tool-params
+        params:
+          tool: interaction
+          action: add
+          expected:
+            event: onClick
+      - type: count
+        params:
+          min: 10
+          max: 30
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "Verify the SiteFooter component tree shows three children: copyright text, Privacy Policy link, and Terms of Service link. The design system panel should list footer-bg and footer-text tokens plus the footer-link mixin, and the Privacy Policy link's interaction panel should show an onClick handler navigating to '/privacy'. The copyright text inspector should show font-size 14px."
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Modal Dialog Component
+  # Domains: component + node + variant + design + interaction
+  # Expected flow: create token → create component → add elements →
+  #   style → create toggle variant → add state → add close handler
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: complex-modal-dialog
+    description: >
+      Build a modal dialog component:
+      1) Create a color token called 'overlay-bg' with value 'rgba(0,0,0,0.5)'.
+      2) Create a new reusable component called 'Modal'.
+      3) Add a container div named 'ModalOverlay' inside it.
+      4) Add a container div named 'ModalContent' inside the ModalOverlay.
+      5) Add a heading inside ModalContent that says 'Dialog Title'.
+      6) Add a text element that says 'Close' inside ModalContent.
+      7) Style the heading with font size 24px and font weight bold.
+      8) Create a variant group called 'Open' of type 'toggle' on the Modal component.
+      9) Add an onClick event handler on the 'Close' text element that navigates to '/'.
+    domains:
+      - component
+      - node
+      - variant
+      - design
+      - interaction
+    tier: complex
+    timeout: 240
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+            - component
+            - node
+            - variant
+            - interaction
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: overlay-bg
+      - type: existence
+        params:
+          entityType: token
+          name: overlay-bg
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: Modal
+      - type: existence
+        params:
+          entityType: component
+          name: Modal
+      - type: tool-params
+        params:
+          tool: variant
+          action: create-group
+          expected:
+            name: Open
+      - type: tool-params
+        params:
+          tool: interaction
+          action: add
+          expected:
+            event: onClick
+      - type: count
+        params:
+          min: 9
+          max: 30
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "Verify the Modal component tree shows a nested structure: ModalOverlay containing ModalContent, which contains a heading ('Dialog Title') and a 'Close' text element. The variant panel should show an 'Open' toggle variant group, the design system should list the overlay-bg token, and the Close element's interaction panel should show an onClick handler."
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Alert Banner with Severity Variants and Conditional Rendering
+  # Domains: component + node + variant + design + data
+  # Expected flow: create tokens → create component → add elements →
+  #   style → create severity variant group → set data condition
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: complex-alert-banner
+    description: >
+      Build an alert banner system:
+      1) Create a color token called 'alert-info' with value '#0dcaf0'.
+      2) Create a color token called 'alert-danger' with value '#dc3545'.
+      3) Create a new reusable component called 'AlertBanner'.
+      4) Add a heading inside it that says 'Alert'.
+      5) Add a paragraph inside it that says 'This is an important message.'.
+      6) Style the heading with font size 18px and font weight bold.
+      7) Create a variant group called 'Severity' of type 'single' with
+         initial variants 'info', 'warning', and 'danger'.
+      8) Set a data condition on the paragraph so it only renders when
+         '$ctx.showDetails' is true.
+    domains:
+      - component
+      - node
+      - variant
+      - design
+      - data
+    tier: complex
+    timeout: 240
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+            - component
+            - node
+            - variant
+            - data
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: alert-info
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: alert-danger
+      - type: existence
+        params:
+          entityType: token
+          name: alert-info
+      - type: existence
+        params:
+          entityType: token
+          name: alert-danger
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: AlertBanner
+      - type: existence
+        params:
+          entityType: component
+          name: AlertBanner
+      - type: tool-params
+        params:
+          tool: variant
+          action: create-group
+          expected:
+            name: Severity
+      - type: tool-params
+        params:
+          tool: data
+          action: set-data-cond
+          expected: {}
+      - type: count
+        params:
+          min: 9
+          max: 30
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "Verify the AlertBanner tree shows a heading and a paragraph, with the paragraph displaying a conditional rendering indicator (visibility condition icon). The variant panel should list the Severity group with info, warning, and danger options, and the design system panel should show alert-info and alert-danger tokens. The heading inspector should display font-size 18px and font-weight bold."
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Team Page with Data-Driven Cards
+  # Domains: component + node + data + design + inspect + variant
+  # Expected flow: inspect project → create tokens → create page →
+  #   add elements → style → add query → set data rep →
+  #   create screen variant
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: complex-team-page
+    description: >
+      Build a team page with data-driven member cards:
+      1) List all existing pages in the project.
+      2) Create a color token called 'team-heading' with value '#2b2d42'.
+      3) Create a new page called 'Team' at the path '/team'.
+      4) Add a heading element that says 'Meet Our Team'.
+      5) Add a container div named 'TeamGrid' below the heading.
+      6) Inside TeamGrid, add a text element that says 'Team Member'.
+      7) Style the heading with font size 36px, font weight bold,
+         text alignment center, and color #2b2d42.
+      8) Add a data query called 'fetchTeam' on the Team page.
+      9) Set up data repetition on the TeamGrid to repeat for each item
+         in '$queries.fetchTeam.data', using 'member' as the element variable.
+      10) Create a screen variant called 'Mobile' on the Team page
+          with max-width 768 pixels.
+    domains:
+      - component
+      - node
+      - data
+      - design
+      - inspect
+      - variant
+    tier: complex
+    timeout: 240
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+            - data
+            - design
+            - variant
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: team-heading
+      - type: existence
+        params:
+          entityType: token
+          name: team-heading
+      - type: tool-params
+        params:
+          tool: component
+          action: create-page
+          expected:
+            name: Team
+            path: /team
+      - type: existence
+        params:
+          entityType: page
+          name: Team
+      - type: tool-params
+        params:
+          tool: data
+          action: add-query
+          expected:
+            name: fetchTeam
+      - type: tool-params
+        params:
+          tool: data
+          action: set-data-rep
+          expected: {}
+      - type: tool-params
+        params:
+          tool: variant
+          action: create-screen
+          expected:
+            name: Mobile
+      - type: count
+        params:
+          min: 10
+          max: 35
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "Verify the Team page tree shows a heading followed by a TeamGrid container with a repeat indicator and a 'Team Member' text child inside. The data panel should list the fetchTeam query, the variant list should include a Mobile screen breakpoint, and the heading inspector should show font-size 36px, font-weight bold, and color #2b2d42."
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Landing Page with Full Feature Set
+  # Domains: component + node + design + variant + data + interaction + inspect
+  # Expected flow: inspect → create tokens → create page → add hero →
+  #   add features → style → add query → set data rep →
+  #   create screen variant → add CTA click handler
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: complex-landing-page
+    description: >
+      Build a complete landing page:
+      1) List all existing pages to understand the project.
+      2) Create a color token called 'landing-primary' with value '#6c63ff'.
+      3) Create a color token called 'landing-dark' with value '#2d2d2d'.
+      4) Create a new page called 'Landing' at the path '/landing'.
+      5) Add a heading element that says 'Transform Your Workflow'.
+      6) Add a paragraph that says 'The all-in-one platform for modern teams.'.
+      7) Add a text element that says 'Get Started Free'.
+      8) Add a container div named 'FeatureList' below.
+      9) Inside FeatureList, add a text element that says 'Feature'.
+      10) Style the heading with font size 48px, font weight bold,
+          text alignment center, and color #6c63ff.
+      11) Add a data query called 'getFeatures' on the Landing page.
+      12) Set up data repetition on FeatureList to repeat for each item
+          in '$queries.getFeatures.data', using 'feat' as the element variable.
+      13) Create a screen variant called 'Mobile' on the Landing page
+          with max-width 768 pixels.
+      14) Add an onClick event handler on the 'Get Started Free' text
+          that navigates to '/signup'.
+    domains:
+      - component
+      - node
+      - design
+      - variant
+      - data
+      - interaction
+      - inspect
+    tier: complex
+    timeout: 300
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+            - design
+            - variant
+            - data
+            - interaction
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: landing-primary
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: landing-dark
+      - type: existence
+        params:
+          entityType: token
+          name: landing-primary
+      - type: existence
+        params:
+          entityType: token
+          name: landing-dark
+      - type: tool-params
+        params:
+          tool: component
+          action: create-page
+          expected:
+            name: Landing
+            path: /landing
+      - type: existence
+        params:
+          entityType: page
+          name: Landing
+      - type: tool-params
+        params:
+          tool: data
+          action: add-query
+          expected:
+            name: getFeatures
+      - type: tool-params
+        params:
+          tool: data
+          action: set-data-rep
+          expected: {}
+      - type: tool-params
+        params:
+          tool: variant
+          action: create-screen
+          expected:
+            name: Mobile
+      - type: tool-params
+        params:
+          tool: interaction
+          action: add
+          expected:
+            event: onClick
+      - type: count
+        params:
+          min: 14
+          max: 40
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "Verify the Landing page tree shows heading, paragraph, 'Get Started Free' CTA text, and a FeatureList container with a repeat indicator in the correct order. The design system panel should list both landing-primary and landing-dark tokens, the variant list should include a Mobile breakpoint, the data panel should show the getFeatures query, and the CTA element's interaction panel should show an onClick handler navigating to '/signup'."
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Pricing Section with Variant Toggle
+  # Domains: component + node + variant + design + interaction + data
+  # Expected flow: create tokens → create component → add tier cards →
+  #   style → create billing toggle variant → add CTA handler →
+  #   set conditional rendering
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: complex-pricing-section
+    description: >
+      Build a pricing section with billing toggle:
+      1) Create a color token called 'pricing-bg' with value '#f8f9fa'.
+      2) Create a color token called 'pricing-highlight' with value '#28a745'.
+      3) Create a new reusable component called 'PricingSection'.
+      4) Add a heading inside it that says 'Choose Your Plan'.
+      5) Add a text element that says 'Basic — $9/mo'.
+      6) Add a text element that says 'Pro — $29/mo'.
+      7) Add a text element that says 'Enterprise — $99/mo'.
+      8) Style the heading with font size 36px, font weight bold,
+         and text alignment center.
+      9) Create a variant group called 'Billing' of type 'toggle'
+         on the PricingSection component.
+      10) Add an onClick event handler on the 'Enterprise' text
+          that navigates to '/contact-sales'.
+      11) Set a data condition on the 'Pro' text so it only renders
+          when '$ctx.showPro' is true.
+    domains:
+      - component
+      - node
+      - variant
+      - design
+      - interaction
+      - data
+    tier: complex
+    timeout: 240
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+            - component
+            - node
+            - variant
+            - interaction
+            - data
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: pricing-bg
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: pricing-highlight
+      - type: existence
+        params:
+          entityType: token
+          name: pricing-bg
+      - type: existence
+        params:
+          entityType: token
+          name: pricing-highlight
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: PricingSection
+      - type: existence
+        params:
+          entityType: component
+          name: PricingSection
+      - type: tool-params
+        params:
+          tool: variant
+          action: create-group
+          expected:
+            name: Billing
+      - type: tool-params
+        params:
+          tool: interaction
+          action: add
+          expected:
+            event: onClick
+      - type: tool-params
+        params:
+          tool: data
+          action: set-data-cond
+          expected: {}
+      - type: count
+        params:
+          min: 12
+          max: 35
+      - type: no-errors
+        params: {}
+    visual:
+      rubric: "Verify the PricingSection tree shows the heading and three pricing tier text elements (Basic, Pro, Enterprise), with the Pro element displaying a conditional rendering indicator. The variant panel should list the Billing toggle group, the Enterprise element's interaction panel should show an onClick handler, and the design system should list pricing-bg and pricing-highlight tokens."

@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "plasmic": {
+      "command": "node",
+      "args": ["packages/plasmic-mcp/dist/index.cjs"],
+      "env": {
+        "PLASMIC_AUTH_HOST": "${PLASMIC_AUTH_HOST}",
+        "PLASMIC_AUTH_USER": "${PLASMIC_AUTH_USER}",
+        "PLASMIC_AUTH_TOKEN": "${PLASMIC_AUTH_TOKEN}"
+      }
+    }
+  }
+}
