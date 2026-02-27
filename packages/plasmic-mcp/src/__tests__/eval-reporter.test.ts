@@ -25,12 +25,13 @@ vi.mock("../../evals/graders/review-flags.js", () => ({
 }));
 
 // Import after mocks
-const { generateRunId, generateReport } = await import(
+const { generateRunId, generateReport, loadPreviousReport } = await import(
   "../../evals/harness/reporter.js"
 );
 const { applyReviewFlags } = await import(
   "../../evals/graders/review-flags.js"
 );
+const fs = await import("fs");
 
 /** Helper to create a minimal ScenarioResult */
 function makeResult(overrides: Partial<ScenarioResult> = {}): ScenarioResult {
@@ -293,5 +294,64 @@ describe("generateReport — metadata", () => {
     expect(report.scenarios).toHaveLength(2);
     expect(report.scenarios[0].id).toBe("s1");
     expect(report.scenarios[1].id).toBe("s2");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// loadPreviousReport — P13.8 (scenarios validation)
+// ---------------------------------------------------------------------------
+describe("loadPreviousReport", () => {
+  it("returns null when results dir does not exist", () => {
+    (fs.existsSync as any).mockReturnValue(false);
+    expect(loadPreviousReport()).toBeNull();
+  });
+
+  it("returns null when results dir is empty", () => {
+    (fs.existsSync as any).mockReturnValue(true);
+    (fs.readdirSync as any).mockReturnValue([]);
+    expect(loadPreviousReport()).toBeNull();
+  });
+
+  it("returns valid report when file has proper structure", () => {
+    const report = {
+      timestamp: "2026-02-27T00:00:00.000Z",
+      aggregate: { total: 1 },
+      scenarios: [{ id: "s1", success: true }],
+    };
+    (fs.existsSync as any).mockReturnValue(true);
+    (fs.readdirSync as any).mockReturnValue(["2026-02-27-120000.json"]);
+    (fs.readFileSync as any).mockReturnValue(JSON.stringify(report));
+    expect(loadPreviousReport()).toEqual(report);
+  });
+
+  it("P13.8: returns null when report has no scenarios array", () => {
+    const badReport = {
+      timestamp: "2026-02-27T00:00:00.000Z",
+      aggregate: { total: 0 },
+      // scenarios is missing — would crash applyReviewFlags without P13.8
+    };
+    (fs.existsSync as any).mockReturnValue(true);
+    (fs.readdirSync as any).mockReturnValue(["2026-02-27-120000.json"]);
+    (fs.readFileSync as any).mockReturnValue(JSON.stringify(badReport));
+    expect(loadPreviousReport()).toBeNull();
+  });
+
+  it("P13.8: returns null when scenarios is not an array", () => {
+    const badReport = {
+      timestamp: "2026-02-27T00:00:00.000Z",
+      aggregate: { total: 0 },
+      scenarios: "not-an-array",
+    };
+    (fs.existsSync as any).mockReturnValue(true);
+    (fs.readdirSync as any).mockReturnValue(["2026-02-27-120000.json"]);
+    (fs.readFileSync as any).mockReturnValue(JSON.stringify(badReport));
+    expect(loadPreviousReport()).toBeNull();
+  });
+
+  it("returns null on malformed JSON", () => {
+    (fs.existsSync as any).mockReturnValue(true);
+    (fs.readdirSync as any).mockReturnValue(["2026-02-27-120000.json"]);
+    (fs.readFileSync as any).mockReturnValue("not json");
+    expect(loadPreviousReport()).toBeNull();
   });
 });

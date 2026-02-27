@@ -268,7 +268,10 @@ export function loadPreviousReport(): EvalReport | null {
   try {
     const content = readFileSync(join(RESULTS_DIR, latestFile), "utf-8");
     const report = JSON.parse(content) as EvalReport;
-    if (report.timestamp && report.aggregate) {
+    // P13.8: Validate scenarios is a proper array — a report with a missing or
+    // non-array scenarios field would cause applyReviewFlags to crash with
+    // "cannot read properties of undefined (reading 'map')".
+    if (report.timestamp && report.aggregate && Array.isArray(report.scenarios)) {
       return report;
     }
   } catch {

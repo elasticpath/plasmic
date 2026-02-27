@@ -46,15 +46,14 @@ export function computeReviewFlags(
   }
 
   // Flag 2: Low quality score (regardless of pass/fail)
-  // Even passing scenarios with low quality scores may need attention —
-  // they could represent technically-correct but poorly-executed results.
+  // P13.7: Always add low-quality when score <= 2, independently of judge-disagrees.
+  // Before this fix, success=true + score=1 would get only judge-disagrees but never
+  // low-quality, because the guard skipped low-quality when judge-disagrees was set
+  // AND result.success was true. Both flags carry distinct signals: judge-disagrees
+  // means the state check and judge conflict, while low-quality means the result
+  // needs attention regardless of whether graders agree.
   if (result.qualityScore !== null && result.qualityScore <= 2) {
-    // Avoid duplicate flagging: low-quality is separate from judge-disagrees
-    // because a failing scenario with score 2 should still be flagged for
-    // low quality even though the judge and state check agree.
-    if (!flags.includes("judge-disagrees") || !result.success) {
-      flags.push("low-quality");
-    }
+    flags.push("low-quality");
   }
 
   // Flag 3: New scenario — no baseline from previous run.

@@ -133,6 +133,22 @@ describe("computeReviewFlags", () => {
       expect(flags).toContain("low-quality");
     });
 
+    it("P13.7: flags low-quality even when success=true and score<=2", () => {
+      // Before P13.7 fix, success=true + score=1 would get judge-disagrees
+      // but NOT low-quality because the guard on line 55 skipped it.
+      const result = makeResult({ success: true, qualityScore: 1 });
+      const flags = computeReviewFlags(result);
+      expect(flags).toContain("judge-disagrees");
+      expect(flags).toContain("low-quality");
+    });
+
+    it("P13.7: flags low-quality alongside judge-disagrees for success=true, score=2", () => {
+      const result = makeResult({ success: true, qualityScore: 2 });
+      const flags = computeReviewFlags(result);
+      expect(flags).toContain("judge-disagrees");
+      expect(flags).toContain("low-quality");
+    });
+
     it("does NOT flag when quality score is 3", () => {
       const result = makeResult({ success: true, qualityScore: 3 });
       const flags = computeReviewFlags(result);
@@ -219,7 +235,8 @@ describe("applyReviewFlags", () => {
     ];
 
     const count = applyReviewFlags(results);
-    expect(count).toBe(2); // s1 (judge-disagrees) and s3 (judge-disagrees)
+    // s1 gets judge-disagrees + low-quality (P13.7), s3 gets judge-disagrees
+    expect(count).toBe(2);
   });
 
   it("uses previous report for new-scenario detection", () => {
