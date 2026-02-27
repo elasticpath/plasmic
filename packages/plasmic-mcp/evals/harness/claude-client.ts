@@ -32,6 +32,9 @@ export interface ConversationResult {
   timedOut: boolean;
   /** Claude asked clarifying questions instead of calling tools (spec SE3) */
   incomplete: boolean;
+  /** The 25-turn MAX_TURNS limit was hit without Claude ending the conversation (P12.5).
+   *  Without this flag, exhaustion looks like success — no timeout, no error, just silence. */
+  maxTurnsExhausted: boolean;
 }
 
 export class ClaudeClient {
@@ -65,6 +68,7 @@ export class ClaudeClient {
     let finalText = "";
     let timedOut = false;
     let incomplete = false;
+    let endTurnReached = false;
 
     const startTime = Date.now();
 
@@ -131,6 +135,7 @@ export class ClaudeClient {
 
       // end_turn = Claude is done (final text or clarifying question)
       if (response.stop_reason === "end_turn") {
+        endTurnReached = true;
         for (const block of response.content) {
           if (block.type === "text") {
             finalText += block.text;
@@ -153,17 +158,37 @@ export class ClaudeClient {
           if (block.type === "tool_use") {
             toolCallCount++;
 
-            // Execute the tool call via MCP client
+            // Execute the tool call via MCP client.
+            // P12.1: Wrap in Promise.race so a hanging Plasmic API call
+            // doesn't block the entire eval process indefinitely.
             let result: { content: string; isError: boolean };
             try {
-              result = await onToolCall(
-                block.name,
-                block.input as Record<string, unknown>
-              );
+              const toolRemainingMs = timeoutMs - (Date.now() - startTime);
+              if (toolRemainingMs <= 0) {
+                timedOut = true;
+                break;
+              }
+              result = await Promise.race([
+                onToolCall(
+                  block.name,
+                  block.input as Record<string, unknown>
+                ),
+                new Promise<never>((_, reject) =>
+                  setTimeout(
+                    () => reject(new Error("Tool call timeout")),
+                    toolRemainingMs
+                  )
+                ),
+              ]);
             } catch (err: any) {
-              // Tool errors don't stop the conversation — Claude may
-              // self-correct on the next turn (spec EC1)
-              result = { content: `Error: ${err.message}`, isError: true };
+              if (err.message === "Tool call timeout") {
+                timedOut = true;
+                result = { content: "Error: Tool call timed out", isError: true };
+              } else {
+                // Tool errors don't stop the conversation — Claude may
+                // self-correct on the next turn (spec EC1)
+                result = { content: `Error: ${err.message}`, isError: true };
+              }
             }
 
             // Record tool result in transcript (truncated for readability)
@@ -188,10 +213,19 @@ export class ClaudeClient {
           }
         }
 
+        // If a tool call timed out, stop the conversation
+        if (timedOut) break;
+
         // Continue conversation with tool results
         messages.push({ role: "user", content: toolResults });
       }
     }
+
+    // P12.5: Detect MAX_TURNS exhaustion — the loop ran all 25 turns without
+    // Claude ending the conversation or timing out. Without this flag, the
+    // result looks like a success (timedOut=false, no errors), masking the
+    // fact that Claude was stuck in a loop.
+    const maxTurnsExhausted = !timedOut && !endTurnReached;
 
     return {
       transcript,
@@ -201,6 +235,7 @@ export class ClaudeClient {
       finalText,
       timedOut,
       incomplete,
+      maxTurnsExhausted,
     };
   }
 }

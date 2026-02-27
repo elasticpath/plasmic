@@ -147,3 +147,295 @@ scenarios:
           max: 20
     visual:
       rubric: "Verify the component's variant panel shows a new style variant created with the code component's CSS selector. The style inspector should show variant-specific styles applied to the root element under that variant state. The variant list should show both the original code component variants and the newly created style variant."
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # P11.5 — Missing variant action coverage scenarios
+  # Each scenario tests a single variant action that previously had zero
+  # eval coverage. Covers global groups, screen updates, renaming, removal.
+  # ═══════════════════════════════════════════════════════════════════════
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: variant.list-global-groups — list global variant groups
+  # Why: Global group discovery is needed before managing site-level
+  # variants. Without coverage, listing bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: variant-list-global-groups
+    description: "List all global variant groups defined in the project using variant.list-global-groups."
+    domains:
+      - variant
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - variant
+      - type: tool-params
+        params:
+          tool: variant
+          action: list-global-groups
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 1
+          max: 5
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: variant.create-global-group — create a global variant group
+  # Why: Global groups enable site-wide variant toggling (e.g., Theme).
+  # Without coverage, group creation bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: variant-create-global-group
+    description: "Create a global variant group called 'Theme' with type 'single' and initial variants 'Light' and 'Dark' using variant.create-global-group."
+    domains:
+      - variant
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - variant
+      - type: tool-params
+        params:
+          tool: variant
+          action: create-global-group
+          expected:
+            name: Theme
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 1
+          max: 5
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: variant.add-global — add a variant to a global group
+  # Why: Adding variants to groups is how the design system grows.
+  # Without coverage, variant addition bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: variant-add-global
+    description: "Create a global variant group called 'Density' with type 'single' and initial variant 'Default'. Then add a new variant called 'Compact' to the 'Density' group using variant.add-global."
+    domains:
+      - variant
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - variant
+      - type: tool-params
+        params:
+          tool: variant
+          action: create-global-group
+          expected:
+            name: Density
+      - type: tool-params
+        params:
+          tool: variant
+          action: add-global
+          expected:
+            name: Compact
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 2
+          max: 8
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: variant.remove-global-group — delete a global variant group
+  # Why: Group removal is needed for design system cleanup. Without
+  # coverage, removal failures or stale refs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: variant-remove-global-group
+    description: "Create a global variant group called 'TempGroup' with type 'single' and initial variant 'Default'. Then delete the entire group using variant.remove-global-group. List global groups to verify it was removed."
+    domains:
+      - variant
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - variant
+      - type: tool-params
+        params:
+          tool: variant
+          action: create-global-group
+          expected:
+            name: TempGroup
+      - type: tool-params
+        params:
+          tool: variant
+          action: remove-global-group
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 3
+          max: 8
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: variant.rename-global — rename a global variant
+  # Why: Variant renaming is needed for design system maintenance.
+  # Without coverage, rename failures go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: variant-rename-global
+    description: "Create a global variant group called 'Mode' with type 'single' and initial variants 'OldName'. Then rename the 'OldName' variant to 'NewName' using variant.rename-global."
+    domains:
+      - variant
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - variant
+      - type: tool-params
+        params:
+          tool: variant
+          action: create-global-group
+          expected:
+            name: Mode
+      - type: tool-params
+        params:
+          tool: variant
+          action: rename-global
+          expected:
+            newName: NewName
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 2
+          max: 8
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: variant.update-screen — update a screen variant breakpoint
+  # Why: Responsive breakpoint tuning is how designers adapt layouts.
+  # Without coverage, breakpoint update bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: variant-update-screen
+    description: "Create a screen variant called 'Tablet' with maxWidth 1024. Then update it using variant.update-screen to change the maxWidth to 900."
+    domains:
+      - variant
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - variant
+      - type: tool-params
+        params:
+          tool: variant
+          action: create-screen
+          expected:
+            maxWidth: 1024
+      - type: tool-params
+        params:
+          tool: variant
+          action: update-screen
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 2
+          max: 8
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: variant.rename — rename a style variant
+  # Why: Variant renaming is needed for component maintenance.
+  # Without coverage, rename failures go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: variant-rename
+    description: "Create a new reusable component called 'RenameVarTest'. Create a style variant on it using variant.create-style with selector ':hover'. Then rename that variant to 'HoverState' using variant.rename."
+    domains:
+      - variant
+      - component
+    tier: medium
+    timeout: 120
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - variant
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: RenameVarTest
+      - type: tool-params
+        params:
+          tool: variant
+          action: create-style
+          expected: {}
+      - type: tool-params
+        params:
+          tool: variant
+          action: rename
+          expected:
+            newName: HoverState
+      - type: count
+        params:
+          min: 3
+          max: 12
+      - type: no-errors
+        params: {}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: variant.remove — remove a style variant
+  # Why: Variant removal must cleanly unbind variant settings. Without
+  # coverage, dangling variant references go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: variant-remove
+    description: "Create a new reusable component called 'RemoveVarTest'. Create a style variant on it using variant.create-style with selector ':focus'. Then remove that variant using variant.remove. List variants to verify it was removed."
+    domains:
+      - variant
+      - component
+    tier: medium
+    timeout: 120
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - variant
+      - type: tool-params
+        params:
+          tool: component
+          action: create
+          expected:
+            name: RemoveVarTest
+      - type: tool-params
+        params:
+          tool: variant
+          action: create-style
+          expected: {}
+      - type: tool-params
+        params:
+          tool: variant
+          action: remove
+          expected: {}
+      - type: count
+        params:
+          min: 4
+          max: 12
+      - type: no-errors
+        params: {}

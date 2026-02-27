@@ -193,6 +193,43 @@ describe("getAuth", () => {
     expect(() => getAuth()).toThrow("Plasmic authentication required");
   });
 
+  it("warns when auth file has invalid JSON instead of silently ignoring", async () => {
+    const mockReadFileSync = vi.fn((filePath: any) => {
+      if (String(filePath).endsWith(".plasmic.auth")) {
+        return "{ not valid json !!!";
+      }
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    });
+
+    const getAuth = await loadGetAuthWithMocks(
+      mockReadFileSync,
+      vi.fn(() => "/mock/home")
+    );
+    // Should still throw because no valid auth is found
+    expect(() => getAuth()).toThrow("Plasmic authentication required");
+    // But should warn about the malformed file
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("could not read it")
+    );
+  });
+
+  it("does not warn when auth file simply does not exist", async () => {
+    const enoentErr = Object.assign(new Error("ENOENT: no such file"), { code: "ENOENT" });
+    const mockReadFileSync = vi.fn(() => { throw enoentErr; });
+
+    const getAuth = await loadGetAuthWithMocks(
+      mockReadFileSync,
+      vi.fn(() => "/mock/home")
+    );
+    expect(() => getAuth()).toThrow("Plasmic authentication required");
+    // Should NOT warn about missing files (expected case)
+    const errorCalls = (console.error as ReturnType<typeof vi.fn>).mock.calls;
+    const warningCalls = errorCalls.filter(
+      (c: any) => typeof c[0] === "string" && c[0].includes("could not read it")
+    );
+    expect(warningCalls).toHaveLength(0);
+  });
+
   it("throws descriptive error when no auth source available", async () => {
     const getAuth = await loadGetAuthWithMocks(
       vi.fn(() => { throw new Error("ENOENT"); }),

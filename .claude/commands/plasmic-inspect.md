@@ -21,7 +21,7 @@ You are inspecting a Plasmic project to help the developer understand its struct
 - `data({ action: "list-queries", componentUuid })` — Data queries (client + server) with name, body expression.
 - `interaction({ action: "list", componentUuid, nodeRef })` — Event handlers: event name, action type, args.
 - `inspect({ action: "style-properties", filter? })` — Valid CSS property names (optional substring filter).
-- `variant({ action: "list", componentUuid })` — Global (breakpoints), component (custom), style (hover/focus), and code component variants. Code component variants appear in a separate `codeComponentVariants` array with `key`, `displayName`, `cssSelector`, and `codeComponentName` fields. Stale variants are marked `invalid: true`.
+- `variant({ action: "list", componentUuid })` — Global (breakpoints), component (custom), style (hover/focus), and code component variants. Code component variants appear in a separate `codeComponentVariants` array with `key`, `displayName`, `cssSelector`, and `codeComponentName` fields. Stale variants are marked `invalid: true`. Code component variants require dev host sync — if the array is empty, check `devHostSynced` from the `project.set` response.
 - `data({ action: "get-code-meta", componentUuid })` — Code component metadata: importPath, displayName, description, props with types/defaults.
 
 ### Design System

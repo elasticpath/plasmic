@@ -315,6 +315,89 @@ npm run eval:cleanup     # Clean up old results (90-day retention)
 
 The eval harness runs YAML-defined scenarios at mock and integration tiers, grading results with state checks, visual LLM judge, and human spot-check flags.
 
+## Dev Host Variant Sync
+
+Code component variants (e.g., "Selected", "Disabled" states) are not stored in the persisted project bundle — Studio normally gets them by connecting to the dev host via iframe. The MCP has no browser, so it fetches the same data via an HTTP API route.
+
+### How It Works
+
+On `project.set`, if the project has a `hostUrl` configured, dev host sync runs automatically. On `project.refresh`, the dev host is re-queried and fresh variant data replaces the previous sync results. Steps:
+
+1. MCP fetches `{hostUrl}/api/plasmic-registry` (5-second timeout)
+2. Extracts only variant-bearing components from the response
+3. Populates `codeComponentMeta.variants` on matching code components in the site model
+4. Creates `Variant` objects on wrapper components for each variant key
+5. Records minimal sync state: `{ devHostSynced: true, syncedVariantComponents: [...] }`
+
+Sync failure is non-fatal — if the dev host is offline or returns an error, the project loads normally without variant data.
+
+### Prerequisites
+
+- The Plasmic project must have `hostUrl` set in project settings (e.g., `http://localhost:3388`)
+- The dev host app must expose a `/api/plasmic-registry` endpoint using `@elasticpath/plasmic-mcp-registry`
+
+### Setting Up the Dev Host API Route
+
+Install the registry package and add an API route to your Next.js dev host app:
+
+```typescript
+// app/api/plasmic-registry/route.ts
+import "../../../plasmic-init-server";
+import { getFullRegistry } from "@elasticpath/plasmic-mcp-registry";
+
+export function GET() {
+  return Response.json(getFullRegistry());
+}
+```
+
+Where `plasmic-init-server.ts` is a server-compatible version of your component registration file (no `"use client"` directive).
+
+### Verifying the Sync
+
+After `project.set`, the response includes sync status:
+
+```json
+{
+  "projectId": "abc123",
+  "projectName": "My Project",
+  "componentCount": 42,
+  "pageCount": 5,
+  "devHostSynced": true,
+  "syncedVariantComponents": ["EPBundleOptionTrigger$dev"]
+}
+```
+
+Call `variant.list` on a wrapper component to see code component variants:
+
+```json
+{
+  "action": "list",
+  "componentUuid": "<wrapper-component-uuid>"
+}
+```
+
+Response includes `codeComponentVariants`:
+
+```json
+{
+  "codeComponentVariants": [
+    { "key": "selected", "displayName": "Selected", "cssSelector": "[data-selected]" }
+  ]
+}
+```
+
+Then style the variant:
+
+```json
+{
+  "action": "update-styles",
+  "componentUuid": "<wrapper-uuid>",
+  "nodeRef": "root",
+  "variant": "selected",
+  "styles": { "backgroundColor": "#e0f0ff" }
+}
+```
+
 ## Architecture
 
 - **STRAP pattern** — 8 domain tools consolidate 103 actions, keeping the MCP tool surface manageable for LLMs
@@ -322,6 +405,7 @@ The eval harness runs YAML-defined scenarios at mock and integration tiers, grad
 - **Vitest workspace** — unit tests (mocked WAB) + integration tests (real WAB classes)
 - **Stdio transport** — JSON-RPC over stdin/stdout; all logging goes to stderr
 - **Eval system** — YAML scenarios, three-tier grading (state checks, visual LLM judge, human spot-check), Playwright visual capture
+- **Dev Host Sync** — automatic code component variant discovery from running dev host via `/api/plasmic-registry`
 
 ## License
 

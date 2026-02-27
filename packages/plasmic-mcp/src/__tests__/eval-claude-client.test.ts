@@ -88,6 +88,7 @@ describe("ClaudeClient — single turn", () => {
     expect(result.toolCallCount).toBe(0);
     expect(result.timedOut).toBe(false);
     expect(result.incomplete).toBe(false);
+    expect(result.maxTurnsExhausted).toBe(false);
   });
 
   it("records user message in transcript", async () => {
@@ -352,5 +353,101 @@ describe("ClaudeClient — transcript truncation", () => {
     const toolEntry = result.transcript.find((e) => e.role === "tool_result");
     const parsed = JSON.parse(toolEntry!.content);
     expect(parsed.result.length).toBe(500);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P12.1 — Tool call timeout
+// ---------------------------------------------------------------------------
+describe("ClaudeClient — tool call timeout (P12.1)", () => {
+  it("times out when a tool call hangs past the remaining timeout", async () => {
+    // Turn 1: Claude calls a tool that will hang
+    mockCreate.mockResolvedValueOnce(
+      toolUseResponse([
+        { id: "call_1", name: "inspect", input: { action: "tree" } },
+      ])
+    );
+
+    const onToolCall = vi.fn(
+      () =>
+        new Promise<{ content: string; isError: boolean }>((resolve) =>
+          setTimeout(() => resolve({ content: "{}", isError: false }), 5000)
+        )
+    );
+
+    const client = new ClaudeClient("test-key");
+    const result = await client.runConversation(
+      "System",
+      "Task",
+      dummyTools,
+      onToolCall,
+      100 // 100ms timeout — tool call will exceed this
+    );
+
+    expect(result.timedOut).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P12.5 — MAX_TURNS exhaustion
+// ---------------------------------------------------------------------------
+describe("ClaudeClient — MAX_TURNS exhaustion (P12.5)", () => {
+  it("sets maxTurnsExhausted when loop runs 25 tool_use turns without end_turn", async () => {
+    // Every API call returns tool_use, never end_turn — simulates infinite loop
+    mockCreate.mockImplementation(async () =>
+      toolUseResponse([
+        { id: `call_${Date.now()}`, name: "inspect", input: { action: "tree" } },
+      ])
+    );
+
+    const client = new ClaudeClient("test-key");
+    const result = await client.runConversation(
+      "System",
+      "Task",
+      dummyTools,
+      async () => ({ content: "{}", isError: false }),
+      600_000 // Long timeout so we don't hit it
+    );
+
+    expect(result.maxTurnsExhausted).toBe(true);
+    expect(result.timedOut).toBe(false);
+    expect(result.toolCallCount).toBe(25);
+  });
+
+  it("does NOT set maxTurnsExhausted on normal end_turn", async () => {
+    mockCreate.mockResolvedValueOnce(textResponse("Done."));
+
+    const client = new ClaudeClient("test-key");
+    const result = await client.runConversation(
+      "System",
+      "Task",
+      dummyTools,
+      async () => ({ content: "{}", isError: false })
+    );
+
+    expect(result.maxTurnsExhausted).toBe(false);
+    expect(result.timedOut).toBe(false);
+  });
+
+  it("does NOT set maxTurnsExhausted on timeout", async () => {
+    mockCreate.mockImplementation(
+      () =>
+        new Promise((resolve) =>
+          setTimeout(() => resolve(textResponse("Late")), 5000)
+        )
+    );
+
+    const client = new ClaudeClient("test-key");
+    const result = await client.runConversation(
+      "System",
+      "Task",
+      dummyTools,
+      async () => ({ content: "{}", isError: false }),
+      100
+    );
+
+    expect(result.timedOut).toBe(true);
+    // When timedOut is true, maxTurnsExhausted should be false
+    expect(result.maxTurnsExhausted).toBe(false);
   });
 });

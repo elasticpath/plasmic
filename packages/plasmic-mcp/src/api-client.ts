@@ -114,8 +114,8 @@ export class PlasmicApiClient {
         redirect: "manual",
         signal: AbortSignal.timeout(this.timeoutMs),
       });
-    } catch (err: any) {
-      if (err?.name === "TimeoutError") {
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === "TimeoutError") {
         throw new Error(
           `Request to Plasmic API timed out after ${this.timeoutMs / 1000}s (${method} ${urlPath}). ` +
             `The server may be under heavy load. Try again in a moment.`
@@ -123,7 +123,7 @@ export class PlasmicApiClient {
       }
       throw new Error(
         `Could not reach Plasmic API at ${this.auth.host}. ` +
-          `Check your network and PLASMIC_AUTH_HOST setting. (${err})`
+          `Check your network and PLASMIC_AUTH_HOST setting. (${err instanceof Error ? err.message : String(err)})`
       );
     }
 
@@ -185,20 +185,30 @@ export class PlasmicApiClient {
     console.error("[plasmic-mcp] CSRF token obtained");
   }
 
+  /**
+   * Clear accumulated cookies and cached CSRF token.
+   * Called on project.set to prevent session state from one project
+   * leaking into API calls for the next project.
+   */
+  clearSessionState(): void {
+    this.cookies.clear();
+    this.csrfToken = undefined;
+  }
+
   async listProjects(): Promise<ListProjectsResponse> {
     try {
       return await this.request<ListProjectsResponse>(
         "GET",
         "/api/v1/projects?query=all"
       );
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Add specific guidance for list-projects failures
       const hint =
         `Failed to list projects. ` +
         `Check that: (1) PLASMIC_AUTH_USER and PLASMIC_AUTH_TOKEN are correct, ` +
         `(2) the Plasmic server at ${this.auth.host} is reachable, ` +
         `(3) your API token has project access permissions.`;
-      throw new Error(`${hint} Original error: ${err.message}`);
+      throw new Error(`${hint} Original error: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 

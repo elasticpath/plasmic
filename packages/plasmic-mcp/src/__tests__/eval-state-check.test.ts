@@ -44,12 +44,12 @@ function mockMcpClient(
 // existence grader — component/page
 // ---------------------------------------------------------------------------
 describe("existence grader — component/page", () => {
-  it("passes when component is found by name (case-insensitive substring)", () => {
+  it("passes when component is found by exact name (case-insensitive)", () => {
     const client = mockMcpClient({
       "component.list": {
         content: JSON.stringify({
           pages: [{ name: "Home Page", uuid: "p1" }],
-          components: [{ name: "My Hero Card", uuid: "c1" }],
+          components: [{ name: "Hero Card", uuid: "c1" }],
         }),
         isError: false,
       },
@@ -63,6 +63,47 @@ describe("existence grader — component/page", () => {
       expect(result.passed).toBe(true);
       expect(result.graderType).toBe("existence");
       expect(result.message).toContain('Found component matching "hero card"');
+    });
+  });
+
+  it("fails with exact matching when name is a substring (P13.2)", () => {
+    const client = mockMcpClient({
+      "component.list": {
+        content: JSON.stringify({
+          pages: [],
+          components: [{ name: "CreditCard", uuid: "c1" }],
+        }),
+        isError: false,
+      },
+    });
+    const config: GraderConfig = {
+      type: "existence",
+      params: { entityType: "component", name: "Card" },
+    };
+
+    return runStateGrader(config, client).then((result) => {
+      expect(result.passed).toBe(false);
+      // "Card" should NOT match "CreditCard" with exact matching
+    });
+  });
+
+  it("passes with substring matching when exact: false", () => {
+    const client = mockMcpClient({
+      "component.list": {
+        content: JSON.stringify({
+          pages: [],
+          components: [{ name: "My Hero Card", uuid: "c1" }],
+        }),
+        isError: false,
+      },
+    });
+    const config: GraderConfig = {
+      type: "existence",
+      params: { entityType: "component", name: "hero card", exact: false },
+    };
+
+    return runStateGrader(config, client).then((result) => {
+      expect(result.passed).toBe(true);
     });
   });
 
@@ -100,11 +141,55 @@ describe("existence grader — component/page", () => {
     });
     const config: GraderConfig = {
       type: "existence",
-      params: { entityType: "page", name: "about" },
+      params: { entityType: "page", name: "About Page" },
     };
 
     return runStateGrader(config, client).then((result) => {
       expect(result.passed).toBe(true);
+    });
+  });
+
+  it("P13.3: page search does not match components", () => {
+    const client = mockMcpClient({
+      "component.list": {
+        content: JSON.stringify({
+          pages: [{ name: "Home", uuid: "p1" }],
+          components: [{ name: "Contact", uuid: "c1" }],
+        }),
+        isError: false,
+      },
+    });
+    const config: GraderConfig = {
+      type: "existence",
+      params: { entityType: "page", name: "Contact" },
+    };
+
+    return runStateGrader(config, client).then((result) => {
+      expect(result.passed).toBe(false);
+      // "Contact" is a component, not a page — should not be found
+      expect(result.details?.availableNames).toEqual(["Home"]);
+    });
+  });
+
+  it("P13.3: component search does not match pages", () => {
+    const client = mockMcpClient({
+      "component.list": {
+        content: JSON.stringify({
+          pages: [{ name: "About", uuid: "p1" }],
+          components: [{ name: "Header", uuid: "c1" }],
+        }),
+        isError: false,
+      },
+    });
+    const config: GraderConfig = {
+      type: "existence",
+      params: { entityType: "component", name: "About" },
+    };
+
+    return runStateGrader(config, client).then((result) => {
+      expect(result.passed).toBe(false);
+      // "About" is a page, not a component
+      expect(result.details?.availableNames).toEqual(["Header"]);
     });
   });
 
@@ -131,7 +216,7 @@ describe("existence grader — component/page", () => {
 // existence grader — node
 // ---------------------------------------------------------------------------
 describe("existence grader — node", () => {
-  it("passes when node is found in the tree", () => {
+  it("passes when node is found in the tree (exact, case-insensitive)", () => {
     const client = mockMcpClient({
       "inspect.summary": {
         content: JSON.stringify({
@@ -152,6 +237,29 @@ describe("existence grader — node", () => {
     return runStateGrader(config, client).then((result) => {
       expect(result.passed).toBe(true);
       expect(result.message).toContain('Found node matching "target button"');
+    });
+  });
+
+  it("P13.2: node exact matching rejects substring matches", () => {
+    const client = mockMcpClient({
+      "inspect.summary": {
+        content: JSON.stringify({
+          name: "root",
+          children: [
+            { name: "SubmitButton", children: [] },
+          ],
+        }),
+        isError: false,
+      },
+    });
+    const config: GraderConfig = {
+      type: "existence",
+      params: { entityType: "node", name: "Button", componentUuid: "comp-1" },
+    };
+
+    return runStateGrader(config, client).then((result) => {
+      expect(result.passed).toBe(false);
+      // "Button" should NOT match "SubmitButton" with default exact matching
     });
   });
 
@@ -211,7 +319,7 @@ describe("existence grader — node", () => {
 // existence grader — token
 // ---------------------------------------------------------------------------
 describe("existence grader — token", () => {
-  it("passes when token is found", () => {
+  it("passes when token is found (exact, case-insensitive)", () => {
     const client = mockMcpClient({
       "design.list-tokens": {
         content: JSON.stringify({
@@ -225,7 +333,7 @@ describe("existence grader — token", () => {
     });
     const config: GraderConfig = {
       type: "existence",
-      params: { entityType: "token", name: "primary" },
+      params: { entityType: "token", name: "primary blue" },
     };
 
     return runStateGrader(config, client).then((result) => {
@@ -261,7 +369,7 @@ describe("existence grader — token", () => {
     });
     const config: GraderConfig = {
       type: "existence",
-      params: { entityType: "token", name: "spacing" },
+      params: { entityType: "token", name: "Spacing Small" },
     };
 
     return runStateGrader(config, client).then((result) => {
@@ -292,7 +400,7 @@ describe("existence grader — token", () => {
 // existence grader — variant
 // ---------------------------------------------------------------------------
 describe("existence grader — variant", () => {
-  it("passes when variant is found in styleVariants", () => {
+  it("passes when variant is found in styleVariants (exact, case-insensitive)", () => {
     const client = mockMcpClient({
       "variant.list": {
         content: JSON.stringify({
@@ -314,7 +422,7 @@ describe("existence grader — variant", () => {
     });
   });
 
-  it("passes when variant is found inside variantGroups", () => {
+  it("passes when variant is found inside variantGroups (exact, case-insensitive)", () => {
     const client = mockMcpClient({
       "variant.list": {
         content: JSON.stringify({
@@ -388,7 +496,7 @@ describe("existence grader — mixin", () => {
     });
     const config: GraderConfig = {
       type: "existence",
-      params: { entityType: "mixin", name: "card" },
+      params: { entityType: "mixin", name: "Card Shadow" },
     };
 
     return runStateGrader(config, client).then((result) => {
@@ -460,6 +568,58 @@ describe("property grader", () => {
     return runStateGrader(config, client).then((result) => {
       expect(result.passed).toBe(true);
       expect(result.message).toBe("All property checks passed");
+    });
+  });
+
+  it("P13.1: handles numeric style values without TypeError", () => {
+    const client = mockMcpClient({
+      "inspect.node": {
+        content: JSON.stringify({
+          styles: { "line-height": 1.5, opacity: 0.8 },
+          text: "",
+          attrs: {},
+        }),
+        isError: false,
+      },
+    });
+    const config: GraderConfig = {
+      type: "property",
+      params: {
+        componentUuid: "c1",
+        nodeRef: "text-1",
+        styles: { "line-height": "1.5" },
+      },
+    };
+
+    return runStateGrader(config, client).then((result) => {
+      expect(result.passed).toBe(true);
+      // Before P13.1, this would throw TypeError: actual.toLowerCase is not a function
+    });
+  });
+
+  it("P13.1: handles falsy numeric style value (0)", () => {
+    const client = mockMcpClient({
+      "inspect.node": {
+        content: JSON.stringify({
+          styles: { opacity: 0 },
+          text: "",
+          attrs: {},
+        }),
+        isError: false,
+      },
+    });
+    const config: GraderConfig = {
+      type: "property",
+      params: {
+        componentUuid: "c1",
+        nodeRef: "hidden",
+        styles: { opacity: "0" },
+      },
+    };
+
+    return runStateGrader(config, client).then((result) => {
+      expect(result.passed).toBe(true);
+      // 0 is falsy but should be coerced to "0" via String(), not treated as missing
     });
   });
 
@@ -636,7 +796,7 @@ describe("property grader — componentName resolution", () => {
     const config: GraderConfig = {
       type: "property",
       params: {
-        componentName: "card component",
+        componentName: "My Card Component",
         nodeRef: "heading",
         styles: { color: "red" },
       },
@@ -937,6 +1097,101 @@ describe("data grader — queries", () => {
       expect(result.passed).toBe(true);
     });
   });
+
+  it("P13.9: passes when named query exists", () => {
+    const client = mockMcpClient({
+      "data.list-queries": {
+        content: JSON.stringify({
+          queries: [
+            { name: "fetchUsers", queryType: "dataQuery", uuid: "q1" },
+            { name: "fetchProducts", queryType: "serverQuery", uuid: "q2" },
+          ],
+        }),
+        isError: false,
+      },
+    });
+    const config: GraderConfig = {
+      type: "data",
+      params: { componentUuid: "c1", checkType: "queries", name: "fetchUsers" },
+    };
+
+    return runStateGrader(config, client).then((result) => {
+      expect(result.passed).toBe(true);
+    });
+  });
+
+  it("P13.9: fails when named query does not exist", () => {
+    const client = mockMcpClient({
+      "data.list-queries": {
+        content: JSON.stringify({
+          queries: [{ name: "fetchProducts", uuid: "q1" }],
+        }),
+        isError: false,
+      },
+    });
+    const config: GraderConfig = {
+      type: "data",
+      params: { componentUuid: "c1", checkType: "queries", name: "fetchUsers" },
+    };
+
+    return runStateGrader(config, client).then((result) => {
+      expect(result.passed).toBe(false);
+      expect(result.message).toContain('No query found with name "fetchUsers"');
+    });
+  });
+
+  it("P13.9: validates queryType on named query", () => {
+    const client = mockMcpClient({
+      "data.list-queries": {
+        content: JSON.stringify({
+          queries: [
+            { name: "fetchUsers", queryType: "dataQuery", uuid: "q1" },
+          ],
+        }),
+        isError: false,
+      },
+    });
+    const config: GraderConfig = {
+      type: "data",
+      params: {
+        componentUuid: "c1",
+        checkType: "queries",
+        name: "fetchUsers",
+        queryType: "serverQuery",
+      },
+    };
+
+    return runStateGrader(config, client).then((result) => {
+      expect(result.passed).toBe(false);
+      expect(result.message).toContain('Query "fetchUsers" has type "dataQuery", expected "serverQuery"');
+    });
+  });
+
+  it("P13.9: passes when queryType matches", () => {
+    const client = mockMcpClient({
+      "data.list-queries": {
+        content: JSON.stringify({
+          queries: [
+            { name: "fetchUsers", queryType: "dataQuery", uuid: "q1" },
+          ],
+        }),
+        isError: false,
+      },
+    });
+    const config: GraderConfig = {
+      type: "data",
+      params: {
+        componentUuid: "c1",
+        checkType: "queries",
+        name: "fetchUsers",
+        queryType: "dataQuery",
+      },
+    };
+
+    return runStateGrader(config, client).then((result) => {
+      expect(result.passed).toBe(true);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1012,6 +1267,58 @@ describe("data grader — interactions", () => {
 
     return runStateGrader(config, client).then((result) => {
       expect(result.passed).toBe(true);
+    });
+  });
+
+  it("P13.9: passes when expected event handler exists", () => {
+    const client = mockMcpClient({
+      "interaction.list": {
+        content: JSON.stringify({
+          interactions: [
+            { event: "onClick", action: "navigation" },
+            { event: "onChange", action: "updateVariable" },
+          ],
+        }),
+        isError: false,
+      },
+    });
+    const config: GraderConfig = {
+      type: "data",
+      params: {
+        componentUuid: "c1",
+        checkType: "interactions",
+        nodeRef: "btn",
+        event: "onClick",
+      },
+    };
+
+    return runStateGrader(config, client).then((result) => {
+      expect(result.passed).toBe(true);
+    });
+  });
+
+  it("P13.9: fails when expected event handler does not exist", () => {
+    const client = mockMcpClient({
+      "interaction.list": {
+        content: JSON.stringify({
+          interactions: [{ event: "onClick", action: "navigation" }],
+        }),
+        isError: false,
+      },
+    });
+    const config: GraderConfig = {
+      type: "data",
+      params: {
+        componentUuid: "c1",
+        checkType: "interactions",
+        nodeRef: "btn",
+        event: "onSubmit",
+      },
+    };
+
+    return runStateGrader(config, client).then((result) => {
+      expect(result.passed).toBe(false);
+      expect(result.message).toContain('No interaction found with event "onSubmit"');
     });
   });
 });

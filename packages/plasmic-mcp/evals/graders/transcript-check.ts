@@ -101,11 +101,14 @@ function gradeToolSequence(
 
 /**
  * tool-params: Check that a specific tool call included expected parameters.
- * Uses substring matching for strings to handle flexible formatting.
+ * P13.4: Uses exact matching for strings by default. Pass `substring: true`
+ * in params to enable case-insensitive substring matching for cases where
+ * Claude may use flexible formatting (e.g., "My Primary Color" containing "primary").
  *
  * params.tool: string — tool name
  * params.action: string — action parameter value (optional)
  * params.expected: Record<string, unknown> — expected parameter subset
+ * params.substring: boolean — optional, default false. When true, uses substring matching for strings.
  */
 function gradeToolParams(
   params: Record<string, unknown>,
@@ -114,6 +117,7 @@ function gradeToolParams(
   const toolName = params.tool as string;
   const action = params.action as string | undefined;
   const expected = (params.expected as Record<string, unknown>) ?? {};
+  const useSubstring = params.substring === true; // P13.4: default exact
 
   const matchingCalls = toolCalls.filter((t) => {
     if (t.name !== toolName) return false;
@@ -134,7 +138,11 @@ function gradeToolParams(
     const allMatch = Object.entries(expected).every(([key, value]) => {
       const actual = call.input[key];
       if (typeof value === "string" && typeof actual === "string") {
-        return actual.toLowerCase().includes(value.toLowerCase());
+        // P13.4: exact match by default prevents "red" matching "bordered"
+        if (useSubstring) {
+          return actual.toLowerCase().includes(value.toLowerCase());
+        }
+        return actual.toLowerCase() === value.toLowerCase();
       }
       return JSON.stringify(actual) === JSON.stringify(value);
     });

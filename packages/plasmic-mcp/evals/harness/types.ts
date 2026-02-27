@@ -33,6 +33,10 @@ export interface EvalScenario {
    *  Omit to run in both. project-save-refresh requires integration because
    *  mock mode reloads the static fixture on refresh, erasing in-memory changes. */
   requiredMode?: "mock" | "integration";
+  /** SHA256 hash of scenario content for change detection (P14.3).
+   *  When a scenario's description, graders, setup, etc. change, the hash changes,
+   *  causing resume/skip to re-run the scenario instead of reusing stale results. */
+  contentHash?: string;
 }
 
 export interface GraderConfig {
@@ -114,6 +118,10 @@ export interface ScenarioResult {
   needsReview?: boolean;
   /** Reasons why this scenario was flagged for review */
   reviewFlags?: string[];
+  /** SHA256 hash of the scenario definition at time of execution (P14.3).
+   *  Stored in the report so findPassedScenarioIds can detect when a scenario's
+   *  content has changed since the last passing run. */
+  scenarioHash?: string;
 }
 
 // --- Human Review Overrides ---

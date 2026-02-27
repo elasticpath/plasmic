@@ -263,6 +263,7 @@ Valid types: `img`, `text`, `box`, `vbox`, `hbox`, `page-section`, `button`, `in
 1. Call `variant({ action: "list", componentUuid })` to see available variants.
 2. Identify variant by name (e.g., "Mobile"), UUID, or selector (e.g., ":hover").
    - **Code component variants** (e.g., "Selected", "Pressed") appear in the `codeComponentVariants` array. Target them by key (e.g., `"selected"`), display name (e.g., `"Selected"`), or UUID.
+   - Code component variants require dev host sync — if `codeComponentVariants` is empty, check that `project.set` returned `devHostSynced: true`. If not, ensure the dev host is running and call `project({ action: "refresh" })`.
 3. **If it doesn't exist**, create it:
    - Interactive states: `variant({ action: "create-style", componentUuid: uuid, selector: ":hover" })`
    - Code component states: `variant({ action: "create-style", componentUuid: uuid, selector: "[data-selected]" })` — only works when the component root is a registered code component with that selector

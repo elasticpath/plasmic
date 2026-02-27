@@ -101,20 +101,30 @@ export async function runLlmJudge(options: {
     source: { type: "base64"; media_type: "image/png"; data: string };
   }> = [];
 
+  // P13.5: Wrap readFileSync in try/catch — a race condition (file deleted between
+  // existsSync and readFileSync) or permissions error would crash the judge.
   if (screenshotPaths.desktop && existsSync(screenshotPaths.desktop)) {
-    const data = readFileSync(screenshotPaths.desktop).toString("base64");
-    imageBlocks.push({
-      type: "image",
-      source: { type: "base64", media_type: "image/png", data },
-    });
+    try {
+      const data = readFileSync(screenshotPaths.desktop).toString("base64");
+      imageBlocks.push({
+        type: "image",
+        source: { type: "base64", media_type: "image/png", data },
+      });
+    } catch {
+      // File read failed — skip this screenshot
+    }
   }
 
   if (screenshotPaths.mobile && existsSync(screenshotPaths.mobile)) {
-    const data = readFileSync(screenshotPaths.mobile).toString("base64");
-    imageBlocks.push({
-      type: "image",
-      source: { type: "base64", media_type: "image/png", data },
-    });
+    try {
+      const data = readFileSync(screenshotPaths.mobile).toString("base64");
+      imageBlocks.push({
+        type: "image",
+        source: { type: "base64", media_type: "image/png", data },
+      });
+    } catch {
+      // File read failed — skip this screenshot
+    }
   }
 
   // Need at least one screenshot to judge
@@ -183,11 +193,14 @@ export async function runLlmJudge(options: {
 /**
  * Parse the structured SCORE/RATIONALE response from the judge.
  * Returns null if the response doesn't match the expected format.
+ *
+ * P13.6: Uses \d+ to match multi-digit numbers. Without this,
+ * "SCORE: 10" would be parsed as 1 instead of being rejected.
  */
-function parseJudgeResponse(
+export function parseJudgeResponse(
   text: string
 ): { score: number; rationale: string } | null {
-  const scoreMatch = text.match(/SCORE:\s*(\d)/);
+  const scoreMatch = text.match(/SCORE:\s*(\d+)/);
   if (!scoreMatch) return null;
 
   const score = parseInt(scoreMatch[1], 10);
@@ -206,7 +219,7 @@ function parseJudgeResponse(
  * Only includes tool call names and brief results, keeping token usage low.
  * The judge needs to know what the AI did, not every JSON payload.
  */
-function formatTranscriptForJudge(transcript: TranscriptEntry[]): string {
+export function formatTranscriptForJudge(transcript: TranscriptEntry[]): string {
   const lines: string[] = [];
   let callNum = 0;
 

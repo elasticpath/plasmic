@@ -38,8 +38,11 @@ import { VisualCapture } from "./visual/capture.js";
 import { getAuthConfig } from "./visual/auth.js";
 import type { EvalOptions } from "./harness/types.js";
 
+const VALID_TIERS = ["simple", "medium", "complex"];
+
 function parseArgs(args: string[]): EvalOptions & { help?: boolean } {
   const options: EvalOptions & { help?: boolean } = {};
+  const unknownFlags: string[] = [];
 
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -83,7 +86,34 @@ function parseArgs(args: string[]): EvalOptions & { help?: boolean } {
       case "-h":
         options.help = true;
         break;
+      default:
+        // P14.4: Track unrecognized flags so we can warn the user.
+        // Silently ignoring unknown flags makes typos like --tier simpel
+        // very hard to debug — zero scenarios match but no error is shown.
+        if (args[i].startsWith("--")) {
+          unknownFlags.push(args[i]);
+        }
+        break;
     }
+  }
+
+  // P14.4: Validate --tier value against known tiers. A typo like --tier simpel
+  // results in zero scenarios matching with a confusing "No scenarios found" error.
+  // Failing fast with a clear error message saves debugging time.
+  if (options.tier && !VALID_TIERS.includes(options.tier)) {
+    console.error(
+      `[eval] ERROR: Invalid --tier value: "${options.tier}". ` +
+        `Valid values: ${VALID_TIERS.join(", ")}`
+    );
+    process.exit(1);
+  }
+
+  // P14.4: Warn on unrecognized flags so typos don't silently produce unexpected behavior.
+  if (unknownFlags.length > 0) {
+    console.error(
+      `[eval] WARNING: Unrecognized flag(s): ${unknownFlags.join(", ")}. ` +
+        `Use --help to see valid options.`
+    );
   }
 
   return options;
@@ -168,18 +198,27 @@ async function main(): Promise<void> {
   // Resume/skip: skip scenarios that already passed for this git SHA.
   // This saves API costs on interrupted nightly runs — re-run only what
   // failed or hasn't been attempted yet. Use --force to re-run everything.
-  let skippedCount = 0;
+  const skippedScenarioIds = new Set<string>();
   if (!options.force) {
     const gitSha = getGitSha();
     if (gitSha) {
       const alreadyPassed = findPassedScenarioIds(gitSha);
       if (alreadyPassed.size > 0) {
-        const before = scenarios.length;
-        scenarios = scenarios.filter((s) => !alreadyPassed.has(s.id));
-        skippedCount = before - scenarios.length;
-        if (skippedCount > 0) {
+        scenarios = scenarios.filter((s) => {
+          if (!alreadyPassed.has(s.id)) return true;
+          // P14.3: Re-run if scenario content changed since the passing result.
+          // When previous report has no hash (pre-P14.3), skip the hash check
+          // and trust the ID match (backward-compatible).
+          const previousHash = alreadyPassed.get(s.id);
+          if (previousHash && s.contentHash && previousHash !== s.contentHash) {
+            return true;
+          }
+          skippedScenarioIds.add(s.id);
+          return false;
+        });
+        if (skippedScenarioIds.size > 0) {
           console.error(
-            `[eval] Skipped ${skippedCount} scenario(s) already passing at ${gitSha.slice(0, 8)}. Use --force to re-run all.`
+            `[eval] Skipped ${skippedScenarioIds.size} scenario(s) already passing at ${gitSha.slice(0, 8)}. Use --force to re-run all.`
           );
         }
         if (scenarios.length === 0) {
@@ -279,14 +318,30 @@ async function main(): Promise<void> {
       judgeConfig
     );
 
-    // Load the previous report to detect new scenarios for review flagging.
-    // This enables the "new-scenario" flag that surfaces scenarios without
-    // established baselines for human review.
+    // Load the previous report for review flagging and result merging.
     const previousReport = loadPreviousReport();
+
+    // P14.1: Merge skipped-as-passed results from previous report into
+    // the newly-run results. Without this, partial re-runs report success
+    // rate over only the newly-run scenarios, giving a misleading number.
+    // The merged set gives an accurate picture of the full scenario suite.
+    let allResults = results;
+    if (skippedScenarioIds.size > 0 && previousReport) {
+      const ranIds = new Set(results.map((r) => r.id));
+      const skippedResults = previousReport.scenarios.filter(
+        (s) => skippedScenarioIds.has(s.id) && s.success && !ranIds.has(s.id)
+      );
+      if (skippedResults.length > 0) {
+        allResults = [...skippedResults, ...results];
+        console.error(
+          `[eval] Merged ${skippedResults.length} skipped-as-passed result(s) into report.`
+        );
+      }
+    }
 
     // Generate and save report (review flags are applied inside generateReport)
     const report = generateReport(
-      results,
+      allResults,
       model,
       mode as "mock" | "integration",
       totalCostDollars,

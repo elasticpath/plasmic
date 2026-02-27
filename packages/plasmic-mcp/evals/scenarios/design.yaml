@@ -1,5 +1,10 @@
 # Design domain scenarios
-# Tests: token listing, design system queries
+# Tests: token lifecycle, mixin management, animation sequences, themes, asset management
+#
+# Why comprehensive design coverage matters: The design domain controls the entire
+# design system (tokens, mixins, animations, themes, assets). Without scenarios for
+# each CRUD operation, regressions in token deletion, mixin updates, theme switching,
+# or asset management would go completely undetected by the eval system.
 scenarios:
   - id: design-list-tokens
     description: "List all color tokens defined in the project's design system."
@@ -23,3 +28,534 @@ scenarios:
         params:
           min: 1
           max: 5
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # P11.2 — Missing design action coverage scenarios
+  # ═══════════════════════════════════════════════════════════════════════
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: design.remove-token — delete an existing token
+  # Why: Token cleanup is part of design system hygiene. Without
+  # coverage, stale token references or removal failures go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: design-remove-token
+    description: "Create a color token called 'TempColor' with value '#ff00ff'. Then delete it using design.remove-token. Finally, list tokens to verify it was removed."
+    domains:
+      - design
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: TempColor
+      - type: tool-params
+        params:
+          tool: design
+          action: remove-token
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 3
+          max: 8
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: design.duplicate-token — copy an existing token
+  # Why: Duplicating tokens is a common workflow when creating
+  # variations. Without coverage, deep-copy bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: design-duplicate-token
+    description: "Create a color token called 'BaseColor' with value '#3366cc'. Then duplicate it using design.duplicate-token. List tokens to verify both exist."
+    domains:
+      - design
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+      - type: tool-params
+        params:
+          tool: design
+          action: create-token
+          expected:
+            name: BaseColor
+      - type: tool-params
+        params:
+          tool: design
+          action: duplicate-token
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 3
+          max: 8
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: design.list-mixins — list all style mixins
+  # Why: Mixin discovery is the first step in mixin workflows. Without
+  # coverage, listing bugs (e.g., missing styles) go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: design-list-mixins
+    description: "List all style mixins defined in the project's design system."
+    domains:
+      - design
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+      - type: tool-params
+        params:
+          tool: design
+          action: list-mixins
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 1
+          max: 5
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: design.update-mixin — modify styles on an existing mixin
+  # Why: Mixin updates propagate to all elements using the mixin.
+  # Without coverage, update failures or stale values go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: design-update-mixin
+    description: "Create a style mixin called 'EditMixin' with border-radius '4px'. Then update it using design.update-mixin to change border-radius to '12px' and add padding-top '16px'."
+    domains:
+      - design
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+      - type: tool-params
+        params:
+          tool: design
+          action: create-mixin
+          expected:
+            name: EditMixin
+      - type: tool-params
+        params:
+          tool: design
+          action: update-mixin
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 2
+          max: 8
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: design.remove-mixin — delete a style mixin
+  # Why: Mixin deletion must cleanly remove references. Without
+  # coverage, dangling mixin references could cause rendering errors.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: design-remove-mixin
+    description: "Create a style mixin called 'TempMixin' with opacity '0.5'. Then delete it using design.remove-mixin. List mixins to confirm it was removed."
+    domains:
+      - design
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+      - type: tool-params
+        params:
+          tool: design
+          action: create-mixin
+          expected:
+            name: TempMixin
+      - type: tool-params
+        params:
+          tool: design
+          action: remove-mixin
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 3
+          max: 8
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: design.list-animations — list all animation sequences
+  # Why: Animation discovery is needed before applying or editing
+  # animations. Without coverage, listing bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: design-list-animations
+    description: "List all animation sequences defined in the project's design system."
+    domains:
+      - design
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+      - type: tool-params
+        params:
+          tool: design
+          action: list-animations
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 1
+          max: 5
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: design.update-animation — modify keyframes on an animation
+  # Why: Animation editing is how users iterate on motion design.
+  # Without coverage, keyframe update bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: design-update-animation
+    description: "Create an animation called 'Grow' with keyframes at 0% (transform: 'scale(0.5)') and 100% (transform: 'scale(1)'). Then update it using design.update-animation to change the 100% keyframe to transform 'scale(1.2)'."
+    domains:
+      - design
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+      - type: tool-params
+        params:
+          tool: design
+          action: create-animation
+          expected:
+            name: Grow
+      - type: tool-params
+        params:
+          tool: design
+          action: update-animation
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 2
+          max: 8
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: design.remove-animation — delete an animation sequence
+  # Why: Animation cleanup prevents unused sequences from accumulating.
+  # Without coverage, removal failures go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: design-remove-animation
+    description: "Create an animation called 'TempAnim' with keyframes at 0% (opacity: '0') and 100% (opacity: '1'). Then delete it using design.remove-animation. List animations to confirm it was removed."
+    domains:
+      - design
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+      - type: tool-params
+        params:
+          tool: design
+          action: create-animation
+          expected:
+            name: TempAnim
+      - type: tool-params
+        params:
+          tool: design
+          action: remove-animation
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 3
+          max: 8
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: design.list-themes — list all typography themes
+  # Why: Theme discovery is needed before theme editing or switching.
+  # Without coverage, theme listing bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: design-list-themes
+    description: "List all typography themes defined in the project's design system."
+    domains:
+      - design
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+      - type: tool-params
+        params:
+          tool: design
+          action: list-themes
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 1
+          max: 5
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: design.create-theme — create a new typography theme
+  # Why: Theme creation is the starting point for typography systems.
+  # Without coverage, theme initialization bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: design-create-theme
+    description: "Create a new typography theme called 'Modern' with default font-family 'Inter, sans-serif' and font-size '16px'."
+    domains:
+      - design
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+      - type: tool-params
+        params:
+          tool: design
+          action: create-theme
+          expected:
+            name: Modern
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 1
+          max: 5
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: design.update-theme — update per-tag style overrides
+  # Why: Theme updates control global typography. Without coverage,
+  # tag-level override bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: design-update-theme
+    description: "List the existing themes to find one. Then update it using design.update-theme to add a per-tag style override: set h1 elements to font-size '36px' and font-weight 'bold'."
+    domains:
+      - design
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+      - type: tool-params
+        params:
+          tool: design
+          action: list-themes
+          expected: {}
+      - type: tool-params
+        params:
+          tool: design
+          action: update-theme
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 2
+          max: 8
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: design.remove-theme — delete a typography theme
+  # Why: Theme removal is needed for design system cleanup. Without
+  # coverage, theme deletion failures go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: design-remove-theme
+    description: "Create a typography theme called 'TempTheme' with default font-family 'Arial'. Then delete it using design.remove-theme. List themes to confirm it was removed."
+    domains:
+      - design
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+      - type: tool-params
+        params:
+          tool: design
+          action: create-theme
+          expected:
+            name: TempTheme
+      - type: tool-params
+        params:
+          tool: design
+          action: remove-theme
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 3
+          max: 8
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: design.set-active-theme — switch the active theme
+  # Why: Theme switching is a core design operation. Without coverage,
+  # activation bugs (e.g., stale active theme) go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: design-set-active-theme
+    description: "Create a typography theme called 'ActiveTest'. Then set it as the active theme using design.set-active-theme."
+    domains:
+      - design
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+      - type: tool-params
+        params:
+          tool: design
+          action: create-theme
+          expected:
+            name: ActiveTest
+      - type: tool-params
+        params:
+          tool: design
+          action: set-active-theme
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 2
+          max: 8
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: design.list-assets — list all image and icon assets
+  # Why: Asset discovery is needed before asset management operations.
+  # Without coverage, asset listing bugs go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: design-list-assets
+    description: "List all image and icon assets in the project's design system."
+    domains:
+      - design
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+      - type: tool-params
+        params:
+          tool: design
+          action: list-assets
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 1
+          max: 5
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: design.rename-asset — rename an uploaded asset
+  # Why: Asset renaming is needed for organization. Without coverage,
+  # rename failures or reference updates go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: design-rename-asset
+    description: "Upload an image asset from URL 'https://via.placeholder.com/100x100' named 'OldName'. Then rename it to 'NewAssetName' using design.rename-asset."
+    domains:
+      - design
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+      - type: tool-params
+        params:
+          tool: design
+          action: upload-asset
+          expected:
+            name: OldName
+      - type: tool-params
+        params:
+          tool: design
+          action: rename-asset
+          expected:
+            newName: NewAssetName
+      - type: count
+        params:
+          min: 2
+          max: 8
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: design.remove-asset — delete an image asset
+  # Why: Asset deletion is needed for design system cleanup. Without
+  # coverage, deletion failures or orphaned references go undetected.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: design-remove-asset
+    description: "Upload an image asset from URL 'https://via.placeholder.com/100x100' named 'DeleteMe'. Then delete it using design.remove-asset. List assets to confirm it was removed."
+    domains:
+      - design
+    tier: simple
+    timeout: 90
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - design
+      - type: tool-params
+        params:
+          tool: design
+          action: upload-asset
+          expected:
+            name: DeleteMe
+      - type: tool-params
+        params:
+          tool: design
+          action: remove-asset
+          expected: {}
+      - type: count
+        params:
+          min: 3
+          max: 8

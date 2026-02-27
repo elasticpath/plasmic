@@ -258,3 +258,42 @@ scenarios:
         params: {}
     visual:
       rubric: "Verify CompoundWidget appears in the component list with a heading child in its tree. Both 'compound-primary' and 'compound-gap' should appear in the design tokens panel."
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # P11.8 — Missing project action coverage scenario
+  # ═══════════════════════════════════════════════════════════════════════
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Simple: project.set — load a project by ID
+  # Why: project.set is the session entry point. Without explicit
+  # coverage, initialization bugs (state leaks, failed loads) would
+  # only manifest as cascading failures in other scenarios.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: project-set
+    description: "Load the project by its ID using project.set, then retrieve the project metadata using project.get-meta to confirm it was loaded successfully."
+    domains:
+      - project
+    tier: simple
+    timeout: 60
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - project
+      - type: tool-params
+        params:
+          tool: project
+          action: set
+          expected: {}
+      - type: tool-params
+        params:
+          tool: project
+          action: get-meta
+          expected: {}
+      - type: no-errors
+        params: {}
+      - type: count
+        params:
+          min: 2
+          max: 6

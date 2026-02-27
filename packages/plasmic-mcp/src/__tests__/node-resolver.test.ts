@@ -667,6 +667,100 @@ describe("content-based resolution", () => {
 });
 
 // =============================================================================
+// Cycle guard and depth limit
+//
+// The tree walker (flattenWithPaths) uses a visited-UUID Set to detect cycles
+// and a depth limit to prevent stack overflow. While WAB models should never
+// have cycles, a malformed or corrupted model could cause infinite recursion.
+// These defensive guards ensure the resolver degrades gracefully.
+// =============================================================================
+
+describe("cycle guard", () => {
+  it("handles a self-referencing node without infinite recursion", () => {
+    const node = mkTag("cycle-1", "Cyclic");
+    // Create a cycle: node is its own child
+    node.children = [node];
+    const comp = mkComponent(node);
+
+    // Should not throw or hang — the cycle is broken by the visited set
+    const result = resolveNode(comp, "Cyclic");
+    expect(result.nodes).toHaveLength(1);
+    expect(result.nodes[0].uuid).toBe("cycle-1");
+  });
+
+  it("handles a two-node cycle without infinite recursion", () => {
+    const nodeA = mkTag("a1", "NodeA");
+    const nodeB = mkTag("b1", "NodeB");
+    // A -> B -> A (cycle)
+    nodeA.children = [nodeB];
+    nodeB.children = [nodeA];
+    const comp = mkComponent(nodeA);
+
+    const result = resolveNode(comp, "NodeB");
+    expect(result.nodes).toHaveLength(1);
+    expect(result.nodes[0].uuid).toBe("b1");
+  });
+
+  it("handles a three-node cycle", () => {
+    const a = mkTag("c-a", "A");
+    const b = mkTag("c-b", "B");
+    const c = mkTag("c-c", "C");
+    // A -> B -> C -> A
+    a.children = [b];
+    b.children = [c];
+    c.children = [a];
+    const comp = mkComponent(a);
+
+    // All three nodes should be found once (not infinitely)
+    const resultA = resolveNode(comp, "A");
+    expect(resultA.nodes).toHaveLength(1);
+    const resultB = resolveNode(comp, "B");
+    expect(resultB.nodes).toHaveLength(1);
+    const resultC = resolveNode(comp, "C");
+    expect(resultC.nodes).toHaveLength(1);
+  });
+
+  it("handles a node appearing in multiple branches (diamond) without duplication", () => {
+    const shared = mkTag("shared-1", "Shared");
+    const branchA = mkTag("ba", "BranchA", [shared]);
+    const branchB = mkTag("bb", "BranchB", [shared]);
+    const root = mkTag("root", "Root", [branchA, branchB]);
+    const comp = mkComponent(root);
+
+    // Shared node should appear only once (visited set prevents re-traversal)
+    const result = resolveNode(comp, "Shared");
+    expect(result.nodes).toHaveLength(1);
+    expect(result.nodes[0].uuid).toBe("shared-1");
+  });
+
+  it("still traverses nodes without UUIDs (no cycle tracking for null UUIDs)", () => {
+    const noUuid1: any = {
+      _type: "TplTag",
+      uuid: undefined,
+      name: "SpanA",
+      children: [],
+      tag: "span",
+    };
+    const noUuid2: any = {
+      _type: "TplTag",
+      uuid: undefined,
+      name: "SpanB",
+      children: [],
+      tag: "span",
+    };
+    const root = mkTag("root-uuid", "Root", [noUuid1, noUuid2]);
+    const comp = mkComponent(root);
+
+    // Both UUID-less nodes should be found by name (cycle guard skips
+    // only non-null UUIDs, so undefined-UUID nodes are always traversed)
+    const resultA = resolveNode(comp, "SpanA");
+    expect(resultA.nodes).toHaveLength(1);
+    const resultB = resolveNode(comp, "SpanB");
+    expect(resultB.nodes).toHaveLength(1);
+  });
+});
+
+// =============================================================================
 // Cache hit/miss metrics
 //
 // Exposed via getCacheMetrics() for debugging and performance monitoring.

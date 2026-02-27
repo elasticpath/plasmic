@@ -2086,6 +2086,800 @@ describe("edit-tools", () => {
     });
   });
 
+  // --- add-child with registry enrichment ---
+
+  describe("addChild with registry enrichment", () => {
+    /** Build a TplComponent-like node (as returned by mkTplComponentX mock) */
+    function mkTplComponent(opts: {
+      uuid?: string;
+      name?: string;
+      componentName: string;
+      componentUuid: string;
+    }): any {
+      return {
+        _type: "TplComponent",
+        uuid: opts.uuid ?? `tpl-comp-${Math.random().toString(36).slice(2, 8)}`,
+        name: opts.name ?? null,
+        component: { name: opts.componentName, uuid: opts.componentUuid },
+        vsettings: [{ rs: { values: {} }, args: [] }],
+        children: [],
+      };
+    }
+
+    it("applies defaultStyles from registry when adding a component instance", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const cardComp = {
+        uuid: "card-uuid",
+        name: "Card",
+        tplTree: mkTag({ uuid: "card-root" }),
+        params: [],
+      };
+
+      const newTplComp = mkTplComponent({
+        uuid: "new-tpl-comp-1",
+        componentName: "Card",
+        componentUuid: "card-uuid",
+      });
+      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} } }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      // Session includes registryData with defaultStyles for "Card"
+      const session = makeSession({
+        site: { components: [owningComp, cardComp] },
+        registryData: {
+          components: [
+            {
+              name: "Card",
+              defaultStyles: { color: "red", fontSize: "16px" },
+            },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      const result = await addChild(api, "comp-1", "Section", {
+        type: "component",
+        name: "Card",
+      });
+
+      expect(result.parentName).toBe("Section");
+      expect(result.newNodeUuid).toBe("new-tpl-comp-1");
+
+      // Verify defaultStyles were applied via RSH.merge
+      // Note: mock RSH stores keys as-is (no kebab-case normalization)
+      const vs = newTplComp.vsettings[0];
+      expect(vs.rs.values.color).toBe("red");
+      expect(vs.rs.values.fontSize).toBe("16px");
+    });
+
+    it("matches registry components with $dev suffix", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      // Site model has name without $dev
+      const buttonComp = {
+        uuid: "btn-uuid",
+        name: "EPButton",
+        tplTree: mkTag({ uuid: "btn-root" }),
+        params: [],
+      };
+
+      const newTplComp = mkTplComponent({
+        uuid: "new-btn-1",
+        componentName: "EPButton",
+        componentUuid: "btn-uuid",
+      });
+      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} } }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      // Registry has $dev suffix
+      const session = makeSession({
+        site: { components: [owningComp, buttonComp] },
+        registryData: {
+          components: [
+            {
+              name: "EPButton$dev",
+              defaultStyles: { color: "blue" },
+            },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      await addChild(api, "comp-1", "Section", {
+        type: "component",
+        name: "EPButton",
+      });
+
+      // Should match despite $dev suffix
+      const vs = newTplComp.vsettings[0];
+      expect(vs.rs.values.color).toBe("blue");
+    });
+
+    it("works normally when session has no registryData", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const cardComp = {
+        uuid: "card-uuid",
+        name: "Card",
+        tplTree: mkTag({ uuid: "card-root" }),
+        params: [],
+      };
+
+      const newTplComp = mkTplComponent({
+        uuid: "new-card-1",
+        componentName: "Card",
+        componentUuid: "card-uuid",
+      });
+      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} } }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      // No registryData on session
+      const session = makeSession({
+        site: { components: [owningComp, cardComp] },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      const result = await addChild(api, "comp-1", "Section", {
+        type: "component",
+        name: "Card",
+      });
+
+      expect(result.parentName).toBe("Section");
+      expect(result.newNodeUuid).toBe("new-card-1");
+      // No styles applied — rs.values should be empty
+      expect(newTplComp.vsettings[0].rs.values).toEqual({});
+    });
+
+    it("returns warning when parentComponentName does not match", async () => {
+      // The parent is a TplComponent "Accordion"
+      const accordionComp = {
+        uuid: "accordion-uuid",
+        name: "Accordion",
+        tplTree: mkTag({ uuid: "acc-root" }),
+        params: [{
+          variable: { name: "children" },
+          tplSlot: true,
+        }],
+      };
+
+      // The owning component wraps an Accordion
+      const accordionTpl: any = {
+        _type: "TplComponent",
+        uuid: "acc-tpl-1",
+        name: "MyAccordion",
+        component: accordionComp,
+        vsettings: [{ variants: [], rs: { values: {} }, args: [] }],
+        children: [],
+      };
+      const root = mkTag({ uuid: "root-1", children: [accordionTpl] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      // AccordionItem should be inside "Accordion" according to registry
+      const itemComp = {
+        uuid: "item-uuid",
+        name: "AccordionItem",
+        tplTree: mkTag({ uuid: "item-root" }),
+        params: [],
+      };
+
+      const newTplComp = mkTplComponent({
+        uuid: "new-item-1",
+        componentName: "AccordionItem",
+        componentUuid: "item-uuid",
+      });
+      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} }, args: [] }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      // Registry says AccordionItem should be inside "EPAccordion"
+      const session = makeSession({
+        site: { components: [owningComp, accordionComp, itemComp] },
+        registryData: {
+          components: [
+            {
+              name: "AccordionItem",
+              parentComponentName: "EPAccordion",
+            },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      const result = await addChild(
+        api, "comp-1", "MyAccordion",
+        { type: "component", name: "AccordionItem" },
+        undefined,
+        "children"
+      );
+
+      // Should succeed but with warning
+      expect(result.newNodeUuid).toBe("new-item-1");
+      expect(result.warnings).toBeDefined();
+      expect(result.warnings!.length).toBe(1);
+      expect(result.warnings![0]).toContain("AccordionItem");
+      expect(result.warnings![0]).toContain("EPAccordion");
+      expect(result.warnings![0]).toContain("Accordion");
+    });
+
+    it("returns no warning when parentComponentName matches", async () => {
+      // Parent is correct "Accordion" (matches "Accordion" in registry)
+      const accordionComp = {
+        uuid: "accordion-uuid",
+        name: "Accordion",
+        tplTree: mkTag({ uuid: "acc-root" }),
+        params: [{
+          variable: { name: "children" },
+          tplSlot: true,
+        }],
+      };
+
+      const accordionTpl: any = {
+        _type: "TplComponent",
+        uuid: "acc-tpl-1",
+        name: "MyAccordion",
+        component: accordionComp,
+        vsettings: [{ variants: [], rs: { values: {} }, args: [] }],
+        children: [],
+      };
+      const root = mkTag({ uuid: "root-1", children: [accordionTpl] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const itemComp = {
+        uuid: "item-uuid",
+        name: "AccordionItem",
+        tplTree: mkTag({ uuid: "item-root" }),
+        params: [],
+      };
+
+      const newTplComp = mkTplComponent({
+        uuid: "new-item-1",
+        componentName: "AccordionItem",
+        componentUuid: "item-uuid",
+      });
+      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} }, args: [] }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      // Registry parentComponentName matches the actual parent
+      const session = makeSession({
+        site: { components: [owningComp, accordionComp, itemComp] },
+        registryData: {
+          components: [
+            {
+              name: "AccordionItem",
+              parentComponentName: "Accordion",
+            },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      const result = await addChild(
+        api, "comp-1", "MyAccordion",
+        { type: "component", name: "AccordionItem" },
+        undefined,
+        "children"
+      );
+
+      expect(result.newNodeUuid).toBe("new-item-1");
+      expect(result.warnings).toBeUndefined();
+    });
+
+    it("returns warning when adding component with parentComponentName to a TplTag parent", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const itemComp = {
+        uuid: "item-uuid",
+        name: "AccordionItem",
+        tplTree: mkTag({ uuid: "item-root" }),
+        params: [],
+      };
+
+      const newTplComp = mkTplComponent({
+        uuid: "new-item-1",
+        componentName: "AccordionItem",
+        componentUuid: "item-uuid",
+      });
+      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} } }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      const session = makeSession({
+        site: { components: [owningComp, itemComp] },
+        registryData: {
+          components: [
+            {
+              name: "AccordionItem",
+              parentComponentName: "Accordion",
+            },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      const result = await addChild(api, "comp-1", "Section", {
+        type: "component",
+        name: "AccordionItem",
+      });
+
+      expect(result.newNodeUuid).toBe("new-item-1");
+      expect(result.warnings).toBeDefined();
+      expect(result.warnings!.length).toBe(1);
+      expect(result.warnings![0]).toContain("non-component container");
+    });
+
+    it("populates slot defaultValue from registry when no explicit children provided", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      // Card component has a "children" slot param in the WAB model
+      const childrenSlotParam = {
+        variable: { name: "children" },
+        tplSlot: { _type: "TplSlot" },
+      };
+      const cardComp = {
+        uuid: "card-uuid",
+        name: "Card",
+        tplTree: mkTag({ uuid: "card-root" }),
+        params: [childrenSlotParam],
+      };
+
+      const newTplComp = mkTplComponent({
+        uuid: "new-card-1",
+        componentName: "Card",
+        componentUuid: "card-uuid",
+      });
+      // Override component to include slot params
+      newTplComp.component = cardComp;
+      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} }, args: [] }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      // Mock for the text node created from defaultValue
+      const defaultTextTpl = {
+        _type: "TplTag",
+        uuid: "default-text-1",
+        tag: "div",
+        vsettings: [{ rs: { values: {} } }],
+      };
+      mockMkTplInlinedText.mockReturnValue(defaultTextTpl);
+
+      // Registry has slot defaultValue for "children"
+      const session = makeSession({
+        site: { components: [owningComp, cardComp] },
+        registryData: {
+          components: [
+            {
+              name: "Card",
+              props: {
+                children: {
+                  type: "slot",
+                  defaultValue: { type: "text", value: "Default card content" },
+                },
+              },
+            },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      const result = await addChild(api, "comp-1", "Section", {
+        type: "component",
+        name: "Card",
+      });
+
+      expect(result.newNodeUuid).toBe("new-card-1");
+
+      // Verify the children slot was populated with default content
+      const vs = newTplComp.vsettings[0];
+      expect(vs.args.length).toBe(1);
+      expect(vs.args[0].param).toBe(childrenSlotParam);
+      expect(vs.args[0].expr._type).toBe("RenderExpr");
+      expect(vs.args[0].expr.tpl).toHaveLength(1);
+      expect(vs.args[0].expr.tpl[0]).toBe(defaultTextTpl);
+      // Parent pointer set
+      expect(defaultTextTpl.parent).toBe(newTplComp);
+    });
+
+    it("populates named slot defaults from registry", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      // Card component has both "children" and "header" slot params
+      const childrenSlotParam = {
+        variable: { name: "children" },
+        tplSlot: { _type: "TplSlot" },
+      };
+      const headerSlotParam = {
+        variable: { name: "header" },
+        tplSlot: { _type: "TplSlot" },
+      };
+      const cardComp = {
+        uuid: "card-uuid",
+        name: "Card",
+        tplTree: mkTag({ uuid: "card-root" }),
+        params: [childrenSlotParam, headerSlotParam],
+      };
+
+      const newTplComp = mkTplComponent({
+        uuid: "new-card-1",
+        componentName: "Card",
+        componentUuid: "card-uuid",
+      });
+      newTplComp.component = cardComp;
+      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} }, args: [] }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      // Two different text nodes for two different slots
+      const bodyTextTpl = {
+        _type: "TplTag",
+        uuid: "body-text-1",
+        tag: "div",
+        vsettings: [{ rs: { values: {} } }],
+      };
+      const headerTextTpl = {
+        _type: "TplTag",
+        uuid: "header-text-1",
+        tag: "div",
+        vsettings: [{ rs: { values: {} } }],
+      };
+      mockMkTplInlinedText
+        .mockReturnValueOnce(bodyTextTpl)
+        .mockReturnValueOnce(headerTextTpl);
+
+      // Registry has defaultValues for both slots
+      const session = makeSession({
+        site: { components: [owningComp, cardComp] },
+        registryData: {
+          components: [
+            {
+              name: "Card",
+              props: {
+                children: {
+                  type: "slot",
+                  defaultValue: { type: "text", value: "Body content" },
+                },
+                header: {
+                  type: "slot",
+                  defaultValue: { type: "text", value: "Header content" },
+                },
+              },
+            },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      await addChild(api, "comp-1", "Section", {
+        type: "component",
+        name: "Card",
+      });
+
+      // Both slots should be populated
+      const vs = newTplComp.vsettings[0];
+      expect(vs.args.length).toBe(2);
+
+      const childrenArg = vs.args.find((a: any) => a.param === childrenSlotParam);
+      expect(childrenArg).toBeDefined();
+      expect(childrenArg.expr.tpl[0]).toBe(bodyTextTpl);
+
+      const headerArg = vs.args.find((a: any) => a.param === headerSlotParam);
+      expect(headerArg).toBeDefined();
+      expect(headerArg.expr.tpl[0]).toBe(headerTextTpl);
+    });
+
+    it("does not override explicit children with slot defaults", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const childrenSlotParam = {
+        variable: { name: "children" },
+        tplSlot: { _type: "TplSlot" },
+      };
+      const cardComp = {
+        uuid: "card-uuid",
+        name: "Card",
+        tplTree: mkTag({ uuid: "card-root" }),
+        params: [childrenSlotParam],
+      };
+
+      // mkTplComponentX receives explicit children and creates an arg for them
+      const explicitChildTpl = {
+        _type: "TplTag",
+        uuid: "explicit-child-1",
+        tag: "div",
+        vsettings: [{ rs: { values: {} } }],
+      };
+      const newTplComp = mkTplComponent({
+        uuid: "new-card-1",
+        componentName: "Card",
+        componentUuid: "card-uuid",
+      });
+      newTplComp.component = cardComp;
+      // Simulate that mkTplComponentX created an arg for the "children" slot
+      // because explicit children were provided via PlasmicElement.children
+      newTplComp.vsettings[0].args = [{
+        _type: "Arg",
+        param: childrenSlotParam,
+        expr: { _type: "RenderExpr", tpl: [explicitChildTpl] },
+      }];
+      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} }, args: [] }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      // The child element that the user explicitly provides
+      const childTextTpl = {
+        _type: "TplTag",
+        uuid: "user-text-1",
+        tag: "div",
+        vsettings: [{ rs: { values: {} } }],
+      };
+      mockMkTplInlinedText.mockReturnValue(childTextTpl);
+
+      // Registry has defaultValue, but user provides explicit children
+      const session = makeSession({
+        site: { components: [owningComp, cardComp] },
+        registryData: {
+          components: [
+            {
+              name: "Card",
+              props: {
+                children: {
+                  type: "slot",
+                  defaultValue: { type: "text", value: "Should NOT appear" },
+                },
+              },
+            },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      await addChild(api, "comp-1", "Section", {
+        type: "component",
+        name: "Card",
+        children: [{ type: "text", value: "User content" }],
+      });
+
+      // Should still have only the explicit children arg, not the default
+      const vs = newTplComp.vsettings[0];
+      expect(vs.args.length).toBe(1);
+      expect(vs.args[0].expr.tpl[0]).toBe(explicitChildTpl);
+    });
+
+    it("skips slot defaults for slots that don't exist in WAB model", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      // Component has only "children" slot, no "footer" slot
+      const childrenSlotParam = {
+        variable: { name: "children" },
+        tplSlot: { _type: "TplSlot" },
+      };
+      const cardComp = {
+        uuid: "card-uuid",
+        name: "Card",
+        tplTree: mkTag({ uuid: "card-root" }),
+        params: [childrenSlotParam],
+      };
+
+      const newTplComp = mkTplComponent({
+        uuid: "new-card-1",
+        componentName: "Card",
+        componentUuid: "card-uuid",
+      });
+      newTplComp.component = cardComp;
+      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} }, args: [] }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      const defaultTextTpl = {
+        _type: "TplTag",
+        uuid: "default-text-1",
+        tag: "div",
+        vsettings: [{ rs: { values: {} } }],
+      };
+      mockMkTplInlinedText.mockReturnValue(defaultTextTpl);
+
+      // Registry has defaultValue for "footer" slot that doesn't exist in WAB model
+      // AND "children" which does exist
+      const session = makeSession({
+        site: { components: [owningComp, cardComp] },
+        registryData: {
+          components: [
+            {
+              name: "Card",
+              props: {
+                children: {
+                  type: "slot",
+                  defaultValue: { type: "text", value: "Body" },
+                },
+                footer: {
+                  type: "slot",
+                  defaultValue: { type: "text", value: "Footer text" },
+                },
+              },
+            },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      await addChild(api, "comp-1", "Section", {
+        type: "component",
+        name: "Card",
+      });
+
+      // Only "children" should be populated (footer slot doesn't exist)
+      const vs = newTplComp.vsettings[0];
+      expect(vs.args.length).toBe(1);
+      expect(vs.args[0].param).toBe(childrenSlotParam);
+    });
+
+    it("handles non-slot props with defaultValue without treating them as slots", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section" });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const cardComp = {
+        uuid: "card-uuid",
+        name: "Card",
+        tplTree: mkTag({ uuid: "card-root" }),
+        params: [],
+      };
+
+      const newTplComp = mkTplComponent({
+        uuid: "new-card-1",
+        componentName: "Card",
+        componentUuid: "card-uuid",
+      });
+      newTplComp.component = cardComp;
+      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} }, args: [] }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      // Registry has a non-slot prop with a defaultValue (e.g., a string prop)
+      const session = makeSession({
+        site: { components: [owningComp, cardComp] },
+        registryData: {
+          components: [
+            {
+              name: "Card",
+              props: {
+                title: {
+                  type: "string",
+                  defaultValue: "Untitled",
+                },
+              },
+            },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      await addChild(api, "comp-1", "Section", {
+        type: "component",
+        name: "Card",
+      });
+
+      // No slot args should be created (title is type "string", not "slot")
+      const vs = newTplComp.vsettings[0];
+      expect(vs.args.length).toBe(0);
+    });
+  });
+
   // --- remove-child ---
 
   describe("removeChild", () => {
@@ -2483,6 +3277,50 @@ describe("edit-tools", () => {
         moveChild(api, "comp-1", "Movable", "tpl-comp-1", undefined, "sidebar")
       ).rejects.toThrow('Slot "sidebar" not found on component "Card". Available slots: children');
     });
+
+    it("detects cycles through TplComponent slot overrides", async () => {
+      // Outer contains a TplComponent with a slot override containing Inner
+      const innerChild = mkTag({ uuid: "inner-1", name: "Inner" });
+      const tplComp = {
+        _type: "TplComponent",
+        uuid: "tc-1",
+        name: "Wrapper",
+        children: [],
+        vsettings: [
+          {
+            variants: [],
+            args: [
+              {
+                param: { paramName: "children", uuid: "p1" },
+                expr: {
+                  _type: "RenderExpr",
+                  tpl: [innerChild],
+                },
+              },
+            ],
+            rs: { values: {} },
+          },
+        ],
+        component: { name: "Card", uuid: "card-1", params: [{ paramName: "children", uuid: "p1", tplSlot: {} }] },
+      };
+      const outerParent = mkTag({
+        uuid: "outer-1",
+        name: "Outer",
+        children: [tplComp],
+      });
+      const root = mkTag({
+        uuid: "root-1",
+        children: [outerParent],
+      });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      setupSession(comp);
+
+      // Try to move Outer into its descendant Inner (hidden inside a slot override)
+      await expect(
+        moveChild(api, "comp-1", "Outer", "Inner")
+      ).rejects.toThrow('Cannot move "Outer" into its own descendant "Inner"');
+    });
   });
 
   describe("variant-aware updateStyles", () => {
@@ -2547,6 +3385,143 @@ describe("edit-tools", () => {
       );
       // Should have set the style on the mobile VS
       expect(mobileVs.rs.values).toHaveProperty("fontSize", "14px");
+    });
+
+    it("targets a code component variant by key name (synced via devhost-sync)", async () => {
+      // This tests the full updateStyles → resolveVariant → CC variant path.
+      // In production, devhost-sync populates codeComponentMeta.variants on the
+      // code component and creates Variant objects on wrapper components. This test
+      // verifies that updateStyles correctly resolves a CC variant key and applies
+      // styles to the corresponding variant setting.
+
+      // 1. Build the code component with synced variant metadata
+      const codeComp = {
+        name: "EPBundleOptionTrigger",
+        codeComponentMeta: {
+          variants: {
+            selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+            disabled: { cssSelector: ":disabled", displayName: "Disabled" },
+          },
+        },
+      };
+
+      // 2. Build the CC variant object (created by ensureVariantObjects in devhost-sync)
+      const ccVariant = {
+        uuid: "cc-var-selected",
+        name: "",
+        codeComponentName: "EPBundleOptionTrigger",
+        codeComponentVariantKeys: ["selected"],
+        selectors: null,
+        parent: null,
+        mediaQuery: null,
+      };
+
+      // 3. Build a child node to style — placed inside a slot override on the
+      //    TplComponent root so the node-resolver can traverse it.
+      //    The resolver handles TplComponent children via vsettings[0].args[].expr.tpl[].
+      const node = mkTag({ uuid: "styled-1", name: "Box", styles: { color: "red" } });
+
+      // 4. Build the wrapper component — tplTree root is TplComponent referencing codeComp.
+      //    Child node is inside a slot override (RenderExpr) so the node-resolver finds it.
+      const comp = {
+        uuid: "comp-1",
+        name: "BundleOptionCard",
+        tplTree: {
+          _type: "TplComponent",
+          uuid: "root-tpl",
+          component: codeComp,
+          vsettings: [{
+            rs: { values: {} },
+            args: [{
+              param: { variable: { name: "children" } },
+              expr: { _type: "RenderExpr", tpl: [node] },
+            }],
+          }],
+          children: [],
+        },
+        variantGroups: [],
+        variants: [ccVariant],
+        pageMeta: undefined,
+      };
+
+      // 5. Set up mock variant setting target
+      const ccVs = { rs: { values: {} }, variants: [ccVariant] };
+      mockEnsureVariantSetting.mockReturnValue(ccVs);
+
+      const session = makeSession({
+        site: { components: [comp], globalVariantGroups: [] },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      // 6. Call updateStyles with CC variant key "selected"
+      await updateStyles(api, "comp-1", "Box", { color: "blue" }, "selected");
+
+      // 7. Verify ensureVariantSetting was called with the CC variant
+      expect(mockEnsureVariantSetting).toHaveBeenCalledWith(node, [ccVariant]);
+      expect(ccVs.rs.values).toHaveProperty("color", "blue");
+    });
+
+    it("targets a code component variant by display name (case-insensitive)", async () => {
+      // Tests the CC variant display name resolution path in resolveVariant.
+      // Users may reference variants by display name (e.g., "Selected") rather
+      // than by internal key (e.g., "selected").
+
+      const codeComp = {
+        name: "EPButton$dev",
+        codeComponentMeta: {
+          variants: {
+            isPressed: { cssSelector: ":active", displayName: "Pressed State" },
+          },
+        },
+      };
+
+      const ccVariant = {
+        uuid: "cc-var-pressed",
+        name: "",
+        codeComponentName: "EPButton$dev",
+        codeComponentVariantKeys: ["isPressed"],
+        selectors: null,
+        parent: null,
+        mediaQuery: null,
+      };
+
+      const node = mkTag({ uuid: "styled-1", name: "Inner" });
+      const comp = {
+        uuid: "comp-1",
+        name: "ButtonWrapper",
+        tplTree: {
+          _type: "TplComponent",
+          uuid: "root-tpl",
+          component: codeComp,
+          vsettings: [{
+            rs: { values: {} },
+            args: [{
+              param: { variable: { name: "children" } },
+              expr: { _type: "RenderExpr", tpl: [node] },
+            }],
+          }],
+          children: [],
+        },
+        variantGroups: [],
+        variants: [ccVariant],
+        pageMeta: undefined,
+      };
+
+      const ccVs = { rs: { values: {} }, variants: [ccVariant] };
+      mockEnsureVariantSetting.mockReturnValue(ccVs);
+
+      const session = makeSession({
+        site: { components: [comp], globalVariantGroups: [] },
+      });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      // Resolve by display name — case-insensitive
+      await updateStyles(api, "comp-1", "Inner", { opacity: "0.5" }, "pressed state");
+
+      expect(mockEnsureVariantSetting).toHaveBeenCalledWith(node, [ccVariant]);
+      expect(ccVs.rs.values).toHaveProperty("opacity", "0.5");
     });
   });
 
@@ -5716,5 +6691,25 @@ describe("setImage", () => {
     await expect(
       setImage(api, "comp-1", "tc-1", { src: "https://example.com/img.jpg" })
     ).rejects.toThrow(/TplTag element/);
+  });
+
+  it("escapes quotes and backslashes in raw URL for background CSS", async () => {
+    const divNode = mkTag({ uuid: "div-1", tag: "div" });
+    const root = mkTag({ uuid: "root-1", children: [divNode] });
+    const comp = { uuid: "comp-1", name: "TestComp", tplTree: root };
+    const site = { components: [comp], imageAssets: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await setImage(api, "comp-1", "div-1", {
+      src: 'https://example.com/img"with"quotes.jpg',
+    });
+
+    expect(result.imageSource).toBe('https://example.com/img"with"quotes.jpg');
+    const bgValue = divNode.vsettings[0].rs.values["background"];
+    // Quotes in the URL must be escaped to prevent malformed CSS
+    expect(bgValue).toContain('\\"');
+    expect(bgValue).not.toContain('""');
   });
 });

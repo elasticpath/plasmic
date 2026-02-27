@@ -41,9 +41,22 @@ export async function runStateGrader(
 }
 
 /**
+ * Match entity name with exact or substring mode.
+ * P13.2: Default exact matching prevents false positives where searching
+ * for "Card" would incorrectly match "CreditCard".
+ */
+function matchEntityName(actual: string | undefined, expected: string, exact: boolean): boolean {
+  if (!actual) return false;
+  return exact
+    ? actual.toLowerCase() === expected.toLowerCase()
+    : actual.toLowerCase().includes(expected.toLowerCase());
+}
+
+/**
  * existence: Check that an entity exists.
  * params.entityType: "component" | "page" | "node" | "token" | "variant" | "mixin"
- * params.name: string — expected name (case-insensitive substring match)
+ * params.name: string — expected name (case-insensitive, exact match by default)
+ * params.exact: boolean — optional, default true. When false, uses substring matching.
  * params.componentUuid: string — required for node/variant checks
  */
 async function gradeExistence(
@@ -68,9 +81,14 @@ async function gradeExistence(
           };
         }
         const data = JSON.parse(result.content);
-        const items = [...(data.pages ?? []), ...(data.components ?? [])];
-        const found = items.some((item: any) =>
-          item.name?.toLowerCase().includes(name.toLowerCase())
+        const exact = params.exact !== false; // P13.2: default exact matching
+        // P13.3: search only the relevant list — prevents a component named
+        // "Contact" from satisfying a page existence check.
+        const searchList = entityType === "page"
+          ? (data.pages ?? [])
+          : (data.components ?? []);
+        const found = searchList.some((item: any) =>
+          matchEntityName(item.name, name, exact)
         );
         return {
           graderType: "existence",
@@ -81,7 +99,7 @@ async function gradeExistence(
           details: {
             entityType,
             name,
-            availableNames: items.map((i: any) => i.name),
+            availableNames: searchList.map((i: any) => i.name),
           },
         };
       }
@@ -109,7 +127,8 @@ async function gradeExistence(
           };
         }
         const tree = JSON.parse(result.content);
-        const found = findNodeByName(tree, name);
+        const exact = params.exact !== false; // P13.2
+        const found = findNodeByName(tree, name, exact);
         return {
           graderType: "existence",
           passed: !!found,
@@ -135,8 +154,9 @@ async function gradeExistence(
         const tokenList = Array.isArray(tokens)
           ? tokens
           : tokens.tokens ?? [];
+        const exact = params.exact !== false; // P13.2
         const found = tokenList.some((t: any) =>
-          t.name?.toLowerCase().includes(name.toLowerCase())
+          matchEntityName(t.name, name, exact)
         );
         return {
           graderType: "existence",
@@ -174,8 +194,9 @@ async function gradeExistence(
             (g: any) => g.variants ?? []
           ),
         ];
+        const exact = params.exact !== false; // P13.2
         const found = allVariants.some((v: any) =>
-          v.name?.toLowerCase().includes(name.toLowerCase())
+          matchEntityName(v.name, name, exact)
         );
         return {
           graderType: "existence",
@@ -201,8 +222,9 @@ async function gradeExistence(
         const mixinList = Array.isArray(mixins)
           ? mixins
           : mixins.mixins ?? [];
+        const exact = params.exact !== false; // P13.2
         const found = mixinList.some((m: any) =>
-          m.name?.toLowerCase().includes(name.toLowerCase())
+          matchEntityName(m.name, name, exact)
         );
         return {
           graderType: "existence",
@@ -270,10 +292,13 @@ async function gradeProperty(
     const failures: string[] = [];
 
     // Check styles (subset match)
+    // P13.1: Coerce actual to string before comparison — style values can be
+    // numbers (e.g., lineHeight: 1.5) and .toLowerCase() on a number throws.
     if (params.styles) {
       const expectedStyles = params.styles as Record<string, string>;
       for (const [prop, value] of Object.entries(expectedStyles)) {
-        const actual = node.styles?.[prop];
+        const raw = node.styles?.[prop];
+        const actual = raw != null ? String(raw) : undefined;
         if (
           !actual ||
           !actual.toLowerCase().includes(value.toLowerCase())
@@ -474,9 +499,46 @@ async function gradeData(
         const queryList = Array.isArray(queries)
           ? queries
           : queries.queries ?? [];
+
+        // P13.9: Count check
+        if (queryList.length < minCount) {
+          return {
+            graderType: "data",
+            passed: false,
+            message: `Found ${queryList.length} queries (expected >= ${minCount})`,
+          };
+        }
+
+        // P13.9: Optional name assertion — validates a specific query exists
+        if (params.name) {
+          const expectedName = params.name as string;
+          const nameMatch = queryList.find((q: any) =>
+            q.name?.toLowerCase() === expectedName.toLowerCase()
+          );
+          if (!nameMatch) {
+            return {
+              graderType: "data",
+              passed: false,
+              message: `No query found with name "${expectedName}" (found: ${queryList.map((q: any) => q.name).join(", ")})`,
+            };
+          }
+
+          // P13.9: Optional queryType assertion on the named query
+          if (params.queryType) {
+            const expectedType = params.queryType as string;
+            if (nameMatch.queryType !== expectedType) {
+              return {
+                graderType: "data",
+                passed: false,
+                message: `Query "${expectedName}" has type "${nameMatch.queryType}", expected "${expectedType}"`,
+              };
+            }
+          }
+        }
+
         return {
           graderType: "data",
-          passed: queryList.length >= minCount,
+          passed: true,
           message: `Found ${queryList.length} queries (expected >= ${minCount})`,
         };
       }
@@ -507,9 +569,34 @@ async function gradeData(
           ? interactions
           : interactions.interactions ?? [];
         const minCount = (params.minCount as number) ?? 1;
+
+        // P13.9: Count check
+        if (interactionList.length < minCount) {
+          return {
+            graderType: "data",
+            passed: false,
+            message: `Found ${interactionList.length} interactions (expected >= ${minCount})`,
+          };
+        }
+
+        // P13.9: Optional event assertion — validates a specific event handler exists
+        if (params.event) {
+          const expectedEvent = params.event as string;
+          const eventFound = interactionList.some((i: any) =>
+            i.event?.toLowerCase() === expectedEvent.toLowerCase()
+          );
+          if (!eventFound) {
+            return {
+              graderType: "data",
+              passed: false,
+              message: `No interaction found with event "${expectedEvent}" (found: ${interactionList.map((i: any) => i.event).join(", ")})`,
+            };
+          }
+        }
+
         return {
           graderType: "data",
-          passed: interactionList.length >= minCount,
+          passed: true,
           message: `Found ${interactionList.length} interactions (expected >= ${minCount})`,
         };
       }
@@ -562,7 +649,7 @@ async function resolveComponentUuid(
     const data = JSON.parse(result.content);
     const items = [...(data.pages ?? []), ...(data.components ?? [])];
     const match = items.find((item: any) =>
-      item.name?.toLowerCase().includes(componentName.toLowerCase())
+      matchEntityName(item.name, componentName, true)
     );
     if (!match?.uuid) {
       return {
@@ -576,12 +663,13 @@ async function resolveComponentUuid(
   }
 }
 
-/** Recursively find a node by name in a tree (case-insensitive substring) */
-function findNodeByName(tree: any, name: string): any {
-  if (tree.name?.toLowerCase().includes(name.toLowerCase())) return tree;
+/** Recursively find a node by name in a tree.
+ *  P13.2: supports exact (default) and substring matching modes. */
+function findNodeByName(tree: any, name: string, exact: boolean = true): any {
+  if (matchEntityName(tree.name, name, exact)) return tree;
   if (tree.children) {
     for (const child of tree.children) {
-      const found = findNodeByName(child, name);
+      const found = findNodeByName(child, name, exact);
       if (found) return found;
     }
   }

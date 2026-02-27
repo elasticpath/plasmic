@@ -172,6 +172,56 @@ describe("tool handlers", () => {
   let mockAddInteraction: ReturnType<typeof vi.fn>;
   let mockUpdateInteraction: ReturnType<typeof vi.fn>;
   let mockRemoveInteraction: ReturnType<typeof vi.fn>;
+  // P20: Missing mock declarations for uncovered handlers
+  let mockUpdateRichText: ReturnType<typeof vi.fn>;
+  let mockSetVisibility: ReturnType<typeof vi.fn>;
+  let mockSetImage: ReturnType<typeof vi.fn>;
+  let mockApplyMixin: ReturnType<typeof vi.fn>;
+  let mockDetachMixin: ReturnType<typeof vi.fn>;
+  let mockAddNodeAnimation: ReturnType<typeof vi.fn>;
+  let mockRemoveNodeAnimation: ReturnType<typeof vi.fn>;
+  let mockListProps: ReturnType<typeof vi.fn>;
+  let mockAddProp: ReturnType<typeof vi.fn>;
+  let mockUpdateProp: ReturnType<typeof vi.fn>;
+  let mockRemoveProp: ReturnType<typeof vi.fn>;
+  let mockListStates: ReturnType<typeof vi.fn>;
+  let mockAddState: ReturnType<typeof vi.fn>;
+  let mockUpdateState: ReturnType<typeof vi.fn>;
+  let mockRemoveState: ReturnType<typeof vi.fn>;
+  let mockCreateToken: ReturnType<typeof vi.fn>;
+  let mockUpdateToken: ReturnType<typeof vi.fn>;
+  let mockRemoveToken: ReturnType<typeof vi.fn>;
+  let mockDuplicateToken: ReturnType<typeof vi.fn>;
+  let mockListMixins: ReturnType<typeof vi.fn>;
+  let mockCreateMixin: ReturnType<typeof vi.fn>;
+  let mockUpdateMixin: ReturnType<typeof vi.fn>;
+  let mockRemoveMixin: ReturnType<typeof vi.fn>;
+  let mockListAnimationSequences: ReturnType<typeof vi.fn>;
+  let mockCreateAnimationSequence: ReturnType<typeof vi.fn>;
+  let mockUpdateAnimationSequence: ReturnType<typeof vi.fn>;
+  let mockRemoveAnimationSequence: ReturnType<typeof vi.fn>;
+  let mockListThemes: ReturnType<typeof vi.fn>;
+  let mockCreateTheme: ReturnType<typeof vi.fn>;
+  let mockUpdateTheme: ReturnType<typeof vi.fn>;
+  let mockRemoveTheme: ReturnType<typeof vi.fn>;
+  let mockSetActiveTheme: ReturnType<typeof vi.fn>;
+  let mockListAssets: ReturnType<typeof vi.fn>;
+  let mockUploadAsset: ReturnType<typeof vi.fn>;
+  let mockRenameAsset: ReturnType<typeof vi.fn>;
+  let mockRemoveAsset: ReturnType<typeof vi.fn>;
+  let mockListGlobalVariantGroups: ReturnType<typeof vi.fn>;
+  let mockCreateGlobalVariantGroup: ReturnType<typeof vi.fn>;
+  let mockAddGlobalVariant: ReturnType<typeof vi.fn>;
+  let mockRemoveGlobalVariantGroup: ReturnType<typeof vi.fn>;
+  let mockRenameGlobalVariant: ReturnType<typeof vi.fn>;
+  let mockListQueries: ReturnType<typeof vi.fn>;
+  let mockAddQuery: ReturnType<typeof vi.fn>;
+  let mockUpdateQuery: ReturnType<typeof vi.fn>;
+  let mockRemoveQuery: ReturnType<typeof vi.fn>;
+  let mockGetCodeComponentMeta: ReturnType<typeof vi.fn>;
+  let mockListCustomFunctions: ReturnType<typeof vi.fn>;
+  let mockSyncFromDevHost: ReturnType<typeof vi.fn>;
+  let mockClearRegistryCache: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     process.env = { ...savedEnv };
@@ -188,6 +238,7 @@ describe("tool handlers", () => {
       getProjectBundle: vi.fn(),
       updateProject: vi.fn(),
       saveRevision: vi.fn(),
+      clearSessionState: vi.fn(),
     };
 
     mockLoadProject = vi.fn();
@@ -248,6 +299,56 @@ describe("tool handlers", () => {
     mockAddInteraction = vi.fn();
     mockUpdateInteraction = vi.fn();
     mockRemoveInteraction = vi.fn();
+    // P20: Initialize missing mocks
+    mockUpdateRichText = vi.fn();
+    mockSetVisibility = vi.fn();
+    mockSetImage = vi.fn();
+    mockApplyMixin = vi.fn();
+    mockDetachMixin = vi.fn();
+    mockAddNodeAnimation = vi.fn();
+    mockRemoveNodeAnimation = vi.fn();
+    mockListProps = vi.fn();
+    mockAddProp = vi.fn();
+    mockUpdateProp = vi.fn();
+    mockRemoveProp = vi.fn();
+    mockListStates = vi.fn();
+    mockAddState = vi.fn();
+    mockUpdateState = vi.fn();
+    mockRemoveState = vi.fn();
+    mockCreateToken = vi.fn();
+    mockUpdateToken = vi.fn();
+    mockRemoveToken = vi.fn();
+    mockDuplicateToken = vi.fn();
+    mockListMixins = vi.fn();
+    mockCreateMixin = vi.fn();
+    mockUpdateMixin = vi.fn();
+    mockRemoveMixin = vi.fn();
+    mockListAnimationSequences = vi.fn();
+    mockCreateAnimationSequence = vi.fn();
+    mockUpdateAnimationSequence = vi.fn();
+    mockRemoveAnimationSequence = vi.fn();
+    mockListThemes = vi.fn();
+    mockCreateTheme = vi.fn();
+    mockUpdateTheme = vi.fn();
+    mockRemoveTheme = vi.fn();
+    mockSetActiveTheme = vi.fn();
+    mockListAssets = vi.fn();
+    mockUploadAsset = vi.fn();
+    mockRenameAsset = vi.fn();
+    mockRemoveAsset = vi.fn();
+    mockListGlobalVariantGroups = vi.fn();
+    mockCreateGlobalVariantGroup = vi.fn();
+    mockAddGlobalVariant = vi.fn();
+    mockRemoveGlobalVariantGroup = vi.fn();
+    mockRenameGlobalVariant = vi.fn();
+    mockListQueries = vi.fn();
+    mockAddQuery = vi.fn();
+    mockUpdateQuery = vi.fn();
+    mockRemoveQuery = vi.fn();
+    mockGetCodeComponentMeta = vi.fn();
+    mockListCustomFunctions = vi.fn();
+    mockSyncFromDevHost = vi.fn().mockResolvedValue({ devHostSynced: false, syncedVariantComponents: [] });
+    mockClearRegistryCache = vi.fn();
     mockBeginBatch = vi.fn();
     mockEndBatch = vi.fn();
     mockIsBatchActive = vi.fn().mockReturnValue(false);
@@ -379,6 +480,54 @@ describe("tool handlers", () => {
       addInteraction: (...args: any[]) => mockAddInteraction(...args),
       updateInteraction: (...args: any[]) => mockUpdateInteraction(...args),
       removeInteraction: (...args: any[]) => mockRemoveInteraction(...args),
+      // P20: Missing edit-tools mocks
+      updateRichText: (...args: any[]) => mockUpdateRichText(...args),
+      setVisibility: (...args: any[]) => mockSetVisibility(...args),
+      setImage: (...args: any[]) => mockSetImage(...args),
+      applyMixin: (...args: any[]) => mockApplyMixin(...args),
+      detachMixin: (...args: any[]) => mockDetachMixin(...args),
+      addNodeAnimation: (...args: any[]) => mockAddNodeAnimation(...args),
+      removeNodeAnimation: (...args: any[]) => mockRemoveNodeAnimation(...args),
+      listProps: (...args: any[]) => mockListProps(...args),
+      addProp: (...args: any[]) => mockAddProp(...args),
+      updateProp: (...args: any[]) => mockUpdateProp(...args),
+      removeProp: (...args: any[]) => mockRemoveProp(...args),
+      listStates: (...args: any[]) => mockListStates(...args),
+      addState: (...args: any[]) => mockAddState(...args),
+      updateState: (...args: any[]) => mockUpdateState(...args),
+      removeState: (...args: any[]) => mockRemoveState(...args),
+      createToken: (...args: any[]) => mockCreateToken(...args),
+      updateToken: (...args: any[]) => mockUpdateToken(...args),
+      removeToken: (...args: any[]) => mockRemoveToken(...args),
+      duplicateToken: (...args: any[]) => mockDuplicateToken(...args),
+      listMixins: () => mockListMixins(),
+      createMixin: (...args: any[]) => mockCreateMixin(...args),
+      updateMixin: (...args: any[]) => mockUpdateMixin(...args),
+      removeMixin: (...args: any[]) => mockRemoveMixin(...args),
+      listAnimationSequences: () => mockListAnimationSequences(),
+      createAnimationSequence: (...args: any[]) => mockCreateAnimationSequence(...args),
+      updateAnimationSequence: (...args: any[]) => mockUpdateAnimationSequence(...args),
+      removeAnimationSequence: (...args: any[]) => mockRemoveAnimationSequence(...args),
+      listThemes: () => mockListThemes(),
+      createTheme: (...args: any[]) => mockCreateTheme(...args),
+      updateTheme: (...args: any[]) => mockUpdateTheme(...args),
+      removeTheme: (...args: any[]) => mockRemoveTheme(...args),
+      setActiveTheme: (...args: any[]) => mockSetActiveTheme(...args),
+      listAssets: (...args: any[]) => mockListAssets(...args),
+      uploadAsset: (...args: any[]) => mockUploadAsset(...args),
+      renameAsset: (...args: any[]) => mockRenameAsset(...args),
+      removeAsset: (...args: any[]) => mockRemoveAsset(...args),
+      listGlobalVariantGroups: () => mockListGlobalVariantGroups(),
+      createGlobalVariantGroup: (...args: any[]) => mockCreateGlobalVariantGroup(...args),
+      addGlobalVariant: (...args: any[]) => mockAddGlobalVariant(...args),
+      removeGlobalVariantGroup: (...args: any[]) => mockRemoveGlobalVariantGroup(...args),
+      renameGlobalVariant: (...args: any[]) => mockRenameGlobalVariant(...args),
+      listQueries: (...args: any[]) => mockListQueries(...args),
+      addQuery: (...args: any[]) => mockAddQuery(...args),
+      updateQuery: (...args: any[]) => mockUpdateQuery(...args),
+      removeQuery: (...args: any[]) => mockRemoveQuery(...args),
+      getCodeComponentMeta: (...args: any[]) => mockGetCodeComponentMeta(...args),
+      listCustomFunctions: () => mockListCustomFunctions(),
     }));
 
     vi.doMock("../batch-manager", () => ({
@@ -401,6 +550,11 @@ describe("tool handlers", () => {
       undo: (...args: any[]) => mockUndoOperation(...args),
       clearUndoStack: () => mockClearUndoStack(),
       getUndoDepth: () => mockGetUndoDepth(),
+    }));
+
+    vi.doMock("../devhost-sync", () => ({
+      syncFromDevHost: (...args: any[]) => mockSyncFromDevHost(...args),
+      clearRegistryCache: (...args: any[]) => mockClearRegistryCache(...args),
     }));
 
     // --- Create server and connect transport ---
@@ -496,6 +650,23 @@ describe("tool handlers", () => {
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("Error in project.set");
       expect(result.content[0].text).toContain("Network timeout");
+    });
+
+    it("handles non-Error thrown values without crashing", async () => {
+      // Thrown strings, numbers, or other non-Error values should produce
+      // a readable error message instead of "undefined"
+      mockLoadProject.mockRejectedValue("raw string rejection");
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "set", projectId: "bad-proj" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Error in project.set");
+      expect(result.content[0].text).toContain("raw string rejection");
+      // Must NOT contain "undefined" — that would mean err.message was used on a non-Error
+      expect(result.content[0].text).not.toContain("undefined");
     });
   });
 
@@ -598,7 +769,7 @@ describe("tool handlers", () => {
 
     it("returns error when no active project", async () => {
       mockRequireSession.mockImplementation(() => {
-        throw new Error("No active project. Use the set-project tool first.");
+        throw new Error("No active project. Use project tool with action 'set' first.");
       });
 
       const result = await client.callTool({
@@ -608,6 +779,150 @@ describe("tool handlers", () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("No active project");
+    });
+  });
+
+  describe("P34: project.get-meta includes dev host contexts and traits", () => {
+    it("includes devHostContexts when session has registry contexts", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        projectName: "Test",
+        site: {
+          components: [],
+          styleTokens: [],
+          globalVariantGroups: [],
+        },
+        registryData: {
+          components: [],
+          contexts: [
+            {
+              name: "ShopContext",
+              displayName: "Shop Context",
+              description: "Provides shop data",
+              importName: "ShopProvider",
+              importPath: "@elasticpath/plasmic-ep-commerce",
+              props: { storeId: { type: "string" }, locale: { type: "string" } },
+              globalActions: { addToCart: { parameters: [{ name: "sku", type: "string" }] } },
+            },
+          ],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "get-meta" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.devHostContexts).toBeDefined();
+      expect(output.devHostContexts).toHaveLength(1);
+      expect(output.devHostContexts[0].name).toBe("ShopContext");
+      expect(output.devHostContexts[0].displayName).toBe("Shop Context");
+      expect(output.devHostContexts[0].description).toBe("Provides shop data");
+      expect(output.devHostContexts[0].importName).toBe("ShopProvider");
+      expect(output.devHostContexts[0].importPath).toBe("@elasticpath/plasmic-ep-commerce");
+      expect(output.devHostContexts[0].props).toEqual({
+        storeId: { type: "string" },
+        locale: { type: "string" },
+      });
+      expect(output.devHostContexts[0].globalActions).toEqual({
+        addToCart: { parameters: [{ name: "sku", type: "string" }] },
+      });
+    });
+
+    it("includes devHostTraits when session has registry traits", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        projectName: "Test",
+        site: {
+          components: [],
+          styleTokens: [],
+          globalVariantGroups: [],
+        },
+        registryData: {
+          components: [],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [
+            { trait: "theme", meta: { label: "Theme", type: "choice", options: ["light", "dark"] } },
+            { trait: "size", meta: { label: "Size", type: "choice", options: ["sm", "md", "lg"] } },
+          ],
+        },
+      });
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "get-meta" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.devHostTraits).toBeDefined();
+      expect(output.devHostTraits).toHaveLength(2);
+      expect(output.devHostTraits[0]).toEqual({
+        trait: "theme",
+        meta: { label: "Theme", type: "choice", options: ["light", "dark"] },
+      });
+      expect(output.devHostTraits[1]).toEqual({
+        trait: "size",
+        meta: { label: "Size", type: "choice", options: ["sm", "md", "lg"] },
+      });
+    });
+
+    it("omits devHostContexts and devHostTraits when no registryData", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        projectName: "Test",
+        site: {
+          components: [],
+          styleTokens: [],
+          globalVariantGroups: [],
+        },
+      });
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "get-meta" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.devHostContexts).toBeUndefined();
+      expect(output.devHostTraits).toBeUndefined();
+    });
+
+    it("omits devHostContexts and devHostTraits when arrays are empty", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        projectName: "Test",
+        site: {
+          components: [],
+          styleTokens: [],
+          globalVariantGroups: [],
+        },
+        registryData: {
+          components: [],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "get-meta" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.devHostContexts).toBeUndefined();
+      expect(output.devHostTraits).toBeUndefined();
     });
   });
 
@@ -779,7 +1094,7 @@ describe("tool handlers", () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("not found");
-      expect(result.content[0].text).toContain("list-components");
+      expect(result.content[0].text).toContain("component tool");
     });
 
     it("applies default maxChars: 15000 via truncateTreeToCharBudget", async () => {
@@ -1485,6 +1800,46 @@ describe("tool handlers", () => {
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("Error component.create-page");
     });
+
+    it("preserves registryData in session after reload", async () => {
+      const registryData = {
+        components: [{ name: "EPButton" }],
+        contexts: [{ name: "ShopContext" }],
+        functions: [],
+        tokens: [{ name: "Primary", value: "#ff0000", type: "Color" }],
+        traits: [],
+      };
+
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        projectName: "Test Project",
+      });
+      mockApiClient.updateProject.mockResolvedValue({
+        result: { newComponents: [{ uuid: "page-uuid" }] },
+      });
+      mockLoadProject.mockResolvedValue({
+        site: { components: [] },
+        bundler: {},
+        projectName: "Test Project",
+        revisionNum: 6,
+        modelVersion: 2,
+        hostlessDataVersion: 0,
+      });
+      mockSyncFromDevHost.mockResolvedValue({
+        devHostSynced: true,
+        syncedVariantComponents: ["EPButton"],
+        registryData,
+      });
+
+      await client.callTool({
+        name: "component",
+        arguments: { action: "create-page", name: "Test", path: "/test", body: {} },
+      });
+
+      expect(mockSetSession).toHaveBeenCalledWith(
+        expect.objectContaining({ registryData })
+      );
+    });
   });
 
   describe("component.create", () => {
@@ -1598,6 +1953,46 @@ describe("tool handlers", () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("Error component.create");
+    });
+
+    it("preserves registryData in session after reload", async () => {
+      const registryData = {
+        components: [{ name: "EPButton" }],
+        contexts: [],
+        functions: [{ name: "formatPrice" }],
+        tokens: [],
+        traits: [{ trait: "interactive", meta: { type: "boolean" } }],
+      };
+
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        projectName: "Test Project",
+      });
+      mockApiClient.updateProject.mockResolvedValue({
+        result: { newComponents: [{ uuid: "comp-uuid" }] },
+      });
+      mockLoadProject.mockResolvedValue({
+        site: { components: [] },
+        bundler: {},
+        projectName: "Test Project",
+        revisionNum: 7,
+        modelVersion: 3,
+        hostlessDataVersion: 0,
+      });
+      mockSyncFromDevHost.mockResolvedValue({
+        devHostSynced: true,
+        syncedVariantComponents: [],
+        registryData,
+      });
+
+      await client.callTool({
+        name: "component",
+        arguments: { action: "create", name: "HeroSection", body: {} },
+      });
+
+      expect(mockSetSession).toHaveBeenCalledWith(
+        expect.objectContaining({ registryData })
+      );
     });
   });
 
@@ -1749,7 +2144,7 @@ describe("tool handlers", () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("not found");
-      expect(result.content[0].text).toContain("list-components");
+      expect(result.content[0].text).toContain("component tool");
     });
 
     it("returns error when API call fails", async () => {
@@ -1770,6 +2165,55 @@ describe("tool handlers", () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("Error component.clone");
+    });
+
+    it("preserves registryData in session after reload", async () => {
+      const registryData = {
+        components: [{ name: "EPButton" }],
+        contexts: [{ name: "ShopContext" }],
+        functions: [],
+        tokens: [],
+        traits: [],
+      };
+
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        site: {
+          components: [
+            { uuid: "comp-1", name: "Source" },
+          ],
+        },
+      });
+      mockApiClient.updateProject.mockResolvedValue({
+        result: { newComponents: [{ uuid: "clone-uuid" }] },
+      });
+      mockLoadProject.mockResolvedValue({
+        site: {
+          components: [
+            { uuid: "comp-1", name: "Source" },
+            { uuid: "clone-uuid", name: "SourceClone" },
+          ],
+        },
+        bundler: {},
+        projectName: "Test Project",
+        revisionNum: 8,
+        modelVersion: 4,
+        hostlessDataVersion: 0,
+      });
+      mockSyncFromDevHost.mockResolvedValue({
+        devHostSynced: true,
+        syncedVariantComponents: [],
+        registryData,
+      });
+
+      await client.callTool({
+        name: "component",
+        arguments: { action: "clone", sourceUuid: "comp-1", name: "SourceClone" },
+      });
+
+      expect(mockSetSession).toHaveBeenCalledWith(
+        expect.objectContaining({ registryData })
+      );
     });
   });
 
@@ -1881,6 +2325,26 @@ describe("tool handlers", () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("Error node.update-text");
+    });
+
+    it("handles non-Error thrown values in mutation handler", async () => {
+      // handleMutationError must safely extract a message from non-Error values
+      mockUpdateText.mockRejectedValue(42);
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "update-text",
+          componentUuid: "comp-1",
+          nodeRef: "Foo",
+          text: "bar",
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Error node.update-text");
+      expect(result.content[0].text).toContain("42");
+      expect(result.content[0].text).not.toContain("undefined");
     });
   });
 
@@ -2019,6 +2483,85 @@ describe("tool handlers", () => {
         mockApiClient, "comp-1", "Card",
         { type: "text", value: "Header" }, undefined, "header"
       );
+    });
+
+    it("includes warnings from addChild in response", async () => {
+      mockAddChild.mockResolvedValue({
+        save: { revisionNum: 8, incremental: true },
+        parentName: "Container",
+        parentUuid: "node-3",
+        newNodeUuid: "new-1",
+        position: "last",
+        warnings: ['Component "AccordionItem" is designed to be used inside "Accordion" but is being added to "Container"'],
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "add",
+          componentUuid: "comp-1",
+          parentRef: "Container",
+          child: { type: "component", name: "AccordionItem" },
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(output.success).toBe(true);
+      expect(output.warnings).toEqual([
+        'Component "AccordionItem" is designed to be used inside "Accordion" but is being added to "Container"',
+      ]);
+    });
+
+    it("omits warnings field when addChild returns no warnings", async () => {
+      mockAddChild.mockResolvedValue({
+        save: { revisionNum: 8, incremental: true },
+        parentName: "Container",
+        parentUuid: "node-3",
+        newNodeUuid: "new-1",
+        position: "last",
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "add",
+          componentUuid: "comp-1",
+          parentRef: "Container",
+          child: { type: "text", value: "Hello" },
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(output.success).toBe(true);
+      expect(output.warnings).toBeUndefined();
+    });
+
+    it("includes warnings in dry run response", async () => {
+      mockIsBatchActive.mockReturnValue(false);
+      mockBeginBatch.mockReturnValue("dry-run-batch");
+      mockGetAccumulatedChanges.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
+      mockAddChild.mockResolvedValue({
+        save: { revisionNum: 8, incremental: true },
+        parentName: "Container",
+        parentUuid: "node-3",
+        position: "last",
+        warnings: ["parentComponentName mismatch"],
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "add",
+          componentUuid: "comp-1",
+          parentRef: "Container",
+          child: { type: "text", value: "Test" },
+          dryRun: true,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(output.dryRun).toBe(true);
+      expect(output.warnings).toEqual(["parentComponentName mismatch"]);
     });
   });
 
@@ -4001,14 +4544,38 @@ describe("tool handlers", () => {
       expect(output.componentCount).toBe(2);
       expect(output.pageCount).toBe(1);
 
-      // Verify cleanup sequence: cancel batch → dispose tracker → clear undo → clear cache → load → session → init tracker
+      // Verify cleanup sequence: cancel batch → dispose tracker → clear undo → clear cache → clear registry cache → load → session → init tracker
       expect(mockCancelBatch).toHaveBeenCalled();
       expect(mockDisposeChangeTracker).toHaveBeenCalled();
       expect(mockClearUndoStack).toHaveBeenCalled();
       expect(mockClearNodeCache).toHaveBeenCalled();
+      expect(mockClearRegistryCache).toHaveBeenCalled();
       expect(mockLoadProject).toHaveBeenCalledWith(mockApiClient, "proj-123");
       expect(mockSetSession).toHaveBeenCalled();
       expect(mockInitChangeTracker).toHaveBeenCalledWith(refreshedSite);
+    });
+
+    it("clears registry cache with hostUrl on refresh", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+      });
+      mockLoadProject.mockResolvedValue({
+        site: { components: [] },
+        bundler: {},
+        projectName: "Test",
+        revisionNum: 15,
+        modelVersion: 3,
+        hostlessDataVersion: 1,
+        hostUrl: "http://localhost:3000",
+      });
+
+      await client.callTool({
+        name: "project",
+        arguments: { action: "refresh" },
+      });
+
+      // clearRegistryCache should be called with the hostUrl from loadProject
+      expect(mockClearRegistryCache).toHaveBeenCalledWith("http://localhost:3000");
     });
 
     it("returns error on reload failure", async () => {
@@ -4515,6 +5082,2634 @@ describe("tool handlers", () => {
       expect(result.isError).toBeFalsy();
       expect(output.dryRun).toBe(true);
       expect(mockInvalidateNodeCache).not.toHaveBeenCalled();
+    });
+  });
+
+  // =====================================================================
+  // P20: Component props/states handler tests
+  // =====================================================================
+
+  describe("component.list-props", () => {
+    it("returns props for a valid component", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Hero" }],
+        },
+      });
+      mockListProps.mockReturnValue([
+        { name: "title", type: "string" },
+        { name: "count", type: "number" },
+      ]);
+
+      const result = await client.callTool({
+        name: "component",
+        arguments: { action: "list-props", componentUuid: "comp-1" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.component).toBe("Hero");
+      expect(output.componentUuid).toBe("comp-1");
+      expect(output.propCount).toBe(2);
+      expect(output.props).toHaveLength(2);
+    });
+
+    it("returns error for unknown component UUID", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { components: [] },
+      });
+
+      const result = await client.callTool({
+        name: "component",
+        arguments: { action: "list-props", componentUuid: "bad-uuid" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("not found");
+    });
+  });
+
+  describe("component.add-prop", () => {
+    it("adds a prop and returns structured result", async () => {
+      mockAddProp.mockResolvedValue({
+        paramUuid: "param-1",
+        name: "title",
+        type: "string",
+        save: { revisionNum: 7, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "component",
+        arguments: {
+          action: "add-prop",
+          componentUuid: "comp-1",
+          name: "title",
+          type: "string",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.paramUuid).toBe("param-1");
+      expect(output.name).toBe("title");
+      expect(output.propType).toBe("string");
+      expect(output.revision).toBe(7);
+    });
+
+    it("supports dryRun mode", async () => {
+      mockIsBatchActive.mockReturnValue(false);
+      mockBeginBatch.mockReturnValue("dry-run-batch");
+      mockGetAccumulatedChanges.mockReturnValue({
+        changes: [{ changeNode: {} }],
+        newInsts: [],
+        removedInsts: [],
+      });
+      mockAddProp.mockResolvedValue({
+        paramUuid: "param-1",
+        name: "title",
+        type: "string",
+        save: { revisionNum: 7 },
+      });
+
+      const result = await client.callTool({
+        name: "component",
+        arguments: {
+          action: "add-prop",
+          componentUuid: "comp-1",
+          name: "title",
+          type: "string",
+          dryRun: true,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.dryRun).toBe(true);
+      expect(output.paramUuid).toBe("param-1");
+      expect(mockCancelBatch).toHaveBeenCalled();
+    });
+  });
+
+  describe("component.update-prop", () => {
+    it("updates a prop and returns structured result", async () => {
+      mockUpdateProp.mockResolvedValue({
+        paramUuid: "param-1",
+        name: "newTitle",
+        previousName: "title",
+        updatedFields: ["name"],
+        save: { revisionNum: 8, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "component",
+        arguments: {
+          action: "update-prop",
+          componentUuid: "comp-1",
+          propRef: "title",
+          name: "newTitle",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.name).toBe("newTitle");
+      expect(output.previousName).toBe("title");
+      expect(output.updatedFields).toEqual(["name"]);
+    });
+
+    it("returns error when no updateable field is provided", async () => {
+      const result = await client.callTool({
+        name: "component",
+        arguments: {
+          action: "update-prop",
+          componentUuid: "comp-1",
+          propRef: "title",
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      const output = parseResponse(result);
+      expect(output.message).toContain("At least one");
+    });
+  });
+
+  describe("component.remove-prop", () => {
+    it("removes a prop and returns structured result", async () => {
+      mockRemoveProp.mockResolvedValue({
+        removedName: "title",
+        removedUuid: "param-1",
+        cleanedArgCount: 2,
+        save: { revisionNum: 9, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "component",
+        arguments: {
+          action: "remove-prop",
+          componentUuid: "comp-1",
+          propRef: "title",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.removedName).toBe("title");
+      expect(output.cleanedArgCount).toBe(2);
+      expect(output.revision).toBe(9);
+    });
+  });
+
+  describe("component.list-states", () => {
+    it("returns states for a valid component", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Counter" }],
+        },
+      });
+      mockListStates.mockReturnValue([
+        { name: "count", variableType: "number", accessType: "private" },
+      ]);
+
+      const result = await client.callTool({
+        name: "component",
+        arguments: { action: "list-states", componentUuid: "comp-1" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.componentName).toBe("Counter");
+      expect(output.stateCount).toBe(1);
+      expect(output.states).toHaveLength(1);
+    });
+
+    it("returns error for unknown component UUID", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { components: [] },
+      });
+
+      const result = await client.callTool({
+        name: "component",
+        arguments: { action: "list-states", componentUuid: "bad-uuid" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("not found");
+    });
+  });
+
+  describe("component.add-state", () => {
+    it("adds a state and returns structured result", async () => {
+      mockAddState.mockResolvedValue({
+        stateUuid: "state-1",
+        paramUuid: "param-1",
+        name: "count",
+        variableType: "number",
+        accessType: "private",
+        save: { revisionNum: 10, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "component",
+        arguments: {
+          action: "add-state",
+          componentUuid: "comp-1",
+          name: "count",
+          variableType: "number",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.stateUuid).toBe("state-1");
+      expect(output.accessType).toBe("private");
+      expect(output.revision).toBe(10);
+    });
+  });
+
+  describe("component.update-state", () => {
+    it("updates a state and returns structured result", async () => {
+      mockUpdateState.mockResolvedValue({
+        stateUuid: "state-1",
+        name: "newCount",
+        previousName: "count",
+        updatedFields: ["name"],
+        save: { revisionNum: 11, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "component",
+        arguments: {
+          action: "update-state",
+          componentUuid: "comp-1",
+          stateRef: "count",
+          name: "newCount",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.previousName).toBe("count");
+      expect(output.updatedFields).toEqual(["name"]);
+    });
+
+    it("returns error when no updateable field is provided", async () => {
+      const result = await client.callTool({
+        name: "component",
+        arguments: {
+          action: "update-state",
+          componentUuid: "comp-1",
+          stateRef: "count",
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      const output = parseResponse(result);
+      expect(output.message).toContain("At least one");
+    });
+  });
+
+  describe("component.remove-state", () => {
+    it("removes a state and returns structured result", async () => {
+      mockRemoveState.mockResolvedValue({
+        removedName: "count",
+        removedUuid: "state-1",
+        cleanedArgCount: 0,
+        save: { revisionNum: 12, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "component",
+        arguments: {
+          action: "remove-state",
+          componentUuid: "comp-1",
+          stateRef: "count",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.removedName).toBe("count");
+      expect(output.revision).toBe(12);
+    });
+  });
+
+  describe("component.extract", () => {
+    it("extracts a subtree into a new component", async () => {
+      mockExtractToComponent.mockResolvedValue({
+        newComponentUuid: "new-comp-1",
+        newComponentName: "Button",
+        instanceUuid: "inst-1",
+        containingComponentUuid: "comp-1",
+        save: { revisionNum: 13, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "component",
+        arguments: {
+          action: "extract",
+          componentUuid: "comp-1",
+          nodeRef: "ButtonNode",
+          name: "Button",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.newComponentUuid).toBe("new-comp-1");
+      expect(output.newComponentName).toBe("Button");
+      expect(output.revision).toBe(13);
+      expect(mockClearNodeCache).toHaveBeenCalled();
+    });
+
+    it("supports dryRun mode without clearing cache", async () => {
+      mockIsBatchActive.mockReturnValue(false);
+      mockBeginBatch.mockReturnValue("dry-run-batch");
+      mockGetAccumulatedChanges.mockReturnValue({
+        changes: [{ changeNode: {} }],
+        newInsts: [],
+        removedInsts: [],
+      });
+      mockExtractToComponent.mockResolvedValue({
+        newComponentUuid: "new-comp-1",
+        newComponentName: "Button",
+        instanceUuid: "inst-1",
+        containingComponentUuid: "comp-1",
+        save: { revisionNum: 13 },
+      });
+
+      const result = await client.callTool({
+        name: "component",
+        arguments: {
+          action: "extract",
+          componentUuid: "comp-1",
+          nodeRef: "ButtonNode",
+          name: "Button",
+          dryRun: true,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.dryRun).toBe(true);
+      expect(output.newComponentUuid).toBe("new-comp-1");
+      expect(mockClearNodeCache).not.toHaveBeenCalled(); // dryRun should not clear cache
+    });
+  });
+
+  // =====================================================================
+  // P20: Node handler tests (rich text, visibility, image, mixin, animation)
+  // =====================================================================
+
+  describe("node.update-rich-text", () => {
+    it("delegates to updateRichText and returns structured result", async () => {
+      mockUpdateRichText.mockResolvedValue({
+        nodeName: "Title",
+        nodeUuid: "node-1",
+        previousText: "Old text",
+        newText: "New **bold** text",
+        markCount: 1,
+        save: { revisionNum: 14, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "update-rich-text",
+          componentUuid: "comp-1",
+          nodeRef: "Title",
+          text: "New **bold** text",
+          marks: [{ start: 4, end: 8, type: "bold" }],
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.node).toBe("Title");
+      expect(output.markCount).toBe(1);
+      expect(output.revision).toBe(14);
+    });
+
+    it("supports dryRun mode", async () => {
+      mockIsBatchActive.mockReturnValue(false);
+      mockBeginBatch.mockReturnValue("dry-run-batch");
+      mockGetAccumulatedChanges.mockReturnValue({
+        changes: [{ changeNode: {} }],
+        newInsts: [],
+        removedInsts: [],
+      });
+      mockUpdateRichText.mockResolvedValue({
+        nodeName: "Title",
+        nodeUuid: "node-1",
+        previousText: "Old",
+        newText: "New",
+        markCount: 0,
+        save: { revisionNum: 14 },
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "update-rich-text",
+          componentUuid: "comp-1",
+          nodeRef: "Title",
+          text: "New",
+          marks: [],
+          dryRun: true,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.dryRun).toBe(true);
+      expect(output.node).toBe("Title");
+    });
+  });
+
+  describe("node.set-visibility", () => {
+    it("sets visibility and returns structured result", async () => {
+      mockSetVisibility.mockResolvedValue({
+        nodeName: "Banner",
+        nodeUuid: "node-2",
+        previousVisibility: "visible",
+        newVisibility: "notRendered",
+        save: { revisionNum: 15, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "set-visibility",
+          componentUuid: "comp-1",
+          nodeRef: "Banner",
+          visible: false,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.node).toBe("Banner");
+      expect(output.newVisibility).toBe("notRendered");
+      expect(output.revision).toBe(15);
+    });
+  });
+
+  describe("node.set-image", () => {
+    it("sets image source and returns structured result", async () => {
+      mockSetImage.mockResolvedValue({
+        nodeName: "Logo",
+        nodeUuid: "node-3",
+        imageSource: "https://example.com/logo.png",
+        save: { revisionNum: 16, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "set-image",
+          componentUuid: "comp-1",
+          nodeRef: "Logo",
+          src: "https://example.com/logo.png",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.node).toBe("Logo");
+      expect(output.imageSource).toBe("https://example.com/logo.png");
+      expect(output.revision).toBe(16);
+    });
+  });
+
+  describe("node.apply-mixin", () => {
+    it("applies mixin and returns structured result", async () => {
+      mockApplyMixin.mockResolvedValue({
+        mixinName: "ButtonBase",
+        nodeUuid: "node-4",
+        save: { revisionNum: 17, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "apply-mixin",
+          componentUuid: "comp-1",
+          nodeRef: "Button",
+          mixinRef: "ButtonBase",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.mixinName).toBe("ButtonBase");
+      expect(output.revision).toBe(17);
+    });
+  });
+
+  describe("node.detach-mixin", () => {
+    it("detaches mixin and returns structured result", async () => {
+      mockDetachMixin.mockResolvedValue({
+        mixinName: "ButtonBase",
+        nodeUuid: "node-4",
+        save: { revisionNum: 18, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "detach-mixin",
+          componentUuid: "comp-1",
+          nodeRef: "Button",
+          mixinRef: "ButtonBase",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.mixinName).toBe("ButtonBase");
+      expect(output.revision).toBe(18);
+    });
+  });
+
+  describe("node.add-animation", () => {
+    it("adds animation and returns structured result", async () => {
+      mockAddNodeAnimation.mockResolvedValue({
+        sequenceName: "fadeIn",
+        nodeUuid: "node-5",
+        save: { revisionNum: 19, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "add-animation",
+          componentUuid: "comp-1",
+          nodeRef: "Card",
+          seqRef: "fadeIn",
+          duration: "0.3s",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.sequenceName).toBe("fadeIn");
+      expect(output.revision).toBe(19);
+    });
+  });
+
+  describe("node.remove-animation", () => {
+    it("removes animation and returns structured result", async () => {
+      mockRemoveNodeAnimation.mockResolvedValue({
+        removedCount: 1,
+        nodeUuid: "node-5",
+        save: { revisionNum: 20, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "remove-animation",
+          componentUuid: "comp-1",
+          nodeRef: "Card",
+          seqRef: "fadeIn",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.removedCount).toBe(1);
+      expect(output.revision).toBe(20);
+    });
+  });
+
+  // =====================================================================
+  // P20: Design handler tests (mixin, animation, theme, asset, duplicate-token)
+  // =====================================================================
+
+  describe("design.list-mixins", () => {
+    it("returns all mixins", async () => {
+      mockRequireSession.mockReturnValue({ site: {} });
+      mockListMixins.mockReturnValue([
+        { uuid: "mix-1", name: "ButtonBase" },
+        { uuid: "mix-2", name: "CardShadow" },
+      ]);
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: { action: "list-mixins" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.mixinCount).toBe(2);
+      expect(output.mixins).toHaveLength(2);
+    });
+  });
+
+  describe("design.create-mixin", () => {
+    it("creates mixin and returns structured result", async () => {
+      mockCreateMixin.mockResolvedValue({
+        mixinUuid: "mix-1",
+        name: "ButtonBase",
+        save: { revisionNum: 21, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: {
+          action: "create-mixin",
+          name: "ButtonBase",
+          styles: { padding: "8px" },
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.mixinUuid).toBe("mix-1");
+      expect(output.name).toBe("ButtonBase");
+      expect(output.revision).toBe(21);
+    });
+  });
+
+  describe("design.update-mixin", () => {
+    it("updates mixin and returns structured result", async () => {
+      mockUpdateMixin.mockResolvedValue({
+        mixinUuid: "mix-1",
+        name: "ButtonPrimary",
+        updatedFields: ["name", "styles"],
+        save: { revisionNum: 22, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: {
+          action: "update-mixin",
+          mixinRef: "ButtonBase",
+          newName: "ButtonPrimary",
+          styles: { padding: "12px" },
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.updatedFields).toEqual(["name", "styles"]);
+      expect(output.revision).toBe(22);
+    });
+  });
+
+  describe("design.remove-mixin", () => {
+    it("removes mixin and returns structured result", async () => {
+      mockRemoveMixin.mockResolvedValue({
+        removedName: "ButtonBase",
+        removedUuid: "mix-1",
+        save: { revisionNum: 23, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: {
+          action: "remove-mixin",
+          mixinRef: "ButtonBase",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.removedName).toBe("ButtonBase");
+      expect(output.revision).toBe(23);
+    });
+  });
+
+  describe("design.list-animations", () => {
+    it("returns all animation sequences", async () => {
+      mockRequireSession.mockReturnValue({ site: {} });
+      mockListAnimationSequences.mockReturnValue([
+        { uuid: "seq-1", name: "fadeIn" },
+      ]);
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: { action: "list-animations" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.sequenceCount).toBe(1);
+      expect(output.sequences).toHaveLength(1);
+    });
+  });
+
+  describe("design.create-animation", () => {
+    it("creates animation sequence and returns structured result", async () => {
+      mockCreateAnimationSequence.mockResolvedValue({
+        sequenceUuid: "seq-1",
+        name: "fadeIn",
+        save: { revisionNum: 24, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: {
+          action: "create-animation",
+          name: "fadeIn",
+          keyframes: [
+            { percentage: 0, styles: { opacity: "0" } },
+            { percentage: 100, styles: { opacity: "1" } },
+          ],
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.sequenceUuid).toBe("seq-1");
+      expect(output.revision).toBe(24);
+    });
+  });
+
+  describe("design.update-animation", () => {
+    it("updates animation sequence and returns structured result", async () => {
+      mockUpdateAnimationSequence.mockResolvedValue({
+        sequenceUuid: "seq-1",
+        name: "fadeInSlow",
+        updatedFields: ["name", "keyframes"],
+        save: { revisionNum: 25, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: {
+          action: "update-animation",
+          seqRef: "fadeIn",
+          newName: "fadeInSlow",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.name).toBe("fadeInSlow");
+      expect(output.revision).toBe(25);
+    });
+  });
+
+  describe("design.remove-animation", () => {
+    it("removes animation sequence and returns structured result", async () => {
+      mockRemoveAnimationSequence.mockResolvedValue({
+        removedName: "fadeIn",
+        removedUuid: "seq-1",
+        save: { revisionNum: 26, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: {
+          action: "remove-animation",
+          seqRef: "fadeIn",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.removedName).toBe("fadeIn");
+      expect(output.revision).toBe(26);
+    });
+  });
+
+  describe("design.list-themes", () => {
+    it("returns all themes", async () => {
+      mockRequireSession.mockReturnValue({ site: {} });
+      mockListThemes.mockReturnValue([{ index: 0, defaultStyles: { fontSize: "16px" } }]);
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: { action: "list-themes" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.themeCount).toBe(1);
+    });
+  });
+
+  describe("design.create-theme", () => {
+    it("creates theme and returns structured result", async () => {
+      mockCreateTheme.mockResolvedValue({
+        themeIndex: 0,
+        save: { revisionNum: 27, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: {
+          action: "create-theme",
+          defaultStyles: { fontSize: "16px" },
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.themeIndex).toBe(0);
+      expect(output.revision).toBe(27);
+    });
+  });
+
+  describe("design.update-theme", () => {
+    it("updates theme and returns structured result", async () => {
+      mockUpdateTheme.mockResolvedValue({
+        themeIndex: 0,
+        updatedFields: ["defaultStyles"],
+        save: { revisionNum: 28, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: {
+          action: "update-theme",
+          themeIndex: 0,
+          defaultStyles: { fontSize: "18px" },
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.themeIndex).toBe(0);
+      expect(output.revision).toBe(28);
+    });
+  });
+
+  describe("design.remove-theme", () => {
+    it("removes theme and returns structured result", async () => {
+      mockRemoveTheme.mockResolvedValue({
+        removedIndex: 0,
+        save: { revisionNum: 29, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: {
+          action: "remove-theme",
+          themeIndex: 0,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.removedIndex).toBe(0);
+      expect(output.revision).toBe(29);
+    });
+  });
+
+  describe("design.set-active-theme", () => {
+    it("sets active theme and returns structured result", async () => {
+      mockSetActiveTheme.mockResolvedValue({
+        activeThemeIndex: 0,
+        save: { revisionNum: 30, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: {
+          action: "set-active-theme",
+          themeIndex: 0,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.activeThemeIndex).toBe(0);
+      expect(output.revision).toBe(30);
+    });
+
+    it("accepts null themeIndex to deactivate", async () => {
+      mockSetActiveTheme.mockResolvedValue({
+        activeThemeIndex: null,
+        save: { revisionNum: 31, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: {
+          action: "set-active-theme",
+          themeIndex: null,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.activeThemeIndex).toBeNull();
+    });
+  });
+
+  describe("design.duplicate-token", () => {
+    it("duplicates token and returns structured result", async () => {
+      mockDuplicateToken.mockResolvedValue({
+        tokenUuid: "tok-2",
+        name: "Primary Copy",
+        sourceUuid: "tok-1",
+        sourceName: "Primary",
+        value: "#0066cc",
+        save: { revisionNum: 32, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: {
+          action: "duplicate-token",
+          tokenRef: "Primary",
+          newName: "Primary Copy",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.tokenUuid).toBe("tok-2");
+      expect(output.sourceName).toBe("Primary");
+      expect(output.value).toBe("#0066cc");
+      expect(output.revision).toBe(32);
+    });
+  });
+
+  describe("design.upload-asset", () => {
+    it("uploads asset and returns structured result", async () => {
+      mockUploadAsset.mockResolvedValue({
+        assetUuid: "asset-1",
+        name: "logo",
+        type: "picture",
+        save: { revisionNum: 33, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: {
+          action: "upload-asset",
+          name: "logo",
+          assetType: "picture",
+          url: "https://example.com/logo.png",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.assetUuid).toBe("asset-1");
+      expect(output.name).toBe("logo");
+      expect(output.assetType).toBe("picture");
+      expect(output.revision).toBe(33);
+    });
+  });
+
+  describe("design.rename-asset", () => {
+    it("renames asset and returns structured result", async () => {
+      mockRenameAsset.mockResolvedValue({
+        assetUuid: "asset-1",
+        oldName: "logo",
+        newName: "brand-logo",
+        save: { revisionNum: 34, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: {
+          action: "rename-asset",
+          assetRef: "logo",
+          newName: "brand-logo",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.assetUuid).toBe("asset-1");
+      expect(output.oldName).toBe("logo");
+      expect(output.newName).toBe("brand-logo");
+      expect(output.revision).toBe(34);
+    });
+  });
+
+  describe("design.remove-asset", () => {
+    it("removes asset and returns structured result", async () => {
+      mockRemoveAsset.mockResolvedValue({
+        removedName: "logo",
+        removedUuid: "asset-1",
+        save: { revisionNum: 35, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: {
+          action: "remove-asset",
+          assetRef: "logo",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.removedName).toBe("logo");
+      expect(output.revision).toBe(35);
+    });
+  });
+
+  // =====================================================================
+  // P20: Data handler tests (cond, rep, queries, code-meta, functions)
+  // =====================================================================
+
+  describe("data.set-data-cond", () => {
+    it("sets condition and returns structured result", async () => {
+      mockSetDataCond.mockResolvedValue({
+        nodeName: "Banner",
+        nodeUuid: "node-1",
+        previousCondition: null,
+        newCondition: "true",
+        save: { revisionNum: 36, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: {
+          action: "set-data-cond",
+          componentUuid: "comp-1",
+          nodeRef: "Banner",
+          condition: "true",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.node).toBe("Banner");
+      expect(output.newCondition).toBe("true");
+      expect(output.revision).toBe(36);
+    });
+
+    it("accepts null condition to remove", async () => {
+      mockSetDataCond.mockResolvedValue({
+        nodeName: "Banner",
+        nodeUuid: "node-1",
+        previousCondition: "true",
+        newCondition: null,
+        save: { revisionNum: 37, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: {
+          action: "set-data-cond",
+          componentUuid: "comp-1",
+          nodeRef: "Banner",
+          condition: null,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.newCondition).toBeNull();
+    });
+  });
+
+  describe("data.set-data-rep", () => {
+    it("sets repetition and returns structured result", async () => {
+      mockSetDataRep.mockResolvedValue({
+        nodeName: "Item",
+        nodeUuid: "node-2",
+        previousDataRep: null,
+        newDataRep: { collection: "[1,2,3]", element: "item", index: "idx" },
+        save: { revisionNum: 38, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: {
+          action: "set-data-rep",
+          componentUuid: "comp-1",
+          nodeRef: "Item",
+          collection: "[1,2,3]",
+          elementVariable: "item",
+          indexVariable: "idx",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.node).toBe("Item");
+      expect(output.revision).toBe(38);
+    });
+
+    it("accepts null collection to remove", async () => {
+      mockSetDataRep.mockResolvedValue({
+        nodeName: "Item",
+        nodeUuid: "node-2",
+        previousDataRep: { collection: "[1,2,3]" },
+        newDataRep: null,
+        save: { revisionNum: 39, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: {
+          action: "set-data-rep",
+          componentUuid: "comp-1",
+          nodeRef: "Item",
+          collection: null,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.newDataRep).toBeNull();
+    });
+  });
+
+  describe("data.list-queries", () => {
+    it("returns queries for a valid component", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Hero" }],
+        },
+      });
+      mockListQueries.mockReturnValue([
+        { uuid: "q-1", name: "fetchData", queryType: "dataQuery" },
+      ]);
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "list-queries", componentUuid: "comp-1" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.componentName).toBe("Hero");
+      expect(output.queryCount).toBe(1);
+      expect(output.queries).toHaveLength(1);
+    });
+
+    it("returns error for unknown component UUID", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { components: [] },
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "list-queries", componentUuid: "bad-uuid" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("not found");
+    });
+  });
+
+  describe("data.add-query", () => {
+    it("adds a query and returns structured result", async () => {
+      mockAddQuery.mockResolvedValue({
+        queryUuid: "q-1",
+        name: "fetchData",
+        queryType: "dataQuery",
+        save: { revisionNum: 40, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: {
+          action: "add-query",
+          componentUuid: "comp-1",
+          name: "fetchData",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.queryUuid).toBe("q-1");
+      expect(output.queryType).toBe("dataQuery");
+      expect(output.revision).toBe(40);
+    });
+  });
+
+  describe("data.update-query", () => {
+    it("updates a query and returns structured result", async () => {
+      mockUpdateQuery.mockResolvedValue({
+        queryUuid: "q-1",
+        name: "fetchItems",
+        queryType: "dataQuery",
+        save: { revisionNum: 41, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: {
+          action: "update-query",
+          componentUuid: "comp-1",
+          queryRef: "fetchData",
+          name: "fetchItems",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.name).toBe("fetchItems");
+      expect(output.revision).toBe(41);
+    });
+  });
+
+  describe("data.remove-query", () => {
+    it("removes a query and returns structured result", async () => {
+      mockRemoveQuery.mockResolvedValue({
+        removedName: "fetchData",
+        removedUuid: "q-1",
+        queryType: "dataQuery",
+        save: { revisionNum: 42, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: {
+          action: "remove-query",
+          componentUuid: "comp-1",
+          queryRef: "fetchData",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.removedName).toBe("fetchData");
+      expect(output.queryType).toBe("dataQuery");
+      expect(output.revision).toBe(42);
+    });
+  });
+
+  describe("data.get-code-meta", () => {
+    it("returns code component metadata", async () => {
+      mockRequireSession.mockReturnValue({ site: {} });
+      mockGetCodeComponentMeta.mockReturnValue({
+        isCodeComponent: true,
+        componentName: "EPButton",
+        importPath: "@plasmicpkgs/ep-button",
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: {
+          action: "get-code-meta",
+          componentUuid: "comp-1",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.isCodeComponent).toBe(true);
+      expect(output.componentName).toBe("EPButton");
+    });
+  });
+
+  describe("P33: data.get-code-meta includes dev host registry meta", () => {
+    it("includes devHostMeta when session has matching registry component", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {},
+        registryData: {
+          components: [
+            {
+              name: "EPButton",
+              props: { label: { type: "string", defaultValue: "Click me" }, size: { type: "choice", options: ["sm", "md", "lg"] } },
+              variants: { hover: { cssSelector: ":hover", displayName: "Hover" } },
+              defaultStyles: { padding: "8px 16px" },
+              parentComponentName: "EPForm",
+            },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      mockGetCodeComponentMeta.mockReturnValue({
+        isCodeComponent: true,
+        componentName: "EPButton",
+        importPath: "@plasmicpkgs/ep-button",
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "get-code-meta", componentUuid: "comp-1" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.isCodeComponent).toBe(true);
+      expect(output.devHostMeta).toBeDefined();
+      expect(output.devHostMeta.props).toEqual({
+        label: { type: "string", defaultValue: "Click me" },
+        size: { type: "choice", options: ["sm", "md", "lg"] },
+      });
+      expect(output.devHostMeta.variants).toEqual({
+        hover: { cssSelector: ":hover", displayName: "Hover" },
+      });
+      expect(output.devHostMeta.defaultStyles).toEqual({ padding: "8px 16px" });
+      expect(output.devHostMeta.parentComponentName).toBe("EPForm");
+      // name should be excluded (already known from componentName)
+      expect(output.devHostMeta.name).toBeUndefined();
+    });
+
+    it("matches registry component with $dev suffix", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {},
+        registryData: {
+          components: [
+            { name: "EPButton$dev", props: { label: { type: "string" } } },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      mockGetCodeComponentMeta.mockReturnValue({
+        isCodeComponent: true,
+        componentName: "EPButton",
+        importPath: "@plasmicpkgs/ep-button",
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "get-code-meta", componentUuid: "comp-1" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostMeta).toBeDefined();
+      expect(output.devHostMeta.props).toEqual({ label: { type: "string" } });
+    });
+
+    it("omits devHostMeta when no registryData", async () => {
+      mockRequireSession.mockReturnValue({ site: {} });
+      mockGetCodeComponentMeta.mockReturnValue({
+        isCodeComponent: true,
+        componentName: "EPButton",
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "get-code-meta", componentUuid: "comp-1" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostMeta).toBeUndefined();
+    });
+
+    it("omits devHostMeta when component is not a code component", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {},
+        registryData: {
+          components: [{ name: "EPButton", props: {} }],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      mockGetCodeComponentMeta.mockReturnValue({
+        isCodeComponent: false,
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "get-code-meta", componentUuid: "comp-1" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostMeta).toBeUndefined();
+    });
+
+    it("omits devHostMeta when no matching registry component found", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {},
+        registryData: {
+          components: [{ name: "OtherComponent", props: {} }],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      mockGetCodeComponentMeta.mockReturnValue({
+        isCodeComponent: true,
+        componentName: "EPButton",
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "get-code-meta", componentUuid: "comp-1" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostMeta).toBeUndefined();
+    });
+  });
+
+  describe("data.list-functions", () => {
+    it("returns custom functions", async () => {
+      mockRequireSession.mockReturnValue({ site: {} });
+      mockListCustomFunctions.mockReturnValue([
+        { name: "formatCurrency", namespace: "utils" },
+      ]);
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "list-functions" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output).toHaveLength(1);
+      expect(output[0].name).toBe("formatCurrency");
+    });
+  });
+
+  // =====================================================================
+  // P20: Interaction handler tests
+  // =====================================================================
+
+  describe("interaction.list (full test)", () => {
+    it("returns interactions for a valid component and node", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Hero" }],
+        },
+      });
+      mockListInteractions.mockReturnValue([
+        { event: "onClick", actionName: "navigation", interactionName: "Go Home" },
+      ]);
+
+      const result = await client.callTool({
+        name: "interaction",
+        arguments: {
+          action: "list",
+          componentUuid: "comp-1",
+          nodeRef: "Button",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.componentUuid).toBe("comp-1");
+      expect(output.nodeRef).toBe("Button");
+      expect(output.interactionCount).toBe(1);
+    });
+
+    it("returns error for unknown component UUID", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { components: [] },
+      });
+
+      const result = await client.callTool({
+        name: "interaction",
+        arguments: {
+          action: "list",
+          componentUuid: "bad-uuid",
+          nodeRef: "Button",
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("not found");
+    });
+  });
+
+  describe("interaction.add", () => {
+    it("adds interaction and returns structured result", async () => {
+      mockAddInteraction.mockResolvedValue({
+        interactionUuid: "int-1",
+        event: "onClick",
+        actionName: "navigation",
+        interactionName: "Navigate Home",
+        save: { revisionNum: 43, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "interaction",
+        arguments: {
+          action: "add",
+          componentUuid: "comp-1",
+          nodeRef: "Button",
+          event: "onClick",
+          actionName: "navigation",
+          args: { destination: "/" },
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.interactionUuid).toBe("int-1");
+      expect(output.event).toBe("onClick");
+      expect(output.revision).toBe(43);
+    });
+  });
+
+  describe("interaction.update", () => {
+    it("updates interaction and returns structured result", async () => {
+      mockUpdateInteraction.mockResolvedValue({
+        event: "onClick",
+        interactionIndex: 0,
+        actionName: "customFunction",
+        interactionName: "Track Click",
+        save: { revisionNum: 44, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "interaction",
+        arguments: {
+          action: "update",
+          componentUuid: "comp-1",
+          nodeRef: "Button",
+          event: "onClick",
+          interactionIndex: 0,
+          actionName: "customFunction",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.actionName).toBe("customFunction");
+      expect(output.revision).toBe(44);
+    });
+  });
+
+  describe("interaction.remove", () => {
+    it("removes interaction and returns structured result", async () => {
+      mockRemoveInteraction.mockResolvedValue({
+        removedCount: 1,
+        event: "onClick",
+        save: { revisionNum: 45, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "interaction",
+        arguments: {
+          action: "remove",
+          componentUuid: "comp-1",
+          nodeRef: "Button",
+          event: "onClick",
+          interactionIndex: 0,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.removedCount).toBe(1);
+      expect(output.event).toBe("onClick");
+      expect(output.revision).toBe(45);
+    });
+  });
+
+  // =====================================================================
+  // P20: Variant global handler tests
+  // =====================================================================
+
+  describe("variant.list-global-groups", () => {
+    it("returns global variant groups", async () => {
+      mockRequireSession.mockReturnValue({ site: {} });
+      mockListGlobalVariantGroups.mockReturnValue([
+        { uuid: "gvg-1", name: "Theme", variants: [{ uuid: "v-1", name: "Dark" }] },
+      ]);
+
+      const result = await client.callTool({
+        name: "variant",
+        arguments: { action: "list-global-groups" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output).toHaveLength(1);
+      expect(output[0].name).toBe("Theme");
+    });
+  });
+
+  describe("variant.create-global-group", () => {
+    it("creates global variant group and returns structured result", async () => {
+      mockCreateGlobalVariantGroup.mockResolvedValue({
+        group: { uuid: "gvg-1", name: "Theme", type: "single", variants: [] },
+        save: { revisionNum: 46, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "variant",
+        arguments: {
+          action: "create-global-group",
+          name: "Theme",
+          type: "single",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.group.name).toBe("Theme");
+      expect(output.revision).toBe(46);
+    });
+  });
+
+  describe("variant.add-global", () => {
+    it("adds a variant to a global group", async () => {
+      mockAddGlobalVariant.mockResolvedValue({
+        variant: { uuid: "v-1", name: "Dark" },
+        save: { revisionNum: 47, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "variant",
+        arguments: {
+          action: "add-global",
+          groupRef: "Theme",
+          name: "Dark",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.variant.name).toBe("Dark");
+      expect(output.revision).toBe(47);
+    });
+  });
+
+  describe("variant.remove-global-group", () => {
+    it("removes a global variant group", async () => {
+      mockRemoveGlobalVariantGroup.mockResolvedValue({
+        removedName: "Theme",
+        removedUuid: "gvg-1",
+        save: { revisionNum: 48, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "variant",
+        arguments: {
+          action: "remove-global-group",
+          groupRef: "Theme",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.removedName).toBe("Theme");
+      expect(output.revision).toBe(48);
+    });
+  });
+
+  describe("variant.rename-global", () => {
+    it("renames a global variant", async () => {
+      mockRenameGlobalVariant.mockResolvedValue({
+        oldName: "Dark",
+        newName: "Night",
+        save: { revisionNum: 49, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "variant",
+        arguments: {
+          action: "rename-global",
+          variantRef: "Dark",
+          newName: "Night",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.oldName).toBe("Dark");
+      expect(output.newName).toBe("Night");
+      expect(output.revision).toBe(49);
+    });
+  });
+
+  // =====================================================================
+  // P23: Session state preservation, null guards, validation, security
+  // =====================================================================
+
+  describe("P23: create-page reload preserves dev host sync state", () => {
+    it("calls syncFromDevHost after model reload and passes hostUrl to setSession", async () => {
+      const newSite = {
+        components: [
+          { uuid: "new-page", name: "Products", pageMeta: { path: "/products" } },
+        ],
+      };
+
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        projectName: "Test Project",
+        site: { components: [] },
+      });
+      mockApiClient.updateProject.mockResolvedValue({
+        result: { newComponents: [{ uuid: "api-page-uuid" }] },
+      });
+      mockLoadProject.mockResolvedValue({
+        site: newSite,
+        bundler: {},
+        projectName: "Test Project",
+        revisionNum: 6,
+        modelVersion: 2,
+        hostlessDataVersion: 0,
+        hostUrl: "http://localhost:3000",
+      });
+      mockSyncFromDevHost.mockResolvedValue({
+        devHostSynced: true,
+        syncedVariantComponents: ["EPButton"],
+      });
+
+      await client.callTool({
+        name: "component",
+        arguments: { action: "create-page", name: "Products", path: "/products", body: {} },
+      });
+
+      // syncFromDevHost was called with the reloaded hostUrl
+      expect(mockSyncFromDevHost).toHaveBeenCalledWith(newSite, "http://localhost:3000");
+
+      // setSession includes dev host sync fields
+      expect(mockSetSession).toHaveBeenCalledWith(expect.objectContaining({
+        hostUrl: "http://localhost:3000",
+        devHostSynced: true,
+        syncedVariantComponents: ["EPButton"],
+      }));
+    });
+  });
+
+  describe("P23: component.create reload preserves dev host sync state", () => {
+    it("calls syncFromDevHost after model reload and passes hostUrl to setSession", async () => {
+      const newSite = {
+        components: [{ uuid: "new-comp", name: "Widget" }],
+      };
+
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        projectName: "Test Project",
+        site: { components: [] },
+      });
+      mockApiClient.updateProject.mockResolvedValue({
+        result: { newComponents: [{ uuid: "api-comp-uuid" }] },
+      });
+      mockLoadProject.mockResolvedValue({
+        site: newSite,
+        bundler: {},
+        projectName: "Test Project",
+        revisionNum: 7,
+        modelVersion: 2,
+        hostlessDataVersion: 0,
+        hostUrl: "http://localhost:3001",
+      });
+      mockSyncFromDevHost.mockResolvedValue({
+        devHostSynced: true,
+        syncedVariantComponents: ["EPInput"],
+      });
+
+      await client.callTool({
+        name: "component",
+        arguments: { action: "create", name: "Widget" },
+      });
+
+      expect(mockSyncFromDevHost).toHaveBeenCalledWith(newSite, "http://localhost:3001");
+      expect(mockSetSession).toHaveBeenCalledWith(expect.objectContaining({
+        hostUrl: "http://localhost:3001",
+        devHostSynced: true,
+        syncedVariantComponents: ["EPInput"],
+      }));
+    });
+  });
+
+  describe("P23: component.clone reload preserves dev host sync state", () => {
+    it("calls syncFromDevHost after model reload and passes hostUrl to setSession", async () => {
+      const newSite = {
+        components: [
+          { uuid: "src-uuid", name: "Original" },
+          { uuid: "clone-uuid", name: "ClonedWidget" },
+        ],
+      };
+
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        projectName: "Test Project",
+        site: {
+          components: [{ uuid: "src-uuid", name: "Original" }],
+        },
+      });
+      mockApiClient.updateProject.mockResolvedValue({
+        result: { newComponents: [{ uuid: "api-clone-uuid" }] },
+      });
+      mockLoadProject.mockResolvedValue({
+        site: newSite,
+        bundler: {},
+        projectName: "Test Project",
+        revisionNum: 8,
+        modelVersion: 2,
+        hostlessDataVersion: 0,
+        hostUrl: "http://localhost:3002",
+      });
+      mockSyncFromDevHost.mockResolvedValue({
+        devHostSynced: false,
+        syncedVariantComponents: [],
+      });
+
+      await client.callTool({
+        name: "component",
+        arguments: { action: "clone", sourceUuid: "src-uuid", name: "ClonedWidget" },
+      });
+
+      expect(mockSyncFromDevHost).toHaveBeenCalledWith(newSite, "http://localhost:3002");
+      expect(mockSetSession).toHaveBeenCalledWith(expect.objectContaining({
+        hostUrl: "http://localhost:3002",
+        devHostSynced: false,
+        syncedVariantComponents: [],
+      }));
+    });
+  });
+
+  describe("P23: project.undo null-safe revision handling", () => {
+    it("omits revision field when result.save is null", async () => {
+      mockIsBatchActive.mockReturnValue(false);
+      mockUndoOperation.mockResolvedValue({
+        undone: "removed node",
+        save: null,
+      });
+      mockGetUndoDepth.mockReturnValue(0);
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "undo" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.undone).toBe("removed node");
+      expect(output.revision).toBeUndefined();
+    });
+  });
+
+  describe("P23: project.end-batch null-safe revision handling", () => {
+    it("omits revision field when result.save is null", async () => {
+      mockEndBatch.mockResolvedValue({
+        operationCount: 0,
+        save: null,
+      });
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "end-batch" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.operationCount).toBe(0);
+      expect(output.revision).toBeUndefined();
+      expect(output.message).toContain("0 operations");
+    });
+  });
+
+  describe("P23: update-mixin requires at least one updatable field", () => {
+    it("returns error when only mixinRef is provided", async () => {
+      const result = await client.callTool({
+        name: "design",
+        arguments: { action: "update-mixin", mixinRef: "ButtonBase" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("At least one of");
+    });
+  });
+
+  describe("P23: update-animation requires at least one updatable field", () => {
+    it("returns error when only seqRef is provided", async () => {
+      const result = await client.callTool({
+        name: "design",
+        arguments: { action: "update-animation", seqRef: "fadeIn" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("At least one of");
+    });
+  });
+
+  describe("P23: update-data-token requires at least one updatable field", () => {
+    it("returns error when only tokenRef is provided", async () => {
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "update-data-token", tokenRef: "TestToken" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("At least one of");
+    });
+  });
+
+  describe("P23: update-split requires at least one updatable field", () => {
+    it("returns error when only splitRef is provided", async () => {
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "update-split", splitRef: "TestSplit" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("At least one of");
+    });
+  });
+
+  describe("P23: interaction.update requires at least one updatable field", () => {
+    it("returns error when no update fields are provided", async () => {
+      const result = await client.callTool({
+        name: "interaction",
+        arguments: {
+          action: "update",
+          componentUuid: "comp-1",
+          nodeRef: "Button",
+          event: "onClick",
+          interactionIndex: 0,
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("At least one of");
+    });
+  });
+
+  describe("P23: component.extract rejects empty name", () => {
+    it("returns error when name is empty string", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        site: { components: [{ uuid: "comp-1" }] },
+      });
+
+      const result = await client.callTool({
+        name: "component",
+        arguments: {
+          action: "extract",
+          componentUuid: "comp-1",
+          nodeRef: "Header",
+          name: "",
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("name is required");
+    });
+  });
+
+  describe("P23: variant.list response includes component metadata wrapper", () => {
+    it("wraps listVariants result with componentUuid and componentName", async () => {
+      const mockVariantData = {
+        globalVariants: [],
+        componentVariants: [],
+        styleVariants: [],
+      };
+      mockListVariants.mockReturnValue(mockVariantData);
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: "comp-1", name: "Homepage" }],
+        },
+      });
+
+      const result = await client.callTool({
+        name: "variant",
+        arguments: { action: "list", componentUuid: "comp-1" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.componentUuid).toBe("comp-1");
+      expect(output.componentName).toBe("Homepage");
+    });
+  });
+
+  describe("P23: clone error uses JSON format", () => {
+    it("returns JSON-formatted error when source not found", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        site: { components: [] },
+      });
+
+      const result = await client.callTool({
+        name: "component",
+        arguments: { action: "clone", sourceUuid: "missing", name: "Clone" },
+      });
+
+      expect(result.isError).toBe(true);
+      // Should be valid JSON, not plain text
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.error).toBe(true);
+      expect(parsed.message).toContain("not found");
+    });
+  });
+
+  describe("P23: convert-to-page response includes message field", () => {
+    it("returns a human-readable message in the response", async () => {
+      mockConvertToPage.mockResolvedValue({
+        componentName: "About",
+        path: "/about",
+        save: { revisionNum: 50, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "component",
+        arguments: { action: "convert-to-page", componentUuid: "comp-1", path: "/about" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.message).toContain("Converted");
+      expect(output.message).toContain("About");
+    });
+  });
+
+  describe("P23: convert-to-component response includes message field", () => {
+    it("returns a human-readable message in the response", async () => {
+      mockConvertToComponent.mockResolvedValue({
+        componentName: "SharedHeader",
+        save: { revisionNum: 51, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "component",
+        arguments: { action: "convert-to-component", componentUuid: "comp-1" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.message).toContain("Converted");
+      expect(output.message).toContain("SharedHeader");
+    });
+  });
+
+  describe("P23: inspect.export sanitizes UUID in file path", () => {
+    it("strips path traversal characters from UUID in temp file path", async () => {
+      const maliciousUuid = "../../../etc/passwd";
+      mockRequireSession.mockReturnValue({
+        site: {
+          components: [{ uuid: maliciousUuid, name: "Evil" }],
+          styleTokens: [],
+        },
+      });
+      mockReadComponentTree.mockReturnValue({ type: "tag", tag: "div" });
+      mockReadComponentSummary.mockReturnValue({ type: "tag", tag: "div" });
+      mockCountTreeNodes.mockReturnValue(1);
+
+      const result = await client.callTool({
+        name: "inspect",
+        arguments: { action: "export", componentUuid: maliciousUuid },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      // The file path should contain the sanitized UUID, not the original
+      expect(output.filePath).not.toContain("..");
+      expect(output.filePath).toContain("plasmic-tree-");
+      expect(output.filePath).toContain("_______etc_passwd");
+    });
+  });
+
+  // =========================================================================
+  // P24: Code quality & safety hardening
+  // =========================================================================
+
+  describe("P24: node.add requires child parameter", () => {
+    it("returns error when child parameter is missing", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { components: [] },
+        bundler: {},
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "add",
+          componentUuid: "comp-1",
+          parentRef: "root",
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("child");
+    });
+  });
+
+  describe("P24: design.update-token accepts empty string value", () => {
+    it("does not reject value of empty string", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { components: [] },
+        bundler: {},
+      });
+      mockUpdateToken.mockResolvedValue({
+        save: { revisionNum: 5 },
+        tokenUuid: "t1",
+        name: "Token",
+        updatedFields: ["value"],
+      });
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: {
+          action: "update-token",
+          tokenRef: "MyToken",
+          value: "",
+        },
+      });
+
+      // Should NOT return the "at least one of" error
+      expect(result.isError).toBeFalsy();
+      expect(mockUpdateToken).toHaveBeenCalled();
+    });
+  });
+
+  describe("P24: node.set-image requires assetRef or src", () => {
+    it("returns error when neither assetRef nor src provided", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { components: [] },
+        bundler: {},
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "set-image",
+          componentUuid: "comp-1",
+          nodeRef: "img-1",
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("assetRef");
+      expect(result.content[0].text).toContain("src");
+    });
+  });
+
+  describe("P24: project.end-batch requires session", () => {
+    it("returns error when no session is active", async () => {
+      mockRequireSession.mockImplementation(() => {
+        throw new Error("No active project. Use project tool with action 'set' first.");
+      });
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "end-batch" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("No active project");
+    });
+  });
+
+  describe("P24: project.undo requires session", () => {
+    it("returns error when no session is active", async () => {
+      mockRequireSession.mockImplementation(() => {
+        throw new Error("No active project. Use project tool with action 'set' first.");
+      });
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "undo" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("No active project");
+    });
+  });
+
+  describe("P24: error messages reference correct STRAP tool names", () => {
+    it("component not found message references component tool", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { components: [] },
+        bundler: {},
+      });
+
+      const result = await client.callTool({
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: "nonexistent" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("component tool");
+      expect(result.content[0].text).not.toContain("list-components");
+    });
+  });
+
+  // =========================================================================
+  // P27: Dev host registry data enrichment
+  // =========================================================================
+
+  describe("P27: design.list-tokens includes dev host tokens", () => {
+    it("includes devHostTokens when session has registry data with tokens", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { styleTokens: [{ uuid: "t1" }] },
+        registryData: {
+          components: [],
+          contexts: [],
+          functions: [],
+          tokens: [
+            { name: "Brand Primary", value: "#0066cc", type: "Color" },
+            { name: "Base Spacing", value: "8px", type: "Spacing" },
+          ],
+          traits: [],
+        },
+      });
+      mockReadTokens.mockReturnValue({
+        tokenCount: 1,
+        tokens: { Color: [{ uuid: "t1", name: "Site Blue", type: "Color", value: "#0000ff" }] },
+      });
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: { action: "list-tokens" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.tokenCount).toBe(1);
+      expect(output.devHostTokens).toHaveLength(2);
+      expect(output.devHostTokens[0]).toEqual({ name: "Brand Primary", value: "#0066cc", type: "Color" });
+      expect(output.devHostTokens[1]).toEqual({ name: "Base Spacing", value: "8px", type: "Spacing" });
+    });
+
+    it("filters devHostTokens by tokenType when specified", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { styleTokens: [] },
+        registryData: {
+          components: [],
+          contexts: [],
+          functions: [],
+          tokens: [
+            { name: "Brand Primary", value: "#0066cc", type: "Color" },
+            { name: "Base Spacing", value: "8px", type: "Spacing" },
+          ],
+          traits: [],
+        },
+      });
+      mockReadTokens.mockReturnValue({ tokenCount: 0, tokens: {} });
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: { action: "list-tokens", tokenType: "Color" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostTokens).toHaveLength(1);
+      expect(output.devHostTokens[0].name).toBe("Brand Primary");
+    });
+
+    it("omits devHostTokens when session has no registry data", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { styleTokens: [{ uuid: "t1" }] },
+      });
+      mockReadTokens.mockReturnValue({
+        tokenCount: 1,
+        tokens: { Color: [{ uuid: "t1", name: "Blue", type: "Color", value: "#0000ff" }] },
+      });
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: { action: "list-tokens" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostTokens).toBeUndefined();
+    });
+
+    it("omits devHostTokens when registry has empty tokens array", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { styleTokens: [] },
+        registryData: {
+          components: [],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      mockReadTokens.mockReturnValue({ tokenCount: 0, tokens: {} });
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: { action: "list-tokens" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostTokens).toBeUndefined();
+    });
+
+    it("includes displayName and selector when present on dev host tokens", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { styleTokens: [] },
+        registryData: {
+          components: [],
+          contexts: [],
+          functions: [],
+          tokens: [
+            { name: "Heading", value: "'Inter', sans-serif", type: "FontFamily", displayName: "Heading Font", selector: ".heading" },
+          ],
+          traits: [],
+        },
+      });
+      mockReadTokens.mockReturnValue({ tokenCount: 0, tokens: {} });
+
+      const result = await client.callTool({
+        name: "design",
+        arguments: { action: "list-tokens" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostTokens).toHaveLength(1);
+      expect(output.devHostTokens[0]).toEqual({
+        name: "Heading",
+        value: "'Inter', sans-serif",
+        type: "FontFamily",
+        displayName: "Heading Font",
+        selector: ".heading",
+      });
+    });
+  });
+
+  describe("P27: data.list-functions includes dev host functions", () => {
+    it("includes devHostFunctions when session has registry data with functions", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {},
+        registryData: {
+          components: [],
+          contexts: [],
+          functions: [
+            { name: "formatPrice", namespace: "commerce", importPath: "@pkg/utils", isQuery: false },
+            { name: "fetchProducts", description: "Fetches products from API", importPath: "@pkg/api", isQuery: true },
+          ],
+          tokens: [],
+          traits: [],
+        },
+      });
+      mockListCustomFunctions.mockReturnValue({ functions: [] });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "list-functions" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.functions).toEqual([]);
+      expect(output.devHostFunctions).toHaveLength(2);
+      expect(output.devHostFunctions[0]).toEqual({
+        name: "formatPrice",
+        namespace: "commerce",
+        importPath: "@pkg/utils",
+        isQuery: false,
+      });
+      expect(output.devHostFunctions[1]).toEqual({
+        name: "fetchProducts",
+        description: "Fetches products from API",
+        importPath: "@pkg/api",
+        isQuery: true,
+      });
+    });
+
+    it("omits devHostFunctions when session has no registry data", async () => {
+      mockRequireSession.mockReturnValue({ site: {} });
+      mockListCustomFunctions.mockReturnValue({ functions: [] });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "list-functions" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostFunctions).toBeUndefined();
+    });
+
+    it("omits devHostFunctions when registry has empty functions array", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {},
+        registryData: {
+          components: [],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      mockListCustomFunctions.mockReturnValue({ functions: [] });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "list-functions" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostFunctions).toBeUndefined();
+    });
+
+    it("includes optional fields on dev host functions when present", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {},
+        registryData: {
+          components: [],
+          contexts: [],
+          functions: [
+            {
+              name: "calculateTax",
+              displayName: "Tax Calculator",
+              description: "Calculates tax amount",
+              importPath: "@pkg/tax",
+              isDefaultExport: true,
+              typescriptDeclaration: "(amount: number) => number",
+              params: [{ name: "amount", type: "number" }],
+              returnValue: { type: "number" },
+            },
+          ],
+          tokens: [],
+          traits: [],
+        },
+      });
+      mockListCustomFunctions.mockReturnValue({ functions: [] });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "list-functions" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostFunctions).toHaveLength(1);
+      expect(output.devHostFunctions[0]).toEqual({
+        name: "calculateTax",
+        displayName: "Tax Calculator",
+        description: "Calculates tax amount",
+        importPath: "@pkg/tax",
+        isDefaultExport: true,
+        typescriptDeclaration: "(amount: number) => number",
+        params: [{ name: "amount", type: "number" }],
+        returnValue: { type: "number" },
+      });
+    });
+  });
+
+  describe("P27: project.set includes devHostRegistry summary", () => {
+    it("includes devHostRegistry counts when sync succeeds with registry data", async () => {
+      mockLoadProject.mockResolvedValue({
+        site: { components: [] },
+        bundler: {},
+        projectName: "Test",
+        revisionNum: 1,
+        modelVersion: 1,
+        hostlessDataVersion: 0,
+        hostUrl: "http://localhost:3000",
+      });
+      mockSyncFromDevHost.mockResolvedValue({
+        devHostSynced: true,
+        syncedVariantComponents: ["EPButton"],
+        registryData: {
+          components: [{ name: "EPButton" }],
+          contexts: [{ name: "ShopContext" }, { name: "ThemeContext" }],
+          functions: [{ name: "formatPrice" }],
+          tokens: [{ name: "Primary", value: "#ff0000", type: "Color" }],
+          traits: [{ trait: "interactive", meta: { type: "boolean" } }],
+        },
+      });
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "set", projectId: "proj-456" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostSynced).toBe(true);
+      expect(output.devHostRegistry).toEqual({
+        contextCount: 2,
+        functionCount: 1,
+        tokenCount: 1,
+        traitCount: 1,
+      });
+    });
+
+    it("omits devHostRegistry when sync fails", async () => {
+      mockLoadProject.mockResolvedValue({
+        site: { components: [] },
+        bundler: {},
+        projectName: "Test",
+        revisionNum: 1,
+        modelVersion: 1,
+        hostlessDataVersion: 0,
+      });
+      mockSyncFromDevHost.mockResolvedValue({
+        devHostSynced: false,
+        syncedVariantComponents: [],
+      });
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "set", projectId: "proj-456" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostSynced).toBeUndefined();
+      expect(output.devHostRegistry).toBeUndefined();
+    });
+
+    it("stores registryData in session via setSession", async () => {
+      const registryData = {
+        components: [{ name: "EPButton" }],
+        contexts: [{ name: "ShopContext" }],
+        functions: [],
+        tokens: [],
+        traits: [],
+      };
+
+      mockLoadProject.mockResolvedValue({
+        site: { components: [] },
+        bundler: {},
+        projectName: "Test",
+        revisionNum: 1,
+        modelVersion: 1,
+        hostlessDataVersion: 0,
+        hostUrl: "http://localhost:3000",
+      });
+      mockSyncFromDevHost.mockResolvedValue({
+        devHostSynced: true,
+        syncedVariantComponents: [],
+        registryData,
+      });
+
+      await client.callTool({
+        name: "project",
+        arguments: { action: "set", projectId: "proj-456" },
+      });
+
+      expect(mockSetSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          registryData,
+        })
+      );
+    });
+  });
+
+  describe("P27: project.refresh includes devHostRegistry summary", () => {
+    it("includes devHostRegistry counts in refresh response", async () => {
+      mockRequireSession.mockReturnValue({ projectId: "proj-123" });
+      mockLoadProject.mockResolvedValue({
+        site: { components: [] },
+        bundler: {},
+        projectName: "Test",
+        revisionNum: 10,
+        modelVersion: 1,
+        hostlessDataVersion: 0,
+        hostUrl: "http://localhost:3000",
+      });
+      mockSyncFromDevHost.mockResolvedValue({
+        devHostSynced: true,
+        syncedVariantComponents: [],
+        registryData: {
+          components: [],
+          contexts: [{ name: "ShopContext" }],
+          functions: [{ name: "fn1" }, { name: "fn2" }],
+          tokens: [],
+          traits: [{ trait: "responsive" }],
+        },
+      });
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "refresh" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostSynced).toBe(true);
+      expect(output.devHostRegistry).toEqual({
+        contextCount: 1,
+        functionCount: 2,
+        tokenCount: 0,
+        traitCount: 1,
+      });
     });
   });
 });

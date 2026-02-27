@@ -88,7 +88,18 @@ export interface ValidationResult {
 }
 
 export function validateAllScenarios(): ValidationResult {
-  const scenarios = loadScenarios();
+  // P14.5: Load both mock and integration scenarios for comprehensive validation.
+  // Without this, integration-only scenarios (like project-save-refresh) are never
+  // checked by eval:validate, potentially hiding issues until runtime.
+  const mockScenarios = loadScenarios();
+  const integrationScenarios = loadScenarios({ integration: true });
+  const mockIds = new Set(mockScenarios.map((s) => s.id));
+  const scenarios = [...mockScenarios];
+  for (const s of integrationScenarios) {
+    if (!mockIds.has(s.id)) {
+      scenarios.push(s);
+    }
+  }
   const errors: string[] = [];
   const warnings: string[] = [];
 

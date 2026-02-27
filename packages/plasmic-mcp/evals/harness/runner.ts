@@ -88,6 +88,7 @@ export async function runScenario(
           retries: 0,
           transcript: [],
           graderResults: [],
+          scenarioHash: scenario.contentHash,
         };
       }
     }
@@ -135,9 +136,11 @@ export async function runScenario(
       ? false
       : conversationResult.incomplete
         ? false
-        : graderResults.length === 0
-          ? true // No graders = pass (warned during scenario load per EC6)
-          : graderResults.every((g) => g.passed);
+        : conversationResult.maxTurnsExhausted
+          ? false
+          : graderResults.length === 0
+            ? true // No graders = pass (warned during scenario load per EC6)
+            : graderResults.every((g) => g.passed);
 
     if (conversationResult.timedOut) {
       errors.push("Scenario timed out");
@@ -145,6 +148,14 @@ export async function runScenario(
     if (conversationResult.incomplete) {
       errors.push(
         "Claude asked clarifying questions instead of completing the task"
+      );
+    }
+    // P12.5: Flag when the 25-turn limit was hit without Claude finishing.
+    // Without this, exhaustion silently looks like success — no timeout error,
+    // no grader failure, just an empty response.
+    if (conversationResult.maxTurnsExhausted) {
+      errors.push(
+        "MAX_TURNS limit (25) exhausted without Claude ending the conversation"
       );
     }
 
@@ -240,6 +251,7 @@ export async function runScenario(
       graderResults,
       screenshotPaths,
       visualError,
+      scenarioHash: scenario.contentHash,
     };
   } catch (err: any) {
     // Fatal error — still produce a result so partial reports can be saved (GE6)
@@ -257,6 +269,7 @@ export async function runScenario(
       retries: 0,
       transcript: [],
       graderResults: [],
+      scenarioHash: scenario.contentHash,
     };
   }
 }
@@ -265,8 +278,11 @@ export async function runScenario(
 // When a model isn't listed, we fall back to the most expensive tier (Opus)
 // to avoid underestimating costs.
 const MODEL_PRICING: Record<string, { input: number; output: number }> = {
+  "claude-sonnet-4": { input: 3, output: 15 },
   "claude-sonnet": { input: 3, output: 15 },
+  "claude-haiku-4": { input: 0.8, output: 4 },
   "claude-haiku": { input: 0.8, output: 4 },
+  "claude-opus-4": { input: 15, output: 75 },
   "claude-opus": { input: 15, output: 75 },
 };
 

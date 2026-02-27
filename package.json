@@ -108,6 +108,7 @@
     "packages/loader-splits",
     "packages/nextjs-app-router",
     "packages/plasmic-mcp",
+    "packages/plasmic-mcp-registry",
     "packages/prepass",
     "packages/query",
     "packages/react-web",

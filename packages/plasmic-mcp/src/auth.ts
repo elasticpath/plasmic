@@ -84,8 +84,15 @@ function readAuthFile(): AuthConfig | null {
           basicAuthPassword: parsed.basicAuthPassword,
         };
       }
-    } catch {
-      // File not found or invalid JSON — try next candidate
+    } catch (err: unknown) {
+      // File not found is expected — try next candidate
+      const code = (err as NodeJS.ErrnoException)?.code;
+      if (code !== "ENOENT") {
+        // JSON parse error or permission issue on an existing file — warn the user
+        console.error(
+          `[plasmic-mcp] Warning: Found ${filePath} but could not read it: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
     }
   }
 

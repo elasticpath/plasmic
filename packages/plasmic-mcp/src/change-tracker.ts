@@ -6,7 +6,7 @@
  * - save-manager.ts: to compute the incremental bundle via fastBundle()
  * - undo-manager.ts: to store changes for undo operations
  *
- * Set up after unbundle in the set-project tool handler.
+ * Set up after unbundle in the project.set tool handler.
  *
  * Reference: specs/plasmic-incremental-writes.md § MobX Setup
  */
@@ -47,7 +47,7 @@ let currentTracker: ChangeTracker | null = null;
 
 /**
  * Initialize change tracking for a site model.
- * Called during set-project after unbundling.
+ * Called during project.set after unbundling.
  * Disposes any previous tracker.
  */
 export function initChangeTracker(site: any): ChangeTracker {
@@ -66,7 +66,7 @@ export function initChangeTracker(site: any): ChangeTracker {
 export function getChangeTracker(): ChangeTracker {
   if (!currentTracker) {
     throw new Error(
-      "Change tracker not initialized. Load a project first with set-project."
+      "Change tracker not initialized. Load a project first with project.set."
     );
   }
   return currentTracker;

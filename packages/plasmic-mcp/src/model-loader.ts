@@ -44,6 +44,8 @@ export interface LoadedModel {
   modelVersion: number;
   /** Server hostless data version for incremental save requests. */
   hostlessDataVersion: number;
+  /** Dev host URL from project settings (undefined if not configured). */
+  hostUrl?: string;
 }
 
 /**
@@ -70,6 +72,8 @@ export async function loadProject(
   const revisionNum = response.rev.revision;
   const modelVersion = response.modelVersion ?? 0;
   const hostlessDataVersion = response.hostlessDataVersion ?? 0;
+  // Dev host URL: prefer project settings, fall back to env var (spec requirement)
+  const hostUrl = response.project?.hostUrl ?? process.env.PLASMIC_DEV_HOST_URL;
 
   const bundler = new FastBundler(meta, classesModule);
 
@@ -111,7 +115,7 @@ export async function loadProject(
     `[plasmic-mcp] Project loaded: ${componentCount} components`
   );
 
-  return { site, bundler, projectName, revisionNum, modelVersion, hostlessDataVersion };
+  return { site, bundler, projectName, revisionNum, modelVersion, hostlessDataVersion, hostUrl };
 }
 
 /**
@@ -125,7 +129,7 @@ function narrowToSite(obj: unknown): any {
     return obj;
   }
   if (classesModule.ProjectDependency.isKnown(obj)) {
-    return (obj as any).site;
+    return obj.site;
   }
   throw new Error(
     "Unbundled object is neither a Site nor a ProjectDependency. " +

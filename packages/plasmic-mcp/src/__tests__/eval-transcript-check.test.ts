@@ -197,7 +197,46 @@ describe("tool-params grader", () => {
     expect(result.message).toContain("parameters didn't match");
   });
 
-  it("uses case-insensitive substring matching for strings", () => {
+  it("P13.4: uses exact matching for strings by default", () => {
+    const transcript: TranscriptEntry[] = [
+      makeToolResult({
+        name: "design",
+        input: { action: "create-token", name: "bordered" },
+      }),
+    ];
+    const config: GraderConfig = {
+      type: "tool-params",
+      params: {
+        tool: "design",
+        expected: { name: "red" },
+      },
+    };
+
+    const result = runTranscriptGrader(config, transcript);
+    // "red" should NOT match "bordered" with exact matching
+    expect(result.passed).toBe(false);
+  });
+
+  it("P13.4: exact matching is case-insensitive", () => {
+    const transcript: TranscriptEntry[] = [
+      makeToolResult({
+        name: "design",
+        input: { action: "create-token", name: "Primary Color" },
+      }),
+    ];
+    const config: GraderConfig = {
+      type: "tool-params",
+      params: {
+        tool: "design",
+        expected: { name: "primary color" },
+      },
+    };
+
+    const result = runTranscriptGrader(config, transcript);
+    expect(result.passed).toBe(true);
+  });
+
+  it("P13.4: uses substring matching when substring: true", () => {
     const transcript: TranscriptEntry[] = [
       makeToolResult({
         name: "design",
@@ -209,6 +248,7 @@ describe("tool-params grader", () => {
       params: {
         tool: "design",
         expected: { name: "primary color" },
+        substring: true,
       },
     };
 

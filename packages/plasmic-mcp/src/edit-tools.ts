@@ -109,6 +109,7 @@ import {
   resolveTokenValue,
 } from "./token-reader.js";
 import type { StyleTokenType } from "./types.js";
+import type { RegistryComponent } from "./devhost-sync.js";
 
 // --- Tag Validation ---
 
@@ -890,7 +891,7 @@ function findComponent(componentUuid: string): any {
   );
   if (!component) {
     throw new Error(
-      `Component UUID "${componentUuid}" not found. Use list-components to see available components.`
+      `Component UUID "${componentUuid}" not found. Use component tool with action 'list' to see available components.`
     );
   }
   return component;
@@ -1018,9 +1019,22 @@ function findParentRecursive(
  */
 function isAncestorOf(ancestor: any, descendant: any): boolean {
   if (ancestor === descendant) {return true;}
+  // Traverse regular children (TplTag)
   const children = ancestor.children ?? [];
   for (const child of children) {
     if (isAncestorOf(child, descendant)) {return true;}
+  }
+  // Traverse slot override children (TplComponent)
+  if (ancestor.vsettings) {
+    for (const vs of ancestor.vsettings) {
+      for (const arg of vs.args ?? []) {
+        if (isKnownRenderExpr(arg.expr)) {
+          for (const tpl of arg.expr.tpl ?? []) {
+            if (isAncestorOf(tpl, descendant)) {return true;}
+          }
+        }
+      }
+    }
   }
   return false;
 }
@@ -1129,7 +1143,9 @@ function getCodeComponentVariantMetas(
 ): Record<string, { cssSelector: string; displayName: string }> | null {
   const tplTree = component.tplTree;
   // Root must be a TplComponent (wrapping a code component)
-  if (!tplTree || tplTree._type !== "TplComponent") return null;
+  // Use typeTag (real WAB instances) with _type fallback (duck-typed mocks)
+  const tag = tplTree?.typeTag ?? tplTree?._type;
+  if (!tplTree || tag !== "TplComponent") return null;
 
   const codeComp = tplTree.component;
   if (!codeComp?.codeComponentMeta?.variants) return null;
@@ -2281,6 +2297,30 @@ export interface AddChildResult {
   position: string | number;
   /** Set when child was added to a named slot on a TplComponent. */
   slotName?: string;
+  /** Non-fatal warnings (e.g., parentComponentName mismatch). */
+  warnings?: string[];
+}
+
+/**
+ * Find a registry component entry by matching component name.
+ * Handles $dev suffix: a registry entry "MyComponent$dev" matches
+ * site model component "MyComponent" and vice versa.
+ */
+function findRegistryComponent(
+  registryComponents: RegistryComponent[],
+  componentName: string
+): RegistryComponent | null {
+  if (!registryComponents?.length) return null;
+  return registryComponents.find((c) => {
+    if (!c?.name) return false;
+    const regName = c.name.endsWith("$dev")
+      ? c.name.slice(0, -4)
+      : c.name;
+    const siteName = componentName.endsWith("$dev")
+      ? componentName.slice(0, -4)
+      : componentName;
+    return regName === siteName;
+  }) ?? null;
 }
 
 /**
@@ -2298,7 +2338,8 @@ export interface AddChildResult {
 function plasmicElementToTpl(
   element: PlasmicElement,
   tplMgr: TplMgr,
-  baseVariant: any
+  baseVariant: any,
+  registryComponents?: RegistryComponent[]
 ): any {
   // String elements become text nodes
   if (typeof element === "string") {
@@ -2322,7 +2363,7 @@ function plasmicElementToTpl(
       : [];
 
     const childTpls = childElements.map((child) =>
-      plasmicElementToTpl(child, tplMgr, baseVariant)
+      plasmicElementToTpl(child, tplMgr, baseVariant, registryComponents)
     );
 
     // Convert props to args dict for mkTplComponentX.
@@ -2356,14 +2397,16 @@ function plasmicElementToTpl(
             `Use the "children" field to pass slot content instead.`
           );
         }
-        // Convert value to CustomCode expression (same as WAB's codeLit)
-        const code = value === undefined ? "undefined" : JSON.stringify(value);
-        if (code === undefined) {
+        // Convert value to CustomCode expression (same as WAB's codeLit).
+        // JSON.stringify returns undefined for functions/symbols; guard against that.
+        const serialized = JSON.stringify(value);
+        if (serialized === undefined) {
           throw new Error(
             `Prop "${key}" on component "${targetComponent.name}" has a ` +
             `non-serializable value (${typeof value}).`
           );
         }
+        const code = value === undefined ? "undefined" : serialized;
         args[key] = new CustomCode({ code, fallback: null });
       }
     }
@@ -2375,6 +2418,99 @@ function plasmicElementToTpl(
       ...(args ? { args } : {}),
     });
 
+    // Apply registry enrichments from dev host if available.
+    // Code components register metadata (defaultStyles, slot defaultValues)
+    // that should be applied to new instances so they render correctly.
+    if (registryComponents) {
+      const regComp = findRegistryComponent(registryComponents, targetComponent.name);
+
+      // 1. Apply defaultStyles (e.g., width, padding, display).
+      if (regComp?.defaultStyles && typeof regComp.defaultStyles === "object") {
+        try {
+          const vs = tplMgr.ensureBaseVariantSetting(tpl);
+          const rsh = RSH(vs.rs, tpl);
+          rsh.merge(sanitizeStyles(regComp.defaultStyles));
+        } catch (e) {
+          // Non-fatal: log and continue without default styles
+          console.error(
+            `[plasmic-mcp] Warning: Could not apply defaultStyles for "${targetComponent.name}":`,
+            e
+          );
+        }
+      }
+
+      // 2. Populate default slot content from registry props[slotName].defaultValue.
+      // When a code component registers slot props with defaultValue (PlasmicElement
+      // trees), those defaults are populated for slots that don't already have
+      // explicit content from the user. This ensures components like Accordion
+      // render with meaningful placeholder content out of the box.
+      if (regComp?.props && typeof regComp.props === "object") {
+        const componentParams: any[] = targetComponent.params ?? [];
+
+        for (const [propName, propMeta] of Object.entries(
+          regComp.props as Record<string, any>
+        )) {
+          if (propMeta?.type !== "slot" || propMeta?.defaultValue == null) continue;
+
+          // Find matching slot param on the WAB component model
+          const slotParam = componentParams.find(
+            (p: any) => p.tplSlot && p.variable?.name === propName
+          );
+          if (!slotParam) continue;
+
+          try {
+            const vs = tplMgr.ensureBaseVariantSetting(tpl);
+
+            // Skip if slot already has content (from explicit children or args)
+            const existingArg = (vs.args ?? []).find(
+              (a: any) =>
+                a.param === slotParam ||
+                a.param?.variable?.name === propName
+            );
+            if (existingArg) continue;
+
+            // Normalize defaultValue to array of PlasmicElements
+            const rawDefaults = Array.isArray(propMeta.defaultValue)
+              ? propMeta.defaultValue
+              : [propMeta.defaultValue];
+
+            // Filter to valid PlasmicElements (strings or objects with type field)
+            const validElements = rawDefaults.filter(
+              (elt: unknown) =>
+                typeof elt === "string" ||
+                (typeof elt === "object" && elt !== null && "type" in elt)
+            );
+            if (validElements.length === 0) continue;
+
+            // Convert each PlasmicElement to a TplNode recursively
+            const defaultTpls = validElements.map((elt: PlasmicElement) =>
+              plasmicElementToTpl(elt, tplMgr, baseVariant, registryComponents)
+            );
+
+            // Wire into the TplComponent as a slot arg
+            const renderExpr = new RenderExpr({ tpl: defaultTpls });
+            const newArg = new Arg({ param: slotParam, expr: renderExpr });
+            if (!vs.args) {
+              vs.args = [];
+            }
+            vs.args.push(newArg);
+
+            // Set parent pointers for tree traversal
+            for (const child of defaultTpls) {
+              child.parent = tpl;
+            }
+          } catch (e) {
+            // Non-fatal: log and continue without this slot's defaults
+            console.error(
+              `[plasmic-mcp] Warning: Could not populate default slot content ` +
+                `for "${targetComponent.name}.${propName}":`,
+              e
+            );
+          }
+        }
+      }
+    }
+
     return tpl;
   }
 
@@ -2385,10 +2521,10 @@ function plasmicElementToTpl(
     case "vbox":
     case "hbox":
     case "page-section":
-      tag = validateContainerTag((element as any).tag);
+      tag = validateContainerTag(element.tag);
       break;
     case "text":
-      tag = validateTextTag((element as any).tag);
+      tag = validateTextTag(element.tag);
       break;
     case "img":
       tag = "img";
@@ -2408,7 +2544,7 @@ function plasmicElementToTpl(
 
   // Text-bearing elements: use mkTplInlinedText (same as Studio)
   const textValue = (element.type === "text" || element.type === "button")
-    ? (element as any).value
+    ? element.value
     : undefined;
 
   if (textValue !== undefined) {
@@ -2446,7 +2582,7 @@ function plasmicElementToTpl(
     : [];
 
   const childTpls = childElements.map((child) =>
-    plasmicElementToTpl(child, tplMgr, baseVariant)
+    plasmicElementToTpl(child, tplMgr, baseVariant, registryComponents)
   );
 
   const tpl = mkTplTagX(tag, { baseVariant, styles: {} }, ...childTpls);
@@ -2479,7 +2615,7 @@ function plasmicElementToTpl(
   if (element.type === "img" && "src" in element) {
     if (!vs.attrs) {vs.attrs = {};}
     vs.attrs.src = new CustomCode({
-      code: JSON.stringify((element as any).src),
+      code: JSON.stringify(element.src),
       fallback: null,
     });
   }
@@ -2539,6 +2675,42 @@ export async function addChild(
 
   const session = requireSession();
   const tplMgr = new TplMgr({ site: session.site });
+  const registryComponents = session.registryData?.components;
+  const warnings: string[] = [];
+
+  // Validate parentComponentName from registry: if the child element is a
+  // component with a registered parentComponentName, warn when the insertion
+  // target doesn't match. This catches misplaced components early (e.g.,
+  // AccordionItem outside Accordion) without blocking the operation.
+  if (typeof child === "object" && (child.type === "component" || child.type === "default-component") && registryComponents) {
+    const childCompRef = child.type === "component"
+      ? child.name
+      : child.kind;
+    if (childCompRef) {
+      const regEntry = findRegistryComponent(registryComponents, childCompRef);
+      if (regEntry?.parentComponentName) {
+        const expectedParent = regEntry.parentComponentName;
+        let actualParent: string | null = null;
+        if (isKnownTplComponent(resolved.node)) {
+          actualParent = resolved.node.component?.name;
+        }
+        if (actualParent) {
+          // Compare with $dev suffix handling
+          const stripDev = (n: string) => n.endsWith("$dev") ? n.slice(0, -4) : n;
+          if (stripDev(expectedParent) !== stripDev(actualParent)) {
+            const msg = `Component "${childCompRef}" is designed to be used inside "${expectedParent}" but is being added to "${actualParent}"`;
+            warnings.push(msg);
+            console.error(`[plasmic-mcp] Warning: ${msg}`);
+          }
+        } else {
+          // Parent is a TplTag, not a component — may still be valid (inside a slot)
+          const msg = `Component "${childCompRef}" is designed to be used inside "${expectedParent}" but is being added to a non-component container`;
+          warnings.push(msg);
+          console.error(`[plasmic-mcp] Warning: ${msg}`);
+        }
+      }
+    }
+  }
 
   // --- TplComponent parent: add to slot ---
   if (isKnownTplComponent(resolved.node)) {
@@ -2594,7 +2766,7 @@ export async function addChild(
     let newTpl: any;
 
     const changes = tracker.withRecording(() => {
-      newTpl = plasmicElementToTpl(child, tplMgr, baseVariant);
+      newTpl = plasmicElementToTpl(child, tplMgr, baseVariant, registryComponents);
 
       if (slotArg) {
         // Slot already has a RenderExpr — insert into its tpl array
@@ -2626,6 +2798,7 @@ export async function addChild(
       newNodeUuid: newTpl?.uuid,
       position: position ?? "last",
       slotName,
+      ...(warnings.length > 0 ? { warnings } : {}),
     };
   }
 
@@ -2662,7 +2835,7 @@ export async function addChild(
   let newTpl: any;
 
   const changes = tracker.withRecording(() => {
-    newTpl = plasmicElementToTpl(child, tplMgr, baseVariant);
+    newTpl = plasmicElementToTpl(child, tplMgr, baseVariant, registryComponents);
     insertChild(parent, newTpl, position);
   });
 
@@ -2680,6 +2853,7 @@ export async function addChild(
     parentUuid: resolved.uuid,
     newNodeUuid: newTpl?.uuid,
     position: position ?? "last",
+    ...(warnings.length > 0 ? { warnings } : {}),
   };
 }
 
@@ -3740,7 +3914,7 @@ export async function setVisibility(
     } else if (visible === "displayNone") {
       // Display none: dataCond = true + display-none marker
       vs.dataCond = new CustomCode({ code: "true", fallback: null });
-      if (!vs.rs) vs.rs = { values: {} };
+      if (!vs.rs) vs.rs = new RuleSet({ values: {}, mixins: [], animations: null });
       if (!vs.rs.values) vs.rs.values = {};
       vs.rs.values["plasmic-display-none"] = "true";
     }
@@ -4187,7 +4361,7 @@ export async function removeToken(
     for (const t of localTokens) {
       if (t === token) continue;
       if (typeof t.value === "string" && t.value.includes(`--token-${token.uuid}`)) {
-        t.value = t.value.replace(tokenRefStr, resolvedValue);
+        t.value = t.value.replaceAll(tokenRefStr, resolvedValue);
         inlinedCount++;
       }
     }
@@ -4202,7 +4376,7 @@ export async function removeToken(
           if (!values || typeof values !== "object") continue;
           for (const [prop, val] of Object.entries(values)) {
             if (typeof val === "string" && val.includes(`--token-${token.uuid}`)) {
-              values[prop] = (val as string).replace(tokenRefStr, resolvedValue);
+              values[prop] = (val as string).replaceAll(tokenRefStr, resolvedValue);
               inlinedCount++;
             }
           }
@@ -5269,7 +5443,7 @@ export function listInteractions(
 
   for (const [event, expr] of Object.entries(attrs)) {
     if (!event.startsWith("on") || !isKnownEventHandler(expr)) continue;
-    const handler = expr as any;
+    const handler = expr as EventHandler;
     for (let i = 0; i < (handler.interactions?.length ?? 0); i++) {
       const interaction = handler.interactions[i];
       const info: InteractionInfo = {
@@ -6444,13 +6618,13 @@ export async function addNodeAnimation(
   const tracker = getChangeTracker();
 
   // Validate direction, fillMode, playState
-  if (direction && !VALID_DIRECTIONS.includes(direction as any)) {
+  if (direction && !(VALID_DIRECTIONS as readonly string[]).includes(direction)) {
     throw new Error(`Invalid direction "${direction}". Valid: ${VALID_DIRECTIONS.join(", ")}`);
   }
-  if (fillMode && !VALID_FILL_MODES.includes(fillMode as any)) {
+  if (fillMode && !(VALID_FILL_MODES as readonly string[]).includes(fillMode)) {
     throw new Error(`Invalid fillMode "${fillMode}". Valid: ${VALID_FILL_MODES.join(", ")}`);
   }
-  if (playState && !VALID_PLAY_STATES.includes(playState as any)) {
+  if (playState && !(VALID_PLAY_STATES as readonly string[]).includes(playState)) {
     throw new Error(`Invalid playState "${playState}". Valid: ${VALID_PLAY_STATES.join(", ")}`);
   }
 
@@ -6613,7 +6787,7 @@ export async function createTheme(
   if (themeStyles) {
     for (const ts of themeStyles) {
       const baseTag = ts.selector.split(":")[0];
-      if (!THEMABLE_TAGS.includes(baseTag as any)) {
+      if (!(THEMABLE_TAGS as readonly string[]).includes(baseTag)) {
         throw new Error(
           `Invalid selector "${ts.selector}". Valid base tags: ${THEMABLE_TAGS.join(", ")}`
         );
@@ -6713,7 +6887,7 @@ export async function updateTheme(
   if (themeStyles) {
     for (const ts of themeStyles) {
       const baseTag = ts.selector.split(":")[0];
-      if (!THEMABLE_TAGS.includes(baseTag as any)) {
+      if (!(THEMABLE_TAGS as readonly string[]).includes(baseTag)) {
         throw new Error(
           `Invalid selector "${ts.selector}". Valid base tags: ${THEMABLE_TAGS.join(", ")}`
         );
@@ -7726,6 +7900,7 @@ function findComponentVariant(component: any, variantRef: string): any {
 
 export interface CodeComponentMetaInfo {
   isCodeComponent: boolean;
+  componentName?: string;
   importPath?: string;
   importName?: string;
   displayName?: string;
@@ -7754,6 +7929,7 @@ export function getCodeComponentMeta(
   const meta = component.codeComponentMeta;
   return {
     isCodeComponent: true,
+    componentName: component.name,
     importPath: meta.importPath,
     importName: meta.importName,
     displayName: meta.displayName ?? undefined,
@@ -8148,8 +8324,8 @@ export async function uploadAsset(
       const buffer = await response.arrayBuffer();
       const base64 = Buffer.from(buffer).toString("base64");
       dataUri = `data:${contentType};base64,${base64}`;
-    } catch (err: any) {
-      throw new Error(`Failed to fetch image from URL: ${err.message}`);
+    } catch (err: unknown) {
+      throw new Error(`Failed to fetch image from URL: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -8301,8 +8477,6 @@ export async function setImage(
     ? resolveVariant(session.site, component, variant)
     : null;
 
-  const baseVs = resolved.node.vsettings?.[0];
-
   const tag = resolved.node.tag;
   const isImgTag = tag === "img";
   let imageSource = "";
@@ -8319,7 +8493,7 @@ export async function setImage(
   const changes = tracker.withRecording(() => {
     const vs = resolvedVariant
       ? ensureVariantSetting(resolved.node, [resolvedVariant])
-      : baseVs;
+      : tplMgr.ensureBaseVariantSetting(resolved.node);
 
     if (isImgTag) {
       // For img elements, set the src attr
@@ -8334,13 +8508,13 @@ export async function setImage(
       }
     } else {
       // For non-img elements, set background CSS
-      if (!vs.rs) vs.rs = { values: {}, mixins: [] };
+      if (!vs.rs) vs.rs = new RuleSet({ values: {}, mixins: [], animations: null });
       if (!vs.rs.values) vs.rs.values = {};
-      if (asset) {
-        vs.rs.values["background"] = `url("${asset.dataUri ?? ""}")`;
-      } else {
-        vs.rs.values["background"] = `url("${opts.src}")`;
-      }
+      // Escape quotes and backslashes in URL to prevent malformed CSS
+      const escapedUrl = asset
+        ? (asset.dataUri ?? "")
+        : (opts.src ?? "").replace(/["\\]/g, "\\$&");
+      vs.rs.values["background"] = `url("${escapedUrl}")`;
     }
   });
 

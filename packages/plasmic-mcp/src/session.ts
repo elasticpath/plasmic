@@ -2,7 +2,7 @@
  * Session state for the MCP server.
  *
  * Holds the active project's live model (Site object graph from FastBundler.unbundle)
- * and bundler instance. Cleared and repopulated when set-project is called.
+ * and bundler instance. Cleared and repopulated when project.set is called.
  *
  * Uses `any` for Site and bundler types to keep this module lightweight —
  * the model-loader and tree-reader modules handle the actual typed interactions.
@@ -14,6 +14,8 @@
  * - projectUuid: bundle UUID required as argument to fastBundle()
  */
 
+import type { FullRegistryData } from "./devhost-sync.js";
+
 export interface Session {
   projectId: string;
   projectName: string;
@@ -23,6 +25,14 @@ export interface Session {
   modelVersion: number;
   hostlessDataVersion: number;
   projectUuid: string;
+  /** Dev host URL from project settings or PLASMIC_DEV_HOST_URL env var. */
+  hostUrl?: string;
+  /** Whether dev host variant sync completed successfully. */
+  devHostSynced?: boolean;
+  /** Names of code components whose variants were synced from the dev host. */
+  syncedVariantComponents?: string[];
+  /** Full registry data from the dev host (all five registries). */
+  registryData?: FullRegistryData | null;
 }
 
 let currentSession: Session | null = null;
@@ -33,7 +43,7 @@ export function getSession(): Session | null {
 
 export function requireSession(): Session {
   if (!currentSession) {
-    throw new Error("No active project. Use the set-project tool first.");
+    throw new Error("No active project. Use project tool with action 'set' first.");
   }
   return currentSession;
 }

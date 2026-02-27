@@ -1231,6 +1231,48 @@ describe("readComponentTree", () => {
       expect(result!.type).toBe("component");
       expect(result!.layoutType).toBe("vbox");
     });
+
+    it("derives vbox from flexDirection: column-reverse", () => {
+      const component = {
+        tplTree: {
+          _type: "TplTag",
+          tag: "div",
+          uuid: "col-rev",
+          vsettings: [
+            {
+              rs: {
+                values: { display: "flex", "flex-direction": "column-reverse" },
+              },
+              attrs: {},
+            },
+          ],
+          children: [],
+        },
+      };
+
+      expect(readComponentTree(component)?.layoutType).toBe("vbox");
+    });
+
+    it("derives hbox from flexDirection: row-reverse", () => {
+      const component = {
+        tplTree: {
+          _type: "TplTag",
+          tag: "div",
+          uuid: "row-rev",
+          vsettings: [
+            {
+              rs: {
+                values: { display: "flex", "flex-direction": "row-reverse" },
+              },
+              attrs: {},
+            },
+          ],
+          children: [],
+        },
+      };
+
+      expect(readComponentTree(component)?.layoutType).toBe("hbox");
+    });
   });
 
   describe("unknown node types", () => {

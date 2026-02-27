@@ -28,11 +28,22 @@ interface UndoOperation {
   changes: ModelChange[];
 }
 
+/**
+ * Maximum number of undo operations retained. When the limit is reached,
+ * the oldest operation is dropped. This prevents unbounded memory growth
+ * during long editing sessions where each operation may carry a full
+ * ModelChange[] array.
+ */
+export const MAX_UNDO_DEPTH = 50;
+
 let undoStack: UndoOperation[] = [];
 
 /**
  * Push an operation onto the undo stack.
  * Called after each successful edit tool save.
+ *
+ * When the stack exceeds MAX_UNDO_DEPTH, the oldest operation is dropped
+ * to bound memory usage.
  */
 export function pushUndoOperation(
   description: string,
@@ -42,6 +53,14 @@ export function pushUndoOperation(
     description,
     changes: changes.changes,
   });
+
+  if (undoStack.length > MAX_UNDO_DEPTH) {
+    const dropped = undoStack.shift()!;
+    console.error(
+      `[plasmic-mcp] Undo stack limit (${MAX_UNDO_DEPTH}) reached, dropped oldest: "${dropped.description}"`
+    );
+  }
+
   console.error(
     `[plasmic-mcp] Undo stack: pushed "${description}" (depth: ${undoStack.length})`
   );
@@ -67,14 +86,32 @@ export async function undo(
     undoChanges(operation.changes);
   });
 
-  const saveManager = new SaveManager(apiClient);
-  const save = await saveManager.saveChanges(reverseChanges);
+  try {
+    const saveManager = new SaveManager(apiClient);
+    const save = await saveManager.saveChanges(reverseChanges);
 
-  console.error(
-    `[plasmic-mcp] Undone: "${operation.description}" (remaining depth: ${undoStack.length})`
-  );
+    console.error(
+      `[plasmic-mcp] Undone: "${operation.description}" (remaining depth: ${undoStack.length})`
+    );
 
-  return { save, undone: operation.description };
+    return { save, undone: operation.description };
+  } catch (err) {
+    // Save failed but model was already mutated — re-apply the original
+    // changes to restore the model, then push the operation back so it
+    // can be retried after the underlying issue (e.g. network) is resolved.
+    try {
+      tracker.withRecording(() => {
+        undoChanges(reverseChanges.changes);
+      });
+    } catch (rollbackErr) {
+      console.error(
+        `[plasmic-mcp] CRITICAL: Undo rollback failed after save error. ` +
+          `Use refresh-project to reload a clean model. (${rollbackErr})`
+      );
+    }
+    undoStack.push(operation);
+    throw err;
+  }
 }
 
 /**

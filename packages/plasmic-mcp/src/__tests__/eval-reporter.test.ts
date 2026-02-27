@@ -11,7 +11,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { ScenarioResult, EvalReport } from "../../evals/harness/types.js";
 
-// Mock fs and review-flags before importing reporter
+// Mock fs, child_process, and review-flags before importing reporter
 vi.mock("fs", () => ({
   writeFileSync: vi.fn(),
   readFileSync: vi.fn(),
@@ -20,17 +20,22 @@ vi.mock("fs", () => ({
   existsSync: vi.fn(() => false),
 }));
 
+vi.mock("child_process", () => ({
+  execSync: vi.fn(),
+}));
+
 vi.mock("../../evals/graders/review-flags.js", () => ({
   applyReviewFlags: vi.fn(() => 0),
 }));
 
 // Import after mocks
-const { generateRunId, generateReport } = await import(
-  "../../evals/harness/reporter.js"
-);
+const { generateRunId, generateReport, saveReport, printSummary, loadPreviousReport, loadOverrides, saveOverride, getGitSha, findPassedScenarioIds } =
+  await import("../../evals/harness/reporter.js");
 const { applyReviewFlags } = await import(
   "../../evals/graders/review-flags.js"
 );
+const fs = await import("fs");
+const childProcess = await import("child_process");
 
 /** Helper to create a minimal ScenarioResult */
 function makeResult(overrides: Partial<ScenarioResult> = {}): ScenarioResult {
@@ -293,5 +298,450 @@ describe("generateReport — metadata", () => {
     expect(report.scenarios).toHaveLength(2);
     expect(report.scenarios[0].id).toBe("s1");
     expect(report.scenarios[1].id).toBe("s2");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// loadPreviousReport — P13.8 (scenarios validation)
+// ---------------------------------------------------------------------------
+describe("loadPreviousReport", () => {
+  it("returns null when results dir does not exist", () => {
+    (fs.existsSync as any).mockReturnValue(false);
+    expect(loadPreviousReport()).toBeNull();
+  });
+
+  it("returns null when results dir is empty", () => {
+    (fs.existsSync as any).mockReturnValue(true);
+    (fs.readdirSync as any).mockReturnValue([]);
+    expect(loadPreviousReport()).toBeNull();
+  });
+
+  it("returns valid report when file has proper structure", () => {
+    const report = {
+      timestamp: "2026-02-27T00:00:00.000Z",
+      aggregate: { total: 1 },
+      scenarios: [{ id: "s1", success: true }],
+    };
+    (fs.existsSync as any).mockReturnValue(true);
+    (fs.readdirSync as any).mockReturnValue(["2026-02-27-120000.json"]);
+    (fs.readFileSync as any).mockReturnValue(JSON.stringify(report));
+    expect(loadPreviousReport()).toEqual(report);
+  });
+
+  it("P13.8: returns null when report has no scenarios array", () => {
+    const badReport = {
+      timestamp: "2026-02-27T00:00:00.000Z",
+      aggregate: { total: 0 },
+      // scenarios is missing — would crash applyReviewFlags without P13.8
+    };
+    (fs.existsSync as any).mockReturnValue(true);
+    (fs.readdirSync as any).mockReturnValue(["2026-02-27-120000.json"]);
+    (fs.readFileSync as any).mockReturnValue(JSON.stringify(badReport));
+    expect(loadPreviousReport()).toBeNull();
+  });
+
+  it("P13.8: returns null when scenarios is not an array", () => {
+    const badReport = {
+      timestamp: "2026-02-27T00:00:00.000Z",
+      aggregate: { total: 0 },
+      scenarios: "not-an-array",
+    };
+    (fs.existsSync as any).mockReturnValue(true);
+    (fs.readdirSync as any).mockReturnValue(["2026-02-27-120000.json"]);
+    (fs.readFileSync as any).mockReturnValue(JSON.stringify(badReport));
+    expect(loadPreviousReport()).toBeNull();
+  });
+
+  it("returns null on malformed JSON", () => {
+    (fs.existsSync as any).mockReturnValue(true);
+    (fs.readdirSync as any).mockReturnValue(["2026-02-27-120000.json"]);
+    (fs.readFileSync as any).mockReturnValue("not json");
+    expect(loadPreviousReport()).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getGitSha — P14.2 (dirty-tree detection)
+// ---------------------------------------------------------------------------
+describe("getGitSha", () => {
+  it("returns clean SHA when working tree is clean", () => {
+    (childProcess.execSync as any)
+      .mockReturnValueOnce("abc123def456\n")  // git rev-parse HEAD
+      .mockReturnValueOnce("");                // git diff --quiet HEAD (success)
+
+    expect(getGitSha()).toBe("abc123def456");
+  });
+
+  it("P14.2: appends -dirty when working tree has uncommitted changes", () => {
+    (childProcess.execSync as any)
+      .mockReturnValueOnce("abc123def456\n")   // git rev-parse HEAD
+      .mockImplementationOnce(() => {           // git diff --quiet HEAD fails
+        throw new Error("exit code 1");
+      });
+
+    expect(getGitSha()).toBe("abc123def456-dirty");
+  });
+
+  it("returns undefined when git is unavailable", () => {
+    (childProcess.execSync as any).mockImplementation(() => {
+      throw new Error("git not found");
+    });
+
+    expect(getGitSha()).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// findPassedScenarioIds — P14.3 (scenario content hashing)
+// ---------------------------------------------------------------------------
+describe("findPassedScenarioIds", () => {
+  it("returns Map of passed scenario IDs with hashes", () => {
+    const report = {
+      gitSha: "abc123",
+      scenarios: [
+        { id: "s1", success: true, scenarioHash: "hash1" },
+        { id: "s2", success: false },
+        { id: "s3", success: true, scenarioHash: "hash3" },
+      ],
+    };
+    (fs.existsSync as any).mockReturnValue(true);
+    (fs.readdirSync as any).mockReturnValue(["report.json"]);
+    (fs.readFileSync as any).mockReturnValue(JSON.stringify(report));
+
+    const result = findPassedScenarioIds("abc123");
+
+    expect(result).toBeInstanceOf(Map);
+    expect(result.size).toBe(2);
+    expect(result.get("s1")).toBe("hash1");
+    expect(result.has("s2")).toBe(false);
+    expect(result.get("s3")).toBe("hash3");
+  });
+
+  it("returns undefined hash for pre-P14.3 reports", () => {
+    const report = {
+      gitSha: "abc123",
+      scenarios: [
+        { id: "s1", success: true },  // no scenarioHash field
+      ],
+    };
+    (fs.existsSync as any).mockReturnValue(true);
+    (fs.readdirSync as any).mockReturnValue(["report.json"]);
+    (fs.readFileSync as any).mockReturnValue(JSON.stringify(report));
+
+    const result = findPassedScenarioIds("abc123");
+
+    expect(result.has("s1")).toBe(true);
+    expect(result.get("s1")).toBeUndefined();
+  });
+
+  it("skips reports with non-matching git SHA", () => {
+    const report = {
+      gitSha: "other-sha",
+      scenarios: [{ id: "s1", success: true }],
+    };
+    (fs.existsSync as any).mockReturnValue(true);
+    (fs.readdirSync as any).mockReturnValue(["report.json"]);
+    (fs.readFileSync as any).mockReturnValue(JSON.stringify(report));
+
+    const result = findPassedScenarioIds("abc123");
+    expect(result.size).toBe(0);
+  });
+
+  it("returns empty Map when no results dir", () => {
+    (fs.existsSync as any).mockReturnValue(false);
+
+    const result = findPassedScenarioIds("abc123");
+    expect(result).toBeInstanceOf(Map);
+    expect(result.size).toBe(0);
+  });
+
+  it("skips malformed report files", () => {
+    (fs.existsSync as any).mockReturnValue(true);
+    (fs.readdirSync as any).mockReturnValue(["bad.json"]);
+    (fs.readFileSync as any).mockReturnValue("not json");
+
+    const result = findPassedScenarioIds("abc123");
+    expect(result.size).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// saveReport — P12.2 (filesystem error fallback)
+// ---------------------------------------------------------------------------
+describe("saveReport", () => {
+  it("writes report JSON to the expected file path", () => {
+    const report = generateReport([makeResult()], "claude-sonnet", "mock", 0, "test-run-id");
+
+    const filePath = saveReport(report);
+
+    expect(fs.mkdirSync).toHaveBeenCalledWith(
+      expect.stringContaining("results"),
+      { recursive: true }
+    );
+    expect(fs.writeFileSync).toHaveBeenCalledWith(
+      expect.stringContaining("test-run-id.json"),
+      expect.any(String)
+    );
+    expect(filePath).toContain("test-run-id.json");
+  });
+
+  it("writes pretty-printed JSON (2-space indent)", () => {
+    const report = generateReport([makeResult()], "claude-sonnet", "mock", 0, "run-1");
+
+    saveReport(report);
+
+    const writtenContent = (fs.writeFileSync as any).mock.calls[0][1];
+    // Pretty-printed JSON starts with "{\n  " (2-space indent)
+    expect(writtenContent).toContain("\n  ");
+    const parsed = JSON.parse(writtenContent);
+    expect(parsed.runId).toBe("run-1");
+  });
+
+  it("falls back to stderr on write failure", () => {
+    (fs.writeFileSync as any).mockImplementationOnce(() => {
+      throw new Error("ENOSPC: no space left on device");
+    });
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
+    const report = generateReport([makeResult()], "claude-sonnet", "mock", 0, "fail-run");
+    const filePath = saveReport(report);
+
+    // Should still return the intended path
+    expect(filePath).toContain("fail-run.json");
+    // Should have written error message and JSON dump to stderr
+    expect(stderrSpy).toHaveBeenCalledTimes(2);
+    expect(stderrSpy.mock.calls[0][0]).toContain("CRITICAL");
+    expect(stderrSpy.mock.calls[0][0]).toContain("ENOSPC");
+    // Second call is the JSON dump of the full report
+    const dumpedReport = JSON.parse((stderrSpy.mock.calls[1][0] as string).trim());
+    expect(dumpedReport.runId).toBe("fail-run");
+
+    stderrSpy.mockRestore();
+  });
+
+  it("creates results directory before writing", () => {
+    const report = generateReport([], "claude-sonnet", "mock", 0, "dir-test");
+
+    saveReport(report);
+
+    // mkdirSync should be called before writeFileSync
+    expect(fs.mkdirSync).toHaveBeenCalled();
+    const mkdirCallOrder = (fs.mkdirSync as any).mock.invocationCallOrder[0];
+    const writeCallOrder = (fs.writeFileSync as any).mock.invocationCallOrder[0];
+    expect(mkdirCallOrder).toBeLessThan(writeCallOrder);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// printSummary — console output format
+// ---------------------------------------------------------------------------
+describe("printSummary", () => {
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
+  });
+
+  it("prints header with run metadata", () => {
+    const report = generateReport(
+      [makeResult({ id: "s1" })],
+      "claude-sonnet",
+      "mock",
+      0.5,
+      "2026-02-28-120000"
+    );
+
+    printSummary(report);
+
+    const output = errorSpy.mock.calls.map((c) => c[0]).join("\n");
+    expect(output).toContain("EVAL RESULTS SUMMARY");
+    expect(output).toContain("2026-02-28-120000");
+    expect(output).toContain("claude-sonnet");
+    expect(output).toContain("mock");
+  });
+
+  it("prints pass/fail counts and success rate", () => {
+    const report = generateReport(
+      [
+        makeResult({ id: "s1", success: true }),
+        makeResult({ id: "s2", success: false, errors: ["error"] }),
+      ],
+      "claude-sonnet",
+      "mock",
+      0,
+      "run"
+    );
+
+    printSummary(report);
+
+    const output = errorSpy.mock.calls.map((c) => c[0]).join("\n");
+    expect(output).toContain("Passed:       1");
+    expect(output).toContain("Failed:       1");
+    expect(output).toContain("50.0%");
+  });
+
+  it("includes quality column when scenarios have quality scores", () => {
+    const report = generateReport(
+      [makeResult({ id: "s1", qualityScore: 4 })],
+      "claude-sonnet",
+      "integration",
+      0,
+      "run"
+    );
+
+    printSummary(report);
+
+    const output = errorSpy.mock.calls.map((c) => c[0]).join("\n");
+    expect(output).toContain("Quality");
+    expect(output).toContain("4/5");
+  });
+
+  it("omits quality column when no scores", () => {
+    const report = generateReport(
+      [makeResult({ id: "s1", qualityScore: null })],
+      "claude-sonnet",
+      "mock",
+      0,
+      "run"
+    );
+
+    printSummary(report);
+
+    const output = errorSpy.mock.calls.map((c) => c[0]).join("\n");
+    // Column header "Quality" should not appear in the table header
+    const tableHeaderLines = errorSpy.mock.calls
+      .map((c) => c[0] as string)
+      .filter((line) => line.includes("Scenario") && line.includes("Result"));
+    expect(tableHeaderLines[0]).not.toContain("Quality");
+  });
+
+  it("shows review queue section when flagged scenarios exist", () => {
+    const report = generateReport(
+      [makeResult({ id: "flagged-scenario", needsReview: true, reviewFlags: ["new-scenario"] })],
+      "claude-sonnet",
+      "mock",
+      0,
+      "run"
+    );
+
+    printSummary(report);
+
+    const output = errorSpy.mock.calls.map((c) => c[0]).join("\n");
+    expect(output).toContain("Review Queue");
+    expect(output).toContain("flagged-scenario");
+    expect(output).toContain("new-scenario");
+  });
+
+  it("shows domain breakdown", () => {
+    const report = generateReport(
+      [
+        makeResult({ id: "s1", domains: ["component"], success: true }),
+        makeResult({ id: "s2", domains: ["component"], success: false, errors: ["err"] }),
+      ],
+      "claude-sonnet",
+      "mock",
+      0,
+      "run"
+    );
+
+    printSummary(report);
+
+    const output = errorSpy.mock.calls.map((c) => c[0]).join("\n");
+    expect(output).toContain("By Domain:");
+    expect(output).toContain("component");
+    expect(output).toContain("1/2");
+  });
+
+  it("truncates long error messages to 30 chars", () => {
+    const report = generateReport(
+      [makeResult({ id: "s1", success: false, errors: ["This is a very long error message that should be truncated to thirty characters"] })],
+      "claude-sonnet",
+      "mock",
+      0,
+      "run"
+    );
+
+    printSummary(report);
+
+    const output = errorSpy.mock.calls.map((c) => c[0]).join("\n");
+    // The substring(0, 30) truncation: first 30 chars of the error
+    expect(output).toContain("This is a very long error mess");
+    expect(output).not.toContain("truncated to thirty characters");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// loadOverrides
+// ---------------------------------------------------------------------------
+describe("loadOverrides", () => {
+  it("returns empty object when file does not exist", () => {
+    (fs.existsSync as any).mockReturnValue(false);
+    expect(loadOverrides()).toEqual({});
+  });
+
+  it("returns parsed overrides when file exists", () => {
+    const overrides = {
+      "scenario-1": { verdict: "pass", notes: "Looks good", reviewedAt: "2026-02-28T00:00:00Z" },
+    };
+    (fs.existsSync as any).mockReturnValue(true);
+    (fs.readFileSync as any).mockReturnValue(JSON.stringify(overrides));
+
+    expect(loadOverrides()).toEqual(overrides);
+  });
+
+  it("returns empty object on malformed JSON", () => {
+    (fs.existsSync as any).mockReturnValue(true);
+    (fs.readFileSync as any).mockReturnValue("not json at all");
+
+    expect(loadOverrides()).toEqual({});
+  });
+});
+
+// ---------------------------------------------------------------------------
+// saveOverride
+// ---------------------------------------------------------------------------
+describe("saveOverride", () => {
+  it("saves override with auto-generated reviewedAt", () => {
+    (fs.existsSync as any).mockReturnValue(false);
+
+    saveOverride("test-scenario", { verdict: "pass", notes: "ok" } as any);
+
+    expect(fs.mkdirSync).toHaveBeenCalled();
+    expect(fs.writeFileSync).toHaveBeenCalledTimes(1);
+    const written = JSON.parse((fs.writeFileSync as any).mock.calls[0][1]);
+    expect(written["test-scenario"]).toBeDefined();
+    expect(written["test-scenario"].verdict).toBe("pass");
+    expect(written["test-scenario"].reviewedAt).toBeDefined();
+  });
+
+  it("preserves existing overrides when adding new one", () => {
+    const existing = {
+      "existing-scenario": { verdict: "fail", notes: "bad", reviewedAt: "2026-01-01T00:00:00Z" },
+    };
+    (fs.existsSync as any).mockReturnValue(true);
+    (fs.readFileSync as any).mockReturnValue(JSON.stringify(existing));
+
+    saveOverride("new-scenario", { verdict: "pass", notes: "good" } as any);
+
+    const written = JSON.parse((fs.writeFileSync as any).mock.calls[0][1]);
+    expect(written["existing-scenario"]).toBeDefined();
+    expect(written["new-scenario"]).toBeDefined();
+  });
+
+  it("respects provided reviewedAt instead of auto-generating", () => {
+    (fs.existsSync as any).mockReturnValue(false);
+
+    saveOverride("test-scenario", {
+      verdict: "pass",
+      notes: "ok",
+      reviewedAt: "2026-02-28T12:00:00Z",
+    } as any);
+
+    const written = JSON.parse((fs.writeFileSync as any).mock.calls[0][1]);
+    expect(written["test-scenario"].reviewedAt).toBe("2026-02-28T12:00:00Z");
   });
 });

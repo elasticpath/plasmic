@@ -993,6 +993,47 @@ describe("removeToken", () => {
       /dependency project/
     );
   });
+
+  it("replaces all occurrences of a token in a single CSS value (not just the first)", async () => {
+    const token = {
+      uuid: "tok-dup",
+      name: "Primary",
+      type: "Color",
+      value: "#ff0000",
+    };
+    // Component style references the same token twice (e.g., box-shadow with two shadows)
+    const comp = {
+      name: "DualRef",
+      tplTree: {
+        _type: "TplTag",
+        children: [],
+        vsettings: [
+          {
+            rs: {
+              values: {
+                "box-shadow": `0 0 5px var(--token-${token.uuid}), 0 0 10px var(--token-${token.uuid})`,
+              },
+            },
+          },
+        ],
+      },
+    };
+    const site = {
+      components: [comp],
+      styleTokens: [token],
+      projectDependencies: [],
+    };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await removeToken(api, "Primary");
+
+    // Both occurrences must be replaced, not just the first
+    const val = comp.tplTree.vsettings[0].rs.values["box-shadow"];
+    expect(val).not.toContain("var(--token-");
+    expect(val).toBe("0 0 5px #ff0000, 0 0 10px #ff0000");
+  });
 });
 
 // =============================================================================

@@ -15,7 +15,13 @@
 
 import { vi } from "vitest";
 
-export const mockEnsureBaseVariantSetting = vi.fn();
+export const mockEnsureBaseVariantSetting = vi.fn((tpl: any) => {
+  // Default behavior: return the first variant setting (base variant), creating it if needed
+  if (!tpl.vsettings || tpl.vsettings.length === 0) {
+    tpl.vsettings = [{ variants: [], attrs: {}, rs: { values: {} } }];
+  }
+  return tpl.vsettings[0];
+});
 export const mockEnsureBaseVariant = vi.fn();
 export const mockRenameComponent = vi.fn((component: any, name: string) => {
   // Default behavior mirrors real TplMgr: update component.name
