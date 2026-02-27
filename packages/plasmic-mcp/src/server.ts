@@ -31,6 +31,7 @@ import { PlasmicApiClient } from "./api-client.js";
 import { getAuth } from "./auth.js";
 import { requireSession, setSession } from "./session.js";
 import { loadProject } from "./model-loader.js";
+import { syncFromDevHost } from "./devhost-sync.js";
 import {
   readComponentTree,
   readComponentSummary,
@@ -262,7 +263,11 @@ export function createServer(): McpServer {
               revisionNum,
               modelVersion,
               hostlessDataVersion,
+              hostUrl,
             } = await loadProject(apiClient, pid);
+
+            // Sync code component variants from the dev host (non-fatal)
+            const syncResult = await syncFromDevHost(site, hostUrl);
 
             setSession({
               projectId: pid,
@@ -273,6 +278,9 @@ export function createServer(): McpServer {
               modelVersion,
               hostlessDataVersion,
               projectUuid: pid,
+              hostUrl,
+              devHostSynced: syncResult.devHostSynced,
+              syncedVariantComponents: syncResult.syncedVariantComponents,
             });
 
             // Initialize change tracking for incremental saves (M2)
@@ -290,6 +298,10 @@ export function createServer(): McpServer {
                     projectName,
                     componentCount: components.length,
                     pageCount: pages.length,
+                    ...(syncResult.devHostSynced && {
+                      devHostSynced: true,
+                      syncedVariantComponents: syncResult.syncedVariantComponents,
+                    }),
                   }),
                 },
               ],
@@ -394,7 +406,11 @@ export function createServer(): McpServer {
               revisionNum,
               modelVersion,
               hostlessDataVersion,
+              hostUrl,
             } = await loadProject(apiClient, session.projectId);
+
+            // Re-sync code component variants from the dev host (non-fatal)
+            const syncResult = await syncFromDevHost(site, hostUrl);
 
             setSession({
               projectId: session.projectId,
@@ -405,6 +421,9 @@ export function createServer(): McpServer {
               modelVersion,
               hostlessDataVersion,
               projectUuid: session.projectId,
+              hostUrl,
+              devHostSynced: syncResult.devHostSynced,
+              syncedVariantComponents: syncResult.syncedVariantComponents,
             });
 
             // Re-initialize change tracking
@@ -425,6 +444,10 @@ export function createServer(): McpServer {
                       componentCount: components.length,
                       pageCount: pages.length,
                       message: `Project refreshed at revision ${revisionNum}`,
+                      ...(syncResult.devHostSynced && {
+                        devHostSynced: true,
+                        syncedVariantComponents: syncResult.syncedVariantComponents,
+                      }),
                     }
                   ),
                 },

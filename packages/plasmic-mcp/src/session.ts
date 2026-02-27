@@ -23,6 +23,12 @@ export interface Session {
   modelVersion: number;
   hostlessDataVersion: number;
   projectUuid: string;
+  /** Dev host URL from project settings (null if not configured). */
+  hostUrl?: string;
+  /** Whether dev host variant sync completed successfully. */
+  devHostSynced?: boolean;
+  /** Names of code components whose variants were synced from the dev host. */
+  syncedVariantComponents?: string[];
 }
 
 let currentSession: Session | null = null;

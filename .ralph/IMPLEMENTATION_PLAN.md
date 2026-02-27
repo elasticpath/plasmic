@@ -6,11 +6,11 @@
 
 - MCP server: 8 STRAP tools, 103 actions -- ALL fully implemented, zero TODOs/FIXMEs
 - Eval system: harness, graders, visual capture, dashboard, CI, ~70 scenarios across 12 YAML files
-- Total tests: 1,418 (1,281 unit across 27 suites + 137 integration in 1 suite)
+- Total tests: ~1,470 (1,312 unit across 27 suites + 137 integration in 1 suite + 21 plasmic-registry tests)
 - Eval tests: 182 across 9 files (no tests exist that catch any P12 or P13 bug)
 - **Action coverage: 38/103 (36.9%)** -- 65 actions have zero eval scenarios
-- **Unfixed items: P10 (feature, 6 subtasks) + P11 (65 scenarios) + P12 (8 runner bugs) + P13 (9 grader bugs) + P14 (7 infra improvements)**
-- **Priority order (renumbered): P10 Dev Host Variant Sync > P11 Scenario Coverage > P12 Runner Robustness > P13 Grader Quality > P14 Infrastructure**
+- **Unfixed items: P11 (65 scenarios) + P12 (8 runner bugs) + P13 (9 grader bugs) + P14 (7 infra improvements)**
+- **Priority order: P11 > P12 > P13 > P14**
 
 ## Completed Priorities
 
@@ -24,23 +24,11 @@
 | P7 | Report Archival | 90-day cleanup on server start + standalone `npm run eval:cleanup` |
 | P8 | Eval Resume/Skip | Git SHA tracking, scenario skip for passed results, `--force` override |
 | P9 | Contract & Doc Fixes | dryRun support for 5 component actions, explicit dryRun rejection for 3 API-based actions, `update-split` slices support, eval scenario childTags fix, skill doc accuracy, INDEX.md regeneration (55->70 scenarios), dashboard regression alerts with full grader results. 20 new tests. |
+| P10 | Dev Host Variant Sync | Dev host variant sync -- `@elasticpath/plasmic-registry` package, dev host API route, `devhost-sync.ts` MCP module, session state extension, 22 MCP unit tests + 21 registry tests, README docs |
 
 ---
 
 ## Outstanding Work
-
-### P10 -- FEATURE: Dev Host Variant Sync (TOP PRIORITY)
-
-Full spec at `.ralph/specs/mcp-devhost-variant-sync.md` -- 47 acceptance criteria, 15 files.
-
-- [ ] **P10.1 -- `@elasticpath/plasmic-registry` package**: Read `globalThis.__PlasmicComponentRegistry`, serialize metadata, strip non-serializable fields. New package with 4 source files + 2 test files.
-- [ ] **P10.2 -- Dev host API route**: `plasmicpkgs-dev/app/api/plasmic-registry/route.ts` and server-side registration file. Integration tests.
-- [ ] **P10.3 -- MCP sync module**: `packages/plasmic-mcp/src/devhost-sync.ts` -- fetch registry from dev host on `project.set`/`project.refresh`, populate `codeComponentMeta.variants`, create `Variant` objects on wrapper components. Unit + integration tests.
-- [ ] **P10.4 -- Session state extension**: Track `devHostSynced` and `syncedComponents` in session.
-- [ ] **P10.5 -- Eval scenarios for dev host sync**: New scenarios testing variant.list after sync, variant-specific styling, sync failure handling.
-- [ ] **P10.6 -- README documentation**: Dev Host Sync section in `packages/plasmic-mcp/README.md`.
-
----
 
 ### P11 -- CRITICAL: Scenario Coverage Expansion
 
@@ -192,7 +180,7 @@ Quality of life, accuracy, and developer experience improvements. All 7 items un
 
 | # | Issue | Severity | Location | Status | Description |
 |---|-------|----------|----------|--------|-------------|
-| 1 | Action coverage gap | Critical | `evals/scenarios/` | UNFIXED | 65/103 actions (63.1%) have zero eval scenarios |
+| 1 | Action coverage gap | Critical | `evals/scenarios/` | UNFIXED | 65/103 actions (63.1%) have zero eval scenarios (P10 dev host sync adds no new MCP actions) |
 | 2 | property grader numeric crash | Bug | `state-check.ts:279` | UNFIXED (P14.1) | `.toLowerCase()` on numeric style values throws TypeError |
 | 3 | Tool execution no timeout | Bug | `claude-client.ts:158-163` | UNFIXED (P12.1) | `onToolCall` awaited with no timeout; hangs indefinitely |
 | 4 | saveReport no fallback | Bug | `reporter.ts:122-126` | UNFIXED (P12.2) | Filesystem error loses all results |

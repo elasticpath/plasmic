@@ -8,7 +8,7 @@ cd packages/plasmic-mcp && npm run build  # Build distribution (dist/index.cjs)
 # Validation
 
 ```bash
-cd packages/plasmic-mcp && npm test              # All tests (1,197 — unit + integration)
+cd packages/plasmic-mcp && npm test              # All tests (~1,470 — unit + integration)
 cd packages/plasmic-mcp && npm run test:unit      # Unit tests only (mocked WAB)
 cd packages/plasmic-mcp && npm run test:integration  # Integration tests (real WAB)
 cd packages/plasmic-mcp && npm run typecheck      # TypeScript type checking (tsc --noEmit)
@@ -20,6 +20,7 @@ cd packages/plasmic-mcp && npm run typecheck      # TypeScript type checking (ts
 
 - Monorepo: platform/ (apps), packages/ (SDK), plasmicpkgs/ (code components)
 - MCP server source: `packages/plasmic-mcp/src/`
+- Plasmic registry package: `packages/plasmic-registry/` (tests: `cd packages/plasmic-registry && npx vitest run`)
 - STRAP architecture: 8 domain tools (project, inspect, component, node, variant, design, data, interaction) consolidating 103 actions
 - Embedded WAB editing engine from `platform/wab/src/wab/`
 - Claude Code skills in `.claude/commands/` (6 slash commands)

@@ -44,6 +44,8 @@ export interface LoadedModel {
   modelVersion: number;
   /** Server hostless data version for incremental save requests. */
   hostlessDataVersion: number;
+  /** Dev host URL from project settings (undefined if not configured). */
+  hostUrl?: string;
 }
 
 /**
@@ -70,6 +72,7 @@ export async function loadProject(
   const revisionNum = response.rev.revision;
   const modelVersion = response.modelVersion ?? 0;
   const hostlessDataVersion = response.hostlessDataVersion ?? 0;
+  const hostUrl = response.project?.hostUrl;
 
   const bundler = new FastBundler(meta, classesModule);
 
@@ -111,7 +114,7 @@ export async function loadProject(
     `[plasmic-mcp] Project loaded: ${componentCount} components`
   );
 
-  return { site, bundler, projectName, revisionNum, modelVersion, hostlessDataVersion };
+  return { site, bundler, projectName, revisionNum, modelVersion, hostlessDataVersion, hostUrl };
 }
 
 /**

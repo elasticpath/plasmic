@@ -49,6 +49,7 @@ export interface ProjectBundleResponse {
   project: {
     id: string;
     name: string;
+    hostUrl?: string;
   };
   depPkgs: DepPkgInfo[];
   // M2: needed for incremental saves (populated from server response)
