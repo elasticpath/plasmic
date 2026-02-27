@@ -370,6 +370,29 @@ export function createServer(): McpServer {
               meta.globalVariantGroupCount = site.globalVariantGroups.length;
             }
 
+            // Enrich with dev host registered contexts when available
+            const regContexts = session.registryData?.contexts;
+            if (Array.isArray(regContexts) && regContexts.length > 0) {
+              meta.devHostContexts = regContexts.map((ctx) => ({
+                name: ctx.name,
+                ...(ctx.displayName && { displayName: ctx.displayName }),
+                ...(ctx.description && { description: ctx.description }),
+                ...(ctx.importName && { importName: ctx.importName }),
+                ...(ctx.importPath && { importPath: ctx.importPath }),
+                ...(ctx.props && Object.keys(ctx.props).length > 0 && { props: ctx.props }),
+                ...(ctx.globalActions && Object.keys(ctx.globalActions).length > 0 && { globalActions: ctx.globalActions }),
+              }));
+            }
+
+            // Enrich with dev host registered traits when available
+            const regTraits = session.registryData?.traits;
+            if (Array.isArray(regTraits) && regTraits.length > 0) {
+              meta.devHostTraits = regTraits.map((t) => ({
+                trait: t.trait,
+                ...(t.meta && { meta: t.meta }),
+              }));
+            }
+
             return {
               content: [
                 { type: "text" as const, text: JSON.stringify(meta) },
@@ -4827,7 +4850,32 @@ export function createServer(): McpServer {
 
           case "get-code-meta": {
             const cuuid = requireParam(params.componentUuid, "componentUuid", "data.get-code-meta");
-            const result = getCodeComponentMeta(cuuid);
+            const metaResult = getCodeComponentMeta(cuuid);
+
+            // Enrich with dev host registry component data when available
+            const session = requireSession();
+            const regComponents = session.registryData?.components;
+            let devHostMeta: Record<string, unknown> | undefined;
+            if (metaResult.isCodeComponent && metaResult.componentName &&
+                Array.isArray(regComponents) && regComponents.length > 0) {
+              const compName = metaResult.componentName;
+              const siteName = compName.endsWith("$dev") ? compName.slice(0, -4) : compName;
+              const matched = regComponents.find((c) => {
+                if (!c?.name) return false;
+                const regName = c.name.endsWith("$dev") ? c.name.slice(0, -4) : c.name;
+                return regName === siteName;
+              });
+              if (matched) {
+                // Surface all registry fields except name (already known) as devHostMeta
+                const { name: _name, ...rest } = matched;
+                devHostMeta = rest;
+              }
+            }
+
+            const result = devHostMeta
+              ? { ...metaResult, devHostMeta }
+              : metaResult;
+
             return {
               content: [
                 { type: "text" as const, text: JSON.stringify(result) },

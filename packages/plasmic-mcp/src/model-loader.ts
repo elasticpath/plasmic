@@ -129,7 +129,7 @@ function narrowToSite(obj: unknown): any {
     return obj;
   }
   if (classesModule.ProjectDependency.isKnown(obj)) {
-    return (obj as any).site;
+    return obj.site;
   }
   throw new Error(
     "Unbundled object is neither a Site nor a ProjectDependency. " +

@@ -2,7 +2,7 @@
 
 Spec: `.ralph/specs/plasmic-mcp-registry-nextjs-wrapper.md`
 
-Last verified: 2026-02-27 (P1-P5, P27-P32 all complete)
+Last verified: 2026-02-27 (P1-P5, P27-P34 all complete)
 
 ---
 
@@ -114,7 +114,35 @@ Why: P31 removed `as any` from registry-related code, but 18 `as any` casts rema
 
 ---
 
-## Current Source Code Summary (verified 2026-02-27, updated after P1-P5/P27-P32)
+## P33 -- Enrich `data.get-code-meta` with dev host registry component data (DONE)
+
+Why: `data.get-code-meta` only returned the stripped WAB site model metadata (importPath, isHostLess, etc.). The full component registration data (typed props with descriptions/defaults, variants, defaultStyles, parentComponentName) was in `session.registryData.components` but never surfaced through this action. Claude needs this data to understand code component capabilities when working with them.
+
+- [x] **`CodeComponentMetaInfo.componentName`**: Added `componentName` field to `CodeComponentMetaInfo` interface and `getCodeComponentMeta()` return value in `edit-tools.ts`. Provides the component name for registry matching.
+- [x] **`data.get-code-meta` handler enrichment**: Handler now looks up matching registry component by name (with `$dev` suffix handling) and adds `devHostMeta` to the response. Follows the same pattern as `devHostTokens`/`devHostFunctions` enrichment. The `name` field is excluded from `devHostMeta` (redundant — already known from `componentName`).
+- [x] **Tests**: 5 new tests in `server.test.ts`: matching registry component, `$dev` suffix matching, no registryData, non-code component, no matching component found.
+- [x] **1710 tests passing** (31 suites), build and typecheck clean.
+
+---
+
+## P34 -- Surface dev host contexts and traits in `project.get-meta` (DONE)
+
+Why: `registryData.contexts` and `registryData.traits` were synced, cached, and counted (in `project.set`/`project.refresh` `devHostRegistry` summary) but never surfaced in any tool response. Claude had no way to discover what global context providers or traits were registered on the dev host — only their counts.
+
+- [x] **`project.get-meta` enrichment**: Handler now includes `devHostContexts` (name, displayName, description, importName, importPath, props, globalActions) and `devHostTraits` (trait, meta) arrays from `session.registryData` when available. Omitted when no registryData or arrays are empty.
+- [x] **Tests**: 4 new tests in `server.test.ts`: registry contexts present, registry traits present, no registryData, empty arrays.
+- [x] **1710 tests passing** (31 suites), build and typecheck clean.
+
+---
+
+## P33/P34 bonus: Zero `as any` in all production source files (DONE)
+
+- [x] **model-loader.ts**: Removed the last `as any` cast (`(obj as any).site` in `narrowToSite()`). `ProjectDependency.isKnown()` is a proper type guard (`obj is ProjectDependency`) so TypeScript narrows correctly to `obj.site` without a cast.
+- [x] **Result**: Zero `as any` casts across ALL production source files (server.ts, edit-tools.ts, model-loader.ts, devhost-sync.ts, session.ts, tree-reader.ts, node-resolver.ts, token-reader.ts, change-tracker.ts, batch-manager.ts, undo-manager.ts, save-manager.ts, api-client.ts, auth.ts, types.ts, index.ts). Only test files contain `as any` (517 occurrences across 20 test files — expected for mock setup).
+
+---
+
+## Current Source Code Summary (verified 2026-02-27, updated after P1-P5/P27-P34)
 
 ### packages/plasmic-mcp-registry/ (renamed from plasmic-registry)
 - **package.json**: name `@elasticpath/plasmic-mcp-registry`, v0.2.0, zero runtime deps, CommonJS output, `exports` field with `"."` and `"./next"` subpaths
@@ -142,34 +170,39 @@ Why: P31 removed `as any` from registry-related code, but 18 `as any` casts rema
 - **syncFromDevHost()**: orchestrator called from 5 locations in server.ts. `SyncResult` now includes `registryData: FullRegistryData | null`, stored in session after sync.
 - **`getCodeComponentVariantMetas()`**: uses `tplTree?.typeTag ?? tplTree?._type` (fixed from `_type` only)
 
-### packages/plasmic-mcp/src/edit-tools.ts (P27-P29, P31-P32 changes)
+### packages/plasmic-mcp/src/edit-tools.ts (P27-P29, P31-P33 changes)
+- **`CodeComponentMetaInfo`**: now includes `componentName?: string` field (P33) for registry matching
+- **`getCodeComponentMeta()`**: returns `componentName: component.name` when `isCodeComponent: true` (P33)
 - **`findRegistryComponent()`**: typed `(RegistryComponent[], string) => RegistryComponent | null`; matches by name with `$dev` suffix handling (P31: import from devhost-sync.ts)
 - **`plasmicElementToTpl()`**: accepts optional `registryComponents?: RegistryComponent[]` parameter; applies `defaultStyles` from registry after `mkTplComponentX` creates TplComponent instances; populates slot `defaultValue` from registry for unfilled slots (recursively converts PlasmicElement trees to TplNodes and wires as `Arg` + `RenderExpr`)
 - **`addChild()`**: passes `session.registryData?.components` to `plasmicElementToTpl`; validates `parentComponentName` from registry and returns non-fatal `warnings[]`
 - **`AddChildResult`**: new optional `warnings?: string[]` field for parentComponentName mismatches
 
-### packages/plasmic-mcp/src/server.ts (P27-P32 changes)
+### packages/plasmic-mcp/src/server.ts (P27-P34 changes)
 - **`component.create-page`**, **`component.create`**, **`component.clone`**: `setSession()` calls now include `registryData: syncResult.registryData` (was missing, causing session.registryData to become undefined after these operations)
 - **`node.add` handler**: surfaces `result.warnings` in JSON response (both normal and dry-run modes)
+- **`data.get-code-meta` handler** (P33): enriched with `devHostMeta` from matching `session.registryData.components` entry (props, variants, defaultStyles, parentComponentName, etc.); name matching handles `$dev` suffix
 - **`data.list-functions` handler**: enriched result built with spread pattern; registry types flow from session (no casts)
 - **`design.list-tokens` handler**: enriched result built with spread pattern; registry types flow from session (no casts)
+- **`project.get-meta` handler** (P34): enriched with `devHostContexts` (from `session.registryData.contexts`) and `devHostTraits` (from `session.registryData.traits`) when available
 - **Zero `as any` casts** (P32): removed 5 redundant parameter casts + added `"toggle"` validation for `variant.create-global-group`
 
 ### packages/plasmic-mcp/src/session.ts
 - **`Session.registryData`**: typed as `FullRegistryData | null` via `import type` from `devhost-sync.js` (P31; was `any` in P27). Provides type safety to all consumers.
 - Populated after each `syncFromDevHost()` call; cleared on `set-project` cleanup
-- Consumed by `design.list-tokens` (devHostTokens), `data.list-functions` (devHostFunctions), `project.set`/`project.refresh` summary responses, and `addChild` (defaultStyles + parentComponentName validation)
+- Consumed by `design.list-tokens` (devHostTokens), `data.list-functions` (devHostFunctions), `data.get-code-meta` (devHostMeta, P33), `project.get-meta` (devHostContexts/devHostTraits, P34), `project.set`/`project.refresh` summary responses, and `addChild` (defaultStyles + parentComponentName validation)
 
-### packages/plasmic-mcp/src/model-loader.ts (P31 change)
+### packages/plasmic-mcp/src/model-loader.ts (P31, P33 changes)
 - **`hostUrl` resolution**: `response.project?.hostUrl ?? process.env.PLASMIC_DEV_HOST_URL` — project settings take priority, env var provides fallback for projects without a configured host URL
+- **Zero `as any`** (P33): removed last `as any` cast in `narrowToSite()` — `ProjectDependency.isKnown()` type guard enables direct `obj.site` access
 
-### Test counts (as of P1-P5/P27-P32 completion)
+### Test counts (as of P1-P5/P27-P34 completion)
 - packages/plasmic-mcp-registry: 75 tests (5 suites)
 - plasmicpkgs-dev: 6 tests (1 suite) -- all passing
-- packages/plasmic-mcp: 1701 tests (31 suites) -- all passing
+- packages/plasmic-mcp: 1710 tests (31 suites) -- all passing
   - model-loader.test.ts: added 4 tests for P31 hostUrl sourcing (project settings, env var fallback, project priority over env, undefined when neither)
   - devhost-sync.test.ts: 35 tests (added 4 for P27 registryData in SyncResult)
-  - server.test.ts: 267 tests (added 6 for P28: 3 node.add warnings + 3 registryData preservation)
+  - server.test.ts: 276 tests (267 + 5 P33 get-code-meta enrichment + 4 P34 get-meta contexts/traits)
   - node.test.ts: added 11 tests for P28/P29 registry enrichment (defaultStyles, $dev matching, no registryData, parentComponentName mismatch/match/TplTag, slot defaultValue population, named slot defaults, explicit children override, missing slot skip, non-slot prop handling)
 
 ### Host registration global shapes (packages/host/src/register*.ts)

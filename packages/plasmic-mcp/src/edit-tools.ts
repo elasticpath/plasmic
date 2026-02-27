@@ -7900,6 +7900,7 @@ function findComponentVariant(component: any, variantRef: string): any {
 
 export interface CodeComponentMetaInfo {
   isCodeComponent: boolean;
+  componentName?: string;
   importPath?: string;
   importName?: string;
   displayName?: string;
@@ -7928,6 +7929,7 @@ export function getCodeComponentMeta(
   const meta = component.codeComponentMeta;
   return {
     isCodeComponent: true,
+    componentName: component.name,
     importPath: meta.importPath,
     importName: meta.importName,
     displayName: meta.displayName ?? undefined,

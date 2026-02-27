@@ -782,6 +782,150 @@ describe("tool handlers", () => {
     });
   });
 
+  describe("P34: project.get-meta includes dev host contexts and traits", () => {
+    it("includes devHostContexts when session has registry contexts", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        projectName: "Test",
+        site: {
+          components: [],
+          styleTokens: [],
+          globalVariantGroups: [],
+        },
+        registryData: {
+          components: [],
+          contexts: [
+            {
+              name: "ShopContext",
+              displayName: "Shop Context",
+              description: "Provides shop data",
+              importName: "ShopProvider",
+              importPath: "@elasticpath/plasmic-ep-commerce",
+              props: { storeId: { type: "string" }, locale: { type: "string" } },
+              globalActions: { addToCart: { parameters: [{ name: "sku", type: "string" }] } },
+            },
+          ],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "get-meta" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.devHostContexts).toBeDefined();
+      expect(output.devHostContexts).toHaveLength(1);
+      expect(output.devHostContexts[0].name).toBe("ShopContext");
+      expect(output.devHostContexts[0].displayName).toBe("Shop Context");
+      expect(output.devHostContexts[0].description).toBe("Provides shop data");
+      expect(output.devHostContexts[0].importName).toBe("ShopProvider");
+      expect(output.devHostContexts[0].importPath).toBe("@elasticpath/plasmic-ep-commerce");
+      expect(output.devHostContexts[0].props).toEqual({
+        storeId: { type: "string" },
+        locale: { type: "string" },
+      });
+      expect(output.devHostContexts[0].globalActions).toEqual({
+        addToCart: { parameters: [{ name: "sku", type: "string" }] },
+      });
+    });
+
+    it("includes devHostTraits when session has registry traits", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        projectName: "Test",
+        site: {
+          components: [],
+          styleTokens: [],
+          globalVariantGroups: [],
+        },
+        registryData: {
+          components: [],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [
+            { trait: "theme", meta: { label: "Theme", type: "choice", options: ["light", "dark"] } },
+            { trait: "size", meta: { label: "Size", type: "choice", options: ["sm", "md", "lg"] } },
+          ],
+        },
+      });
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "get-meta" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.devHostTraits).toBeDefined();
+      expect(output.devHostTraits).toHaveLength(2);
+      expect(output.devHostTraits[0]).toEqual({
+        trait: "theme",
+        meta: { label: "Theme", type: "choice", options: ["light", "dark"] },
+      });
+      expect(output.devHostTraits[1]).toEqual({
+        trait: "size",
+        meta: { label: "Size", type: "choice", options: ["sm", "md", "lg"] },
+      });
+    });
+
+    it("omits devHostContexts and devHostTraits when no registryData", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        projectName: "Test",
+        site: {
+          components: [],
+          styleTokens: [],
+          globalVariantGroups: [],
+        },
+      });
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "get-meta" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.devHostContexts).toBeUndefined();
+      expect(output.devHostTraits).toBeUndefined();
+    });
+
+    it("omits devHostContexts and devHostTraits when arrays are empty", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        projectName: "Test",
+        site: {
+          components: [],
+          styleTokens: [],
+          globalVariantGroups: [],
+        },
+        registryData: {
+          components: [],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "get-meta" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.devHostContexts).toBeUndefined();
+      expect(output.devHostTraits).toBeUndefined();
+    });
+  });
+
   describe("component.list", () => {
     it("returns pages and components with types", async () => {
       mockRequireSession.mockReturnValue({
@@ -6226,8 +6370,9 @@ describe("tool handlers", () => {
     it("returns code component metadata", async () => {
       mockRequireSession.mockReturnValue({ site: {} });
       mockGetCodeComponentMeta.mockReturnValue({
-        name: "EPButton",
-        variants: { selected: { group: "state", type: "toggle" } },
+        isCodeComponent: true,
+        componentName: "EPButton",
+        importPath: "@plasmicpkgs/ep-button",
       });
 
       const result = await client.callTool({
@@ -6240,8 +6385,151 @@ describe("tool handlers", () => {
 
       const output = parseResponse(result);
       expect(result.isError).toBeFalsy();
-      expect(output.name).toBe("EPButton");
-      expect(output.variants).toBeDefined();
+      expect(output.isCodeComponent).toBe(true);
+      expect(output.componentName).toBe("EPButton");
+    });
+  });
+
+  describe("P33: data.get-code-meta includes dev host registry meta", () => {
+    it("includes devHostMeta when session has matching registry component", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {},
+        registryData: {
+          components: [
+            {
+              name: "EPButton",
+              props: { label: { type: "string", defaultValue: "Click me" }, size: { type: "choice", options: ["sm", "md", "lg"] } },
+              variants: { hover: { cssSelector: ":hover", displayName: "Hover" } },
+              defaultStyles: { padding: "8px 16px" },
+              parentComponentName: "EPForm",
+            },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      mockGetCodeComponentMeta.mockReturnValue({
+        isCodeComponent: true,
+        componentName: "EPButton",
+        importPath: "@plasmicpkgs/ep-button",
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "get-code-meta", componentUuid: "comp-1" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.isCodeComponent).toBe(true);
+      expect(output.devHostMeta).toBeDefined();
+      expect(output.devHostMeta.props).toEqual({
+        label: { type: "string", defaultValue: "Click me" },
+        size: { type: "choice", options: ["sm", "md", "lg"] },
+      });
+      expect(output.devHostMeta.variants).toEqual({
+        hover: { cssSelector: ":hover", displayName: "Hover" },
+      });
+      expect(output.devHostMeta.defaultStyles).toEqual({ padding: "8px 16px" });
+      expect(output.devHostMeta.parentComponentName).toBe("EPForm");
+      // name should be excluded (already known from componentName)
+      expect(output.devHostMeta.name).toBeUndefined();
+    });
+
+    it("matches registry component with $dev suffix", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {},
+        registryData: {
+          components: [
+            { name: "EPButton$dev", props: { label: { type: "string" } } },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      mockGetCodeComponentMeta.mockReturnValue({
+        isCodeComponent: true,
+        componentName: "EPButton",
+        importPath: "@plasmicpkgs/ep-button",
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "get-code-meta", componentUuid: "comp-1" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostMeta).toBeDefined();
+      expect(output.devHostMeta.props).toEqual({ label: { type: "string" } });
+    });
+
+    it("omits devHostMeta when no registryData", async () => {
+      mockRequireSession.mockReturnValue({ site: {} });
+      mockGetCodeComponentMeta.mockReturnValue({
+        isCodeComponent: true,
+        componentName: "EPButton",
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "get-code-meta", componentUuid: "comp-1" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostMeta).toBeUndefined();
+    });
+
+    it("omits devHostMeta when component is not a code component", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {},
+        registryData: {
+          components: [{ name: "EPButton", props: {} }],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      mockGetCodeComponentMeta.mockReturnValue({
+        isCodeComponent: false,
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "get-code-meta", componentUuid: "comp-1" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostMeta).toBeUndefined();
+    });
+
+    it("omits devHostMeta when no matching registry component found", async () => {
+      mockRequireSession.mockReturnValue({
+        site: {},
+        registryData: {
+          components: [{ name: "OtherComponent", props: {} }],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+      mockGetCodeComponentMeta.mockReturnValue({
+        isCodeComponent: true,
+        componentName: "EPButton",
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: { action: "get-code-meta", componentUuid: "comp-1" },
+      });
+
+      const output = parseResponse(result);
+      expect(output.devHostMeta).toBeUndefined();
     });
   });
 
