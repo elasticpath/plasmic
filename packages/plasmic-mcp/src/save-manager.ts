@@ -68,9 +68,9 @@ export class SaveManager {
     // Validate site invariants before saving (matches Studio's StudioCtx.trySave())
     try {
       assertSiteInvariants(site);
-    } catch (err: any) {
+    } catch (err: unknown) {
       throw new Error(
-        `Site invariant violation: ${err.message} ` +
+        `Site invariant violation: ${err instanceof Error ? err.message : String(err)} ` +
           `Use refresh-project to reload the latest valid version, then retry your edit.`
       );
     }
@@ -94,7 +94,7 @@ export class SaveManager {
       );
 
       return { revisionNum: newRevisionNum, incremental: true };
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (err instanceof PlasmicApiError && err.statusCode === 412) {
         // UnknownReferencesError: auto-retry with full bundle (Studio behavior)
         if (err.errorType === "UnknownReferencesError") {
@@ -135,9 +135,9 @@ export class SaveManager {
     // Validate site invariants before saving (matches Studio's StudioCtx.trySave())
     try {
       assertSiteInvariants(site);
-    } catch (err: any) {
+    } catch (err: unknown) {
       throw new Error(
-        `Site invariant violation: ${err.message} ` +
+        `Site invariant violation: ${err instanceof Error ? err.message : String(err)} ` +
           `Use refresh-project to reload the latest valid version, then retry your edit.`
       );
     }

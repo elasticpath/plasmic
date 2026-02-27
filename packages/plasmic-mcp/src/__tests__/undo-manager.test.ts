@@ -205,6 +205,47 @@ describe("MAX_UNDO_DEPTH enforcement", () => {
   });
 });
 
+describe("undo save failure rollback", () => {
+  it("rolls back model and re-pushes operation when save fails", async () => {
+    setupSession();
+    const api = mockApiClient();
+    api.saveRevision.mockRejectedValue(new Error("network down"));
+
+    const changes = {
+      changes: [{ type: "update", changeNode: { inst: { id: 1 }, field: "text" } }],
+      newInsts: [],
+      removedInsts: [],
+    };
+    pushUndoOperation("failed edit", changes as any);
+
+    await expect(undo(api)).rejects.toThrow("network down");
+
+    // Operation should be re-pushed onto the stack for retry
+    expect(getUndoDepth()).toBe(1);
+    // undoChanges should have been called twice:
+    // once for the undo, once for the rollback (reversal of reversal)
+    expect(mockUndoChanges).toHaveBeenCalledTimes(2);
+  });
+
+  it("preserves stack depth on save failure", async () => {
+    setupSession();
+    const api = mockApiClient();
+
+    pushUndoOperation("good edit", emptyRecordedChanges());
+    pushUndoOperation("failing edit", emptyRecordedChanges());
+
+    // First undo succeeds
+    await undo(api);
+    expect(getUndoDepth()).toBe(1);
+
+    // Second undo fails
+    api.saveRevision.mockRejectedValue(new Error("server error"));
+    await expect(undo(api)).rejects.toThrow("server error");
+    // Operation should be re-pushed — depth stays 1
+    expect(getUndoDepth()).toBe(1);
+  });
+});
+
 describe("clearUndoStack", () => {
   it("clears all operations", () => {
     pushUndoOperation("a", emptyRecordedChanges());

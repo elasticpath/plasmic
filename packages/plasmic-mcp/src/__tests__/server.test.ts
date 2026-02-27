@@ -648,6 +648,23 @@ describe("tool handlers", () => {
       expect(result.content[0].text).toContain("Error in project.set");
       expect(result.content[0].text).toContain("Network timeout");
     });
+
+    it("handles non-Error thrown values without crashing", async () => {
+      // Thrown strings, numbers, or other non-Error values should produce
+      // a readable error message instead of "undefined"
+      mockLoadProject.mockRejectedValue("raw string rejection");
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "set", projectId: "bad-proj" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Error in project.set");
+      expect(result.content[0].text).toContain("raw string rejection");
+      // Must NOT contain "undefined" — that would mean err.message was used on a non-Error
+      expect(result.content[0].text).not.toContain("undefined");
+    });
   });
 
   describe("project.list", () => {
@@ -2032,6 +2049,26 @@ describe("tool handlers", () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("Error node.update-text");
+    });
+
+    it("handles non-Error thrown values in mutation handler", async () => {
+      // handleMutationError must safely extract a message from non-Error values
+      mockUpdateText.mockRejectedValue(42);
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "update-text",
+          componentUuid: "comp-1",
+          nodeRef: "Foo",
+          text: "bar",
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Error node.update-text");
+      expect(result.content[0].text).toContain("42");
+      expect(result.content[0].text).not.toContain("undefined");
     });
   });
 

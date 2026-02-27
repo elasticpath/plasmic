@@ -197,12 +197,17 @@ async function withDryRun<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+/** Extract a human-readable message from an unknown thrown value. */
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 /**
  * Handle errors from mutation tool handlers. If a batch is active, cancels it
  * and rolls back all accumulated changes so the model stays clean.
  */
-function handleMutationError(label: string, err: any) {
-  let message = `Error ${label}: ${err.message}`;
+function handleMutationError(label: string, err: unknown) {
+  let message = `Error ${label}: ${errorMessage(err)}`;
   if (isBatchActive()) {
     cancelBatchWithRollback();
     message += " Batch cancelled and all accumulated changes rolled back.";
@@ -523,12 +528,12 @@ export function createServer(): McpServer {
           default:
             throw new Error(`Unknown action '${action}' for project tool. Available: set, list, get-meta, save, refresh, begin-batch, end-batch, undo`);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         return {
           content: [
             {
               type: "text" as const,
-              text: `Error in project.${action}: ${err.message}`,
+              text: `Error in project.${action}: ${errorMessage(err)}`,
             },
           ],
           isError: true,
@@ -1023,12 +1028,12 @@ export function createServer(): McpServer {
           default:
             throw new Error(`Unknown action '${action}' for inspect tool. Available: tree, summary, node, subtree, export, style-properties, preview-url, page-meta`);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         return {
           content: [
             {
               type: "text" as const,
-              text: `Error in inspect.${action}: ${err.message}`,
+              text: `Error in inspect.${action}: ${errorMessage(err)}`,
             },
           ],
           isError: true,
@@ -1167,6 +1172,11 @@ export function createServer(): McpServer {
                 "[plasmic-mcp] Warning: Could not reload model after page creation:",
                 reloadErr
               );
+              // Re-initialize change tracker on the existing session site so
+              // subsequent mutations don't fail with "not initialized"
+              try {
+                initChangeTracker(session.site);
+              } catch { /* best-effort */ }
             }
 
             return {
@@ -1248,6 +1258,11 @@ export function createServer(): McpServer {
                 "[plasmic-mcp] Warning: Could not reload model after component creation:",
                 reloadErr
               );
+              // Re-initialize change tracker on the existing session site so
+              // subsequent mutations don't fail with "not initialized"
+              try {
+                initChangeTracker(session.site);
+              } catch { /* best-effort */ }
             }
 
             return {
@@ -1354,6 +1369,11 @@ export function createServer(): McpServer {
                 "[plasmic-mcp] Warning: Could not reload model after component cloning:",
                 reloadErr
               );
+              // Re-initialize change tracker on the existing session site so
+              // subsequent mutations don't fail with "not initialized"
+              try {
+                initChangeTracker(session.site);
+              } catch { /* best-effort */ }
             }
 
             return {
@@ -2054,7 +2074,7 @@ export function createServer(): McpServer {
           default:
             throw new Error(`Unknown action '${action}' for component tool.`);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (["create-page", "create", "clone", "rename", "delete", "extract", "convert-to-page", "convert-to-component", "update-page-meta",
              "add-prop", "update-prop", "remove-prop", "add-state", "update-state", "remove-state"].includes(action)) {
           return handleMutationError(`component.${action}`, err);
@@ -2063,7 +2083,7 @@ export function createServer(): McpServer {
           content: [
             {
               type: "text" as const,
-              text: `Error in component.${action}: ${err.message}`,
+              text: `Error in component.${action}: ${errorMessage(err)}`,
             },
           ],
           isError: true,
@@ -2846,7 +2866,7 @@ export function createServer(): McpServer {
           default:
             throw new Error(`Unknown action '${action}' for node tool.`);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleMutationError(`node.${action}`, err);
       }
     }
@@ -3169,7 +3189,7 @@ export function createServer(): McpServer {
           default:
             throw new Error(`Unknown action '${action}' for variant tool.`);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (["create-style", "create-group", "create-global-group", "add-global", "remove-global-group", "rename-global", "create-screen", "update-screen", "rename", "remove"].includes(action)) {
           return handleMutationError(`variant.${action}`, err);
         }
@@ -3177,7 +3197,7 @@ export function createServer(): McpServer {
           content: [
             {
               type: "text" as const,
-              text: `Error in variant.${action}: ${err.message}`,
+              text: `Error in variant.${action}: ${errorMessage(err)}`,
             },
           ],
           isError: true,
@@ -4076,10 +4096,10 @@ export function createServer(): McpServer {
           default:
             throw new Error(`Unknown action '${action}' for design tool.`);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (["list-tokens", "list-mixins", "list-animations", "list-themes", "list-assets"].includes(action)) {
           return {
-            content: [{ type: "text" as const, text: `Error in design.${action}: ${err.message}` }],
+            content: [{ type: "text" as const, text: `Error in design.${action}: ${errorMessage(err)}` }],
             isError: true,
           };
         }
@@ -4703,11 +4723,11 @@ export function createServer(): McpServer {
           default:
             throw new Error(`Unknown action '${action}' for data tool.`);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         // Read-only actions should not cancel batch on error
         if (["list-queries", "list-data-tokens", "list-splits", "get-code-meta", "list-functions"].includes(action)) {
           return {
-            content: [{ type: "text" as const, text: `Error in data.${action}: ${err.message}` }],
+            content: [{ type: "text" as const, text: `Error in data.${action}: ${errorMessage(err)}` }],
             isError: true,
           };
         }
@@ -4937,11 +4957,11 @@ export function createServer(): McpServer {
           default:
             throw new Error(`Unknown action '${action}' for interaction tool.`);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         // Read-only list action should not cancel batch on error
         if (action === "list") {
           return {
-            content: [{ type: "text" as const, text: `Error in interaction.${action}: ${err.message}` }],
+            content: [{ type: "text" as const, text: `Error in interaction.${action}: ${errorMessage(err)}` }],
             isError: true,
           };
         }

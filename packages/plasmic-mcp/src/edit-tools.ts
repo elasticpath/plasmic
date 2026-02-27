@@ -8148,8 +8148,8 @@ export async function uploadAsset(
       const buffer = await response.arrayBuffer();
       const base64 = Buffer.from(buffer).toString("base64");
       dataUri = `data:${contentType};base64,${base64}`;
-    } catch (err: any) {
-      throw new Error(`Failed to fetch image from URL: ${err.message}`);
+    } catch (err: unknown) {
+      throw new Error(`Failed to fetch image from URL: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 

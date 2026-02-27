@@ -6,11 +6,11 @@
 
 - MCP server: 8 STRAP tools, 103 actions -- ALL fully implemented, zero TODOs/FIXMEs
 - Eval system: harness, graders, visual capture, dashboard, CI, ~135 scenarios across 20 YAML files
-- Total tests: ~1,617 (1,480 unit across 31 suites + 137 integration)
+- Total tests: ~1,623 (1,486 unit across 31 suites + 137 integration)
 - Eval tests: 249 across 10 files (21 new added in P15)
 - **Action coverage: ~98% (103/103 actions have eval scenarios)**
 - **All known issues resolved**
-- **Priority order: P1-P20 completed**
+- **Priority order: P1-P21 completed**
 
 ## Completed Priorities
 
@@ -35,12 +35,13 @@
 | P18 | Dev Host Wiring & Test Gaps | Fixed `@elasticpath/plasmic-registry` not in Yarn workspaces (#29) — route.ts import would fail at runtime. Added package to root `workspaces[]` + `plasmicpkgs-dev/package.json` dependencies. Added `fetchDevHostRegistry()` timeout (AbortError) unit test (#30). Added 6 API route handler tests in `plasmicpkgs-dev/__tests__/` (#31) — response shape, variant data, serialization safety, empty registry, error handling. All 1555 MCP unit + 147 integration + 21 registry + 6 route tests pass. |
 | P19 | Skill Docs & Registration Completeness | Spec-vs-implementation audit found 3 gaps: (1) Claude skill files had zero mention of dev host sync — users couldn't discover CC variant styling prerequisites. Added dev host sync sections to `plasmic.md` (project.set/refresh docs + new section), `plasmic-edit.md` (variant workflow guidance), `plasmic-inspect.md` (variant.list note). (2) `plasmic-init-server.ts` missing `registerShopify` that client version had — Shopify commerce components invisible to registry API. Added import + registration call. (3) README `project.refresh` re-sync behavior was parenthetical — expanded to explicit documentation. All 1408 unit + 147 integration + 21 registry + 6 route tests pass. |
 | P20 | Server Handler Test Coverage | 62 new server handler tests covering 48 previously-untested actions across all 8 STRAP domains. Added 47 missing edit-tools mock declarations + devhost-sync mock to test infrastructure. Fixed syncFromDevHost mock return shape (SyncResult not undefined). Domains covered: component props/states (list-props, add-prop, update-prop, remove-prop, list-states, add-state, update-state, remove-state, extract), node (update-rich-text, set-visibility, set-image, apply-mixin, detach-mixin, add-animation, remove-animation), design (list-mixins, create-mixin, update-mixin, remove-mixin, list-animations, create-animation, update-animation, remove-animation, list-themes, create-theme, update-theme, remove-theme, set-active-theme, duplicate-token, upload-asset, rename-asset, remove-asset), data (set-data-cond, set-data-rep, list-queries, add-query, update-query, remove-query, get-code-meta, list-functions), interaction (list, add, update, remove), variant globals (list-global-groups, create-global-group, add-global, remove-global-group, rename-global). All 1617 tests pass. |
+| P21 | Error Handling Hardening | `err:any` → `err:unknown` type-narrowing across 4 source files (server.ts 10 blocks, api-client.ts 2 blocks, save-manager.ts 3 blocks, edit-tools.ts 1 block) with `errorMessage()` helper in server.ts so non-Error thrown values produce readable messages. Undo rollback on save failure: undo-manager.ts reverse-reverses the model and re-pushes the op when save fails after in-memory apply. Session recovery after failed reload: server.ts create-page/create/clone handlers now re-initialize the change tracker on the existing session site on reload error, preventing "not initialized" on subsequent mutations. Auth file parse error distinction: auth.ts readAuthFile() now warns via console.error on JSON parse errors vs silently ignoring them (ENOENT still silent). Process-level catch: index.ts main() has .catch() guard for unhandled startup errors. 6 new tests (undo save-failure rollback x2, auth malformed JSON warning, auth ENOENT no-warning, server non-Error read-only, server non-Error mutation). All 1623 tests pass. |
 
 ---
 
 ## Outstanding Work
 
-*No outstanding work items. All known issues resolved (P1-P20).*
+*No outstanding work items. All known issues resolved (P1-P21).*
 
 ---
 
@@ -83,9 +84,14 @@
 | 33 | plasmic-init-server.ts missing registerShopify | Bug | `plasmicpkgs-dev/plasmic-init-server.ts` | FIXED (P19) | Server init was missing `registerShopify` from `@plasmicpkgs/commerce-shopify` that the client version (`plasmic-init-client.tsx`) included. Shopify commerce components would be invisible to the registry API response. |
 | 34 | README project.refresh sync docs ambiguous | DX | `packages/plasmic-mcp/README.md` | FIXED (P19) | `project.refresh` re-sync behavior documented only parenthetically as "(and project.refresh)". Expanded to explicit explanation that refresh re-queries dev host and replaces previous sync results. |
 | 35 | Server handler test coverage gap | Resolved | `server.test.ts` | FIXED (P20) | 48 handler actions had zero server-level test coverage. Added 62 tests + 47 mock declarations + devhost-sync mock. |
+| 36 | `err:any` catch blocks | Bug | `server.ts`, `api-client.ts`, `save-manager.ts`, `edit-tools.ts` | FIXED (P21) | 16 catch blocks typed `err: any` — non-Error thrown values produce "undefined" in messages. Added `errorMessage()` helper + `err: unknown` narrowing across all 4 files. |
+| 37 | Undo save failure leaves model diverged | Bug | `src/undo-manager.ts` | FIXED (P21) | When save fails after in-memory undo apply, model is diverged from server with no retry path. Now rolls back (reverse-reverse) and re-pushes op for retry. |
+| 38 | Failed reload leaves session with disposed change tracker | Bug | `src/server.ts` | FIXED (P21) | create-page/create/clone handlers reload session after API call; if reload fails, change tracker is disposed and subsequent mutations throw "not initialized". Now re-initializes tracker on existing session site on error. |
+| 39 | auth.ts silently swallows JSON parse errors | Bug | `src/auth.ts` | FIXED (P21) | readAuthFile() caught all errors identically — malformed .plasmic.auth JSON was silently ignored. Now distinguishes ENOENT (expected, silent) from JSON parse errors (warns via console.error). |
+| 40 | index.ts main() has no process-level error catch | Risk | `src/index.ts` | FIXED (P21) | Unhandled startup errors (bad config, port bind failure) would crash with raw stack trace. main() now has .catch() guard that logs cleanly and exits with code 1. |
 
 ---
 
 ## Issue Discovery Log
 
-Issues 1-20 identified P1-P9. Issues 22-27 discovered 2026-02-27 audit. Issues 20-21 resolved P14. Issues 19, 22, 24, 26, 27 resolved P15. Issue 28 discovered and resolved P16. Issues 23, 25 resolved P17. Issues 29-31 discovered and resolved P18 (spec audit gap analysis). Issues 32-34 discovered and resolved P19 (spec-vs-implementation audit). Issue 35 discovered and resolved P20 (server handler coverage audit).
+Issues 1-20 identified P1-P9. Issues 22-27 discovered 2026-02-27 audit. Issues 20-21 resolved P14. Issues 19, 22, 24, 26, 27 resolved P15. Issue 28 discovered and resolved P16. Issues 23, 25 resolved P17. Issues 29-31 discovered and resolved P18 (spec audit gap analysis). Issues 32-34 discovered and resolved P19 (spec-vs-implementation audit). Issue 35 discovered and resolved P20 (server handler coverage audit). Issues 36-40 discovered and resolved P21 (error handling hardening audit).

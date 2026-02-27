@@ -86,14 +86,32 @@ export async function undo(
     undoChanges(operation.changes);
   });
 
-  const saveManager = new SaveManager(apiClient);
-  const save = await saveManager.saveChanges(reverseChanges);
+  try {
+    const saveManager = new SaveManager(apiClient);
+    const save = await saveManager.saveChanges(reverseChanges);
 
-  console.error(
-    `[plasmic-mcp] Undone: "${operation.description}" (remaining depth: ${undoStack.length})`
-  );
+    console.error(
+      `[plasmic-mcp] Undone: "${operation.description}" (remaining depth: ${undoStack.length})`
+    );
 
-  return { save, undone: operation.description };
+    return { save, undone: operation.description };
+  } catch (err) {
+    // Save failed but model was already mutated — re-apply the original
+    // changes to restore the model, then push the operation back so it
+    // can be retried after the underlying issue (e.g. network) is resolved.
+    try {
+      tracker.withRecording(() => {
+        undoChanges(reverseChanges.changes);
+      });
+    } catch (rollbackErr) {
+      console.error(
+        `[plasmic-mcp] CRITICAL: Undo rollback failed after save error. ` +
+          `Use refresh-project to reload a clean model. (${rollbackErr})`
+      );
+    }
+    undoStack.push(operation);
+    throw err;
+  }
 }
 
 /**

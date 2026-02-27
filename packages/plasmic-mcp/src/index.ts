@@ -28,4 +28,7 @@ async function main() {
   }
 }
 
-main();
+main().catch((err) => {
+  console.error("[plasmic-mcp] Unhandled startup error:", err);
+  process.exit(1);
+});
