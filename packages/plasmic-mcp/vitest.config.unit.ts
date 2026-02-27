@@ -79,7 +79,10 @@ export default defineConfig({
   test: {
     name: "unit",
     include: ["src/__tests__/**/*.test.ts"],
-    exclude: ["src/__tests__/real-integration.test.ts"],
+    exclude: [
+      "src/__tests__/real-integration.test.ts",
+      "src/__tests__/devhost-sync-integration.test.ts",
+    ],
     environment: "node",
   },
 });

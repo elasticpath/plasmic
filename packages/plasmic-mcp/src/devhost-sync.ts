@@ -161,12 +161,17 @@ function mkSyncVariantId(): string {
 /**
  * Find all wrapper components whose tplTree root is a TplComponent
  * referencing the given code component.
+ *
+ * Checks both `typeTag` (real WAB model instances use a getter) and
+ * `_type` (mock/duck-typed objects) for compatibility with both
+ * integration and unit test environments.
  */
 function findWrapperComponents(site: any, codeComp: any): any[] {
   const wrappers: any[] = [];
   for (const comp of site.components ?? []) {
     const root = comp.tplTree;
-    if (root?._type === "TplComponent" && root.component === codeComp) {
+    const tag = root?.typeTag ?? root?._type;
+    if (tag === "TplComponent" && root.component === codeComp) {
       wrappers.push(comp);
     }
   }

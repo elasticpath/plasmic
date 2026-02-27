@@ -155,7 +155,10 @@ export default defineConfig({
   },
   test: {
     name: "integration",
-    include: ["src/__tests__/real-integration.test.ts"],
+    include: [
+      "src/__tests__/real-integration.test.ts",
+      "src/__tests__/devhost-sync-integration.test.ts",
+    ],
     testTimeout: 30_000,
     environment: "node",
   },

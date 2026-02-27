@@ -6,11 +6,11 @@
 
 - MCP server: 8 STRAP tools, 103 actions -- ALL fully implemented, zero TODOs/FIXMEs
 - Eval system: harness, graders, visual capture, dashboard, CI, ~135 scenarios across 20 YAML files
-- Total tests: ~1,560 (1,402 unit across 29 suites + 137 integration in 1 suite + 21 plasmic-registry tests)
+- Total tests: ~1,570 (1,402 unit across 29 suites + 147 integration in 2 suites + 21 plasmic-registry tests)
 - Eval tests: 249 across 10 files (21 new added in P15)
 - **Action coverage: ~98% (103/103 actions have eval scenarios)**
 - **Unfixed items: #23 (low), #25 (DX)**
-- **Priority order: P1-P15 completed**
+- **Priority order: P1-P16 completed**
 
 ## Completed Priorities
 
@@ -24,12 +24,13 @@
 | P7 | Report Archival | 90-day cleanup on server start + standalone `npm run eval:cleanup` |
 | P8 | Eval Resume/Skip | Git SHA tracking, scenario skip for passed results, `--force` override |
 | P9 | Contract & Doc Fixes | dryRun support for 5 component actions, explicit dryRun rejection for 3 API-based actions, `update-split` slices support, eval scenario childTags fix, skill doc accuracy, INDEX.md regeneration (55->70 scenarios), dashboard regression alerts with full grader results. 20 new tests. |
-| P10 | Dev Host Variant Sync | Dev host variant sync -- `@elasticpath/plasmic-registry` package, dev host API route, `devhost-sync.ts` MCP module, session state extension, 22 MCP unit tests + 21 registry tests, README docs |
+| P10 | Dev Host Variant Sync | Dev host variant sync -- `@elasticpath/plasmic-registry` package, dev host API route, `devhost-sync.ts` MCP module, session state extension, 22 MCP unit tests + 10 integration tests + 21 registry tests, README docs |
 | P11 | Scenario Coverage Expansion | 65 missing scenarios added across 8 domain YAML files (11 node + 16 design + 12 data + 10 component + 8 variant + 5 inspect + 2 interaction + 1 project). INDEX.md regenerated (70 -> 135 scenarios: 66 simple + 50 medium + 19 complex). Action coverage ~98% (103/103). All 1312 unit tests pass including scenario loader validation. |
 | P12 | Eval Runner Robustness | Eval runner robustness — tool execution timeout (Promise.race on onToolCall), saveReport fallback (try/catch with stderr), visual capture wall-clock cap (30s Promise.race), MCP server cleanup (server.close before null), MAX_TURNS exhaustion flag (maxTurnsExhausted field on ConversationResult), Playwright tracing stop/restart on success, console.error suppression try/finally, desktopPath null until screenshot succeeds. 5 new tests. |
 | P13 | Eval Grader Quality | Property grader numeric coercion (P13.1), existence grader exact matching + page/component separation (P13.2/P13.3), tool-params exact matching (P13.4), LLM judge readFileSync try/catch + multi-digit score regex (P13.5/P13.6), review-flags independent low-quality (P13.7), loadPreviousReport scenarios validation (P13.8), data grader name/queryType/event filtering (P13.9). New eval-llm-judge test file (16 tests). |
 | P14 | Eval Infrastructure Improvements | Partial re-run report merging (P14.1), dirty-tree detection (P14.2), scenario content hashing (P14.3), CLI argument validation (P14.4), scenario validator integration-only gap (P14.5), regression detection flag (P14.6), high-retry-count flag (P14.7). 25 new tests. All 1381 unit tests pass. |
 | P15 | Remaining Bug Fixes & Test Gaps | resolveComponentUuid exact matching (#22), API client session state leak (#19), undo stack MAX_UNDO_DEPTH=50 (#27), MODEL_PRICING versioned IDs (#24), reporter test coverage — saveReport/printSummary/loadOverrides/saveOverride + clearSessionState + undo depth (#26). 21 new tests. All 1402 unit tests pass. |
+| P16 | Dev Host Sync Integration Tests | devhost-sync integration tests against real WAB model classes (10 tests). Bug fix: `findWrapperComponents` `_type` → `typeTag ?? _type` for real WAB instance compatibility (#28). Tests verify: syncVariantMetadata on real MobX-observed components, ensureVariantObjects with real TplComponent detection, listVariants/resolveVariant end-to-end with synced data. All 1402 unit + 147 integration tests pass. |
 
 ---
 
@@ -70,12 +71,14 @@
 | 25 | No .env.example for eval | DX | `evals/` | UNFIXED | Env vars documented only in cli.ts parseArgs and README |
 | 26 | No tests for saveReport/loadPreviousReport | Gap | `evals/harness/reporter.ts` | FIXED (P15) | Added 21 tests: saveReport (4), printSummary (7), loadOverrides (3), saveOverride (3), clearSessionState (1), undo depth limit (3) |
 | 27 | Unbounded undo stack | Risk | `src/undo-manager.ts` | FIXED (P15) | Added MAX_UNDO_DEPTH=50 limit, oldest ops dropped when exceeded |
+| 28 | findWrapperComponents _type check | Bug | `src/devhost-sync.ts:169` | FIXED (P16) | Checked `_type` but real WAB instances use `typeTag` getter. Changed to `typeTag ?? _type` fallback. |
 
 ---
 
 ## Issue Discovery Log
 
-Issues 1-20 identified P1-P9. Issues 22-27 discovered 2026-02-27 audit. Issues 20-21 resolved P14. Issues 19, 22, 24, 26, 27 resolved P15.
+Issues 1-20 identified P1-P9. Issues 22-27 discovered 2026-02-27 audit. Issues 20-21 resolved P14. Issues 19, 22, 24, 26, 27 resolved P15. Issue 28 discovered and resolved P16.
 
 - **#23 findNodeByName no cycle guard**: WAB model should not have cycles, but there is no defensive guard. Low risk.
 - **#25 No .env.example**: New developers must read `cli.ts` source to discover required/optional env vars. A `.env.example` file would improve onboarding.
+- **#28 findWrapperComponents _type check**: `devhost-sync.ts` checked `root?._type === "TplComponent"` but real WAB model instances expose type via `typeTag` getter, not `_type` property. Unit tests passed because mocks use `_type`, but integration against real WAB classes would silently fail to find any wrapper components. Fixed to use `root?.typeTag ?? root?._type` fallback pattern (same as edit-tools.ts).
