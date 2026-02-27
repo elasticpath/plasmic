@@ -1771,7 +1771,7 @@ export function createServer(): McpServer {
           case "add-prop": {
             const cuuid = requireParam(params.componentUuid, "componentUuid", "component.add-prop");
             const propName = requireParam(params.name, "name", "component.add-prop");
-            const propType = requireParam(params.type, "type", "component.add-prop") as any;
+            const propType = requireParam(params.type, "type", "component.add-prop");
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
@@ -1968,8 +1968,8 @@ export function createServer(): McpServer {
           case "add-state": {
             const cuuid = requireParam(params.componentUuid, "componentUuid", "component.add-state");
             const stateName = requireParam(params.name, "name", "component.add-state");
-            const varType = requireParam(params.variableType, "variableType", "component.add-state") as any;
-            const accType = (params.accessType ?? "private") as any;
+            const varType = requireParam(params.variableType, "variableType", "component.add-state");
+            const accType = params.accessType ?? "private";
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
@@ -2042,7 +2042,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                updateState(apiClient, cuuid, sRef, params.name, params.accessType as any, params.initialValue)
+                updateState(apiClient, cuuid, sRef, params.name, params.accessType, params.initialValue)
               );
               return {
                 content: [
@@ -2064,7 +2064,7 @@ export function createServer(): McpServer {
             }
 
             const result = await updateState(
-              apiClient, cuuid, sRef, params.name, params.accessType as any, params.initialValue
+              apiClient, cuuid, sRef, params.name, params.accessType, params.initialValue
             );
             return {
               content: [
@@ -3104,7 +3104,12 @@ export function createServer(): McpServer {
 
           case "create-global-group": {
             const gname = requireParam(params.name, "name", "variant.create-global-group");
-            const result = await createGlobalVariantGroup(apiClient, gname, params.type as any, params.initialVariants);
+            if (params.type === "toggle") {
+              throw new Error(
+                `Invalid type "toggle" for variant.create-global-group. Global variant groups support "single" or "multi" only.`
+              );
+            }
+            const result = await createGlobalVariantGroup(apiClient, gname, params.type, params.initialVariants);
             return {
               content: [
                 {

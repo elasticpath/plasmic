@@ -2521,10 +2521,10 @@ function plasmicElementToTpl(
     case "vbox":
     case "hbox":
     case "page-section":
-      tag = validateContainerTag((element as any).tag);
+      tag = validateContainerTag(element.tag);
       break;
     case "text":
-      tag = validateTextTag((element as any).tag);
+      tag = validateTextTag(element.tag);
       break;
     case "img":
       tag = "img";
@@ -2544,7 +2544,7 @@ function plasmicElementToTpl(
 
   // Text-bearing elements: use mkTplInlinedText (same as Studio)
   const textValue = (element.type === "text" || element.type === "button")
-    ? (element as any).value
+    ? element.value
     : undefined;
 
   if (textValue !== undefined) {
@@ -2615,7 +2615,7 @@ function plasmicElementToTpl(
   if (element.type === "img" && "src" in element) {
     if (!vs.attrs) {vs.attrs = {};}
     vs.attrs.src = new CustomCode({
-      code: JSON.stringify((element as any).src),
+      code: JSON.stringify(element.src),
       fallback: null,
     });
   }
@@ -2684,8 +2684,8 @@ export async function addChild(
   // AccordionItem outside Accordion) without blocking the operation.
   if (typeof child === "object" && (child.type === "component" || child.type === "default-component") && registryComponents) {
     const childCompRef = child.type === "component"
-      ? (child as any).name
-      : (child as any).kind;
+      ? child.name
+      : child.kind;
     if (childCompRef) {
       const regEntry = findRegistryComponent(registryComponents, childCompRef);
       if (regEntry?.parentComponentName) {
@@ -5443,7 +5443,7 @@ export function listInteractions(
 
   for (const [event, expr] of Object.entries(attrs)) {
     if (!event.startsWith("on") || !isKnownEventHandler(expr)) continue;
-    const handler = expr as any;
+    const handler = expr as EventHandler;
     for (let i = 0; i < (handler.interactions?.length ?? 0); i++) {
       const interaction = handler.interactions[i];
       const info: InteractionInfo = {
@@ -6618,13 +6618,13 @@ export async function addNodeAnimation(
   const tracker = getChangeTracker();
 
   // Validate direction, fillMode, playState
-  if (direction && !VALID_DIRECTIONS.includes(direction as any)) {
+  if (direction && !(VALID_DIRECTIONS as readonly string[]).includes(direction)) {
     throw new Error(`Invalid direction "${direction}". Valid: ${VALID_DIRECTIONS.join(", ")}`);
   }
-  if (fillMode && !VALID_FILL_MODES.includes(fillMode as any)) {
+  if (fillMode && !(VALID_FILL_MODES as readonly string[]).includes(fillMode)) {
     throw new Error(`Invalid fillMode "${fillMode}". Valid: ${VALID_FILL_MODES.join(", ")}`);
   }
-  if (playState && !VALID_PLAY_STATES.includes(playState as any)) {
+  if (playState && !(VALID_PLAY_STATES as readonly string[]).includes(playState)) {
     throw new Error(`Invalid playState "${playState}". Valid: ${VALID_PLAY_STATES.join(", ")}`);
   }
 
@@ -6787,7 +6787,7 @@ export async function createTheme(
   if (themeStyles) {
     for (const ts of themeStyles) {
       const baseTag = ts.selector.split(":")[0];
-      if (!THEMABLE_TAGS.includes(baseTag as any)) {
+      if (!(THEMABLE_TAGS as readonly string[]).includes(baseTag)) {
         throw new Error(
           `Invalid selector "${ts.selector}". Valid base tags: ${THEMABLE_TAGS.join(", ")}`
         );
@@ -6887,7 +6887,7 @@ export async function updateTheme(
   if (themeStyles) {
     for (const ts of themeStyles) {
       const baseTag = ts.selector.split(":")[0];
-      if (!THEMABLE_TAGS.includes(baseTag as any)) {
+      if (!(THEMABLE_TAGS as readonly string[]).includes(baseTag)) {
         throw new Error(
           `Invalid selector "${ts.selector}". Valid base tags: ${THEMABLE_TAGS.join(", ")}`
         );

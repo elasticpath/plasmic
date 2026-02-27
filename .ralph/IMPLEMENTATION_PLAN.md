@@ -2,7 +2,7 @@
 
 Spec: `.ralph/specs/plasmic-mcp-registry-nextjs-wrapper.md`
 
-Last verified: 2026-02-27 (P1-P5, P27-P31 all complete)
+Last verified: 2026-02-27 (P1-P5, P27-P32 all complete)
 
 ---
 
@@ -101,7 +101,20 @@ Why: `session.registryData` was typed as `any`, cascading type unsafety to every
 
 ---
 
-## Current Source Code Summary (verified 2026-02-27, updated after P1-P5/P27-P31)
+## P32 -- Eliminate remaining `as any` casts in server.ts and edit-tools.ts (DONE)
+
+Why: P31 removed `as any` from registry-related code, but 18 `as any` casts remained across server.ts (6) and edit-tools.ts (12). These casts bypass TypeScript's type checking, potentially masking real bugs. Eliminating them improves type safety across the two largest source files.
+
+- [x] **server.ts: removed 5 unnecessary parameter casts** — `requireParam()` return type already matches function signatures (`addProp.propType: string`, `addState.variableType: string`, `addState.accessType: string`, `updateState.accessType?: string`). All `as any` casts were redundant.
+- [x] **server.ts: `variant.create-global-group` type validation** — Added explicit validation rejecting `"toggle"` for global variant groups (only `"single"` and `"multi"` supported). TypeScript now narrows `params.type` to `"single" | "multi" | undefined` after the guard, eliminating the `as any` cast.
+- [x] **edit-tools.ts: PlasmicElement union narrowing** — Removed 6 casts on discriminated union properties (`element.tag`, `element.value`, `element.src`, `child.name`, `child.kind`). TypeScript narrows correctly in switch cases and ternary conditions after the string type guard at function entry.
+- [x] **edit-tools.ts: EventHandler type narrowing** — Changed `expr as any` to `expr as EventHandler` (already imported at line 49). Provides proper type checking for `handler.interactions` access.
+- [x] **edit-tools.ts: readonly array `.includes()` pattern** — 5 instances of `ARRAY.includes(value as any)` replaced with `(ARRAY as readonly string[]).includes(value)`. Applies to `VALID_DIRECTIONS`, `VALID_FILL_MODES`, `VALID_PLAY_STATES`, and `THEMABLE_TAGS` (2 call sites).
+- [x] **Result: zero `as any` in server.ts and edit-tools.ts**. 1701 tests passing, typecheck and build clean.
+
+---
+
+## Current Source Code Summary (verified 2026-02-27, updated after P1-P5/P27-P32)
 
 ### packages/plasmic-mcp-registry/ (renamed from plasmic-registry)
 - **package.json**: name `@elasticpath/plasmic-mcp-registry`, v0.2.0, zero runtime deps, CommonJS output, `exports` field with `"."` and `"./next"` subpaths
@@ -129,17 +142,18 @@ Why: `session.registryData` was typed as `any`, cascading type unsafety to every
 - **syncFromDevHost()**: orchestrator called from 5 locations in server.ts. `SyncResult` now includes `registryData: FullRegistryData | null`, stored in session after sync.
 - **`getCodeComponentVariantMetas()`**: uses `tplTree?.typeTag ?? tplTree?._type` (fixed from `_type` only)
 
-### packages/plasmic-mcp/src/edit-tools.ts (P27-P29, P31 changes)
+### packages/plasmic-mcp/src/edit-tools.ts (P27-P29, P31-P32 changes)
 - **`findRegistryComponent()`**: typed `(RegistryComponent[], string) => RegistryComponent | null`; matches by name with `$dev` suffix handling (P31: import from devhost-sync.ts)
 - **`plasmicElementToTpl()`**: accepts optional `registryComponents?: RegistryComponent[]` parameter; applies `defaultStyles` from registry after `mkTplComponentX` creates TplComponent instances; populates slot `defaultValue` from registry for unfilled slots (recursively converts PlasmicElement trees to TplNodes and wires as `Arg` + `RenderExpr`)
 - **`addChild()`**: passes `session.registryData?.components` to `plasmicElementToTpl`; validates `parentComponentName` from registry and returns non-fatal `warnings[]`
 - **`AddChildResult`**: new optional `warnings?: string[]` field for parentComponentName mismatches
 
-### packages/plasmic-mcp/src/server.ts (P27-P31 changes)
+### packages/plasmic-mcp/src/server.ts (P27-P32 changes)
 - **`component.create-page`**, **`component.create`**, **`component.clone`**: `setSession()` calls now include `registryData: syncResult.registryData` (was missing, causing session.registryData to become undefined after these operations)
 - **`node.add` handler**: surfaces `result.warnings` in JSON response (both normal and dry-run modes)
-- **`data.list-functions` handler**: enriched result built with spread pattern; `(f: any)` casts removed (P31 — `RegistryFunction` type flows from session)
-- **`design.list-tokens` handler**: enriched result built with spread pattern; `(t: any)` casts removed (P31 — `RegistryToken` type flows from session)
+- **`data.list-functions` handler**: enriched result built with spread pattern; registry types flow from session (no casts)
+- **`design.list-tokens` handler**: enriched result built with spread pattern; registry types flow from session (no casts)
+- **Zero `as any` casts** (P32): removed 5 redundant parameter casts + added `"toggle"` validation for `variant.create-global-group`
 
 ### packages/plasmic-mcp/src/session.ts
 - **`Session.registryData`**: typed as `FullRegistryData | null` via `import type` from `devhost-sync.js` (P31; was `any` in P27). Provides type safety to all consumers.
@@ -149,7 +163,7 @@ Why: `session.registryData` was typed as `any`, cascading type unsafety to every
 ### packages/plasmic-mcp/src/model-loader.ts (P31 change)
 - **`hostUrl` resolution**: `response.project?.hostUrl ?? process.env.PLASMIC_DEV_HOST_URL` — project settings take priority, env var provides fallback for projects without a configured host URL
 
-### Test counts (as of P1-P5/P27-P31 completion)
+### Test counts (as of P1-P5/P27-P32 completion)
 - packages/plasmic-mcp-registry: 75 tests (5 suites)
 - plasmicpkgs-dev: 6 tests (1 suite) -- all passing
 - packages/plasmic-mcp: 1701 tests (31 suites) -- all passing
