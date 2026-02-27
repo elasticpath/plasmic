@@ -1,5 +1,13 @@
-import "@/plasmic-register";
-import { getFullRegistry } from "@elasticpath/plasmic-mcp-registry";
+import { PLASMIC } from "@/plasmic-init";
+import { registerAllPackages } from "@/plasmic-register";
+import {
+  withRegistryCapture,
+  getFullRegistry,
+} from "@elasticpath/plasmic-mcp-registry";
+
+// Re-register with captured PLASMIC so host's registration functions
+// populate globalThis registries (the server loader's are noops).
+registerAllPackages(withRegistryCapture(PLASMIC));
 
 export function GET() {
   try {

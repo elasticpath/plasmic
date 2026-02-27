@@ -150,4 +150,86 @@ describe("withPlasmicRegistry", () => {
 
     warnSpy.mockRestore();
   });
+
+  it("adds webpack externals function for server builds", () => {
+    const result = withPlasmicRegistry({});
+    expect(typeof result.webpack).toBe("function");
+
+    // Simulate a server-side webpack config
+    const webpackConfig = { externals: [] as unknown[] };
+    const returned = (result.webpack as Function)(webpackConfig, {
+      isServer: true,
+    });
+
+    // Should have added an externals function
+    expect(returned.externals).toHaveLength(1);
+    expect(typeof returned.externals[0]).toBe("function");
+  });
+
+  it("webpack externals externalizes Plasmic packages on server", () => {
+    const result = withPlasmicRegistry({});
+    const webpackConfig = { externals: [] as unknown[] };
+    (result.webpack as Function)(webpackConfig, { isServer: true });
+
+    const externalsFn = webpackConfig.externals[0] as Function;
+
+    // @plasmicpkgs/* should be externalized
+    const cb1 = vi.fn();
+    externalsFn({ request: "@plasmicpkgs/commerce" }, cb1);
+    expect(cb1).toHaveBeenCalledWith(null, "commonjs @plasmicpkgs/commerce");
+
+    // @elasticpath/plasmic-* should be externalized
+    const cb2 = vi.fn();
+    externalsFn(
+      { request: "@elasticpath/plasmic-ep-commerce-elastic-path" },
+      cb2
+    );
+    expect(cb2).toHaveBeenCalledWith(
+      null,
+      "commonjs @elasticpath/plasmic-ep-commerce-elastic-path"
+    );
+
+    // @plasmicapp/host should NOT be webpack-externalized (it's a real
+    // node_modules package — serverExternalPackages handles it, and webpack
+    // externals would break SSR by loading a separate React instance)
+    const cb3 = vi.fn();
+    externalsFn({ request: "@plasmicapp/host" }, cb3);
+    expect(cb3).toHaveBeenCalledWith();
+
+    // Non-Plasmic packages should NOT be externalized
+    const cb4 = vi.fn();
+    externalsFn({ request: "react" }, cb4);
+    expect(cb4).toHaveBeenCalledWith();
+  });
+
+  it("webpack externals does not modify client builds", () => {
+    const result = withPlasmicRegistry({});
+    const webpackConfig = { externals: [] as unknown[] };
+    (result.webpack as Function)(webpackConfig, { isServer: false });
+
+    // No externals added for client builds
+    expect(webpackConfig.externals).toHaveLength(0);
+  });
+
+  it("chains with user's existing webpack config", () => {
+    const userWebpack = vi.fn(
+      (config: Record<string, unknown>, _ctx: unknown) => {
+        config.customField = true;
+        return config;
+      }
+    );
+
+    const result = withPlasmicRegistry({ webpack: userWebpack });
+    const webpackConfig = { externals: [] as unknown[] };
+    const returned = (result.webpack as Function)(webpackConfig, {
+      isServer: true,
+    });
+
+    // User webpack was called
+    expect(userWebpack).toHaveBeenCalled();
+    // User's modification was applied
+    expect(returned.customField).toBe(true);
+    // Our externals were also added
+    expect(returned.externals.length).toBeGreaterThan(0);
+  });
 });

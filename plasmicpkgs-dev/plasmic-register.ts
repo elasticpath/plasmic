@@ -19,22 +19,27 @@ import { registerAll as registerPlasmicCmsComponents } from "@plasmicpkgs/plasmi
 import { registerAll as registerStrapiComponents } from "@plasmicpkgs/plasmic-strapi";
 import { registerStrapi } from "@plasmicpkgs/strapi";
 
-function register() {
-  registerFetch(PLASMIC);
-  registerGraphQL(PLASMIC);
-  registerPlasmicCms(PLASMIC);
-  registerPlasmicCmsComponents(PLASMIC);
-  registerStrapi(PLASMIC);
-  registerStrapiComponents(PLASMIC);
-  registerCommerce(PLASMIC);
-  registerShopify(PLASMIC);
-  registerElasticPath(PLASMIC);
-  registerVideo(PLASMIC);
+export function registerAllPackages(plasmic: typeof PLASMIC) {
+  function register() {
+    registerFetch(plasmic);
+    registerGraphQL(plasmic);
+    registerPlasmicCms(plasmic);
+    registerPlasmicCmsComponents(plasmic);
+    registerStrapi(plasmic);
+    registerStrapiComponents(plasmic);
+    registerCommerce(plasmic);
+    registerShopify(plasmic);
+    registerElasticPath(plasmic);
+    registerVideo(plasmic);
+  }
+
+  const useDevNames = true; // set true to avoid conflicting with production hostless names
+  if (useDevNames) {
+    registerWithDevMeta(plasmic, register);
+  } else {
+    register();
+  }
 }
 
-const useDevNames = true; // set true to avoid conflicting with production hostless names
-if (useDevNames) {
-  registerWithDevMeta(PLASMIC, register);
-} else {
-  register();
-}
+// Auto-register on import (for client-side usage)
+registerAllPackages(PLASMIC);

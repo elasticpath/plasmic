@@ -6,6 +6,7 @@ export {
   getTraitRegistry,
   getFullRegistry,
 } from "./read-registry";
+export { withRegistryCapture } from "./capture";
 export {
   serializeComponentMeta,
   serializeContextMeta,
