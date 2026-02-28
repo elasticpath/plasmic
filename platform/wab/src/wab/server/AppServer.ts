@@ -1,4 +1,4 @@
-import * as Sentry from "@sentry/node";
+import tracer from "dd-trace";
 import * as bodyParser from "body-parser";
 import cookieParser from "cookie-parser";
 import cors from "cors";
@@ -374,40 +374,17 @@ function shouldIgnoreErrorByMessage(message: string) {
   return ignoredErrorMessages.some((pattern) => message.includes(pattern));
 }
 
-function addSentry(app: express.Application, config: Config) {
-  if (!config.sentryDSN) {
-    return;
-  }
-  logger().debug(`Initializing Sentry with DSN: ${config.sentryDSN}`);
-  Sentry.init({
-    dsn: config.sentryDSN,
-    // We need beforeSend because errors don't necessarily make their way through the Express pipeline - they can be
-    // thrown from anywhere, in Express or outside (or from random async event loop iterations).
-    async beforeSend(event: Sentry.Event): Promise<Sentry.Event | null> {
-      const msg = event.exception?.values?.[0].value;
-      if (msg) {
-        if (shouldIgnoreErrorByMessage(msg)) {
-          return null;
-        }
-      }
-      return event;
-    },
-  });
-
-  app.use(Sentry.Handlers.requestHandler());
-  app.use(Sentry.Handlers.tracingHandler());
-
-  // This anonymous handler uses Sentry.setTag() to modify the current scope.
-  // To ensure the global scope is not modified, the handler must be after
-  // Sentry.Handlers.requestHandler(), which creates a new scope per-request.
+function addDatadogMiddleware(app: express.Application) {
+  // dd-trace auto-instruments Express — no requestHandler/tracingHandler needed.
+  // Tag the active span with projectId for correlation in Datadog APM.
   app.use((req, _res, next) => {
-    // Some routes get project ID as a path param (e.g.
-    // /projects/:projectId/code/components) while others get it as query
-    // (e.g. /loader/code/versioned?projectId=<>).
     const projectId =
       req.params.projectId ?? req.query.projectId ?? req.params.projectBranchId;
     if (projectId) {
-      Sentry.setTag("projectId", String(projectId));
+      const span = tracer.scope().active();
+      if (span) {
+        span.setTag("projectId", String(projectId));
+      }
     }
     next();
   });
@@ -423,18 +400,14 @@ export function getStatusCodeFromResponse(error: any): number {
   return statusCode ? parseInt(statusCode as string, 10) : 500;
 }
 
-function addSentryError(app: express.Application, config: Config) {
-  if (!config.sentryDSN) {
-    return;
-  }
-
+function addDatadogErrorHandler(app: express.Application) {
   /** Returns true if response code is internal server error */
   const defaultShouldHandleError = (error: any): boolean => {
     const status = getStatusCodeFromResponse(transformErrors(error));
     return status >= 500;
   };
 
-  const shouldHandleError = (error) => {
+  const shouldHandleError = (error: any) => {
     if (shouldIgnoreErrorByMessage(error.message || "")) {
       return false;
     }
@@ -442,14 +415,26 @@ function addSentryError(app: express.Application, config: Config) {
       return false;
     }
     if (error["request"]?.headers?.["user-agent"]?.startsWith("octokit")) {
-      // Errors from Octokit (GitHub client) should always be logged,
-      // even if status code < 500.
       return true;
     }
     return defaultShouldHandleError(error);
   };
 
-  app.use(Sentry.Handlers.errorHandler({ shouldHandleError }));
+  app.use(
+    safeCast<ErrorRequestHandler>(
+      (err: Error, _req: Request, _res: Response, next: NextFunction) => {
+        if (shouldHandleError(err)) {
+          const span = tracer.scope().active();
+          if (span) {
+            span.setTag("error", true);
+            span.setTag("error.message", err.message);
+            span.setTag("error.stack", err.stack);
+          }
+        }
+        next(err);
+      }
+    )
+  );
 }
 
 export function addLoggingMiddleware(app: express.Application) {
@@ -2022,8 +2007,8 @@ export async function createApp(
     await setupPassport(dbMgr, config, DEVFLAGS);
   });
 
-  // Sentry setup needs to be first
-  addSentry(app, config);
+  // Datadog middleware for span tagging
+  addDatadogMiddleware(app);
 
   if (config.production) {
     app.enable("trust proxy");
@@ -2051,8 +2036,8 @@ export async function createApp(
   // addEndErrorHandlers().
   addNotFoundHandler(app);
 
-  // Sentry error handler must go after routes
-  addSentryError(app, config);
+  // Datadog error handler must go after routes
+  addDatadogErrorHandler(app);
 
   // On error, rollback transactions
   addEndErrorHandlers(app);

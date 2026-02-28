@@ -37,7 +37,7 @@ import {
 } from "@/wab/shared/data-sources-meta/data-sources";
 import { dropFakeDatabase } from "@/wab/shared/data-sources-meta/fake-meta";
 import { DATA_SOURCE_LOWER } from "@/wab/shared/Labels";
-import * as Sentry from "@sentry/node";
+import { captureException } from "@/wab/server/observability/datadog";
 import { Request, Response } from "express-serve-static-core";
 
 export function mkApiDataSource(
@@ -158,7 +158,7 @@ export async function testDataSourceConnection(req: Request, res: Response) {
       },
     });
   } catch (err) {
-    Sentry.captureException(err);
+    captureException(err);
     res.json({
       result: {
         connected: false,

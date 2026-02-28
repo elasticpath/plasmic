@@ -2,7 +2,7 @@ import "@/wab/server/db/pg-type-parsers";
 
 import { logger } from "@/wab/server/observability";
 import { stringToPair } from "@/wab/server/util/hash";
-import * as Sentry from "@sentry/node";
+import { captureException } from "@/wab/server/observability/datadog";
 import { parse as parseDbUri } from "pg-connection-string";
 import {
   Connection,
@@ -39,7 +39,7 @@ export async function ensureDbConnection(
       }
     } catch (error: unknown) {
       logger().warn(error as any);
-      Sentry.captureException(error);
+      captureException(error);
     }
   }
 

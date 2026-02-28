@@ -7,7 +7,7 @@ import {
   ProjectId,
 } from "@/wab/shared/ApiSchema";
 import { tuple } from "@/wab/shared/common";
-import { captureMessage } from "@sentry/node";
+import { captureMessage } from "@/wab/server/observability/datadog";
 import { countBy, intersection } from "lodash";
 
 /** Return all unique ancestors start from given node. */
@@ -85,13 +85,11 @@ export function getLowestCommonAncestor(
     captureMessage(
       "Warning: multiple merge-bases (lowest common ancestors) found",
       {
-        extra: {
-          projectId,
-          fromBranchId,
-          toBranchId,
-          graph,
-          lowestCommonAncestors,
-        },
+        projectId,
+        fromBranchId,
+        toBranchId,
+        graph,
+        lowestCommonAncestors,
       }
     );
   }
