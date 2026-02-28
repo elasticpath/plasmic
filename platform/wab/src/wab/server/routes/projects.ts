@@ -169,7 +169,7 @@ import { requiredPackageVersions } from "@/wab/shared/required-versions";
 import { assertSiteInvariants } from "@/wab/shared/site-invariants";
 import { mergeUiConfigs } from "@/wab/shared/ui-config-utils";
 import { getLoaderInternalUrl } from "@/wab/shared/urls";
-import * as Sentry from "@sentry/node";
+import { captureException } from "@/wab/server/observability/datadog";
 import { Request, Response } from "express-serve-static-core";
 import {
   fromPairs,
@@ -1354,7 +1354,7 @@ export async function saveProjectRev(req: Request, res: Response) {
         try {
           checkExistingReferences(mergedData);
         } catch (e) {
-          Sentry.captureException(e);
+          captureException(e);
           // If there are errors in references, it could be due to dangling
           // references pointing to invalid external deps after upgrading
           // a project dependency.  Not sure how they are dangling.  But we
@@ -1364,7 +1364,7 @@ export async function saveProjectRev(req: Request, res: Response) {
             checkExistingReferences(mergedData);
           } catch (err) {
             // If there are still errors, then we give up :-/
-            Sentry.captureException(err);
+            captureException(err);
             throw new UnknownReferencesError();
           }
         }
@@ -1372,7 +1372,7 @@ export async function saveProjectRev(req: Request, res: Response) {
           checkBundleFields(mergedData);
           checkRefsInBundle(mergedData);
         } catch (e) {
-          Sentry.captureException(e);
+          captureException(e);
           throw new BundleTypeError();
         }
         return mergedData;
@@ -2235,7 +2235,7 @@ export async function getPkgVersionPublishStatus(req: Request, res: Response) {
         // that the redirection is succesful The exception is going to be sent to
         // sentry
         isRedirectingToLatest = true;
-        Sentry.captureException(e);
+        captureException(e);
       }
     }
   } else {

@@ -2,7 +2,7 @@ import { logger } from "@/wab/server/observability";
 import { md5 } from "@/wab/server/util/hash";
 import { parseDataUrl } from "@/wab/shared/data-urls";
 import { isSVG } from "@/wab/shared/svg-utils";
-import * as Sentry from "@sentry/node";
+import { captureMessage } from "@/wab/server/observability/datadog";
 import S3 from "aws-sdk/clients/s3";
 import FileType from "file-type";
 import { extension } from "mime-types";
@@ -94,7 +94,7 @@ export async function uploadFileToS3(
         });
       } catch (err) {
         logger().error(`Could not upload asset to S3.`, err);
-        Sentry.captureMessage(`Could not upload asset to S3 (${err.message}).`);
+        captureMessage(`Could not upload asset to S3 (${err.message}).`);
         return failure(err);
       }
     }

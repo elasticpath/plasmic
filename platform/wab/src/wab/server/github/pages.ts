@@ -4,7 +4,7 @@ import { ProjectRepository } from "@/wab/server/entities/Entities";
 import { getGithubApp } from "@/wab/server/github/app";
 import { GithubRef } from "@/wab/server/github/types";
 import { Octokit } from "@octokit/core";
-import * as Sentry from "@sentry/node";
+import { captureException } from "@/wab/server/observability/datadog";
 import { failableAsync } from "ts-failable";
 
 type SetupGithubPagesError = "domain taken";
@@ -128,10 +128,10 @@ export async function tryUpdateCachedCname(
       }
     },
     catch: async (err) => {
-      Sentry.captureException(
-        "Could not read CNAME. May be removed, or Pages points to a different branch. Not an error; this is best-effort. Failure was:",
-        err
-      );
+      captureException(err, {
+        message:
+          "Could not read CNAME. May be removed, or Pages points to a different branch. Not an error; this is best-effort.",
+      });
     },
     else: async (cname) => {
       await mgr.updateProjectRepository({

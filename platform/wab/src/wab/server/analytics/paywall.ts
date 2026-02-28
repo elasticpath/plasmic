@@ -2,7 +2,7 @@ import { getRendersInTimestampRange } from "@/wab/server/analytics/queries";
 import { Team } from "@/wab/server/entities/Entities";
 import { getTeamCurrentPeriodRange } from "@/wab/server/routes/team-plans";
 import { ApiFeatureTier } from "@/wab/shared/ApiSchema";
-import * as Sentry from "@sentry/node";
+import { captureException } from "@/wab/server/observability/datadog";
 import { Request } from "express-serve-static-core";
 
 export async function isUnderMonthlyViewsLimit(
@@ -28,7 +28,7 @@ export async function isUnderMonthlyViewsLimit(
     });
 
     if (renders > featureTier.monthlyViews) {
-      Sentry.captureException(
+      captureException(
         new Error(
           `Team=${
             team?.id ?? "null"
@@ -47,7 +47,7 @@ export async function isUnderMonthlyViewsLimit(
       renders,
     };
   } catch (err) {
-    Sentry.captureException(err);
+    captureException(err);
     return {
       valid: true,
       renders: 0,

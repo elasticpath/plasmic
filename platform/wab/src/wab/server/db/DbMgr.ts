@@ -258,7 +258,7 @@ import {
   MergeStep,
   tryMerge,
 } from "@/wab/shared/site-diffs/merge-core";
-import * as Sentry from "@sentry/node";
+import { captureMessage } from "@/wab/server/observability/datadog";
 import { LanguageModelRequestMetadata } from "ai";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
@@ -7545,11 +7545,8 @@ export class DbMgr implements MigrationDbMgr {
       deletedAt: IsNull(),
     });
     if (publishedRows.length > 500) {
-      Sentry.captureEvent({
-        message: "The result of the db query contains more than 500 rows.",
-        extra: {
-          tableId: tableId,
-        },
+      captureMessage("The result of the db query contains more than 500 rows.", {
+        tableId: tableId,
       });
     }
     return publishedRows;

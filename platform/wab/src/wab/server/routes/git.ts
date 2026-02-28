@@ -38,7 +38,7 @@ import {
 } from "@/wab/shared/common";
 import { Octokit } from "@octokit/core";
 import type { components } from "@octokit/openapi-types";
-import * as Sentry from "@sentry/node";
+import { captureExceptionWithScope } from "@/wab/server/observability/datadog";
 import { Request, Response } from "express-serve-static-core";
 import { IFailable } from "ts-failable";
 
@@ -183,14 +183,9 @@ export async function setupNewGithubRepo(req: Request, res: Response) {
           repo,
         });
       } catch (err) {
-        Sentry.withScope((scope) => {
-          scope.addBreadcrumb({
-            data: {
-              orgType: org.type,
-              newRepoReturn: data,
-            },
-          });
-          Sentry.captureException(err);
+        captureExceptionWithScope(err, {
+          orgType: org.type,
+          newRepoReturn: data,
         });
       }
     }

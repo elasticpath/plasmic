@@ -10,7 +10,7 @@ import {
   tuple,
   withoutNils,
 } from "@/wab/shared/common";
-import * as Sentry from "@sentry/node";
+import { captureException } from "@/wab/server/observability/datadog";
 import { promises as fs } from "fs";
 import { uniq, uniqBy } from "lodash";
 import path from "path";
@@ -177,7 +177,7 @@ export async function checkEsbuildFatalError(msg: string) {
   );
 
   if (isFatal) {
-    Sentry.captureException(new LoaderEsbuildFatalError(msg));
+    captureException(new LoaderEsbuildFatalError(msg));
     await asyncTimeout(1000); // Give some time for the error to be logged
     process.exit(1); // Exit the process to force a restart
   }

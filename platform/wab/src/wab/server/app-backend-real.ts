@@ -10,7 +10,7 @@ import {
   maybeMigrateDatabase,
 } from "@/wab/server/db/DbCon";
 import { runExpressApp, setupServerCli } from "@/wab/server/server-common";
-import { captureException } from "@sentry/node";
+import { captureException } from "@/wab/server/observability/datadog";
 import * as childProcess from "child_process";
 import "core-js";
 import * as fs from "fs";
@@ -92,11 +92,7 @@ export async function runAppServer(config: Config) {
         socketProxy.ws(req, socket, head);
       });
       socketProxy.on("error", (err, _req, res) => {
-        if (config.sentryDSN) {
-          captureException(err);
-        } else {
-          logger().error(`Error in socketProxy. ${err}`);
-        }
+        captureException(err);
         res.end("Something wrong happened when connecting to the server.");
       });
     } else if (attach) {
