@@ -22,8 +22,10 @@ import type { PlasmicApiClient } from "../api-client";
 
 describe("loadProject", () => {
   const mockGetProjectBundle = vi.fn();
+  const mockGetLastBundleVersion = vi.fn().mockResolvedValue("256-test-version");
   const mockApiClient = {
     getProjectBundle: mockGetProjectBundle,
+    getLastBundleVersion: mockGetLastBundleVersion,
   } as unknown as PlasmicApiClient;
 
   beforeEach(() => {

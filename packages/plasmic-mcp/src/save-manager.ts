@@ -130,10 +130,8 @@ export class SaveManager {
       bundleVersion,
     } = session;
 
-    // Pass bundleVersion to bundler.bundle() — matches Studio's
-    // StudioCtx.bundleChanges() which passes appCtx.lastBundleVersion.
-    // Without this, the bundle has version: undefined and the server logs
-    // "Bundle with version undefined is not up to date".
+    // Pass bundleVersion (from server API) to bundler.bundle(), matching
+    // Studio's StudioCtx.bundleChanges() which passes appCtx.lastBundleVersion.
     const bundle = bundler.bundle(site, projectId, bundleVersion);
     const newRevisionNum = revisionNum + 1;
 
