@@ -21,6 +21,9 @@
  * out, the project still loads normally without CC variant data.
  */
 
+import { mkVariant } from "@/wab/shared/Variants";
+import { CodeComponentVariantMeta } from "@/wab/shared/model/classes";
+
 /**
  * Shape of a component entry from the registry API response.
  * Fields mirror SerializedComponentMeta from @elasticpath/plasmic-mcp-registry
@@ -227,7 +230,15 @@ export async function fetchDevHostRegistry(
 
 /** Remove trailing slashes from a URL. */
 function normalizeUrl(url: string): string {
-  return url.replace(/\/+$/, "");
+  // Extract just the origin (scheme + host + port) from the host URL.
+  // Project hostUrl is typically "http://localhost:3001/plasmic-host"
+  // but the registry API lives at the root: /api/plasmic-registry.
+  try {
+    const parsed = new URL(url);
+    return parsed.origin;
+  } catch {
+    return url.replace(/\/+$/, "");
+  }
 }
 
 /** Strip `$dev` suffix from a component name for flexible matching. */
@@ -257,6 +268,28 @@ function findCodeComponentByName(site: any, registryName: string): any | null {
 }
 
 /**
+ * Deep-compare two variant metadata maps by key/cssSelector/displayName.
+ * Returns true if they are structurally identical.
+ */
+export function deepEqualVariants(
+  a: Record<string, { cssSelector: string; displayName: string }> | undefined,
+  b: Record<string, { cssSelector: string; displayName: string }>
+): boolean {
+  if (!a) return Object.keys(b).length === 0;
+  const aKeys = Object.keys(a).sort();
+  const bKeys = Object.keys(b).sort();
+  if (aKeys.length !== bKeys.length) return false;
+  for (let i = 0; i < aKeys.length; i++) {
+    if (aKeys[i] !== bKeys[i]) return false;
+    const aVal = a[aKeys[i]];
+    const bVal = b[bKeys[i]];
+    if (aVal.cssSelector !== bVal.cssSelector) return false;
+    if (aVal.displayName !== bVal.displayName) return false;
+  }
+  return true;
+}
+
+/**
  * Syncs variant metadata from registry components to matching code components
  * in the site model. Mirrors Studio's `syncCodeComponentsVariants()`.
  *
@@ -278,16 +311,15 @@ export function syncVariantMetadata(
     if (!codeComp) continue;
 
     // Overwrite codeComponentMeta.variants (mirrors syncCodeComponentsVariants)
-    const variantMetas: Record<
-      string,
-      { cssSelector: string; displayName: string }
-    > = {};
+    // Must use proper CodeComponentVariantMeta class instances, not plain objects,
+    // so the bundler can serialize them correctly on save.
+    const variantMetas: Record<string, InstanceType<typeof CodeComponentVariantMeta>> = {};
     for (const [key, val] of Object.entries(regComp.variants)) {
       if (val && typeof val === "object") {
-        variantMetas[key] = {
+        variantMetas[key] = new CodeComponentVariantMeta({
           cssSelector: val.cssSelector ?? "",
           displayName: val.displayName ?? key,
-        };
+        });
       }
     }
     codeComp.codeComponentMeta.variants = variantMetas;
@@ -298,10 +330,53 @@ export function syncVariantMetadata(
   return synced;
 }
 
-let variantIdCounter = 0;
-/** Generate a unique ID for synced variant objects. */
-function mkSyncVariantId(): string {
-  return `sync-${Date.now()}-${++variantIdCounter}`;
+/**
+ * Records variant metadata changes inside a change-tracked context.
+ *
+ * Designed to run inside a `withRecording()` block (after tracker init) so
+ * that changes to `codeComponentMeta.variants` are captured in the save delta.
+ *
+ * Only writes when metadata actually differs (uses deepEqualVariants).
+ *
+ * @returns Names of code components that were updated.
+ */
+export function recordVariantMetadataSync(
+  site: any,
+  registryComponents: RegistryComponent[]
+): string[] {
+  const updated: string[] = [];
+  for (const regComp of registryComponents) {
+    if (!regComp.variants || Object.keys(regComp.variants).length === 0)
+      continue;
+    const codeComp = findCodeComponentByName(site, regComp.name);
+    if (!codeComp) continue;
+
+    const newMetas: Record<string, { cssSelector: string; displayName: string }> = {};
+    for (const [key, val] of Object.entries(regComp.variants)) {
+      if (val && typeof val === "object") {
+        newMetas[key] = {
+          cssSelector: val.cssSelector ?? "",
+          displayName: val.displayName ?? key,
+        };
+      }
+    }
+
+    // Only write if different (avoids unnecessary save)
+    const current = codeComp.codeComponentMeta?.variants;
+    if (!deepEqualVariants(current, newMetas)) {
+      // Must use proper CodeComponentVariantMeta class instances for serialization
+      const classInstances: Record<string, InstanceType<typeof CodeComponentVariantMeta>> = {};
+      for (const [key, val] of Object.entries(newMetas)) {
+        classInstances[key] = new CodeComponentVariantMeta({
+          cssSelector: val.cssSelector,
+          displayName: val.displayName,
+        });
+      }
+      codeComp.codeComponentMeta.variants = classInstances;
+      updated.push(codeComp.name);
+    }
+  }
+  return updated;
 }
 
 /**
@@ -357,18 +432,12 @@ export function ensureVariantObjects(
         );
         if (exists) continue;
 
-        // Create new Variant object (mirrors TplMgr.createCodeComponentVariant)
-        const variant = {
-          uuid: mkSyncVariantId(),
+        // Create proper Variant model instance (mirrors TplMgr.createCodeComponentVariant)
+        const variant = mkVariant({
           name: "",
           codeComponentName: codeComp.name,
           codeComponentVariantKeys: [key],
-          selectors: undefined,
-          parent: undefined,
-          mediaQuery: undefined,
-          description: undefined,
-          forTpl: undefined,
-        };
+        });
 
         wrapper.variants.push(variant);
       }
@@ -416,11 +485,19 @@ export async function syncFromDevHost(
     `[plasmic-mcp] Dev host sync: ${variantComponents.length} variant-bearing component(s) found`
   );
 
-  const syncedNames = syncVariantMetadata(site, variantComponents);
-  ensureVariantObjects(site, variantComponents);
+  // Identify which components WILL be synced, but do NOT write to the model
+  // here. Writing must happen inside a ChangeRecorder.withRecording() block
+  // (via recordVariantMetadataSync) so the FastBundler can track the changes
+  // for incremental saves. If we write here eagerly, recordVariantMetadataSync
+  // sees no diff and skips the recording — so the metadata never persists.
+  const syncedNames: string[] = [];
+  for (const regComp of variantComponents) {
+    const codeComp = findCodeComponentByName(site, regComp.name);
+    if (codeComp) syncedNames.push(codeComp.name);
+  }
 
   console.error(
-    `[plasmic-mcp] Dev host sync complete: synced ${syncedNames.length} component(s): ${syncedNames.join(", ")}`
+    `[plasmic-mcp] Dev host sync complete: ${syncedNames.length} variant-bearing component(s) found: ${syncedNames.join(", ")}`
   );
 
   return { devHostSynced: true, syncedVariantComponents: syncedNames, registryData: registry };

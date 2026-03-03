@@ -31,7 +31,7 @@ import { PlasmicApiClient } from "./api-client.js";
 import { getAuth } from "./auth.js";
 import { requireSession, setSession } from "./session.js";
 import { loadProject } from "./model-loader.js";
-import { syncFromDevHost, clearRegistryCache } from "./devhost-sync.js";
+import { syncFromDevHost, clearRegistryCache, recordVariantMetadataSync } from "./devhost-sync.js";
 import {
   readComponentTree,
   readComponentSummary,
@@ -270,6 +270,7 @@ export function createServer(): McpServer {
               modelVersion,
               hostlessDataVersion,
               hostUrl,
+              bundleVersion,
             } = await loadProject(apiClient, pid);
 
             // Sync code component variants from the dev host (non-fatal)
@@ -283,6 +284,7 @@ export function createServer(): McpServer {
               revisionNum,
               modelVersion,
               hostlessDataVersion,
+              bundleVersion,
               projectUuid: pid,
               hostUrl,
               devHostSynced: syncResult.devHostSynced,
@@ -292,6 +294,25 @@ export function createServer(): McpServer {
 
             // Initialize change tracking for incremental saves (M2)
             initChangeTracker(site);
+
+            // Phase 2: Persist variant metadata inside change tracker so it's
+            // included in the save delta (codeComponentMeta.variants with cssSelector).
+            if (syncResult.registryData) {
+              const variantComponents = syncResult.registryData.components.filter(
+                (c) => c.variants && Object.keys(c.variants).length > 0
+              );
+              if (variantComponents.length > 0) {
+                const tracker = getChangeTracker();
+                const changes = tracker.withRecording(() => {
+                  recordVariantMetadataSync(site, variantComponents);
+                });
+                if (changes.changes.length > 0) {
+                  const saveManager = new SaveManager(apiClient);
+                  await saveManager.saveChanges(changes);
+                  console.error("[plasmic-mcp] Persisted variant metadata to server");
+                }
+              }
+            }
 
             const components = site.components ?? [];
             const pages = components.filter((c: any) => c.pageMeta?.path);
@@ -305,11 +326,13 @@ export function createServer(): McpServer {
                     projectName,
                     componentCount: components.length,
                     pageCount: pages.length,
+                    hostUrl: hostUrl ?? null,
+                    devHostSynced: syncResult.devHostSynced,
                     ...(syncResult.devHostSynced && {
-                      devHostSynced: true,
                       syncedVariantComponents: syncResult.syncedVariantComponents,
                       ...(syncResult.registryData && {
                         devHostRegistry: {
+                          componentCount: syncResult.registryData.components?.length ?? 0,
                           contextCount: syncResult.registryData.contexts?.length ?? 0,
                           functionCount: syncResult.registryData.functions?.length ?? 0,
                           tokenCount: syncResult.registryData.tokens?.length ?? 0,
@@ -445,6 +468,7 @@ export function createServer(): McpServer {
               modelVersion,
               hostlessDataVersion,
               hostUrl,
+              bundleVersion,
             } = await loadProject(apiClient, session.projectId);
 
             // Clear registry cache to force fresh fetch on explicit refresh
@@ -461,6 +485,7 @@ export function createServer(): McpServer {
               revisionNum,
               modelVersion,
               hostlessDataVersion,
+              bundleVersion,
               projectUuid: session.projectId,
               hostUrl,
               devHostSynced: syncResult.devHostSynced,
@@ -470,6 +495,24 @@ export function createServer(): McpServer {
 
             // Re-initialize change tracking
             initChangeTracker(site);
+
+            // Phase 2: Persist variant metadata inside change tracker
+            if (syncResult.registryData) {
+              const variantComponents = syncResult.registryData.components.filter(
+                (c) => c.variants && Object.keys(c.variants).length > 0
+              );
+              if (variantComponents.length > 0) {
+                const tracker = getChangeTracker();
+                const changes = tracker.withRecording(() => {
+                  recordVariantMetadataSync(site, variantComponents);
+                });
+                if (changes.changes.length > 0) {
+                  const saveManager = new SaveManager(apiClient);
+                  await saveManager.saveChanges(changes);
+                  console.error("[plasmic-mcp] Persisted variant metadata to server");
+                }
+              }
+            }
 
             const components = site.components ?? [];
             const pages = components.filter((c: any) => c.pageMeta?.path);
@@ -1194,6 +1237,7 @@ export function createServer(): McpServer {
                 modelVersion: newModelVersion,
                 hostlessDataVersion: newHostlessDataVersion,
                 hostUrl: reloadedHostUrl,
+                bundleVersion: newBundleVersion,
               } = await loadProject(apiClient, session.projectId);
 
               // Re-sync code component variants from the dev host (non-fatal)
@@ -1207,6 +1251,7 @@ export function createServer(): McpServer {
                 revisionNum: newRevisionNum,
                 modelVersion: newModelVersion,
                 hostlessDataVersion: newHostlessDataVersion,
+                bundleVersion: newBundleVersion,
                 projectUuid: session.projectId,
                 hostUrl: reloadedHostUrl,
                 devHostSynced: syncResult.devHostSynced,
@@ -1289,6 +1334,7 @@ export function createServer(): McpServer {
                 modelVersion: newModelVersion,
                 hostlessDataVersion: newHostlessDataVersion,
                 hostUrl: reloadedHostUrl,
+                bundleVersion: newBundleVersion,
               } = await loadProject(apiClient, session.projectId);
 
               // Re-sync code component variants from the dev host (non-fatal)
@@ -1302,6 +1348,7 @@ export function createServer(): McpServer {
                 revisionNum: newRevisionNum,
                 modelVersion: newModelVersion,
                 hostlessDataVersion: newHostlessDataVersion,
+                bundleVersion: newBundleVersion,
                 projectUuid: session.projectId,
                 hostUrl: reloadedHostUrl,
                 devHostSynced: syncResult.devHostSynced,
@@ -1409,6 +1456,7 @@ export function createServer(): McpServer {
                 modelVersion: newModelVersion,
                 hostlessDataVersion: newHostlessDataVersion,
                 hostUrl: reloadedHostUrl,
+                bundleVersion: newBundleVersion,
               } = await loadProject(apiClient, session.projectId);
 
               // Re-sync code component variants from the dev host (non-fatal)
@@ -1422,6 +1470,7 @@ export function createServer(): McpServer {
                 revisionNum: newRevisionNum,
                 modelVersion: newModelVersion,
                 hostlessDataVersion: newHostlessDataVersion,
+                bundleVersion: newBundleVersion,
                 projectUuid: session.projectId,
                 hostUrl: reloadedHostUrl,
                 devHostSynced: syncResult.devHostSynced,

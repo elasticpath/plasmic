@@ -147,7 +147,7 @@ describe("devhost-sync real WAB integration", () => {
       ]);
 
       expect(synced).toContain(targetComp.name);
-      expect(targetComp.codeComponentMeta.variants).toEqual({
+      expect(targetComp.codeComponentMeta.variants).toMatchObject({
         intSelected: {
           cssSelector: "[data-int-selected]",
           displayName: "Integration Selected",

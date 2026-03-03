@@ -40,11 +40,12 @@ function makeSession(overrides?: Partial<Session>): Session {
     bundler: {
       fastBundle: mockFastBundle,
       addrOf: mockAddrOf,
-      bundle: vi.fn().mockReturnValue({ map: {}, root: "0" }),
+      bundle: vi.fn().mockReturnValue({ map: {}, root: "0", version: "256-test-version" }),
     },
     revisionNum: 10,
     modelVersion: 5,
     hostlessDataVersion: 2,
+    bundleVersion: "256-test-version",
     projectUuid: "proj1",
     ...overrides,
   };
@@ -293,6 +294,21 @@ describe("SaveManager", () => {
         })
       );
       expect(result.incremental).toBe(false);
+    });
+
+    it("passes bundleVersion to bundler.bundle()", async () => {
+      const session = makeSession({ bundleVersion: "256-wrap-page-meta-og-image-in-ref" });
+      setSession(session);
+
+      await saveManager.saveFullBundle();
+
+      // bundler.bundle() must be called with (site, projectId, bundleVersion)
+      // matching Studio's StudioCtx.bundleChanges() which passes appCtx.lastBundleVersion
+      expect(session.bundler.bundle).toHaveBeenCalledWith(
+        session.site,
+        "proj1",
+        "256-wrap-page-meta-og-image-in-ref"
+      );
     });
   });
 });

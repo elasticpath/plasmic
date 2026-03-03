@@ -46,6 +46,9 @@ export interface LoadedModel {
   hostlessDataVersion: number;
   /** Dev host URL from project settings (undefined if not configured). */
   hostUrl?: string;
+  /** Bundle format version string (e.g. "256-wrap-page-meta-og-image-in-ref").
+   *  Must be passed to bundler.bundle() for full saves, matching Studio behavior. */
+  bundleVersion: string;
 }
 
 /**
@@ -72,8 +75,16 @@ export async function loadProject(
   const revisionNum = response.rev.revision;
   const modelVersion = response.modelVersion ?? 0;
   const hostlessDataVersion = response.hostlessDataVersion ?? 0;
+  // Extract bundle format version — required for full saves (Studio passes this to
+  // bundler.bundle() via appCtx.lastBundleVersion; see StudioCtx.bundleChanges()).
+  const bundleVersion: string = bundleJson.version ?? "";
+  if (!bundleVersion) {
+    console.error("[plasmic-mcp] WARNING: bundle has no version field — full saves may trigger server warnings");
+  }
   // Dev host URL: prefer project settings, fall back to env var (spec requirement)
   const hostUrl = response.project?.hostUrl ?? process.env.PLASMIC_DEV_HOST_URL;
+  console.error(`[plasmic-mcp] hostUrl: ${hostUrl ?? "(none)"} (project: ${response.project?.hostUrl ?? "(none)"}, env: ${process.env.PLASMIC_DEV_HOST_URL ?? "(none)"})`);
+
 
   const bundler = new FastBundler(meta, classesModule);
 
@@ -115,7 +126,7 @@ export async function loadProject(
     `[plasmic-mcp] Project loaded: ${componentCount} components`
   );
 
-  return { site, bundler, projectName, revisionNum, modelVersion, hostlessDataVersion, hostUrl };
+  return { site, bundler, projectName, revisionNum, modelVersion, hostlessDataVersion, hostUrl, bundleVersion };
 }
 
 /**

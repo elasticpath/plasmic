@@ -86,7 +86,7 @@ import {
 } from "@/wab/shared/model/classes";
 import { RSH } from "@/wab/shared/RuleSetHelpers";
 import { TplMgr } from "@/wab/shared/TplMgr";
-import { ensureVariantSetting } from "@/wab/shared/Variants";
+import { ensureVariantSetting, mkVariant } from "@/wab/shared/Variants";
 import { mkTplTagX, mkTplInlinedText, mkTplComponentX, clone as cloneTpl } from "@/wab/shared/core/tpls";
 import { flattenTpls } from "@/wab/shared/core/tpls";
 import { requireSession } from "./session.js";
@@ -1141,9 +1141,15 @@ function isCodeComponentVariant(variant: any): boolean {
 function getCodeComponentVariantMetas(
   component: any
 ): Record<string, { cssSelector: string; displayName: string }> | null {
+  // Path 1: Component IS a code component — read variants directly
+  if (component.codeComponentMeta?.variants) {
+    const metas = component.codeComponentMeta.variants;
+    if (typeof metas === "object" && Object.keys(metas).length > 0)
+      return metas;
+  }
+
+  // Path 2: Wrapper component (tplTree root is TplComponent wrapping a code component)
   const tplTree = component.tplTree;
-  // Root must be a TplComponent (wrapping a code component)
-  // Use typeTag (real WAB instances) with _type fallback (duck-typed mocks)
   const tag = tplTree?.typeTag ?? tplTree?._type;
   if (!tplTree || tag !== "TplComponent") return null;
 
@@ -1268,6 +1274,32 @@ export function resolveVariant(site: any, component: any, variantStr: string): a
           if (ccMetas[key]?.displayName?.toLowerCase() === lowerName) {
             return v;
           }
+        }
+      }
+    }
+
+    // Auto-create Variant object if the key/displayName matches a registered meta
+    // but no Variant instance exists yet (mirrors Studio's on-demand creation).
+    // IMPORTANT: This must be called inside a ChangeRecorder.withRecording()
+    // block so that the new Variant is captured as a newInst and tracked by
+    // the FastBundler for incremental saves.
+    const codeCompName = component.codeComponentMeta
+      ? component.name
+      : component.tplTree?.component?.name;
+    if (codeCompName) {
+      for (const [key, meta] of Object.entries(ccMetas)) {
+        if (
+          key.toLowerCase() === lowerName ||
+          (meta as any).displayName?.toLowerCase() === lowerName
+        ) {
+          const variant = mkVariant({
+            name: "",
+            codeComponentName: codeCompName,
+            codeComponentVariantKeys: [key],
+          });
+          if (!component.variants) component.variants = [];
+          component.variants.push(variant);
+          return variant;
         }
       }
     }
@@ -1449,6 +1481,23 @@ export function listVariants(site: any, component: any): ListVariantsResult {
     }
   }
 
+  // Also include registered variant metas that don't have Variant objects yet.
+  // These are "available" variants from the code component registry.
+  if (ccMetas) {
+    const existingKeys = new Set(codeComponentVariants.map((v) => v.key));
+    for (const [key, meta] of Object.entries(ccMetas)) {
+      if (!existingKeys.has(key)) {
+        codeComponentVariants.push({
+          uuid: `uninstantiated-${key}`,
+          key,
+          displayName: meta.displayName ?? key,
+          cssSelector: meta.cssSelector ?? "",
+          codeComponentName: component.name,
+        });
+      }
+    }
+  }
+
   return { globalVariants, componentVariants, styleVariants, codeComponentVariants };
 }
 
@@ -1523,15 +1572,17 @@ export async function updateText(
     );
   }
 
-  // Resolve target variant (null = base)
-  const resolvedVariant = variant
-    ? resolveVariant(session.site, component, variant)
-    : null;
-
   const tracker = getChangeTracker();
   let previousText: string | undefined;
 
+  let resolvedVariant: any = null;
   const changes = tracker.withRecording(() => {
+    // Resolve inside withRecording so auto-created CC Variant instances
+    // are captured as newInsts by the ChangeRecorder.
+    resolvedVariant = variant
+      ? resolveVariant(session.site, component, variant)
+      : null;
+
     // Get or create the VariantSetting for the target variant.
     // ensureVariantSetting must be inside withRecording because it may
     // create a new VariantSetting (pushing to tpl.vsettings).
@@ -1676,14 +1727,15 @@ export async function updateRichText(
       );
     }
 
-    const resolvedVariant = variant
-      ? resolveVariant(session.site, component, variant)
-      : null;
-
     const tracker = getChangeTracker();
     let previousText: string | undefined;
 
+    let resolvedVariant: any = null;
     const changes = tracker.withRecording(() => {
+      resolvedVariant = variant
+        ? resolveVariant(session.site, component, variant)
+        : null;
+
       const vs = resolvedVariant
         ? ensureVariantSetting(tpl, [resolvedVariant])
         : baseVs;
@@ -1772,14 +1824,15 @@ export async function updateRichText(
   // All parent-level markers
   const allParentMarkers = [...wabNodeMarkers, ...parentStyleMarkers];
 
-  const resolvedVariant = variant
-    ? resolveVariant(session.site, component, variant)
-    : null;
-
   const tracker = getChangeTracker();
   let previousText: string | undefined;
 
+  let resolvedVariant: any = null;
   const changes = tracker.withRecording(() => {
+    resolvedVariant = variant
+      ? resolveVariant(session.site, component, variant)
+      : null;
+
     const vs = resolvedVariant
       ? ensureVariantSetting(tpl, [resolvedVariant])
       : baseVs;
@@ -2140,11 +2193,6 @@ export async function updateStyles(
   const session = requireSession();
   const tplMgr = new TplMgr({ site: session.site });
 
-  // Resolve target variant (null = base)
-  const resolvedVariant = variant
-    ? resolveVariant(session.site, component, variant)
-    : null;
-
   const tracker = getChangeTracker();
   // Resolve token references (token:Name → var(--token-<uuid>)) before
   // shorthand expansion so expanded longhands inherit the var() value.
@@ -2153,7 +2201,15 @@ export async function updateStyles(
   validateStyleProperties(sanitized);
   const updatedProperties = Object.keys(sanitized);
 
+  // resolveVariant is inside withRecording so that auto-created code
+  // component Variant instances (via mkVariant) are captured as newInsts
+  // by the ChangeRecorder, making them visible to fastBundle().
+  let resolvedVariant: any = null;
   const changes = tracker.withRecording(() => {
+    resolvedVariant = variant
+      ? resolveVariant(session.site, component, variant)
+      : null;
+
     // Get or create the VariantSetting for the target variant.
     // ensureVariantSetting must be inside withRecording because it may
     // create a new VariantSetting (pushing to tpl.vsettings).
@@ -2228,11 +2284,6 @@ export async function updateAttrs(
   const session = requireSession();
   const tplMgr = new TplMgr({ site: session.site });
 
-  // Resolve target variant (null = base)
-  const resolvedVariant = variant
-    ? resolveVariant(session.site, component, variant)
-    : null;
-
   // Validate all attribute names before making any changes
   const updatedAttributes: string[] = [];
   const removedAttributes: string[] = [];
@@ -2250,7 +2301,12 @@ export async function updateAttrs(
 
   const tracker = getChangeTracker();
 
+  let resolvedVariant: any = null;
   const changes = tracker.withRecording(() => {
+    resolvedVariant = variant
+      ? resolveVariant(session.site, component, variant)
+      : null;
+
     const vs = resolvedVariant
       ? ensureVariantSetting(tpl, [resolvedVariant])
       : tplMgr.ensureBaseVariantSetting(tpl);
@@ -3884,14 +3940,16 @@ export async function setVisibility(
 
   const session = requireSession();
   const tplMgr = new TplMgr({ site: session.site });
-  const resolvedVariant = variant
-    ? resolveVariant(session.site, component, variant)
-    : null;
 
   const tracker = getChangeTracker();
   let previousVisibility = "visible";
 
+  let resolvedVariant: any = null;
   const changes = tracker.withRecording(() => {
+    resolvedVariant = variant
+      ? resolveVariant(session.site, component, variant)
+      : null;
+
     const vs = resolvedVariant
       ? ensureVariantSetting(tpl, [resolvedVariant])
       : tplMgr.ensureBaseVariantSetting(tpl);
@@ -4005,14 +4063,16 @@ export async function setDataCond(
 
   const session = requireSession();
   const tplMgr = new TplMgr({ site: session.site });
-  const resolvedVariant = variant
-    ? resolveVariant(session.site, component, variant)
-    : null;
 
   const tracker = getChangeTracker();
   let previousCondition: string | null = null;
 
+  let resolvedVariant: any = null;
   const changes = tracker.withRecording(() => {
+    resolvedVariant = variant
+      ? resolveVariant(session.site, component, variant)
+      : null;
+
     const vs = resolvedVariant
       ? ensureVariantSetting(tpl, [resolvedVariant])
       : tplMgr.ensureBaseVariantSetting(tpl);
@@ -4108,14 +4168,16 @@ export async function setDataRep(
 
   const session = requireSession();
   const tplMgr = new TplMgr({ site: session.site });
-  const resolvedVariant = variant
-    ? resolveVariant(session.site, component, variant)
-    : null;
 
   const tracker = getChangeTracker();
   let previousDataRep: DataRepInfo | null = null;
 
+  let resolvedVariant: any = null;
   const changes = tracker.withRecording(() => {
+    resolvedVariant = variant
+      ? resolveVariant(session.site, component, variant)
+      : null;
+
     const vs = resolvedVariant
       ? ensureVariantSetting(tpl, [resolvedVariant])
       : tplMgr.ensureBaseVariantSetting(tpl);
@@ -8472,11 +8534,6 @@ export async function setImage(
   const tplMgr = new TplMgr({ site: session.site });
   const tracker = getChangeTracker();
 
-  // Resolve target variant (null = base)
-  const resolvedVariant = variant
-    ? resolveVariant(session.site, component, variant)
-    : null;
-
   const tag = resolved.node.tag;
   const isImgTag = tag === "img";
   let imageSource = "";
@@ -8490,7 +8547,12 @@ export async function setImage(
     imageSource = opts.src!;
   }
 
+  let resolvedVariant: any = null;
   const changes = tracker.withRecording(() => {
+    resolvedVariant = variant
+      ? resolveVariant(session.site, component, variant)
+      : null;
+
     const vs = resolvedVariant
       ? ensureVariantSetting(resolved.node, [resolvedVariant])
       : tplMgr.ensureBaseVariantSetting(resolved.node);
