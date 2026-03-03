@@ -7,7 +7,7 @@ import { context, trace } from "@opentelemetry/api";
 import pino, { Logger as PinoLog } from "pino";
 
 const SERVICE_NAME = process.env.OTEL_SERVICE_NAME || "unknown-service";
-const ENVIRONMENT = process.env.NODE_ENV || "development";
+const ENVIRONMENT = process.env.DD_ENV || process.env.NODE_ENV || "development";
 const POD_NAME = process.env.HOSTNAME || "";
 const PINO_LOGGER_LEVEL = process.env.PINO_LOGGER_LEVEL || "debug";
 
