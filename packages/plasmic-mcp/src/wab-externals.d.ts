@@ -651,6 +651,9 @@ declare module "@/wab/shared/TplMgr" {
       playState?: string
     ): any;
   }
+
+  export function getTplComponentArg(tpl: any, vs: any, argVar: any): any;
+  export function setTplComponentArg(tpl: any, vs: any, argVar: any, expr: any): void;
 }
 
 // ---------------------------------------------------------------------------

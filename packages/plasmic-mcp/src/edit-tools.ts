@@ -85,7 +85,7 @@ import {
   isKnownImageAssetRef,
 } from "@/wab/shared/model/classes";
 import { RSH } from "@/wab/shared/RuleSetHelpers";
-import { TplMgr } from "@/wab/shared/TplMgr";
+import { TplMgr, setTplComponentArg } from "@/wab/shared/TplMgr";
 import { ensureVariantSetting, mkVariant } from "@/wab/shared/Variants";
 import { mkTplTagX, mkTplInlinedText, mkTplComponentX, clone as cloneTpl, TplTagType } from "@/wab/shared/core/tpls";
 import { flattenTpls } from "@/wab/shared/core/tpls";
@@ -2295,6 +2295,179 @@ export async function updateAttrs(
     nodeUuid: resolved.uuid,
     updatedAttributes,
     removedAttributes,
+  };
+}
+
+// --- update-props ---
+
+export interface UpdatePropsResult {
+  save: SaveResult;
+  nodeName?: string;
+  nodeUuid: string;
+  updatedProps: string[];
+  removedProps: string[];
+}
+
+/**
+ * Update prop values on a TplComponent instance.
+ *
+ * Supports scalar values (string, number, boolean), dynamic expressions
+ * ($expr or {{expr}}), slot content (PlasmicElement objects), and prop
+ * deletion (null/undefined values).
+ *
+ * Uses setTplComponentArg from TplMgr — the same mutation path Studio uses
+ * when setting props in the prop panel. This ensures full fidelity with the
+ * Studio data model.
+ *
+ * When `variant` is omitted, targets the base variant.
+ * When provided, resolves the variant and applies to that VariantSetting.
+ */
+export async function updateProps(
+  apiClient: PlasmicApiClient,
+  componentUuid: string,
+  nodeRef: string,
+  props: Record<string, unknown>,
+  variant?: string
+): Promise<UpdatePropsResult> {
+  const component = findComponent(componentUuid);
+  const result = resolveNode(component, nodeRef);
+  const resolved = requireSingleNode(result, nodeRef);
+
+  if (!isKnownTplComponent(resolved.node)) {
+    const nodeType = resolved.node?._type ?? "unknown";
+    throw new Error(
+      `Node "${nodeRef}" is a ${nodeType}, not a TplComponent. Use update-attrs for HTML elements.`
+    );
+  }
+
+  const tpl = resolved.node;
+  const targetComponent = tpl.component;
+  const componentParams: any[] = targetComponent?.params ?? [];
+
+  // Build a lookup of param name → param object for validation
+  const paramByName = new Map<string, any>();
+  for (const param of componentParams) {
+    const name = param.variable?.name;
+    if (name) paramByName.set(name, param);
+  }
+
+  // Pre-validate ALL prop names before making any mutations (fail-fast / atomic)
+  const updatedProps: string[] = [];
+  const removedProps: string[] = [];
+  for (const [propName, value] of Object.entries(props)) {
+    const param = paramByName.get(propName);
+    if (!param) {
+      const available = [...paramByName.keys()].join(", ");
+      throw new Error(
+        `Prop "${propName}" does not exist on component "${targetComponent?.name ?? componentUuid}". Available props: ${available || "(none)"}`
+      );
+    }
+
+    const isSlot = !!param.tplSlot ||
+      (param.typeTag ?? param._type) === "SlotParam";
+
+    if (value === null || value === undefined) {
+      removedProps.push(propName);
+    } else if (typeof value === "object" && !Array.isArray(value) && value !== null && "type" in (value as any)) {
+      // Looks like a PlasmicElement — must be a slot param
+      if (!isSlot) {
+        throw new Error(
+          `Prop "${propName}" is not a slot param. Pass a scalar value or expression instead.`
+        );
+      }
+      updatedProps.push(propName);
+    } else if (Array.isArray(value)) {
+      // Array of PlasmicElements — must be a slot param
+      if (!isSlot) {
+        throw new Error(
+          `Prop "${propName}" is not a slot param. Pass a scalar value or expression instead.`
+        );
+      }
+      updatedProps.push(propName);
+    } else {
+      // Scalar or expression — must NOT be a slot param
+      if (isSlot) {
+        throw new Error(
+          `Prop "${propName}" is a slot param. Pass a PlasmicElement object or array instead.`
+        );
+      }
+      updatedProps.push(propName);
+    }
+  }
+
+  if (updatedProps.length === 0 && removedProps.length === 0) {
+    // No-op: empty props object
+    const noopSave: SaveResult = { revisionNum: requireSession().revisionNum, incremental: false };
+    return { save: noopSave, nodeName: resolved.name, nodeUuid: resolved.uuid, updatedProps: [], removedProps: [] };
+  }
+
+  const session = requireSession();
+  const tplMgr = new TplMgr({ site: session.site });
+  const tracker = getChangeTracker();
+
+  let resolvedVariant: any = null;
+  const changes = tracker.withRecording(() => {
+    resolvedVariant = variant
+      ? resolveVariant(session.site, component, variant)
+      : null;
+
+    const vs = resolvedVariant
+      ? ensureVariantSetting(tpl, [resolvedVariant])
+      : tplMgr.ensureBaseVariantSetting(tpl);
+
+    if (!vs.args) { vs.args = []; }
+
+    for (const [propName, value] of Object.entries(props)) {
+      const param = paramByName.get(propName)!;
+      const argVar = param.variable;
+
+      if (value === null || value === undefined) {
+        // Remove the Arg from this variant setting
+        const idx = vs.args.findIndex((a: any) =>
+          a.param?.variable === argVar || a.param?.variable?.name === propName
+        );
+        if (idx !== -1) {
+          vs.args.splice(idx, 1);
+        }
+      } else {
+        const isSlot = !!param.tplSlot ||
+          (param.typeTag ?? param._type) === "SlotParam";
+
+        let expr: any;
+        if (isSlot) {
+          // Convert PlasmicElement(s) to RenderExpr
+          const baseVariant = tplMgr.ensureBaseVariant(component);
+          const elements = Array.isArray(value) ? value : [value];
+          const tpls = elements.map((el: any) =>
+            plasmicElementToTpl(el, session.site, baseVariant)
+          );
+          expr = new RenderExpr({ tpl: tpls });
+        } else {
+          // Scalar or dynamic expression — reuse createAttrExpr
+          expr = createAttrExpr(value);
+        }
+
+        setTplComponentArg(tpl, vs, argVar, expr);
+      }
+    }
+  });
+
+  const componentIid = getComponentIid(component);
+  const variantLabel = resolvedVariant ? ` [variant: ${resolvedVariant.name ?? variant}]` : "";
+  const allKeys = [...updatedProps, ...removedProps.map(k => `-${k}`)];
+  const save = await saveOrAccumulate(
+    apiClient,
+    changes,
+    `update-props: [${allKeys.join(", ")}] on ${resolved.name ?? nodeRef}${variantLabel}`,
+    componentIid ? [componentIid] : []
+  );
+
+  return {
+    save,
+    nodeName: resolved.name,
+    nodeUuid: resolved.uuid,
+    updatedProps,
+    removedProps,
   };
 }
 

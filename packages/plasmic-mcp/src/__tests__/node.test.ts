@@ -32,6 +32,7 @@ import {
   removeNodeAnimation,
   reorderChildren,
   setImage,
+  updateProps,
 } from "../edit-tools";
 import { setSession, clearSession } from "../session";
 import { initChangeTracker, disposeChangeTracker } from "../change-tracker";
@@ -43,6 +44,7 @@ import {
   mockEnsureBaseVariant,
   mockAddAnimation,
   mockReorderChildren,
+  mockSetTplComponentArg,
 } from "../__mocks__/wab-tpl-mgr";
 import { mockMkTplTagX, mockMkTplInlinedText, mockMkTplComponentX, TplTagType } from "../__mocks__/wab-tpls";
 import { mockEnsureVariantSetting } from "../__mocks__/wab-variants";
@@ -5972,5 +5974,324 @@ describe("setImage", () => {
     // Quotes in the URL must be escaped to prevent malformed CSS
     expect(bgValue).toContain('\\"');
     expect(bgValue).not.toContain('""');
+  });
+});
+
+// ========================================================================
+// updateProps — component instance prop mutations
+// ========================================================================
+
+describe("updateProps", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  function mockApiClient() {
+    return {
+      saveRevision: vi.fn().mockResolvedValue({}),
+      listProjects: vi.fn(),
+      getProjectBundle: vi.fn(),
+      updateProject: vi.fn(),
+    } as unknown as PlasmicApiClient & { saveRevision: ReturnType<typeof vi.fn> };
+  }
+
+  function makeSession(overrides?: Partial<Session>): Session {
+    return {
+      projectId: "proj1",
+      projectName: "Test",
+      site: { components: [] },
+      bundler: {
+        fastBundle: mockFastBundle,
+        addrOf: mockAddrOf,
+        bundle: vi.fn().mockReturnValue({ map: {}, root: "0" }),
+      },
+      revisionNum: 10,
+      modelVersion: 5,
+      hostlessDataVersion: 2,
+      projectUuid: "proj1",
+      ...overrides,
+    };
+  }
+
+  function mkParam(name: string, opts?: { isSlot?: boolean; type?: string }) {
+    const variable = { name, uuid: `var-${name}` };
+    return {
+      _type: opts?.isSlot ? "SlotParam" : "PropParam",
+      typeTag: opts?.isSlot ? "SlotParam" : "PropParam",
+      uuid: `param-${name}`,
+      variable,
+      type: { name: opts?.type ?? "text" },
+      tplSlot: opts?.isSlot ? { uuid: `slot-${name}` } : undefined,
+      required: false,
+      exportType: "External",
+    };
+  }
+
+  function mkTplComponent(name: string, params: any[]): any {
+    return {
+      _type: "TplComponent",
+      uuid: `tpl-${name}`,
+      name,
+      component: { name: `${name}Component`, params, uuid: `comp-inner-${name}` },
+      vsettings: [{ variants: [], args: [], rs: { values: {} } }],
+      children: [],
+    };
+  }
+
+  function setupSession(component: any) {
+    const session = makeSession({ site: { components: [component] } } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+    return session;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    clearNodeCache();
+
+    api = mockApiClient();
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+    mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
+  });
+
+  afterEach(() => {
+    disposeChangeTracker();
+    clearSession();
+    vi.restoreAllMocks();
+  });
+
+  it("sets static string prop via createAttrExpr", async () => {
+    const currencyParam = mkParam("currency");
+    const tplComp = mkTplComponent("PayButton", [currencyParam]);
+    const comp = { uuid: "comp-1", name: "Page", tplTree: tplComp };
+    setupSession(comp);
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+      if (!tpl.vsettings[0].args) tpl.vsettings[0].args = [];
+      return tpl.vsettings[0];
+    });
+
+    const result = await updateProps(api, "comp-1", "PayButton", { currency: "USD" });
+
+    expect(result.updatedProps).toEqual(["currency"]);
+    expect(result.removedProps).toEqual([]);
+    expect(mockSetTplComponentArg).toHaveBeenCalledOnce();
+    // Verify the expression is a CustomCode with JSON-serialized literal
+    const callArgs = mockSetTplComponentArg.mock.calls[0];
+    expect(callArgs[2]).toBe(currencyParam.variable); // argVar
+    expect(callArgs[3]._type).toBe("CustomCode");
+    expect(callArgs[3].code).toBe('"USD"');
+  });
+
+  it("sets dynamic prop with $ prefix", async () => {
+    const orderIdParam = mkParam("orderId");
+    const tplComp = mkTplComponent("PayButton", [orderIdParam]);
+    const comp = { uuid: "comp-1", name: "Page", tplTree: tplComp };
+    setupSession(comp);
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+      if (!tpl.vsettings[0].args) tpl.vsettings[0].args = [];
+      return tpl.vsettings[0];
+    });
+
+    const result = await updateProps(api, "comp-1", "PayButton", { orderId: "$ctx.params.orderId" });
+
+    expect(result.updatedProps).toEqual(["orderId"]);
+    const callArgs = mockSetTplComponentArg.mock.calls[0];
+    expect(callArgs[3]._type).toBe("CustomCode");
+    expect(callArgs[3].code).toBe("ctx.params.orderId"); // $ stripped
+  });
+
+  it("sets dynamic prop with {{expr}} syntax", async () => {
+    const amountParam = mkParam("amount");
+    const tplComp = mkTplComponent("PayButton", [amountParam]);
+    const comp = { uuid: "comp-1", name: "Page", tplTree: tplComp };
+    setupSession(comp);
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+      if (!tpl.vsettings[0].args) tpl.vsettings[0].args = [];
+      return tpl.vsettings[0];
+    });
+
+    const result = await updateProps(api, "comp-1", "PayButton", { amount: "{{$queries.cart.data.total}}" });
+
+    expect(result.updatedProps).toEqual(["amount"]);
+    const callArgs = mockSetTplComponentArg.mock.calls[0];
+    expect(callArgs[3].code).toBe("$queries.cart.data.total");
+  });
+
+  it("sets boolean and number props", async () => {
+    const testModeParam = mkParam("testMode", { type: "boolean" });
+    const countParam = mkParam("count", { type: "number" });
+    const tplComp = mkTplComponent("PayButton", [testModeParam, countParam]);
+    const comp = { uuid: "comp-1", name: "Page", tplTree: tplComp };
+    setupSession(comp);
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+      if (!tpl.vsettings[0].args) tpl.vsettings[0].args = [];
+      return tpl.vsettings[0];
+    });
+
+    const result = await updateProps(api, "comp-1", "PayButton", { testMode: true, count: 42 });
+
+    expect(result.updatedProps).toEqual(["testMode", "count"]);
+    expect(mockSetTplComponentArg).toHaveBeenCalledTimes(2);
+    // boolean
+    expect(mockSetTplComponentArg.mock.calls[0][3].code).toBe("true");
+    // number
+    expect(mockSetTplComponentArg.mock.calls[1][3].code).toBe("42");
+  });
+
+  it("removes prop when value is null", async () => {
+    const currencyParam = mkParam("currency");
+    const tplComp = mkTplComponent("PayButton", [currencyParam]);
+    // Pre-populate an existing arg
+    tplComp.vsettings[0].args = [{ param: currencyParam, expr: { _type: "CustomCode", code: '"USD"' } }];
+    const comp = { uuid: "comp-1", name: "Page", tplTree: tplComp };
+    setupSession(comp);
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+      return tpl.vsettings[0];
+    });
+
+    const result = await updateProps(api, "comp-1", "PayButton", { currency: null });
+
+    expect(result.removedProps).toEqual(["currency"]);
+    expect(result.updatedProps).toEqual([]);
+    // The arg should have been spliced out
+    // (mockSetTplComponentArg is NOT called for removal — splice is done directly)
+    expect(mockSetTplComponentArg).not.toHaveBeenCalled();
+  });
+
+  it("throws when prop name does not exist on component", async () => {
+    const currencyParam = mkParam("currency");
+    const tplComp = mkTplComponent("PayButton", [currencyParam]);
+    const comp = { uuid: "comp-1", name: "Page", tplTree: tplComp };
+    setupSession(comp);
+
+    await expect(
+      updateProps(api, "comp-1", "PayButton", { nonExistent: "value" })
+    ).rejects.toThrow('Prop "nonExistent" does not exist on component "PayButtonComponent". Available props: currency');
+  });
+
+  it("throws when nodeRef resolves to TplTag instead of TplComponent", async () => {
+    const divNode = {
+      _type: "TplTag",
+      uuid: "div-1",
+      name: "Container",
+      tag: "div",
+      vsettings: [{ variants: [], rs: { values: {} } }],
+      children: [],
+    };
+    const comp = { uuid: "comp-1", name: "Page", tplTree: divNode };
+    setupSession(comp);
+
+    await expect(
+      updateProps(api, "comp-1", "Container", { foo: "bar" })
+    ).rejects.toThrow('Node "Container" is a TplTag, not a TplComponent. Use update-attrs for HTML elements.');
+  });
+
+  it("handles empty props object as no-op", async () => {
+    const currencyParam = mkParam("currency");
+    const tplComp = mkTplComponent("PayButton", [currencyParam]);
+    const comp = { uuid: "comp-1", name: "Page", tplTree: tplComp };
+    setupSession(comp);
+
+    const result = await updateProps(api, "comp-1", "PayButton", {});
+
+    expect(result.updatedProps).toEqual([]);
+    expect(result.removedProps).toEqual([]);
+    expect(mockSetTplComponentArg).not.toHaveBeenCalled();
+  });
+
+  it("rejects scalar value for slot param", async () => {
+    const slotParam = mkParam("children", { isSlot: true });
+    const tplComp = mkTplComponent("Card", [slotParam]);
+    const comp = { uuid: "comp-1", name: "Page", tplTree: tplComp };
+    setupSession(comp);
+
+    await expect(
+      updateProps(api, "comp-1", "Card", { children: "some string" })
+    ).rejects.toThrow('Prop "children" is a slot param. Pass a PlasmicElement object or array instead.');
+  });
+
+  it("rejects PlasmicElement for non-slot param", async () => {
+    const currencyParam = mkParam("currency");
+    const tplComp = mkTplComponent("PayButton", [currencyParam]);
+    const comp = { uuid: "comp-1", name: "Page", tplTree: tplComp };
+    setupSession(comp);
+
+    await expect(
+      updateProps(api, "comp-1", "PayButton", { currency: { type: "text", value: "Hello" } })
+    ).rejects.toThrow('Prop "currency" is not a slot param. Pass a scalar value or expression instead.');
+  });
+
+  it("sets multiple props in a single call (merge semantics)", async () => {
+    const currencyParam = mkParam("currency");
+    const testModeParam = mkParam("testMode", { type: "boolean" });
+    const tplComp = mkTplComponent("PayButton", [currencyParam, testModeParam]);
+    const comp = { uuid: "comp-1", name: "Page", tplTree: tplComp };
+    setupSession(comp);
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+      if (!tpl.vsettings[0].args) tpl.vsettings[0].args = [];
+      return tpl.vsettings[0];
+    });
+
+    const result = await updateProps(api, "comp-1", "PayButton", {
+      currency: "EUR",
+      testMode: false,
+    });
+
+    expect(result.updatedProps).toEqual(["currency", "testMode"]);
+    expect(mockSetTplComponentArg).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails fast on first invalid prop before any mutations", async () => {
+    const currencyParam = mkParam("currency");
+    const tplComp = mkTplComponent("PayButton", [currencyParam]);
+    const comp = { uuid: "comp-1", name: "Page", tplTree: tplComp };
+    setupSession(comp);
+
+    await expect(
+      updateProps(api, "comp-1", "PayButton", { currency: "USD", badProp: "value" })
+    ).rejects.toThrow('Prop "badProp" does not exist');
+
+    // setTplComponentArg should NOT have been called (fail-fast before mutation)
+    expect(mockSetTplComponentArg).not.toHaveBeenCalled();
+  });
+
+  it("supports variant targeting", async () => {
+    const currencyParam = mkParam("currency");
+    const tplComp = mkTplComponent("PayButton", [currencyParam]);
+    const mobileVariant = { uuid: "v-mobile", name: "Mobile", mediaQuery: "(max-width: 768px)" };
+    const comp = {
+      uuid: "comp-1", name: "Page", tplTree: tplComp,
+    };
+
+    const mobileVs = { variants: [mobileVariant], args: [], rs: { values: {} } };
+    mockEnsureVariantSetting.mockReturnValue(mobileVs);
+
+    // Variant must be discoverable via site.globalVariantGroups or comp.variantGroups
+    const session = makeSession({
+      site: {
+        components: [comp],
+        globalVariantGroups: [{
+          uuid: "screen-group",
+          type: "global-screen",
+          param: { variable: { name: "Screen" } },
+          variants: [mobileVariant],
+        }],
+      },
+    } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateProps(api, "comp-1", "PayButton", { currency: "GBP" }, "Mobile");
+
+    expect(result.updatedProps).toEqual(["currency"]);
+    expect(mockSetTplComponentArg).toHaveBeenCalledOnce();
+    // Should have targeted the variant's VS, not the base
+    expect(mockSetTplComponentArg.mock.calls[0][1]).toBe(mobileVs);
   });
 });

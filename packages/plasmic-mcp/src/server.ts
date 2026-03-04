@@ -4,7 +4,7 @@
  * Uses McpServer from @modelcontextprotocol/sdk with Zod schemas for input
  * validation. All tools are registered before the transport connects.
  *
- * STRAP architecture: 103 actions consolidated into 8 domain tools.
+ * STRAP architecture: 104 actions consolidated into 8 domain tools.
  * Each domain tool uses an `action` discriminator to route to the
  * appropriate handler function.
  *
@@ -12,7 +12,7 @@
  *   - project (8 actions): session lifecycle, persistence, batch, undo
  *   - inspect (8 actions): read-only queries on component trees
  *   - component (18 actions): component/page lifecycle, props, states
- *   - node (15 actions): element mutations (structure, style, text, attrs)
+ *   - node (16 actions): element mutations (structure, style, text, attrs, props)
  *   - variant (12 actions): variant management (component, global, style, screen)
  *   - design (22 actions): site-level design system (tokens, mixins, etc.)
  *   - data (16 actions): data flow (queries, data-tokens, splits, etc.)
@@ -50,6 +50,7 @@ import {
   updateRichText,
   updateStyles,
   updateAttrs,
+  updateProps,
   addChild,
   removeChild,
   moveChild,
@@ -2298,17 +2299,18 @@ export function createServer(): McpServer {
   );
 
   // ========================================================================
-  // DOMAIN 4: node (15 actions)
+  // DOMAIN 4: node (16 actions)
   // ========================================================================
 
   server.tool(
     "node",
     "Element mutations within a component.\n" +
-      "Actions: add, remove, move, clone, reorder, update-styles, update-text, update-rich-text, update-attrs, set-visibility, set-image, apply-mixin, detach-mixin, add-animation, remove-animation.\n" +
+      "Actions: add, remove, move, clone, reorder, update-styles, update-text, update-rich-text, update-attrs, update-props, set-visibility, set-image, apply-mixin, detach-mixin, add-animation, remove-animation.\n" +
       "- add/remove/move/clone/reorder: Structural changes to element tree\n" +
       "- update-styles: Set CSS styles on an element\n" +
       "- update-text/update-rich-text: Set text content\n" +
-      "- update-attrs: Set HTML attributes\n" +
+      "- update-attrs: Set HTML attributes on TplTag elements\n" +
+      "- update-props: Set component props on TplComponent instances (scalar, dynamic, slot)\n" +
       "- set-visibility: Show/hide elements per variant\n" +
       "- set-image: Set image source (asset or URL)\n" +
       "- apply-mixin/detach-mixin: Apply or remove style mixins\n" +
@@ -2317,7 +2319,7 @@ export function createServer(): McpServer {
     {
       action: z.enum([
         "add", "remove", "move", "clone", "reorder",
-        "update-styles", "update-text", "update-rich-text", "update-attrs",
+        "update-styles", "update-text", "update-rich-text", "update-attrs", "update-props",
         "set-visibility", "set-image", "apply-mixin", "detach-mixin",
         "add-animation", "remove-animation",
       ]),
@@ -2339,6 +2341,7 @@ export function createServer(): McpServer {
         href: z.string().optional(),
       })).optional().describe("Rich text formatting marks"),
       attrs: z.record(z.any()).optional().describe("HTML attributes to set"),
+      props: z.record(z.any()).optional().describe("Component props to set (scalar, $expr, {{expr}}, PlasmicElement for slots, null to remove)"),
       variant: z.string().optional().describe("Target variant by name, UUID, or selector"),
       dynamic: z.boolean().optional().describe("Create dynamic text expression"),
       fallback: z.string().optional().describe("Fallback for dynamic text"),
@@ -2787,6 +2790,54 @@ export function createServer(): McpServer {
                       node: result.nodeName ?? result.nodeUuid,
                       updatedAttributes: result.updatedAttributes,
                       removedAttributes: result.removedAttributes,
+                      revision: result.save.revisionNum,
+                    }
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "update-props": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "node.update-props");
+            const nref = requireParam(params.nodeRef, "nodeRef", "node.update-props");
+            const pr = requireParam(params.props, "props", "node.update-props");
+
+            if (params.dryRun) {
+              const result = await withDryRun(() =>
+                updateProps(apiClient, cuuid, nref, pr, params.variant)
+              );
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        dryRun: true,
+                        node: result.nodeName ?? result.nodeUuid,
+                        updatedProps: result.updatedProps,
+                        removedProps: result.removedProps,
+                        message: "Dry run: no changes persisted",
+                      }
+                    ),
+                  },
+                ],
+              };
+            }
+
+            const result = await updateProps(
+              apiClient, cuuid, nref, pr, params.variant
+            );
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      node: result.nodeName ?? result.nodeUuid,
+                      updatedProps: result.updatedProps,
+                      removedProps: result.removedProps,
                       revision: result.save.revisionNum,
                     }
                   ),

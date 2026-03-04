@@ -86,6 +86,21 @@ export const mockAddAnimation = vi.fn((
     iterationCount, direction, fillMode, playState,
   };
 });
+export const mockGetTplComponentArg = vi.fn((tpl: any, vs: any, argVar: any) => {
+  return (vs.args ?? []).find((a: any) => a.param?.variable === argVar);
+});
+export const mockSetTplComponentArg = vi.fn((tpl: any, vs: any, argVar: any, expr: any) => {
+  if (!vs.args) vs.args = [];
+  const existing = vs.args.find((a: any) => a.param?.variable === argVar);
+  if (existing) {
+    existing.expr = expr;
+  } else {
+    const param = (tpl.component?.params ?? []).find((p: any) => p.variable === argVar);
+    vs.args.push({ param: param ?? { variable: argVar }, expr });
+  }
+});
+export const getTplComponentArg = (...args: any[]) => mockGetTplComponentArg(...args);
+export const setTplComponentArg = (...args: any[]) => mockSetTplComponentArg(...args);
 export const mockReorderChildren = vi.fn();
 export const mockConvertComponentToPage = vi.fn();
 export const mockConvertPageToComponent = vi.fn();

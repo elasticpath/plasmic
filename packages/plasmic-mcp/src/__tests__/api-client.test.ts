@@ -39,7 +39,7 @@ describe("PlasmicApiClient", () => {
   });
 
   describe("listProjects", () => {
-    it("makes GET request to /api/v1/projects?query=all", async () => {
+    it("makes GET request to /api/v1/projects with JSON-encoded query param", async () => {
       const mockResponse = {
         projects: [{ id: "proj1", name: "Test Project" }],
         perms: [],
@@ -53,7 +53,7 @@ describe("PlasmicApiClient", () => {
       const result = await client.listProjects();
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://studio.example.com/api/v1/projects?query=all",
+        `https://studio.example.com/api/v1/projects?query=${encodeURIComponent(JSON.stringify("all"))}`,
         expect.objectContaining({
           method: "GET",
           headers: expect.objectContaining({

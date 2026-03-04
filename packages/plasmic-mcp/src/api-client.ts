@@ -199,7 +199,7 @@ export class PlasmicApiClient {
     try {
       return await this.request<ListProjectsResponse>(
         "GET",
-        "/api/v1/projects?query=all"
+        `/api/v1/projects?query=${encodeURIComponent(JSON.stringify("all"))}`
       );
     } catch (err: unknown) {
       // Add specific guidance for list-projects failures
