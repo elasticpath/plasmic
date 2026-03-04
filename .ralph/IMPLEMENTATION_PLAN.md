@@ -5,7 +5,7 @@ _Last updated: 2026-03-04_
 ## Priority 1 — Hostless Package Management (spec: PROJECT-PACKAGE-MANAGEMENT.md)
 
 **Branch:** `feat/hostless-package-management`
-**Status:** P1.1–P1.4 complete — P1.5 (integration tests) remaining.
+**Status:** P1.1–P1.5 complete. All 1,778 tests pass (33 files).
 
 ### P1.1 — New API client methods in `api-client.ts` ✓
 - **Completed:** 2026-03-04
@@ -39,14 +39,15 @@ _Last updated: 2026-03-04_
   - `platform/wab/src/wab/shared/core/sites.ts:1420,2219` — site utilities
 - **Note:** esbuild `build.mjs` already resolves `@/wab/shared/*` to real WAB source — no build config changes needed
 
-### P1.3 — New `package-manager.ts` module
+### P1.3 — New `package-manager.ts` module ✓
+- **Completed:** 2026-03-04
 - **What:** Create `packages/plasmic-mcp/src/package-manager.ts` with clean exported functions that wrap WAB shared imports
 - **Exports:**
   - `listPackages(site, apiClient?)` — reads `site.projectDependencies`, optionally fetches latest versions via `getPkgVersionMeta`
   - `addPackage(site, bundler, tplMgr, apiClient, projectId, ownProjectId)` — full flow: getPkgByProjectId → validate → getPkgVersion → unbundle → canAddDependency checks → addDependency
   - `removePackage(site, tplMgr, pkgIdOrName)` — validate no dependents → `tplMgr.removeProjectDep(dep)`
   - `upgradePackage(site, bundler, tplMgr, apiClient, pkgId?)` — single or batch upgrade via `upgradeProjectDeps`
-- **Validation logic to replicate from `ProjectDependencyManager`:**
+- **Validation logic replicated from `ProjectDependencyManager`:**
   - Self-import check (line 336-338)
   - No published versions check (line 344-346)
   - Already imported check (line 349-351)
@@ -54,38 +55,37 @@ _Last updated: 2026-03-04_
   - Circular dependency check (`canAddDependency` line 240-284)
   - Version conflict check (line 276-283)
   - Hostless dependent check for removal (`getHostLessPackageDependents` line 407-420)
-- **Files to create:**
+- **Files created:**
   - `packages/plasmic-mcp/src/package-manager.ts`
   - `packages/plasmic-mcp/src/__tests__/package-manager.test.ts`
 
-### P1.4 — Wire 4 new actions into `server.ts` (project tool)
+### P1.4 — Wire 4 new actions into `server.ts` (project tool) ✓
+- **Completed:** 2026-03-04
 - **What:** Add `list-packages`, `add-package`, `remove-package`, `upgrade-package` to the project tool's action enum and switch cases
 - **Zod schema extensions:**
   - `action: z.enum([...existing, "list-packages", "add-package", "remove-package", "upgrade-package"])`
   - `projectId: z.string().optional()` — for `add-package` (source project of the package)
   - `pkgId: z.string().optional()` — for `remove-package`, `upgrade-package`
-- **Switch cases:** Delegate to `package-manager.ts` functions, format responses
-- **Files to modify:**
+- **Switch cases:** Delegated to `package-manager.ts` functions, formatted responses
+- **Files modified:**
   - `packages/plasmic-mcp/src/server.ts` — action enum, Zod schema, switch cases
-  - `packages/plasmic-mcp/src/__tests__/project.test.ts` (or new test file) — integration tests for all 4 actions
+  - `packages/plasmic-mcp/src/__tests__/project.test.ts` — added unit tests for all 4 actions
 - **Action count:** 104 → 108 actions across 8 tools
-- **Update:** `README.md`, `FEATURE_REFERENCE.md`, `index.ts` header comment — action counts
+- **Updated:** `README.md`, `FEATURE_REFERENCE.md`, `index.ts` header comment — action counts
 
-### P1.5 — Integration test coverage
-- **What:** Integration tests that use real WAB shared code (via `vitest.config.integration.ts`) to verify unbundling, validation, and upgrade flows against actual WAB model classes
-- **Scenarios to cover:**
-  - Add package → verify `site.projectDependencies` mutated correctly
-  - Add package with transitive deps → verify transitive extraction
-  - Add self → error
-  - Add already-imported → error
-  - Add package with auth → error
-  - Circular dependency → error
-  - Remove package → verify removal
-  - Remove package with dependents → error
-  - Upgrade single → verify version change
-  - Upgrade all → verify batch
-  - List packages → verify output shape
-- **File:** `packages/plasmic-mcp/src/__tests__/package-manager.integration.test.ts`
+### P1.5 — Integration test coverage ✓
+- **Completed:** 2026-03-04
+- **What:** Integration tests that use real WAB shared code (via `vitest.config.integration.ts`) to verify package management operations against actual MobX-observed WAB model instances
+- **Design:** Only `unbundleProjectDependency` and `upgradeProjectDeps` are mocked (fixtures provide project revision bundles, not PkgVersion bundles). All other WAB functions run for REAL: `isHostLessPackage`, `isReusableComponent`, `TplMgr`, `extractTransitiveHostLessPackages`, `syncGlobalContexts`, `getNonTransitiveDepDefaultComponents`.
+- **Scenarios covered (22 tests):**
+  - listPackages: returns PackageInfo, populates latestVersion, graceful failure, real `isHostLessPackage`
+  - addPackage: self-import error, no published versions error, already-imported error (real model comparison), auth-enabled error, success with real MobX mutation, real transitive extraction, circular dependency detection, version conflict detection
+  - removePackage: real MobX removal, case-insensitive name removal, not-found error, hostless dependent error (real `isHostLessPackage`)
+  - upgradePackage: not-installed error, already-at-latest error, batch all-current, single upgrade, batch upgrade
+- **Files created/modified:**
+  - `packages/plasmic-mcp/src/__tests__/package-manager.integration.test.ts` — 22 integration tests
+  - `packages/plasmic-mcp/vitest.config.integration.ts` — added to include list
+  - `packages/plasmic-mcp/vitest.config.unit.ts` — added to exclude list
 
 ---
 
@@ -116,7 +116,7 @@ _Last updated: 2026-03-04_
 ## Notes
 
 - **Branch context:** `feat/hostless-package-management`
-- **Action count:** 104 actions across 8 tools (will become 108 after P1.4)
+- **Action count:** 108 actions across 8 tools
 - **Scope:** This plan is scoped to `packages/plasmic-mcp/` only. EP commerce gaps are tracked separately.
 - **Spec:** `.ralph/specs/PROJECT-PACKAGE-MANAGEMENT.md`
 - **Key WAB reference:** `platform/wab/src/wab/client/ProjectDependencyManager.ts` — the Studio implementation this feature replicates

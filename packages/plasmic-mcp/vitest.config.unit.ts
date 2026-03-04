@@ -107,6 +107,7 @@ export default defineConfig({
     exclude: [
       "src/__tests__/real-integration.test.ts",
       "src/__tests__/devhost-sync-integration.test.ts",
+      "src/__tests__/package-manager.integration.test.ts",
     ],
     environment: "node",
   },
