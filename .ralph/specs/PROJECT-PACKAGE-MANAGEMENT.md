@@ -11,41 +11,42 @@
 ## Acceptance Criteria
 
 ### list-packages
-- [ ] New `list-packages` action on the `project` tool
-- [ ] Returns all direct dependencies from `site.projectDependencies`
-- [ ] Each entry includes: `name`, `pkgId`, `projectId`, `version`, `isHostLess` (boolean)
-- [ ] Optionally fetches latest available version from server to show which packages have updates (`latestVersion` field)
+- [x] New `list-packages` action on the `project` tool
+- [x] Returns all direct dependencies from `site.projectDependencies`
+- [x] Each entry includes: `name`, `pkgId`, `projectId`, `version`, `isHostLess` (boolean)
+- [x] Optionally fetches latest available version from server to show which packages have updates (`latestVersion` field)
 
 ### add-package
-- [ ] New `add-package` action on the `project` tool
-- [ ] Accepts `projectId` (the source project of the published package) — matches Studio's `addByProjectId`
-- [ ] Calls `getPkgByProjectId(projectId)` to get published package info
-- [ ] Calls `getPkgVersion(pkgId)` to download full PkgVersion + transitive dep bundles
-- [ ] Calls `unbundleProjectDependency(bundler, latest, depPkgs)` to deserialize into ProjectDependency model
-- [ ] Validates: not self-import, not already imported, no circular deps, no version conflicts, no auth-enabled deps — reuses the same validation logic Studio uses
-- [ ] Pushes to `site.projectDependencies`, extracts transitive deps, syncs global contexts, copies default components — reuses `addDependency` logic from Studio
-- [ ] Returns: package name, pkgId, version, number of components made available
+- [x] New `add-package` action on the `project` tool
+- [x] Accepts `projectId` (the source project of the published package) — matches Studio's `addByProjectId`
+- [x] Calls `getPkgByProjectId(projectId)` to get published package info
+- [x] Calls `getPkgVersion(pkgId)` to download full PkgVersion + transitive dep bundles
+- [x] Calls `unbundleProjectDependency(bundler, latest, depPkgs)` to deserialize into ProjectDependency model
+- [x] Validates: not self-import, not already imported, no circular deps, no version conflicts, no auth-enabled deps — mirrors the same validation logic Studio uses
+- [x] Pushes to `site.projectDependencies`, extracts transitive deps, syncs global contexts, copies default components — reuses `addDependency` logic from Studio
+- [x] Returns: package name, pkgId, version, number of components made available
 
 ### remove-package
-- [ ] New `remove-package` action on the `project` tool
-- [ ] Accepts `pkgId` (or package name for convenience)
-- [ ] Validates no hostless packages depend on it — reuses Studio's `getHostLessPackageDependents` check
-- [ ] Calls `tplMgr.removeProjectDep(dep)` — matches Studio's `removeByPkgId`
-- [ ] Returns confirmation of removal
+- [x] New `remove-package` action on the `project` tool
+- [x] Accepts `pkgId` (or package name for convenience)
+- [x] Validates no hostless packages depend on it — mirrors Studio's `getHostLessPackageDependents` check
+- [x] Calls `tplMgr.removeProjectDep(dep)` — matches Studio's `removeByPkgId`
+- [x] Returns confirmation of removal
 
 ### upgrade-package
-- [ ] New `upgrade-package` action on the `project` tool
-- [ ] Accepts `pkgId` (single package) OR no pkgId (upgrade all outdated)
-- [ ] For single: downloads new PkgVersion, unbundles, validates, calls `upgradeProjectDeps([targetDep])` — mirrors Studio's per-dependency upgrade
-- [ ] For batch: identifies all packages with newer versions, downloads all, calls `upgradeProjectDeps(allTargetDeps)` — mirrors Studio's "Update all"
-- [ ] `upgradeProjectDeps` handles component/token/mixin/asset/variant remapping — reuse from WAB shared `project-deps.ts`
-- [ ] Returns: list of packages upgraded with old→new version
+- [x] New `upgrade-package` action on the `project` tool
+- [x] Accepts `pkgId` (single package) OR no pkgId (upgrade all outdated)
+- [x] For single: downloads new PkgVersion, unbundles, validates, calls `upgradeProjectDeps([targetDep])` — mirrors Studio's per-dependency upgrade
+- [x] For batch: identifies all packages with newer versions, downloads all, calls `upgradeProjectDeps(allTargetDeps)` — mirrors Studio's "Update all"
+- [x] `upgradeProjectDeps` handles component/token/mixin/asset/variant remapping — reuse from WAB shared `project-deps.ts`
+- [x] Pre-flight `ensureCanUpgradeDeps` check detects transitive version conflicts before mutating the model — mirrors Studio's guard
+- [x] Returns: list of packages upgraded with old→new version
 
 ### Shared
-- [ ] All new API client methods added: `getPkgByProjectId`, `getPkgVersion`, `getPkgVersionMeta`
-- [ ] Uses `FastBundler` + `unbundleProjectDependency` from WAB shared code (direct import, not recreated)
-- [ ] All Studio validations reused via import, not reimplemented
-- [ ] Changes are saved via the existing save mechanism (auto-save or explicit `project.save`)
+- [x] All new API client methods added: `getPkgByProjectId`, `getPkgVersion`, `getPkgVersionMeta`, `getAppAuthPubConfig`
+- [x] Uses `FastBundler` + `unbundleProjectDependency` from WAB shared code (direct import, not recreated)
+- [x] Validation logic mirrors Studio's `ProjectDependencyManager` — `canAddDependency` and `ensureCanUpgradeDeps` are reimplemented locally because the Studio versions live in the client-only class (`wab/client/ProjectDependencyManager.ts`), not in `@/wab/shared/*`
+- [x] Changes are saved via the existing save mechanism (auto-save or explicit `project.save`)
 
 ## Happy Path
 

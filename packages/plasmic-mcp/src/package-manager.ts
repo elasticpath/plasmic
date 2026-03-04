@@ -350,6 +350,9 @@ export async function upgradePackage(
     });
   }
 
+  // Pre-flight: check for transitive version conflicts (mirrors Studio's ensureCanUpgradeDeps)
+  ensureCanUpgradeDeps(site, upgradePairs.map((p) => p.newDep));
+
   // Perform atomic upgrade via WAB shared function
   upgradeProjectDeps(site, upgradePairs);
 
@@ -359,6 +362,44 @@ export async function upgradePackage(
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Pre-upgrade conflict detector. Simulates the post-upgrade dependency tree
+ * (substituting new deps for old) and BFS-walks the full transitive graph to
+ * verify no package appears at two different versions.
+ *
+ * Mirrors Studio's `ProjectDependencyManager.ensureCanUpgradeDeps`.
+ */
+function ensureCanUpgradeDeps(site: any, targetDeps: any[]): void {
+  const result: Record<string, any> = {};
+  const directDeps: any[] = site.projectDependencies ?? [];
+
+  // Build the starting queue: substitute new deps where applicable
+  const queue: any[] = directDeps.map((d: any) => {
+    const replacement = targetDeps.find((t: any) => t.pkgId === d.pkgId);
+    return replacement ?? d;
+  });
+
+  while (queue.length > 0) {
+    const dep = queue.shift()!;
+    if (!dep.pkgId) continue;
+
+    if (result[dep.pkgId]) {
+      if (result[dep.pkgId].version !== dep.version) {
+        throw new Error(
+          `Upgrading '${dep.name ?? dep.pkgId}' (${dep.projectId ?? dep.pkgId}) failed due to conflicting dependencies. ` +
+            `${dep.name ?? dep.pkgId} has two conflicting versions: ${dep.version} and ${result[dep.pkgId].version}. ` +
+            `Please reconcile these versions before trying again.`
+        );
+      }
+      continue;
+    }
+
+    result[dep.pkgId] = dep;
+    const transitiveDeps: any[] = dep.site?.projectDependencies ?? [];
+    queue.push(...transitiveDeps);
+  }
+}
 
 /**
  * Validate that a dependency can be added without creating circular deps

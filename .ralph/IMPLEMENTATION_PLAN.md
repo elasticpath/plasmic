@@ -5,29 +5,14 @@ _Last updated: 2026-03-04_
 ## Priority 1 — Hostless Package Management ✓ (P1.1–P1.5 complete, 2026-03-04)
 
 **Branch:** `feat/hostless-package-management`
-**Status:** All complete. 4 new actions (list-packages, add-package, remove-package, upgrade-package) wired into the project tool. Action count: 104 → 108. All 1,778 tests pass (33 files).
+**Status:** All complete. 4 new actions (list-packages, add-package, remove-package, upgrade-package) wired into the project tool. Action count: 104 → 108. All 1,779 tests pass (33 files).
 
----
-
-## Priority 2 — Documentation & Follow-up
-
-### P2.1 — Documentation sync (action counts 104→108) ✓
+### P1.6 — ensureCanUpgradeDeps pre-check ✓
 - **Completed:** 2026-03-04
-- **What:** Updated FEATURE_REFERENCE.md, README.md, and index.ts to reflect the 4 new package management actions (list-packages, add-package, remove-package, upgrade-package) added in P1.4
-- **Files modified:** `packages/plasmic-mcp/FEATURE_REFERENCE.md`, `packages/plasmic-mcp/README.md`, `packages/plasmic-mcp/src/index.ts`
-
----
-
-## Completed Items (previous branch work)
-
-### `project.list` HTTP 500 fix (query param encoding) ✓
-- **Completed:** 2026-03-04
-
-### `packages/plasmic-mcp/FEATURE_REFERENCE.md` ✓
-- **Completed:** 2026-03-04
-
-### `node.update-props` action ✓
-- **Completed:** 2026-03-04
+- **What:** Added `ensureCanUpgradeDeps` pre-flight check to `upgradePackage()` that detects transitive version conflicts before calling `upgradeProjectDeps`. Mirrors Studio's `ProjectDependencyManager.ensureCanUpgradeDeps` BFS-walk logic.
+- **Why:** Without this guard, a batch upgrade that creates transitive version conflicts would mutate the site model before detecting the problem. The guard aborts before any mutation.
+- **Files modified:** `packages/plasmic-mcp/src/package-manager.ts`, `packages/plasmic-mcp/src/__tests__/package-manager.test.ts`
+- **Spec updated:** `.ralph/specs/PROJECT-PACKAGE-MANAGEMENT.md` — all 14 acceptance criteria checked, validation reuse note corrected (client-only class requires local reimplementation)
 
 ---
 

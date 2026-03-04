@@ -453,6 +453,68 @@ describe("package-manager", () => {
       expect(mockUpgradeProjectDeps).not.toHaveBeenCalled();
     });
 
+    it("throws on transitive version conflict after upgrade (ensureCanUpgradeDeps)", async () => {
+      // dep1 transitively depends on shared-pkg at version 1.0.0
+      // dep2's new version transitively depends on shared-pkg at version 2.0.0
+      // This should be caught before upgradeProjectDeps is called
+      const sharedDepV1 = makeMockDep({
+        pkgId: "shared-pkg",
+        version: "1.0.0",
+        name: "Shared",
+        site: { components: [], projectDependencies: [], globalContexts: [], defaultComponents: {}, hostLessPackageInfo: {} },
+      });
+      const sharedDepV2 = makeMockDep({
+        pkgId: "shared-pkg",
+        version: "2.0.0",
+        name: "Shared",
+        site: { components: [], projectDependencies: [], globalContexts: [], defaultComponents: {}, hostLessPackageInfo: {} },
+      });
+
+      const dep1 = makeMockDep({
+        pkgId: "pkg-1",
+        version: "1.0.0",
+        name: "Package 1",
+        site: { components: [], projectDependencies: [sharedDepV1], globalContexts: [], defaultComponents: {}, hostLessPackageInfo: {} },
+      });
+      const dep2 = makeMockDep({
+        pkgId: "pkg-2",
+        version: "1.0.0",
+        name: "Package 2",
+        site: { components: [], projectDependencies: [], globalContexts: [], defaultComponents: {}, hostLessPackageInfo: {} },
+      });
+      mockSession.site.projectDependencies = [dep1, dep2];
+
+      // dep2's new version brings in shared-pkg v2.0.0 (conflicts with dep1's shared-pkg v1.0.0)
+      const newDep2 = makeMockDep({
+        pkgId: "pkg-2",
+        version: "2.0.0",
+        name: "Package 2",
+        site: { components: [], projectDependencies: [sharedDepV2], globalContexts: [], defaultComponents: {}, hostLessPackageInfo: {} },
+      });
+
+      const client = makeMockApiClient({
+        getPkgVersionMeta: vi.fn().mockResolvedValue({
+          pkg: { id: "pv-2", pkgId: "pkg-2", version: "2.0.0" },
+          depPkgs: [],
+        }),
+        getPkgVersion: vi.fn().mockResolvedValue({
+          pkg: { id: "pv-2", pkgId: "pkg-2", version: "2.0.0", model: "{}" },
+          depPkgs: [],
+        }),
+      });
+
+      mockUnbundleProjectDependency.mockReturnValue({
+        projectDependency: newDep2,
+        depPkgs: [],
+      });
+
+      await expect(upgradePackage(client, "pkg-2")).rejects.toThrow(
+        "conflicting dependencies"
+      );
+      // upgradeProjectDeps must NOT be called when conflict is detected
+      expect(mockUpgradeProjectDeps).not.toHaveBeenCalled();
+    });
+
     it("upgrades all outdated packages in batch mode", async () => {
       const dep1 = makeMockDep({ pkgId: "pkg-1", version: "1.0.0", name: "Package 1" });
       const dep2 = makeMockDep({ pkgId: "pkg-2", version: "1.0.0", name: "Package 2" });
