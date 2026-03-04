@@ -44,7 +44,7 @@ const BUILTIN_PATTERNS: PatternDefinition[] = [
       "A full-width section with vertically centred heading (h1), subtitle paragraph, and a primary CTA button, all on a light grey background.",
     customisationKeys: ["headingText", "subtitleText", "ctaLabel"],
     tree: {
-      type: "page-section",
+      type: "vbox",
       tag: "section",
       styles: {
         padding: "80px 20px",
@@ -98,7 +98,7 @@ const BUILTIN_PATTERNS: PatternDefinition[] = [
       "A two-column hero: left column has heading, paragraph, and CTA; right column has a placeholder image. Stacks vertically on narrow viewports via flex-wrap.",
     customisationKeys: ["headingText", "bodyText", "ctaLabel", "imageSrc"],
     tree: {
-      type: "page-section",
+      type: "vbox",
       tag: "section",
       styles: {
         padding: "80px 20px",
@@ -119,7 +119,9 @@ const BUILTIN_PATTERNS: PatternDefinition[] = [
             {
               type: "vbox",
               styles: {
-                flex: "1 1 400px",
+                flexGrow: "1",
+                flexShrink: "1",
+                flexBasis: "400px",
                 gap: "20px",
               },
               children: [
@@ -162,7 +164,9 @@ const BUILTIN_PATTERNS: PatternDefinition[] = [
               type: "img",
               src: "https://placehold.co/600x400",
               styles: {
-                flex: "1 1 400px",
+                flexGrow: "1",
+                flexShrink: "1",
+                flexBasis: "400px",
                 width: "100%",
                 borderRadius: "12px",
                 objectFit: "cover",
@@ -249,7 +253,7 @@ const BUILTIN_PATTERNS: PatternDefinition[] = [
       "A section heading followed by three card-basic instances in a responsive horizontal row (wraps on narrow viewports). Each card has an image, title, body, and link.",
     customisationKeys: ["sectionTitle"],
     tree: {
-      type: "page-section",
+      type: "vbox",
       tag: "section",
       styles: {
         padding: "60px 20px",
@@ -362,7 +366,7 @@ const BUILTIN_PATTERNS: PatternDefinition[] = [
       "A contact form section with a heading, name input, email input, textarea for message, and a submit button, all centred within a max-width container.",
     customisationKeys: ["headingText", "submitLabel"],
     tree: {
-      type: "page-section",
+      type: "vbox",
       tag: "section",
       styles: {
         padding: "60px 20px",
@@ -452,7 +456,7 @@ const BUILTIN_PATTERNS: PatternDefinition[] = [
       "A section with a heading and three feature columns, each containing an emoji icon, a feature title, and a description. Responsive via flex-wrap.",
     customisationKeys: ["sectionTitle"],
     tree: {
-      type: "page-section",
+      type: "vbox",
       tag: "section",
       styles: {
         padding: "60px 20px",
@@ -518,7 +522,7 @@ const BUILTIN_PATTERNS: PatternDefinition[] = [
           children: [
             {
               type: "vbox",
-              styles: { flex: "1 1 200px", gap: "16px" },
+              styles: { flexGrow: "1", flexShrink: "1", flexBasis: "200px", gap: "16px" },
               children: [
                 {
                   type: "text",
@@ -569,7 +573,9 @@ function makeCardInstance(title: string, body: string): PlasmicElement {
   return {
     type: "vbox",
     styles: {
-      flex: "1 1 300px",
+      flexGrow: "1",
+      flexShrink: "1",
+      flexBasis: "300px",
       borderRadius: "12px",
       overflow: "hidden",
       borderWidth: "1px",
@@ -629,7 +635,9 @@ function makeFeatureColumn(
   return {
     type: "vbox",
     styles: {
-      flex: "1 1 300px",
+      flexGrow: "1",
+      flexShrink: "1",
+      flexBasis: "300px",
       padding: "32px",
       backgroundColor: "#ffffff",
       borderRadius: "12px",
@@ -669,7 +677,7 @@ function makeFeatureColumn(
 function makeFooterColumn(title: string, links: string[]): PlasmicElement {
   return {
     type: "vbox",
-    styles: { flex: "1 1 150px", gap: "12px" },
+    styles: { flexGrow: "1", flexShrink: "1", flexBasis: "150px", gap: "12px" },
     children: [
       {
         type: "text",

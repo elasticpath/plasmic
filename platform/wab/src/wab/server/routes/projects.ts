@@ -2905,24 +2905,26 @@ export async function updateProjectData(req: Request, res: Response) {
       }
 
       // TODO: check for cyclic refs and other possible errors
-      const maybeError = elementSchemaToTpl(site, component, compReq.body, {
-        codeComponentsOnly: false,
-      });
+      if (compReq.body != null) {
+        const maybeError = elementSchemaToTpl(site, component, compReq.body, {
+          codeComponentsOnly: false,
+        });
 
-      if (maybeError.result.isError) {
-        throw new BadRequestError(maybeError.result.error.message);
+        if (maybeError.result.isError) {
+          throw new BadRequestError(maybeError.result.error.message);
+        }
+
+        const { tpl, warnings: componentWarnings } = maybeError.result.value;
+        componentWarnings.forEach((err) =>
+          warnings.push({
+            message:
+              err.message + (err.description ? "\n" + err.description : ""),
+          })
+        );
+
+        component.tplTree = tpl;
+        tplMgr.ensureSubtreeCorrectlyNamed(component, component.tplTree);
       }
-
-      const { tpl, warnings: componentWarnings } = maybeError.result.value;
-      componentWarnings.forEach((err) =>
-        warnings.push({
-          message:
-            err.message + (err.description ? "\n" + err.description : ""),
-        })
-      );
-
-      component.tplTree = tpl;
-      tplMgr.ensureSubtreeCorrectlyNamed(component, component.tplTree);
 
       if (!allowUpdate) {
         result.newComponents.push({
