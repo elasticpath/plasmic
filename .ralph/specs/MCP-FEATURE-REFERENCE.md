@@ -241,9 +241,7 @@ Studio features not yet exposed in MCP (as of 2026-03-04):
 
 ### Known Issues
 
-| Issue | Description | Workaround |
-|-------|-------------|------------|
-| `project.list` returns HTTP 500 | The MCP sends `?query=all` but the server's `parseQueryParams` (`util.ts:189`) runs `JSON.parse()` on every query param value, so it expects `?query="all"` (a JSON-encoded string). `JSON.parse("all")` throws `SyntaxError: Unexpected token 'a', "all" is not valid JSON`. Fix: change `api-client.ts:202` to send the value as a JSON-encoded string. | Use a known project ID directly with `project.set`. |
+No known issues. The `project.list` HTTP 500 bug (query param encoding) was fixed — `api-client.ts` now JSON-encodes the query value to match what the server's `parseQueryParams` expects.
 
 All major previously-reported gaps (visibility, interactions, state, rich text, props, mixins, tokens, animations, themes, assets, data queries, variants, splits) have been resolved.
 
