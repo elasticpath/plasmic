@@ -66,14 +66,14 @@ Add to `claude_desktop_config.json`:
 
 ## Tool Reference
 
-The server exposes 8 domain tools following the STRAP pattern (Structured Tool Resource Action Pattern), consolidating 103 actions into a manageable surface:
+The server exposes 8 domain tools following the STRAP pattern (Structured Tool Resource Action Pattern), consolidating 104 actions into a manageable surface:
 
 | Domain | # | Actions | Purpose |
 |--------|---|---------|---------|
 | `project` | 8 | set, list, get-meta, save, refresh, begin-batch, end-batch, undo | Session lifecycle |
 | `inspect` | 8 | tree, summary, node, subtree, export, style-properties, preview-url, page-meta | Read-only queries |
 | `component` | 18 | list, create-page, create, clone, rename, delete, extract, convert-to-page, convert-to-component, update-page-meta, list-props, add-prop, update-prop, remove-prop, list-states, add-state, update-state, remove-state | Component/page lifecycle |
-| `node` | 15 | add, remove, move, clone, reorder, update-styles, update-text, update-rich-text, update-attrs, set-visibility, set-image, apply-mixin, detach-mixin, add-animation, remove-animation | Element mutations |
+| `node` | 16 | add, remove, move, clone, reorder, update-styles, update-text, update-rich-text, update-attrs, update-props, set-visibility, set-image, apply-mixin, detach-mixin, add-animation, remove-animation | Element mutations |
 | `variant` | 12 | list, create-style, create-group, list-global-groups, create-global-group, add-global, remove-global-group, rename-global, create-screen, update-screen, rename, remove | Variant management |
 | `design` | 22 | list-tokens, create-token, update-token, remove-token, duplicate-token, list-mixins, create-mixin, update-mixin, remove-mixin, list-animations, create-animation, update-animation, remove-animation, list-themes, create-theme, update-theme, remove-theme, set-active-theme, list-assets, upload-asset, rename-asset, remove-asset | Design system |
 | `data` | 16 | set-data-cond, set-data-rep, list-queries, add-query, update-query, remove-query, list-data-tokens, create-data-token, update-data-token, remove-data-token, list-splits, create-split, update-split, remove-split, get-code-meta, list-functions | Data bindings |
@@ -436,7 +436,7 @@ Then style the variant:
 
 ## Architecture
 
-- **STRAP pattern** — 8 domain tools consolidate 103 actions, keeping the MCP tool surface manageable for LLMs
+- **STRAP pattern** — 8 domain tools consolidate 104 actions, keeping the MCP tool surface manageable for LLMs
 - **Embedded WAB engine** — editing operations run against Plasmic's own `platform/wab/src/wab/` classes (no separate API calls for edits)
 - **Vitest workspace** — unit tests (mocked WAB) + integration tests (real WAB classes)
 - **Stdio transport** — JSON-RPC over stdin/stdout; all logging goes to stderr

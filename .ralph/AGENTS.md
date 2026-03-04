@@ -21,7 +21,7 @@ cd packages/plasmic-mcp && npm run typecheck      # TypeScript type checking (ts
 - Monorepo: platform/ (apps), packages/ (SDK), plasmicpkgs/ (code components)
 - MCP server source: `packages/plasmic-mcp/src/`
 - Plasmic registry package: `packages/plasmic-mcp-registry/` (tests: `cd packages/plasmic-mcp-registry && npx vitest run`)
-- STRAP architecture: 8 domain tools (project, inspect, component, node, variant, design, data, interaction) consolidating 103 actions
+- STRAP architecture: 8 domain tools (project, inspect, component, node, variant, design, data, interaction) consolidating 104 actions
 - Embedded WAB editing engine from `platform/wab/src/wab/`
 - Claude Code skills in `.claude/commands/` (6 slash commands)
 - Use explicit `git add <files>` — never `git add -A` or `git add .`
