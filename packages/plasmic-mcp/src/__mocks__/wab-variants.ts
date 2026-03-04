@@ -14,6 +14,28 @@ export function ensureVariantSetting(tpl: any, variants: any[]): any {
   return mockEnsureVariantSetting(tpl, variants);
 }
 
+/**
+ * Mock mkVariant: creates a plain duck-typed Variant object.
+ * Mirrors the real mkVariant from @/wab/shared/Variants but without
+ * MobX model classes — suitable for unit tests.
+ */
+let _variantCounter = 0;
+export function mkVariant(opts: {
+  name?: string;
+  codeComponentName?: string;
+  codeComponentVariantKeys?: string[];
+  selectors?: string[];
+}): any {
+  _variantCounter++;
+  return {
+    uuid: `mock-variant-${_variantCounter}-${Date.now()}`,
+    name: opts.name ?? "",
+    codeComponentName: opts.codeComponentName,
+    codeComponentVariantKeys: opts.codeComponentVariantKeys,
+    selectors: opts.selectors,
+  };
+}
+
 export function tryGetVariantSetting(tpl: any, variants: any[]): any | undefined {
   return mockTryGetVariantSetting(tpl, variants);
 }

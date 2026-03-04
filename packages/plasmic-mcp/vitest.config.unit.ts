@@ -73,6 +73,13 @@ export default defineConfig({
         find: /^@\/wab\/shared\/core\/components$/,
         replacement: path.resolve(__dirname, "src/__mocks__/wab-components"),
       },
+      {
+        find: /^@\/wab\/shared\/code-components\/code-components$/,
+        replacement: path.resolve(
+          __dirname,
+          "src/__mocks__/wab-code-components"
+        ),
+      },
     ],
     extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
   },

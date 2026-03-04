@@ -46,6 +46,10 @@ export interface LoadedModel {
   hostlessDataVersion: number;
   /** Dev host URL from project settings (undefined if not configured). */
   hostUrl?: string;
+  /** Authoritative bundle version from the server API (e.g. "256-wrap-page-meta-og-image-in-ref").
+   *  Fetched via /api/v1/latest-bundle-version, matching Studio's appCtx.lastBundleVersion.
+   *  Must be passed to bundler.bundle() for full saves. */
+  bundleVersion: string;
 }
 
 /**
@@ -74,6 +78,13 @@ export async function loadProject(
   const hostlessDataVersion = response.hostlessDataVersion ?? 0;
   // Dev host URL: prefer project settings, fall back to env var (spec requirement)
   const hostUrl = response.project?.hostUrl ?? process.env.PLASMIC_DEV_HOST_URL;
+
+  // Fetch the authoritative bundle version from the server API, exactly like
+  // Studio does (root-view.tsx → api.getLastBundleVersion() → appCtx.lastBundleVersion).
+  // We NEVER trust the bundle's own version field because it may be stale or missing
+  // (e.g. if a previous save wrote version: undefined due to the missing-arg bug).
+  const bundleVersion = await apiClient.getLastBundleVersion();
+  console.error(`[plasmic-mcp] Bundle version from server: ${bundleVersion}`);
 
   const bundler = new FastBundler(meta, classesModule);
 
@@ -115,7 +126,7 @@ export async function loadProject(
     `[plasmic-mcp] Project loaded: ${componentCount} components`
   );
 
-  return { site, bundler, projectName, revisionNum, modelVersion, hostlessDataVersion, hostUrl };
+  return { site, bundler, projectName, revisionNum, modelVersion, hostlessDataVersion, hostUrl, bundleVersion };
 }
 
 /**
@@ -129,7 +140,7 @@ function narrowToSite(obj: unknown): any {
     return obj;
   }
   if (classesModule.ProjectDependency.isKnown(obj)) {
-    return obj.site;
+    return (obj as any).site;
   }
   throw new Error(
     "Unbundled object is neither a Site nor a ProjectDependency. " +

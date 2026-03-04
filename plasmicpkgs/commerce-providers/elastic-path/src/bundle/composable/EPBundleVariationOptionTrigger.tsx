@@ -33,7 +33,7 @@ export const epBundleVariationOptionTriggerMeta: ComponentMeta<EPBundleVariation
           {
             type: "component",
             name: "plasmic-commerce-ep-bundle-variation-field",
-            props: { field: "name" },
+            props: { field: "optionLabel" },
           },
         ],
       },
@@ -50,6 +50,12 @@ export const epBundleVariationOptionTriggerMeta: ComponentMeta<EPBundleVariation
     importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
     importName: "EPBundleVariationOptionTrigger",
     parentComponentName: "plasmic-commerce-ep-bundle-variation-option-list",
+    variants: {
+      selected: {
+        cssSelector: "[data-selected]",
+        displayName: "Selected",
+      },
+    },
   };
 
 export function EPBundleVariationOptionTrigger(

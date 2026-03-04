@@ -231,6 +231,20 @@ export class PlasmicApiClient {
   }
 
   /**
+   * Fetch the latest bundle version from the server.
+   * Matches Studio's SharedApi.getLastBundleVersion().
+   * This is the authoritative version that must be used when calling
+   * bundler.bundle() for full saves.
+   */
+  async getLastBundleVersion(): Promise<string> {
+    const result = await this.request<{ latestBundleVersion: string }>(
+      "GET",
+      "/api/v1/latest-bundle-version"
+    );
+    return result.latestBundleVersion;
+  }
+
+  /**
    * Save an incremental or full revision to the Plasmic server.
    * URL: POST /api/v1/projects/{projectId}/revisions/{revisionNum}
    *

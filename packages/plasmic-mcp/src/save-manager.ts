@@ -127,9 +127,12 @@ export class SaveManager {
       revisionNum,
       modelVersion,
       hostlessDataVersion,
+      bundleVersion,
     } = session;
 
-    const bundle = bundler.bundle(site, projectId);
+    // Pass bundleVersion (from server API) to bundler.bundle(), matching
+    // Studio's StudioCtx.bundleChanges() which passes appCtx.lastBundleVersion.
+    const bundle = bundler.bundle(site, projectId, bundleVersion);
     const newRevisionNum = revisionNum + 1;
 
     // Validate site invariants before saving (matches Studio's StudioCtx.trySave())

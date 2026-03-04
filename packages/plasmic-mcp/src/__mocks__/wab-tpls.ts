@@ -4,6 +4,14 @@
 
 import { vi } from "vitest";
 
+export const TplTagType = {
+  Text: "text",
+  Image: "image",
+  Columns: "columns",
+  Column: "column",
+  Other: "other",
+};
+
 export const mockMkTplTagX = vi.fn();
 export const mockMkTplInlinedText = vi.fn();
 export const mockMkTplComponentX = vi.fn();

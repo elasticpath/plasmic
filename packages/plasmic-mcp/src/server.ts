@@ -31,7 +31,7 @@ import { PlasmicApiClient } from "./api-client.js";
 import { getAuth } from "./auth.js";
 import { requireSession, setSession } from "./session.js";
 import { loadProject } from "./model-loader.js";
-import { syncFromDevHost, clearRegistryCache } from "./devhost-sync.js";
+import { syncFromDevHost, clearRegistryCache, recordVariantMetadataSync } from "./devhost-sync.js";
 import {
   readComponentTree,
   readComponentSummary,
@@ -135,6 +135,80 @@ import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-mana
 import { SaveManager } from "./save-manager.js";
 import { undoChanges } from "@/wab/shared/core/undo-util";
 import type { TreeReadOptions } from "./types.js";
+
+// ---------------------------------------------------------------------------
+// PlasmicElement schema — strict top level, z.any() for recursive children.
+//
+// Flat discriminated union so MCP clients emit valid JSON Schema without
+// $defs/$ref (which Claude Desktop, Gemini CLI, n8n, etc. drop or reject).
+// The description on `children` tells LLMs to use the same shape recursively.
+// ---------------------------------------------------------------------------
+
+const plasmicElementChildren = z.any().optional().describe(
+  "Nested PlasmicElement(s) — same format as the parent element. " +
+  "Single element object or array of elements."
+);
+
+const plasmicElementStyles = z.record(z.string()).optional().describe(
+  "CSS styles in camelCase, e.g. {fontSize:'16px', color:'#333'}"
+);
+
+const plasmicElementAttrs = z.record(z.any()).optional().describe(
+  "HTML attributes, e.g. {id:'hero', 'aria-label':'Main section'}"
+);
+
+const PlasmicElementSchema = z.union([
+  z.string().describe("Plain text string — creates an inline text node"),
+  z.object({
+    type: z.literal("text"),
+    value: z.string().describe("Text content to display"),
+    tag: z.string().optional().describe("HTML tag: h1, h2, h3, p, span, div (default: div)"),
+    styles: plasmicElementStyles,
+    attrs: plasmicElementAttrs,
+  }).describe("Text element"),
+  z.object({
+    type: z.enum(["box", "vbox", "hbox", "page-section"]),
+    children: plasmicElementChildren,
+    tag: z.string().optional().describe("HTML tag: div, section, nav, header, footer, main, article, aside, ul, ol, li (default: div)"),
+    styles: plasmicElementStyles,
+    attrs: plasmicElementAttrs,
+  }).describe("Container element — vbox for vertical, hbox for horizontal, box for free layout"),
+  z.object({
+    type: z.literal("img"),
+    src: z.string().default("").describe("Image URL (omit to set later via set-image)"),
+    styles: plasmicElementStyles,
+    attrs: plasmicElementAttrs,
+  }).describe("Image element"),
+  z.object({
+    type: z.literal("button"),
+    value: z.string().optional().describe("Button label text"),
+    styles: plasmicElementStyles,
+    attrs: plasmicElementAttrs,
+  }).describe("Button element"),
+  z.object({
+    type: z.enum(["input", "password", "textarea"]),
+    styles: plasmicElementStyles,
+    attrs: plasmicElementAttrs,
+  }).describe("Form input element"),
+  z.object({
+    type: z.literal("component"),
+    name: z.string().describe("Component name as shown in Studio"),
+    props: z.record(z.any()).optional().describe("Component prop values"),
+    styles: plasmicElementStyles,
+    children: plasmicElementChildren,
+  }).describe("Code component or Plasmic component instance"),
+  z.object({
+    type: z.literal("default-component"),
+    kind: z.string().describe("Default component kind"),
+    props: z.record(z.any()).optional().describe("Component prop values"),
+    styles: plasmicElementStyles,
+    children: plasmicElementChildren,
+  }).describe("Built-in default component instance"),
+]).describe(
+  "PlasmicElement — the building block for page/component trees. " +
+  "Use type:'text' with value:'...' for text, type:'vbox' for vertical stacks, " +
+  "type:'component' with name:'...' for component instances."
+);
 
 /**
  * Validate that a required parameter is present for a given action.
@@ -270,6 +344,7 @@ export function createServer(): McpServer {
               modelVersion,
               hostlessDataVersion,
               hostUrl,
+              bundleVersion,
             } = await loadProject(apiClient, pid);
 
             // Sync code component variants from the dev host (non-fatal)
@@ -283,6 +358,7 @@ export function createServer(): McpServer {
               revisionNum,
               modelVersion,
               hostlessDataVersion,
+              bundleVersion,
               projectUuid: pid,
               hostUrl,
               devHostSynced: syncResult.devHostSynced,
@@ -292,6 +368,25 @@ export function createServer(): McpServer {
 
             // Initialize change tracking for incremental saves (M2)
             initChangeTracker(site);
+
+            // Phase 2: Persist variant metadata inside change tracker so it's
+            // included in the save delta (codeComponentMeta.variants with cssSelector).
+            if (syncResult.registryData) {
+              const variantComponents = syncResult.registryData.components.filter(
+                (c) => c.variants && Object.keys(c.variants).length > 0
+              );
+              if (variantComponents.length > 0) {
+                const tracker = getChangeTracker();
+                const changes = tracker.withRecording(() => {
+                  recordVariantMetadataSync(site, variantComponents);
+                });
+                if (changes.changes.length > 0) {
+                  const saveManager = new SaveManager(apiClient);
+                  await saveManager.saveChanges(changes);
+                  console.error("[plasmic-mcp] Persisted variant metadata to server");
+                }
+              }
+            }
 
             const components = site.components ?? [];
             const pages = components.filter((c: any) => c.pageMeta?.path);
@@ -305,11 +400,13 @@ export function createServer(): McpServer {
                     projectName,
                     componentCount: components.length,
                     pageCount: pages.length,
+                    hostUrl: hostUrl ?? null,
+                    devHostSynced: syncResult.devHostSynced,
                     ...(syncResult.devHostSynced && {
-                      devHostSynced: true,
                       syncedVariantComponents: syncResult.syncedVariantComponents,
                       ...(syncResult.registryData && {
                         devHostRegistry: {
+                          componentCount: syncResult.registryData.components?.length ?? 0,
                           contextCount: syncResult.registryData.contexts?.length ?? 0,
                           functionCount: syncResult.registryData.functions?.length ?? 0,
                           tokenCount: syncResult.registryData.tokens?.length ?? 0,
@@ -445,6 +542,7 @@ export function createServer(): McpServer {
               modelVersion,
               hostlessDataVersion,
               hostUrl,
+              bundleVersion,
             } = await loadProject(apiClient, session.projectId);
 
             // Clear registry cache to force fresh fetch on explicit refresh
@@ -461,6 +559,7 @@ export function createServer(): McpServer {
               revisionNum,
               modelVersion,
               hostlessDataVersion,
+              bundleVersion,
               projectUuid: session.projectId,
               hostUrl,
               devHostSynced: syncResult.devHostSynced,
@@ -470,6 +569,24 @@ export function createServer(): McpServer {
 
             // Re-initialize change tracking
             initChangeTracker(site);
+
+            // Phase 2: Persist variant metadata inside change tracker
+            if (syncResult.registryData) {
+              const variantComponents = syncResult.registryData.components.filter(
+                (c) => c.variants && Object.keys(c.variants).length > 0
+              );
+              if (variantComponents.length > 0) {
+                const tracker = getChangeTracker();
+                const changes = tracker.withRecording(() => {
+                  recordVariantMetadataSync(site, variantComponents);
+                });
+                if (changes.changes.length > 0) {
+                  const saveManager = new SaveManager(apiClient);
+                  await saveManager.saveChanges(changes);
+                  console.error("[plasmic-mcp] Persisted variant metadata to server");
+                }
+              }
+            }
 
             const components = site.components ?? [];
             const pages = components.filter((c: any) => c.pageMeta?.path);
@@ -1123,7 +1240,7 @@ export function createServer(): McpServer {
       componentUuid: z.string().optional().describe("UUID of the component"),
       name: z.string().optional().describe("Name for create/rename/add-prop/add-state actions"),
       path: z.string().optional().describe("URL path for pages"),
-      body: z.any().optional().describe("PlasmicElement JSON tree for create-page/create"),
+      body: PlasmicElementSchema.optional().describe("PlasmicElement JSON tree for create-page/create"),
       sourceUuid: z.string().optional().describe("UUID of source for clone"),
       newName: z.string().optional().describe("New name for rename"),
       newPath: z.string().optional().describe("New URL path for rename"),
@@ -1194,6 +1311,7 @@ export function createServer(): McpServer {
                 modelVersion: newModelVersion,
                 hostlessDataVersion: newHostlessDataVersion,
                 hostUrl: reloadedHostUrl,
+                bundleVersion: newBundleVersion,
               } = await loadProject(apiClient, session.projectId);
 
               // Re-sync code component variants from the dev host (non-fatal)
@@ -1207,6 +1325,7 @@ export function createServer(): McpServer {
                 revisionNum: newRevisionNum,
                 modelVersion: newModelVersion,
                 hostlessDataVersion: newHostlessDataVersion,
+                bundleVersion: newBundleVersion,
                 projectUuid: session.projectId,
                 hostUrl: reloadedHostUrl,
                 devHostSynced: syncResult.devHostSynced,
@@ -1289,6 +1408,7 @@ export function createServer(): McpServer {
                 modelVersion: newModelVersion,
                 hostlessDataVersion: newHostlessDataVersion,
                 hostUrl: reloadedHostUrl,
+                bundleVersion: newBundleVersion,
               } = await loadProject(apiClient, session.projectId);
 
               // Re-sync code component variants from the dev host (non-fatal)
@@ -1302,6 +1422,7 @@ export function createServer(): McpServer {
                 revisionNum: newRevisionNum,
                 modelVersion: newModelVersion,
                 hostlessDataVersion: newHostlessDataVersion,
+                bundleVersion: newBundleVersion,
                 projectUuid: session.projectId,
                 hostUrl: reloadedHostUrl,
                 devHostSynced: syncResult.devHostSynced,
@@ -1409,6 +1530,7 @@ export function createServer(): McpServer {
                 modelVersion: newModelVersion,
                 hostlessDataVersion: newHostlessDataVersion,
                 hostUrl: reloadedHostUrl,
+                bundleVersion: newBundleVersion,
               } = await loadProject(apiClient, session.projectId);
 
               // Re-sync code component variants from the dev host (non-fatal)
@@ -1422,6 +1544,7 @@ export function createServer(): McpServer {
                 revisionNum: newRevisionNum,
                 modelVersion: newModelVersion,
                 hostlessDataVersion: newHostlessDataVersion,
+                bundleVersion: newBundleVersion,
                 projectUuid: session.projectId,
                 hostUrl: reloadedHostUrl,
                 devHostSynced: syncResult.devHostSynced,
@@ -2202,7 +2325,7 @@ export function createServer(): McpServer {
       nodeRef: z.string().optional().describe("Node reference: UUID, name, path, or index"),
       parentRef: z.string().optional().describe("Parent node reference (for add, reorder, clone)"),
       newParentRef: z.string().optional().describe("New parent reference (for move)"),
-      child: z.any().optional().describe("PlasmicElement JSON for add action"),
+      child: PlasmicElementSchema.optional().describe("PlasmicElement JSON for add action"),
       position: z.union([z.string(), z.number()]).optional().describe("Insert position: 'first', 'last', or index"),
       slot: z.string().optional().describe("Target slot name on component instance"),
       newName: z.string().optional().describe("Name for cloned node"),

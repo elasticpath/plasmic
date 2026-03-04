@@ -47,6 +47,17 @@ export const isKnownState = (obj: any): boolean =>
 export const isKnownNamedState = (obj: any): boolean =>
   obj?._type === "NamedState";
 
+/** Mock constructor for CodeComponentVariantMeta — registered variant metadata. */
+export class CodeComponentVariantMeta {
+  _type = "CodeComponentVariantMeta";
+  cssSelector: string;
+  displayName: string;
+  constructor(args: { cssSelector: string; displayName: string }) {
+    this.cssSelector = args.cssSelector;
+    this.displayName = args.displayName;
+  }
+}
+
 /** Mock constructors for model classes used by edit-tools.ts */
 export class RawText {
   _type = "RawText";

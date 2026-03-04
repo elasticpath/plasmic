@@ -4,9 +4,14 @@ import registerComponent, {
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../../registerable";
-import { MOCK_BUNDLE_VARIATIONS, MockBundleVariation } from "./design-time-data";
+import {
+  MOCK_BUNDLE_VARIATIONS,
+  MOCK_BUNDLE_VARIATION_OPTIONS,
+  MockBundleVariation,
+  MockBundleVariationOption,
+} from "./design-time-data";
 
-type BundleVariationFieldName = "name" | "optionCount";
+type BundleVariationFieldName = "name" | "optionCount" | "optionLabel";
 
 type PreviewState = "auto" | "withData";
 
@@ -28,6 +33,7 @@ export const epBundleVariationFieldMeta: ComponentMeta<EPBundleVariationFieldPro
         options: [
           { label: "Name", value: "name" },
           { label: "Option Count", value: "optionCount" },
+          { label: "Option Label", value: "optionLabel" },
         ],
         defaultValue: "name",
         displayName: "Field",
@@ -53,19 +59,25 @@ export function EPBundleVariationField(props: EPBundleVariationFieldProps) {
   const currentVariation = useSelector("currentBundleVariation") as
     | MockBundleVariation
     | undefined;
+  const currentOption = useSelector("currentBundleVariationOption") as
+    | MockBundleVariationOption
+    | undefined;
   const inEditor = !!usePlasmicCanvasContext();
 
   const useMock =
     previewState === "withData" || (!currentVariation && inEditor);
 
   const data = useMock ? MOCK_BUNDLE_VARIATIONS[0] : currentVariation;
-  if (!data) return null;
+  if (!data && field !== "optionLabel") return null;
 
   let value: any;
-  if (field === "optionCount") {
-    value = data.values?.length ?? 0;
+  if (field === "optionLabel") {
+    const optData = useMock ? MOCK_BUNDLE_VARIATION_OPTIONS[0] : currentOption;
+    value = optData?.label;
+  } else if (field === "optionCount") {
+    value = data!.values?.length ?? 0;
   } else {
-    value = data[field];
+    value = data![field];
   }
 
   return <span className={className}>{value ?? ""}</span>;

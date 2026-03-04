@@ -556,6 +556,7 @@ declare module "@/wab/shared/model/classes" {
   /** Model class for CodeComponentVariantMeta — registered variant metadata from code components.
    *  Comes from ComponentMeta.variants in code component registration. */
   export class CodeComponentVariantMeta {
+    constructor(args: { cssSelector: string; displayName: string });
     cssSelector: string;
     displayName: string;
   }

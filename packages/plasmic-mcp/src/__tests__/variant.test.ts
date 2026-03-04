@@ -621,10 +621,15 @@ describe("edit-tools", () => {
 
       const result = listVariants(site, comp);
 
-      expect(result.codeComponentVariants).toHaveLength(1);
+      // Should have the stale variant (invalid) + the registered "selected" meta (uninstantiated)
+      expect(result.codeComponentVariants).toHaveLength(2);
       expect(result.codeComponentVariants[0].invalid).toBe(true);
       expect(result.codeComponentVariants[0].key).toBe("oldkey");
       expect(result.codeComponentVariants[0].displayName).toBe("oldkey");
+      // The registered "selected" variant meta is also listed as uninstantiated
+      expect(result.codeComponentVariants[1].key).toBe("selected");
+      expect(result.codeComponentVariants[1].uuid).toBe("uninstantiated-selected");
+      expect(result.codeComponentVariants[1].invalid).toBeUndefined();
     });
 
     it("returns empty codeComponentVariants when root is not a code component", () => {

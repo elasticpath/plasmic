@@ -17,6 +17,8 @@ import {
   ensureVariantObjects,
   syncFromDevHost,
   clearRegistryCache,
+  deepEqualVariants,
+  recordVariantMetadataSync,
 } from "../devhost-sync";
 
 // Suppress console.error in tests
@@ -351,7 +353,7 @@ describe("syncVariantMetadata", () => {
     ]);
 
     expect(synced).toEqual(["EPButton$dev"]);
-    expect(cc.codeComponentMeta.variants).toEqual({
+    expect(cc.codeComponentMeta.variants).toMatchObject({
       selected: { cssSelector: "[data-selected]", displayName: "Selected" },
     });
   });
@@ -387,7 +389,7 @@ describe("syncVariantMetadata", () => {
     ]);
 
     expect(synced).toEqual(["EPButton$dev"]);
-    expect(cc.codeComponentMeta.variants).toEqual({
+    expect(cc.codeComponentMeta.variants).toMatchObject({
       hovered: { cssSelector: ":hover", displayName: "Hovered" },
     });
   });
@@ -423,7 +425,7 @@ describe("syncVariantMetadata", () => {
       },
     ]);
 
-    expect(cc.codeComponentMeta.variants).toEqual({
+    expect(cc.codeComponentMeta.variants).toMatchObject({
       new: { cssSelector: ".new", displayName: "New" },
     });
     expect(cc.codeComponentMeta.variants).not.toHaveProperty("old");
@@ -479,7 +481,7 @@ describe("syncVariantMetadata", () => {
     expect(synced).toEqual(["BrokenComp$dev"]);
     // The good variant is synced, malformed ones are skipped
     expect(cc.codeComponentMeta.variants).toHaveProperty("good");
-    expect(cc.codeComponentMeta.variants.good).toEqual({
+    expect(cc.codeComponentMeta.variants.good).toMatchObject({
       cssSelector: ".good",
       displayName: "Good",
     });
@@ -676,7 +678,7 @@ describe("syncFromDevHost", () => {
     expect(result.syncedVariantComponents).toEqual([]);
   });
 
-  it("full sync flow: fetch → filter → sync metadata → create variants", async () => {
+  it("full sync flow: fetch → filter → sync metadata (no eager variant creation)", async () => {
     const cc = mkCodeComponent("EPButton$dev");
     const wrapper = mkWrapperComponent("Button Card", cc);
     const site = mkSite([cc, wrapper]);
@@ -706,14 +708,15 @@ describe("syncFromDevHost", () => {
     expect(result.devHostSynced).toBe(true);
     expect(result.syncedVariantComponents).toEqual(["EPButton$dev"]);
 
-    // Variant metadata populated
-    expect(cc.codeComponentMeta.variants).toEqual({
-      selected: { cssSelector: "[data-selected]", displayName: "Selected" },
-    });
+    // syncFromDevHost does NOT write variant metadata to the model.
+    // That's done by recordVariantMetadataSync inside a recording context
+    // so the changes are tracked for incremental saves.
+    expect(cc.codeComponentMeta.variants).toEqual({});
 
-    // Variant object created on wrapper
-    expect(wrapper.variants).toHaveLength(2);
-    expect(wrapper.variants[1].codeComponentVariantKeys).toEqual(["selected"]);
+    // Variant objects are NOT eagerly created on wrappers during sync.
+    // They are created on-demand inside ChangeRecorder.withRecording()
+    // when a tool handler (e.g. update-styles) references them.
+    expect(wrapper.variants).toHaveLength(1); // only base variant
   });
 
   it("includes registryData in result when sync succeeds", async () => {
@@ -793,5 +796,212 @@ describe("syncFromDevHost", () => {
     const result = await syncFromDevHost(site, undefined);
 
     expect(result.registryData).toBeUndefined();
+  });
+});
+
+// --- deepEqualVariants tests ---
+
+describe("deepEqualVariants", () => {
+  it("returns true for identical metadata", () => {
+    const a = { selected: { cssSelector: "[data-selected]", displayName: "Selected" } };
+    const b = { selected: { cssSelector: "[data-selected]", displayName: "Selected" } };
+    expect(deepEqualVariants(a, b)).toBe(true);
+  });
+
+  it("returns false when cssSelector differs", () => {
+    const a = { selected: { cssSelector: "[data-selected]", displayName: "Selected" } };
+    const b = { selected: { cssSelector: "[data-active]", displayName: "Selected" } };
+    expect(deepEqualVariants(a, b)).toBe(false);
+  });
+
+  it("returns false when displayName differs", () => {
+    const a = { selected: { cssSelector: "[data-selected]", displayName: "Selected" } };
+    const b = { selected: { cssSelector: "[data-selected]", displayName: "Active" } };
+    expect(deepEqualVariants(a, b)).toBe(false);
+  });
+
+  it("returns false when keys differ", () => {
+    const a = { selected: { cssSelector: "[data-selected]", displayName: "Selected" } };
+    const b = { active: { cssSelector: "[data-selected]", displayName: "Selected" } };
+    expect(deepEqualVariants(a, b)).toBe(false);
+  });
+
+  it("returns false when key counts differ", () => {
+    const a = { selected: { cssSelector: "[data-selected]", displayName: "Selected" } };
+    const b = {
+      selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+      disabled: { cssSelector: ":disabled", displayName: "Disabled" },
+    };
+    expect(deepEqualVariants(a, b)).toBe(false);
+  });
+
+  it("returns true for empty maps", () => {
+    expect(deepEqualVariants({}, {})).toBe(true);
+  });
+
+  it("returns true when a is undefined and b is empty", () => {
+    expect(deepEqualVariants(undefined, {})).toBe(true);
+  });
+
+  it("returns false when a is undefined and b has entries", () => {
+    expect(deepEqualVariants(undefined, { x: { cssSelector: ".x", displayName: "X" } })).toBe(false);
+  });
+
+  it("handles multiple keys in sorted order", () => {
+    const a = {
+      disabled: { cssSelector: ":disabled", displayName: "Disabled" },
+      selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+    };
+    const b = {
+      selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+      disabled: { cssSelector: ":disabled", displayName: "Disabled" },
+    };
+    expect(deepEqualVariants(a, b)).toBe(true);
+  });
+});
+
+// --- recordVariantMetadataSync tests ---
+
+describe("recordVariantMetadataSync", () => {
+  it("writes metadata when it differs from current", () => {
+    const cc = mkCodeComponent("EPButton$dev");
+    const site = mkSite([cc]);
+
+    const updated = recordVariantMetadataSync(site, [
+      {
+        name: "EPButton$dev",
+        variants: {
+          selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+        },
+      },
+    ]);
+
+    expect(updated).toEqual(["EPButton$dev"]);
+    expect(cc.codeComponentMeta.variants).toMatchObject({
+      selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+    });
+  });
+
+  it("skips write when metadata is already identical", () => {
+    const cc = mkCodeComponent("EPButton$dev", {
+      selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+    });
+    const site = mkSite([cc]);
+
+    // Store reference to check it wasn't replaced
+    const originalVariants = cc.codeComponentMeta.variants;
+
+    const updated = recordVariantMetadataSync(site, [
+      {
+        name: "EPButton$dev",
+        variants: {
+          selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+        },
+      },
+    ]);
+
+    expect(updated).toEqual([]);
+    // Same object reference — no write occurred
+    expect(cc.codeComponentMeta.variants).toBe(originalVariants);
+  });
+
+  it("writes when cssSelector changed", () => {
+    const cc = mkCodeComponent("EPButton$dev", {
+      selected: { cssSelector: ".old-selector", displayName: "Selected" },
+    });
+    const site = mkSite([cc]);
+
+    const updated = recordVariantMetadataSync(site, [
+      {
+        name: "EPButton$dev",
+        variants: {
+          selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+        },
+      },
+    ]);
+
+    expect(updated).toEqual(["EPButton$dev"]);
+    expect(cc.codeComponentMeta.variants.selected.cssSelector).toBe("[data-selected]");
+  });
+
+  it("writes when new variant key added", () => {
+    const cc = mkCodeComponent("EPButton$dev", {
+      selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+    });
+    const site = mkSite([cc]);
+
+    const updated = recordVariantMetadataSync(site, [
+      {
+        name: "EPButton$dev",
+        variants: {
+          selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+          disabled: { cssSelector: ":disabled", displayName: "Disabled" },
+        },
+      },
+    ]);
+
+    expect(updated).toEqual(["EPButton$dev"]);
+  });
+
+  it("handles $dev suffix matching", () => {
+    const cc = mkCodeComponent("EPButton$dev");
+    const site = mkSite([cc]);
+
+    const updated = recordVariantMetadataSync(site, [
+      {
+        name: "EPButton",
+        variants: {
+          selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+        },
+      },
+    ]);
+
+    expect(updated).toEqual(["EPButton$dev"]);
+  });
+
+  it("skips components not in site model", () => {
+    const site = mkSite([]);
+
+    const updated = recordVariantMetadataSync(site, [
+      {
+        name: "NonExistent",
+        variants: {
+          selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+        },
+      },
+    ]);
+
+    expect(updated).toEqual([]);
+  });
+
+  it("skips components without variants", () => {
+    const cc = mkCodeComponent("EPButton$dev");
+    const site = mkSite([cc]);
+
+    const updated = recordVariantMetadataSync(site, [
+      { name: "EPButton$dev" },
+      { name: "EPButton$dev", variants: {} },
+    ]);
+
+    expect(updated).toEqual([]);
+  });
+
+  it("handles malformed variant entries (non-object values)", () => {
+    const cc = mkCodeComponent("BrokenComp$dev");
+    const site = mkSite([cc]);
+
+    const updated = recordVariantMetadataSync(site, [
+      {
+        name: "BrokenComp$dev",
+        variants: {
+          good: { cssSelector: ".good", displayName: "Good" },
+          bad: "not-an-object" as any,
+        },
+      },
+    ]);
+
+    expect(updated).toEqual(["BrokenComp$dev"]);
+    expect(cc.codeComponentMeta.variants).toHaveProperty("good");
+    expect(cc.codeComponentMeta.variants).not.toHaveProperty("bad");
   });
 });

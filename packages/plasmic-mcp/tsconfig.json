@@ -8,14 +8,7 @@
     "strict": true,
     "skipLibCheck": true,
     "types": ["node", "lodash"],
-    "esModuleInterop": true,
-    "baseUrl": ".",
-    "paths": {
-      "@/wab/shared/*": ["../../platform/wab/src/wab/shared/*"],
-      "@/wab/gen/*": ["../../platform/wab/src/wab/gen/*"],
-      "@/wab/commons/*": ["../../platform/wab/src/wab/commons/*"],
-      "@/wab/client/*": ["../../platform/wab/src/wab/client/*"]
-    }
+    "esModuleInterop": true
   },
   "include": ["src/**/*.ts"],
   "exclude": ["src/__tests__", "src/__mocks__"],

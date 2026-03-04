@@ -86,9 +86,10 @@ import {
 } from "@/wab/shared/model/classes";
 import { RSH } from "@/wab/shared/RuleSetHelpers";
 import { TplMgr } from "@/wab/shared/TplMgr";
-import { ensureVariantSetting } from "@/wab/shared/Variants";
-import { mkTplTagX, mkTplInlinedText, mkTplComponentX, clone as cloneTpl } from "@/wab/shared/core/tpls";
+import { ensureVariantSetting, mkVariant } from "@/wab/shared/Variants";
+import { mkTplTagX, mkTplInlinedText, mkTplComponentX, clone as cloneTpl, TplTagType } from "@/wab/shared/core/tpls";
 import { flattenTpls } from "@/wab/shared/core/tpls";
+import { elementSchemaToTpl as studioElementSchemaToTpl } from "@/wab/shared/code-components/code-components";
 import { requireSession } from "./session.js";
 import { getChangeTracker } from "./change-tracker.js";
 import type { RecordedChanges } from "./change-tracker.js";
@@ -111,66 +112,8 @@ import {
 import type { StyleTokenType } from "./types.js";
 import type { RegistryComponent } from "./devhost-sync.js";
 
-// --- Tag Validation ---
-
-/** Valid HTML tags for container elements (box, vbox, hbox, page-section). */
-const CONTAINER_TAGS = new Set([
-  "div", "section", "article", "nav", "header", "footer",
-  "aside", "main", "ul", "ol", "li", "form", "fieldset",
-]);
-
-/** Valid HTML tags for text elements. */
-const TEXT_TAGS = new Set([
-  "div", "p", "span", "h1", "h2", "h3", "h4", "h5", "h6",
-  "label", "a", "blockquote", "pre", "code",
-]);
-
 /** Tags that are always rejected for security reasons. */
 const UNSAFE_TAGS = new Set(["script", "style", "iframe"]);
-
-/**
- * Validate and return the HTML tag for a container element.
- * If no tag is specified, returns "div".
- * Throws if the tag is unsafe or not in the allowed list.
- */
-function validateContainerTag(tag: string | undefined): string {
-  if (!tag) return "div";
-  if (UNSAFE_TAGS.has(tag)) {
-    throw new Error(
-      `Tag "${tag}" is not allowed (unsafe). ` +
-      `Allowed container tags: ${[...CONTAINER_TAGS].join(", ")}`
-    );
-  }
-  if (!CONTAINER_TAGS.has(tag)) {
-    throw new Error(
-      `Invalid tag "${tag}" for container element. ` +
-      `Allowed tags: ${[...CONTAINER_TAGS].join(", ")}`
-    );
-  }
-  return tag;
-}
-
-/**
- * Validate and return the HTML tag for a text element.
- * If no tag is specified, returns "div".
- * Throws if the tag is unsafe or not in the allowed list.
- */
-function validateTextTag(tag: string | undefined): string {
-  if (!tag) return "div";
-  if (UNSAFE_TAGS.has(tag)) {
-    throw new Error(
-      `Tag "${tag}" is not allowed (unsafe). ` +
-      `Allowed text tags: ${[...TEXT_TAGS].join(", ")}`
-    );
-  }
-  if (!TEXT_TAGS.has(tag)) {
-    throw new Error(
-      `Invalid tag "${tag}" for text element. ` +
-      `Allowed tags: ${[...TEXT_TAGS].join(", ")}`
-    );
-  }
-  return tag;
-}
 
 // --- Attribute Validation ---
 
@@ -1141,9 +1084,15 @@ function isCodeComponentVariant(variant: any): boolean {
 function getCodeComponentVariantMetas(
   component: any
 ): Record<string, { cssSelector: string; displayName: string }> | null {
+  // Path 1: Component IS a code component — read variants directly
+  if (component.codeComponentMeta?.variants) {
+    const metas = component.codeComponentMeta.variants;
+    if (typeof metas === "object" && Object.keys(metas).length > 0)
+      return metas;
+  }
+
+  // Path 2: Wrapper component (tplTree root is TplComponent wrapping a code component)
   const tplTree = component.tplTree;
-  // Root must be a TplComponent (wrapping a code component)
-  // Use typeTag (real WAB instances) with _type fallback (duck-typed mocks)
   const tag = tplTree?.typeTag ?? tplTree?._type;
   if (!tplTree || tag !== "TplComponent") return null;
 
@@ -1268,6 +1217,32 @@ export function resolveVariant(site: any, component: any, variantStr: string): a
           if (ccMetas[key]?.displayName?.toLowerCase() === lowerName) {
             return v;
           }
+        }
+      }
+    }
+
+    // Auto-create Variant object if the key/displayName matches a registered meta
+    // but no Variant instance exists yet (mirrors Studio's on-demand creation).
+    // IMPORTANT: This must be called inside a ChangeRecorder.withRecording()
+    // block so that the new Variant is captured as a newInst and tracked by
+    // the FastBundler for incremental saves.
+    const codeCompName = component.codeComponentMeta
+      ? component.name
+      : component.tplTree?.component?.name;
+    if (codeCompName) {
+      for (const [key, meta] of Object.entries(ccMetas)) {
+        if (
+          key.toLowerCase() === lowerName ||
+          (meta as any).displayName?.toLowerCase() === lowerName
+        ) {
+          const variant = mkVariant({
+            name: "",
+            codeComponentName: codeCompName,
+            codeComponentVariantKeys: [key],
+          });
+          if (!component.variants) component.variants = [];
+          component.variants.push(variant);
+          return variant;
         }
       }
     }
@@ -1449,6 +1424,23 @@ export function listVariants(site: any, component: any): ListVariantsResult {
     }
   }
 
+  // Also include registered variant metas that don't have Variant objects yet.
+  // These are "available" variants from the code component registry.
+  if (ccMetas) {
+    const existingKeys = new Set(codeComponentVariants.map((v) => v.key));
+    for (const [key, meta] of Object.entries(ccMetas)) {
+      if (!existingKeys.has(key)) {
+        codeComponentVariants.push({
+          uuid: `uninstantiated-${key}`,
+          key,
+          displayName: meta.displayName ?? key,
+          cssSelector: meta.cssSelector ?? "",
+          codeComponentName: component.name,
+        });
+      }
+    }
+  }
+
   return { globalVariants, componentVariants, styleVariants, codeComponentVariants };
 }
 
@@ -1523,15 +1515,17 @@ export async function updateText(
     );
   }
 
-  // Resolve target variant (null = base)
-  const resolvedVariant = variant
-    ? resolveVariant(session.site, component, variant)
-    : null;
-
   const tracker = getChangeTracker();
   let previousText: string | undefined;
 
+  let resolvedVariant: any = null;
   const changes = tracker.withRecording(() => {
+    // Resolve inside withRecording so auto-created CC Variant instances
+    // are captured as newInsts by the ChangeRecorder.
+    resolvedVariant = variant
+      ? resolveVariant(session.site, component, variant)
+      : null;
+
     // Get or create the VariantSetting for the target variant.
     // ensureVariantSetting must be inside withRecording because it may
     // create a new VariantSetting (pushing to tpl.vsettings).
@@ -1545,6 +1539,12 @@ export async function updateText(
     } else if (vs.text && isKnownExprText(vs.text)) {
       const expr = vs.text.expr;
       previousText = expr?.code ?? "[dynamic]";
+    }
+
+    // Ensure the node is typed as text if converting from a non-text node.
+    // Without this, Studio renders "free box" instead of the text content.
+    if (!hasText) {
+      tpl.type = TplTagType.Text;
     }
 
     if (dynamic) {
@@ -1676,20 +1676,27 @@ export async function updateRichText(
       );
     }
 
-    const resolvedVariant = variant
-      ? resolveVariant(session.site, component, variant)
-      : null;
-
     const tracker = getChangeTracker();
     let previousText: string | undefined;
 
+    let resolvedVariant: any = null;
     const changes = tracker.withRecording(() => {
+      resolvedVariant = variant
+        ? resolveVariant(session.site, component, variant)
+        : null;
+
       const vs = resolvedVariant
         ? ensureVariantSetting(tpl, [resolvedVariant])
         : baseVs;
 
       if (vs.text && isKnownRawText(vs.text)) {
         previousText = vs.text.text;
+      }
+
+      // Ensure the node is typed as text (same fix as updateText).
+      // Without this, Studio renders "free box" instead of the text content.
+      if (!hasText) {
+        tpl.type = TplTagType.Text;
       }
 
       vs.text = new RawText({ text, markers: [] });
@@ -1772,14 +1779,15 @@ export async function updateRichText(
   // All parent-level markers
   const allParentMarkers = [...wabNodeMarkers, ...parentStyleMarkers];
 
-  const resolvedVariant = variant
-    ? resolveVariant(session.site, component, variant)
-    : null;
-
   const tracker = getChangeTracker();
   let previousText: string | undefined;
 
+  let resolvedVariant: any = null;
   const changes = tracker.withRecording(() => {
+    resolvedVariant = variant
+      ? resolveVariant(session.site, component, variant)
+      : null;
+
     const vs = resolvedVariant
       ? ensureVariantSetting(tpl, [resolvedVariant])
       : baseVs;
@@ -2140,11 +2148,6 @@ export async function updateStyles(
   const session = requireSession();
   const tplMgr = new TplMgr({ site: session.site });
 
-  // Resolve target variant (null = base)
-  const resolvedVariant = variant
-    ? resolveVariant(session.site, component, variant)
-    : null;
-
   const tracker = getChangeTracker();
   // Resolve token references (token:Name → var(--token-<uuid>)) before
   // shorthand expansion so expanded longhands inherit the var() value.
@@ -2153,7 +2156,15 @@ export async function updateStyles(
   validateStyleProperties(sanitized);
   const updatedProperties = Object.keys(sanitized);
 
+  // resolveVariant is inside withRecording so that auto-created code
+  // component Variant instances (via mkVariant) are captured as newInsts
+  // by the ChangeRecorder, making them visible to fastBundle().
+  let resolvedVariant: any = null;
   const changes = tracker.withRecording(() => {
+    resolvedVariant = variant
+      ? resolveVariant(session.site, component, variant)
+      : null;
+
     // Get or create the VariantSetting for the target variant.
     // ensureVariantSetting must be inside withRecording because it may
     // create a new VariantSetting (pushing to tpl.vsettings).
@@ -2228,11 +2239,6 @@ export async function updateAttrs(
   const session = requireSession();
   const tplMgr = new TplMgr({ site: session.site });
 
-  // Resolve target variant (null = base)
-  const resolvedVariant = variant
-    ? resolveVariant(session.site, component, variant)
-    : null;
-
   // Validate all attribute names before making any changes
   const updatedAttributes: string[] = [];
   const removedAttributes: string[] = [];
@@ -2250,7 +2256,12 @@ export async function updateAttrs(
 
   const tracker = getChangeTracker();
 
+  let resolvedVariant: any = null;
   const changes = tracker.withRecording(() => {
+    resolvedVariant = variant
+      ? resolveVariant(session.site, component, variant)
+      : null;
+
     const vs = resolvedVariant
       ? ensureVariantSetting(tpl, [resolvedVariant])
       : tplMgr.ensureBaseVariantSetting(tpl);
@@ -2324,329 +2335,195 @@ function findRegistryComponent(
 }
 
 /**
+ * Normalize a PlasmicElement from MCP input to match Studio's expected schema.
+ *
+ * LLMs commonly send property names that differ from the canonical PlasmicElement
+ * types in packages/host/src/element-types.ts.  This function bridges the gap:
+ *
+ * - `text` → `value` for text/button elements (LLMs use "text" because the
+ *   node tool's update-text action also uses a "text" parameter)
+ * - `type: "tag"` → `type: "box"` for backward compatibility with older prompts
+ *
+ * Applied recursively so nested children are also normalized.
+ */
+function normalizePlasmicElement(element: PlasmicElement): PlasmicElement {
+  if (typeof element === "string") return element;
+
+  const el = element as any;
+
+  // Map type: "tag" → type: "box" for backward compatibility
+  if (el.type === "tag") {
+    el.type = "box";
+  }
+
+  // Reject unsafe HTML tags
+  if (el.tag && UNSAFE_TAGS.has(el.tag.toLowerCase())) {
+    throw new Error(
+      `Tag "${el.tag}" is not allowed for security reasons. ` +
+        `Unsafe tags: ${[...UNSAFE_TAGS].join(", ")}`
+    );
+  }
+
+  // Map text → value for text/button elements
+  if (
+    (el.type === "text" || el.type === "button") &&
+    el.text !== undefined &&
+    el.value === undefined
+  ) {
+    el.value = el.text;
+    delete el.text;
+  }
+
+  // Recursively normalize children
+  if (el.children) {
+    const children = Array.isArray(el.children) ? el.children : [el.children];
+    el.children = children.map((c: PlasmicElement) =>
+      normalizePlasmicElement(c)
+    );
+  }
+
+  return element;
+}
+
+/**
  * Convert a PlasmicElement JSON tree to a live Tpl node.
  *
- * Creates TplTag nodes for HTML primitives (div, text, img, button, input)
- * and TplComponent nodes for component references ({ type: "component" }).
+ * Delegates to Studio's elementSchemaToTpl which correctly handles all
+ * element types: text (with tag & value), box/vbox/hbox, img, button,
+ * input, component, default-component.
  *
- * Uses mkTplTagX/mkTplComponentX for node creation with the base variant
- * passed directly (since newly created nodes aren't attached to a component
- * yet, TplMgr can't determine their owning component for variant lookup).
- *
- * This approach avoids elementSchemaToTpl which pulls in 30+ dependencies.
+ * After Studio creates the base tree, applies MCP-specific enrichments
+ * from the dev host registry (defaultStyles, default slot content) to
+ * any TplComponent nodes in the tree.
  */
 function plasmicElementToTpl(
   element: PlasmicElement,
-  tplMgr: TplMgr,
+  site: any,
   baseVariant: any,
   registryComponents?: RegistryComponent[]
 ): any {
-  // String elements become text nodes
-  if (typeof element === "string") {
-    return mkTplInlinedText(element, [baseVariant], "div", { baseVariant });
+  element = normalizePlasmicElement(element);
+
+  const result = studioElementSchemaToTpl(site, undefined, element, {
+    codeComponentsOnly: false,
+    baseVariant,
+  });
+
+  if (result.result.isError) {
+    throw new Error(result.result.error.message);
   }
 
-  // Component types create TplComponent nodes, not TplTag nodes.
-  // Resolved by name or UUID from the site model (local + dependency components).
-  if (element.type === "component" || element.type === "default-component") {
-    const componentRef = element.type === "component"
-      ? (element as ComponentElement).name
-      : (element as DefaultComponentElement).kind;
+  const { tpl, warnings } = result.result.value;
 
-    const targetComponent = findComponentByNameOrUuid(componentRef);
-
-    // Convert children to TplNodes for the component's default slot
-    const childElements = "children" in element && element.children
-      ? Array.isArray(element.children)
-        ? element.children
-        : [element.children]
-      : [];
-
-    const childTpls = childElements.map((child) =>
-      plasmicElementToTpl(child, tplMgr, baseVariant, registryComponents)
-    );
-
-    // Convert props to args dict for mkTplComponentX.
-    // Each prop value is wrapped in a CustomCode expression (same as codeLit).
-    // Slot params are rejected — use the "children" field for slot content.
-    const propsField = "props" in element ? element.props : undefined;
-    let args: Record<string, any> | undefined;
-    if (propsField && Object.keys(propsField).length > 0) {
-      args = {};
-      const componentParams: any[] = targetComponent.params ?? [];
-      const paramByName = new Map<string, any>();
-      for (const p of componentParams) {
-        if (p.variable?.name) {
-          paramByName.set(p.variable.name, p);
-        }
-      }
-
-      for (const [key, value] of Object.entries(propsField)) {
-        const param = paramByName.get(key);
-        if (!param) {
-          const available = [...paramByName.keys()].sort().join(", ");
-          throw new Error(
-            `Unknown prop "${key}" on component "${targetComponent.name}". ` +
-            `Available params: ${available || "(none)"}`
-          );
-        }
-        // Slot params must use the "children" field, not "props"
-        if (param.tplSlot) {
-          throw new Error(
-            `Prop "${key}" is a slot on component "${targetComponent.name}". ` +
-            `Use the "children" field to pass slot content instead.`
-          );
-        }
-        // Convert value to CustomCode expression (same as WAB's codeLit).
-        // JSON.stringify returns undefined for functions/symbols; guard against that.
-        const serialized = JSON.stringify(value);
-        if (serialized === undefined) {
-          throw new Error(
-            `Prop "${key}" on component "${targetComponent.name}" has a ` +
-            `non-serializable value (${typeof value}).`
-          );
-        }
-        const code = value === undefined ? "undefined" : serialized;
-        args[key] = new CustomCode({ code, fallback: null });
-      }
-    }
-
-    const tpl = mkTplComponentX({
-      component: targetComponent,
-      baseVariant,
-      ...(childTpls.length > 0 ? { children: childTpls } : {}),
-      ...(args ? { args } : {}),
-    });
-
-    // Apply registry enrichments from dev host if available.
-    // Code components register metadata (defaultStyles, slot defaultValues)
-    // that should be applied to new instances so they render correctly.
-    if (registryComponents) {
-      const regComp = findRegistryComponent(registryComponents, targetComponent.name);
-
-      // 1. Apply defaultStyles (e.g., width, padding, display).
-      if (regComp?.defaultStyles && typeof regComp.defaultStyles === "object") {
-        try {
-          const vs = tplMgr.ensureBaseVariantSetting(tpl);
-          const rsh = RSH(vs.rs, tpl);
-          rsh.merge(sanitizeStyles(regComp.defaultStyles));
-        } catch (e) {
-          // Non-fatal: log and continue without default styles
-          console.error(
-            `[plasmic-mcp] Warning: Could not apply defaultStyles for "${targetComponent.name}":`,
-            e
-          );
-        }
-      }
-
-      // 2. Populate default slot content from registry props[slotName].defaultValue.
-      // When a code component registers slot props with defaultValue (PlasmicElement
-      // trees), those defaults are populated for slots that don't already have
-      // explicit content from the user. This ensures components like Accordion
-      // render with meaningful placeholder content out of the box.
-      if (regComp?.props && typeof regComp.props === "object") {
-        const componentParams: any[] = targetComponent.params ?? [];
-
-        for (const [propName, propMeta] of Object.entries(
-          regComp.props as Record<string, any>
-        )) {
-          if (propMeta?.type !== "slot" || propMeta?.defaultValue == null) continue;
-
-          // Find matching slot param on the WAB component model
-          const slotParam = componentParams.find(
-            (p: any) => p.tplSlot && p.variable?.name === propName
-          );
-          if (!slotParam) continue;
-
-          try {
-            const vs = tplMgr.ensureBaseVariantSetting(tpl);
-
-            // Skip if slot already has content (from explicit children or args)
-            const existingArg = (vs.args ?? []).find(
-              (a: any) =>
-                a.param === slotParam ||
-                a.param?.variable?.name === propName
-            );
-            if (existingArg) continue;
-
-            // Normalize defaultValue to array of PlasmicElements
-            const rawDefaults = Array.isArray(propMeta.defaultValue)
-              ? propMeta.defaultValue
-              : [propMeta.defaultValue];
-
-            // Filter to valid PlasmicElements (strings or objects with type field)
-            const validElements = rawDefaults.filter(
-              (elt: unknown) =>
-                typeof elt === "string" ||
-                (typeof elt === "object" && elt !== null && "type" in elt)
-            );
-            if (validElements.length === 0) continue;
-
-            // Convert each PlasmicElement to a TplNode recursively
-            const defaultTpls = validElements.map((elt: PlasmicElement) =>
-              plasmicElementToTpl(elt, tplMgr, baseVariant, registryComponents)
-            );
-
-            // Wire into the TplComponent as a slot arg
-            const renderExpr = new RenderExpr({ tpl: defaultTpls });
-            const newArg = new Arg({ param: slotParam, expr: renderExpr });
-            if (!vs.args) {
-              vs.args = [];
-            }
-            vs.args.push(newArg);
-
-            // Set parent pointers for tree traversal
-            for (const child of defaultTpls) {
-              child.parent = tpl;
-            }
-          } catch (e) {
-            // Non-fatal: log and continue without this slot's defaults
-            console.error(
-              `[plasmic-mcp] Warning: Could not populate default slot content ` +
-                `for "${targetComponent.name}.${propName}":`,
-              e
-            );
-          }
-        }
-      }
-    }
-
-    return tpl;
+  for (const w of warnings) {
+    console.error(`[plasmic-mcp] Warning: ${w.message}`);
   }
 
-  // Map element type to HTML tag, with validation for custom tags
-  let tag: string;
-  switch (element.type) {
-    case "box":
-    case "vbox":
-    case "hbox":
-    case "page-section":
-      tag = validateContainerTag(element.tag);
-      break;
-    case "text":
-      tag = validateTextTag(element.tag);
-      break;
-    case "img":
-      tag = "img";
-      break;
-    case "button":
-      tag = "button";
-      break;
-    case "input":
-    case "password":
-    case "textarea":
-      tag = element.type === "textarea" ? "textarea" : "input";
-      break;
-    default:
-      tag = "div";
-      break;
-  }
-
-  // Text-bearing elements: use mkTplInlinedText (same as Studio)
-  const textValue = (element.type === "text" || element.type === "button")
-    ? element.value
-    : undefined;
-
-  if (textValue !== undefined) {
-    const tpl = mkTplInlinedText(textValue, [baseVariant], tag, { baseVariant });
-    const vs = tpl.vsettings[0];
-
-    // Apply explicit styles
-    if ("styles" in element && element.styles) {
-      const rsh = RSH(vs.rs, tpl);
-      rsh.merge(sanitizeStyles(element.styles));
-    }
-
-    // Process HTML attributes from element.attrs
-    if ("attrs" in element && element.attrs && typeof element.attrs === "object") {
-      if (!vs.attrs) {vs.attrs = {};}
-      for (const [key, value] of Object.entries(element.attrs as Record<string, unknown>)) {
-        const validation = isValidAttrName(key);
-        if (!validation.valid) {
-          throw new Error(validation.reason!);
-        }
-        if (value !== null && value !== undefined) {
-          vs.attrs[key] = createAttrExpr(value);
-        }
-      }
-    }
-
-    return tpl;
-  }
-
-  // Container elements: build children recursively
-  const childElements = "children" in element && element.children
-    ? Array.isArray(element.children)
-      ? element.children
-      : [element.children]
-    : [];
-
-  const childTpls = childElements.map((child) =>
-    plasmicElementToTpl(child, tplMgr, baseVariant, registryComponents)
-  );
-
-  const tpl = mkTplTagX(tag, { baseVariant, styles: {} }, ...childTpls);
-
-  // Set parent pointers for children (mkTplTagX leaves them as null).
-  // Required so Studio's $$$(tpl).root() can traverse up to the component root.
-  for (const child of childTpls) {
-    child.parent = tpl;
-  }
-
-  // Access the base variant setting created by mkTplTagX
-  const vs = tpl.vsettings[0];
-
-  // Apply layout styles for container types
-  if (element.type === "vbox") {
-    const rsh = RSH(vs.rs, tpl);
-    rsh.merge({ display: "flex", flexDirection: "column" });
-  } else if (element.type === "hbox") {
-    const rsh = RSH(vs.rs, tpl);
-    rsh.merge({ display: "flex", flexDirection: "row" });
-  }
-
-  // Apply explicit styles
-  if ("styles" in element && element.styles) {
-    const rsh = RSH(vs.rs, tpl);
-    rsh.merge(sanitizeStyles(element.styles));
-  }
-
-  // Set image src
-  if (element.type === "img" && "src" in element) {
-    if (!vs.attrs) {vs.attrs = {};}
-    vs.attrs.src = new CustomCode({
-      code: JSON.stringify(element.src),
-      fallback: null,
-    });
-  }
-
-  // Auto-set type="password" for password inputs
-  if (element.type === "password") {
-    if (!vs.attrs) {vs.attrs = {};}
-    // Only set if not already explicitly provided via attrs
-    if (!vs.attrs.type) {
-      vs.attrs.type = new CustomCode({
-        code: JSON.stringify("password"),
-        fallback: null,
-      });
-    }
-  }
-
-  // Process HTML attributes from element.attrs
-  if ("attrs" in element && element.attrs && typeof element.attrs === "object") {
-    if (!vs.attrs) {vs.attrs = {};}
-    for (const [key, value] of Object.entries(element.attrs as Record<string, unknown>)) {
-      const validation = isValidAttrName(key);
-      if (!validation.valid) {
-        throw new Error(validation.reason!);
-      }
-      if (value !== null && value !== undefined) {
-        vs.attrs[key] = createAttrExpr(value);
+  // Apply MCP-specific registry enrichments to TplComponent nodes.
+  // Studio's elementSchemaToTpl doesn't know about dev host registry
+  // metadata (defaultStyles, default slot content).
+  if (registryComponents) {
+    const allNodes = flattenTpls(tpl);
+    for (const node of allNodes) {
+      if (isKnownTplComponent(node)) {
+        applyRegistryEnrichments(node, site, baseVariant, registryComponents);
       }
     }
   }
 
   return tpl;
+}
+
+/**
+ * Apply dev host registry enrichments to a TplComponent instance.
+ * Adds defaultStyles and populates empty slots with default content.
+ */
+function applyRegistryEnrichments(
+  tpl: any,
+  site: any,
+  baseVariant: any,
+  registryComponents: RegistryComponent[]
+): void {
+  const targetComponent = tpl.component;
+  if (!targetComponent?.name) return;
+
+  const regComp = findRegistryComponent(registryComponents, targetComponent.name);
+  if (!regComp) return;
+
+  const tplMgr = new TplMgr({ site });
+
+  // 1. Apply defaultStyles (e.g., width, padding, display).
+  if (regComp?.defaultStyles && typeof regComp.defaultStyles === "object") {
+    try {
+      const vs = tplMgr.ensureBaseVariantSetting(tpl);
+      const rsh = RSH(vs.rs, tpl);
+      rsh.merge(sanitizeStyles(regComp.defaultStyles));
+    } catch (e) {
+      console.error(
+        `[plasmic-mcp] Warning: Could not apply defaultStyles for "${targetComponent.name}":`,
+        e
+      );
+    }
+  }
+
+  // 2. Populate default slot content from registry props[slotName].defaultValue.
+  if (regComp?.props && typeof regComp.props === "object") {
+    const componentParams: any[] = targetComponent.params ?? [];
+
+    for (const [propName, propMeta] of Object.entries(
+      regComp.props as Record<string, any>
+    )) {
+      if (propMeta?.type !== "slot" || propMeta?.defaultValue == null) continue;
+
+      const slotParam = componentParams.find(
+        (p: any) => p.tplSlot && p.variable?.name === propName
+      );
+      if (!slotParam) continue;
+
+      try {
+        const vs = tplMgr.ensureBaseVariantSetting(tpl);
+
+        const existingArg = (vs.args ?? []).find(
+          (a: any) =>
+            a.param === slotParam ||
+            a.param?.variable?.name === propName
+        );
+        if (existingArg) continue;
+
+        const rawDefaults = Array.isArray(propMeta.defaultValue)
+          ? propMeta.defaultValue
+          : [propMeta.defaultValue];
+
+        const validElements = rawDefaults.filter(
+          (elt: unknown) =>
+            typeof elt === "string" ||
+            (typeof elt === "object" && elt !== null && "type" in elt)
+        );
+        if (validElements.length === 0) continue;
+
+        const defaultTpls = validElements.map((elt: PlasmicElement) =>
+          plasmicElementToTpl(elt, site, baseVariant, registryComponents)
+        );
+
+        const renderExpr = new RenderExpr({ tpl: defaultTpls });
+        const newArg = new Arg({ param: slotParam, expr: renderExpr });
+        if (!vs.args) {
+          vs.args = [];
+        }
+        vs.args.push(newArg);
+
+        for (const child of defaultTpls) {
+          child.parent = tpl;
+        }
+      } catch (e) {
+        console.error(
+          `[plasmic-mcp] Warning: Could not populate default slot content ` +
+            `for "${targetComponent.name}.${propName}":`,
+          e
+        );
+      }
+    }
+  }
 }
 
 /**
@@ -2766,7 +2643,7 @@ export async function addChild(
     let newTpl: any;
 
     const changes = tracker.withRecording(() => {
-      newTpl = plasmicElementToTpl(child, tplMgr, baseVariant, registryComponents);
+      newTpl = plasmicElementToTpl(child, session.site, baseVariant, registryComponents);
 
       if (slotArg) {
         // Slot already has a RenderExpr — insert into its tpl array
@@ -2835,7 +2712,7 @@ export async function addChild(
   let newTpl: any;
 
   const changes = tracker.withRecording(() => {
-    newTpl = plasmicElementToTpl(child, tplMgr, baseVariant, registryComponents);
+    newTpl = plasmicElementToTpl(child, session.site, baseVariant, registryComponents);
     insertChild(parent, newTpl, position);
   });
 
@@ -3884,14 +3761,16 @@ export async function setVisibility(
 
   const session = requireSession();
   const tplMgr = new TplMgr({ site: session.site });
-  const resolvedVariant = variant
-    ? resolveVariant(session.site, component, variant)
-    : null;
 
   const tracker = getChangeTracker();
   let previousVisibility = "visible";
 
+  let resolvedVariant: any = null;
   const changes = tracker.withRecording(() => {
+    resolvedVariant = variant
+      ? resolveVariant(session.site, component, variant)
+      : null;
+
     const vs = resolvedVariant
       ? ensureVariantSetting(tpl, [resolvedVariant])
       : tplMgr.ensureBaseVariantSetting(tpl);
@@ -4005,14 +3884,16 @@ export async function setDataCond(
 
   const session = requireSession();
   const tplMgr = new TplMgr({ site: session.site });
-  const resolvedVariant = variant
-    ? resolveVariant(session.site, component, variant)
-    : null;
 
   const tracker = getChangeTracker();
   let previousCondition: string | null = null;
 
+  let resolvedVariant: any = null;
   const changes = tracker.withRecording(() => {
+    resolvedVariant = variant
+      ? resolveVariant(session.site, component, variant)
+      : null;
+
     const vs = resolvedVariant
       ? ensureVariantSetting(tpl, [resolvedVariant])
       : tplMgr.ensureBaseVariantSetting(tpl);
@@ -4108,14 +3989,16 @@ export async function setDataRep(
 
   const session = requireSession();
   const tplMgr = new TplMgr({ site: session.site });
-  const resolvedVariant = variant
-    ? resolveVariant(session.site, component, variant)
-    : null;
 
   const tracker = getChangeTracker();
   let previousDataRep: DataRepInfo | null = null;
 
+  let resolvedVariant: any = null;
   const changes = tracker.withRecording(() => {
+    resolvedVariant = variant
+      ? resolveVariant(session.site, component, variant)
+      : null;
+
     const vs = resolvedVariant
       ? ensureVariantSetting(tpl, [resolvedVariant])
       : tplMgr.ensureBaseVariantSetting(tpl);
@@ -8472,11 +8355,6 @@ export async function setImage(
   const tplMgr = new TplMgr({ site: session.site });
   const tracker = getChangeTracker();
 
-  // Resolve target variant (null = base)
-  const resolvedVariant = variant
-    ? resolveVariant(session.site, component, variant)
-    : null;
-
   const tag = resolved.node.tag;
   const isImgTag = tag === "img";
   let imageSource = "";
@@ -8490,7 +8368,12 @@ export async function setImage(
     imageSource = opts.src!;
   }
 
+  let resolvedVariant: any = null;
   const changes = tracker.withRecording(() => {
+    resolvedVariant = variant
+      ? resolveVariant(session.site, component, variant)
+      : null;
+
     const vs = resolvedVariant
       ? ensureVariantSetting(resolved.node, [resolvedVariant])
       : tplMgr.ensureBaseVariantSetting(resolved.node);

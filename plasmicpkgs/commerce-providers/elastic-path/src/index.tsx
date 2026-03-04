@@ -28,6 +28,7 @@ import { registerEPBundleComponentField } from "./bundle/composable/EPBundleComp
 import { registerEPBundleOptionList } from "./bundle/composable/EPBundleOptionList";
 import { registerEPBundleOptionField } from "./bundle/composable/EPBundleOptionField";
 import { registerEPBundleOptionTrigger } from "./bundle/composable/EPBundleOptionTrigger";
+import { registerEPBundleSelectionIndicator } from "./bundle/composable/EPBundleSelectionIndicator";
 import { registerEPBundleOptionQuantityControl } from "./bundle/composable/EPBundleOptionQuantityControl";
 import { registerEPBundleOptionQuantityButton } from "./bundle/composable/EPBundleOptionQuantityButton";
 import { registerEPBundlePriceField } from "./bundle/composable/EPBundlePriceField";
@@ -89,6 +90,7 @@ export function registerAll(loader?: Registerable) {
   // Register field/leaf components first so they're available as default slot content
   registerEPBundleComponentField(loader);
   registerEPBundleOptionField(loader);
+  registerEPBundleSelectionIndicator(loader);
   registerEPBundleOptionQuantityButton(loader);
   registerEPBundleVariationField(loader);
   registerEPBundleVariationOptionTrigger(loader);

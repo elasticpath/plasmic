@@ -44,8 +44,9 @@ import {
   mockAddAnimation,
   mockReorderChildren,
 } from "../__mocks__/wab-tpl-mgr";
-import { mockMkTplTagX, mockMkTplInlinedText, mockMkTplComponentX } from "../__mocks__/wab-tpls";
+import { mockMkTplTagX, mockMkTplInlinedText, mockMkTplComponentX, TplTagType } from "../__mocks__/wab-tpls";
 import { mockEnsureVariantSetting } from "../__mocks__/wab-variants";
+import { mockElementSchemaToTpl } from "../__mocks__/wab-code-components";
 import type { PlasmicApiClient } from "../api-client";
 import type { Session } from "../session";
 
@@ -886,6 +887,47 @@ describe("edit-tools", () => {
       expect(node.vsettings[0].text.text).toBe("Brand new text");
     });
 
+    it("sets TplTagType.Text when converting a non-text node to text", async () => {
+      // Empty node (no text, no children) — acts as a "free box"
+      const node = mkTag({ uuid: "node-1", name: "EmptyBox" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      // Before: node has no type set (defaults to "other" in real Plasmic)
+      expect(node.type).toBeUndefined();
+
+      await updateText(api, "comp-1", "EmptyBox", "Hello World");
+
+      // After: node.type should be set to TplTagType.Text so Studio renders text, not "free box"
+      expect(node.type).toBe(TplTagType.Text);
+      expect(node.vsettings[0].text._type).toBe("RawText");
+      expect(node.vsettings[0].text.text).toBe("Hello World");
+    });
+
+    it("does not change type when updating existing text node", async () => {
+      const textNode = mkTag({
+        uuid: "text-1",
+        name: "Title",
+        text: "Old text",
+      });
+      // Simulate an existing text node with type already set
+      textNode.type = TplTagType.Text;
+      const root = mkTag({ uuid: "root-1", children: [textNode] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      await updateText(api, "comp-1", "Title", "New text");
+
+      // Type should remain Text (not changed)
+      expect(textNode.type).toBe(TplTagType.Text);
+      expect(textNode.vsettings[0].text.text).toBe("New text");
+    });
+
     it("rejects update on a container node", async () => {
       const child = mkTag({ uuid: "child-1" });
       const container = mkTag({
@@ -1257,9 +1299,11 @@ describe("edit-tools", () => {
       const root = mkTag({ uuid: "root-1", children: [container] });
       const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
-      // Text elements use mkTplInlinedText, not mkTplTagX
+      // Studio's elementSchemaToTpl returns a failable with a tpl
       const newTpl = mkTag({ uuid: "new-child-1", tag: "div" });
-      mockMkTplInlinedText.mockReturnValue(newTpl);
+      mockElementSchemaToTpl.mockReturnValue({
+        result: { isError: false, value: { tpl: newTpl, warnings: [] } },
+      });
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -1295,7 +1339,9 @@ describe("edit-tools", () => {
       const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
       const newTpl = mkTag({ uuid: "new-child-1" });
-      mockMkTplTagX.mockReturnValue(newTpl);
+      mockElementSchemaToTpl.mockReturnValue({
+        result: { isError: false, value: { tpl: newTpl, warnings: [] } },
+      });
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -1329,7 +1375,9 @@ describe("edit-tools", () => {
       const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
       const newTpl = mkTag({ uuid: "new-child-1" });
-      mockMkTplTagX.mockReturnValue(newTpl);
+      mockElementSchemaToTpl.mockReturnValue({
+        result: { isError: false, value: { tpl: newTpl, warnings: [] } },
+      });
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -1363,13 +1411,15 @@ describe("edit-tools", () => {
       ).rejects.toThrow("text element and cannot have children");
     });
 
-    it("calls mkTplTagX with correct tag for element types", async () => {
+    it("delegates element creation to Studio's elementSchemaToTpl", async () => {
       const container = mkTag({ uuid: "container-1", name: "Section" });
       const root = mkTag({ uuid: "root-1", children: [container] });
       const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
       const newTpl = mkTag({ uuid: "new-1" });
-      mockMkTplTagX.mockReturnValue(newTpl);
+      mockElementSchemaToTpl.mockReturnValue({
+        result: { isError: false, value: { tpl: newTpl, warnings: [] } },
+      });
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -1379,24 +1429,27 @@ describe("edit-tools", () => {
 
       setupSession(comp);
 
-      await addChild(api, "comp-1", "Section", {
-        type: "img",
-        src: "https://example.com/img.png",
-      });
+      const schema = { type: "text", value: "Hello", tag: "h1" };
+      await addChild(api, "comp-1", "Section", schema as any);
 
-      expect(mockMkTplTagX).toHaveBeenCalledWith(
-        "img",
-        { baseVariant: undefined, styles: {} }
+      // Verify Studio's function was called with the element schema
+      expect(mockElementSchemaToTpl).toHaveBeenCalledWith(
+        expect.anything(), // site
+        undefined, // component (not used for self-ref detection)
+        schema,
+        expect.objectContaining({ codeComponentsOnly: false })
       );
+      expect(container.children).toContain(newTpl);
     });
 
-    it("auto-sets type='password' attribute for password element type", async () => {
+    it("throws when Studio's elementSchemaToTpl returns an error", async () => {
       const container = mkTag({ uuid: "container-1", name: "Section" });
       const root = mkTag({ uuid: "root-1", children: [container] });
       const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
-      const newTpl = mkTag({ uuid: "new-pwd-1" });
-      mockMkTplTagX.mockReturnValue(newTpl);
+      mockElementSchemaToTpl.mockReturnValue({
+        result: { isError: true, error: { message: "Bad schema" } },
+      });
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -1406,56 +1459,124 @@ describe("edit-tools", () => {
 
       setupSession(comp);
 
-      await addChild(api, "comp-1", "Section", {
-        type: "password",
-      });
-
-      // Should be an input tag
-      expect(mockMkTplTagX).toHaveBeenCalledWith(
-        "input",
-        { baseVariant: undefined, styles: {} }
-      );
-
-      // type="password" should be auto-set on the variant setting's attrs
-      const vs = newTpl.vsettings[0];
-      expect(vs.attrs).toBeDefined();
-      expect(vs.attrs.type).toBeDefined();
-      expect(vs.attrs.type._type).toBe("CustomCode");
-      expect(vs.attrs.type.code).toBe('"password"');
+      await expect(
+        addChild(api, "comp-1", "Section", { type: "text", value: "x" })
+      ).rejects.toThrow("Bad schema");
     });
+  });
 
-    it("does not override explicit type attr on password element", async () => {
-      const container = mkTag({ uuid: "container-1", name: "Section" });
+  // --- add-child input normalization ---
+
+  describe("addChild input normalization", () => {
+    it("normalizes text property to value for type:text elements", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section", children: [] });
       const root = mkTag({ uuid: "root-1", children: [container] });
       const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
-      const newTpl = mkTag({ uuid: "new-pwd-2" });
-      mockMkTplTagX.mockReturnValue(newTpl);
+      const newTpl = mkTag({ uuid: "new-1", tag: "div" });
+      mockElementSchemaToTpl.mockReturnValue({
+        result: { isError: false, value: { tpl: newTpl, warnings: [] } },
+      });
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
         }
         return tpl.vsettings[0];
       });
+      setupSession(comp);
 
+      // Pass "text" (not "value") — normalization should map it to "value"
+      await addChild(api, "comp-1", "Section", { type: "text", text: "Hello" } as any);
+
+      // elementSchemaToTpl should receive element with value, not text
+      const passedElement = mockElementSchemaToTpl.mock.calls[0][2];
+      expect(passedElement.value).toBe("Hello");
+      expect(passedElement.text).toBeUndefined();
+      expect(passedElement.type).toBe("text");
+    });
+
+    it("normalizes type:tag to type:box for backward compatibility", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section", children: [] });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const newTpl = mkTag({ uuid: "new-1", tag: "div" });
+      mockElementSchemaToTpl.mockReturnValue({
+        result: { isError: false, value: { tpl: newTpl, warnings: [] } },
+      });
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} } }];
+        }
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      await addChild(api, "comp-1", "Section", { type: "tag", tag: "section" } as any);
+
+      const passedElement = mockElementSchemaToTpl.mock.calls[0][2];
+      expect(passedElement.type).toBe("box");
+      expect(passedElement.tag).toBe("section");
+    });
+
+    it("preserves value property when already set", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section", children: [] });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const newTpl = mkTag({ uuid: "new-1", tag: "div" });
+      mockElementSchemaToTpl.mockReturnValue({
+        result: { isError: false, value: { tpl: newTpl, warnings: [] } },
+      });
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} } }];
+        }
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      // When "value" is already set, don't overwrite from "text"
+      await addChild(api, "comp-1", "Section", { type: "text", value: "Correct" } as any);
+
+      const passedElement = mockElementSchemaToTpl.mock.calls[0][2];
+      expect(passedElement.value).toBe("Correct");
+    });
+
+    it("recursively normalizes children", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section", children: [] });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const parentTpl = mkTag({ uuid: "new-1", tag: "div" });
+      mockElementSchemaToTpl.mockReturnValue({
+        result: { isError: false, value: { tpl: parentTpl, warnings: [] } },
+      });
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} } }];
+        }
+        return tpl.vsettings[0];
+      });
       setupSession(comp);
 
       await addChild(api, "comp-1", "Section", {
-        type: "password",
-        attrs: { type: "text" }, // Explicit override
-      });
+        type: "vbox",
+        children: [
+          { type: "text", text: "Nested" } as any,
+        ],
+      } as any);
 
-      // The explicit "text" attr should remain (not overridden to "password")
-      const vs = newTpl.vsettings[0];
-      expect(vs.attrs.type._type).toBe("CustomCode");
-      expect(vs.attrs.type.code).toBe('"text"');
+      const passedElement = mockElementSchemaToTpl.mock.calls[0][2];
+      expect(passedElement.children[0].value).toBe("Nested");
+      expect(passedElement.children[0].text).toBeUndefined();
     });
   });
 
   // --- add-child with component instances ---
 
   describe("addChild with component instances", () => {
-    /** Build a TplComponent-like node (as returned by mkTplComponentX mock) */
+    /** Build a TplComponent-like node */
     function mkTplComponent(opts: {
       uuid?: string;
       name?: string;
@@ -1472,27 +1593,19 @@ describe("edit-tools", () => {
       };
     }
 
-    it("creates a TplComponent when type is 'component'", async () => {
+    it("inserts a TplComponent into the container via Studio delegation", async () => {
       const container = mkTag({ uuid: "container-1", name: "Section" });
       const root = mkTag({ uuid: "root-1", children: [container] });
-
-      // The component being EDITED (owning component)
       const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
-
-      // The component being REFERENCED (added as an instance)
-      const cardComp = {
-        uuid: "card-uuid",
-        name: "Card",
-        tplTree: mkTag({ uuid: "card-root" }),
-        params: [],
-      };
 
       const newTplComp = mkTplComponent({
         uuid: "new-tpl-comp-1",
         componentName: "Card",
         componentUuid: "card-uuid",
       });
-      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockElementSchemaToTpl.mockReturnValue({
+        result: { isError: false, value: { tpl: newTplComp, warnings: [] } },
+      });
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -1500,12 +1613,7 @@ describe("edit-tools", () => {
         return tpl.vsettings[0];
       });
 
-      // Session must include BOTH the owning component and the referenced component
-      const session = makeSession({
-        site: { components: [owningComp, cardComp] },
-      });
-      setSession(session);
-      initChangeTracker(session.site);
+      setupSession(owningComp);
 
       const result = await addChild(api, "comp-1", "Section", {
         type: "component",
@@ -1514,38 +1622,18 @@ describe("edit-tools", () => {
 
       expect(result.parentName).toBe("Section");
       expect(result.newNodeUuid).toBe("new-tpl-comp-1");
-      expect(result.save.revisionNum).toBe(11);
-
-      // Verify mkTplComponentX was called with the correct component
-      expect(mockMkTplComponentX).toHaveBeenCalledWith(
-        expect.objectContaining({
-          component: cardComp,
-        })
-      );
-
-      // Verify the TplComponent was inserted into the container
       expect(container.children.length).toBe(1);
       expect(container.children[0]).toBe(newTplComp);
     });
 
-    it("resolves component by UUID when name doesn't match", async () => {
+    it("propagates Studio error for unknown component", async () => {
       const container = mkTag({ uuid: "container-1", name: "Section" });
       const root = mkTag({ uuid: "root-1", children: [container] });
       const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
 
-      const headerComp = {
-        uuid: "header-uuid-123",
-        name: "Header",
-        tplTree: mkTag({ uuid: "header-root" }),
-        params: [],
-      };
-
-      const newTplComp = mkTplComponent({
-        uuid: "new-tpl-comp-2",
-        componentName: "Header",
-        componentUuid: "header-uuid-123",
+      mockElementSchemaToTpl.mockReturnValue({
+        result: { isError: true, error: { message: 'Unknown component "NonExistent"' } },
       });
-      mockMkTplComponentX.mockReturnValue(newTplComp);
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -1553,536 +1641,14 @@ describe("edit-tools", () => {
         return tpl.vsettings[0];
       });
 
-      const session = makeSession({
-        site: { components: [owningComp, headerComp] },
-      });
-      setSession(session);
-      initChangeTracker(session.site);
-
-      // Reference by UUID instead of name
-      await addChild(api, "comp-1", "Section", {
-        type: "component",
-        name: "header-uuid-123",
-      });
-
-      expect(mockMkTplComponentX).toHaveBeenCalledWith(
-        expect.objectContaining({
-          component: headerComp,
-        })
-      );
-    });
-
-    it("throws descriptive error when component name is not found", async () => {
-      const container = mkTag({ uuid: "container-1", name: "Section" });
-      const root = mkTag({ uuid: "root-1", children: [container] });
-      const owningComp = mkComponent({
-        uuid: "comp-1",
-        name: "Page",
-        tplTree: root,
-      });
-
-      const cardComp = {
-        uuid: "card-uuid",
-        name: "Card",
-        tplTree: mkTag({ uuid: "card-root" }),
-      };
-
-      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
-        if (!tpl.vsettings || tpl.vsettings.length === 0) {
-          tpl.vsettings = [{ rs: { values: {} } }];
-        }
-        return tpl.vsettings[0];
-      });
-
-      const session = makeSession({
-        site: { components: [owningComp, cardComp] },
-      });
-      setSession(session);
-      initChangeTracker(session.site);
+      setupSession(owningComp);
 
       await expect(
         addChild(api, "comp-1", "Section", {
           type: "component",
           name: "NonExistent",
         })
-      ).rejects.toThrow('Component "NonExistent" not found');
-
-      // Error should list available component names
-      await expect(
-        addChild(api, "comp-1", "Section", {
-          type: "component",
-          name: "NonExistent",
-        })
-      ).rejects.toThrow("Card");
-    });
-
-    it("handles type 'default-component' using kind field", async () => {
-      const container = mkTag({ uuid: "container-1", name: "Section" });
-      const root = mkTag({ uuid: "root-1", children: [container] });
-      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
-
-      const buttonComp = {
-        uuid: "button-uuid",
-        name: "Button",
-        tplTree: mkTag({ uuid: "button-root" }),
-        params: [],
-      };
-
-      const newTplComp = mkTplComponent({
-        uuid: "new-tpl-comp-3",
-        componentName: "Button",
-        componentUuid: "button-uuid",
-      });
-      mockMkTplComponentX.mockReturnValue(newTplComp);
-      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
-        if (!tpl.vsettings || tpl.vsettings.length === 0) {
-          tpl.vsettings = [{ rs: { values: {} } }];
-        }
-        return tpl.vsettings[0];
-      });
-
-      const session = makeSession({
-        site: { components: [owningComp, buttonComp] },
-      });
-      setSession(session);
-      initChangeTracker(session.site);
-
-      await addChild(api, "comp-1", "Section", {
-        type: "default-component",
-        kind: "Button",
-      });
-
-      expect(mockMkTplComponentX).toHaveBeenCalledWith(
-        expect.objectContaining({
-          component: buttonComp,
-        })
-      );
-      expect(container.children[0]).toBe(newTplComp);
-    });
-
-    it("passes children to mkTplComponentX for slot wiring", async () => {
-      const container = mkTag({ uuid: "container-1", name: "Section" });
-      const root = mkTag({ uuid: "root-1", children: [container] });
-      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
-
-      const cardComp = {
-        uuid: "card-uuid",
-        name: "Card",
-        tplTree: mkTag({ uuid: "card-root" }),
-        params: [{ variable: { name: "children" } }],
-      };
-
-      const newTplComp = mkTplComponent({
-        uuid: "new-tpl-comp-4",
-        componentName: "Card",
-        componentUuid: "card-uuid",
-      });
-      mockMkTplComponentX.mockReturnValue(newTplComp);
-
-      // mkTplInlinedText is called for the string child inside the component
-      const childTpl = mkTag({ uuid: "child-text-1", tag: "div" });
-      mockMkTplInlinedText.mockReturnValue(childTpl);
-
-      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
-        if (!tpl.vsettings || tpl.vsettings.length === 0) {
-          tpl.vsettings = [{ rs: { values: {} } }];
-        }
-        return tpl.vsettings[0];
-      });
-
-      const session = makeSession({
-        site: { components: [owningComp, cardComp] },
-      });
-      setSession(session);
-      initChangeTracker(session.site);
-
-      await addChild(api, "comp-1", "Section", {
-        type: "component",
-        name: "Card",
-        children: [{ type: "text", value: "Card content" }],
-      });
-
-      // mkTplComponentX should be called with children array
-      expect(mockMkTplComponentX).toHaveBeenCalledWith(
-        expect.objectContaining({
-          component: cardComp,
-          children: [childTpl],
-        })
-      );
-    });
-
-    it("finds component from dependency projects", async () => {
-      const container = mkTag({ uuid: "container-1", name: "Section" });
-      const root = mkTag({ uuid: "root-1", children: [container] });
-      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
-
-      // Component only exists in a dependency, not locally
-      const depComp = {
-        uuid: "dep-comp-uuid",
-        name: "DepButton",
-        tplTree: mkTag({ uuid: "dep-button-root" }),
-        params: [],
-      };
-
-      const newTplComp = mkTplComponent({
-        uuid: "new-tpl-comp-5",
-        componentName: "DepButton",
-        componentUuid: "dep-comp-uuid",
-      });
-      mockMkTplComponentX.mockReturnValue(newTplComp);
-      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
-        if (!tpl.vsettings || tpl.vsettings.length === 0) {
-          tpl.vsettings = [{ rs: { values: {} } }];
-        }
-        return tpl.vsettings[0];
-      });
-
-      const session = makeSession({
-        site: {
-          components: [owningComp],
-          projectDependencies: [
-            { site: { components: [depComp] } },
-          ],
-        },
-      });
-      setSession(session);
-      initChangeTracker(session.site);
-
-      await addChild(api, "comp-1", "Section", {
-        type: "component",
-        name: "DepButton",
-      });
-
-      expect(mockMkTplComponentX).toHaveBeenCalledWith(
-        expect.objectContaining({
-          component: depComp,
-        })
-      );
-    });
-  });
-
-  // --- add-child with component props ---
-
-  describe("addChild with component props", () => {
-    /** Build a TplComponent-like node (as returned by mkTplComponentX mock) */
-    function mkTplComponent(opts: {
-      uuid?: string;
-      componentName: string;
-      componentUuid: string;
-    }): any {
-      return {
-        _type: "TplComponent",
-        uuid: opts.uuid ?? `tpl-comp-${Math.random().toString(36).slice(2, 8)}`,
-        name: null,
-        component: { name: opts.componentName, uuid: opts.componentUuid },
-        vsettings: [{ rs: { values: {} }, args: [] }],
-        children: [],
-      };
-    }
-
-    it("passes props as args dict to mkTplComponentX", async () => {
-      const container = mkTag({ uuid: "container-1", name: "Section" });
-      const root = mkTag({ uuid: "root-1", children: [container] });
-      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
-
-      const buttonComp = {
-        uuid: "button-uuid",
-        name: "Button",
-        tplTree: mkTag({ uuid: "button-root" }),
-        params: [
-          { variable: { name: "label" } },
-          { variable: { name: "disabled" } },
-          { variable: { name: "count" } },
-        ],
-      };
-
-      const newTplComp = mkTplComponent({
-        uuid: "new-tpl-props-1",
-        componentName: "Button",
-        componentUuid: "button-uuid",
-      });
-      mockMkTplComponentX.mockReturnValue(newTplComp);
-      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
-        if (!tpl.vsettings || tpl.vsettings.length === 0) {
-          tpl.vsettings = [{ rs: { values: {} } }];
-        }
-        return tpl.vsettings[0];
-      });
-
-      const session = makeSession({
-        site: { components: [owningComp, buttonComp] },
-      });
-      setSession(session);
-      initChangeTracker(session.site);
-
-      await addChild(api, "comp-1", "Section", {
-        type: "component",
-        name: "Button",
-        props: { label: "Click me", disabled: true, count: 42 },
-      });
-
-      // mkTplComponentX should receive an args dict with CustomCode values
-      const callArgs = mockMkTplComponentX.mock.calls[0][0];
-      expect(callArgs.component).toBe(buttonComp);
-      expect(callArgs.args).toBeDefined();
-      expect(callArgs.args.label._type).toBe("CustomCode");
-      expect(callArgs.args.label.code).toBe('"Click me"');
-      expect(callArgs.args.disabled._type).toBe("CustomCode");
-      expect(callArgs.args.disabled.code).toBe("true");
-      expect(callArgs.args.count._type).toBe("CustomCode");
-      expect(callArgs.args.count.code).toBe("42");
-    });
-
-    it("passes both props and children together", async () => {
-      const container = mkTag({ uuid: "container-1", name: "Section" });
-      const root = mkTag({ uuid: "root-1", children: [container] });
-      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
-
-      const cardComp = {
-        uuid: "card-uuid",
-        name: "Card",
-        tplTree: mkTag({ uuid: "card-root" }),
-        params: [
-          { variable: { name: "title" } },
-          { variable: { name: "children" }, tplSlot: {} }, // slot param
-        ],
-      };
-
-      const newTplComp = mkTplComponent({
-        uuid: "new-tpl-props-2",
-        componentName: "Card",
-        componentUuid: "card-uuid",
-      });
-      mockMkTplComponentX.mockReturnValue(newTplComp);
-      const childTpl = mkTag({ uuid: "child-text-1", tag: "div" });
-      mockMkTplInlinedText.mockReturnValue(childTpl);
-      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
-        if (!tpl.vsettings || tpl.vsettings.length === 0) {
-          tpl.vsettings = [{ rs: { values: {} } }];
-        }
-        return tpl.vsettings[0];
-      });
-
-      const session = makeSession({
-        site: { components: [owningComp, cardComp] },
-      });
-      setSession(session);
-      initChangeTracker(session.site);
-
-      await addChild(api, "comp-1", "Section", {
-        type: "component",
-        name: "Card",
-        props: { title: "My Card" },
-        children: [{ type: "text", value: "Card body" }],
-      });
-
-      const callArgs = mockMkTplComponentX.mock.calls[0][0];
-      expect(callArgs.args.title._type).toBe("CustomCode");
-      expect(callArgs.args.title.code).toBe('"My Card"');
-      expect(callArgs.children).toEqual([childTpl]);
-    });
-
-    it("handles null and array prop values", async () => {
-      const container = mkTag({ uuid: "container-1", name: "Section" });
-      const root = mkTag({ uuid: "root-1", children: [container] });
-      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
-
-      const widgetComp = {
-        uuid: "widget-uuid",
-        name: "Widget",
-        tplTree: mkTag({ uuid: "widget-root" }),
-        params: [
-          { variable: { name: "items" } },
-          { variable: { name: "fallback" } },
-        ],
-      };
-
-      const newTplComp = mkTplComponent({
-        uuid: "new-tpl-props-3",
-        componentName: "Widget",
-        componentUuid: "widget-uuid",
-      });
-      mockMkTplComponentX.mockReturnValue(newTplComp);
-      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
-        if (!tpl.vsettings || tpl.vsettings.length === 0) {
-          tpl.vsettings = [{ rs: { values: {} } }];
-        }
-        return tpl.vsettings[0];
-      });
-
-      const session = makeSession({
-        site: { components: [owningComp, widgetComp] },
-      });
-      setSession(session);
-      initChangeTracker(session.site);
-
-      await addChild(api, "comp-1", "Section", {
-        type: "component",
-        name: "Widget",
-        props: { items: ["a", "b"], fallback: null },
-      });
-
-      const callArgs = mockMkTplComponentX.mock.calls[0][0];
-      expect(callArgs.args.items.code).toBe('["a","b"]');
-      expect(callArgs.args.fallback.code).toBe("null");
-    });
-
-    it("throws error for unknown prop name", async () => {
-      const container = mkTag({ uuid: "container-1", name: "Section" });
-      const root = mkTag({ uuid: "root-1", children: [container] });
-      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
-
-      const buttonComp = {
-        uuid: "button-uuid",
-        name: "Button",
-        tplTree: mkTag({ uuid: "button-root" }),
-        params: [{ variable: { name: "label" } }],
-      };
-
-      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
-        if (!tpl.vsettings || tpl.vsettings.length === 0) {
-          tpl.vsettings = [{ rs: { values: {} } }];
-        }
-        return tpl.vsettings[0];
-      });
-
-      const session = makeSession({
-        site: { components: [owningComp, buttonComp] },
-      });
-      setSession(session);
-      initChangeTracker(session.site);
-
-      await expect(
-        addChild(api, "comp-1", "Section", {
-          type: "component",
-          name: "Button",
-          props: { nonExistent: "value" },
-        })
-      ).rejects.toThrow('Unknown prop "nonExistent" on component "Button"');
-    });
-
-    it("throws error when prop targets a slot param", async () => {
-      const container = mkTag({ uuid: "container-1", name: "Section" });
-      const root = mkTag({ uuid: "root-1", children: [container] });
-      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
-
-      const cardComp = {
-        uuid: "card-uuid",
-        name: "Card",
-        tplTree: mkTag({ uuid: "card-root" }),
-        params: [
-          { variable: { name: "children" }, tplSlot: { name: "children" } },
-        ],
-      };
-
-      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
-        if (!tpl.vsettings || tpl.vsettings.length === 0) {
-          tpl.vsettings = [{ rs: { values: {} } }];
-        }
-        return tpl.vsettings[0];
-      });
-
-      const session = makeSession({
-        site: { components: [owningComp, cardComp] },
-      });
-      setSession(session);
-      initChangeTracker(session.site);
-
-      await expect(
-        addChild(api, "comp-1", "Section", {
-          type: "component",
-          name: "Card",
-          props: { children: "some text" },
-        })
-      ).rejects.toThrow('Prop "children" is a slot on component "Card"');
-    });
-
-    it("skips args when props is empty object", async () => {
-      const container = mkTag({ uuid: "container-1", name: "Section" });
-      const root = mkTag({ uuid: "root-1", children: [container] });
-      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
-
-      const buttonComp = {
-        uuid: "button-uuid",
-        name: "Button",
-        tplTree: mkTag({ uuid: "button-root" }),
-        params: [{ variable: { name: "label" } }],
-      };
-
-      const newTplComp = mkTplComponent({
-        uuid: "new-tpl-props-6",
-        componentName: "Button",
-        componentUuid: "button-uuid",
-      });
-      mockMkTplComponentX.mockReturnValue(newTplComp);
-      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
-        if (!tpl.vsettings || tpl.vsettings.length === 0) {
-          tpl.vsettings = [{ rs: { values: {} } }];
-        }
-        return tpl.vsettings[0];
-      });
-
-      const session = makeSession({
-        site: { components: [owningComp, buttonComp] },
-      });
-      setSession(session);
-      initChangeTracker(session.site);
-
-      await addChild(api, "comp-1", "Section", {
-        type: "component",
-        name: "Button",
-        props: {},
-      });
-
-      // Empty props should NOT produce an args field
-      const callArgs = mockMkTplComponentX.mock.calls[0][0];
-      expect(callArgs.args).toBeUndefined();
-    });
-
-    it("works with default-component type and props", async () => {
-      const container = mkTag({ uuid: "container-1", name: "Section" });
-      const root = mkTag({ uuid: "root-1", children: [container] });
-      const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
-
-      const inputComp = {
-        uuid: "input-uuid",
-        name: "TextInput",
-        tplTree: mkTag({ uuid: "input-root" }),
-        params: [
-          { variable: { name: "placeholder" } },
-          { variable: { name: "required" } },
-        ],
-      };
-
-      const newTplComp = mkTplComponent({
-        uuid: "new-tpl-props-7",
-        componentName: "TextInput",
-        componentUuid: "input-uuid",
-      });
-      mockMkTplComponentX.mockReturnValue(newTplComp);
-      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
-        if (!tpl.vsettings || tpl.vsettings.length === 0) {
-          tpl.vsettings = [{ rs: { values: {} } }];
-        }
-        return tpl.vsettings[0];
-      });
-
-      const session = makeSession({
-        site: { components: [owningComp, inputComp] },
-      });
-      setSession(session);
-      initChangeTracker(session.site);
-
-      await addChild(api, "comp-1", "Section", {
-        type: "default-component",
-        kind: "TextInput",
-        props: { placeholder: "Enter text...", required: true },
-      });
-
-      const callArgs = mockMkTplComponentX.mock.calls[0][0];
-      expect(callArgs.component).toBe(inputComp);
-      expect(callArgs.args.placeholder.code).toBe('"Enter text..."');
-      expect(callArgs.args.required.code).toBe("true");
+      ).rejects.toThrow('Unknown component "NonExistent"');
     });
   });
 
@@ -2123,7 +1689,7 @@ describe("edit-tools", () => {
         componentName: "Card",
         componentUuid: "card-uuid",
       });
-      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockElementSchemaToTpl.mockReturnValue({ result: { isError: false, value: { tpl: newTplComp, warnings: [] } } });
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -2183,7 +1749,7 @@ describe("edit-tools", () => {
         componentName: "EPButton",
         componentUuid: "btn-uuid",
       });
-      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockElementSchemaToTpl.mockReturnValue({ result: { isError: false, value: { tpl: newTplComp, warnings: [] } } });
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -2237,7 +1803,7 @@ describe("edit-tools", () => {
         componentName: "Card",
         componentUuid: "card-uuid",
       });
-      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockElementSchemaToTpl.mockReturnValue({ result: { isError: false, value: { tpl: newTplComp, warnings: [] } } });
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -2300,7 +1866,7 @@ describe("edit-tools", () => {
         componentName: "AccordionItem",
         componentUuid: "item-uuid",
       });
-      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockElementSchemaToTpl.mockReturnValue({ result: { isError: false, value: { tpl: newTplComp, warnings: [] } } });
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} }, args: [] }];
@@ -2378,7 +1944,7 @@ describe("edit-tools", () => {
         componentName: "AccordionItem",
         componentUuid: "item-uuid",
       });
-      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockElementSchemaToTpl.mockReturnValue({ result: { isError: false, value: { tpl: newTplComp, warnings: [] } } });
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} }, args: [] }];
@@ -2433,7 +1999,7 @@ describe("edit-tools", () => {
         componentName: "AccordionItem",
         componentUuid: "item-uuid",
       });
-      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockElementSchemaToTpl.mockReturnValue({ result: { isError: false, value: { tpl: newTplComp, warnings: [] } } });
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -2494,13 +2060,6 @@ describe("edit-tools", () => {
       });
       // Override component to include slot params
       newTplComp.component = cardComp;
-      mockMkTplComponentX.mockReturnValue(newTplComp);
-      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
-        if (!tpl.vsettings || tpl.vsettings.length === 0) {
-          tpl.vsettings = [{ rs: { values: {} }, args: [] }];
-        }
-        return tpl.vsettings[0];
-      });
 
       // Mock for the text node created from defaultValue
       const defaultTextTpl = {
@@ -2509,7 +2068,15 @@ describe("edit-tools", () => {
         tag: "div",
         vsettings: [{ rs: { values: {} } }],
       };
-      mockMkTplInlinedText.mockReturnValue(defaultTextTpl);
+      mockElementSchemaToTpl
+        .mockReturnValueOnce({ result: { isError: false, value: { tpl: newTplComp, warnings: [] } } })
+        .mockReturnValueOnce({ result: { isError: false, value: { tpl: defaultTextTpl, warnings: [] } } });
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} }, args: [] }];
+        }
+        return tpl.vsettings[0];
+      });
 
       // Registry has slot defaultValue for "children"
       const session = makeSession({
@@ -2580,13 +2147,6 @@ describe("edit-tools", () => {
         componentUuid: "card-uuid",
       });
       newTplComp.component = cardComp;
-      mockMkTplComponentX.mockReturnValue(newTplComp);
-      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
-        if (!tpl.vsettings || tpl.vsettings.length === 0) {
-          tpl.vsettings = [{ rs: { values: {} }, args: [] }];
-        }
-        return tpl.vsettings[0];
-      });
 
       // Two different text nodes for two different slots
       const bodyTextTpl = {
@@ -2601,9 +2161,16 @@ describe("edit-tools", () => {
         tag: "div",
         vsettings: [{ rs: { values: {} } }],
       };
-      mockMkTplInlinedText
-        .mockReturnValueOnce(bodyTextTpl)
-        .mockReturnValueOnce(headerTextTpl);
+      mockElementSchemaToTpl
+        .mockReturnValueOnce({ result: { isError: false, value: { tpl: newTplComp, warnings: [] } } })
+        .mockReturnValueOnce({ result: { isError: false, value: { tpl: bodyTextTpl, warnings: [] } } })
+        .mockReturnValueOnce({ result: { isError: false, value: { tpl: headerTextTpl, warnings: [] } } });
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} }, args: [] }];
+        }
+        return tpl.vsettings[0];
+      });
 
       // Registry has defaultValues for both slots
       const session = makeSession({
@@ -2680,20 +2247,13 @@ describe("edit-tools", () => {
         componentUuid: "card-uuid",
       });
       newTplComp.component = cardComp;
-      // Simulate that mkTplComponentX created an arg for the "children" slot
+      // Simulate that elementSchemaToTpl created an arg for the "children" slot
       // because explicit children were provided via PlasmicElement.children
       newTplComp.vsettings[0].args = [{
         _type: "Arg",
         param: childrenSlotParam,
         expr: { _type: "RenderExpr", tpl: [explicitChildTpl] },
       }];
-      mockMkTplComponentX.mockReturnValue(newTplComp);
-      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
-        if (!tpl.vsettings || tpl.vsettings.length === 0) {
-          tpl.vsettings = [{ rs: { values: {} }, args: [] }];
-        }
-        return tpl.vsettings[0];
-      });
 
       // The child element that the user explicitly provides
       const childTextTpl = {
@@ -2702,7 +2262,15 @@ describe("edit-tools", () => {
         tag: "div",
         vsettings: [{ rs: { values: {} } }],
       };
-      mockMkTplInlinedText.mockReturnValue(childTextTpl);
+      mockElementSchemaToTpl
+        .mockReturnValueOnce({ result: { isError: false, value: { tpl: newTplComp, warnings: [] } } })
+        .mockReturnValueOnce({ result: { isError: false, value: { tpl: childTextTpl, warnings: [] } } });
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} }, args: [] }];
+        }
+        return tpl.vsettings[0];
+      });
 
       // Registry has defaultValue, but user provides explicit children
       const session = makeSession({
@@ -2763,13 +2331,6 @@ describe("edit-tools", () => {
         componentUuid: "card-uuid",
       });
       newTplComp.component = cardComp;
-      mockMkTplComponentX.mockReturnValue(newTplComp);
-      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
-        if (!tpl.vsettings || tpl.vsettings.length === 0) {
-          tpl.vsettings = [{ rs: { values: {} }, args: [] }];
-        }
-        return tpl.vsettings[0];
-      });
 
       const defaultTextTpl = {
         _type: "TplTag",
@@ -2777,7 +2338,15 @@ describe("edit-tools", () => {
         tag: "div",
         vsettings: [{ rs: { values: {} } }],
       };
-      mockMkTplInlinedText.mockReturnValue(defaultTextTpl);
+      mockElementSchemaToTpl
+        .mockReturnValueOnce({ result: { isError: false, value: { tpl: newTplComp, warnings: [] } } })
+        .mockReturnValueOnce({ result: { isError: false, value: { tpl: defaultTextTpl, warnings: [] } } });
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} }, args: [] }];
+        }
+        return tpl.vsettings[0];
+      });
 
       // Registry has defaultValue for "footer" slot that doesn't exist in WAB model
       // AND "children" which does exist
@@ -2837,7 +2406,7 @@ describe("edit-tools", () => {
         componentUuid: "card-uuid",
       });
       newTplComp.component = cardComp;
-      mockMkTplComponentX.mockReturnValue(newTplComp);
+      mockElementSchemaToTpl.mockReturnValue({ result: { isError: false, value: { tpl: newTplComp, warnings: [] } } });
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} }, args: [] }];
@@ -3612,262 +3181,6 @@ describe("edit-tools", () => {
     });
   });
 
-  // --- addChild with tag validation ---
-
-  describe("addChild with tag validation", () => {
-    it("creates a container element with a custom tag", async () => {
-      const container = mkTag({ uuid: "container-1", name: "Section" });
-      const root = mkTag({ uuid: "root-1", children: [container] });
-      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
-
-      const newTpl = mkTag({ uuid: "new-1", tag: "section" });
-      mockMkTplTagX.mockReturnValue(newTpl);
-      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
-      setupSession(comp);
-
-      await addChild(api, "comp-1", "Section", {
-        type: "box",
-        tag: "section",
-        children: [],
-      });
-
-      // mkTplTagX should be called with the validated tag "section"
-      expect(mockMkTplTagX).toHaveBeenCalledWith(
-        "section",
-        expect.anything(),
-      );
-    });
-
-    it("creates a container element with tag 'nav'", async () => {
-      const container = mkTag({ uuid: "container-1", name: "Parent" });
-      const root = mkTag({ uuid: "root-1", children: [container] });
-      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
-
-      const newTpl = mkTag({ uuid: "new-1", tag: "nav" });
-      mockMkTplTagX.mockReturnValue(newTpl);
-      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
-      setupSession(comp);
-
-      await addChild(api, "comp-1", "Parent", {
-        type: "hbox",
-        tag: "nav",
-        children: [],
-      });
-
-      expect(mockMkTplTagX).toHaveBeenCalledWith(
-        "nav",
-        expect.anything(),
-      );
-    });
-
-    it("creates a text element with tag 'h1'", async () => {
-      const container = mkTag({ uuid: "container-1", name: "Parent" });
-      const root = mkTag({ uuid: "root-1", children: [container] });
-      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
-
-      const newTpl = mkTag({ uuid: "new-1", tag: "h1", text: "Title" });
-      mockMkTplInlinedText.mockReturnValue(newTpl);
-      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
-      setupSession(comp);
-
-      await addChild(api, "comp-1", "Parent", {
-        type: "text",
-        value: "Title",
-        tag: "h1",
-      });
-
-      // mkTplInlinedText should be called with the validated tag "h1"
-      expect(mockMkTplInlinedText).toHaveBeenCalledWith(
-        "Title",
-        expect.anything(),
-        "h1",
-        expect.anything(),
-      );
-    });
-
-    it("defaults container tag to 'div' when no tag specified", async () => {
-      const container = mkTag({ uuid: "container-1", name: "Parent" });
-      const root = mkTag({ uuid: "root-1", children: [container] });
-      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
-
-      const newTpl = mkTag({ uuid: "new-1" });
-      mockMkTplTagX.mockReturnValue(newTpl);
-      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
-      setupSession(comp);
-
-      await addChild(api, "comp-1", "Parent", {
-        type: "box",
-        children: [],
-      });
-
-      expect(mockMkTplTagX).toHaveBeenCalledWith(
-        "div",
-        expect.anything(),
-      );
-    });
-
-    it("rejects unsafe tag 'script' on container", async () => {
-      const container = mkTag({ uuid: "container-1", name: "Parent" });
-      const root = mkTag({ uuid: "root-1", children: [container] });
-      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
-
-      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
-      setupSession(comp);
-
-      await expect(
-        addChild(api, "comp-1", "Parent", {
-          type: "box",
-          tag: "script",
-          children: [],
-        })
-      ).rejects.toThrow("not allowed (unsafe)");
-    });
-
-    it("rejects unsafe tag 'style' on container", async () => {
-      const container = mkTag({ uuid: "container-1", name: "Parent" });
-      const root = mkTag({ uuid: "root-1", children: [container] });
-      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
-
-      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
-      setupSession(comp);
-
-      await expect(
-        addChild(api, "comp-1", "Parent", {
-          type: "box",
-          tag: "style",
-          children: [],
-        })
-      ).rejects.toThrow("not allowed (unsafe)");
-    });
-
-    it("rejects unsafe tag 'iframe' on text", async () => {
-      const container = mkTag({ uuid: "container-1", name: "Parent" });
-      const root = mkTag({ uuid: "root-1", children: [container] });
-      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
-
-      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
-      setupSession(comp);
-
-      await expect(
-        addChild(api, "comp-1", "Parent", {
-          type: "text",
-          value: "X",
-          tag: "iframe",
-        })
-      ).rejects.toThrow("not allowed (unsafe)");
-    });
-
-    it("rejects invalid container tag 'span'", async () => {
-      const container = mkTag({ uuid: "container-1", name: "Parent" });
-      const root = mkTag({ uuid: "root-1", children: [container] });
-      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
-
-      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
-      setupSession(comp);
-
-      await expect(
-        addChild(api, "comp-1", "Parent", {
-          type: "box",
-          tag: "span",
-          children: [],
-        })
-      ).rejects.toThrow('Invalid tag "span" for container element');
-    });
-
-    it("rejects invalid text tag 'nav'", async () => {
-      const container = mkTag({ uuid: "container-1", name: "Parent" });
-      const root = mkTag({ uuid: "root-1", children: [container] });
-      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
-
-      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
-      setupSession(comp);
-
-      await expect(
-        addChild(api, "comp-1", "Parent", {
-          type: "text",
-          value: "X",
-          tag: "nav",
-        })
-      ).rejects.toThrow('Invalid tag "nav" for text element');
-    });
-
-    it("supports all valid container tags", async () => {
-      const validContainerTags = [
-        "div", "section", "article", "nav", "header", "footer",
-        "aside", "main", "ul", "ol", "li", "form", "fieldset",
-      ];
-
-      for (const validTag of validContainerTags) {
-        const container = mkTag({ uuid: "container-1", name: "Parent" });
-        const root = mkTag({ uuid: "root-1", children: [container] });
-        const comp = mkComponent({ uuid: "comp-1", tplTree: root });
-
-        const newTpl = mkTag({ uuid: "new-1", tag: validTag });
-        mockMkTplTagX.mockReturnValue(newTpl);
-        mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
-        setupSession(comp);
-
-        await addChild(api, "comp-1", "Parent", {
-          type: "box",
-          tag: validTag,
-          children: [],
-        });
-
-        expect(mockMkTplTagX).toHaveBeenCalledWith(
-          validTag,
-          expect.anything(),
-        );
-
-        // Clean up for next iteration
-        disposeChangeTracker();
-        clearSession();
-        vi.clearAllMocks();
-        mockFastBundle.mockReturnValue({ map: {}, root: "0" });
-        mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
-        mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
-      }
-    });
-
-    it("supports all valid text tags", async () => {
-      const validTextTags = [
-        "div", "p", "span", "h1", "h2", "h3", "h4", "h5", "h6",
-        "label", "a", "blockquote", "pre", "code",
-      ];
-
-      for (const validTag of validTextTags) {
-        const container = mkTag({ uuid: "container-1", name: "Parent" });
-        const root = mkTag({ uuid: "root-1", children: [container] });
-        const comp = mkComponent({ uuid: "comp-1", tplTree: root });
-
-        const newTpl = mkTag({ uuid: "new-1", tag: validTag, text: "T" });
-        mockMkTplInlinedText.mockReturnValue(newTpl);
-        mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
-        setupSession(comp);
-
-        await addChild(api, "comp-1", "Parent", {
-          type: "text",
-          value: "T",
-          tag: validTag,
-        });
-
-        expect(mockMkTplInlinedText).toHaveBeenCalledWith(
-          "T",
-          expect.anything(),
-          validTag,
-          expect.anything(),
-        );
-
-        // Clean up for next iteration
-        disposeChangeTracker();
-        clearSession();
-        vi.clearAllMocks();
-        mockFastBundle.mockReturnValue({ map: {}, root: "0" });
-        mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
-        mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
-      }
-    });
-  });
-
   // --- updateAttrs ---
 
   describe("updateAttrs", () => {
@@ -4170,76 +3483,6 @@ describe("edit-tools", () => {
       expect(attrs.href.code).toBe('"/new"');
       expect(attrs.title).toBeUndefined();
       expect(attrs["aria-label"].code).toBe('"Link"');
-    });
-  });
-
-  // --- addChild with attrs ---
-
-  describe("addChild with attrs", () => {
-    it("sets attrs on container element during creation", async () => {
-      const container = mkTag({ uuid: "container-1", name: "Parent" });
-      const root = mkTag({ uuid: "root-1", children: [container] });
-      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
-
-      const newTpl = mkTag({ uuid: "new-1" });
-      newTpl.vsettings[0].attrs = {};
-      mockMkTplTagX.mockReturnValue(newTpl);
-      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
-      setupSession(comp);
-
-      await addChild(api, "comp-1", "Parent", {
-        type: "box",
-        tag: "nav",
-        attrs: { role: "navigation", "aria-label": "Main" },
-        children: [],
-      });
-
-      const attrs = newTpl.vsettings[0].attrs;
-      expect(attrs.role._type).toBe("CustomCode");
-      expect(attrs.role.code).toBe('"navigation"');
-      expect(attrs["aria-label"].code).toBe('"Main"');
-    });
-
-    it("sets attrs on text element during creation", async () => {
-      const container = mkTag({ uuid: "container-1", name: "Parent" });
-      const root = mkTag({ uuid: "root-1", children: [container] });
-      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
-
-      const newTpl = mkTag({ uuid: "new-1", tag: "a", text: "Click" });
-      newTpl.vsettings[0].attrs = {};
-      mockMkTplInlinedText.mockReturnValue(newTpl);
-      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
-      setupSession(comp);
-
-      await addChild(api, "comp-1", "Parent", {
-        type: "text",
-        value: "Click",
-        tag: "a",
-        attrs: { href: "/about", target: "_blank" },
-      });
-
-      const attrs = newTpl.vsettings[0].attrs;
-      expect(attrs.href.code).toBe('"/about"');
-      expect(attrs.target.code).toBe('"_blank"');
-    });
-
-    it("rejects event handler attr during creation", async () => {
-      const container = mkTag({ uuid: "container-1", name: "Parent" });
-      const root = mkTag({ uuid: "root-1", children: [container] });
-      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
-
-      const newTpl = mkTag({ uuid: "new-1" });
-      mockMkTplTagX.mockReturnValue(newTpl);
-      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
-      setupSession(comp);
-
-      await expect(
-        addChild(api, "comp-1", "Parent", {
-          type: "box",
-          attrs: { onclick: "bad()" },
-          children: [],
-        })
-      ).rejects.toThrow("Event handler attribute");
     });
   });
 
@@ -4558,7 +3801,7 @@ describe("addChild with slot targeting", () => {
     const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
     const newTpl = mkTag({ uuid: "new-header-1" });
-    mockMkTplInlinedText.mockReturnValue(newTpl);
+    mockElementSchemaToTpl.mockReturnValue({ result: { isError: false, value: { tpl: newTpl, warnings: [] } } });
     mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
       return tpl.vsettings[0];
     });
@@ -4601,7 +3844,7 @@ describe("addChild with slot targeting", () => {
     const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
     const newTpl = mkTag({ uuid: "new-header-2" });
-    mockMkTplInlinedText.mockReturnValue(newTpl);
+    mockElementSchemaToTpl.mockReturnValue({ result: { isError: false, value: { tpl: newTpl, warnings: [] } } });
     mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
       return tpl.vsettings[0];
     });
@@ -4638,7 +3881,7 @@ describe("addChild with slot targeting", () => {
     const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
     const newTpl = mkTag({ uuid: "new-first" });
-    mockMkTplInlinedText.mockReturnValue(newTpl);
+    mockElementSchemaToTpl.mockReturnValue({ result: { isError: false, value: { tpl: newTpl, warnings: [] } } });
     mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
       return tpl.vsettings[0];
     });
@@ -4675,7 +3918,7 @@ describe("addChild with slot targeting", () => {
     const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
     const newTpl = mkTag({ uuid: "inserted-middle" });
-    mockMkTplTagX.mockReturnValue(newTpl);
+    mockElementSchemaToTpl.mockReturnValue({ result: { isError: false, value: { tpl: newTpl, warnings: [] } } });
     mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
       return tpl.vsettings[0];
     });
@@ -4707,7 +3950,7 @@ describe("addChild with slot targeting", () => {
     const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
     const newTpl = mkTag({ uuid: "new-default" });
-    mockMkTplInlinedText.mockReturnValue(newTpl);
+    mockElementSchemaToTpl.mockReturnValue({ result: { isError: false, value: { tpl: newTpl, warnings: [] } } });
     mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
       return tpl.vsettings[0];
     });
@@ -4738,7 +3981,7 @@ describe("addChild with slot targeting", () => {
     const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
     const newTpl = mkTag({ uuid: "new-explicit" });
-    mockMkTplInlinedText.mockReturnValue(newTpl);
+    mockElementSchemaToTpl.mockReturnValue({ result: { isError: false, value: { tpl: newTpl, warnings: [] } } });
     mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
       return tpl.vsettings[0];
     });
@@ -5856,6 +5099,24 @@ describe("updateRichText", () => {
     expect(vs.text._type).toBe("RawText");
     expect(vs.text.text).toBe("Hello world");
     expect(vs.text.markers).toEqual([]);
+  });
+
+  it("sets TplTagType.Text when plain text is set on a non-text node", async () => {
+    // A node with no text and no children — not a container, not a text node
+    const emptyNode = mkTag({ uuid: "empty-1" });
+    delete emptyNode.vsettings[0].text;
+    emptyNode.type = "other"; // Not text yet
+    const comp = mkComponent({ uuid: "comp-1", tplTree: emptyNode });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await updateRichText(api, "comp-1", "empty-1", "New text", []);
+    // After: node.type should be set to TplTagType.Text
+    expect(emptyNode.type).toBe(TplTagType.Text);
+    expect(emptyNode.vsettings[0].text._type).toBe("RawText");
+    expect(emptyNode.vsettings[0].text.text).toBe("New text");
   });
 
   it("creates StyleMarker for bold mark", async () => {

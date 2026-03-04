@@ -155,6 +155,7 @@ describe("tool handlers", () => {
   let mockGetChangeTracker: ReturnType<typeof vi.fn>;
   let mockGetAccumulatedChanges: ReturnType<typeof vi.fn>;
   let mockSaveFullBundle: ReturnType<typeof vi.fn>;
+  let mockSaveChanges: ReturnType<typeof vi.fn>;
   let mockUpdateAttrs: ReturnType<typeof vi.fn>;
   let mockGetValidStylePropertyNames: ReturnType<typeof vi.fn>;
   let mockReorderChildren: ReturnType<typeof vi.fn>;
@@ -222,6 +223,7 @@ describe("tool handlers", () => {
   let mockListCustomFunctions: ReturnType<typeof vi.fn>;
   let mockSyncFromDevHost: ReturnType<typeof vi.fn>;
   let mockClearRegistryCache: ReturnType<typeof vi.fn>;
+  let mockRecordVariantMetadataSync: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     process.env = { ...savedEnv };
@@ -349,6 +351,7 @@ describe("tool handlers", () => {
     mockListCustomFunctions = vi.fn();
     mockSyncFromDevHost = vi.fn().mockResolvedValue({ devHostSynced: false, syncedVariantComponents: [] });
     mockClearRegistryCache = vi.fn();
+    mockRecordVariantMetadataSync = vi.fn().mockReturnValue([]);
     mockBeginBatch = vi.fn();
     mockEndBatch = vi.fn();
     mockIsBatchActive = vi.fn().mockReturnValue(false);
@@ -369,6 +372,7 @@ describe("tool handlers", () => {
     });
     mockGetAccumulatedChanges = vi.fn().mockReturnValue(null);
     mockSaveFullBundle = vi.fn().mockResolvedValue({ revisionNum: 99, incremental: false });
+    mockSaveChanges = vi.fn().mockResolvedValue({ revisionNum: 100, incremental: true });
 
     // --- Register module mocks (before import) ---
 
@@ -542,7 +546,7 @@ describe("tool handlers", () => {
     vi.doMock("../save-manager", () => ({
       SaveManager: vi.fn(() => ({
         saveFullBundle: (...args: any[]) => mockSaveFullBundle(...args),
-        saveChanges: vi.fn(),
+        saveChanges: (...args: any[]) => mockSaveChanges(...args),
       })),
     }));
 
@@ -555,6 +559,7 @@ describe("tool handlers", () => {
     vi.doMock("../devhost-sync", () => ({
       syncFromDevHost: (...args: any[]) => mockSyncFromDevHost(...args),
       clearRegistryCache: (...args: any[]) => mockClearRegistryCache(...args),
+      recordVariantMetadataSync: (...args: any[]) => mockRecordVariantMetadataSync(...args),
     }));
 
     // --- Create server and connect transport ---
@@ -667,6 +672,158 @@ describe("tool handlers", () => {
       expect(result.content[0].text).toContain("raw string rejection");
       // Must NOT contain "undefined" — that would mean err.message was used on a non-Error
       expect(result.content[0].text).not.toContain("undefined");
+    });
+
+    it("persists variant metadata when dev host provides new variants", async () => {
+      const mockSite = {
+        components: [
+          { uuid: "cc-1", name: "EPButton$dev", codeComponentMeta: { variants: {} } },
+        ],
+      };
+
+      mockLoadProject.mockResolvedValue({
+        site: mockSite,
+        bundler: {},
+        projectName: "Test Project",
+        revisionNum: 5,
+        modelVersion: 1,
+        hostlessDataVersion: 0,
+        hostUrl: "http://localhost:3001",
+      });
+
+      mockSyncFromDevHost.mockResolvedValue({
+        devHostSynced: true,
+        syncedVariantComponents: ["EPButton$dev"],
+        registryData: {
+          components: [
+            {
+              name: "EPButton$dev",
+              variants: {
+                selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+              },
+            },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+
+      // Simulate change tracker recording actual changes
+      mockGetChangeTracker.mockReturnValue({
+        withRecording: vi.fn((fn: any) => {
+          fn();
+          return { changes: [{ changeNode: {} }], newInsts: [], removedInsts: [] };
+        }),
+      });
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "set", projectId: "proj-123" },
+      });
+
+      expect(result.isError).toBeFalsy();
+      // recordVariantMetadataSync should have been called
+      expect(mockRecordVariantMetadataSync).toHaveBeenCalled();
+      // saveChanges should have been called since there were changes
+      expect(mockSaveChanges).toHaveBeenCalled();
+    });
+
+    it("does not save when variant metadata is already up to date", async () => {
+      const mockSite = {
+        components: [
+          {
+            uuid: "cc-1",
+            name: "EPButton$dev",
+            codeComponentMeta: {
+              variants: {
+                selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+              },
+            },
+          },
+        ],
+      };
+
+      mockLoadProject.mockResolvedValue({
+        site: mockSite,
+        bundler: {},
+        projectName: "Test Project",
+        revisionNum: 5,
+        modelVersion: 1,
+        hostlessDataVersion: 0,
+        hostUrl: "http://localhost:3001",
+      });
+
+      mockSyncFromDevHost.mockResolvedValue({
+        devHostSynced: true,
+        syncedVariantComponents: ["EPButton$dev"],
+        registryData: {
+          components: [
+            {
+              name: "EPButton$dev",
+              variants: {
+                selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+              },
+            },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+
+      // No changes recorded (metadata already matches)
+      mockGetChangeTracker.mockReturnValue({
+        withRecording: vi.fn((fn: any) => {
+          fn();
+          return { changes: [], newInsts: [], removedInsts: [] };
+        }),
+      });
+
+      mockSaveChanges.mockClear();
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "set", projectId: "proj-123" },
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(mockRecordVariantMetadataSync).toHaveBeenCalled();
+      // saveChanges should NOT have been called since no changes
+      expect(mockSaveChanges).not.toHaveBeenCalled();
+    });
+
+    it("skips Phase 2 when no registry data available", async () => {
+      const mockSite = { components: [] };
+
+      mockLoadProject.mockResolvedValue({
+        site: mockSite,
+        bundler: {},
+        projectName: "Test Project",
+        revisionNum: 5,
+        modelVersion: 1,
+        hostlessDataVersion: 0,
+      });
+
+      mockSyncFromDevHost.mockResolvedValue({
+        devHostSynced: false,
+        syncedVariantComponents: [],
+        registryData: undefined,
+      });
+
+      mockRecordVariantMetadataSync.mockClear();
+      mockSaveChanges.mockClear();
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "set", projectId: "proj-123" },
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(mockRecordVariantMetadataSync).not.toHaveBeenCalled();
+      expect(mockSaveChanges).not.toHaveBeenCalled();
     });
   });
 
@@ -1760,7 +1917,7 @@ describe("tool handlers", () => {
 
       const result = await client.callTool({
         name: "component",
-        arguments: { action: "create-page", name: "Products", path: "/products", body: {} },
+        arguments: { action: "create-page", name: "Products", path: "/products", body: { type: "vbox" } },
       });
 
       const output = parseResponse(result);
@@ -1778,7 +1935,7 @@ describe("tool handlers", () => {
 
       const result = await client.callTool({
         name: "component",
-        arguments: { action: "create-page", name: "Test", path: "/test", body: {} },
+        arguments: { action: "create-page", name: "Test", path: "/test", body: { type: "vbox" } },
       });
 
       // Should succeed — reload failure is swallowed
@@ -1794,7 +1951,7 @@ describe("tool handlers", () => {
 
       const result = await client.callTool({
         name: "component",
-        arguments: { action: "create-page", name: "Test", path: "/test", body: {} },
+        arguments: { action: "create-page", name: "Test", path: "/test", body: { type: "vbox" } },
       });
 
       expect(result.isError).toBe(true);
@@ -1833,7 +1990,7 @@ describe("tool handlers", () => {
 
       await client.callTool({
         name: "component",
-        arguments: { action: "create-page", name: "Test", path: "/test", body: {} },
+        arguments: { action: "create-page", name: "Test", path: "/test", body: { type: "vbox" } },
       });
 
       expect(mockSetSession).toHaveBeenCalledWith(
@@ -1915,7 +2072,7 @@ describe("tool handlers", () => {
 
       const result = await client.callTool({
         name: "component",
-        arguments: { action: "create", name: "HeroSection", body: {} },
+        arguments: { action: "create", name: "HeroSection", body: { type: "vbox" } },
       });
 
       const output = parseResponse(result);
@@ -1933,7 +2090,7 @@ describe("tool handlers", () => {
 
       const result = await client.callTool({
         name: "component",
-        arguments: { action: "create", name: "Test", body: {} },
+        arguments: { action: "create", name: "Test", body: { type: "vbox" } },
       });
 
       const output = parseResponse(result);
@@ -1948,7 +2105,7 @@ describe("tool handlers", () => {
 
       const result = await client.callTool({
         name: "component",
-        arguments: { action: "create", name: "Test", body: {} },
+        arguments: { action: "create", name: "Test", body: { type: "vbox" } },
       });
 
       expect(result.isError).toBe(true);
@@ -1987,7 +2144,7 @@ describe("tool handlers", () => {
 
       await client.callTool({
         name: "component",
-        arguments: { action: "create", name: "HeroSection", body: {} },
+        arguments: { action: "create", name: "HeroSection", body: { type: "vbox" } },
       });
 
       expect(mockSetSession).toHaveBeenCalledWith(
@@ -4592,6 +4749,112 @@ describe("tool handlers", () => {
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("Error in project.refresh");
     });
+
+    it("persists variant metadata on refresh when dev host provides new variants", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+      });
+
+      mockLoadProject.mockResolvedValue({
+        site: { components: [{ uuid: "cc-1", name: "EPButton$dev", codeComponentMeta: { variants: {} } }] },
+        bundler: {},
+        projectName: "Test",
+        revisionNum: 15,
+        modelVersion: 3,
+        hostlessDataVersion: 1,
+        hostUrl: "http://localhost:3001",
+      });
+
+      mockSyncFromDevHost.mockResolvedValue({
+        devHostSynced: true,
+        syncedVariantComponents: ["EPButton$dev"],
+        registryData: {
+          components: [
+            {
+              name: "EPButton$dev",
+              variants: {
+                selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+              },
+            },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+
+      mockGetChangeTracker.mockReturnValue({
+        withRecording: vi.fn((fn: any) => {
+          fn();
+          return { changes: [{ changeNode: {} }], newInsts: [], removedInsts: [] };
+        }),
+      });
+
+      mockSaveChanges.mockClear();
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "refresh" },
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(mockRecordVariantMetadataSync).toHaveBeenCalled();
+      expect(mockSaveChanges).toHaveBeenCalled();
+    });
+
+    it("does not save on refresh when variant metadata is already up to date", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+      });
+
+      mockLoadProject.mockResolvedValue({
+        site: { components: [] },
+        bundler: {},
+        projectName: "Test",
+        revisionNum: 15,
+        modelVersion: 3,
+        hostlessDataVersion: 1,
+        hostUrl: "http://localhost:3001",
+      });
+
+      mockSyncFromDevHost.mockResolvedValue({
+        devHostSynced: true,
+        syncedVariantComponents: [],
+        registryData: {
+          components: [
+            {
+              name: "EPButton$dev",
+              variants: {
+                selected: { cssSelector: "[data-selected]", displayName: "Selected" },
+              },
+            },
+          ],
+          contexts: [],
+          functions: [],
+          tokens: [],
+          traits: [],
+        },
+      });
+
+      mockGetChangeTracker.mockReturnValue({
+        withRecording: vi.fn((fn: any) => {
+          fn();
+          return { changes: [], newInsts: [], removedInsts: [] };
+        }),
+      });
+
+      mockSaveChanges.mockClear();
+
+      const result = await client.callTool({
+        name: "project",
+        arguments: { action: "refresh" },
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(mockRecordVariantMetadataSync).toHaveBeenCalled();
+      expect(mockSaveChanges).not.toHaveBeenCalled();
+    });
   });
 
   describe("node.update-attrs", () => {
@@ -6848,7 +7111,7 @@ describe("tool handlers", () => {
 
       await client.callTool({
         name: "component",
-        arguments: { action: "create-page", name: "Products", path: "/products", body: {} },
+        arguments: { action: "create-page", name: "Products", path: "/products", body: { type: "vbox" } },
       });
 
       // syncFromDevHost was called with the reloaded hostUrl
@@ -7605,6 +7868,7 @@ describe("tool handlers", () => {
       const output = parseResponse(result);
       expect(output.devHostSynced).toBe(true);
       expect(output.devHostRegistry).toEqual({
+        componentCount: 1,
         contextCount: 2,
         functionCount: 1,
         tokenCount: 1,
@@ -7632,7 +7896,7 @@ describe("tool handlers", () => {
       });
 
       const output = parseResponse(result);
-      expect(output.devHostSynced).toBeUndefined();
+      expect(output.devHostSynced).toBe(false);
       expect(output.devHostRegistry).toBeUndefined();
     });
 

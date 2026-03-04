@@ -25,6 +25,9 @@ export interface Session {
   modelVersion: number;
   hostlessDataVersion: number;
   projectUuid: string;
+  /** Authoritative bundle version from server API (e.g. "256-wrap-page-meta-og-image-in-ref").
+   *  Fetched via /api/v1/latest-bundle-version, matching Studio's appCtx.lastBundleVersion. */
+  bundleVersion: string;
   /** Dev host URL from project settings or PLASMIC_DEV_HOST_URL env var. */
   hostUrl?: string;
   /** Whether dev host variant sync completed successfully. */

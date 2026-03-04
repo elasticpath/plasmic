@@ -99,6 +99,11 @@ beforeAll(() => {
         return jsonResponse({ csrf: "test-csrf" });
       }
 
+      // GET /api/v1/latest-bundle-version — bundle version for saves
+      if (method === "GET" && url.includes("/api/v1/latest-bundle-version")) {
+        return jsonResponse({ latestBundleVersion: "test-bundle-version" });
+      }
+
       // POST /revisions/ — accept save requests
       if (method === "POST" && url.includes("/revisions/")) {
         return jsonResponse({});
@@ -1312,7 +1317,7 @@ describe("node.add with component instances", () => {
     expect(addResult.isError).toBe(true);
     const errorText = addResult.content?.[0]?.text ?? "";
     expect(errorText).toContain("NonExistentComponent_XYZ");
-    expect(errorText).toContain("not found");
+    expect(errorText).toContain("Unknown component");
   });
 });
 
