@@ -136,6 +136,80 @@ import { SaveManager } from "./save-manager.js";
 import { undoChanges } from "@/wab/shared/core/undo-util";
 import type { TreeReadOptions } from "./types.js";
 
+// ---------------------------------------------------------------------------
+// PlasmicElement schema — strict top level, z.any() for recursive children.
+//
+// Flat discriminated union so MCP clients emit valid JSON Schema without
+// $defs/$ref (which Claude Desktop, Gemini CLI, n8n, etc. drop or reject).
+// The description on `children` tells LLMs to use the same shape recursively.
+// ---------------------------------------------------------------------------
+
+const plasmicElementChildren = z.any().optional().describe(
+  "Nested PlasmicElement(s) — same format as the parent element. " +
+  "Single element object or array of elements."
+);
+
+const plasmicElementStyles = z.record(z.string()).optional().describe(
+  "CSS styles in camelCase, e.g. {fontSize:'16px', color:'#333'}"
+);
+
+const plasmicElementAttrs = z.record(z.any()).optional().describe(
+  "HTML attributes, e.g. {id:'hero', 'aria-label':'Main section'}"
+);
+
+const PlasmicElementSchema = z.union([
+  z.string().describe("Plain text string — creates an inline text node"),
+  z.object({
+    type: z.literal("text"),
+    value: z.string().describe("Text content to display"),
+    tag: z.string().optional().describe("HTML tag: h1, h2, h3, p, span, div (default: div)"),
+    styles: plasmicElementStyles,
+    attrs: plasmicElementAttrs,
+  }).describe("Text element"),
+  z.object({
+    type: z.enum(["box", "vbox", "hbox", "page-section"]),
+    children: plasmicElementChildren,
+    tag: z.string().optional().describe("HTML tag: div, section, nav, header, footer, main, article, aside, ul, ol, li (default: div)"),
+    styles: plasmicElementStyles,
+    attrs: plasmicElementAttrs,
+  }).describe("Container element — vbox for vertical, hbox for horizontal, box for free layout"),
+  z.object({
+    type: z.literal("img"),
+    src: z.string().describe("Image URL"),
+    styles: plasmicElementStyles,
+    attrs: plasmicElementAttrs,
+  }).describe("Image element"),
+  z.object({
+    type: z.literal("button"),
+    value: z.string().optional().describe("Button label text"),
+    styles: plasmicElementStyles,
+    attrs: plasmicElementAttrs,
+  }).describe("Button element"),
+  z.object({
+    type: z.enum(["input", "password", "textarea"]),
+    styles: plasmicElementStyles,
+    attrs: plasmicElementAttrs,
+  }).describe("Form input element"),
+  z.object({
+    type: z.literal("component"),
+    name: z.string().describe("Component name as shown in Studio"),
+    props: z.record(z.any()).optional().describe("Component prop values"),
+    styles: plasmicElementStyles,
+    children: plasmicElementChildren,
+  }).describe("Code component or Plasmic component instance"),
+  z.object({
+    type: z.literal("default-component"),
+    kind: z.string().describe("Default component kind"),
+    props: z.record(z.any()).optional().describe("Component prop values"),
+    styles: plasmicElementStyles,
+    children: plasmicElementChildren,
+  }).describe("Built-in default component instance"),
+]).describe(
+  "PlasmicElement — the building block for page/component trees. " +
+  "Use type:'text' with value:'...' for text, type:'vbox' for vertical stacks, " +
+  "type:'component' with name:'...' for component instances."
+);
+
 /**
  * Validate that a required parameter is present for a given action.
  * Throws a descriptive error if the value is undefined or null.
@@ -1166,7 +1240,7 @@ export function createServer(): McpServer {
       componentUuid: z.string().optional().describe("UUID of the component"),
       name: z.string().optional().describe("Name for create/rename/add-prop/add-state actions"),
       path: z.string().optional().describe("URL path for pages"),
-      body: z.any().optional().describe("PlasmicElement JSON tree for create-page/create"),
+      body: PlasmicElementSchema.optional().describe("PlasmicElement JSON tree for create-page/create"),
       sourceUuid: z.string().optional().describe("UUID of source for clone"),
       newName: z.string().optional().describe("New name for rename"),
       newPath: z.string().optional().describe("New URL path for rename"),
@@ -2251,15 +2325,7 @@ export function createServer(): McpServer {
       nodeRef: z.string().optional().describe("Node reference: UUID, name, path, or index"),
       parentRef: z.string().optional().describe("Parent node reference (for add, reorder, clone)"),
       newParentRef: z.string().optional().describe("New parent reference (for move)"),
-      child: z.any().optional().describe(
-        "PlasmicElement JSON for add action. " +
-        "Text: {type:'text', value:'Hello', tag?:'h1'|'p'|'span'|'div'}. " +
-        "Container: {type:'box'|'vbox'|'hbox', children?:[...], tag?:'div'|'section'|'nav'}. " +
-        "Image: {type:'img', src:'url'}. " +
-        "Button: {type:'button', value?:'Click me'}. " +
-        "Component: {type:'component', name:'CompName', props?:{...}}. " +
-        "All types accept optional styles:{} and attrs:{}."
-      ),
+      child: PlasmicElementSchema.optional().describe("PlasmicElement JSON for add action"),
       position: z.union([z.string(), z.number()]).optional().describe("Insert position: 'first', 'last', or index"),
       slot: z.string().optional().describe("Target slot name on component instance"),
       newName: z.string().optional().describe("Name for cloned node"),

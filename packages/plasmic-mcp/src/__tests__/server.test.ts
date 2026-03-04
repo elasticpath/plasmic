@@ -1917,7 +1917,7 @@ describe("tool handlers", () => {
 
       const result = await client.callTool({
         name: "component",
-        arguments: { action: "create-page", name: "Products", path: "/products", body: {} },
+        arguments: { action: "create-page", name: "Products", path: "/products", body: { type: "vbox" } },
       });
 
       const output = parseResponse(result);
@@ -1935,7 +1935,7 @@ describe("tool handlers", () => {
 
       const result = await client.callTool({
         name: "component",
-        arguments: { action: "create-page", name: "Test", path: "/test", body: {} },
+        arguments: { action: "create-page", name: "Test", path: "/test", body: { type: "vbox" } },
       });
 
       // Should succeed — reload failure is swallowed
@@ -1951,7 +1951,7 @@ describe("tool handlers", () => {
 
       const result = await client.callTool({
         name: "component",
-        arguments: { action: "create-page", name: "Test", path: "/test", body: {} },
+        arguments: { action: "create-page", name: "Test", path: "/test", body: { type: "vbox" } },
       });
 
       expect(result.isError).toBe(true);
@@ -1990,7 +1990,7 @@ describe("tool handlers", () => {
 
       await client.callTool({
         name: "component",
-        arguments: { action: "create-page", name: "Test", path: "/test", body: {} },
+        arguments: { action: "create-page", name: "Test", path: "/test", body: { type: "vbox" } },
       });
 
       expect(mockSetSession).toHaveBeenCalledWith(
@@ -2072,7 +2072,7 @@ describe("tool handlers", () => {
 
       const result = await client.callTool({
         name: "component",
-        arguments: { action: "create", name: "HeroSection", body: {} },
+        arguments: { action: "create", name: "HeroSection", body: { type: "vbox" } },
       });
 
       const output = parseResponse(result);
@@ -2090,7 +2090,7 @@ describe("tool handlers", () => {
 
       const result = await client.callTool({
         name: "component",
-        arguments: { action: "create", name: "Test", body: {} },
+        arguments: { action: "create", name: "Test", body: { type: "vbox" } },
       });
 
       const output = parseResponse(result);
@@ -2105,7 +2105,7 @@ describe("tool handlers", () => {
 
       const result = await client.callTool({
         name: "component",
-        arguments: { action: "create", name: "Test", body: {} },
+        arguments: { action: "create", name: "Test", body: { type: "vbox" } },
       });
 
       expect(result.isError).toBe(true);
@@ -2144,7 +2144,7 @@ describe("tool handlers", () => {
 
       await client.callTool({
         name: "component",
-        arguments: { action: "create", name: "HeroSection", body: {} },
+        arguments: { action: "create", name: "HeroSection", body: { type: "vbox" } },
       });
 
       expect(mockSetSession).toHaveBeenCalledWith(
@@ -7111,7 +7111,7 @@ describe("tool handlers", () => {
 
       await client.callTool({
         name: "component",
-        arguments: { action: "create-page", name: "Products", path: "/products", body: {} },
+        arguments: { action: "create-page", name: "Products", path: "/products", body: { type: "vbox" } },
       });
 
       // syncFromDevHost was called with the reloaded hostUrl
