@@ -11,6 +11,7 @@ type BundleComponentFieldName =
   | "min"
   | "max"
   | "selectedCount"
+  | "selectionInfo"
   | "isValid"
   | "optionCount";
 
@@ -36,6 +37,7 @@ export const epBundleComponentFieldMeta: ComponentMeta<EPBundleComponentFieldPro
           { label: "Min Selections", value: "min" },
           { label: "Max Selections", value: "max" },
           { label: "Selected Count", value: "selectedCount" },
+          { label: "Selection Info", value: "selectionInfo" },
           { label: "Is Valid", value: "isValid" },
           { label: "Option Count", value: "optionCount" },
         ],
@@ -74,6 +76,11 @@ export function EPBundleComponentField(props: EPBundleComponentFieldProps) {
   let value: any;
   if (field === "optionCount") {
     value = data.options?.length ?? 0;
+  } else if (field === "selectionInfo") {
+    const selected = data.selectedCount ?? 0;
+    const min = data.min ?? 0;
+    const max = data.max ?? 0;
+    value = min === max ? `${selected} of ${min}` : `${selected} of ${min}\u2013${max}`;
   } else {
     value = data[field];
   }
