@@ -435,9 +435,10 @@ function readTplTag(
       }
     }
 
-    // Derive layout type from flex styles
+    // Derive layout type and hint from flex/grid styles
     if (node.styles) {
       node.layoutType = deriveLayoutType(node.styles);
+      node.layoutHint = deriveLayoutHint(node.styles);
     }
 
     // Text content (for text blocks)
@@ -582,9 +583,10 @@ function readTplComponent(
     }
   }
 
-  // Derive layout type from flex styles (same as TplTag)
+  // Derive layout type and hint from flex/grid styles (same as TplTag)
   if (node.styles) {
     node.layoutType = deriveLayoutType(node.styles);
+    node.layoutHint = deriveLayoutHint(node.styles);
   }
 
   // Non-slot args → attrs
@@ -842,6 +844,28 @@ function deriveLayoutType(
   }
 
   return "box";
+}
+
+/**
+ * Derives a semantic layout hint from CSS styles.
+ * More descriptive than layoutType — detects grid layouts and uses
+ * clearer names (flex-row/flex-col instead of hbox/vbox).
+ */
+function deriveLayoutHint(
+  styles: Record<string, string>
+): "flex-row" | "flex-col" | "grid" | "block" {
+  const display = styles["display"];
+  if (display === "grid" || display === "inline-grid") {return "grid";}
+
+  const flexDirection = styles["flexDirection"] || styles["flex-direction"];
+  if (flexDirection === "column" || flexDirection === "column-reverse") {return "flex-col";}
+  if (flexDirection === "row" || flexDirection === "row-reverse") {return "flex-row";}
+
+  if (display === "flex" || display === "inline-flex") {
+    return "flex-row"; // Default flex direction is row
+  }
+
+  return "block";
 }
 
 /**

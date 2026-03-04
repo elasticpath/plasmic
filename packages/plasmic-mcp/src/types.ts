@@ -274,6 +274,8 @@ export interface TreeNode {
   fallback?: string;
   attrs?: Record<string, unknown>;
   layoutType?: "vbox" | "hbox" | "box";
+  /** Semantic layout hint: flex-row, flex-col, grid, or block. More descriptive than layoutType for LLM reasoning. */
+  layoutHint?: "flex-row" | "flex-col" | "grid" | "block";
   /** Element visibility state. Only present when element is not in default visible state. */
   visibility?: "notRendered" | "displayNone";
   /** Data condition expression for conditional rendering. Only present when a custom condition is set. */

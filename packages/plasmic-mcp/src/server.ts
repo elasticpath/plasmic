@@ -43,7 +43,7 @@ import {
   truncateTreeToCharBudget,
   toConciseFormat,
 } from "./tree-reader.js";
-import { readTokens } from "./token-reader.js";
+import { readTokens, getAllStyleTokens } from "./token-reader.js";
 import { resolveNode, requireSingleNode, invalidateNodeCache, clearNodeCache } from "./node-resolver.js";
 import { initChangeTracker, disposeChangeTracker, getChangeTracker } from "./change-tracker.js";
 import {
@@ -806,17 +806,18 @@ export function createServer(): McpServer {
   server.tool(
     "inspect",
     "Read-only queries on component trees, nodes, style properties, and page metadata.\n" +
-      "Actions: tree, summary, node, subtree, export, style-properties, preview-url, page-meta.\n" +
-      "- tree: Full element tree with styles, text, layout\n" +
+      "Actions: tree, summary, node, subtree, export, style-properties, preview-url, page-meta, list-design-system.\n" +
+      "- tree: Full element tree with styles, text, layout. Example: {action:\"tree\",componentUuid:\"abc\"} → {type:\"tag\",tag:\"div\",layoutType:\"vbox\",layoutHint:\"flex-col\",children:[...]}\n" +
       "- summary: Compact outline (type, tag, name, uuid, childCount)\n" +
       "- node: Full details for a single node\n" +
       "- subtree: Tree from a specific node downward\n" +
       "- export: Write full tree to temp file\n" +
       "- style-properties: List valid CSS property names\n" +
       "- preview-url: Get preview and studio URLs\n" +
-      "- page-meta: Read page SEO metadata",
+      "- page-meta: Read page SEO metadata\n" +
+      "- list-design-system: Consolidated summary of all design tokens, mixins, and themes. Example: {action:\"list-design-system\"} → {tokens:{Color:[...],Spacing:[...]},mixins:[...],themes:[...]}",
     {
-      action: z.enum(["tree", "summary", "node", "subtree", "export", "style-properties", "preview-url", "page-meta"]),
+      action: z.enum(["tree", "summary", "node", "subtree", "export", "style-properties", "preview-url", "page-meta", "list-design-system"]),
       componentUuid: z.string().optional().describe("UUID of the component to inspect"),
       nodeRef: z.string().optional().describe("Node reference: UUID, name, path, or index"),
       maxDepth: z.number().optional().describe("Maximum tree depth to return. Defaults to 3 for tree, 2 for summary. Pass -1 for unlimited."),
@@ -826,6 +827,7 @@ export function createServer(): McpServer {
       format: z.enum(["concise", "full"]).optional().describe('Response format. "concise" strips UUIDs (except root), abbreviates keys (childCount→cc, componentName→comp), replaces detail fields with booleans. ~70% token reduction for orientation. Default: "full".'),
       filter: z.string().optional().describe("Filter string for style-properties action"),
     },
+    { readOnlyHint: true },
     async ({ action, componentUuid, nodeRef, maxDepth, maxChars, excludeStyles, summaryOnly, format, filter }) => {
       try {
         switch (action) {
@@ -1284,8 +1286,35 @@ export function createServer(): McpServer {
             };
           }
 
+          case "list-design-system": {
+            const session = requireSession();
+            const allTokens = getAllStyleTokens(session.site);
+            const tokensResult = readTokens(allTokens);
+            const mixins = listMixins();
+            const themes = listThemes();
+
+            const result: Record<string, unknown> = {
+              tokenCount: tokensResult.tokenCount,
+              tokens: tokensResult.tokens,
+              mixinCount: mixins.length,
+              mixins,
+              themeCount: themes.length,
+              themes,
+            };
+
+            if (tokensResult.tokenCount === 0 && mixins.length === 0 && themes.length === 0) {
+              result.note = "No design system tokens, mixins, or themes defined. You can create them with the design tool, or use raw CSS values directly.";
+            }
+
+            return {
+              content: [
+                { type: "text" as const, text: JSON.stringify(result) },
+              ],
+            };
+          }
+
           default:
-            throw new Error(`Unknown action '${action}' for inspect tool. Available: tree, summary, node, subtree, export, style-properties, preview-url, page-meta`);
+            throw new Error(`Unknown action '${action}' for inspect tool. Available: tree, summary, node, subtree, export, style-properties, preview-url, page-meta, list-design-system`);
         }
       } catch (err: unknown) {
         return {
@@ -2395,8 +2424,8 @@ export function createServer(): McpServer {
     "node",
     "Element mutations within a component.\n" +
       "Actions: add, remove, move, clone, reorder, update-styles, update-text, update-rich-text, update-attrs, update-props, set-visibility, set-image, apply-mixin, detach-mixin, add-animation, remove-animation.\n" +
-      "- add/remove/move/clone/reorder: Structural changes to element tree\n" +
-      "- update-styles: Set CSS styles on an element\n" +
+      "- add/remove/move/clone/reorder: Structural changes to element tree. Example: {action:\"add\",componentUuid:\"abc\",parentRef:\"root\",tag:\"div\"} → {uuid:\"new-uuid\"}\n" +
+      "- update-styles: Set CSS styles on an element. Example: {action:\"update-styles\",componentUuid:\"abc\",nodeRef:\"uuid\",styles:{display:\"flex\",flexDirection:\"column\",gap:\"16px\"}}\n" +
       "- update-text/update-rich-text: Set text content\n" +
       "- update-attrs: Set HTML attributes on TplTag elements\n" +
       "- update-props: Set component props on TplComponent instances (scalar, dynamic, slot)\n" +
@@ -2404,6 +2433,7 @@ export function createServer(): McpServer {
       "- set-image: Set image source (asset or URL)\n" +
       "- apply-mixin/detach-mixin: Apply or remove style mixins\n" +
       "- add-animation/remove-animation: Apply or remove animations\n" +
+      "Layout guidance: use flexDirection:column for vertical stacks, flexDirection:row for horizontal layouts, display:grid + gridTemplateColumns for equal-width columns or complex 2D layouts. Prefer flex for single-axis flow, grid for multi-column/row alignment. Consider using a reusable component instead of raw tags for repeated patterns.\n" +
       "Use inspect tool for read-only queries.",
     {
       action: z.enum([
@@ -3593,11 +3623,12 @@ export function createServer(): McpServer {
       "list-animations, create-animation, update-animation, remove-animation, " +
       "list-themes, create-theme, update-theme, remove-theme, set-active-theme, " +
       "list-assets, upload-asset, rename-asset, remove-asset.\n" +
-      "Tokens: design system values (colors, spacing, fonts)\n" +
+      "Tokens: design system values (colors, spacing, fonts). Example: {action:\"list-tokens\"} → {tokenCount:5,tokens:{Color:[{name:\"Primary\",value:\"#3B82F6\"},...]}}\n" +
       "Mixins: reusable style bundles\n" +
       "Animations: @keyframes definitions\n" +
       "Themes: typography defaults and per-tag overrides\n" +
-      "Assets: image and icon management",
+      "Assets: image and icon management\n" +
+      "Design System First: before setting raw CSS values, call inspect.list-design-system or list-tokens to check for existing design tokens. Prefer token references (token:TokenName in update-styles) over raw values when matching tokens exist. Raw CSS values are always valid — tokens are preferred, not required.",
     {
       action: z.enum([
         "list-tokens", "create-token", "update-token", "remove-token", "duplicate-token",

@@ -1275,6 +1275,144 @@ describe("readComponentTree", () => {
     });
   });
 
+  describe("layoutHint derivation", () => {
+    it("derives flex-col from flexDirection: column", () => {
+      const component = {
+        tplTree: {
+          _type: "TplTag",
+          tag: "div",
+          uuid: "hint-col",
+          vsettings: [
+            {
+              rs: { values: { display: "flex", flexDirection: "column" } },
+              attrs: {},
+            },
+          ],
+          children: [],
+        },
+      };
+      expect(readComponentTree(component)?.layoutHint).toBe("flex-col");
+    });
+
+    it("derives flex-row from flexDirection: row", () => {
+      const component = {
+        tplTree: {
+          _type: "TplTag",
+          tag: "div",
+          uuid: "hint-row",
+          vsettings: [
+            {
+              rs: { values: { display: "flex", flexDirection: "row" } },
+              attrs: {},
+            },
+          ],
+          children: [],
+        },
+      };
+      expect(readComponentTree(component)?.layoutHint).toBe("flex-row");
+    });
+
+    it("derives flex-row from display: flex without explicit direction", () => {
+      const component = {
+        tplTree: {
+          _type: "TplTag",
+          tag: "div",
+          uuid: "hint-flex-default",
+          vsettings: [
+            { rs: { values: { display: "flex" } }, attrs: {} },
+          ],
+          children: [],
+        },
+      };
+      expect(readComponentTree(component)?.layoutHint).toBe("flex-row");
+    });
+
+    it("derives grid from display: grid", () => {
+      const component = {
+        tplTree: {
+          _type: "TplTag",
+          tag: "div",
+          uuid: "hint-grid",
+          vsettings: [
+            {
+              rs: { values: { display: "grid", gridTemplateColumns: "1fr 1fr" } },
+              attrs: {},
+            },
+          ],
+          children: [],
+        },
+      };
+      expect(readComponentTree(component)?.layoutHint).toBe("grid");
+    });
+
+    it("derives grid from display: inline-grid", () => {
+      const component = {
+        tplTree: {
+          _type: "TplTag",
+          tag: "div",
+          uuid: "hint-inline-grid",
+          vsettings: [
+            { rs: { values: { display: "inline-grid" } }, attrs: {} },
+          ],
+          children: [],
+        },
+      };
+      expect(readComponentTree(component)?.layoutHint).toBe("grid");
+    });
+
+    it("derives block from non-flex/non-grid display", () => {
+      const component = {
+        tplTree: {
+          _type: "TplTag",
+          tag: "div",
+          uuid: "hint-block",
+          vsettings: [
+            { rs: { values: { display: "block" } }, attrs: {} },
+          ],
+          children: [],
+        },
+      };
+      expect(readComponentTree(component)?.layoutHint).toBe("block");
+    });
+
+    it("derives layoutHint on TplComponent instances", () => {
+      const component = {
+        tplTree: {
+          _type: "TplComponent",
+          uuid: "hint-comp",
+          name: "MyGrid",
+          component: { name: "Grid", uuid: "grid-def" },
+          vsettings: [
+            {
+              rs: { values: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)" } },
+              args: [],
+            },
+          ],
+        },
+      };
+      const result = readComponentTree(component);
+      expect(result?.layoutHint).toBe("grid");
+    });
+
+    it("derives flex-col from column-reverse", () => {
+      const component = {
+        tplTree: {
+          _type: "TplTag",
+          tag: "div",
+          uuid: "hint-col-rev",
+          vsettings: [
+            {
+              rs: { values: { display: "flex", "flex-direction": "column-reverse" } },
+              attrs: {},
+            },
+          ],
+          children: [],
+        },
+      };
+      expect(readComponentTree(component)?.layoutHint).toBe("flex-col");
+    });
+  });
+
   describe("unknown node types", () => {
     it("returns a fallback node for unrecognized types", () => {
       const component = {

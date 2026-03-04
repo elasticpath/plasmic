@@ -119,6 +119,7 @@ describe("tool handlers", () => {
   let mockTruncateTreeToCharBudget: ReturnType<typeof vi.fn>;
   let mockToConciseFormat: ReturnType<typeof vi.fn>;
   let mockReadTokens: ReturnType<typeof vi.fn>;
+  let mockGetAllStyleTokens: ReturnType<typeof vi.fn>;
   let mockResolveNode: ReturnType<typeof vi.fn>;
   let mockRequireSingleNode: ReturnType<typeof vi.fn>;
   let mockInvalidateNodeCache: ReturnType<typeof vi.fn>;
@@ -261,6 +262,7 @@ describe("tool handlers", () => {
     }));
     mockToConciseFormat = vi.fn().mockImplementation((node: any) => ({ ...node, _concise: true }));
     mockReadTokens = vi.fn();
+    mockGetAllStyleTokens = vi.fn().mockImplementation((site: any) => [...(site.styleTokens ?? [])]);
     mockResolveNode = vi.fn();
     mockRequireSingleNode = vi.fn();
     mockInvalidateNodeCache = vi.fn();
@@ -431,6 +433,7 @@ describe("tool handlers", () => {
 
     vi.doMock("../token-reader", () => ({
       readTokens: (...args: any[]) => mockReadTokens(...args),
+      getAllStyleTokens: (...args: any[]) => mockGetAllStyleTokens(...args),
     }));
 
     vi.doMock("../node-resolver", () => ({
@@ -5031,6 +5034,61 @@ describe("tool handlers", () => {
       expect(result.isError).toBeFalsy();
       expect(output.total).toBe(0);
       expect(output.properties).toEqual([]);
+    });
+  });
+
+  // =====================================================================
+  // inspect.list-design-system — consolidated design system summary
+  // =====================================================================
+
+  describe("inspect.list-design-system", () => {
+    it("returns tokens, mixins, and themes in one call", async () => {
+      const mockTokens = [{ uuid: "t1", name: "Primary", type: "Color", value: "#3B82F6" }];
+      mockRequireSession.mockReturnValue({
+        site: { styleTokens: mockTokens, projectDependencies: [] },
+      });
+      mockReadTokens.mockReturnValue({
+        tokenCount: 1,
+        tokens: { Color: [{ uuid: "t1", name: "Primary", type: "Color", value: "#3B82F6" }] },
+      });
+      mockListMixins.mockReturnValue([{ uuid: "m1", name: "card-shadow", styles: { boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }, forTheme: false }]);
+      mockListThemes.mockReturnValue([{ index: 0, isActive: true, defaultStyleName: "Default", defaultStyles: {}, themeStyles: [] }]);
+
+      const result = await client.callTool({
+        name: "inspect",
+        arguments: { action: "list-design-system" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.tokenCount).toBe(1);
+      expect(output.tokens.Color).toHaveLength(1);
+      expect(output.mixinCount).toBe(1);
+      expect(output.mixins[0].name).toBe("card-shadow");
+      expect(output.themeCount).toBe(1);
+      expect(output.themes[0].isActive).toBe(true);
+      expect(output.note).toBeUndefined();
+    });
+
+    it("returns advisory note when design system is empty", async () => {
+      mockRequireSession.mockReturnValue({
+        site: { styleTokens: [], projectDependencies: [] },
+      });
+      mockReadTokens.mockReturnValue({ tokenCount: 0, tokens: {} });
+      mockListMixins.mockReturnValue([]);
+      mockListThemes.mockReturnValue([]);
+
+      const result = await client.callTool({
+        name: "inspect",
+        arguments: { action: "list-design-system" },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.tokenCount).toBe(0);
+      expect(output.mixinCount).toBe(0);
+      expect(output.themeCount).toBe(0);
+      expect(output.note).toContain("No design system tokens");
     });
   });
 
