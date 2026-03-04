@@ -15,6 +15,10 @@ import type {
   SaveRevisionReq,
   UpdateProjectReq,
   UpdateProjectResponse,
+  GetPkgByProjectIdResponse,
+  GetPkgVersionResponse,
+  GetPkgVersionMetaResponse,
+  AppAuthPubConfig,
 } from "./types.js";
 
 /**
@@ -261,6 +265,56 @@ export class PlasmicApiClient {
       "POST",
       `/api/v1/projects/${encodeURIComponent(projectId)}/revisions/${revisionNum}`,
       body
+    );
+  }
+
+  /**
+   * Get published package info for a project.
+   * URL: GET /api/v1/projects/{projectId}/pkg
+   * Returns { pkg: PkgInfo | undefined } — pkg is undefined if not published.
+   */
+  async getPkgByProjectId(projectId: string): Promise<GetPkgByProjectIdResponse> {
+    return this.request<GetPkgByProjectIdResponse>(
+      "GET",
+      `/api/v1/projects/${encodeURIComponent(projectId)}/pkg`
+    );
+  }
+
+  /**
+   * Download a full PkgVersion bundle (model data + transitive dep bundles).
+   * URL: GET /api/v1/pkgs/{pkgId}?version={version}&meta=false
+   * Used by add-package to get the full bundle for unbundling.
+   */
+  async getPkgVersion(pkgId: string, version?: string): Promise<GetPkgVersionResponse> {
+    const v = encodeURIComponent(version ?? "latest");
+    return this.request<GetPkgVersionResponse>(
+      "GET",
+      `/api/v1/pkgs/${encodeURIComponent(pkgId)}?version=${v}&meta=false`
+    );
+  }
+
+  /**
+   * Get package version metadata (without full model data).
+   * URL: GET /api/v1/pkgs/{pkgId}?version={version}&meta=true
+   * Used by list-packages to check for available updates.
+   */
+  async getPkgVersionMeta(pkgId: string, version?: string): Promise<GetPkgVersionMetaResponse> {
+    const v = encodeURIComponent(version ?? "latest");
+    return this.request<GetPkgVersionMetaResponse>(
+      "GET",
+      `/api/v1/pkgs/${encodeURIComponent(pkgId)}?version=${v}&meta=true`
+    );
+  }
+
+  /**
+   * Get public auth config for a project (checks if app auth is enabled).
+   * URL: GET /api/v1/end-user/app/{projectId}/pub-config
+   * Used by add-package to block importing auth-enabled dependencies.
+   */
+  async getAppAuthPubConfig(projectId: string): Promise<AppAuthPubConfig> {
+    return this.request<AppAuthPubConfig>(
+      "GET",
+      `/api/v1/end-user/app/${encodeURIComponent(projectId)}/pub-config`
     );
   }
 }

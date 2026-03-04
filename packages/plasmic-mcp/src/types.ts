@@ -159,6 +159,51 @@ export interface DefaultComponentElement {
   children?: PlasmicElement | PlasmicElement[];
 }
 
+// --- Package management API types ---
+
+export interface PkgInfo {
+  id: string;
+  name: string;
+  projectId: string;
+}
+
+export interface PkgVersionInfoMeta {
+  id: string;
+  pkgId: string;
+  version: string;
+  tags?: string[];
+  description?: string;
+  revisionId?: string;
+  pkg?: PkgInfo | null;
+  hostUrl?: string | null;
+  branchId?: string | null;
+}
+
+export interface PkgVersionInfo extends PkgVersionInfoMeta {
+  model: string; // JSON-stringified Bundle
+}
+
+export interface GetPkgByProjectIdResponse {
+  pkg: PkgInfo | undefined;
+}
+
+export interface GetPkgVersionResponse {
+  pkg: PkgVersionInfo;
+  depPkgs: PkgVersionInfo[];
+}
+
+export interface GetPkgVersionMetaResponse {
+  pkg: PkgVersionInfoMeta;
+  depPkgs: PkgVersionInfoMeta[];
+}
+
+export interface AppAuthPubConfig {
+  allowed: boolean;
+  appName: string;
+  authScreenProperties: Record<string, unknown> | null;
+  isAuthEnabled: boolean;
+}
+
 // --- Save revision request (M2: incremental writes) ---
 
 export interface SaveRevisionReq {

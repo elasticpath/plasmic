@@ -158,6 +158,7 @@ export default defineConfig({
     include: [
       "src/__tests__/real-integration.test.ts",
       "src/__tests__/devhost-sync-integration.test.ts",
+      "src/__tests__/package-manager.integration.test.ts",
     ],
     testTimeout: 30_000,
     environment: "node",

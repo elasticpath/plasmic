@@ -4,7 +4,7 @@
 
 **What is this?** The Plasmic MCP server exposes a visual web builder's editing engine as programmatic tools. Instead of clicking in a GUI, you call tool actions to build pages, style elements, wire data, and manage design systems.
 
-- **STRAP architecture**: 8 domain tools consolidating 104 actions. Each tool groups related actions under a single endpoint with an `action` discriminator field.
+- **STRAP architecture**: 8 domain tools consolidating 108 actions. Each tool groups related actions under a single endpoint with an `action` discriminator field.
 - **Transport**: JSON-RPC over MCP protocol (Model Context Protocol) — a standard for AI tool use.
 - **Source**: `packages/plasmic-mcp/src/server.ts` (tool definitions + routing), `packages/plasmic-mcp/src/edit-tools.ts` (mutation logic)
 - **Editing engine**: Embeds the WAB engine from `platform/wab/src/wab/` — the same code Plasmic Studio uses. Mutations go through the same code paths as the GUI.
@@ -31,6 +31,10 @@
 | `begin-batch` | Starts a batch editing session. All subsequent edits are accumulated in memory without triggering individual saves. Reduces server round-trips when making many changes. |
 | `end-batch` | Commits all accumulated edits from a batch session as a single revision. The project is saved once with all changes applied atomically. |
 | `undo` | Reverts the most recent edit operation. Works like Ctrl+Z in Studio. |
+| `list-packages` | Lists all hostless package dependencies in the project, with name, version, pkgId, projectId, and whether a newer version is available. |
+| `add-package` | Adds a hostless package dependency by its source project ID. Validates against self-import, circular deps, version conflicts, and auth-enabled packages. |
+| `remove-package` | Removes a hostless package dependency by pkgId or name. Validates no other packages depend on it. |
+| `upgrade-package` | Upgrades a single package (by pkgId) or all outdated packages to their latest published versions. |
 
 ## Tool Reference — inspect
 
@@ -229,7 +233,7 @@ Supported action types:
 
 | Domain | Actions | Count |
 |--------|---------|-------|
-| `project` | set, list, get-meta, save, refresh, begin-batch, end-batch, undo | 8 |
+| `project` | set, list, get-meta, save, refresh, begin-batch, end-batch, undo, list-packages, add-package, remove-package, upgrade-package | 12 |
 | `inspect` | tree, summary, node, subtree, export, style-properties, preview-url, page-meta | 8 |
 | `component` | list, create-page, create, clone, rename, delete, extract, convert-to-page, convert-to-component, update-page-meta, list-props, add-prop, update-prop, remove-prop, list-states, add-state, update-state, remove-state | 18 |
 | `node` | add, remove, move, clone, reorder, update-styles, update-text, update-rich-text, update-attrs, update-props, set-visibility, set-image, apply-mixin, detach-mixin, add-animation, remove-animation | 16 |
@@ -237,7 +241,7 @@ Supported action types:
 | `design` | list-tokens, create-token, update-token, remove-token, duplicate-token, list-mixins, create-mixin, update-mixin, remove-mixin, list-animations, create-animation, update-animation, remove-animation, list-themes, create-theme, update-theme, remove-theme, set-active-theme, list-assets, upload-asset, rename-asset, remove-asset | 22 |
 | `data` | set-data-cond, set-data-rep, list-queries, add-query, update-query, remove-query, list-data-tokens, create-data-token, update-data-token, remove-data-token, list-splits, create-split, update-split, remove-split, get-code-meta, list-functions | 16 |
 | `interaction` | list, add, update, remove | 4 |
-| **Total** | | **104** |
+| **Total** | | **108** |
 
 ## Known Feature Gaps
 

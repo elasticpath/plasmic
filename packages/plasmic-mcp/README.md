@@ -66,11 +66,11 @@ Add to `claude_desktop_config.json`:
 
 ## Tool Reference
 
-The server exposes 8 domain tools following the STRAP pattern (Structured Tool Resource Action Pattern), consolidating 104 actions into a manageable surface:
+The server exposes 8 domain tools following the STRAP pattern (Structured Tool Resource Action Pattern), consolidating 108 actions into a manageable surface:
 
 | Domain | # | Actions | Purpose |
 |--------|---|---------|---------|
-| `project` | 8 | set, list, get-meta, save, refresh, begin-batch, end-batch, undo | Session lifecycle |
+| `project` | 12 | set, list, get-meta, save, refresh, begin-batch, end-batch, undo, list-packages, add-package, remove-package, upgrade-package | Session lifecycle + package management |
 | `inspect` | 8 | tree, summary, node, subtree, export, style-properties, preview-url, page-meta | Read-only queries |
 | `component` | 18 | list, create-page, create, clone, rename, delete, extract, convert-to-page, convert-to-component, update-page-meta, list-props, add-prop, update-prop, remove-prop, list-states, add-state, update-state, remove-state | Component/page lifecycle |
 | `node` | 16 | add, remove, move, clone, reorder, update-styles, update-text, update-rich-text, update-attrs, update-props, set-visibility, set-image, apply-mixin, detach-mixin, add-animation, remove-animation | Element mutations |
@@ -303,7 +303,7 @@ Six slash commands are available when the skill files are installed in `.claude/
 ```bash
 npm run dev              # Start dev server (tsx)
 npm run build            # Build distribution
-npm test                 # All tests (1,427 passing)
+npm test                 # All tests (1,778 passing)
 npm run test:unit        # Unit tests only (mocked WAB)
 npm run test:integration # Integration tests (real WAB)
 npm run typecheck        # TypeScript validation
@@ -436,7 +436,7 @@ Then style the variant:
 
 ## Architecture
 
-- **STRAP pattern** — 8 domain tools consolidate 104 actions, keeping the MCP tool surface manageable for LLMs
+- **STRAP pattern** — 8 domain tools consolidate 108 actions, keeping the MCP tool surface manageable for LLMs
 - **Embedded WAB engine** — editing operations run against Plasmic's own `platform/wab/src/wab/` classes (no separate API calls for edits)
 - **Vitest workspace** — unit tests (mocked WAB) + integration tests (real WAB classes)
 - **Stdio transport** — JSON-RPC over stdin/stdout; all logging goes to stderr

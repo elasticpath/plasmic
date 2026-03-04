@@ -668,6 +668,7 @@ declare module "@/wab/shared/core/undo-util" {
 // ---------------------------------------------------------------------------
 declare module "@/wab/shared/core/components" {
   export function extractComponent(opts: any): any;
+  export function isReusableComponent(component: any): boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -675,4 +676,45 @@ declare module "@/wab/shared/core/components" {
 // ---------------------------------------------------------------------------
 declare module "@/wab/shared/site-invariants" {
   export function assertSiteInvariants(site: any): void;
+}
+
+// ---------------------------------------------------------------------------
+// @/wab/shared/core/tagged-unbundle
+// ---------------------------------------------------------------------------
+declare module "@/wab/shared/core/tagged-unbundle" {
+  export function unbundleProjectDependency(
+    bundler: any,
+    pkgInfo: any,
+    depPkgInfos: any[]
+  ): { projectDependency: any; depPkgs: any[] };
+}
+
+// ---------------------------------------------------------------------------
+// @/wab/shared/core/project-deps
+// ---------------------------------------------------------------------------
+declare module "@/wab/shared/core/project-deps" {
+  export function extractTransitiveDepsFromComponentDefaultSlots(
+    site: any,
+    components: any[],
+    depMap?: any
+  ): any[];
+  export function extractTransitiveHostLessPackages(site: any): any[];
+  export function syncGlobalContexts(
+    projectDependency: any,
+    site: any
+  ): void;
+  export function upgradeProjectDeps(
+    site: any,
+    deps: Array<{ oldDep: any; newDep?: any }>
+  ): void;
+}
+
+// ---------------------------------------------------------------------------
+// @/wab/shared/core/sites
+// ---------------------------------------------------------------------------
+declare module "@/wab/shared/core/sites" {
+  export function isHostLessPackage(site: any): boolean;
+  export function getNonTransitiveDepDefaultComponents(
+    site: any
+  ): Record<string, any>;
 }

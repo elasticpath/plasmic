@@ -3,7 +3,7 @@
  *
  * Starts a stdio-based MCP server using the STRAP architecture:
  * 8 domain tools (project, inspect, component, node, variant, design,
- * data, interaction) consolidating 104 actions total.
+ * data, interaction) consolidating 108 actions total.
  *
  * Usage (development): tsx packages/plasmic-mcp/src/index.ts
  * Usage (production):  npx @elasticpath/plasmic-mcp
