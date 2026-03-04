@@ -223,10 +223,17 @@ most valuable for iterative design refinement.
   - 16 unit tests covering: default/custom viewport, base64 encoding, browser
     cleanup on failure, timeout configuration, error propagation, URL construction
 
-- [ ] **P4.2 — Eval scenario for feedback loop**
-  - New eval scenario in `eval-runner.test.ts` or new YAML in `evals/scenarios/`
-  - Make deliberate wrong design change → `captureScreenshot` → verify LLM correction
-  - No existing scenario covers this flow
+- [x] **P4.2 — Eval scenario for feedback loop**
+  - **YAML scenario:** `inspect-visual-feedback-loop` in `evals/scenarios/inspect.yaml` —
+    medium-tier, integration-only scenario that instructs Claude to make a deliberate wrong
+    style change (red background), capture a screenshot, then correct it. Graders verify
+    tool-sequence (component + node + inspect), tool-params (capture-screenshot action called),
+    and tool call count (4-20). Visual rubric confirms the correction happened.
+  - **Unit tests:** 3 new tests in `eval-runner.test.ts`:
+    1. Full feedback loop transcript (change → screenshot → correction) passes graders
+    2. Visual self-correction counts as 0 retries (not a failed-tool retry)
+    3. Screenshot error (dev host unavailable) is collected as a tool error
+  - All 1,660 unit tests pass, 20 scenario loader tests pass (YAML valid)
 
 ---
 
