@@ -1693,6 +1693,12 @@ export async function updateRichText(
         previousText = vs.text.text;
       }
 
+      // Ensure the node is typed as text (same fix as updateText).
+      // Without this, Studio renders "free box" instead of the text content.
+      if (!hasText) {
+        tpl.type = TplTagType.Text;
+      }
+
       vs.text = new RawText({ text, markers: [] });
     });
 
@@ -2329,6 +2335,49 @@ function findRegistryComponent(
 }
 
 /**
+ * Normalize a PlasmicElement from MCP input to match Studio's expected schema.
+ *
+ * LLMs commonly send property names that differ from the canonical PlasmicElement
+ * types in packages/host/src/element-types.ts.  This function bridges the gap:
+ *
+ * - `text` → `value` for text/button elements (LLMs use "text" because the
+ *   node tool's update-text action also uses a "text" parameter)
+ * - `type: "tag"` → `type: "box"` for backward compatibility with older prompts
+ *
+ * Applied recursively so nested children are also normalized.
+ */
+function normalizePlasmicElement(element: PlasmicElement): PlasmicElement {
+  if (typeof element === "string") return element;
+
+  const el = element as any;
+
+  // Map type: "tag" → type: "box" for backward compatibility
+  if (el.type === "tag") {
+    el.type = "box";
+  }
+
+  // Map text → value for text/button elements
+  if (
+    (el.type === "text" || el.type === "button") &&
+    el.text !== undefined &&
+    el.value === undefined
+  ) {
+    el.value = el.text;
+    delete el.text;
+  }
+
+  // Recursively normalize children
+  if (el.children) {
+    const children = Array.isArray(el.children) ? el.children : [el.children];
+    el.children = children.map((c: PlasmicElement) =>
+      normalizePlasmicElement(c)
+    );
+  }
+
+  return element;
+}
+
+/**
  * Convert a PlasmicElement JSON tree to a live Tpl node.
  *
  * Delegates to Studio's elementSchemaToTpl which correctly handles all
@@ -2345,6 +2394,8 @@ function plasmicElementToTpl(
   baseVariant: any,
   registryComponents?: RegistryComponent[]
 ): any {
+  element = normalizePlasmicElement(element);
+
   const result = studioElementSchemaToTpl(site, undefined, element, {
     codeComponentsOnly: false,
     baseVariant,

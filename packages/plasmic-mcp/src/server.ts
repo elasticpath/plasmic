@@ -2251,7 +2251,15 @@ export function createServer(): McpServer {
       nodeRef: z.string().optional().describe("Node reference: UUID, name, path, or index"),
       parentRef: z.string().optional().describe("Parent node reference (for add, reorder, clone)"),
       newParentRef: z.string().optional().describe("New parent reference (for move)"),
-      child: z.any().optional().describe("PlasmicElement JSON for add action"),
+      child: z.any().optional().describe(
+        "PlasmicElement JSON for add action. " +
+        "Text: {type:'text', value:'Hello', tag?:'h1'|'p'|'span'|'div'}. " +
+        "Container: {type:'box'|'vbox'|'hbox', children?:[...], tag?:'div'|'section'|'nav'}. " +
+        "Image: {type:'img', src:'url'}. " +
+        "Button: {type:'button', value?:'Click me'}. " +
+        "Component: {type:'component', name:'CompName', props?:{...}}. " +
+        "All types accept optional styles:{} and attrs:{}."
+      ),
       position: z.union([z.string(), z.number()]).optional().describe("Insert position: 'first', 'last', or index"),
       slot: z.string().optional().describe("Target slot name on component instance"),
       newName: z.string().optional().describe("Name for cloned node"),

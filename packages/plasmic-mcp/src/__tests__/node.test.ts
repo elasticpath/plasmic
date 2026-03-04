@@ -1465,6 +1465,114 @@ describe("edit-tools", () => {
     });
   });
 
+  // --- add-child input normalization ---
+
+  describe("addChild input normalization", () => {
+    it("normalizes text property to value for type:text elements", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section", children: [] });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const newTpl = mkTag({ uuid: "new-1", tag: "div" });
+      mockElementSchemaToTpl.mockReturnValue({
+        result: { isError: false, value: { tpl: newTpl, warnings: [] } },
+      });
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} } }];
+        }
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      // Pass "text" (not "value") — normalization should map it to "value"
+      await addChild(api, "comp-1", "Section", { type: "text", text: "Hello" } as any);
+
+      // elementSchemaToTpl should receive element with value, not text
+      const passedElement = mockElementSchemaToTpl.mock.calls[0][2];
+      expect(passedElement.value).toBe("Hello");
+      expect(passedElement.text).toBeUndefined();
+      expect(passedElement.type).toBe("text");
+    });
+
+    it("normalizes type:tag to type:box for backward compatibility", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section", children: [] });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const newTpl = mkTag({ uuid: "new-1", tag: "div" });
+      mockElementSchemaToTpl.mockReturnValue({
+        result: { isError: false, value: { tpl: newTpl, warnings: [] } },
+      });
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} } }];
+        }
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      await addChild(api, "comp-1", "Section", { type: "tag", tag: "section" } as any);
+
+      const passedElement = mockElementSchemaToTpl.mock.calls[0][2];
+      expect(passedElement.type).toBe("box");
+      expect(passedElement.tag).toBe("section");
+    });
+
+    it("preserves value property when already set", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section", children: [] });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const newTpl = mkTag({ uuid: "new-1", tag: "div" });
+      mockElementSchemaToTpl.mockReturnValue({
+        result: { isError: false, value: { tpl: newTpl, warnings: [] } },
+      });
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} } }];
+        }
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      // When "value" is already set, don't overwrite from "text"
+      await addChild(api, "comp-1", "Section", { type: "text", value: "Correct" } as any);
+
+      const passedElement = mockElementSchemaToTpl.mock.calls[0][2];
+      expect(passedElement.value).toBe("Correct");
+    });
+
+    it("recursively normalizes children", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section", children: [] });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const parentTpl = mkTag({ uuid: "new-1", tag: "div" });
+      mockElementSchemaToTpl.mockReturnValue({
+        result: { isError: false, value: { tpl: parentTpl, warnings: [] } },
+      });
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} } }];
+        }
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      await addChild(api, "comp-1", "Section", {
+        type: "vbox",
+        children: [
+          { type: "text", text: "Nested" } as any,
+        ],
+      } as any);
+
+      const passedElement = mockElementSchemaToTpl.mock.calls[0][2];
+      expect(passedElement.children[0].value).toBe("Nested");
+      expect(passedElement.children[0].text).toBeUndefined();
+    });
+  });
+
   // --- add-child with component instances ---
 
   describe("addChild with component instances", () => {
@@ -4991,6 +5099,24 @@ describe("updateRichText", () => {
     expect(vs.text._type).toBe("RawText");
     expect(vs.text.text).toBe("Hello world");
     expect(vs.text.markers).toEqual([]);
+  });
+
+  it("sets TplTagType.Text when plain text is set on a non-text node", async () => {
+    // A node with no text and no children — not a container, not a text node
+    const emptyNode = mkTag({ uuid: "empty-1" });
+    delete emptyNode.vsettings[0].text;
+    emptyNode.type = "other"; // Not text yet
+    const comp = mkComponent({ uuid: "comp-1", tplTree: emptyNode });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await updateRichText(api, "comp-1", "empty-1", "New text", []);
+    // After: node.type should be set to TplTagType.Text
+    expect(emptyNode.type).toBe(TplTagType.Text);
+    expect(emptyNode.vsettings[0].text._type).toBe("RawText");
+    expect(emptyNode.vsettings[0].text.text).toBe("New text");
   });
 
   it("creates StyleMarker for bold mark", async () => {
