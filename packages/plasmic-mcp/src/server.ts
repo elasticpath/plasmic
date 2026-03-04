@@ -4,15 +4,15 @@
  * Uses McpServer from @modelcontextprotocol/sdk with Zod schemas for input
  * validation. All tools are registered before the transport connects.
  *
- * STRAP architecture: 108 actions consolidated into 8 domain tools.
+ * STRAP architecture: 104 actions consolidated into 8 domain tools.
  * Each domain tool uses an `action` discriminator to route to the
  * appropriate handler function.
  *
  * Domains:
- *   - project (12 actions): session lifecycle, persistence, batch, undo, package management
+ *   - project (8 actions): session lifecycle, persistence, batch, undo
  *   - inspect (8 actions): read-only queries on component trees
  *   - component (18 actions): component/page lifecycle, props, states
- *   - node (16 actions): element mutations (structure, style, text, attrs, props)
+ *   - node (17 actions): element mutations (structure, style, text, attrs, props, html import)
  *   - variant (12 actions): variant management (component, global, style, screen)
  *   - design (22 actions): site-level design system (tokens, mixins, etc.)
  *   - data (16 actions): data flow (queries, data-tokens, splits, etc.)
@@ -31,7 +31,6 @@ import { PlasmicApiClient } from "./api-client.js";
 import { getAuth } from "./auth.js";
 import { requireSession, setSession } from "./session.js";
 import { loadProject } from "./model-loader.js";
-import { listPackages, addPackage, removePackage, upgradePackage } from "./package-manager.js";
 import { syncFromDevHost, clearRegistryCache, recordVariantMetadataSync } from "./devhost-sync.js";
 import {
   readComponentTree,
@@ -45,6 +44,9 @@ import {
 } from "./tree-reader.js";
 import { readTokens, getAllStyleTokens } from "./token-reader.js";
 import { resolveNode, requireSingleNode, invalidateNodeCache, clearNodeCache } from "./node-resolver.js";
+import { importHtml } from "./html-importer.js";
+import { listPatternsMeta } from "./patterns/registry.js";
+import { applyPattern } from "./patterns/applier.js";
 import { initChangeTracker, disposeChangeTracker, getChangeTracker } from "./change-tracker.js";
 import {
   updateText,
@@ -306,13 +308,13 @@ export function createServer(): McpServer {
   console.error(`[plasmic-mcp] Authenticated as ${auth.user} against ${auth.host}`);
 
   // ========================================================================
-  // DOMAIN 1: project (12 actions)
+  // DOMAIN 1: project (8 actions)
   // ========================================================================
 
   server.tool(
     "project",
-    "Project session lifecycle, persistence, batch operations, undo, and package management.\n" +
-      "Actions: set, list, get-meta, save, refresh, begin-batch, end-batch, undo, list-packages, add-package, remove-package, upgrade-package.\n" +
+    "Project session lifecycle, persistence, batch operations, and undo.\n" +
+      "Actions: set, list, get-meta, save, refresh, begin-batch, end-batch, undo.\n" +
       "- set: Load a project into memory (required before other tools)\n" +
       "- list: List all accessible projects\n" +
       "- get-meta: Get project metadata (name, counts, pages, components)\n" +
@@ -320,18 +322,13 @@ export function createServer(): McpServer {
       "- refresh: Reload project from server\n" +
       "- begin-batch: Start accumulating edits\n" +
       "- end-batch: Save accumulated edits in one revision\n" +
-      "- undo: Revert most recent edit\n" +
-      "- list-packages: List installed packages with version info\n" +
-      "- add-package: Add a hostless package by its source projectId\n" +
-      "- remove-package: Remove an installed package by pkgId or name\n" +
-      "- upgrade-package: Upgrade one or all packages to latest version",
+      "- undo: Revert most recent edit",
     {
-      action: z.enum(["set", "list", "get-meta", "save", "refresh", "begin-batch", "end-batch", "undo", "list-packages", "add-package", "remove-package", "upgrade-package"]),
-      projectId: z.string().optional().describe("The Plasmic project ID (required for 'set' and 'add-package')"),
+      action: z.enum(["set", "list", "get-meta", "save", "refresh", "begin-batch", "end-batch", "undo"]),
+      projectId: z.string().optional().describe("The Plasmic project ID (required for 'set')"),
       batchId: z.string().optional().describe("Optional batch ID for verification (used by 'end-batch')"),
-      pkgId: z.string().optional().describe("Package ID for 'remove-package' and 'upgrade-package' (optional for upgrade-all)"),
     },
-    async ({ action, projectId, batchId, pkgId }) => {
+    async ({ action, projectId, batchId }) => {
       try {
         switch (action) {
           case "set": {
@@ -699,91 +696,8 @@ export function createServer(): McpServer {
             };
           }
 
-          case "list-packages": {
-            requireSession();
-            const packages = await listPackages(apiClient);
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify({
-                    packages,
-                    count: packages.length,
-                    message: packages.length === 0
-                      ? "No packages installed."
-                      : `${packages.length} package(s) installed.`,
-                  }),
-                },
-              ],
-            };
-          }
-
-          case "add-package": {
-            const pid = requireParam(projectId, "projectId", "project.add-package");
-            const result = await addPackage(apiClient, pid);
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify({
-                    success: true,
-                    ...result,
-                    message: `Added "${result.name}" (v${result.version}) — ${result.componentCount} components now available.`,
-                  }),
-                },
-              ],
-            };
-          }
-
-          case "remove-package": {
-            const pkgIdOrName = requireParam(pkgId ?? projectId, "pkgId", "project.remove-package");
-            const result = await removePackage(apiClient, pkgIdOrName);
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify({
-                    success: true,
-                    ...result,
-                    message: `Removed "${result.name}" (v${result.version}).`,
-                  }),
-                },
-              ],
-            };
-          }
-
-          case "upgrade-package": {
-            const results = await upgradePackage(apiClient, pkgId);
-            if (results.length === 0) {
-              return {
-                content: [
-                  {
-                    type: "text" as const,
-                    text: JSON.stringify({
-                      success: true,
-                      upgraded: [],
-                      message: "All packages are up to date.",
-                    }),
-                  },
-                ],
-              };
-            }
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify({
-                    success: true,
-                    upgraded: results,
-                    message: `Upgraded ${results.length} package(s): ${results.map((r) => `${r.name} (${r.oldVersion} → ${r.newVersion})`).join(", ")}.`,
-                  }),
-                },
-              ],
-            };
-          }
-
           default:
-            throw new Error(`Unknown action '${action}' for project tool. Available: set, list, get-meta, save, refresh, begin-batch, end-batch, undo, list-packages, add-package, remove-package, upgrade-package`);
+            throw new Error(`Unknown action '${action}' for project tool. Available: set, list, get-meta, save, refresh, begin-batch, end-batch, undo`);
         }
       } catch (err: unknown) {
         return {
@@ -803,31 +717,45 @@ export function createServer(): McpServer {
   // DOMAIN 2: inspect (8 actions)
   // ========================================================================
 
-  server.tool(
+  // Helper: build response with both content and structuredContent for inspect actions
+  const inspectResult = (data: Record<string, unknown>) => ({
+    content: [{ type: "text" as const, text: JSON.stringify(data) }],
+    structuredContent: data,
+  });
+
+  server.registerTool(
     "inspect",
-    "Read-only queries on component trees, nodes, style properties, and page metadata.\n" +
-      "Actions: tree, summary, node, subtree, export, style-properties, preview-url, page-meta, list-design-system.\n" +
-      "- tree: Full element tree with styles, text, layout. Example: {action:\"tree\",componentUuid:\"abc\"} → {type:\"tag\",tag:\"div\",layoutType:\"vbox\",layoutHint:\"flex-col\",children:[...]}\n" +
-      "- summary: Compact outline (type, tag, name, uuid, childCount)\n" +
-      "- node: Full details for a single node\n" +
-      "- subtree: Tree from a specific node downward\n" +
-      "- export: Write full tree to temp file\n" +
-      "- style-properties: List valid CSS property names\n" +
-      "- preview-url: Get preview and studio URLs\n" +
-      "- page-meta: Read page SEO metadata\n" +
-      "- list-design-system: Consolidated summary of all design tokens, mixins, and themes. Example: {action:\"list-design-system\"} → {tokens:{Color:[...],Spacing:[...]},mixins:[...],themes:[...]}",
     {
-      action: z.enum(["tree", "summary", "node", "subtree", "export", "style-properties", "preview-url", "page-meta", "list-design-system"]),
-      componentUuid: z.string().optional().describe("UUID of the component to inspect"),
-      nodeRef: z.string().optional().describe("Node reference: UUID, name, path, or index"),
-      maxDepth: z.number().optional().describe("Maximum tree depth to return. Defaults to 3 for tree, 2 for summary. Pass -1 for unlimited."),
-      maxChars: z.number().optional().describe("Character budget for response JSON. Defaults to 15000 (~4000 tokens). Pass -1 for unlimited."),
-      excludeStyles: z.boolean().optional().describe("Strip styles from output to reduce size"),
-      summaryOnly: z.boolean().optional().describe("Return compact outline (same as summary action)"),
-      format: z.enum(["concise", "full"]).optional().describe('Response format. "concise" strips UUIDs (except root), abbreviates keys (childCount→cc, componentName→comp), replaces detail fields with booleans. ~70% token reduction for orientation. Default: "full".'),
-      filter: z.string().optional().describe("Filter string for style-properties action"),
+      description: "Read-only queries on component trees, nodes, style properties, and page metadata.\n" +
+        "Actions: tree, summary, node, subtree, export, style-properties, preview-url, page-meta, list-design-system, list-patterns.\n" +
+        "- tree: Full element tree with styles, text, layout. Example: {action:\"tree\",componentUuid:\"abc\"} → {type:\"tag\",tag:\"div\",layoutType:\"vbox\",layoutHint:\"flex-col\",children:[...]}\n" +
+        "- summary: Compact outline (type, tag, name, uuid, childCount)\n" +
+        "- node: Full details for a single node\n" +
+        "- subtree: Tree from a specific node downward\n" +
+        "- export: Write full tree to temp file\n" +
+        "- style-properties: List valid CSS property names\n" +
+        "- preview-url: Get preview and studio URLs\n" +
+        "- page-meta: Read page SEO metadata\n" +
+        "- list-design-system: Consolidated summary of all design tokens, mixins, and themes. Example: {action:\"list-design-system\"} → {tokens:{Color:[...],Spacing:[...]},mixins:[...],themes:[...]}\n" +
+        "- list-patterns: List available UI patterns (heroes, cards, navbars, etc.) that can be applied with node.apply-pattern. No session required. Example: {action:\"list-patterns\"} → [{name:\"hero-centered\",description:\"...\",tags:[...],customisationKeys:[...]}]",
+      inputSchema: {
+        action: z.enum(["tree", "summary", "node", "subtree", "export", "style-properties", "preview-url", "page-meta", "list-design-system", "list-patterns"]),
+        componentUuid: z.string().optional().describe("UUID of the component to inspect"),
+        nodeRef: z.string().optional().describe("Node reference: UUID, name, path, or index"),
+        maxDepth: z.number().optional().describe("Maximum tree depth to return. Defaults to 3 for tree, 2 for summary. Pass -1 for unlimited."),
+        maxChars: z.number().optional().describe("Character budget for response JSON. Defaults to 15000 (~4000 tokens). Pass -1 for unlimited."),
+        excludeStyles: z.boolean().optional().describe("Strip styles from output to reduce size"),
+        summaryOnly: z.boolean().optional().describe("Return compact outline (same as summary action)"),
+        format: z.enum(["concise", "full"]).optional().describe('Response format. "concise" strips UUIDs (except root), abbreviates keys (childCount→cc, componentName→comp), replaces detail fields with booleans. ~70% token reduction for orientation. Default: "full".'),
+        filter: z.string().optional().describe("Filter string for style-properties action"),
+      },
+      outputSchema: {
+        // Permissive schema — the inspect tool returns different shapes per action.
+        // Named fields document the most common outputs; z.unknown() accepts all values.
+        // SDK validates structuredContent against this on every non-error response.
+      },
+      annotations: { readOnlyHint: true },
     },
-    { readOnlyHint: true },
     async ({ action, componentUuid, nodeRef, maxDepth, maxChars, excludeStyles, summaryOnly, format, filter }) => {
       try {
         switch (action) {
@@ -903,14 +831,7 @@ export function createServer(): McpServer {
               result.totalNodes = totalNodes;
             }
 
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify(result),
-                },
-              ],
-            };
+            return inspectResult(result);
           }
 
           case "summary": {
@@ -977,14 +898,7 @@ export function createServer(): McpServer {
               result.totalNodes = totalNodes;
             }
 
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify(result),
-                },
-              ],
-            };
+            return inspectResult(result);
           }
 
           case "node": {
@@ -1011,19 +925,12 @@ export function createServer(): McpServer {
             const resolved = requireSingleNode(resolveResult, nref);
             const node = readNodeDetails(resolved.node, session.site.styleTokens);
 
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify({
-                    path: resolved.path,
-                    name: resolved.name,
-                    uuid: resolved.uuid,
-                    node,
-                  }),
-                },
-              ],
-            };
+            return inspectResult({
+              path: resolved.path,
+              name: resolved.name,
+              uuid: resolved.uuid,
+              node,
+            });
           }
 
           case "subtree": {
@@ -1090,14 +997,7 @@ export function createServer(): McpServer {
               result.hint = `Response truncated at ${effectiveMaxChars} chars. Use inspect.subtree with a deeper nodeRef to see specific sections.`;
             }
 
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify(result),
-                },
-              ],
-            };
+            return inspectResult(result);
           }
 
           case "export": {
@@ -1143,21 +1043,14 @@ export function createServer(): McpServer {
             const summaryTree = readComponentSummary(component);
             const nodeCount = countTreeNodes(fullTree);
 
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify({
-                    name: component.name,
-                    uuid: component.uuid,
-                    path: component.pageMeta?.path,
-                    filePath,
-                    nodeCount,
-                    tree: summaryTree,
-                  }),
-                },
-              ],
-            };
+            return inspectResult({
+              name: component.name,
+              uuid: component.uuid,
+              path: component.pageMeta?.path,
+              filePath,
+              nodeCount,
+              tree: summaryTree,
+            });
           }
 
           case "style-properties": {
@@ -1167,20 +1060,11 @@ export function createServer(): McpServer {
               const lower = filter.toLowerCase();
               props = allProps.filter((p) => p.includes(lower));
             }
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify(
-                    {
-                      total: props.length,
-                      properties: props,
-                      ...(filter ? { filter } : {}),
-                    }
-                  ),
-                },
-              ],
-            };
+            return inspectResult({
+              total: props.length,
+              properties: props,
+              ...(filter ? { filter } : {}),
+            });
           }
 
           case "preview-url": {
@@ -1211,11 +1095,7 @@ export function createServer(): McpServer {
               result.previewUrl = `${host}/projects/${session.projectId}/preview${component.pageMeta.path}`;
             }
 
-            return {
-              content: [
-                { type: "text" as const, text: JSON.stringify(result) },
-              ],
-            };
+            return inspectResult(result);
           }
 
           case "page-meta": {
@@ -1279,11 +1159,7 @@ export function createServer(): McpServer {
               roleId: pm.roleId ?? null,
             };
 
-            return {
-              content: [
-                { type: "text" as const, text: JSON.stringify(meta) },
-              ],
-            };
+            return inspectResult(meta);
           }
 
           case "list-design-system": {
@@ -1306,15 +1182,16 @@ export function createServer(): McpServer {
               result.note = "No design system tokens, mixins, or themes defined. You can create them with the design tool, or use raw CSS values directly.";
             }
 
-            return {
-              content: [
-                { type: "text" as const, text: JSON.stringify(result) },
-              ],
-            };
+            return inspectResult(result);
+          }
+
+          case "list-patterns": {
+            const patterns = listPatternsMeta();
+            return inspectResult({ patternCount: patterns.length, patterns });
           }
 
           default:
-            throw new Error(`Unknown action '${action}' for inspect tool. Available: tree, summary, node, subtree, export, style-properties, preview-url, page-meta, list-design-system`);
+            throw new Error(`Unknown action '${action}' for inspect tool. Available: tree, summary, node, subtree, export, style-properties, preview-url, page-meta, list-design-system, list-patterns`);
         }
       } catch (err: unknown) {
         return {
@@ -2423,7 +2300,7 @@ export function createServer(): McpServer {
   server.tool(
     "node",
     "Element mutations within a component.\n" +
-      "Actions: add, remove, move, clone, reorder, update-styles, update-text, update-rich-text, update-attrs, update-props, set-visibility, set-image, apply-mixin, detach-mixin, add-animation, remove-animation.\n" +
+      "Actions: add, remove, move, clone, reorder, update-styles, update-text, update-rich-text, update-attrs, update-props, set-visibility, set-image, apply-mixin, detach-mixin, add-animation, remove-animation, import-html, apply-pattern.\n" +
       "- add/remove/move/clone/reorder: Structural changes to element tree. Example: {action:\"add\",componentUuid:\"abc\",parentRef:\"root\",tag:\"div\"} → {uuid:\"new-uuid\"}\n" +
       "- update-styles: Set CSS styles on an element. Example: {action:\"update-styles\",componentUuid:\"abc\",nodeRef:\"uuid\",styles:{display:\"flex\",flexDirection:\"column\",gap:\"16px\"}}\n" +
       "- update-text/update-rich-text: Set text content\n" +
@@ -2433,6 +2310,8 @@ export function createServer(): McpServer {
       "- set-image: Set image source (asset or URL)\n" +
       "- apply-mixin/detach-mixin: Apply or remove style mixins\n" +
       "- add-animation/remove-animation: Apply or remove animations\n" +
+      "- import-html: Import HTML+CSS into the component tree. Parses HTML (including <style> blocks), maps to Plasmic nodes. Example: {action:\"import-html\",componentUuid:\"abc\",parentRef:\"root\",htmlContent:\"<div style='display:flex;gap:16px'><h1>Hello</h1></div>\"}\n" +
+      "- apply-pattern: Insert a named UI pattern (hero, card, navbar, etc.) into the tree. Use inspect.list-patterns to see available patterns. Supports text customisations. Example: {action:\"apply-pattern\",componentUuid:\"abc\",parentRef:\"root\",patternName:\"hero-centered\",customisations:{headingText:\"Ship faster\",ctaLabel:\"Get started\"}}\n" +
       "Layout guidance: use flexDirection:column for vertical stacks, flexDirection:row for horizontal layouts, display:grid + gridTemplateColumns for equal-width columns or complex 2D layouts. Prefer flex for single-axis flow, grid for multi-column/row alignment. Consider using a reusable component instead of raw tags for repeated patterns.\n" +
       "Use inspect tool for read-only queries.",
     {
@@ -2440,7 +2319,7 @@ export function createServer(): McpServer {
         "add", "remove", "move", "clone", "reorder",
         "update-styles", "update-text", "update-rich-text", "update-attrs", "update-props",
         "set-visibility", "set-image", "apply-mixin", "detach-mixin",
-        "add-animation", "remove-animation",
+        "add-animation", "remove-animation", "import-html", "apply-pattern",
       ]),
       componentUuid: z.string().optional().describe("UUID of the component"),
       nodeRef: z.string().optional().describe("Node reference: UUID, name, path, or index"),
@@ -2478,6 +2357,9 @@ export function createServer(): McpServer {
       fillMode: z.enum(["none", "forwards", "backwards", "both"]).optional().describe("Animation fill mode"),
       playState: z.enum(["paused", "running"]).optional().describe("Animation play state"),
       animationIndex: z.number().optional().describe("Animation index for removal"),
+      htmlContent: z.string().optional().describe("HTML+CSS string for import-html action (may include <style> blocks)"),
+      patternName: z.string().optional().describe("Pattern name for apply-pattern action (use inspect.list-patterns to see available patterns)"),
+      customisations: z.record(z.string()).optional().describe("Text customisations for apply-pattern (e.g. {headingText:\"Ship faster\"})"),
       dryRun: z.boolean().optional().describe("Preview changes without persisting"),
     },
     async (params) => {
@@ -3252,6 +3134,95 @@ export function createServer(): McpServer {
                       removedCount: result.removedCount,
                       nodeUuid: result.nodeUuid,
                       revision: result.save.revisionNum,
+                    }
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "import-html": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "node.import-html");
+            const pRef = requireParam(params.parentRef, "parentRef", "node.import-html");
+            const htmlStr = requireParam(params.htmlContent, "htmlContent", "node.import-html");
+
+            const result = await importHtml(
+              apiClient, cuuid, pRef, htmlStr, params.position
+            );
+
+            if (result.error) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        success: false,
+                        error: result.error,
+                        nodesCreated: result.nodesCreated,
+                        ...(result.warnings.length ? { warnings: result.warnings } : {}),
+                      }
+                    ),
+                  },
+                ],
+              };
+            }
+
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      rootNodeUuid: result.rootNodeUuid,
+                      nodesCreated: result.nodesCreated,
+                      ...(result.warnings.length ? { warnings: result.warnings } : {}),
+                    }
+                  ),
+                },
+              ],
+            };
+          }
+
+          case "apply-pattern": {
+            const cuuid = requireParam(params.componentUuid, "componentUuid", "node.apply-pattern");
+            const pRef = requireParam(params.parentRef, "parentRef", "node.apply-pattern");
+            const pName = requireParam(params.patternName, "patternName", "node.apply-pattern");
+
+            const result = await applyPattern(
+              apiClient, cuuid, pRef, pName, params.customisations, params.position
+            );
+
+            if (result.error) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        success: false,
+                        error: result.error,
+                        nodesCreated: result.nodesCreated,
+                        ...(result.warnings.length ? { warnings: result.warnings } : {}),
+                      }
+                    ),
+                  },
+                ],
+              };
+            }
+
+            invalidateNodeCache(cuuid);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      success: true,
+                      rootNodeUuid: result.rootNodeUuid,
+                      nodesCreated: result.nodesCreated,
+                      ...(result.warnings.length ? { warnings: result.warnings } : {}),
                     }
                   ),
                 },

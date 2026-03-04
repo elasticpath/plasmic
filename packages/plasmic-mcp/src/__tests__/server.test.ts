@@ -1143,6 +1143,10 @@ describe("tool handlers", () => {
       expect(output.tree).toEqual(mockTree);
       expect(output.truncated).toBe(false);
       expect(output.totalNodes).toBe(2);
+      // structuredContent is returned alongside content (P1.4 outputSchema)
+      expect(result.structuredContent).toBeDefined();
+      expect((result as any).structuredContent.name).toBe("Hero");
+      expect((result as any).structuredContent.tree).toEqual(mockTree);
       expect(mockReadComponentTree).toHaveBeenCalledWith(
         expect.objectContaining({ uuid: "comp-1", name: "Hero" }),
         expect.objectContaining({ maxDepth: 3 })
@@ -5068,6 +5072,10 @@ describe("tool handlers", () => {
       expect(output.themeCount).toBe(1);
       expect(output.themes[0].isActive).toBe(true);
       expect(output.note).toBeUndefined();
+      // structuredContent is returned alongside content (P1.4 outputSchema)
+      expect(result.structuredContent).toBeDefined();
+      expect((result as any).structuredContent.tokenCount).toBe(1);
+      expect((result as any).structuredContent.tokens.Color).toHaveLength(1);
     });
 
     it("returns advisory note when design system is empty", async () => {

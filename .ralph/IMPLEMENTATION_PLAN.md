@@ -69,16 +69,18 @@ ROI for LLM output quality. All items are independent of each other.
     `server.tool(name, description, schema, annotations, handler)`. Only annotated
     inspect tool with `{ readOnlyHint: true }` per decision (a).
 
-- [ ] **P1.4 — `outputSchema` for `listDesignSystem` and `readComponentTree`**
+- [x] **P1.4 — `outputSchema` for `listDesignSystem` and `readComponentTree`**
   - **SDK verified:** `outputSchema` supported in SDK 1.27.1 — triggers
     `structuredContent` response instead of `content`
-  - Define JSON Schema objects for both outputs
-  - Pass via config-object overload: `server.tool(name, { outputSchema, annotations }, schema, handler)`
-  - Example file exists at `node_modules/@modelcontextprotocol/sdk/dist/esm/examples/server/mcpServerOutputSchema.js`
-  - **IMPORTANT:** `outputSchema` only works with `server.registerTool()`, NOT
-    `server.tool()`. The `tool()` overloads do NOT support `outputSchema`. Would
-    require migrating inspect tool registration from `tool()` to `registerTool()`
-    to implement this.
+  - **Implementation note (2026-03-04):** Migrated inspect tool from `server.tool()`
+    to `server.registerTool()` — the only registration method that supports `outputSchema`.
+    Used empty `outputSchema: {}` (permissive) because the SDK requires `structuredContent`
+    on ALL non-error returns when `outputSchema` is set, and the inspect tool has 10 actions
+    with different output shapes — a per-action schema isn't possible at the SDK level.
+    The `inspectResult()` helper returns both `content` (JSON text for backward compat) and
+    `structuredContent` (parsed object) from every action. SDK validates via
+    `z.object({}).safeParse()` which passes for any object. Tests verify `structuredContent`
+    is present on `tree` and `list-design-system` actions.
 
 - [x] **P1.5 — "Design System First" guidance in `design` tool description**
   - Append advisory text to `design` tool description string in `server.ts`
