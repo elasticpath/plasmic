@@ -338,19 +338,55 @@ Sync failure is non-fatal — if the dev host is offline or returns an error, th
 
 ### Setting Up the Dev Host API Route
 
-Install the registry package and add an API route to your Next.js dev host app:
+Install the registry package:
+
+```bash
+npm install @elasticpath/plasmic-mcp-registry
+```
+
+Wrap your Next.js config to prevent RSC boundary errors:
+
+```javascript
+// next.config.js
+const { withPlasmicRegistry } = require("@elasticpath/plasmic-mcp-registry/next");
+module.exports = withPlasmicRegistry({ reactStrictMode: true });
+```
+
+Ensure your component registration file has no `"use client"` directive and exports a `registerAllPackages(plasmic)` function so it can be called on the server:
+
+```typescript
+// plasmic-register.ts  (no "use client")
+import { PLASMIC } from "@/plasmic-init";
+import { registerMyComponents } from "@/components/my-components";
+
+export function registerAllPackages(plasmic: typeof PLASMIC) {
+  registerMyComponents(plasmic);
+}
+
+registerAllPackages(PLASMIC); // auto-register on client import
+```
+
+Add the API route, using `withRegistryCapture` to make server-side registration populate `globalThis` (the server loader's registration functions are no-ops without it):
 
 ```typescript
 // app/api/plasmic-registry/route.ts
-import "../../../plasmic-init-server";
-import { getFullRegistry } from "@elasticpath/plasmic-mcp-registry";
+import { PLASMIC } from "@/plasmic-init";
+import { registerAllPackages } from "@/plasmic-register";
+import { withRegistryCapture, getFullRegistry } from "@elasticpath/plasmic-mcp-registry";
+
+registerAllPackages(withRegistryCapture(PLASMIC));
 
 export function GET() {
-  return Response.json(getFullRegistry());
+  try {
+    return Response.json(getFullRegistry());
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return Response.json({ error: message }, { status: 500 });
+  }
 }
 ```
 
-Where `plasmic-init-server.ts` is a server-compatible version of your component registration file (no `"use client"` directive).
+See the [`@elasticpath/plasmic-mcp-registry` README](../../packages/plasmic-mcp-registry/README.md) for full API reference.
 
 ### Verifying the Sync
 
