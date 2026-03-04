@@ -311,22 +311,25 @@ export function createServer(): McpServer {
   // DOMAIN 1: project (8 actions)
   // ========================================================================
 
-  server.tool(
+  server.registerTool(
     "project",
-    "Project session lifecycle, persistence, batch operations, and undo.\n" +
-      "Actions: set, list, get-meta, save, refresh, begin-batch, end-batch, undo.\n" +
-      "- set: Load a project into memory (required before other tools)\n" +
-      "- list: List all accessible projects\n" +
-      "- get-meta: Get project metadata (name, counts, pages, components)\n" +
-      "- save: Force full save to server\n" +
-      "- refresh: Reload project from server\n" +
-      "- begin-batch: Start accumulating edits\n" +
-      "- end-batch: Save accumulated edits in one revision\n" +
-      "- undo: Revert most recent edit",
     {
-      action: z.enum(["set", "list", "get-meta", "save", "refresh", "begin-batch", "end-batch", "undo"]),
-      projectId: z.string().optional().describe("The Plasmic project ID (required for 'set')"),
-      batchId: z.string().optional().describe("Optional batch ID for verification (used by 'end-batch')"),
+      description: "Project session lifecycle, persistence, batch operations, and undo.\n" +
+        "Actions: set, list, get-meta, save, refresh, begin-batch, end-batch, undo.\n" +
+        "- set: Load a project into memory (required before other tools)\n" +
+        "- list: List all accessible projects\n" +
+        "- get-meta: Get project metadata (name, counts, pages, components)\n" +
+        "- save: Force full save to server\n" +
+        "- refresh: Reload project from server\n" +
+        "- begin-batch: Start accumulating edits\n" +
+        "- end-batch: Save accumulated edits in one revision\n" +
+        "- undo: Revert most recent edit",
+      inputSchema: {
+        action: z.enum(["set", "list", "get-meta", "save", "refresh", "begin-batch", "end-batch", "undo"]),
+        projectId: z.string().optional().describe("The Plasmic project ID (required for 'set')"),
+        batchId: z.string().optional().describe("Optional batch ID for verification (used by 'end-batch')"),
+      },
+      annotations: { idempotentHint: true },
     },
     async ({ action, projectId, batchId }) => {
       try {
@@ -1260,22 +1263,23 @@ export function createServer(): McpServer {
   // DOMAIN 3: component (18 actions)
   // ========================================================================
 
-  server.tool(
+  server.registerTool(
     "component",
-    "Component and page lifecycle, props, and states.\n" +
-      "Actions: list, create-page, create, clone, rename, delete, extract, convert-to-page, convert-to-component, update-page-meta, list-props, add-prop, update-prop, remove-prop, list-states, add-state, update-state, remove-state.\n" +
-      "- list: List all pages and components\n" +
-      "- create-page: Create a new page with PlasmicElement tree\n" +
-      "- create: Create a new reusable component\n" +
-      "- clone: Duplicate an existing page or component\n" +
-      "- rename: Rename a page or component\n" +
-      "- delete: Delete a page or component\n" +
-      "- extract: Extract a subtree into a new component, replacing it with a component instance\n" +
-      "- convert-to-page/convert-to-component: Convert between page and component\n" +
-      "- update-page-meta: Set page SEO metadata\n" +
-      "- list-props/add-prop/update-prop/remove-prop: Manage component props\n" +
-      "- list-states/add-state/update-state/remove-state: Manage component states",
     {
+      description: "Component and page lifecycle, props, and states.\n" +
+        "Actions: list, create-page, create, clone, rename, delete, extract, convert-to-page, convert-to-component, update-page-meta, list-props, add-prop, update-prop, remove-prop, list-states, add-state, update-state, remove-state.\n" +
+        "- list: List all pages and components\n" +
+        "- create-page: Create a new page with PlasmicElement tree\n" +
+        "- create: Create a new reusable component\n" +
+        "- clone: Duplicate an existing page or component\n" +
+        "- rename: Rename a page or component\n" +
+        "- delete: Delete a page or component\n" +
+        "- extract: Extract a subtree into a new component, replacing it with a component instance\n" +
+        "- convert-to-page/convert-to-component: Convert between page and component\n" +
+        "- update-page-meta: Set page SEO metadata\n" +
+        "- list-props/add-prop/update-prop/remove-prop: Manage component props\n" +
+        "- list-states/add-state/update-state/remove-state: Manage component states",
+      inputSchema: {
       action: z.enum([
         "list", "create-page", "create", "clone", "rename", "delete", "extract",
         "convert-to-page", "convert-to-component", "update-page-meta",
@@ -1303,6 +1307,8 @@ export function createServer(): McpServer {
       accessType: z.string().optional().describe("State access type"),
       initialValue: z.string().optional().describe("State initial value"),
       dryRun: z.boolean().optional().describe("Preview changes without persisting"),
+      },
+      annotations: { destructiveHint: true },
     },
     async (params) => {
       const { action } = params;
@@ -2346,24 +2352,25 @@ export function createServer(): McpServer {
   // DOMAIN 4: node (16 actions)
   // ========================================================================
 
-  server.tool(
+  server.registerTool(
     "node",
-    "Element mutations within a component.\n" +
-      "Actions: add, remove, move, clone, reorder, update-styles, update-text, update-rich-text, update-attrs, update-props, set-visibility, set-image, apply-mixin, detach-mixin, add-animation, remove-animation, import-html, apply-pattern.\n" +
-      "- add/remove/move/clone/reorder: Structural changes to element tree. Example: {action:\"add\",componentUuid:\"abc\",parentRef:\"root\",tag:\"div\"} → {uuid:\"new-uuid\"}\n" +
-      "- update-styles: Set CSS styles on an element. Example: {action:\"update-styles\",componentUuid:\"abc\",nodeRef:\"uuid\",styles:{display:\"flex\",flexDirection:\"column\",gap:\"16px\"}}\n" +
-      "- update-text/update-rich-text: Set text content\n" +
-      "- update-attrs: Set HTML attributes on TplTag elements\n" +
-      "- update-props: Set component props on TplComponent instances (scalar, dynamic, slot)\n" +
-      "- set-visibility: Show/hide elements per variant\n" +
-      "- set-image: Set image source (asset or URL)\n" +
-      "- apply-mixin/detach-mixin: Apply or remove style mixins\n" +
-      "- add-animation/remove-animation: Apply or remove animations\n" +
-      "- import-html: Import HTML+CSS into the component tree. Parses HTML (including <style> blocks), maps to Plasmic nodes. Example: {action:\"import-html\",componentUuid:\"abc\",parentRef:\"root\",htmlContent:\"<div style='display:flex;gap:16px'><h1>Hello</h1></div>\"}\n" +
-      "- apply-pattern: Insert a named UI pattern (hero, card, navbar, etc.) into the tree. Use inspect.list-patterns to see available patterns. Supports text customisations. Example: {action:\"apply-pattern\",componentUuid:\"abc\",parentRef:\"root\",patternName:\"hero-centered\",customisations:{headingText:\"Ship faster\",ctaLabel:\"Get started\"}}\n" +
-      "Layout guidance: use flexDirection:column for vertical stacks, flexDirection:row for horizontal layouts, display:grid + gridTemplateColumns for equal-width columns or complex 2D layouts. Prefer flex for single-axis flow, grid for multi-column/row alignment. Consider using a reusable component instead of raw tags for repeated patterns.\n" +
-      "Use inspect tool for read-only queries.",
     {
+      description: "Element mutations within a component.\n" +
+        "Actions: add, remove, move, clone, reorder, update-styles, update-text, update-rich-text, update-attrs, update-props, set-visibility, set-image, apply-mixin, detach-mixin, add-animation, remove-animation, import-html, apply-pattern.\n" +
+        "- add/remove/move/clone/reorder: Structural changes to element tree. Example: {action:\"add\",componentUuid:\"abc\",parentRef:\"root\",tag:\"div\"} → {uuid:\"new-uuid\"}\n" +
+        "- update-styles: Set CSS styles on an element. Example: {action:\"update-styles\",componentUuid:\"abc\",nodeRef:\"uuid\",styles:{display:\"flex\",flexDirection:\"column\",gap:\"16px\"}}\n" +
+        "- update-text/update-rich-text: Set text content\n" +
+        "- update-attrs: Set HTML attributes on TplTag elements\n" +
+        "- update-props: Set component props on TplComponent instances (scalar, dynamic, slot)\n" +
+        "- set-visibility: Show/hide elements per variant\n" +
+        "- set-image: Set image source (asset or URL)\n" +
+        "- apply-mixin/detach-mixin: Apply or remove style mixins\n" +
+        "- add-animation/remove-animation: Apply or remove animations\n" +
+        "- import-html: Import HTML+CSS into the component tree. Parses HTML (including <style> blocks), maps to Plasmic nodes. Example: {action:\"import-html\",componentUuid:\"abc\",parentRef:\"root\",htmlContent:\"<div style='display:flex;gap:16px'><h1>Hello</h1></div>\"}\n" +
+        "- apply-pattern: Insert a named UI pattern (hero, card, navbar, etc.) into the tree. Use inspect.list-patterns to see available patterns. Supports text customisations. Example: {action:\"apply-pattern\",componentUuid:\"abc\",parentRef:\"root\",patternName:\"hero-centered\",customisations:{headingText:\"Ship faster\",ctaLabel:\"Get started\"}}\n" +
+        "Layout guidance: use flexDirection:column for vertical stacks, flexDirection:row for horizontal layouts, display:grid + gridTemplateColumns for equal-width columns or complex 2D layouts. Prefer flex for single-axis flow, grid for multi-column/row alignment. Consider using a reusable component instead of raw tags for repeated patterns.\n" +
+        "Use inspect tool for read-only queries.",
+      inputSchema: {
       action: z.enum([
         "add", "remove", "move", "clone", "reorder",
         "update-styles", "update-text", "update-rich-text", "update-attrs", "update-props",
@@ -2410,6 +2417,8 @@ export function createServer(): McpServer {
       patternName: z.string().optional().describe("Pattern name for apply-pattern action (use inspect.list-patterns to see available patterns)"),
       customisations: z.record(z.string()).optional().describe("Text customisations for apply-pattern (e.g. {headingText:\"Ship faster\"})"),
       dryRun: z.boolean().optional().describe("Preview changes without persisting"),
+      },
+      annotations: { destructiveHint: true },
     },
     async (params) => {
       const { action } = params;
@@ -3292,23 +3301,24 @@ export function createServer(): McpServer {
   // DOMAIN 5: variant (12 actions)
   // ========================================================================
 
-  server.tool(
+  server.registerTool(
     "variant",
-    "Variant management for components and global variant groups.\n" +
-      "Actions: list, create-style, create-group, list-global-groups, create-global-group, add-global, remove-global-group, rename-global, create-screen, update-screen, rename, remove.\n" +
-      "- list: List all variants for a component\n" +
-      "- create-style: Create hover/focus/etc. style variant\n" +
-      "- create-group: Create named variant group (Size, Theme, etc.)\n" +
-      "- list-global-groups: List global variant groups\n" +
-      "- create-global-group: Create a global variant group\n" +
-      "- add-global: Add variant to a global group\n" +
-      "- remove-global-group: Remove entire global variant group\n" +
-      "- rename-global: Rename a global variant\n" +
-      "- create-screen: Create a screen variant (responsive breakpoint)\n" +
-      "- update-screen: Update screen variant breakpoint dimensions\n" +
-      "- rename: Rename a variant (component or global)\n" +
-      "- remove: Remove a single variant (component or global)",
     {
+      description: "Variant management for components and global variant groups.\n" +
+        "Actions: list, create-style, create-group, list-global-groups, create-global-group, add-global, remove-global-group, rename-global, create-screen, update-screen, rename, remove.\n" +
+        "- list: List all variants for a component\n" +
+        "- create-style: Create hover/focus/etc. style variant\n" +
+        "- create-group: Create named variant group (Size, Theme, etc.)\n" +
+        "- list-global-groups: List global variant groups\n" +
+        "- create-global-group: Create a global variant group\n" +
+        "- add-global: Add variant to a global group\n" +
+        "- remove-global-group: Remove entire global variant group\n" +
+        "- rename-global: Rename a global variant\n" +
+        "- create-screen: Create a screen variant (responsive breakpoint)\n" +
+        "- update-screen: Update screen variant breakpoint dimensions\n" +
+        "- rename: Rename a variant (component or global)\n" +
+        "- remove: Remove a single variant (component or global)",
+      inputSchema: {
       action: z.enum([
         "list", "create-style", "create-group",
         "list-global-groups", "create-global-group", "add-global",
@@ -3326,6 +3336,8 @@ export function createServer(): McpServer {
       newName: z.string().optional().describe("New name for rename"),
       minWidth: z.number().optional().describe("Minimum viewport width in pixels for screen variants"),
       maxWidth: z.number().optional().describe("Maximum viewport width in pixels for screen variants"),
+      },
+      annotations: { destructiveHint: true },
     },
     async (params) => {
       const { action } = params;
@@ -3635,21 +3647,22 @@ export function createServer(): McpServer {
   // DOMAIN 6: design (22 actions)
   // ========================================================================
 
-  server.tool(
+  server.registerTool(
     "design",
-    "Site-level design system management: tokens, mixins, animations, themes, assets.\n" +
-      "Actions: list-tokens, create-token, update-token, remove-token, duplicate-token, " +
-      "list-mixins, create-mixin, update-mixin, remove-mixin, " +
-      "list-animations, create-animation, update-animation, remove-animation, " +
-      "list-themes, create-theme, update-theme, remove-theme, set-active-theme, " +
-      "list-assets, upload-asset, rename-asset, remove-asset.\n" +
-      "Tokens: design system values (colors, spacing, fonts). Example: {action:\"list-tokens\"} → {tokenCount:5,tokens:{Color:[{name:\"Primary\",value:\"#3B82F6\"},...]}}\n" +
-      "Mixins: reusable style bundles\n" +
-      "Animations: @keyframes definitions\n" +
-      "Themes: typography defaults and per-tag overrides\n" +
-      "Assets: image and icon management\n" +
-      "Design System First: before setting raw CSS values, call inspect.list-design-system or list-tokens to check for existing design tokens. Prefer token references (token:TokenName in update-styles) over raw values when matching tokens exist. Raw CSS values are always valid — tokens are preferred, not required.",
     {
+      description: "Site-level design system management: tokens, mixins, animations, themes, assets.\n" +
+        "Actions: list-tokens, create-token, update-token, remove-token, duplicate-token, " +
+        "list-mixins, create-mixin, update-mixin, remove-mixin, " +
+        "list-animations, create-animation, update-animation, remove-animation, " +
+        "list-themes, create-theme, update-theme, remove-theme, set-active-theme, " +
+        "list-assets, upload-asset, rename-asset, remove-asset.\n" +
+        "Tokens: design system values (colors, spacing, fonts). Example: {action:\"list-tokens\"} → {tokenCount:5,tokens:{Color:[{name:\"Primary\",value:\"#3B82F6\"},...]}}\n" +
+        "Mixins: reusable style bundles\n" +
+        "Animations: @keyframes definitions\n" +
+        "Themes: typography defaults and per-tag overrides\n" +
+        "Assets: image and icon management\n" +
+        "Design System First: before setting raw CSS values, call inspect.list-design-system or list-tokens to check for existing design tokens. Prefer token references (token:TokenName in update-styles) over raw values when matching tokens exist. Raw CSS values are always valid — tokens are preferred, not required.",
+      inputSchema: {
       action: z.enum([
         "list-tokens", "create-token", "update-token", "remove-token", "duplicate-token",
         "list-mixins", "create-mixin", "update-mixin", "remove-mixin",
@@ -3689,6 +3702,8 @@ export function createServer(): McpServer {
       height: z.number().optional().describe("Image height in pixels"),
       // Common
       dryRun: z.boolean().optional().describe("Preview changes without persisting"),
+      },
+      annotations: { destructiveHint: true },
     },
     async (params) => {
       const { action } = params;
@@ -4567,19 +4582,20 @@ export function createServer(): McpServer {
   // DOMAIN 7: data (16 actions)
   // ========================================================================
 
-  server.tool(
+  server.registerTool(
     "data",
-    "Data flow: conditions, repetition, queries, data tokens, splits, code introspection.\n" +
-      "Actions: set-data-cond, set-data-rep, list-queries, add-query, update-query, remove-query, " +
-      "list-data-tokens, create-data-token, update-data-token, remove-data-token, " +
-      "list-splits, create-split, update-split, remove-split, get-code-meta, list-functions.\n" +
-      "- set-data-cond: Conditional rendering expression\n" +
-      "- set-data-rep: Repeat element for each item in collection\n" +
-      "- Queries: Manage component data queries\n" +
-      "- Data tokens: Site-level JSON values ($ctx.tokenName)\n" +
-      "- Splits: A/B tests and segments\n" +
-      "- get-code-meta/list-functions: Code component introspection",
     {
+      description: "Data flow: conditions, repetition, queries, data tokens, splits, code introspection.\n" +
+        "Actions: set-data-cond, set-data-rep, list-queries, add-query, update-query, remove-query, " +
+        "list-data-tokens, create-data-token, update-data-token, remove-data-token, " +
+        "list-splits, create-split, update-split, remove-split, get-code-meta, list-functions.\n" +
+        "- set-data-cond: Conditional rendering expression\n" +
+        "- set-data-rep: Repeat element for each item in collection\n" +
+        "- Queries: Manage component data queries\n" +
+        "- Data tokens: Site-level JSON values ($ctx.tokenName)\n" +
+        "- Splits: A/B tests and segments\n" +
+        "- get-code-meta/list-functions: Code component introspection",
+      inputSchema: {
       action: z.enum([
         "set-data-cond", "set-data-rep",
         "list-queries", "add-query", "update-query", "remove-query",
@@ -4608,6 +4624,8 @@ export function createServer(): McpServer {
       })).optional().describe("Slice definitions for splits"),
       status: z.enum(["new", "running", "stopped"]).optional().describe("Split status"),
       dryRun: z.boolean().optional().describe("Preview changes without persisting"),
+      },
+      annotations: { destructiveHint: true },
     },
     async (params) => {
       const { action } = params;
@@ -5249,15 +5267,16 @@ export function createServer(): McpServer {
   // DOMAIN 8: interaction (4 actions)
   // ========================================================================
 
-  server.tool(
+  server.registerTool(
     "interaction",
-    "Event handler interactions on elements.\n" +
-      "Actions: list, add, update, remove.\n" +
-      "- list: List all interactions on an element\n" +
-      "- add: Add an event handler (navigation, updateVariable, customFunction)\n" +
-      "- update: Modify an existing interaction's action, args, or condition\n" +
-      "- remove: Remove interaction(s) from an element",
     {
+      description: "Event handler interactions on elements.\n" +
+        "Actions: list, add, update, remove.\n" +
+        "- list: List all interactions on an element\n" +
+        "- add: Add an event handler (navigation, updateVariable, customFunction)\n" +
+        "- update: Modify an existing interaction's action, args, or condition\n" +
+        "- remove: Remove interaction(s) from an element",
+      inputSchema: {
       action: z.enum(["list", "add", "update", "remove"]),
       componentUuid: z.string().optional().describe("UUID of the component"),
       nodeRef: z.string().optional().describe("Element reference"),
@@ -5268,6 +5287,8 @@ export function createServer(): McpServer {
       condition: z.string().optional().describe("JS expression for conditional execution"),
       interactionIndex: z.number().optional().describe("Index of interaction to remove"),
       dryRun: z.boolean().optional().describe("Preview changes without persisting"),
+      },
+      annotations: { destructiveHint: true },
     },
     async (params) => {
       const { action } = params;

@@ -97,7 +97,7 @@ describe("Pattern Registry", () => {
     it("hero-centered tree has correct structure", () => {
       const p = getPattern("hero-centered")!;
       expect(p.tree).toMatchObject({
-        type: "page-section",
+        type: "vbox",
         tag: "section",
       });
       // Should have children (heading, subtitle, button)
@@ -298,7 +298,7 @@ describe("applyPattern", () => {
     expect(apiArg).toBe(api);
     expect(compUuid).toBe("comp-uuid");
     expect(parentRef).toBe("parent-ref");
-    expect((childEl as any).type).toBe("page-section");
+    expect((childEl as any).type).toBe("vbox");
   });
 
   it("applies customisations before passing to addChild", async () => {
