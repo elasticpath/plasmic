@@ -175,7 +175,7 @@ const PlasmicElementSchema = z.union([
   }).describe("Container element — vbox for vertical, hbox for horizontal, box for free layout"),
   z.object({
     type: z.literal("img"),
-    src: z.string().optional().describe("Image URL"),
+    src: z.string().default("").describe("Image URL (omit to set later via set-image)"),
     styles: plasmicElementStyles,
     attrs: plasmicElementAttrs,
   }).describe("Image element"),
