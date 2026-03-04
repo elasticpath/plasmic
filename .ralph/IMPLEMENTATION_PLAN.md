@@ -107,7 +107,7 @@ ROI for LLM output quality. All items are independent of each other.
 Enables the LLM to express designs in HTML/CSS rather than composing many
 individual tool calls. Critical path: unlocks P3 (Pattern Library).
 
-- [ ] **P2.1 — `html-importer.ts` module**
+- [x] **P2.1 — `html-importer.ts` module**
   - New file: `packages/plasmic-mcp/src/html-importer.ts`
   - Add `jsdom` to `package.json` dependencies (not currently present;
     `@xmldom/xmldom` exists but is insufficient — need full DOM + `getComputedStyle`)
@@ -129,12 +129,12 @@ individual tool calls. Critical path: unlocks P3 (Pattern Library).
     `updateStyles` (line ~2122), `updateText` (line ~1480), `updateAttrs` (line ~2634),
     `createStyleVariant` (line ~3060)
 
-- [ ] **P2.2 — `importHtml` node action registration**
+- [x] **P2.2 — `importHtml` node action registration**
   - Add `"import-html"` to node tool action enum in `server.ts` (line ~2195)
   - Schema: `{ parentNodeId: string, html: string, position?: "append" | "prepend" }`
   - Returns `{ rootNodeId: string }`
 
-- [ ] **P2.3 — Unit tests for html-importer**
+- [x] **P2.3 — Unit tests for html-importer**
   - New file: `packages/plasmic-mcp/src/__tests__/html-importer.test.ts`
   - Test: simple `<div>` with inline styles → correct `addChild` + `updateStyles`
   - Test: nested container with text → recursive mapping
@@ -143,6 +143,14 @@ individual tool calls. Critical path: unlocks P3 (Pattern Library).
   - Test: empty/whitespace HTML → `{ error: "No importable elements found" }`
   - Test: WIComponent name not found → skip with warning
   - Test: `parseHtmlToWebImporterTree` returns null → `{ error: "HTML parse failed" }`
+  - **Implementation note (2026-03-04):** Self-contained HTML parser using jsdom + css-tree
+    instead of importing WAB's `parseHtmlToWebImporterTree` directly (WAB html-parser has
+    deep client-side dependencies including React components that can't run in Node.js MCP context).
+    The parser handles: inline styles, `<style>` block CSS rules with selector matching via
+    `element.matches()`, pseudo-class variants (:hover, :focus, etc.), @media max-width detection
+    (warnings only — breakpoint matching not yet implemented), and all element types
+    (container, text, image, button, input, svg). 44 unit tests cover parsing + edit-tool mapping.
+    Schema uses `htmlContent` param (not `html`) to avoid conflict with existing boolean `html` param.
 
 ---
 

@@ -28,6 +28,7 @@
     "classnames": "^2.3.0",
     "css-initials": "^0.3.0",
     "css-tree": "^3.0.0",
+    "jsdom": "^25.0.0",
     "css.escape": "^1.5.0",
     "dayjs": "^1.11.0",
     "escodegen": "^2.1.0",
@@ -52,6 +53,7 @@
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
+    "@types/jsdom": "^21.0.0",
     "@types/lodash": "^4.17.0",
     "@types/node": "^20.0.0",
     "esbuild": "^0.20.0",
