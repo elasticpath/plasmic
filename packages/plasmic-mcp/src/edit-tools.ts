@@ -2356,6 +2356,14 @@ function normalizePlasmicElement(element: PlasmicElement): PlasmicElement {
     el.type = "box";
   }
 
+  // Reject unsafe HTML tags
+  if (el.tag && UNSAFE_TAGS.has(el.tag.toLowerCase())) {
+    throw new Error(
+      `Tag "${el.tag}" is not allowed for security reasons. ` +
+        `Unsafe tags: ${[...UNSAFE_TAGS].join(", ")}`
+    );
+  }
+
   // Map text → value for text/button elements
   if (
     (el.type === "text" || el.type === "button") &&
