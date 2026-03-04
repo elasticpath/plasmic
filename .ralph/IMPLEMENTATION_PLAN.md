@@ -150,40 +150,45 @@ individual tool calls. Critical path: unlocks P3 (Pattern Library).
 
 **Spec:** `design-pattern-library.md`
 
-**Blocked by P2.1** — `applyPattern` reuses `wiTreeToEditCalls()`.
+**Unblocked** — P2 complete. Uses `addChild` directly with full PlasmicElement tree
+(simpler than `wiTreeToEditCalls` — WAB's `plasmicElementToTpl` handles recursion
+and style application in a single atomic call).
 
-- [ ] **P3.1 — Pattern registry module**
-  - New directory: `packages/plasmic-mcp/src/patterns/`
-  - New file: `packages/plasmic-mcp/src/patterns/registry.ts`
-  - Define `PatternDefinition` type: `{ name, description, tags, previewDescription, customisationKeys, tree: PlasmicElement }`
-  - Static array of 8 starter patterns: hero-centered, hero-split, card-basic,
-    card-grid, navbar-simple, form-contact, feature-row, footer-simple
+- [x] **P3.1 — Pattern registry module**
+  - `packages/plasmic-mcp/src/patterns/registry.ts`
+  - `PatternDefinition` type with `name, description, tags, previewDescription, customisationKeys, tree`
+  - 8 starter patterns: hero-centered, hero-split, card-basic, card-grid,
+    navbar-simple, form-contact, feature-row, footer-simple
   - User-defined patterns from `PLASMIC_MCP_PATTERNS_DIR` env var (default
     `.plasmic/patterns/`) — `*.pattern.json` files merged at startup
-  - User patterns take precedence on name collision (per memory: users must be
-    able to define their own, registry cannot be hardcoded-only)
+  - User patterns override built-ins on name collision
 
-- [ ] **P3.2 — `listPatterns` inspect action**
-  - Add to inspect tool action enum in `server.ts` (line ~612)
-  - Returns `{ name, description, tags, previewDescription }[]`
+- [x] **P3.2 — `listPatterns` inspect action**
+  - Added to inspect tool action enum and switch block in `server.ts`
+  - Returns `{ patternCount, patterns: [{name, description, tags, previewDescription, customisationKeys}] }`
   - No session required (patterns are static)
-  - Annotate with `readOnlyHint: true` (requires P1.3 pattern)
+  - Inherits `readOnlyHint: true` from inspect tool annotation (P1.3)
 
-- [ ] **P3.3 — `applyPattern` node action**
-  - Add to node tool action enum in `server.ts` (line ~2195)
-  - Schema: `{ patternName: string, parentNodeId: string, customisations?: Record<string, string> }`
-  - Apply customisations (text substitutions) to PlasmicElement tree before instantiation
-  - Convert tree to edit calls via `wiTreeToEditCalls()` from P2.1
-  - Returns `{ rootNodeId: string }`
-  - Unknown patternName → `{ error: "Pattern 'foo' not found. Call listPatterns to see available patterns." }`
+- [x] **P3.3 — `applyPattern` node action**
+  - Added to node tool action enum and switch block in `server.ts`
+  - Schema: `{ patternName, componentUuid, parentRef, customisations?, position? }`
+  - **Architectural decision:** Uses `addChild` directly with the full PlasmicElement tree
+    instead of converting to `ParsedNode[]` and calling `wiTreeToEditCalls()`. Rationale:
+    `addChild → plasmicElementToTpl` already handles recursive tree creation and style
+    application in a single atomic operation. Patterns don't need pseudo-class or media
+    variant handling (the reason `import-html` walks node-by-node).
+  - Customisations: flat `Record<string, string>` text substitutions applied to cloned
+    tree before `addChild`. Heuristic matching by element role (tag, type).
+  - Unknown patternName → `{ error: "Pattern 'foo' not found. Call listPatterns..." }`
+  - Undeclared customisation keys → ignored with warning
 
-- [ ] **P3.4 — Unit tests for pattern library**
-  - New file: `packages/plasmic-mcp/src/__tests__/pattern-library.test.ts`
-  - Test: `listPatterns` returns all 8 patterns with correct shape
-  - Test: `applyPattern("hero-centered", parentId)` produces expected edit calls
-  - Test: customisations substitute values correctly
-  - Test: unknown patternName → clear error
-  - Test: undeclared customisation key → ignored with warning
+- [x] **P3.4 — Unit tests for pattern library**
+  - `packages/plasmic-mcp/src/__tests__/pattern-library.test.ts` — 26 tests
+  - Registry: 8 patterns with correct shape, getPattern lookup, tree structure
+  - Customisation: heading/subtitle/CTA/image/brand substitution, multiple at once,
+    undeclared key warnings, original tree immutability
+  - applyPattern: addChild integration, customisation pass-through, error cases,
+    position parameter, node counting
 
 ---
 
