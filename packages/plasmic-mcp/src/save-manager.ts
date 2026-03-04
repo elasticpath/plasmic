@@ -5,9 +5,10 @@
  * changed IIDs, then POSTs to the Plasmic save endpoint with incremental: true.
  * Tracks revision numbers so each save uses the correct sequence number.
  *
- * Handles two classes of 412 errors:
+ * Handles three classes of 412 errors (matching Studio's StudioCtx.tsx:5362-5383):
  * - ProjectRevisionError: another user saved first → report conflict, suggest refresh-project
  * - UnknownReferencesError: stale refs → auto-retry with full bundle (matching Studio behavior)
+ * - SchemaMismatchError: schema drift → suggest refresh-project to get updated schema
  *
  * Reference: specs/plasmic-incremental-writes.md § Save Flow
  */
@@ -104,6 +105,14 @@ export class SaveManager {
           return this.saveFullBundle();
         }
 
+        // SchemaMismatchError: schema drift between client and server
+        if (err.errorType === "SchemaMismatchError") {
+          throw new Error(
+            `Schema mismatch: the server's model schema has changed since this session started. ` +
+              `Use refresh-project to reload with the updated schema, then retry your edit.`
+          );
+        }
+
         // ProjectRevisionError: conflict with another user
         throw new Error(
           `Save conflict: another user saved revision ${newRevisionNum} first. ` +
@@ -116,7 +125,12 @@ export class SaveManager {
 
   /**
    * Save a full (non-incremental) bundle.
-   * Used as a fallback when incremental save fails with UnknownReferencesError.
+   * Used as a fallback when incremental save fails with UnknownReferencesError,
+   * or when project.save is called explicitly.
+   *
+   * Re-fetches bundleVersion from the server before bundling to ensure we always
+   * have a valid version string. This prevents the OutdatedBundleError that
+   * occurs when version is undefined (JSON.stringify drops the field entirely).
    */
   async saveFullBundle(): Promise<SaveResult> {
     const session = requireSession();
@@ -127,12 +141,29 @@ export class SaveManager {
       revisionNum,
       modelVersion,
       hostlessDataVersion,
-      bundleVersion,
     } = session;
 
-    // Pass bundleVersion (from server API) to bundler.bundle(), matching
+    // Re-fetch bundleVersion from the server to guarantee a fresh, valid value.
+    // Studio fetches this once at session start (appCtx.lastBundleVersion) and
+    // the value is stable for the session. We re-fetch as extra safety since
+    // MCP sessions can be long-lived and the value could theoretically become
+    // stale if the server schema is upgraded mid-session.
+    const freshBundleVersion = await this.apiClient.getLastBundleVersion();
+    session.bundleVersion = freshBundleVersion;
+
+    // Defense-in-depth: assert the version is a non-empty string.
+    // If the server returned garbage, fail fast with a clear message rather
+    // than sending version: undefined and getting a cryptic 412.
+    if (!freshBundleVersion || typeof freshBundleVersion !== "string") {
+      throw new Error(
+        `Failed to get a valid bundle version from the server (got: ${JSON.stringify(freshBundleVersion)}). ` +
+          `Cannot save without a bundle version. Try refresh-project to reload.`
+      );
+    }
+
+    // Pass freshBundleVersion to bundler.bundle(), matching
     // Studio's StudioCtx.bundleChanges() which passes appCtx.lastBundleVersion.
-    const bundle = bundler.bundle(site, projectId, bundleVersion);
+    const bundle = bundler.bundle(site, projectId, freshBundleVersion);
     const newRevisionNum = revisionNum + 1;
 
     // Validate site invariants before saving (matches Studio's StudioCtx.trySave())
@@ -145,20 +176,44 @@ export class SaveManager {
       );
     }
 
-    await this.apiClient.saveRevision(projectId, newRevisionNum, {
-      data: JSON.stringify(bundle),
-      modelVersion,
-      hostlessDataVersion,
-      incremental: false,
-      toDeleteIids: [],
-      modifiedComponentIids: [],
-      modelSchemaHash,
-    });
+    try {
+      await this.apiClient.saveRevision(projectId, newRevisionNum, {
+        data: JSON.stringify(bundle),
+        modelVersion,
+        hostlessDataVersion,
+        incremental: false,
+        toDeleteIids: [],
+        modifiedComponentIids: [],
+        modelSchemaHash,
+      });
+    } catch (err: unknown) {
+      if (err instanceof PlasmicApiError && err.statusCode === 412) {
+        if (err.errorType === "SchemaMismatchError") {
+          throw new Error(
+            `Schema mismatch: the server's model schema has changed since this session started. ` +
+              `Use refresh-project to reload with the updated schema, then retry your edit.`
+          );
+        }
+        if (err.errorType === "ProjectRevisionError") {
+          throw new Error(
+            `Save conflict: another user saved revision ${newRevisionNum} first. ` +
+              `Use refresh-project to reload the latest version, then retry your edit.`
+          );
+        }
+        if (err.errorType === "UnknownReferencesError") {
+          console.error(
+            "[plasmic-mcp] UnknownReferencesError on full save — this is unexpected. " +
+              "The project may have stale references. Use refresh-project to reload."
+          );
+        }
+      }
+      throw err;
+    }
 
     session.revisionNum = newRevisionNum;
 
     console.error(
-      `[plasmic-mcp] Saved revision ${newRevisionNum} (full bundle)`
+      `[plasmic-mcp] Saved revision ${newRevisionNum} (full bundle, version: ${freshBundleVersion})`
     );
 
     return { revisionNum: newRevisionNum, incremental: false };

@@ -30,6 +30,8 @@ describe("loadProject", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Re-apply default mock return value after clearAllMocks resets it
+    mockGetLastBundleVersion.mockResolvedValue("256-test-version");
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 

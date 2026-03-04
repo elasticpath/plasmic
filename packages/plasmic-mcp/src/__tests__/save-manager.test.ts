@@ -21,14 +21,18 @@ import { PlasmicApiError } from "../api-client";
 import type { PlasmicApiClient } from "../api-client";
 import type { Session } from "../session";
 
-/** Create a mock API client with saveRevision spy */
+/** Create a mock API client with saveRevision and getLastBundleVersion spies */
 function mockApiClient() {
   return {
     saveRevision: vi.fn().mockResolvedValue({}),
+    getLastBundleVersion: vi.fn().mockResolvedValue("256-fresh-version"),
     listProjects: vi.fn(),
     getProjectBundle: vi.fn(),
     updateProject: vi.fn(),
-  } as unknown as PlasmicApiClient & { saveRevision: ReturnType<typeof vi.fn> };
+  } as unknown as PlasmicApiClient & {
+    saveRevision: ReturnType<typeof vi.fn>;
+    getLastBundleVersion: ReturnType<typeof vi.fn>;
+  };
 }
 
 /** Create a valid session for tests */
@@ -302,13 +306,100 @@ describe("SaveManager", () => {
 
       await saveManager.saveFullBundle();
 
-      // bundler.bundle() must be called with (site, projectId, bundleVersion)
-      // matching Studio's StudioCtx.bundleChanges() which passes appCtx.lastBundleVersion
+      // bundler.bundle() must be called with (site, projectId, freshBundleVersion)
+      // The fresh version comes from getLastBundleVersion(), not the session's stale value
       expect(session.bundler.bundle).toHaveBeenCalledWith(
         session.site,
         "proj1",
-        "256-wrap-page-meta-og-image-in-ref"
+        "256-fresh-version"
       );
+    });
+
+    it("re-fetches bundleVersion from server before saving", async () => {
+      setSession(makeSession());
+
+      await saveManager.saveFullBundle();
+
+      expect(api.getLastBundleVersion).toHaveBeenCalledTimes(1);
+    });
+
+    it("updates session.bundleVersion with fresh value from server", async () => {
+      const session = makeSession({ bundleVersion: "255-old-version" });
+      setSession(session);
+      api.getLastBundleVersion = vi.fn().mockResolvedValue("256-new-version");
+
+      await saveManager.saveFullBundle();
+
+      expect(session.bundleVersion).toBe("256-new-version");
+    });
+
+    it("rejects when re-fetched bundleVersion is empty", async () => {
+      setSession(makeSession());
+      api.getLastBundleVersion = vi.fn().mockResolvedValue("");
+
+      await expect(saveManager.saveFullBundle()).rejects.toThrow(
+        "Failed to get a valid bundle version"
+      );
+    });
+
+    it("handles SchemaMismatchError with user-friendly message", async () => {
+      setSession(makeSession());
+      api.saveRevision = vi.fn().mockRejectedValue(
+        new PlasmicApiError("Schema mismatch", 412, "SchemaMismatchError")
+      );
+
+      await expect(saveManager.saveFullBundle()).rejects.toThrow(
+        "Schema mismatch"
+      );
+      await expect(saveManager.saveFullBundle()).rejects.toThrow(
+        "refresh-project"
+      );
+    });
+
+    it("handles ProjectRevisionError with conflict guidance", async () => {
+      setSession(makeSession());
+      api.saveRevision = vi.fn().mockRejectedValue(
+        new PlasmicApiError("Stale revision", 412, "ProjectRevisionError")
+      );
+
+      await expect(saveManager.saveFullBundle()).rejects.toThrow(
+        "Save conflict"
+      );
+      await expect(saveManager.saveFullBundle()).rejects.toThrow(
+        "refresh-project"
+      );
+    });
+  });
+
+  describe("SchemaMismatchError handling in saveChanges", () => {
+    it("throws user-friendly error on SchemaMismatchError", async () => {
+      setSession(makeSession());
+      api.saveRevision = vi.fn().mockRejectedValue(
+        new PlasmicApiError("Schema mismatch", 412, "SchemaMismatchError")
+      );
+
+      await expect(
+        saveManager.saveChanges({
+          changes: [],
+          newInsts: [],
+          removedInsts: [],
+        } as any)
+      ).rejects.toThrow("Schema mismatch");
+    });
+
+    it("SchemaMismatchError suggests refresh-project", async () => {
+      setSession(makeSession());
+      api.saveRevision = vi.fn().mockRejectedValue(
+        new PlasmicApiError("Schema mismatch", 412, "SchemaMismatchError")
+      );
+
+      await expect(
+        saveManager.saveChanges({
+          changes: [],
+          newInsts: [],
+          removedInsts: [],
+        } as any)
+      ).rejects.toThrow("refresh-project");
     });
   });
 });

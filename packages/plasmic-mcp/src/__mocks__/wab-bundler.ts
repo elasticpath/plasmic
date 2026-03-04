@@ -19,7 +19,7 @@ export class FastBundler {
     return mockUnbundle(bundle, projectId);
   }
 
-  bundle(site: any, _projectId: string): any {
+  bundle(site: any, _projectId: string, _version: string): any {
     return site;
   }
 

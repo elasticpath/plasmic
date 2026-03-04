@@ -527,7 +527,7 @@ declare module "@/wab/shared/bundler" {
   export class FastBundler {
     constructor(meta: any, classes: any);
     unbundle(bundle: any, projectId: string): any;
-    bundle(site: any, projectId: string, version?: number): any;
+    bundle(site: any, projectId: string, version: string): any;
     fastBundle(root: any, uuid: string, changedInsts: any[]): any;
     addrOf(inst: any): { uuid: string; iid: string } | undefined;
     recomputeParents(bundle: any, projectId: string): void;
