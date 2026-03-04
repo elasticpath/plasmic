@@ -4,12 +4,12 @@
  * Uses McpServer from @modelcontextprotocol/sdk with Zod schemas for input
  * validation. All tools are registered before the transport connects.
  *
- * STRAP architecture: 104 actions consolidated into 8 domain tools.
+ * STRAP architecture: 108 actions consolidated into 8 domain tools.
  * Each domain tool uses an `action` discriminator to route to the
  * appropriate handler function.
  *
  * Domains:
- *   - project (8 actions): session lifecycle, persistence, batch, undo
+ *   - project (12 actions): session lifecycle, persistence, batch, undo, package management
  *   - inspect (8 actions): read-only queries on component trees
  *   - component (18 actions): component/page lifecycle, props, states
  *   - node (16 actions): element mutations (structure, style, text, attrs, props)
@@ -31,6 +31,7 @@ import { PlasmicApiClient } from "./api-client.js";
 import { getAuth } from "./auth.js";
 import { requireSession, setSession } from "./session.js";
 import { loadProject } from "./model-loader.js";
+import { listPackages, addPackage, removePackage, upgradePackage } from "./package-manager.js";
 import { syncFromDevHost, clearRegistryCache, recordVariantMetadataSync } from "./devhost-sync.js";
 import {
   readComponentTree,
@@ -305,13 +306,13 @@ export function createServer(): McpServer {
   console.error(`[plasmic-mcp] Authenticated as ${auth.user} against ${auth.host}`);
 
   // ========================================================================
-  // DOMAIN 1: project (8 actions)
+  // DOMAIN 1: project (12 actions)
   // ========================================================================
 
   server.tool(
     "project",
-    "Project session lifecycle, persistence, batch operations, and undo.\n" +
-      "Actions: set, list, get-meta, save, refresh, begin-batch, end-batch, undo.\n" +
+    "Project session lifecycle, persistence, batch operations, undo, and package management.\n" +
+      "Actions: set, list, get-meta, save, refresh, begin-batch, end-batch, undo, list-packages, add-package, remove-package, upgrade-package.\n" +
       "- set: Load a project into memory (required before other tools)\n" +
       "- list: List all accessible projects\n" +
       "- get-meta: Get project metadata (name, counts, pages, components)\n" +
@@ -319,13 +320,18 @@ export function createServer(): McpServer {
       "- refresh: Reload project from server\n" +
       "- begin-batch: Start accumulating edits\n" +
       "- end-batch: Save accumulated edits in one revision\n" +
-      "- undo: Revert most recent edit",
+      "- undo: Revert most recent edit\n" +
+      "- list-packages: List installed packages with version info\n" +
+      "- add-package: Add a hostless package by its source projectId\n" +
+      "- remove-package: Remove an installed package by pkgId or name\n" +
+      "- upgrade-package: Upgrade one or all packages to latest version",
     {
-      action: z.enum(["set", "list", "get-meta", "save", "refresh", "begin-batch", "end-batch", "undo"]),
-      projectId: z.string().optional().describe("The Plasmic project ID (required for 'set')"),
+      action: z.enum(["set", "list", "get-meta", "save", "refresh", "begin-batch", "end-batch", "undo", "list-packages", "add-package", "remove-package", "upgrade-package"]),
+      projectId: z.string().optional().describe("The Plasmic project ID (required for 'set' and 'add-package')"),
       batchId: z.string().optional().describe("Optional batch ID for verification (used by 'end-batch')"),
+      pkgId: z.string().optional().describe("Package ID for 'remove-package' and 'upgrade-package' (optional for upgrade-all)"),
     },
-    async ({ action, projectId, batchId }) => {
+    async ({ action, projectId, batchId, pkgId }) => {
       try {
         switch (action) {
           case "set": {
@@ -693,8 +699,91 @@ export function createServer(): McpServer {
             };
           }
 
+          case "list-packages": {
+            requireSession();
+            const packages = await listPackages(apiClient);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    packages,
+                    count: packages.length,
+                    message: packages.length === 0
+                      ? "No packages installed."
+                      : `${packages.length} package(s) installed.`,
+                  }),
+                },
+              ],
+            };
+          }
+
+          case "add-package": {
+            const pid = requireParam(projectId, "projectId", "project.add-package");
+            const result = await addPackage(apiClient, pid);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    success: true,
+                    ...result,
+                    message: `Added "${result.name}" (v${result.version}) — ${result.componentCount} components now available.`,
+                  }),
+                },
+              ],
+            };
+          }
+
+          case "remove-package": {
+            const pkgIdOrName = requireParam(pkgId ?? projectId, "pkgId", "project.remove-package");
+            const result = await removePackage(apiClient, pkgIdOrName);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    success: true,
+                    ...result,
+                    message: `Removed "${result.name}" (v${result.version}).`,
+                  }),
+                },
+              ],
+            };
+          }
+
+          case "upgrade-package": {
+            const results = await upgradePackage(apiClient, pkgId);
+            if (results.length === 0) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify({
+                      success: true,
+                      upgraded: [],
+                      message: "All packages are up to date.",
+                    }),
+                  },
+                ],
+              };
+            }
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    success: true,
+                    upgraded: results,
+                    message: `Upgraded ${results.length} package(s): ${results.map((r) => `${r.name} (${r.oldVersion} → ${r.newVersion})`).join(", ")}.`,
+                  }),
+                },
+              ],
+            };
+          }
+
           default:
-            throw new Error(`Unknown action '${action}' for project tool. Available: set, list, get-meta, save, refresh, begin-batch, end-batch, undo`);
+            throw new Error(`Unknown action '${action}' for project tool. Available: set, list, get-meta, save, refresh, begin-batch, end-batch, undo, list-packages, add-package, remove-package, upgrade-package`);
         }
       } catch (err: unknown) {
         return {

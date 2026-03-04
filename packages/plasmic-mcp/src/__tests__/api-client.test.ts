@@ -441,4 +441,173 @@ describe("PlasmicApiClient", () => {
       );
     });
   });
+
+  // ==========================================================================
+  // Package management API methods (P1.1)
+  //
+  // These methods support the hostless package management feature:
+  // getPkgByProjectId, getPkgVersion, getPkgVersionMeta, getAppAuthPubConfig.
+  // ==========================================================================
+
+  describe("getPkgByProjectId", () => {
+    it("makes GET request to /api/v1/projects/{projectId}/pkg", async () => {
+      const mockResponse = { pkg: { id: "pkg-1", name: "My Package", projectId: "proj-1" } };
+      mockFetch.mockResolvedValue({
+        ok: true,
+        headers: mockHeaders(),
+        json: () => Promise.resolve(mockResponse),
+      });
+
+      const result = await client.getPkgByProjectId("proj-1");
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://studio.example.com/api/v1/projects/proj-1/pkg",
+        expect.objectContaining({ method: "GET" })
+      );
+      expect(result).toEqual(mockResponse);
+    });
+
+    it("encodes special characters in projectId", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        headers: mockHeaders(),
+        json: () => Promise.resolve({ pkg: undefined }),
+      });
+
+      await client.getPkgByProjectId("proj/special id");
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://studio.example.com/api/v1/projects/proj%2Fspecial%20id/pkg",
+        expect.objectContaining({ method: "GET" })
+      );
+    });
+  });
+
+  describe("getPkgVersion", () => {
+    it("makes GET request with default version=latest", async () => {
+      const mockResponse = {
+        pkg: { id: "pv-1", pkgId: "pkg-1", version: "1.0.0", model: "{}" },
+        depPkgs: [],
+      };
+      mockFetch.mockResolvedValue({
+        ok: true,
+        headers: mockHeaders(),
+        json: () => Promise.resolve(mockResponse),
+      });
+
+      const result = await client.getPkgVersion("pkg-1");
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://studio.example.com/api/v1/pkgs/pkg-1?version=latest&meta=false",
+        expect.objectContaining({ method: "GET" })
+      );
+      expect(result).toEqual(mockResponse);
+    });
+
+    it("passes explicit version when provided", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        headers: mockHeaders(),
+        json: () => Promise.resolve({ pkg: {}, depPkgs: [] }),
+      });
+
+      await client.getPkgVersion("pkg-1", "2.0.0");
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://studio.example.com/api/v1/pkgs/pkg-1?version=2.0.0&meta=false",
+        expect.objectContaining({ method: "GET" })
+      );
+    });
+
+    it("encodes special characters in pkgId", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        headers: mockHeaders(),
+        json: () => Promise.resolve({ pkg: {}, depPkgs: [] }),
+      });
+
+      await client.getPkgVersion("pkg/special");
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://studio.example.com/api/v1/pkgs/pkg%2Fspecial?version=latest&meta=false",
+        expect.objectContaining({ method: "GET" })
+      );
+    });
+  });
+
+  describe("getPkgVersionMeta", () => {
+    it("makes GET request with meta=true", async () => {
+      const mockResponse = {
+        pkg: { id: "pv-1", pkgId: "pkg-1", version: "1.0.0" },
+        depPkgs: [],
+      };
+      mockFetch.mockResolvedValue({
+        ok: true,
+        headers: mockHeaders(),
+        json: () => Promise.resolve(mockResponse),
+      });
+
+      const result = await client.getPkgVersionMeta("pkg-1");
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://studio.example.com/api/v1/pkgs/pkg-1?version=latest&meta=true",
+        expect.objectContaining({ method: "GET" })
+      );
+      expect(result).toEqual(mockResponse);
+    });
+
+    it("passes explicit version when provided", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        headers: mockHeaders(),
+        json: () => Promise.resolve({ pkg: {}, depPkgs: [] }),
+      });
+
+      await client.getPkgVersionMeta("pkg-1", "3.0.0");
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://studio.example.com/api/v1/pkgs/pkg-1?version=3.0.0&meta=true",
+        expect.objectContaining({ method: "GET" })
+      );
+    });
+  });
+
+  describe("getAppAuthPubConfig", () => {
+    it("makes GET request to /api/v1/end-user/app/{projectId}/pub-config", async () => {
+      const mockResponse = {
+        allowed: true,
+        appName: "My App",
+        authScreenProperties: null,
+        isAuthEnabled: false,
+      };
+      mockFetch.mockResolvedValue({
+        ok: true,
+        headers: mockHeaders(),
+        json: () => Promise.resolve(mockResponse),
+      });
+
+      const result = await client.getAppAuthPubConfig("proj-1");
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://studio.example.com/api/v1/end-user/app/proj-1/pub-config",
+        expect.objectContaining({ method: "GET" })
+      );
+      expect(result).toEqual(mockResponse);
+    });
+
+    it("encodes special characters in projectId", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        headers: mockHeaders(),
+        json: () => Promise.resolve({ allowed: true, appName: "App", authScreenProperties: null, isAuthEnabled: false }),
+      });
+
+      await client.getAppAuthPubConfig("proj/special");
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://studio.example.com/api/v1/end-user/app/proj%2Fspecial/pub-config",
+        expect.objectContaining({ method: "GET" })
+      );
+    });
+  });
 });

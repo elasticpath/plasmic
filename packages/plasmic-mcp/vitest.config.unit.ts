@@ -80,6 +80,24 @@ export default defineConfig({
           "src/__mocks__/wab-code-components"
         ),
       },
+      {
+        find: /^@\/wab\/shared\/core\/tagged-unbundle$/,
+        replacement: path.resolve(
+          __dirname,
+          "src/__mocks__/wab-tagged-unbundle"
+        ),
+      },
+      {
+        find: /^@\/wab\/shared\/core\/project-deps$/,
+        replacement: path.resolve(
+          __dirname,
+          "src/__mocks__/wab-project-deps"
+        ),
+      },
+      {
+        find: /^@\/wab\/shared\/core\/sites$/,
+        replacement: path.resolve(__dirname, "src/__mocks__/wab-sites"),
+      },
     ],
     extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
   },
