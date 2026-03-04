@@ -737,9 +737,10 @@ export function createServer(): McpServer {
         "- preview-url: Get preview and studio URLs\n" +
         "- page-meta: Read page SEO metadata\n" +
         "- list-design-system: Consolidated summary of all design tokens, mixins, and themes. Example: {action:\"list-design-system\"} → {tokens:{Color:[...],Spacing:[...]},mixins:[...],themes:[...]}\n" +
-        "- list-patterns: List available UI patterns (heroes, cards, navbars, etc.) that can be applied with node.apply-pattern. No session required. Example: {action:\"list-patterns\"} → [{name:\"hero-centered\",description:\"...\",tags:[...],customisationKeys:[...]}]",
+        "- list-patterns: List available UI patterns (heroes, cards, navbars, etc.) that can be applied with node.apply-pattern. No session required. Example: {action:\"list-patterns\"} → [{name:\"hero-centered\",description:\"...\",tags:[...],customisationKeys:[...]}]\n" +
+        "- capture-screenshot: Capture a PNG screenshot of a page component rendered by the dev host. Requires PLASMIC_DEV_HOST_URL and a page component (with pageMeta.path). Returns an image/png content block for visual feedback. Example: {action:\"capture-screenshot\",componentUuid:\"abc\"} → image/png",
       inputSchema: {
-        action: z.enum(["tree", "summary", "node", "subtree", "export", "style-properties", "preview-url", "page-meta", "list-design-system", "list-patterns"]),
+        action: z.enum(["tree", "summary", "node", "subtree", "export", "style-properties", "preview-url", "page-meta", "list-design-system", "list-patterns", "capture-screenshot"]),
         componentUuid: z.string().optional().describe("UUID of the component to inspect"),
         nodeRef: z.string().optional().describe("Node reference: UUID, name, path, or index"),
         maxDepth: z.number().optional().describe("Maximum tree depth to return. Defaults to 3 for tree, 2 for summary. Pass -1 for unlimited."),
@@ -1190,8 +1191,56 @@ export function createServer(): McpServer {
             return inspectResult({ patternCount: patterns.length, patterns });
           }
 
+          case "capture-screenshot": {
+            const cuuid = requireParam(componentUuid, "componentUuid", "inspect.capture-screenshot");
+            const session = requireSession();
+
+            if (!session.hostUrl) {
+              return {
+                content: [{ type: "text" as const, text: "Dev host unavailable. Start with PLASMIC_DEV_HOST_URL." }],
+                isError: true,
+              };
+            }
+
+            const comp = session.site.components?.find(
+              (c: any) => c.uuid === cuuid
+            );
+
+            if (!comp) {
+              return {
+                content: [{ type: "text" as const, text: `Component UUID "${cuuid}" not found. Use component tool with action 'list' to see available components.` }],
+                isError: true,
+              };
+            }
+
+            const pagePath = comp.pageMeta?.path;
+            if (!pagePath) {
+              return {
+                content: [{ type: "text" as const, text: `Component "${comp.name}" is not a page component and has no preview URL. Screenshots are currently available for page components only.` }],
+                isError: true,
+              };
+            }
+
+            const screenshotUrl = `${session.hostUrl.replace(/\/$/, "")}${pagePath}`;
+
+            const { captureScreenshot } = await import("./screenshot.js");
+            const result = await captureScreenshot({ url: screenshotUrl, timeout: 10000 });
+
+            return {
+              content: [
+                { type: "image" as const, data: result.data, mimeType: "image/png" },
+              ],
+              structuredContent: {
+                captured: true,
+                width: result.width,
+                height: result.height,
+                url: screenshotUrl,
+              },
+            };
+          }
+
           default:
-            throw new Error(`Unknown action '${action}' for inspect tool. Available: tree, summary, node, subtree, export, style-properties, preview-url, page-meta, list-design-system, list-patterns`);
+            throw new Error(`Unknown action '${action}' for inspect tool. Available: tree, summary, node, subtree, export, style-properties, preview-url, page-meta, list-design-system, list-patterns, capture-screenshot`);
         }
       } catch (err: unknown) {
         return {

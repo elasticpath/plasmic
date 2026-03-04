@@ -208,17 +208,20 @@ Requires running dev host; the `VisualCapture` eval class exists but is
 evals-only infrastructure (Playwright-based). Lower priority — opt-in,
 most valuable for iterative design refinement.
 
-- [ ] **P4.1 — `captureScreenshot` inspect action**
-  - Add to inspect tool action enum in `server.ts` (line ~612)
-  - Returns base64 PNG with MIME type `image/png` as MCP image content block
-  - Adapt `VisualCapture` from `evals/visual/capture.ts` or use dev host
-    preview URL — the eval class uses full Playwright Studio auth + iframe
-    navigation which may be too heavy for runtime use; consider lighter approach
-    using the dev host preview URL endpoint
-  - `PLASMIC_DEV_HOST_URL` already wired in `model-loader.ts` (line ~76) and
-    `session.ts` (line ~28) for dev host sync
-  - Clear error if dev host unavailable: `{ error: "Dev host unavailable. Start with PLASMIC_DEV_HOST_URL." }`
-  - 10s timeout with clear error on expiry
+- [x] **P4.1 — `captureScreenshot` inspect action**
+  - Added `capture-screenshot` to inspect tool action enum in `server.ts`
+  - New `screenshot.ts` module: uses Playwright (dynamic import, optional dep) to
+    capture headless Chromium screenshots of dev host pages
+  - For page components: navigates to `${session.hostUrl}${pageMeta.path}`, returns
+    base64 PNG as MCP image content block (`type: "image"`, `mimeType: "image/png"`)
+  - For non-page components: returns clear error (no standard preview URL on dev host)
+  - Error cases: missing dev host URL, component not found, non-page component,
+    Playwright not installed, navigation timeout — all return `isError: true` with
+    descriptive message
+  - 10s timeout with split allocation: 5s browser launch, 8s+ navigation
+  - `structuredContent` includes `{ captured, width, height, url }` metadata
+  - 16 unit tests covering: default/custom viewport, base64 encoding, browser
+    cleanup on failure, timeout configuration, error propagation, URL construction
 
 - [ ] **P4.2 — Eval scenario for feedback loop**
   - New eval scenario in `eval-runner.test.ts` or new YAML in `evals/scenarios/`
