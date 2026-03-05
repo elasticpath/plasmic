@@ -565,6 +565,12 @@ describe("tool handlers", () => {
       recordVariantMetadataSync: (...args: any[]) => mockRecordVariantMetadataSync(...args),
     }));
 
+    vi.doMock("../tool-presence", () => ({
+      emitEditPresence: vi.fn(),
+      clearEditPresence: vi.fn(),
+      emitInspectPresence: vi.fn(),
+    }));
+
     // --- Create server and connect transport ---
 
     const { createServer } = await import("../server");

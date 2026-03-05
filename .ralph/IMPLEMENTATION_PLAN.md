@@ -1,6 +1,6 @@
 # Implementation Plan
 
-_Last updated: 2026-03-05 (P0 complete, P1.1+P1.3 complete)_
+_Last updated: 2026-03-05 (P0 complete, P1.1+P1.2+P1.3 complete)_
 
 ## Status Legend
 - `[ ]` Not started
@@ -9,67 +9,23 @@ _Last updated: 2026-03-05 (P0 complete, P1.1+P1.3 complete)_
 
 ---
 
-## P0 -- WebSocket Live Sync (Core)
+## P0 -- WebSocket Live Sync (Core) ✅ COMPLETED
 
-The MCP server is currently HTTP-only. When another user saves in Studio, the MCP has no way to know until its next save attempt fails with a 412 conflict. WebSocket live sync resolves this by receiving real-time `update` events and rebasing the in-memory model, exactly as Studio does.
+All P0 items are complete. The MCP server now receives real-time `update` events via socket.io and rebases the in-memory model, exactly as Studio does.
 
-### P0.0 -- Prerequisites: Type Declarations, Mocks, and Shared Code Imports ✅ COMPLETED
+- **P0.0** -- Prerequisites: Type Declarations, Mocks, and Shared Code Imports ✅
+- **P0.1** -- Socket.io Client Module ✅
+- **P0.2** -- Update Queue and Serialization ✅
+- **P0.3** -- Incremental Update Fetcher (API Client Extension) ✅
+- **P0.4** -- Rebase Engine ✅
+- **P0.5** -- Integration into Session Lifecycle ✅
+- **P0.6** -- Save Manager Coordination ✅
+- **P0.7** -- Socket Client Unit Tests ✅
+- **P0.8** -- Update Queue Unit Tests ✅
+- **P0.9** -- Rebase Engine Unit Tests ✅
+- **P0.10** -- Live Sync Integration Tests ✅
 
-All type declarations, mocks, vitest aliases, and accessor methods implemented. Typecheck clean, all 1668 unit tests pass.
-
-**What was done:**
-- Extended `FastBundler` in both `.d.ts` files with `unbundlePartial`, `allUuids`, `objByAddr`
-- Added `IChangeRecorder` interface to observable-model declarations (both files)
-- Added `getRecorder()` accessor to `ChangeTracker`
-- Added `getStack()`/`replaceStack()` accessors and exported `UndoOperation` from `undo-manager.ts`
-- Added 7 new module declarations: `server-updates-utils`, `asyncutil`, `socket`, `ApiSchema`, `Arenas`, `collections`, `common`
-- Created 7 new mock files with proper implementations
-- Added 7 new vitest aliases in `vitest.config.unit.ts`
-
-**Files modified:** `wab.d.ts`, `wab-externals.d.ts`, `src/__mocks__/wab-bundler.ts`, `src/__mocks__/wab-observable-model.ts`, `src/change-tracker.ts`, `src/undo-manager.ts`, `vitest.config.unit.ts`
-**Files created:** `src/__mocks__/wab-server-updates-utils.ts`, `src/__mocks__/wab-asyncutil.ts`, `src/__mocks__/wab-socket-types.ts`, `src/__mocks__/wab-api-schema.ts`, `src/__mocks__/wab-arenas.ts`, `src/__mocks__/wab-collections.ts`, `src/__mocks__/wab-common-ext.ts`
-
-### P0.1 -- Socket.io Client Module ✅ COMPLETED
-
-Created `src/socket-client.ts` with injectable factory pattern for testability. Connects to `{apiHost}/api/v1/socket` with WebSocket transport, same auth headers as api-client.ts. Emits `subscribe` with `studio: true` on `initServerInfo`. Handles `update`, `hostlessDataVersionUpdate`, `error` events. Re-subscribes on `io.reconnect`. Added `socket.io-client@^4.1.2` to dependencies.
-
-### P0.2 -- Update Queue and Serialization ✅ COMPLETED
-
-Created `src/update-queue.ts` wrapping `PushPullQueue` with pre-enqueue filtering (branch, self-update), save-in-flight gating (polls `isSaving()` at 50ms), and sequential processing. `stop()` pushes sentinel to unblock pending `pull()`.
-
-### P0.3 -- Incremental Update Fetcher (API Client Extension) ✅ COMPLETED
-
-Added `getModelUpdates()` to `api-client.ts` calling `GET /api/v1/projects/{id}/updates` with `URLSearchParams`. Added `ModelUpdateIncremental`, `ModelUpdateNeedsReload`, `ModelUpdateNoChanges`, and `GetModelUpdatesResponse` union type to `types.ts`. Also added `getAuth()` public accessor.
-
-### P0.4 -- Rebase Engine ✅ COMPLETED
-
-Created `src/rebase-engine.ts` — pure orchestration layer mirroring `StudioCtx.fetchUpdatesInternal()`. Implements 5-phase rebase: revert local changes → record server deletions → apply server partial bundle → check dependency deletion → re-apply local with conflict resolution. `applyServerUpdate()` separated from `fetchAndRebase()` for testability. Throws `UnsupportedServerUpdate` for needsReload and dependency deletion cases.
-
-### P0.5 -- Integration into Session Lifecycle ✅ COMPLETED
-
-Created `src/live-sync.ts` integration module. Added `selfPlayerId`, `pendingSavedRevisionNum`, `serverUpdatesSummary`, `isAtTip` fields to Session. Wired `startLiveSync()`/`stopLiveSync()` into `project.set` and `project.refresh` in server.ts. Socket connection is non-blocking (`.catch()` logs warning, continues HTTP-only). `initServerInfo` handler detects schema/bundle version mismatches. `hostlessDataVersionUpdate` handler updates session.
-
-### P0.6 -- Save Manager Coordination ✅ COMPLETED
-
-Added module-level `isSaving()` flag to save-manager.ts (set true before HTTP call, false in `finally`). Both `saveChanges()` and `saveFullBundle()` set `session.pendingSavedRevisionNum` before save for self-update echo detection. Update queue uses `isSaving()` to pause processing during saves.
-
-**Note:** Auto-rebase on 412 ProjectRevisionError deferred to P2.3 — requires integration testing with a real server. Current behavior still throws with guidance to use refresh-project.
-
-### P0.7 -- Socket Client Unit Tests ✅ COMPLETED
-
-12 tests covering: auth headers, Basic Auth, subscribe flow on initServerInfo, event routing (update, hostlessDataVersionUpdate, error), reconnection re-subscribe, disconnect state clearing, connection failure graceful degradation.
-
-### P0.8 -- Update Queue Unit Tests ✅ COMPLETED
-
-10 tests covering: sequential processing, concurrency=1, branch filtering, self-update filtering, save-in-flight gating, error resilience, stop sentinel.
-
-### P0.9 -- Rebase Engine Unit Tests ✅ COMPLETED
-
-14 tests covering: no-changes null return, needsReload exception, simple fast-forward, undo stack per-entry rebuild, batch changes rebase, combined undo+batch, dependency deletion detection, deleted instances IID resolution, dep pkg unbundling, revision number update, DeletedAssetsSummary accumulation.
-
-### P0.10 -- Live Sync Integration Tests ✅ COMPLETED
-
-13 tests in `live-sync.test.ts` covering: start/stop lifecycle, serverUpdatesSummary initialization, no-session skip, previous-sync cleanup, initServerInfo schema/bundle mismatch detection, hostless data version update, update event routing through queue, different-project filtering. 4 tests in `save-manager.test.ts` covering: isSaving flag, pendingSavedRevisionNum tracking.
+**Note:** Auto-rebase on 412 ProjectRevisionError deferred to P2.3.
 
 ---
 
@@ -83,17 +39,23 @@ Created `src/presence-manager.ts` — emits `view` events with `UpdatePlayerView
 
 **Note:** Does not import `getArenaType`/`getArenaUuidOrName` from `@/wab/shared/Arenas` — the presence manager receives the arena type and UUID directly from the caller (tool handlers will resolve these in P1.2).
 
-### P1.2 -- Hook Presence into Edit Tools
+### P1.2 -- Hook Presence into Edit Tools ✅ COMPLETED
 
-- [ ] **Emit presence updates in edit tool execution paths** -- before each edit tool executes, update arena info to target component. During node mutations, update selection info. After operation, clear selection.
-  - Files: modify `packages/plasmic-mcp/src/server.ts` (tool handlers), possibly create `src/tool-lifecycle.ts` wrapper
-  - Dependencies: P1.1
-  - Complexity: **L**
-  - Key design decisions:
-    - Use a lifecycle wrapper: `withPresence(componentUuid, nodeRef?, fn)` that emits view events before/after
-    - Presence updates work during batch operations: update arena info as focus moves between components
-    - For read-only operations (inspect tools), emit arena info but no selection
-    - Debouncing prevents flooding on rapid successive calls
+Created `src/tool-presence.ts` with three exported functions:
+- `emitEditPresence(componentUuid, nodeRef?)` — sets arena to the target component (detecting page vs component type) and optionally resolves nodeRef to a UUID for selection info
+- `clearEditPresence()` — clears selection (preserves arena for batch continuity)
+- `emitInspectPresence(componentUuid)` — sets arena only for read-only operations
+
+Integrated into all 7 tool handlers in `server.ts`:
+- **inspect**: `emitInspectPresence` at handler entry for component-targeted actions (tree, summary, node, subtree, export, preview-url, page-meta)
+- **component**: `emitEditPresence` + `finally { clearEditPresence() }` for component-level operations
+- **node**: `emitEditPresence` with `nodeRef ?? parentRef` + `finally` cleanup for all node mutations
+- **variant**: `emitEditPresence` + `finally` for component-scoped variant actions
+- **data**: `emitEditPresence` with `nodeRef` + `finally` for component-targeted data operations
+- **interaction**: `emitEditPresence` with `nodeRef` + `finally` for all interaction actions
+- **design/project**: No presence (site-level operations with no component context)
+
+19 unit tests in `tool-presence.test.ts` covering: arena type detection (page vs component), node resolution with selection, ambiguous/empty/failing resolution graceful degradation, no-session skip, missing component skip, batch component focus transitions, and inspect-only arena emission.
 
 ### P1.3 -- Presence Manager Unit Tests ✅ COMPLETED
 
@@ -220,15 +182,6 @@ The MCP rebase/sync system reuses Studio's shared code rather than reimplementin
 
 ### R1: `server-updates-utils.ts` Transitive Import Cost
 `undoChangesAndResolveConflicts()` lives in `@/wab/shared/server-updates-utils.ts`, which imports from `@/wab/shared/Arenas`, `@/wab/commons/StyleToken`, `@/wab/shared/core/image-assets`, `@/wab/shared/core/tokens`, etc. esbuild will bundle these transitively. Could add 100-300KB to the ~1.3MB bundle. Measure after P0.4.
-
-### R2: Query Parameter Encoding for `getModelUpdates`
-`api-client.ts` `request()` doesn't support query parameters on GET. Need to either extend `request()` or manually construct the URL. The `installedDeps` array (from `bundler.allUuids()`) must be serialized as a query param.
-
-### R3: Undo Stack Mutability for Rebase
-The undo-manager needs `getStack()` and `replaceStack()` accessors so the rebase engine can revert and re-apply each entry individually. Currently the stack is module-private (`let undoStack: UndoOperation[] = []`). Small change but must be done carefully to preserve existing undo behavior.
-
-### R4: `PushPullQueue` Dependency on `async` npm Package
-`PushPullQueue` in `@/wab/commons/asyncutil.ts` may use the `async` npm package's `AsyncQueue`. Verify this dependency is available in the MCP's build environment, or that esbuild bundles it transitively.
 
 ---
 
