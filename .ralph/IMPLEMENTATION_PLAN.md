@@ -19,7 +19,7 @@
 | 3.3 PublishFlowDialog | **completed** | P2 |
 | 4.1 Code content URL | **not started** | P3 (config only, no code changes) |
 | 4.2 CodeButton menu filter | **completed** | P2 |
-| 5.1 Unit tests | **completed** | P2 (21 tests pass) |
+| 5.1 Unit tests | **completed** | P2 (23 tests pass) |
 | 5.2 E2E tests | **completed** | P3 (12 tests) |
 
 ---
@@ -50,6 +50,6 @@
 
 ## Implementation Notes
 
-- `shouldHideForRestrictedUser` accepts `boolean | null | undefined` for `isWhiteLabel` because `appCtx.isWhiteLabelUser()` returns `boolean | null`.
+- `shouldHideForRestrictedUser` accepts `boolean | null | undefined` for `isWhiteLabel` because `appCtx.isWhiteLabelUser()` returns `boolean | null`. Tests cover `null` and `undefined` edge cases explicitly.
 - E2E tests cover route redirects (dashboard + auth), escape hatch, allowed routes, and non-logged-in behavior. Studio UI element visibility is covered by unit tests only (loading the full Studio in E2E is prohibitively slow).
-- All 21 unit tests pass. TypeCheck passes for all modified files.
+- All 23 unit tests pass. TypeCheck passes for all modified files.

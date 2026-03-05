@@ -126,6 +126,16 @@ describe("shouldHideForRestrictedUser", () => {
       shouldHideForRestrictedUser(true, config, "?adminDashboard=true")
     ).toBe(true);
   });
+
+  it("treats null isWhiteLabel as non-white-label", () => {
+    const config = makeAppConfig({ hideDashboardViews: false });
+    expect(shouldHideForRestrictedUser(null, config, "")).toBe(false);
+  });
+
+  it("treats undefined isWhiteLabel as non-white-label", () => {
+    const config = makeAppConfig({ hideDashboardViews: false });
+    expect(shouldHideForRestrictedUser(undefined, config, "")).toBe(false);
+  });
 });
 
 describe("shouldRedirectAuthRoute", () => {
