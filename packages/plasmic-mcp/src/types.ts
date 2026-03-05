@@ -204,6 +204,70 @@ export interface AppAuthPubConfig {
   isAuthEnabled: boolean;
 }
 
+// --- App Config / Package Discovery types ---
+
+export interface HostLessComponentInfo {
+  type: "hostless-component";
+  componentName: string;
+  displayName: string;
+  description?: string;
+  imageUrl?: string;
+  videoUrl?: string;
+  hidden?: boolean;
+  isFake?: boolean;
+  isCustomFunction?: boolean;
+  hiddenOnStore?: boolean;
+  onlyShownIn?: "old" | "new";
+}
+
+export interface HostLessPackageInfo {
+  type: "hostless-package";
+  name: string;
+  sectionLabel: string;
+  projectId: string | string[];
+  items: HostLessComponentInfo[];
+  codeName?: string;
+  codeLink?: string;
+  imageUrl?: string;
+  hidden?: boolean;
+  showInstall?: boolean;
+  hiddenWhenInstalled?: boolean;
+  isInstallOnly?: boolean;
+  whitelistDomains?: string[];
+  whitelistTeams?: string[];
+  onlyShownIn?: "old" | "new";
+}
+
+export interface AppConfigResponse {
+  config: {
+    hostLessComponents?: HostLessPackageInfo[];
+    [key: string]: unknown;
+  };
+}
+
+export interface AvailablePackage {
+  name: string;
+  projectId: string | string[];
+  sectionLabel: string;
+  isInstalled: boolean;
+  items: Array<{
+    componentName: string;
+    displayName: string;
+    description?: string;
+    imageUrl?: string;
+  }>;
+  codeName?: string;
+  codeLink?: string;
+  imageUrl?: string;
+}
+
+export interface PackageComponent {
+  packageName: string;
+  packageProjectId: string;
+  name: string;
+  displayName: string;
+}
+
 // --- Save revision request (M2: incremental writes) ---
 
 export interface SaveRevisionReq {

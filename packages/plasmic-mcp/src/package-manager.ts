@@ -10,6 +10,7 @@
  */
 
 import type { PlasmicApiClient } from "./api-client.js";
+import type { AvailablePackage, PackageComponent } from "./types.js";
 import { requireSession } from "./session.js";
 import { TplMgr } from "@/wab/shared/TplMgr";
 import { unbundleProjectDependency } from "@/wab/shared/core/tagged-unbundle";
@@ -355,6 +356,123 @@ export async function upgradePackage(
 
   // Perform atomic upgrade via WAB shared function
   upgradeProjectDeps(site, upgradePairs);
+
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// list-available-packages
+// ---------------------------------------------------------------------------
+
+/**
+ * Browse the catalog of installable hostless packages from the server's
+ * app-config endpoint, cross-referenced with current project dependencies
+ * to mark which packages are already installed.
+ *
+ * Hidden packages are excluded by default. Installed packages are marked
+ * `isInstalled: true` rather than omitted, so callers can check status.
+ */
+export async function listAvailablePackages(
+  apiClient: PlasmicApiClient
+): Promise<AvailablePackage[]> {
+  const session = requireSession();
+  const site = session.site;
+
+  let config;
+  try {
+    config = await apiClient.getAppConfig();
+  } catch {
+    // Server may not support /api/v1/app-config — return empty catalog
+    return [];
+  }
+
+  const hostLessComponents = config.config?.hostLessComponents ?? [];
+  const installedProjectIds = new Set(
+    (site.projectDependencies ?? []).map((d: any) => d.projectId)
+  );
+
+  return hostLessComponents
+    .filter((pkg) => !pkg.hidden)
+    .map((pkg) => {
+      const projectIds = Array.isArray(pkg.projectId)
+        ? pkg.projectId
+        : [pkg.projectId];
+      const isInstalled = projectIds.some((id) => installedProjectIds.has(id));
+
+      return {
+        name: pkg.name,
+        projectId: pkg.projectId,
+        sectionLabel: pkg.sectionLabel,
+        isInstalled,
+        items: (pkg.items ?? [])
+          .filter((item) => !item.hidden)
+          .map((item) => ({
+            componentName: item.componentName,
+            displayName: item.displayName,
+            description: item.description,
+            imageUrl: item.imageUrl,
+          })),
+        codeName: pkg.codeName,
+        codeLink: pkg.codeLink,
+        imageUrl: pkg.imageUrl,
+      };
+    });
+}
+
+// ---------------------------------------------------------------------------
+// list-package-components
+// ---------------------------------------------------------------------------
+
+/**
+ * List components provided by installed hostless packages.
+ *
+ * Cross-references `site.projectDependencies` with component data to
+ * return a flat list of available components. Supports optional filtering
+ * by package name.
+ */
+export async function listPackageComponents(
+  apiClient: PlasmicApiClient,
+  packageName?: string
+): Promise<PackageComponent[]> {
+  const session = requireSession();
+  const site = session.site;
+  const deps: any[] = site.projectDependencies ?? [];
+
+  // Filter to hostless packages only
+  const hostLessDeps = deps.filter((dep: any) =>
+    dep.site ? isHostLessPackage(dep.site) : false
+  );
+
+  // If packageName specified, filter and validate
+  const filteredDeps = packageName
+    ? hostLessDeps.filter(
+        (dep: any) =>
+          (dep.name ?? "").toLowerCase() === packageName.toLowerCase()
+      )
+    : hostLessDeps;
+
+  if (packageName && filteredDeps.length === 0) {
+    throw new Error(
+      `Package "${packageName}" is not installed. Use project.list-packages to see installed packages.`
+    );
+  }
+
+  const results: PackageComponent[] = [];
+
+  for (const dep of filteredDeps) {
+    const components = (dep.site?.components ?? []).filter((c: any) =>
+      isReusableComponent(c)
+    );
+
+    for (const comp of components) {
+      results.push({
+        packageName: dep.name ?? "Unknown",
+        packageProjectId: dep.projectId,
+        name: comp.name ?? "Unknown",
+        displayName: comp.name ?? "Unknown",
+      });
+    }
+  }
 
   return results;
 }

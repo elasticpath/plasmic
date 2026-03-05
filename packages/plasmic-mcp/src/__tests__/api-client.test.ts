@@ -484,7 +484,7 @@ describe("PlasmicApiClient", () => {
   });
 
   describe("getPkgVersion", () => {
-    it("makes GET request with default version=latest", async () => {
+    it("omits version param when requesting latest (no version arg)", async () => {
       const mockResponse = {
         pkg: { id: "pv-1", pkgId: "pkg-1", version: "1.0.0", model: "{}" },
         depPkgs: [],
@@ -498,13 +498,13 @@ describe("PlasmicApiClient", () => {
       const result = await client.getPkgVersion("pkg-1");
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://studio.example.com/api/v1/pkgs/pkg-1?version=latest&meta=false",
+        "https://studio.example.com/api/v1/pkgs/pkg-1?meta=false",
         expect.objectContaining({ method: "GET" })
       );
       expect(result).toEqual(mockResponse);
     });
 
-    it("passes explicit version when provided", async () => {
+    it("JSON-stringifies and URI-encodes explicit version", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
         headers: mockHeaders(),
@@ -514,7 +514,7 @@ describe("PlasmicApiClient", () => {
       await client.getPkgVersion("pkg-1", "2.0.0");
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://studio.example.com/api/v1/pkgs/pkg-1?version=2.0.0&meta=false",
+        "https://studio.example.com/api/v1/pkgs/pkg-1?version=%222.0.0%22&meta=false",
         expect.objectContaining({ method: "GET" })
       );
     });
@@ -529,14 +529,14 @@ describe("PlasmicApiClient", () => {
       await client.getPkgVersion("pkg/special");
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://studio.example.com/api/v1/pkgs/pkg%2Fspecial?version=latest&meta=false",
+        "https://studio.example.com/api/v1/pkgs/pkg%2Fspecial?meta=false",
         expect.objectContaining({ method: "GET" })
       );
     });
   });
 
   describe("getPkgVersionMeta", () => {
-    it("makes GET request with meta=true", async () => {
+    it("omits version param when requesting latest (no version arg)", async () => {
       const mockResponse = {
         pkg: { id: "pv-1", pkgId: "pkg-1", version: "1.0.0" },
         depPkgs: [],
@@ -550,13 +550,13 @@ describe("PlasmicApiClient", () => {
       const result = await client.getPkgVersionMeta("pkg-1");
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://studio.example.com/api/v1/pkgs/pkg-1?version=latest&meta=true",
+        "https://studio.example.com/api/v1/pkgs/pkg-1?meta=true",
         expect.objectContaining({ method: "GET" })
       );
       expect(result).toEqual(mockResponse);
     });
 
-    it("passes explicit version when provided", async () => {
+    it("JSON-stringifies and URI-encodes explicit version", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
         headers: mockHeaders(),
@@ -566,7 +566,7 @@ describe("PlasmicApiClient", () => {
       await client.getPkgVersionMeta("pkg-1", "3.0.0");
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://studio.example.com/api/v1/pkgs/pkg-1?version=3.0.0&meta=true",
+        "https://studio.example.com/api/v1/pkgs/pkg-1?version=%223.0.0%22&meta=true",
         expect.objectContaining({ method: "GET" })
       );
     });
@@ -608,6 +608,29 @@ describe("PlasmicApiClient", () => {
         "https://studio.example.com/api/v1/end-user/app/proj%2Fspecial/pub-config",
         expect.objectContaining({ method: "GET" })
       );
+    });
+  });
+
+  describe("getAppConfig", () => {
+    it("makes GET request to /api/v1/app-config", async () => {
+      const mockResponse = {
+        config: {
+          hostLessComponents: [],
+        },
+      };
+      mockFetch.mockResolvedValue({
+        ok: true,
+        headers: mockHeaders(),
+        json: () => Promise.resolve(mockResponse),
+      });
+
+      const result = await client.getAppConfig();
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://studio.example.com/api/v1/app-config",
+        expect.objectContaining({ method: "GET" })
+      );
+      expect(result).toEqual(mockResponse);
     });
   });
 });
