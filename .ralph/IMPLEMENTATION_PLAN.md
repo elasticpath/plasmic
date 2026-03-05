@@ -1,6 +1,6 @@
 # Implementation Plan
 
-_Last updated: 2026-03-05 (audit pass 3)_
+_Last updated: 2026-03-05 (audit pass 4)_
 
 ## Priority 1 — Hostless Package Management ✅ COMPLETE (2026-03-04)
 
@@ -40,19 +40,20 @@ Additional bugs discovered beyond original audit: `CustomerData` interface misma
 
 ---
 
-## Priority 4 — EP Commerce Test Coverage (Low Priority)
+## Priority 4 — EP Commerce Test Coverage ✅ PARTIAL (2026-03-05)
 
-**Status:** Not started
-**Location:** `plasmicpkgs/commerce-providers/elastic-path/src/`
+**Status:** API endpoints and utilities now tested. 185 new tests added (889 → 1074), 4 new test suites (36 → 40).
 
-~105 of 140 source files have no corresponding test files (75% untested). Breakdown:
-- 6 API endpoint handlers untested
-- 3 API schema files untested
+### What was added
+- **`validate-address.test.ts`** — endpoint handler tests: method validation, address validation (billing/shipping), normalization, error handling
+- **`get-order.test.ts`** — endpoint handler tests: order retrieval, EP response transformation, error mapping (404→OrderError), env validation
+- **`api-helpers.test.ts`** — utility tests: response builders, method/body validation, email/phone validation, sanitization, rate limiter, currency conversion
+- **`error-handling.test.ts`** — error class hierarchy, EP/Stripe error handling, HTTP status mapping, retryable errors, error-to-API-response conversion
+
+### Remaining (low priority)
+- 3 API schema files untested (TypeScript interfaces only — no runtime behavior)
 - 20+ registration files untested (declarative, low risk)
-- Checkout components and hooks untested
-- 37 test files currently exist covering core logic
-
-Low priority: registration files are declarative, visual components are best validated in Studio. API endpoint handlers are higher priority for testing.
+- Checkout components and hooks untested (visual, best validated in Studio)
 
 ---
 
@@ -65,17 +66,9 @@ Low priority: registration files are declarative, visual components are best val
 
 ---
 
-## Priority 6 — Unused Dependencies in plasmicpkgs-dev (Low Priority)
+## Priority 6 — Unused Dependencies in plasmicpkgs-dev ✅ COMPLETE (2026-03-05)
 
-**Status:** Not started
-**Location:** `plasmicpkgs-dev/package.json`
-
-Three packages remain as dependencies but their imports and registration calls were removed from `plasmic-register.ts`:
-- `@plasmicpkgs/commerce-shopify` (0.0.240)
-- `@plasmicpkgs/plasmic-strapi` (0.1.189)
-- `@plasmicpkgs/strapi` (0.0.9)
-
-Fix: Remove from `package.json` and run install to clean lockfile.
+**Status:** Removed 3 unused packages from `plasmicpkgs-dev/package.json`: `@plasmicpkgs/commerce-shopify`, `@plasmicpkgs/plasmic-strapi`, `@plasmicpkgs/strapi`. Confirmed no imports exist.
 
 ---
 
@@ -109,7 +102,7 @@ Package has pre-compiled `dist/` but no `src/`. Source was added in commit `5a47
 - **Branch context:** `feat/plasmic-design-agent-skill`
 - **Action count:** 108 actions across 8 tools (project: 12, inspect: 8, component: 18, node: 16, variant: 12, design: 22, data: 16, interaction: 4)
 - **MCP server health:** 0 TODOs, 0 skipped tests, 0 stubs in `packages/plasmic-mcp/src/` — 19 source files, 20,085 LOC, 33 test files
-- **EP commerce health:** 0 TODOs, 0 FIXMEs, 40 registered components (2 deprecated), 178 total files (141 source, 37 test), 889 tests passing (36 suites). Address validation bugs fixed (P3).
+- **EP commerce health:** 0 TODOs, 0 FIXMEs, 40 registered components (2 deprecated), 182 total files (141 source, 41 test), 1074 tests passing (40 suites). Address validation bugs fixed (P3), API test coverage added (P4).
 - **plasmic-mcp-registry:** Fully functional at `packages/plasmic-mcp-registry/` — serializes 5 globalThis registries for HTTP transport
 - **Existing skills:** 7 files in `.claude/commands/` (plasmic, plasmic-design, plasmic-edit, plasmic-inspect, plasmic-create-component, plasmic-create-page, plasmic-patterns). `/plasmic-design` implements a 4-phase agentic loop; all others are single-pass.
 - **Spec:** `.ralph/specs/PLASMIC-DESIGN-AGENT-SKILL.md`
