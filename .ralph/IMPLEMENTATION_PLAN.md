@@ -1,59 +1,14 @@
 # Implementation Plan
 
-_Last updated: 2026-03-05 (audit pass 4)_
+_Last updated: 2026-03-05 (audit pass 5)_
 
-## Priority 1 — Hostless Package Management ✅ COMPLETE (2026-03-04)
+## Completed Priorities (collapsed)
 
-**Status:** All complete. 4 new actions, 14/14 acceptance criteria, all tests pass. Spec: `.ralph/specs/PROJECT-PACKAGE-MANAGEMENT.md`
-
----
-
-## Priority 2 — Plasmic Design Agent Skill ✅ COMPLETE (2026-03-05)
-
-**Status:** All complete. 4-phase agentic loop skill (243 lines), 6/6 acceptance criteria. Spec: `.ralph/specs/PLASMIC-DESIGN-AGENT-SKILL.md`
-
----
-
-## Priority 3 — EP Commerce Address Validation Bug ✅ COMPLETE (2026-03-05)
-
-**Status:** All bugs fixed, dead code removed, comprehensive tests added. All 889 EP commerce tests pass (36 test suites).
-
-### What was fixed
-- **`validateAddressData()`** — field name mismatches: `line1` → `line_1`, `state` → `county`, `postalCode` → `postcode`
-- **`sanitizeAddressData()`** — same field name mismatches as above, plus removed nonexistent `company` field reference
-- **`validateCustomerData()`** — field name mismatches: `firstName`/`lastName`/`phone` → `name`/`email` to match `CustomerData` interface
-- **`sanitizeCustomerData()`** — same field name mismatches as `validateCustomerData()`
-- **Missing exports** — added `validateBillingAddress()` and `validateShippingAddress()` exports to `validation.ts`
-- **`create-order.ts`** — fixed to use correct EP field names from sanitized data
-- **Dead code removed** — `getAddressSuggestions()`, `validateAddressBusinessRules()`, `validatePostalCodeFormat()` (all unused)
-- **Tests** — added comprehensive `validation.test.ts` (30+ tests); updated `create-order.test.ts` fixtures to use correct EP field names
-
-### Note
-Additional bugs discovered beyond original audit: `CustomerData` interface mismatch in both validate and sanitize functions, and `create-order.ts` field references were also broken.
-
-### Files modified
-- `src/api/utils/validation.ts`
-- `src/api/endpoints/checkout/create-order.ts`
-- `src/api/endpoints/checkout/__tests__/create-order.test.ts`
-- `src/api/endpoints/checkout/validate-address.ts`
-- `src/api/utils/__tests__/validation.test.ts` (new)
-
----
-
-## Priority 4 — EP Commerce Test Coverage ✅ PARTIAL (2026-03-05)
-
-**Status:** API endpoints and utilities now tested. 185 new tests added (889 → 1074), 4 new test suites (36 → 40).
-
-### What was added
-- **`validate-address.test.ts`** — endpoint handler tests: method validation, address validation (billing/shipping), normalization, error handling
-- **`get-order.test.ts`** — endpoint handler tests: order retrieval, EP response transformation, error mapping (404→OrderError), env validation
-- **`api-helpers.test.ts`** — utility tests: response builders, method/body validation, email/phone validation, sanitization, rate limiter, currency conversion
-- **`error-handling.test.ts`** — error class hierarchy, EP/Stripe error handling, HTTP status mapping, retryable errors, error-to-API-response conversion
-
-### Remaining (low priority)
-- 3 API schema files untested (TypeScript interfaces only — no runtime behavior)
-- 20+ registration files untested (declarative, low risk)
-- Checkout components and hooks untested (visual, best validated in Studio)
+- **P1** — Hostless Package Management ✅ (2026-03-04) — 4 new actions, 14/14 criteria
+- **P2** — Plasmic Design Agent Skill ✅ (2026-03-05) — 4-phase agentic loop, 6/6 criteria
+- **P3** — EP Commerce Address Validation Bug ✅ (2026-03-05) — field name mismatches, dead code removal, tests
+- **P4** — EP Commerce Test Coverage ✅ PARTIAL (2026-03-05) — 185 new tests (889→1074), 4 new suites
+- **P6** — Unused Dependencies in plasmicpkgs-dev ✅ (2026-03-05) — removed 3 packages from package.json AND plasmic-register.ts imports
 
 ---
 
@@ -63,12 +18,6 @@ Additional bugs discovered beyond original audit: `CustomerData` interface misma
 **File:** `plasmicpkgs/commerce-providers/elastic-path/src/api/endpoints/checkout/validate-address.ts`
 
 `normalizeAddress()` is a basic string formatter (comments list integration points: Google Maps, USPS, Loqate, SmartyStreets, HERE). Dead code was removed in P3. Not blocking — requires third-party API key decision outside EP/Plasmic scope.
-
----
-
-## Priority 6 — Unused Dependencies in plasmicpkgs-dev ✅ COMPLETE (2026-03-05)
-
-**Status:** Removed 3 unused packages from `plasmicpkgs-dev/package.json`: `@plasmicpkgs/commerce-shopify`, `@plasmicpkgs/plasmic-strapi`, `@plasmicpkgs/strapi`. Confirmed no imports exist.
 
 ---
 
@@ -101,11 +50,10 @@ Package has pre-compiled `dist/` but no `src/`. Source was added in commit `5a47
 
 - **Branch context:** `feat/plasmic-design-agent-skill`
 - **Action count:** 108 actions across 8 tools (project: 12, inspect: 8, component: 18, node: 16, variant: 12, design: 22, data: 16, interaction: 4)
-- **MCP server health:** 0 TODOs, 0 skipped tests, 0 stubs in `packages/plasmic-mcp/src/` — 19 source files, 20,085 LOC, 33 test files
-- **EP commerce health:** 0 TODOs, 0 FIXMEs, 40 registered components (2 deprecated), 182 total files (141 source, 41 test), 1074 tests passing (40 suites). Address validation bugs fixed (P3), API test coverage added (P4).
-- **plasmic-mcp-registry:** Fully functional at `packages/plasmic-mcp-registry/` — serializes 5 globalThis registries for HTTP transport
-- **Existing skills:** 7 files in `.claude/commands/` (plasmic, plasmic-design, plasmic-edit, plasmic-inspect, plasmic-create-component, plasmic-create-page, plasmic-patterns). `/plasmic-design` implements a 4-phase agentic loop; all others are single-pass.
-- **Spec:** `.ralph/specs/PLASMIC-DESIGN-AGENT-SKILL.md`
-- **P1 spec:** `.ralph/specs/PROJECT-PACKAGE-MANAGEMENT.md` (complete, for reference)
+- **MCP server health:** 0 TODOs, 0 skipped tests, 0 stubs — 1616 unit tests (30 suites), 170 integration tests (3 suites), typecheck clean
+- **EP commerce health:** 0 TODOs, 0 FIXMEs — 1074 tests passing (40 suites, Jest). Use `yarn test` not `npx vitest run`.
+- **plasmic-mcp-registry:** 79 tests passing (5 suites, Vitest)
+- **Existing skills:** 7 files in `.claude/commands/` (plasmic, plasmic-design, plasmic-edit, plasmic-inspect, plasmic-create-component, plasmic-create-page, plasmic-patterns)
+- **Specs:** `.ralph/specs/PLASMIC-DESIGN-AGENT-SKILL.md`, `.ralph/specs/PROJECT-PACKAGE-MANAGEMENT.md`
 - **Scope:** This plan covers `packages/plasmic-mcp/`, `.claude/commands/`, and EP commerce gaps. Platform/WAB changes are tracked upstream.
-- **Build mechanism:** esbuild `build.mjs` already resolves `@/wab/shared/*` to real WAB source files. Unit tests use mocks via Vite aliases. Integration tests use real WAB source.
+- **Build mechanism:** esbuild `build.mjs` resolves `@/wab/shared/*` to real WAB source files. Unit tests use mocks via Vite aliases. Integration tests use real WAB source.

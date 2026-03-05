@@ -8,11 +8,15 @@ cd packages/plasmic-mcp && npm run build  # Build distribution (dist/index.cjs)
 # Validation
 
 ```bash
-cd packages/plasmic-mcp && npm test              # All tests (~1,470 — unit + integration)
-cd packages/plasmic-mcp && npm run test:unit      # Unit tests only (mocked WAB)
-cd packages/plasmic-mcp && npm run test:integration  # Integration tests (real WAB)
+cd packages/plasmic-mcp && npm test              # All tests (~1,786 — unit + integration)
+cd packages/plasmic-mcp && npm run test:unit      # Unit tests only (mocked WAB, 1616 tests)
+cd packages/plasmic-mcp && npm run test:integration  # Integration tests (real WAB, 170 tests)
 cd packages/plasmic-mcp && npm run typecheck      # TypeScript type checking (tsc --noEmit)
+cd packages/plasmic-mcp-registry && npx vitest run  # Registry tests (79 tests)
+cd plasmicpkgs/commerce-providers/elastic-path && yarn test  # EP commerce tests (Jest, 1074 tests)
 ```
+
+**EP commerce uses Jest** (not Vitest). Running `npx vitest run` in EP commerce will fail — use `yarn test` which chains to root-level Jest.
 
 `packages/plasmic-mcp` uses Vitest with a root `vitest.config.ts` referencing two project configs: `vitest.config.unit.ts` (mocked WAB via aliases) and `vitest.config.integration.ts` (real WAB source).
 
