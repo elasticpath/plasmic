@@ -1,0 +1,194 @@
+{
+  "adminTeamDomain": "example.com",
+  "needsIntroSplash": false,
+  "hostLessWorkspaceId": "REMAPPED_AT_BOOTSTRAP",
+  "imgOptimizerHost": "https://img.plasmic.app",
+  "plexus": true,
+  "hideBlankStarter": true,
+  "allowHtmlPaste": true,
+  "copilotTab": "true",
+  "copilotClaude": "true",
+  "disablePublicCopilot": true,
+  "autoUpgradeHostless": true,
+  "contentOnly": true,
+  "showCopilot": true,
+  "copilotSql": true,
+  "brands": {
+    "": {
+      "logoHref": "/",
+      "logoImgSrc": "https://static1.plasmic.app/plasmic-logo.png",
+      "logoTooltip": "Plasmic Studio"
+    }
+  },
+  "installables": [
+    {
+      "type": "ui-kit",
+      "isInstallOnly": true,
+      "isNew": true,
+      "name": "Plasmic Design System",
+      "projectId": "PLEXUS_PROJECT_ID",
+      "imageUrl": "https://static1.plasmic.app/plasmic-logo.png",
+      "entryPoint": { "type": "arena", "name": "Components" }
+    }
+  ],
+  "insertableTemplates": {
+    "type": "insertable-templates-group",
+    "name": "root",
+    "items": [
+      {
+        "type": "insertable-templates-group",
+        "name": "Components",
+        "items": [
+          {
+            "componentName": "Button",
+            "templateName": "plexus/button",
+            "imageUrl": "https://static1.plasmic.app/insertables/button.svg",
+            "type": "insertable-templates-component",
+            "projectId": "PLEXUS_PROJECT_ID",
+            "tokenResolution": "reuse-by-name"
+          }
+        ]
+      }
+    ]
+  },
+  "insertPanelContent": {
+    "aliases": {
+      "dataFetcher": "builtincc:plasmic-data-source-fetcher",
+      "pageMeta": "builtincc:hostless-plasmic-head",
+      "button": "default:button"
+    },
+    "builtinSections": {
+      "Home": {
+        "Basic": ["text", "heading", "link", "linkContainer", "section", "columns", "vstack", "hstack", "grid", "box", "image", "icon"],
+        "Customizable components": ["button"],
+        "Advanced": ["pageMeta", "dataFetcher"]
+      }
+    },
+    "builtinSectionsInstallables": {
+      "Customizable components": "PLEXUS_PROJECT_ID"
+    }
+  },
+  "hiddenDataSources": ["plasmic-cms"],
+  "hostLessComponents": [
+    {
+      "_comment": "Pattern: simple single-project entry (codeName matches project name)",
+      "type": "hostless-package",
+      "name": "YouTube",
+      "sectionLabel": "Media",
+      "hiddenWhenInstalled": true,
+      "codeName": "react-youtube",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/react-youtube",
+      "items": [
+        { "type": "hostless-component", "componentName": "hostless-youtube", "displayName": "YouTube", "imageUrl": "https://..." }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "_comment": "Pattern: synthetic entry — no real project, projectId is empty array",
+      "hidden": true,
+      "sectionLabel": "Design systems",
+      "type": "hostless-package",
+      "name": "Plume Customizable Components",
+      "syntheticPackage": true,
+      "isInstallOnly": true,
+      "codeName": "plume",
+      "items": [
+        { "type": "hostless-component", "componentName": "Plume", "displayName": "Plume Design System" }
+      ],
+      "projectId": []
+    },
+    {
+      "_comment": "Pattern: install-only design system",
+      "sectionLabel": "Design systems",
+      "type": "hostless-package",
+      "name": "Ant Design System 5",
+      "isInstallOnly": true,
+      "codeName": "antd5",
+      "onlyShownIn": "new",
+      "items": [
+        { "type": "hostless-component", "componentName": "Ant Design System 5", "displayName": "Ant Design System 5" }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "_comment": "Pattern: multi-project array projectId (remapper uses ENTRY_PROJECT_MAP)",
+      "sectionLabel": "Design systems",
+      "type": "hostless-package",
+      "name": "Ant Design Pro Components",
+      "isInstallOnly": true,
+      "codeName": "antd5",
+      "items": [
+        { "type": "hostless-component", "componentName": "Ant Design Pro Components", "displayName": "Ant Design Pro Components" }
+      ],
+      "projectId": ["REMAPPED_antd5", "REMAPPED_plasmic-rich-components"]
+    },
+    {
+      "_comment": "Pattern: commerce provider — multi-project array (commerce base + provider)",
+      "sectionLabel": "Commerce",
+      "type": "hostless-package",
+      "name": "Shopify",
+      "isHeaderLess": true,
+      "codeName": "nextjs-commerce",
+      "showInstall": true,
+      "items": [
+        { "type": "hostless-component", "componentName": "plasmic-commerce-product-collection", "displayName": "Shopify" },
+        { "type": "hostless-component", "componentName": "plasmic-commerce-product-box", "hiddenOnStore": true }
+      ],
+      "projectId": ["REMAPPED_commerce", "REMAPPED_commerce-shopify"]
+    },
+    {
+      "_comment": "Pattern: codeName differs from project name (plasmic-graph-cms → plasmic-graphcms)",
+      "sectionLabel": "CMS",
+      "type": "hostless-package",
+      "name": "Hygraph CMS",
+      "isHeaderLess": true,
+      "codeName": "plasmic-graph-cms",
+      "showInstall": true,
+      "items": [
+        { "type": "hostless-component", "componentName": "GraphCMSFetcher", "displayName": "GraphCMS Fetcher" }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "_comment": "Pattern: single-element array projectId (preserved as array by remapper)",
+      "sectionLabel": "Text Editors",
+      "type": "hostless-package",
+      "name": "Quill rich text editor",
+      "codeName": "react-quill",
+      "showInstall": true,
+      "items": [
+        { "type": "hostless-component", "componentName": "hostless-react-quill", "displayName": "Quill rich text editor" }
+      ],
+      "projectId": ["REMAPPED_AT_BOOTSTRAP"]
+    },
+    {
+      "_comment": "Pattern: shares codeName with another entry (Loading State uses loading-boundary project, not plasmic-basic-components)",
+      "sectionLabel": "Developer",
+      "type": "hostless-package",
+      "name": "Loading State",
+      "hiddenWhenInstalled": true,
+      "codeName": "plasmic-basic-components",
+      "items": [
+        { "type": "hostless-component", "componentName": "hostless-loading-boundary", "displayName": "Loading Boundary", "requiredHostVersion": 3 }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "_comment": "Pattern: code library — isFake component, monospaced display",
+      "sectionLabel": "Code Libraries",
+      "type": "hostless-package",
+      "name": "lodash",
+      "isHeaderLess": true,
+      "codeName": "lodash",
+      "codeLink": "https://www.npmjs.com/package/lodash",
+      "showInstall": true,
+      "items": [
+        { "type": "hostless-component", "componentName": "fake-hostless-lodash", "displayName": "Lodash Utility Library", "description": "A modern JavaScript utility library", "monospaced": true, "isFake": true }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    }
+  ],
+  "starterSections": [
+    { "title": "", "tag": "general", "projects": [] }
+  ]
+}
