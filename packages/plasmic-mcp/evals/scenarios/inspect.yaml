@@ -177,3 +177,50 @@ scenarios:
         params:
           min: 2
           max: 8
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Medium: inspect.capture-screenshot — visual feedback loop (P4.2)
+  # Why: The visual feedback loop lets the LLM see the result of its
+  # design changes and self-correct without human intervention. Without
+  # this scenario, we have no coverage proving the LLM actually uses
+  # captureScreenshot in a correct→inspect→fix cycle. Integration-only
+  # because it requires a running dev host with Playwright.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: inspect-visual-feedback-loop
+    description: >
+      Visual feedback loop: Find the Homepage page component. Set its root
+      element background color to bright red (#ff0000) using node.update-styles.
+      Then capture a screenshot using inspect.capture-screenshot to verify the
+      change. If the red background looks too harsh, correct it to a softer
+      color (#f5f5f5). The goal is to demonstrate the inspect→change→verify→
+      correct workflow.
+    domains:
+      - inspect
+      - node
+    tier: medium
+    timeout: 180
+    requiredMode: integration
+    graders:
+      - type: tool-sequence
+        params:
+          tools:
+            - component
+            - node
+            - inspect
+      - type: tool-params
+        params:
+          tool: inspect
+          action: capture-screenshot
+          expected: {}
+      - type: tool-params
+        params:
+          tool: node
+          action: update-styles
+          expected: {}
+      - type: count
+        params:
+          min: 4
+          max: 20
+    visual:
+      rubric: "Verify the LLM called captureScreenshot after making a style change, then made a follow-up correction. The final background should not be bright red — it should have been corrected to a softer color."

@@ -8,7 +8,7 @@ cd packages/plasmic-mcp && npm run build  # Build distribution (dist/index.cjs)
 # Validation
 
 ```bash
-cd packages/plasmic-mcp && npm test              # All tests (~1,470 — unit + integration)
+cd packages/plasmic-mcp && npm test              # All tests (1,852 — unit + integration)
 cd packages/plasmic-mcp && npm run test:unit      # Unit tests only (mocked WAB)
 cd packages/plasmic-mcp && npm run test:integration  # Integration tests (real WAB)
 cd packages/plasmic-mcp && npm run typecheck      # TypeScript type checking (tsc --noEmit)

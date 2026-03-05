@@ -400,6 +400,163 @@ describe("runScenario — retries", () => {
 });
 
 // ---------------------------------------------------------------------------
+// runScenario — visual feedback loop (P4.2)
+// ---------------------------------------------------------------------------
+describe("runScenario — visual feedback loop", () => {
+  it("succeeds when transcript contains change → screenshot → correction cycle", async () => {
+    // Transcript simulates: wrong style → captureScreenshot → corrective style
+    const transcript: TranscriptEntry[] = [
+      {
+        role: "tool_result",
+        content: JSON.stringify({
+          name: "node",
+          input: { action: "update-styles", styles: { background: "#ff0000" } },
+          result: JSON.stringify({ success: true }),
+          isError: false,
+        }),
+        timestamp: Date.now(),
+      },
+      {
+        role: "assistant",
+        content: "Let me check what that looks like.",
+        timestamp: Date.now(),
+      },
+      {
+        role: "tool_result",
+        content: JSON.stringify({
+          name: "inspect",
+          input: { action: "capture-screenshot", componentUuid: "uuid-123" },
+          result: JSON.stringify({ captured: true, width: 1280, height: 800 }),
+          isError: false,
+        }),
+        timestamp: Date.now(),
+      },
+      {
+        role: "assistant",
+        content: "The red is too harsh. Let me correct it.",
+        timestamp: Date.now(),
+      },
+      {
+        role: "tool_result",
+        content: JSON.stringify({
+          name: "node",
+          input: { action: "update-styles", styles: { background: "#f5f5f5" } },
+          result: JSON.stringify({ success: true }),
+          isError: false,
+        }),
+        timestamp: Date.now(),
+      },
+    ];
+
+    // Grader verifies that inspect and node tools were both called
+    (runGraders as any).mockResolvedValue([
+      {
+        graderType: "tool-sequence",
+        passed: true,
+        message: "All required tools called",
+        details: { required: ["inspect", "node"], found: ["node", "inspect", "node"] },
+      },
+      {
+        graderType: "tool-params",
+        passed: true,
+        message: "capture-screenshot action found",
+      },
+    ]);
+
+    const mcpClient = mockMcpClient();
+    const claudeClient = mockClaudeClient({ transcript, toolCallCount: 3 });
+
+    const result = await runScenario(
+      makeScenario({
+        id: "inspect-visual-feedback-loop",
+        description: "Make wrong change, screenshot, correct it",
+        domains: ["inspect", "node"],
+        tier: "medium",
+        graders: [
+          { type: "tool-sequence", params: { tools: ["inspect", "node"] } },
+          { type: "tool-params", params: { tool: "inspect", action: "capture-screenshot", expected: {} } },
+        ],
+      }),
+      mcpClient,
+      claudeClient
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.id).toBe("inspect-visual-feedback-loop");
+    expect(result.toolCalls).toBe(3);
+    expect(result.retries).toBe(0);
+  });
+
+  it("counts zero retries when screenshot reveals issue and LLM self-corrects", async () => {
+    // The correction after screenshot is intentional, not a retry of a failed call.
+    // Error-free transcript means retries should be 0.
+    const transcript: TranscriptEntry[] = [
+      {
+        role: "tool_result",
+        content: JSON.stringify({
+          name: "node",
+          input: { action: "update-styles" },
+          result: "{}",
+          isError: false,
+        }),
+        timestamp: Date.now(),
+      },
+      {
+        role: "tool_result",
+        content: JSON.stringify({
+          name: "inspect",
+          input: { action: "capture-screenshot" },
+          result: "{}",
+          isError: false,
+        }),
+        timestamp: Date.now(),
+      },
+      {
+        role: "tool_result",
+        content: JSON.stringify({
+          name: "node",
+          input: { action: "update-styles" },
+          result: "{}",
+          isError: false,
+        }),
+        timestamp: Date.now(),
+      },
+    ];
+
+    const mcpClient = mockMcpClient();
+    const claudeClient = mockClaudeClient({ transcript, toolCallCount: 3 });
+
+    const result = await runScenario(makeScenario(), mcpClient, claudeClient);
+
+    // Visual self-correction is not a "retry" — no tool errors occurred
+    expect(result.retries).toBe(0);
+  });
+
+  it("fails when captureScreenshot returns an error (dev host unavailable)", async () => {
+    const transcript: TranscriptEntry[] = [
+      {
+        role: "tool_result",
+        content: JSON.stringify({
+          name: "inspect",
+          input: { action: "capture-screenshot", componentUuid: "uuid-123" },
+          result: "Error: Dev host unavailable. Start with PLASMIC_DEV_HOST_URL.",
+          isError: true,
+        }),
+        timestamp: Date.now(),
+      },
+    ];
+
+    const mcpClient = mockMcpClient();
+    const claudeClient = mockClaudeClient({ transcript, toolCallCount: 1 });
+
+    const result = await runScenario(makeScenario(), mcpClient, claudeClient);
+
+    // Tool error in transcript should be collected
+    expect(result.errors.some((e) => e.includes("Tool error"))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // runAll — batch execution
 // ---------------------------------------------------------------------------
 describe("runAll — batch execution", () => {
