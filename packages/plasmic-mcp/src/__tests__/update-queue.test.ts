@@ -72,7 +72,7 @@ describe("UpdateQueue", () => {
   });
 
   describe("branch filtering", () => {
-    it("skips updates for non-null branches", async () => {
+    it("skips updates for non-null branches when on main (default)", async () => {
       queue = new UpdateQueue({ handler });
 
       queue.enqueue(makeUpdate(1, "branch-abc"));
@@ -82,7 +82,7 @@ describe("UpdateQueue", () => {
       expect(handler).not.toHaveBeenCalled();
     });
 
-    it("processes updates for null branch (main)", async () => {
+    it("processes updates for null branch when on main (default)", async () => {
       queue = new UpdateQueue({ handler });
 
       queue.enqueue(makeUpdate(1, null));
@@ -90,6 +90,75 @@ describe("UpdateQueue", () => {
       await vi.waitFor(() => {
         expect(handler).toHaveBeenCalledTimes(1);
       });
+    });
+
+    it("processes updates matching the active branch", async () => {
+      queue = new UpdateQueue({
+        handler,
+        getActiveBranchId: () => "branch-abc",
+      });
+
+      queue.enqueue(makeUpdate(1, "branch-abc"));
+
+      await vi.waitFor(() => {
+        expect(handler).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it("skips main-branch updates when on a feature branch", async () => {
+      queue = new UpdateQueue({
+        handler,
+        getActiveBranchId: () => "branch-abc",
+      });
+
+      queue.enqueue(makeUpdate(1, null));
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("skips updates for a different branch", async () => {
+      queue = new UpdateQueue({
+        handler,
+        getActiveBranchId: () => "branch-abc",
+      });
+
+      queue.enqueue(makeUpdate(1, "branch-xyz"));
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("tracks branch changes dynamically", async () => {
+      let activeBranch: string | null = null;
+      const processed: Array<{ rev: number; branch: string | null }> = [];
+      handler = vi.fn().mockImplementation(async (data: UpdateEventData) => {
+        processed.push({ rev: data.rev.revision, branch: data.rev.branchId });
+      });
+
+      queue = new UpdateQueue({
+        handler,
+        getActiveBranchId: () => activeBranch,
+      });
+
+      // On main branch — accept main, reject feature
+      queue.enqueue(makeUpdate(1, null));
+      queue.enqueue(makeUpdate(2, "branch-abc"));
+
+      await vi.waitFor(() => {
+        expect(processed).toHaveLength(1);
+      });
+      expect(processed[0]).toEqual({ rev: 1, branch: null });
+
+      // Switch to feature branch — accept feature, reject main
+      activeBranch = "branch-abc";
+      queue.enqueue(makeUpdate(3, null));
+      queue.enqueue(makeUpdate(4, "branch-abc"));
+
+      await vi.waitFor(() => {
+        expect(processed).toHaveLength(2);
+      });
+      expect(processed[1]).toEqual({ rev: 4, branch: "branch-abc" });
     });
   });
 
