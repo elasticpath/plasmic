@@ -13,7 +13,7 @@ cd packages/plasmic-mcp && npm run test:unit      # Unit tests only (mocked WAB,
 cd packages/plasmic-mcp && npm run test:integration  # Integration tests (real WAB, 170 tests)
 cd packages/plasmic-mcp && npm run typecheck      # TypeScript type checking (tsc --noEmit)
 cd packages/plasmic-mcp-registry && npx vitest run  # Registry tests (79 tests)
-cd plasmicpkgs/commerce-providers/elastic-path && yarn test  # EP commerce tests (Jest, 1074 tests)
+cd plasmicpkgs/commerce-providers/elastic-path && yarn test  # EP commerce tests (Jest, 1179 tests)
 ```
 
 **EP commerce uses Jest** (not Vitest). Running `npx vitest run` in EP commerce will fail — use `yarn test` which chains to root-level Jest.
@@ -25,9 +25,9 @@ cd plasmicpkgs/commerce-providers/elastic-path && yarn test  # EP commerce tests
 - Monorepo: platform/ (apps), packages/ (SDK), plasmicpkgs/ (code components)
 - MCP server source: `packages/plasmic-mcp/src/`
 - Plasmic registry package: `packages/plasmic-mcp-registry/` (tests: `cd packages/plasmic-mcp-registry && npx vitest run`)
-- STRAP architecture: 8 domain tools (project, inspect, component, node, variant, design, data, interaction) consolidating 104 actions
+- STRAP architecture: 8 domain tools (project, inspect, component, node, variant, design, data, interaction) consolidating 108 actions
 - Embedded WAB editing engine from `platform/wab/src/wab/`
-- Claude Code skills in `.claude/commands/` (6 slash commands)
+- Claude Code skills in `.claude/commands/` (7 slash commands)
 - Use explicit `git add <files>` — never `git add -A` or `git add .`
 
 # Upstream Merge Strategy

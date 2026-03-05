@@ -1,13 +1,13 @@
 # Implementation Plan
 
-_Last updated: 2026-03-05 (audit pass 5)_
+_Last updated: 2026-03-05 (audit pass 6)_
 
 ## Completed Priorities (collapsed)
 
 - **P1** — Hostless Package Management ✅ (2026-03-04) — 4 new actions, 14/14 criteria
 - **P2** — Plasmic Design Agent Skill ✅ (2026-03-05) — 4-phase agentic loop, 6/6 criteria
 - **P3** — EP Commerce Address Validation Bug ✅ (2026-03-05) — field name mismatches, dead code removal, tests
-- **P4** — EP Commerce Test Coverage ✅ PARTIAL (2026-03-05) — 185 new tests (889→1074), 4 new suites
+- **P4** — EP Commerce Test Coverage ✅ (2026-03-05) — 290 new tests (889→1179), 11 new suites (utils, normalize, checkout hooks, product hooks)
 - **P6** — Unused Dependencies in plasmicpkgs-dev ✅ (2026-03-05) — removed 3 packages from package.json AND plasmic-register.ts imports
 
 ---
@@ -51,7 +51,7 @@ Package has pre-compiled `dist/` but no `src/`. Source was added in commit `5a47
 - **Branch context:** `feat/plasmic-design-agent-skill`
 - **Action count:** 108 actions across 8 tools (project: 12, inspect: 8, component: 18, node: 16, variant: 12, design: 22, data: 16, interaction: 4)
 - **MCP server health:** 0 TODOs, 0 skipped tests, 0 stubs — 1616 unit tests (30 suites), 170 integration tests (3 suites), typecheck clean
-- **EP commerce health:** 0 TODOs, 0 FIXMEs — 1074 tests passing (40 suites, Jest). Use `yarn test` not `npx vitest run`.
+- **EP commerce health:** 0 TODOs, 0 FIXMEs — 1179 tests passing (47 suites, Jest). Use `yarn test` not `npx vitest run`.
 - **plasmic-mcp-registry:** 79 tests passing (5 suites, Vitest)
 - **Existing skills:** 7 files in `.claude/commands/` (plasmic, plasmic-design, plasmic-edit, plasmic-inspect, plasmic-create-component, plasmic-create-page, plasmic-patterns)
 - **Specs:** `.ralph/specs/PLASMIC-DESIGN-AGENT-SKILL.md`, `.ralph/specs/PROJECT-PACKAGE-MANAGEMENT.md`
