@@ -1,7 +1,22 @@
 # Implementation Plan
 
-0 open specs in `.ralph/specs/`. Spec 1 (Hostless Component Discovery) and Spec 2 (Expression Safety) completed.
+0 open specs in `.ralph/specs/`. All 3 specs completed.
 Current branch: `feat/mcp-design-enhancements`. Actual action count: **109**.
+
+---
+
+## Spec 3: Plasmic Design Agent Skill — DONE
+
+Committed as `3f938de30` (PR #161). Prompt-only skill — no server-side code changes.
+
+Changes:
+- `.claude/commands/plasmic-design.md` — agentic 4-phase loop skill
+- Phase 1: Gather Context (tokens, components, variants, mixins, animations)
+- Phase 2: Written Plan + User Confirmation (structured markdown plan)
+- Phase 3: Batched Execution in 4 sub-phases (structural, content, style, enhancement)
+- Phase 4: Verify + Self-Correct per sub-phase (inspect.summary, max 2 retries)
+- Completion summary with next-step suggestions
+- Edge cases: ambiguous requests, missing tokens, multi-component, save conflicts
 
 ---
 
@@ -41,3 +56,4 @@ Changes:
 - Run `npm run typecheck` after each spec to catch type errors early
 - Run `npm test` (full suite) before marking a spec done
 - `warnings` pattern: follow `AddChildResult` at `edit-tools.ts:2484-2485` for consistent approach
+- Full test suite: 1850 tests (34 files) passing as of latest run
