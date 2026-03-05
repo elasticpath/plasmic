@@ -82,64 +82,44 @@ None — this spec is fully implemented.
 
 ## Spec 4: Headless Canvas Screenshot (`screenshot-renderer.md`)
 
-### DONE (partial)
+### DONE — All requirements met
 
 | # | Requirement | Evidence |
 |---|-------------|----------|
-| 1 | `screenshot.ts` exists with basic Playwright screenshot | `src/screenshot.ts` (88 lines) — `captureScreenshot()` does `page.goto(url)` + `page.screenshot()`, returns base64 PNG |
-| 2 | `capture-screenshot` action in inspect tool | `server.ts:741,743` — but only supports page components with `pageMeta.path` (URL-based) |
+| 1 | `headless-renderer-entry.ts` — esbuild entry that bundles WAB rendering functions | Imports `renderTplNode` from `canvas-rendering`, `wrapWithContext` from `contexts`, `unbundleSite` from `tagged-unbundle`, `FastBundler` from `bundler`, `computedProjectFlags` from `cached-selectors`. Re-implements `makeRenderingCtx` locally (since `makeEmptyRenderingCtx` is not exported from WAB). Exposes all on `window.__HeadlessRenderer`. |
+| 2 | Second esbuild entry in `build.mjs` | Second `esbuild.build()` call with `platform: 'browser'`, `format: 'iife'`. Includes `headlessRendererPlugin` that allows `@/wab/client/` bundling, stubs asset imports (`.scss`/`.svg`/etc.) at the `@/` alias level, and stubs browser packages (React, antd, etc.). Output: `dist/headless-renderer.js` (~7.5MB IIFE bundle). |
+| 3 | `headless-canvas.ts` (~170 lines) — Playwright orchestration with `captureWithStudioPipeline()` | Launches headless Chromium, injects `headless-renderer.js` bundle, creates iframe to dev host with `#canvas=true`, polls for `window.__Sub` at 100ms intervals (5s max), calls `renderTplNode` + `setPlasmicRootNode` via `page.evaluate`, 8s iframe load timeout. |
+| 4 | Minimal ViewCtx duck-type | Implemented inside `headless-renderer-entry.ts` (not `headless-canvas.ts` as originally planned). Plain object providing enough surface for `renderTplNode` to operate without the full Studio ViewCtx. |
+| 5 | Update `screenshot.ts` to call `captureWithStudioPipeline` | Added `captureComponentScreenshot()` function that delegates to `headless-canvas.ts`. URL path (`captureScreenshot`) remains the fallback for page components. |
+| 6 | Update `server.ts` capture-screenshot handler for non-page components | Handler now tries URL path for page components with `pageMeta.path`, falls back to Studio pipeline (`captureComponentScreenshot`) for non-page components. |
+| 7 | 8s timeout on iframe load / dev host unavailability | Implemented in `headless-canvas.ts` — iframe load timeout of 8s with descriptive error when dev host is not reachable. |
+| 8 | Unit tests for headless canvas | `__tests__/headless-canvas.test.ts` — 16 tests covering orchestration, `__Sub` polling, `renderTplNode` call, `setPlasmicRootNode` injection, timeout error paths. Mocks Playwright (same pattern as `screenshot.test.ts`). |
+| 9 | Zero modifications to upstream WAB files | Validated: no changes to `platform/wab/src/` or `packages/host/src/`. `headless-renderer-entry.ts` imports from WAB only. |
 
-### TODO — Major work remaining
+**Key implementation learnings:**
+- `headless-renderer-entry.ts` is excluded from `tsconfig.json` — uses `@/` imports resolved only by esbuild (not tsc)
+- The headless renderer bundle is 7.5MB (IIFE format) — bundles all WAB client + shared code
+- `makeEmptyRenderingCtx` is not exported from `canvas-rendering.ts`, so `makeRenderingCtx` is re-implemented locally in the entry file
+- Asset imports (`.scss`, `.sass`, `.svg`, `.png`) from WAB client code require stub resolvers at the `@/` alias level — esbuild resolves `@/` imports before checking file extensions
+- `bundler.bundle()` on the session re-serializes the live Site to JSON for passing to the browser
 
-| # | Priority | Requirement | Gap | Implementation Notes |
-|---|----------|-------------|-----|---------------------|
-| 1 | **P1** | `headless-renderer-entry.ts` — esbuild entry that bundles WAB rendering functions | File does not exist. Must import `renderTplNode`, `makeEmptyRenderingCtx` from WAB `canvas-rendering.ts`, `wrapWithContext` from `contexts.ts`, `deserSite` from `bundles.ts`. Exposes them on `window.__HeadlessRenderer`. | Start here — validates WAB bundling works for browser target. Most likely to surface import/compatibility issues early. Must use the same `@/` path alias resolution as the main build but target `platform: 'browser'` and `format: 'iife'`. |
-| 2 | **P1** | Second esbuild entry in `build.mjs` | `build.mjs` has only one entry (`src/index.ts`). Must add a second `esbuild.build()` call: `platform: 'browser'`, `format: 'iife'`, `globalName: '__HeadlessRenderer'`, output to `dist/headless-renderer.js`. Reuse the existing `bundle-control` plugin for WAB alias resolution. | Pair with item 1 — build the entry and the esbuild config together to validate the bundle compiles. |
-| 3 | **P1** | `headless-canvas.ts` (~150 lines) — Playwright orchestration with `captureWithStudioPipeline()` | File does not exist. Must: launch headless Chromium, create parent page, inject `headless-renderer.js` bundle, create iframe to dev host with `#canvas=true`, poll for `window.__Sub` (100ms intervals, 5s max), call `renderTplNode` + `setPlasmicRootNode`, screenshot the iframe. | Core orchestration file. Playwright is already a dev dependency. Dynamic import like `screenshot.ts`. |
-| 4 | **P1** | Minimal ViewCtx duck-type inside `headless-canvas.ts` | Does not exist. Must provide `canvasCtx.Sub`, `site`, `viewMode()`, `focusedTpl()`, `variantTplMgr()` — enough for `renderTplNode` to work without the full Studio ViewCtx. | Part of `headless-canvas.ts`. The duck-type is a plain object, not a class. Fields can be populated from the deserialized site bundle. |
-| 5 | **P1** | Update `screenshot.ts` to call `captureWithStudioPipeline` when bundle + componentName provided | Current `captureScreenshot()` only supports URL-based screenshots. Must add a second code path: if `bundle` and `componentName` are provided, delegate to `captureWithStudioPipeline()` from `headless-canvas.ts`. | Extends the existing function's signature with optional params. URL path remains the fallback. |
-| 6 | **P1** | Update `server.ts` capture-screenshot handler to pass `session.bundle` and component name | Current handler only constructs a preview URL from `pageMeta.path`. Must also support non-page components by passing `session` bundle data and `component.name` to the Studio pipeline. | The handler currently has an early return if `!pageMeta?.path`. Must add an else branch for non-page components that calls the Studio pipeline. |
-| 7 | **P2** | 8s timeout on iframe load / dev host unavailability | Not implemented (no iframe code exists yet). Spec requires: when dev host is not running, iframe fails to load within 8s and returns a clear error (not a hang). | Part of `headless-canvas.ts`. Use `page.waitForLoadState()` or `frame.waitForFunction()` with an 8s timeout. Return descriptive error: "Dev host not reachable at {url} — ensure it's running." |
-| 8 | **P2** | Unit tests for headless canvas | `__tests__/headless-canvas.test.ts` does not exist. Must cover: iframe setup, `__Sub` polling, `renderTplNode` call, `setPlasmicRootNode` injection, timeout error path. | Mock Playwright (same pattern as `screenshot.test.ts`). Test the orchestration logic, not real browser launches. |
-| 9 | **P3** | Zero modifications to upstream WAB files | Constraint — no files in `platform/wab/src/` or `packages/host/src/` should be changed. | Validate after implementation by checking `git diff` in those directories. The `headless-renderer-entry.ts` only imports from WAB, never modifies it. |
+### TODO
+
+None — this spec is fully implemented.
 
 ---
 
-## Summary — Priority Order
+## Summary
 
 ### Fully Complete (no work remaining)
 - **Spec 2: HTML Import Bridge** — all acceptance criteria met
 - **Spec 3: Pattern Library** — all acceptance criteria met
+- **Spec 4: Headless Canvas Screenshot** — all acceptance criteria met
 
-### Minor Gaps (polish)
-- **Spec 1: Design Guidance** — 2 items remaining:
-  1. Typed `outputSchema` for `listDesignSystem` / `readComponentTree` (P3)
-  2. Few-shot examples on remaining ~94 actions (P3)
-
-### Major Work (new feature)
-- **Spec 4: Headless Canvas Screenshot** — 9 items remaining:
-  1. Create `headless-renderer-entry.ts` (P1)
-  2. Add second esbuild entry in `build.mjs` (P1)
-  3. Create `headless-canvas.ts` with `captureWithStudioPipeline` + ViewCtx duck-type (P1)
-  4. Update `screenshot.ts` for Studio pipeline path (P1)
-  5. Update `server.ts` capture-screenshot handler for non-page components (P1)
-  6. 8s iframe timeout handling (P2)
-  7. Unit tests (P2)
-  8. Maintain zero upstream WAB changes (P3 — constraint)
-
-### Recommended Implementation Order
-
-1. **Spec 4 — Headless Canvas Screenshot** (largest gap, highest impact for visual feedback loop)
-   - **Phase 1 — Bundle validation**: `headless-renderer-entry.ts` + `build.mjs` second entry. Validates that WAB rendering functions can be bundled for browser target. Most likely to surface import/compatibility issues. Run `node build.mjs` and verify `dist/headless-renderer.js` is produced.
-   - **Phase 2 — Core orchestration**: `headless-canvas.ts` with Playwright iframe setup, `__Sub` polling, `renderTplNode` invocation, and ViewCtx duck-type. This is the core new functionality.
-   - **Phase 3 — Wiring**: Update `screenshot.ts` to add Studio pipeline path. Update `server.ts` capture-screenshot handler to support non-page components.
-   - **Phase 4 — Hardening**: 8s timeout on iframe load. Unit tests for `headless-canvas.ts`.
-   - **Phase 5 — Validation**: Run full test suite. Verify zero WAB file changes. Manual smoke test with a real project.
-
-2. **Spec 1 — Design Guidance gaps** (small polish items, can be done independently)
-   - ~~**Step 1**: Migrate all 7 `server.tool()` calls to `server.registerTool()`~~ — **DONE**
-   - **Step 2**: Enrich `outputSchema` on inspect — add union-typed properties with `z.optional()` for the key output shapes.
-   - **Step 3**: Add few-shot examples to remaining actions. Prioritize by LLM usage frequency: `node.update-text`, `component.create-page`, `variant.create-style`, `design.create-token` first.
+### Minor Gaps (polish only)
+- **Spec 1: Design Guidance** — 2 items, both P3:
+  1. Typed `outputSchema` for `listDesignSystem` / `readComponentTree` — current schema is permissive `{}`. Add union-typed properties with `z.optional()` for the two most important output shapes.
+  2. Few-shot examples on remaining ~94 actions — prioritize `node.update-text`, `component.create-page`, `variant.create-style`, `design.create-token`.
 
 ---
 
@@ -156,7 +136,7 @@ None — this spec is fully implemented.
 - `tree-reader.ts`: Mixin-inherited styles not resolved (MVP limitation)
 - `html-importer.ts`: `@media` breakpoint styles skipped with warning; SVG as `dangerouslySetInnerHTML`
 - `patterns/applier.ts`: `matchesCustomisationKey` is heuristic-based (tag name + value matching)
-- `capture-screenshot`: Only supports page components (non-page support is Spec 4 work)
+- `capture-screenshot`: Non-page components now supported via headless Studio pipeline (Spec 4 complete)
 
 ### SDK Deprecation
 - ~~`server.tool()` is deprecated in `@modelcontextprotocol/sdk`~~ — **Resolved**: all 8 tools now use `server.registerTool()` with appropriate `annotations`.
