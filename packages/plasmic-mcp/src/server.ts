@@ -1217,17 +1217,43 @@ export function createServer(): McpServer {
             }
 
             const pagePath = comp.pageMeta?.path;
-            if (!pagePath) {
+
+            if (pagePath) {
+              // Page component — navigate to the dev host preview URL
+              const screenshotUrl = `${session.hostUrl.replace(/\/$/, "")}${pagePath}`;
+
+              const { captureScreenshot } = await import("./screenshot.js");
+              const result = await captureScreenshot({ url: screenshotUrl, timeout: 10000 });
+
               return {
-                content: [{ type: "text" as const, text: `Component "${comp.name}" is not a page component and has no preview URL. Screenshots are currently available for page components only.` }],
-                isError: true,
+                content: [
+                  { type: "image" as const, data: result.data, mimeType: "image/png" },
+                ],
+                structuredContent: {
+                  captured: true,
+                  width: result.width,
+                  height: result.height,
+                  url: screenshotUrl,
+                },
               };
             }
 
-            const screenshotUrl = `${session.hostUrl.replace(/\/$/, "")}${pagePath}`;
+            // Non-page component — use the Studio rendering pipeline
+            // Re-serialize the live Site to a bundle for the headless renderer
+            const bundle = session.bundler.bundle(
+              session.site,
+              session.projectId,
+              session.bundleVersion
+            );
 
-            const { captureScreenshot } = await import("./screenshot.js");
-            const result = await captureScreenshot({ url: screenshotUrl, timeout: 10000 });
+            const { captureComponentScreenshot } = await import("./screenshot.js");
+            const result = await captureComponentScreenshot({
+              hostUrl: session.hostUrl,
+              bundle: JSON.stringify(bundle),
+              projectId: session.projectId,
+              componentName: comp.name,
+              timeout: 15000,
+            });
 
             return {
               content: [
@@ -1237,7 +1263,8 @@ export function createServer(): McpServer {
                 captured: true,
                 width: result.width,
                 height: result.height,
-                url: screenshotUrl,
+                component: comp.name,
+                pipeline: "studio",
               },
             };
           }

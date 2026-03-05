@@ -1,15 +1,17 @@
 /**
- * Screenshot capture for the visual feedback loop (P4.1).
+ * Screenshot capture for the visual feedback loop.
  *
- * Uses Playwright (optional dependency) to capture a page rendered by
- * the dev host. Only supports page components — non-page components
- * have no standard preview URL on the dev host.
+ * Two capture paths:
+ * 1. **URL-based** (page components) — navigates to the dev host preview URL
+ * 2. **Studio pipeline** (non-page components) — uses the headless canvas
+ *    renderer to render the component via Plasmic's own canvas rendering
+ *    pipeline inside a Playwright-managed iframe
  *
- * Why Playwright: The dev host renders full React applications with
- * CSS, fonts, and interactive elements. Static rendering approaches
- * can't capture the full visual fidelity. Playwright is already a
- * devDependency of plasmic-mcp (used for evals).
+ * Uses Playwright (optional dependency). Dynamically imported so the rest
+ * of the MCP server works without it installed.
  */
+
+import type { StudioPipelineOptions } from "./headless-canvas.js";
 
 export interface ScreenshotOptions {
   /** Full URL to screenshot */
@@ -85,4 +87,22 @@ export async function captureScreenshot(
   } finally {
     await browser.close();
   }
+}
+
+/**
+ * Capture a screenshot of a non-page component using the Studio rendering pipeline.
+ *
+ * Delegates to `captureWithStudioPipeline` from `headless-canvas.ts`, which:
+ * - Launches headless Chromium
+ * - Injects the headless-renderer.js bundle (WAB rendering functions)
+ * - Creates an iframe to the dev host
+ * - Uses `renderTplNode` + `setPlasmicRootNode` to render the component
+ * - Screenshots the iframe
+ */
+export async function captureComponentScreenshot(
+  options: StudioPipelineOptions
+): Promise<ScreenshotResult> {
+  // Dynamic import to keep headless-canvas.ts optional (it pulls in Playwright)
+  const { captureWithStudioPipeline } = await import("./headless-canvas.js");
+  return captureWithStudioPipeline(options);
 }
