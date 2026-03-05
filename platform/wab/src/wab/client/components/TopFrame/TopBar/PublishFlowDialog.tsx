@@ -1,4 +1,5 @@
 import { useGetDomainsForProject } from "@/wab/client/api-hooks";
+import { shouldHideForRestrictedUser } from "@/wab/client/ep/dashboard-restriction";
 import { AppCtx } from "@/wab/client/app-ctx";
 import {
   SiteDiffs,
@@ -110,6 +111,11 @@ function PublishFlowDialog(props: PublishFlowDialogProps) {
   const { hostFrameApi } = useTopFrameCtx();
   const projectId = project.id;
   const isWhiteLabelUser = appCtx.isWhiteLabelUser();
+  const isRestrictedUser = shouldHideForRestrictedUser(
+    isWhiteLabelUser,
+    appCtx.appConfig,
+    window.location.search
+  );
 
   // Versions
   const [loadingVersion, setLoadingVersion] = React.useState(true);
@@ -329,7 +335,7 @@ function PublishFlowDialog(props: PublishFlowDialogProps) {
         }}
         addGithubPanel={{
           wrap: (node) =>
-            !subsectionMeta.pushDeploy.visible && !isWhiteLabelUser && node,
+            !subsectionMeta.pushDeploy.visible && !isRestrictedUser && node,
         }}
         addWebsiteButton={{
           id: "publish-flow-dialog-add-website-btn",
@@ -349,7 +355,7 @@ function PublishFlowDialog(props: PublishFlowDialogProps) {
           wrap: (node) =>
             appCtx.appConfig.enablePlasmicHosting &&
             !subsectionMeta.plasmicHosting.visible &&
-            !isWhiteLabelUser &&
+            !isRestrictedUser &&
             node,
           props: {
             id: "publish-flow-dialog-add-website-panel",

@@ -582,6 +582,10 @@ const DEFAULT_DEVFLAGS = {
   presetAnimationsProjectId: "",
   // Show Data Tokens tab in Left Pane
   dataTokens: false,
+  // EP Studio lockdown: redirect dashboard/auth routes to Commerce Manager
+  hideDashboardViews: false,
+  dashboardRedirectUrl: "",
+  adminDashboardOverrideParam: "adminDashboard",
 };
 
 Object.assign(DEFAULT_DEVFLAGS, DEFAULT_DEVFLAG_OVERRIDES);

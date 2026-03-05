@@ -1,4 +1,5 @@
 import { useAppCtx, useTopFrameApi } from "@/wab/client/contexts/AppContexts";
+import { shouldHideForRestrictedUser } from "@/wab/client/ep/dashboard-restriction";
 import { useCodegenType } from "@/wab/client/hooks/useCodegenType";
 import CirclesvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__CircleSvg";
 import PlasmicCodeButton from "@/wab/client/plasmic/plasmic_kit_top_bar/PlasmicCodeButton";
@@ -28,6 +29,12 @@ export const CodeButton = observer(function CodeButton() {
   const focusedComponentNameOrUuid = isFocusedComponentPlasmicComponent
     ? toClassName(artboardComponent!.name) || artboardComponent!.uuid
     : undefined;
+
+  const isRestrictedUser = shouldHideForRestrictedUser(
+    appCtx.isWhiteLabelUser(),
+    appCtx.appConfig,
+    window.location.search
+  );
 
   const anchorRef = React.useRef<HTMLDivElement>(null);
 
@@ -101,37 +108,49 @@ export const CodeButton = observer(function CodeButton() {
               >
                 <Tooltip title={quickstartTooltipContent}>Quickstarts</Tooltip>
               </Menu.Item>
-              <Menu.Item
-                onClick={() => window.open("https://docs.plasmic.app/learn")}
-              >
-                Documentation
-                <MdOpenInNew style={{ color: "silver", marginLeft: "8px" }} />
-              </Menu.Item>
-              <Menu.Item
-                disabled={isPlasmicLevels}
-                onClick={() => {
-                  window.open(toUrl);
-                }}
-              >
-                <Tooltip
-                  title={
-                    isPlasmicLevels
-                      ? "Disabled for Plasmic Levels"
-                      : "Auto-generated docs and component explorer for this project"
+              {!isRestrictedUser && (
+                <Menu.Item
+                  onClick={() => window.open("https://docs.plasmic.app/learn")}
+                >
+                  Documentation
+                  <MdOpenInNew
+                    style={{ color: "silver", marginLeft: "8px" }}
+                  />
+                </Menu.Item>
+              )}
+              {!isRestrictedUser && (
+                <Menu.Item
+                  disabled={isPlasmicLevels}
+                  onClick={() => {
+                    window.open(toUrl);
+                  }}
+                >
+                  <Tooltip
+                    title={
+                      isPlasmicLevels
+                        ? "Disabled for Plasmic Levels"
+                        : "Auto-generated docs and component explorer for this project"
+                    }
+                  >
+                    Component API explorer
+                    <MdOpenInNew
+                      style={{ color: "silver", marginLeft: "8px" }}
+                    />
+                  </Tooltip>
+                </Menu.Item>
+              )}
+              {!isRestrictedUser && (
+                <Menu.Item
+                  onClick={() =>
+                    window.open("https://www.github.com/plasmicapp/plasmic")
                   }
                 >
-                  Component API explorer
-                  <MdOpenInNew style={{ color: "silver", marginLeft: "8px" }} />
-                </Tooltip>
-              </Menu.Item>
-              <Menu.Item
-                onClick={() =>
-                  window.open("https://www.github.com/plasmicapp/plasmic")
-                }
-              >
-                Plasmic on GitHub
-                <MdOpenInNew style={{ color: "silver", marginLeft: "8px" }} />
-              </Menu.Item>
+                  Plasmic on GitHub
+                  <MdOpenInNew
+                    style={{ color: "silver", marginLeft: "8px" }}
+                  />
+                </Menu.Item>
+              )}
             </Menu>
           ),
         }}
