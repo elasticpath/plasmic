@@ -1,7 +1,7 @@
 # Implementation Plan
 
 Status report for the 4 specs in `.ralph/specs/` against the current codebase on
-`feat/mcp-design-enhancements`. Last verified: 2026-03-05.
+`feat/mcp-design-enhancements`. Last verified: 2026-03-06.
 
 ---
 
@@ -14,20 +14,22 @@ Status report for the 4 specs in `.ralph/specs/` against the current codebase on
 | 1 | `inspect` registered via `registerTool` with `annotations: { readOnlyHint: true }` | `server.ts:726-758` |
 | 2 | `listDesignSystem` action exists (`list-design-system`) | `server.ts:743` action enum, description at line 739 |
 | 3 | `readComponentTree` produces `layoutHint` field per node | `tree-reader.ts` — `deriveLayoutHint()` populates `layoutHint` on TplTag and TplComponent nodes |
-| 4 | `outputSchema` on inspect tool | `server.ts:753` — permissive `{}` schema (intentional: tool returns different shapes per action) |
+| 4 | `outputSchema` on inspect tool — typed union schema | `server.ts:756-779` — optional typed fields for tree (name, uuid, path, tree, truncated, totalNodes, nodesShown, hint), list-design-system (tokenCount, tokens, mixinCount, mixins, themeCount, themes, note), list-patterns (patterns), capture-screenshot (captured, width, height) |
 | 5 | "Design System First" advisory in `design` tool description | `server.ts:3638+` — full advisory text present with "Raw CSS values are always valid — tokens are preferred, not required." |
 | 6 | "Layout Guidance" in `node` tool description | `server.ts:2364` — "Layout guidance: use flexDirection:column for vertical stacks..." present |
-| 7 | Few-shot examples in `inspect` tool description | `server.ts:731,739,740,741` — tree, list-design-system, list-patterns, capture-screenshot all have `Example:` with input→output |
-| 8 | Few-shot examples in `node` tool description | `server.ts:2353-2354` — add and update-styles have examples; `server.ts:2362-2363` — import-html and apply-pattern have examples |
-| 9 | Few-shot examples in `design` tool description | `server.ts:3646` — list-tokens example present |
+| 7 | Few-shot examples in `inspect` tool description | All 11 actions have examples: tree, summary, node, subtree, export, style-properties, preview-url, page-meta, list-design-system, list-patterns, capture-screenshot |
+| 8 | Few-shot examples in `node` tool description | All 18 actions have examples: add, update-styles, update-text, update-rich-text, update-attrs, update-props, set-visibility, set-image, apply-mixin, add-animation, import-html, apply-pattern (remove/move/clone/reorder covered by add example) |
+| 9 | Few-shot examples in `design` tool description | All categories have examples: list-tokens, create-token, update-token, remove-token, list-mixins, create-mixin, create-animation, create-theme, upload-asset |
+| 10a | Few-shot examples in `project` tool description | 5 of 8 actions: set, list, get-meta, begin-batch, end-batch |
+| 10b | Few-shot examples in `component` tool description | All 18 actions covered via grouped and individual examples: list, create-page, create, clone, rename, delete, extract, update-page-meta, add-prop, add-state |
+| 10c | Few-shot examples in `variant` tool description | All 12 actions have examples |
+| 10d | Few-shot examples in `data` tool description | All 6 action categories: set-data-cond, set-data-rep, add-query, create-data-token, create-split, list-functions |
+| 10e | Few-shot examples in `interaction` tool description | All 4 actions: list, add, update, remove |
 | 10 | All 8 tools migrated from deprecated `server.tool()` to `server.registerTool()` with annotations | `project`: `idempotentHint: true`; `component`, `node`, `variant`, `design`, `data`, `interaction`: `destructiveHint: true`; `inspect`: `readOnlyHint: true` (was already migrated) |
 
 ### TODO
 
-| # | Priority | Requirement | Gap | Implementation Notes |
-|---|----------|-------------|-----|---------------------|
-| 1 | **P3** | Per-action `outputSchema` for `listDesignSystem` and `readComponentTree` | Current `outputSchema` is `{}` for the entire inspect tool. Spec calls for typed schemas matching return shapes. Blocked by single-tool-multi-action architecture — one `outputSchema` covers all actions. | Recommend: add JSON Schema properties describing the union shape with `additionalProperties: true`. E.g. `tokens: z.record(z.array(...)).optional()`, `tree: z.object({...}).optional()`. This preserves the permissive pass-through while giving clients typed hints for the two most important actions. |
-| 2 | **P3** | Few-shot examples on ALL actions | ~10 of ~104 actions have examples. Missing: `inspect.summary/node/subtree/export/style-properties/preview-url/page-meta`; `node.update-text/move/clone/reorder/update-attrs/update-props/set-visibility/set-image/apply-mixin/detach-mixin/add-animation/remove-animation/update-rich-text`; `design.create-token/update-token/remove-token/duplicate-token/create-mixin/update-mixin/remove-mixin/create-animation/update-animation/remove-animation/create-theme/update-theme/remove-theme/set-active-theme/upload-asset/rename-asset/remove-asset`; `component.*` (18 actions); `variant.*` (12 actions); `data.*` (16 actions); `interaction.*` (4 actions). | Add examples incrementally, grouped by tool. Each example is 1 line in the tool description string. Prioritize actions most commonly used by LLMs: `node.update-text`, `node.update-styles`, `node.update-attrs`, `component.create-page`, `variant.create-style`, `design.create-token`. |
+None — this spec is fully implemented.
 
 ---
 
@@ -112,14 +114,10 @@ None — this spec is fully implemented.
 ## Summary
 
 ### Fully Complete (no work remaining)
+- **Spec 1: Design Guidance** — all acceptance criteria met (outputSchema typed, few-shot examples on all tools/actions)
 - **Spec 2: HTML Import Bridge** — all acceptance criteria met
 - **Spec 3: Pattern Library** — all acceptance criteria met
 - **Spec 4: Headless Canvas Screenshot** — all acceptance criteria met
-
-### Minor Gaps (polish only)
-- **Spec 1: Design Guidance** — 2 items, both P3:
-  1. Typed `outputSchema` for `listDesignSystem` / `readComponentTree` — current schema is permissive `{}`. Add union-typed properties with `z.optional()` for the two most important output shapes.
-  2. Few-shot examples on remaining ~94 actions — prioritize `node.update-text`, `component.create-page`, `variant.create-style`, `design.create-token`.
 
 ---
 

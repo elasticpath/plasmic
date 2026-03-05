@@ -316,13 +316,13 @@ export function createServer(): McpServer {
     {
       description: "Project session lifecycle, persistence, batch operations, and undo.\n" +
         "Actions: set, list, get-meta, save, refresh, begin-batch, end-batch, undo.\n" +
-        "- set: Load a project into memory (required before other tools)\n" +
-        "- list: List all accessible projects\n" +
-        "- get-meta: Get project metadata (name, counts, pages, components)\n" +
+        "- set: Load a project into memory (required before other tools). Example: {action:\"set\",projectId:\"pId123\"} → {success:true,projectName:\"My App\"}\n" +
+        "- list: List all accessible projects. Example: {action:\"list\"} → {projects:[{id:\"pId123\",name:\"My App\"}]}\n" +
+        "- get-meta: Get project metadata (name, counts, pages, components). Example: {action:\"get-meta\"} → {name:\"My App\",pageCount:3,componentCount:5}\n" +
         "- save: Force full save to server\n" +
         "- refresh: Reload project from server\n" +
-        "- begin-batch: Start accumulating edits\n" +
-        "- end-batch: Save accumulated edits in one revision\n" +
+        "- begin-batch: Start accumulating edits. Example: {action:\"begin-batch\"} → {batchId:\"batch-1\"}\n" +
+        "- end-batch: Save accumulated edits in one revision. Example: {action:\"end-batch\",batchId:\"batch-1\"} → {success:true,revision:42}\n" +
         "- undo: Revert most recent edit",
       inputSchema: {
         action: z.enum(["set", "list", "get-meta", "save", "refresh", "begin-batch", "end-batch", "undo"]),
@@ -732,13 +732,13 @@ export function createServer(): McpServer {
       description: "Read-only queries on component trees, nodes, style properties, and page metadata.\n" +
         "Actions: tree, summary, node, subtree, export, style-properties, preview-url, page-meta, list-design-system, list-patterns.\n" +
         "- tree: Full element tree with styles, text, layout. Example: {action:\"tree\",componentUuid:\"abc\"} → {type:\"tag\",tag:\"div\",layoutType:\"vbox\",layoutHint:\"flex-col\",children:[...]}\n" +
-        "- summary: Compact outline (type, tag, name, uuid, childCount)\n" +
-        "- node: Full details for a single node\n" +
-        "- subtree: Tree from a specific node downward\n" +
-        "- export: Write full tree to temp file\n" +
-        "- style-properties: List valid CSS property names\n" +
-        "- preview-url: Get preview and studio URLs\n" +
-        "- page-meta: Read page SEO metadata\n" +
+        "- summary: Compact outline (type, tag, name, uuid, childCount). Example: {action:\"summary\",componentUuid:\"abc\"} → {name:\"Hero\",tree:{type:\"tag\",tag:\"div\",childCount:3}}\n" +
+        "- node: Full details for a single node. Example: {action:\"node\",componentUuid:\"abc\",nodeRef:\"heading\"} → {type:\"tag\",tag:\"h1\",styles:{fontSize:\"32px\"},text:\"Hello\"}\n" +
+        "- subtree: Tree from a specific node downward. Example: {action:\"subtree\",componentUuid:\"abc\",nodeRef:\"card-container\"} → {type:\"tag\",tag:\"div\",children:[...]}\n" +
+        "- export: Write full tree to temp file. Example: {action:\"export\",componentUuid:\"abc\"} → {filePath:\"/tmp/tree-abc.json\"}\n" +
+        "- style-properties: List valid CSS property names. Example: {action:\"style-properties\",filter:\"flex\"} → [\"flex\",\"flexDirection\",\"flexGrow\",...]\n" +
+        "- preview-url: Get preview and studio URLs. Example: {action:\"preview-url\",componentUuid:\"abc\"} → {previewUrl:\"https://...\",studioUrl:\"https://...\"}\n" +
+        "- page-meta: Read page SEO metadata. Example: {action:\"page-meta\",componentUuid:\"abc\"} → {title:\"Home\",path:\"/\",description:\"...\"}\n" +
         "- list-design-system: Consolidated summary of all design tokens, mixins, and themes. Example: {action:\"list-design-system\"} → {tokens:{Color:[...],Spacing:[...]},mixins:[...],themes:[...]}\n" +
         "- list-patterns: List available UI patterns (heroes, cards, navbars, etc.) that can be applied with node.apply-pattern. No session required. Example: {action:\"list-patterns\"} → [{name:\"hero-centered\",description:\"...\",tags:[...],customisationKeys:[...]}]\n" +
         "- capture-screenshot: Capture a PNG screenshot of a page component rendered by the dev host. Requires PLASMIC_DEV_HOST_URL and a page component (with pageMeta.path). Returns an image/png content block for visual feedback. Example: {action:\"capture-screenshot\",componentUuid:\"abc\"} → image/png",
@@ -754,9 +754,31 @@ export function createServer(): McpServer {
         filter: z.string().optional().describe("Filter string for style-properties action"),
       },
       outputSchema: {
-        // Permissive schema — the inspect tool returns different shapes per action.
-        // Named fields document the most common outputs; z.unknown() accepts all values.
-        // SDK validates structuredContent against this on every non-error response.
+        // Union of output shapes per action. All fields optional since each action
+        // returns a different subset. z.unknown() on complex fields keeps validation permissive.
+        // tree action output:
+        name: z.string().optional().describe("Component name (tree/summary)"),
+        uuid: z.string().optional().describe("Component UUID (tree/summary)"),
+        path: z.string().optional().describe("Page path if page component (tree)"),
+        tree: z.unknown().optional().describe("TreeNode root: {type,tag,layoutHint,styles,children,...} (tree/subtree)"),
+        truncated: z.boolean().optional().describe("Whether tree was truncated (tree)"),
+        totalNodes: z.number().optional().describe("Total Tpl node count (tree)"),
+        nodesShown: z.number().optional().describe("Nodes included after truncation (tree)"),
+        hint: z.string().optional().describe("Truncation guidance (tree)"),
+        // list-design-system output:
+        tokenCount: z.number().optional().describe("Number of design tokens (list-design-system)"),
+        tokens: z.unknown().optional().describe("Tokens grouped by type: {Color:[{name,value},...],Spacing:[...]} (list-design-system)"),
+        mixinCount: z.number().optional().describe("Number of mixins (list-design-system)"),
+        mixins: z.unknown().optional().describe("Array of mixin summaries (list-design-system)"),
+        themeCount: z.number().optional().describe("Number of themes (list-design-system)"),
+        themes: z.unknown().optional().describe("Array of theme summaries (list-design-system)"),
+        note: z.string().optional().describe("Advisory note when design system is empty"),
+        // list-patterns output:
+        patterns: z.unknown().optional().describe("Array of {name,description,tags,customisationKeys} (list-patterns)"),
+        // capture-screenshot output:
+        captured: z.boolean().optional().describe("Screenshot success flag (capture-screenshot)"),
+        width: z.number().optional().describe("Screenshot width in px (capture-screenshot)"),
+        height: z.number().optional().describe("Screenshot height in px (capture-screenshot)"),
       },
       annotations: { readOnlyHint: true },
     },
@@ -1295,17 +1317,17 @@ export function createServer(): McpServer {
     {
       description: "Component and page lifecycle, props, and states.\n" +
         "Actions: list, create-page, create, clone, rename, delete, extract, convert-to-page, convert-to-component, update-page-meta, list-props, add-prop, update-prop, remove-prop, list-states, add-state, update-state, remove-state.\n" +
-        "- list: List all pages and components\n" +
-        "- create-page: Create a new page with PlasmicElement tree\n" +
-        "- create: Create a new reusable component\n" +
-        "- clone: Duplicate an existing page or component\n" +
-        "- rename: Rename a page or component\n" +
-        "- delete: Delete a page or component\n" +
-        "- extract: Extract a subtree into a new component, replacing it with a component instance\n" +
+        "- list: List all pages and components. Example: {action:\"list\"} → {pages:[{name:\"Home\",uuid:\"abc\",path:\"/\"}],components:[{name:\"Button\",uuid:\"def\"}]}\n" +
+        "- create-page: Create a new page with PlasmicElement tree. Example: {action:\"create-page\",name:\"About\",path:\"/about\"} → {success:true,uuid:\"new-uuid\",path:\"/about\"}\n" +
+        "- create: Create a new reusable component. Example: {action:\"create\",name:\"Card\"} → {success:true,uuid:\"new-uuid\",name:\"Card\"}\n" +
+        "- clone: Duplicate an existing page or component. Example: {action:\"clone\",sourceUuid:\"abc\",name:\"Home Copy\"} → {success:true,uuid:\"new-uuid\"}\n" +
+        "- rename: Rename a page or component. Example: {action:\"rename\",componentUuid:\"abc\",newName:\"Hero Section\"} → {success:true}\n" +
+        "- delete: Delete a page or component. Example: {action:\"delete\",componentUuid:\"abc\"} → {success:true}\n" +
+        "- extract: Extract a subtree into a new component, replacing it with a component instance. Example: {action:\"extract\",componentUuid:\"abc\",nodeRef:\"card\",name:\"CardComponent\"} → {newComponentUuid:\"new-uuid\",instanceUuid:\"inst-uuid\"}\n" +
         "- convert-to-page/convert-to-component: Convert between page and component\n" +
-        "- update-page-meta: Set page SEO metadata\n" +
-        "- list-props/add-prop/update-prop/remove-prop: Manage component props\n" +
-        "- list-states/add-state/update-state/remove-state: Manage component states",
+        "- update-page-meta: Set page SEO metadata. Example: {action:\"update-page-meta\",componentUuid:\"abc\",title:\"About Us\",description:\"Learn more\"} → {success:true}\n" +
+        "- list-props/add-prop/update-prop/remove-prop: Manage component props. Example: {action:\"add-prop\",componentUuid:\"abc\",name:\"label\",type:\"string\",defaultValue:\"Click me\"} → {success:true}\n" +
+        "- list-states/add-state/update-state/remove-state: Manage component states. Example: {action:\"add-state\",componentUuid:\"abc\",name:\"isOpen\",variableType:\"boolean\",initialValue:\"false\"} → {success:true}",
       inputSchema: {
       action: z.enum([
         "list", "create-page", "create", "clone", "rename", "delete", "extract",
@@ -2386,13 +2408,14 @@ export function createServer(): McpServer {
         "Actions: add, remove, move, clone, reorder, update-styles, update-text, update-rich-text, update-attrs, update-props, set-visibility, set-image, apply-mixin, detach-mixin, add-animation, remove-animation, import-html, apply-pattern.\n" +
         "- add/remove/move/clone/reorder: Structural changes to element tree. Example: {action:\"add\",componentUuid:\"abc\",parentRef:\"root\",tag:\"div\"} → {uuid:\"new-uuid\"}\n" +
         "- update-styles: Set CSS styles on an element. Example: {action:\"update-styles\",componentUuid:\"abc\",nodeRef:\"uuid\",styles:{display:\"flex\",flexDirection:\"column\",gap:\"16px\"}}\n" +
-        "- update-text/update-rich-text: Set text content\n" +
-        "- update-attrs: Set HTML attributes on TplTag elements\n" +
-        "- update-props: Set component props on TplComponent instances (scalar, dynamic, slot)\n" +
-        "- set-visibility: Show/hide elements per variant\n" +
-        "- set-image: Set image source (asset or URL)\n" +
-        "- apply-mixin/detach-mixin: Apply or remove style mixins\n" +
-        "- add-animation/remove-animation: Apply or remove animations\n" +
+        "- update-text: Set text content. Example: {action:\"update-text\",componentUuid:\"abc\",nodeRef:\"heading\",text:\"Welcome\"} → {success:true,previousText:\"Hello\",newText:\"Welcome\"}\n" +
+        "- update-rich-text: Set text with formatting marks. Example: {action:\"update-rich-text\",componentUuid:\"abc\",nodeRef:\"desc\",text:\"Bold intro here\",marks:[{start:0,end:4,type:\"bold\"}]}\n" +
+        "- update-attrs: Set HTML attributes on TplTag elements. Example: {action:\"update-attrs\",componentUuid:\"abc\",nodeRef:\"link\",attrs:{href:\"/about\",target:\"_blank\"}} → {success:true}\n" +
+        "- update-props: Set component props on TplComponent instances (scalar, dynamic, slot). Example: {action:\"update-props\",componentUuid:\"abc\",nodeRef:\"btn\",props:{label:\"Submit\",onClick:\"$expr:handleClick\"}} → {success:true}\n" +
+        "- set-visibility: Show/hide elements per variant. Example: {action:\"set-visibility\",componentUuid:\"abc\",nodeRef:\"sidebar\",visible:false} → {success:true,newVisibility:\"notRendered\"}\n" +
+        "- set-image: Set image source (asset or URL). Example: {action:\"set-image\",componentUuid:\"abc\",nodeRef:\"hero-img\",src:\"https://example.com/photo.jpg\"} → {success:true}\n" +
+        "- apply-mixin/detach-mixin: Apply or remove style mixins. Example: {action:\"apply-mixin\",componentUuid:\"abc\",nodeRef:\"card\",mixinRef:\"Card Shadow\"} → {success:true}\n" +
+        "- add-animation/remove-animation: Apply or remove animations. Example: {action:\"add-animation\",componentUuid:\"abc\",nodeRef:\"banner\",seqRef:\"fadeIn\",duration:\"0.3s\"} → {success:true}\n" +
         "- import-html: Import HTML+CSS into the component tree. Parses HTML (including <style> blocks), maps to Plasmic nodes. Example: {action:\"import-html\",componentUuid:\"abc\",parentRef:\"root\",htmlContent:\"<div style='display:flex;gap:16px'><h1>Hello</h1></div>\"}\n" +
         "- apply-pattern: Insert a named UI pattern (hero, card, navbar, etc.) into the tree. Use inspect.list-patterns to see available patterns. Supports text customisations. Example: {action:\"apply-pattern\",componentUuid:\"abc\",parentRef:\"root\",patternName:\"hero-centered\",customisations:{headingText:\"Ship faster\",ctaLabel:\"Get started\"}}\n" +
         "Layout guidance: use flexDirection:column for vertical stacks, flexDirection:row for horizontal layouts, display:grid + gridTemplateColumns for equal-width columns or complex 2D layouts. Prefer flex for single-axis flow, grid for multi-column/row alignment. Consider using a reusable component instead of raw tags for repeated patterns.\n" +
@@ -3333,18 +3356,18 @@ export function createServer(): McpServer {
     {
       description: "Variant management for components and global variant groups.\n" +
         "Actions: list, create-style, create-group, list-global-groups, create-global-group, add-global, remove-global-group, rename-global, create-screen, update-screen, rename, remove.\n" +
-        "- list: List all variants for a component\n" +
-        "- create-style: Create hover/focus/etc. style variant\n" +
-        "- create-group: Create named variant group (Size, Theme, etc.)\n" +
-        "- list-global-groups: List global variant groups\n" +
-        "- create-global-group: Create a global variant group\n" +
-        "- add-global: Add variant to a global group\n" +
+        "- list: List all variants for a component. Example: {action:\"list\",componentUuid:\"abc\"} → {variants:[{uuid:\"v1\",name:\":hover\",type:\"style\"},{uuid:\"v2\",name:\"Small\",type:\"group\"}]}\n" +
+        "- create-style: Create hover/focus/etc. style variant. Example: {action:\"create-style\",componentUuid:\"abc\",selector:\":hover\"} → {variantUuid:\"v1\",selector:\":hover\",scope:\"component\"}\n" +
+        "- create-group: Create named variant group (Size, Theme, etc.). Example: {action:\"create-group\",componentUuid:\"abc\",name:\"Size\",type:\"single\",initialVariants:[\"Small\",\"Large\"]} → {groupUuid:\"g1\",variants:[{name:\"Small\"},{name:\"Large\"}]}\n" +
+        "- list-global-groups: List global variant groups. Example: {action:\"list-global-groups\"} → {groups:[{uuid:\"gg1\",name:\"Screen\",variants:[...]}]}\n" +
+        "- create-global-group: Create a global variant group. Example: {action:\"create-global-group\",name:\"Theme\",type:\"single\",initialVariants:[\"Light\",\"Dark\"]} → {groupUuid:\"gg1\"}\n" +
+        "- add-global: Add variant to a global group. Example: {action:\"add-global\",groupRef:\"Theme\",name:\"High Contrast\"} → {variantUuid:\"gv1\"}\n" +
         "- remove-global-group: Remove entire global variant group\n" +
         "- rename-global: Rename a global variant\n" +
-        "- create-screen: Create a screen variant (responsive breakpoint)\n" +
-        "- update-screen: Update screen variant breakpoint dimensions\n" +
-        "- rename: Rename a variant (component or global)\n" +
-        "- remove: Remove a single variant (component or global)",
+        "- create-screen: Create a screen variant (responsive breakpoint). Example: {action:\"create-screen\",name:\"Mobile\",maxWidth:768} → {variantUuid:\"sv1\",mediaQuery:\"(max-width:768px)\"}\n" +
+        "- update-screen: Update screen variant breakpoint dimensions. Example: {action:\"update-screen\",variantRef:\"Mobile\",maxWidth:640} → {success:true}\n" +
+        "- rename: Rename a variant (component or global). Example: {action:\"rename\",componentUuid:\"abc\",variantRef:\"v1\",newName:\":focus\"} → {success:true}\n" +
+        "- remove: Remove a single variant (component or global). Example: {action:\"remove\",componentUuid:\"abc\",variantRef:\"v1\"} → {success:true}",
       inputSchema: {
       action: z.enum([
         "list", "create-style", "create-group",
@@ -3684,10 +3707,14 @@ export function createServer(): McpServer {
         "list-themes, create-theme, update-theme, remove-theme, set-active-theme, " +
         "list-assets, upload-asset, rename-asset, remove-asset.\n" +
         "Tokens: design system values (colors, spacing, fonts). Example: {action:\"list-tokens\"} → {tokenCount:5,tokens:{Color:[{name:\"Primary\",value:\"#3B82F6\"},...]}}\n" +
-        "Mixins: reusable style bundles\n" +
-        "Animations: @keyframes definitions\n" +
-        "Themes: typography defaults and per-tag overrides\n" +
-        "Assets: image and icon management\n" +
+        "- create-token: Example: {action:\"create-token\",name:\"Primary\",tokenType:\"Color\",value:\"#3B82F6\"} → {tokenUuid:\"t1\",name:\"Primary\",tokenType:\"Color\",value:\"#3B82F6\"}\n" +
+        "- update-token: Example: {action:\"update-token\",tokenRef:\"Primary\",value:\"#2563EB\"} → {success:true}\n" +
+        "- remove-token: Example: {action:\"remove-token\",tokenRef:\"Primary\"} → {success:true}\n" +
+        "Mixins: reusable style bundles. Example: {action:\"list-mixins\"} → {mixins:[{uuid:\"m1\",name:\"Card Shadow\",styles:{boxShadow:\"0 2px 4px rgba(0,0,0,0.1)\"}}]}\n" +
+        "- create-mixin: Example: {action:\"create-mixin\",name:\"Card Shadow\",styles:{boxShadow:\"0 2px 4px rgba(0,0,0,0.1)\"}} → {mixinUuid:\"m1\",name:\"Card Shadow\"}\n" +
+        "Animations: @keyframes definitions. Example: {action:\"create-animation\",name:\"fadeIn\",keyframes:[{percentage:0,styles:{opacity:\"0\"}},{percentage:100,styles:{opacity:\"1\"}}]} → {seqUuid:\"a1\"}\n" +
+        "Themes: typography defaults and per-tag overrides. Example: {action:\"create-theme\",name:\"Base\",defaultStyles:{fontFamily:\"Inter\",fontSize:\"16px\"},setActive:true} → {themeIndex:0}\n" +
+        "Assets: image and icon management. Example: {action:\"upload-asset\",name:\"logo\",url:\"https://example.com/logo.png\",assetType:\"picture\"} → {assetUuid:\"img1\"}\n" +
         "Design System First: before setting raw CSS values, call inspect.list-design-system or list-tokens to check for existing design tokens. Prefer token references (token:TokenName in update-styles) over raw values when matching tokens exist. Raw CSS values are always valid — tokens are preferred, not required.",
       inputSchema: {
       action: z.enum([
@@ -4616,12 +4643,12 @@ export function createServer(): McpServer {
         "Actions: set-data-cond, set-data-rep, list-queries, add-query, update-query, remove-query, " +
         "list-data-tokens, create-data-token, update-data-token, remove-data-token, " +
         "list-splits, create-split, update-split, remove-split, get-code-meta, list-functions.\n" +
-        "- set-data-cond: Conditional rendering expression\n" +
-        "- set-data-rep: Repeat element for each item in collection\n" +
-        "- Queries: Manage component data queries\n" +
-        "- Data tokens: Site-level JSON values ($ctx.tokenName)\n" +
-        "- Splits: A/B tests and segments\n" +
-        "- get-code-meta/list-functions: Code component introspection",
+        "- set-data-cond: Conditional rendering expression (null to remove). Example: {action:\"set-data-cond\",componentUuid:\"abc\",nodeRef:\"banner\",condition:\"$ctx.showBanner === true\"} → {success:true}\n" +
+        "- set-data-rep: Repeat element for each item in collection (null to remove). Example: {action:\"set-data-rep\",componentUuid:\"abc\",nodeRef:\"card\",collection:\"$ctx.items\",elementVariable:\"item\",indexVariable:\"idx\"} → {success:true}\n" +
+        "- Queries: Manage component data queries. Example: {action:\"add-query\",componentUuid:\"abc\",name:\"fetchUsers\",queryType:\"dataQuery\"} → {success:true,queryUuid:\"q1\"}\n" +
+        "- Data tokens: Site-level JSON values ($ctx.tokenName). Example: {action:\"create-data-token\",name:\"apiUrl\",value:\"\\\"https://api.example.com\\\"\"} → {success:true}\n" +
+        "- Splits: A/B tests and segments. Example: {action:\"create-split\",name:\"CTATest\",splitType:\"experiment\",slices:[{name:\"Control\",prob:50},{name:\"Variant\",prob:50}]} → {success:true}\n" +
+        "- get-code-meta/list-functions: Code component introspection. Example: {action:\"list-functions\",componentUuid:\"abc\"} → {functions:[{name:\"handleSubmit\",params:[...]}]}",
       inputSchema: {
       action: z.enum([
         "set-data-cond", "set-data-rep",
@@ -5299,10 +5326,10 @@ export function createServer(): McpServer {
     {
       description: "Event handler interactions on elements.\n" +
         "Actions: list, add, update, remove.\n" +
-        "- list: List all interactions on an element\n" +
-        "- add: Add an event handler (navigation, updateVariable, customFunction)\n" +
-        "- update: Modify an existing interaction's action, args, or condition\n" +
-        "- remove: Remove interaction(s) from an element",
+        "- list: List all interactions on an element. Example: {action:\"list\",componentUuid:\"abc\",nodeRef:\"btn\"} → {interactions:[{event:\"onClick\",actionName:\"navigation\",args:{destination:\"/about\"}}]}\n" +
+        "- add: Add an event handler (navigation, updateVariable, customFunction). Example: {action:\"add\",componentUuid:\"abc\",nodeRef:\"btn\",event:\"onClick\",actionName:\"navigation\",args:{destination:\"/about\"}} → {interactionUuid:\"i1\"}\n" +
+        "- update: Modify an existing interaction's action, args, or condition. Example: {action:\"update\",componentUuid:\"abc\",nodeRef:\"btn\",interactionIndex:0,args:{destination:\"/home\"}} → {success:true}\n" +
+        "- remove: Remove interaction(s) from an element. Example: {action:\"remove\",componentUuid:\"abc\",nodeRef:\"btn\",interactionIndex:0} → {success:true}",
       inputSchema: {
       action: z.enum(["list", "add", "update", "remove"]),
       componentUuid: z.string().optional().describe("UUID of the component"),
