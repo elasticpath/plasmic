@@ -22,6 +22,7 @@
  */
 
 import { randomUUID } from "crypto";
+import * as acorn from "acorn";
 import {
   isKnownTplTag,
   isKnownTplComponent,
@@ -164,23 +165,59 @@ function isValidAttrName(name: string): { valid: boolean; reason?: string } {
 }
 
 /**
+ * Validate that `code` is a syntactically valid JS expression using acorn.
+ * Throws with a descriptive error if parsing fails.
+ */
+function validateJsExpression(code: string): void {
+  try {
+    acorn.parseExpressionAt(code, 0, { ecmaVersion: 2020 });
+  } catch (err: any) {
+    throw new Error(
+      `Invalid JS expression: ${err.message}. Use $<valid-js-expr> or {{valid-js-expr}}.`
+    );
+  }
+}
+
+const EXPR_PATTERN = /\$(state|ctx|queries|props|pageCtx)\./;
+
+/**
+ * Returns a warning if the value looks like a dynamic expression reference
+ * but will be stored as a static string literal.
+ */
+function checkLiteralWarning(value: string): string | null {
+  if (EXPR_PATTERN.test(value)) {
+    return `Value "${value}" stored as a static string literal. If you intended a dynamic binding, wrap it: $${value} or {{${value}}}.`;
+  }
+  return null;
+}
+
+/**
  * Create an attribute expression value from a user-provided value.
  * - null → signals deletion (caller handles)
- * - string starting with "$" → dynamic CustomCode (strips "$" prefix)
- * - string wrapped in "{{...}}" → dynamic CustomCode (strips delimiters)
+ * - string starting with "$" → dynamic CustomCode (strips "$" prefix, validates JS)
+ * - string wrapped in "{{...}}" → dynamic CustomCode (strips delimiters, validates JS)
  * - everything else → static literal via CustomCode(JSON.stringify(...))
+ *
+ * Pushes non-fatal warnings to the `warnings` array when a static string looks
+ * like it should be a dynamic binding.
  */
-function createAttrExpr(value: unknown): any {
+function createAttrExpr(value: unknown, warnings: string[]): any {
   if (typeof value === "string") {
     // Dynamic value: $expression
     if (value.startsWith("$")) {
-      return new CustomCode({ code: value.slice(1), fallback: null });
+      const code = value.slice(1);
+      validateJsExpression(code);
+      return new CustomCode({ code, fallback: null });
     }
     // Dynamic value: {{expression}}
     if (value.startsWith("{{") && value.endsWith("}}")) {
-      return new CustomCode({ code: value.slice(2, -2).trim(), fallback: null });
+      const code = value.slice(2, -2).trim();
+      validateJsExpression(code);
+      return new CustomCode({ code, fallback: null });
     }
-    // Static string literal
+    // Static string literal — check for accidental expression patterns
+    const warning = checkLiteralWarning(value);
+    if (warning) warnings.push(warning);
     return new CustomCode({ code: JSON.stringify(value), fallback: null });
   }
   // Booleans, numbers, null-like → serialize as literal
@@ -2201,6 +2238,8 @@ export interface UpdateAttrsResult {
   nodeUuid: string;
   updatedAttributes: string[];
   removedAttributes: string[];
+  /** Non-fatal warnings (e.g., value looks like dynamic expression but stored as literal). */
+  warnings?: string[];
 }
 
 /**
@@ -2242,6 +2281,7 @@ export async function updateAttrs(
   // Validate all attribute names before making any changes
   const updatedAttributes: string[] = [];
   const removedAttributes: string[] = [];
+  const warnings: string[] = [];
   for (const [key, value] of Object.entries(attrs)) {
     const validation = isValidAttrName(key);
     if (!validation.valid) {
@@ -2274,7 +2314,7 @@ export async function updateAttrs(
         delete vs.attrs[key];
       } else {
         // Set or update the attribute
-        vs.attrs[key] = createAttrExpr(value);
+        vs.attrs[key] = createAttrExpr(value, warnings);
       }
     }
   });
@@ -2295,6 +2335,7 @@ export async function updateAttrs(
     nodeUuid: resolved.uuid,
     updatedAttributes,
     removedAttributes,
+    ...(warnings.length ? { warnings } : {}),
   };
 }
 
@@ -2306,6 +2347,8 @@ export interface UpdatePropsResult {
   nodeUuid: string;
   updatedProps: string[];
   removedProps: string[];
+  /** Non-fatal warnings (e.g., value looks like dynamic expression but stored as literal). */
+  warnings?: string[];
 }
 
 /**
@@ -2354,6 +2397,7 @@ export async function updateProps(
   // Pre-validate ALL prop names before making any mutations (fail-fast / atomic)
   const updatedProps: string[] = [];
   const removedProps: string[] = [];
+  const warnings: string[] = [];
   for (const [propName, value] of Object.entries(props)) {
     const param = paramByName.get(propName);
     if (!param) {
@@ -2444,7 +2488,7 @@ export async function updateProps(
           expr = new RenderExpr({ tpl: tpls });
         } else {
           // Scalar or dynamic expression — reuse createAttrExpr
-          expr = createAttrExpr(value);
+          expr = createAttrExpr(value, warnings);
         }
 
         setTplComponentArg(tpl, vs, argVar, expr);
@@ -2468,6 +2512,7 @@ export async function updateProps(
     nodeUuid: resolved.uuid,
     updatedProps,
     removedProps,
+    ...(warnings.length ? { warnings } : {}),
   };
 }
 

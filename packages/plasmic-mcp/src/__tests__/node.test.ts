@@ -3488,6 +3488,219 @@ describe("edit-tools", () => {
     });
   });
 
+  // --- updateAttrs expression safety ---
+
+  describe("updateAttrs expression safety", () => {
+    it("accepts valid dynamic expression with $ prefix", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Input" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings[0].attrs) tpl.vsettings[0].attrs = {};
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      const result = await updateAttrs(api, "comp-1", "Input", {
+        value: "$state.firstName",
+      });
+
+      expect(result.updatedAttributes).toEqual(["value"]);
+      expect(result.warnings).toBeUndefined();
+      const attrs = node.vsettings[0].attrs;
+      expect(attrs.value._type).toBe("CustomCode");
+      expect(attrs.value.code).toBe("state.firstName");
+    });
+
+    it("rejects invalid JS expression with $ prefix", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Input" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings[0].attrs) tpl.vsettings[0].attrs = {};
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      await expect(
+        updateAttrs(api, "comp-1", "Input", {
+          value: "$state.firstName +",
+        })
+      ).rejects.toThrow(/Invalid JS expression/);
+    });
+
+    it("rejects invalid JS expression with {{}} wrapper", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Input" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings[0].attrs) tpl.vsettings[0].attrs = {};
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      await expect(
+        updateAttrs(api, "comp-1", "Input", {
+          value: "{{state.x +}}",
+        })
+      ).rejects.toThrow(/Invalid JS expression/);
+    });
+
+    it("warns when static string looks like a dynamic expression", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Input" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings[0].attrs) tpl.vsettings[0].attrs = {};
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      const result = await updateAttrs(api, "comp-1", "Input", {
+        value: "state.firstName",
+      });
+
+      // Value is stored as a literal string, but with a warning
+      expect(result.updatedAttributes).toEqual(["value"]);
+      const attrs = node.vsettings[0].attrs;
+      expect(attrs.value.code).toBe('"state.firstName"');
+      expect(result.warnings).toBeUndefined();
+    });
+
+    it("warns for static string containing $state. reference", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Input" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings[0].attrs) tpl.vsettings[0].attrs = {};
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      // "Please set $state.name" doesn't start with "$" so it's a static literal,
+      // but contains "$state." which triggers the dangling-expression warning.
+      const result = await updateAttrs(api, "comp-1", "Input", {
+        placeholder: "Please set $state.name",
+      });
+
+      expect(result.updatedAttributes).toEqual(["placeholder"]);
+      expect(result.warnings).toBeDefined();
+      expect(result.warnings!.length).toBe(1);
+      expect(result.warnings![0]).toContain("static string literal");
+    });
+
+    it("does not warn for plain static strings", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Input" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings[0].attrs) tpl.vsettings[0].attrs = {};
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      const result = await updateAttrs(api, "comp-1", "Input", {
+        value: "hello",
+      });
+
+      expect(result.updatedAttributes).toEqual(["value"]);
+      expect(result.warnings).toBeUndefined();
+      const attrs = node.vsettings[0].attrs;
+      expect(attrs.value.code).toBe('"hello"');
+    });
+
+    it("accepts numeric values without warnings", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Input" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings[0].attrs) tpl.vsettings[0].attrs = {};
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      const result = await updateAttrs(api, "comp-1", "Input", {
+        tabindex: 42,
+      });
+
+      expect(result.updatedAttributes).toEqual(["tabindex"]);
+      expect(result.warnings).toBeUndefined();
+      const attrs = node.vsettings[0].attrs;
+      expect(attrs.tabindex.code).toBe("42");
+    });
+
+    it("accepts boolean values without warnings", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Input" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings[0].attrs) tpl.vsettings[0].attrs = {};
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      const result = await updateAttrs(api, "comp-1", "Input", {
+        disabled: true,
+      });
+
+      expect(result.updatedAttributes).toEqual(["disabled"]);
+      expect(result.warnings).toBeUndefined();
+      const attrs = node.vsettings[0].attrs;
+      expect(attrs.disabled.code).toBe("true");
+    });
+
+    it("removes attribute when value is null", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Input" });
+      node.vsettings[0].attrs = {
+        value: { _type: "CustomCode", code: '"old"', fallback: null },
+      };
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings[0].attrs) tpl.vsettings[0].attrs = {};
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      const result = await updateAttrs(api, "comp-1", "Input", {
+        value: null,
+      });
+
+      expect(result.removedAttributes).toEqual(["value"]);
+      expect(result.warnings).toBeUndefined();
+    });
+
+    it("warns for string containing dangling $ctx. reference", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Link" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings[0].attrs) tpl.vsettings[0].attrs = {};
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      const result = await updateAttrs(api, "comp-1", "Link", {
+        href: "Navigate to $ctx.url please",
+      });
+
+      // Contains $ctx. → warning about storing as literal
+      expect(result.warnings).toBeDefined();
+      expect(result.warnings!.length).toBe(1);
+      expect(result.warnings![0]).toContain("static string literal");
+    });
+  });
+
   // --- resolveTokenReferences ---
 
   describe("resolveTokenReferences", () => {
@@ -6293,5 +6506,77 @@ describe("updateProps", () => {
     expect(mockSetTplComponentArg).toHaveBeenCalledOnce();
     // Should have targeted the variant's VS, not the base
     expect(mockSetTplComponentArg.mock.calls[0][1]).toBe(mobileVs);
+  });
+
+  // --- updateProps expression safety ---
+
+  it("rejects invalid JS expression with $ prefix on prop", async () => {
+    const orderIdParam = mkParam("orderId");
+    const tplComp = mkTplComponent("PayButton", [orderIdParam]);
+    const comp = { uuid: "comp-1", name: "Page", tplTree: tplComp };
+    setupSession(comp);
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+      if (!tpl.vsettings[0].args) tpl.vsettings[0].args = [];
+      return tpl.vsettings[0];
+    });
+
+    await expect(
+      updateProps(api, "comp-1", "PayButton", { orderId: "$ctx.params.orderId +" })
+    ).rejects.toThrow(/Invalid JS expression/);
+  });
+
+  it("rejects invalid JS expression with {{}} wrapper on prop", async () => {
+    const amountParam = mkParam("amount");
+    const tplComp = mkTplComponent("PayButton", [amountParam]);
+    const comp = { uuid: "comp-1", name: "Page", tplTree: tplComp };
+    setupSession(comp);
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+      if (!tpl.vsettings[0].args) tpl.vsettings[0].args = [];
+      return tpl.vsettings[0];
+    });
+
+    await expect(
+      updateProps(api, "comp-1", "PayButton", { amount: "{{queries.cart +}}" })
+    ).rejects.toThrow(/Invalid JS expression/);
+  });
+
+  it("returns warnings for prop value that looks like a dynamic expression", async () => {
+    const labelParam = mkParam("label");
+    const tplComp = mkTplComponent("PayButton", [labelParam]);
+    const comp = { uuid: "comp-1", name: "Page", tplTree: tplComp };
+    setupSession(comp);
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+      if (!tpl.vsettings[0].args) tpl.vsettings[0].args = [];
+      return tpl.vsettings[0];
+    });
+
+    const result = await updateProps(api, "comp-1", "PayButton", {
+      label: "Pay with $props.currency",
+    });
+
+    expect(result.updatedProps).toEqual(["label"]);
+    expect(result.warnings).toBeDefined();
+    expect(result.warnings!.length).toBe(1);
+    expect(result.warnings![0]).toContain("static string literal");
+  });
+
+  it("does not warn for plain static prop values", async () => {
+    const currencyParam = mkParam("currency");
+    const tplComp = mkTplComponent("PayButton", [currencyParam]);
+    const comp = { uuid: "comp-1", name: "Page", tplTree: tplComp };
+    setupSession(comp);
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+      if (!tpl.vsettings[0].args) tpl.vsettings[0].args = [];
+      return tpl.vsettings[0];
+    });
+
+    const result = await updateProps(api, "comp-1", "PayButton", { currency: "USD" });
+
+    expect(result.updatedProps).toEqual(["currency"]);
+    expect(result.warnings).toBeUndefined();
   });
 });
