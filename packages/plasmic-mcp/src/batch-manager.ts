@@ -80,6 +80,17 @@ export function getAccumulatedChanges(): RecordedChanges | null {
 }
 
 /**
+ * Replace the accumulated changes in the current batch session.
+ * Used by the rebase engine after rebasing batch changes against server updates.
+ * No-op if no batch is active.
+ */
+export function replaceAccumulatedChanges(changes: RecordedChanges): void {
+  if (currentBatch) {
+    currentBatch.accumulatedChanges = changes;
+  }
+}
+
+/**
  * Accumulate changes from an edit operation during a batch session.
  * Called by edit tools when batch mode is active instead of saving.
  */
