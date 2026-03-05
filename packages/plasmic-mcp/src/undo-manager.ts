@@ -23,7 +23,7 @@ import { getChangeTracker } from "./change-tracker.js";
 import { SaveManager, type SaveResult } from "./save-manager.js";
 import { PlasmicApiClient } from "./api-client.js";
 
-interface UndoOperation {
+export interface UndoOperation {
   description: string;
   changes: ModelChange[];
 }
@@ -119,6 +119,22 @@ export async function undo(
  */
 export function getUndoDepth(): number {
   return undoStack.length;
+}
+
+/**
+ * Get a reference to the current undo stack.
+ * Used by the rebase engine to iterate and rebuild each entry individually.
+ */
+export function getStack(): UndoOperation[] {
+  return undoStack;
+}
+
+/**
+ * Replace the entire undo stack.
+ * Used by the rebase engine after rebasing each entry against server changes.
+ */
+export function replaceStack(stack: UndoOperation[]): void {
+  undoStack = stack;
 }
 
 /**

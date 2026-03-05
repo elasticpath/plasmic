@@ -531,6 +531,9 @@ declare module "@/wab/shared/bundler" {
     fastBundle(root: any, uuid: string, changedInsts: any[]): any;
     addrOf(inst: any): { uuid: string; iid: string } | undefined;
     recomputeParents(bundle: any, projectId: string): void;
+    unbundlePartial(bundle: any, uuid: string): void;
+    allUuids(): string[];
+    objByAddr(addr: { uuid: string; iid: string }): any | undefined;
   }
 }
 
@@ -538,6 +541,11 @@ declare module "@/wab/shared/bundler" {
 // @/wab/shared/core/observable-model
 // ---------------------------------------------------------------------------
 declare module "@/wab/shared/core/observable-model" {
+  export interface ChangeNode {
+    readonly inst: any;
+    readonly field: string;
+  }
+
   export interface RecordedChanges {
     changes: any[];
     newInsts: any[];
@@ -548,10 +556,35 @@ declare module "@/wab/shared/core/observable-model" {
     [key: string]: any;
   }
 
-  export class ChangeRecorder {
+  export interface IChangeRecorder {
+    prune(): void;
+    getToBeDeletedInsts(): Set<any>;
+    getDeletedInstsWithDanglingRefs(): Set<any>;
+    getPathToChild(inst: any): ChangeNode[] | undefined;
+    getAnyPathToChild(inst: any): ChangeNode[] | undefined;
+    getRefsToInst(inst: any, all?: boolean): any[];
+    getChangesSoFar(): ModelChange[];
+    withRecording(f: () => void): RecordedChanges;
+    dispose(): void;
+    setExtraListener(newListener: (change: ModelChange) => void): void;
+    maybeObserveComponents(components: any[], componentContext?: any): boolean;
+    isRecording: boolean;
+  }
+
+  export class ChangeRecorder implements IChangeRecorder {
     constructor(opts: any);
     withRecording(fn: () => void): RecordedChanges;
     dispose(): void;
+    prune(): void;
+    getToBeDeletedInsts(): Set<any>;
+    getDeletedInstsWithDanglingRefs(): Set<any>;
+    getPathToChild(inst: any): ChangeNode[] | undefined;
+    getAnyPathToChild(inst: any): ChangeNode[] | undefined;
+    getRefsToInst(inst: any, all?: boolean): any[];
+    getChangesSoFar(): ModelChange[];
+    setExtraListener(newListener: (change: ModelChange) => void): void;
+    maybeObserveComponents(components: any[], componentContext?: any): boolean;
+    isRecording: boolean;
   }
 
   export function observeModel(rootInst: any, opts: any): { dispose: () => void };
@@ -717,4 +750,141 @@ declare module "@/wab/shared/core/sites" {
   export function getNonTransitiveDepDefaultComponents(
     site: any
   ): Record<string, any>;
+}
+
+// ---------------------------------------------------------------------------
+// WebSocket live sync prerequisites (P0.0)
+// ---------------------------------------------------------------------------
+
+declare module "@/wab/shared/server-updates-utils" {
+  export interface DeletedAssetsSummary {
+    deletedComponents: any[];
+    deletedImageAssets: any[];
+    deletedMixins: any[];
+    deletedTokens: any[];
+    deletedParams: any[];
+    deletedVariantGroups: any[];
+    deletedVariants: any[];
+    deletedVars: any[];
+    deletedStates: any[];
+    deletedTplNodes: any[];
+    deletedComponentDataQueries: any[];
+    deletedThemes: any[];
+    deletedArgTypes: any[];
+    deletedExprs: any[];
+  }
+
+  export function undoChangesAndResolveConflicts(
+    site: any,
+    recorder: any,
+    serverSummary: DeletedAssetsSummary,
+    changes: any[]
+  ): any;
+  export function getEmptyDeletedAssetsSummary(): DeletedAssetsSummary;
+  export function updateSummaryFromDeletedInstances(
+    summary: DeletedAssetsSummary,
+    insts: any[],
+    opts?: { includeTplNodesAndExprs?: boolean }
+  ): DeletedAssetsSummary;
+  export function fixDanglingReferenceConflicts(
+    site: any,
+    recorder: any,
+    deletedSummary: DeletedAssetsSummary
+  ): void;
+}
+
+declare module "@/wab/commons/asyncutil" {
+  export class PushPullQueue<T> {
+    push(item: T): void;
+    pull(): Promise<T>;
+  }
+  export function drainQueue(queue: any): Promise<void>;
+}
+
+declare module "@/wab/shared/api/socket" {
+  export type ClientToServerEvents = {
+    subscribe: (data: {
+      namespace: string;
+      projectIds?: string[];
+      studio?: boolean;
+    }) => unknown | Promise<unknown>;
+    view: (data: any) => unknown | Promise<unknown>;
+  };
+
+  export type ServerToClientEvents = {
+    connect: (data: {}) => unknown | Promise<unknown>;
+    disconnect: (data: {}) => unknown | Promise<unknown>;
+    initServerInfo: (data: {
+      modelSchemaHash: number;
+      bundleVersion: string;
+      selfPlayerId: number;
+    }) => unknown | Promise<unknown>;
+    commentsUpdate: (data: {}) => unknown | Promise<unknown>;
+    update: (data: {
+      projectId: string;
+      rev: { revision: number; branchId: string | null };
+    }) => unknown | Promise<unknown>;
+    players: (data: { sessions: any[] }) => unknown | Promise<unknown>;
+    error: (data: string) => unknown | Promise<unknown>;
+    publish: (data: any) => unknown | Promise<unknown>;
+    hostlessDataVersionUpdate: (data: {
+      hostlessDataVersion: number;
+    }) => unknown | Promise<unknown>;
+  };
+}
+
+declare module "@/wab/shared/ApiSchema" {
+  export const arenaTypes: readonly ["custom", "page", "component"];
+  export type ArenaType = (typeof arenaTypes)[number];
+
+  export interface ArenaInfo {
+    type: ArenaType;
+    uuidOrName: string;
+    focused: boolean;
+  }
+
+  export interface PlayerSelectionInfo {
+    selectableFrameUuid: string;
+    selectableKey?: string;
+  }
+
+  export interface UpdatePlayerViewRequest {
+    projectId: string;
+    branchId: string | null;
+    arena: ArenaInfo | null;
+    selection: PlayerSelectionInfo | null;
+    cursor: any | null;
+    position: any | null;
+  }
+
+  export interface InitServerInfo {
+    modelSchemaHash: number;
+    bundleVersion: string;
+    selfPlayerId: number;
+  }
+
+  export interface PlayerViewInfo {
+    branchId?: string;
+    arenaInfo?: ArenaInfo;
+    selectionInfo?: PlayerSelectionInfo;
+    cursorInfo?: any;
+    positionInfo?: any;
+  }
+
+  export interface ServerSessionsInfo {
+    sessions: any[];
+  }
+}
+
+declare module "@/wab/shared/Arenas" {
+  export function getArenaType(arena: any): "custom" | "component" | "page";
+  export function getArenaUuidOrName(arena: any): string;
+}
+
+declare module "@/wab/shared/collections" {
+  export function arrayReversed<T>(xs: ReadonlyArray<T>): T[];
+}
+
+declare module "@/wab/shared/common" {
+  export function xDifference<T>(a: Iterable<T>, b: Iterable<T>): Set<T>;
 }

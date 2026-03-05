@@ -25,6 +25,12 @@ declare module "@/wab/shared/bundler" {
     /** Initialize parent tracking for fastBundle. Must be called after unbundle()
      *  with the same bundle JSON and UUID to enable incremental saves. */
     recomputeParents(bundle: any, uuid: string): void;
+    /** Apply a partial bundle update (incremental changes from server). */
+    unbundlePartial(bundle: any, uuid: string): void;
+    /** Get all UUIDs known to the bundler (project + dependency UUIDs). */
+    allUuids(): string[];
+    /** Look up a live model instance by its address (uuid + iid). */
+    objByAddr(addr: { uuid: string; iid: string }): any | undefined;
   }
 }
 
@@ -624,7 +630,24 @@ declare module "@/wab/shared/core/observable-model" {
     removedInsts: any[];
   }
 
-  export class ChangeRecorder {
+  /** Interface for the change recorder used by rebase/conflict resolution.
+   *  Matches platform/wab/src/wab/shared/core/observable-model.ts IChangeRecorder. */
+  export interface IChangeRecorder {
+    prune(): void;
+    getToBeDeletedInsts(): Set<any>;
+    getDeletedInstsWithDanglingRefs(): Set<any>;
+    getPathToChild(inst: any): ChangeNode[] | undefined;
+    getAnyPathToChild(inst: any): ChangeNode[] | undefined;
+    getRefsToInst(inst: any, all?: boolean): any[];
+    getChangesSoFar(): ModelChange[];
+    withRecording(f: () => void): RecordedChanges;
+    dispose(): void;
+    setExtraListener(newListener: (change: ModelChange) => void): void;
+    maybeObserveComponents(components: any[], componentContext?: any): boolean;
+    isRecording: boolean;
+  }
+
+  export class ChangeRecorder implements IChangeRecorder {
     constructor(opts: {
       inst: any;
       _instUtil: any;
@@ -637,6 +660,16 @@ declare module "@/wab/shared/core/observable-model" {
     });
     withRecording(f: () => void): RecordedChanges;
     dispose(): void;
+    prune(): void;
+    getToBeDeletedInsts(): Set<any>;
+    getDeletedInstsWithDanglingRefs(): Set<any>;
+    getPathToChild(inst: any): ChangeNode[] | undefined;
+    getAnyPathToChild(inst: any): ChangeNode[] | undefined;
+    getRefsToInst(inst: any, all?: boolean): any[];
+    getChangesSoFar(): ModelChange[];
+    setExtraListener(newListener: (change: ModelChange) => void): void;
+    maybeObserveComponents(components: any[], componentContext?: any): boolean;
+    isRecording: boolean;
   }
 
   export function observeModel(
@@ -968,4 +1001,171 @@ declare module "@/wab/shared/site-invariants" {
     site: any,
     componentUuidsToSkip?: Set<string>
   ): void;
+}
+
+// --- WebSocket live sync prerequisites (P0.0) ---
+
+declare module "@/wab/shared/server-updates-utils" {
+  import type { RecordedChanges, ModelChange, IChangeRecorder } from "@/wab/shared/core/observable-model";
+
+  export interface DeletedAssetsSummary {
+    deletedComponents: any[];
+    deletedImageAssets: any[];
+    deletedMixins: any[];
+    deletedTokens: any[];
+    deletedParams: any[];
+    deletedVariantGroups: any[];
+    deletedVariants: any[];
+    deletedVars: any[];
+    deletedStates: any[];
+    deletedTplNodes: any[];
+    deletedComponentDataQueries: any[];
+    deletedThemes: any[];
+    deletedArgTypes: any[];
+    deletedExprs: any[];
+  }
+
+  /** Undo local changes and resolve conflicts with server changes.
+   *  Core rebase function — imported from Studio's shared code. */
+  export function undoChangesAndResolveConflicts(
+    site: any,
+    recorder: IChangeRecorder,
+    serverSummary: DeletedAssetsSummary,
+    changes: ModelChange[]
+  ): RecordedChanges;
+
+  /** Create an empty DeletedAssetsSummary with all arrays empty. */
+  export function getEmptyDeletedAssetsSummary(): DeletedAssetsSummary;
+
+  /** Populate a DeletedAssetsSummary from a list of deleted model instances. */
+  export function updateSummaryFromDeletedInstances(
+    summary: DeletedAssetsSummary,
+    insts: any[],
+    opts?: { includeTplNodesAndExprs?: boolean }
+  ): DeletedAssetsSummary;
+
+  /** Fix dangling references after applying server updates. */
+  export function fixDanglingReferenceConflicts(
+    site: any,
+    recorder: IChangeRecorder,
+    deletedSummary: DeletedAssetsSummary
+  ): void;
+}
+
+declare module "@/wab/commons/asyncutil" {
+  /** A push/pull queue for sequential async processing.
+   *  Used by Studio's modelChangeQueue for processing socket updates. */
+  export class PushPullQueue<T> {
+    push(item: T): void;
+    pull(): Promise<T>;
+  }
+
+  /** Drain an async queue until idle. */
+  export function drainQueue(queue: any): Promise<void>;
+}
+
+declare module "@/wab/shared/api/socket" {
+  /** Events the client can send to the server. */
+  export type ClientToServerEvents = {
+    subscribe: (data: {
+      namespace: string;
+      projectIds?: string[];
+      studio?: boolean;
+    }) => unknown | Promise<unknown>;
+    view: (data: any) => unknown | Promise<unknown>;
+  };
+
+  /** Events the server can send to the client. */
+  export type ServerToClientEvents = {
+    connect: (data: {}) => unknown | Promise<unknown>;
+    disconnect: (data: {}) => unknown | Promise<unknown>;
+    initServerInfo: (data: {
+      modelSchemaHash: number;
+      bundleVersion: string;
+      selfPlayerId: number;
+    }) => unknown | Promise<unknown>;
+    commentsUpdate: (data: {}) => unknown | Promise<unknown>;
+    update: (data: {
+      projectId: string;
+      rev: { revision: number; branchId: string | null };
+    }) => unknown | Promise<unknown>;
+    players: (data: { sessions: any[] }) => unknown | Promise<unknown>;
+    error: (data: string) => unknown | Promise<unknown>;
+    publish: (data: any) => unknown | Promise<unknown>;
+    hostlessDataVersionUpdate: (data: {
+      hostlessDataVersion: number;
+    }) => unknown | Promise<unknown>;
+  };
+}
+
+declare module "@/wab/shared/ApiSchema" {
+  export const arenaTypes: readonly ["custom", "page", "component"];
+  export type ArenaType = (typeof arenaTypes)[number];
+
+  export interface ArenaInfo {
+    type: ArenaType;
+    uuidOrName: string;
+    focused: boolean;
+  }
+
+  export interface PlayerSelectionInfo {
+    selectableFrameUuid: string;
+    selectableKey?: string;
+  }
+
+  export interface PlayerCursorInfo {
+    [key: string]: any;
+  }
+
+  export interface PlayerPositionInfo {
+    [key: string]: any;
+  }
+
+  export interface UpdatePlayerViewRequest {
+    projectId: string;
+    branchId: string | null;
+    arena: ArenaInfo | null;
+    selection: PlayerSelectionInfo | null;
+    cursor: PlayerCursorInfo | null;
+    position: PlayerPositionInfo | null;
+  }
+
+  export interface InitServerInfo {
+    modelSchemaHash: number;
+    bundleVersion: string;
+    selfPlayerId: number;
+  }
+
+  export interface PlayerViewInfo {
+    branchId?: string;
+    arenaInfo?: ArenaInfo;
+    selectionInfo?: PlayerSelectionInfo;
+    cursorInfo?: PlayerCursorInfo;
+    positionInfo?: PlayerPositionInfo;
+  }
+
+  export interface ServerSessionsInfo {
+    sessions: any[];
+  }
+}
+
+declare module "@/wab/shared/Arenas" {
+  import type { ArenaType } from "@/wab/shared/ApiSchema";
+
+  /** Get the arena type ("custom" | "component" | "page") for an arena object. */
+  export function getArenaType(arena: any): ArenaType;
+
+  /** Get the identifying UUID or name for an arena.
+   *  Returns arena.name for custom arenas, component.uuid for component/page arenas. */
+  export function getArenaUuidOrName(arena: any): string;
+}
+
+declare module "@/wab/shared/collections" {
+  /** Return a reversed copy of an array (does not mutate the original). */
+  export function arrayReversed<T>(xs: ReadonlyArray<T>): T[];
+}
+
+declare module "@/wab/shared/common" {
+  /** Set difference: returns elements in `a` that are not in `b`. */
+  export function xDifference<T>(a: Iterable<T>, b: Iterable<T>): Set<T>;
 }
