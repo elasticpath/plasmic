@@ -349,6 +349,62 @@ describe("live-sync", () => {
       );
     });
 
+    it("skips branch updates when session is on main", async () => {
+      const session = makeSession();
+      setSession(session);
+      initChangeTracker(session.site);
+
+      await startLiveSync(mockApiClient, "proj-123");
+
+      mockSocket._fireEvent("update", {
+        projectId: "proj-123",
+        rev: { revision: 6, branchId: "branch-abc" },
+      });
+
+      await new Promise((r) => setTimeout(r, 100));
+
+      // Should not fetch updates — branch update filtered by queue
+      expect(mockApiClient.getModelUpdates).not.toHaveBeenCalled();
+    });
+
+    it("processes branch updates when session activeBranchId matches", async () => {
+      const session = makeSession({ activeBranchId: "branch-abc" });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      await startLiveSync(mockApiClient, "proj-123");
+
+      mockSocket._fireEvent("update", {
+        projectId: "proj-123",
+        rev: { revision: 6, branchId: "branch-abc" },
+      });
+
+      await new Promise((r) => setTimeout(r, 100));
+
+      expect(mockApiClient.getModelUpdates).toHaveBeenCalledWith(
+        "proj-123",
+        5,
+        []
+      );
+    });
+
+    it("skips main-branch updates when session is on a feature branch", async () => {
+      const session = makeSession({ activeBranchId: "branch-abc" });
+      setSession(session);
+      initChangeTracker(session.site);
+
+      await startLiveSync(mockApiClient, "proj-123");
+
+      mockSocket._fireEvent("update", {
+        projectId: "proj-123",
+        rev: { revision: 6, branchId: null },
+      });
+
+      await new Promise((r) => setTimeout(r, 100));
+
+      expect(mockApiClient.getModelUpdates).not.toHaveBeenCalled();
+    });
+
     it("skips updates for different projects", async () => {
       const session = makeSession();
       setSession(session);

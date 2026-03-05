@@ -63,6 +63,7 @@ export async function startLiveSync(
     handler: handleUpdate,
     isSaving: () => isSaving(),
     getPendingSavedRevisionNum: () => getSession()?.pendingSavedRevisionNum,
+    getActiveBranchId: () => getSession()?.activeBranchId ?? null,
   });
 
   // Connect socket with callbacks

@@ -418,6 +418,52 @@ describe("presence-manager", () => {
     });
   });
 
+  describe("branch-aware branchId", () => {
+    it("emits null branchId when session has no activeBranchId", async () => {
+      await setupSocket();
+
+      updateArena("comp-uuid-1", "component");
+      vi.advanceTimersByTime(200);
+
+      const emissions = getViewEmissions(mockSocket);
+      expect(emissions).toHaveLength(1);
+      expect(emissions[0].branchId).toBeNull();
+    });
+
+    it("emits activeBranchId from session in view events", async () => {
+      clearSession();
+      setSession(makeSession({ activeBranchId: "branch-abc" }));
+      await setupSocket();
+
+      updateArena("comp-uuid-1", "component");
+      vi.advanceTimersByTime(200);
+
+      const emissions = getViewEmissions(mockSocket);
+      expect(emissions).toHaveLength(1);
+      expect(emissions[0].branchId).toBe("branch-abc");
+    });
+
+    it("reflects branch changes between emissions", async () => {
+      const session = makeSession();
+      clearSession();
+      setSession(session);
+      await setupSocket();
+
+      updateArena("comp-1", "component");
+      vi.advanceTimersByTime(200);
+
+      // Switch to a branch
+      session.activeBranchId = "branch-xyz";
+      updateArena("comp-2", "component");
+      vi.advanceTimersByTime(200);
+
+      const emissions = getViewEmissions(mockSocket);
+      expect(emissions).toHaveLength(2);
+      expect(emissions[0].branchId).toBeNull();
+      expect(emissions[1].branchId).toBe("branch-xyz");
+    });
+  });
+
   describe("read-only inspection", () => {
     it("emits arena info without selection for inspection", async () => {
       await setupSocket();

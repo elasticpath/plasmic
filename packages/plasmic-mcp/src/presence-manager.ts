@@ -144,7 +144,7 @@ function emitView(): void {
 
   const data: UpdatePlayerViewRequest = {
     projectId: session.projectId,
-    branchId: null, // MCP does not support branches yet
+    branchId: session.activeBranchId ?? null,
     arena: currentArenaInfo,
     selection: currentSelectionInfo,
     cursor: null, // MCP has no visual cursor
