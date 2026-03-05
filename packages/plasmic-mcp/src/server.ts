@@ -137,6 +137,7 @@ import {
 import { beginBatch, endBatch, isBatchActive, cancelBatch, cancelBatchWithRollback, getAccumulatedChanges } from "./batch-manager.js";
 import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
 import { SaveManager } from "./save-manager.js";
+import { startLiveSync, stopLiveSync } from "./live-sync.js";
 import { undoChanges } from "@/wab/shared/core/undo-util";
 import type { TreeReadOptions } from "./types.js";
 
@@ -345,6 +346,7 @@ export function createServer(): McpServer {
           case "set": {
             const pid = requireParam(projectId, "projectId", "project.set");
             // Clean up previous session state before loading new project
+            stopLiveSync();
             apiClient.clearSessionState();
             cancelBatch();
             clearUndoStack();
@@ -402,6 +404,15 @@ export function createServer(): McpServer {
                 }
               }
             }
+
+            // Start live sync (non-blocking — continues in HTTP-only mode if socket fails)
+            startLiveSync(apiClient, pid).catch((err) => {
+              console.error(
+                `[plasmic-mcp] LiveSync start failed (non-fatal): ${
+                  err instanceof Error ? err.message : String(err)
+                }`
+              );
+            });
 
             const components = site.components ?? [];
             const pages = components.filter((c: any) => c.pageMeta?.path);
@@ -537,6 +548,9 @@ export function createServer(): McpServer {
           case "refresh": {
             const session = requireSession();
 
+            // Stop live sync before cleanup
+            stopLiveSync();
+
             // Cancel any active batch (changes are discarded)
             cancelBatch();
 
@@ -602,6 +616,15 @@ export function createServer(): McpServer {
                 }
               }
             }
+
+            // Restart live sync after reload (non-blocking)
+            startLiveSync(apiClient, session.projectId).catch((err) => {
+              console.error(
+                `[plasmic-mcp] LiveSync restart failed (non-fatal): ${
+                  err instanceof Error ? err.message : String(err)
+                }`
+              );
+            });
 
             const components = site.components ?? [];
             const pages = components.filter((c: any) => c.pageMeta?.path);

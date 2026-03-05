@@ -24,6 +24,15 @@ export interface SaveResult {
   incremental: boolean;
 }
 
+/** Module-level flag indicating whether a save is in flight.
+ *  Used by update-queue to pause processing during saves. */
+let _saving = false;
+
+/** Check if a save is currently in flight. */
+export function isSaving(): boolean {
+  return _saving;
+}
+
 export class SaveManager {
   constructor(private apiClient: PlasmicApiClient) {}
 
@@ -76,6 +85,9 @@ export class SaveManager {
       );
     }
 
+    // Track pending save for self-update echo detection (P0.6)
+    session.pendingSavedRevisionNum = newRevisionNum;
+    _saving = true;
     try {
       await this.apiClient.saveRevision(projectId, newRevisionNum, {
         data: JSON.stringify(bundle),
@@ -120,6 +132,8 @@ export class SaveManager {
         );
       }
       throw err;
+    } finally {
+      _saving = false;
     }
   }
 
@@ -176,6 +190,9 @@ export class SaveManager {
       );
     }
 
+    // Track pending save for self-update echo detection (P0.6)
+    session.pendingSavedRevisionNum = newRevisionNum;
+    _saving = true;
     try {
       await this.apiClient.saveRevision(projectId, newRevisionNum, {
         data: JSON.stringify(bundle),
@@ -186,6 +203,14 @@ export class SaveManager {
         modifiedComponentIids: [],
         modelSchemaHash,
       });
+
+      session.revisionNum = newRevisionNum;
+
+      console.error(
+        `[plasmic-mcp] Saved revision ${newRevisionNum} (full bundle, version: ${freshBundleVersion})`
+      );
+
+      return { revisionNum: newRevisionNum, incremental: false };
     } catch (err: unknown) {
       if (err instanceof PlasmicApiError && err.statusCode === 412) {
         if (err.errorType === "SchemaMismatchError") {
@@ -208,14 +233,8 @@ export class SaveManager {
         }
       }
       throw err;
+    } finally {
+      _saving = false;
     }
-
-    session.revisionNum = newRevisionNum;
-
-    console.error(
-      `[plasmic-mcp] Saved revision ${newRevisionNum} (full bundle, version: ${freshBundleVersion})`
-    );
-
-    return { revisionNum: newRevisionNum, incremental: false };
   }
 }

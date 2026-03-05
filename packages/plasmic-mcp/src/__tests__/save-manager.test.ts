@@ -14,7 +14,7 @@
  */
 
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
-import { SaveManager } from "../save-manager";
+import { SaveManager, isSaving } from "../save-manager";
 import { setSession, clearSession } from "../session";
 import { mockFastBundle, mockAddrOf } from "../__mocks__/wab-bundler";
 import { PlasmicApiError } from "../api-client";
@@ -400,6 +400,68 @@ describe("SaveManager", () => {
           removedInsts: [],
         } as any)
       ).rejects.toThrow("refresh-project");
+    });
+  });
+
+  describe("isSaving flag", () => {
+    it("is false by default", () => {
+      expect(isSaving()).toBe(false);
+    });
+
+    it("is true during save and false after", async () => {
+      const session = makeSession();
+      setSession(session);
+
+      let savedDuringSave = false;
+      api.saveRevision = vi.fn().mockImplementation(async () => {
+        savedDuringSave = isSaving();
+        return {};
+      });
+
+      await saveManager.saveChanges({
+        changes: [],
+        newInsts: [],
+        removedInsts: [],
+      } as any);
+
+      expect(savedDuringSave).toBe(true);
+      expect(isSaving()).toBe(false);
+    });
+
+    it("is false after save failure", async () => {
+      setSession(makeSession());
+      api.saveRevision = vi.fn().mockRejectedValue(new Error("network error"));
+
+      await expect(
+        saveManager.saveChanges({
+          changes: [],
+          newInsts: [],
+          removedInsts: [],
+        } as any)
+      ).rejects.toThrow("network error");
+
+      expect(isSaving()).toBe(false);
+    });
+  });
+
+  describe("pendingSavedRevisionNum tracking", () => {
+    it("sets pendingSavedRevisionNum before save", async () => {
+      const session = makeSession({ revisionNum: 10 });
+      setSession(session);
+
+      let revDuringSave: number | undefined;
+      api.saveRevision = vi.fn().mockImplementation(async () => {
+        revDuringSave = session.pendingSavedRevisionNum;
+        return {};
+      });
+
+      await saveManager.saveChanges({
+        changes: [],
+        newInsts: [],
+        removedInsts: [],
+      } as any);
+
+      expect(revDuringSave).toBe(11); // revisionNum + 1
     });
   });
 });

@@ -1,6 +1,6 @@
 # Implementation Plan
 
-_Last updated: 2026-03-05 (P0.0 completed)_
+_Last updated: 2026-03-05 (P0.0–P0.9 completed, all P0 items done)_
 
 ## Status Legend
 - `[ ]` Not started
@@ -29,136 +29,47 @@ All type declarations, mocks, vitest aliases, and accessor methods implemented. 
 **Files modified:** `wab.d.ts`, `wab-externals.d.ts`, `src/__mocks__/wab-bundler.ts`, `src/__mocks__/wab-observable-model.ts`, `src/change-tracker.ts`, `src/undo-manager.ts`, `vitest.config.unit.ts`
 **Files created:** `src/__mocks__/wab-server-updates-utils.ts`, `src/__mocks__/wab-asyncutil.ts`, `src/__mocks__/wab-socket-types.ts`, `src/__mocks__/wab-api-schema.ts`, `src/__mocks__/wab-arenas.ts`, `src/__mocks__/wab-collections.ts`, `src/__mocks__/wab-common-ext.ts`
 
-### P0.1 -- Socket.io Client Module
+### P0.1 -- Socket.io Client Module ✅ COMPLETED
 
-- [ ] **Create `src/socket-client.ts`** -- a socket.io-client wrapper that manages connection lifecycle, authentication, and event routing. Exposes `connect(host, auth, projectId)`, `disconnect()`, and event callbacks. Uses the same auth headers (`x-plasmic-api-user`, `x-plasmic-api-token`) already in `api-client.ts`. Connects to `{apiHost}/api/v1/socket` with `transports: ["websocket"]`. **Imports `ClientToServerEvents` and `ServerToClientEvents` from `@/wab/shared/api/socket`** for type-safe event handling — same types Studio uses.
-  - Files: create `packages/plasmic-mcp/src/socket-client.ts`; modify `packages/plasmic-mcp/package.json` (add `socket.io-client` dependency)
-  - Dependencies: P0.0 (needs socket type declarations)
-  - Complexity: **M**
-  - Key design decisions:
-    - The server-side socket at `/api/v1/socket` (in `platform/wab/src/wab/server/routes/projects-socket.ts`) authenticates via `x-plasmic-api-user` + `x-plasmic-api-token` headers in `extraHeaders` (extracted by `extractAuthUser()` at lines 314-361)
-    - Must also include `Authorization: Basic ...` header when `basicAuthUser`/`basicAuthPassword` are configured (matches `api-client.ts` lines 67-72)
-    - Must emit `subscribe` with `{ namespace: "projects", projectIds: [projectId], studio: true }` on connect (the `studio: true` flag at line 193 enables view events and presence tracking)
-    - Handle `initServerInfo` event with `{ modelSchemaHash, bundleVersion, selfPlayerId }` -- compare against session's known schema hash and bundle version
-    - Auto-reconnect is built into socket.io-client default behavior; on reconnect, re-subscribe and re-emit current view state
-    - `socket.io-client` will be externalized by esbuild (Layer 5 externalizes bare imports), so it must be in `dependencies`, not `devDependencies`
-    - **Reference:** `packages/watcher/src/watcher.ts` has a simpler socket.io client (`PlasmicRemoteChangeWatcher`) that connects to the same `/api/v1/socket` path. It uses project-token auth and doesn't support `studio: true`, `view` events, or `initServerInfo` data -- too limited to reuse directly, but useful as a socket.io connection pattern reference. The CLI uses `socket.io-client@^4.1.2`; MCP should use a compatible version.
+Created `src/socket-client.ts` with injectable factory pattern for testability. Connects to `{apiHost}/api/v1/socket` with WebSocket transport, same auth headers as api-client.ts. Emits `subscribe` with `studio: true` on `initServerInfo`. Handles `update`, `hostlessDataVersionUpdate`, `error` events. Re-subscribes on `io.reconnect`. Added `socket.io-client@^4.1.2` to dependencies.
 
-### P0.2 -- Update Queue and Serialization
+### P0.2 -- Update Queue and Serialization ✅ COMPLETED
 
-- [ ] **Create `src/update-queue.ts`** -- wraps Studio's `PushPullQueue` from `@/wab/commons/asyncutil` (same queue class Studio uses for `modelChangeQueue`) with gating logic for saves and mutations. **Not a from-scratch queue implementation** — imports `PushPullQueue` and `drainQueue` directly. Adds: save-in-flight gating, self-update filtering, branch filtering.
-  - Files: create `packages/plasmic-mcp/src/update-queue.ts`
-  - Dependencies: P0.0 (needs asyncutil declarations)
-  - Complexity: **S**
-  - Key design decisions:
-    - **Import `PushPullQueue` and `drainQueue`** from `@/wab/commons/asyncutil` — same queue primitives Studio uses in `StudioCtx.modelChangeQueue` (StudioCtx.tsx lines 4196-4199)
-    - Must gate processing when a save is in-flight (save-manager must expose an `isSaving` flag -- currently does NOT, addressed in P0.6)
-    - MCP is single-threaded (stdio JSON-RPC). WebSocket event callbacks fire on the same event loop but cannot interrupt a synchronous `withRecording()` block. Queue processing defers via `PushPullQueue.pull()` which is async — naturally yields to the event loop between items.
-    - Multiple rapid `update` events must be processed sequentially, not in parallel
-    - Self-update filtering: check `session.pendingSavedRevisionNum` BEFORE enqueuing to skip our own echoed saves (see P0.6)
-    - Branch filtering: skip updates where `rev.branchId !== null` (MCP does not support branches yet; Studio filters at StudioCtx.tsx lines 4130-4137)
+Created `src/update-queue.ts` wrapping `PushPullQueue` with pre-enqueue filtering (branch, self-update), save-in-flight gating (polls `isSaving()` at 50ms), and sequential processing. `stop()` pushes sentinel to unblock pending `pull()`.
 
-### P0.3 -- Incremental Update Fetcher (API Client Extension)
+### P0.3 -- Incremental Update Fetcher (API Client Extension) ✅ COMPLETED
 
-- [ ] **Add `getModelUpdates()` to `api-client.ts`** -- new method matching Studio's `SharedApi.getModelUpdates()`. Calls `GET /api/v1/projects/{projectId}/updates?revisionNum={N}&installedDeps={uuids}` and returns the typed response.
-  - Files: modify `packages/plasmic-mcp/src/api-client.ts`, modify `packages/plasmic-mcp/src/types.ts` (add response types)
-  - Dependencies: P0.0 (needs `bundler.allUuids()` type)
-  - Complexity: **S**
-  - Key design decisions:
-    - Response shape is a discriminated union:
-      1. `{ data: string, revision: number, depPkgs: Array<{ model: string; id: string }>, deletedIids: string[], modifiedComponentIids: string[] }` -- incremental update
-      2. `{ needsReload: true }` -- full reload needed
-      3. `{ data: null }` -- no changes
-    - The `installedDeps` parameter is an array of UUIDs from `bundler.allUuids()`. Must be serialized as a query parameter. The current `api-client.ts` `request()` only supports body params for POST -- need to construct the URL manually for this GET endpoint (or extend `request()` with query param support)
-    - Add `branchId?: string` optional parameter for future branch support
+Added `getModelUpdates()` to `api-client.ts` calling `GET /api/v1/projects/{id}/updates` with `URLSearchParams`. Added `ModelUpdateIncremental`, `ModelUpdateNeedsReload`, `ModelUpdateNoChanges`, and `GetModelUpdatesResponse` union type to `types.ts`. Also added `getAuth()` public accessor.
 
-### P0.4 -- Rebase Engine
+### P0.4 -- Rebase Engine ✅ COMPLETED
 
-- [ ] **Create `src/rebase-engine.ts`** -- an **orchestration layer** that calls shared Studio functions to implement the rebase algorithm. Does NOT reimplement conflict resolution — imports `undoChangesAndResolveConflicts()`, `undoChanges()`, `updateSummaryFromDeletedInstances()`, `getEmptyDeletedAssetsSummary()`, `taggedUnbundle()`, `trackComponentRoot()`, `trackComponentSite()`, `arrayReversed()`, and `xDifference()` from `@/wab/shared/`. Mirrors `StudioCtx.fetchUpdatesInternal()` (lines 6389-6577) step-for-step.
-  - Files: create `packages/plasmic-mcp/src/rebase-engine.ts`
-  - Dependencies: P0.0, P0.3
-  - Complexity: **XL**
-  - Key design decisions:
-    - **Two categories of unsaved changes (matching Studio exactly):**
-      - Undo stack entries (committed operations) -- analogous to Studio's `_changeRecords`
-      - Batch accumulated changes (if batch is open) -- analogous to Studio's `_queuedUnloggedChanges`
-    - **Rebase algorithm (mirroring StudioCtx.tsx lines 6453-6525 step-for-step):**
-      1. Undo batch accumulated changes via `undoChanges()` (from `@/wab/shared/core/undo-util`, already imported by MCP)
-      2. Undo each undo stack entry in reverse order via `undoChanges()`, using `arrayReversed()` (from `@/wab/shared/collections`)
-      3. Record `previousProjectDeps` from `site.projectDependencies`
-      4. Build `DeletedAssetsSummary` from server's `deletedIids` via `updateSummaryFromDeletedInstances()` (from `@/wab/shared/server-updates-utils`)
-      5. Apply server changes inside `recorder.withRecording()`: unbundle `depPkgs` via `taggedUnbundle()` (from `@/wab/shared/core/tagged-unbundle`, already imported by MCP), then `bundler.unbundlePartial(JSON.parse(data), projectId)`
-      6. Check for dependency deletion via `xDifference()` (from `@/wab/shared/common`) — if deps removed, throw `UnsupportedServerUpdate` → fall back to full reload (matching Studio lines 6483-6498)
-      7. Call `trackComponentRoot(c)` and `trackComponentSite(c, site)` for all components (from `@/wab/shared/core/tpls`, already imported by MCP)
-      8. Track saved IIDs: add `Object.keys(partialBundle.map)`, delete `deletedIids`
-      9. Re-apply each undo stack entry forward via `undoChangesAndResolveConflicts(site, recorder, summary, changes)` (from `@/wab/shared/server-updates-utils`)
-      10. Re-apply batch accumulated changes via `undoChangesAndResolveConflicts()`
-    - **Undo stack: full per-entry rebuild (matching Studio).** Each entry is individually rebased so that undo continues to work after remote updates. The undo-manager needs `getStack(): UndoOperation[]` and `replaceStack(stack: UndoOperation[])` accessors.
-    - **Batch manager interaction:** `getAccumulatedChanges()` returns `currentBatch?.accumulatedChanges` directly (not a clone — confirmed by code review). After rebase, write back the rebased changes directly. Add `replaceAccumulatedChanges(changes: RecordedChanges)` setter to batch-manager.
-    - **Deleted assets summary accumulator:** Store on session as `serverUpdatesSummary`. Accumulates across rebases, cleared only on full reload. Matches Studio's `_serverUpdatesSummary`.
-    - If `needsReload: true` or `UnsupportedServerUpdate` thrown, fall back to full project reload (same as `project.refresh`)
-    - Update `session.revisionNum` to server's new revision after successful rebase
-  - **Shared code imported (not reimplemented):**
-    - `undoChangesAndResolveConflicts` — `@/wab/shared/server-updates-utils` (line 245)
-    - `getEmptyDeletedAssetsSummary` — `@/wab/shared/server-updates-utils` (line 137)
-    - `updateSummaryFromDeletedInstances` — `@/wab/shared/server-updates-utils` (line 156)
-    - `undoChanges` — `@/wab/shared/core/undo-util` (already in MCP)
-    - `taggedUnbundle` — `@/wab/shared/core/tagged-unbundle` (already in MCP)
-    - `trackComponentRoot`, `trackComponentSite` — `@/wab/shared/core/tpls` (already in MCP)
-    - `arrayReversed` — `@/wab/shared/collections` (line 193)
-    - `xDifference` — `@/wab/shared/common` (line 1039)
+Created `src/rebase-engine.ts` — pure orchestration layer mirroring `StudioCtx.fetchUpdatesInternal()`. Implements 5-phase rebase: revert local changes → record server deletions → apply server partial bundle → check dependency deletion → re-apply local with conflict resolution. `applyServerUpdate()` separated from `fetchAndRebase()` for testability. Throws `UnsupportedServerUpdate` for needsReload and dependency deletion cases.
 
-### P0.5 -- Integration into Session Lifecycle
+### P0.5 -- Integration into Session Lifecycle ✅ COMPLETED
 
-- [ ] **Wire socket into `project.set` and `project.refresh`** -- connect socket when project is loaded, disconnect when switching projects or clearing session. Handle `initServerInfo` to detect schema/bundle version mismatches.
-  - Files: modify `packages/plasmic-mcp/src/server.ts` (project.set at ~line 345 and project.refresh at ~line 537), modify `packages/plasmic-mcp/src/session.ts`
-  - Dependencies: P0.1, P0.2, P0.4
-  - Complexity: **L**
-  - Key design decisions:
-    - Socket connection should be non-blocking: if it fails, log a warning and continue with HTTP-only behavior
-    - On `project.set`: connect socket AFTER `setSession()` (line 368) and `initChangeTracker()` (line 385)
-    - On `project.refresh`: disconnect old socket, then reconnect after reload
-    - On `clearSession()`: disconnect socket
-    - **Session state additions needed** (session.ts currently has zero socket fields):
-      - `selfPlayerId?: number` -- from `initServerInfo` event
-      - `pendingSavedRevisionNum?: number` -- for self-update detection
-      - `serverUpdatesSummary?: any` -- accumulated `DeletedAssetsSummary`
-      - `isAtTip?: boolean` -- defaults to `true`, set `false` on schema mismatch
-    - Handle `initServerInfo`: compare `modelSchemaHash` (imported from `@/wab/shared/model/classes-metas`) and `bundleVersion` (on session). If mismatched, set `isAtTip = false` and warn
-    - Handle `hostlessDataVersionUpdate`: if `data.hostlessDataVersion > session.hostlessDataVersion`, log warning
+Created `src/live-sync.ts` integration module. Added `selfPlayerId`, `pendingSavedRevisionNum`, `serverUpdatesSummary`, `isAtTip` fields to Session. Wired `startLiveSync()`/`stopLiveSync()` into `project.set` and `project.refresh` in server.ts. Socket connection is non-blocking (`.catch()` logs warning, continues HTTP-only). `initServerInfo` handler detects schema/bundle version mismatches. `hostlessDataVersionUpdate` handler updates session.
 
-### P0.6 -- Save Manager Coordination
+### P0.6 -- Save Manager Coordination ✅ COMPLETED
 
-- [ ] **Coordinate saves with incoming updates** -- save-manager must signal when actively saving so update queue pauses, and handle self-update echoes.
-  - Files: modify `packages/plasmic-mcp/src/save-manager.ts`, modify `packages/plasmic-mcp/src/update-queue.ts`
-  - Dependencies: P0.2, P0.5
-  - Complexity: **M**
-  - Key design decisions:
-    - **Add `isSaving` flag** to `SaveManager`. Set `true` before HTTP request, `false` in `finally` block
-    - **Self-update detection (matching StudioCtx.tsx lines 4146-4167):** Before sending save, set `session.pendingSavedRevisionNum = newRevisionNum`. When socket `update` handler sees `pendingSavedRevisionNum >= revisionNum`, skip the update. When `pendingSavedRevisionNum === revisionNum`, clear the pending flag.
-    - **Auto-rebase on 412 ProjectRevisionError:** Currently `save-manager.ts` lines 117-120 throw "use refresh-project". With WebSocket: (a) call rebase engine to fetch updates, (b) retry save once. If retry also fails, then throw. Transforms "user manually refreshes" to "automatic recovery".
-    - **Save-during-rebase prevention:** If rebase is in progress, save must wait. Can use the update queue's sequential processing or an `isRebasing` flag.
+Added module-level `isSaving()` flag to save-manager.ts (set true before HTTP call, false in `finally`). Both `saveChanges()` and `saveFullBundle()` set `session.pendingSavedRevisionNum` before save for self-update echo detection. Update queue uses `isSaving()` to pause processing during saves.
 
-### P0.7 -- Socket Client Unit Tests
+**Note:** Auto-rebase on 412 ProjectRevisionError deferred to P2.3 — requires integration testing with a real server. Current behavior still throws with guidance to use refresh-project.
 
-- [ ] **Create `src/__tests__/socket-client.test.ts`** -- unit tests with mocked socket.io-client. Cover: connection with correct headers (including Basic Auth), subscribe flow, event handling, reconnection, disconnect on session clear.
-  - Files: create `packages/plasmic-mcp/src/__tests__/socket-client.test.ts`
-  - Dependencies: P0.1
-  - Complexity: **M**
+### P0.7 -- Socket Client Unit Tests ✅ COMPLETED
 
-### P0.8 -- Update Queue Unit Tests
+12 tests covering: auth headers, Basic Auth, subscribe flow on initServerInfo, event routing (update, hostlessDataVersionUpdate, error), reconnection re-subscribe, disconnect state clearing, connection failure graceful degradation.
 
-- [ ] **Create `src/__tests__/update-queue.test.ts`** -- unit tests for sequential processing, save-in-flight gating, rapid event queuing, self-update filtering, branch filtering. Uses mocked `PushPullQueue` from the asyncutil mock.
-  - Files: create `packages/plasmic-mcp/src/__tests__/update-queue.test.ts`
-  - Dependencies: P0.2
-  - Complexity: **M**
+### P0.8 -- Update Queue Unit Tests ✅ COMPLETED
 
-### P0.9 -- Rebase Engine Unit Tests
+10 tests covering: sequential processing, concurrency=1, branch filtering, self-update filtering, save-in-flight gating, error resilience, stop sentinel.
 
-- [ ] **Create `src/__tests__/rebase-engine.test.ts`** -- unit tests covering: simple rebase (no local changes), rebase with undo stack entries (per-entry rebuild matching Studio), rebase with open batch changes, `needsReload` fallback, conflict resolution failure fallback, dependency deletion detection via `xDifference`, revision number update, `DeletedAssetsSummary` accumulation across rebases.
-  - Files: create `packages/plasmic-mcp/src/__tests__/rebase-engine.test.ts`
-  - Dependencies: P0.0, P0.4
-  - Complexity: **L**
+### P0.9 -- Rebase Engine Unit Tests ✅ COMPLETED
+
+14 tests covering: no-changes null return, needsReload exception, simple fast-forward, undo stack per-entry rebuild, batch changes rebase, combined undo+batch, dependency deletion detection, deleted instances IID resolution, dep pkg unbundling, revision number update, DeletedAssetsSummary accumulation.
+
+### P0.10 -- Live Sync Integration Tests ✅ COMPLETED
+
+13 tests in `live-sync.test.ts` covering: start/stop lifecycle, serverUpdatesSummary initialization, no-session skip, previous-sync cleanup, initServerInfo schema/bundle mismatch detection, hostless data version update, update event routing through queue, different-project filtering. 4 tests in `save-manager.test.ts` covering: isSaving flag, pendingSavedRevisionNum tracking.
 
 ---
 
