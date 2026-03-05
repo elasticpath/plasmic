@@ -31,10 +31,18 @@ Infrastructure is automated via Terraform in `plasmic-terraservices`. This check
   CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
   ```
 - [ ] WAB service deployed (runs `maybeMigrateDatabase()` on first boot — executes all TypeORM migrations)
+- [ ] Export devflags from the integration environment:
+  ```sql
+  -- Run against the integration database
+  SELECT data FROM dev_flag_overrides ORDER BY "createdAt" DESC LIMIT 1;
+  ```
+  Save the JSON output to a file (e.g., `devflags-template.json`).
 - [ ] Run bootstrap script:
   ```bash
   cd platform/wab
-  ADMIN_PASSWORD=<strong-password> yarn bootstrap:prod --dburi postgresql://wab:<password>@<rds-host>:5432/wab
+  ADMIN_PASSWORD=<strong-password> yarn bootstrap:prod \
+    --devflags /path/to/devflags-template.json \
+    --dburi postgresql://wab:<password>@<rds-host>:5432/wab
   ```
 
 ### Known warnings during bootstrap

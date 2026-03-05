@@ -22,8 +22,8 @@ const COMMERCE_DEPENDENTS = [
  * `@plasmicpkgs/{name}`.
  */
 const NPM_PKG_OVERRIDES: Record<string, string> = {
-  "commerce-elastic-path":
-    "@elasticpath/plasmic-ep-commerce-elastic-path",
+  // All packages default to @plasmicpkgs/{name}.
+  // Add overrides here only if a package is published under a different npm scope.
 };
 
 export function getDeps(pkgName: string): string[] {

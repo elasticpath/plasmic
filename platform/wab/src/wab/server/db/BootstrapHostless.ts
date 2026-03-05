@@ -6,7 +6,9 @@
  * workspace with all hostless projects, and DevFlagOverrides.
  *
  * Usage:
- *   ADMIN_PASSWORD=<password> yarn bootstrap:prod --dburi postgresql://wab:pass@host:5432/wab
+ *   ADMIN_PASSWORD=<password> yarn bootstrap:prod \
+ *     --devflags /path/to/devflags-template.json \
+ *     --dburi postgresql://wab:pass@host:5432/wab
  *
  * After this script completes, run the "Publish Hostless Packages" GitHub
  * Actions workflow to update all hostless packages to their latest versions.
@@ -19,6 +21,7 @@ import {
   maybeMigrateDatabase,
 } from "@/wab/server/db/DbCon";
 import { DbMgr, normalActor, SUPER_USER } from "@/wab/server/db/DbMgr";
+import { remapDevFlagOverrides } from "@/wab/server/db/seed/devflags-remap";
 import { seedProdFeatureTiers } from "@/wab/server/db/seed/feature-tier-prod";
 import {
   getDeps,
@@ -26,15 +29,9 @@ import {
   getOrderedPackageNames,
 } from "@/wab/server/db/seed/hostless-metadata";
 import { logger } from "@/wab/server/observability";
-import { getBundleInfo, PkgMgr } from "@/wab/server/pkg-mgr";
+import { PkgMgr } from "@/wab/server/pkg-mgr";
 import { Bundler } from "@/wab/shared/bundler";
-import { ensureType, spawn } from "@/wab/shared/common";
-import { defaultComponentKinds } from "@/wab/shared/core/components";
-import {
-  HostLessPackageInfo as HostLessPackageInfoDevflags,
-  InsertableTemplatesGroup,
-  Installable,
-} from "@/wab/shared/devflags";
+import { spawn } from "@/wab/shared/common";
 import {
   InsertableId,
   PLEXUS_INSERTABLE_ID,
@@ -42,7 +39,6 @@ import {
 } from "@/wab/shared/insertables";
 import { HostLessPackageInfo } from "@/wab/shared/model/classes";
 import fs from "fs";
-import { kebabCase, startCase } from "lodash";
 import path from "path";
 import { EntityManager } from "typeorm";
 
@@ -212,111 +208,35 @@ async function createHostlessProjects(
 }
 
 // ---------------------------------------------------------------------------
-// Step 6: Set DevFlagOverrides
+// Step 6: Set DevFlagOverrides (from template file)
 // ---------------------------------------------------------------------------
 async function setDevFlagOverrides(
   em: EntityManager,
   hostlessWorkspaceId: string,
-  hostlessProjects: { name: string; projectId: string }[]
+  hostlessProjects: { name: string; projectId: string }[],
+  devflagsTemplatePath: string
 ) {
   const db = new DbMgr(em, SUPER_USER);
-  const plexusBundleInfo = getBundleInfo(PLEXUS_INSERTABLE_ID);
 
-  // Build hostLessComponents entries for the Component Store
-  const hostLessComponents: HostLessPackageInfoDevflags[] =
-    hostlessProjects.map(({ name, projectId }) => ({
-      type: "hostless-package" as const,
-      name,
-      sectionLabel: "Code components",
-      projectId,
-      items: [],
-    }));
+  // Read the devflags template file (exported from an existing environment)
+  const templateJson = JSON.parse(
+    fs.readFileSync(devflagsTemplatePath, "utf-8")
+  );
 
-  const overrides = {
-    hostLessWorkspaceId: hostlessWorkspaceId,
-    brands: {
-      "": {
-        logoHref: "/",
-        logoImgSrc: "https://developer.elasticpath.com/logo/light.svg",
-        logoTooltip: "Elastic Path",
-      },
-    },
-    plexus: true,
-    installables: ensureType<Installable[] | undefined>([
-      {
-        type: "ui-kit",
-        isInstallOnly: true,
-        isNew: true,
-        name: "Plasmic Design System",
-        projectId: plexusBundleInfo.projectId,
-        imageUrl: "https://static1.plasmic.app/plasmic-logo.png",
-        entryPoint: {
-          type: "arena",
-          name: "Components",
-        },
-      },
-    ]),
-    insertableTemplates: ensureType<InsertableTemplatesGroup | undefined>({
-      type: "insertable-templates-group",
-      name: "root",
-      items: [
-        {
-          type: "insertable-templates-group" as const,
-          name: "Components",
-          items: Object.keys(defaultComponentKinds).map((item) => ({
-            componentName: startCase(item),
-            templateName: `${plexusBundleInfo.sysname}/${kebabCase(item)}`,
-            imageUrl: `https://static1.plasmic.app/insertables/${kebabCase(
-              item
-            )}.svg`,
-            type: "insertable-templates-component" as const,
-            projectId: plexusBundleInfo.projectId,
-            tokenResolution: "reuse-by-name" as const,
-          })),
-        },
-      ].filter((insertableGroup) => insertableGroup.items.length > 0),
-    }),
-    insertPanelContent: {
-      aliases: {
-        dataFetcher: "builtincc:plasmic-data-source-fetcher",
-        pageMeta: "builtincc:hostless-plasmic-head",
-        ...Object.keys(defaultComponentKinds).reduce(
-          (acc, defaultKind) => {
-            acc[defaultKind] = `default:${defaultKind}`;
-            return acc;
-          },
-          {} as Record<string, string>
-        ),
-      },
-      builtinSections: {
-        Home: {
-          Basic: [
-            "text",
-            "heading",
-            "link",
-            "linkContainer",
-            "section",
-            "columns",
-            "vstack",
-            "hstack",
-            "grid",
-            "box",
-            "image",
-            "icon",
-          ],
-          "Customizable components": Object.keys(defaultComponentKinds),
-          Advanced: ["pageMeta", "dataFetcher"],
-        },
-      },
-      builtinSectionsInstallables: {
-        "Customizable components": plexusBundleInfo.projectId,
-      },
-    },
-    hostLessComponents,
-  };
+  // Build project name → ID mapping from the projects we just created
+  const projects: Record<string, string> = {};
+  for (const { name, projectId } of hostlessProjects) {
+    projects[name] = projectId;
+  }
+
+  // Remap project IDs for this environment
+  const overrides = remapDevFlagOverrides(templateJson, {
+    hostlessWorkspaceId,
+    projects,
+  });
 
   await db.setDevFlagOverrides(JSON.stringify(overrides, null, 2));
-  logger().info("Set DevFlagOverrides");
+  logger().info("Set DevFlagOverrides from template");
 }
 
 // ---------------------------------------------------------------------------
@@ -330,12 +250,17 @@ async function main() {
   }
 
   const opts = new Command("bootstrap-prod")
+    .requiredOption(
+      "-df, --devflags <path>",
+      "Path to devflags JSON template (exported from an existing environment)"
+    )
     .option("-db, --dburi <dburi>", "Database URI", DEFAULT_DATABASE_URI)
     .parse(process.argv)
     .opts();
 
   logger().info("Starting production bootstrap...");
   logger().info(`Database: ${opts.dburi.replace(/:[^:@]*@/, ":***@")}`);
+  logger().info(`DevFlags template: ${path.resolve(opts.devflags)}`);
 
   await ensureDbConnections(opts.dburi, {
     useEnvPassword: true,
@@ -375,7 +300,12 @@ async function main() {
 
     // Step 6: Set DevFlagOverrides
     logger().info("=== Step 6: Setting DevFlagOverrides ===");
-    await setDevFlagOverrides(em, workspace.id, hostlessProjects);
+    await setDevFlagOverrides(
+      em,
+      workspace.id,
+      hostlessProjects,
+      path.resolve(opts.devflags)
+    );
 
     logger().info("=== Bootstrap complete ===");
     logger().info(

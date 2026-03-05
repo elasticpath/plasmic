@@ -1,0 +1,1289 @@
+{
+  "adminTeamDomain": "example.com",
+  "needsIntroSplash": false,
+  "hostLessWorkspaceId": "REMAPPED_AT_BOOTSTRAP",
+  "imgOptimizerHost": "https://img.plasmic.app",
+  "plexus": true,
+  "hideBlankStarter": true,
+  "allowHtmlPaste": true,
+  "copilotTab": "true",
+  "copilotClaude": "true",
+  "disablePublicCopilot": true,
+  "autoUpgradeHostless": true,
+  "contentOnly": true,
+  "showCopilot": true,
+  "copilotSql": true,
+  "brands": {
+    "": {
+      "logoHref": "/",
+      "logoImgSrc": "https://static1.plasmic.app/plasmic-logo.png",
+      "logoTooltip": "Plasmic Studio"
+    }
+  },
+  "installables": [
+    {
+      "type": "ui-kit",
+      "isInstallOnly": true,
+      "isNew": true,
+      "name": "Plasmic Design System",
+      "projectId": "PLEXUS_PROJECT_ID",
+      "imageUrl": "https://static1.plasmic.app/plasmic-logo.png",
+      "entryPoint": {
+        "type": "arena",
+        "name": "Components"
+      }
+    }
+  ],
+  "insertableTemplates": {
+    "type": "insertable-templates-group",
+    "name": "root",
+    "items": [
+      {
+        "type": "insertable-templates-group",
+        "name": "Components",
+        "items": [
+          {
+            "componentName": "Button",
+            "templateName": "plexus/button",
+            "imageUrl": "https://static1.plasmic.app/insertables/button.svg",
+            "type": "insertable-templates-component",
+            "projectId": "PLEXUS_PROJECT_ID",
+            "tokenResolution": "reuse-by-name"
+          },
+          {
+            "componentName": "Checkbox",
+            "templateName": "plexus/checkbox",
+            "imageUrl": "https://static1.plasmic.app/insertables/checkbox.svg",
+            "type": "insertable-templates-component",
+            "projectId": "PLEXUS_PROJECT_ID",
+            "tokenResolution": "reuse-by-name"
+          },
+          {
+            "componentName": "Checkbox Group",
+            "templateName": "plexus/checkbox-group",
+            "imageUrl": "https://static1.plasmic.app/insertables/checkbox-group.svg",
+            "type": "insertable-templates-component",
+            "projectId": "PLEXUS_PROJECT_ID",
+            "tokenResolution": "reuse-by-name"
+          },
+          {
+            "componentName": "Combobox",
+            "templateName": "plexus/combobox",
+            "imageUrl": "https://static1.plasmic.app/insertables/combobox.svg",
+            "type": "insertable-templates-component",
+            "projectId": "PLEXUS_PROJECT_ID",
+            "tokenResolution": "reuse-by-name"
+          },
+          {
+            "componentName": "Drawer",
+            "templateName": "plexus/drawer",
+            "imageUrl": "https://static1.plasmic.app/insertables/drawer.svg",
+            "type": "insertable-templates-component",
+            "projectId": "PLEXUS_PROJECT_ID",
+            "tokenResolution": "reuse-by-name"
+          },
+          {
+            "componentName": "Modal",
+            "templateName": "plexus/modal",
+            "imageUrl": "https://static1.plasmic.app/insertables/modal.svg",
+            "type": "insertable-templates-component",
+            "projectId": "PLEXUS_PROJECT_ID",
+            "tokenResolution": "reuse-by-name"
+          },
+          {
+            "componentName": "Popover",
+            "templateName": "plexus/popover",
+            "imageUrl": "https://static1.plasmic.app/insertables/popover.svg",
+            "type": "insertable-templates-component",
+            "projectId": "PLEXUS_PROJECT_ID",
+            "tokenResolution": "reuse-by-name"
+          },
+          {
+            "componentName": "Radio",
+            "templateName": "plexus/radio",
+            "imageUrl": "https://static1.plasmic.app/insertables/radio.svg",
+            "type": "insertable-templates-component",
+            "projectId": "PLEXUS_PROJECT_ID",
+            "tokenResolution": "reuse-by-name"
+          },
+          {
+            "componentName": "Radio Group",
+            "templateName": "plexus/radio-group",
+            "imageUrl": "https://static1.plasmic.app/insertables/radio-group.svg",
+            "type": "insertable-templates-component",
+            "projectId": "PLEXUS_PROJECT_ID",
+            "tokenResolution": "reuse-by-name"
+          },
+          {
+            "componentName": "Range Slider",
+            "templateName": "plexus/range-slider",
+            "imageUrl": "https://static1.plasmic.app/insertables/range-slider.svg",
+            "type": "insertable-templates-component",
+            "projectId": "PLEXUS_PROJECT_ID",
+            "tokenResolution": "reuse-by-name"
+          },
+          {
+            "componentName": "Select",
+            "templateName": "plexus/select",
+            "imageUrl": "https://static1.plasmic.app/insertables/select.svg",
+            "type": "insertable-templates-component",
+            "projectId": "PLEXUS_PROJECT_ID",
+            "tokenResolution": "reuse-by-name"
+          },
+          {
+            "componentName": "Slider",
+            "templateName": "plexus/slider",
+            "imageUrl": "https://static1.plasmic.app/insertables/slider.svg",
+            "type": "insertable-templates-component",
+            "projectId": "PLEXUS_PROJECT_ID",
+            "tokenResolution": "reuse-by-name"
+          },
+          {
+            "componentName": "Switch",
+            "templateName": "plexus/switch",
+            "imageUrl": "https://static1.plasmic.app/insertables/switch.svg",
+            "type": "insertable-templates-component",
+            "projectId": "PLEXUS_PROJECT_ID",
+            "tokenResolution": "reuse-by-name"
+          },
+          {
+            "componentName": "Text Area",
+            "templateName": "plexus/text-area",
+            "imageUrl": "https://static1.plasmic.app/insertables/text-area.svg",
+            "type": "insertable-templates-component",
+            "projectId": "PLEXUS_PROJECT_ID",
+            "tokenResolution": "reuse-by-name"
+          },
+          {
+            "componentName": "Text Input",
+            "templateName": "plexus/text-input",
+            "imageUrl": "https://static1.plasmic.app/insertables/text-input.svg",
+            "type": "insertable-templates-component",
+            "projectId": "PLEXUS_PROJECT_ID",
+            "tokenResolution": "reuse-by-name"
+          },
+          {
+            "componentName": "Text Field",
+            "templateName": "plexus/text-field",
+            "imageUrl": "https://static1.plasmic.app/insertables/text-field.svg",
+            "type": "insertable-templates-component",
+            "projectId": "PLEXUS_PROJECT_ID",
+            "tokenResolution": "reuse-by-name"
+          },
+          {
+            "componentName": "Tooltip",
+            "templateName": "plexus/tooltip",
+            "imageUrl": "https://static1.plasmic.app/insertables/tooltip.svg",
+            "type": "insertable-templates-component",
+            "projectId": "PLEXUS_PROJECT_ID",
+            "tokenResolution": "reuse-by-name"
+          },
+          {
+            "componentName": "Unauthorized",
+            "templateName": "plexus/unauthorized",
+            "imageUrl": "https://static1.plasmic.app/insertables/unauthorized.svg",
+            "type": "insertable-templates-component",
+            "projectId": "PLEXUS_PROJECT_ID",
+            "tokenResolution": "reuse-by-name"
+          }
+        ]
+      }
+    ]
+  },
+  "insertPanelContent": {
+    "aliases": {
+      "dataFetcher": "builtincc:plasmic-data-source-fetcher",
+      "pageMeta": "builtincc:hostless-plasmic-head",
+      "button": "default:button",
+      "checkbox": "default:checkbox",
+      "checkbox-group": "default:checkbox-group",
+      "combobox": "default:combobox",
+      "drawer": "default:drawer",
+      "modal": "default:modal",
+      "popover": "default:popover",
+      "radio": "default:radio",
+      "radio-group": "default:radio-group",
+      "range-slider": "default:range-slider",
+      "select": "default:select",
+      "slider": "default:slider",
+      "switch": "default:switch",
+      "text-area": "default:text-area",
+      "text-input": "default:text-input",
+      "text-field": "default:text-field",
+      "tooltip": "default:tooltip",
+      "unauthorized": "default:unauthorized"
+    },
+    "builtinSections": {
+      "Home": {
+        "Basic": [
+          "text", "heading", "link", "linkContainer", "section",
+          "columns", "vstack", "hstack", "grid", "box", "image", "icon"
+        ],
+        "Customizable components": [
+          "button", "checkbox", "checkbox-group", "combobox", "drawer",
+          "modal", "popover", "radio", "radio-group", "range-slider",
+          "select", "slider", "switch", "text-area", "text-input",
+          "text-field", "tooltip", "unauthorized"
+        ],
+        "Advanced": ["pageMeta", "dataFetcher"]
+      }
+    },
+    "builtinSectionsInstallables": {
+      "Customizable components": "PLEXUS_PROJECT_ID"
+    }
+  },
+  "hiddenDataSources": ["plasmic-cms"],
+  "hostLessComponents": [
+    {
+      "type": "hostless-package",
+      "name": "YouTube",
+      "sectionLabel": "Media",
+      "hiddenWhenInstalled": true,
+      "codeName": "react-youtube",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/react-youtube",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "hostless-youtube",
+          "displayName": "YouTube",
+          "imageUrl": "https://thumbs.dreamstime.com/b/v%C3%ADdeo-da-web-de-youtube-projeto-moderno-108866663.jpg"
+        }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "hidden": true,
+      "sectionLabel": "Design systems",
+      "type": "hostless-package",
+      "name": "Plume Customizable Components",
+      "isHeaderLess": true,
+      "syntheticPackage": true,
+      "isInstallOnly": true,
+      "imageUrl": "https://static1.plasmic.app/plasmic-logo.png",
+      "codeName": "plume",
+      "codeLink": "",
+      "onlyShownIn": "new",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "Plume",
+          "displayName": "Plume Design System",
+          "imageUrl": "https://static1.plasmic.app/plasmic-logo.png"
+        }
+      ],
+      "projectId": []
+    },
+    {
+      "hidden": true,
+      "sectionLabel": "Design systems",
+      "type": "hostless-package",
+      "name": "Ant Design System 4",
+      "isInstallOnly": true,
+      "imageUrl": "https://static1.plasmic.app/antd.png",
+      "codeName": "antd",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/antd",
+      "onlyShownIn": "old",
+      "items": [
+        { "type": "hostless-component", "componentName": "AntdButton", "displayName": "Button", "imageUrl": "https://static1.plasmic.app/antd_button.png" },
+        { "type": "hostless-component", "componentName": "AntdSlider", "displayName": "Slider", "imageUrl": "https://static1.plasmic.app/antd_slider.png" },
+        { "type": "hostless-component", "componentName": "AntdSwitch", "displayName": "Switch", "imageUrl": "https://static1.plasmic.app/antd_switch.png" },
+        { "type": "hostless-component", "componentName": "AntdSelect", "displayName": "Select", "imageUrl": "https://static1.plasmic.app/antd_select.png" },
+        { "type": "hostless-component", "componentName": "AntdCollapse", "displayName": "Collapse", "imageUrl": "https://static1.plasmic.app/antd_collapse.png" },
+        { "type": "hostless-component", "componentName": "AntdCheckbox", "displayName": "Checkbox", "imageUrl": "https://static1.plasmic.app/antd_checkbox.png" },
+        { "type": "hostless-component", "componentName": "AntdMenu", "displayName": "Menu", "imageUrl": "https://static1.plasmic.app/antd_menu.png" },
+        { "type": "hostless-component", "componentName": "AntdCarousel", "displayName": "Carousel", "hidden": true, "imageUrl": "https://static1.plasmic.app/antd_carousel.png" },
+        { "type": "hostless-component", "componentName": "AntdInput", "displayName": "Input", "imageUrl": "https://static1.plasmic.app/antd_input.png" },
+        { "type": "hostless-component", "componentName": "AntdTable", "displayName": "Table", "hidden": true, "imageUrl": "https://static1.plasmic.app/antd_table.png" },
+        { "type": "hostless-component", "componentName": "AntdTabs", "displayName": "Tabs", "imageUrl": "https://static1.plasmic.app/antd_tabs.png" },
+        { "type": "hostless-component", "componentName": "AntdRate", "displayName": "Rate", "imageUrl": "https://static1.plasmic.app/antd_rate.png" }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "hidden": true,
+      "sectionLabel": "Design systems",
+      "type": "hostless-package",
+      "name": "Ant Design System 4 (legacy)",
+      "isInstallOnly": true,
+      "imageUrl": "https://static1.plasmic.app/antd.png",
+      "codeName": "antd",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/antd",
+      "onlyShownIn": "new",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "Ant Design System 4 (legacy)",
+          "displayName": "Ant Design System 4 (legacy)",
+          "imageUrl": "https://static1.plasmic.app/antd.png"
+        }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Design systems",
+      "type": "hostless-package",
+      "name": "Ant Design System 5",
+      "isInstallOnly": true,
+      "imageUrl": "https://static1.plasmic.app/antd5.png",
+      "codeName": "antd5",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/antd5",
+      "onlyShownIn": "new",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "Ant Design System 5",
+          "displayName": "Ant Design System 5",
+          "imageUrl": "https://static1.plasmic.app/antd5.png"
+        }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Design systems",
+      "type": "hostless-package",
+      "name": "Ant Design Pro Components",
+      "isInstallOnly": true,
+      "imageUrl": "https://static1.plasmic.app/antd5.png",
+      "codeName": "antd5",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/antd5",
+      "onlyShownIn": "new",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "Ant Design Pro Components",
+          "displayName": "Ant Design Pro Components",
+          "imageUrl": "https://static1.plasmic.app/antd5.png"
+        }
+      ],
+      "projectId": ["REMAPPED_AT_BOOTSTRAP_antd5", "REMAPPED_AT_BOOTSTRAP_plasmic-rich-components"]
+    },
+    {
+      "sectionLabel": "Design systems",
+      "type": "hostless-package",
+      "name": "React Aria",
+      "isInstallOnly": true,
+      "imageUrl": "https://static1.plasmic.app/react-aria.png",
+      "codeName": "react-aria",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/react-aria",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "React Aria",
+          "displayName": "React Aria",
+          "imageUrl": "https://static1.plasmic.app/react-aria.png"
+        }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "hidden": true,
+      "sectionLabel": "Design systems",
+      "type": "hostless-package",
+      "name": "Chakra UI System",
+      "isInstallOnly": true,
+      "imageUrl": "https://static1.plasmic.app/chakra.png",
+      "codeName": "plasmic-chakra-ui",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/plasmic-chakra-ui",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "Chakra-UI",
+          "displayName": "Chakra-UI Design System",
+          "imageUrl": "https://static1.plasmic.app/chakra.png"
+        }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "hidden": true,
+      "sectionLabel": "Design systems",
+      "type": "hostless-package",
+      "name": "More HTML elements",
+      "isInstallOnly": true,
+      "syntheticPackage": true,
+      "codeName": "html",
+      "codeLink": "",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "HTML elements",
+          "displayName": "More HTML elements"
+        }
+      ],
+      "projectId": []
+    },
+    {
+      "sectionLabel": "Design systems",
+      "type": "hostless-package",
+      "name": "Ant Design System 5",
+      "imageUrl": "https://static1.plasmic.app/antd5.png",
+      "codeName": "antd5",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/antd5",
+      "onlyShownIn": "new",
+      "items": [
+        { "type": "hostless-component", "componentName": "antd5-button", "displayName": "Button", "imageUrl": "https://static1.plasmic.app/antd5_button.png" },
+        { "type": "hostless-component", "componentName": "antd5-collapse", "displayName": "Collapse", "imageUrl": "https://static1.plasmic.app/antd5_collapse.png" },
+        { "type": "hostless-component", "componentName": "antd5-dropdown-button", "displayName": "Dropdown Button", "imageUrl": "https://static1.plasmic.app/antd5_dropdownbutton.png" },
+        { "type": "hostless-component", "componentName": "antd5-input", "displayName": "Input", "imageUrl": "https://static1.plasmic.app/antd5_input.png" },
+        { "type": "hostless-component", "componentName": "antd5-menu", "displayName": "Menu", "imageUrl": "https://static1.plasmic.app/antd5_menu.png" },
+        { "type": "hostless-component", "componentName": "antd5-modal", "displayName": "Modal", "imageUrl": "https://static1.plasmic.app/antd5_modal.png" },
+        { "type": "hostless-component", "componentName": "antd5-pagination", "displayName": "Pagination", "imageUrl": "https://static1.plasmic.app/antd5_pagination.png" },
+        { "type": "hostless-component", "componentName": "antd5-rate", "displayName": "Rate", "imageUrl": "https://static1.plasmic.app/antd5_rate.png" },
+        { "type": "hostless-component", "componentName": "antd5-select", "displayName": "Select", "imageUrl": "https://static1.plasmic.app/antd5_select.png" },
+        { "type": "hostless-component", "componentName": "antd5-slider", "displayName": "Slider", "imageUrl": "https://static1.plasmic.app/antd5_slider.png" },
+        { "type": "hostless-component", "componentName": "antd5-switch", "displayName": "Switch", "imageUrl": "https://static1.plasmic.app/antd5_switch.png" },
+        { "type": "hostless-component", "componentName": "antd5-table", "displayName": "Table", "imageUrl": "https://static1.plasmic.app/antd5_table.png" },
+        { "type": "hostless-component", "componentName": "antd5-tabs", "displayName": "Tabs", "imageUrl": "https://static1.plasmic.app/antd5_tabs.png" },
+        { "type": "hostless-component", "componentName": "antd5-upload", "displayName": "Upload", "imageUrl": "https://static1.plasmic.app/antd5_upload.png" }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Design systems",
+      "type": "hostless-package",
+      "name": "Ant Design Pro Components",
+      "imageUrl": "https://static1.plasmic.app/antd5.png",
+      "codeName": "antd5",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/antd5",
+      "onlyShownIn": "new",
+      "items": [
+        { "type": "hostless-component", "componentName": "plasmic-antd5-rich-table", "displayName": "Rich Table", "imageUrl": "https://static1.plasmic.app/antd5_table.png" },
+        { "type": "hostless-component", "componentName": "plasmic-antd5-rich-details", "displayName": "Rich Details", "imageUrl": "https://static1.plasmic.app/antd5_form.png" }
+      ],
+      "projectId": ["REMAPPED_AT_BOOTSTRAP_antd5", "REMAPPED_AT_BOOTSTRAP_plasmic-rich-components"]
+    },
+    {
+      "sectionLabel": "Layout",
+      "type": "hostless-package",
+      "name": "Navigation",
+      "codeName": "plasmic-nav",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/plasmic-nav",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "hostless-plasmic-nav",
+          "displayName": "Navigation Bar",
+          "imageUrl": "https://static1.plasmic.app/insertables/navbar.svg",
+          "gray": true
+        }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Layout",
+      "type": "hostless-package",
+      "name": "Flexible Tabs",
+      "codeName": "plasmic-tabs",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/plasmic-tabs",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "hostless-plasmic-tabs",
+          "displayName": "Tab Container",
+          "imageUrl": "https://static1.plasmic.app/insertables/tab-container.svg",
+          "gray": true
+        }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Layout",
+      "type": "hostless-package",
+      "name": "Carousel",
+      "codeName": "react-slick",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/react-slick",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "hostless-react-slick",
+          "displayName": "Carousel / Slider",
+          "imageUrl": "https://static1.plasmic.app/insertables/slider.svg",
+          "gray": true
+        }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Effects",
+      "type": "hostless-package",
+      "name": "Reveal On Scroll",
+      "codeName": "react-awesome-reveal",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/react-awesome-reveal",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "hostless-reveal",
+          "displayName": "Reveal",
+          "imageUrl": "https://static1.plasmic.app/insertables/reveal.svg",
+          "gray": true
+        }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Effects",
+      "type": "hostless-package",
+      "name": "3D Parallax Tilt",
+      "codeName": "react-parallax-tilt",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/react-parallax-tilt",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "hostless-react-parallax-tilt",
+          "displayName": "3D Parallax Tilt",
+          "imageUrl": "https://static1.plasmic.app/3d-tilt.png"
+        }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "hidden": true,
+      "sectionLabel": "Effects",
+      "type": "hostless-package",
+      "name": "Parallax Scroll",
+      "codeName": "react-scroll-parallax",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/react-scroll-parallax",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "hostless-parallax",
+          "displayName": "Parallax",
+          "imageUrl": "https://static1.plasmic.app/parallax.png"
+        }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Effects",
+      "type": "hostless-package",
+      "name": "Parallax Scroll",
+      "codeName": "react-scroll-parallax",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/react-scroll-parallax",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "hostless-parallax-wrapper",
+          "displayName": "Parallax Wrapper",
+          "imageUrl": "https://static1.plasmic.app/parallax.png"
+        }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Effects",
+      "type": "hostless-package",
+      "name": "Lottie",
+      "codeName": "lottie-react",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/lottie-react",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "hostless-lottie",
+          "displayName": "Lottie",
+          "imageUrl": "https://static1.plasmic.app/lottie.png"
+        }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Effects",
+      "type": "hostless-package",
+      "name": "Rive",
+      "codeName": "rive",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/rive",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "hostless-rive",
+          "displayName": "Rive",
+          "imageUrl": "https://static1.plasmic.app/rive.svg"
+        }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "APIs",
+      "type": "hostless-package",
+      "name": "Generic APIs",
+      "isHeaderLess": true,
+      "codeName": "plasmic-query",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/plasmic-query",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "hostless-http-restful-fetcher",
+          "displayName": "HTTP / RESTful API Fetcher",
+          "imageUrl": "https://static1.plasmic.app/http_restful_fetcher.png"
+        },
+        {
+          "type": "hostless-component",
+          "componentName": "hostless-graphql-fetcher",
+          "displayName": "GraphQL API Fetcher",
+          "imageUrl": "https://static1.plasmic.app/graphql_fetcher.png"
+        }
+      ],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "CMS",
+      "type": "hostless-package",
+      "name": "Plasmic CMS",
+      "isHeaderLess": true,
+      "codeName": "plasmic-cms",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/plasmic-cms",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "CMS Entry Field",
+          "displayName": "CMS Entry Field",
+          "imageUrl": "https://static1.plasmic.app/plasmic_cms.svg"
+        },
+        {
+          "type": "hostless-component",
+          "componentName": "CMS Data Fetcher",
+          "displayName": "CMS Data Loader",
+          "imageUrl": "https://static1.plasmic.app/plasmic_cms.svg"
+        },
+        {
+          "type": "hostless-component",
+          "componentName": "CMS Rows Field",
+          "displayName": "CMS Rows Field",
+          "imageUrl": "https://static1.plasmic.app/plasmic_cms.svg"
+        },
+        {
+          "type": "hostless-component",
+          "componentName": "CMS Row Field",
+          "displayName": "CMS Row Field",
+          "imageUrl": "https://static1.plasmic.app/plasmic_cms.svg"
+        },
+        {
+          "type": "hostless-component",
+          "componentName": "CMS Row Link",
+          "displayName": "CMS Row Link",
+          "imageUrl": "https://static1.plasmic.app/plasmic_cms.svg"
+        },
+        {
+          "type": "hostless-component",
+          "componentName": "CMS Row Image",
+          "displayName": "CMS Row Image",
+          "imageUrl": "https://static1.plasmic.app/plasmic_cms.svg"
+        },
+        {
+          "type": "hostless-component",
+          "componentName": "CMS Count",
+          "displayName": "CMS Count",
+          "imageUrl": "https://static1.plasmic.app/plasmic_cms.svg"
+        }
+      ],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "CMS",
+      "type": "hostless-package",
+      "name": "Sanity.io",
+      "isHeaderLess": true,
+      "codeName": "plasmic-sanity-io",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/plasmic-sanity-io",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "SanityFetcher",
+          "displayName": "Sanity.io Fetcher",
+          "imageUrl": "https://static1.plasmic.app/sanityio.png"
+        }
+      ],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "CMS",
+      "type": "hostless-package",
+      "name": "Strapi",
+      "isHeaderLess": true,
+      "codeName": "plasmic-strapi",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/plasmic-strapi",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "StrapiCollection",
+          "displayName": "Strapi Collection",
+          "imageUrl": "http://softwareengineeringdaily.com/wp-content/uploads/2021/02/strapi-logo.png"
+        }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "hidden": true,
+      "sectionLabel": "Databases",
+      "type": "hostless-package",
+      "name": "Airtable",
+      "isHeaderLess": true,
+      "codeName": "airtable",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/airtable",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "hostless-airtable-collection",
+          "displayName": "Airtable Collection",
+          "imageUrl": "https://static1.plasmic.app/airtable.png"
+        }
+      ],
+      "showInstall": true,
+      "whitelistDomains": ["plasmic.app"],
+      "projectId": ["REMAPPED_AT_BOOTSTRAP"]
+    },
+    {
+      "sectionLabel": "CMS",
+      "type": "hostless-package",
+      "name": "Contentstack",
+      "isHeaderLess": true,
+      "codeName": "plasmic-content-stack",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/plasmic-content-stack",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "ContentStackFetcher",
+          "displayName": "Contentstack Fetcher",
+          "imageUrl": "https://static1.plasmic.app/content-stack.png"
+        }
+      ],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "CMS",
+      "type": "hostless-package",
+      "name": "Contentful",
+      "isHeaderLess": true,
+      "codeName": "plasmic-contentful",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/plasmic-contentful",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "ContentfulFetcher",
+          "displayName": "Contentful Fetcher",
+          "imageUrl": "https://static1.plasmic.app/contentful.png"
+        }
+      ],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "CMS",
+      "type": "hostless-package",
+      "name": "Hygraph CMS",
+      "isHeaderLess": true,
+      "codeName": "plasmic-graph-cms",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/plasmic-graphcms",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "GraphCMSFetcher",
+          "displayName": "GraphCMS Fetcher",
+          "imageUrl": "https://static1.plasmic.app/hygraph.jpeg"
+        }
+      ],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "CMS",
+      "type": "hostless-package",
+      "name": "Wordpress",
+      "isHeaderLess": true,
+      "codeName": "plasmic-wordpress",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/plasmic-wordpress",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "WordpressFetcher",
+          "displayName": "Wordpress Fetcher",
+          "imageUrl": "https://static1.plasmic.app/wordpress.png"
+        }
+      ],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "CMS",
+      "type": "hostless-package",
+      "name": "Wordpress GraphQL API",
+      "isHeaderLess": true,
+      "codeName": "plasmic-wordpress-graphql",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/plasmic-wordpress-graphql",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "WordpressGraphQLFetcher",
+          "displayName": "Wordpress Fetcher",
+          "imageUrl": "https://static1.plasmic.app/wordpress_graphql.png"
+        }
+      ],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Commerce",
+      "type": "hostless-package",
+      "name": "Elastic Path",
+      "isHeaderLess": true,
+      "codeName": "nextjs-elastic-path",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/commerce-providers/elastic-path",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "plasmic-commerce-product-collection",
+          "displayName": "Elastic Path",
+          "imageUrl": "https://static1.plasmic.app/elastic-path.svg"
+        },
+        {
+          "type": "hostless-component",
+          "componentName": "plasmic-commerce-product-box",
+          "hiddenOnStore": true
+        }
+      ],
+      "showInstall": true,
+      "projectId": ["REMAPPED_AT_BOOTSTRAP_commerce", "REMAPPED_AT_BOOTSTRAP_commerce-elastic-path"]
+    },
+    {
+      "sectionLabel": "Commerce",
+      "type": "hostless-package",
+      "name": "Shopify",
+      "isHeaderLess": true,
+      "codeName": "nextjs-commerce",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/commerce-providers/shopify",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "plasmic-commerce-product-collection",
+          "displayName": "Shopify",
+          "imageUrl": "https://static1.plasmic.app/shopify.svg"
+        },
+        {
+          "type": "hostless-component",
+          "componentName": "plasmic-commerce-product-box",
+          "hiddenOnStore": true
+        }
+      ],
+      "showInstall": true,
+      "projectId": ["REMAPPED_AT_BOOTSTRAP_commerce", "REMAPPED_AT_BOOTSTRAP_commerce-shopify"]
+    },
+    {
+      "sectionLabel": "Commerce",
+      "type": "hostless-package",
+      "name": "Swell",
+      "isHeaderLess": true,
+      "codeName": "nextjs-commerce",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/commerce-providers/swell",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "plasmic-commerce-product-collection",
+          "displayName": "Swell",
+          "imageUrl": "https://static1.plasmic.app/swell.webp"
+        },
+        {
+          "type": "hostless-component",
+          "componentName": "plasmic-commerce-product-box",
+          "hiddenOnStore": true
+        }
+      ],
+      "showInstall": true,
+      "projectId": ["REMAPPED_AT_BOOTSTRAP_commerce", "REMAPPED_AT_BOOTSTRAP_commerce-swell"]
+    },
+    {
+      "sectionLabel": "Commerce",
+      "type": "hostless-package",
+      "name": "Saleor",
+      "isHeaderLess": true,
+      "codeName": "nextjs-saleor",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/commerce-providers/saleor",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "plasmic-commerce-product-collection",
+          "displayName": "Saleor",
+          "imageUrl": "https://static1.plasmic.app/saleor.png"
+        },
+        {
+          "type": "hostless-component",
+          "componentName": "plasmic-commerce-product-box",
+          "hiddenOnStore": true
+        }
+      ],
+      "showInstall": true,
+      "projectId": ["REMAPPED_AT_BOOTSTRAP_commerce", "REMAPPED_AT_BOOTSTRAP_commerce-saleor"]
+    },
+    {
+      "sectionLabel": "Social",
+      "type": "hostless-package",
+      "name": "Twitter Widgets",
+      "codeName": "react-twitter-widgets",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/react-twitter-widgets",
+      "items": [
+        { "type": "hostless-component", "componentName": "hostless-react-twitter-widgets-timeline", "displayName": "Timeline", "imageUrl": "https://static1.plasmic.app/twitter-timeline.png" },
+        { "type": "hostless-component", "componentName": "hostless-react-twitter-widgets-tweet", "displayName": "Tweet", "imageUrl": "https://static1.plasmic.app/twitter-tweet.png" },
+        { "type": "hostless-component", "componentName": "hostless-react-twitter-widgets-follow", "displayName": "Follow", "imageUrl": "https://static1.plasmic.app/twitter-follow.png" }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Text Editors",
+      "type": "hostless-package",
+      "name": "Quill rich text editor",
+      "codeName": "react-quill",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/react-quill",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "hostless-react-quill",
+          "displayName": "Quill rich text editor",
+          "imageUrl": "https://static1.plasmic.app/insertables/rich-text-editor.svg",
+          "gray": true
+        }
+      ],
+      "showInstall": true,
+      "projectId": ["REMAPPED_AT_BOOTSTRAP"]
+    },
+    {
+      "sectionLabel": "Text Editors",
+      "type": "hostless-package",
+      "name": "Tiptap WYSIWIG Editor",
+      "codeName": "tiptap",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/tiptap",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "hostless-tiptap",
+          "displayName": "Tiptap WYSIWIG Editor",
+          "description": "Create exactly the WYSIWIG text editor you want out of customizable building blocks.",
+          "imageUrl": "https://static1.plasmic.app/tiptap.svg"
+        }
+      ],
+      "showInstall": true,
+      "projectId": ["REMAPPED_AT_BOOTSTRAP"]
+    },
+    {
+      "sectionLabel": "Developer",
+      "type": "hostless-package",
+      "name": "Developer Components",
+      "hiddenWhenInstalled": true,
+      "codeName": "plasmic-basic-components",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/plasmic-basic-components",
+      "items": [
+        { "type": "hostless-component", "componentName": "hostless-timer", "displayName": "Timer", "imageUrl": "https://static1.plasmic.app/insertables/timer.svg", "gray": true },
+        { "type": "hostless-component", "componentName": "hostless-iframe", "displayName": "Iframe", "imageUrl": "https://static1.plasmic.app/iframe.png", "gray": true },
+        { "type": "hostless-component", "componentName": "hostless-html-video", "displayName": "HTML video", "imageUrl": "https://static1.plasmic.app/video.png", "gray": true },
+        { "type": "hostless-component", "componentName": "hostless-embed", "displayName": "Embed HTML", "imageUrl": "https://static1.plasmic.app/html.png", "gray": true },
+        { "type": "hostless-component", "componentName": "hostless-embed-css", "displayName": "Embed CSS", "imageUrl": "https://static1.plasmic.app/css.png", "gray": true, "hidden": true },
+        { "type": "hostless-component", "componentName": "hostless-data-provider", "displayName": "Data Provider", "imageUrl": "https://static1.plasmic.app/iframe.png", "gray": true },
+        { "type": "hostless-component", "componentName": "hostless-condition-guard", "displayName": "Conditional Guard", "imageUrl": "https://static1.plasmic.app/iframe.png", "gray": true },
+        { "type": "hostless-component", "componentName": "hostless-side-effect", "displayName": "Side Effect", "imageUrl": "https://static1.plasmic.app/iframe.png", "gray": true }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Developer",
+      "type": "hostless-package",
+      "name": "Loading State",
+      "hiddenWhenInstalled": true,
+      "codeName": "plasmic-basic-components",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/plasmic-basic-components",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "hostless-loading-boundary",
+          "displayName": "Loading Boundary",
+          "imageUrl": "https://static1.plasmic.app/iframe.png",
+          "gray": true,
+          "requiredHostVersion": 3
+        }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Developer",
+      "type": "hostless-package",
+      "name": "Custom CSS",
+      "showInstall": true,
+      "hiddenWhenInstalled": true,
+      "codeName": "plasmic-embed-css",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/plasmic-embed-css",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "global-embed-css",
+          "displayName": "Custom global CSS",
+          "imageUrl": "https://static1.plasmic.app/css.png",
+          "isFake": true
+        }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Developer",
+      "type": "hostless-package",
+      "name": "chart.js",
+      "imageUrl": "https://static1.plasmic.app/chart.svg",
+      "codeName": "react-chartjs-2",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/react-chartjs-2",
+      "onlyShownIn": "new",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "hostless-react-chartjs-2-simple-chart",
+          "displayName": "chart.js",
+          "imageUrl": "https://static1.plasmic.app/chart.svg"
+        }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Developer",
+      "type": "hostless-package",
+      "name": "Cookie Consent",
+      "codeName": "vanilla-cookieconsent",
+      "codeLink": "https://github.com/plasmicapp/plasmic/tree/master/plasmicpkgs/vanilla-cookieconsent",
+      "items": [
+        {
+          "type": "hostless-component",
+          "componentName": "hostless-vanilla-cookieconsent",
+          "displayName": "Cookie Consent Banner",
+          "imageUrl": "https://static1.plasmic.app/vanilla-cookieconsent.png"
+        }
+      ],
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Code Libraries",
+      "type": "hostless-package",
+      "name": "lodash",
+      "isHeaderLess": true,
+      "codeName": "lodash",
+      "codeLink": "https://www.npmjs.com/package/lodash",
+      "items": [{ "type": "hostless-component", "componentName": "fake-hostless-lodash", "displayName": "Lodash Utility Library", "description": "A modern JavaScript utility library delivering modularity, performance & extras", "monospaced": true, "isFake": true }],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Code Libraries",
+      "type": "hostless-package",
+      "name": "uuid",
+      "isHeaderLess": true,
+      "codeName": "uuid",
+      "codeLink": "https://www.npmjs.com/package/uuid",
+      "items": [{ "type": "hostless-component", "componentName": "fake-hostless-uuid", "displayName": "UUIDs", "description": "RFC4122 (v1, v4, and v5) UUIDs", "monospaced": true, "isFake": true }],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Code Libraries",
+      "type": "hostless-package",
+      "name": "isomorphic-fetch",
+      "isHeaderLess": true,
+      "codeName": "isomorphic-fetch",
+      "codeLink": "https://www.npmjs.com/package/isomorphic-fetch",
+      "hidden": true,
+      "whitelistDomains": ["plasmic.app"],
+      "items": [{ "type": "hostless-component", "componentName": "fake-hostless-isomorphic-fetch", "displayName": "Isomorphic Fetch", "description": "The Fetch API is currently not implemented consistently across browsers.", "monospaced": true, "isFake": true }],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Code Libraries",
+      "type": "hostless-package",
+      "name": "fast-stringify",
+      "isHeaderLess": true,
+      "codeName": "fast-stringify",
+      "codeLink": "https://www.npmjs.com/package/fast-stringify",
+      "items": [{ "type": "hostless-component", "componentName": "fake-hostless-fast-stringify", "displayName": "Fast Stringify", "description": "A blazing fast stringifier that safely handles circular objects", "monospaced": true, "isFake": true }],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Code Libraries",
+      "type": "hostless-package",
+      "name": "marked",
+      "isHeaderLess": true,
+      "codeName": "marked",
+      "codeLink": "https://www.npmjs.com/package/marked",
+      "items": [{ "type": "hostless-component", "componentName": "fake-hostless-marked", "displayName": "Marked - Markdown Parser", "description": "A markdown parser built for speed", "monospaced": true, "isFake": true }],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Code Libraries",
+      "type": "hostless-package",
+      "name": "pluralize",
+      "isHeaderLess": true,
+      "codeName": "pluralize",
+      "codeLink": "https://www.npmjs.com/package/pluralize",
+      "items": [{ "type": "hostless-component", "componentName": "fake-hostless-pluralize", "displayName": "Pluralize", "description": "Pluralize and singularize any word", "monospaced": true, "isFake": true }],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Code Libraries",
+      "type": "hostless-package",
+      "name": "copy-to-clipboard",
+      "isHeaderLess": true,
+      "codeName": "copy-to-clipboard",
+      "codeLink": "https://www.npmjs.com/package/copy-to-clipboard",
+      "items": [{ "type": "hostless-component", "componentName": "fake-hostless-copy-to-clipboard", "displayName": "Copy To Clipboard", "description": "Copy stuff into clipboard using JS with fallbacks", "monospaced": true, "isFake": true }],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Code Libraries",
+      "type": "hostless-package",
+      "name": "random",
+      "isHeaderLess": true,
+      "codeName": "random",
+      "codeLink": "https://www.npmjs.com/package/random",
+      "items": [{ "type": "hostless-component", "componentName": "fake-hostless-random", "displayName": "Random", "description": "Seedable random number generator supporting many common distributions.", "monospaced": true, "isFake": true }],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Code Libraries",
+      "type": "hostless-package",
+      "name": "@faker-js/faker",
+      "isHeaderLess": true,
+      "codeName": "@faker-js/faker",
+      "codeLink": "https://www.npmjs.com/package/@faker-js/faker",
+      "items": [{ "type": "hostless-component", "componentName": "fake-hostless-@faker-js/faker", "displayName": "Faker.js", "description": "Generate massive amounts of fake contextual data", "monospaced": true, "isFake": true }],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Code Libraries",
+      "type": "hostless-package",
+      "name": "nanoid",
+      "isHeaderLess": true,
+      "codeName": "nanoid",
+      "codeLink": "https://www.npmjs.com/package/nanoid",
+      "items": [{ "type": "hostless-component", "componentName": "fake-hostless-nanoid", "displayName": "Nano ID", "description": "A tiny (116 bytes), secure URL-friendly unique string ID generator", "monospaced": true, "isFake": true }],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Code Libraries",
+      "type": "hostless-package",
+      "name": "tinycolor2",
+      "isHeaderLess": true,
+      "codeName": "tinycolor2",
+      "codeLink": "https://www.npmjs.com/package/tinycolor2",
+      "items": [{ "type": "hostless-component", "componentName": "fake-hostless-tinycolor2", "displayName": "TinyColor2 - Color Tooling", "description": "Fast Color Parsing and Manipulation", "monospaced": true, "isFake": true }],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Code Libraries",
+      "type": "hostless-package",
+      "name": "zod",
+      "isHeaderLess": true,
+      "codeName": "zod",
+      "codeLink": "https://www.npmjs.com/package/zod",
+      "items": [{ "type": "hostless-component", "componentName": "fake-hostless-zod", "displayName": "Zod - Schema Validation", "description": "TypeScript-first schema declaration and validation library with static type inference", "monospaced": true, "isFake": true }],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Code Libraries",
+      "type": "hostless-package",
+      "name": "immer",
+      "isHeaderLess": true,
+      "codeName": "immer",
+      "codeLink": "https://www.npmjs.com/package/immer",
+      "items": [{ "type": "hostless-component", "componentName": "fake-hostless-immer", "displayName": "Immer - Immutable Data Tooling", "description": "Create your next immutable state by mutating the current one", "monospaced": true, "isFake": true }],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Code Libraries",
+      "type": "hostless-package",
+      "name": "md5",
+      "isHeaderLess": true,
+      "codeName": "md5",
+      "codeLink": "https://www.npmjs.com/package/md5",
+      "items": [{ "type": "hostless-component", "componentName": "fake-hostless-md5", "displayName": "MD5 Hashing", "description": "Js function for hashing messages with MD5", "monospaced": true, "isFake": true }],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Code Libraries",
+      "type": "hostless-package",
+      "name": "axios",
+      "isHeaderLess": true,
+      "codeName": "axios",
+      "codeLink": "https://www.npmjs.com/package/axios",
+      "items": [{ "type": "hostless-component", "componentName": "fake-hostless-axios", "displayName": "Axios HTTP Client", "description": "Promise based HTTP client for the browser and node.js", "monospaced": true, "isFake": true }],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Code Libraries",
+      "type": "hostless-package",
+      "name": "semver",
+      "isHeaderLess": true,
+      "codeName": "semver",
+      "codeLink": "https://www.npmjs.com/package/semver",
+      "items": [{ "type": "hostless-component", "componentName": "fake-hostless-semver", "displayName": "SemVer - Semantic Versioning", "description": "The semantic version parser used by npm.", "monospaced": true, "isFake": true }],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Code Libraries",
+      "type": "hostless-package",
+      "name": "date-fns",
+      "isHeaderLess": true,
+      "codeName": "date-fns",
+      "codeLink": "https://www.npmjs.com/package/date-fns",
+      "items": [{ "type": "hostless-component", "componentName": "fake-hostless-date-fns", "displayName": "Date Functions", "description": "Modern JavaScript date utility library", "monospaced": true, "isFake": true }],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Code Libraries",
+      "type": "hostless-package",
+      "name": "papaparse",
+      "isHeaderLess": true,
+      "codeName": "papaparse",
+      "codeLink": "https://www.npmjs.com/package/papaparse",
+      "items": [{ "type": "hostless-component", "componentName": "fake-hostless-papaparse", "displayName": "Papa Parse (CSV parser)", "description": "Fast and powerful CSV parser for the browser that supports web workers and streaming large files.", "monospaced": true, "isFake": true }],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Code Libraries",
+      "type": "hostless-package",
+      "name": "jquery",
+      "isHeaderLess": true,
+      "codeName": "jquery",
+      "codeLink": "https://www.npmjs.com/package/jquery",
+      "items": [{ "type": "hostless-component", "componentName": "fake-hostless-jquery", "displayName": "jQuery", "description": "JavaScript library for DOM operations", "monospaced": true, "isFake": true }],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    },
+    {
+      "sectionLabel": "Code Libraries",
+      "type": "hostless-package",
+      "name": "dayjs",
+      "isHeaderLess": true,
+      "codeName": "dayjs",
+      "codeLink": "https://www.npmjs.com/package/dayjs",
+      "items": [{ "type": "hostless-component", "componentName": "fake-hostless-dayjs", "displayName": "Day.js", "description": "JavaScript library that parses, validates, manipulates and displays dates and times", "monospaced": true, "isFake": true }],
+      "showInstall": true,
+      "projectId": "REMAPPED_AT_BOOTSTRAP"
+    }
+  ],
+  "starterSections": [
+    {
+      "title": "",
+      "tag": "general",
+      "projects": []
+    }
+  ]
+}
