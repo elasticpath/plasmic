@@ -2,11 +2,8 @@
  * Pattern Applier — instantiates a pattern's PlasmicElement tree into a component.
  *
  * Uses `addChild` directly with the full nested PlasmicElement tree, which is
- * handled recursively by `plasmicElementToTpl` in the WAB engine. This is
- * simpler and more efficient than the import-html approach (which walks
- * node-by-node to get per-node UUIDs for pseudo/media variant handling).
- * Patterns don't need pseudo-class or media variants, so a single `addChild`
- * call with the complete tree is sufficient.
+ * handled recursively by `plasmicElementToTpl` in the WAB engine. A single
+ * `addChild` call with the complete tree is sufficient for patterns.
  */
 
 import type { PlasmicApiClient } from "../api-client.js";

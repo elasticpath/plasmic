@@ -44,7 +44,6 @@ import {
 } from "./tree-reader.js";
 import { readTokens, getAllStyleTokens } from "./token-reader.js";
 import { resolveNode, requireSingleNode, invalidateNodeCache, clearNodeCache } from "./node-resolver.js";
-import { importHtml } from "./html-importer.js";
 import { listPatternsMeta } from "./patterns/registry.js";
 import { applyPattern } from "./patterns/applier.js";
 import { initChangeTracker, disposeChangeTracker, getChangeTracker } from "./change-tracker.js";
@@ -740,10 +739,9 @@ export function createServer(): McpServer {
         "- preview-url: Get preview and studio URLs. Example: {action:\"preview-url\",componentUuid:\"abc\"} → {previewUrl:\"https://...\",studioUrl:\"https://...\"}\n" +
         "- page-meta: Read page SEO metadata. Example: {action:\"page-meta\",componentUuid:\"abc\"} → {title:\"Home\",path:\"/\",description:\"...\"}\n" +
         "- list-design-system: Consolidated summary of all design tokens, mixins, and themes. Example: {action:\"list-design-system\"} → {tokens:{Color:[...],Spacing:[...]},mixins:[...],themes:[...]}\n" +
-        "- list-patterns: List available UI patterns (heroes, cards, navbars, etc.) that can be applied with node.apply-pattern. No session required. Example: {action:\"list-patterns\"} → [{name:\"hero-centered\",description:\"...\",tags:[...],customisationKeys:[...]}]\n" +
-        "- capture-screenshot: Capture a PNG screenshot of a page component rendered by the dev host. Requires PLASMIC_DEV_HOST_URL and a page component (with pageMeta.path). Returns an image/png content block for visual feedback. Example: {action:\"capture-screenshot\",componentUuid:\"abc\"} → image/png",
+        "- list-patterns: List available UI patterns (heroes, cards, navbars, etc.) that can be applied with node.apply-pattern. No session required. Example: {action:\"list-patterns\"} → [{name:\"hero-centered\",description:\"...\",tags:[...],customisationKeys:[...]}]",
       inputSchema: {
-        action: z.enum(["tree", "summary", "node", "subtree", "export", "style-properties", "preview-url", "page-meta", "list-design-system", "list-patterns", "capture-screenshot"]),
+        action: z.enum(["tree", "summary", "node", "subtree", "export", "style-properties", "preview-url", "page-meta", "list-design-system", "list-patterns"]),
         componentUuid: z.string().optional().describe("UUID of the component to inspect"),
         nodeRef: z.string().optional().describe("Node reference: UUID, name, path, or index"),
         maxDepth: z.number().optional().describe("Maximum tree depth to return. Defaults to 3 for tree, 2 for summary. Pass -1 for unlimited."),
@@ -775,10 +773,6 @@ export function createServer(): McpServer {
         note: z.string().optional().describe("Advisory note when design system is empty"),
         // list-patterns output:
         patterns: z.unknown().optional().describe("Array of {name,description,tags,customisationKeys} (list-patterns)"),
-        // capture-screenshot output:
-        captured: z.boolean().optional().describe("Screenshot success flag (capture-screenshot)"),
-        width: z.number().optional().describe("Screenshot width in px (capture-screenshot)"),
-        height: z.number().optional().describe("Screenshot height in px (capture-screenshot)"),
       },
       annotations: { readOnlyHint: true },
     },
@@ -1216,83 +1210,8 @@ export function createServer(): McpServer {
             return inspectResult({ patternCount: patterns.length, patterns });
           }
 
-          case "capture-screenshot": {
-            const cuuid = requireParam(componentUuid, "componentUuid", "inspect.capture-screenshot");
-            const session = requireSession();
-
-            if (!session.hostUrl) {
-              return {
-                content: [{ type: "text" as const, text: "Dev host unavailable. Start with PLASMIC_DEV_HOST_URL." }],
-                isError: true,
-              };
-            }
-
-            const comp = session.site.components?.find(
-              (c: any) => c.uuid === cuuid
-            );
-
-            if (!comp) {
-              return {
-                content: [{ type: "text" as const, text: `Component UUID "${cuuid}" not found. Use component tool with action 'list' to see available components.` }],
-                isError: true,
-              };
-            }
-
-            const pagePath = comp.pageMeta?.path;
-
-            if (pagePath) {
-              // Page component — navigate to the dev host preview URL
-              const screenshotUrl = `${session.hostUrl.replace(/\/$/, "")}${pagePath}`;
-
-              const { captureScreenshot } = await import("./screenshot.js");
-              const result = await captureScreenshot({ url: screenshotUrl, timeout: 10000 });
-
-              return {
-                content: [
-                  { type: "image" as const, data: result.data, mimeType: "image/png" },
-                ],
-                structuredContent: {
-                  captured: true,
-                  width: result.width,
-                  height: result.height,
-                  url: screenshotUrl,
-                },
-              };
-            }
-
-            // Non-page component — use the Studio rendering pipeline
-            // Re-serialize the live Site to a bundle for the headless renderer
-            const bundle = session.bundler.bundle(
-              session.site,
-              session.projectId,
-              session.bundleVersion
-            );
-
-            const { captureComponentScreenshot } = await import("./screenshot.js");
-            const result = await captureComponentScreenshot({
-              hostUrl: session.hostUrl,
-              bundle: JSON.stringify(bundle),
-              projectId: session.projectId,
-              componentName: comp.name,
-              timeout: 15000,
-            });
-
-            return {
-              content: [
-                { type: "image" as const, data: result.data, mimeType: "image/png" },
-              ],
-              structuredContent: {
-                captured: true,
-                width: result.width,
-                height: result.height,
-                component: comp.name,
-                pipeline: "studio",
-              },
-            };
-          }
-
           default:
-            throw new Error(`Unknown action '${action}' for inspect tool. Available: tree, summary, node, subtree, export, style-properties, preview-url, page-meta, list-design-system, list-patterns, capture-screenshot`);
+            throw new Error(`Unknown action '${action}' for inspect tool. Available: tree, summary, node, subtree, export, style-properties, preview-url, page-meta, list-design-system, list-patterns`);
         }
       } catch (err: unknown) {
         return {
@@ -2405,7 +2324,7 @@ export function createServer(): McpServer {
     "node",
     {
       description: "Element mutations within a component.\n" +
-        "Actions: add, remove, move, clone, reorder, update-styles, update-text, update-rich-text, update-attrs, update-props, set-visibility, set-image, apply-mixin, detach-mixin, add-animation, remove-animation, import-html, apply-pattern.\n" +
+        "Actions: add, remove, move, clone, reorder, update-styles, update-text, update-rich-text, update-attrs, update-props, set-visibility, set-image, apply-mixin, detach-mixin, add-animation, remove-animation, apply-pattern.\n" +
         "- add/remove/move/clone/reorder: Structural changes to element tree. Example: {action:\"add\",componentUuid:\"abc\",parentRef:\"root\",tag:\"div\"} → {uuid:\"new-uuid\"}\n" +
         "- update-styles: Set CSS styles on an element. Example: {action:\"update-styles\",componentUuid:\"abc\",nodeRef:\"uuid\",styles:{display:\"flex\",flexDirection:\"column\",gap:\"16px\"}}\n" +
         "- update-text: Set text content. Example: {action:\"update-text\",componentUuid:\"abc\",nodeRef:\"heading\",text:\"Welcome\"} → {success:true,previousText:\"Hello\",newText:\"Welcome\"}\n" +
@@ -2416,7 +2335,6 @@ export function createServer(): McpServer {
         "- set-image: Set image source (asset or URL). Example: {action:\"set-image\",componentUuid:\"abc\",nodeRef:\"hero-img\",src:\"https://example.com/photo.jpg\"} → {success:true}\n" +
         "- apply-mixin/detach-mixin: Apply or remove style mixins. Example: {action:\"apply-mixin\",componentUuid:\"abc\",nodeRef:\"card\",mixinRef:\"Card Shadow\"} → {success:true}\n" +
         "- add-animation/remove-animation: Apply or remove animations. Example: {action:\"add-animation\",componentUuid:\"abc\",nodeRef:\"banner\",seqRef:\"fadeIn\",duration:\"0.3s\"} → {success:true}\n" +
-        "- import-html: Import HTML+CSS into the component tree. Parses HTML (including <style> blocks), maps to Plasmic nodes. Example: {action:\"import-html\",componentUuid:\"abc\",parentRef:\"root\",htmlContent:\"<div style='display:flex;gap:16px'><h1>Hello</h1></div>\"}\n" +
         "- apply-pattern: Insert a named UI pattern (hero, card, navbar, etc.) into the tree. Use inspect.list-patterns to see available patterns. Supports text customisations. Example: {action:\"apply-pattern\",componentUuid:\"abc\",parentRef:\"root\",patternName:\"hero-centered\",customisations:{headingText:\"Ship faster\",ctaLabel:\"Get started\"}}\n" +
         "Layout guidance: use flexDirection:column for vertical stacks, flexDirection:row for horizontal layouts, display:grid + gridTemplateColumns for equal-width columns or complex 2D layouts. Prefer flex for single-axis flow, grid for multi-column/row alignment. Consider using a reusable component instead of raw tags for repeated patterns.\n" +
         "Use inspect tool for read-only queries.",
@@ -2425,7 +2343,7 @@ export function createServer(): McpServer {
         "add", "remove", "move", "clone", "reorder",
         "update-styles", "update-text", "update-rich-text", "update-attrs", "update-props",
         "set-visibility", "set-image", "apply-mixin", "detach-mixin",
-        "add-animation", "remove-animation", "import-html", "apply-pattern",
+        "add-animation", "remove-animation", "apply-pattern",
       ]),
       componentUuid: z.string().optional().describe("UUID of the component"),
       nodeRef: z.string().optional().describe("Node reference: UUID, name, path, or index"),
@@ -2463,7 +2381,6 @@ export function createServer(): McpServer {
       fillMode: z.enum(["none", "forwards", "backwards", "both"]).optional().describe("Animation fill mode"),
       playState: z.enum(["paused", "running"]).optional().describe("Animation play state"),
       animationIndex: z.number().optional().describe("Animation index for removal"),
-      htmlContent: z.string().optional().describe("HTML+CSS string for import-html action (may include <style> blocks)"),
       patternName: z.string().optional().describe("Pattern name for apply-pattern action (use inspect.list-patterns to see available patterns)"),
       customisations: z.record(z.string()).optional().describe("Text customisations for apply-pattern (e.g. {headingText:\"Ship faster\"})"),
       dryRun: z.boolean().optional().describe("Preview changes without persisting"),
@@ -3242,58 +3159,6 @@ export function createServer(): McpServer {
                       removedCount: result.removedCount,
                       nodeUuid: result.nodeUuid,
                       revision: result.save.revisionNum,
-                    }
-                  ),
-                },
-              ],
-            };
-          }
-
-          case "import-html": {
-            const cuuid = requireParam(params.componentUuid, "componentUuid", "node.import-html");
-            const pRef = requireParam(params.parentRef, "parentRef", "node.import-html");
-            const htmlStr = requireParam(params.htmlContent, "htmlContent", "node.import-html");
-
-            // Pass component names from the site model so the parser can
-            // detect data-component="..." attributes and map them to
-            // Plasmic component instances.
-            const session = requireSession();
-            const siteComponentNames = (session.site.components ?? []).map(
-              (c: { name: string }) => c.name
-            );
-
-            const result = await importHtml(
-              apiClient, cuuid, pRef, htmlStr, params.position, siteComponentNames
-            );
-
-            if (result.error) {
-              return {
-                content: [
-                  {
-                    type: "text" as const,
-                    text: JSON.stringify(
-                      {
-                        success: false,
-                        error: result.error,
-                        nodesCreated: result.nodesCreated,
-                        ...(result.warnings.length ? { warnings: result.warnings } : {}),
-                      }
-                    ),
-                  },
-                ],
-              };
-            }
-
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify(
-                    {
-                      success: true,
-                      rootNodeUuid: result.rootNodeUuid,
-                      nodesCreated: result.nodesCreated,
-                      ...(result.warnings.length ? { warnings: result.warnings } : {}),
                     }
                   ),
                 },
