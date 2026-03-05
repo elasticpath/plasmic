@@ -1,6 +1,6 @@
 # Implementation Plan
 
-_Last updated: 2026-03-05 (P0 complete, P1 complete, P2.2 complete, P2.3 complete)_
+_Last updated: 2026-03-05 (P0 complete, P1 complete, P2 complete)_
 
 ## Status Legend
 - `[ ]` Not started
@@ -25,12 +25,27 @@ All P1 items complete (P1.1-P1.3). Studio users see the MCP agent as a collabora
 
 ## P2 -- Test Coverage Improvements
 
-### P2.1 -- Edit Tools Edge Case Coverage
+### P2.1 -- Edit Tools Edge Case Coverage ✅ COMPLETED
 
-- [ ] **Add edge case tests for complex edit-tools functions** -- focus on `extractToComponent`, `convertToPage`, `convertToComponent`, `setDataRep`, `setDataCond`, `uploadAsset`, `setImage`, and data domain functions (`createSplit`, `updateSplit`, `removeSplit`).
-  - Files: augment `packages/plasmic-mcp/src/__tests__/node.test.ts`, `component.test.ts`, `data.test.ts`
-  - Dependencies: None
-  - Complexity: **L**
+Added 40 edge case tests across 4 test files covering previously under-tested edit-tools functions:
+
+**component.test.ts** (14 new tests):
+- `extractToComponent`: TplSlot rejection, WAB extractComponent error propagation
+- `convertToPage`: unknown UUID, no-path default, path provided, save/revision, fallback empty path
+- `convertToComponent`: unknown UUID, save/revision, TplMgr call verification
+
+**data.test.ts** (16 new tests):
+- `removeSplit`: by UUID, revision tracking, case-insensitive name lookup
+- `createSplit`: single-slice probability (100), default segment condition, fresh status, unique UUIDs, save/revision
+- `updateSplit`: status-only update, name-only update, find by UUID, not-found error, auto-calc probabilities, segment type preservation
+
+**design.test.ts** (7 new tests):
+- `uploadAsset`: width/height/aspectRatio passthrough, aspect ratio omission (width-only, height-only), return values, save/revision, network error message, HTTP error status
+
+**node.test.ts** (10 new tests):
+- `setImage`: unknown component UUID, unknown node, invalid asset ref, find asset by UUID, variant-aware image, save with component IID, nodeName return, special characters in background CSS, asset dataUri for non-img background
+
+Total tests: 2,011 (up from 1,971). Files: `packages/plasmic-mcp/src/__tests__/{node,component,data,design}.test.ts`.
 
 ### P2.2 -- Pattern Applier Direct Tests ✅ COMPLETED
 

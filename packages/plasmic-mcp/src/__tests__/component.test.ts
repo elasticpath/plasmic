@@ -1812,4 +1812,177 @@ describe("extractToComponent", () => {
     expect(callArgs.getCanvasEnvForTpl).toBeInstanceOf(Function);
     expect(callArgs.getCanvasEnvForTpl({})).toBeUndefined();
   });
+
+  it("throws for non-TplTag/TplComponent nodes (e.g. TplSlot)", async () => {
+    const slot = {
+      _type: "TplSlot",
+      uuid: "slot-1",
+      name: "content",
+      vsettings: [{ rs: { values: {} } }],
+      children: [],
+    };
+    const root = mkTag({ uuid: "root-1", children: [slot] });
+    slot.parent = root;
+    const comp = mkComponent({ uuid: "comp-1", name: "Page", tplTree: root });
+    setupSession(comp);
+
+    await expect(
+      extractToComponent(api, "comp-1", "slot-1", "Foo")
+    ).rejects.toThrow(/only TplTag and TplComponent/);
+  });
+
+  it("propagates errors from wabExtractComponent", async () => {
+    const child = mkTag({ uuid: "child-1", name: "Section" });
+    const root = mkTag({ uuid: "root-1", children: [child] });
+    child.parent = root;
+    const comp = mkComponent({ uuid: "comp-1", name: "Page", tplTree: root });
+    setupSession(comp);
+
+    mockExtractComponent.mockImplementation(() => {
+      throw new Error("WAB internal: cannot extract");
+    });
+
+    await expect(
+      extractToComponent(api, "comp-1", "child-1", "Section")
+    ).rejects.toThrow(/cannot extract/);
+  });
+});
+
+// =============================================================================
+// convertToPage -- edge cases
+// =============================================================================
+
+describe("convertToPage -- edge cases", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  function setup(component: any) {
+    const session = makeSession({ site: { components: [component] } } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+    return session;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    clearNodeCache();
+    api = mockApiClient();
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+    mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
+  });
+  afterEach(() => { disposeChangeTracker(); clearSession(); vi.restoreAllMocks(); });
+
+  it("throws for unknown component UUID", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    setup(comp);
+
+    await expect(
+      convertToPage(api, "nonexistent-uuid", "/about")
+    ).rejects.toThrow(/not found/);
+  });
+
+  it("converts without path argument (no changePagePath call)", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", name: "Landing", tplTree: root });
+    setup(comp);
+
+    const result = await convertToPage(api, "comp-1");
+
+    expect(mockConvertComponentToPage).toHaveBeenCalledWith(comp);
+    expect(mockChangePagePath).not.toHaveBeenCalled();
+    expect(result.componentName).toBe("Landing");
+  });
+
+  it("calls changePagePath when path is provided", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", name: "About", tplTree: root });
+    setup(comp);
+
+    const result = await convertToPage(api, "comp-1", "/about-us");
+
+    expect(mockConvertComponentToPage).toHaveBeenCalledWith(comp);
+    expect(mockChangePagePath).toHaveBeenCalledWith(comp, "/about-us");
+    expect(result.componentName).toBe("About");
+  });
+
+  it("saves changes and returns correct revision", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", name: "Page", tplTree: root });
+    setup(comp);
+
+    const result = await convertToPage(api, "comp-1", "/test");
+
+    expect(api.saveRevision).toHaveBeenCalledTimes(1);
+    expect(result.save.revisionNum).toBe(11);
+  });
+
+  it("returns fallback empty string path when no path set", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", name: "NoPath", tplTree: root });
+    setup(comp);
+
+    const result = await convertToPage(api, "comp-1");
+
+    // pageMeta is not set by our mock, so path falls through to ""
+    expect(result.path).toBe("");
+  });
+});
+
+// =============================================================================
+// convertToComponent -- edge cases
+// =============================================================================
+
+describe("convertToComponent -- edge cases", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    clearNodeCache();
+    api = mockApiClient();
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+    mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
+  });
+  afterEach(() => { disposeChangeTracker(); clearSession(); vi.restoreAllMocks(); });
+
+  it("throws for unknown component UUID", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = { uuid: "comp-1", name: "Page", tplTree: root, pageMeta: { path: "/home" } };
+    const session = makeSession({ site: { components: [comp] } } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      convertToComponent(api, "nonexistent-uuid")
+    ).rejects.toThrow(/not found/);
+  });
+
+  it("saves changes and returns correct revision", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = { uuid: "comp-1", name: "MyPage", tplTree: root, pageMeta: { path: "/mypage" } };
+    const session = makeSession({ site: { components: [comp] } } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await convertToComponent(api, "comp-1");
+
+    expect(api.saveRevision).toHaveBeenCalledTimes(1);
+    expect(result.save.revisionNum).toBe(11);
+    expect(result.componentName).toBe("MyPage");
+  });
+
+  it("calls convertPageToComponent on TplMgr", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = { uuid: "comp-1", name: "Blog", tplTree: root, pageMeta: { path: "/blog" } };
+    const session = makeSession({ site: { components: [comp] } } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await convertToComponent(api, "comp-1");
+
+    expect(mockConvertPageToComponent).toHaveBeenCalledWith(comp);
+  });
 });

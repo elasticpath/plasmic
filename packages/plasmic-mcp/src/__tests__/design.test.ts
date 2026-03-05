@@ -2137,3 +2137,149 @@ describe("removeAsset", () => {
     await expect(removeAsset(api, "Nonexistent")).rejects.toThrow(/not found/);
   });
 });
+
+// =============================================================================
+// uploadAsset -- edge cases
+// =============================================================================
+
+describe("uploadAsset -- edge cases", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api = mockApiClient();
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+    mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
+  });
+  afterEach(() => { clearSession(); disposeChangeTracker(); clearNodeCache(); vi.restoreAllMocks(); });
+
+  it("passes width, height, and aspect ratio to addImageAsset", async () => {
+    const site = { components: [], imageAssets: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await uploadAsset(api, "Banner", "picture", {
+      dataUri: "data:image/png;base64,abc",
+      width: 800,
+      height: 400,
+    });
+
+    expect(mockAddImageAsset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "Banner",
+        type: "picture",
+        dataUri: "data:image/png;base64,abc",
+        width: 800,
+        height: 400,
+        aspectRatio: 2,
+      })
+    );
+  });
+
+  it("omits aspect ratio when only width is provided", async () => {
+    const site = { components: [], imageAssets: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await uploadAsset(api, "Icon", "picture", {
+      dataUri: "data:image/png;base64,xyz",
+      width: 64,
+    });
+
+    expect(mockAddImageAsset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        aspectRatio: undefined,
+      })
+    );
+  });
+
+  it("omits aspect ratio when only height is provided", async () => {
+    const site = { components: [], imageAssets: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await uploadAsset(api, "Icon", "picture", {
+      dataUri: "data:image/png;base64,xyz",
+      height: 64,
+    });
+
+    expect(mockAddImageAsset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        aspectRatio: undefined,
+      })
+    );
+  });
+
+  it("returns asset name and type from addImageAsset result", async () => {
+    const site = { components: [], imageAssets: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await uploadAsset(api, "Logo", "picture", {
+      dataUri: "data:image/svg+xml;base64,abc",
+    });
+
+    // mockAddImageAsset returns name/type from opts, uuid is "mock-image-asset-uuid"
+    expect(result.name).toBe("Logo");
+    expect(result.type).toBe("picture");
+    expect(result.assetUuid).toBe("mock-image-asset-uuid");
+  });
+
+  it("saves changes and returns revision number", async () => {
+    const site = { components: [], imageAssets: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await uploadAsset(api, "Img", "picture", {
+      dataUri: "data:image/png;base64,abc",
+    });
+
+    expect(api.saveRevision).toHaveBeenCalledTimes(1);
+    expect(result.save.revisionNum).toBe(11);
+  });
+
+  it("throws descriptive error when URL fetch fails with network error", async () => {
+    const site = { components: [], imageAssets: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
+    try {
+      await expect(
+        uploadAsset(api, "Remote", "picture", { url: "https://example.com/img.png" })
+      ).rejects.toThrow(/Failed to fetch.*ECONNREFUSED/);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("throws when URL returns non-2xx status", async () => {
+    const site = { components: [], imageAssets: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      statusText: "Not Found",
+      headers: new Map(),
+    });
+    try {
+      await expect(
+        uploadAsset(api, "Missing", "picture", { url: "https://example.com/missing.png" })
+      ).rejects.toThrow(/HTTP 404/);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});

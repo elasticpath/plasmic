@@ -6295,3 +6295,173 @@ describe("updateProps", () => {
     expect(mockSetTplComponentArg.mock.calls[0][1]).toBe(mobileVs);
   });
 });
+
+// =============================================================================
+// setImage -- edge cases
+// =============================================================================
+
+describe("setImage -- edge cases", () => {
+  let api: ReturnType<typeof mockApiClient>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    clearNodeCache();
+    api = mockApiClient();
+    mockFastBundle.mockReturnValue({ map: {}, root: "0" });
+    mockAddrOf.mockReturnValue({ uuid: "proj1", iid: "comp-iid-1" });
+    mockWithRecording.mockReturnValue({ changes: [], newInsts: [], removedInsts: [] });
+  });
+  afterEach(() => { clearSession(); disposeChangeTracker(); clearNodeCache(); vi.restoreAllMocks(); });
+
+  it("throws for unknown component UUID", async () => {
+    const imgNode = mkTag({ uuid: "img-1", tag: "img" });
+    const root = mkTag({ uuid: "root-1", children: [imgNode] });
+    const comp = { uuid: "comp-1", name: "TC", tplTree: root };
+    const site = { components: [comp], imageAssets: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      setImage(api, "nonexistent", "img-1", { src: "https://example.com/img.jpg" })
+    ).rejects.toThrow(/not found/);
+  });
+
+  it("throws for unknown node reference", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = { uuid: "comp-1", name: "TC", tplTree: root };
+    const site = { components: [comp], imageAssets: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      setImage(api, "comp-1", "nonexistent-node", { src: "https://example.com/img.jpg" })
+    ).rejects.toThrow(/not found/);
+  });
+
+  it("throws when asset reference does not match any image asset", async () => {
+    const imgNode = mkTag({ uuid: "img-1", tag: "img" });
+    const root = mkTag({ uuid: "root-1", children: [imgNode] });
+    const comp = { uuid: "comp-1", name: "TC", tplTree: root };
+    const site = { components: [comp], imageAssets: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      setImage(api, "comp-1", "img-1", { assetRef: "Nonexistent Asset" })
+    ).rejects.toThrow(/not found/);
+  });
+
+  it("finds asset by UUID when setting image", async () => {
+    const asset = { uuid: "a1-uuid", name: "Hero", type: "picture", dataUri: "data:image/png;base64,abc" };
+    const imgNode = mkTag({ uuid: "img-1", name: "Photo", tag: "img" });
+    const root = mkTag({ uuid: "root-1", children: [imgNode] });
+    const comp = { uuid: "comp-1", name: "TC", tplTree: root };
+    const site = { components: [comp], imageAssets: [asset] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await setImage(api, "comp-1", "img-1", { assetRef: "a1-uuid" });
+
+    expect(result.imageSource).toBe("asset:Hero");
+    expect(imgNode.vsettings[0].attrs.src.asset).toBe(asset);
+  });
+
+  it("sets variant-aware image on img element", async () => {
+    const mobileVariant = { uuid: "v-mobile", name: "Mobile", mediaQuery: "(max-width: 768px)" };
+    const mobileVs = { variants: [mobileVariant], attrs: {}, rs: { values: {} } };
+    mockEnsureVariantSetting.mockReturnValue(mobileVs);
+
+    const imgNode = mkTag({ uuid: "img-1", tag: "img" });
+    const root = mkTag({ uuid: "root-1", children: [imgNode] });
+    const comp = { uuid: "comp-1", name: "TC", tplTree: root };
+    const site = {
+      components: [comp],
+      imageAssets: [],
+      globalVariantGroups: [{
+        uuid: "screen-group",
+        type: "global-screen",
+        param: { variable: { name: "Screen" } },
+        variants: [mobileVariant],
+      }],
+    };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await setImage(api, "comp-1", "img-1", { src: "https://example.com/mobile.jpg" }, "Mobile");
+
+    expect(result.imageSource).toBe("https://example.com/mobile.jpg");
+    expect(mobileVs.attrs.src).toBeDefined();
+    expect(mobileVs.attrs.src._type).toBe("CustomCode");
+  });
+
+  it("saves with component IID and returns revision", async () => {
+    const imgNode = mkTag({ uuid: "img-1", tag: "img" });
+    const root = mkTag({ uuid: "root-1", children: [imgNode] });
+    const comp = { uuid: "comp-1", name: "TC", tplTree: root };
+    const site = { components: [comp], imageAssets: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await setImage(api, "comp-1", "img-1", { src: "https://example.com/img.jpg" });
+
+    expect(api.saveRevision).toHaveBeenCalledTimes(1);
+    expect(result.save.revisionNum).toBe(11);
+    expect(result.nodeUuid).toBe("img-1");
+  });
+
+  it("returns nodeName when element has a name", async () => {
+    const imgNode = mkTag({ uuid: "img-1", name: "Hero Photo", tag: "img" });
+    const root = mkTag({ uuid: "root-1", children: [imgNode] });
+    const comp = { uuid: "comp-1", name: "TC", tplTree: root };
+    const site = { components: [comp], imageAssets: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await setImage(api, "comp-1", "img-1", { src: "https://example.com/hero.jpg" });
+
+    expect(result.nodeName).toBe("Hero Photo");
+  });
+
+  it("handles URL with special characters in background CSS", async () => {
+    const divNode = mkTag({ uuid: "div-1", tag: "div" });
+    const root = mkTag({ uuid: "root-1", children: [divNode] });
+    const comp = { uuid: "comp-1", name: "TC", tplTree: root };
+    const site = { components: [comp], imageAssets: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await setImage(api, "comp-1", "div-1", {
+      src: 'https://example.com/path\\to\\image.jpg',
+    });
+
+    const bgValue = divNode.vsettings[0].rs.values["background"];
+    // Backslashes should be escaped
+    expect(bgValue).toContain("\\\\");
+    expect(result.imageSource).toBe('https://example.com/path\\to\\image.jpg');
+  });
+
+  it("uses asset dataUri for non-img background", async () => {
+    const asset = { uuid: "a1", name: "Pattern", type: "picture", dataUri: "data:image/png;base64,pattern" };
+    const divNode = mkTag({ uuid: "div-1", tag: "div" });
+    const root = mkTag({ uuid: "root-1", children: [divNode] });
+    const comp = { uuid: "comp-1", name: "TC", tplTree: root };
+    const site = { components: [comp], imageAssets: [asset] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await setImage(api, "comp-1", "div-1", { assetRef: "Pattern" });
+
+    const bgValue = divNode.vsettings[0].rs.values["background"];
+    expect(bgValue).toBe('url("data:image/png;base64,pattern")');
+  });
+});
