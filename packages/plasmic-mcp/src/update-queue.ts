@@ -4,7 +4,7 @@
  * Wraps Studio's PushPullQueue from @/wab/commons/asyncutil with gating
  * logic for saves and mutations. Ensures updates are processed sequentially
  * (matching Studio's modelChangeQueue pattern) and provides filtering for
- * self-updates and branch-aware update routing.
+ * self-updates and branch mismatches.
  *
  * Reference: StudioCtx.tsx modelChangeQueue (lines 4196-4199)
  */
@@ -31,21 +31,15 @@ export class UpdateQueue {
   /** Function to get the pending saved revision number for self-update detection. */
   private getPendingSavedRevisionNum: () => number | undefined;
 
-  /** Function to get the active branch ID for branch-aware filtering.
-   *  Returns null for main branch, string for a specific branch. */
-  private getActiveBranchId: () => string | null;
-
   constructor(opts: {
     handler: UpdateHandler;
     isSaving?: () => boolean;
     getPendingSavedRevisionNum?: () => number | undefined;
-    getActiveBranchId?: () => string | null;
   }) {
     this.handler = opts.handler;
     this.isSaving = opts.isSaving ?? (() => false);
     this.getPendingSavedRevisionNum =
       opts.getPendingSavedRevisionNum ?? (() => undefined);
-    this.getActiveBranchId = opts.getActiveBranchId ?? (() => null);
   }
 
   /**
@@ -57,11 +51,10 @@ export class UpdateQueue {
   enqueue(data: UpdateEventData): void {
     if (this.stopped) return;
 
-    // Branch filtering: only process updates for the active branch
-    const activeBranch = this.getActiveBranchId();
-    if (data.rev.branchId !== activeBranch) {
+    // Branch filtering: skip non-main-branch updates (MCP doesn't support branches)
+    if (data.rev.branchId !== null) {
       console.error(
-        `[plasmic-mcp] UpdateQueue: skipping update for branch=${data.rev.branchId} (active=${activeBranch})`
+        `[plasmic-mcp] UpdateQueue: skipping branch update (branch=${data.rev.branchId})`
       );
       return;
     }
