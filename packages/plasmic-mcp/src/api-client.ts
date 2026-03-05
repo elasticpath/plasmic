@@ -19,6 +19,7 @@ import type {
   GetPkgVersionResponse,
   GetPkgVersionMetaResponse,
   AppAuthPubConfig,
+  AppConfigResponse,
 } from "./types.js";
 
 /**
@@ -311,6 +312,18 @@ export class PlasmicApiClient {
    * URL: GET /api/v1/end-user/app/{projectId}/pub-config
    * Used by add-package to block importing auth-enabled dependencies.
    */
+  /**
+   * Get the app config including hostless component catalog.
+   * URL: GET /api/v1/app-config
+   * Used by list-available-packages to browse installable hostless packages.
+   */
+  async getAppConfig(): Promise<AppConfigResponse> {
+    return this.request<AppConfigResponse>(
+      "GET",
+      `/api/v1/app-config`
+    );
+  }
+
   async getAppAuthPubConfig(projectId: string): Promise<AppAuthPubConfig> {
     return this.request<AppAuthPubConfig>(
       "GET",

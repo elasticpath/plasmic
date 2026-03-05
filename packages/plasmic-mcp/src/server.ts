@@ -4,12 +4,12 @@
  * Uses McpServer from @modelcontextprotocol/sdk with Zod schemas for input
  * validation. All tools are registered before the transport connects.
  *
- * STRAP architecture: 104 actions consolidated into 8 domain tools.
+ * STRAP architecture: 109 actions consolidated into 8 domain tools.
  * Each domain tool uses an `action` discriminator to route to the
  * appropriate handler function.
  *
  * Domains:
- *   - project (8 actions): session lifecycle, persistence, batch, undo
+ *   - project (10 actions): session lifecycle, persistence, batch, undo, package discovery
  *   - inspect (8 actions): read-only queries on component trees
  *   - component (18 actions): component/page lifecycle, props, states
  *   - node (17 actions): element mutations (structure, style, text, attrs, props, html import)
@@ -133,6 +133,7 @@ import {
   setImage,
   extractToComponent,
 } from "./edit-tools.js";
+import { listAvailablePackages, listPackageComponents } from "./package-manager.js";
 import { beginBatch, endBatch, isBatchActive, cancelBatch, cancelBatchWithRollback, getAccumulatedChanges } from "./batch-manager.js";
 import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
 import { SaveManager } from "./save-manager.js";
@@ -313,8 +314,8 @@ export function createServer(): McpServer {
   server.registerTool(
     "project",
     {
-      description: "Project session lifecycle, persistence, batch operations, and undo.\n" +
-        "Actions: set, list, get-meta, save, refresh, begin-batch, end-batch, undo.\n" +
+      description: "Project session lifecycle, persistence, batch operations, undo, and package discovery.\n" +
+        "Actions: set, list, get-meta, save, refresh, begin-batch, end-batch, undo, list-available-packages, list-package-components.\n" +
         "- set: Load a project into memory (required before other tools). Example: {action:\"set\",projectId:\"pId123\"} → {success:true,projectName:\"My App\"}\n" +
         "- list: List all accessible projects. Example: {action:\"list\"} → {projects:[{id:\"pId123\",name:\"My App\"}]}\n" +
         "- get-meta: Get project metadata (name, counts, pages, components). Example: {action:\"get-meta\"} → {name:\"My App\",pageCount:3,componentCount:5}\n" +
@@ -322,15 +323,18 @@ export function createServer(): McpServer {
         "- refresh: Reload project from server\n" +
         "- begin-batch: Start accumulating edits. Example: {action:\"begin-batch\"} → {batchId:\"batch-1\"}\n" +
         "- end-batch: Save accumulated edits in one revision. Example: {action:\"end-batch\",batchId:\"batch-1\"} → {success:true,revision:42}\n" +
-        "- undo: Revert most recent edit",
+        "- undo: Revert most recent edit\n" +
+        "- list-available-packages: Browse installable hostless packages from the catalog. Example: {action:\"list-available-packages\"} → [{name:\"Commerce\",isInstalled:false,projectId:\"pId\",items:[...]}]\n" +
+        "- list-package-components: List components from installed packages with full prop schemas. Example: {action:\"list-package-components\"} → [{name:\"ProductCard\",props:[{name:\"title\",type:\"string\",required:true,isSlot:false}]}]. Optional packageName filter: {action:\"list-package-components\",packageName:\"Commerce\"}",
       inputSchema: {
-        action: z.enum(["set", "list", "get-meta", "save", "refresh", "begin-batch", "end-batch", "undo"]),
+        action: z.enum(["set", "list", "get-meta", "save", "refresh", "begin-batch", "end-batch", "undo", "list-available-packages", "list-package-components"]),
         projectId: z.string().optional().describe("The Plasmic project ID (required for 'set')"),
         batchId: z.string().optional().describe("Optional batch ID for verification (used by 'end-batch')"),
+        packageName: z.string().optional().describe("Package name filter for 'list-package-components' (case-insensitive)"),
       },
       annotations: { idempotentHint: true },
     },
-    async ({ action, projectId, batchId }) => {
+    async ({ action, projectId, batchId, packageName }) => {
       try {
         switch (action) {
           case "set": {
@@ -698,8 +702,34 @@ export function createServer(): McpServer {
             };
           }
 
+          case "list-available-packages": {
+            requireSession();
+            const packages = await listAvailablePackages(apiClient);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(packages),
+                },
+              ],
+            };
+          }
+
+          case "list-package-components": {
+            requireSession();
+            const components = await listPackageComponents(apiClient, packageName);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(components),
+                },
+              ],
+            };
+          }
+
           default:
-            throw new Error(`Unknown action '${action}' for project tool. Available: set, list, get-meta, save, refresh, begin-batch, end-batch, undo`);
+            throw new Error(`Unknown action '${action}' for project tool. Available: set, list, get-meta, save, refresh, begin-batch, end-batch, undo, list-available-packages, list-package-components`);
         }
       } catch (err: unknown) {
         return {

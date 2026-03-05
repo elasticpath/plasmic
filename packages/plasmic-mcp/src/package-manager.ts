@@ -10,6 +10,7 @@
  */
 
 import type { PlasmicApiClient } from "./api-client.js";
+import type { AvailablePackage, PackageComponent, PackageComponentPropInfo } from "./types.js";
 import { requireSession } from "./session.js";
 import { TplMgr } from "@/wab/shared/TplMgr";
 import { unbundleProjectDependency } from "@/wab/shared/core/tagged-unbundle";
@@ -24,6 +25,10 @@ import {
   getNonTransitiveDepDefaultComponents,
 } from "@/wab/shared/core/sites";
 import { isReusableComponent } from "@/wab/shared/core/components";
+import {
+  isKnownCustomCode,
+  isKnownObjectPath,
+} from "@/wab/shared/model/classes";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -357,6 +362,172 @@ export async function upgradePackage(
   upgradeProjectDeps(site, upgradePairs);
 
   return results;
+}
+
+// ---------------------------------------------------------------------------
+// list-available-packages
+// ---------------------------------------------------------------------------
+
+/**
+ * Browse the catalog of installable hostless packages from the server's
+ * app-config endpoint, cross-referenced with current project dependencies
+ * to mark which packages are already installed.
+ *
+ * Returns empty array (not error) if the app-config endpoint is unavailable.
+ */
+export async function listAvailablePackages(
+  apiClient: PlasmicApiClient
+): Promise<AvailablePackage[]> {
+  const session = requireSession();
+  const site = session.site;
+
+  let config;
+  try {
+    config = await apiClient.getAppConfig();
+  } catch {
+    // Server may not support /api/v1/app-config — return empty catalog
+    return [];
+  }
+
+  const hostLessComponents = config.config?.hostLessComponents ?? [];
+  const installedProjectIds = new Set(
+    (site.projectDependencies ?? []).map((d: any) => d.projectId)
+  );
+
+  return hostLessComponents
+    .filter((pkg) => !pkg.hidden)
+    .map((pkg) => {
+      const projectIds = Array.isArray(pkg.projectId)
+        ? pkg.projectId
+        : [pkg.projectId];
+      const isInstalled = projectIds.some((id) => installedProjectIds.has(id));
+
+      return {
+        name: pkg.name,
+        projectId: pkg.projectId,
+        sectionLabel: pkg.sectionLabel,
+        isInstalled,
+        items: (pkg.items ?? [])
+          .filter((item) => !item.hidden)
+          .map((item) => ({
+            componentName: item.componentName,
+            displayName: item.displayName,
+            description: item.description,
+            imageUrl: item.imageUrl,
+          })),
+        codeName: pkg.codeName,
+        codeLink: pkg.codeLink,
+        imageUrl: pkg.imageUrl,
+      };
+    });
+}
+
+// ---------------------------------------------------------------------------
+// list-package-components
+// ---------------------------------------------------------------------------
+
+/**
+ * List components from installed hostless packages with full prop schemas.
+ * Reads from the already-bundled site.projectDependencies — no server round-trip.
+ *
+ * When packageName is provided, filters to that package (case-insensitive).
+ * Throws a descriptive error if the package name is not found.
+ */
+export async function listPackageComponents(
+  _apiClient: PlasmicApiClient,
+  packageName?: string
+): Promise<PackageComponent[]> {
+  const session = requireSession();
+  const site = session.site;
+  const deps: any[] = site.projectDependencies ?? [];
+
+  // Filter to hostless packages only
+  const hostLessDeps = deps.filter((dep: any) =>
+    dep.site ? isHostLessPackage(dep.site) : false
+  );
+
+  // If packageName specified, filter and validate
+  const filteredDeps = packageName
+    ? hostLessDeps.filter(
+        (dep: any) =>
+          (dep.name ?? "").toLowerCase() === packageName.toLowerCase()
+      )
+    : hostLessDeps;
+
+  if (packageName && filteredDeps.length === 0) {
+    const installed = hostLessDeps.map((d: any) => d.name ?? d.pkgId).join(", ");
+    throw new Error(
+      `Package "${packageName}" is not installed. ` +
+        (installed
+          ? `Installed packages: ${installed}. `
+          : "No hostless packages are installed. ") +
+        `Use project.list-packages to see all installed packages.`
+    );
+  }
+
+  const results: PackageComponent[] = [];
+
+  for (const dep of filteredDeps) {
+    const components = (dep.site?.components ?? []).filter((c: any) =>
+      isReusableComponent(c)
+    );
+
+    for (const comp of components) {
+      const props = extractComponentProps(comp);
+
+      results.push({
+        packageName: dep.name ?? "Unknown",
+        packageProjectId: dep.projectId,
+        name: comp.name ?? "Unknown",
+        displayName: comp.name ?? "Unknown",
+        ...(comp.description && { description: comp.description }),
+        props,
+      });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Extract prop schema from a component's params array.
+ * Follows the same derivation rules as edit-tools.ts listProps().
+ */
+function extractComponentProps(comp: any): PackageComponentPropInfo[] {
+  const params: any[] = comp.params ?? [];
+  const props: PackageComponentPropInfo[] = [];
+
+  for (const param of params) {
+    const name = param.variable?.name ?? param.name;
+    if (!name) continue;
+
+    const isSlot = !!param.tplSlot ||
+      (param.typeTag ?? param._type) === "SlotParam";
+
+    const type = isSlot
+      ? "slot"
+      : param.typeTag ?? param._type ?? param.type?._type ?? "unknown";
+
+    let defaultValue: string | undefined;
+    if (param.defaultExpr) {
+      if (isKnownCustomCode(param.defaultExpr)) {
+        defaultValue = param.defaultExpr.code;
+      } else if (isKnownObjectPath(param.defaultExpr)) {
+        defaultValue = param.defaultExpr.path?.join(".");
+      }
+    }
+
+    props.push({
+      name,
+      type,
+      required: param.required ?? false,
+      isSlot,
+      ...(defaultValue !== undefined && { defaultValue }),
+      ...(param.description && { description: param.description }),
+    });
+  }
+
+  return props;
 }
 
 // ---------------------------------------------------------------------------
