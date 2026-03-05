@@ -56,6 +56,14 @@ describe("isDashboardRestricted", () => {
     const config = makeAppConfig({ hideDashboardViews: true });
     expect(isDashboardRestricted(config, "")).toBe(true);
   });
+
+  it("falls back to adminDashboard when override param is empty", () => {
+    const config = makeAppConfig({
+      hideDashboardViews: true,
+      adminDashboardOverrideParam: "",
+    });
+    expect(isDashboardRestricted(config, "?adminDashboard=true")).toBe(false);
+  });
 });
 
 describe("redirectToDashboard", () => {
@@ -87,6 +95,14 @@ describe("redirectToDashboard", () => {
 
   it("falls back to / when dashboardRedirectUrl is empty", () => {
     const config = makeAppConfig({ dashboardRedirectUrl: "" });
+    redirectToDashboard(config);
+    expect(window.location.replace).toHaveBeenCalledWith("/");
+  });
+
+  it("falls back to / when dashboardRedirectUrl is undefined", () => {
+    const config = makeAppConfig({
+      dashboardRedirectUrl: undefined as any,
+    });
     redirectToDashboard(config);
     expect(window.location.replace).toHaveBeenCalledWith("/");
   });

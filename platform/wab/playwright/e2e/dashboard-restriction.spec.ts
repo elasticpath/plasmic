@@ -62,7 +62,16 @@ test.describe("EP Studio Lockdown", () => {
 
   // ── Dashboard routes redirect to CM when logged in ──────────────────────
 
-  for (const path of ["/", "/projects", "/settings"]) {
+  for (const path of [
+    "/",
+    "/projects",
+    "/settings",
+    "/orgs/fake-team-id",
+    "/orgs/fake-team-id/settings",
+    "/workspaces/fake-workspace-id",
+    "/playground",
+    "/admin/config",
+  ]) {
     test(`logged-in: ${path} redirects to CM`, async ({ page, apiClient }) => {
       await interceptRedirect(page);
       await page.goto(path).catch(() => {});
@@ -95,6 +104,17 @@ test.describe("EP Studio Lockdown", () => {
     await interceptRedirect(page);
     await page.goto(`/projects/${projectId}`, { timeout: 120_000 });
     expect(page.url()).toContain(`/projects/${projectId}`);
+  });
+
+  test("CMS route /cms/:databaseId is not redirected", async ({
+    page,
+    apiClient,
+  }) => {
+    await interceptRedirect(page);
+    // Use a fake database ID — the page may error but must NOT redirect to CM
+    await page.goto("/cms/fake-db-id", { timeout: 60_000 }).catch(() => {});
+    expect(page.url()).toContain("/cms/fake-db-id");
+    expect(page.url()).not.toContain(REDIRECT_URL);
   });
 
   // ── Escape hatch bypasses restrictions ──────────────────────────────────
@@ -131,5 +151,18 @@ test.describe("EP Studio Lockdown", () => {
     await interceptRedirect(page);
     await page.goto("/").catch(() => {});
     await page.waitForURL(`${REDIRECT_URL}**`, { timeout: 30_000 });
+  });
+
+  test("non-logged-in user with escape hatch bypasses redirect", async ({
+    page,
+  }) => {
+    await page.context().clearCookies();
+    await interceptRedirect(page);
+    await page.goto("/?adminDashboard=true", {
+      waitUntil: "networkidle",
+      timeout: 60_000,
+    });
+    // Should NOT redirect to CM — the escape hatch bypasses the lockdown
+    expect(page.url()).not.toContain(REDIRECT_URL);
   });
 });
