@@ -308,11 +308,6 @@ export class PlasmicApiClient {
   }
 
   /**
-   * Get public auth config for a project (checks if app auth is enabled).
-   * URL: GET /api/v1/end-user/app/{projectId}/pub-config
-   * Used by add-package to block importing auth-enabled dependencies.
-   */
-  /**
    * Get the app config including hostless component catalog.
    * URL: GET /api/v1/app-config
    * Used by list-available-packages to browse installable hostless packages.
@@ -324,6 +319,11 @@ export class PlasmicApiClient {
     );
   }
 
+  /**
+   * Get public auth config for a project (checks if app auth is enabled).
+   * URL: GET /api/v1/end-user/app/{projectId}/pub-config
+   * Used by add-package to block importing auth-enabled dependencies.
+   */
   async getAppAuthPubConfig(projectId: string): Promise<AppAuthPubConfig> {
     return this.request<AppAuthPubConfig>(
       "GET",
