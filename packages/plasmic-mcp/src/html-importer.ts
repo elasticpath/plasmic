@@ -98,7 +98,8 @@ export type ParsedNode =
   | ParsedImage
   | ParsedButton
   | ParsedInput
-  | ParsedSvg;
+  | ParsedSvg
+  | ParsedComponent;
 
 interface ParsedBase {
   /** camelCase CSS properties for the base variant. */
@@ -143,6 +144,14 @@ interface ParsedSvg extends ParsedBase {
   kind: "svg";
   /** Raw SVG markup stored for dangerouslySetInnerHTML. */
   svgHtml: string;
+}
+
+interface ParsedComponent extends ParsedBase {
+  kind: "component";
+  /** Name of the Plasmic component to instantiate. */
+  componentName: string;
+  /** Children to pass into the component's default slot. */
+  children: ParsedNode[];
 }
 
 // ---------------------------------------------------------------------------
@@ -410,7 +419,8 @@ const TEXT_TAGS = new Set([
  * behaviour without mocking the edit-tool layer.
  */
 export function parseHtmlToTree(
-  html: string
+  html: string,
+  componentNames?: string[]
 ): { nodes: ParsedNode[]; warnings: string[] } {
   const warnings: string[] = [];
 
@@ -429,6 +439,15 @@ export function parseHtmlToTree(
     .join("\n");
 
   const cssRules = parseCssRules(cssText);
+
+  // Build a case-insensitive lookup for Plasmic component names so the LLM
+  // can reference them via data-component="ComponentName" attributes.
+  const componentNameSet = new Map<string, string>();
+  if (componentNames) {
+    for (const name of componentNames) {
+      componentNameSet.set(name.toLowerCase(), name);
+    }
+  }
 
   function walkElement(element: Element): ParsedNode | null {
     const tag = element.tagName.toLowerCase();
@@ -500,6 +519,36 @@ export function parseHtmlToTree(
         mediaStyles: media,
         attrs,
       } satisfies ParsedInput;
+    }
+
+    // --- Component reference via data-component attribute ---
+    const dataComponentAttr = element.getAttribute("data-component");
+    if (dataComponentAttr) {
+      const matched = componentNameSet.get(dataComponentAttr.toLowerCase());
+      if (matched) {
+        // Remove data-component from attrs — it's a directive, not an HTML attribute.
+        const { "data-component": _, ...cleanAttrs } = attrs;
+        const children: ParsedNode[] = [];
+        for (const child of Array.from(element.children)) {
+          const parsed = walkElement(child);
+          if (parsed !== null) children.push(parsed);
+        }
+        return {
+          kind: "component",
+          componentName: matched,
+          children,
+          styles: mergedBase,
+          pseudoStyles: pseudo,
+          mediaStyles: media,
+          attrs: cleanAttrs,
+        } satisfies ParsedComponent;
+      } else {
+        // Component name not found in site model — warn and fall through to container.
+        warnings.push(
+          `data-component="${dataComponentAttr}" does not match any component in the project. ` +
+            "Element will be imported as a container instead."
+        );
+      }
     }
 
     // --- Text leaf or container ---
@@ -922,6 +971,69 @@ async function mapNodeToEditCalls(
       `SVG stored as raw HTML attribute on node ${newNodeUuid}. ` +
         "SVG asset upload is not supported in v1 — use an image asset for production."
     );
+  } else if (node.kind === "component") {
+    // Map to a Plasmic component instance via addChild with type: "component".
+    const childEl: PlasmicElement = {
+      type: "component",
+      name: node.componentName,
+      styles: Object.keys(node.styles).length > 0 ? node.styles : undefined,
+    };
+
+    let addResult: Awaited<ReturnType<typeof addChild>>;
+    try {
+      addResult = await addChild(
+        apiClient,
+        componentUuid,
+        parentRef,
+        childEl,
+        position
+      );
+    } catch (err) {
+      state.warnings.push(
+        `Failed to add component "${node.componentName}": ${String(err)}`
+      );
+      return undefined;
+    }
+
+    newNodeUuid = addResult.newNodeUuid!;
+    state.nodesCreated++;
+
+    if (Object.keys(node.styles).length > 0) {
+      try {
+        await updateStyles(apiClient, componentUuid, newNodeUuid, node.styles);
+      } catch (err) {
+        state.warnings.push(
+          `updateStyles failed on component "${node.componentName}" (${newNodeUuid}): ${String(err)}`
+        );
+      }
+    }
+
+    if (Object.keys(node.attrs).length > 0) {
+      try {
+        await updateAttrs(
+          apiClient,
+          componentUuid,
+          newNodeUuid,
+          node.attrs as Record<string, unknown>
+        );
+      } catch (err) {
+        state.warnings.push(
+          `updateAttrs failed on component "${node.componentName}" (${newNodeUuid}): ${String(err)}`
+        );
+      }
+    }
+
+    // Recurse into children — these become the component's default slot content.
+    for (const child of node.children) {
+      await mapNodeToEditCalls(
+        apiClient,
+        componentUuid,
+        newNodeUuid,
+        child,
+        undefined,
+        state
+      );
+    }
   }
 
   // --- Apply pseudo-class style variants ---
@@ -1052,7 +1164,8 @@ export async function importHtml(
   componentUuid: string,
   parentRef: string,
   html: string,
-  position?: string | number
+  position?: string | number,
+  componentNames?: string[]
 ): Promise<ImportHtmlResult> {
   // Guard: empty / whitespace-only input
   if (!html || html.trim() === "") {
@@ -1067,7 +1180,7 @@ export async function importHtml(
   let parsedNodes: ParsedNode[];
   let parseWarnings: string[];
   try {
-    const { nodes, warnings } = parseHtmlToTree(html);
+    const { nodes, warnings } = parseHtmlToTree(html, componentNames);
     parsedNodes = nodes;
     parseWarnings = warnings;
   } catch (err) {

@@ -375,6 +375,87 @@ describe("parseHtmlToTree", () => {
     });
   });
 
+  describe("component detection via data-component", () => {
+    it("parses element with data-component as component node when name matches", () => {
+      const { nodes, warnings } = parseHtmlToTree(
+        `<div data-component="HeroSection" style="padding: 32px;"></div>`,
+        ["HeroSection", "Card", "Footer"]
+      );
+
+      expect(nodes).toHaveLength(1);
+      expect(nodes[0].kind).toBe("component");
+      if (nodes[0].kind === "component") {
+        expect(nodes[0].componentName).toBe("HeroSection");
+        expect(nodes[0].styles).toMatchObject({ padding: "32px" });
+      }
+      expect(warnings).toHaveLength(0);
+    });
+
+    it("matches component names case-insensitively", () => {
+      const { nodes } = parseHtmlToTree(
+        `<div data-component="herosection"></div>`,
+        ["HeroSection"]
+      );
+
+      expect(nodes).toHaveLength(1);
+      expect(nodes[0].kind).toBe("component");
+      if (nodes[0].kind === "component") {
+        // Should use the canonical name, not the lowercased input
+        expect(nodes[0].componentName).toBe("HeroSection");
+      }
+    });
+
+    it("falls through to container when component name is not found", () => {
+      const { nodes, warnings } = parseHtmlToTree(
+        `<div data-component="NonExistent" style="color: red;">text</div>`,
+        ["HeroSection", "Card"]
+      );
+
+      expect(nodes).toHaveLength(1);
+      // Should fall through to text (since "text" is the only content)
+      expect(nodes[0].kind).toBe("text");
+      expect(warnings.some((w) => w.includes("NonExistent"))).toBe(true);
+      expect(warnings.some((w) => w.includes("does not match"))).toBe(true);
+    });
+
+    it("removes data-component from attrs on matched component", () => {
+      const { nodes } = parseHtmlToTree(
+        `<div data-component="Card" id="my-card"></div>`,
+        ["Card"]
+      );
+
+      expect(nodes).toHaveLength(1);
+      if (nodes[0].kind === "component") {
+        expect(nodes[0].attrs).not.toHaveProperty("data-component");
+        expect(nodes[0].attrs).toHaveProperty("id", "my-card");
+      }
+    });
+
+    it("parses children of component elements", () => {
+      const { nodes } = parseHtmlToTree(
+        `<div data-component="Card"><h1>Title</h1><p>Body</p></div>`,
+        ["Card"]
+      );
+
+      expect(nodes).toHaveLength(1);
+      if (nodes[0].kind === "component") {
+        expect(nodes[0].children).toHaveLength(2);
+        expect(nodes[0].children[0].kind).toBe("text");
+        expect(nodes[0].children[1].kind).toBe("text");
+      }
+    });
+
+    it("treats element as container when no componentNames provided", () => {
+      const { nodes } = parseHtmlToTree(
+        `<div data-component="Card" style="padding: 8px;">text</div>`
+      );
+
+      // Without componentNames, data-component is just a regular attribute
+      expect(nodes).toHaveLength(1);
+      expect(nodes[0].kind).toBe("text");
+    });
+  });
+
   describe("happy path: two-column hero section", () => {
     it("parses the spec example correctly", () => {
       const html = `
@@ -776,6 +857,93 @@ describe("importHtml", () => {
     });
   });
 
+  describe("component import", () => {
+    it("imports element with data-component as component type", async () => {
+      const result = await importHtml(
+        api,
+        compUuid,
+        parentRef,
+        `<div data-component="HeroSection" style="padding: 32px;"></div>`,
+        undefined,
+        ["HeroSection"]
+      );
+
+      expect(result.error).toBeUndefined();
+      expect(result.nodesCreated).toBe(1);
+
+      // addChild should be called with type: "component"
+      expect(mockAddChild).toHaveBeenCalledWith(
+        api,
+        compUuid,
+        parentRef,
+        expect.objectContaining({
+          type: "component",
+          name: "HeroSection",
+        }),
+        undefined
+      );
+    });
+
+    it("warns and falls back to container when component not found", async () => {
+      const result = await importHtml(
+        api,
+        compUuid,
+        parentRef,
+        `<div data-component="Unknown" style="display: flex;"></div>`,
+        undefined,
+        ["HeroSection"]
+      );
+
+      expect(result.error).toBeUndefined();
+      expect(result.nodesCreated).toBe(1);
+      expect(result.warnings.some((w) => w.includes("Unknown"))).toBe(true);
+
+      // Should fall back to a box container
+      expect(mockAddChild).toHaveBeenCalledWith(
+        api,
+        compUuid,
+        parentRef,
+        expect.objectContaining({
+          type: "box",
+        }),
+        undefined
+      );
+    });
+
+    it("imports component children into default slot", async () => {
+      const result = await importHtml(
+        api,
+        compUuid,
+        parentRef,
+        `<div data-component="Card"><h1>Title</h1></div>`,
+        undefined,
+        ["Card"]
+      );
+
+      expect(result.error).toBeUndefined();
+      expect(result.nodesCreated).toBe(2);
+
+      // First call: component Card, second call: h1 text child
+      expect(mockAddChild).toHaveBeenCalledTimes(2);
+      expect(mockAddChild).toHaveBeenNthCalledWith(
+        1,
+        api,
+        compUuid,
+        parentRef,
+        expect.objectContaining({ type: "component", name: "Card" }),
+        undefined
+      );
+      expect(mockAddChild).toHaveBeenNthCalledWith(
+        2,
+        api,
+        compUuid,
+        "node-1", // child of the component
+        expect.objectContaining({ type: "text", value: "Title" }),
+        undefined
+      );
+    });
+  });
+
   describe("cache invalidation", () => {
     it("invalidates node cache after import", async () => {
       await importHtml(api, compUuid, parentRef, `<div>text</div>`);
@@ -844,6 +1012,43 @@ describe("wiTreeToEditCalls", () => {
     expect(result.rootNodeUuids).toHaveLength(2);
     expect(result.nodesCreated).toBe(2);
     expect(mockAddChild).toHaveBeenCalledTimes(2);
+  });
+
+  it("maps component nodes to addChild with type: component", async () => {
+    const nodes: ParsedNode[] = [
+      {
+        kind: "component",
+        componentName: "HeroSection",
+        children: [],
+        styles: { padding: "32px" },
+        pseudoStyles: new Map(),
+        mediaStyles: new Map(),
+        attrs: {},
+      },
+    ];
+
+    const result = await wiTreeToEditCalls(api, compUuid, parentRef, nodes);
+    expect(result.rootNodeUuids).toHaveLength(1);
+    expect(result.nodesCreated).toBe(1);
+
+    expect(mockAddChild).toHaveBeenCalledWith(
+      api,
+      compUuid,
+      parentRef,
+      expect.objectContaining({
+        type: "component",
+        name: "HeroSection",
+      }),
+      undefined
+    );
+
+    // Styles should be applied
+    expect(mockUpdateStyles).toHaveBeenCalledWith(
+      api,
+      compUuid,
+      "node-1",
+      expect.objectContaining({ padding: "32px" })
+    );
   });
 
   it("collects warnings from addChild failures without stopping", async () => {

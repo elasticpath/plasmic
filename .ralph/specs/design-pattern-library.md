@@ -66,7 +66,7 @@ This is an established MCP pattern used in production:
       - `applyPattern("hero-centered", parentId)` calls the expected edit tool sequence
       - `applyPattern` with customisations substitutes values correctly
       - Unknown `patternName` returns a clear error
-- [ ] All ~1,470 existing tests continue to pass.
+- [ ] All 1,852 existing tests continue to pass.
 - [ ] No changes to existing MCP tool schemas.
 
 ## Happy Path

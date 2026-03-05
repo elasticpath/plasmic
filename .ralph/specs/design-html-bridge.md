@@ -66,7 +66,7 @@ functions (`addChild`, `updateStyles`, `updateText`, etc.).
       - Nested container with text child → correct recursive mapping
       - `:hover` style variant → `createStyleVariant` + `updateStyles` calls
       - Unknown/ignored tags (script, iframe) → skipped
-- [ ] All ~1,470 existing tests continue to pass.
+- [ ] All 1,852 existing tests continue to pass.
 - [ ] No changes to existing MCP tool schemas (backwards compatible).
 
 ## Happy Path

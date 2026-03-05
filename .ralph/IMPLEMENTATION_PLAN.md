@@ -27,10 +27,6 @@ Status report for the 4 specs in `.ralph/specs/` against the current codebase on
 | 10e | Few-shot examples in `interaction` tool description | All 4 actions: list, add, update, remove |
 | 10 | All 8 tools migrated from deprecated `server.tool()` to `server.registerTool()` with annotations | `project`: `idempotentHint: true`; `component`, `node`, `variant`, `design`, `data`, `interaction`: `destructiveHint: true`; `inspect`: `readOnlyHint: true` (was already migrated) |
 
-### TODO
-
-None — this spec is fully implemented.
-
 ---
 
 ## Spec 2: HTML Import Bridge (`design-html-bridge.md`)
@@ -44,15 +40,11 @@ None — this spec is fully implemented.
 | 3 | jsdom polyfill for DOM parsing | `html-importer.ts` imports jsdom |
 | 4 | `parseHtmlToTree()` function | Exists in `html-importer.ts` — parses HTML via jsdom, extracts CSS via css-tree |
 | 5 | `wiTreeToEditCalls()` mapper | Exists in `html-importer.ts` — maps ParsedNode[] to addChild/updateStyles/updateText/updateAttrs calls |
-| 6 | Handles WIContainer, WIText, WISVG, WIComponent | Implemented. SVG stored as `dangerouslySetInnerHTML` (v1 limitation, documented). |
+| 6 | Handles WIContainer, WIText, WISVG, WIComponent | Implemented. WIComponent handled via `data-component` attribute detection in `parseHtmlToTree` — elements with `data-component="ComponentName"` are parsed as `ParsedComponent` type in `html-importer.ts`, matched case-insensitively against site model component names, falls back to container with warning when component not found. SVG stored as `dangerouslySetInnerHTML` (v1 limitation, documented). |
 | 7 | Style variant handling (pseudo-classes, screen variants) | Pseudo-classes: creates style variants then applies styles. `@media` breakpoints: generates warning and skips (explicit v1 limitation — screen variants must be matched manually). |
 | 8 | `jsdom` in package.json dependencies | Present in `dependencies` |
 | 9 | Unit tests | `__tests__/html-importer.test.ts` — covers element kinds, CSS extraction, pseudo/media styles, attribute collection, SVG handling, cache invalidation |
 | 10 | No changes to existing MCP tool schemas | Confirmed |
-
-### TODO
-
-None — this spec is fully implemented.
 
 **Known v1 limitations (accepted, not spec gaps):**
 - `@media` breakpoint styles skip with warning — screen variants must be matched manually
@@ -75,10 +67,6 @@ None — this spec is fully implemented.
 | 7 | `listPatterns` marked `readOnlyHint: true` | Inherits from inspect tool annotation at `server.ts:758` |
 | 8 | Unit tests | `__tests__/pattern-library.test.ts` — 8-pattern coverage, customisation substitution, error paths |
 | 9 | No changes to existing MCP tool schemas | Confirmed |
-
-### TODO
-
-None — this spec is fully implemented.
 
 ---
 
@@ -104,10 +92,6 @@ None — this spec is fully implemented.
 - `makeEmptyRenderingCtx` is not exported from `canvas-rendering.ts`, so `makeRenderingCtx` is re-implemented locally in the entry file
 - Asset imports (`.scss`, `.sass`, `.svg`, `.png`) from WAB client code require stub resolvers at the `@/` alias level — esbuild resolves `@/` imports before checking file extensions
 - `bundler.bundle()` on the session re-serializes the live Site to JSON for passing to the browser
-
-### TODO
-
-None — this spec is fully implemented.
 
 ---
 

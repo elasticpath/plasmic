@@ -3254,8 +3254,16 @@ export function createServer(): McpServer {
             const pRef = requireParam(params.parentRef, "parentRef", "node.import-html");
             const htmlStr = requireParam(params.htmlContent, "htmlContent", "node.import-html");
 
+            // Pass component names from the site model so the parser can
+            // detect data-component="..." attributes and map them to
+            // Plasmic component instances.
+            const session = requireSession();
+            const siteComponentNames = (session.site.components ?? []).map(
+              (c: { name: string }) => c.name
+            );
+
             const result = await importHtml(
-              apiClient, cuuid, pRef, htmlStr, params.position
+              apiClient, cuuid, pRef, htmlStr, params.position, siteComponentNames
             );
 
             if (result.error) {

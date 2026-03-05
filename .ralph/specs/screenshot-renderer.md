@@ -162,7 +162,7 @@ instead of a URL.
 - [ ] When the dev host is not running the iframe fails to load within 8s and
       the action returns a clear error, not a hang.
 - [ ] Works for non-page components (no URL route required).
-- [ ] All existing tests pass (~1,470).
+- [ ] All existing tests pass (1,852).
 - [ ] New unit tests cover: iframe setup, `__Sub` polling, `renderTplNode` call,
       `setPlasmicRootNode` injection.
 
