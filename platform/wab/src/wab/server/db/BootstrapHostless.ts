@@ -29,7 +29,7 @@ import {
   getOrderedPackageNames,
 } from "@/wab/server/db/seed/hostless-metadata";
 import { logger } from "@/wab/server/observability";
-import { PkgMgr } from "@/wab/server/pkg-mgr";
+import { getBundleInfo, PkgMgr } from "@/wab/server/pkg-mgr";
 import { Bundler } from "@/wab/shared/bundler";
 import { spawn } from "@/wab/shared/common";
 import {
@@ -229,9 +229,13 @@ async function setDevFlagOverrides(
     projects[name] = projectId;
   }
 
+  // Get the plexus project ID (deterministic from the bundle)
+  const plexusProjectId = getBundleInfo(PLEXUS_INSERTABLE_ID).projectId;
+
   // Remap project IDs for this environment
   const overrides = remapDevFlagOverrides(templateJson, {
     hostlessWorkspaceId,
+    plexusProjectId,
     projects,
   });
 

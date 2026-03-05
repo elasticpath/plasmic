@@ -93,8 +93,27 @@ function resolveProjectNames(
 
 export interface RemapOptions {
   hostlessWorkspaceId: string;
+  /** Plexus project ID (from PkgMgr.seedPkg / getBundleInfo) */
+  plexusProjectId: string;
   /** Map from hostlessList.json project name → newly created project ID */
   projects: Record<string, string>;
+}
+
+/**
+ * Find the plexus project ID placeholder/value in the template.
+ * Looks in `installables[0].projectId` which is the canonical location.
+ */
+function findPlexusPlaceholder(
+  result: Record<string, any>
+): string | undefined {
+  const installables = result.installables;
+  if (Array.isArray(installables) && installables.length > 0) {
+    const id = installables[0].projectId;
+    if (typeof id === "string" && id.length > 0) {
+      return id;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -102,20 +121,33 @@ export interface RemapOptions {
  *
  * Replaces:
  * - `hostLessWorkspaceId` with the new workspace ID
+ * - Plexus project ID (in installables, insertableTemplates, insertPanelContent)
  * - Every `projectId` in `hostLessComponents` entries with new project IDs
- *
- * Plexus/installable project IDs are deterministic (from the bundle) and
- * don't need remapping.
  */
 export function remapDevFlagOverrides(
   input: Record<string, any>,
   opts: RemapOptions
 ): Record<string, any> {
   const result = JSON.parse(JSON.stringify(input)); // deep clone
-  const { hostlessWorkspaceId, projects } = opts;
+  const { hostlessWorkspaceId, plexusProjectId, projects } = opts;
 
   // Replace hostless workspace ID
   result.hostLessWorkspaceId = hostlessWorkspaceId;
+
+  // Replace plexus project IDs throughout the template.
+  // The template may contain a placeholder like "PLEXUS_PROJECT_ID" or an old
+  // environment's plexus ID — we do a global string replacement on the
+  // serialized JSON so it catches installables, insertableTemplates,
+  // insertPanelContent, etc.
+  const serialized = JSON.stringify(result);
+  const plexusPlaceholder = findPlexusPlaceholder(result);
+  if (plexusPlaceholder && plexusPlaceholder !== plexusProjectId) {
+    const replaced = serialized.split(plexusPlaceholder).join(plexusProjectId);
+    Object.assign(result, JSON.parse(replaced));
+    logger().info(
+      `Replaced plexus project ID: "${plexusPlaceholder}" → "${plexusProjectId}"`
+    );
+  }
 
   // Remap hostLessComponents project IDs
   if (!Array.isArray(result.hostLessComponents)) {
