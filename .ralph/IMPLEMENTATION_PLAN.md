@@ -1,6 +1,6 @@
 # Implementation Plan
 
-_Last updated: 2026-03-05 (P0.0–P0.9 completed, all P0 items done)_
+_Last updated: 2026-03-05 (P0 complete, P1.1+P1.3 complete)_
 
 ## Status Legend
 - `[ ]` Not started
@@ -77,20 +77,11 @@ Added module-level `isSaving()` flag to save-manager.ts (set true before HTTP ca
 
 Once the socket connection exists (P0), presence allows Studio users to see the AI agent as a collaborator and track what it is editing.
 
-### P1.1 -- Presence Manager
+### P1.1 -- Presence Manager ✅ COMPLETED
 
-- [ ] **Create `src/presence-manager.ts`** -- manages emitting `view` events with `UpdatePlayerViewRequest` data. **Imports `UpdatePlayerViewRequest`, `ArenaInfo`, `ArenaType` from `@/wab/shared/ApiSchema`** and **`getArenaType`, `getArenaUuidOrName` from `@/wab/shared/Arenas`** — same types and helpers Studio uses. Provides `updateArena(componentUuid, arenaType)`, `updateSelection(frameUuid, selectableKey)`, `clearPresence()`. Debounces emissions (200ms).
-  - Files: create `packages/plasmic-mcp/src/presence-manager.ts`
-  - Dependencies: P0.0 (needs ApiSchema and Arenas declarations), P0.1, P0.5
-  - Complexity: **M**
-  - Key design decisions:
-    - `UpdatePlayerViewRequest`: `{ projectId, branchId: null, arena: ArenaInfo | null, selection: PlayerSelectionInfo | null, cursor: null, position: null }`. MCP has no cursor or viewport.
-    - `ArenaInfo`: `{ type: ArenaType, uuidOrName: string, focused: false }`. Derive `type` using `getArenaType()` from `@/wab/shared/Arenas` or from `component.pageMeta` presence.
-    - `PlayerSelectionInfo`: `{ selectableFrameUuid: string, selectableKey?: string }`. For node-level operations, use node UUID as selectableKey.
-    - Debounce via `setTimeout` (200ms), not MobX autorun.
-  - **Shared code imported (not reimplemented):**
-    - `UpdatePlayerViewRequest`, `ArenaInfo`, `ArenaType`, `InitServerInfo` — `@/wab/shared/ApiSchema`
-    - `getArenaType`, `getArenaUuidOrName` — `@/wab/shared/Arenas`
+Created `src/presence-manager.ts` — emits `view` events with `UpdatePlayerViewRequest` data so Studio users see the MCP agent as a collaborator. Imports `ArenaType`, `ArenaInfo`, `PlayerSelectionInfo`, `UpdatePlayerViewRequest` from `@/wab/shared/ApiSchema`. Provides `updateArena(componentUuid, arenaType)`, `updateSelection(frameUuid, selectableKey?)`, `clearPresence()`, `clearSelection()`, `emitViewNow()`, `resetPresence()`. Debounces at 200ms via `setTimeout`. MCP sets `cursor: null`, `position: null`, `branchId: null`, `focused: false` — no cursor/viewport/branch support.
+
+**Note:** Does not import `getArenaType`/`getArenaUuidOrName` from `@/wab/shared/Arenas` — the presence manager receives the arena type and UUID directly from the caller (tool handlers will resolve these in P1.2).
 
 ### P1.2 -- Hook Presence into Edit Tools
 
@@ -104,12 +95,9 @@ Once the socket connection exists (P0), presence allows Studio users to see the 
     - For read-only operations (inspect tools), emit arena info but no selection
     - Debouncing prevents flooding on rapid successive calls
 
-### P1.3 -- Presence Manager Unit Tests
+### P1.3 -- Presence Manager Unit Tests ✅ COMPLETED
 
-- [ ] **Create `src/__tests__/presence-manager.test.ts`** -- unit tests covering: view event emission, debouncing, arena info construction using imported `ArenaType`/`ArenaInfo` types, selection info construction, clear on disconnect, batch operation presence.
-  - Files: create `packages/plasmic-mcp/src/__tests__/presence-manager.test.ts`
-  - Dependencies: P1.1
-  - Complexity: **M**
+18 tests in `presence-manager.test.ts` covering: view event emission with correct UpdatePlayerViewRequest shape, arena info construction (component/page types), selection info with/without selectableKey, debounce coalescing (rapid updates → single emission), debounce timer reset, emitViewNow bypass, clearPresence/clearSelection, resetPresence without emission, no-socket graceful degradation, no-session skip, batch operation presence across components, read-only inspection (arena without selection).
 
 ---
 
