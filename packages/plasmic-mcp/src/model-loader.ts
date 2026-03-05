@@ -84,6 +84,12 @@ export async function loadProject(
   // We NEVER trust the bundle's own version field because it may be stale or missing
   // (e.g. if a previous save wrote version: undefined due to the missing-arg bug).
   const bundleVersion = await apiClient.getLastBundleVersion();
+  if (!bundleVersion || typeof bundleVersion !== "string") {
+    throw new Error(
+      `Server returned invalid bundle version: ${JSON.stringify(bundleVersion)}. ` +
+        `Cannot load project without a valid bundle version.`
+    );
+  }
   console.error(`[plasmic-mcp] Bundle version from server: ${bundleVersion}`);
 
   const bundler = new FastBundler(meta, classesModule);
