@@ -11,6 +11,7 @@
  */
 
 import { connectSocket, disconnectSocket, isSocketConnected } from "./socket-client.js";
+import { emitViewNow, resetPresence } from "./presence-manager.js";
 import { UpdateQueue } from "./update-queue.js";
 import {
   fetchAndRebase,
@@ -77,6 +78,7 @@ export async function startLiveSync(
     },
     onReconnect: () => {
       console.error("[plasmic-mcp] LiveSync: socket reconnected");
+      emitViewNow();
     },
   });
 
@@ -93,6 +95,7 @@ export function stopLiveSync(): void {
     updateQueue.stop();
     updateQueue = null;
   }
+  resetPresence();
   disconnectSocket();
   activeApiClient = null;
 }

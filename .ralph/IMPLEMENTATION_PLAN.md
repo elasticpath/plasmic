@@ -1,6 +1,6 @@
 # Implementation Plan
 
-_Last updated: 2026-03-05 (P0 complete, P1 complete, P2.3 complete)_
+_Last updated: 2026-03-05 (P0 complete, P1 complete, P2.2 complete, P2.3 complete)_
 
 ## Status Legend
 - `[ ]` Not started
@@ -11,13 +11,15 @@ _Last updated: 2026-03-05 (P0 complete, P1 complete, P2.3 complete)_
 
 ## P0 -- WebSocket Live Sync (Core) ✅ COMPLETED
 
-All P0 items are complete (P0.0-P0.10). The MCP server now receives real-time `update` events via socket.io and rebases the in-memory model, exactly as Studio does.
+All P0 items complete (P0.0-P0.10). Real-time `update` events via socket.io with in-memory model rebasing.
 
 ---
 
 ## P1 -- WebSocket Presence ✅ COMPLETED
 
-All P1 items are complete (P1.1-P1.3). Studio users see the MCP agent as a collaborator and can track what it is editing in real-time. Presence is emitted for all edit/inspect tool handlers via `src/presence-manager.ts` and `src/tool-presence.ts`. 37 unit tests across `presence-manager.test.ts` and `tool-presence.test.ts`.
+All P1 items complete (P1.1-P1.3). Studio users see the MCP agent as a collaborator and can track what it is editing in real-time via `src/presence-manager.ts` and `src/tool-presence.ts`.
+
+**Presence lifecycle fixes (2026-03-05):** Fixed two spec discrepancies -- `emitViewNow()` now called on socket reconnect (re-broadcasts presence), `resetPresence()` now called in `stopLiveSync()` (clears state without emitting on disconnect). 2 tests added in `live-sync.test.ts`. Files: `packages/plasmic-mcp/src/live-sync.ts`, `packages/plasmic-mcp/src/__tests__/live-sync.test.ts`.
 
 ---
 
@@ -30,12 +32,9 @@ All P1 items are complete (P1.1-P1.3). Studio users see the MCP agent as a colla
   - Dependencies: None
   - Complexity: **L**
 
-### P2.2 -- Pattern Applier Direct Tests
+### P2.2 -- Pattern Applier Direct Tests ✅ COMPLETED
 
-- [ ] **Expand `pattern-library.test.ts` with direct applier tests** -- test `applyCustomisations` with more complex customisation trees (nested children, slot overrides, variant-specific styles).
-  - Files: augment `packages/plasmic-mcp/src/__tests__/pattern-library.test.ts`
-  - Dependencies: None
-  - Complexity: **S**
+Added 20 direct `applyCustomisations` edge case tests covering: deeply nested substitutions (footer-simple 4 levels), multiple elements matching same key (h2 collision), all heuristic matchers (copyrightText ©, brandName "Brand", titleText h3, actionLabel a, submitLabel button), empty string values, all-undeclared keys, non-array single child path, string element children, leaf nodes, special characters in values, imageSrc on img elements, declared key with no matching element. Total tests: 1,801 (up from 1,778). Files: `packages/plasmic-mcp/src/__tests__/pattern-library.test.ts`.
 
 ### P2.3 -- Save Manager Conflict Retry ✅ COMPLETED
 

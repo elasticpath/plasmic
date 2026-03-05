@@ -19,7 +19,19 @@ import {
 } from "../socket-client.js";
 import { setSession, clearSession, getSession } from "../session.js";
 import { initChangeTracker, disposeChangeTracker } from "../change-tracker.js";
+import { emitViewNow, resetPresence } from "../presence-manager.js";
 import type { Session } from "../session.js";
+
+vi.mock("../presence-manager.js", () => ({
+  emitViewNow: vi.fn(),
+  resetPresence: vi.fn(),
+  updateArena: vi.fn(),
+  updateSelection: vi.fn(),
+  clearPresence: vi.fn(),
+  clearSelection: vi.fn(),
+  getCurrentArenaInfo: vi.fn().mockReturnValue(null),
+  getCurrentSelectionInfo: vi.fn().mockReturnValue(null),
+}));
 
 /** Create a mock socket with event emitter behavior. */
 function createMockSocket(): SocketLike & {
@@ -122,6 +134,8 @@ describe("live-sync", () => {
     clearSession();
     disposeChangeTracker();
     setSocketFactory(null);
+    vi.mocked(emitViewNow).mockClear();
+    vi.mocked(resetPresence).mockClear();
   });
 
   describe("startLiveSync", () => {
@@ -195,6 +209,19 @@ describe("live-sync", () => {
     it("is safe to call when not started", () => {
       stopLiveSync(); // Should not throw
       expect(isLiveSyncActive()).toBe(false);
+    });
+
+    it("resets presence state on stop", async () => {
+      const session = makeSession();
+      setSession(session);
+      initChangeTracker(session.site);
+
+      await startLiveSync(mockApiClient, "proj-123");
+      vi.mocked(resetPresence).mockClear();
+
+      stopLiveSync();
+
+      expect(resetPresence).toHaveBeenCalledOnce();
     });
   });
 
@@ -275,6 +302,25 @@ describe("live-sync", () => {
       });
 
       expect(session.hostlessDataVersion).toBe(5);
+    });
+  });
+
+  describe("socket reconnect", () => {
+    it("re-emits presence on socket reconnect", async () => {
+      const session = makeSession();
+      setSession(session);
+      initChangeTracker(session.site);
+
+      await startLiveSync(mockApiClient, "proj-123");
+      vi.mocked(emitViewNow).mockClear();
+
+      // Simulate socket.io manager reconnect event
+      mockSocket._fireIoEvent("reconnect");
+
+      // Wait for the reconnect callback
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(emitViewNow).toHaveBeenCalledOnce();
     });
   });
 
