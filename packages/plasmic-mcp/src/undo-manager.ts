@@ -22,6 +22,7 @@ import type { ModelChange } from "@/wab/shared/core/observable-model";
 import { getChangeTracker } from "./change-tracker.js";
 import { SaveManager, type SaveResult } from "./save-manager.js";
 import { PlasmicApiClient } from "./api-client.js";
+import { rebaseFromServer } from "./live-sync.js";
 
 export interface UndoOperation {
   description: string;
@@ -87,7 +88,9 @@ export async function undo(
   });
 
   try {
-    const saveManager = new SaveManager(apiClient);
+    const saveManager = new SaveManager(apiClient, {
+      rebaseOnConflict: () => rebaseFromServer(apiClient),
+    });
     const save = await saveManager.saveChanges(reverseChanges);
 
     console.error(

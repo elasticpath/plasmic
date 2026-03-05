@@ -105,6 +105,52 @@ export function isLiveSyncActive(): boolean {
 }
 
 /**
+ * Fetch server updates and rebase local changes on top.
+ * Exported for use by SaveManager's rebaseOnConflict callback —
+ * when a save fails with ProjectRevisionError, this brings the
+ * model up to date so the save can be retried.
+ */
+export async function rebaseFromServer(
+  apiClient: PlasmicApiClient
+): Promise<void> {
+  const session = getSession();
+  if (!session) {
+    throw new Error("No active session for rebase");
+  }
+
+  let tracker;
+  try {
+    tracker = getChangeTracker();
+  } catch {
+    throw new Error("No change tracker available for rebase");
+  }
+
+  const ctx: RebaseContext = {
+    site: session.site,
+    bundler: session.bundler,
+    projectId: session.projectId,
+    revisionNum: session.revisionNum,
+    recorder: tracker.getRecorder(),
+    serverUpdatesSummary:
+      session.serverUpdatesSummary ?? getEmptyDeletedAssetsSummary(),
+    getUndoStack: () => getStack(),
+    replaceUndoStack: (stack) => replaceStack(stack),
+    getAccumulatedChanges: () => getAccumulatedChanges(),
+    replaceAccumulatedChanges: (changes) => replaceAccumulatedChanges(changes),
+  };
+
+  const result = await fetchAndRebase(apiClient, ctx);
+  if (result) {
+    session.revisionNum = result.newRevisionNum;
+    session.serverUpdatesSummary = result.serverUpdatesSummary;
+    clearNodeCache();
+    console.error(
+      `[plasmic-mcp] rebaseFromServer: rebased to revision ${result.newRevisionNum}`
+    );
+  }
+}
+
+/**
  * Handle incoming model update from socket.
  * Builds a RebaseContext from current session state and runs the rebase engine.
  */

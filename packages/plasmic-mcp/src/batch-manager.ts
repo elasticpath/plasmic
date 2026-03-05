@@ -25,6 +25,7 @@ import { requireSession } from "./session.js";
 import { pushUndoOperation } from "./undo-manager.js";
 import { getChangeTracker } from "./change-tracker.js";
 import { undoChanges } from "@/wab/shared/core/undo-util";
+import { rebaseFromServer } from "./live-sync.js";
 
 interface BatchState {
   batchId: string;
@@ -145,7 +146,9 @@ export async function endBatch(
     };
   }
 
-  const saveManager = new SaveManager(apiClient);
+  const saveManager = new SaveManager(apiClient, {
+    rebaseOnConflict: () => rebaseFromServer(apiClient),
+  });
   try {
     const save = await saveManager.saveChanges(
       accumulatedChanges,

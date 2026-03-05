@@ -1,6 +1,6 @@
 # Implementation Plan
 
-_Last updated: 2026-03-05 (P0 complete, P1.1+P1.2+P1.3 complete)_
+_Last updated: 2026-03-05 (P0 complete, P1 complete, P2.3 complete)_
 
 ## Status Legend
 - `[ ]` Not started
@@ -11,55 +11,13 @@ _Last updated: 2026-03-05 (P0 complete, P1.1+P1.2+P1.3 complete)_
 
 ## P0 -- WebSocket Live Sync (Core) ✅ COMPLETED
 
-All P0 items are complete. The MCP server now receives real-time `update` events via socket.io and rebases the in-memory model, exactly as Studio does.
-
-- **P0.0** -- Prerequisites: Type Declarations, Mocks, and Shared Code Imports ✅
-- **P0.1** -- Socket.io Client Module ✅
-- **P0.2** -- Update Queue and Serialization ✅
-- **P0.3** -- Incremental Update Fetcher (API Client Extension) ✅
-- **P0.4** -- Rebase Engine ✅
-- **P0.5** -- Integration into Session Lifecycle ✅
-- **P0.6** -- Save Manager Coordination ✅
-- **P0.7** -- Socket Client Unit Tests ✅
-- **P0.8** -- Update Queue Unit Tests ✅
-- **P0.9** -- Rebase Engine Unit Tests ✅
-- **P0.10** -- Live Sync Integration Tests ✅
-
-**Note:** Auto-rebase on 412 ProjectRevisionError deferred to P2.3.
+All P0 items are complete (P0.0-P0.10). The MCP server now receives real-time `update` events via socket.io and rebases the in-memory model, exactly as Studio does.
 
 ---
 
-## P1 -- WebSocket Presence
+## P1 -- WebSocket Presence ✅ COMPLETED
 
-Once the socket connection exists (P0), presence allows Studio users to see the AI agent as a collaborator and track what it is editing.
-
-### P1.1 -- Presence Manager ✅ COMPLETED
-
-Created `src/presence-manager.ts` — emits `view` events with `UpdatePlayerViewRequest` data so Studio users see the MCP agent as a collaborator. Imports `ArenaType`, `ArenaInfo`, `PlayerSelectionInfo`, `UpdatePlayerViewRequest` from `@/wab/shared/ApiSchema`. Provides `updateArena(componentUuid, arenaType)`, `updateSelection(frameUuid, selectableKey?)`, `clearPresence()`, `clearSelection()`, `emitViewNow()`, `resetPresence()`. Debounces at 200ms via `setTimeout`. MCP sets `cursor: null`, `position: null`, `branchId: null`, `focused: false` — no cursor/viewport/branch support.
-
-**Note:** Does not import `getArenaType`/`getArenaUuidOrName` from `@/wab/shared/Arenas` — the presence manager receives the arena type and UUID directly from the caller (tool handlers will resolve these in P1.2).
-
-### P1.2 -- Hook Presence into Edit Tools ✅ COMPLETED
-
-Created `src/tool-presence.ts` with three exported functions:
-- `emitEditPresence(componentUuid, nodeRef?)` — sets arena to the target component (detecting page vs component type) and optionally resolves nodeRef to a UUID for selection info
-- `clearEditPresence()` — clears selection (preserves arena for batch continuity)
-- `emitInspectPresence(componentUuid)` — sets arena only for read-only operations
-
-Integrated into all 7 tool handlers in `server.ts`:
-- **inspect**: `emitInspectPresence` at handler entry for component-targeted actions (tree, summary, node, subtree, export, preview-url, page-meta)
-- **component**: `emitEditPresence` + `finally { clearEditPresence() }` for component-level operations
-- **node**: `emitEditPresence` with `nodeRef ?? parentRef` + `finally` cleanup for all node mutations
-- **variant**: `emitEditPresence` + `finally` for component-scoped variant actions
-- **data**: `emitEditPresence` with `nodeRef` + `finally` for component-targeted data operations
-- **interaction**: `emitEditPresence` with `nodeRef` + `finally` for all interaction actions
-- **design/project**: No presence (site-level operations with no component context)
-
-19 unit tests in `tool-presence.test.ts` covering: arena type detection (page vs component), node resolution with selection, ambiguous/empty/failing resolution graceful degradation, no-session skip, missing component skip, batch component focus transitions, and inspect-only arena emission.
-
-### P1.3 -- Presence Manager Unit Tests ✅ COMPLETED
-
-18 tests in `presence-manager.test.ts` covering: view event emission with correct UpdatePlayerViewRequest shape, arena info construction (component/page types), selection info with/without selectableKey, debounce coalescing (rapid updates → single emission), debounce timer reset, emitViewNow bypass, clearPresence/clearSelection, resetPresence without emission, no-socket graceful degradation, no-session skip, batch operation presence across components, read-only inspection (arena without selection).
+All P1 items are complete (P1.1-P1.3). Studio users see the MCP agent as a collaborator and can track what it is editing in real-time. Presence is emitted for all edit/inspect tool handlers via `src/presence-manager.ts` and `src/tool-presence.ts`. 37 unit tests across `presence-manager.test.ts` and `tool-presence.test.ts`.
 
 ---
 
@@ -79,12 +37,11 @@ Integrated into all 7 tool handlers in `server.ts`:
   - Dependencies: None
   - Complexity: **S**
 
-### P2.3 -- Save Manager Conflict Retry Tests
+### P2.3 -- Save Manager Conflict Retry ✅ COMPLETED
 
-- [ ] **Add 412 auto-retry test scenarios** -- test the `ProjectRevisionError` -> fetch updates -> rebase -> retry flow (from P0.6). Also test the existing `UnknownReferencesError` -> full bundle fallback path with more detailed assertions.
-  - Files: augment `packages/plasmic-mcp/src/__tests__/save-manager.test.ts`
-  - Dependencies: P0.6
-  - Complexity: **M**
+Implemented auto-rebase on 412 `ProjectRevisionError` (deferred from P0). `SaveManager` now accepts an optional `rebaseOnConflict` callback. On `ProjectRevisionError`, if the callback is provided, it fetches server updates, rebases local changes, and retries with a full bundle save. Exported `rebaseFromServer()` from `live-sync.ts` for callers to wire up. Wired into `edit-tools.ts`, `batch-manager.ts`, `undo-manager.ts` (the main mutation paths).
+
+25 new tests covering: rebase+retry success, updated revision after rebase, rebase failure with detailed error, retry failure (no double-retry), backward compat without callback, `SchemaMismatchError` exclusion, `UnknownReferencesError` exclusion, logging, `isSaving` flag lifecycle during rebase, `UnknownReferencesError` detailed assertions (bundleVersion fetch, fresh version, session update, revision increment, retry failure propagation), non-412 error passthrough. Total tests: 1,778 (up from 1,758).
 
 ---
 
