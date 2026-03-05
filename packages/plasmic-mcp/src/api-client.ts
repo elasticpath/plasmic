@@ -19,6 +19,7 @@ import type {
   GetPkgVersionResponse,
   GetPkgVersionMetaResponse,
   AppAuthPubConfig,
+  AppConfigResponse,
 } from "./types.js";
 
 /**
@@ -286,10 +287,12 @@ export class PlasmicApiClient {
    * Used by add-package to get the full bundle for unbundling.
    */
   async getPkgVersion(pkgId: string, version?: string): Promise<GetPkgVersionResponse> {
-    const v = encodeURIComponent(version ?? "latest");
+    const versionParam = version != null
+      ? `version=${encodeURIComponent(JSON.stringify(version))}&`
+      : "";
     return this.request<GetPkgVersionResponse>(
       "GET",
-      `/api/v1/pkgs/${encodeURIComponent(pkgId)}?version=${v}&meta=false`
+      `/api/v1/pkgs/${encodeURIComponent(pkgId)}?${versionParam}meta=false`
     );
   }
 
@@ -299,10 +302,12 @@ export class PlasmicApiClient {
    * Used by list-packages to check for available updates.
    */
   async getPkgVersionMeta(pkgId: string, version?: string): Promise<GetPkgVersionMetaResponse> {
-    const v = encodeURIComponent(version ?? "latest");
+    const versionParam = version != null
+      ? `version=${encodeURIComponent(JSON.stringify(version))}&`
+      : "";
     return this.request<GetPkgVersionMetaResponse>(
       "GET",
-      `/api/v1/pkgs/${encodeURIComponent(pkgId)}?version=${v}&meta=true`
+      `/api/v1/pkgs/${encodeURIComponent(pkgId)}?${versionParam}meta=true`
     );
   }
 
@@ -315,6 +320,18 @@ export class PlasmicApiClient {
     return this.request<AppAuthPubConfig>(
       "GET",
       `/api/v1/end-user/app/${encodeURIComponent(projectId)}/pub-config`
+    );
+  }
+
+  /**
+   * Get the global app configuration, including the hostless package catalog.
+   * URL: GET /api/v1/app-config
+   * Used by list-available-packages to discover installable packages.
+   */
+  async getAppConfig(): Promise<AppConfigResponse> {
+    return this.request<AppConfigResponse>(
+      "GET",
+      `/api/v1/app-config`
     );
   }
 }

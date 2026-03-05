@@ -13,6 +13,8 @@ import {
   addPackage,
   removePackage,
   upgradePackage,
+  listAvailablePackages,
+  listPackageComponents,
 } from "../package-manager";
 import { mockUnbundleProjectDependency } from "../__mocks__/wab-tagged-unbundle";
 import {
@@ -547,6 +549,324 @@ describe("package-manager", () => {
           { oldDep: dep2, newDep: newDep2 },
         ])
       );
+    });
+  });
+
+  // ========================================================================
+  // list-available-packages
+  // ========================================================================
+
+  describe("listAvailablePackages", () => {
+    it("returns empty array when app-config has no hostLessComponents", async () => {
+      const client = makeMockApiClient({
+        getAppConfig: vi.fn().mockResolvedValue({ config: {} }),
+      });
+
+      const result = await listAvailablePackages(client);
+      expect(result).toEqual([]);
+    });
+
+    it("returns empty array when app-config endpoint fails", async () => {
+      const client = makeMockApiClient({
+        getAppConfig: vi.fn().mockRejectedValue(new Error("404 Not Found")),
+      });
+
+      const result = await listAvailablePackages(client);
+      expect(result).toEqual([]);
+    });
+
+    it("filters out hidden packages", async () => {
+      const client = makeMockApiClient({
+        getAppConfig: vi.fn().mockResolvedValue({
+          config: {
+            hostLessComponents: [
+              {
+                type: "hostless-package",
+                name: "Visible Package",
+                sectionLabel: "Components",
+                projectId: "proj-visible",
+                items: [],
+              },
+              {
+                type: "hostless-package",
+                name: "Hidden Package",
+                sectionLabel: "Components",
+                projectId: "proj-hidden",
+                items: [],
+                hidden: true,
+              },
+            ],
+          },
+        }),
+      });
+
+      const result = await listAvailablePackages(client);
+      expect(result).toHaveLength(1);
+      expect(result[0].name).toBe("Visible Package");
+    });
+
+    it("marks installed packages with isInstalled: true", async () => {
+      mockSession.site.projectDependencies = [
+        makeMockDep({ projectId: "proj-installed" }),
+      ];
+
+      const client = makeMockApiClient({
+        getAppConfig: vi.fn().mockResolvedValue({
+          config: {
+            hostLessComponents: [
+              {
+                type: "hostless-package",
+                name: "Installed Package",
+                sectionLabel: "Components",
+                projectId: "proj-installed",
+                items: [],
+              },
+              {
+                type: "hostless-package",
+                name: "Not Installed",
+                sectionLabel: "Components",
+                projectId: "proj-other",
+                items: [],
+              },
+            ],
+          },
+        }),
+      });
+
+      const result = await listAvailablePackages(client);
+      expect(result).toHaveLength(2);
+      expect(result[0].isInstalled).toBe(true);
+      expect(result[1].isInstalled).toBe(false);
+    });
+
+    it("handles array projectId for isInstalled check", async () => {
+      mockSession.site.projectDependencies = [
+        makeMockDep({ projectId: "proj-b" }),
+      ];
+
+      const client = makeMockApiClient({
+        getAppConfig: vi.fn().mockResolvedValue({
+          config: {
+            hostLessComponents: [
+              {
+                type: "hostless-package",
+                name: "Multi-project Package",
+                sectionLabel: "Components",
+                projectId: ["proj-a", "proj-b"],
+                items: [],
+              },
+            ],
+          },
+        }),
+      });
+
+      const result = await listAvailablePackages(client);
+      expect(result).toHaveLength(1);
+      expect(result[0].isInstalled).toBe(true);
+    });
+
+    it("includes component items with metadata", async () => {
+      const client = makeMockApiClient({
+        getAppConfig: vi.fn().mockResolvedValue({
+          config: {
+            hostLessComponents: [
+              {
+                type: "hostless-package",
+                name: "UI Kit",
+                sectionLabel: "Components",
+                projectId: "proj-ui",
+                codeName: "ui-kit",
+                codeLink: "https://example.com",
+                imageUrl: "https://example.com/img.png",
+                items: [
+                  {
+                    type: "hostless-component",
+                    componentName: "Button",
+                    displayName: "Button",
+                    description: "A button component",
+                    imageUrl: "https://example.com/button.png",
+                  },
+                  {
+                    type: "hostless-component",
+                    componentName: "HiddenComp",
+                    displayName: "Hidden",
+                    hidden: true,
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+      });
+
+      const result = await listAvailablePackages(client);
+      expect(result).toHaveLength(1);
+      expect(result[0].codeName).toBe("ui-kit");
+      expect(result[0].codeLink).toBe("https://example.com");
+      expect(result[0].imageUrl).toBe("https://example.com/img.png");
+      expect(result[0].items).toHaveLength(1);
+      expect(result[0].items[0]).toEqual({
+        componentName: "Button",
+        displayName: "Button",
+        description: "A button component",
+        imageUrl: "https://example.com/button.png",
+      });
+    });
+  });
+
+  // ========================================================================
+  // list-package-components
+  // ========================================================================
+
+  describe("listPackageComponents", () => {
+    it("returns empty array when no packages installed", async () => {
+      const client = makeMockApiClient();
+
+      const result = await listPackageComponents(client);
+      expect(result).toEqual([]);
+    });
+
+    it("returns components from a single installed hostless package", async () => {
+      const dep = makeMockDep({
+        name: "UI Kit",
+        projectId: "proj-ui",
+        site: {
+          components: [
+            { name: "Button", _type: "Component" },
+            { name: "Input", _type: "Component" },
+          ],
+          projectDependencies: [],
+          globalContexts: [],
+          defaultComponents: {},
+          hostLessPackageInfo: {},
+        },
+      });
+      mockSession.site.projectDependencies = [dep];
+
+      // isReusableComponent returns true for all
+      const { mockIsReusableComponent } = await import("../__mocks__/wab-components");
+      mockIsReusableComponent.mockReturnValue(true);
+
+      const client = makeMockApiClient();
+      const result = await listPackageComponents(client);
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({
+        packageName: "UI Kit",
+        packageProjectId: "proj-ui",
+        name: "Button",
+        displayName: "Button",
+      });
+      expect(result[1]).toEqual({
+        packageName: "UI Kit",
+        packageProjectId: "proj-ui",
+        name: "Input",
+        displayName: "Input",
+      });
+    });
+
+    it("returns components from multiple installed packages", async () => {
+      const dep1 = makeMockDep({
+        pkgId: "pkg-1",
+        name: "Package A",
+        projectId: "proj-a",
+        site: {
+          components: [{ name: "CompA", _type: "Component" }],
+          projectDependencies: [],
+          globalContexts: [],
+          defaultComponents: {},
+          hostLessPackageInfo: {},
+        },
+      });
+      const dep2 = makeMockDep({
+        pkgId: "pkg-2",
+        name: "Package B",
+        projectId: "proj-b",
+        site: {
+          components: [{ name: "CompB", _type: "Component" }],
+          projectDependencies: [],
+          globalContexts: [],
+          defaultComponents: {},
+          hostLessPackageInfo: {},
+        },
+      });
+      mockSession.site.projectDependencies = [dep1, dep2];
+
+      const { mockIsReusableComponent } = await import("../__mocks__/wab-components");
+      mockIsReusableComponent.mockReturnValue(true);
+
+      const client = makeMockApiClient();
+      const result = await listPackageComponents(client);
+
+      expect(result).toHaveLength(2);
+      expect(result[0].packageName).toBe("Package A");
+      expect(result[1].packageName).toBe("Package B");
+    });
+
+    it("filters by packageName", async () => {
+      const dep1 = makeMockDep({
+        pkgId: "pkg-1",
+        name: "Package A",
+        projectId: "proj-a",
+        site: {
+          components: [{ name: "CompA", _type: "Component" }],
+          projectDependencies: [],
+          globalContexts: [],
+          defaultComponents: {},
+          hostLessPackageInfo: {},
+        },
+      });
+      const dep2 = makeMockDep({
+        pkgId: "pkg-2",
+        name: "Package B",
+        projectId: "proj-b",
+        site: {
+          components: [{ name: "CompB", _type: "Component" }],
+          projectDependencies: [],
+          globalContexts: [],
+          defaultComponents: {},
+          hostLessPackageInfo: {},
+        },
+      });
+      mockSession.site.projectDependencies = [dep1, dep2];
+
+      const { mockIsReusableComponent } = await import("../__mocks__/wab-components");
+      mockIsReusableComponent.mockReturnValue(true);
+
+      const client = makeMockApiClient();
+      const result = await listPackageComponents(client, "Package B");
+
+      expect(result).toHaveLength(1);
+      expect(result[0].packageName).toBe("Package B");
+      expect(result[0].name).toBe("CompB");
+    });
+
+    it("throws when packageName is not found", async () => {
+      const client = makeMockApiClient();
+
+      await expect(listPackageComponents(client, "Nonexistent")).rejects.toThrow(
+        'Package "Nonexistent" is not installed'
+      );
+    });
+
+    it("skips non-hostless packages", async () => {
+      const dep = makeMockDep({
+        name: "Regular Package",
+        projectId: "proj-regular",
+        site: {
+          components: [{ name: "Comp", _type: "Component" }],
+          projectDependencies: [],
+          globalContexts: [],
+          defaultComponents: {},
+        },
+      });
+      mockSession.site.projectDependencies = [dep];
+      mockIsHostLessPackage.mockReturnValue(false);
+
+      const client = makeMockApiClient();
+      const result = await listPackageComponents(client);
+
+      expect(result).toEqual([]);
     });
   });
 });
