@@ -18,23 +18,11 @@ export function validateCustomerData(customer: CustomerData): ValidationResult {
     errors.email = 'Please enter a valid email address';
   }
 
-  // First name validation
-  if (!customer.firstName) {
-    errors.firstName = 'First name is required';
-  } else if (customer.firstName.length < 2) {
-    errors.firstName = 'First name must be at least 2 characters';
-  }
-
-  // Last name validation
-  if (!customer.lastName) {
-    errors.lastName = 'Last name is required';
-  } else if (customer.lastName.length < 2) {
-    errors.lastName = 'Last name must be at least 2 characters';
-  }
-
-  // Phone validation (optional but if provided must be valid)
-  if (customer.phone && !isValidPhone(customer.phone)) {
-    errors.phone = 'Please enter a valid phone number';
+  // Name validation
+  if (!customer.name) {
+    errors.name = 'Name is required';
+  } else if (customer.name.length < 2) {
+    errors.name = 'Name must be at least 2 characters';
   }
 
   return {
@@ -51,10 +39,10 @@ export function validateAddressData(address: AddressData, isShipping: boolean = 
   const prefix = isShipping ? 'shipping.' : 'billing.';
 
   // Line 1 validation
-  if (!address.line1) {
-    errors[`${prefix}line1`] = 'Address line 1 is required';
-  } else if (address.line1.length < 5) {
-    errors[`${prefix}line1`] = 'Please enter a complete address';
+  if (!address.line_1) {
+    errors[`${prefix}line_1`] = 'Address line 1 is required';
+  } else if (address.line_1.length < 5) {
+    errors[`${prefix}line_1`] = 'Please enter a complete address';
   }
 
   // City validation
@@ -64,16 +52,14 @@ export function validateAddressData(address: AddressData, isShipping: boolean = 
     errors[`${prefix}city`] = 'Please enter a valid city name';
   }
 
-  // State validation
-  if (!address.state) {
-    errors[`${prefix}state`] = 'State/Province is required';
-  }
+  // County/State validation (optional — not all countries use it)
+  // No required check: county is optional on AddressData
 
   // Postal code validation
-  if (!address.postalCode) {
-    errors[`${prefix}postalCode`] = 'Postal/ZIP code is required';
-  } else if (!isValidPostalCode(address.postalCode, address.country)) {
-    errors[`${prefix}postalCode`] = 'Please enter a valid postal/ZIP code';
+  if (!address.postcode) {
+    errors[`${prefix}postcode`] = 'Postal/ZIP code is required';
+  } else if (!isValidPostalCode(address.postcode, address.country)) {
+    errors[`${prefix}postcode`] = 'Please enter a valid postal/ZIP code';
   }
 
   // Country validation
@@ -87,6 +73,20 @@ export function validateAddressData(address: AddressData, isShipping: boolean = 
     isValid: Object.keys(errors).length === 0,
     errors
   };
+}
+
+/**
+ * Validates a billing address (convenience wrapper)
+ */
+export function validateBillingAddress(address: AddressData): ValidationResult {
+  return validateAddressData(address, false);
+}
+
+/**
+ * Validates a shipping address (convenience wrapper)
+ */
+export function validateShippingAddress(address: AddressData): ValidationResult {
+  return validateAddressData(address, true);
 }
 
 /**
@@ -159,12 +159,6 @@ function isValidEmail(email: string): boolean {
   return emailRegex.test(email);
 }
 
-function isValidPhone(phone: string): boolean {
-  // Remove all non-digit characters and check length
-  const digitsOnly = phone.replace(/\D/g, '');
-  return digitsOnly.length >= 10 && digitsOnly.length <= 15;
-}
-
 function isValidPostalCode(postalCode: string, country: string): boolean {
   const patterns: Record<string, RegExp> = {
     'US': /^\d{5}(-\d{4})?$/, // 12345 or 12345-6789
@@ -203,28 +197,27 @@ function isValidCountryCode(country: string): boolean {
  */
 export function sanitizeCustomerData(customer: CustomerData): CustomerData {
   return {
-    email: sanitizeString(customer.email).toLowerCase(),
-    firstName: sanitizeString(customer.firstName),
-    lastName: sanitizeString(customer.lastName),
-    phone: customer.phone ? sanitizeString(customer.phone) : undefined
+    name: sanitizeString(customer.name),
+    email: sanitizeString(customer.email).toLowerCase()
   };
 }
 
 export function sanitizeAddressData(address: AddressData): AddressData {
   return {
-    line1: sanitizeString(address.line1),
-    line2: address.line2 ? sanitizeString(address.line2) : undefined,
+    first_name: sanitizeString(address.first_name),
+    last_name: sanitizeString(address.last_name),
+    line_1: sanitizeString(address.line_1),
+    line_2: address.line_2 ? sanitizeString(address.line_2) : undefined,
     city: sanitizeString(address.city),
-    state: sanitizeString(address.state),
-    postalCode: sanitizeString(address.postalCode),
-    country: sanitizeString(address.country).toUpperCase(),
-    company: address.company ? sanitizeString(address.company) : undefined
+    county: address.county ? sanitizeString(address.county) : undefined,
+    postcode: sanitizeString(address.postcode),
+    country: sanitizeString(address.country).toUpperCase()
   };
 }
 
 function sanitizeString(input: string): string {
   if (typeof input !== 'string') return '';
-  
+
   return input
     .replace(/[<>]/g, '') // Remove angle brackets
     .replace(/javascript:/gi, '') // Remove javascript: protocol
@@ -244,7 +237,7 @@ export function validateEnvironmentVariables(): void {
   ];
 
   const missing = required.filter(key => !process.env[key]);
-  
+
   if (missing.length > 0) {
     throw new ValidationError(
       `Missing required environment variables: ${missing.join(', ')}`,
@@ -254,21 +247,12 @@ export function validateEnvironmentVariables(): void {
 }
 
 /**
- * Rate limiting validation
+ * Rate limiting validation (placeholder — requires Redis or similar for production)
  */
 export function validateRateLimit(
   identifier: string,
   maxRequests: number = 10,
   windowMs: number = 60000
 ): boolean {
-  // This would typically use Redis or another external store in production
-  // For now, using in-memory storage (not suitable for production)
-  
-  const key = `rate_limit:${identifier}`;
-  const now = Date.now();
-  
-  // In a real implementation, you'd use Redis with sliding window
-  // This is a simplified version for demonstration
-  
   return true; // Placeholder - implement proper rate limiting
 }

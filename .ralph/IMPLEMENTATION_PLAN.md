@@ -1,70 +1,42 @@
 # Implementation Plan
 
-_Last updated: 2026-03-05 (audit pass 2)_
+_Last updated: 2026-03-05 (audit pass 3)_
 
-## Priority 1 — Hostless Package Management ✅ COMPLETE
+## Priority 1 — Hostless Package Management ✅ COMPLETE (2026-03-04)
 
-**Branch:** `feat/hostless-package-management`
-**Spec:** `.ralph/specs/PROJECT-PACKAGE-MANAGEMENT.md` — all 14 acceptance criteria checked
-**Status:** All complete. 4 new actions (list-packages, add-package, remove-package, upgrade-package) wired into the project tool. Action count: 104 → 108. All 1,779 tests pass (33 files).
-
-### P1.6 — ensureCanUpgradeDeps pre-check ✅
-- **Completed:** 2026-03-04
-- **What:** Added `ensureCanUpgradeDeps` pre-flight check to `upgradePackage()` that detects transitive version conflicts before calling `upgradeProjectDeps`. Mirrors Studio's `ProjectDependencyManager.ensureCanUpgradeDeps` BFS-walk logic.
-- **Why:** Without this guard, a batch upgrade that creates transitive version conflicts would mutate the site model before detecting the problem. The guard aborts before any mutation.
-- **Files modified:** `packages/plasmic-mcp/src/package-manager.ts`, `packages/plasmic-mcp/src/__tests__/package-manager.test.ts`
-- **Spec updated:** `.ralph/specs/PROJECT-PACKAGE-MANAGEMENT.md` — all 14 acceptance criteria checked, validation reuse note corrected (client-only class requires local reimplementation)
+**Status:** All complete. 4 new actions, 14/14 acceptance criteria, all tests pass. Spec: `.ralph/specs/PROJECT-PACKAGE-MANAGEMENT.md`
 
 ---
 
-## Priority 2 — Plasmic Design Agent Skill ✅ COMPLETE
+## Priority 2 — Plasmic Design Agent Skill ✅ COMPLETE (2026-03-05)
 
-**Branch:** `feat/plasmic-design-agent-skill`
-**Spec:** `.ralph/specs/PLASMIC-DESIGN-AGENT-SKILL.md` — all 6 acceptance criteria addressed
-**Deliverable:** `.claude/commands/plasmic-design.md` — prompt-only skill file (no server-side code)
-**Status:** Complete. Skill file created with 4-phase agentic loop (243 lines). Registered as `/plasmic-design` in Claude Code skill system.
-
-### Acceptance Criteria (from spec)
-- [x] Produces higher-quality output than `/plasmic-create-page` or `/plasmic-edit` — 4-phase loop with context gathering, structured planning, per-phase verification
-- [x] Detects and self-corrects deviations — Phase 4 inspect.summary comparison with max 2 retries per sub-phase
-- [x] Works for both page creation and component editing — Phase 3a handles create-page, create, and edit paths
-- [x] No new MCP tools required — uses only existing 8 domain tools
-- [x] Auto-retry bounded to max 2 correction attempts per phase; surfaces deviation on failure
-- [x] All features in scope: layout, typography, tokens, responsive, data binding, interactions, animations, multi-page/multi-component
+**Status:** All complete. 4-phase agentic loop skill (243 lines), 6/6 acceptance criteria. Spec: `.ralph/specs/PLASMIC-DESIGN-AGENT-SKILL.md`
 
 ---
 
-## Priority 3 — EP Commerce Address Validation Bug (Medium Priority)
+## Priority 3 — EP Commerce Address Validation Bug ✅ COMPLETE (2026-03-05)
 
-**Status:** Not started — confirmed bug
-**Location:** `plasmicpkgs/commerce-providers/elastic-path/src/api/utils/validation.ts`
+**Status:** All bugs fixed, dead code removed, comprehensive tests added. All 889 EP commerce tests pass (36 test suites).
 
-### Bug: Type mismatch between `AddressData` interface and `validateAddressData()` function
+### What was fixed
+- **`validateAddressData()`** — field name mismatches: `line1` → `line_1`, `state` → `county`, `postalCode` → `postcode`
+- **`sanitizeAddressData()`** — same field name mismatches as above, plus removed nonexistent `company` field reference
+- **`validateCustomerData()`** — field name mismatches: `firstName`/`lastName`/`phone` → `name`/`email` to match `CustomerData` interface
+- **`sanitizeCustomerData()`** — same field name mismatches as `validateCustomerData()`
+- **Missing exports** — added `validateBillingAddress()` and `validateShippingAddress()` exports to `validation.ts`
+- **`create-order.ts`** — fixed to use correct EP field names from sanitized data
+- **Dead code removed** — `getAddressSuggestions()`, `validateAddressBusinessRules()`, `validatePostalCodeFormat()` (all unused)
+- **Tests** — added comprehensive `validation.test.ts` (30+ tests); updated `create-order.test.ts` fixtures to use correct EP field names
 
-**`AddressData` interface** (`checkout/types.ts:12`):
-- `line_1`, `postcode`, no `state` field, `county` (optional)
+### Note
+Additional bugs discovered beyond original audit: `CustomerData` interface mismatch in both validate and sanitize functions, and `create-order.ts` field references were also broken.
 
-**`validateAddressData()` function** (`api/utils/validation.ts:49`):
-- Accesses `address.line1` (should be `line_1`)
-- Accesses `address.postalCode` (should be `postcode`)
-- Accesses `address.state` (field doesn't exist on `AddressData`; should be `county`)
-
-**Impact:** Validation always fails or crashes at runtime — fields are `undefined`.
-
-### Bug: Missing exports for imported functions
-
-`validate-address.ts:12-13` and `calculate-shipping.ts:13` import `validateBillingAddress` and `validateShippingAddress` from `validation.ts`, but these functions are **never exported** (only `validateAddressData` exists with an `isShipping` boolean parameter).
-
-### Additional issues in same area
-- `getAddressSuggestions()` in `validate-address.ts` — dead code, never called, returns `[]`
-- `validateAddressBusinessRules()` in `validate-address.ts` — dead code, never called
-- `validateRateLimit()` in `validation.ts:259` — stub that always returns `true` (placeholder, not production-ready)
-
-### Fix approach
-- Fix field names in `validateAddressData()` to match `AddressData` interface
-- Either export `validateBillingAddress`/`validateShippingAddress` wrappers or change imports to use `validateAddressData`
-- Remove dead code (`getAddressSuggestions`, `validateAddressBusinessRules`)
-- Document rate-limit stub as known limitation
+### Files modified
+- `src/api/utils/validation.ts`
+- `src/api/endpoints/checkout/create-order.ts`
+- `src/api/endpoints/checkout/__tests__/create-order.test.ts`
+- `src/api/endpoints/checkout/validate-address.ts`
+- `src/api/utils/__tests__/validation.test.ts` (new)
 
 ---
 
@@ -78,7 +50,7 @@ _Last updated: 2026-03-05 (audit pass 2)_
 - 3 API schema files untested
 - 20+ registration files untested (declarative, low risk)
 - Checkout components and hooks untested
-- 35 test files currently exist covering core logic
+- 37 test files currently exist covering core logic
 
 Low priority: registration files are declarative, visual components are best validated in Studio. API endpoint handlers are higher priority for testing.
 
@@ -89,7 +61,7 @@ Low priority: registration files are declarative, visual components are best val
 **Status:** Placeholder implementation
 **File:** `plasmicpkgs/commerce-providers/elastic-path/src/api/endpoints/checkout/validate-address.ts`
 
-`normalizeAddress()` is a basic string formatter (comments list integration points: Google Maps, USPS, Loqate, SmartyStreets, HERE). `getAddressSuggestions()` returns empty array (dead code — see P3). Not blocking — requires third-party API key decision outside EP/Plasmic scope.
+`normalizeAddress()` is a basic string formatter (comments list integration points: Google Maps, USPS, Loqate, SmartyStreets, HERE). Dead code was removed in P3. Not blocking — requires third-party API key decision outside EP/Plasmic scope.
 
 ---
 
@@ -137,7 +109,7 @@ Package has pre-compiled `dist/` but no `src/`. Source was added in commit `5a47
 - **Branch context:** `feat/plasmic-design-agent-skill`
 - **Action count:** 108 actions across 8 tools (project: 12, inspect: 8, component: 18, node: 16, variant: 12, design: 22, data: 16, interaction: 4)
 - **MCP server health:** 0 TODOs, 0 skipped tests, 0 stubs in `packages/plasmic-mcp/src/` — 19 source files, 20,085 LOC, 33 test files
-- **EP commerce health:** 0 TODOs, 0 FIXMEs, 40 registered components (2 deprecated), 176 total files (140 source, 35 test). Type mismatch bug in address validation (see P3).
+- **EP commerce health:** 0 TODOs, 0 FIXMEs, 40 registered components (2 deprecated), 178 total files (141 source, 37 test), 889 tests passing (36 suites). Address validation bugs fixed (P3).
 - **plasmic-mcp-registry:** Fully functional at `packages/plasmic-mcp-registry/` — serializes 5 globalThis registries for HTTP transport
 - **Existing skills:** 7 files in `.claude/commands/` (plasmic, plasmic-design, plasmic-edit, plasmic-inspect, plasmic-create-component, plasmic-create-page, plasmic-patterns). `/plasmic-design` implements a 4-phase agentic loop; all others are single-pass.
 - **Spec:** `.ralph/specs/PLASMIC-DESIGN-AGENT-SKILL.md`

@@ -84,30 +84,28 @@ export default async function createOrderHandler(req: any, res: any) {
     // Prepare checkout data for Elastic Path
     const checkoutData = {
       customer: {
-        name: `${sanitizedCustomer.firstName} ${sanitizedCustomer.lastName}`,
+        name: sanitizedCustomer.name,
         email: sanitizedCustomer.email
       },
       billing_address: {
-        first_name: sanitizedCustomer.firstName,
-        last_name: sanitizedCustomer.lastName,
-        line_1: sanitizedBillingAddress.line1,
-        line_2: sanitizedBillingAddress.line2 || '',
+        first_name: sanitizedBillingAddress.first_name,
+        last_name: sanitizedBillingAddress.last_name,
+        line_1: sanitizedBillingAddress.line_1,
+        line_2: sanitizedBillingAddress.line_2 || '',
         city: sanitizedBillingAddress.city,
-        county: sanitizedBillingAddress.state,
-        postcode: sanitizedBillingAddress.postalCode,
-        country: sanitizedBillingAddress.country,
-        company_name: sanitizedBillingAddress.company || ''
+        county: sanitizedBillingAddress.county || '',
+        postcode: sanitizedBillingAddress.postcode,
+        country: sanitizedBillingAddress.country
       },
       shipping_address: sanitizedShippingAddress ? {
-        first_name: sanitizedCustomer.firstName,
-        last_name: sanitizedCustomer.lastName,
-        line_1: sanitizedShippingAddress.line1,
-        line_2: sanitizedShippingAddress.line2 || '',
+        first_name: sanitizedShippingAddress.first_name,
+        last_name: sanitizedShippingAddress.last_name,
+        line_1: sanitizedShippingAddress.line_1,
+        line_2: sanitizedShippingAddress.line_2 || '',
         city: sanitizedShippingAddress.city,
-        county: sanitizedShippingAddress.state,
-        postcode: sanitizedShippingAddress.postalCode,
-        country: sanitizedShippingAddress.country,
-        company_name: sanitizedShippingAddress.company || ''
+        county: sanitizedShippingAddress.county || '',
+        postcode: sanitizedShippingAddress.postcode,
+        country: sanitizedShippingAddress.country
       } : undefined
     };
 

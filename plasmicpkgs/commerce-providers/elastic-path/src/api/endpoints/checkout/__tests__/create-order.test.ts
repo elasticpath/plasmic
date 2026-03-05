@@ -114,33 +114,34 @@ function createMockRes() {
 
 function validCustomerData() {
   return {
-    firstName: "Jane",
-    lastName: "Doe",
+    name: "Jane Doe",
     email: "jane@example.com",
   };
 }
 
 function validBillingAddress() {
   return {
-    line1: "123 Main St",
-    line2: "Apt 4",
+    first_name: "Jane",
+    last_name: "Doe",
+    line_1: "123 Main St",
+    line_2: "Apt 4",
     city: "Portland",
-    state: "OR",
-    postalCode: "97201",
+    county: "OR",
+    postcode: "97201",
     country: "US",
-    company: "Acme Inc",
   };
 }
 
 function validShippingAddress() {
   return {
-    line1: "456 Oak Ave",
-    line2: "",
+    first_name: "Jane",
+    last_name: "Doe",
+    line_1: "456 Oak Ave",
+    line_2: "",
     city: "Seattle",
-    state: "WA",
-    postalCode: "98101",
+    county: "WA",
+    postcode: "98101",
     country: "US",
-    company: "",
   };
 }
 
@@ -421,7 +422,6 @@ describe("createOrderHandler", () => {
               county: "OR",
               postcode: "97201",
               country: "US",
-              company_name: "Acme Inc",
             },
             shipping_address: undefined,
           },
@@ -503,7 +503,6 @@ describe("createOrderHandler", () => {
       county: "WA",
       postcode: "98101",
       country: "US",
-      company_name: "",
     });
   });
 
