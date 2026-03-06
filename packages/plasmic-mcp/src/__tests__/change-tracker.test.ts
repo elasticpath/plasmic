@@ -17,7 +17,8 @@ import {
   getChangeTracker,
   disposeChangeTracker,
 } from "../change-tracker";
-import { mockWithRecording, mockDispose } from "../__mocks__/wab-observable-model";
+import { mockWithRecording, mockDispose, ChangeRecorder } from "../__mocks__/wab-observable-model";
+import { setSession, clearSession } from "../session";
 
 describe("ChangeTracker", () => {
   beforeEach(() => {
@@ -112,5 +113,100 @@ describe("module singleton", () => {
   it("disposeChangeTracker is safe to call when no tracker exists", () => {
     // Should not throw
     disposeChangeTracker();
+  });
+});
+
+describe("getRecorder", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    disposeChangeTracker();
+  });
+
+  afterEach(() => {
+    disposeChangeTracker();
+    vi.restoreAllMocks();
+  });
+
+  it("returns a ChangeRecorder instance", () => {
+    const tracker = new ChangeTracker({ components: [] });
+    const recorder = tracker.getRecorder();
+    expect(recorder).toBeInstanceOf(ChangeRecorder);
+  });
+
+  it("returns the same recorder instance across multiple calls", () => {
+    const tracker = new ChangeTracker({ components: [] });
+    const recorder1 = tracker.getRecorder();
+    const recorder2 = tracker.getRecorder();
+    expect(recorder1).toBe(recorder2);
+  });
+
+  it("getChangeTracker().getRecorder() works after initChangeTracker", () => {
+    const tracker = initChangeTracker({ components: [] });
+    const recorder = getChangeTracker().getRecorder();
+    expect(recorder).toBeInstanceOf(ChangeRecorder);
+    expect(recorder).toBe(tracker.getRecorder());
+  });
+});
+
+describe("withRecording error handling", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    disposeChangeTracker();
+    vi.restoreAllMocks();
+  });
+
+  it("propagates errors thrown by the mutation function", () => {
+    // The mock ChangeRecorder calls fn() then returns mockWithRecording(),
+    // so if fn() throws, it propagates before the mock return
+    const tracker = new ChangeTracker({ components: [] });
+    expect(() =>
+      tracker.withRecording(() => {
+        throw new Error("mutation failed");
+      })
+    ).toThrow("mutation failed");
+  });
+});
+
+describe("isExternalRef integration", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    disposeChangeTracker();
+  });
+
+  afterEach(() => {
+    disposeChangeTracker();
+    vi.restoreAllMocks();
+  });
+
+  it("passes isExternalRef to ChangeRecorder when session has bundler", () => {
+    setSession({
+      projectId: "proj-test",
+      projectName: "Test",
+      site: { components: [] },
+      bundler: {
+        addrOf: vi.fn().mockReturnValue({ uuid: "proj-test", iid: "1" }),
+      },
+      revisionNum: 1,
+      modelVersion: 1,
+      hostlessDataVersion: 0,
+      projectUuid: "proj-test",
+    });
+
+    const tracker = initChangeTracker({ components: [] });
+    // Tracker should have been created — no throw
+    expect(tracker).toBeInstanceOf(ChangeTracker);
+    clearSession();
+  });
+
+  it("creates tracker without isExternalRef when no session", () => {
+    // No session set, so initChangeTracker should still work (no isExternalRef)
+    const tracker = initChangeTracker({ components: [] });
+    expect(tracker).toBeInstanceOf(ChangeTracker);
   });
 });

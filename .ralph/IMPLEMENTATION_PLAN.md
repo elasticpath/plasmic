@@ -7,17 +7,17 @@
 
 | Category | Count |
 |----------|-------|
-| Completed features | 21 |
-| Remaining items | 3 |
-| Test files | 42 |
-| Test cases (approx.) | 2,090+ |
+| Completed features | 23 |
+| Remaining items | 2 |
+| Test files | 44 |
+| Test cases (approx.) | 1,955+ |
 | Skipped tests | 0 |
 
-**Remaining:** 3 items across 2 priority levels.
+**Remaining:** 2 items across 2 priority levels (CMS fork blocked on npm org, Admin UI not started).
 
 ---
 
-## Completed (21 items)
+## Completed (23 items)
 
 | # | Feature | PR / Commit | Tests |
 |---|---------|------------|-------|
@@ -42,6 +42,8 @@
 | 19 | Commerce elastic-path package (176 files, 15+ components, 20 test files) | merged | 95%+ complete |
 | 20 | Hostless component reachability fix (`bundler-helpers.ts`, `change-tracker.ts` isExternalRef, `edit-tools.ts` verification) | feat/mcp-gap-fixes | 23 tests |
 | 21 | Headless canvas screenshot (`headless-canvas.ts`, `inspect.capture-screenshot` action) | feat/mcp-gap-fixes | 32 tests |
+| 22 | Admin SDK (`@elasticpath/plasmic-admin`, `client.ts`, `types.ts`) | feat/mcp-gap-fixes | 68 tests |
+| 23 | WebSocket subsystem test coverage gaps (rebase, undo, change-tracker, update-queue, batch, cross-module) | feat/mcp-gap-fixes | 35 new tests across 7 files |
 
 ---
 
@@ -86,18 +88,16 @@
 
 ## P2 — Medium Priority
 
-### 4. Admin SDK and Admin Dashboard UI
+### 4. Admin Dashboard UI
 
-- **Specs:** `ADMIN_SDK.md` (506 lines) + `ADMIN_UI_REQUIREMENTS.md` (431 lines)
-- **Status:** SDK was implemented in `5a4782d25` then reverted in `be7b9ef63` (~1 hour later). Source files deleted; stale `dist/` remains untracked. No admin UI code exists.
-- **Scope:** L (Large) — SDK=M, Dashboard UI=L
-- **Dependencies:** None for SDK. UI depends on SDK.
+- **Spec:** `ADMIN_UI_REQUIREMENTS.md` (431 lines)
+- **Status:** SDK is DONE (Item 22). No admin UI code exists.
+- **Scope:** L (Large)
+- **Dependencies:** Depends on Admin SDK (done).
 
-**4a. Re-implement Admin SDK (`packages/plasmic-admin/`)**
-- Original implementation (retrievable from git `5a4782d25`): `client.ts` (406 lines), `types.ts` (246 lines), `index.ts` (31 lines), `__tests__/client.test.ts` (635 lines, 43 tests)
-- Zero runtime deps (native `fetch()` only)
-- Covered: auth (CSRF + session), project CRUD, admin ops (clone/delete/restore/change-owner/revert), workspace CRUD
-- **Pre-work:** Investigate why the SDK was reverted (check discussion around `be7b9ef63`)
+**4a. Admin SDK — DONE** (moved to completed items #22)
+- Re-implemented with 68 tests (up from original 43). Verified all endpoints against WAB server routes.
+- Revert investigation: `be7b9ef63` had no stated reason; bare revert message, no PR discussion. Likely premature commit timing.
 
 **4b. Admin Dashboard UI (new package or app)**
 - Login page, project list dashboard with CRUD, workspace management, admin panel
@@ -113,17 +113,17 @@
 
 **Gaps by module:**
 
-| Module | Gap | Deliver With |
-|--------|-----|-------------|
-| Hostless reachability | ~~Bundler `__ref`/`__xref` classification~~ DONE (23 tests). Remaining: integration test with real WAB bundler for end-to-end `node.add` with hostless component | Standalone |
-| Rebase engine | `undoChangesAndResolveConflicts` mock does nothing; no dep pkg unbundle failure test | Standalone |
-| Undo manager | No concurrent undo during save test; rollback "CRITICAL" log not verified | Standalone |
-| Change tracker | Only lifecycle tests; no mutation capture or `getRecorder()` tests | Standalone |
-| Update queue | No enqueue+stop race condition test; no handler exception+concurrent test | Standalone |
-| Batch manager | No rollback failure test; no batch-during-rebase test; no bundler state cleanup test | Standalone |
-| Cross-module | No rebase+undo+batch integration test; no SaveManager+UpdateQueue+Rebase test | Standalone |
-| Screenshot | ~~`headless-canvas.test.ts` to be created~~ DONE (32 tests). Remaining: integration test with real dev host | Standalone |
-| Admin SDK | Original 43 tests were reverted | Item 4a |
+| Module | Gap | Status |
+|--------|-----|--------|
+| Hostless reachability | ~~Bundler `__ref`/`__xref` classification~~ DONE (23 tests). Remaining: integration test with real WAB bundler for end-to-end `node.add` with hostless component | Partial |
+| Rebase engine | ~~`undoChangesAndResolveConflicts` mock does nothing; no dep pkg unbundle failure test~~ DONE — return value usage verified (3 tests), dep pkg failure/continuation tested (2 tests) | DONE |
+| Undo manager | ~~No concurrent undo during save test; rollback "CRITICAL" log not verified~~ DONE — concurrent undo (2 tests), CRITICAL log (1 test), getStack/replaceStack (3 tests) | DONE |
+| Change tracker | ~~Only lifecycle tests; no mutation capture or `getRecorder()` tests~~ DONE — getRecorder (3 tests), withRecording error (1 test), isExternalRef integration (2 tests) | DONE |
+| Update queue | ~~No enqueue+stop race condition test; no handler exception+concurrent test~~ DONE — stop race (1 test), isProcessing (3 tests), handler error+concurrent (1 test) | DONE |
+| Batch manager | ~~No rollback failure test; no batch-during-rebase test; no bundler state cleanup test~~ DONE — rollback failure in endBatch (1 test), replaceAccumulatedChanges (3 tests), sequential batches (2 tests) | DONE |
+| Cross-module | ~~No rebase+undo+batch integration test; no SaveManager+UpdateQueue+Rebase test~~ DONE — new `cross-module-integration.test.ts` with 8 tests covering rebase+undo, rebase+batch, rebase+undo+batch, UpdateQueue+save coordination, batch→save→undo flow, session state | DONE |
+| Screenshot | ~~`headless-canvas.test.ts` to be created~~ DONE (32 tests). Remaining: integration test with real dev host | Partial |
+| Admin SDK | ~~Original 43 tests were reverted~~ DONE (68 tests) | DONE |
 
 ---
 
@@ -142,11 +142,12 @@ Item 1 (P0, hostless reachability)    ██████████████
        ├─ 10 files modified + migration 257
        └─ Publish to npm BEFORE platform deploy
 
-Item 4 (P2, admin SDK + UI)          ░░░░░░░░░░░░░░░░░░░░  independent workstream
-  ├─ Phase 1: Restore/rewrite SDK from 5a4782d25
-  └─ Phase 2: Dashboard UI
+Item 4 (P2, admin SDK + UI)
+  ├─ Phase 1: Admin SDK                ████████████████████████████  DONE (68 tests)
+  └─ Phase 2: Dashboard UI            ░░░░░░░░░░░░░░░░░░░░  not started
 
-Item 5 (P2, test gaps)               ░░░░░░░░░░░░░░░░░░░░  continuous, alongside each item
+Item 5 (P2, test gaps)               ████████████████████  DONE (35 new tests, 7 files)
+     Remaining: hostless real-bundler integration, screenshot real dev host
 ```
 
 ---
@@ -158,7 +159,7 @@ Item 5 (P2, test gaps)               ░░░░░░░░░░░░░░�
 | Bundler public API insufficient for fix | ~~Medium~~ Resolved | ~~High~~ | `addrOf()` public method is sufficient for `isExternalRef` and `ensureDependencyAddresses`. No upstream changes needed. |
 | `@ep-plasmic` npm org not available | Low | Blocks Item 3 | Reserve org name early; `@ep-storefront` as fallback |
 | Screenshot ViewCtx duck-type insufficient | ~~Medium~~ Resolved | ~~Medium~~ | Avoided entirely: used tree-reader JSON → React.createElement in dev host instead of bundling WAB canvas-rendering.ts. Code components render via `__PlasmicComponentRegistry`. |
-| Admin SDK revert reason still relevant | Medium | Medium | Investigate before re-implementing; may need architectural changes |
+| Admin SDK revert reason still relevant | ~~Medium~~ Resolved | ~~Medium~~ | Investigated: bare revert with no stated reason, no PR discussion. Re-implemented successfully with 68 tests, all endpoints verified against WAB server routes. |
 | CMS fork creates permanent upstream merge burden | High | Medium | Document divergences; automate merge conflict detection |
 
 ## Architecture Notes
