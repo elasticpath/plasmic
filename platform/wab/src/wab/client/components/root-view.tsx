@@ -59,6 +59,11 @@ import { CmsDatabaseId } from "@/wab/shared/ApiSchema";
 import { FastBundler } from "@/wab/shared/bundler";
 import { ensure, hackyCast, spawn } from "@/wab/shared/common";
 import { isAdminTeamEmail } from "@/wab/shared/devflag-utils";
+import {
+  isDashboardRestricted,
+  redirectToDashboard,
+  shouldRedirectAuthRoute,
+} from "@/wab/client/ep/dashboard-restriction";
 import { StarterSectionConfig } from "@/wab/shared/devflags";
 import { BASE_URL } from "@/wab/shared/discourse/config";
 import { accessLevelRank } from "@/wab/shared/EntUtil";
@@ -135,11 +140,50 @@ function LoggedInContainer(props: LoggedInContainerProps) {
         // Not logged in users
         <Switch>
           {projectRoute()}
-          <Redirect to={getLoginRouteWithContinuation()} />
+          {isDashboardRestricted(
+            appCtx.appConfig,
+            currentLocation.search
+          ) ? (
+            <Route
+              render={() => {
+                redirectToDashboard(appCtx.appConfig);
+                return <widgets.Spinner />;
+              }}
+            />
+          ) : (
+            <Redirect to={getLoginRouteWithContinuation()} />
+          )}
         </Switch>
       ) : isWhiteLabeled ? (
         // White-labeled users only get projectRoute()
         <Switch>{projectRoute()}</Switch>
+      ) : isDashboardRestricted(
+          appCtx.appConfig,
+          currentLocation.search
+        ) ? (
+        // EP restricted users: project + CMS only, everything else → CM
+        <Switch>
+          {projectRoute()}
+          {routerRoute({
+            path: APP_ROUTES.cmsRoot,
+            render: ({ match }) => (
+              <widgets.ObserverLoadable
+                loader={() => import("./cms/CmsRoot")}
+                contents={(CmsRoot) => (
+                  <CmsRoot.default
+                    databaseId={match.params.databaseId as CmsDatabaseId}
+                  />
+                )}
+              />
+            ),
+          })}
+          <Route
+            render={() => {
+              redirectToDashboard(appCtx.appConfig);
+              return <widgets.Spinner />;
+            }}
+          />
+        </Switch>
       ) : (
         // Normal logged in users
         <Switch>
@@ -547,6 +591,17 @@ export function Root() {
             key={loaderKey}
             loader={loader}
             contents={(appCtx: /*TWZ*/ AppCtx) => {
+              // EP auth lockdown: redirect auth pages to Commerce Manager
+              if (
+                shouldRedirectAuthRoute(
+                  appCtx.appConfig,
+                  window.location.pathname,
+                  window.location.search
+                )
+              ) {
+                redirectToDashboard(appCtx.appConfig);
+                return <widgets.Spinner />;
+              }
               return providesAppCtx(appCtx)(
                 <NonAuthCtxContext.Provider value={nonAuthCtx}>
                   <div className={"root"} onPointerDown={() => {}}>

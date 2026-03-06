@@ -1,5 +1,6 @@
 /** @format */
 import { useContextMenu } from "@/wab/client/components/ContextMenu";
+import { shouldHideForRestrictedUser } from "@/wab/client/ep/dashboard-restriction";
 import { PublicLink } from "@/wab/client/components/PublicLink";
 import { usePreviewCtx } from "@/wab/client/components/live/PreviewCtx";
 import {
@@ -65,6 +66,11 @@ function _TopBar({ preview }: TopBarProps) {
   const team = data?.team;
   const canEditUiConfig = data?.canEditUiConfig;
   const isWhiteLabelUser = appCtx.isWhiteLabelUser();
+  const isRestrictedUser = shouldHideForRestrictedUser(
+    isWhiteLabelUser,
+    appCtx.appConfig,
+    window.location.search
+  );
   const isObserver = appCtx.selfInfo?.isObserver;
 
   const uiConfig = studioCtx.getCurrentUiConfig();
@@ -88,7 +94,7 @@ function _TopBar({ preview }: TopBarProps) {
               );
             }
 
-            if (!isWhiteLabelUser) {
+            if (!isRestrictedUser) {
               push2(
                 <Menu.Item
                   key="duplicate"
@@ -117,7 +123,7 @@ function _TopBar({ preview }: TopBarProps) {
               const showAuth =
                 (!appCtx.appConfig.rscRelease ||
                   studioCtx.siteInfo.hasAppAuth) &&
-                !isWhiteLabelUser;
+                !isRestrictedUser;
               if (showAuth) {
                 push2(
                   <Menu.Item
@@ -451,7 +457,7 @@ function _TopBar({ preview }: TopBarProps) {
         zoomButton={{}}
         viewButton={{}}
         shareButton={
-          isWhiteLabelUser
+          isRestrictedUser
             ? {
                 render: () => null,
               }

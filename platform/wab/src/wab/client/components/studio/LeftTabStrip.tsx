@@ -1,5 +1,6 @@
 // eslint-disable-next-line no-restricted-imports
 import { showTemporaryInfo } from "@/wab/client/components/quick-modals";
+import { shouldHideForRestrictedUser } from "@/wab/client/ep/dashboard-restriction";
 import { AnonymousAvatar, Avatar } from "@/wab/client/components/studio/Avatar";
 import { FigmaModalContent } from "@/wab/client/components/studio/FigmaModalContent";
 import LeftTabButton from "@/wab/client/components/studio/LeftTabButton";
@@ -91,6 +92,11 @@ const LeftTabStrip = observer(function LeftTabStrip(props: LeftTabStripProps) {
   const shortcutModalButtonClassName = "shortcut-modal-button";
 
   const isWhiteLabelUser = studioCtx.appCtx.isWhiteLabelUser();
+  const isRestrictedUser = shouldHideForRestrictedUser(
+    isWhiteLabelUser,
+    studioCtx.appCtx.appConfig,
+    window.location.search
+  );
   const uiConfig = studioCtx.getCurrentUiConfig();
 
   const canViewTab = (tab: LeftTabUiKey) => {
@@ -231,7 +237,7 @@ Help
             isLoggedIn &&
             DEVFLAGS.splits &&
             canViewTab("splits") &&
-            !isWhiteLabelUser,
+            !isRestrictedUser,
         },
         imports: {
           type: "item",
@@ -332,21 +338,21 @@ Help
           icon: <SlackIcon style={{ margin: 4 }} height={16} width={16} />,
           label: "Slack community",
           href: "https://www.plasmic.app/slack",
-          cond: !isWhiteLabelUser,
+          cond: !isRestrictedUser,
         },
         forum: {
           type: "item",
           icon: <MessagesvgIcon />,
           label: "Forum",
           href: BASE_URL,
-          cond: !isWhiteLabelUser,
+          cond: !isRestrictedUser,
         },
         docs: {
           type: "item",
           icon: <BooksvgIcon />,
           label: "Documentation",
           href: "https://docs.plasmic.app/",
-          cond: !isWhiteLabelUser,
+          cond: !isRestrictedUser,
         },
         help: {
           type: "item",
@@ -357,7 +363,7 @@ Help
                 teamId: studioCtx.siteInfo.teamId!,
               })
             : undefined,
-          cond: Boolean(studioCtx.siteInfo.teamId) && !isWhiteLabelUser,
+          cond: Boolean(studioCtx.siteInfo.teamId) && !isRestrictedUser,
         },
       },
     },
