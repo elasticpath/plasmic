@@ -23,6 +23,8 @@ import {
 
 // The mock undoChanges from wab-undo-util
 import { undoChanges } from "@/wab/shared/core/undo-util";
+// The mock unbundleProjectDependency from tagged-unbundle
+import { mockUnbundleProjectDependency } from "../__mocks__/wab-tagged-unbundle.js";
 
 function makeIncrementalUpdate(
   overrides: Partial<ModelUpdateIncremental> = {}
@@ -318,6 +320,52 @@ describe("rebase-engine", () => {
         // unbundleProjectDependency should have been called
         // (it's called inside recorder.withRecording)
       });
+
+      it("catches and logs unbundle failure without aborting rebase", () => {
+        mockUnbundleProjectDependency.mockImplementationOnce(() => {
+          throw new Error("corrupt dep bundle");
+        });
+
+        const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+        const ctx = makeContext();
+        const update = makeIncrementalUpdate({
+          depPkgs: [{ id: "dep-bad", model: '{"map":{}}' }],
+        });
+
+        // Should NOT throw — error is caught and logged
+        const result = applyServerUpdate(update, ctx);
+        expect(result).not.toBeNull();
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining("failed to unbundle dep pkg dep-bad")
+        );
+        consoleSpy.mockRestore();
+      });
+
+      it("continues processing remaining dep pkgs after one fails", () => {
+        let callCount = 0;
+        mockUnbundleProjectDependency.mockImplementation(() => {
+          callCount++;
+          if (callCount === 1) {
+            throw new Error("first dep failed");
+          }
+          // second dep succeeds
+        });
+
+        const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+        const ctx = makeContext();
+        const update = makeIncrementalUpdate({
+          depPkgs: [
+            { id: "dep-fail", model: '{"map":{}}' },
+            { id: "dep-ok", model: '{"map":{}}' },
+          ],
+        });
+
+        const result = applyServerUpdate(update, ctx);
+        expect(result).not.toBeNull();
+        // Both deps attempted
+        expect(callCount).toBe(2);
+        consoleSpy.mockRestore();
+      });
     });
 
     describe("revision number update", () => {
@@ -341,6 +389,91 @@ describe("rebase-engine", () => {
         const result1 = applyServerUpdate(update1, ctx);
 
         expect(result1!.serverUpdatesSummary).toBeDefined();
+      });
+    });
+
+    describe("undoChangesAndResolveConflicts return value usage", () => {
+      it("uses returned changes in the rebuilt undo stack", () => {
+        const conflictResolvedChanges = [
+          { type: "update", changeNode: { inst: { id: 99 }, field: "resolved" } },
+        ];
+        (undoChangesAndResolveConflicts as any).mockReturnValue({
+          changes: conflictResolvedChanges,
+          newInsts: [],
+          removedInsts: [],
+        });
+
+        const undoEntry = {
+          description: "original edit",
+          changes: [{ type: "update", changeNode: { inst: {}, field: "original" } }],
+        };
+        const ctx = makeContext({
+          getUndoStack: () => [undoEntry],
+        });
+        const update = makeIncrementalUpdate();
+
+        applyServerUpdate(update, ctx);
+
+        const newStack = (ctx.replaceUndoStack as any).mock.calls[0][0];
+        expect(newStack[0].changes).toBe(conflictResolvedChanges);
+        expect(newStack[0].description).toBe("original edit");
+      });
+
+      it("uses returned changes for rebased batch state", () => {
+        const rebasedBatchChanges = {
+          changes: [{ type: "update", changeNode: { inst: { id: 77 }, field: "rebased-batch" } }],
+          newInsts: [{ id: "new-inst" }],
+          removedInsts: [],
+        };
+        (undoChangesAndResolveConflicts as any).mockReturnValue(rebasedBatchChanges);
+
+        const batchChanges = {
+          changes: [{ type: "update", changeNode: { inst: {}, field: "batch-original" } }],
+          newInsts: [],
+          removedInsts: [],
+        };
+        const recorder = {
+          withRecording: vi.fn((fn: () => void) => {
+            fn();
+            return {
+              changes: [{ type: "update", changeNode: { inst: {}, field: "reverted" } }],
+              newInsts: [],
+              removedInsts: [],
+            };
+          }),
+        };
+        const ctx = makeContext({
+          recorder,
+          getAccumulatedChanges: () => batchChanges,
+        });
+        const update = makeIncrementalUpdate();
+
+        applyServerUpdate(update, ctx);
+
+        expect(ctx.replaceAccumulatedChanges).toHaveBeenCalledWith(rebasedBatchChanges);
+      });
+
+      it("handles empty changes from conflict resolution", () => {
+        (undoChangesAndResolveConflicts as any).mockReturnValue({
+          changes: [],
+          newInsts: [],
+          removedInsts: [],
+        });
+
+        const undoEntry = {
+          description: "conflicted edit",
+          changes: [{ type: "update", changeNode: { inst: {}, field: "x" } }],
+        };
+        const ctx = makeContext({
+          getUndoStack: () => [undoEntry],
+        });
+        const update = makeIncrementalUpdate();
+
+        applyServerUpdate(update, ctx);
+
+        const newStack = (ctx.replaceUndoStack as any).mock.calls[0][0];
+        expect(newStack[0].changes).toEqual([]);
+        expect(newStack[0].description).toBe("conflicted edit");
       });
     });
   });

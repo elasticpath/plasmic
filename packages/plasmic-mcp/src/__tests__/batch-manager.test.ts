@@ -16,6 +16,8 @@ import {
   endBatch,
   isBatchActive,
   getBatchId,
+  getAccumulatedChanges,
+  replaceAccumulatedChanges,
   accumulateChanges,
   cancelBatch,
   cancelBatchWithRollback,
@@ -342,5 +344,181 @@ describe("endBatch error recovery", () => {
     expect(mockUndoChanges).toHaveBeenCalled();
     // Undo stack should be empty (save didn't succeed)
     expect(getUndoDepth()).toBe(0);
+  });
+
+  it("logs CRITICAL and re-throws save error when rollback also fails", async () => {
+    setupSession();
+    const api = mockApiClient();
+    api.saveRevision.mockRejectedValueOnce(new Error("save broke"));
+
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    beginBatch();
+    accumulateChanges(
+      {
+        changes: [{ type: "update", changeNode: { inst: {}, field: "x" } }],
+        newInsts: [],
+        removedInsts: [],
+      } as any,
+    );
+
+    // Make rollback throw
+    mockUndoChanges.mockImplementationOnce(() => {
+      throw new Error("rollback exploded");
+    });
+
+    await expect(endBatch(api)).rejects.toThrow("save broke");
+
+    // Batch is still cleared
+    expect(isBatchActive()).toBe(false);
+    // CRITICAL log emitted about rollback failure
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining("CRITICAL: Rollback failed")
+    );
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining("rollback exploded")
+    );
+    consoleSpy.mockRestore();
+  });
+});
+
+describe("replaceAccumulatedChanges (rebase integration)", () => {
+  it("replaces batch changes mid-batch for rebase engine", () => {
+    setupSession();
+    beginBatch();
+
+    accumulateChanges(
+      {
+        changes: [{ type: "update", changeNode: { inst: {}, field: "original" } }],
+        newInsts: [],
+        removedInsts: [],
+      } as any,
+    );
+
+    const rebasedChanges = {
+      changes: [{ type: "update", changeNode: { inst: {}, field: "rebased" } }],
+      newInsts: [{ id: "new-inst" }],
+      removedInsts: [],
+    };
+    replaceAccumulatedChanges(rebasedChanges as any);
+
+    const accumulated = getAccumulatedChanges();
+    expect(accumulated).not.toBeNull();
+    expect(accumulated!.changes).toEqual(rebasedChanges.changes);
+    expect(accumulated!.newInsts).toEqual(rebasedChanges.newInsts);
+  });
+
+  it("endBatch saves rebased changes after replaceAccumulatedChanges", async () => {
+    setupSession();
+    const api = mockApiClient();
+    beginBatch();
+
+    accumulateChanges(
+      {
+        changes: [{ type: "update", changeNode: { inst: {}, field: "pre-rebase" } }],
+        newInsts: [],
+        removedInsts: [],
+      } as any,
+    );
+
+    // Simulate rebase replacing the changes
+    const rebasedChanges = {
+      changes: [{ type: "update", changeNode: { inst: { id: 42 }, field: "post-rebase" } }],
+      newInsts: [],
+      removedInsts: [],
+    };
+    replaceAccumulatedChanges(rebasedChanges as any);
+
+    const result = await endBatch(api);
+    // operationCount is still 1 (from the original accumulate)
+    expect(result.operationCount).toBe(1);
+    expect(result.save.revisionNum).toBe(6);
+    expect(isBatchActive()).toBe(false);
+  });
+
+  it("replaceAccumulatedChanges is no-op when no batch active", () => {
+    // Should not throw
+    replaceAccumulatedChanges({
+      changes: [],
+      newInsts: [],
+      removedInsts: [],
+    } as any);
+    expect(getAccumulatedChanges()).toBeNull();
+  });
+});
+
+describe("sequential batches", () => {
+  it("second batch is independent from first", async () => {
+    setupSession();
+    const api = mockApiClient();
+
+    // First batch
+    beginBatch();
+    accumulateChanges(
+      {
+        changes: [{ type: "update", changeNode: { inst: {}, field: "batch1" } }],
+        newInsts: [],
+        removedInsts: [],
+      } as any,
+    );
+    const result1 = await endBatch(api);
+    expect(result1.operationCount).toBe(1);
+    expect(getUndoDepth()).toBe(1);
+
+    // Second batch — starts clean
+    const batchId2 = beginBatch();
+    expect(getAccumulatedChanges()!.changes).toHaveLength(0);
+
+    accumulateChanges(
+      {
+        changes: [{ type: "update", changeNode: { inst: {}, field: "batch2-a" } }],
+        newInsts: [],
+        removedInsts: [],
+      } as any,
+    );
+    accumulateChanges(
+      {
+        changes: [{ type: "update", changeNode: { inst: {}, field: "batch2-b" } }],
+        newInsts: [],
+        removedInsts: [],
+      } as any,
+    );
+
+    const result2 = await endBatch(api, batchId2);
+    expect(result2.operationCount).toBe(2);
+    // Two undo operations total (one per batch)
+    expect(getUndoDepth()).toBe(2);
+  });
+
+  it("failed first batch does not affect second batch", async () => {
+    setupSession();
+    const api = mockApiClient();
+
+    // First batch fails on save
+    api.saveRevision.mockRejectedValueOnce(new Error("first batch failed"));
+    beginBatch();
+    accumulateChanges(
+      {
+        changes: [{ type: "update", changeNode: { inst: {}, field: "fail" } }],
+        newInsts: [],
+        removedInsts: [],
+      } as any,
+    );
+    await expect(endBatch(api)).rejects.toThrow("first batch failed");
+    expect(isBatchActive()).toBe(false);
+
+    // Second batch succeeds
+    api.saveRevision.mockResolvedValueOnce({});
+    beginBatch();
+    accumulateChanges(
+      {
+        changes: [{ type: "update", changeNode: { inst: {}, field: "succeed" } }],
+        newInsts: [],
+        removedInsts: [],
+      } as any,
+    );
+    const result = await endBatch(api);
+    expect(result.operationCount).toBe(1);
+    expect(isBatchActive()).toBe(false);
   });
 });

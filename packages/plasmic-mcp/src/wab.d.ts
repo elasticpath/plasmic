@@ -31,6 +31,13 @@ declare module "@/wab/shared/bundler" {
     allUuids(): string[];
     /** Look up a live model instance by its address (uuid + iid). */
     objByAddr(addr: { uuid: string; iid: string }): any | undefined;
+
+    /** Maps instance uid (number) to its serialization address (uuid + iid).
+     *  Public for tests and defensive access. Populated during unbundle(). */
+    _uid2addr: Map<number, { uuid: string; iid: string }>;
+    /** Maps address key string to live instance.
+     *  Public for tests and defensive access. Populated during unbundle(). */
+    _addr2inst: Map<string, any>;
   }
 }
 
