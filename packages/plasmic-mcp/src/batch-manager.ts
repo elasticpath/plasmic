@@ -25,6 +25,7 @@ import { requireSession } from "./session.js";
 import { pushUndoOperation } from "./undo-manager.js";
 import { getChangeTracker } from "./change-tracker.js";
 import { undoChanges } from "@/wab/shared/core/undo-util";
+import { rebaseFromServer } from "./live-sync.js";
 
 interface BatchState {
   batchId: string;
@@ -77,6 +78,17 @@ export function getBatchId(): string | null {
  */
 export function getAccumulatedChanges(): RecordedChanges | null {
   return currentBatch?.accumulatedChanges ?? null;
+}
+
+/**
+ * Replace the accumulated changes in the current batch session.
+ * Used by the rebase engine after rebasing batch changes against server updates.
+ * No-op if no batch is active.
+ */
+export function replaceAccumulatedChanges(changes: RecordedChanges): void {
+  if (currentBatch) {
+    currentBatch.accumulatedChanges = changes;
+  }
 }
 
 /**
@@ -134,7 +146,9 @@ export async function endBatch(
     };
   }
 
-  const saveManager = new SaveManager(apiClient);
+  const saveManager = new SaveManager(apiClient, {
+    rebaseOnConflict: () => rebaseFromServer(apiClient),
+  });
   try {
     const save = await saveManager.saveChanges(
       accumulatedChanges,

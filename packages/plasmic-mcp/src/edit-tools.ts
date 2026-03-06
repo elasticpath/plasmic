@@ -98,6 +98,7 @@ import { PlasmicApiClient } from "./api-client.js";
 import { resolveNode, requireSingleNode } from "./node-resolver.js";
 import type { PlasmicElement, ComponentElement, DefaultComponentElement } from "./types.js";
 import { isBatchActive, accumulateChanges } from "./batch-manager.js";
+import { rebaseFromServer } from "./live-sync.js";
 import { pushUndoOperation } from "./undo-manager.js";
 import { undoChanges } from "@/wab/shared/core/undo-util";
 import { extractComponent as wabExtractComponent } from "@/wab/shared/core/components";
@@ -1029,7 +1030,9 @@ async function saveOrAccumulate(
     return { revisionNum: session.revisionNum, incremental: true };
   }
 
-  const saveManager = new SaveManager(apiClient);
+  const saveManager = new SaveManager(apiClient, {
+    rebaseOnConflict: () => rebaseFromServer(apiClient),
+  });
   try {
     const save = await saveManager.saveChanges(changes, modifiedComponentIids);
     pushUndoOperation(description, changes);

@@ -3,6 +3,7 @@
  *
  * mockUnbundle is a vi.fn() so tests can configure return values per-test.
  * M2: added mockFastBundle and mockAddrOf for incremental save tests.
+ * P0.0: added mockUnbundlePartial, mockAllUuids, mockObjByAddr for WebSocket rebase.
  */
 
 import { vi } from "vitest";
@@ -11,6 +12,9 @@ export const mockUnbundle = vi.fn();
 export const mockFastBundle = vi.fn();
 export const mockAddrOf = vi.fn();
 export const mockRecomputeParents = vi.fn();
+export const mockUnbundlePartial = vi.fn();
+export const mockAllUuids = vi.fn().mockReturnValue([]);
+export const mockObjByAddr = vi.fn();
 
 export class FastBundler {
   constructor(_meta: any, _classes: any) {}
@@ -33,5 +37,17 @@ export class FastBundler {
 
   recomputeParents(bundle: any, projectId: string): void {
     mockRecomputeParents(bundle, projectId);
+  }
+
+  unbundlePartial(bundle: any, uuid: string): void {
+    mockUnbundlePartial(bundle, uuid);
+  }
+
+  allUuids(): string[] {
+    return mockAllUuids();
+  }
+
+  objByAddr(addr: { uuid: string; iid: string }): any | undefined {
+    return mockObjByAddr(addr);
   }
 }

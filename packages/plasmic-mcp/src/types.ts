@@ -268,6 +268,36 @@ export interface PackageComponent {
   displayName: string;
 }
 
+// --- Model updates response (P0.3: incremental updates from server) ---
+
+/** Incremental update available — apply partial bundle to local model. */
+export interface ModelUpdateIncremental {
+  data: string; // JSON-stringified partial Bundle
+  needsReload?: never;
+  revision: number;
+  depPkgs: Array<{ model: string; id: string }>;
+  deletedIids: string[];
+  modifiedComponentIids: string[];
+}
+
+/** Full reload required — model diverged beyond incremental reconciliation. */
+export interface ModelUpdateNeedsReload {
+  data?: never;
+  needsReload: true;
+}
+
+/** No changes — already at latest revision. */
+export interface ModelUpdateNoChanges {
+  data: null;
+  needsReload?: never;
+}
+
+/** Discriminated union for GET /projects/{id}/updates response. */
+export type GetModelUpdatesResponse =
+  | ModelUpdateIncremental
+  | ModelUpdateNeedsReload
+  | ModelUpdateNoChanges;
+
 // --- Save revision request (M2: incremental writes) ---
 
 export interface SaveRevisionReq {

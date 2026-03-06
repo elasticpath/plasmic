@@ -36,6 +36,15 @@ export class ChangeTracker {
     return this.recorder.withRecording(fn);
   }
 
+  /**
+   * Get the underlying ChangeRecorder instance.
+   * Needed by the rebase engine for undoChangesAndResolveConflicts()
+   * which requires an IChangeRecorder.
+   */
+  getRecorder(): ChangeRecorder {
+    return this.recorder;
+  }
+
   dispose(): void {
     this.recorder.dispose();
   }

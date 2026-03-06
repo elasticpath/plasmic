@@ -24,8 +24,24 @@ export interface SaveResult {
   incremental: boolean;
 }
 
+/** Module-level flag indicating whether a save is in flight.
+ *  Used by update-queue to pause processing during saves. */
+let _saving = false;
+
+/** Check if a save is currently in flight. */
+export function isSaving(): boolean {
+  return _saving;
+}
+
 export class SaveManager {
-  constructor(private apiClient: PlasmicApiClient) {}
+  private rebaseOnConflict?: () => Promise<void>;
+
+  constructor(
+    private apiClient: PlasmicApiClient,
+    opts?: { rebaseOnConflict?: () => Promise<void> }
+  ) {
+    this.rebaseOnConflict = opts?.rebaseOnConflict;
+  }
 
   /**
    * Save recorded changes as an incremental revision.
@@ -76,6 +92,9 @@ export class SaveManager {
       );
     }
 
+    // Track pending save for self-update echo detection (P0.6)
+    session.pendingSavedRevisionNum = newRevisionNum;
+    _saving = true;
     try {
       await this.apiClient.saveRevision(projectId, newRevisionNum, {
         data: JSON.stringify(bundle),
@@ -114,12 +133,36 @@ export class SaveManager {
         }
 
         // ProjectRevisionError: conflict with another user
+        // If a rebase callback is provided, attempt to fetch updates, rebase, and retry
+        if (this.rebaseOnConflict) {
+          try {
+            console.error(
+              "[plasmic-mcp] ProjectRevisionError on incremental save, attempting rebase + retry..."
+            );
+            await this.rebaseOnConflict();
+            return this.saveFullBundle();
+          } catch (rebaseErr) {
+            console.error(
+              `[plasmic-mcp] Rebase after conflict failed: ${
+                rebaseErr instanceof Error ? rebaseErr.message : String(rebaseErr)
+              }`
+            );
+            throw new Error(
+              `Save conflict: another user saved revision ${newRevisionNum} first. ` +
+                `Auto-rebase failed: ${rebaseErr instanceof Error ? rebaseErr.message : String(rebaseErr)}. ` +
+                `Use refresh-project to reload the latest version, then retry your edit.`
+            );
+          }
+        }
+
         throw new Error(
           `Save conflict: another user saved revision ${newRevisionNum} first. ` +
             `Use refresh-project to reload the latest version, then retry your edit.`
         );
       }
       throw err;
+    } finally {
+      _saving = false;
     }
   }
 
@@ -176,6 +219,9 @@ export class SaveManager {
       );
     }
 
+    // Track pending save for self-update echo detection (P0.6)
+    session.pendingSavedRevisionNum = newRevisionNum;
+    _saving = true;
     try {
       await this.apiClient.saveRevision(projectId, newRevisionNum, {
         data: JSON.stringify(bundle),
@@ -186,6 +232,14 @@ export class SaveManager {
         modifiedComponentIids: [],
         modelSchemaHash,
       });
+
+      session.revisionNum = newRevisionNum;
+
+      console.error(
+        `[plasmic-mcp] Saved revision ${newRevisionNum} (full bundle, version: ${freshBundleVersion})`
+      );
+
+      return { revisionNum: newRevisionNum, incremental: false };
     } catch (err: unknown) {
       if (err instanceof PlasmicApiError && err.statusCode === 412) {
         if (err.errorType === "SchemaMismatchError") {
@@ -208,14 +262,8 @@ export class SaveManager {
         }
       }
       throw err;
+    } finally {
+      _saving = false;
     }
-
-    session.revisionNum = newRevisionNum;
-
-    console.error(
-      `[plasmic-mcp] Saved revision ${newRevisionNum} (full bundle, version: ${freshBundleVersion})`
-    );
-
-    return { revisionNum: newRevisionNum, incremental: false };
   }
 }

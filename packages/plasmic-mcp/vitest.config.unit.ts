@@ -98,6 +98,44 @@ export default defineConfig({
         find: /^@\/wab\/shared\/core\/sites$/,
         replacement: path.resolve(__dirname, "src/__mocks__/wab-sites"),
       },
+      // P0.0: WebSocket live sync prerequisites
+      {
+        find: /^@\/wab\/shared\/server-updates-utils$/,
+        replacement: path.resolve(
+          __dirname,
+          "src/__mocks__/wab-server-updates-utils"
+        ),
+      },
+      {
+        find: /^@\/wab\/commons\/asyncutil$/,
+        replacement: path.resolve(__dirname, "src/__mocks__/wab-asyncutil"),
+      },
+      {
+        find: /^@\/wab\/shared\/api\/socket$/,
+        replacement: path.resolve(
+          __dirname,
+          "src/__mocks__/wab-socket-types"
+        ),
+      },
+      {
+        find: /^@\/wab\/shared\/ApiSchema$/,
+        replacement: path.resolve(__dirname, "src/__mocks__/wab-api-schema"),
+      },
+      {
+        find: /^@\/wab\/shared\/Arenas$/,
+        replacement: path.resolve(__dirname, "src/__mocks__/wab-arenas"),
+      },
+      {
+        find: /^@\/wab\/shared\/collections$/,
+        replacement: path.resolve(
+          __dirname,
+          "src/__mocks__/wab-collections"
+        ),
+      },
+      {
+        find: /^@\/wab\/shared\/common$/,
+        replacement: path.resolve(__dirname, "src/__mocks__/wab-common-ext"),
+      },
     ],
     extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
   },

@@ -1292,4 +1292,198 @@ describe("removeSplit", () => {
 
     await expect(removeSplit(api, "Nonexistent")).rejects.toThrow(/not found/);
   });
+
+  it("removes a split by UUID", async () => {
+    const split = { uuid: "s1-uuid", name: "By UUID Test", splitType: "experiment", status: "new", slices: [] };
+    const site = { components: [], splits: [split] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await removeSplit(api, "s1-uuid");
+    expect(result.removedName).toBe("By UUID Test");
+    expect(result.removedUuid).toBe("s1-uuid");
+    expect(mockRemoveSplit).toHaveBeenCalledWith(split);
+  });
+
+  it("saves changes and returns correct revision", async () => {
+    const split = { uuid: "s2", name: "Rev Test", splitType: "experiment", status: "new", slices: [] };
+    const site = { components: [], splits: [split] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await removeSplit(api, "Rev Test");
+    expect(result.save.revisionNum).toBe(11);
+  });
+
+  it("finds split case-insensitively by name", async () => {
+    const split = { uuid: "s3", name: "My Experiment", splitType: "experiment", status: "new", slices: [] };
+    const site = { components: [], splits: [split] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await removeSplit(api, "my experiment");
+    expect(result.removedName).toBe("My Experiment");
+  });
+});
+
+// =============================================================================
+// createSplit -- edge cases
+// =============================================================================
+
+describe("createSplit -- edge cases", () => {
+  let api: ReturnType<typeof mockApiClient>;
+  beforeEach(() => { api = mockApiClient(); });
+  afterEach(() => { clearSession(); disposeChangeTracker(); clearNodeCache(); });
+
+  it("single slice experiment gets probability 100", async () => {
+    const site = { components: [], splits: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await createSplit(api, "Solo", "experiment", [{ name: "Only" }]);
+    expect(result.split.slices).toHaveLength(1);
+    expect(result.split.slices[0].prob).toBe(100);
+  });
+
+  it("segment slices get default empty condition when cond not provided", async () => {
+    const site = { components: [], splits: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await createSplit(api, "Default Cond", "segment", [
+      { name: "Segment A" },
+    ]);
+    expect(result.split.slices[0].cond).toBe("{}");
+  });
+
+  it("returns status as 'new' for freshly created split", async () => {
+    const site = { components: [], splits: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await createSplit(api, "Fresh", "experiment", [
+      { name: "A", prob: 50 },
+      { name: "B", prob: 50 },
+    ]);
+    expect(result.split.status).toBe("new");
+  });
+
+  it("generates unique UUIDs for split and each slice", async () => {
+    const site = { components: [], splits: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await createSplit(api, "UUID Test", "experiment", [
+      { name: "A", prob: 50 },
+      { name: "B", prob: 50 },
+    ]);
+    expect(result.split.uuid).toBeTruthy();
+    expect(result.split.slices[0].uuid).toBeTruthy();
+    expect(result.split.slices[1].uuid).toBeTruthy();
+    // All UUIDs should be distinct
+    const uuids = [result.split.uuid, result.split.slices[0].uuid, result.split.slices[1].uuid];
+    expect(new Set(uuids).size).toBe(3);
+  });
+
+  it("saves and returns revision number", async () => {
+    const site = { components: [], splits: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await createSplit(api, "Save Test", "experiment", [{ name: "A" }]);
+    expect(result.save.revisionNum).toBe(11);
+  });
+});
+
+// =============================================================================
+// updateSplit -- edge cases
+// =============================================================================
+
+describe("updateSplit -- edge cases", () => {
+  let api: ReturnType<typeof mockApiClient>;
+  beforeEach(() => { api = mockApiClient(); });
+  afterEach(() => { clearSession(); disposeChangeTracker(); clearNodeCache(); });
+
+  it("updates status only without changing name or slices", async () => {
+    const split = { uuid: "s1", name: "Keep Name", splitType: "experiment", status: "new", slices: [] };
+    const site = { components: [], splits: [split] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateSplit(api, "Keep Name", undefined, "running");
+    expect(result.split.name).toBe("Keep Name");
+    expect(result.split.status).toBe("running");
+  });
+
+  it("updates name only without changing status or slices", async () => {
+    const split = { uuid: "s1", name: "Old", splitType: "experiment", status: "running", slices: [] };
+    const site = { components: [], splits: [split] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateSplit(api, "Old", "New");
+    expect(result.split.name).toBe("New");
+    expect(result.split.status).toBe("running");
+  });
+
+  it("finds split by UUID for update", async () => {
+    const split = { uuid: "s1-uuid", name: "By UUID", splitType: "experiment", status: "new", slices: [] };
+    const site = { components: [], splits: [split] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateSplit(api, "s1-uuid", "Renamed");
+    expect(result.split.name).toBe("Renamed");
+  });
+
+  it("throws when split not found", async () => {
+    const site = { components: [], splits: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(updateSplit(api, "Ghost", "New Name")).rejects.toThrow(/not found/);
+  });
+
+  it("auto-calculates equal probabilities when updating slices", async () => {
+    const split = { uuid: "s1", name: "Prob Test", splitType: "experiment", status: "new", slices: [] };
+    const site = { components: [], splits: [split] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateSplit(api, "Prob Test", undefined, undefined, [
+      { name: "A" },
+      { name: "B" },
+      { name: "C" },
+      { name: "D" },
+    ]);
+    expect(result.split.slices).toHaveLength(4);
+    expect(result.split.slices[0].prob).toBe(25);
+  });
+
+  it("preserves segment splitType when updating slices", async () => {
+    const split = { uuid: "s1", name: "Seg", splitType: "segment", status: "new", slices: [] };
+    const site = { components: [], splits: [split] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateSplit(api, "Seg", undefined, undefined, [
+      { name: "US", cond: '{"country":"US"}' },
+    ]);
+    expect(result.split.splitType).toBe("segment");
+    expect(result.split.slices[0].cond).toBe('{"country":"US"}');
+  });
 });

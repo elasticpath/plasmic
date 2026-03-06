@@ -20,6 +20,7 @@ import type {
   GetPkgVersionMetaResponse,
   AppAuthPubConfig,
   AppConfigResponse,
+  GetModelUpdatesResponse,
 } from "./types.js";
 
 /**
@@ -55,6 +56,11 @@ export class PlasmicApiClient {
   constructor(auth: AuthConfig, timeoutMs: number = DEFAULT_TIMEOUT_MS) {
     this.auth = auth;
     this.timeoutMs = timeoutMs;
+  }
+
+  /** Get the auth config. Used by socket client for connection auth headers. */
+  getAuth(): AuthConfig {
+    return this.auth;
   }
 
   private makeHeaders(): Record<string, string> {
@@ -332,6 +338,38 @@ export class PlasmicApiClient {
     return this.request<AppConfigResponse>(
       "GET",
       `/api/v1/app-config`
+    );
+  }
+
+  /**
+   * Fetch incremental model updates since a given revision.
+   * URL: GET /api/v1/projects/{projectId}/updates?revisionNum=N&installedDeps=[...]
+   *
+   * Matches Studio's SharedApi.getModelUpdates(). Returns a discriminated union:
+   * - { data: string, revision, depPkgs, deletedIids, modifiedComponentIids } — incremental update
+   * - { needsReload: true } — full reload needed (schema/model diverged)
+   * - { data: null } — no changes since revisionNum
+   *
+   * Used by the rebase engine (P0.4) to apply server changes to the local model.
+   */
+  async getModelUpdates(
+    projectId: string,
+    revisionNum: number,
+    installedDeps: string[],
+    branchId?: string
+  ): Promise<GetModelUpdatesResponse> {
+    const params = new URLSearchParams();
+    params.set("revisionNum", String(revisionNum));
+    params.set(
+      "installedDeps",
+      encodeURIComponent(JSON.stringify(installedDeps))
+    );
+    if (branchId) {
+      params.set("branchId", branchId);
+    }
+    return this.request<GetModelUpdatesResponse>(
+      "GET",
+      `/api/v1/projects/${encodeURIComponent(projectId)}/updates?${params.toString()}`
     );
   }
 }

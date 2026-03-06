@@ -22,8 +22,9 @@ import type { ModelChange } from "@/wab/shared/core/observable-model";
 import { getChangeTracker } from "./change-tracker.js";
 import { SaveManager, type SaveResult } from "./save-manager.js";
 import { PlasmicApiClient } from "./api-client.js";
+import { rebaseFromServer } from "./live-sync.js";
 
-interface UndoOperation {
+export interface UndoOperation {
   description: string;
   changes: ModelChange[];
 }
@@ -87,7 +88,9 @@ export async function undo(
   });
 
   try {
-    const saveManager = new SaveManager(apiClient);
+    const saveManager = new SaveManager(apiClient, {
+      rebaseOnConflict: () => rebaseFromServer(apiClient),
+    });
     const save = await saveManager.saveChanges(reverseChanges);
 
     console.error(
@@ -119,6 +122,22 @@ export async function undo(
  */
 export function getUndoDepth(): number {
   return undoStack.length;
+}
+
+/**
+ * Get a reference to the current undo stack.
+ * Used by the rebase engine to iterate and rebuild each entry individually.
+ */
+export function getStack(): UndoOperation[] {
+  return undoStack;
+}
+
+/**
+ * Replace the entire undo stack.
+ * Used by the rebase engine after rebasing each entry against server changes.
+ */
+export function replaceStack(stack: UndoOperation[]): void {
+  undoStack = stack;
 }
 
 /**

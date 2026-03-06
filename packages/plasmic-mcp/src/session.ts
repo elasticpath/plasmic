@@ -36,6 +36,18 @@ export interface Session {
   syncedVariantComponents?: string[];
   /** Full registry data from the dev host (all five registries). */
   registryData?: FullRegistryData | null;
+  /** Self player ID from socket initServerInfo event. */
+  selfPlayerId?: number;
+  /** Revision number of the most recent save we sent (for self-update echo detection). */
+  pendingSavedRevisionNum?: number;
+  /** Accumulated DeletedAssetsSummary across rebases (cleared on full reload). */
+  serverUpdatesSummary?: any;
+  /** Whether this session is at the tip of the server's revision history.
+   *  Set false on schema/bundle version mismatch detected via initServerInfo. */
+  isAtTip?: boolean;
+  /** Active branch ID for branch-aware socket subscriptions.
+   *  null = main branch (default), string = specific branch ID. */
+  activeBranchId?: string | null;
 }
 
 let currentSession: Session | null = null;

@@ -137,6 +137,8 @@ import {
 import { beginBatch, endBatch, isBatchActive, cancelBatch, cancelBatchWithRollback, getAccumulatedChanges } from "./batch-manager.js";
 import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
 import { SaveManager } from "./save-manager.js";
+import { startLiveSync, stopLiveSync } from "./live-sync.js";
+import { emitEditPresence, clearEditPresence, emitInspectPresence } from "./tool-presence.js";
 import { undoChanges } from "@/wab/shared/core/undo-util";
 import type { TreeReadOptions } from "./types.js";
 
@@ -345,6 +347,7 @@ export function createServer(): McpServer {
           case "set": {
             const pid = requireParam(projectId, "projectId", "project.set");
             // Clean up previous session state before loading new project
+            stopLiveSync();
             apiClient.clearSessionState();
             cancelBatch();
             clearUndoStack();
@@ -402,6 +405,15 @@ export function createServer(): McpServer {
                 }
               }
             }
+
+            // Start live sync (non-blocking — continues in HTTP-only mode if socket fails)
+            startLiveSync(apiClient, pid).catch((err) => {
+              console.error(
+                `[plasmic-mcp] LiveSync start failed (non-fatal): ${
+                  err instanceof Error ? err.message : String(err)
+                }`
+              );
+            });
 
             const components = site.components ?? [];
             const pages = components.filter((c: any) => c.pageMeta?.path);
@@ -537,6 +549,9 @@ export function createServer(): McpServer {
           case "refresh": {
             const session = requireSession();
 
+            // Stop live sync before cleanup
+            stopLiveSync();
+
             // Cancel any active batch (changes are discarded)
             cancelBatch();
 
@@ -602,6 +617,15 @@ export function createServer(): McpServer {
                 }
               }
             }
+
+            // Restart live sync after reload (non-blocking)
+            startLiveSync(apiClient, session.projectId).catch((err) => {
+              console.error(
+                `[plasmic-mcp] LiveSync restart failed (non-fatal): ${
+                  err instanceof Error ? err.message : String(err)
+                }`
+              );
+            });
 
             const components = site.components ?? [];
             const pages = components.filter((c: any) => c.pageMeta?.path);
@@ -908,6 +932,11 @@ export function createServer(): McpServer {
     },
     async ({ action, componentUuid, nodeRef, maxDepth, maxChars, excludeStyles, summaryOnly, format, filter }) => {
       try {
+        // Emit inspect presence so Studio users see which component the agent is viewing
+        if (componentUuid) {
+          emitInspectPresence(componentUuid);
+        }
+
         switch (action) {
           case "tree": {
             const cuuid = requireParam(componentUuid, "componentUuid", "inspect.tree");
@@ -1411,6 +1440,11 @@ export function createServer(): McpServer {
     async (params) => {
       const { action } = params;
       try {
+        // Emit presence for component-level operations
+        if (params.componentUuid) {
+          emitEditPresence(params.componentUuid, params.nodeRef);
+        }
+
         switch (action) {
           case "list": {
             const session = requireSession();
@@ -2442,6 +2476,8 @@ export function createServer(): McpServer {
           ],
           isError: true,
         };
+      } finally {
+        clearEditPresence();
       }
     }
   );
@@ -2520,6 +2556,11 @@ export function createServer(): McpServer {
     async (params) => {
       const { action } = params;
       try {
+        // Emit presence for node-level operations (arena + selection)
+        if (params.componentUuid) {
+          emitEditPresence(params.componentUuid, params.nodeRef ?? params.parentRef);
+        }
+
         switch (action) {
           case "add": {
             const cuuid = requireParam(params.componentUuid, "componentUuid", "node.add");
@@ -3346,6 +3387,8 @@ export function createServer(): McpServer {
         }
       } catch (err: unknown) {
         return handleMutationError(`node.${action}`, err);
+      } finally {
+        clearEditPresence();
       }
     }
   );
@@ -3395,6 +3438,11 @@ export function createServer(): McpServer {
     async (params) => {
       const { action } = params;
       try {
+        // Emit presence for variant operations on a specific component
+        if (params.componentUuid) {
+          emitEditPresence(params.componentUuid);
+        }
+
         switch (action) {
           case "list": {
             const cuuid = requireParam(params.componentUuid, "componentUuid", "variant.list");
@@ -3692,6 +3740,8 @@ export function createServer(): McpServer {
           ],
           isError: true,
         };
+      } finally {
+        clearEditPresence();
       }
     }
   );
@@ -4687,6 +4737,11 @@ export function createServer(): McpServer {
     async (params) => {
       const { action } = params;
       try {
+        // Emit presence for data operations targeting a component
+        if (params.componentUuid) {
+          emitEditPresence(params.componentUuid, params.nodeRef);
+        }
+
         switch (action) {
           case "set-data-cond": {
             const cuuid = requireParam(params.componentUuid, "componentUuid", "data.set-data-cond");
@@ -5316,6 +5371,8 @@ export function createServer(): McpServer {
           };
         }
         return handleMutationError(`data.${action}`, err);
+      } finally {
+        clearEditPresence();
       }
     }
   );
@@ -5350,6 +5407,11 @@ export function createServer(): McpServer {
     async (params) => {
       const { action } = params;
       try {
+        // Emit presence for interaction operations (arena + selection)
+        if (params.componentUuid) {
+          emitEditPresence(params.componentUuid, params.nodeRef);
+        }
+
         switch (action) {
           case "list": {
             const cuuid = requireParam(params.componentUuid, "componentUuid", "interaction.list");
@@ -5557,6 +5619,8 @@ export function createServer(): McpServer {
           };
         }
         return handleMutationError(`interaction.${action}`, err);
+      } finally {
+        clearEditPresence();
       }
     }
   );
