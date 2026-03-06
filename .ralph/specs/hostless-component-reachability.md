@@ -60,7 +60,7 @@ When a batch fails mid-operation, `component.create` side effects (new Component
 - [ ] `node.update-props` continues to work for updating existing props on hostless components (regression guard)
 - [ ] `component.create-page` with hostless components in body tree continues to work (regression guard)
 - [ ] After any hostless component operation, `fastBundle()` produces a valid incremental bundle that the server accepts
-- [ ] The fix does not modify any upstream WAB files (or modifies them minimally per merge strategy)
+- [ ] The fix MUST NOT modify any files outside `packages/plasmic-mcp/` -- zero upstream WAB changes
 
 ### Slot Children
 
@@ -113,9 +113,9 @@ The fix should ensure the MCP's `FastBundler` has the same knowledge of dependen
 2. **`FastBundler.initFastBundleParentTracking()`**: Is this called with all dependency instances, or only project-local ones?
 3. **`_uid2addr` population**: After unbundle, do all hostless Component, PropParam, and SlotParam instances have correct addresses with their dependency uuids?
 
-### Upstream Merge Strategy
+### Hard Constraint: No Changes Outside `packages/plasmic-mcp/`
 
-Per project conventions, prefer new files over modifying existing upstream WAB files. If the fix requires changes to `bundler.ts` or other WAB files, keep them minimal. Consider adding a wrapper or helper in `packages/plasmic-mcp/src/` that ensures proper bundler state before operations that create cross-dependency references.
+All changes MUST be contained within `packages/plasmic-mcp/`. Zero modifications to upstream WAB files (`platform/wab/src/wab/**`), zero modifications to any other package. The WAB bundler code is referenced for understanding, not for editing. The fix must work by correctly using the bundler's existing public API from within the MCP package — through better initialization, pre-registration of dependency instances, or post-mutation fixups in MCP-owned code.
 
 ### Testing Strategy
 

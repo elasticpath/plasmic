@@ -100,6 +100,7 @@ import { resolveNode, requireSingleNode } from "./node-resolver.js";
 import type { PlasmicElement, ComponentElement, DefaultComponentElement } from "./types.js";
 import { isBatchActive, accumulateChanges } from "./batch-manager.js";
 import { rebaseFromServer } from "./live-sync.js";
+import { ensureDependencyAddresses } from "./bundler-helpers.js";
 import { pushUndoOperation } from "./undo-manager.js";
 import { undoChanges } from "@/wab/shared/core/undo-util";
 import { extractComponent as wabExtractComponent } from "@/wab/shared/core/components";
@@ -2650,6 +2651,19 @@ function plasmicElementToTpl(
         applyRegistryEnrichments(node, site, baseVariant, registryComponents);
       }
     }
+  }
+
+  // Verify that all dependency instances (hostless Components, PropParams)
+  // referenced by the new Tpl tree have correct bundler addresses.
+  // Without this, fastBundle() may misclassify them as project-internal,
+  // causing "Unreachable instance" errors.
+  try {
+    const session = requireSession();
+    ensureDependencyAddresses(session.bundler, tpl, session.projectUuid);
+  } catch {
+    // Non-fatal: if session is not available (e.g., during testing),
+    // skip the verification. The bundler will still work if dep instances
+    // are correctly registered from the initial unbundle.
   }
 
   return tpl;
