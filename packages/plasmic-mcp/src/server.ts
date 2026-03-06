@@ -10,7 +10,7 @@
  *
  * Domains:
  *   - project (8 actions): session lifecycle, persistence, batch, undo
- *   - inspect (8 actions): read-only queries on component trees
+ *   - inspect (11 actions): read-only queries on component trees, visual capture
  *   - component (18 actions): component/page lifecycle, props, states
  *   - node (17 actions): element mutations (structure, style, text, attrs, props, html import)
  *   - variant (12 actions): variant management (component, global, style, screen)
@@ -46,6 +46,7 @@ import {
 import { readTokens, getAllStyleTokens } from "./token-reader.js";
 import { resolveNode, requireSingleNode, invalidateNodeCache, clearNodeCache } from "./node-resolver.js";
 import { listPatternsMeta } from "./patterns/registry.js";
+import { captureScreenshot } from "./headless-canvas.js";
 import { applyPattern } from "./patterns/applier.js";
 import { initChangeTracker, disposeChangeTracker, getChangeTracker } from "./change-tracker.js";
 import {
@@ -882,8 +883,8 @@ export function createServer(): McpServer {
   server.registerTool(
     "inspect",
     {
-      description: "Read-only queries on component trees, nodes, style properties, and page metadata.\n" +
-        "Actions: tree, summary, node, subtree, export, style-properties, preview-url, page-meta, list-design-system, list-patterns.\n" +
+      description: "Read-only queries on component trees, nodes, style properties, page metadata, and visual capture.\n" +
+        "Actions: tree, summary, node, subtree, export, style-properties, preview-url, page-meta, list-design-system, list-patterns, capture-screenshot.\n" +
         "- tree: Full element tree with styles, text, layout. Example: {action:\"tree\",componentUuid:\"abc\"} → {type:\"tag\",tag:\"div\",layoutType:\"vbox\",layoutHint:\"flex-col\",children:[...]}\n" +
         "- summary: Compact outline (type, tag, name, uuid, childCount). Example: {action:\"summary\",componentUuid:\"abc\"} → {name:\"Hero\",tree:{type:\"tag\",tag:\"div\",childCount:3}}\n" +
         "- node: Full details for a single node. Example: {action:\"node\",componentUuid:\"abc\",nodeRef:\"heading\"} → {type:\"tag\",tag:\"h1\",styles:{fontSize:\"32px\"},text:\"Hello\"}\n" +
@@ -893,9 +894,10 @@ export function createServer(): McpServer {
         "- preview-url: Get preview and studio URLs. Example: {action:\"preview-url\",componentUuid:\"abc\"} → {previewUrl:\"https://...\",studioUrl:\"https://...\"}\n" +
         "- page-meta: Read page SEO metadata. Example: {action:\"page-meta\",componentUuid:\"abc\"} → {title:\"Home\",path:\"/\",description:\"...\"}\n" +
         "- list-design-system: Consolidated summary of all design tokens, mixins, and themes. Example: {action:\"list-design-system\"} → {tokens:{Color:[...],Spacing:[...]},mixins:[...],themes:[...]}\n" +
-        "- list-patterns: List available UI patterns (heroes, cards, navbars, etc.) that can be applied with node.apply-pattern. No session required. Example: {action:\"list-patterns\"} → [{name:\"hero-centered\",description:\"...\",tags:[...],customisationKeys:[...]}]",
+        "- list-patterns: List available UI patterns (heroes, cards, navbars, etc.) that can be applied with node.apply-pattern. No session required. Example: {action:\"list-patterns\"} → [{name:\"hero-centered\",description:\"...\",tags:[...],customisationKeys:[...]}]\n" +
+        "- capture-screenshot: Capture a PNG screenshot of a component via headless Chromium and the dev host. Requires dev host running. Example: {action:\"capture-screenshot\",componentUuid:\"abc\"} → PNG image",
       inputSchema: {
-        action: z.enum(["tree", "summary", "node", "subtree", "export", "style-properties", "preview-url", "page-meta", "list-design-system", "list-patterns"]),
+        action: z.enum(["tree", "summary", "node", "subtree", "export", "style-properties", "preview-url", "page-meta", "list-design-system", "list-patterns", "capture-screenshot"]),
         componentUuid: z.string().optional().describe("UUID of the component to inspect"),
         nodeRef: z.string().optional().describe("Node reference: UUID, name, path, or index"),
         maxDepth: z.number().optional().describe("Maximum tree depth to return. Defaults to 3 for tree, 2 for summary. Pass -1 for unlimited."),
@@ -1369,8 +1371,63 @@ export function createServer(): McpServer {
             return inspectResult({ patternCount: patterns.length, patterns });
           }
 
+          case "capture-screenshot": {
+            const session = requireSession();
+            const cuuid = componentUuid;
+            if (!cuuid) {
+              return inspectResult({ error: "componentUuid is required for capture-screenshot" });
+            }
+            const component = session.site.components?.find(
+              (c: any) => c.uuid === cuuid
+            );
+            if (!component) {
+              return inspectResult({ error: `Component ${cuuid} not found` });
+            }
+            if (!session.hostUrl) {
+              return inspectResult({
+                error: "No dev host URL configured. Set PLASMIC_DEV_HOST_URL environment variable or configure hostUrl in project settings.",
+              });
+            }
+
+            const tree = readComponentTree(component);
+            if (!tree) {
+              return inspectResult({ error: `Component "${component.name}" has no template tree` });
+            }
+
+            const result = await captureScreenshot({
+              devHostUrl: session.hostUrl,
+              componentName: component.name,
+              tree,
+            });
+
+            return {
+              content: [
+                {
+                  type: "image" as const,
+                  data: result.imageData,
+                  mimeType: "image/png",
+                },
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    component: component.name,
+                    componentUuid: cuuid,
+                    width: result.width,
+                    height: result.height,
+                  }),
+                },
+              ],
+              structuredContent: {
+                component: component.name,
+                componentUuid: cuuid,
+                width: result.width,
+                height: result.height,
+              },
+            };
+          }
+
           default:
-            throw new Error(`Unknown action '${action}' for inspect tool. Available: tree, summary, node, subtree, export, style-properties, preview-url, page-meta, list-design-system, list-patterns`);
+            throw new Error(`Unknown action '${action}' for inspect tool. Available: tree, summary, node, subtree, export, style-properties, preview-url, page-meta, list-design-system, list-patterns, capture-screenshot`);
         }
       } catch (err: unknown) {
         return {

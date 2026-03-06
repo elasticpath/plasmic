@@ -7,17 +7,17 @@
 
 | Category | Count |
 |----------|-------|
-| Completed features | 20 |
-| Remaining items | 4 |
-| Test files | 41 |
-| Test cases (approx.) | 1,911+ |
+| Completed features | 21 |
+| Remaining items | 3 |
+| Test files | 42 |
+| Test cases (approx.) | 2,090+ |
 | Skipped tests | 0 |
 
-**Remaining:** 4 items across 3 priority levels.
+**Remaining:** 3 items across 2 priority levels.
 
 ---
 
-## Completed (19 items)
+## Completed (21 items)
 
 | # | Feature | PR / Commit | Tests |
 |---|---------|------------|-------|
@@ -41,44 +41,11 @@
 | 18 | Batch manager (atomic transactions, rollback, undo integration) | merged | 200+ lines |
 | 19 | Commerce elastic-path package (176 files, 15+ components, 20 test files) | merged | 95%+ complete |
 | 20 | Hostless component reachability fix (`bundler-helpers.ts`, `change-tracker.ts` isExternalRef, `edit-tools.ts` verification) | feat/mcp-gap-fixes | 23 tests |
+| 21 | Headless canvas screenshot (`headless-canvas.ts`, `inspect.capture-screenshot` action) | feat/mcp-gap-fixes | 32 tests |
 
 ---
 
 ## P1 — High Priority
-
-### 2. Headless Canvas Screenshot Renderer
-
-- **Spec:** `.ralph/specs/screenshot-renderer.md` (216 lines)
-- **Status:** NOT STARTED — zero screenshot/headless files exist in `packages/plasmic-mcp/src/`
-- **Scope:** L (Large)
-- **Dependencies:** None (independent, but more valuable after hostless fix enables commerce pages)
-
-**Problem:** No `inspect.capture-screenshot` action exists. Agents cannot verify visual edits without human feedback. The eval harness has Playwright visual capture (`evals/visual/capture.ts`) that connects to a REAL Studio instance — the spec calls for a different mechanism using the dev host's `__Sub` / `setPlasmicRootNode()` pipeline.
-
-**Approach:** Reuse Studio's dev host canvas rendering pipeline via Playwright headless Chromium:
-1. Browser entry (`headless-renderer-entry.ts`): esbuild bundle importing WAB rendering functions, exposing `window.__HeadlessRenderer`
-2. Playwright orchestration (`headless-canvas.ts`, ~150 lines): Launch headless Chromium, create iframe to dev host with `#canvas=true`, wait for `window.__Sub`, call `renderTplNode` + `setPlasmicRootNode`, screenshot iframe
-3. Minimal ViewCtx duck-type: Plain object with `canvasCtx.Sub`, `site`, `viewMode`, `focusedTpl`, `variantTplMgr`
-4. Wire into server: Add `capture-screenshot` action to inspect tool
-5. Build: Second esbuild entry in `build.mjs` for browser-platform IIFE bundle
-
-**New files:**
-- `packages/plasmic-mcp/src/headless-renderer-entry.ts` — esbuild browser entry exposing `window.__HeadlessRenderer`
-- `packages/plasmic-mcp/src/headless-canvas.ts` — Playwright orchestration + ViewCtx duck-type (~150 lines)
-- `packages/plasmic-mcp/src/__tests__/headless-canvas.test.ts` — unit tests
-
-**Files to modify:**
-- `packages/plasmic-mcp/src/server.ts` — wire `capture-screenshot` action in inspect tool
-- `build.mjs` — second esbuild entry for `headless-renderer.js`
-
-**Acceptance criteria:**
-- Returns PNG showing component as rendered by dev host (including code components)
-- Works for non-page components (no URL route required)
-- Clear error when dev host not running (8s timeout, not hang)
-- Zero modifications to upstream WAB or host package files
-- All existing 2,200+ tests continue passing
-
----
 
 ### 3. CMS Package Fork (`@ep-plasmic` Scope)
 
@@ -148,14 +115,14 @@
 
 | Module | Gap | Deliver With |
 |--------|-----|-------------|
-| Hostless reachability | ~~Bundler `__ref`/`__xref` classification~~ DONE (23 tests in `hostless-reachability.test.ts`). Remaining: integration test with real WAB bundler for end-to-end `node.add` with hostless component | Standalone |
+| Hostless reachability | ~~Bundler `__ref`/`__xref` classification~~ DONE (23 tests). Remaining: integration test with real WAB bundler for end-to-end `node.add` with hostless component | Standalone |
 | Rebase engine | `undoChangesAndResolveConflicts` mock does nothing; no dep pkg unbundle failure test | Standalone |
 | Undo manager | No concurrent undo during save test; rollback "CRITICAL" log not verified | Standalone |
 | Change tracker | Only lifecycle tests; no mutation capture or `getRecorder()` tests | Standalone |
 | Update queue | No enqueue+stop race condition test; no handler exception+concurrent test | Standalone |
-| Batch manager | No rollback failure test; no batch-during-rebase test; no bundler state cleanup test | Item 1 |
+| Batch manager | No rollback failure test; no batch-during-rebase test; no bundler state cleanup test | Standalone |
 | Cross-module | No rebase+undo+batch integration test; no SaveManager+UpdateQueue+Rebase test | Standalone |
-| Screenshot | `headless-canvas.test.ts` to be created | Item 2 |
+| Screenshot | ~~`headless-canvas.test.ts` to be created~~ DONE (32 tests). Remaining: integration test with real dev host | Standalone |
 | Admin SDK | Original 43 tests were reverted | Item 4a |
 
 ---
@@ -164,27 +131,23 @@
 
 ```
 Item 1 (P0, hostless reachability)    ████████████████████████████  DONE
-  │  Delivered: bundler-helpers.ts, change-tracker.ts isExternalRef,
-  │            edit-tools.ts ensureDependencyAddresses, 23 tests
   │
-  ├──→ Item 2 (P1, screenshot renderer)  ░░░░░░░░░░░░░░░░░░░░  enables visual self-correction
-  │    ├─ headless-renderer-entry.ts, headless-canvas.ts
-  │    ├─ server.ts + build.mjs updates
-  │    └─ headless-canvas.test.ts
+  ├──→ Item 2 (P1, screenshot)       ████████████████████████████  DONE
+  │    Delivered: headless-canvas.ts, inspect.capture-screenshot,
+  │    32 tests. Approach: tree-reader JSON → React.createElement
+  │    in dev host iframe (avoids WAB canvas-rendering bundle).
   │
-  └──→ Item 3 (P1, CMS fork)             ░░░░░░░░░░░░░░░░░░░░  parallel with Item 2
+  └──→ Item 3 (P1, CMS fork)         ░░░░░░░░░░░░░░░░░░░░  blocked on @ep-plasmic npm org
        ├─ Prerequisite: @ep-plasmic npm org
        ├─ 10 files modified + migration 257
        └─ Publish to npm BEFORE platform deploy
 
-Item 4 (P2, admin SDK + UI)              ░░░░░░░░░░░░░░░░░░░░  independent workstream
+Item 4 (P2, admin SDK + UI)          ░░░░░░░░░░░░░░░░░░░░  independent workstream
   ├─ Phase 1: Restore/rewrite SDK from 5a4782d25
   └─ Phase 2: Dashboard UI
 
-Item 5 (P2, test gaps)                   ░░░░░░░░░░░░░░░░░░░░  continuous, alongside each item
+Item 5 (P2, test gaps)               ░░░░░░░░░░░░░░░░░░░░  continuous, alongside each item
 ```
-
-Items 2 and 3 can proceed in parallel now that Item 1 is done. Item 4 is independent. Item 5 is addressed alongside each feature.
 
 ---
 
@@ -192,8 +155,22 @@ Items 2 and 3 can proceed in parallel now that Item 1 is done. Item 4 is indepen
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
-| Bundler public API insufficient for fix | ~~Medium~~ Resolved | ~~High~~ | `addrOf()` public method is sufficient for `isExternalRef` and `ensureDependencyAddresses`. `_uid2addr`/`_addr2inst` are intentionally public ("Public for tests" comment in source). No upstream changes needed. |
+| Bundler public API insufficient for fix | ~~Medium~~ Resolved | ~~High~~ | `addrOf()` public method is sufficient for `isExternalRef` and `ensureDependencyAddresses`. No upstream changes needed. |
 | `@ep-plasmic` npm org not available | Low | Blocks Item 3 | Reserve org name early; `@ep-storefront` as fallback |
-| Screenshot ViewCtx duck-type insufficient | Medium | Medium | `renderTplNode` may access fields not in duck-type; expand iteratively |
+| Screenshot ViewCtx duck-type insufficient | ~~Medium~~ Resolved | ~~Medium~~ | Avoided entirely: used tree-reader JSON → React.createElement in dev host instead of bundling WAB canvas-rendering.ts. Code components render via `__PlasmicComponentRegistry`. |
 | Admin SDK revert reason still relevant | Medium | Medium | Investigate before re-implementing; may need architectural changes |
 | CMS fork creates permanent upstream merge burden | High | Medium | Document divergences; automate merge conflict detection |
+
+## Architecture Notes
+
+### Screenshot Renderer (Item 2) — Design Decision
+
+The spec proposed bundling WAB's `canvas-rendering.ts` into a browser IIFE (`headless-renderer-entry.ts`) and calling `renderTplNode()` with a ViewCtx duck-type. Investigation revealed this is impractical: `renderTplNode` depends on `ViewCtx`, `CanvasCtx`, `SubDeps`, `RenderingCtx`, MobX observables, and dozens of WAB client modules — forming a massive transitive dependency tree that cannot be cleanly bundled for browser execution.
+
+**Chosen approach:** Convert the tree-reader's existing JSON output (`TreeNode`) to React elements in-browser using the dev host's own React instance (`window.__Sub.React`). This avoids the entire WAB bundling problem:
+- HTML tags → `React.createElement(tag, { style }, children)`
+- Code components → looked up in `window.__PlasmicComponentRegistry` → rendered with actual implementations
+- Plasmic components (unregistered) → fall back to `<div>` with children
+- Slots → rendered as React Fragment
+
+Trade-off: Mixin-inherited styles and variant resolution are not applied (tree-reader reads base variant only). For the agent visual verification use case, this provides sufficient fidelity.
