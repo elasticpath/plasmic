@@ -2967,6 +2967,7 @@ export function createServer(): McpServer {
                         updatedAttributes: result.updatedAttributes,
                         removedAttributes: result.removedAttributes,
                         message: "Dry run: no changes persisted",
+                        ...(result.warnings?.length ? { warnings: result.warnings } : {}),
                       }
                     ),
                   },
@@ -2988,6 +2989,7 @@ export function createServer(): McpServer {
                       updatedAttributes: result.updatedAttributes,
                       removedAttributes: result.removedAttributes,
                       revision: result.save.revisionNum,
+                      ...(result.warnings?.length ? { warnings: result.warnings } : {}),
                     }
                   ),
                 },
@@ -3015,6 +3017,7 @@ export function createServer(): McpServer {
                         updatedProps: result.updatedProps,
                         removedProps: result.removedProps,
                         message: "Dry run: no changes persisted",
+                        ...(result.warnings?.length ? { warnings: result.warnings } : {}),
                       }
                     ),
                   },
@@ -3036,6 +3039,7 @@ export function createServer(): McpServer {
                       updatedProps: result.updatedProps,
                       removedProps: result.removedProps,
                       revision: result.save.revisionNum,
+                      ...(result.warnings?.length ? { warnings: result.warnings } : {}),
                     }
                   ),
                 },
