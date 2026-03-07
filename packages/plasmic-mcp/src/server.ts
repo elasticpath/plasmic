@@ -3591,8 +3591,11 @@ export function createServer(): McpServer {
                       groupName: result.groupName,
                       type: result.type,
                       variants: result.variants,
+                      ...(result.linkedState ? { linkedState: result.linkedState } : {}),
                       revision: result.save.revisionNum,
-                      message: `Created variant group "${result.groupName}" (${result.type}) with ${result.variants.length} variant(s). Use update-styles/update-text with variant names to apply overrides.`,
+                      message: result.linkedState
+                        ? `Created toggle variant group "${result.groupName}" with linked state "${result.linkedState.name}". Use interaction.add with updateVariable targeting "${result.linkedState.name}" to toggle this variant.`
+                        : `Created variant group "${result.groupName}" (${result.type}) with ${result.variants.length} variant(s). Use update-styles/update-text with variant names to apply overrides.`,
                     }
                   ),
                 },

@@ -11,7 +11,7 @@
 |----------|-------|
 | Specs | 5 |
 | Items to implement | 7 (across 5 specs) |
-| Completed | 0 |
+| Completed | 2 (Gap #33, Gap #39) |
 
 ---
 
@@ -19,50 +19,33 @@
 
 | Spec | Gaps | Priority | Status |
 |------|------|----------|--------|
-| `toggle-variant-state-linking.md` | #33 | P0 Critical | NOT STARTED |
+| `toggle-variant-state-linking.md` | #33 | P0 Critical | COMPLETE |
 | `visibility-api-polish.md` | #34 | P1 Major | NOT STARTED |
 | `batch-architecture-research.md` | #35 | P1 Major | RESEARCH COMPLETE — ready to implement |
-| `interaction-improvements.md` | #38, #39 | P2 Medium | NOT STARTED |
+| `interaction-improvements.md` | #38, #39 | P2 Medium | #39 COMPLETE, #38 NOT STARTED |
 | `element-styling-dx.md` | #36, #37 | P2 Medium | NOT STARTED |
 
 ---
 
 ## P0 — Critical
 
-### 1. Toggle Variant State Linking (Gap #33)
+### 1. Toggle Variant State Linking (Gap #33) — COMPLETE
 
 - **Spec:** `.ralph/specs/toggle-variant-state-linking.md`
-- **Status:** NOT STARTED (confirmed via code analysis — zero implementation)
+- **Status:** COMPLETE
 - **Scope:** M
-- **Dependencies:** None (upstream of Gap #39)
-- **Blocker:** `buildActionArgs` signature lacks component context (see Confirmed Blockers below)
 
-**Code locations (verified):**
-- `edit-tools.ts:3930-3936` — `CreateVariantGroupResult` interface (missing `linkedState`)
-- `edit-tools.ts:3951-4015` — `createVariantGroup()` function (no state capture after TplMgr call)
-  - Line 3982: `tplMgr.createVariantGroup()` call — implicit state created here but not captured
-  - Lines 4008-4014: return block — no `linkedState` field
-  - Line 4011: captures `group!.param?.variable?.name` (group param name, NOT implicit state name)
-- `edit-tools.ts:5680-5744` — `buildActionArgs()` function
-  - Line 5680: signature `(actionName: string, args: Record<string, string>)` — **NO component parameter**
-  - Lines 5698-5722: updateVariable case — NO variant group name resolution
-- `edit-tools.ts:5342-5348` — `findState()` helper (reusable for group-to-state lookup)
-- `edit-tools.ts:5756-5790` — `addInteraction()` — calls `buildActionArgs` at line 5790; has `component` in scope from line 5774
-- `server.ts:3583-3599` — response shape for `create-group` (missing `linkedState`)
-
-**Tasks:**
-1. Extend `CreateVariantGroupResult` interface with `linkedState?: { name: string; uuid: string }`
-2. After `tplMgr.createVariantGroup()` (line 3982), scan `component.states` for the newly created implicit state by matching `state.param === group.param`. Return `linkedState` for toggle type.
-3. **Refactor `buildActionArgs` signature** (CRITICAL — see Confirmed Blockers): add optional `component` parameter. Update call site at `addInteraction` line 5790 to pass `component`.
-4. In `buildActionArgs` updateVariable case (lines 5698-5722): if `stateName` doesn't match a state, search `component.variantGroups` for a matching group name/UUID. If group is standalone (toggle) type, resolve to its linked implicit state. If group is not toggle, throw descriptive error.
-5. Update server.ts response (lines 3583-3599) to include `linkedState` field and update message string.
-
-**Tests (variant.test.ts, interaction.test.ts):**
-- Extend toggle test (line 1061-1084) to assert `result.linkedState` returned
-- Test: `buildActionArgs` resolves variant group name to linked state ObjectPath
-- Test: `buildActionArgs` resolves variant group UUID to linked state
-- Test: non-toggle group name throws descriptive error
-- Test: state name match takes priority over group name match
+**Summary of changes:**
+- Added `linkedState?: { name: string; uuid: string }` to `CreateVariantGroupResult` interface
+- After `tplMgr.createVariantGroup()`, scans `component.states` for the implicit state linked to the toggle group by matching `state.param` to `group.param` (reference equality or UUID match)
+- Returns `linkedState` in response for toggle groups
+- Updated `buildActionArgs()` signature to accept optional `component` parameter
+- Added variant group name/UUID resolution in `updateVariable` case: when no state matches the name, searches `component.variantGroups` and resolves to the linked state
+- Updated all 3 call sites (`addInteraction`, 2x `updateInteraction`) to pass `component`
+- Updated server.ts `create-group` response to include `linkedState` and a helpful message
+- Added 3 tests in variant.test.ts (linkedState returned, undefined for non-toggle, undefined when no matching state)
+- Added 5 tests in interaction.test.ts (group name resolution, UUID resolution, no linked state error, state priority over group name)
+- Blocker B1 (`buildActionArgs` lacking component context) resolved as part of this work
 
 ---
 
@@ -150,33 +133,17 @@
 
 ## P2 — Medium Priority
 
-### 4. updateVariable Toggle Auto-Value (Gap #39)
+### 4. updateVariable Toggle Auto-Value (Gap #39) — COMPLETE
 
 - **Spec:** `.ralph/specs/interaction-improvements.md`
-- **Status:** NOT STARTED (confirmed via code analysis — zero implementation)
+- **Status:** COMPLETE
 - **Scope:** S
-- **Dependencies:** Depends on Gap #33 for full testing (variant group name resolution)
 
-**Code locations (verified):**
-- `edit-tools.ts:5698-5722` — `buildActionArgs` updateVariable case
-  - Lines 5703-5705: throws if `value === undefined` REGARDLESS of operation type
-  - Line 5707: `operation` defaults to `"newValue"`, no special toggle handling
-  - No auto-generation of `value = "!$state.${stateName}"` for toggle
-
-**Tasks:**
-1. After extracting `operation` (line 5707), auto-generate toggle value:
-   ```typescript
-   if (operation === "toggle" && (value === undefined || value === null)) {
-     value = `!$state.${stateName}`;
-   }
-   ```
-2. Relax the `value === undefined` throw (lines 5703-5705) to only apply when operation is NOT "toggle"
-3. If `value` is provided with `operation: "toggle"`, use it as-is
-
-**Tests (interaction.test.ts):**
-- Test: toggle without value auto-generates `!$state.<name>`
-- Test: toggle with explicit value uses provided value
-- Test: newValue without value still throws error
+**Summary of changes:**
+- In `buildActionArgs` `updateVariable` case: when `operation === "toggle"` and value is undefined/null/empty, auto-generates `!$state.${stateName}`
+- Only throws on missing value when operation is NOT "toggle"
+- Explicit value with `operation: "toggle"` is used as-is
+- Added 3 tests in interaction.test.ts (auto-generates toggle value, uses explicit value, still requires value for non-toggle)
 
 ---
 
@@ -269,9 +236,9 @@
 
 ```
 Phase 1 (P0):
-  Gap #33 (toggle state linking)        ░░░░░░░░░░░░░░░░░░░░  NOT STARTED
+  Gap #33 (toggle state linking)        ████████████████████  COMPLETE
     │
-    ├──→ Gap #39 (toggle auto-value)    ░░░░░░░░░░░░░░░░░░░░  NOT STARTED (depends on #33)
+    ├──→ Gap #39 (toggle auto-value)    ████████████████████  COMPLETE
     │
 Phase 2 (P1, parallel with Phase 1):
   Gap #34 (visibility polish)           ░░░░░░░░░░░░░░░░░░░░  NOT STARTED
@@ -284,8 +251,8 @@ Phase 3 (P2, parallel after Phase 1):
 ```
 
 **Parallelization notes:**
-- Phase 1 must complete before Gap #39 (depends on group name resolution)
-- Phase 2 items (#34, #35) are independent of Phase 1 and each other
+- Phase 1 COMPLETE — Gap #33 and #39 both done; all remaining phases are unblocked
+- Phase 2 items (#34, #35) are independent of each other
 - Phase 3 items (#38, #36, #37) are independent of each other
 - Gap #35 research is complete; implementation can start immediately
 - Gaps #34, #36, #37, #38 all touch `edit-tools.ts` — serialize if same developer
@@ -296,7 +263,7 @@ Phase 3 (P2, parallel after Phase 1):
 
 | # | Blocker | Affects | Details | Resolution |
 |---|---------|---------|---------|------------|
-| B1 | `buildActionArgs` lacks component context | Gap #33, #39 | `buildActionArgs(actionName, args)` at edit-tools.ts:5680 has no `component` parameter. The updateVariable case (lines 5698-5722) cannot look up variant groups without component access. Called from `addInteraction()` at line 5790, which **does** have `component` in scope (obtained at line 5774 via `findComponent(componentUuid)`). | Add optional `component` parameter to `buildActionArgs` signature. Update call site at line 5790 to pass `component`. Keep parameter optional so navigation/customFunction cases are unaffected. Backwards-compatible since parameter is optional and internal-only. |
+| B1 | ~~`buildActionArgs` lacks component context~~ | ~~Gap #33, #39~~ | **RESOLVED** — Optional `component` parameter added to `buildActionArgs` signature. All 3 call sites (`addInteraction`, 2x `updateInteraction`) updated to pass `component`. Completed as part of Gap #33 implementation. | RESOLVED |
 
 ---
 
@@ -304,8 +271,8 @@ Phase 3 (P2, parallel after Phase 1):
 
 | # | Risk | Likelihood | Impact | Mitigation |
 |---|------|-----------|--------|------------|
-| R1 | Implicit state not discoverable in `component.states` after `tplMgr.createVariantGroup()` | Low | High | Snapshot `component.states` before/after. Fall back to scanning by `param` UUID match. TplMgr creates state synchronously. |
-| R2 | Variant group name resolution conflicts with existing state names | Low | Medium | State name match takes priority (more specific). Document in tool description. |
+| R1 | ~~Implicit state not discoverable in `component.states` after `tplMgr.createVariantGroup()`~~ | ~~Low~~ | ~~High~~ | RESOLVED — Gap #33 complete. State discovered via `state.param === group.param` match. |
+| R2 | ~~Variant group name resolution conflicts with existing state names~~ | ~~Low~~ | ~~Medium~~ | RESOLVED — Gap #33 complete. State name match takes priority over group name match, confirmed by tests. |
 | R3 | Studio applies TplComponent styles differently than expected (Gap #36) | Medium | High | Research Studio source code BEFORE implementing. If Studio always styles wrapper, simplify to informational note. |
 | R4 | Batch redesign breaks existing `begin-batch`/`end-batch` consumers | Medium | High | Keep begin/end-batch as opt-in (backward compatible). Default to per-call auto-commit. |
 | R5 | Single-quote issue in customFunction is server-side codegen, unfixable in MCP | Medium | Low | Pre-validate with acorn. If server rejects, normalize in MCP. Document limitation. |
