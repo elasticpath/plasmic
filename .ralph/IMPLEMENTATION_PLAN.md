@@ -11,7 +11,7 @@
 |----------|-------|
 | Specs | 5 |
 | Items to implement | 7 (across 5 specs) |
-| Completed | 4 (Gap #33, Gap #34, Gap #35, Gap #39) |
+| Completed | 7 (ALL GAPS COMPLETE) |
 
 ---
 
@@ -22,182 +22,65 @@
 | `toggle-variant-state-linking.md` | #33 | P0 Critical | COMPLETE |
 | `visibility-api-polish.md` | #34 | P1 Major | COMPLETE |
 | `batch-architecture-research.md` | #35 | P1 Major | COMPLETE |
-| `interaction-improvements.md` | #38, #39 | P2 Medium | #39 COMPLETE, #38 NOT STARTED |
-| `element-styling-dx.md` | #36, #37 | P2 Medium | NOT STARTED |
+| `interaction-improvements.md` | #38, #39 | P2 Medium | COMPLETE |
+| `element-styling-dx.md` | #36, #37 | P2 Medium | COMPLETE |
 
 ---
 
-## P0 — Critical
+## All Gaps Complete
 
-### 1. Toggle Variant State Linking (Gap #33) — COMPLETE
+All 7 gaps (#33-#39) across all 5 specs are implemented and tested.
+Total test count: 2177 tests across 44 files, 0 failures.
 
-- **Spec:** `.ralph/specs/toggle-variant-state-linking.md`
-- **Status:** COMPLETE
-- **Scope:** M
+### Phase 3 Summary (Gaps #36, #37, #38)
 
-**Summary of changes:**
-- Added `linkedState?: { name: string; uuid: string }` to `CreateVariantGroupResult` interface
-- After `tplMgr.createVariantGroup()`, scans `component.states` for the implicit state linked to the toggle group by matching `state.param` to `group.param` (reference equality or UUID match)
-- Returns `linkedState` in response for toggle groups
-- Updated `buildActionArgs()` signature to accept optional `component` parameter
-- Added variant group name/UUID resolution in `updateVariable` case: when no state matches the name, searches `component.variantGroups` and resolves to the linked state
-- Updated all 3 call sites (`addInteraction`, 2x `updateInteraction`) to pass `component`
-- Updated server.ts `create-group` response to include `linkedState` and a helpful message
-- Added 3 tests in variant.test.ts (linkedState returned, undefined for non-toggle, undefined when no matching state)
-- Added 5 tests in interaction.test.ts (group name resolution, UUID resolution, no linked state error, state priority over group name)
-- Blocker B1 (`buildActionArgs` lacking component context) resolved as part of this work
-
----
-
-## P1 — High Priority
-
-### 2. Visibility API Polish (Gap #34) — COMPLETE
-
-- **Spec:** `.ralph/specs/visibility-api-polish.md`
-- **Status:** COMPLETE
-- **Scope:** S
-
-**Summary of changes:**
-- Added `z.literal("hidden")` to Zod union in server.ts and updated `.describe()` to document all three visibility states
-- Added `note?: string` to `SetVisibilityResult` interface
-- Updated `setVisibility()` function signature to accept `boolean | "displayNone" | "hidden"`
-- Added early normalization: `"hidden"` → `"displayNone"` before processing (uses same code path)
-- When `visible === false`, returns informational `note` explaining notRendered vs hidden distinction
-- Updated tool description to show `"hidden"` as the recommended value for responsive hiding
-- Server response includes `note` field when present (both dry-run and normal paths)
-- Added 4 tests in node.test.ts: hidden alias maps to displayNone, false returns note, true returns no note, displayNone returns no note
-- All 298 existing tests pass unchanged (backward compatible)
-
----
-
-### 3. Batch Architecture Research & Redesign (Gap #35) — COMPLETE
-
-- **Spec:** `.ralph/specs/batch-architecture-research.md`
-- **Status:** COMPLETE
-- **Scope:** M-L
-
-**Summary of changes:**
-- Created `micro-batch.ts` (~230 lines) with per-call error isolation and coalesced saves
-  - `registerCall(callId)` creates micro-batch on first call; no-op when explicit batch active
-  - `commitCall(callId, apiClient, changes, description, componentIids)` records changes, returns Promise resolved when batch saves
-  - `failCall(callId)` marks call as failed (changes already rolled back by ChangeRecorder)
-  - `doFlush()` merges committed entries, single HTTP save, pushes individual undo entries
-  - `scheduleFlushIfReady()` uses setTimeout(0) for coalescing across Promise.all dispatch
-  - 50ms safety timer force-fails pending calls that never settle
-  - `setCurrentCallId()`/`getCurrentCallId()` thread-local pattern avoids changing 74+ saveOrAccumulate call sites
-- Modified `edit-tools.ts`: added micro-batch routing in `saveOrAccumulate()` between batch check and immediate save
-- Modified `server.ts`:
-  - Extended `handleMutationError()` with optional `callId` parameter and micro-batch failCall
-  - Added callId generation, `registerCall()`, `setCurrentCallId()` to all 6 mutation tool handlers (component, node, variant, design, data, interaction)
-  - Added `failCall()` and `setCurrentCallId(null)` in finally blocks
-- Created `micro-batch.test.ts` with 21 tests: single call, parallel commits (3 calls coalesced to 1 save), partial failure (2 succeed + 1 fail results in 1 save), all fail (no save), save failure (rollback + reject), safety timer, explicit batch precedence, sequential batches, component IID merging, failCall idempotency, resetMicroBatch
-- All 1995 tests pass (41 files, 0 failures, 0 regressions)
-- Backward compatible: explicit `begin-batch`/`end-batch` unchanged
-
----
-
-## P2 — Medium Priority
-
-### 4. updateVariable Toggle Auto-Value (Gap #39) — COMPLETE
+#### Gap #38 — customFunction Single-Quote Handling — COMPLETE
 
 - **Spec:** `.ralph/specs/interaction-improvements.md`
-- **Status:** COMPLETE
-- **Scope:** S
-
-**Summary of changes:**
-- In `buildActionArgs` `updateVariable` case: when `operation === "toggle"` and value is undefined/null/empty, auto-generates `!$state.${stateName}`
-- Only throws on missing value when operation is NOT "toggle"
-- Explicit value with `operation: "toggle"` is used as-is
-- Added 3 tests in interaction.test.ts (auto-generates toggle value, uses explicit value, still requires value for non-toggle)
-
----
-
-### 5. customFunction Single-Quote Handling (Gap #38)
-
-- **Spec:** `.ralph/specs/interaction-improvements.md`
-- **Status:** NOT STARTED (confirmed via code analysis — zero validation for customFunction)
 - **Scope:** S-M
-- **Dependencies:** None
 
-**Code locations (verified):**
-- `edit-tools.ts:5724-5737` — `buildActionArgs` customFunction case (code stored as-is, NO validation call)
-- `edit-tools.ts:174-188` — `validateJsExpression()` (exists, uses acorn `parseExpressionAt`, NOT called for customFunction)
+**Summary of changes:**
+- Added `normalizeCustomFunctionCode()` function that validates code as a JS expression (acorn parse) and normalizes single-quoted string literals to double-quoted (Plasmic codegen rejects single quotes with HTTP 500)
+- Added `walkAstNodes()` helper for recursive acorn AST traversal
+- Modified `buildActionArgs()` customFunction case to validate and normalize code before creating FunctionExpr
+- Normalization uses `JSON.stringify(node.value)` for correct escaping of all special characters
+- Template literals and double-quoted strings pass through unchanged
+- Descriptive error on syntax errors: "Invalid customFunction code: ... The code must be a valid JS expression"
+- Updated existing `alert('hello')` test assertion to expect normalized `alert("hello")`
+- Added 4 tests in interaction.test.ts: syntax error rejection, single-quote normalization, template literal preservation, double-quote passthrough
+- Risks R5 (server-side unfixable) and R6 (validateJsExpression rejects IIFEs) both resolved — acorn handles all valid expression types correctly
 
-**Tasks:**
-1. Investigate root cause: test save with single quotes via MCP vs Studio
-2. Add `validateJsExpression(code)` call before creating FunctionExpr (between lines 5727-5729)
-3. If server rejects single quotes: use acorn AST walk to normalize string literals
-4. Return descriptive error on validation failure instead of letting 500 propagate
-
-**Tests (interaction.test.ts):**
-- Test: syntax error in customFunction throws descriptive error
-- Test: template literals with single quotes preserved as-is
-- Test: double-quoted strings pass without normalization
-- Verify existing `alert('hello')` test (line 290-310) still passes
-
----
-
-### 6. Component Instance Styling Propagation (Gap #36)
+#### Gap #37 — Box Default Padding Information — COMPLETE
 
 - **Spec:** `.ralph/specs/element-styling-dx.md`
-- **Status:** NOT STARTED (confirmed via code analysis — zero implementation)
-- **Scope:** M
-- **Dependencies:** None
-
-**Code locations (verified):**
-- `edit-tools.ts:2178-2183` — `UpdateStylesResult` interface (missing `note`, `appliedToNode`)
-- `edit-tools.ts:2195-2265` — `updateStyles()` function
-  - Line 2207: detects TplComponent via `isKnownTplComponent(tpl)` — but does NOT differentiate behavior
-  - Lines 2240-2242: applies ALL styles to wrapper VariantSetting — no layout vs visual split
-  - Lines 2259-2264: return block — no `note` or `appliedToNode` fields
-
-**Tasks:**
-1. **Research Studio behavior first (CRITICAL — Risk R3):** How does Studio apply styles to component instances? Layout/visual split or always wrapper?
-2. Add `note?: string` and `appliedToNode?: { name?: string; uuid: string }` to `UpdateStylesResult`
-3. If Studio does layout/visual split: classify style properties; route visual styles to `tpl.component.tplTree` root, layout styles to wrapper
-4. If Studio always styles wrapper: add informational `note` only
-5. Fallback: if component root can't be determined, use wrapper with warning
-
-**Tests (node.test.ts):**
-- Extend TplComponent test (line 1194) to verify `note` field
-- Test: layout styles applied to wrapper
-- Test: visual styles applied to component root (if Studio does this)
-- Test: component with no identifiable root falls back with warning
-
----
-
-### 7. Box Default Padding Information (Gap #37)
-
-- **Spec:** `.ralph/specs/element-styling-dx.md`
-- **Status:** NOT STARTED (confirmed via code analysis — zero implementation)
 - **Scope:** S
-- **Dependencies:** None
 
-**Code locations (verified):**
-- `edit-tools.ts:2585-2595` — `AddChildResult` interface (missing `note`, `defaults`; has `warnings?: string[]` already)
-- `edit-tools.ts:2836-3030` — `addChild()` function
-  - Lines 3009-3012: creates element and inserts (TplTag path)
-  - Lines 3022-3029: return block — no note or defaults
-  - Lines 2966-2974: return block for TplComponent slot path — also no note or defaults
+**Summary of changes:**
+- Added `note?: string` and `defaults?: Record<string, string>` to `AddChildResult` interface
+- Added `boxDefaultsInfo()` helper function that detects box/vbox/hbox types and returns `{ defaults: { padding: "8px" } }` plus an optional `note` when height/width ≤ 16px
+- Applied `...boxDefaultsInfo(child)` to both return paths (TplComponent slot path and TplTag path)
+- Updated server.ts `add-child` response to include `note` and `defaults` in both dry-run and normal paths
+- Added 5 tests in node.test.ts: box with large height (defaults only), box with small height (defaults + note), box without dimensions (defaults only), non-box element (no defaults), vbox/hbox (same defaults as box)
+- Risk R7 (noise in addChild response) resolved — note only appears for small dimensions, defaults is structured data
 
-**Tasks:**
-1. Add `note?: string` and `defaults?: Record<string, string>` to `AddChildResult`
-2. After element creation (line 3012), check if child is box/vbox/hbox
-3. For box types: always set `defaults: { padding: "8px" }`
-4. If explicit height/width <= 16px: set `note` warning about padding + box-sizing
-5. No auto-zeroing — informational only
-6. Apply same logic to TplComponent slot path return (lines 2966-2974)
+#### Gap #36 — Component Instance Styling Note — COMPLETE
 
-**Tests (node.test.ts):**
-- Test: box with `height: "2px"` returns `note` and `defaults`
-- Test: box with `height: "100px"` returns `defaults` but no `note`
-- Test: box without explicit height returns `defaults` but no `note`
-- Test: non-box element returns no `defaults`
-- Test: vbox/hbox returns same `defaults` as box
+- **Spec:** `.ralph/specs/element-styling-dx.md`
+- **Scope:** M (reduced after research)
+
+**Key research finding:** Studio does NOT route visual styles to the component root. Only `TPL_COMPONENT_PROPS` (defined in `platform/wab/src/wab/shared/core/style-props.ts`) are applicable: positioning, sizing, margins, opacity, transform. Padding, background, border etc. are silently ignored by codegen. This triggered the Risk R3 mitigation path ("If Studio always styles wrapper, simplify to informational note").
+
+**Summary of changes:**
+- Added `note?: string` to `UpdateStylesResult` interface
+- Added `TPC_APPLICABLE_PROPS` constant — set of CSS properties applicable to TplComponent instances (matching Studio's `TPL_COMPONENT_PROPS`)
+- In `updateStyles()`, after save, checks if any requested properties are not in `TPC_APPLICABLE_PROPS` and returns informational note listing the inapplicable properties
+- Updated server.ts `update-styles` response to include `note` in both dry-run and normal paths
+- Added 3 tests in node.test.ts: inapplicable styles return note, applicable styles return no note, TplTag styles never return note
+- Risk R3 RESOLVED — Studio always styles wrapper; informational note implemented per mitigation plan
 
 ---
 
-## Implementation Sequence
+## Implementation Sequence — ALL COMPLETE
 
 ```
 Phase 1 (P0):
@@ -210,37 +93,24 @@ Phase 2 (P1, parallel with Phase 1):
   Gap #35 (batch micro-batch impl)      ████████████████████  COMPLETE
     │
 Phase 3 (P2, parallel after Phase 1):
-  Gap #38 (customFunction validation)   ░░░░░░░░░░░░░░░░░░░░  NOT STARTED
-  Gap #36 (instance styling)            ░░░░░░░░░░░░░░░░░░░░  NOT STARTED
-  Gap #37 (box defaults)                ░░░░░░░░░░░░░░░░░░░░  NOT STARTED
+  Gap #38 (customFunction validation)   ████████████████████  COMPLETE
+  Gap #36 (instance styling note)       ████████████████████  COMPLETE
+  Gap #37 (box defaults)                ████████████████████  COMPLETE
 ```
 
-**Parallelization notes:**
-- Phases 1 and 2 COMPLETE — Gaps #33, #34, #35, #39 all done
-- Phase 3 items (#38, #36, #37) are independent of each other and unblocked
-- Gaps #36, #37, #38 all touch `edit-tools.ts` — serialize if same developer
-
 ---
 
-## Confirmed Blockers
+## Risk Register — ALL RESOLVED
 
-| # | Blocker | Affects | Details | Resolution |
-|---|---------|---------|---------|------------|
-| B1 | ~~`buildActionArgs` lacks component context~~ | ~~Gap #33, #39~~ | **RESOLVED** — Optional `component` parameter added to `buildActionArgs` signature. All 3 call sites (`addInteraction`, 2x `updateInteraction`) updated to pass `component`. Completed as part of Gap #33 implementation. | RESOLVED |
-
----
-
-## Risk Register
-
-| # | Risk | Likelihood | Impact | Mitigation |
-|---|------|-----------|--------|------------|
-| R1 | ~~Implicit state not discoverable in `component.states` after `tplMgr.createVariantGroup()`~~ | ~~Low~~ | ~~High~~ | RESOLVED — Gap #33 complete. State discovered via `state.param === group.param` match. |
-| R2 | ~~Variant group name resolution conflicts with existing state names~~ | ~~Low~~ | ~~Medium~~ | RESOLVED — Gap #33 complete. State name match takes priority over group name match, confirmed by tests. |
-| R3 | Studio applies TplComponent styles differently than expected (Gap #36) | Medium | High | Research Studio source code BEFORE implementing. If Studio always styles wrapper, simplify to informational note. |
-| R4 | ~~Batch redesign breaks existing `begin-batch`/`end-batch` consumers~~ | ~~Medium~~ | ~~High~~ | RESOLVED — Gap #35 complete. Explicit batches unchanged; micro-batch is dormant when explicit batch is active. Backward compatible by design. |
-| R5 | Single-quote issue in customFunction is server-side codegen, unfixable in MCP | Medium | Low | Pre-validate with acorn. If server rejects, normalize in MCP. Document limitation. |
-| R6 | `validateJsExpression` rejects valid customFunction code (IIFEs) | Low | Medium | acorn `parseExpressionAt` handles IIFEs correctly. Test with documented IIFE format. |
-| R7 | Box default padding info adds noise to every `addChild` response | Low | Low | Only add `note` for small dimensions (<= 16px). Always include `defaults` (structured data). |
+| # | Risk | Resolution |
+|---|------|------------|
+| R1 | Implicit state not discoverable | RESOLVED — Gap #33. State discovered via `state.param === group.param` match. |
+| R2 | Variant group name conflicts | RESOLVED — Gap #33. State name takes priority, confirmed by tests. |
+| R3 | Studio TplComponent styles differently | RESOLVED — Gap #36. Studio only allows TPL_COMPONENT_PROPS on instances. Informational note implemented. |
+| R4 | Batch redesign breaks consumers | RESOLVED — Gap #35. Explicit batches unchanged; micro-batch dormant when explicit active. |
+| R5 | Single-quote issue unfixable in MCP | RESOLVED — Gap #38. normalizeCustomFunctionCode uses acorn AST walk + JSON.stringify for quote conversion. |
+| R6 | validateJsExpression rejects IIFEs | RESOLVED — Gap #38. acorn parseExpressionAt handles IIFEs correctly. |
+| R7 | Box defaults adds noise | RESOLVED — Gap #37. Note only for small dims, defaults always structured. |
 
 ---
 
@@ -250,8 +120,8 @@ All file paths relative to `packages/plasmic-mcp/src/`:
 
 | File | Gaps | Role |
 |------|------|------|
-| `edit-tools.ts` | All 7 | Core logic: createVariantGroup, buildActionArgs, setVisibility, updateStyles, addChild, validateJsExpression |
-| `server.ts` | #33, #34, #35 | Tool schemas (Zod), response shaping, handleMutationError |
+| `edit-tools.ts` | All 7 | Core logic: createVariantGroup, buildActionArgs, setVisibility, updateStyles, addChild, normalizeCustomFunctionCode |
+| `server.ts` | #33, #34, #35, #36, #37 | Tool schemas (Zod), response shaping, handleMutationError |
 | `batch-manager.ts` | #35 | Explicit batch state machine, accumulate/end/cancel |
 | `micro-batch.ts` | #35 | Implicit micro-batch: per-call error isolation, coalesced saves |
 | `undo-manager.ts` | #35 | Per-call undo stack (Architecture E foundation) |
