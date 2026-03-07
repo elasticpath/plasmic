@@ -5332,6 +5332,61 @@ describe("setVisibility", () => {
     expect(api.saveRevision).toHaveBeenCalledTimes(1);
     expect(result.save.revisionNum).toBe(11);
   });
+
+  it("accepts 'hidden' as alias for displayNone", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Banner" });
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setVisibility(api, "comp-1", "Banner", "hidden");
+
+    expect(result.newVisibility).toBe("displayNone");
+    expect(node.vsettings[0].dataCond._type).toBe("CustomCode");
+    expect(node.vsettings[0].dataCond.code).toBe("true");
+    expect(node.vsettings[0].rs.values["plasmic-display-none"]).toBe("true");
+    expect(result.note).toBeUndefined();
+  });
+
+  it("returns note when visible is false (notRendered)", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Banner" });
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setVisibility(api, "comp-1", "Banner", false);
+
+    expect(result.newVisibility).toBe("notRendered");
+    expect(result.note).toMatch(/not be rendered/);
+    expect(result.note).toMatch(/hidden/);
+  });
+
+  it("returns no note when visible is true", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Banner" });
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setVisibility(api, "comp-1", "Banner", true);
+
+    expect(result.newVisibility).toBe("visible");
+    expect(result.note).toBeUndefined();
+  });
+
+  it("returns no note when visible is 'displayNone'", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Banner" });
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setVisibility(api, "comp-1", "Banner", "displayNone");
+
+    expect(result.note).toBeUndefined();
+  });
 });
 
 // =============================================================================

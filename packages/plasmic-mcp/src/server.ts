@@ -2554,7 +2554,7 @@ export function createServer(): McpServer {
         "- update-rich-text: Set text with formatting marks. Example: {action:\"update-rich-text\",componentUuid:\"abc\",nodeRef:\"desc\",text:\"Bold intro here\",marks:[{start:0,end:4,type:\"bold\"}]}\n" +
         "- update-attrs: Set HTML attributes on TplTag elements. Example: {action:\"update-attrs\",componentUuid:\"abc\",nodeRef:\"link\",attrs:{href:\"/about\",target:\"_blank\"}} → {success:true}\n" +
         "- update-props: Set component props on TplComponent instances (scalar, dynamic, slot). Example: {action:\"update-props\",componentUuid:\"abc\",nodeRef:\"btn\",props:{label:\"Submit\",onClick:\"$expr:handleClick\"}} → {success:true}\n" +
-        "- set-visibility: Show/hide elements per variant. Example: {action:\"set-visibility\",componentUuid:\"abc\",nodeRef:\"sidebar\",visible:false} → {success:true,newVisibility:\"notRendered\"}\n" +
+        "- set-visibility: Show/hide elements per variant. visible: true (show), false (not rendered — removed from DOM), 'hidden' (CSS display:none — stays in DOM). For responsive hiding use 'hidden'. Example: {action:\"set-visibility\",componentUuid:\"abc\",nodeRef:\"sidebar\",visible:\"hidden\",variant:\"mobile\"} → {success:true,newVisibility:\"displayNone\"}\n" +
         "- set-image: Set image source (asset or URL). Example: {action:\"set-image\",componentUuid:\"abc\",nodeRef:\"hero-img\",src:\"https://example.com/photo.jpg\"} → {success:true}\n" +
         "- apply-mixin/detach-mixin: Apply or remove style mixins. Example: {action:\"apply-mixin\",componentUuid:\"abc\",nodeRef:\"card\",mixinRef:\"Card Shadow\"} → {success:true}\n" +
         "- add-animation/remove-animation: Apply or remove animations. Example: {action:\"add-animation\",componentUuid:\"abc\",nodeRef:\"banner\",seqRef:\"fadeIn\",duration:\"0.3s\"} → {success:true}\n" +
@@ -2591,7 +2591,7 @@ export function createServer(): McpServer {
       dynamic: z.boolean().optional().describe("Create dynamic text expression"),
       fallback: z.string().optional().describe("Fallback for dynamic text"),
       html: z.boolean().optional().describe("Render dynamic text as HTML"),
-      visible: z.union([z.boolean(), z.literal("displayNone")]).optional().describe("Visibility state"),
+      visible: z.union([z.boolean(), z.literal("displayNone"), z.literal("hidden")]).optional().describe("Visibility: true (visible), false (not rendered — removed from DOM), 'hidden' or 'displayNone' (CSS display:none — hidden but stays in DOM)"),
       assetRef: z.string().optional().describe("Image asset reference for set-image"),
       src: z.string().optional().describe("Raw image URL for set-image"),
       mixinRef: z.string().optional().describe("Mixin reference for apply/detach"),
@@ -3124,6 +3124,7 @@ export function createServer(): McpServer {
                         previousVisibility: result.previousVisibility,
                         newVisibility: result.newVisibility,
                         message: "Dry run: no changes persisted",
+                        ...(result.note ? { note: result.note } : {}),
                       }
                     ),
                   },
@@ -3145,6 +3146,7 @@ export function createServer(): McpServer {
                       previousVisibility: result.previousVisibility,
                       newVisibility: result.newVisibility,
                       revision: result.save.revisionNum,
+                      ...(result.note ? { note: result.note } : {}),
                     }
                   ),
                 },
