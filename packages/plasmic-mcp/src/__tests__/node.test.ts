@@ -3699,6 +3699,80 @@ describe("edit-tools", () => {
       expect(result.warnings!.length).toBe(1);
       expect(result.warnings![0]).toContain("static string literal");
     });
+
+    it("rejects $expr: prefix that causes partial parse (codegen corruption)", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Input" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings[0].attrs) tpl.vsettings[0].attrs = {};
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      await expect(
+        updateAttrs(api, "comp-1", "Input", {
+          src: "$expr:$props.imageSrc",
+        })
+      ).rejects.toThrow(/Invalid JS expression/);
+    });
+
+    it("rejects $expr:handleClick partial parse", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Input" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings[0].attrs) tpl.vsettings[0].attrs = {};
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      await expect(
+        updateAttrs(api, "comp-1", "Input", {
+          value: "$expr:handleClick",
+        })
+      ).rejects.toThrow(/Invalid JS expression/);
+    });
+
+    it("rejects expression with trailing content (two tokens)", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Input" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings[0].attrs) tpl.vsettings[0].attrs = {};
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      await expect(
+        updateAttrs(api, "comp-1", "Input", {
+          value: "$foo bar",
+        })
+      ).rejects.toThrow(/Invalid JS expression/);
+    });
+
+    it("rejects expression with trailing statement", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Input" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings[0].attrs) tpl.vsettings[0].attrs = {};
+        return tpl.vsettings[0];
+      });
+      setupSession(comp);
+
+      // "props.x; props.y" — semicolon is not part of an expression, so
+      // acorn parses only "props.x" and leaves "; props.y" as trailing content.
+      await expect(
+        updateAttrs(api, "comp-1", "Input", {
+          value: "$props.x; props.y",
+        })
+      ).rejects.toThrow(/Invalid JS expression/);
+    });
   });
 
   // --- resolveTokenReferences ---
