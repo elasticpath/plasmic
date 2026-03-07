@@ -1,6 +1,6 @@
 {
   "name": "@elasticpath/plasmic-mcp-registry",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Reads all five Plasmic globalThis registries and serializes metadata for HTTP transport",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -16,7 +16,9 @@
       "import": "./dist/next.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "vitest run",

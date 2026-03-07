@@ -130,6 +130,15 @@ export class Var {
   }
 }
 
+/** Mock constructor for VariantsRef — expression referencing variant objects. */
+export class VariantsRef {
+  _type = "VariantsRef";
+  variants: any[];
+  constructor(args: { variants: any[] }) {
+    this.variants = args.variants;
+  }
+}
+
 /** Mock constructor for ImageAsset — site-level image with metadata and data URI. */
 export class ImageAsset {
   _type = "ImageAsset";

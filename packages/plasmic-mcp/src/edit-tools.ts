@@ -84,6 +84,7 @@ import {
   ImageAsset,
   ImageAssetRef,
   isKnownImageAssetRef,
+  VariantsRef,
 } from "@/wab/shared/model/classes";
 import { RSH } from "@/wab/shared/RuleSetHelpers";
 import { TplMgr, setTplComponentArg } from "@/wab/shared/TplMgr";
@@ -609,6 +610,19 @@ export function sanitizeStyles(
         break;
       }
 
+      // --- Transition shorthand → 4 longhands ---
+      // Studio stores transitions as separate longhands, not the shorthand.
+      // Parse "all 200ms ease" → property, duration, timing-function, delay.
+      case "transition": {
+        const parts = value.trim().split(/\s+/);
+        // CSS transition shorthand: [property] [duration] [timing-function] [delay]
+        result["transition-property"] = parts[0] || "all";
+        result["transition-duration"] = parts[1] || "0s";
+        result["transition-timing-function"] = parts[2] || "ease";
+        result["transition-delay"] = parts[3] || "0s";
+        break;
+      }
+
       // --- Inset shorthand → longhands ---
       case "inset": {
         const [t, r, b, l] = expandBoxShorthand(value);
@@ -737,6 +751,9 @@ const ADDITIONAL_VALID_PROPERTIES = new Set([
   "flex",
   // Inset
   "inset",
+  // Transition longhands (Studio stores these separately, not the shorthand)
+  "transition-property", "transition-duration",
+  "transition-timing-function", "transition-delay",
   // Outline longhands
   "outline-width", "outline-style", "outline-color", "outline-offset",
   // Shorthands handled by sanitizeStyles — included so they appear in
@@ -833,6 +850,7 @@ const SHORTHAND_HINTS: Record<string, string> = {
   "border-style": "borderStyle → border-{side}-style longhands",
   "border-color": "borderColor → border-{side}-color longhands",
   "outline": "outline → outline-width, outline-style, outline-color",
+  "transition": "transition → transition-property, transition-duration, transition-timing-function, transition-delay",
 };
 
 /**
@@ -2206,17 +2224,21 @@ export async function updateStyles(
   // resolveVariant is inside withRecording so that auto-created code
   // component Variant instances (via mkVariant) are captured as newInsts
   // by the ChangeRecorder, making them visible to fastBundle().
-  let resolvedVariant: any = null;
+  // Supports compound variants via comma-separated refs (e.g., "Ghost, :hover").
+  let resolvedVariants: any[] = [];
   const changes = tracker.withRecording(() => {
-    resolvedVariant = variant
-      ? resolveVariant(session.site, component, variant)
-      : null;
+    if (variant) {
+      const refs = variant.split(",").map((v) => v.trim()).filter(Boolean);
+      resolvedVariants = refs.map((ref) =>
+        resolveVariant(session.site, component, ref)
+      );
+    }
 
-    // Get or create the VariantSetting for the target variant.
+    // Get or create the VariantSetting for the target variant(s).
     // ensureVariantSetting must be inside withRecording because it may
     // create a new VariantSetting (pushing to tpl.vsettings).
-    const vs = resolvedVariant
-      ? ensureVariantSetting(tpl, [resolvedVariant])
+    const vs = resolvedVariants.length > 0
+      ? ensureVariantSetting(tpl, resolvedVariants)
       : tplMgr.ensureBaseVariantSetting(tpl);
 
     const rsh = RSH(vs.rs, tpl);
@@ -2224,7 +2246,9 @@ export async function updateStyles(
   });
 
   const componentIid = getComponentIid(component);
-  const variantLabel = resolvedVariant ? ` [variant: ${resolvedVariant.name ?? variant}]` : "";
+  const variantLabel = resolvedVariants.length > 0
+    ? ` [variant: ${resolvedVariants.map((v: any) => v.name ?? "?").join(" + ")}]`
+    : "";
   const save = await saveOrAccumulate(
     apiClient,
     changes,
@@ -2404,6 +2428,15 @@ export async function updateProps(
     if (name) paramByName.set(name, param);
   }
 
+  // Build a lookup of variant group params → their variant groups.
+  // Studio uses VariantsRef expressions (not plain strings) for these.
+  const variantGroupByParam = new Map<any, any>();
+  for (const group of targetComponent.variantGroups ?? []) {
+    if (group.param) {
+      variantGroupByParam.set(group.param, group);
+    }
+  }
+
   // Pre-validate ALL prop names before making any mutations (fail-fast / atomic)
   const updatedProps: string[] = [];
   const removedProps: string[] = [];
@@ -2497,8 +2530,29 @@ export async function updateProps(
           );
           expr = new RenderExpr({ tpl: tpls });
         } else {
-          // Scalar or dynamic expression — reuse createAttrExpr
-          expr = createAttrExpr(value, warnings);
+          // Check if this param belongs to a variant group.
+          // Studio uses VariantsRef (actual Variant object references) for these,
+          // not plain string literals. See VariantsPicker.tsx → mkVariantGroupArgExpr.
+          const variantGroup = variantGroupByParam.get(param);
+          if (variantGroup) {
+            const variantName = String(value);
+            const variants = variantGroup.variants ?? [];
+            const matchedVariant = variants.find((v: any) =>
+              v.name === variantName ||
+              v.name?.toLowerCase() === variantName.toLowerCase() ||
+              v.uuid === variantName
+            );
+            if (!matchedVariant) {
+              const available = variants.map((v: any) => v.name).join(", ");
+              throw new Error(
+                `Variant "${variantName}" not found in group "${propName}". Available: ${available || "(none)"}`
+              );
+            }
+            expr = new VariantsRef({ variants: [matchedVariant] });
+          } else {
+            // Scalar or dynamic expression — reuse createAttrExpr
+            expr = createAttrExpr(value, warnings);
+          }
         }
 
         setTplComponentArg(tpl, vs, argVar, expr);
