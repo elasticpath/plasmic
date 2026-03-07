@@ -14,7 +14,7 @@ When `update-styles` is called on a TplComponent instance (e.g., a Scent Spotlig
 3. Find the root element UUID
 4. Style that instead
 
-**Studio behavior:** In Plasmic Studio, when you select a component instance and add padding, Studio applies it to the component's root element within the instance's variant setting. The MCP should match this behavior.
+**Studio behavior (researched):** Studio does NOT route visual styles to the component root. TplComponent instances only accept a fixed set of properties known as `TPL_COMPONENT_PROPS` — positioning (`position`, `top`, `left`, etc.), sizing (`width`, `height`, `minWidth`, `maxWidth`, `minHeight`, `maxHeight`), margins (`margin*`), opacity, transform, and a few others. All other CSS properties (padding, background, border, color, fontSize, etc.) are silently ignored by codegen when applied to a TplComponent wrapper. There is no "visual vs layout" split — the wrapper simply cannot express most visual styles.
 
 ### Gap #37 (Medium) — Default 8px padding on box elements
 
@@ -25,27 +25,28 @@ Plasmic's `makeDefaultStylesFromElementType` sets `padding: 8px` on free boxes (
 ## Acceptance Criteria
 
 ### Gap #36: Component instance styling
-- [ ] Investigate how Studio applies styles to component instances — does it style the wrapper or the root?
-- [ ] Match Studio's exact behavior in `update-styles` for TplComponent nodes
-- [ ] If styles are applied to an internal node, the response includes a note: "Styles applied to component root element '<name>' (<uuid>) rather than the instance wrapper"
-- [ ] If the component root cannot be determined, fall back to wrapper styling with a warning
-- [ ] Unit tests: style TplComponent instance, verify styles land on correct node, verify response note
+- [x] Investigate how Studio applies styles to component instances — does it style the wrapper or the root?
+  - **Finding:** Studio only allows `TPL_COMPONENT_PROPS` on TplComponent wrappers. All other properties are silently ignored by codegen. There is no routing to the component root.
+- [x] When `update-styles` is called on a TplComponent with inapplicable properties, return an informational `note` listing the ignored properties and explaining that only TPL_COMPONENT_PROPS are effective
+- [x] `TPL_COMPONENT_PROPS`-compatible styles are applied normally to the wrapper (current behavior, unchanged)
+- [x] Unit tests: style TplComponent instance with mixed props, verify note lists inapplicable ones
 
 ### Gap #37: Box default padding
-- [ ] When `node.add-child` creates a box-type element (`box`, `vbox`, `hbox`) with an explicit `height` or `width` below a threshold (e.g., <= 16px), include a note in the response: "Note: box elements have default padding: 8px. Your height: Xpx may render larger. Set padding: 0px explicitly if needed."
-- [ ] Include default styles information in the `add-child` response: `{ defaults: { padding: "8px" } }` for box types
-- [ ] Alternatively: auto-zero padding when height/width is explicitly set below threshold (investigate whether this matches Studio)
-- [ ] Unit tests: add box with small height, verify note/defaults in response; add box without height, verify no special note
+- [x] When `node.add-child` creates a box-type element (`box`, `vbox`, `hbox`) with an explicit `height` or `width` below a threshold (e.g., <= 16px), include a note in the response about default padding
+- [x] Include default styles information in the `add-child` response: `{ defaults: { padding: "8px" } }` for box types
+- [x] No auto-zeroing — the 8px default is intentional and matches Studio; the fix is informational only
+- [x] Unit tests: add box with small height, verify note/defaults in response; add box without height, verify no special note
 
 ## Happy Path
 
 ### Component instance styling
-1. LLM calls `node.update-styles({ componentUuid: "homepage", nodeRef: "scent-spotlight-instance", styles: { paddingLeft: "1.5rem" }, variant: "mobile" })`
+1. LLM calls `node.update-styles({ componentUuid: "homepage", nodeRef: "scent-spotlight-instance", styles: { paddingLeft: "1.5rem", width: "100%" }, variant: "mobile" })`
 2. MCP detects nodeRef is a TplComponent instance
-3. MCP finds the component's root TplTag within the instance
-4. Applies `paddingLeft: 1.5rem` to the root element's variant setting
-5. Returns `{ ..., note: "Styles applied to component root element 'Scent Spotlight Root' (abc123) rather than the instance wrapper" }`
-6. The padding actually takes visual effect
+3. MCP checks each property against `TPL_COMPONENT_PROPS`
+4. Applies `width: 100%` to the wrapper (it is a valid TplComponent prop)
+5. Skips `paddingLeft` (not in `TPL_COMPONENT_PROPS`)
+6. Returns `{ ..., note: "Component instances only support positioning/sizing/margin/opacity/transform styles. These properties were not applied: paddingLeft. To style the component's internals, open the component and style its root element directly." }`
+7. LLM learns which styles work on component instances and which require editing the component itself
 
 ### Box default padding
 1. LLM calls `node.add-child({ ..., child: { type: "box", styles: { width: "20px", height: "2px" } } })`
@@ -58,10 +59,9 @@ Plasmic's `makeDefaultStylesFromElementType` sets `padding: 8px` on free boxes (
 | Scenario | Expected behaviour |
 |----------|-------------------|
 | `update-styles` on TplTag (not component) | Current behavior — styles applied directly to the element |
-| `update-styles` on TplComponent with layout styles (display, flex) | Apply to wrapper (these affect the instance's position in parent, not the component's internals) |
-| `update-styles` on TplComponent with visual styles (padding, background, border) | Apply to component root (these affect the component's appearance) |
-| Component root is a TplComponent (nested components) | Apply to the outermost component's root; don't recurse |
-| Component has no identifiable root (empty or slot-only) | Fall back to wrapper styling with warning |
+| `update-styles` on TplComponent with `TPL_COMPONENT_PROPS` only (width, margin, etc.) | Applied to wrapper normally, no note |
+| `update-styles` on TplComponent with inapplicable props (padding, background, border, etc.) | Inapplicable props skipped; informational `note` returned listing them |
+| `update-styles` on TplComponent with mixed props | Valid props applied to wrapper; inapplicable props skipped with note |
 | `add-child` with box and height: "auto" | No special note (auto height won't be affected by padding in the same way) |
 | `add-child` with box and height: "100px" | No special note (100px is large enough that 8px padding is negligible) |
 | `add-child` with vbox/hbox | Same behavior as box (all three have the 8px default) |
@@ -72,14 +72,14 @@ Plasmic's `makeDefaultStylesFromElementType` sets `padding: 8px` on free boxes (
 
 In the `updateStyles` function, after resolving the TplNode:
 1. Check if node is a TplComponent (`isKnownTplComponent(tpl)`)
-2. If yes, determine style category:
-   - **Layout styles** (display, flexDirection, alignItems, justifyContent, width, height, margin*, position, gridColumn, gridRow, flex*): Apply to wrapper (these control the instance's placement)
-   - **Visual styles** (padding*, background*, border*, color, fontSize, etc.): Apply to component root
-3. Find the component root: `tpl.component.tplTree` (the root TplTag of the referenced component)
-4. Apply visual styles to the root's variant setting
-5. Apply layout styles to the wrapper's variant setting (current behavior)
+2. If yes, partition the requested styles into two sets:
+   - **Applicable:** Properties in `TPL_COMPONENT_PROPS` (position, top/right/bottom/left, width, height, minWidth, maxWidth, minHeight, maxHeight, margin*, opacity, transform, flex*, alignSelf, justifySelf, gridColumn, gridRow, etc.)
+   - **Inapplicable:** Everything else (padding, background, border, color, fontSize, etc.)
+3. Apply applicable styles to the wrapper's variant setting (current behavior, unchanged)
+4. Skip inapplicable styles entirely — codegen would ignore them anyway
+5. If any inapplicable styles were requested, add an informational `note` to the `UpdateStylesResult` listing them and explaining that component instances only support TPL_COMPONENT_PROPS
 
-**Important:** Investigate whether Studio actually does this split, or whether it always styles the wrapper. The implementation must match Studio exactly.
+**Research conclusion:** Studio does not route visual styles to the component root. TplComponent wrappers only support `TPL_COMPONENT_PROPS`; all other properties are silently dropped by codegen. The implementation matches Studio by skipping inapplicable properties and informing the LLM.
 
 ### Box default padding (edit-tools.ts)
 
