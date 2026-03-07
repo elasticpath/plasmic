@@ -540,6 +540,13 @@ declare module "@/wab/shared/model/classes" {
     externalId: any;
   }
 
+  /** Model class for VariantsRef — expression referencing variant objects.
+   *  Used by Studio for variant group prop bindings (e.g., VariantsPicker → mkVariantGroupArgExpr). */
+  export class VariantsRef {
+    constructor(args: { variants: any[] });
+    variants: any[];
+  }
+
   /** Model class for ImageAsset — site-level image with metadata and data URI. */
   export class ImageAsset {
     constructor(args: {
