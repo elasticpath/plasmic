@@ -172,7 +172,13 @@ function isValidAttrName(name: string): { valid: boolean; reason?: string } {
  */
 function validateJsExpression(code: string): void {
   try {
-    acorn.parseExpressionAt(code, 0, { ecmaVersion: 2020 });
+    const node = acorn.parseExpressionAt(code, 0, { ecmaVersion: 2020 });
+    const remaining = code.slice(node.end).trim();
+    if (remaining.length > 0) {
+      throw new Error(
+        `Unexpected content after expression at position ${node.end}: "${remaining}"`
+      );
+    }
   } catch (err: any) {
     throw new Error(
       `Invalid JS expression: ${err.message}. Use $<valid-js-expr> or {{valid-js-expr}}.`
