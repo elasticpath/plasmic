@@ -22,6 +22,7 @@
  * All logging goes through console.error().
  */
 
+import { randomUUID } from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -136,6 +137,7 @@ import {
   extractToComponent,
 } from "./edit-tools.js";
 import { beginBatch, endBatch, isBatchActive, cancelBatch, cancelBatchWithRollback, getAccumulatedChanges } from "./batch-manager.js";
+import { registerCall, failCall, isMicroBatchActive, isCallSettled, setCurrentCallId } from "./micro-batch.js";
 import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
 import { SaveManager } from "./save-manager.js";
 import { startLiveSync, stopLiveSync } from "./live-sync.js";
@@ -287,11 +289,14 @@ function errorMessage(err: unknown): string {
  * Handle errors from mutation tool handlers. If a batch is active, cancels it
  * and rolls back all accumulated changes so the model stays clean.
  */
-function handleMutationError(label: string, err: unknown) {
+function handleMutationError(label: string, err: unknown, callId?: string) {
   let message = `Error ${label}: ${errorMessage(err)}`;
   if (isBatchActive()) {
     cancelBatchWithRollback();
     message += " Batch cancelled and all accumulated changes rolled back.";
+  } else if (callId && isMicroBatchActive()) {
+    failCall(callId);
+    message += " This operation failed. Other parallel operations are unaffected.";
   }
   return {
     content: [{ type: "text" as const, text: message }],
@@ -1496,6 +1501,9 @@ export function createServer(): McpServer {
     },
     async (params) => {
       const { action } = params;
+      const callId = randomUUID();
+      registerCall(callId);
+      setCurrentCallId(callId);
       try {
         // Emit presence for component-level operations
         if (params.componentUuid) {
@@ -2522,7 +2530,7 @@ export function createServer(): McpServer {
       } catch (err: unknown) {
         if (["create-page", "create", "clone", "rename", "delete", "extract", "convert-to-page", "convert-to-component", "update-page-meta",
              "add-prop", "update-prop", "remove-prop", "add-state", "update-state", "remove-state"].includes(action)) {
-          return handleMutationError(`component.${action}`, err);
+          return handleMutationError(`component.${action}`, err, callId);
         }
         return {
           content: [
@@ -2534,6 +2542,8 @@ export function createServer(): McpServer {
           isError: true,
         };
       } finally {
+        setCurrentCallId(null);
+        if (!isCallSettled(callId)) failCall(callId);
         clearEditPresence();
       }
     }
@@ -2554,7 +2564,7 @@ export function createServer(): McpServer {
         "- update-rich-text: Set text with formatting marks. Example: {action:\"update-rich-text\",componentUuid:\"abc\",nodeRef:\"desc\",text:\"Bold intro here\",marks:[{start:0,end:4,type:\"bold\"}]}\n" +
         "- update-attrs: Set HTML attributes on TplTag elements. Example: {action:\"update-attrs\",componentUuid:\"abc\",nodeRef:\"link\",attrs:{href:\"/about\",target:\"_blank\"}} → {success:true}\n" +
         "- update-props: Set component props on TplComponent instances (scalar, dynamic, slot). Example: {action:\"update-props\",componentUuid:\"abc\",nodeRef:\"btn\",props:{label:\"Submit\",onClick:\"$expr:handleClick\"}} → {success:true}\n" +
-        "- set-visibility: Show/hide elements per variant. Example: {action:\"set-visibility\",componentUuid:\"abc\",nodeRef:\"sidebar\",visible:false} → {success:true,newVisibility:\"notRendered\"}\n" +
+        "- set-visibility: Show/hide elements per variant. visible: true (show), false (not rendered — removed from DOM), 'hidden' (CSS display:none — stays in DOM). For responsive hiding use 'hidden'. Example: {action:\"set-visibility\",componentUuid:\"abc\",nodeRef:\"sidebar\",visible:\"hidden\",variant:\"mobile\"} → {success:true,newVisibility:\"displayNone\"}\n" +
         "- set-image: Set image source (asset or URL). Example: {action:\"set-image\",componentUuid:\"abc\",nodeRef:\"hero-img\",src:\"https://example.com/photo.jpg\"} → {success:true}\n" +
         "- apply-mixin/detach-mixin: Apply or remove style mixins. Example: {action:\"apply-mixin\",componentUuid:\"abc\",nodeRef:\"card\",mixinRef:\"Card Shadow\"} → {success:true}\n" +
         "- add-animation/remove-animation: Apply or remove animations. Example: {action:\"add-animation\",componentUuid:\"abc\",nodeRef:\"banner\",seqRef:\"fadeIn\",duration:\"0.3s\"} → {success:true}\n" +
@@ -2591,7 +2601,7 @@ export function createServer(): McpServer {
       dynamic: z.boolean().optional().describe("Create dynamic text expression"),
       fallback: z.string().optional().describe("Fallback for dynamic text"),
       html: z.boolean().optional().describe("Render dynamic text as HTML"),
-      visible: z.union([z.boolean(), z.literal("displayNone")]).optional().describe("Visibility state"),
+      visible: z.union([z.boolean(), z.literal("displayNone"), z.literal("hidden")]).optional().describe("Visibility: true (visible), false (not rendered — removed from DOM), 'hidden' or 'displayNone' (CSS display:none — hidden but stays in DOM)"),
       assetRef: z.string().optional().describe("Image asset reference for set-image"),
       src: z.string().optional().describe("Raw image URL for set-image"),
       mixinRef: z.string().optional().describe("Mixin reference for apply/detach"),
@@ -2612,6 +2622,9 @@ export function createServer(): McpServer {
     },
     async (params) => {
       const { action } = params;
+      const callId = randomUUID();
+      registerCall(callId);
+      setCurrentCallId(callId);
       try {
         // Emit presence for node-level operations (arena + selection)
         if (params.componentUuid) {
@@ -2640,6 +2653,8 @@ export function createServer(): McpServer {
                         position: result.position,
                         message: "Dry run: no changes persisted",
                         ...(result.warnings?.length ? { warnings: result.warnings } : {}),
+                        ...(result.note ? { note: result.note } : {}),
+                        ...(result.defaults ? { defaults: result.defaults } : {}),
                       }
                     ),
                   },
@@ -2664,6 +2679,8 @@ export function createServer(): McpServer {
                       position: result.position,
                       revision: result.save.revisionNum,
                       ...(result.warnings?.length ? { warnings: result.warnings } : {}),
+                      ...(result.note ? { note: result.note } : {}),
+                      ...(result.defaults ? { defaults: result.defaults } : {}),
                     }
                   ),
                 },
@@ -2878,6 +2895,7 @@ export function createServer(): McpServer {
                         node: result.nodeName ?? result.nodeUuid,
                         updatedProperties: result.updatedProperties,
                         message: "Dry run: no changes persisted",
+                        ...(result.note ? { note: result.note } : {}),
                       }
                     ),
                   },
@@ -2898,6 +2916,7 @@ export function createServer(): McpServer {
                       node: result.nodeName ?? result.nodeUuid,
                       updatedProperties: result.updatedProperties,
                       revision: result.save.revisionNum,
+                      ...(result.note ? { note: result.note } : {}),
                     }
                   ),
                 },
@@ -3124,6 +3143,7 @@ export function createServer(): McpServer {
                         previousVisibility: result.previousVisibility,
                         newVisibility: result.newVisibility,
                         message: "Dry run: no changes persisted",
+                        ...(result.note ? { note: result.note } : {}),
                       }
                     ),
                   },
@@ -3145,6 +3165,7 @@ export function createServer(): McpServer {
                       previousVisibility: result.previousVisibility,
                       newVisibility: result.newVisibility,
                       revision: result.save.revisionNum,
+                      ...(result.note ? { note: result.note } : {}),
                     }
                   ),
                 },
@@ -3447,8 +3468,10 @@ export function createServer(): McpServer {
             throw new Error(`Unknown action '${action}' for node tool.`);
         }
       } catch (err: unknown) {
-        return handleMutationError(`node.${action}`, err);
+        return handleMutationError(`node.${action}`, err, callId);
       } finally {
+        setCurrentCallId(null);
+        if (!isCallSettled(callId)) failCall(callId);
         clearEditPresence();
       }
     }
@@ -3498,6 +3521,9 @@ export function createServer(): McpServer {
     },
     async (params) => {
       const { action } = params;
+      const callId = randomUUID();
+      registerCall(callId);
+      setCurrentCallId(callId);
       try {
         // Emit presence for variant operations on a specific component
         if (params.componentUuid) {
@@ -3591,8 +3617,11 @@ export function createServer(): McpServer {
                       groupName: result.groupName,
                       type: result.type,
                       variants: result.variants,
+                      ...(result.linkedState ? { linkedState: result.linkedState } : {}),
                       revision: result.save.revisionNum,
-                      message: `Created variant group "${result.groupName}" (${result.type}) with ${result.variants.length} variant(s). Use update-styles/update-text with variant names to apply overrides.`,
+                      message: result.linkedState
+                        ? `Created toggle variant group "${result.groupName}" with linked state "${result.linkedState.name}". Use interaction.add with updateVariable targeting "${result.linkedState.name}" to toggle this variant.`
+                        : `Created variant group "${result.groupName}" (${result.type}) with ${result.variants.length} variant(s). Use update-styles/update-text with variant names to apply overrides.`,
                     }
                   ),
                 },
@@ -3790,7 +3819,7 @@ export function createServer(): McpServer {
         }
       } catch (err: unknown) {
         if (["create-style", "create-group", "create-global-group", "add-global", "remove-global-group", "rename-global", "create-screen", "update-screen", "rename", "remove"].includes(action)) {
-          return handleMutationError(`variant.${action}`, err);
+          return handleMutationError(`variant.${action}`, err, callId);
         }
         return {
           content: [
@@ -3802,6 +3831,8 @@ export function createServer(): McpServer {
           isError: true,
         };
       } finally {
+        setCurrentCallId(null);
+        if (!isCallSettled(callId)) failCall(callId);
         clearEditPresence();
       }
     }
@@ -3875,6 +3906,9 @@ export function createServer(): McpServer {
     },
     async (params) => {
       const { action } = params;
+      const callId = randomUUID();
+      registerCall(callId);
+      setCurrentCallId(callId);
       try {
         switch (action) {
           // ── Tokens ──
@@ -4741,7 +4775,10 @@ export function createServer(): McpServer {
             isError: true,
           };
         }
-        return handleMutationError(`design.${action}`, err);
+        return handleMutationError(`design.${action}`, err, callId);
+      } finally {
+        setCurrentCallId(null);
+        if (!isCallSettled(callId)) failCall(callId);
       }
     }
   );
@@ -4797,6 +4834,9 @@ export function createServer(): McpServer {
     },
     async (params) => {
       const { action } = params;
+      const callId = randomUUID();
+      registerCall(callId);
+      setCurrentCallId(callId);
       try {
         // Emit presence for data operations targeting a component
         if (params.componentUuid) {
@@ -5431,8 +5471,10 @@ export function createServer(): McpServer {
             isError: true,
           };
         }
-        return handleMutationError(`data.${action}`, err);
+        return handleMutationError(`data.${action}`, err, callId);
       } finally {
+        setCurrentCallId(null);
+        if (!isCallSettled(callId)) failCall(callId);
         clearEditPresence();
       }
     }
@@ -5467,6 +5509,9 @@ export function createServer(): McpServer {
     },
     async (params) => {
       const { action } = params;
+      const callId = randomUUID();
+      registerCall(callId);
+      setCurrentCallId(callId);
       try {
         // Emit presence for interaction operations (arena + selection)
         if (params.componentUuid) {
@@ -5679,8 +5724,10 @@ export function createServer(): McpServer {
             isError: true,
           };
         }
-        return handleMutationError(`interaction.${action}`, err);
+        return handleMutationError(`interaction.${action}`, err, callId);
       } finally {
+        setCurrentCallId(null);
+        if (!isCallSettled(callId)) failCall(callId);
         clearEditPresence();
       }
     }

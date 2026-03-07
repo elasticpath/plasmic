@@ -1215,6 +1215,75 @@ describe("edit-tools", () => {
       expect(result.updatedProperties.length).toBeGreaterThan(0);
     });
 
+    // --- Gap #36: Component instance styling note ---
+
+    it("returns note for inapplicable styles on TplComponent instances", async () => {
+      const compNode = {
+        _type: "TplComponent",
+        uuid: "tpl-comp-1",
+        name: "CardInstance",
+        component: { name: "Card", uuid: "card-uuid" },
+        vsettings: [{ rs: { values: {} }, args: [] }],
+        children: [],
+      };
+      const root = mkTag({ uuid: "root-1", children: [compNode] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      const result = await updateStyles(api, "comp-1", "tpl-comp-1", {
+        paddingLeft: "1.5rem",
+        color: "red",
+      });
+
+      expect(result.note).toBeDefined();
+      expect(result.note).toMatch(/paddingLeft/);
+      expect(result.note).toMatch(/color/);
+      expect(result.note).toMatch(/will not render/);
+    });
+
+    it("returns no note for applicable styles on TplComponent instances", async () => {
+      const compNode = {
+        _type: "TplComponent",
+        uuid: "tpl-comp-1",
+        name: "CardInstance",
+        component: { name: "Card", uuid: "card-uuid" },
+        vsettings: [{ rs: { values: {} }, args: [] }],
+        children: [],
+      };
+      const root = mkTag({ uuid: "root-1", children: [compNode] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      const result = await updateStyles(api, "comp-1", "tpl-comp-1", {
+        width: "100%",
+        marginTop: "16px",
+        opacity: "0.5",
+      });
+
+      expect(result.note).toBeUndefined();
+      expect(result.updatedProperties).toEqual(["width", "marginTop", "opacity"]);
+    });
+
+    it("returns no note when styling TplTag nodes", async () => {
+      const node = mkTag({ uuid: "node-1", name: "Box" });
+      const root = mkTag({ uuid: "root-1", children: [node] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      const result = await updateStyles(api, "comp-1", "Box", {
+        padding: "16px",
+        backgroundColor: "blue",
+      });
+
+      expect(result.note).toBeUndefined();
+    });
+
     it("rejects style update on TplSlot", async () => {
       const slotNode = {
         _type: "TplSlot",
@@ -1464,6 +1533,139 @@ describe("edit-tools", () => {
       await expect(
         addChild(api, "comp-1", "Section", { type: "text", value: "x" })
       ).rejects.toThrow("Bad schema");
+    });
+
+    // --- Gap #37: Box default padding information ---
+
+    it("returns defaults for box-type elements", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section", children: [] });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const newTpl = mkTag({ uuid: "new-1", tag: "div" });
+      mockElementSchemaToTpl.mockReturnValue({
+        result: { isError: false, value: { tpl: newTpl, warnings: [] } },
+      });
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} } }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      setupSession(comp);
+
+      const result = await addChild(api, "comp-1", "Section", {
+        type: "box",
+        styles: { height: "100px" },
+      });
+
+      expect(result.defaults).toEqual({ padding: "8px" });
+      expect(result.note).toBeUndefined();
+    });
+
+    it("returns note for box with small height", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section", children: [] });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const newTpl = mkTag({ uuid: "new-1", tag: "div" });
+      mockElementSchemaToTpl.mockReturnValue({
+        result: { isError: false, value: { tpl: newTpl, warnings: [] } },
+      });
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} } }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      setupSession(comp);
+
+      const result = await addChild(api, "comp-1", "Section", {
+        type: "box",
+        styles: { height: "2px" },
+      });
+
+      expect(result.defaults).toEqual({ padding: "8px" });
+      expect(result.note).toMatch(/padding/);
+      expect(result.note).toMatch(/height: 2px/);
+    });
+
+    it("returns defaults without note for box without explicit dimensions", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section", children: [] });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const newTpl = mkTag({ uuid: "new-1", tag: "div" });
+      mockElementSchemaToTpl.mockReturnValue({
+        result: { isError: false, value: { tpl: newTpl, warnings: [] } },
+      });
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} } }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      setupSession(comp);
+
+      const result = await addChild(api, "comp-1", "Section", { type: "box" });
+
+      expect(result.defaults).toEqual({ padding: "8px" });
+      expect(result.note).toBeUndefined();
+    });
+
+    it("does not return defaults for non-box elements", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section", children: [] });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const newTpl = mkTag({ uuid: "new-1", tag: "div" });
+      mockElementSchemaToTpl.mockReturnValue({
+        result: { isError: false, value: { tpl: newTpl, warnings: [] } },
+      });
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} } }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      setupSession(comp);
+
+      const result = await addChild(api, "comp-1", "Section", {
+        type: "text",
+        value: "Hello",
+      });
+
+      expect(result.defaults).toBeUndefined();
+      expect(result.note).toBeUndefined();
+    });
+
+    it("returns defaults for vbox and hbox elements", async () => {
+      const container = mkTag({ uuid: "container-1", name: "Section", children: [] });
+      const root = mkTag({ uuid: "root-1", children: [container] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      const newTpl = mkTag({ uuid: "new-1", tag: "div" });
+      mockElementSchemaToTpl.mockReturnValue({
+        result: { isError: false, value: { tpl: newTpl, warnings: [] } },
+      });
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+        if (!tpl.vsettings || tpl.vsettings.length === 0) {
+          tpl.vsettings = [{ rs: { values: {} } }];
+        }
+        return tpl.vsettings[0];
+      });
+
+      setupSession(comp);
+
+      const vboxResult = await addChild(api, "comp-1", "Section", { type: "vbox" });
+      expect(vboxResult.defaults).toEqual({ padding: "8px" });
+
+      const hboxResult = await addChild(api, "comp-1", "Section", { type: "hbox" });
+      expect(hboxResult.defaults).toEqual({ padding: "8px" });
     });
   });
 
@@ -5331,6 +5533,61 @@ describe("setVisibility", () => {
 
     expect(api.saveRevision).toHaveBeenCalledTimes(1);
     expect(result.save.revisionNum).toBe(11);
+  });
+
+  it("accepts 'hidden' as alias for displayNone", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Banner" });
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setVisibility(api, "comp-1", "Banner", "hidden");
+
+    expect(result.newVisibility).toBe("displayNone");
+    expect(node.vsettings[0].dataCond._type).toBe("CustomCode");
+    expect(node.vsettings[0].dataCond.code).toBe("true");
+    expect(node.vsettings[0].rs.values["plasmic-display-none"]).toBe("true");
+    expect(result.note).toBeUndefined();
+  });
+
+  it("returns note when visible is false (notRendered)", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Banner" });
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setVisibility(api, "comp-1", "Banner", false);
+
+    expect(result.newVisibility).toBe("notRendered");
+    expect(result.note).toMatch(/not be rendered/);
+    expect(result.note).toMatch(/hidden/);
+  });
+
+  it("returns no note when visible is true", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Banner" });
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setVisibility(api, "comp-1", "Banner", true);
+
+    expect(result.newVisibility).toBe("visible");
+    expect(result.note).toBeUndefined();
+  });
+
+  it("returns no note when visible is 'displayNone'", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Banner" });
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    const result = await setVisibility(api, "comp-1", "Banner", "displayNone");
+
+    expect(result.note).toBeUndefined();
   });
 });
 

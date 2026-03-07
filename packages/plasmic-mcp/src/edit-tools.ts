@@ -100,6 +100,7 @@ import { PlasmicApiClient } from "./api-client.js";
 import { resolveNode, requireSingleNode } from "./node-resolver.js";
 import type { PlasmicElement, ComponentElement, DefaultComponentElement } from "./types.js";
 import { isBatchActive, accumulateChanges } from "./batch-manager.js";
+import { getCurrentCallId, isMicroBatchActive, commitCall } from "./micro-batch.js";
 import { rebaseFromServer } from "./live-sync.js";
 import { ensureDependencyAddresses } from "./bundler-helpers.js";
 import { pushUndoOperation } from "./undo-manager.js";
@@ -185,6 +186,79 @@ function validateJsExpression(code: string): void {
       `Invalid JS expression: ${err.message}. Use $<valid-js-expr> or {{valid-js-expr}}.`
     );
   }
+}
+
+/**
+ * Walk an acorn AST, calling visitor on every node.
+ */
+function walkAstNodes(node: any, visitor: (n: any) => void): void {
+  if (!node || typeof node !== "object") return;
+  visitor(node);
+  for (const key of Object.keys(node)) {
+    if (key === "type" || key === "start" || key === "end" || key === "raw" || key === "value") continue;
+    const child = (node as Record<string, any>)[key];
+    if (Array.isArray(child)) {
+      for (const item of child) {
+        if (item && typeof item === "object" && item.type) {
+          walkAstNodes(item, visitor);
+        }
+      }
+    } else if (child && typeof child === "object" && child.type) {
+      walkAstNodes(child, visitor);
+    }
+  }
+}
+
+/**
+ * Validate and normalize customFunction code.
+ *
+ * 1. Validates that the code is a valid JS expression (acorn parse).
+ * 2. Normalizes single-quoted string literals to double-quoted —
+ *    Plasmic codegen does not reliably handle single quotes (HTTP 500).
+ */
+function normalizeCustomFunctionCode(code: string): string {
+  let ast: acorn.Node;
+  try {
+    ast = acorn.parseExpressionAt(code, 0, { ecmaVersion: 2020 });
+    const remaining = code.slice(ast.end).trim();
+    if (remaining.length > 0) {
+      throw new Error(
+        `Unexpected content after expression at position ${ast.end}: "${remaining}"`
+      );
+    }
+  } catch (err: any) {
+    throw new Error(
+      `Invalid customFunction code: ${err.message}. ` +
+      `The code must be a valid JS expression (e.g., alert("hello") or (() => { /* statements */ })()).`
+    );
+  }
+
+  // Collect single-quoted string literals and their double-quoted replacements.
+  const replacements: Array<{ start: number; end: number; replacement: string }> = [];
+  walkAstNodes(ast, (n: any) => {
+    if (
+      n.type === "Literal" &&
+      typeof n.value === "string" &&
+      n.raw?.startsWith("'")
+    ) {
+      replacements.push({
+        start: n.start,
+        end: n.end,
+        replacement: JSON.stringify(n.value),
+      });
+    }
+  });
+
+  if (replacements.length === 0) return code;
+
+  // Apply replacements from end to start to preserve positions.
+  let result = code;
+  for (let i = replacements.length - 1; i >= 0; i--) {
+    const { start, end, replacement } = replacements[i];
+    result = result.slice(0, start) + replacement + result.slice(end);
+  }
+
+  return result;
 }
 
 const EXPR_PATTERN = /\$(state|ctx|queries|props|pageCtx)\./;
@@ -1090,6 +1164,17 @@ async function saveOrAccumulate(
     accumulateChanges(changes, modifiedComponentIids);
     const session = requireSession();
     return { revisionNum: session.revisionNum, incremental: true };
+  }
+
+  const callId = getCurrentCallId();
+  if (callId && isMicroBatchActive()) {
+    return commitCall(
+      callId,
+      apiClient,
+      changes,
+      description,
+      modifiedComponentIids ?? []
+    );
   }
 
   const saveManager = new SaveManager(apiClient, {
@@ -2180,7 +2265,32 @@ export interface UpdateStylesResult {
   nodeName?: string;
   nodeUuid: string;
   updatedProperties: string[];
+  /** Informational note when styles may not render as expected. */
+  note?: string;
 }
+
+/**
+ * CSS properties applicable to TplComponent instances (wrapper node).
+ * Studio only allows positioning, sizing, margin, opacity, and transform
+ * on component instances — padding, background, border etc. are ignored
+ * by codegen because they are not in TPL_COMPONENT_PROPS.
+ */
+const TPC_APPLICABLE_PROPS = new Set([
+  // Positioning
+  "position", "top", "left", "bottom", "right", "zIndex",
+  // Sizing
+  "width", "height", "minWidth", "maxWidth", "minHeight", "maxHeight",
+  // Margins
+  "margin", "marginTop", "marginRight", "marginBottom", "marginLeft",
+  // Flex item
+  "alignSelf", "order", "flexGrow", "flexShrink", "flexBasis",
+  // Visibility
+  "opacity", "display",
+  // Transform
+  "transform", "transformOrigin",
+  // Transition
+  "transition", "transitionProperty", "transitionDuration", "transitionTimingFunction", "transitionDelay",
+]);
 
 /**
  * Update CSS styles on a TplTag node.
@@ -2256,11 +2366,24 @@ export async function updateStyles(
     componentIid ? [componentIid] : []
   );
 
+  // For TplComponent instances, warn about properties that codegen ignores.
+  let note: string | undefined;
+  if (isKnownTplComponent(tpl)) {
+    const inapplicable = updatedProperties.filter((p) => !TPC_APPLICABLE_PROPS.has(p));
+    if (inapplicable.length > 0) {
+      note =
+        `Component instances only support positioning/sizing/margin/opacity/transform styles. ` +
+        `Properties [${inapplicable.join(", ")}] are stored but will not render. ` +
+        `To style the component's appearance, edit the component definition directly.`;
+    }
+  }
+
   return {
     save,
     nodeName: resolved.name,
     nodeUuid: resolved.uuid,
     updatedProperties,
+    ...(note ? { note } : {}),
   };
 }
 
@@ -2592,6 +2715,10 @@ export interface AddChildResult {
   slotName?: string;
   /** Non-fatal warnings (e.g., parentComponentName mismatch). */
   warnings?: string[];
+  /** Informational note about default styles that may affect rendering. */
+  note?: string;
+  /** Default style values applied by Plasmic for this element type. */
+  defaults?: Record<string, string>;
 }
 
 /**
@@ -2821,6 +2948,43 @@ function applyRegistryEnrichments(
   }
 }
 
+const BOX_TYPES = new Set(["box", "vbox", "hbox"]);
+
+/**
+ * Compute default-padding info for box-type elements.
+ * Plasmic sets padding: 8px on box/vbox/hbox by default.
+ * Returns { defaults, note? } when the child is a box type, or {} otherwise.
+ */
+function boxDefaultsInfo(child: PlasmicElement): Pick<AddChildResult, "defaults" | "note"> {
+  if (typeof child === "string" || !BOX_TYPES.has(child.type as string)) return {};
+
+  const defaults = { padding: "8px" };
+  const styles = (child as { styles?: Record<string, string> }).styles;
+  if (!styles) return { defaults };
+
+  // Parse a CSS length value to pixels (only px and rem supported).
+  const parsePx = (v: string | undefined): number | null => {
+    if (!v) return null;
+    if (v.endsWith("px")) { const n = parseFloat(v); return Number.isFinite(n) ? n : null; }
+    if (v.endsWith("rem")) { const n = parseFloat(v); return Number.isFinite(n) ? n * 16 : null; }
+    return null;
+  };
+
+  const h = parsePx(styles.height);
+  const w = parsePx(styles.width);
+  const small = (h !== null && h <= 16) || (w !== null && w <= 16);
+
+  if (small) {
+    const dim = h !== null && h <= 16 ? `height: ${styles.height}` : `width: ${styles.width}`;
+    return {
+      defaults,
+      note: `Box elements have default padding: 8px. Your ${dim} will render larger due to padding + box-sizing. Set padding: "0px" to get exact dimensions.`,
+    };
+  }
+
+  return { defaults };
+}
+
 /**
  * Add a child node to a parent container or to a named slot on a TplComponent.
  *
@@ -2971,6 +3135,7 @@ export async function addChild(
       position: position ?? "last",
       slotName,
       ...(warnings.length > 0 ? { warnings } : {}),
+      ...boxDefaultsInfo(child),
     };
   }
 
@@ -3026,6 +3191,7 @@ export async function addChild(
     newNodeUuid: newTpl?.uuid,
     position: position ?? "last",
     ...(warnings.length > 0 ? { warnings } : {}),
+    ...boxDefaultsInfo(child),
   };
 }
 
@@ -3933,6 +4099,7 @@ export interface CreateVariantGroupResult {
   groupName: string;
   type: "single" | "multi" | "toggle";
   variants: Array<{ uuid: string; name: string }>;
+  linkedState?: { name: string; uuid: string };
 }
 
 /**
@@ -3997,6 +4164,24 @@ export async function createVariantGroup(
     }
   });
 
+  // For toggle groups, capture the linked implicit state created by TplMgr
+  let linkedState: { name: string; uuid: string } | undefined;
+  if (resolvedType === "toggle" && group) {
+    const state = (component.states ?? []).find(
+      (s: any) =>
+        isKnownNamedState(s) &&
+        s.param &&
+        group.param &&
+        (s.param === group.param || s.param.uuid === group.param.uuid)
+    );
+    if (state) {
+      linkedState = {
+        name: state.param?.variable?.name ?? state.name,
+        uuid: state.param?.uuid ?? state.uuid,
+      };
+    }
+  }
+
   const componentIid = getComponentIid(component);
   const save = await saveOrAccumulate(
     apiClient,
@@ -4011,6 +4196,7 @@ export async function createVariantGroup(
     groupName: group!.param?.variable?.name ?? name,
     type: resolvedType,
     variants: createdVariants,
+    linkedState,
   };
 }
 
@@ -4022,6 +4208,7 @@ export interface SetVisibilityResult {
   nodeUuid: string;
   previousVisibility: string;
   newVisibility: string;
+  note?: string;
 }
 
 /**
@@ -4040,7 +4227,7 @@ export async function setVisibility(
   apiClient: PlasmicApiClient,
   componentUuid: string,
   nodeRef: string,
-  visible: boolean | "displayNone",
+  visible: boolean | "displayNone" | "hidden",
   variant?: string
 ): Promise<SetVisibilityResult> {
   const component = findComponent(componentUuid);
@@ -4053,6 +4240,9 @@ export async function setVisibility(
       `Node "${nodeRef}" is not a TplTag or TplComponent and cannot have visibility set.`
     );
   }
+
+  // Normalize "hidden" to "displayNone" — both mean CSS display:none
+  const normalizedVisible = visible === "hidden" ? "displayNone" : visible;
 
   const session = requireSession();
   const tplMgr = new TplMgr({ site: session.site });
@@ -4073,19 +4263,19 @@ export async function setVisibility(
     // Derive previous visibility state
     previousVisibility = deriveVisibility(vs);
 
-    if (visible === true) {
+    if (normalizedVisible === true) {
       // Visible: clear dataCond and display-none marker
       vs.dataCond = null;
       if (vs.rs?.values) {
         delete vs.rs.values["plasmic-display-none"];
       }
-    } else if (visible === false) {
+    } else if (normalizedVisible === false) {
       // Not rendered: dataCond = false, clear display-none marker
       vs.dataCond = new CustomCode({ code: "false", fallback: null });
       if (vs.rs?.values) {
         delete vs.rs.values["plasmic-display-none"];
       }
-    } else if (visible === "displayNone") {
+    } else if (normalizedVisible === "displayNone") {
       // Display none: dataCond = true + display-none marker
       vs.dataCond = new CustomCode({ code: "true", fallback: null });
       if (!vs.rs) vs.rs = new RuleSet({ values: {}, mixins: [], animations: null });
@@ -4095,11 +4285,16 @@ export async function setVisibility(
   });
 
   const newVisibility =
-    visible === true
+    normalizedVisible === true
       ? "visible"
-      : visible === false
+      : normalizedVisible === false
         ? "notRendered"
         : "displayNone";
+
+  const note =
+    normalizedVisible === false
+      ? 'Element will not be rendered (removed from DOM). If you want to hide it via CSS (display:none) while keeping it in the DOM, use visible: "hidden" instead.'
+      : undefined;
 
   const componentIid = getComponentIid(component);
   const variantLabel = resolvedVariant
@@ -4118,6 +4313,7 @@ export async function setVisibility(
     nodeUuid: resolved.uuid,
     previousVisibility,
     newVisibility,
+    note,
   };
 }
 
@@ -5677,7 +5873,7 @@ export interface AddInteractionResult {
 /**
  * Build NameArg[] for the given action and user-provided args.
  */
-function buildActionArgs(actionName: string, args: Record<string, string>): any[] {
+function buildActionArgs(actionName: string, args: Record<string, string>, component?: any): any[] {
   const nameArgs: any[] = [];
 
   switch (actionName) {
@@ -5696,15 +5892,49 @@ function buildActionArgs(actionName: string, args: Record<string, string>): any[
     }
 
     case "updateVariable": {
-      const stateName = args.variable ?? args.state;
+      let stateName = args.variable ?? args.state;
       if (!stateName) {
         throw new Error('Action "updateVariable" requires a "variable" (or "state") arg with the state name.');
       }
-      const value = args.value;
+
+      // Resolve variant group name/UUID to linked implicit state (Gap #33)
+      if (component) {
+        const existingState = findState(component, stateName);
+        if (!existingState) {
+          const group = (component.variantGroups ?? []).find(
+            (g: any) =>
+              g.param?.variable?.name === stateName ||
+              g.uuid === stateName
+          );
+          if (group) {
+            const linked = (component.states ?? []).find(
+              (s: any) =>
+                isKnownNamedState(s) &&
+                s.param &&
+                group.param &&
+                (s.param === group.param || s.param.uuid === group.param.uuid)
+            );
+            if (linked) {
+              stateName = linked.param?.variable?.name ?? linked.name;
+            } else {
+              throw new Error(
+                `Variant group "${stateName}" was found but has no linked implicit state. Use the state variable name directly.`
+              );
+            }
+          }
+        }
+      }
+
+      const operation = args.operation ?? "newValue";
+
+      // Auto-generate toggle value when operation is "toggle" (Gap #39)
+      let value = args.value;
+      if (operation === "toggle" && (value === undefined || value === null || value === "")) {
+        value = `!$state.${stateName}`;
+      }
       if (value === undefined) {
         throw new Error('Action "updateVariable" requires a "value" arg with the new value expression.');
       }
-      const operation = args.operation ?? "newValue";
 
       nameArgs.push(new NameArg({
         name: "variable",
@@ -5726,11 +5956,12 @@ function buildActionArgs(actionName: string, args: Record<string, string>): any[
       if (!code) {
         throw new Error('Action "customFunction" requires a "code" (or "customFunction") arg.');
       }
+      const normalizedCode = normalizeCustomFunctionCode(code);
       nameArgs.push(new NameArg({
         name: "customFunction",
         expr: new FunctionExpr({
           argNames: ["$steps"],
-          bodyExpr: new CustomCode({ code, fallback: null }),
+          bodyExpr: new CustomCode({ code: normalizedCode, fallback: null }),
         }),
       }));
       break;
@@ -5786,8 +6017,8 @@ export async function addInteraction(
   const tplMgr = new TplMgr({ site: session.site });
   const tracker = getChangeTracker();
 
-  // Build NameArgs for the action
-  const nameArgs = buildActionArgs(resolvedAction, args ?? {});
+  // Build NameArgs for the action (pass component for variant group resolution)
+  const nameArgs = buildActionArgs(resolvedAction, args ?? {}, component);
 
   // Generate a default interaction name if not provided
   const defaultName = interactionName ?? `${event} → ${resolvedAction}`;
@@ -5996,11 +6227,11 @@ export async function updateInteraction(
       const resolvedAction = resolveActionName(updates.actionName);
       interaction.actionName = resolvedAction;
       // When changing action, args must be provided for the new action
-      const newArgs = buildActionArgs(resolvedAction, updates.args ?? {});
+      const newArgs = buildActionArgs(resolvedAction, updates.args ?? {}, component);
       interaction.args = newArgs;
     } else if (updates.args !== undefined) {
       // Rebuild args for the current action with new values
-      const newArgs = buildActionArgs(interaction.actionName, updates.args);
+      const newArgs = buildActionArgs(interaction.actionName, updates.args, component);
       interaction.args = newArgs;
     }
 

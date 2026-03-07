@@ -1083,6 +1083,76 @@ describe("edit-tools", () => {
       expect(result.variants).toEqual([{ uuid: "auto-var-uuid", name: "isActive" }]);
     });
 
+    it("returns linkedState for toggle groups when implicit state exists", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      // Shared param links the group and its implicit state
+      const sharedParam = { uuid: "param-uuid", variable: { name: "isActive" } };
+      const autoVariant = { uuid: "auto-var-uuid", name: "isActive" };
+      const mockGroup = {
+        uuid: "group-uuid",
+        param: sharedParam,
+        variants: [autoVariant],
+      };
+
+      // Simulate TplMgr creating an implicit state linked to the group
+      (comp as any).states = [{
+        _type: "NamedState",
+        name: "isActive",
+        param: sharedParam,
+        uuid: "state-uuid",
+      }];
+
+      setupSession(comp);
+      mockCreateVariantGroup.mockReturnValue(mockGroup);
+
+      const result = await createVariantGroup(api, "comp-1", "isActive", "toggle");
+
+      expect(result.type).toBe("toggle");
+      expect(result.linkedState).toBeDefined();
+      expect(result.linkedState!.name).toBe("isActive");
+      expect(result.linkedState!.uuid).toBe("param-uuid");
+    });
+
+    it("returns undefined linkedState for non-toggle groups", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+      setupSession(comp);
+
+      const mockGroup = {
+        uuid: "group-uuid",
+        param: { variable: { name: "Size" } },
+        variants: [],
+      };
+      mockCreateVariantGroup.mockReturnValue(mockGroup);
+
+      const result = await createVariantGroup(api, "comp-1", "Size", "single");
+
+      expect(result.type).toBe("single");
+      expect(result.linkedState).toBeUndefined();
+    });
+
+    it("returns undefined linkedState when toggle group has no matching state", async () => {
+      const root = mkTag({ uuid: "root-1" });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+      (comp as any).states = [];
+      setupSession(comp);
+
+      const autoVariant = { uuid: "auto-var-uuid", name: "isOpen" };
+      const mockGroup = {
+        uuid: "group-uuid",
+        param: { uuid: "param-uuid", variable: { name: "isOpen" } },
+        variants: [autoVariant],
+      };
+      mockCreateVariantGroup.mockReturnValue(mockGroup);
+
+      const result = await createVariantGroup(api, "comp-1", "isOpen", "toggle");
+
+      expect(result.type).toBe("toggle");
+      expect(result.linkedState).toBeUndefined();
+    });
+
     it("creates initial variants when provided", async () => {
       const root = mkTag({ uuid: "root-1" });
       const comp = mkComponent({ uuid: "comp-1", tplTree: root });
