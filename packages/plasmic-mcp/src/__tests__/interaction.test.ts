@@ -306,7 +306,7 @@ describe("addInteraction", () => {
     const codeArg = interaction.args.find((a: any) => a.name === "customFunction");
     expect(codeArg.expr._type).toBe("FunctionExpr");
     expect(codeArg.expr.bodyExpr._type).toBe("CustomCode");
-    expect(codeArg.expr.bodyExpr.code).toBe("alert('hello')");
+    expect(codeArg.expr.bodyExpr.code).toBe('alert("hello")');
   });
 
   it("appends to existing EventHandler interactions", async () => {
@@ -473,6 +473,81 @@ describe("addInteraction", () => {
     await expect(
       addInteraction(api, "comp-1", "root-1", "onClick", "customFunction", {})
     ).rejects.toThrow(/code/);
+  });
+
+  // --- Gap #38: customFunction validation and single-quote normalization ---
+
+  it("rejects syntactically invalid customFunction code", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {};
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      addInteraction(api, "comp-1", "root-1", "onClick", "runCode", { code: "if (true) {" })
+    ).rejects.toThrow(/Invalid customFunction code/);
+  });
+
+  it("normalizes single-quoted strings in customFunction to double quotes", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {};
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await addInteraction(
+      api, "comp-1", "root-1", "onClick", "runCode",
+      { code: "console.log('hello')" }
+    );
+
+    const interaction = root.vsettings[0].attrs.onClick.interactions[0];
+    const codeArg = interaction.args.find((a: any) => a.name === "customFunction");
+    expect(codeArg.expr.bodyExpr.code).toBe('console.log("hello")');
+  });
+
+  it("preserves template literals with single quotes in customFunction", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {};
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const code = "console.log(`it's a test`)";
+    await addInteraction(
+      api, "comp-1", "root-1", "onClick", "runCode",
+      { code }
+    );
+
+    const interaction = root.vsettings[0].attrs.onClick.interactions[0];
+    const codeArg = interaction.args.find((a: any) => a.name === "customFunction");
+    expect(codeArg.expr.bodyExpr.code).toBe(code);
+  });
+
+  it("passes double-quoted strings through customFunction without normalization", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {};
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const code = 'alert("hello")';
+    await addInteraction(
+      api, "comp-1", "root-1", "onClick", "runCode",
+      { code }
+    );
+
+    const interaction = root.vsettings[0].attrs.onClick.interactions[0];
+    const codeArg = interaction.args.find((a: any) => a.name === "customFunction");
+    expect(codeArg.expr.bodyExpr.code).toBe(code);
   });
 
   // --- Gap #33: Variant group name resolution in updateVariable ---

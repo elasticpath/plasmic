@@ -188,6 +188,79 @@ function validateJsExpression(code: string): void {
   }
 }
 
+/**
+ * Walk an acorn AST, calling visitor on every node.
+ */
+function walkAstNodes(node: any, visitor: (n: any) => void): void {
+  if (!node || typeof node !== "object") return;
+  visitor(node);
+  for (const key of Object.keys(node)) {
+    if (key === "type" || key === "start" || key === "end" || key === "raw" || key === "value") continue;
+    const child = (node as Record<string, any>)[key];
+    if (Array.isArray(child)) {
+      for (const item of child) {
+        if (item && typeof item === "object" && item.type) {
+          walkAstNodes(item, visitor);
+        }
+      }
+    } else if (child && typeof child === "object" && child.type) {
+      walkAstNodes(child, visitor);
+    }
+  }
+}
+
+/**
+ * Validate and normalize customFunction code.
+ *
+ * 1. Validates that the code is a valid JS expression (acorn parse).
+ * 2. Normalizes single-quoted string literals to double-quoted —
+ *    Plasmic codegen does not reliably handle single quotes (HTTP 500).
+ */
+function normalizeCustomFunctionCode(code: string): string {
+  let ast: acorn.Node;
+  try {
+    ast = acorn.parseExpressionAt(code, 0, { ecmaVersion: 2020 });
+    const remaining = code.slice(ast.end).trim();
+    if (remaining.length > 0) {
+      throw new Error(
+        `Unexpected content after expression at position ${ast.end}: "${remaining}"`
+      );
+    }
+  } catch (err: any) {
+    throw new Error(
+      `Invalid customFunction code: ${err.message}. ` +
+      `The code must be a valid JS expression (e.g., alert("hello") or (() => { /* statements */ })()).`
+    );
+  }
+
+  // Collect single-quoted string literals and their double-quoted replacements.
+  const replacements: Array<{ start: number; end: number; replacement: string }> = [];
+  walkAstNodes(ast, (n: any) => {
+    if (
+      n.type === "Literal" &&
+      typeof n.value === "string" &&
+      n.raw?.startsWith("'")
+    ) {
+      replacements.push({
+        start: n.start,
+        end: n.end,
+        replacement: JSON.stringify(n.value),
+      });
+    }
+  });
+
+  if (replacements.length === 0) return code;
+
+  // Apply replacements from end to start to preserve positions.
+  let result = code;
+  for (let i = replacements.length - 1; i >= 0; i--) {
+    const { start, end, replacement } = replacements[i];
+    result = result.slice(0, start) + replacement + result.slice(end);
+  }
+
+  return result;
+}
+
 const EXPR_PATTERN = /\$(state|ctx|queries|props|pageCtx)\./;
 
 /**
@@ -2192,7 +2265,32 @@ export interface UpdateStylesResult {
   nodeName?: string;
   nodeUuid: string;
   updatedProperties: string[];
+  /** Informational note when styles may not render as expected. */
+  note?: string;
 }
+
+/**
+ * CSS properties applicable to TplComponent instances (wrapper node).
+ * Studio only allows positioning, sizing, margin, opacity, and transform
+ * on component instances — padding, background, border etc. are ignored
+ * by codegen because they are not in TPL_COMPONENT_PROPS.
+ */
+const TPC_APPLICABLE_PROPS = new Set([
+  // Positioning
+  "position", "top", "left", "bottom", "right", "zIndex",
+  // Sizing
+  "width", "height", "minWidth", "maxWidth", "minHeight", "maxHeight",
+  // Margins
+  "margin", "marginTop", "marginRight", "marginBottom", "marginLeft",
+  // Flex item
+  "alignSelf", "order", "flexGrow", "flexShrink", "flexBasis",
+  // Visibility
+  "opacity", "display",
+  // Transform
+  "transform", "transformOrigin",
+  // Transition
+  "transition", "transitionProperty", "transitionDuration", "transitionTimingFunction", "transitionDelay",
+]);
 
 /**
  * Update CSS styles on a TplTag node.
@@ -2268,11 +2366,24 @@ export async function updateStyles(
     componentIid ? [componentIid] : []
   );
 
+  // For TplComponent instances, warn about properties that codegen ignores.
+  let note: string | undefined;
+  if (isKnownTplComponent(tpl)) {
+    const inapplicable = updatedProperties.filter((p) => !TPC_APPLICABLE_PROPS.has(p));
+    if (inapplicable.length > 0) {
+      note =
+        `Component instances only support positioning/sizing/margin/opacity/transform styles. ` +
+        `Properties [${inapplicable.join(", ")}] are stored but will not render. ` +
+        `To style the component's appearance, edit the component definition directly.`;
+    }
+  }
+
   return {
     save,
     nodeName: resolved.name,
     nodeUuid: resolved.uuid,
     updatedProperties,
+    ...(note ? { note } : {}),
   };
 }
 
@@ -2604,6 +2715,10 @@ export interface AddChildResult {
   slotName?: string;
   /** Non-fatal warnings (e.g., parentComponentName mismatch). */
   warnings?: string[];
+  /** Informational note about default styles that may affect rendering. */
+  note?: string;
+  /** Default style values applied by Plasmic for this element type. */
+  defaults?: Record<string, string>;
 }
 
 /**
@@ -2833,6 +2948,43 @@ function applyRegistryEnrichments(
   }
 }
 
+const BOX_TYPES = new Set(["box", "vbox", "hbox"]);
+
+/**
+ * Compute default-padding info for box-type elements.
+ * Plasmic sets padding: 8px on box/vbox/hbox by default.
+ * Returns { defaults, note? } when the child is a box type, or {} otherwise.
+ */
+function boxDefaultsInfo(child: PlasmicElement): Pick<AddChildResult, "defaults" | "note"> {
+  if (typeof child === "string" || !BOX_TYPES.has(child.type as string)) return {};
+
+  const defaults = { padding: "8px" };
+  const styles = (child as { styles?: Record<string, string> }).styles;
+  if (!styles) return { defaults };
+
+  // Parse a CSS length value to pixels (only px and rem supported).
+  const parsePx = (v: string | undefined): number | null => {
+    if (!v) return null;
+    if (v.endsWith("px")) { const n = parseFloat(v); return Number.isFinite(n) ? n : null; }
+    if (v.endsWith("rem")) { const n = parseFloat(v); return Number.isFinite(n) ? n * 16 : null; }
+    return null;
+  };
+
+  const h = parsePx(styles.height);
+  const w = parsePx(styles.width);
+  const small = (h !== null && h <= 16) || (w !== null && w <= 16);
+
+  if (small) {
+    const dim = h !== null && h <= 16 ? `height: ${styles.height}` : `width: ${styles.width}`;
+    return {
+      defaults,
+      note: `Box elements have default padding: 8px. Your ${dim} will render larger due to padding + box-sizing. Set padding: "0px" to get exact dimensions.`,
+    };
+  }
+
+  return { defaults };
+}
+
 /**
  * Add a child node to a parent container or to a named slot on a TplComponent.
  *
@@ -2983,6 +3135,7 @@ export async function addChild(
       position: position ?? "last",
       slotName,
       ...(warnings.length > 0 ? { warnings } : {}),
+      ...boxDefaultsInfo(child),
     };
   }
 
@@ -3038,6 +3191,7 @@ export async function addChild(
     newNodeUuid: newTpl?.uuid,
     position: position ?? "last",
     ...(warnings.length > 0 ? { warnings } : {}),
+    ...boxDefaultsInfo(child),
   };
 }
 
@@ -5802,11 +5956,12 @@ function buildActionArgs(actionName: string, args: Record<string, string>, compo
       if (!code) {
         throw new Error('Action "customFunction" requires a "code" (or "customFunction") arg.');
       }
+      const normalizedCode = normalizeCustomFunctionCode(code);
       nameArgs.push(new NameArg({
         name: "customFunction",
         expr: new FunctionExpr({
           argNames: ["$steps"],
-          bodyExpr: new CustomCode({ code, fallback: null }),
+          bodyExpr: new CustomCode({ code: normalizedCode, fallback: null }),
         }),
       }));
       break;
