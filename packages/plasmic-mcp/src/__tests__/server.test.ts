@@ -225,6 +225,10 @@ describe("tool handlers", () => {
   let mockSyncFromDevHost: ReturnType<typeof vi.fn>;
   let mockClearRegistryCache: ReturnType<typeof vi.fn>;
   let mockRecordVariantMetadataSync: ReturnType<typeof vi.fn>;
+  let mockUpdateProps: ReturnType<typeof vi.fn>;
+  let mockCaptureScreenshot: ReturnType<typeof vi.fn>;
+  let mockApplyPattern: ReturnType<typeof vi.fn>;
+  let mockListPatternsMeta: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     process.env = { ...savedEnv };
@@ -354,6 +358,10 @@ describe("tool handlers", () => {
     mockSyncFromDevHost = vi.fn().mockResolvedValue({ devHostSynced: false, syncedVariantComponents: [] });
     mockClearRegistryCache = vi.fn();
     mockRecordVariantMetadataSync = vi.fn().mockReturnValue([]);
+    mockUpdateProps = vi.fn();
+    mockCaptureScreenshot = vi.fn();
+    mockApplyPattern = vi.fn();
+    mockListPatternsMeta = vi.fn().mockReturnValue([]);
     mockBeginBatch = vi.fn();
     mockEndBatch = vi.fn();
     mockIsBatchActive = vi.fn().mockReturnValue(false);
@@ -535,6 +543,7 @@ describe("tool handlers", () => {
       removeQuery: (...args: any[]) => mockRemoveQuery(...args),
       getCodeComponentMeta: (...args: any[]) => mockGetCodeComponentMeta(...args),
       listCustomFunctions: () => mockListCustomFunctions(),
+      updateProps: (...args: any[]) => mockUpdateProps(...args),
     }));
 
     vi.doMock("../batch-manager", () => ({
@@ -563,6 +572,18 @@ describe("tool handlers", () => {
       syncFromDevHost: (...args: any[]) => mockSyncFromDevHost(...args),
       clearRegistryCache: (...args: any[]) => mockClearRegistryCache(...args),
       recordVariantMetadataSync: (...args: any[]) => mockRecordVariantMetadataSync(...args),
+    }));
+
+    vi.doMock("../headless-canvas", () => ({
+      captureScreenshot: (...args: any[]) => mockCaptureScreenshot(...args),
+    }));
+
+    vi.doMock("../patterns/registry", () => ({
+      listPatternsMeta: () => mockListPatternsMeta(),
+    }));
+
+    vi.doMock("../patterns/applier", () => ({
+      applyPattern: (...args: any[]) => mockApplyPattern(...args),
     }));
 
     vi.doMock("../tool-presence", () => ({
@@ -8046,6 +8067,422 @@ describe("tool handlers", () => {
         tokenCount: 0,
         traitCount: 1,
       });
+    });
+  });
+
+  // =====================================================================
+  // node.update-props
+  // =====================================================================
+
+  describe("node.update-props", () => {
+    it("delegates to updateProps and returns updated/removed props", async () => {
+      mockUpdateProps.mockResolvedValue({
+        save: { revisionNum: 14, incremental: true },
+        nodeName: "EPButton",
+        nodeUuid: "node-btn-1",
+        updatedProps: ["label", "variant"],
+        removedProps: ["icon"],
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "update-props",
+          componentUuid: "comp-1",
+          nodeRef: "EPButton",
+          props: { label: "Click me", variant: "primary", icon: null },
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.node).toBe("EPButton");
+      expect(output.updatedProps).toEqual(["label", "variant"]);
+      expect(output.removedProps).toEqual(["icon"]);
+      expect(output.revision).toBe(14);
+    });
+
+    it("supports dry-run mode", async () => {
+      mockUpdateProps.mockResolvedValue({
+        save: { revisionNum: 0, incremental: false },
+        nodeName: "Card",
+        nodeUuid: "node-card-1",
+        updatedProps: ["title"],
+        removedProps: [],
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "update-props",
+          componentUuid: "comp-1",
+          nodeRef: "Card",
+          props: { title: "New Title" },
+          dryRun: true,
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.dryRun).toBe(true);
+      expect(output.node).toBe("Card");
+      expect(output.updatedProps).toEqual(["title"]);
+      expect(output.message).toContain("Dry run");
+    });
+
+    it("passes variant to updateProps", async () => {
+      mockUpdateProps.mockResolvedValue({
+        save: { revisionNum: 5, incremental: true },
+        nodeName: "Hero",
+        nodeUuid: "node-hero-1",
+        updatedProps: ["size"],
+        removedProps: [],
+      });
+
+      await client.callTool({
+        name: "node",
+        arguments: {
+          action: "update-props",
+          componentUuid: "comp-1",
+          nodeRef: "Hero",
+          props: { size: "large" },
+          variant: "Mobile",
+        },
+      });
+
+      expect(mockUpdateProps).toHaveBeenCalledWith(
+        expect.anything(),
+        "comp-1",
+        "Hero",
+        { size: "large" },
+        "Mobile"
+      );
+    });
+
+    it("includes warnings when present", async () => {
+      mockUpdateProps.mockResolvedValue({
+        save: { revisionNum: 15, incremental: true },
+        nodeName: "Image",
+        nodeUuid: "node-img-1",
+        updatedProps: ["src"],
+        removedProps: [],
+        warnings: ["Value looks like a dynamic expression but was stored as literal"],
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "update-props",
+          componentUuid: "comp-1",
+          nodeRef: "Image",
+          props: { src: "$props.imageSrc" },
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.warnings).toEqual(["Value looks like a dynamic expression but was stored as literal"]);
+    });
+
+    it("returns error when updateProps fails", async () => {
+      mockUpdateProps.mockRejectedValue(
+        new Error("Node is not a TplComponent")
+      );
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "update-props",
+          componentUuid: "comp-1",
+          nodeRef: "plain-div",
+          props: { label: "hello" },
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Error node.update-props");
+    });
+  });
+
+  // =====================================================================
+  // node.apply-pattern
+  // =====================================================================
+
+  describe("node.apply-pattern", () => {
+    it("delegates to applyPattern and returns created node info", async () => {
+      mockApplyPattern.mockResolvedValue({
+        rootNodeUuid: "new-pattern-root",
+        nodesCreated: 5,
+        warnings: [],
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "apply-pattern",
+          componentUuid: "comp-1",
+          parentRef: "Container",
+          patternName: "hero-section",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy();
+      expect(output.success).toBe(true);
+      expect(output.rootNodeUuid).toBe("new-pattern-root");
+      expect(output.nodesCreated).toBe(5);
+      expect(mockInvalidateNodeCache).toHaveBeenCalledWith("comp-1");
+    });
+
+    it("passes customisations and position to applyPattern", async () => {
+      mockApplyPattern.mockResolvedValue({
+        rootNodeUuid: "new-root",
+        nodesCreated: 3,
+        warnings: [],
+      });
+
+      await client.callTool({
+        name: "node",
+        arguments: {
+          action: "apply-pattern",
+          componentUuid: "comp-1",
+          parentRef: "Main",
+          patternName: "cta-block",
+          customisations: { headingText: "Ship faster", buttonText: "Get started" },
+          position: 2,
+        },
+      });
+
+      expect(mockApplyPattern).toHaveBeenCalledWith(
+        expect.anything(),
+        "comp-1",
+        "Main",
+        "cta-block",
+        { headingText: "Ship faster", buttonText: "Get started" },
+        2
+      );
+    });
+
+    it("returns error response when pattern not found", async () => {
+      mockApplyPattern.mockResolvedValue({
+        nodesCreated: 0,
+        warnings: [],
+        error: "Pattern 'nonexistent' not found. Call listPatterns to see available patterns.",
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "apply-pattern",
+          componentUuid: "comp-1",
+          parentRef: "Container",
+          patternName: "nonexistent",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(result.isError).toBeFalsy(); // Not a protocol error — structured error in response
+      expect(output.success).toBe(false);
+      expect(output.error).toContain("not found");
+      expect(mockInvalidateNodeCache).not.toHaveBeenCalled();
+    });
+
+    it("includes warnings in response", async () => {
+      mockApplyPattern.mockResolvedValue({
+        rootNodeUuid: "root-1",
+        nodesCreated: 4,
+        warnings: ["Unknown customisation key 'typo' ignored"],
+      });
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "apply-pattern",
+          componentUuid: "comp-1",
+          parentRef: "Body",
+          patternName: "card-grid",
+          customisations: { typo: "value" },
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(output.success).toBe(true);
+      expect(output.warnings).toEqual(["Unknown customisation key 'typo' ignored"]);
+    });
+
+    it("returns error when applyPattern throws", async () => {
+      mockApplyPattern.mockRejectedValue(new Error("Parent node not found"));
+
+      const result = await client.callTool({
+        name: "node",
+        arguments: {
+          action: "apply-pattern",
+          componentUuid: "comp-1",
+          parentRef: "missing-parent",
+          patternName: "hero-section",
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Error node.apply-pattern");
+    });
+  });
+
+  // =====================================================================
+  // inspect.capture-screenshot
+  // =====================================================================
+
+  describe("inspect.capture-screenshot", () => {
+    it("returns image data and metadata on success", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        site: {
+          components: [
+            { uuid: "comp-1", name: "Homepage" },
+          ],
+        },
+        hostUrl: "http://localhost:3021",
+      });
+
+      const mockTree = { type: "tag", tag: "div", name: "root", children: [] };
+      mockReadComponentTree.mockReturnValue(mockTree);
+
+      mockCaptureScreenshot.mockResolvedValue({
+        imageData: "iVBORw0KGgoAAAANSUhEUg==",
+        width: 1280,
+        height: 800,
+      });
+
+      const result = await client.callTool({
+        name: "inspect",
+        arguments: {
+          action: "capture-screenshot",
+          componentUuid: "comp-1",
+        },
+      });
+
+      expect(result.isError).toBeFalsy();
+      // First content block is the image
+      expect(result.content[0].type).toBe("image");
+      expect(result.content[0].data).toBe("iVBORw0KGgoAAAANSUhEUg==");
+      expect(result.content[0].mimeType).toBe("image/png");
+      // Second content block is metadata
+      const meta = JSON.parse(result.content[1].text);
+      expect(meta.component).toBe("Homepage");
+      expect(meta.componentUuid).toBe("comp-1");
+      expect(meta.width).toBe(1280);
+      expect(meta.height).toBe(800);
+
+      expect(mockCaptureScreenshot).toHaveBeenCalledWith({
+        devHostUrl: "http://localhost:3021",
+        componentName: "Homepage",
+        tree: mockTree,
+      });
+    });
+
+    it("returns error when componentUuid is missing", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        site: { components: [] },
+      });
+
+      const result = await client.callTool({
+        name: "inspect",
+        arguments: {
+          action: "capture-screenshot",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(output.error).toContain("componentUuid is required");
+    });
+
+    it("returns error when component not found", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        site: { components: [] },
+        hostUrl: "http://localhost:3021",
+      });
+
+      const result = await client.callTool({
+        name: "inspect",
+        arguments: {
+          action: "capture-screenshot",
+          componentUuid: "nonexistent-uuid",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(output.error).toContain("not found");
+    });
+
+    it("returns error when no dev host URL configured", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        site: {
+          components: [{ uuid: "comp-1", name: "Page" }],
+        },
+        // hostUrl intentionally omitted
+      });
+
+      const result = await client.callTool({
+        name: "inspect",
+        arguments: {
+          action: "capture-screenshot",
+          componentUuid: "comp-1",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(output.error).toContain("No dev host URL configured");
+    });
+
+    it("returns error when component has no template tree", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        site: {
+          components: [{ uuid: "comp-1", name: "EmptyComp" }],
+        },
+        hostUrl: "http://localhost:3021",
+      });
+
+      mockReadComponentTree.mockReturnValue(null);
+
+      const result = await client.callTool({
+        name: "inspect",
+        arguments: {
+          action: "capture-screenshot",
+          componentUuid: "comp-1",
+        },
+      });
+
+      const output = parseResponse(result);
+      expect(output.error).toContain("no template tree");
+    });
+
+    it("returns error when captureScreenshot throws", async () => {
+      mockRequireSession.mockReturnValue({
+        projectId: "proj-123",
+        site: {
+          components: [{ uuid: "comp-1", name: "Page" }],
+        },
+        hostUrl: "http://localhost:3021",
+      });
+
+      mockReadComponentTree.mockReturnValue({ type: "tag", tag: "div", children: [] });
+      mockCaptureScreenshot.mockRejectedValue(new Error("Playwright not installed"));
+
+      const result = await client.callTool({
+        name: "inspect",
+        arguments: {
+          action: "capture-screenshot",
+          componentUuid: "comp-1",
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Playwright not installed");
     });
   });
 });
