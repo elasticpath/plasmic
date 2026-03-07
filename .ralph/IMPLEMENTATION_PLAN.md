@@ -11,7 +11,7 @@
 |----------|-------|
 | Specs | 5 |
 | Items to implement | 7 (across 5 specs) |
-| Completed | 2 (Gap #33, Gap #39) |
+| Completed | 3 (Gap #33, Gap #34, Gap #39) |
 
 ---
 
@@ -20,7 +20,7 @@
 | Spec | Gaps | Priority | Status |
 |------|------|----------|--------|
 | `toggle-variant-state-linking.md` | #33 | P0 Critical | COMPLETE |
-| `visibility-api-polish.md` | #34 | P1 Major | NOT STARTED |
+| `visibility-api-polish.md` | #34 | P1 Major | COMPLETE |
 | `batch-architecture-research.md` | #35 | P1 Major | RESEARCH COMPLETE — ready to implement |
 | `interaction-improvements.md` | #38, #39 | P2 Medium | #39 COMPLETE, #38 NOT STARTED |
 | `element-styling-dx.md` | #36, #37 | P2 Medium | NOT STARTED |
@@ -51,35 +51,22 @@
 
 ## P1 — High Priority
 
-### 2. Visibility API Polish (Gap #34)
+### 2. Visibility API Polish (Gap #34) — COMPLETE
 
 - **Spec:** `.ralph/specs/visibility-api-polish.md`
-- **Status:** NOT STARTED (confirmed via code analysis — zero implementation)
+- **Status:** COMPLETE
 - **Scope:** S
-- **Dependencies:** None
 
-**Code locations (verified):**
-- `server.ts:2594` — Zod schema: `z.union([z.boolean(), z.literal("displayNone")])` — missing `z.literal("hidden")`
-- `edit-tools.ts:4019-4025` — `SetVisibilityResult` interface (missing `note`)
-- `edit-tools.ts:4039-4122` — `setVisibility()` function
-  - Line 4043: signature accepts `boolean | "displayNone"` only — no `"hidden"`
-  - Lines 4076-4094: three branches handle true/false/"displayNone" — no "hidden" case
-  - Lines 4115-4121: return block — no `note` field
-- `server.ts:2557` — tool description (only shows `visible:false` example, doesn't document all states)
-
-**Tasks:**
-1. Add `z.literal("hidden")` to Zod union at line 2594 and update `.describe()` text
-2. Add `note?: string` to `SetVisibilityResult` interface at line 4019
-3. Update function signature (line 4043) to accept `boolean | "displayNone" | "hidden"`
-4. Accept `"hidden"` in function body, normalize to `"displayNone"` before processing
-5. When `visible === false`, set `note` explaining notRendered vs hidden distinction
-6. Update tool description at line 2557 to document all three states
-
-**Tests (node.test.ts — 10 existing visibility tests at lines 5136-5335):**
-- Test: `visible: "hidden"` maps to displayNone behavior
-- Test: `visible: false` returns informational `note`
-- Test: `visible: true` returns no `note`
-- Existing true/false/displayNone tests unchanged (backward compat)
+**Summary of changes:**
+- Added `z.literal("hidden")` to Zod union in server.ts and updated `.describe()` to document all three visibility states
+- Added `note?: string` to `SetVisibilityResult` interface
+- Updated `setVisibility()` function signature to accept `boolean | "displayNone" | "hidden"`
+- Added early normalization: `"hidden"` → `"displayNone"` before processing (uses same code path)
+- When `visible === false`, returns informational `note` explaining notRendered vs hidden distinction
+- Updated tool description to show `"hidden"` as the recommended value for responsive hiding
+- Server response includes `note` field when present (both dry-run and normal paths)
+- Added 4 tests in node.test.ts: hidden alias maps to displayNone, false returns note, true returns no note, displayNone returns no note
+- All 298 existing tests pass unchanged (backward compatible)
 
 ---
 
@@ -241,7 +228,7 @@ Phase 1 (P0):
     ├──→ Gap #39 (toggle auto-value)    ████████████████████  COMPLETE
     │
 Phase 2 (P1, parallel with Phase 1):
-  Gap #34 (visibility polish)           ░░░░░░░░░░░░░░░░░░░░  NOT STARTED
+  Gap #34 (visibility polish)           ████████████████████  COMPLETE
   Gap #35 (batch micro-batch impl)      ░░░░░░░░░░░░░░░░░░░░  NOT STARTED (research done)
     │
 Phase 3 (P2, parallel after Phase 1):

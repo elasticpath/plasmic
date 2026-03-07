@@ -4042,6 +4042,7 @@ export interface SetVisibilityResult {
   nodeUuid: string;
   previousVisibility: string;
   newVisibility: string;
+  note?: string;
 }
 
 /**
@@ -4060,7 +4061,7 @@ export async function setVisibility(
   apiClient: PlasmicApiClient,
   componentUuid: string,
   nodeRef: string,
-  visible: boolean | "displayNone",
+  visible: boolean | "displayNone" | "hidden",
   variant?: string
 ): Promise<SetVisibilityResult> {
   const component = findComponent(componentUuid);
@@ -4073,6 +4074,9 @@ export async function setVisibility(
       `Node "${nodeRef}" is not a TplTag or TplComponent and cannot have visibility set.`
     );
   }
+
+  // Normalize "hidden" to "displayNone" — both mean CSS display:none
+  const normalizedVisible = visible === "hidden" ? "displayNone" : visible;
 
   const session = requireSession();
   const tplMgr = new TplMgr({ site: session.site });
@@ -4093,19 +4097,19 @@ export async function setVisibility(
     // Derive previous visibility state
     previousVisibility = deriveVisibility(vs);
 
-    if (visible === true) {
+    if (normalizedVisible === true) {
       // Visible: clear dataCond and display-none marker
       vs.dataCond = null;
       if (vs.rs?.values) {
         delete vs.rs.values["plasmic-display-none"];
       }
-    } else if (visible === false) {
+    } else if (normalizedVisible === false) {
       // Not rendered: dataCond = false, clear display-none marker
       vs.dataCond = new CustomCode({ code: "false", fallback: null });
       if (vs.rs?.values) {
         delete vs.rs.values["plasmic-display-none"];
       }
-    } else if (visible === "displayNone") {
+    } else if (normalizedVisible === "displayNone") {
       // Display none: dataCond = true + display-none marker
       vs.dataCond = new CustomCode({ code: "true", fallback: null });
       if (!vs.rs) vs.rs = new RuleSet({ values: {}, mixins: [], animations: null });
@@ -4115,11 +4119,16 @@ export async function setVisibility(
   });
 
   const newVisibility =
-    visible === true
+    normalizedVisible === true
       ? "visible"
-      : visible === false
+      : normalizedVisible === false
         ? "notRendered"
         : "displayNone";
+
+  const note =
+    normalizedVisible === false
+      ? 'Element will not be rendered (removed from DOM). If you want to hide it via CSS (display:none) while keeping it in the DOM, use visible: "hidden" instead.'
+      : undefined;
 
   const componentIid = getComponentIid(component);
   const variantLabel = resolvedVariant
@@ -4138,6 +4147,7 @@ export async function setVisibility(
     nodeUuid: resolved.uuid,
     previousVisibility,
     newVisibility,
+    note,
   };
 }
 
