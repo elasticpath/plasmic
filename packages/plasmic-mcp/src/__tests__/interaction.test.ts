@@ -474,6 +474,238 @@ describe("addInteraction", () => {
       addInteraction(api, "comp-1", "root-1", "onClick", "customFunction", {})
     ).rejects.toThrow(/code/);
   });
+
+  // --- Gap #33: Variant group name resolution in updateVariable ---
+
+  it("resolves variant group name to linked implicit state in updateVariable", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {};
+
+    // Shared param links the variant group and its implicit state
+    const sharedParam = { uuid: "param-uuid", variable: { name: "menuOpen" } };
+
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).variantGroups = [{
+      uuid: "group-uuid",
+      param: sharedParam,
+      variants: [{ uuid: "v1", name: "Menu Open" }],
+    }];
+    (comp as any).states = [{
+      _type: "NamedState",
+      name: "menuOpen",
+      param: sharedParam,
+      uuid: "state-uuid",
+    }];
+
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await addInteraction(
+      api, "comp-1", "root-1", "onClick", "updateVariable",
+      { variable: "menuOpen", value: "!$state.menuOpen", operation: "toggle" }
+    );
+
+    expect(result.actionName).toBe("updateVariable");
+    const handler = root.vsettings[0].attrs.onClick;
+    const varArg = handler.interactions[0].args.find((a: any) => a.name === "variable");
+    expect(varArg.expr._type).toBe("ObjectPath");
+    // State name match takes priority — resolves directly to state name
+    expect(varArg.expr.path).toEqual(["$state", "menuOpen"]);
+  });
+
+  it("resolves variant group name when no state with that name exists", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {};
+
+    // Group param name is "menuOpen" — this is what the user sees and passes
+    const sharedParam = { uuid: "param-uuid", variable: { name: "menuOpen" } };
+
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).variantGroups = [{
+      uuid: "group-uuid",
+      param: sharedParam,
+      variants: [{ uuid: "v1", name: "menuOpen" }],
+    }];
+    // State has a DIFFERENT .name than the group param variable name,
+    // so findState("menuOpen") won't match, forcing group resolution
+    (comp as any).states = [{
+      _type: "NamedState",
+      name: "implicitMenuOpen",
+      param: sharedParam,
+      uuid: "state-uuid",
+    }];
+
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    // Pass the group param variable name "menuOpen"
+    // findState("menuOpen") fails (state.name is "implicitMenuOpen")
+    // Group resolution finds group (param.variable.name === "menuOpen")
+    // Linked state found (same param) → resolves to param.variable.name = "menuOpen"
+    const result = await addInteraction(
+      api, "comp-1", "root-1", "onClick", "updateVariable",
+      { variable: "menuOpen", value: "!$state.menuOpen", operation: "toggle" }
+    );
+
+    expect(result.actionName).toBe("updateVariable");
+    const handler = root.vsettings[0].attrs.onClick;
+    const varArg = handler.interactions[0].args.find((a: any) => a.name === "variable");
+    expect(varArg.expr.path).toEqual(["$state", "menuOpen"]);
+  });
+
+  it("resolves variant group UUID to linked implicit state", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {};
+
+    const sharedParam = { uuid: "param-uuid", variable: { name: "isExpanded" } };
+
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).variantGroups = [{
+      uuid: "group-uuid-123",
+      param: sharedParam,
+      variants: [{ uuid: "v1", name: "isExpanded" }],
+    }];
+    (comp as any).states = [{
+      _type: "NamedState",
+      name: "isExpanded",
+      param: sharedParam,
+      uuid: "state-uuid",
+    }];
+
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await addInteraction(
+      api, "comp-1", "root-1", "onClick", "updateVariable",
+      { variable: "group-uuid-123", value: "true" }
+    );
+
+    expect(result.actionName).toBe("updateVariable");
+    const handler = root.vsettings[0].attrs.onClick;
+    const varArg = handler.interactions[0].args.find((a: any) => a.name === "variable");
+    expect(varArg.expr.path).toEqual(["$state", "isExpanded"]);
+  });
+
+  it("throws when variant group has no linked state", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {};
+
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).variantGroups = [{
+      uuid: "group-uuid",
+      param: { uuid: "orphan-param", variable: { name: "Orphan" } },
+      variants: [],
+    }];
+    (comp as any).states = [];
+
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      addInteraction(api, "comp-1", "root-1", "onClick", "updateVariable",
+        { variable: "Orphan", value: "true" })
+    ).rejects.toThrow(/no linked implicit state/);
+  });
+
+  it("state name match takes priority over variant group name", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {};
+
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    // Both a state and a variant group named "isOpen"
+    (comp as any).states = [{
+      _type: "NamedState",
+      name: "isOpen",
+      param: { uuid: "state-param", variable: { name: "isOpen" } },
+    }];
+    (comp as any).variantGroups = [{
+      uuid: "group-uuid",
+      param: { uuid: "group-param", variable: { name: "isOpen" } },
+      variants: [{ uuid: "v1", name: "isOpen" }],
+    }];
+
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await addInteraction(
+      api, "comp-1", "root-1", "onClick", "updateVariable",
+      { variable: "isOpen", value: "true" }
+    );
+
+    // Should use the state name directly (state takes priority over group)
+    const handler = root.vsettings[0].attrs.onClick;
+    const varArg = handler.interactions[0].args.find((a: any) => a.name === "variable");
+    expect(varArg.expr.path).toEqual(["$state", "isOpen"]);
+  });
+
+  // --- Gap #39: Toggle auto-value ---
+
+  it("auto-generates toggle value when operation is toggle and no value provided", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {};
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await addInteraction(
+      api, "comp-1", "root-1", "onClick", "updateVariable",
+      { variable: "isOpen", operation: "toggle" }
+    );
+
+    expect(result.actionName).toBe("updateVariable");
+    const handler = root.vsettings[0].attrs.onClick;
+    const interaction = handler.interactions[0];
+    const valueArg = interaction.args.find((a: any) => a.name === "value");
+    expect(valueArg.expr._type).toBe("CustomCode");
+    expect(valueArg.expr.code).toBe("!$state.isOpen");
+  });
+
+  it("uses explicit value for toggle when provided", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {};
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await addInteraction(
+      api, "comp-1", "root-1", "onClick", "updateVariable",
+      { variable: "isOpen", operation: "toggle", value: "!$state.isOpen || someCondition" }
+    );
+
+    const handler = root.vsettings[0].attrs.onClick;
+    const interaction = handler.interactions[0];
+    const valueArg = interaction.args.find((a: any) => a.name === "value");
+    expect(valueArg.expr.code).toBe("!$state.isOpen || someCondition");
+  });
+
+  it("still requires value for non-toggle operations", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {};
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      addInteraction(api, "comp-1", "root-1", "onClick", "updateVariable",
+        { variable: "counter", operation: "newValue" })
+    ).rejects.toThrow(/value/);
+  });
 });
 
 // =============================================================================

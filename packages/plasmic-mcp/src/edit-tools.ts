@@ -3933,6 +3933,7 @@ export interface CreateVariantGroupResult {
   groupName: string;
   type: "single" | "multi" | "toggle";
   variants: Array<{ uuid: string; name: string }>;
+  linkedState?: { name: string; uuid: string };
 }
 
 /**
@@ -3997,6 +3998,24 @@ export async function createVariantGroup(
     }
   });
 
+  // For toggle groups, capture the linked implicit state created by TplMgr
+  let linkedState: { name: string; uuid: string } | undefined;
+  if (resolvedType === "toggle" && group) {
+    const state = (component.states ?? []).find(
+      (s: any) =>
+        isKnownNamedState(s) &&
+        s.param &&
+        group.param &&
+        (s.param === group.param || s.param.uuid === group.param.uuid)
+    );
+    if (state) {
+      linkedState = {
+        name: state.param?.variable?.name ?? state.name,
+        uuid: state.param?.uuid ?? state.uuid,
+      };
+    }
+  }
+
   const componentIid = getComponentIid(component);
   const save = await saveOrAccumulate(
     apiClient,
@@ -4011,6 +4030,7 @@ export async function createVariantGroup(
     groupName: group!.param?.variable?.name ?? name,
     type: resolvedType,
     variants: createdVariants,
+    linkedState,
   };
 }
 
@@ -5677,7 +5697,7 @@ export interface AddInteractionResult {
 /**
  * Build NameArg[] for the given action and user-provided args.
  */
-function buildActionArgs(actionName: string, args: Record<string, string>): any[] {
+function buildActionArgs(actionName: string, args: Record<string, string>, component?: any): any[] {
   const nameArgs: any[] = [];
 
   switch (actionName) {
@@ -5696,15 +5716,49 @@ function buildActionArgs(actionName: string, args: Record<string, string>): any[
     }
 
     case "updateVariable": {
-      const stateName = args.variable ?? args.state;
+      let stateName = args.variable ?? args.state;
       if (!stateName) {
         throw new Error('Action "updateVariable" requires a "variable" (or "state") arg with the state name.');
       }
-      const value = args.value;
+
+      // Resolve variant group name/UUID to linked implicit state (Gap #33)
+      if (component) {
+        const existingState = findState(component, stateName);
+        if (!existingState) {
+          const group = (component.variantGroups ?? []).find(
+            (g: any) =>
+              g.param?.variable?.name === stateName ||
+              g.uuid === stateName
+          );
+          if (group) {
+            const linked = (component.states ?? []).find(
+              (s: any) =>
+                isKnownNamedState(s) &&
+                s.param &&
+                group.param &&
+                (s.param === group.param || s.param.uuid === group.param.uuid)
+            );
+            if (linked) {
+              stateName = linked.param?.variable?.name ?? linked.name;
+            } else {
+              throw new Error(
+                `Variant group "${stateName}" was found but has no linked implicit state. Use the state variable name directly.`
+              );
+            }
+          }
+        }
+      }
+
+      const operation = args.operation ?? "newValue";
+
+      // Auto-generate toggle value when operation is "toggle" (Gap #39)
+      let value = args.value;
+      if (operation === "toggle" && (value === undefined || value === null || value === "")) {
+        value = `!$state.${stateName}`;
+      }
       if (value === undefined) {
         throw new Error('Action "updateVariable" requires a "value" arg with the new value expression.');
       }
-      const operation = args.operation ?? "newValue";
 
       nameArgs.push(new NameArg({
         name: "variable",
@@ -5786,8 +5840,8 @@ export async function addInteraction(
   const tplMgr = new TplMgr({ site: session.site });
   const tracker = getChangeTracker();
 
-  // Build NameArgs for the action
-  const nameArgs = buildActionArgs(resolvedAction, args ?? {});
+  // Build NameArgs for the action (pass component for variant group resolution)
+  const nameArgs = buildActionArgs(resolvedAction, args ?? {}, component);
 
   // Generate a default interaction name if not provided
   const defaultName = interactionName ?? `${event} → ${resolvedAction}`;
@@ -5996,11 +6050,11 @@ export async function updateInteraction(
       const resolvedAction = resolveActionName(updates.actionName);
       interaction.actionName = resolvedAction;
       // When changing action, args must be provided for the new action
-      const newArgs = buildActionArgs(resolvedAction, updates.args ?? {});
+      const newArgs = buildActionArgs(resolvedAction, updates.args ?? {}, component);
       interaction.args = newArgs;
     } else if (updates.args !== undefined) {
       // Rebuild args for the current action with new values
-      const newArgs = buildActionArgs(interaction.actionName, updates.args);
+      const newArgs = buildActionArgs(interaction.actionName, updates.args, component);
       interaction.args = newArgs;
     }
 
