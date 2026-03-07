@@ -11,7 +11,7 @@
 |----------|-------|
 | Specs | 5 |
 | Items to implement | 7 (across 5 specs) |
-| Completed | 3 (Gap #33, Gap #34, Gap #39) |
+| Completed | 4 (Gap #33, Gap #34, Gap #35, Gap #39) |
 
 ---
 
@@ -21,7 +21,7 @@
 |------|------|----------|--------|
 | `toggle-variant-state-linking.md` | #33 | P0 Critical | COMPLETE |
 | `visibility-api-polish.md` | #34 | P1 Major | COMPLETE |
-| `batch-architecture-research.md` | #35 | P1 Major | RESEARCH COMPLETE — ready to implement |
+| `batch-architecture-research.md` | #35 | P1 Major | COMPLETE |
 | `interaction-improvements.md` | #38, #39 | P2 Medium | #39 COMPLETE, #38 NOT STARTED |
 | `element-styling-dx.md` | #36, #37 | P2 Medium | NOT STARTED |
 
@@ -70,51 +70,29 @@
 
 ---
 
-### 3. Batch Architecture Research & Redesign (Gap #35)
+### 3. Batch Architecture Research & Redesign (Gap #35) — COMPLETE
 
 - **Spec:** `.ralph/specs/batch-architecture-research.md`
-- **Status:** RESEARCH COMPLETE — ready to implement Implicit Micro-Batch architecture
-- **Scope:** M-L (implementation only — research done)
-- **Dependencies:** None (but impacts all mutation tools)
+- **Status:** COMPLETE
+- **Scope:** M-L
 
-**Code locations (verified):**
-- `batch-manager.ts` — entire file (236 lines)
-  - Lines 30-35: `BatchState` interface
-  - Lines 98-115: `accumulateChanges()` — merges without isolation
-  - Lines 121-171: `endBatch()` — all-or-nothing save
-  - Lines 191-209: `cancelBatchWithRollback()` — reverts ALL accumulated changes
-- `server.ts:290-300` — `handleMutationError` (cancels entire batch on any error, no per-call handling)
-- `edit-tools.ts:1083-1127` — `saveOrAccumulate()` (routes to batch or immediate save, no `callId` parameter, no micro-batch routing)
-- `undo-manager.ts` — full undo stack (MAX_UNDO_DEPTH=50, push/pop/replace)
-- `rebase-engine.ts:120-259` — handles mixed batch + undo stack rebase
-
-**Confirmed gaps:**
-- `micro-batch.ts` file DOES NOT EXIST
-- Zero references to microBatch/micro-batch/MicroBatch/registerCall/commitCall/failCall/isMicroBatchActive anywhere in codebase
-- No `callId` generation in any of the 8 mutation handler catch blocks
-- cross-module-integration.test.ts (453 lines): no micro-batch tests
-
-**Research findings (COMPLETE — see spec for full details):**
-- No MCP server uses automatic multi-tool transactions; community pattern is per-tool independence
-- MCP SDK dispatches parallel calls sequentially via microtask queue (no interleaving)
-- Problem is purely error handler blast radius, not race conditions
-- Undo manager and per-call auto-rollback (edit-tools.ts:1098-1126) already exist
-- SaveManager is HTTP-atomic (no partial save at HTTP level)
-- **Decision: Implicit Micro-Batch** — per-burst saves with per-call error isolation, zero LLM ceremony
-
-**Tasks:**
-1. Create `micro-batch.ts` (~150 lines) with `MicroBatchEntry`, `MicroBatchState`, and functions: `registerCall`, `commitCall`, `failCall`, `flush`, `isMicroBatchActive`, `isCallSettled`
-2. Add micro-batch routing to `saveOrAccumulate()` between explicit batch check and immediate save
-3. Extend `handleMutationError()` to call `failCall(callId)` when micro-batch active
-4. Add `callId` generation to each mutation tool handler in server.ts
-5. Document `project.undo` as recovery mechanism
-
-**Tests (batch-manager.test.ts — 524 lines, new micro-batch.test.ts):**
-- Test: parallel calls where one fails — successful calls preserved
-- Test: explicit batch with partial failure — only failed call rolled back
-- Test: no-batch mode error does not affect other calls
-- Test: single call optimization (no coalescing delay)
-- Test: explicit batch precedence (micro-batch dormant)
+**Summary of changes:**
+- Created `micro-batch.ts` (~230 lines) with per-call error isolation and coalesced saves
+  - `registerCall(callId)` creates micro-batch on first call; no-op when explicit batch active
+  - `commitCall(callId, apiClient, changes, description, componentIids)` records changes, returns Promise resolved when batch saves
+  - `failCall(callId)` marks call as failed (changes already rolled back by ChangeRecorder)
+  - `doFlush()` merges committed entries, single HTTP save, pushes individual undo entries
+  - `scheduleFlushIfReady()` uses setTimeout(0) for coalescing across Promise.all dispatch
+  - 50ms safety timer force-fails pending calls that never settle
+  - `setCurrentCallId()`/`getCurrentCallId()` thread-local pattern avoids changing 74+ saveOrAccumulate call sites
+- Modified `edit-tools.ts`: added micro-batch routing in `saveOrAccumulate()` between batch check and immediate save
+- Modified `server.ts`:
+  - Extended `handleMutationError()` with optional `callId` parameter and micro-batch failCall
+  - Added callId generation, `registerCall()`, `setCurrentCallId()` to all 6 mutation tool handlers (component, node, variant, design, data, interaction)
+  - Added `failCall()` and `setCurrentCallId(null)` in finally blocks
+- Created `micro-batch.test.ts` with 21 tests: single call, parallel commits (3 calls coalesced to 1 save), partial failure (2 succeed + 1 fail results in 1 save), all fail (no save), save failure (rollback + reject), safety timer, explicit batch precedence, sequential batches, component IID merging, failCall idempotency, resetMicroBatch
+- All 1995 tests pass (41 files, 0 failures, 0 regressions)
+- Backward compatible: explicit `begin-batch`/`end-batch` unchanged
 
 ---
 
@@ -229,7 +207,7 @@ Phase 1 (P0):
     │
 Phase 2 (P1, parallel with Phase 1):
   Gap #34 (visibility polish)           ████████████████████  COMPLETE
-  Gap #35 (batch micro-batch impl)      ░░░░░░░░░░░░░░░░░░░░  NOT STARTED (research done)
+  Gap #35 (batch micro-batch impl)      ████████████████████  COMPLETE
     │
 Phase 3 (P2, parallel after Phase 1):
   Gap #38 (customFunction validation)   ░░░░░░░░░░░░░░░░░░░░  NOT STARTED
@@ -238,11 +216,9 @@ Phase 3 (P2, parallel after Phase 1):
 ```
 
 **Parallelization notes:**
-- Phase 1 COMPLETE — Gap #33 and #39 both done; all remaining phases are unblocked
-- Phase 2 items (#34, #35) are independent of each other
-- Phase 3 items (#38, #36, #37) are independent of each other
-- Gap #35 research is complete; implementation can start immediately
-- Gaps #34, #36, #37, #38 all touch `edit-tools.ts` — serialize if same developer
+- Phases 1 and 2 COMPLETE — Gaps #33, #34, #35, #39 all done
+- Phase 3 items (#38, #36, #37) are independent of each other and unblocked
+- Gaps #36, #37, #38 all touch `edit-tools.ts` — serialize if same developer
 
 ---
 
@@ -261,7 +237,7 @@ Phase 3 (P2, parallel after Phase 1):
 | R1 | ~~Implicit state not discoverable in `component.states` after `tplMgr.createVariantGroup()`~~ | ~~Low~~ | ~~High~~ | RESOLVED — Gap #33 complete. State discovered via `state.param === group.param` match. |
 | R2 | ~~Variant group name resolution conflicts with existing state names~~ | ~~Low~~ | ~~Medium~~ | RESOLVED — Gap #33 complete. State name match takes priority over group name match, confirmed by tests. |
 | R3 | Studio applies TplComponent styles differently than expected (Gap #36) | Medium | High | Research Studio source code BEFORE implementing. If Studio always styles wrapper, simplify to informational note. |
-| R4 | Batch redesign breaks existing `begin-batch`/`end-batch` consumers | Medium | High | Keep begin/end-batch as opt-in (backward compatible). Default to per-call auto-commit. |
+| R4 | ~~Batch redesign breaks existing `begin-batch`/`end-batch` consumers~~ | ~~Medium~~ | ~~High~~ | RESOLVED — Gap #35 complete. Explicit batches unchanged; micro-batch is dormant when explicit batch is active. Backward compatible by design. |
 | R5 | Single-quote issue in customFunction is server-side codegen, unfixable in MCP | Medium | Low | Pre-validate with acorn. If server rejects, normalize in MCP. Document limitation. |
 | R6 | `validateJsExpression` rejects valid customFunction code (IIFEs) | Low | Medium | acorn `parseExpressionAt` handles IIFEs correctly. Test with documented IIFE format. |
 | R7 | Box default padding info adds noise to every `addChild` response | Low | Low | Only add `note` for small dimensions (<= 16px). Always include `defaults` (structured data). |
@@ -276,9 +252,11 @@ All file paths relative to `packages/plasmic-mcp/src/`:
 |------|------|------|
 | `edit-tools.ts` | All 7 | Core logic: createVariantGroup, buildActionArgs, setVisibility, updateStyles, addChild, validateJsExpression |
 | `server.ts` | #33, #34, #35 | Tool schemas (Zod), response shaping, handleMutationError |
-| `batch-manager.ts` | #35 | Batch state machine, accumulate/end/cancel |
+| `batch-manager.ts` | #35 | Explicit batch state machine, accumulate/end/cancel |
+| `micro-batch.ts` | #35 | Implicit micro-batch: per-call error isolation, coalesced saves |
 | `undo-manager.ts` | #35 | Per-call undo stack (Architecture E foundation) |
 | `__tests__/variant.test.ts` | #33 | Toggle group creation tests |
 | `__tests__/interaction.test.ts` | #33, #38, #39 | updateVariable and customFunction tests |
 | `__tests__/node.test.ts` | #34, #36, #37 | Visibility, styling, addChild tests |
 | `__tests__/batch-manager.test.ts` | #35 | Batch lifecycle and error recovery tests |
+| `__tests__/micro-batch.test.ts` | #35 | Micro-batch coalescing, partial failure, safety timer tests |
