@@ -100,6 +100,7 @@ import { PlasmicApiClient } from "./api-client.js";
 import { resolveNode, requireSingleNode } from "./node-resolver.js";
 import type { PlasmicElement, ComponentElement, DefaultComponentElement } from "./types.js";
 import { isBatchActive, accumulateChanges } from "./batch-manager.js";
+import { getCurrentCallId, isMicroBatchActive, commitCall } from "./micro-batch.js";
 import { rebaseFromServer } from "./live-sync.js";
 import { ensureDependencyAddresses } from "./bundler-helpers.js";
 import { pushUndoOperation } from "./undo-manager.js";
@@ -1090,6 +1091,17 @@ async function saveOrAccumulate(
     accumulateChanges(changes, modifiedComponentIids);
     const session = requireSession();
     return { revisionNum: session.revisionNum, incremental: true };
+  }
+
+  const callId = getCurrentCallId();
+  if (callId && isMicroBatchActive()) {
+    return commitCall(
+      callId,
+      apiClient,
+      changes,
+      description,
+      modifiedComponentIids ?? []
+    );
   }
 
   const saveManager = new SaveManager(apiClient, {

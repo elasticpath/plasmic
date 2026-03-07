@@ -22,6 +22,7 @@
  * All logging goes through console.error().
  */
 
+import { randomUUID } from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -136,6 +137,7 @@ import {
   extractToComponent,
 } from "./edit-tools.js";
 import { beginBatch, endBatch, isBatchActive, cancelBatch, cancelBatchWithRollback, getAccumulatedChanges } from "./batch-manager.js";
+import { registerCall, failCall, isMicroBatchActive, isCallSettled, setCurrentCallId } from "./micro-batch.js";
 import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
 import { SaveManager } from "./save-manager.js";
 import { startLiveSync, stopLiveSync } from "./live-sync.js";
@@ -287,11 +289,14 @@ function errorMessage(err: unknown): string {
  * Handle errors from mutation tool handlers. If a batch is active, cancels it
  * and rolls back all accumulated changes so the model stays clean.
  */
-function handleMutationError(label: string, err: unknown) {
+function handleMutationError(label: string, err: unknown, callId?: string) {
   let message = `Error ${label}: ${errorMessage(err)}`;
   if (isBatchActive()) {
     cancelBatchWithRollback();
     message += " Batch cancelled and all accumulated changes rolled back.";
+  } else if (callId && isMicroBatchActive()) {
+    failCall(callId);
+    message += " This operation failed. Other parallel operations are unaffected.";
   }
   return {
     content: [{ type: "text" as const, text: message }],
@@ -1496,6 +1501,9 @@ export function createServer(): McpServer {
     },
     async (params) => {
       const { action } = params;
+      const callId = randomUUID();
+      registerCall(callId);
+      setCurrentCallId(callId);
       try {
         // Emit presence for component-level operations
         if (params.componentUuid) {
@@ -2522,7 +2530,7 @@ export function createServer(): McpServer {
       } catch (err: unknown) {
         if (["create-page", "create", "clone", "rename", "delete", "extract", "convert-to-page", "convert-to-component", "update-page-meta",
              "add-prop", "update-prop", "remove-prop", "add-state", "update-state", "remove-state"].includes(action)) {
-          return handleMutationError(`component.${action}`, err);
+          return handleMutationError(`component.${action}`, err, callId);
         }
         return {
           content: [
@@ -2534,6 +2542,8 @@ export function createServer(): McpServer {
           isError: true,
         };
       } finally {
+        setCurrentCallId(null);
+        if (!isCallSettled(callId)) failCall(callId);
         clearEditPresence();
       }
     }
@@ -2612,6 +2622,9 @@ export function createServer(): McpServer {
     },
     async (params) => {
       const { action } = params;
+      const callId = randomUUID();
+      registerCall(callId);
+      setCurrentCallId(callId);
       try {
         // Emit presence for node-level operations (arena + selection)
         if (params.componentUuid) {
@@ -3449,8 +3462,10 @@ export function createServer(): McpServer {
             throw new Error(`Unknown action '${action}' for node tool.`);
         }
       } catch (err: unknown) {
-        return handleMutationError(`node.${action}`, err);
+        return handleMutationError(`node.${action}`, err, callId);
       } finally {
+        setCurrentCallId(null);
+        if (!isCallSettled(callId)) failCall(callId);
         clearEditPresence();
       }
     }
@@ -3500,6 +3515,9 @@ export function createServer(): McpServer {
     },
     async (params) => {
       const { action } = params;
+      const callId = randomUUID();
+      registerCall(callId);
+      setCurrentCallId(callId);
       try {
         // Emit presence for variant operations on a specific component
         if (params.componentUuid) {
@@ -3795,7 +3813,7 @@ export function createServer(): McpServer {
         }
       } catch (err: unknown) {
         if (["create-style", "create-group", "create-global-group", "add-global", "remove-global-group", "rename-global", "create-screen", "update-screen", "rename", "remove"].includes(action)) {
-          return handleMutationError(`variant.${action}`, err);
+          return handleMutationError(`variant.${action}`, err, callId);
         }
         return {
           content: [
@@ -3807,6 +3825,8 @@ export function createServer(): McpServer {
           isError: true,
         };
       } finally {
+        setCurrentCallId(null);
+        if (!isCallSettled(callId)) failCall(callId);
         clearEditPresence();
       }
     }
@@ -3880,6 +3900,9 @@ export function createServer(): McpServer {
     },
     async (params) => {
       const { action } = params;
+      const callId = randomUUID();
+      registerCall(callId);
+      setCurrentCallId(callId);
       try {
         switch (action) {
           // ── Tokens ──
@@ -4746,7 +4769,10 @@ export function createServer(): McpServer {
             isError: true,
           };
         }
-        return handleMutationError(`design.${action}`, err);
+        return handleMutationError(`design.${action}`, err, callId);
+      } finally {
+        setCurrentCallId(null);
+        if (!isCallSettled(callId)) failCall(callId);
       }
     }
   );
@@ -4802,6 +4828,9 @@ export function createServer(): McpServer {
     },
     async (params) => {
       const { action } = params;
+      const callId = randomUUID();
+      registerCall(callId);
+      setCurrentCallId(callId);
       try {
         // Emit presence for data operations targeting a component
         if (params.componentUuid) {
@@ -5436,8 +5465,10 @@ export function createServer(): McpServer {
             isError: true,
           };
         }
-        return handleMutationError(`data.${action}`, err);
+        return handleMutationError(`data.${action}`, err, callId);
       } finally {
+        setCurrentCallId(null);
+        if (!isCallSettled(callId)) failCall(callId);
         clearEditPresence();
       }
     }
@@ -5472,6 +5503,9 @@ export function createServer(): McpServer {
     },
     async (params) => {
       const { action } = params;
+      const callId = randomUUID();
+      registerCall(callId);
+      setCurrentCallId(callId);
       try {
         // Emit presence for interaction operations (arena + selection)
         if (params.componentUuid) {
@@ -5684,8 +5718,10 @@ export function createServer(): McpServer {
             isError: true,
           };
         }
-        return handleMutationError(`interaction.${action}`, err);
+        return handleMutationError(`interaction.${action}`, err, callId);
       } finally {
+        setCurrentCallId(null);
+        if (!isCallSettled(callId)) failCall(callId);
         clearEditPresence();
       }
     }
