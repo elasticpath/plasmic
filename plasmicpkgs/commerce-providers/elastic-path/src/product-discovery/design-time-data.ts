@@ -157,3 +157,106 @@ export const MOCK_PRODUCT_GRID_DATA: ProductGridData = {
   rangeEnd: 6,
   summary: "Showing 1-6 of 48 products",
 };
+
+// ---------------------------------------------------------------------------
+// Related products mock data — 4 distinct products for Phase 3
+// ---------------------------------------------------------------------------
+
+export const MOCK_RELATED_PRODUCTS: Product[] = [
+  {
+    id: "sample-rp-001",
+    name: "Sample Leather Belt",
+    slug: "sample-leather-belt",
+    path: "/sample-leather-belt",
+    description: "Full-grain leather belt with brushed nickel buckle.",
+    images: [
+      {
+        url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
+        alt: "Sample Leather Belt",
+      },
+    ],
+    variants: [
+      { id: "sample-rp-001", name: "Sample Leather Belt", price: 59.99, options: [] },
+    ],
+    price: { value: 59.99, currencyCode: "USD" },
+    options: [],
+  },
+  {
+    id: "sample-rp-002",
+    name: "Sample Travel Organizer",
+    slug: "sample-travel-organizer",
+    path: "/sample-travel-organizer",
+    description: "Compact leather travel organizer with zippered compartments.",
+    images: [
+      {
+        url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
+        alt: "Sample Travel Organizer",
+      },
+    ],
+    variants: [
+      { id: "sample-rp-002", name: "Sample Travel Organizer", price: 79.99, options: [] },
+    ],
+    price: { value: 79.99, currencyCode: "USD" },
+    options: [],
+  },
+  {
+    id: "sample-rp-003",
+    name: "Sample Luggage Tag",
+    slug: "sample-luggage-tag",
+    path: "/sample-luggage-tag",
+    description: "Personalized leather luggage tag with brass hardware.",
+    images: [
+      {
+        url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
+        alt: "Sample Luggage Tag",
+      },
+    ],
+    variants: [
+      { id: "sample-rp-003", name: "Sample Luggage Tag", price: 24.99, options: [] },
+    ],
+    price: { value: 24.99, currencyCode: "USD" },
+    options: [],
+  },
+  {
+    id: "sample-rp-004",
+    name: "Sample Toiletry Bag",
+    slug: "sample-toiletry-bag",
+    path: "/sample-toiletry-bag",
+    description: "Water-resistant waxed canvas toiletry bag with leather trim.",
+    images: [
+      {
+        url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
+        alt: "Sample Toiletry Bag",
+      },
+    ],
+    variants: [
+      { id: "sample-rp-004", name: "Sample Toiletry Bag", price: 44.99, options: [] },
+    ],
+    price: { value: 44.99, currencyCode: "USD" },
+    options: [],
+  },
+];
+
+export const MOCK_RELATED_PRODUCT_GRID_DATA: ProductGridData = {
+  products: MOCK_RELATED_PRODUCTS,
+  totalCount: 4,
+  currentPage: 0,
+  totalPages: 1,
+  pageSize: 4,
+  sort: "",
+  isLoading: false,
+  hasNextPage: false,
+  hasPreviousPage: false,
+  isEmpty: false,
+  rangeStart: 1,
+  rangeEnd: 4,
+  summary: "Showing 4 related products",
+};
+
+export const MOCK_RELATED_PRODUCTS_DATA = {
+  products: MOCK_RELATED_PRODUCTS,
+  totalCount: 4,
+  relationshipSlug: "CRP_related_products",
+  isLoading: false,
+  isEmpty: false,
+};

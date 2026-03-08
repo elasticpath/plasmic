@@ -39,6 +39,7 @@ import { registerEPBundleVariationField } from "./bundle/composable/EPBundleVari
 import { registerEPBundleVariationOptionTrigger } from "./bundle/composable/EPBundleVariationOptionTrigger";
 import { registerEPProductGrid } from "./product-discovery/EPProductGrid";
 import { registerEPProductListProvider } from "./product-discovery/EPProductListProvider";
+import { registerEPRelatedProductsProvider } from "./product-discovery/EPRelatedProductsProvider";
 import { Registerable } from "./registerable";
 
 export * from "./elastic-path";
@@ -107,9 +108,10 @@ export function registerAll(loader?: Registerable) {
   registerEPBundleValidationErrors(loader);
   registerEPBundleProvider(loader);
 
-  // Product discovery — register grid first (child) then provider (parent)
+  // Product discovery — register grid first (child) then providers (parents)
   registerEPProductGrid(loader);
   registerEPProductListProvider(loader);
+  registerEPRelatedProductsProvider(loader);
 
   // Legacy monolithic bundle configurator
   registerEPBundleConfigurator(loader);

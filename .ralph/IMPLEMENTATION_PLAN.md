@@ -1,6 +1,6 @@
 # Implementation Plan
 
-**Last updated:** 2026-03-08 (revised)
+**Last updated:** 2026-03-08
 **Branch:** `feat/ep-commerce-components`
 **Focus:** Product Discovery — composable headless components for Elastic Path commerce in Plasmic Studio
 
@@ -12,15 +12,15 @@
 | Specs (MCP Server — out of scope) | 5 |
 | Phases | 3 |
 | Items to implement | 22 |
-| Completed | 8 |
+| Completed | 12 |
 
 ## Relevant Specs
 
 | Spec | Phase | Priority | Status |
 |------|-------|----------|--------|
-| `product-discovery-core.md` | Phase 1 | P0 | NOT STARTED |
+| `product-discovery-core.md` | Phase 1 | P0 | COMPLETE |
 | `catalog-search.md` | Phase 2 | P1 | NOT STARTED |
-| `related-products.md` | Phase 3 | P2 | NOT STARTED |
+| `related-products.md` | Phase 3 | P2 | COMPLETE |
 
 ## Out-of-Scope Specs (MCP Server, not EP Commerce)
 
@@ -48,6 +48,17 @@ Searched `plasmicpkgs/commerce-providers/elastic-path/src/` for `EPProductListPr
 - Product type has optional `slug`, `path`, `currencyCode` fields — handled with `?? ""` fallbacks in `buildCurrentProduct()`
 - `useSelector` mock in tests must use delegation pattern `(...args) => mockUseSelector(...args)` not direct `jest.fn()` — esbuild import hoisting requires this
 - Test file must use `/** @jest-environment jsdom */` docblock (not `//` single-line comment) for jsdom environment
+
+#### Phase 3 Complete
+- All 4 items implemented and tested (918 tests pass, 37 suites)
+- Build succeeds via `yarn build` (tsdx)
+- `useRelatedProducts` hook calls `getByContextAllRelatedProducts` from `@epcc-sdk/sdks-shopper` — SDK function confirmed available
+- Hook lives at `src/product-discovery/use-related-products.tsx` (not `src/product/` as originally planned — collocated with the provider for module coherence)
+- `SWR_DEDUPING_INTERVAL_LONG` imported from `../const` (root `src/const.ts`), NOT `../utils/const.ts` (which doesn't exist)
+- EPRelatedProductsProvider uses inner component pattern (`EPRelatedProductsProviderInner`) to avoid conditional hook calls in preview branches
+- Provider exposes both `productGridData` (shared D4 key for EPProductGrid reuse) and `relatedProductsData` (relationship-specific metadata)
+- Mock data: 4 distinct products with `sample-rp-*` IDs, separate from Phase 1 `sample-pd-*` listing mocks
+- Auto-reads product ID from parent `currentProduct` DataProvider context; overridable via `productId` prop
 
 ### No Skipped/Flaky Tests, No Relevant TODOs
 
@@ -312,36 +323,23 @@ The EP SDK types `page[limit]` and `page[offset]` as `BigInt`. All numeric value
 
 ## Phase 3: Related Products — Custom Relationships (P2) — 4 Items
 
-- [ ] **3.1 — Create `useRelatedProducts` hook** (P2)
-  - New file: `src/product/use-related-products.tsx`
-  - Calls `GET /pcm/products/{productId}/custom-relationships/{slug}/products?page[limit]={BigInt(limit)}` via EP SDK
-  - Include `main_image` in response
-  - Normalizes via `normalizeProductFromList(included)` — pass response `included` object
-  - Returns `{ products, totalCount, relationshipName, isLoading, error, refetch }`
-  - Uses `useMutablePlasmicQueryData` from `@plasmicapp/query` (per D6)
-  - Query key: `["ep-related-products", productId, slug, limit]` — null if no productId or client
-  - Deduping interval: `SWR_DEDUPING_INTERVAL_LONG` (5 min, from `src/utils/const.ts`) — relationships change infrequently
+- [x] **3.1 — Create `useRelatedProducts` hook** (P2)
+  - File: `src/product-discovery/use-related-products.tsx`
+  - Calls `getByContextAllRelatedProducts` from `@epcc-sdk/sdks-shopper` with `path: { product_id, custom_relationship_slug }` and `query: { "page[limit]": BigInt(limit) }`
+  - Uses `useMutablePlasmicQueryData` with `SWR_DEDUPING_INTERVAL_LONG` (5 min)
 
-- [ ] **3.2 — Create `EPRelatedProductsProvider` component** (P2)
-  - New file: `src/product-discovery/EPRelatedProductsProvider.tsx`
-  - Props: `children`, `loadingContent`, `errorContent`, `emptyContent`, `relationshipSlug` (default "CRP_related_products"), `productId`, `limit` (default 4), `previewState`, `className`
-  - Reads product ID from parent DataProvider context (`useSelector("currentProduct")`) if `productId` prop not provided
-  - Provides `productGridData` via DataProvider (per D4 — same key as EPProductListProvider)
-  - Also provides `relatedProductsData`: `{ products, totalCount, relationshipName, relationshipSlug, isLoading, isEmpty }`
-  - Uses `useRelatedProducts` hook from 3.1
-  - EPProductGrid from Phase 1 reused as child (reads `productGridData`)
-  - Mock data: 4 sample products distinct from listing mock
-  - Registration: `name: "plasmic-commerce-ep-related-products-provider"`, `providesData: true`
+- [x] **3.2 — Create `EPRelatedProductsProvider` component** (P2)
+  - File: `src/product-discovery/EPRelatedProductsProvider.tsx`
+  - Exposes `productGridData` (D4) + `relatedProductsData`, auto-reads parent `currentProduct` context
 
-- [ ] **3.3 — Register Phase 3 + mock data + module exports** (P2)
-  - File: `src/index.tsx` — register `EPRelatedProductsProvider`
-  - File: `src/product-discovery/index.ts` — add exports
-  - New mock data in `src/product-discovery/design-time-data.ts`: `MOCK_RELATED_PRODUCTS` (4 products)
+- [x] **3.3 — Register Phase 3 + mock data + module exports** (P2)
+  - `design-time-data.ts`: Added `MOCK_RELATED_PRODUCTS` (4 products), `MOCK_RELATED_PRODUCT_GRID_DATA`, `MOCK_RELATED_PRODUCTS_DATA`
+  - `index.ts`: Added exports for `EPRelatedProductsProvider`, `useRelatedProducts`
+  - `src/index.tsx`: Added import + `registerEPRelatedProductsProvider(loader)` call
 
-- [ ] **3.4 — Unit tests + build verification for Phase 3** (P2)
-  - New file: `src/product-discovery/__tests__/related-products.test.tsx`
-  - Test: Provider fetches and normalizes, Grid reuse with shared `productGridData` key, empty/error states, custom relationship slugs, product ID auto-detection from parent context
-  - Build and test must pass
+- [x] **3.4 — Unit tests + build verification for Phase 3** (P2)
+  - File: `src/product-discovery/__tests__/related-products.test.tsx`
+  - 918 tests pass, 37 suites; build succeeds
 
 ---
 
