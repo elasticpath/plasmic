@@ -12,14 +12,14 @@
 | Specs (MCP Server — out of scope) | 5 |
 | Phases | 3 |
 | Items to implement | 22 |
-| Completed | 12 |
+| Completed | 22 |
 
 ## Relevant Specs
 
 | Spec | Phase | Priority | Status |
 |------|-------|----------|--------|
 | `product-discovery-core.md` | Phase 1 | P0 | COMPLETE |
-| `catalog-search.md` | Phase 2 | P1 | NOT STARTED |
+| `catalog-search.md` | Phase 2 | P1 | COMPLETE |
 | `related-products.md` | Phase 3 | P2 | COMPLETE |
 
 ## Out-of-Scope Specs (MCP Server, not EP Commerce)
@@ -35,10 +35,6 @@ These specs live in `.ralph/specs/` but target `packages/plasmic-mcp/`, not the 
 
 ## Confirmed Findings (2026-03-08)
 
-### Zero Implementation Exists — All 3 Phases
-
-Searched `plasmicpkgs/commerce-providers/elastic-path/src/` for `EPProductListProvider`, `EPProductGrid`, `product-discovery`, `product-list`, `EPCatalogSearch`, `EPRelatedProducts`, `useProductList`, `useRelatedProducts`, `InstantSearch`, `custom-relationships` — **no matches for any of these**. All items below are new work.
-
 ### Implementation Notes (2026-03-08)
 
 #### Phase 1 Complete
@@ -48,6 +44,17 @@ Searched `plasmicpkgs/commerce-providers/elastic-path/src/` for `EPProductListPr
 - Product type has optional `slug`, `path`, `currencyCode` fields — handled with `?? ""` fallbacks in `buildCurrentProduct()`
 - `useSelector` mock in tests must use delegation pattern `(...args) => mockUseSelector(...args)` not direct `jest.fn()` — esbuild import hoisting requires this
 - Test file must use `/** @jest-environment jsdom */` docblock (not `//` single-line comment) for jsdom environment
+
+#### Phase 2 Complete
+- All 10 items implemented and tested (958 tests pass, 38 suites)
+- Build succeeds via `yarn build` (tsdx) in ~10 minutes
+- Dependencies installed: `@elasticpath/catalog-search-instantsearch-adapter@0.0.5` (exact-pinned), `react-instantsearch@^7.26`, `react-instantsearch-nextjs@^0.3`, `instantsearch.js@^4.90`
+- Adapter uses default export pattern: `require("...").default` — creates `new CatalogSearchInstantSearchAdapter({ client })` which exposes `.searchClient`
+- All components use dynamic `require()` for react-instantsearch hooks to avoid hard dependency at build time when in design mode
+- `import { type X }` inline syntax NOT supported by tsdx's TypeScript — must use separate `import type { X }` statements
+- Zod 3.25.x has breaking type changes vs @hookform/resolvers — fixed with `as any` cast on `zodResolver(bundleSchema)` call
+- Mock data uses "sample-cs-" prefix IDs, distinct from Phase 1 "sample-pd-" and Phase 3 "sample-rp-" prefixes
+- `EPSearchHits` normalizes hits via `normalizeHitToCurrentProduct()` with fallback field patterns for EP catalog search adapter output
 
 #### Phase 3 Complete
 - All 4 items implemented and tested (918 tests pass, 37 suites)
@@ -188,158 +195,38 @@ The EP SDK types `page[limit]` and `page[offset]` as `BigInt`. All numeric value
 
 ## Phase 1: Product Discovery Core (P0) — 8 Items
 
-- [x] **1.1 — Create `useProductList` data-fetching hook** (P0)
-  - New file: `src/product-discovery/use-product-list.tsx`
-  - Calls `getByContextAllProducts` from `@epcc-sdk/sdks-shopper` directly (same SDK call as `use-search.tsx`, with pagination)
-  - Accepts: `{ categoryId?, search?, sort?, page?, pageSize?, locale? }`
-  - Query params: `page[offset]` (= `BigInt(page * pageSize)`), `page[limit]` (= `BigInt(pageSize)`), includes `main_image,files,component_products` (per D7)
-  - Normalizes each product via existing `normalizeProductFromList(included)` — pass response `included` object
-  - Returns: `{ products, totalCount, isLoading, error, refetch }`
-  - Total count from `response.data?.meta?.results?.total` (BigInt → Number conversion)
-  - Uses `useMutablePlasmicQueryData` from `@plasmicapp/query` with `revalidateOnFocus: false` (per D6)
-  - Query key: `["ep-product-list", categoryId, search, sort, page, pageSize, locale]` — null if no client
-  - Gets EP client via `getEPClient(provider)` from `useCommerce()` context
-
-- [x] **1.2 — Create `EPProductListProvider` component** (P0)
-  - New file: `src/product-discovery/EPProductListProvider.tsx`
-  - Props: `children`, `loadingContent`, `errorContent`, `emptyContent`, `categoryId`, `search`, `initialSort`, `pageSize` (default 12), `previewState` (auto|withData|empty|loading|error), `className`
-  - Internal state: `currentPage`, `sort`, `mode` ('paginated' | 'loadMore'), `accumulatedProducts[]`
-  - Uses `useProductList` hook from 1.1 — hook is stateless per-page (fetches single page); provider owns page accumulation
-  - **Pagination mode** (default): `goToPage`/`nextPage`/`prevPage` replace displayed products with the requested page
-  - **Load-more mode**: activated on first `loadMore()` call. Appends next page's products to `accumulatedProducts[]`. Subsequent `loadMore()` calls increment an internal `loadMorePage` counter. Resets to pagination mode on `setSort()` or `goToPage()`.
-  - Exposes `productGridData` via DataProvider (per D4): `{ products, totalCount, currentPage, totalPages, pageSize, sort, isLoading, hasNextPage, hasPreviousPage, isEmpty, rangeStart, rangeEnd, summary }`
-  - `products` in `productGridData` is: in pagination mode, the hook's single-page results; in load-more mode, the `accumulatedProducts` array
-  - Single DataProvider key `productGridData` (per D4) — no separate `productListData` key
-  - Exposes `refActions`: `setSort(value)`, `goToPage(page)`, `nextPage()`, `prevPage()`, `loadMore()`
-  - Registration: `name: "plasmic-commerce-ep-product-list-provider"`, `providesData: true`
-  - Design-time: `usePlasmicCanvasContext()` detection, mock data with no-op actions (per EPBundleProvider pattern)
-  - Auto-wired default slot: EPProductGrid + summary text
-
-- [x] **1.3 — Create `EPProductGrid` component** (P0)
-  - New file: `src/product-discovery/EPProductGrid.tsx`
-  - Props: `children`, `className`, `previewState` (auto|withData)
-  - Reads `productGridData.products` from DataProvider via `useSelector("productGridData")` (per D4)
-  - Uses `repeatedElement(i, children)` per product
-  - Computes `price.formatted` via `formatCurrency()` when building currentProduct (per D2)
-  - Exposes per iteration via nested DataProviders:
-    - `currentProduct`: `{ id, name, slug, sku, description, path, images, price: { value, currencyCode, formatted }, options, rawData }`
-    - `currentProductIndex`: number
-  - No `parentComponentName` restriction (per D5)
-  - Registration: `name: "plasmic-commerce-ep-product-grid"`, `providesData: true`
-  - Auto-wired default slot: `<a>` wrapping vbox with `<img>` + name text + price text
-
-- [x] **1.4 — Add mock data `MOCK_PRODUCT_LIST` and `MOCK_PRODUCT_GRID_DATA`** (P0)
-  - File: `src/product-discovery/design-time-data.ts` (new file in product-discovery directory, per bundle/composable pattern)
-  - 6 sample products with images, prices, names per spec
-  - Typed interfaces: `MockProductListData`, `MockProduct`
-  - `MOCK_PRODUCT_GRID_DATA` with products array
-  - `MOCK_PRODUCT_LIST_DATA` with pagination metadata (totalCount: 48, currentPage: 0, totalPages: 4, etc.)
-  - Also append `MOCK_PRODUCT_LIST` reference to `src/utils/design-time-data.ts` if needed for backward compat
-
-- [x] **1.5 — Create `product-discovery/index.ts` module exports** (P0)
-  - New file: `src/product-discovery/index.ts`
-  - Exports: `EPProductListProvider`, `EPProductGrid`, `registerEPProductListProvider`, `registerEPProductGrid`
-  - Registration functions follow standard pattern: `(loader?: Registerable, customMeta?) => void`
-
-- [x] **1.6 — Register Phase 1 components in `index.tsx`** (P0)
-  - File: `src/index.tsx`
-  - Add imports from `./product-discovery`
-  - Add `registerEPProductGrid(loader)` then `registerEPProductListProvider(loader)` in `registerAll()` (fields/children first per convention)
-
-- [x] **1.7 — Unit tests for Phase 1 components** (P0)
-  - New file: `src/product-discovery/__tests__/product-discovery-components.test.tsx`
-  - Test: Provider renders with mock data, Grid repeats children per product count, pagination state updates (goToPage, nextPage, prevPage), loadMore appends products, sort changes refetch, edge cases (empty state, error state, single product), price.formatted computation
-
-- [x] **1.8 — Build verification** (P0)
-  - Run `cd plasmicpkgs/commerce-providers/elastic-path && yarn build` — must succeed
-  - Run `cd plasmicpkgs/commerce-providers/elastic-path && yarn test` — must pass
+- [x] **1.1 — Create `useProductList` data-fetching hook**
+- [x] **1.2 — Create `EPProductListProvider` component**
+- [x] **1.3 — Create `EPProductGrid` component**
+- [x] **1.4 — Add mock data `MOCK_PRODUCT_LIST` and `MOCK_PRODUCT_GRID_DATA`**
+- [x] **1.5 — Create `product-discovery/index.ts` module exports**
+- [x] **1.6 — Register Phase 1 components in `index.tsx`**
+- [x] **1.7 — Unit tests for Phase 1 components**
+- [x] **1.8 — Build verification**
 
 ---
 
 ## Phase 2: Catalog Search — InstantSearch.js Integration (P1) — 10 Items
 
-### Risk: Dependency Maturity
-
-`@elasticpath/catalog-search-instantsearch-adapter` is at v0.0.5 — pre-release. API surface may change. **Exact-pinned** in item 2.1 (no caret). Test thoroughly and verify adapter types on install.
-
-### Items
-
-- [ ] **2.1 — Add catalog search dependencies to `package.json`** (P1)
-  - File: `plasmicpkgs/commerce-providers/elastic-path/package.json`
-  - Add: `@elasticpath/catalog-search-instantsearch-adapter` (**0.0.5** — exact pin, pre-release API may change), `react-instantsearch` (^7.x), `react-instantsearch-nextjs` (^0.x), `instantsearch.js` (^4.x)
-  - Exact-pin the adapter since it's pre-release (v0.0.x); use caret ranges for stable InstantSearch packages
-  - Verify compatibility: install and check types resolve
-
-- [ ] **2.2 — Create `EPCatalogSearchProvider` component** (P1)
-  - New file: `src/catalog-search/EPCatalogSearchProvider.tsx`
-  - Wraps `<InstantSearchNext>` with EP `CatalogSearchInstantSearchAdapter`
-  - Props: `children`, `className`, `indexName`, `queryBy`, `hitsPerPage`, `enableUrlSync`, `currencyCode`, `previewState`
-  - Provides `catalogSearchData`: `{ isSearchActive, query, currencyCode }`
-  - Reads EP client from ElasticPathProvider context via `useCommerce()`
-
-- [ ] **2.3 — Create `EPSearchBox` component** (P1)
-  - New file: `src/catalog-search/EPSearchBox.tsx`
-  - Wraps `useSearchBox()` from react-instantsearch
-  - Props: `className`, `placeholder`, `autoFocus`, `debounceMs`, `showClear`, `previewState`
-
-- [ ] **2.4 — Create `EPSearchHits` component** (P1)
-  - New file: `src/catalog-search/EPSearchHits.tsx`
-  - Uses `useHits()` + `repeatedElement()`. Same `currentProduct` shape as EPProductGrid (per D2: computes price.formatted)
-  - Normalizes hits to Product shape via adapter
-  - Adds search-specific extras: `_highlightedName`, `_highlightedDescription`, `_score`, `rawHit`
-
-- [ ] **2.5 — Create `EPRefinementList` + `EPHierarchicalMenu` components** (P1)
-  - New files: `src/catalog-search/EPRefinementList.tsx`, `src/catalog-search/EPHierarchicalMenu.tsx`
-  - EPRefinementList wraps `useRefinementList()`. Provides `currentRefinement`: `{ value, label, count, isRefined }`. Action: `toggleRefinement(value)`
-  - EPHierarchicalMenu wraps `useHierarchicalMenu()`. Provides `currentCategory`: `{ value, label, count, isRefined, depth, hasChildren }`. Action: `refineCategory(value)`
-
-- [ ] **2.6 — Create `EPRangeFilter` component** (P1)
-  - New file: `src/catalog-search/EPRangeFilter.tsx`
-  - Wraps `useRange()`. Provides `rangeData`: `{ min, max, currentMin, currentMax, canRefine }`
-  - Element action: `setRange(min, max)`
-
-- [ ] **2.7 — Create `EPSearchPagination` + `EPSearchStats` + `EPSearchSortBy`** (P1)
-  - New files: `src/catalog-search/EPSearchPagination.tsx`, `src/catalog-search/EPSearchStats.tsx`, `src/catalog-search/EPSearchSortBy.tsx`
-  - Pagination wraps `usePagination()`. Actions: `goToPage`, `nextPage`, `prevPage`
-  - Stats wraps `useStats()`. Provides `searchStatsData`: `{ nbHits, query, processingTimeMS, summary }`
-  - SortBy wraps `useSortBy()`. Action: `setSort(value)`
-
-- [ ] **2.8 — Catalog search mock data + module exports** (P1)
-  - New files: `src/catalog-search/design-time-data.ts`, `src/catalog-search/index.ts`
-  - Mock data for all 9 components' preview states
-  - Export all components + registration functions
-
-- [ ] **2.9 — Register Phase 2 components in `index.tsx`** (P1)
-  - File: `src/index.tsx`
-  - Add 9 new component registrations to `registerAll()`
-  - Registration order: leaf components (SearchBox, field displays) → repeaters (SearchHits, RefinementList) → providers (CatalogSearchProvider)
-
-- [ ] **2.10 — Unit tests + build verification for Phase 2** (P1)
-  - New file: `src/catalog-search/__tests__/catalog-search-components.test.tsx`
-  - Mock react-instantsearch hooks. Test rendering, data shape, actions.
-  - Build and test must pass
+- [x] **2.1 — Add catalog search dependencies to `package.json`**
+- [x] **2.2 — Create `EPCatalogSearchProvider` component**
+- [x] **2.3 — Create `EPSearchBox` component**
+- [x] **2.4 — Create `EPSearchHits` component**
+- [x] **2.5 — Create `EPRefinementList` + `EPHierarchicalMenu` components**
+- [x] **2.6 — Create `EPRangeFilter` component**
+- [x] **2.7 — Create `EPSearchPagination` + `EPSearchStats` + `EPSearchSortBy`**
+- [x] **2.8 — Catalog search mock data + module exports**
+- [x] **2.9 — Register Phase 2 components in `index.tsx`**
+- [x] **2.10 — Unit tests + build verification for Phase 2**
 
 ---
 
 ## Phase 3: Related Products — Custom Relationships (P2) — 4 Items
 
-- [x] **3.1 — Create `useRelatedProducts` hook** (P2)
-  - File: `src/product-discovery/use-related-products.tsx`
-  - Calls `getByContextAllRelatedProducts` from `@epcc-sdk/sdks-shopper` with `path: { product_id, custom_relationship_slug }` and `query: { "page[limit]": BigInt(limit) }`
-  - Uses `useMutablePlasmicQueryData` with `SWR_DEDUPING_INTERVAL_LONG` (5 min)
-
-- [x] **3.2 — Create `EPRelatedProductsProvider` component** (P2)
-  - File: `src/product-discovery/EPRelatedProductsProvider.tsx`
-  - Exposes `productGridData` (D4) + `relatedProductsData`, auto-reads parent `currentProduct` context
-
-- [x] **3.3 — Register Phase 3 + mock data + module exports** (P2)
-  - `design-time-data.ts`: Added `MOCK_RELATED_PRODUCTS` (4 products), `MOCK_RELATED_PRODUCT_GRID_DATA`, `MOCK_RELATED_PRODUCTS_DATA`
-  - `index.ts`: Added exports for `EPRelatedProductsProvider`, `useRelatedProducts`
-  - `src/index.tsx`: Added import + `registerEPRelatedProductsProvider(loader)` call
-
-- [x] **3.4 — Unit tests + build verification for Phase 3** (P2)
-  - File: `src/product-discovery/__tests__/related-products.test.tsx`
-  - 918 tests pass, 37 suites; build succeeds
+- [x] **3.1 — Create `useRelatedProducts` hook**
+- [x] **3.2 — Create `EPRelatedProductsProvider` component**
+- [x] **3.3 — Register Phase 3 + mock data + module exports**
+- [x] **3.4 — Unit tests + build verification for Phase 3**
 
 ---
 
