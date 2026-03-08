@@ -496,6 +496,79 @@ describe("EPSearchHits", () => {
       )
     ).toBe(0);
   });
+
+  it("should read currencyCode from parent catalogSearchData context at runtime", () => {
+    // Runtime mode (not in editor)
+    mockUsePlasmicCanvasContext.mockReturnValue(null);
+
+    // Parent EPCatalogSearchProvider exposes catalogSearchData with currencyCode
+    mockUseSelector.mockImplementation((name: string) => {
+      if (name === "catalogSearchData") return { currencyCode: "GBP" };
+      return undefined;
+    });
+
+    mockUseHits.mockReturnValue({
+      hits: [
+        {
+          objectID: "hit-gbp-1",
+          ep_name: "British Product",
+          ep_slug: "british-product",
+          ep_sku: "BP-001",
+          ep_description: "A product priced in GBP",
+          ep_price: { GBP: { float_price: 29.99 } },
+          ep_main_image_url: "https://example.com/img.png",
+        },
+      ],
+    });
+
+    const { container } = render(
+      <EPSearchHits>
+        <div>child</div>
+      </EPSearchHits>
+    );
+
+    const providerEl = container.querySelector(
+      '[data-testid="data-provider-currentProduct"]'
+    );
+    expect(providerEl).not.toBeNull();
+
+    const data = JSON.parse(
+      providerEl!.getAttribute("data-provider-data") || "{}"
+    );
+    expect(data.price.currencyCode).toBe("GBP");
+    expect(data.price.value).toBe(29.99);
+    expect(data.name).toBe("British Product");
+  });
+
+  it("should fall back to USD when catalogSearchData has no currencyCode", () => {
+    mockUsePlasmicCanvasContext.mockReturnValue(null);
+    mockUseSelector.mockReturnValue(undefined);
+
+    mockUseHits.mockReturnValue({
+      hits: [
+        {
+          objectID: "hit-usd-1",
+          ep_name: "Default Currency Product",
+          ep_slug: "default-product",
+          ep_price: { USD: { float_price: 19.99 } },
+        },
+      ],
+    });
+
+    const { container } = render(
+      <EPSearchHits>
+        <div>child</div>
+      </EPSearchHits>
+    );
+
+    const providerEl = container.querySelector(
+      '[data-testid="data-provider-currentProduct"]'
+    );
+    const data = JSON.parse(
+      providerEl!.getAttribute("data-provider-data") || "{}"
+    );
+    expect(data.price.currencyCode).toBe("USD");
+  });
 });
 
 /* ================================================================

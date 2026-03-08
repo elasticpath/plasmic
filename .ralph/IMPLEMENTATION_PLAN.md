@@ -67,6 +67,11 @@ These specs live in `.ralph/specs/` but target `packages/plasmic-mcp/`, not the 
 - Mock data: 4 distinct products with `sample-rp-*` IDs, separate from Phase 1 `sample-pd-*` listing mocks
 - Auto-reads product ID from parent `currentProduct` DataProvider context; overridable via `productId` prop
 
+#### Post-Completion Fixes (2026-03-08)
+- **EPSearchHits currencyCode fix**: Was hardcoded to "USD" — now reads from parent `catalogSearchData` DataProvider context via `useSelector("catalogSearchData")?.currencyCode`, falling back to "USD"
+- **RelatedProductsData relationshipName**: Added `relationshipName: string` field to `RelatedProductsData` interface per spec. Added `relationshipName` prop to `EPRelatedProductsProvider` (default "Related Products") so designers can set human-readable labels for section headings. Mock data updated.
+- Test count: 962 tests pass (38 suites) — 4 new tests added for the above fixes
+
 ### No Skipped/Flaky Tests, No Relevant TODOs
 
 - Searched all test files — no `.skip()`, `xit()`, `xdescribe()`, `xtest()` patterns
@@ -193,40 +198,11 @@ The EP SDK types `page[limit]` and `page[offset]` as `BigInt`. All numeric value
 
 ---
 
-## Phase 1: Product Discovery Core (P0) — 8 Items
+## Phase 1: Product Discovery Core (P0) — 8 Items — COMPLETE
 
-- [x] **1.1 — Create `useProductList` data-fetching hook**
-- [x] **1.2 — Create `EPProductListProvider` component**
-- [x] **1.3 — Create `EPProductGrid` component**
-- [x] **1.4 — Add mock data `MOCK_PRODUCT_LIST` and `MOCK_PRODUCT_GRID_DATA`**
-- [x] **1.5 — Create `product-discovery/index.ts` module exports**
-- [x] **1.6 — Register Phase 1 components in `index.tsx`**
-- [x] **1.7 — Unit tests for Phase 1 components**
-- [x] **1.8 — Build verification**
+## Phase 2: Catalog Search — InstantSearch.js Integration (P1) — 10 Items — COMPLETE
 
----
-
-## Phase 2: Catalog Search — InstantSearch.js Integration (P1) — 10 Items
-
-- [x] **2.1 — Add catalog search dependencies to `package.json`**
-- [x] **2.2 — Create `EPCatalogSearchProvider` component**
-- [x] **2.3 — Create `EPSearchBox` component**
-- [x] **2.4 — Create `EPSearchHits` component**
-- [x] **2.5 — Create `EPRefinementList` + `EPHierarchicalMenu` components**
-- [x] **2.6 — Create `EPRangeFilter` component**
-- [x] **2.7 — Create `EPSearchPagination` + `EPSearchStats` + `EPSearchSortBy`**
-- [x] **2.8 — Catalog search mock data + module exports**
-- [x] **2.9 — Register Phase 2 components in `index.tsx`**
-- [x] **2.10 — Unit tests + build verification for Phase 2**
-
----
-
-## Phase 3: Related Products — Custom Relationships (P2) — 4 Items
-
-- [x] **3.1 — Create `useRelatedProducts` hook**
-- [x] **3.2 — Create `EPRelatedProductsProvider` component**
-- [x] **3.3 — Register Phase 3 + mock data + module exports**
-- [x] **3.4 — Unit tests + build verification for Phase 3**
+## Phase 3: Related Products — Custom Relationships (P2) — 4 Items — COMPLETE
 
 ---
 

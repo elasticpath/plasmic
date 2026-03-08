@@ -257,6 +257,7 @@ export const MOCK_RELATED_PRODUCTS_DATA = {
   products: MOCK_RELATED_PRODUCTS,
   totalCount: 4,
   relationshipSlug: "CRP_related_products",
+  relationshipName: "Related Products",
   isLoading: false,
   isEmpty: false,
 };

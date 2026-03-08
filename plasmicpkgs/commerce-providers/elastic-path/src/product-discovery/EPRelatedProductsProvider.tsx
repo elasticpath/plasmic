@@ -37,6 +37,7 @@ interface EPRelatedProductsProviderProps {
   errorContent?: React.ReactNode;
   emptyContent?: React.ReactNode;
   relationshipSlug?: string;
+  relationshipName?: string;
   productId?: string;
   limit?: number;
   previewState?: PreviewState;
@@ -47,6 +48,7 @@ export interface RelatedProductsData {
   products: any[];
   totalCount: number;
   relationshipSlug: string;
+  relationshipName: string;
   isLoading: boolean;
   isEmpty: boolean;
 }
@@ -92,6 +94,13 @@ export const epRelatedProductsProviderMeta: ComponentMeta<EPRelatedProductsProvi
           "Custom relationship slug defined in EP Commerce Manager (e.g. CRP_related_products, CRP_upsell, CRP_accessories)",
         defaultValue: "CRP_related_products",
       },
+      relationshipName: {
+        type: "string",
+        displayName: "Relationship Name",
+        description:
+          "Human-readable name for the relationship (e.g. Related Products, You May Also Like, Accessories). Exposed via relatedProductsData for section headings.",
+        defaultValue: "Related Products",
+      },
       productId: {
         type: "string",
         displayName: "Product ID",
@@ -128,6 +137,7 @@ export function EPRelatedProductsProvider(
     errorContent,
     emptyContent,
     relationshipSlug = "CRP_related_products",
+    relationshipName = "Related Products",
     productId: productIdProp,
     limit = 4,
     previewState = "auto",
@@ -170,6 +180,7 @@ export function EPRelatedProductsProvider(
         products: [],
         totalCount: 0,
         relationshipSlug,
+        relationshipName,
         isLoading: false,
         isEmpty: true,
       };
@@ -210,6 +221,7 @@ export function EPRelatedProductsProvider(
     <EPRelatedProductsProviderInner
       productId={productId}
       relationshipSlug={relationshipSlug}
+      relationshipName={relationshipName}
       limit={limit}
       className={className}
       loadingContent={loadingContent}
@@ -226,6 +238,7 @@ function EPRelatedProductsProviderInner(props: {
   children?: React.ReactNode;
   productId?: string;
   relationshipSlug: string;
+  relationshipName: string;
   limit: number;
   className?: string;
   loadingContent?: React.ReactNode;
@@ -236,6 +249,7 @@ function EPRelatedProductsProviderInner(props: {
     children,
     productId,
     relationshipSlug,
+    relationshipName,
     limit,
     className,
     loadingContent,
@@ -273,6 +287,7 @@ function EPRelatedProductsProviderInner(props: {
     products,
     totalCount,
     relationshipSlug,
+    relationshipName,
     isLoading,
     isEmpty,
   };

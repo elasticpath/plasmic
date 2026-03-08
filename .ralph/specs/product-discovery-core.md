@@ -25,6 +25,8 @@ EPProductListProvider (code component — data fetching, state, actions)
   └── <span> bound to productListData.totalCount
 ```
 
+> **Implementation note (D4):** The DataProvider key is `productGridData` (not `productListData`). Both EPProductListProvider and EPRelatedProductsProvider share the `productGridData` key so EPProductGrid works with either provider.
+
 ### Why Headless
 - Designers use ANY elements — no forced card/field components
 - Data binding via Plasmic's dynamic values ($ctx)
@@ -53,6 +55,8 @@ EPProductListProvider (code component — data fetching, state, actions)
 | `className` | string? | — | |
 
 **Provides via DataProvider (`productListData`):**
+
+> **Implementation note (D4):** The actual DataProvider key is `productGridData`, not `productListData`. This was an intentional architectural decision so that EPProductGrid works with both EPProductListProvider and EPRelatedProductsProvider.
 ```typescript
 {
   products: Product[]          // current page results
@@ -89,7 +93,7 @@ loadMore()                     // append next page to existing results
   - EPProductGrid containing a vbox card template
   - Card template has: `<img>` pre-bound to `currentProduct.images[0].url`, `<div>` pre-bound to `currentProduct.name`, `<div>` pre-bound to `currentProduct.price.formatted`
   - Card wrapped in `<a>` pre-bound to `currentProduct.path`
-  - Below grid: summary text pre-bound to `productListData.summary`
+  - Below grid: summary text pre-bound to `productListData.summary` (impl uses `productGridData.summary` per D4)
   - Designer sees a fully working product grid immediately on drop — customize from there
 
 ### 2. EPProductGrid
@@ -123,7 +127,7 @@ currentProduct: {
   }
   options: Array<{             // variant options summary
     displayName: string
-    values: string[]
+    values: string[]           // Note: implementation uses Array<{ label: string }> per the commerce base types
   }>
   rawData: ProductData         // EP SDK raw response for advanced use
 }
@@ -196,7 +200,7 @@ export const MOCK_PRODUCT_LIST = {
 
 ### Collection Page
 - Same as above but `categoryId` prop set (from URL param or hardcoded)
-- Optionally binds `productListData.summary` to show "Showing X of Y"
+- Optionally binds `productListData.summary` to show "Showing X of Y" (impl uses `productGridData.summary` per D4)
 
 ### Featured/Curated Section (Homepage)
 - EPProductListProvider with `categoryId` + `pageSize={4}`
@@ -204,7 +208,7 @@ export const MOCK_PRODUCT_LIST = {
 - EPProductGrid styled as horizontal scroll or flex-row
 
 ## Acceptance Criteria
-- [ ] EPProductListProvider fetches products and exposes `productListData` via DataProvider
+- [ ] EPProductListProvider fetches products and exposes `productListData` via DataProvider (impl uses `productGridData` key per D4)
 - [ ] EPProductListProvider exposes `setSort`, `goToPage`, `nextPage`, `prevPage`, `loadMore` as element actions
 - [ ] EPProductGrid repeats children per product using `repeatedElement()`
 - [ ] EPProductGrid exposes `currentProduct` and `currentProductIndex` per iteration

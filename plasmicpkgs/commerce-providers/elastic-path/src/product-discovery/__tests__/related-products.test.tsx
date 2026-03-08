@@ -715,6 +715,7 @@ describe("EPRelatedProductsProvider", () => {
       <EPRelatedProductsProvider
         productId="prod-123"
         relationshipSlug="CRP_upsell"
+        relationshipName="Upsell Products"
       >
         <div>Child</div>
       </EPRelatedProductsProvider>
@@ -727,8 +728,32 @@ describe("EPRelatedProductsProvider", () => {
       relatedProvider!.getAttribute("data-provider-data") || "{}"
     );
     expect(data.relationshipSlug).toBe("CRP_upsell");
+    expect(data.relationshipName).toBe("Upsell Products");
     expect(data.isLoading).toBe(false);
     expect(data.isEmpty).toBe(false);
+  });
+
+  it("should default relationshipName to 'Related Products'", () => {
+    mockUseMutablePlasmicQueryData.mockReturnValue({
+      data: { products: [{ id: "rp-1" }], totalCount: 1 },
+      error: null,
+      isLoading: false,
+      mutate: jest.fn(),
+    });
+
+    const { container } = render(
+      <EPRelatedProductsProvider productId="prod-123">
+        <div>Child</div>
+      </EPRelatedProductsProvider>
+    );
+
+    const relatedProvider = container.querySelector(
+      '[data-testid="data-provider-relatedProductsData"]'
+    );
+    const data = JSON.parse(
+      relatedProvider!.getAttribute("data-provider-data") || "{}"
+    );
+    expect(data.relationshipName).toBe("Related Products");
   });
 
   it("should use default relationshipSlug of CRP_related_products", () => {
@@ -812,6 +837,7 @@ describe("related products design-time data", () => {
     expect(MOCK_RELATED_PRODUCTS_DATA.products).toBe(MOCK_RELATED_PRODUCTS);
     expect(MOCK_RELATED_PRODUCTS_DATA.totalCount).toBe(4);
     expect(MOCK_RELATED_PRODUCTS_DATA.relationshipSlug).toBe("CRP_related_products");
+    expect(MOCK_RELATED_PRODUCTS_DATA.relationshipName).toBe("Related Products");
     expect(MOCK_RELATED_PRODUCTS_DATA.isLoading).toBe(false);
     expect(MOCK_RELATED_PRODUCTS_DATA.isEmpty).toBe(false);
   });
@@ -837,6 +863,12 @@ describe("EPRelatedProductsProvider registration", () => {
     const props = epRelatedProductsProviderMeta.props as any;
     expect(props.relationshipSlug).toBeDefined();
     expect(props.relationshipSlug.defaultValue).toBe("CRP_related_products");
+  });
+
+  it("should have relationshipName prop with default value", () => {
+    const props = epRelatedProductsProviderMeta.props as any;
+    expect(props.relationshipName).toBeDefined();
+    expect(props.relationshipName.defaultValue).toBe("Related Products");
   });
 
   it("should have limit prop with default value of 4", () => {

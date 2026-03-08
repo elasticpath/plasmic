@@ -12,6 +12,7 @@
 import {
   DataProvider,
   repeatedElement,
+  useSelector,
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
@@ -224,8 +225,11 @@ function EPSearchHitsInner(props: {
   const { hits } = useHits();
   const { indexUiState } = useInstantSearch();
 
-  // Try to read currencyCode from parent context (EPCatalogSearchProvider)
-  const currencyCode = "USD"; // Default; overridden by provider context if available
+  // Read currencyCode from parent EPCatalogSearchProvider's DataProvider context
+  const catalogSearchData = useSelector("catalogSearchData") as
+    | { currencyCode?: string }
+    | undefined;
+  const currencyCode = catalogSearchData?.currencyCode || "USD";
 
   const normalizedProducts = useMemo(
     () =>
