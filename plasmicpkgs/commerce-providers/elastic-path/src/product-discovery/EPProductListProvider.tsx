@@ -1,0 +1,475 @@
+/**
+ * EPProductListProvider — headless product listing with pagination and sort.
+ *
+ * Fetches a single page of products via useProductList and exposes the results
+ * plus pagination metadata through a `productGridData` DataProvider key (D4).
+ * Supports both pagination mode (replace products per page) and load-more mode
+ * (append products from successive pages).
+ *
+ * Actions (setSort, goToPage, nextPage, prevPage, loadMore) are exposed via
+ * refActions so Plasmic interactions can invoke them.
+ */
+
+import {
+  DataProvider,
+  usePlasmicCanvasContext,
+} from "@plasmicapp/host";
+import registerComponent, {
+  ComponentMeta,
+} from "@plasmicapp/host/registerComponent";
+import React, {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Registerable } from "../registerable";
+import { useProductList } from "./use-product-list";
+import { MOCK_PRODUCT_GRID_DATA, ProductGridData } from "./design-time-data";
+import type { Product } from "../types/product";
+
+type PreviewState = "auto" | "withData" | "empty" | "loading" | "error";
+
+interface EPProductListProviderProps {
+  children?: React.ReactNode;
+  loadingContent?: React.ReactNode;
+  errorContent?: React.ReactNode;
+  emptyContent?: React.ReactNode;
+  categoryId?: string;
+  search?: string;
+  initialSort?: string;
+  pageSize?: number;
+  previewState?: PreviewState;
+  className?: string;
+}
+
+interface EPProductListProviderActions {
+  setSort(value: string): void;
+  goToPage(page: number): void;
+  nextPage(): void;
+  prevPage(): void;
+  loadMore(): void;
+}
+
+export const epProductListProviderMeta: ComponentMeta<EPProductListProviderProps> = {
+  name: "plasmic-commerce-ep-product-list-provider",
+  displayName: "EP Product List Provider",
+  description:
+    "Fetches and paginates products from Elastic Path. Exposes productGridData to children for binding. Use EP Product Grid as a child to render products.",
+  props: {
+    children: {
+      type: "slot",
+      defaultValue: [
+        {
+          type: "component",
+          name: "plasmic-commerce-ep-product-grid",
+        },
+      ],
+    },
+    loadingContent: {
+      type: "slot",
+      displayName: "Loading Content",
+      defaultValue: { type: "text", value: "Loading products..." },
+    },
+    errorContent: {
+      type: "slot",
+      displayName: "Error Content",
+      defaultValue: { type: "text", value: "Failed to load products" },
+    },
+    emptyContent: {
+      type: "slot",
+      displayName: "Empty Content",
+      defaultValue: { type: "text", value: "No products found" },
+    },
+    categoryId: {
+      type: "string",
+      displayName: "Category ID",
+      description: "Filter products by category ID",
+    },
+    search: {
+      type: "string",
+      displayName: "Search",
+      description: "Search products by name",
+    },
+    initialSort: {
+      type: "choice",
+      options: ["", "price-asc", "price-desc", "latest-desc", "trending-desc"],
+      displayName: "Sort",
+      description: "Initial sort order for products",
+    },
+    pageSize: {
+      type: "number",
+      displayName: "Page Size",
+      description: "Number of products per page",
+      defaultValue: 12,
+    },
+    previewState: {
+      type: "choice",
+      options: ["auto", "withData", "empty", "loading", "error"],
+      defaultValue: "auto",
+      displayName: "Preview State",
+      description:
+        "Force a preview state with sample data for design-time editing",
+      advanced: true,
+    },
+  },
+  importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
+  importName: "EPProductListProvider",
+  providesData: true,
+  refActions: {
+    setSort: {
+      description: "Change the sort order and reset to page 0",
+      argTypes: [{ name: "value", type: "string" }],
+    },
+    goToPage: {
+      description: "Navigate to a specific page (0-indexed)",
+      argTypes: [{ name: "page", type: "number" }],
+    },
+    nextPage: {
+      description: "Navigate to the next page",
+      argTypes: [],
+    },
+    prevPage: {
+      description: "Navigate to the previous page",
+      argTypes: [],
+    },
+    loadMore: {
+      description: "Append the next page of products (load-more mode)",
+      argTypes: [],
+    },
+  },
+};
+
+export const EPProductListProvider = React.forwardRef<
+  EPProductListProviderActions,
+  EPProductListProviderProps
+>(function EPProductListProvider(props, ref) {
+  const {
+    children,
+    loadingContent,
+    errorContent,
+    emptyContent,
+    categoryId,
+    search,
+    initialSort = "",
+    pageSize = 12,
+    previewState = "auto",
+    className,
+  } = props;
+
+  const inEditor = !!usePlasmicCanvasContext();
+
+  // --- Design-time preview handling ---
+  if (inEditor) {
+    if (previewState === "loading") {
+      return (
+        <div className={className} data-ep-product-list-provider="">
+          {loadingContent}
+        </div>
+      );
+    }
+    if (previewState === "error") {
+      return (
+        <div className={className} data-ep-product-list-provider="">
+          {errorContent}
+        </div>
+      );
+    }
+    if (previewState === "empty") {
+      return (
+        <DataProvider
+          name="productGridData"
+          data={{
+            ...MOCK_PRODUCT_GRID_DATA,
+            products: [],
+            totalCount: 0,
+            isEmpty: true,
+            summary: "No products found",
+          }}
+        >
+          <div className={className} data-ep-product-list-provider="">
+            {emptyContent}
+          </div>
+        </DataProvider>
+      );
+    }
+  }
+
+  const useMock =
+    previewState === "withData" || (previewState === "auto" && inEditor);
+
+  if (useMock) {
+    return (
+      <MockProductListProvider ref={ref} className={className}>
+        {children}
+      </MockProductListProvider>
+    );
+  }
+
+  return (
+    <EPProductListProviderInner
+      ref={ref}
+      categoryId={categoryId}
+      search={search}
+      initialSort={initialSort}
+      pageSize={pageSize}
+      className={className}
+      loadingContent={loadingContent}
+      errorContent={errorContent}
+      emptyContent={emptyContent}
+    >
+      {children}
+    </EPProductListProviderInner>
+  );
+});
+
+// Mock provider for design-time — actions are no-ops
+const MockProductListProvider = React.forwardRef<
+  EPProductListProviderActions,
+  { children?: React.ReactNode; className?: string }
+>(function MockProductListProvider({ children, className }, ref) {
+  useImperativeHandle(ref, () => ({
+    setSort: () => {},
+    goToPage: () => {},
+    nextPage: () => {},
+    prevPage: () => {},
+    loadMore: () => {},
+  }));
+
+  return (
+    <DataProvider name="productGridData" data={MOCK_PRODUCT_GRID_DATA}>
+      <div className={className} data-ep-product-list-provider="">
+        {children}
+      </div>
+    </DataProvider>
+  );
+});
+
+// Inner component to avoid calling hooks conditionally in preview branches.
+// All hooks are called unconditionally here.
+const EPProductListProviderInner = React.forwardRef<
+  EPProductListProviderActions,
+  {
+    children?: React.ReactNode;
+    categoryId?: string;
+    search?: string;
+    initialSort?: string;
+    pageSize?: number;
+    className?: string;
+    loadingContent?: React.ReactNode;
+    errorContent?: React.ReactNode;
+    emptyContent?: React.ReactNode;
+  }
+>(function EPProductListProviderInner(props, ref) {
+  const {
+    children,
+    categoryId,
+    search,
+    initialSort = "",
+    pageSize = 12,
+    className,
+    loadingContent,
+    errorContent,
+    emptyContent,
+  } = props;
+
+  const [currentPage, setCurrentPage] = useState(0);
+  const [sort, setSort] = useState(initialSort);
+  const [isLoadMoreMode, setIsLoadMoreMode] = useState(false);
+  const [loadMoreProducts, setLoadMoreProducts] = useState<Product[]>([]);
+  // Track the last page whose products were appended to avoid double-appending
+  const lastAppendedPageRef = useRef(-1);
+
+  const { products, totalCount, isLoading, error } = useProductList({
+    categoryId,
+    search,
+    sort,
+    page: currentPage,
+    pageSize,
+  });
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const hasNextPage = currentPage < totalPages - 1;
+  const hasPreviousPage = currentPage > 0;
+
+  // Append products in load-more mode when a new page arrives
+  useEffect(() => {
+    if (
+      isLoadMoreMode &&
+      !isLoading &&
+      products.length > 0 &&
+      currentPage !== lastAppendedPageRef.current
+    ) {
+      lastAppendedPageRef.current = currentPage;
+      setLoadMoreProducts((prev) => {
+        const existingIds = new Set(prev.map((p) => p.id));
+        const newProducts = products.filter((p) => !existingIds.has(p.id));
+        return newProducts.length > 0 ? [...prev, ...newProducts] : prev;
+      });
+    }
+  }, [isLoadMoreMode, isLoading, products, currentPage]);
+
+  const displayProducts =
+    isLoadMoreMode && loadMoreProducts.length > 0
+      ? loadMoreProducts
+      : products;
+
+  const isEmpty =
+    !isLoading && displayProducts.length === 0 && totalCount === 0;
+
+  const rangeStart = totalCount === 0 ? 0 : currentPage * pageSize + 1;
+  const rangeEnd = Math.min((currentPage + 1) * pageSize, totalCount);
+  const displayCount = isLoadMoreMode ? loadMoreProducts.length : displayProducts.length;
+  const summary = isEmpty
+    ? "No products found"
+    : isLoadMoreMode
+    ? `Showing ${displayCount} of ${totalCount} products`
+    : `Showing ${rangeStart}-${rangeEnd} of ${totalCount} products`;
+
+  const productGridData: ProductGridData = useMemo(
+    () => ({
+      products: displayProducts,
+      totalCount,
+      currentPage,
+      totalPages,
+      pageSize,
+      sort,
+      isLoading,
+      hasNextPage,
+      hasPreviousPage,
+      isEmpty,
+      rangeStart,
+      rangeEnd,
+      summary,
+    }),
+    [
+      displayProducts,
+      totalCount,
+      currentPage,
+      totalPages,
+      pageSize,
+      sort,
+      isLoading,
+      hasNextPage,
+      hasPreviousPage,
+      isEmpty,
+      rangeStart,
+      rangeEnd,
+      summary,
+    ]
+  );
+
+  // --- Actions for refActions ---
+
+  const resetLoadMore = useCallback(() => {
+    setIsLoadMoreMode(false);
+    setLoadMoreProducts([]);
+    lastAppendedPageRef.current = -1;
+  }, []);
+
+  const handleSetSort = useCallback(
+    (value: string) => {
+      setSort(value);
+      setCurrentPage(0);
+      resetLoadMore();
+    },
+    [resetLoadMore]
+  );
+
+  const handleGoToPage = useCallback(
+    (page: number) => {
+      const safePage = Math.max(0, Math.min(page, totalPages - 1));
+      setCurrentPage(safePage);
+      resetLoadMore();
+    },
+    [totalPages, resetLoadMore]
+  );
+
+  const handleNextPage = useCallback(() => {
+    if (hasNextPage) {
+      setCurrentPage((p) => p + 1);
+      if (!isLoadMoreMode) {
+        resetLoadMore();
+      }
+    }
+  }, [hasNextPage, isLoadMoreMode, resetLoadMore]);
+
+  const handlePrevPage = useCallback(() => {
+    if (hasPreviousPage) {
+      setCurrentPage((p) => p - 1);
+      resetLoadMore();
+    }
+  }, [hasPreviousPage, resetLoadMore]);
+
+  const handleLoadMore = useCallback(() => {
+    if (!hasNextPage) return;
+    if (!isLoadMoreMode) {
+      // First loadMore: enter load-more mode, seed with current products
+      setIsLoadMoreMode(true);
+      setLoadMoreProducts([...products]);
+      lastAppendedPageRef.current = currentPage;
+    }
+    setCurrentPage((p) => p + 1);
+  }, [hasNextPage, isLoadMoreMode, products, currentPage]);
+
+  useImperativeHandle(ref, () => ({
+    setSort: handleSetSort,
+    goToPage: handleGoToPage,
+    nextPage: handleNextPage,
+    prevPage: handlePrevPage,
+    loadMore: handleLoadMore,
+  }));
+
+  // Show loading/error/empty states
+  if (isLoading && displayProducts.length === 0) {
+    return (
+      <DataProvider name="productGridData" data={productGridData}>
+        <div className={className} data-ep-product-list-provider="">
+          {loadingContent}
+        </div>
+      </DataProvider>
+    );
+  }
+
+  if (error && displayProducts.length === 0) {
+    return (
+      <DataProvider name="productGridData" data={productGridData}>
+        <div className={className} data-ep-product-list-provider="">
+          {errorContent}
+        </div>
+      </DataProvider>
+    );
+  }
+
+  if (isEmpty) {
+    return (
+      <DataProvider name="productGridData" data={productGridData}>
+        <div className={className} data-ep-product-list-provider="">
+          {emptyContent}
+        </div>
+      </DataProvider>
+    );
+  }
+
+  return (
+    <DataProvider name="productGridData" data={productGridData}>
+      <div className={className} data-ep-product-list-provider="">
+        {children}
+      </div>
+    </DataProvider>
+  );
+});
+
+export function registerEPProductListProvider(
+  loader?: Registerable,
+  customMeta?: ComponentMeta<EPProductListProviderProps>
+) {
+  const doRegisterComponent: typeof registerComponent = (...args) =>
+    loader ? loader.registerComponent(...args) : registerComponent(...args);
+  doRegisterComponent(
+    EPProductListProvider,
+    customMeta ?? epProductListProviderMeta
+  );
+}

@@ -1,0 +1,138 @@
+/**
+ * Data-fetching hook for paginated product listing.
+ *
+ * Calls `getByContextAllProducts` from the EP SDK directly with pagination
+ * support, rather than extending the upstream SearchProductsHook type (D1).
+ * Uses `useMutablePlasmicQueryData` from @plasmicapp/query — the established
+ * caching pattern in this codebase (D6).
+ */
+
+import { useMemo } from "react";
+import { useMutablePlasmicQueryData } from "@plasmicapp/query";
+import { getByContextAllProducts } from "@epcc-sdk/sdks-shopper";
+import { useCommerce } from "../elastic-path";
+import { normalizeProductFromList } from "../utils";
+import getSortVariables from "../utils/get-sort-variables";
+import { handleAPIError } from "../utils/errorHandling";
+import { createLogger } from "../utils/logger";
+import type { Product } from "../types/product";
+
+const log = createLogger("useProductList");
+
+export interface UseProductListOptions {
+  categoryId?: string;
+  search?: string;
+  sort?: string;
+  page?: number;
+  pageSize?: number;
+  locale?: string;
+}
+
+export interface UseProductListResult {
+  products: Product[];
+  totalCount: number;
+  isLoading: boolean;
+  error: Error | null;
+  refetch: () => void;
+}
+
+export function useProductList(options: UseProductListOptions): UseProductListResult {
+  const {
+    categoryId,
+    search,
+    sort,
+    page = 0,
+    pageSize = 12,
+    locale,
+  } = options;
+
+  const commerce = useCommerce();
+  const client = commerce.providerRef.current?.client;
+  const provider = commerce.providerRef.current;
+
+  // Stable query key — null skips the fetch
+  const queryKey = client
+    ? ["ep-product-list", categoryId ?? "", search ?? "", sort ?? "", page, pageSize, locale ?? ""]
+    : null;
+
+  const { data, error, isLoading, mutate } = useMutablePlasmicQueryData<
+    { products: Product[]; totalCount: number },
+    Error
+  >(
+    queryKey,
+    async () => {
+      const query: Record<string, unknown> = {
+        include: ["main_image", "files", "component_products"],
+        "page[limit]": BigInt(pageSize),
+        "page[offset]": BigInt(page * pageSize),
+      };
+
+      // Add search filter
+      if (search) {
+        query["filter"] = `eq(name,${search})`;
+      }
+
+      // Add category filter
+      if (categoryId) {
+        const existingFilter = query["filter"] as string | undefined;
+        const catFilter = `eq(category.id,${categoryId})`;
+        query["filter"] = existingFilter
+          ? `and(${existingFilter},${catFilter})`
+          : catFilter;
+      }
+
+      // Add sorting
+      if (sort) {
+        const sortVariable = getSortVariables(sort);
+        if (sortVariable) {
+          query["sort"] = sortVariable;
+        }
+      }
+
+      try {
+        const response = await getByContextAllProducts({
+          client: client!,
+          query,
+        });
+
+        const products = response.data?.data
+          ? response.data.data.map((product) =>
+              normalizeProductFromList(
+                product,
+                provider?.locale ?? locale ?? "en",
+                response.data?.included
+              )
+            )
+          : [];
+
+        // BigInt → Number conversion for total count
+        const rawTotal = response.data?.meta?.results?.total;
+        const totalCount = rawTotal != null ? Number(rawTotal) : products.length;
+
+        return { products, totalCount };
+      } catch (err) {
+        const standardError = handleAPIError(err, "fetching product list");
+        log.error("Error fetching product list", {
+          error: standardError.message,
+        } as Record<string, unknown>);
+        throw standardError;
+      }
+    },
+    {
+      revalidateOnFocus: false,
+    }
+  );
+
+  const result = useMemo(
+    () => data ?? { products: [], totalCount: 0 },
+    [data]
+  );
+
+  return {
+    products: result.products,
+    totalCount: result.totalCount,
+    isLoading: isLoading ?? false,
+    error: error ?? null,
+    refetch: () => mutate(),
+  };
+}
