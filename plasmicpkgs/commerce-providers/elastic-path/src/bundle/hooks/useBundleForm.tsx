@@ -77,7 +77,7 @@ export function useBundleForm({
 
   // Initialize form with Zod resolver
   const form = useForm<BundleFormData>({
-    resolver: zodResolver(bundleSchema),
+    resolver: zodResolver(bundleSchema as any),
     defaultValues,
     mode: 'onChange', // Enable real-time validation
   });
