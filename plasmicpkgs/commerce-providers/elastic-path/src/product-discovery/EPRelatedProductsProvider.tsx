@@ -28,6 +28,7 @@ import {
   MOCK_RELATED_PRODUCT_GRID_DATA,
 } from "./design-time-data";
 import type { ProductGridData } from "./design-time-data";
+import type { Product } from "../types/product";
 
 type PreviewState = "auto" | "withData" | "empty" | "loading" | "error";
 
@@ -45,7 +46,7 @@ interface EPRelatedProductsProviderProps {
 }
 
 export interface RelatedProductsData {
-  products: any[];
+  products: Product[];
   totalCount: number;
   relationshipSlug: string;
   relationshipName: string;
