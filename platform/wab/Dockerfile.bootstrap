@@ -1,0 +1,11 @@
+# Dockerfile for Bootstrap task
+# Layers canvas-packages/hostlessList.json on top of the deployed WAB image
+# so that BootstrapHostless.ts can read it at /app/canvas-packages/hostlessList.json
+#
+# Usage: docker build --build-arg BASE_IMAGE=<deployed-wab-image> ...
+
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+# Copy hostless package list needed by BootstrapHostless.ts
+COPY canvas-packages/hostlessList.json /app/canvas-packages/hostlessList.json
