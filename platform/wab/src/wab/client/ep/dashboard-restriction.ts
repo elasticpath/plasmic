@@ -9,7 +9,20 @@ import { DevFlagsType } from "@/wab/shared/devflags";
 function hasEscapeHatch(appConfig: DevFlagsType, locationSearch: string): boolean {
   const paramName = appConfig.adminDashboardOverrideParam || "adminDashboard";
   const params = new URLSearchParams(locationSearch);
-  return params.get(paramName) === "true";
+  if (params.get(paramName) === "true") {
+    return true;
+  }
+  // Check inside continueTo param — the escape hatch gets encoded there
+  // when redirecting unauthenticated users to the login page.
+  const continueTo = params.get("continueTo");
+  if (continueTo) {
+    const qIdx = continueTo.indexOf("?");
+    if (qIdx !== -1) {
+      const innerParams = new URLSearchParams(continueTo.substring(qIdx));
+      return innerParams.get(paramName) === "true";
+    }
+  }
+  return false;
 }
 
 /** True when dashboard routes should be locked down. */
