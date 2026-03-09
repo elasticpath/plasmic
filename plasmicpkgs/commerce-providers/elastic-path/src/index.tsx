@@ -1,4 +1,5 @@
 import { registerCommerceProvider } from "./registerCommerceProvider";
+import { registerShopperContext } from "./shopper-context/registerShopperContext";
 import { registerEPAddToCartButton } from "./registerEPAddToCartButton";
 import { registerEPBundleConfigurator } from "./registerEPBundleConfigurator";
 import { registerEPMultiLocationStock } from "./registerEPMultiLocationStock";
@@ -65,10 +66,13 @@ export * from "./cart-drawer";
 export * from "./bundle/composable";
 export * from "./product-discovery";
 export * from "./catalog-search";
+export * from "./shopper-context";
+export * from "./shopper-context/server";
 
 export function registerAll(loader?: Registerable) {
   // Global context
   registerCommerceProvider(loader);
+  registerShopperContext(loader);
 
   // New composable variant picker
   // Register field components first so they're available as default slot content

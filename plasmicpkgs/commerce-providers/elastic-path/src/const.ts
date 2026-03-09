@@ -34,3 +34,11 @@ export const SWR_DEDUPING_INTERVAL_LONG = 5 * 60 * 1000
 
 /** Fallback currency code when the cart or order has no currency set. */
 export const DEFAULT_CURRENCY_CODE = 'USD'
+
+// --- Server-cart architecture ---
+
+/** httpOnly cookie name for server-managed cart identity. */
+export const EP_CART_COOKIE_NAME = 'ep_cart'
+
+/** Header name for ShopperContext overrides (Studio preview, checkout URL). */
+export const SHOPPER_CONTEXT_HEADER = 'x-shopper-context'
