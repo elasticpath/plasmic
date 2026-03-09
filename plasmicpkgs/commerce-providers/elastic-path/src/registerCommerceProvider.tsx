@@ -13,6 +13,7 @@ interface CommerceProviderProps extends ElasticPathCredentials {
   children?: React.ReactNode;
   locale?: string;
   customHost?: string;
+  serverCartMode?: boolean;
 }
 
 const globalContextName = "plasmic-commerce-elastic-path-provider";
@@ -48,6 +49,14 @@ export const commerceProviderMeta: GlobalContextMeta<CommerceProviderProps> = {
       defaultValue: "en-US",
       description: "Locale for currency formatting and localization",
     },
+    serverCartMode: {
+      type: "boolean",
+      displayName: "Server Cart Mode",
+      description:
+        "When enabled, cart operations use server routes instead of client-side EP SDK. No client ID is needed for cart operations.",
+      advanced: true,
+      defaultValue: false,
+    },
   },
   ...{ globalActions: globalActionsRegistrations },
   importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
@@ -55,9 +64,19 @@ export const commerceProviderMeta: GlobalContextMeta<CommerceProviderProps> = {
 };
 
 export function CommerceProviderComponent(props: CommerceProviderProps) {
-  const { children, clientId, host, customHost, locale = "en-US" } = props;
+  const {
+    children,
+    clientId,
+    host,
+    customHost,
+    locale = "en-US",
+    serverCartMode = false,
+  } = props;
 
   if (!clientId) {
+    if (serverCartMode) {
+      return <>{children}</>;
+    }
     return (
       <div>
         Please set your Elastic Path Client ID in the Elastic Path Provider

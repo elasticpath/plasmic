@@ -13,6 +13,7 @@ import {
 import { Registerable } from "../../registerable";
 import { useCommerce } from "../../elastic-path";
 import { getCartId } from "../../utils/cart-cookie";
+import { useShopperFetch } from "../../shopper-context/useShopperFetch";
 import { createLogger } from "../../utils/logger";
 
 const log = createLogger("EPPromoCodeInput");
@@ -32,6 +33,7 @@ interface EPPromoCodeInputProps {
   onRemove?: () => void;
   onError?: (message: string) => void;
   previewState?: "auto" | "idle" | "applied" | "error";
+  useServerRoutes?: boolean;
 }
 
 export const epPromoCodeInputMeta: ComponentMeta<EPPromoCodeInputProps> = {
@@ -90,6 +92,14 @@ export const epPromoCodeInputMeta: ComponentMeta<EPPromoCodeInputProps> = {
       displayName: "Preview State",
       advanced: true,
     },
+    useServerRoutes: {
+      type: "boolean",
+      displayName: "Use Server Routes",
+      description:
+        "When enabled, promo code operations go through /api/cart/promo server routes instead of client-side EP SDK.",
+      advanced: true,
+      defaultValue: false,
+    },
   },
   importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
   importName: "EPPromoCodeInput",
@@ -103,7 +113,29 @@ const MOCK_PROMO_DATA = {
   errorMessage: null as string | null,
 };
 
+/**
+ * Outer wrapper that dispatches to server or client inner component.
+ * This pattern avoids conditionally calling hooks (useCommerce vs useShopperFetch).
+ */
 export function EPPromoCodeInput(props: EPPromoCodeInputProps) {
+  if (props.useServerRoutes) {
+    return <EPPromoCodeInputServer {...props} />;
+  }
+  return <EPPromoCodeInputClient {...props} />;
+}
+
+/** Shared UI rendering used by both client and server modes. */
+function EPPromoCodeInputUI(props: EPPromoCodeInputProps & {
+  handleApply: () => void;
+  handleRemove: () => void;
+  code: string;
+  setCode: (v: string) => void;
+  state: PromoState;
+  setState: (s: PromoState) => void;
+  appliedCode: string | null;
+  errorMessage: string | null;
+  setErrorMessage: (m: string | null) => void;
+}) {
   const {
     className,
     inputClassName,
@@ -113,92 +145,19 @@ export function EPPromoCodeInput(props: EPPromoCodeInputProps) {
     placeholder = "Promo code",
     applyLabel = "Apply",
     removeLabel = "Remove",
-    onApply,
-    onRemove,
-    onError,
     previewState = "auto",
+    handleApply,
+    handleRemove,
+    code,
+    setCode,
+    state,
+    setState,
+    appliedCode,
+    errorMessage,
+    setErrorMessage,
   } = props;
 
   const inEditor = !!usePlasmicCanvasContext();
-  const commerce = useCommerce();
-  const client = commerce.providerRef.current?.client;
-
-  const [code, setCode] = useState("");
-  const [state, setState] = useState<PromoState>("idle");
-  const [appliedCode, setAppliedCode] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const handleApply = useCallback(async () => {
-    const trimmed = code.trim();
-    if (!trimmed) return;
-
-    setState("loading");
-    setErrorMessage(null);
-
-    try {
-      const cartId = getCartId();
-      if (!cartId) {
-        throw new Error("No cart found");
-      }
-
-      await manageCarts({
-        client: client!,
-        path: { cartID: cartId },
-        body: {
-          data: {
-            type: "promotion_item",
-            code: trimmed,
-          } as any,
-        },
-      });
-
-      setState("applied");
-      setAppliedCode(trimmed);
-      setCode("");
-      log.info("Promo code applied", { code: trimmed } as Record<string, unknown>);
-      onApply?.(trimmed);
-    } catch (err) {
-      const e = err as any;
-      const msg =
-        e?.body?.errors?.[0]?.detail ??
-        e?.message ??
-        "Invalid promo code";
-      setState("error");
-      setErrorMessage(msg);
-      log.warn("Promo code failed", { code: trimmed, error: msg } as Record<string, unknown>);
-      onError?.(msg);
-    }
-  }, [code, client, onApply, onError]);
-
-  const handleRemove = useCallback(async () => {
-    if (!appliedCode) return;
-
-    setState("loading");
-
-    try {
-      const cartId = getCartId();
-      if (!cartId) {
-        throw new Error("No cart found");
-      }
-
-      await deleteAPromotionViaPromotionCode({
-        client: client!,
-        path: { cartID: cartId, promoCode: appliedCode },
-      });
-
-      setState("idle");
-      setAppliedCode(null);
-      setErrorMessage(null);
-      log.info("Promo code removed", { code: appliedCode } as Record<string, unknown>);
-      onRemove?.();
-    } catch (err) {
-      setState("error");
-      const e = err as any;
-      const msg = e?.message ?? "Failed to remove promo code";
-      setErrorMessage(msg);
-      log.warn("Promo code remove failed", { error: msg } as Record<string, unknown>);
-    }
-  }, [appliedCode, client, onRemove]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
@@ -306,6 +265,186 @@ export function EPPromoCodeInput(props: EPPromoCodeInputProps) {
         )}
       </div>
     </DataProvider>
+  );
+}
+
+/** Client-mode: uses EP SDK directly via useCommerce(). */
+function EPPromoCodeInputClient(props: EPPromoCodeInputProps) {
+  const { onApply, onRemove, onError } = props;
+
+  const commerce = useCommerce();
+  const client = commerce.providerRef.current?.client;
+
+  const [code, setCode] = useState("");
+  const [state, setState] = useState<PromoState>("idle");
+  const [appliedCode, setAppliedCode] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const handleApply = useCallback(async () => {
+    const trimmed = code.trim();
+    if (!trimmed) return;
+
+    setState("loading");
+    setErrorMessage(null);
+
+    try {
+      const cartId = getCartId();
+      if (!cartId) {
+        throw new Error("No cart found");
+      }
+
+      await manageCarts({
+        client: client!,
+        path: { cartID: cartId },
+        body: {
+          data: {
+            type: "promotion_item",
+            code: trimmed,
+          } as any,
+        },
+      });
+
+      setState("applied");
+      setAppliedCode(trimmed);
+      setCode("");
+      log.info("Promo code applied", { code: trimmed } as Record<string, unknown>);
+      onApply?.(trimmed);
+    } catch (err) {
+      const e = err as any;
+      const msg =
+        e?.body?.errors?.[0]?.detail ??
+        e?.message ??
+        "Invalid promo code";
+      setState("error");
+      setErrorMessage(msg);
+      log.warn("Promo code failed", { code: trimmed, error: msg } as Record<string, unknown>);
+      onError?.(msg);
+    }
+  }, [code, client, onApply, onError]);
+
+  const handleRemove = useCallback(async () => {
+    if (!appliedCode) return;
+
+    setState("loading");
+
+    try {
+      const cartId = getCartId();
+      if (!cartId) {
+        throw new Error("No cart found");
+      }
+
+      await deleteAPromotionViaPromotionCode({
+        client: client!,
+        path: { cartID: cartId, promoCode: appliedCode },
+      });
+
+      setState("idle");
+      setAppliedCode(null);
+      setErrorMessage(null);
+      log.info("Promo code removed", { code: appliedCode } as Record<string, unknown>);
+      onRemove?.();
+    } catch (err) {
+      setState("error");
+      const e = err as any;
+      const msg = e?.message ?? "Failed to remove promo code";
+      setErrorMessage(msg);
+      log.warn("Promo code remove failed", { error: msg } as Record<string, unknown>);
+    }
+  }, [appliedCode, client, onRemove]);
+
+  return (
+    <EPPromoCodeInputUI
+      {...props}
+      handleApply={handleApply}
+      handleRemove={handleRemove}
+      code={code}
+      setCode={setCode}
+      state={state}
+      setState={setState}
+      appliedCode={appliedCode}
+      errorMessage={errorMessage}
+      setErrorMessage={setErrorMessage}
+    />
+  );
+}
+
+/** Server-mode: uses useShopperFetch() to call /api/cart/promo server routes. */
+function EPPromoCodeInputServer(props: EPPromoCodeInputProps) {
+  const { onApply, onRemove, onError } = props;
+
+  const shopperFetch = useShopperFetch();
+
+  const [code, setCode] = useState("");
+  const [state, setState] = useState<PromoState>("idle");
+  const [appliedCode, setAppliedCode] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const handleApply = useCallback(async () => {
+    const trimmed = code.trim();
+    if (!trimmed) return;
+
+    setState("loading");
+    setErrorMessage(null);
+
+    try {
+      await shopperFetch("/api/cart/promo", {
+        method: "POST",
+        body: JSON.stringify({ code: trimmed }),
+      });
+
+      setState("applied");
+      setAppliedCode(trimmed);
+      setCode("");
+      log.info("Promo code applied via server route", { code: trimmed } as Record<string, unknown>);
+      onApply?.(trimmed);
+    } catch (err) {
+      const e = err as any;
+      const msg = e?.message ?? "Invalid promo code";
+      setState("error");
+      setErrorMessage(msg);
+      log.warn("Promo code failed via server route", { code: trimmed, error: msg } as Record<string, unknown>);
+      onError?.(msg);
+    }
+  }, [code, shopperFetch, onApply, onError]);
+
+  const handleRemove = useCallback(async () => {
+    if (!appliedCode) return;
+
+    setState("loading");
+
+    try {
+      await shopperFetch("/api/cart/promo", {
+        method: "DELETE",
+        body: JSON.stringify({ promoCode: appliedCode }),
+      });
+
+      setState("idle");
+      setAppliedCode(null);
+      setErrorMessage(null);
+      log.info("Promo code removed via server route", { code: appliedCode } as Record<string, unknown>);
+      onRemove?.();
+    } catch (err) {
+      setState("error");
+      const e = err as any;
+      const msg = e?.message ?? "Failed to remove promo code";
+      setErrorMessage(msg);
+      log.warn("Promo code remove failed via server route", { error: msg } as Record<string, unknown>);
+    }
+  }, [appliedCode, shopperFetch, onRemove]);
+
+  return (
+    <EPPromoCodeInputUI
+      {...props}
+      handleApply={handleApply}
+      handleRemove={handleRemove}
+      code={code}
+      setCode={setCode}
+      state={state}
+      setState={setState}
+      appliedCode={appliedCode}
+      errorMessage={errorMessage}
+      setErrorMessage={setErrorMessage}
+    />
   );
 }
 

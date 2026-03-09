@@ -22,6 +22,11 @@ export type UpdateItemActionInput<T = any> = T extends LineItem
   ? Partial<UpdateItemHook["actionInput"]>
   : UpdateItemHook["actionInput"];
 
+/**
+ * @deprecated Use `useUpdateItem` from `shopper-context/use-update-item.ts` instead.
+ * The new hook sends PUT to `/api/cart/items/:id` via server routes with
+ * httpOnly cookies, removing the need for client-side EP credentials.
+ */
 export default useUpdateItem as UseUpdateItem<typeof handler>;
 
 export const handler: MutationHook<UpdateItemHook> = {
