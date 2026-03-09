@@ -13,7 +13,7 @@
 | Deferred specs | 0 |
 | Completed specs | 8 (product discovery + MCP) |
 | Total items to implement | 34 (25 server-cart + 9 composable checkout) |
-| Completed items | 26 (25 server-cart + 1 composable checkout) |
+| Completed items | 29 (25 server-cart + 4 composable checkout) |
 
 ## Active Spec Status
 
@@ -24,7 +24,7 @@
 | `phase-1-cart-reads.md` | Phase 1 | P1 | **DONE** (5/5 items) |
 | `phase-2-cart-mutations.md` | Phase 2 | P2 | **DONE** (4/4 items) |
 | `phase-3-credential-removal.md` | Phase 3 | P3 | **DONE** (5/5 items) |
-| `composable-checkout.md` | Phase 1 (P0) | CC-P0 | **IN PROGRESS** (1/4 items) |
+| `composable-checkout.md` | Phase 1 (P0) | CC-P0 | **DONE** (4/4 items) |
 
 ---
 
@@ -56,6 +56,10 @@
 - `src/checkout/composable/CheckoutContext.tsx` exists (CC-P0-1)
 - `useCheckout()` cartId is optional — server resolves from cookie in server-cart mode
 - All 1036 tests pass across 51 test suites (as of CC-P0-1 completion)
+- `src/checkout/composable/EPCheckoutStepIndicator.tsx` exists (CC-P0-2)
+- `src/checkout/composable/EPCheckoutButton.tsx` exists (CC-P0-3)
+- `src/checkout/composable/EPOrderTotalsBreakdown.tsx` exists (CC-P0-4)
+- All 1050 tests pass across 54 test suites (as of CC-P0-4 completion)
 
 ### Singleton Context Pattern (from BundleContext.tsx)
 
@@ -285,19 +289,21 @@ function getSingletonContext<T>(key: symbol): React.Context<T | null> {
   - Test: `src/checkout/composable/__tests__/EPCheckoutProvider.test.tsx` (9 tests)
   - Also added: CheckoutContext.tsx, design-time mock data, registration, barrel exports
 
-- [ ] **CC-P0-2: EPCheckoutStepIndicator** — `src/checkout/composable/EPCheckoutStepIndicator.tsx`
-  - Repeater over 4 checkout steps with per-step DataProvider
-  - Reads stepIndex from checkoutData context
-  - Uses repeatedElement() pattern
+- [x] **CC-P0-2: EPCheckoutStepIndicator** — `src/checkout/composable/EPCheckoutStepIndicator.tsx`
+  - Repeater over 4 checkout steps with per-step DataProvider (currentStep, currentStepIndex)
+  - Uses repeatedElement() pattern, reads stepIndex from checkoutData
+  - Design-time mock with stepIndex=1 (Shipping active)
+  - Test: `src/checkout/composable/__tests__/EPCheckoutStepIndicator.test.tsx` (4 tests)
 
-- [ ] **CC-P0-3: EPCheckoutButton** — `src/checkout/composable/EPCheckoutButton.tsx`
-  - Step-aware submit/advance button
-  - Derives label from step, calls correct action per step
-  - Data: checkoutButtonData with label, isDisabled, isProcessing
+- [x] **CC-P0-3: EPCheckoutButton** — `src/checkout/composable/EPCheckoutButton.tsx`
+  - Step-aware button with label/disabled/processing data via checkoutButtonData DataProvider
+  - data-step attribute for CSS targeting, onComplete event for confirmation step
+  - Test: `src/checkout/composable/__tests__/EPCheckoutButton.test.tsx` (6 tests)
 
-- [ ] **CC-P0-4: EPOrderTotalsBreakdown** — `src/checkout/composable/EPOrderTotalsBreakdown.tsx`
-  - Financial totals DataProvider (subtotal, tax, shipping, discount, total)
-  - Reads from checkoutData.summary or checkoutCartData
+- [x] **CC-P0-4: EPOrderTotalsBreakdown** — `src/checkout/composable/EPOrderTotalsBreakdown.tsx`
+  - Financial totals via orderTotalsData DataProvider
+  - Reads from checkoutData.summary > checkoutCartData > mock fallback
+  - Test: `src/checkout/composable/__tests__/EPOrderTotalsBreakdown.test.tsx` (4 tests)
 
 ### Composable Checkout Phase 2: Form Fields (CC-P1) — 3 Items
 
@@ -332,7 +338,7 @@ Composable Checkout Phase 2 (CC-P1-1 → CC-P1-3) — Form fields
 Composable Checkout Phase 3 (CC-P2-1 → CC-P2-2) — Shipping & payment
 ```
 
-**Server-cart phases COMPLETE** (P0 → P3). **Composable checkout IN PROGRESS** (CC-P0-1 done, CC-P0-2 next).
+**Server-cart phases COMPLETE** (P0 → P3). **CC-P0 COMPLETE** (CC-P0-1 → CC-P0-4). **Next: CC-P1-1.**
 
 ---
 
@@ -395,7 +401,10 @@ src/checkout/composable/         ← Composable checkout (CC-P0+)
   EPShippingMethodSelector.tsx     — shipping rates (CC-P2-1)
   EPPaymentElements.tsx            — Stripe Elements (CC-P2-2)
   __tests__/
-    EPCheckoutProvider.test.tsx    — provider tests (CC-P0-1)
+    EPCheckoutProvider.test.tsx        — provider tests (CC-P0-1)
+    EPCheckoutStepIndicator.test.tsx   — step indicator tests (CC-P0-2)
+    EPCheckoutButton.test.tsx          — step-aware button tests (CC-P0-3)
+    EPOrderTotalsBreakdown.test.tsx    — financial totals tests (CC-P0-4)
 ```
 
 ## Existing Files to Modify
@@ -415,7 +424,9 @@ src/checkout/composable/         ← Composable checkout (CC-P0+)
 | `src/checkout/composable/EPPromoCodeInput.tsx` | Add `useServerRoutes` boolean prop | P3 |
 | `src/checkout/hooks/use-checkout.tsx` | Make cartId optional in calculateShipping/createOrder | CC-P0-1 |
 | `src/registerCheckout.tsx` | Register EPCheckoutProvider | CC-P0-1 |
+| `src/registerCheckout.tsx` | Register EPCheckoutStepIndicator, EPCheckoutButton, EPOrderTotalsBreakdown | CC-P0-2..4 |
 | `src/checkout/composable/index.ts` | Add EPCheckoutProvider + CheckoutContext exports | CC-P0-1 |
+| `src/checkout/composable/index.ts` | Add EPCheckoutStepIndicator, EPCheckoutButton, EPOrderTotalsBreakdown exports | CC-P0-2..4 |
 | `src/utils/design-time-data.ts` | Add composable checkout mock data | CC-P0-1 |
 
 ---

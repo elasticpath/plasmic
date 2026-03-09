@@ -1,0 +1,220 @@
+/**
+ * EPOrderTotalsBreakdown — exposes financial totals for the checkout.
+ *
+ * Reads from `checkoutData.summary` (inside EPCheckoutProvider) or falls
+ * back to `checkoutCartData` (inside EPCheckoutCartSummary). Designer
+ * binds any elements to individual fields like subtotalFormatted,
+ * taxFormatted, shippingFormatted, totalFormatted.
+ */
+import {
+  DataProvider,
+  useSelector,
+  usePlasmicCanvasContext,
+} from "@plasmicapp/host";
+import registerComponent, {
+  ComponentMeta,
+} from "@plasmicapp/host/registerComponent";
+import React, { useMemo } from "react";
+import { Registerable } from "../../registerable";
+import { MOCK_ORDER_TOTALS_DATA } from "../../utils/design-time-data";
+import { createLogger } from "../../utils/logger";
+
+const log = createLogger("EPOrderTotalsBreakdown");
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+type PreviewState = "auto" | "withData";
+
+interface EPOrderTotalsBreakdownProps {
+  children?: React.ReactNode;
+  className?: string;
+  previewState?: PreviewState;
+}
+
+interface OrderTotalsData {
+  subtotal: number;
+  subtotalFormatted: string;
+  tax: number;
+  taxFormatted: string;
+  shipping: number;
+  shippingFormatted: string;
+  discount: number;
+  discountFormatted: string;
+  hasDiscount: boolean;
+  total: number;
+  totalFormatted: string;
+  currency: string;
+  itemCount: number;
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
+  const { children, className, previewState = "auto" } = props;
+
+  // Priority: checkoutData.summary > checkoutCartData > mock
+  const checkoutData = useSelector("checkoutData") as
+    | { summary?: any }
+    | undefined;
+  const checkoutCartData = useSelector("checkoutCartData") as
+    | {
+        subtotal?: number;
+        formattedSubtotal?: string;
+        tax?: number;
+        formattedTax?: string;
+        shipping?: number;
+        formattedShipping?: string;
+        total?: number;
+        formattedTotal?: string;
+        currencyCode?: string;
+        itemCount?: number;
+        hasPromo?: boolean;
+        promoDiscount?: number;
+        formattedPromoDiscount?: string | null;
+      }
+    | undefined;
+
+  const inEditor = !!usePlasmicCanvasContext();
+
+  const useMock =
+    previewState === "withData" ||
+    (previewState === "auto" && !checkoutData?.summary && !checkoutCartData && inEditor);
+
+  const totalsData = useMemo<OrderTotalsData>(() => {
+    if (useMock) {
+      log.debug("Using mock order totals for design-time preview");
+      return MOCK_ORDER_TOTALS_DATA;
+    }
+
+    // Source 1: checkoutData.summary (from EPCheckoutProvider)
+    const summary = checkoutData?.summary;
+    if (summary) {
+      return {
+        subtotal: summary.subtotal ?? 0,
+        subtotalFormatted: summary.subtotalFormatted ?? "$0.00",
+        tax: summary.tax ?? 0,
+        taxFormatted: summary.taxFormatted ?? "$0.00",
+        shipping: summary.shipping ?? 0,
+        shippingFormatted: summary.shippingFormatted ?? "TBD",
+        discount: summary.discount ?? 0,
+        discountFormatted: summary.discountFormatted ?? "$0.00",
+        hasDiscount: (summary.discount ?? 0) > 0,
+        total: summary.total ?? 0,
+        totalFormatted: summary.totalFormatted ?? "$0.00",
+        currency: summary.currency ?? "USD",
+        itemCount: summary.itemCount ?? 0,
+      };
+    }
+
+    // Source 2: checkoutCartData (from EPCheckoutCartSummary)
+    if (checkoutCartData) {
+      const discount = checkoutCartData.promoDiscount ?? 0;
+      return {
+        subtotal: checkoutCartData.subtotal ?? 0,
+        subtotalFormatted: checkoutCartData.formattedSubtotal ?? "$0.00",
+        tax: checkoutCartData.tax ?? 0,
+        taxFormatted: checkoutCartData.formattedTax ?? "$0.00",
+        shipping: checkoutCartData.shipping ?? 0,
+        shippingFormatted: checkoutCartData.formattedShipping ?? "TBD",
+        discount,
+        discountFormatted: checkoutCartData.formattedPromoDiscount ?? "$0.00",
+        hasDiscount: discount > 0,
+        total: checkoutCartData.total ?? 0,
+        totalFormatted: checkoutCartData.formattedTotal ?? "$0.00",
+        currency: checkoutCartData.currencyCode ?? "USD",
+        itemCount: checkoutCartData.itemCount ?? 0,
+      };
+    }
+
+    // Fallback — outside both providers, non-production warning
+    if (typeof process !== "undefined" && process.env?.NODE_ENV !== "production") {
+      log.warn("EPOrderTotalsBreakdown used outside both EPCheckoutProvider and EPCheckoutCartSummary — using mock data");
+    }
+    return MOCK_ORDER_TOTALS_DATA;
+  }, [useMock, checkoutData?.summary, checkoutCartData]);
+
+  return (
+    <DataProvider name="orderTotalsData" data={totalsData}>
+      <div className={className} data-ep-order-totals-breakdown="">
+        {children}
+      </div>
+    </DataProvider>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Registration metadata
+// ---------------------------------------------------------------------------
+export const epOrderTotalsBreakdownMeta: ComponentMeta<EPOrderTotalsBreakdownProps> =
+  {
+    name: "plasmic-commerce-ep-order-totals-breakdown",
+    displayName: "EP Order Totals Breakdown",
+    description:
+      "Exposes financial totals (subtotal, tax, shipping, discount, total) from checkout or cart context. Bind any elements to the totals data.",
+    props: {
+      children: {
+        type: "slot",
+        defaultValue: [
+          {
+            type: "vbox",
+            children: [
+              {
+                type: "hbox",
+                children: [
+                  { type: "text", value: "Subtotal" },
+                  { type: "text", value: "$0.00" },
+                ],
+              },
+              {
+                type: "hbox",
+                children: [
+                  { type: "text", value: "Shipping" },
+                  { type: "text", value: "$0.00" },
+                ],
+              },
+              {
+                type: "hbox",
+                children: [
+                  { type: "text", value: "Tax" },
+                  { type: "text", value: "$0.00" },
+                ],
+              },
+              {
+                type: "hbox",
+                children: [
+                  { type: "text", value: "Total" },
+                  { type: "text", value: "$0.00" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      previewState: {
+        type: "choice",
+        options: ["auto", "withData"],
+        defaultValue: "auto",
+        displayName: "Preview State",
+        description:
+          "Force a preview state with sample data for design-time editing",
+        advanced: true,
+      },
+    },
+    importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
+    importName: "EPOrderTotalsBreakdown",
+    providesData: true,
+  };
+
+export function registerEPOrderTotalsBreakdown(
+  loader?: Registerable,
+  customMeta?: ComponentMeta<EPOrderTotalsBreakdownProps>
+) {
+  const doRegisterComponent: typeof registerComponent = (...args) =>
+    loader ? loader.registerComponent(...args) : registerComponent(...args);
+  doRegisterComponent(
+    EPOrderTotalsBreakdown,
+    customMeta ?? epOrderTotalsBreakdownMeta
+  );
+}

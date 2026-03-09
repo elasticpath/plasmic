@@ -7,6 +7,9 @@ export { EPCountrySelect, registerEPCountrySelect, epCountrySelectMeta } from ".
 export { EPBillingAddressToggle, registerEPBillingAddressToggle, epBillingAddressToggleMeta } from "./EPBillingAddressToggle";
 export { EPCheckoutProvider, registerEPCheckoutProvider, epCheckoutProviderMeta } from "./EPCheckoutProvider";
 export type { CheckoutData } from "./EPCheckoutProvider";
+export { EPCheckoutStepIndicator, registerEPCheckoutStepIndicator, epCheckoutStepIndicatorMeta } from "./EPCheckoutStepIndicator";
+export { EPCheckoutButton, registerEPCheckoutButton, epCheckoutButtonMeta } from "./EPCheckoutButton";
+export { EPOrderTotalsBreakdown, registerEPOrderTotalsBreakdown, epOrderTotalsBreakdownMeta } from "./EPOrderTotalsBreakdown";
 
 // Contexts
 export { CheckoutPaymentContext, useCheckoutPaymentContext } from "./CheckoutContext";
