@@ -13,7 +13,7 @@
 | Deferred specs | 1 (`composable-checkout.md` — build after server-cart phases) |
 | Completed specs | 8 (product discovery + MCP) |
 | Total items to implement | 23 (14 impl files + 11 test files = 25 new files) |
-| Completed items | 9 |
+| Completed items | 14 |
 
 ## Active Spec Status
 
@@ -21,7 +21,7 @@
 |------|-------|----------|--------|
 | `server-cart-architecture.md` | Overview | — | Reference doc (no items) |
 | `phase-0-shopper-context.md` | Phase 0 | P0 | **DONE** (9/9 items) |
-| `phase-1-cart-reads.md` | Phase 1 | P1 | **TO DO** (0/5 items) |
+| `phase-1-cart-reads.md` | Phase 1 | P1 | **DONE** (5/5 items) |
 | `phase-2-cart-mutations.md` | Phase 2 | P2 | **TO DO** (0/4 items) |
 | `phase-3-credential-removal.md` | Phase 3 | P3 | **TO DO** (0/5 items) |
 
@@ -40,7 +40,10 @@
 - `src/const.ts` has no `EP_CART_COOKIE_NAME` or `SHOPPER_CONTEXT_HEADER` constants yet
 - `EPCheckoutCartSummary` has NO `cartData` prop — only: children, className, showImages, collapsible, isExpanded, onExpandedChange, previewState
 - No `@deprecated` markers exist on any cart hooks or cookie utils
-- `swr` is NOT in `package.json` (needed in Phase 1 as peerDependency)
+- `swr` IS in `package.json` peerDependencies (added in Phase 1)
+- `src/shopper-context/use-cart.ts` exists (Phase 1)
+- `src/shopper-context/use-checkout-cart.ts` exists (Phase 1)
+- `src/shopper-context/design-time-data.ts` exists (Phase 1)
 - Existing cart cookie constant is `ELASTICPATH_CART_COOKIE = 'elasticpath_cart'` (client-side, js-cookie)
 - New server-side cookie will use `EP_CART_COOKIE_NAME = 'ep_cart'` (httpOnly, different name)
 - No TODOs, FIXMEs, or placeholders in existing code (except EPPromoCodeInput hardcoded `-$10.00` discount)
@@ -145,7 +148,7 @@ function getSingletonContext<T>(key: symbol): React.Context<T | null> {
 
 **Prerequisite:** Add `"swr": ">=1.0.0"` to `peerDependencies` in `package.json` (first thing in Phase 1).
 
-- [ ] **P1-1: useCart hook** — `src/shopper-context/use-cart.ts`
+- [x] **P1-1: useCart hook** — `src/shopper-context/use-cart.ts`
   - SWR hook fetching `GET /api/cart` via `useShopperFetch()`
   - Cache key: `cartId ? ['cart', cartId] : 'cart'` — Studio preview triggers refetch on cartId change
   - SWR options: `revalidateOnFocus: false`
@@ -157,7 +160,7 @@ function getSingletonContext<T>(key: symbol): React.Context<T | null> {
   - `mutate()` exposed for Phase 2 mutation hooks
   - Test: `src/shopper-context/__tests__/use-cart.test.ts` — fetch call to /api/cart, SWR key varies with cartId, error handling
 
-- [ ] **P1-2: useCheckoutCart hook** — `src/shopper-context/use-checkout-cart.ts`
+- [x] **P1-2: useCheckoutCart hook** — `src/shopper-context/use-checkout-cart.ts`
   - Wraps `useCart()`, normalizes raw EP cart data into checkout display format
   - `useMemo` for normalization (only recomputes when data changes)
   - Types:
@@ -167,21 +170,22 @@ function getSingletonContext<T>(key: symbol): React.Context<T | null> {
   - Shipping hardcoded to 0 (calculated during checkout, not in cart)
   - Test: `src/shopper-context/__tests__/use-checkout-cart.test.ts` — normalization, null handling, formatted prices
 
-- [ ] **P1-3: Design-time mock data** — `src/shopper-context/design-time-data.ts`
+- [x] **P1-3: Design-time mock data** — `src/shopper-context/design-time-data.ts`
   - `MOCK_SERVER_CART_DATA: CheckoutCartData` with 2 items:
     - "Ember Glow Soy Candle" (2x $38.00 = $76.00)
     - "Midnight Wick Reed Diffuser" (1x $24.00 = $24.00)
   - Total: $108.25 (subtotal $100.00 + tax $8.25)
 
-- [ ] **P1-4: EPCheckoutCartSummary enhancement** — `src/checkout/composable/EPCheckoutCartSummary.tsx`
+- [x] **P1-4: EPCheckoutCartSummary enhancement** — `src/checkout/composable/EPCheckoutCartSummary.tsx`
   - Add optional `cartData?: CheckoutCartData` prop to interface
   - When `cartData` provided: wrap children in DataProvider with external data, skip internal useCart() fetch
   - When `cartData` not provided: existing internal behavior unchanged (backward compatible)
-  - Minimal change to existing file — add prop, add early return guard
+  - Minimal change to existing file — add prop, use two-component pattern (outer wrapper + inner component)
+  - NOTE: The spec originally said "early return guard" but that would violate React hooks rules since useCart() etc. are called after the guard. Instead, the implementation uses a thin outer wrapper that checks for `cartData` and either renders a DataProvider directly or delegates to the inner component that calls hooks.
   - NOTE: Do NOT add to Plasmic meta props (this is a code-only integration prop, not designer-facing)
   - **Shape difference note:** New `CheckoutCartData` item fields (`unitPrice`, `linePrice`, `formattedUnitPrice`, `formattedLinePrice`) differ from existing internal normalization (`price`, `formattedPrice`). Consumers using the new `cartData` prop opt into the new shape; existing Plasmic bindings remain on the old internal shape when `cartData` is not provided.
 
-- [ ] **P1-5: Update barrel exports** — `src/shopper-context/index.ts`
+- [x] **P1-5: Update barrel exports** — `src/shopper-context/index.ts`
   - Add: `useCart`, `CartItem`, `CartMeta`, `CartData`, `UseCartReturn` from use-cart
   - Add: `useCheckoutCart`, `CheckoutCartItem`, `CheckoutCartData` from use-checkout-cart
   - Add: `MOCK_SERVER_CART_DATA` from design-time-data
@@ -266,7 +270,7 @@ Phase 2 (P2-1 → P2-4) — Cart mutation hooks
 Phase 3 (P3-1 → P3-5) — Credential removal + deprecation
 ```
 
-**Phase 0 complete.** Next up → P1-1 (useCart hook). Add `swr` peerDependency first.
+**Phase 1 complete.** Next up → P2-1 (useAddItem hook).
 
 ---
 
@@ -381,3 +385,5 @@ src/checkout/composable/__tests__/
 ### Learning Notes
 
 - `@testing-library/react-hooks` is NOT available in this repo — use `@testing-library/react` which includes `renderHook`.
+- `jest.mock()` does NOT hoist with this project's esbuild transform (`jest-transform-esbuild.js`). Tests must mock at the `global.fetch` level instead of using `jest.mock()` factories. The existing passing tests (ShopperContext.test.tsx, useShopperFetch.test.ts) confirm this pattern.
+- For SWR tests: wrap in `<SWRConfig value={{ dedupingInterval: 0, provider: () => new Map() }}>` to isolate cache between tests.
