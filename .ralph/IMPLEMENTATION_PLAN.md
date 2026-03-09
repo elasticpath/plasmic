@@ -1,7 +1,7 @@
 # Implementation Plan
 
 **Last updated:** 2026-03-09
-**Last verified against codebase:** 2026-03-09 (re-verified)
+**Last verified against codebase:** 2026-03-09 (Phase 2 complete)
 **Branch:** `feat/server-cart-shopper-context`
 **Focus:** Server-only cart architecture with ShopperContext for Elastic Path commerce in Plasmic
 
@@ -13,7 +13,7 @@
 | Deferred specs | 1 (`composable-checkout.md` — build after server-cart phases) |
 | Completed specs | 8 (product discovery + MCP) |
 | Total items to implement | 23 (14 impl files + 11 test files = 25 new files) |
-| Completed items | 14 |
+| Completed items | 18 |
 
 ## Active Spec Status
 
@@ -22,7 +22,7 @@
 | `server-cart-architecture.md` | Overview | — | Reference doc (no items) |
 | `phase-0-shopper-context.md` | Phase 0 | P0 | **DONE** (9/9 items) |
 | `phase-1-cart-reads.md` | Phase 1 | P1 | **DONE** (5/5 items) |
-| `phase-2-cart-mutations.md` | Phase 2 | P2 | **TO DO** (0/4 items) |
+| `phase-2-cart-mutations.md` | Phase 2 | P2 | **DONE** (4/4 items) |
 | `phase-3-credential-removal.md` | Phase 3 | P3 | **TO DO** (0/5 items) |
 
 ## Deferred Specs
@@ -46,6 +46,9 @@
 - `src/shopper-context/design-time-data.ts` exists (Phase 1)
 - Existing cart cookie constant is `ELASTICPATH_CART_COOKIE = 'elasticpath_cart'` (client-side, js-cookie)
 - New server-side cookie will use `EP_CART_COOKIE_NAME = 'ep_cart'` (httpOnly, different name)
+- `src/shopper-context/use-add-item.ts` exists (Phase 2)
+- `src/shopper-context/use-remove-item.ts` exists (Phase 2)
+- `src/shopper-context/use-update-item.ts` exists (Phase 2)
 - No TODOs, FIXMEs, or placeholders in existing code (except EPPromoCodeInput hardcoded `-$10.00` discount)
 
 ### Singleton Context Pattern (from BundleContext.tsx)
@@ -192,7 +195,7 @@ function getSingletonContext<T>(key: symbol): React.Context<T | null> {
 
 ### Phase 2: Cart Mutation Hooks (P2) — 4 Items
 
-- [ ] **P2-1: useAddItem hook** — `src/shopper-context/use-add-item.ts`
+- [x] **P2-1: useAddItem hook** — `src/shopper-context/use-add-item.ts`
   - Returns memoized async function via `useCallback`
   - `POST /api/cart/items` with JSON body via `useShopperFetch()`
   - `AddItemInput` type: productId (required), variantId?, quantity?, bundleConfiguration?, locationId?, selectedOptions?
@@ -200,14 +203,14 @@ function getSingletonContext<T>(key: symbol): React.Context<T | null> {
   - Returns server response
   - Test: `src/shopper-context/__tests__/use-add-item.test.ts` — POST call, body shape, mutate called
 
-- [ ] **P2-2: useRemoveItem hook** — `src/shopper-context/use-remove-item.ts`
+- [x] **P2-2: useRemoveItem hook** — `src/shopper-context/use-remove-item.ts`
   - Returns memoized async function via `useCallback`
   - `DELETE /api/cart/items/${encodeURIComponent(itemId)}` via `useShopperFetch()`
   - URL-encodes itemId to prevent path injection
   - Calls `mutate()` after successful removal
   - Test: `src/shopper-context/__tests__/use-remove-item.test.ts` — DELETE call, URL encoding, mutate called
 
-- [ ] **P2-3: useUpdateItem hook** — `src/shopper-context/use-update-item.ts`
+- [x] **P2-3: useUpdateItem hook** — `src/shopper-context/use-update-item.ts`
   - Returns memoized function via `useCallback` (NOT async — fires debounced)
   - `PUT /api/cart/items/${encodeURIComponent(itemId)}` with `{ quantity }` body
   - Debounced at `DEFAULT_DEBOUNCE_MS` (500ms) from `src/const.ts` using `useRef<setTimeout>`
@@ -215,7 +218,7 @@ function getSingletonContext<T>(key: symbol): React.Context<T | null> {
   - Quantity 0 = remove (server handles this)
   - Test: `src/shopper-context/__tests__/use-update-item.test.ts` — PUT call, debounce behavior, mutate called
 
-- [ ] **P2-4: Update barrel exports** — `src/shopper-context/index.ts`
+- [x] **P2-4: Update barrel exports** — `src/shopper-context/index.ts`
   - Add: `useAddItem`, `AddItemInput` from use-add-item
   - Add: `useRemoveItem` from use-remove-item
   - Add: `useUpdateItem` from use-update-item
@@ -270,7 +273,7 @@ Phase 2 (P2-1 → P2-4) — Cart mutation hooks
 Phase 3 (P3-1 → P3-5) — Credential removal + deprecation
 ```
 
-**Phase 1 complete.** Next up → P2-1 (useAddItem hook).
+**Phase 2 complete.** Next up → P3-1 (deprecate old cart hooks).
 
 ---
 
@@ -387,3 +390,4 @@ src/checkout/composable/__tests__/
 - `@testing-library/react-hooks` is NOT available in this repo — use `@testing-library/react` which includes `renderHook`.
 - `jest.mock()` does NOT hoist with this project's esbuild transform (`jest-transform-esbuild.js`). Tests must mock at the `global.fetch` level instead of using `jest.mock()` factories. The existing passing tests (ShopperContext.test.tsx, useShopperFetch.test.ts) confirm this pattern.
 - For SWR tests: wrap in `<SWRConfig value={{ dedupingInterval: 0, provider: () => new Map() }}>` to isolate cache between tests.
+- `useCart` `isEmpty` check must be defensive (`!data || !data.items || data.items.length === 0`) because mutation hook tests may mock fetch with responses that lack `items` field. Fixed in Phase 2.

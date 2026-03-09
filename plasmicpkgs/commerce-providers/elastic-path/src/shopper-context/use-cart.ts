@@ -84,7 +84,7 @@ export function useCart(): UseCartReturn {
     data: data ?? null,
     error: error ?? null,
     isLoading: !data && !error,
-    isEmpty: !data || data.items.length === 0,
+    isEmpty: !data || !data.items || data.items.length === 0,
     mutate: mutate as () => Promise<CartData | undefined>,
   };
 }
