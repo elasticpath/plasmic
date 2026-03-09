@@ -22,3 +22,6 @@ export type {
   PaymentStatus,
   APIResponse
 } from './types';
+
+// Composable checkout components
+export * from './composable';
