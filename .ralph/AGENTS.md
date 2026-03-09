@@ -25,6 +25,9 @@ cd packages/plasmic-mcp && npm run typecheck      # TypeScript type checking (ts
 
 - Monorepo: platform/ (apps), packages/ (SDK), plasmicpkgs/ (code components)
 - **EP Commerce components:** `plasmicpkgs/commerce-providers/elastic-path/src/`
+- **Server-cart architecture (current focus):** `elastic-path/src/shopper-context/` (new directory)
+- **Singleton context pattern to follow:** `elastic-path/src/bundle/composable/BundleContext.tsx`, `elastic-path/src/cart-drawer/CartDrawerContext.tsx`
+- **Existing cart hooks (being replaced):** `elastic-path/src/cart/use-cart.tsx`, `use-add-item.tsx`, `use-remove-item.tsx`, `use-update-item.tsx`
 - **Composable component examples:** `elastic-path/src/bundle/composable/`, `elastic-path/src/cart-drawer/`, `elastic-path/src/variant-picker/`
 - **Existing hooks:** `elastic-path/src/product/use-search.tsx`, `use-product.tsx`; `elastic-path/src/site/use-categories.tsx`
 - **Data normalization:** `elastic-path/src/utils/normalize.ts`
