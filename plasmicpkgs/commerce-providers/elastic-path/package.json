@@ -33,7 +33,8 @@
     "@plasmicapp/host": ">=1.0.0",
     "@plasmicapp/query": ">=0.1.0",
     "react": ">=16.8.0",
-    "react-hook-form": ">=7.28.0"
+    "react-hook-form": ">=7.28.0",
+    "swr": ">=1.0.0"
   },
   "dependencies": {
     "@elasticpath/catalog-search-instantsearch-adapter": "0.0.5",
