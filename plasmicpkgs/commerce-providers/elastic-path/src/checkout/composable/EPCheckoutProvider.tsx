@@ -36,12 +36,8 @@ import {
   MOCK_CHECKOUT_DATA_CONFIRMATION,
 } from "../../utils/design-time-data";
 import { useCheckout } from "../hooks/use-checkout";
-import {
-  CheckoutStep,
-  type AddressData,
-  type CheckoutFormData,
-  type ShippingRate,
-} from "../types";
+import { CheckoutStep } from "../types";
+import type { AddressData, CheckoutFormData, ShippingRate } from "../types";
 import { CheckoutPaymentContext } from "./CheckoutContext";
 
 const log = createLogger("EPCheckoutProvider");

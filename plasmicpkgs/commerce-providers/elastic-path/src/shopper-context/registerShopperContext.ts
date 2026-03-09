@@ -1,6 +1,7 @@
 import type { GlobalContextMeta } from "@plasmicapp/host";
 import registerGlobalContext from "@plasmicapp/host/registerGlobalContext";
-import { ShopperContext, type ShopperContextProps } from "./ShopperContext";
+import { ShopperContext } from "./ShopperContext";
+import type { ShopperContextProps } from "./ShopperContext";
 import type { Registerable } from "../registerable";
 
 export const shopperContextMeta: GlobalContextMeta<ShopperContextProps> = {

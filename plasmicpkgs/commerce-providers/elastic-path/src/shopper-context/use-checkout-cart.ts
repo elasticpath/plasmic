@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import { useCart, type CartData } from "./use-cart";
+import { useCart } from "./use-cart";
+import type { CartData } from "./use-cart";
 
 // ---------------------------------------------------------------------------
 // Checkout-display types — flattened and formatted for direct binding in

@@ -3,7 +3,8 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import React from "react";
 import { SWRConfig } from "swr";
-import { useCheckoutCart, type CheckoutCartData } from "../use-checkout-cart";
+import { useCheckoutCart } from "../use-checkout-cart";
+import type { CheckoutCartData } from "../use-checkout-cart";
 
 // ---------------------------------------------------------------------------
 // Integration test: mock global.fetch, let real SWR + useCart + useCheckoutCart

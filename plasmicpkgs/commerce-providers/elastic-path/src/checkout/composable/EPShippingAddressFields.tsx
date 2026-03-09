@@ -302,7 +302,7 @@ const EPShippingAddressFieldsRuntime = React.forwardRef<
       city: true, postcode: true, country: true, phone: true,
     });
     const valid = Object.values(errs).every((e) => e === null);
-    log.debug("Validation result:", valid, errs);
+    log.debug("Validation result", { valid, errors: errs } as Record<string, unknown>);
     return valid;
   }, [values, country, showPhoneField]);
 

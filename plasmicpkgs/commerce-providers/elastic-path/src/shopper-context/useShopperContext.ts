@@ -1,5 +1,6 @@
 import { useContext } from "react";
-import { getShopperContext, type ShopperOverrides } from "./ShopperContext";
+import { getShopperContext } from "./ShopperContext";
+import type { ShopperOverrides } from "./ShopperContext";
 
 /**
  * Read the current ShopperContext overrides.

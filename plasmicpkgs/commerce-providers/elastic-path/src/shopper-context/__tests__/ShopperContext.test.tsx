@@ -1,11 +1,8 @@
 /** @jest-environment jsdom */
 import React from "react";
 import { render, screen } from "@testing-library/react";
-import {
-  ShopperContext,
-  getShopperContext,
-  type ShopperOverrides,
-} from "../ShopperContext";
+import { ShopperContext, getShopperContext } from "../ShopperContext";
+import type { ShopperOverrides } from "../ShopperContext";
 import { useShopperContext } from "../useShopperContext";
 
 // Helper component that displays context values

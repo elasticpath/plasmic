@@ -405,7 +405,7 @@ const EPBillingAddressFieldsRuntime = React.forwardRef<
     setErrors(errs);
     setTouched({ ...ALL_TOUCHED });
     const valid = Object.values(errs).every((e) => e === null);
-    log.debug("Validation result:", valid, errs);
+    log.debug("Validation result", { valid, errors: errs } as Record<string, unknown>);
     return valid;
   }, [values, country]);
 
