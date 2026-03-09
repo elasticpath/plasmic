@@ -8,6 +8,7 @@ import React from "react";
 import { getCommerceProvider } from "./elastic-path";
 import { ElasticPathCredentials } from "./provider";
 import { Registerable } from "./registerable";
+import { ServerCartActionsProvider } from "./shopper-context/ServerCartActionsProvider";
 
 interface CommerceProviderProps extends ElasticPathCredentials {
   children?: React.ReactNode;
@@ -75,7 +76,11 @@ export function CommerceProviderComponent(props: CommerceProviderProps) {
 
   if (!clientId) {
     if (serverCartMode) {
-      return <>{children}</>;
+      return (
+        <ServerCartActionsProvider globalContextName={globalContextName}>
+          {children}
+        </ServerCartActionsProvider>
+      );
     }
     return (
       <div>
@@ -97,11 +102,15 @@ export function CommerceProviderComponent(props: CommerceProviderProps) {
     [creds, locale]
   );
 
+  const ActionsProvider = serverCartMode
+    ? ServerCartActionsProvider
+    : CartActionsProvider;
+
   return (
     <CommerceProvider>
-      <CartActionsProvider globalContextName={globalContextName}>
+      <ActionsProvider globalContextName={globalContextName}>
         {children}
-      </CartActionsProvider>
+      </ActionsProvider>
     </CommerceProvider>
   );
 }

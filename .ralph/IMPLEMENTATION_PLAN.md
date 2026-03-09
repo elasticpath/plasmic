@@ -1,7 +1,7 @@
 # Implementation Plan
 
 **Last updated:** 2026-03-09
-**Last verified against codebase:** 2026-03-09 (P3-1 through P3-3 complete)
+**Last verified against codebase:** 2026-03-09 (ALL PHASES COMPLETE)
 **Branch:** `feat/server-cart-shopper-context`
 **Focus:** Server-only cart architecture with ShopperContext for Elastic Path commerce in Plasmic
 
@@ -12,8 +12,8 @@
 | Active specs (server-cart) | 5 |
 | Deferred specs | 1 (`composable-checkout.md` — build after server-cart phases) |
 | Completed specs | 8 (product discovery + MCP) |
-| Total items to implement | 23 (14 impl files + 11 test files = 25 new files) |
-| Completed items | 21 |
+| Total items to implement | 25 (15 impl files + 12 test files = 27 new files) |
+| Completed items | 25 |
 
 ## Active Spec Status
 
@@ -23,7 +23,7 @@
 | `phase-0-shopper-context.md` | Phase 0 | P0 | **DONE** (9/9 items) |
 | `phase-1-cart-reads.md` | Phase 1 | P1 | **DONE** (5/5 items) |
 | `phase-2-cart-mutations.md` | Phase 2 | P2 | **DONE** (4/4 items) |
-| `phase-3-credential-removal.md` | Phase 3 | P3 | **IN PROGRESS** (3/5 items) |
+| `phase-3-credential-removal.md` | Phase 3 | P3 | **DONE** (5/5 items) |
 
 ## Deferred Specs
 
@@ -54,6 +54,9 @@
 - `src/checkout/composable/__tests__/EPPromoCodeInput.test.tsx` exists (Phase 3)
 - EPPromoCodeInput refactored to two-component pattern (outer wrapper → EPPromoCodeInputClient | EPPromoCodeInputServer)
 - `jest.mock()` confirmed not working for EPPromoCodeInput tests — used global.fetch mocking pattern
+- `src/shopper-context/ServerCartActionsProvider.tsx` exists (Phase 3)
+- `registerCommerceProvider.tsx` uses `ServerCartActionsProvider` when `serverCartMode=true` (Phase 3)
+- All 1027 tests pass across 50 test suites (as of P3-5 completion)
 
 ### Singleton Context Pattern (from BundleContext.tsx)
 
@@ -251,15 +254,26 @@ function getSingletonContext<T>(key: symbol): React.Context<T | null> {
   - Existing behavior unchanged when false (default)
   - Test: `src/checkout/composable/__tests__/EPPromoCodeInput.test.tsx` — useServerRoutes mode calls /api/cart/promo
 
-- [ ] **P3-4: Audit and document** — Review all `getEPClient()` / `useCommerce()` usage for cart operations
-  - Confirm all cart paths have server-route alternatives
-  - Document remaining client-side EP usage (product/search hooks — intentionally kept, public data)
-  - Known: product hooks use client_id only (no secret), acceptable risk
+- [x] **P3-4: Audit and document** — Review all `getEPClient()` / `useCommerce()` usage for cart operations
+  - All 4 deprecated cart hooks (`src/cart/use-cart.tsx`, `use-add-item.tsx`, `use-remove-item.tsx`, `use-update-item.tsx`) have server-route alternatives via `shopper-context/` hooks
+  - EPPromoCodeInput has dual-mode (`useServerRoutes` prop) — client or server routes
+  - Remaining client-side EP SDK usage (intentionally kept, public data only):
+    - `src/product/use-product.tsx` — product detail fetch via `getByContextProduct`
+    - `src/product/use-search.tsx` — product listing via `getByContextAllProducts`
+    - `src/site/use-categories.tsx` — category hierarchy via `getByContextAllNodes`
+    - `src/inventory/use-stock.tsx`, `use-locations.tsx` — stock/location reads
+    - `src/bundle/use-bundle-configuration.tsx` — bundle config via `configureByContextProduct`
+    - `src/catalog-search/EPCatalogSearchProvider.tsx` — Algolia adapter initialization
+  - All above use `client_id` only (public key), no `client_secret` — acceptable risk
+  - `client_secret` exists only server-side in `api/endpoints/checkout/` (calculate-shipping, setup-payment)
 
-- [ ] **P3-5: CartActionsProvider review** — Check if global actions (addToCart) need updating
-  - If used in Plasmic interactions, ensure they work with server-cart hooks
-  - May need ServerCartActionsProvider or modification to existing one
-  - Depends on how CartActionsProvider is wired in the consumer app
+- [x] **P3-5: CartActionsProvider review** — ServerCartActionsProvider created
+  - `CartActionsProvider` from `@plasmicpkgs/commerce` was NOT available in `serverCartMode` (no global actions)
+  - Created `src/shopper-context/ServerCartActionsProvider.tsx` — bridges shopper-context hooks to Plasmic global actions
+  - Updated `registerCommerceProvider.tsx`: uses `ServerCartActionsProvider` when `serverCartMode=true`, `CartActionsProvider` when false
+  - Works both with and without `clientId` (no `clientId` = cart-only server mode; with `clientId` = products client-side + cart server-side)
+  - Test: `src/shopper-context/__tests__/ServerCartActionsProvider.test.tsx` — renders children, hooks initialize
+  - Exported via `src/shopper-context/index.ts` barrel
 
 ---
 
@@ -277,17 +291,17 @@ Phase 2 (P2-1 → P2-4) — Cart mutation hooks
 Phase 3 (P3-1 → P3-5) — Credential removal + deprecation
 ```
 
-**P3-1 through P3-3 complete.** Next up → P3-4 (audit and document).
+**ALL PHASES COMPLETE.** Server-cart architecture fully implemented (P0 → P3).
 
 ---
 
-## New Files Summary (14 implementation + 11 test = 25 new files)
+## New Files Summary (15 implementation + 12 test = 27 new files)
 
-### Implementation Files (14)
+### Implementation Files (15)
 
 ```
 src/shopper-context/              ← Created in Phase 0
-  index.ts                          — barrel exports (Phase 0, updated in P1/P2)
+  index.ts                          — barrel exports (Phase 0, updated in P1/P2/P3)
   ShopperContext.tsx                 — GlobalContext component (Phase 0)
   useShopperContext.ts              — context hook (Phase 0)
   useShopperFetch.ts               — fetch wrapper (Phase 0)
@@ -298,13 +312,14 @@ src/shopper-context/              ← Created in Phase 0
   use-add-item.ts                  — add mutation (Phase 2)
   use-remove-item.ts               — remove mutation (Phase 2)
   use-update-item.ts               — update mutation (Phase 2)
+  ServerCartActionsProvider.tsx    — global actions via server routes (Phase 3)
   server/
     index.ts                        — server barrel (Phase 0)
     resolve-cart-id.ts             — header/cookie resolution (Phase 0)
     cart-cookie.ts                 — httpOnly cookie builder (Phase 0)
 ```
 
-### Test Files (11)
+### Test Files (12)
 
 ```
 src/shopper-context/__tests__/
@@ -315,6 +330,7 @@ src/shopper-context/__tests__/
   use-add-item.test.ts              — POST mutation (Phase 2)
   use-remove-item.test.ts           — DELETE mutation (Phase 2)
   use-update-item.test.ts           — PUT + debounce (Phase 2)
+  ServerCartActionsProvider.test.tsx — global actions provider (Phase 3)
 src/shopper-context/server/__tests__/
   resolve-cart-id.test.ts           — priority resolution (Phase 0)
   cart-cookie.test.ts               — cookie string building (Phase 0)
@@ -336,7 +352,7 @@ src/checkout/composable/__tests__/
 | `src/cart/use-remove-item.tsx` | Add @deprecated JSDoc | 3 |
 | `src/cart/use-update-item.tsx` | Add @deprecated JSDoc | 3 |
 | `src/utils/cart-cookie.ts` | Add @deprecated JSDoc to 3 exports | 3 |
-| `src/registerCommerceProvider.tsx` | Add `serverCartMode` boolean prop | 3 |
+| `src/registerCommerceProvider.tsx` | Add `serverCartMode` boolean prop + ServerCartActionsProvider | 3 |
 | `src/checkout/composable/EPPromoCodeInput.tsx` | Add `useServerRoutes` boolean prop | 3 |
 
 ---

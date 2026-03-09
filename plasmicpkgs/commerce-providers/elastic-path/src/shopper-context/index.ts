@@ -22,3 +22,4 @@ export { MOCK_SERVER_CART_DATA } from "./design-time-data";
 export { useAddItem, type AddItemInput } from "./use-add-item";
 export { useRemoveItem } from "./use-remove-item";
 export { useUpdateItem } from "./use-update-item";
+export { ServerCartActionsProvider } from "./ServerCartActionsProvider";
