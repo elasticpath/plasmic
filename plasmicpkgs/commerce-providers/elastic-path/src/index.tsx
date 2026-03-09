@@ -37,6 +37,18 @@ import { registerEPBundleVariationPicker } from "./bundle/composable/EPBundleVar
 import { registerEPBundleVariationOptionList } from "./bundle/composable/EPBundleVariationOptionList";
 import { registerEPBundleVariationField } from "./bundle/composable/EPBundleVariationField";
 import { registerEPBundleVariationOptionTrigger } from "./bundle/composable/EPBundleVariationOptionTrigger";
+import { registerEPProductGrid } from "./product-discovery/EPProductGrid";
+import { registerEPProductListProvider } from "./product-discovery/EPProductListProvider";
+import { registerEPRelatedProductsProvider } from "./product-discovery/EPRelatedProductsProvider";
+import { registerEPSearchBox } from "./catalog-search/EPSearchBox";
+import { registerEPSearchHits } from "./catalog-search/EPSearchHits";
+import { registerEPRefinementList } from "./catalog-search/EPRefinementList";
+import { registerEPHierarchicalMenu } from "./catalog-search/EPHierarchicalMenu";
+import { registerEPRangeFilter } from "./catalog-search/EPRangeFilter";
+import { registerEPSearchPagination } from "./catalog-search/EPSearchPagination";
+import { registerEPSearchStats } from "./catalog-search/EPSearchStats";
+import { registerEPSearchSortBy } from "./catalog-search/EPSearchSortBy";
+import { registerEPCatalogSearchProvider } from "./catalog-search/EPCatalogSearchProvider";
 import { Registerable } from "./registerable";
 
 export * from "./elastic-path";
@@ -51,6 +63,8 @@ export * from "./variant-picker";
 export * from "./stock";
 export * from "./cart-drawer";
 export * from "./bundle/composable";
+export * from "./product-discovery";
+export * from "./catalog-search";
 
 export function registerAll(loader?: Registerable) {
   // Global context
@@ -103,6 +117,22 @@ export function registerAll(loader?: Registerable) {
   registerEPBundlePriceField(loader);
   registerEPBundleValidationErrors(loader);
   registerEPBundleProvider(loader);
+
+  // Product discovery — register grid first (child) then providers (parents)
+  registerEPProductGrid(loader);
+  registerEPProductListProvider(loader);
+  registerEPRelatedProductsProvider(loader);
+
+  // Catalog search — register leaf/field components first, then repeaters, then provider
+  registerEPSearchBox(loader);
+  registerEPSearchStats(loader);
+  registerEPSearchSortBy(loader);
+  registerEPSearchHits(loader);
+  registerEPRefinementList(loader);
+  registerEPHierarchicalMenu(loader);
+  registerEPRangeFilter(loader);
+  registerEPSearchPagination(loader);
+  registerEPCatalogSearchProvider(loader);
 
   // Legacy monolithic bundle configurator
   registerEPBundleConfigurator(loader);
