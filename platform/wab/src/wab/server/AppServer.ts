@@ -460,6 +460,7 @@ export function addLoggingMiddleware(app: express.Application) {
           referrer: req.get("referrer"),
           userAgent: req.get("user-agent"),
           contentLength: res.get("content-length"),
+          duration: duration,
         }
       );
     });
