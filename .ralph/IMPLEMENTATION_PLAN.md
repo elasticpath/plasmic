@@ -1,7 +1,7 @@
 # Implementation Plan
 
 **Last updated:** 2026-03-09
-**Last verified against codebase:** 2026-03-09 (Phase 2 complete)
+**Last verified against codebase:** 2026-03-09 (P3-1 through P3-3 complete)
 **Branch:** `feat/server-cart-shopper-context`
 **Focus:** Server-only cart architecture with ShopperContext for Elastic Path commerce in Plasmic
 
@@ -13,7 +13,7 @@
 | Deferred specs | 1 (`composable-checkout.md` — build after server-cart phases) |
 | Completed specs | 8 (product discovery + MCP) |
 | Total items to implement | 23 (14 impl files + 11 test files = 25 new files) |
-| Completed items | 18 |
+| Completed items | 21 |
 
 ## Active Spec Status
 
@@ -23,7 +23,7 @@
 | `phase-0-shopper-context.md` | Phase 0 | P0 | **DONE** (9/9 items) |
 | `phase-1-cart-reads.md` | Phase 1 | P1 | **DONE** (5/5 items) |
 | `phase-2-cart-mutations.md` | Phase 2 | P2 | **DONE** (4/4 items) |
-| `phase-3-credential-removal.md` | Phase 3 | P3 | **TO DO** (0/5 items) |
+| `phase-3-credential-removal.md` | Phase 3 | P3 | **IN PROGRESS** (3/5 items) |
 
 ## Deferred Specs
 
@@ -50,6 +50,10 @@
 - `src/shopper-context/use-remove-item.ts` exists (Phase 2)
 - `src/shopper-context/use-update-item.ts` exists (Phase 2)
 - No TODOs, FIXMEs, or placeholders in existing code (except EPPromoCodeInput hardcoded `-$10.00` discount)
+- `src/registerCommerceProvider.test.tsx` exists (Phase 3)
+- `src/checkout/composable/__tests__/EPPromoCodeInput.test.tsx` exists (Phase 3)
+- EPPromoCodeInput refactored to two-component pattern (outer wrapper → EPPromoCodeInputClient | EPPromoCodeInputServer)
+- `jest.mock()` confirmed not working for EPPromoCodeInput tests — used global.fetch mocking pattern
 
 ### Singleton Context Pattern (from BundleContext.tsx)
 
@@ -225,7 +229,7 @@ function getSingletonContext<T>(key: symbol): React.Context<T | null> {
 
 ### Phase 3: Credential Removal (P3) — 5 Items
 
-- [ ] **P3-1: Deprecate old cart hooks** — `src/cart/*.tsx` + `src/utils/cart-cookie.ts`
+- [x] **P3-1: Deprecate old cart hooks** — `src/cart/*.tsx` + `src/utils/cart-cookie.ts`
   - Add `@deprecated` JSDoc to:
     - `src/cart/use-cart.tsx` — "Use useCart from shopper-context/use-cart.ts"
     - `src/cart/use-add-item.tsx` — "Use useAddItem from shopper-context/use-add-item.ts"
@@ -233,14 +237,14 @@ function getSingletonContext<T>(key: symbol): React.Context<T | null> {
     - `src/cart/use-update-item.tsx` — "Use useUpdateItem from shopper-context/use-update-item.ts"
     - `src/utils/cart-cookie.ts` — getCartId, setCartId, removeCartCookie — "Use server-side httpOnly cookie via shopper-context/server/cart-cookie.ts"
 
-- [ ] **P3-2: CommerceProvider serverCartMode** — `src/registerCommerceProvider.tsx`
+- [x] **P3-2: CommerceProvider serverCartMode** — `src/registerCommerceProvider.tsx`
   - Add `serverCartMode` boolean prop (advanced, default false)
   - When true + no clientId: skip EP SDK init, render children only
   - Existing behavior unchanged when false
   - Add to meta props: `serverCartMode: { type: 'boolean', displayName: 'Server Cart Mode', advanced: true, defaultValue: false }`
   - Test: `src/registerCommerceProvider.test.tsx` — serverCartMode renders children without EP client
 
-- [ ] **P3-3: EPPromoCodeInput server mode** — `src/checkout/composable/EPPromoCodeInput.tsx`
+- [x] **P3-3: EPPromoCodeInput server mode** — `src/checkout/composable/EPPromoCodeInput.tsx`
   - Add `useServerRoutes` boolean prop
   - When true: apply promo via `POST /api/cart/promo` with `{ code }`, remove via `DELETE /api/cart/promo` with `{ promoItemId }`
   - Uses `useShopperFetch()` internally (requires ShopperContext above in tree)
@@ -273,7 +277,7 @@ Phase 2 (P2-1 → P2-4) — Cart mutation hooks
 Phase 3 (P3-1 → P3-5) — Credential removal + deprecation
 ```
 
-**Phase 2 complete.** Next up → P3-1 (deprecate old cart hooks).
+**P3-1 through P3-3 complete.** Next up → P3-4 (audit and document).
 
 ---
 
