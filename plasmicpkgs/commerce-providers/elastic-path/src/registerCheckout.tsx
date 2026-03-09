@@ -15,6 +15,8 @@ import { registerEPOrderTotalsBreakdown } from "./checkout/composable/EPOrderTot
 import { registerEPCustomerInfoFields } from "./checkout/composable/EPCustomerInfoFields";
 import { registerEPShippingAddressFields } from "./checkout/composable/EPShippingAddressFields";
 import { registerEPBillingAddressFields } from "./checkout/composable/EPBillingAddressFields";
+import { registerEPShippingMethodSelector } from "./checkout/composable/EPShippingMethodSelector";
+import { registerEPPaymentElements } from "./checkout/composable/EPPaymentElements";
 import { Registerable } from "./registerable";
 
 export function registerEPCheckout(loader?: Registerable) {
@@ -37,6 +39,8 @@ export function registerEPCheckout(loader?: Registerable) {
   registerEPCustomerInfoFields(loader);
   registerEPShippingAddressFields(loader);
   registerEPBillingAddressFields(loader);
+  registerEPShippingMethodSelector(loader);
+  registerEPPaymentElements(loader);
 
   // Composable checkout provider (registered last — parent of leaf components)
   registerEPCheckoutProvider(loader);
@@ -61,6 +65,8 @@ export {
   registerEPCustomerInfoFields,
   registerEPShippingAddressFields,
   registerEPBillingAddressFields,
+  registerEPShippingMethodSelector,
+  registerEPPaymentElements,
 };
 
 // Export component metas for advanced usage
@@ -115,3 +121,9 @@ export {
 export {
   epBillingAddressFieldsMeta,
 } from "./checkout/composable/EPBillingAddressFields";
+export {
+  epShippingMethodSelectorMeta,
+} from "./checkout/composable/EPShippingMethodSelector";
+export {
+  epPaymentElementsMeta,
+} from "./checkout/composable/EPPaymentElements";

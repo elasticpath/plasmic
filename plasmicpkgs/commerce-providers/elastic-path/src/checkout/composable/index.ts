@@ -13,6 +13,8 @@ export { EPOrderTotalsBreakdown, registerEPOrderTotalsBreakdown, epOrderTotalsBr
 export { EPCustomerInfoFields, registerEPCustomerInfoFields, epCustomerInfoFieldsMeta } from "./EPCustomerInfoFields";
 export { EPShippingAddressFields, registerEPShippingAddressFields, epShippingAddressFieldsMeta } from "./EPShippingAddressFields";
 export { EPBillingAddressFields, registerEPBillingAddressFields, epBillingAddressFieldsMeta } from "./EPBillingAddressFields";
+export { EPShippingMethodSelector, registerEPShippingMethodSelector, epShippingMethodSelectorMeta } from "./EPShippingMethodSelector";
+export { EPPaymentElements, registerEPPaymentElements, epPaymentElementsMeta } from "./EPPaymentElements";
 
 // Contexts
 export { CheckoutPaymentContext, useCheckoutPaymentContext } from "./CheckoutContext";

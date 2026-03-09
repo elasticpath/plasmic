@@ -13,7 +13,7 @@
 | Deferred specs | 0 |
 | Completed specs | 8 (product discovery + MCP) |
 | Total items to implement | 34 (25 server-cart + 9 composable checkout) |
-| Completed items | 32 (25 server-cart + 7 composable checkout) |
+| Completed items | 34 (25 server-cart + 9 composable checkout) |
 
 ## Active Spec Status
 
@@ -26,6 +26,7 @@
 | `phase-3-credential-removal.md` | Phase 3 | P3 | **DONE** (5/5 items) |
 | `composable-checkout.md` | Phase 1 (P0) | CC-P0 | **DONE** (4/4 items) |
 | `composable-checkout.md` | Phase 2 (P1) | CC-P1 | **DONE** (3/3 items) |
+| `composable-checkout.md` | Phase 3 (P2) | CC-P2 | **DONE** (2/2 items) |
 
 ---
 
@@ -65,6 +66,9 @@
 - `src/checkout/composable/EPShippingAddressFields.tsx` exists (CC-P1-2)
 - `src/checkout/composable/EPBillingAddressFields.tsx` exists (CC-P1-3)
 - All 1073 tests pass across 57 test suites (as of CC-P1-3 completion)
+- `src/checkout/composable/EPShippingMethodSelector.tsx` exists (CC-P2-1)
+- `src/checkout/composable/EPPaymentElements.tsx` exists (CC-P2-2)
+- All 1084 tests pass across 59 test suites (as of CC-P2-2 completion)
 
 ### Singleton Context Pattern (from BundleContext.tsx)
 
@@ -336,8 +340,20 @@ function getSingletonContext<T>(key: symbol): React.Context<T | null> {
 
 ### Composable Checkout Phase 3: Shipping & Payment (CC-P2) — 2 Items
 
-- [ ] **CC-P2-1: EPShippingMethodSelector** — `src/checkout/composable/EPShippingMethodSelector.tsx`
-- [ ] **CC-P2-2: EPPaymentElements** — `src/checkout/composable/EPPaymentElements.tsx`
+- [x] **CC-P2-1: EPShippingMethodSelector** — `src/checkout/composable/EPShippingMethodSelector.tsx`
+  - Repeater for shipping rates with per-rate DataProvider (currentShippingMethod)
+  - Fetches rates from /api/checkout/calculate-shipping when shipping address is valid
+  - Preview states: auto, withRates, loading, empty
+  - refAction: selectMethod(rateId)
+  - Test: `__tests__/EPShippingMethodSelector.test.tsx` (6 tests)
+
+- [x] **CC-P2-2: EPPaymentElements** — `src/checkout/composable/EPPaymentElements.tsx`
+  - Stripe Elements wrapper reading clientSecret from CheckoutPaymentContext
+  - Lazy-loads @stripe/stripe-js and @stripe/react-stripe-js at runtime
+  - Design-time: renders static mock payment form (card number, MM/YY, CVC)
+  - Exposes paymentData (isReady, isProcessing, error, paymentMethodType, clientSecret)
+  - Registers Elements instance back to context via setStripeElements
+  - Test: `__tests__/EPPaymentElements.test.tsx` (5 tests)
 
 ---
 
@@ -361,7 +377,7 @@ Composable Checkout Phase 2 (CC-P1-1 → CC-P1-3) — Form fields
 Composable Checkout Phase 3 (CC-P2-1 → CC-P2-2) — Shipping & payment
 ```
 
-**Server-cart phases COMPLETE** (P0 → P3). **CC-P0 COMPLETE**. **CC-P1 COMPLETE**. **Next: CC-P2-1.**
+**ALL PHASES COMPLETE.** Server-cart (P0 → P3) + Composable Checkout (CC-P0 → CC-P2) — 34/34 items done.
 
 ---
 
@@ -431,6 +447,8 @@ src/checkout/composable/         ← Composable checkout (CC-P0+)
     EPCheckoutStepIndicator.test.tsx   — step indicator tests (CC-P0-2)
     EPCheckoutButton.test.tsx          — step-aware button tests (CC-P0-3)
     EPOrderTotalsBreakdown.test.tsx    — financial totals tests (CC-P0-4)
+    EPShippingMethodSelector.test.tsx  — shipping rate repeater tests (CC-P2-1)
+    EPPaymentElements.test.tsx         — Stripe Elements wrapper tests (CC-P2-2)
 ```
 
 ## Existing Files to Modify
@@ -457,6 +475,8 @@ src/checkout/composable/         ← Composable checkout (CC-P0+)
 | `src/registerCheckout.tsx` | Register EPCustomerInfoFields, EPShippingAddressFields, EPBillingAddressFields | CC-P1-1..3 |
 | `src/utils/design-time-data.ts` | Add composable checkout mock data | CC-P0-1 |
 | `src/utils/design-time-data.ts` | Add form field mock data (empty, withErrors, suggestions, billing) | CC-P1-1..3 |
+| `src/checkout/composable/index.ts` | Add EPShippingMethodSelector, EPPaymentElements exports | CC-P2-1..2 |
+| `src/registerCheckout.tsx` | Register EPShippingMethodSelector, EPPaymentElements | CC-P2-1..2 |
 
 ---
 
