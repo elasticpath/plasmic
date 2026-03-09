@@ -7,5 +7,6 @@
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
-# Copy hostless package list needed by BootstrapHostless.ts
+# Copy hostless package list and build artifacts needed by BootstrapHostless.ts
 COPY canvas-packages/hostlessList.json /app/canvas-packages/hostlessList.json
+COPY canvas-packages/build-server/ /app/canvas-packages/build-server/
