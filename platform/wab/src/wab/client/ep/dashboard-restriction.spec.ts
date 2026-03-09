@@ -64,6 +64,18 @@ describe("isDashboardRestricted", () => {
     });
     expect(isDashboardRestricted(config, "?adminDashboard=true")).toBe(false);
   });
+
+  it("returns false when escape hatch is inside continueTo param", () => {
+    const config = makeAppConfig({ hideDashboardViews: true });
+    expect(
+      isDashboardRestricted(config, "?continueTo=%2F%3FadminDashboard%3Dtrue")
+    ).toBe(false);
+  });
+
+  it("returns true when continueTo has no query string", () => {
+    const config = makeAppConfig({ hideDashboardViews: true });
+    expect(isDashboardRestricted(config, "?continueTo=%2F")).toBe(true);
+  });
 });
 
 describe("redirectToDashboard", () => {
@@ -212,5 +224,15 @@ describe("shouldRedirectAuthRoute", () => {
     expect(
       shouldRedirectAuthRoute(restrictedConfig, "/login/callback", "")
     ).toBe(true);
+  });
+
+  it("does not redirect when escape hatch is inside continueTo param", () => {
+    expect(
+      shouldRedirectAuthRoute(
+        restrictedConfig,
+        "/login",
+        "?continueTo=%2F%3FadminDashboard%3Dtrue"
+      )
+    ).toBe(false);
   });
 });
