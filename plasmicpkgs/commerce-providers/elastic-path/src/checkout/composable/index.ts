@@ -10,6 +10,9 @@ export type { CheckoutData } from "./EPCheckoutProvider";
 export { EPCheckoutStepIndicator, registerEPCheckoutStepIndicator, epCheckoutStepIndicatorMeta } from "./EPCheckoutStepIndicator";
 export { EPCheckoutButton, registerEPCheckoutButton, epCheckoutButtonMeta } from "./EPCheckoutButton";
 export { EPOrderTotalsBreakdown, registerEPOrderTotalsBreakdown, epOrderTotalsBreakdownMeta } from "./EPOrderTotalsBreakdown";
+export { EPCustomerInfoFields, registerEPCustomerInfoFields, epCustomerInfoFieldsMeta } from "./EPCustomerInfoFields";
+export { EPShippingAddressFields, registerEPShippingAddressFields, epShippingAddressFieldsMeta } from "./EPShippingAddressFields";
+export { EPBillingAddressFields, registerEPBillingAddressFields, epBillingAddressFieldsMeta } from "./EPBillingAddressFields";
 
 // Contexts
 export { CheckoutPaymentContext, useCheckoutPaymentContext } from "./CheckoutContext";

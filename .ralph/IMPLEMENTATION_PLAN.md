@@ -13,7 +13,7 @@
 | Deferred specs | 0 |
 | Completed specs | 8 (product discovery + MCP) |
 | Total items to implement | 34 (25 server-cart + 9 composable checkout) |
-| Completed items | 29 (25 server-cart + 4 composable checkout) |
+| Completed items | 32 (25 server-cart + 7 composable checkout) |
 
 ## Active Spec Status
 
@@ -25,6 +25,7 @@
 | `phase-2-cart-mutations.md` | Phase 2 | P2 | **DONE** (4/4 items) |
 | `phase-3-credential-removal.md` | Phase 3 | P3 | **DONE** (5/5 items) |
 | `composable-checkout.md` | Phase 1 (P0) | CC-P0 | **DONE** (4/4 items) |
+| `composable-checkout.md` | Phase 2 (P1) | CC-P1 | **DONE** (3/3 items) |
 
 ---
 
@@ -60,6 +61,10 @@
 - `src/checkout/composable/EPCheckoutButton.tsx` exists (CC-P0-3)
 - `src/checkout/composable/EPOrderTotalsBreakdown.tsx` exists (CC-P0-4)
 - All 1050 tests pass across 54 test suites (as of CC-P0-4 completion)
+- `src/checkout/composable/EPCustomerInfoFields.tsx` exists (CC-P1-1)
+- `src/checkout/composable/EPShippingAddressFields.tsx` exists (CC-P1-2)
+- `src/checkout/composable/EPBillingAddressFields.tsx` exists (CC-P1-3)
+- All 1073 tests pass across 57 test suites (as of CC-P1-3 completion)
 
 ### Singleton Context Pattern (from BundleContext.tsx)
 
@@ -307,9 +312,27 @@ function getSingletonContext<T>(key: symbol): React.Context<T | null> {
 
 ### Composable Checkout Phase 2: Form Fields (CC-P1) — 3 Items
 
-- [ ] **CC-P1-1: EPCustomerInfoFields** — `src/checkout/composable/EPCustomerInfoFields.tsx`
-- [ ] **CC-P1-2: EPShippingAddressFields** — `src/checkout/composable/EPShippingAddressFields.tsx`
-- [ ] **CC-P1-3: EPBillingAddressFields** — `src/checkout/composable/EPBillingAddressFields.tsx`
+- [x] **CC-P1-1: EPCustomerInfoFields** — `src/checkout/composable/EPCustomerInfoFields.tsx`
+  - Headless provider for firstName, lastName, email with validation
+  - refActions: setField, validate (returns boolean), clear
+  - Preview states: auto, empty, filled, withErrors
+  - Two-component pattern: outer handles design-time, inner uses hooks
+  - Test: `__tests__/EPCustomerInfoFields.test.tsx` (8 tests)
+
+- [x] **CC-P1-2: EPShippingAddressFields** — `src/checkout/composable/EPShippingAddressFields.tsx`
+  - Headless provider for shipping address with postcode validation by country (US, CA)
+  - refActions: setField, validate (returns boolean), clear
+  - Preview states: auto, empty, filled, withErrors, withSuggestions
+  - showPhoneField prop controls phone validation
+  - Test: `__tests__/EPShippingAddressFields.test.tsx` (9 tests)
+
+- [x] **CC-P1-3: EPBillingAddressFields** — `src/checkout/composable/EPBillingAddressFields.tsx`
+  - Headless provider that mirrors shipping when isSameAsShipping is active
+  - Reads billingToggleData from EPBillingAddressToggle or checkoutData.sameAsShipping
+  - Mirror mode: exposes shipping data as billing, refActions are no-ops
+  - Independent mode: full field state + validation (same as shipping minus phone)
+  - Preview states: auto, sameAsShipping, different, withErrors
+  - Test: `__tests__/EPBillingAddressFields.test.tsx` (6 tests)
 
 ### Composable Checkout Phase 3: Shipping & Payment (CC-P2) — 2 Items
 
@@ -338,7 +361,7 @@ Composable Checkout Phase 2 (CC-P1-1 → CC-P1-3) — Form fields
 Composable Checkout Phase 3 (CC-P2-1 → CC-P2-2) — Shipping & payment
 ```
 
-**Server-cart phases COMPLETE** (P0 → P3). **CC-P0 COMPLETE** (CC-P0-1 → CC-P0-4). **Next: CC-P1-1.**
+**Server-cart phases COMPLETE** (P0 → P3). **CC-P0 COMPLETE**. **CC-P1 COMPLETE**. **Next: CC-P2-1.**
 
 ---
 
@@ -402,6 +425,9 @@ src/checkout/composable/         ← Composable checkout (CC-P0+)
   EPPaymentElements.tsx            — Stripe Elements (CC-P2-2)
   __tests__/
     EPCheckoutProvider.test.tsx        — provider tests (CC-P0-1)
+    EPCustomerInfoFields.test.tsx      — customer info validation tests (CC-P1-1)
+    EPShippingAddressFields.test.tsx   — shipping address validation tests (CC-P1-2)
+    EPBillingAddressFields.test.tsx    — billing address mirror tests (CC-P1-3)
     EPCheckoutStepIndicator.test.tsx   — step indicator tests (CC-P0-2)
     EPCheckoutButton.test.tsx          — step-aware button tests (CC-P0-3)
     EPOrderTotalsBreakdown.test.tsx    — financial totals tests (CC-P0-4)
@@ -427,7 +453,10 @@ src/checkout/composable/         ← Composable checkout (CC-P0+)
 | `src/registerCheckout.tsx` | Register EPCheckoutStepIndicator, EPCheckoutButton, EPOrderTotalsBreakdown | CC-P0-2..4 |
 | `src/checkout/composable/index.ts` | Add EPCheckoutProvider + CheckoutContext exports | CC-P0-1 |
 | `src/checkout/composable/index.ts` | Add EPCheckoutStepIndicator, EPCheckoutButton, EPOrderTotalsBreakdown exports | CC-P0-2..4 |
+| `src/checkout/composable/index.ts` | Add EPCustomerInfoFields, EPShippingAddressFields, EPBillingAddressFields exports | CC-P1-1..3 |
+| `src/registerCheckout.tsx` | Register EPCustomerInfoFields, EPShippingAddressFields, EPBillingAddressFields | CC-P1-1..3 |
 | `src/utils/design-time-data.ts` | Add composable checkout mock data | CC-P0-1 |
+| `src/utils/design-time-data.ts` | Add form field mock data (empty, withErrors, suggestions, billing) | CC-P1-1..3 |
 
 ---
 

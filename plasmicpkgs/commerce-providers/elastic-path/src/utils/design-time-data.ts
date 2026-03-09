@@ -507,15 +507,76 @@ export const MOCK_ORDER_TOTALS_DATA = {
   itemCount: 2,
 };
 
+/** Empty customer info fields mock. */
+export const MOCK_CUSTOMER_INFO_EMPTY = {
+  firstName: "",
+  lastName: "",
+  email: "",
+  errors: { firstName: null as string | null, lastName: null as string | null, email: null as string | null },
+  touched: { firstName: false, lastName: false, email: false },
+  isValid: false,
+  isDirty: false,
+};
+
 /** Filled customer info fields mock. */
 export const MOCK_CUSTOMER_INFO_FILLED = {
   firstName: "Jane",
   lastName: "Smith",
   email: "jane@example.com",
-  errors: { firstName: null, lastName: null, email: null },
+  errors: { firstName: null as string | null, lastName: null as string | null, email: null as string | null },
   touched: { firstName: true, lastName: true, email: true },
   isValid: true,
   isDirty: false,
+};
+
+/** Customer info fields mock with validation errors. */
+export const MOCK_CUSTOMER_INFO_WITH_ERRORS = {
+  firstName: "",
+  lastName: "Smith",
+  email: "not-an-email",
+  errors: {
+    firstName: "First name is required" as string | null,
+    lastName: null as string | null,
+    email: "Enter a valid email address" as string | null,
+  },
+  touched: { firstName: true, lastName: true, email: true },
+  isValid: false,
+  isDirty: true,
+};
+
+/** Empty shipping address fields mock. */
+export const MOCK_SHIPPING_ADDRESS_EMPTY = {
+  firstName: "",
+  lastName: "",
+  line1: "",
+  line2: "",
+  city: "",
+  county: "",
+  postcode: "",
+  country: "",
+  phone: "",
+  errors: {
+    firstName: null as string | null,
+    lastName: null as string | null,
+    line1: null as string | null,
+    city: null as string | null,
+    postcode: null as string | null,
+    country: null as string | null,
+    phone: null as string | null,
+  },
+  touched: {
+    firstName: false,
+    lastName: false,
+    line1: false,
+    city: false,
+    postcode: false,
+    country: false,
+    phone: false,
+  },
+  isValid: false,
+  isDirty: false,
+  suggestions: null as Array<{ line1: string; city: string; county: string; postcode: string; country: string }> | null,
+  hasSuggestions: false,
 };
 
 /** Filled shipping address fields mock. */
@@ -551,6 +612,87 @@ export const MOCK_SHIPPING_ADDRESS_FILLED = {
   isDirty: false,
   suggestions: null,
   hasSuggestions: false,
+};
+
+/** Shipping address fields mock with validation errors. */
+export const MOCK_SHIPPING_ADDRESS_WITH_ERRORS = {
+  firstName: "Jane",
+  lastName: "Smith",
+  line1: "",
+  line2: "",
+  city: "Portland",
+  county: "OR",
+  postcode: "INVALID",
+  country: "US",
+  phone: "",
+  errors: {
+    firstName: null as string | null,
+    lastName: null as string | null,
+    line1: "Street address is required" as string | null,
+    city: null as string | null,
+    postcode: "Enter a valid ZIP code" as string | null,
+    country: null as string | null,
+    phone: null as string | null,
+  },
+  touched: {
+    firstName: true,
+    lastName: true,
+    line1: true,
+    city: true,
+    postcode: true,
+    country: true,
+    phone: true,
+  },
+  isValid: false,
+  isDirty: true,
+  suggestions: null as Array<{ line1: string; city: string; county: string; postcode: string; country: string }> | null,
+  hasSuggestions: false,
+};
+
+/** Shipping address fields mock with address suggestions. */
+export const MOCK_SHIPPING_ADDRESS_WITH_SUGGESTIONS = {
+  ...MOCK_SHIPPING_ADDRESS_FILLED,
+  suggestions: [
+    {
+      line1: "123 Main Street",
+      city: "Portland",
+      county: "OR",
+      postcode: "97201-3456",
+      country: "US",
+    },
+  ],
+  hasSuggestions: true,
+};
+
+/** Billing address fields mock (different from shipping). */
+export const MOCK_BILLING_ADDRESS_DIFFERENT = {
+  firstName: "Jane",
+  lastName: "Smith",
+  line1: "456 Oak Ave",
+  line2: "Suite 200",
+  city: "Seattle",
+  county: "WA",
+  postcode: "98101",
+  country: "US",
+  errors: {
+    firstName: null as string | null,
+    lastName: null as string | null,
+    line1: null as string | null,
+    city: null as string | null,
+    postcode: null as string | null,
+    country: null as string | null,
+  },
+  touched: {
+    firstName: true,
+    lastName: true,
+    line1: true,
+    city: true,
+    postcode: true,
+    country: true,
+  },
+  isValid: true,
+  isDirty: true,
+  isMirroringShipping: false,
 };
 
 /** Sample shipping rates for EPShippingMethodSelector preview. */
