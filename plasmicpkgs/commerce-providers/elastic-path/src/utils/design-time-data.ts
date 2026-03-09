@@ -319,3 +319,267 @@ export const MOCK_CHECKOUT_CART_DATA = {
   promoDiscount: 0,
   formattedPromoDiscount: null as string | null,
 };
+
+// ---------------------------------------------------------------------------
+// Composable checkout mock data — used by EPCheckoutProvider and child
+// components for design-time preview in Plasmic Studio. Values in minor
+// units (cents) match the EP API convention.
+// ---------------------------------------------------------------------------
+
+/** Shared summary shape used across all checkout preview states. */
+const MOCK_CHECKOUT_SUMMARY = {
+  subtotal: 6200,
+  subtotalFormatted: "$62.00",
+  tax: 496,
+  taxFormatted: "$4.96",
+  shipping: 0,
+  shippingFormatted: "$0.00",
+  discount: 0,
+  discountFormatted: "$0.00",
+  total: 6696,
+  totalFormatted: "$66.96",
+  currency: "USD",
+  itemCount: 2,
+};
+
+/** Customer Info step — form is empty, nothing submitted yet. */
+export const MOCK_CHECKOUT_DATA_CUSTOMER_INFO = {
+  step: "customer_info" as const,
+  stepIndex: 0,
+  totalSteps: 4,
+  canProceed: false,
+  isProcessing: false,
+  customerInfo: null,
+  shippingAddress: null,
+  billingAddress: null,
+  sameAsShipping: true,
+  selectedShippingRate: null,
+  order: null,
+  paymentStatus: "idle" as const,
+  error: null,
+  summary: MOCK_CHECKOUT_SUMMARY,
+};
+
+/** Shipping step — customer info filled, choosing shipping. */
+export const MOCK_CHECKOUT_DATA_SHIPPING = {
+  ...MOCK_CHECKOUT_DATA_CUSTOMER_INFO,
+  step: "shipping" as const,
+  stepIndex: 1,
+  canProceed: false,
+  customerInfo: {
+    firstName: "Jane",
+    lastName: "Smith",
+    email: "jane@example.com",
+  },
+  shippingAddress: {
+    first_name: "Jane",
+    last_name: "Smith",
+    line_1: "123 Main St",
+    city: "Portland",
+    county: "OR",
+    postcode: "97201",
+    country: "US",
+  },
+  billingAddress: {
+    first_name: "Jane",
+    last_name: "Smith",
+    line_1: "123 Main St",
+    city: "Portland",
+    county: "OR",
+    postcode: "97201",
+    country: "US",
+  },
+};
+
+/** Payment step — shipping selected, ready for payment. */
+export const MOCK_CHECKOUT_DATA_PAYMENT = {
+  ...MOCK_CHECKOUT_DATA_SHIPPING,
+  step: "payment" as const,
+  stepIndex: 2,
+  canProceed: true,
+  selectedShippingRate: {
+    id: "std",
+    name: "Standard Shipping",
+    price: 595,
+    priceFormatted: "$5.95",
+    currency: "USD",
+    estimatedDays: "3-5 business days",
+    carrier: "USPS",
+  },
+  summary: {
+    ...MOCK_CHECKOUT_SUMMARY,
+    shipping: 595,
+    shippingFormatted: "$5.95",
+    total: 7291,
+    totalFormatted: "$72.91",
+  },
+};
+
+/** Confirmation step — order placed and paid. */
+export const MOCK_CHECKOUT_DATA_CONFIRMATION = {
+  ...MOCK_CHECKOUT_DATA_PAYMENT,
+  step: "confirmation" as const,
+  stepIndex: 3,
+  canProceed: false,
+  paymentStatus: "succeeded" as const,
+  order: {
+    id: "sample-order-001",
+    type: "order" as const,
+    status: "complete",
+    payment: "paid",
+    total: { amount: 7291, currency: "USD" },
+    subtotal: { amount: 6200, currency: "USD" },
+    tax: { amount: 496, currency: "USD" },
+    shipping: { amount: 595, currency: "USD" },
+    customer: { name: "Jane Smith", email: "jane@example.com" },
+    billing_address: {
+      first_name: "Jane",
+      last_name: "Smith",
+      line_1: "123 Main St",
+      city: "Portland",
+      county: "OR",
+      postcode: "97201",
+      country: "US",
+    },
+    shipping_address: {
+      first_name: "Jane",
+      last_name: "Smith",
+      line_1: "123 Main St",
+      city: "Portland",
+      county: "OR",
+      postcode: "97201",
+      country: "US",
+    },
+    relationships: { items: { data: [] } },
+  },
+};
+
+/** Step indicator mock — Shipping active (index 1). */
+export const MOCK_CHECKOUT_STEP_DATA = [
+  {
+    name: "Customer Info",
+    stepKey: "customer_info",
+    index: 0,
+    isActive: false,
+    isCompleted: true,
+    isFuture: false,
+  },
+  {
+    name: "Shipping",
+    stepKey: "shipping",
+    index: 1,
+    isActive: true,
+    isCompleted: false,
+    isFuture: false,
+  },
+  {
+    name: "Payment",
+    stepKey: "payment",
+    index: 2,
+    isActive: false,
+    isCompleted: false,
+    isFuture: true,
+  },
+  {
+    name: "Confirmation",
+    stepKey: "confirmation",
+    index: 3,
+    isActive: false,
+    isCompleted: false,
+    isFuture: true,
+  },
+];
+
+/** Order totals breakdown mock. */
+export const MOCK_ORDER_TOTALS_DATA = {
+  subtotal: 6200,
+  subtotalFormatted: "$62.00",
+  tax: 496,
+  taxFormatted: "$4.96",
+  shipping: 595,
+  shippingFormatted: "$5.95",
+  discount: 0,
+  discountFormatted: "$0.00",
+  hasDiscount: false,
+  total: 7291,
+  totalFormatted: "$72.91",
+  currency: "USD",
+  itemCount: 2,
+};
+
+/** Filled customer info fields mock. */
+export const MOCK_CUSTOMER_INFO_FILLED = {
+  firstName: "Jane",
+  lastName: "Smith",
+  email: "jane@example.com",
+  errors: { firstName: null, lastName: null, email: null },
+  touched: { firstName: true, lastName: true, email: true },
+  isValid: true,
+  isDirty: false,
+};
+
+/** Filled shipping address fields mock. */
+export const MOCK_SHIPPING_ADDRESS_FILLED = {
+  firstName: "Jane",
+  lastName: "Smith",
+  line1: "123 Main St",
+  line2: "",
+  city: "Portland",
+  county: "OR",
+  postcode: "97201",
+  country: "US",
+  phone: "555-0100",
+  errors: {
+    firstName: null,
+    lastName: null,
+    line1: null,
+    city: null,
+    postcode: null,
+    country: null,
+    phone: null,
+  },
+  touched: {
+    firstName: true,
+    lastName: true,
+    line1: true,
+    city: true,
+    postcode: true,
+    country: true,
+    phone: true,
+  },
+  isValid: true,
+  isDirty: false,
+  suggestions: null,
+  hasSuggestions: false,
+};
+
+/** Sample shipping rates for EPShippingMethodSelector preview. */
+export const MOCK_SHIPPING_RATES = [
+  {
+    id: "free",
+    name: "Free Shipping",
+    price: 0,
+    priceFormatted: "FREE",
+    estimatedDays: "5-7 business days",
+    carrier: "",
+    isSelected: true,
+  },
+  {
+    id: "std",
+    name: "Standard Shipping",
+    price: 595,
+    priceFormatted: "$5.95",
+    estimatedDays: "3-5 business days",
+    carrier: "USPS",
+    isSelected: false,
+  },
+  {
+    id: "exp",
+    name: "Express Shipping",
+    price: 1295,
+    priceFormatted: "$12.95",
+    estimatedDays: "1-2 business days",
+    carrier: "UPS",
+    isSelected: false,
+  },
+];

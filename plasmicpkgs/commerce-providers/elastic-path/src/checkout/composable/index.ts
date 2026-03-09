@@ -5,6 +5,12 @@ export { EPCheckoutCartSummary, registerEPCheckoutCartSummary, epCheckoutCartSum
 export { EPPromoCodeInput, registerEPPromoCodeInput, epPromoCodeInputMeta } from "./EPPromoCodeInput";
 export { EPCountrySelect, registerEPCountrySelect, epCountrySelectMeta } from "./EPCountrySelect";
 export { EPBillingAddressToggle, registerEPBillingAddressToggle, epBillingAddressToggleMeta } from "./EPBillingAddressToggle";
+export { EPCheckoutProvider, registerEPCheckoutProvider, epCheckoutProviderMeta } from "./EPCheckoutProvider";
+export type { CheckoutData } from "./EPCheckoutProvider";
+
+// Contexts
+export { CheckoutPaymentContext, useCheckoutPaymentContext } from "./CheckoutContext";
+export type { CheckoutPaymentContextValue } from "./CheckoutContext";
 
 // Data
 export { COUNTRIES, DEFAULT_PRIORITY_COUNTRIES } from "./countries";

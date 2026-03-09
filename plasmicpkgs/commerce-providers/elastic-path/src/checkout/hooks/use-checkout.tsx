@@ -120,19 +120,17 @@ export function useCheckout(options: UseCheckoutOptions = {}): UseCheckoutReturn
     }
   }, [autoAdvanceSteps, onError]);
 
-  // Calculate shipping rates for the given address
+  // Calculate shipping rates for the given address.
+  // cartId is optional — in server-cart mode the server resolves identity
+  // from the httpOnly cookie / X-Shopper-Context header.
   const calculateShipping = useCallback(async (address: AddressData): Promise<ShippingRate[]> => {
-    if (!cartId) {
-      throw new Error('Cart ID is required for shipping calculation');
-    }
-
     setState(prev => ({ ...prev, isLoading: true }));
 
     try {
       const response = await apiCall('/checkout/calculate-shipping', {
         method: 'POST',
         body: JSON.stringify({
-          cartId,
+          ...(cartId && { cartId }),
           shippingAddress: address
         })
       });
@@ -156,9 +154,11 @@ export function useCheckout(options: UseCheckoutOptions = {}): UseCheckoutReturn
     }));
   }, [autoAdvanceSteps]);
 
-  // Create order from cart
+  // Create order from cart.
+  // cartId is optional — in server-cart mode the server resolves identity
+  // from the httpOnly cookie / X-Shopper-Context header.
   const createOrder = useCallback(async (): Promise<ElasticPathOrder> => {
-    if (!cartId || !state.customerData || !state.billingAddress) {
+    if (!state.customerData || !state.billingAddress) {
       throw new Error('Missing required checkout data');
     }
 
@@ -168,7 +168,7 @@ export function useCheckout(options: UseCheckoutOptions = {}): UseCheckoutReturn
       const response = await apiCall('/checkout/create-order', {
         method: 'POST',
         body: JSON.stringify({
-          cartId,
+          ...(cartId && { cartId }),
           customerData: state.customerData,
           billingAddress: state.billingAddress,
           shippingAddress: state.shippingAddress

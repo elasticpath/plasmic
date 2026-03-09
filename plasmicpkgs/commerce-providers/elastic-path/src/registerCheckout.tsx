@@ -8,6 +8,7 @@ import { registerEPCheckoutCartSummary } from "./checkout/composable/EPCheckoutC
 import { registerEPPromoCodeInput } from "./checkout/composable/EPPromoCodeInput";
 import { registerEPCountrySelect } from "./checkout/composable/EPCountrySelect";
 import { registerEPBillingAddressToggle } from "./checkout/composable/EPBillingAddressToggle";
+import { registerEPCheckoutProvider } from "./checkout/composable/EPCheckoutProvider";
 import { Registerable } from "./registerable";
 
 export function registerEPCheckout(loader?: Registerable) {
@@ -24,6 +25,9 @@ export function registerEPCheckout(loader?: Registerable) {
   registerEPPromoCodeInput(loader);
   registerEPCountrySelect(loader);
   registerEPBillingAddressToggle(loader);
+
+  // Composable checkout provider (registered last — parent of leaf components)
+  registerEPCheckoutProvider(loader);
 }
 
 // Export individual registration functions
@@ -38,6 +42,7 @@ export {
   registerEPPromoCodeInput,
   registerEPCountrySelect,
   registerEPBillingAddressToggle,
+  registerEPCheckoutProvider,
 };
 
 // Export component metas for advanced usage
@@ -71,3 +76,6 @@ export {
 export {
   epBillingAddressToggleMeta,
 } from "./checkout/composable/EPBillingAddressToggle";
+export {
+  epCheckoutProviderMeta,
+} from "./checkout/composable/EPCheckoutProvider";

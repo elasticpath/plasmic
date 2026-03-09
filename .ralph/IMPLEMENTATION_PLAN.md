@@ -1,19 +1,19 @@
 # Implementation Plan
 
 **Last updated:** 2026-03-09
-**Last verified against codebase:** 2026-03-09 (ALL PHASES COMPLETE)
+**Last verified against codebase:** 2026-03-09
 **Branch:** `feat/server-cart-shopper-context`
-**Focus:** Server-only cart architecture with ShopperContext for Elastic Path commerce in Plasmic
+**Focus:** Server-only cart architecture with ShopperContext + composable checkout for Elastic Path commerce in Plasmic
 
 ## Status Summary
 
 | Category | Count |
 |----------|-------|
-| Active specs (server-cart) | 5 |
-| Deferred specs | 1 (`composable-checkout.md` — build after server-cart phases) |
+| Active specs | 6 (server-cart + composable-checkout) |
+| Deferred specs | 0 |
 | Completed specs | 8 (product discovery + MCP) |
-| Total items to implement | 25 (15 impl files + 12 test files = 27 new files) |
-| Completed items | 25 |
+| Total items to implement | 34 (25 server-cart + 9 composable checkout) |
+| Completed items | 26 (25 server-cart + 1 composable checkout) |
 
 ## Active Spec Status
 
@@ -24,12 +24,7 @@
 | `phase-1-cart-reads.md` | Phase 1 | P1 | **DONE** (5/5 items) |
 | `phase-2-cart-mutations.md` | Phase 2 | P2 | **DONE** (4/4 items) |
 | `phase-3-credential-removal.md` | Phase 3 | P3 | **DONE** (5/5 items) |
-
-## Deferred Specs
-
-| Spec | Reason |
-|------|--------|
-| `composable-checkout.md` | Checkout UI components — build after server-cart architecture is complete |
+| `composable-checkout.md` | Phase 1 (P0) | CC-P0 | **IN PROGRESS** (1/4 items) |
 
 ---
 
@@ -57,6 +52,10 @@
 - `src/shopper-context/ServerCartActionsProvider.tsx` exists (Phase 3)
 - `registerCommerceProvider.tsx` uses `ServerCartActionsProvider` when `serverCartMode=true` (Phase 3)
 - All 1027 tests pass across 50 test suites (as of P3-5 completion)
+- `src/checkout/composable/EPCheckoutProvider.tsx` exists (CC-P0-1)
+- `src/checkout/composable/CheckoutContext.tsx` exists (CC-P0-1)
+- `useCheckout()` cartId is optional — server resolves from cookie in server-cart mode
+- All 1036 tests pass across 51 test suites (as of CC-P0-1 completion)
 
 ### Singleton Context Pattern (from BundleContext.tsx)
 
@@ -275,6 +274,42 @@ function getSingletonContext<T>(key: symbol): React.Context<T | null> {
   - Test: `src/shopper-context/__tests__/ServerCartActionsProvider.test.tsx` — renders children, hooks initialize
   - Exported via `src/shopper-context/index.ts` barrel
 
+### Composable Checkout Phase 1: Core Checkout Provider (CC-P0) — 4 Items
+
+- [x] **CC-P0-1: EPCheckoutProvider** — `src/checkout/composable/EPCheckoutProvider.tsx`
+  - Root checkout orchestrator wrapping useCheckout() hook
+  - Exposes complete checkoutData via DataProvider + 9 refActions via useImperativeHandle
+  - Design-time preview with mock data for all 4 steps
+  - Shared CheckoutPaymentContext for EPPaymentElements integration (Phase 3)
+  - Made useCheckout() cartId optional for server-cart mode (server resolves from cookie)
+  - Test: `src/checkout/composable/__tests__/EPCheckoutProvider.test.tsx` (9 tests)
+  - Also added: CheckoutContext.tsx, design-time mock data, registration, barrel exports
+
+- [ ] **CC-P0-2: EPCheckoutStepIndicator** — `src/checkout/composable/EPCheckoutStepIndicator.tsx`
+  - Repeater over 4 checkout steps with per-step DataProvider
+  - Reads stepIndex from checkoutData context
+  - Uses repeatedElement() pattern
+
+- [ ] **CC-P0-3: EPCheckoutButton** — `src/checkout/composable/EPCheckoutButton.tsx`
+  - Step-aware submit/advance button
+  - Derives label from step, calls correct action per step
+  - Data: checkoutButtonData with label, isDisabled, isProcessing
+
+- [ ] **CC-P0-4: EPOrderTotalsBreakdown** — `src/checkout/composable/EPOrderTotalsBreakdown.tsx`
+  - Financial totals DataProvider (subtotal, tax, shipping, discount, total)
+  - Reads from checkoutData.summary or checkoutCartData
+
+### Composable Checkout Phase 2: Form Fields (CC-P1) — 3 Items
+
+- [ ] **CC-P1-1: EPCustomerInfoFields** — `src/checkout/composable/EPCustomerInfoFields.tsx`
+- [ ] **CC-P1-2: EPShippingAddressFields** — `src/checkout/composable/EPShippingAddressFields.tsx`
+- [ ] **CC-P1-3: EPBillingAddressFields** — `src/checkout/composable/EPBillingAddressFields.tsx`
+
+### Composable Checkout Phase 3: Shipping & Payment (CC-P2) — 2 Items
+
+- [ ] **CC-P2-1: EPShippingMethodSelector** — `src/checkout/composable/EPShippingMethodSelector.tsx`
+- [ ] **CC-P2-2: EPPaymentElements** — `src/checkout/composable/EPPaymentElements.tsx`
+
 ---
 
 ## Implementation Order
@@ -289,15 +324,21 @@ Phase 1 (P1-1 → P1-5) — Cart read hooks (+ add swr peerDep)
 Phase 2 (P2-1 → P2-4) — Cart mutation hooks
   ↓
 Phase 3 (P3-1 → P3-5) — Credential removal + deprecation
+  ↓
+Composable Checkout Phase 1 (CC-P0-1 → CC-P0-4) — Core checkout provider
+  ↓
+Composable Checkout Phase 2 (CC-P1-1 → CC-P1-3) — Form fields
+  ↓
+Composable Checkout Phase 3 (CC-P2-1 → CC-P2-2) — Shipping & payment
 ```
 
-**ALL PHASES COMPLETE.** Server-cart architecture fully implemented (P0 → P3).
+**Server-cart phases COMPLETE** (P0 → P3). **Composable checkout IN PROGRESS** (CC-P0-1 done, CC-P0-2 next).
 
 ---
 
-## New Files Summary (15 implementation + 12 test = 27 new files)
+## New Files Summary
 
-### Implementation Files (15)
+### Server-Cart Implementation Files (15)
 
 ```
 src/shopper-context/              ← Created in Phase 0
@@ -319,7 +360,7 @@ src/shopper-context/              ← Created in Phase 0
     cart-cookie.ts                 — httpOnly cookie builder (Phase 0)
 ```
 
-### Test Files (12)
+### Server-Cart Test Files (12)
 
 ```
 src/shopper-context/__tests__/
@@ -339,21 +380,43 @@ src/checkout/composable/__tests__/
   EPPromoCodeInput.test.tsx          — useServerRoutes promo via /api/cart/promo (Phase 3)
 ```
 
-## Existing Files to Modify (11 files — minimal changes)
+### Composable Checkout Files (CC-P0+)
+
+```
+src/checkout/composable/         ← Composable checkout (CC-P0+)
+  CheckoutContext.tsx              — shared payment context (CC-P0-1)
+  EPCheckoutProvider.tsx           — root checkout orchestrator (CC-P0-1)
+  EPCheckoutStepIndicator.tsx      — step repeater (CC-P0-2)
+  EPCheckoutButton.tsx             — step-aware button (CC-P0-3)
+  EPOrderTotalsBreakdown.tsx       — financial totals (CC-P0-4)
+  EPCustomerInfoFields.tsx         — customer name/email (CC-P1-1)
+  EPShippingAddressFields.tsx      — shipping address (CC-P1-2)
+  EPBillingAddressFields.tsx       — billing address (CC-P1-3)
+  EPShippingMethodSelector.tsx     — shipping rates (CC-P2-1)
+  EPPaymentElements.tsx            — Stripe Elements (CC-P2-2)
+  __tests__/
+    EPCheckoutProvider.test.tsx    — provider tests (CC-P0-1)
+```
+
+## Existing Files to Modify
 
 | File | Change | Phase |
 |------|--------|-------|
-| `src/const.ts` | Add 2 constants (EP_CART_COOKIE_NAME, SHOPPER_CONTEXT_HEADER) | 0 |
-| `src/index.tsx` | Add import, registerShopperContext() call, export * | 0 |
-| `package.json` | Add `"swr": ">=1.0.0"` to peerDependencies | 1 |
-| `src/checkout/composable/EPCheckoutCartSummary.tsx` | Add optional `cartData` prop + early return | 1 |
-| `src/cart/use-cart.tsx` | Add @deprecated JSDoc | 3 |
-| `src/cart/use-add-item.tsx` | Add @deprecated JSDoc | 3 |
-| `src/cart/use-remove-item.tsx` | Add @deprecated JSDoc | 3 |
-| `src/cart/use-update-item.tsx` | Add @deprecated JSDoc | 3 |
-| `src/utils/cart-cookie.ts` | Add @deprecated JSDoc to 3 exports | 3 |
-| `src/registerCommerceProvider.tsx` | Add `serverCartMode` boolean prop + ServerCartActionsProvider | 3 |
-| `src/checkout/composable/EPPromoCodeInput.tsx` | Add `useServerRoutes` boolean prop | 3 |
+| `src/const.ts` | Add 2 constants (EP_CART_COOKIE_NAME, SHOPPER_CONTEXT_HEADER) | P0 |
+| `src/index.tsx` | Add import, registerShopperContext() call, export * | P0 |
+| `package.json` | Add `"swr": ">=1.0.0"` to peerDependencies | P1 |
+| `src/checkout/composable/EPCheckoutCartSummary.tsx` | Add optional `cartData` prop + early return | P1 |
+| `src/cart/use-cart.tsx` | Add @deprecated JSDoc | P3 |
+| `src/cart/use-add-item.tsx` | Add @deprecated JSDoc | P3 |
+| `src/cart/use-remove-item.tsx` | Add @deprecated JSDoc | P3 |
+| `src/cart/use-update-item.tsx` | Add @deprecated JSDoc | P3 |
+| `src/utils/cart-cookie.ts` | Add @deprecated JSDoc to 3 exports | P3 |
+| `src/registerCommerceProvider.tsx` | Add `serverCartMode` boolean prop + ServerCartActionsProvider | P3 |
+| `src/checkout/composable/EPPromoCodeInput.tsx` | Add `useServerRoutes` boolean prop | P3 |
+| `src/checkout/hooks/use-checkout.tsx` | Make cartId optional in calculateShipping/createOrder | CC-P0-1 |
+| `src/registerCheckout.tsx` | Register EPCheckoutProvider | CC-P0-1 |
+| `src/checkout/composable/index.ts` | Add EPCheckoutProvider + CheckoutContext exports | CC-P0-1 |
+| `src/utils/design-time-data.ts` | Add composable checkout mock data | CC-P0-1 |
 
 ---
 
@@ -411,3 +474,5 @@ src/checkout/composable/__tests__/
 - `jest.mock()` does NOT hoist with this project's esbuild transform (`jest-transform-esbuild.js`). Tests must mock at the `global.fetch` level instead of using `jest.mock()` factories. The existing passing tests (ShopperContext.test.tsx, useShopperFetch.test.ts) confirm this pattern.
 - For SWR tests: wrap in `<SWRConfig value={{ dedupingInterval: 0, provider: () => new Map() }}>` to isolate cache between tests.
 - `useCart` `isEmpty` check must be defensive (`!data || !data.items || data.items.length === 0`) because mutation hook tests may mock fetch with responses that lack `items` field. Fixed in Phase 2.
+- EPCheckoutProvider uses a two-component pattern (outer mock check → inner runtime with hooks) to avoid conditional hook calls. The outer component handles design-time preview with static mock data; the inner component uses useCheckout(), useShopperContext(), and useState.
+- useCheckout() cartId is optional — in server-cart mode the API routes resolve cart identity from the httpOnly cookie / X-Shopper-Context header.
