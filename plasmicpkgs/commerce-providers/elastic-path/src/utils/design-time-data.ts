@@ -260,3 +260,62 @@ export const MOCK_CART_DATA = {
   formattedTotal: "$159.96",
   currencyCode: "USD",
 };
+
+// ---------------------------------------------------------------------------
+// Checkout cart mock data
+// ---------------------------------------------------------------------------
+
+export interface MockCheckoutCartItem {
+  id: string;
+  name: string;
+  quantity: number;
+  price: number;
+  formattedPrice: string;
+  imageUrl: string;
+  sku: string;
+  options: { name: string; value: string }[];
+}
+
+export const MOCK_CHECKOUT_CART_ITEMS: MockCheckoutCartItem[] = [
+  {
+    id: "sample-checkout-item-1",
+    name: "Fireside Amber Candle",
+    quantity: 1,
+    price: 38.0,
+    formattedPrice: "$38.00",
+    imageUrl:
+      "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
+    sku: "EW-FA-001",
+    options: [{ name: "Size", value: "8 oz" }],
+  },
+  {
+    id: "sample-checkout-item-2",
+    name: "Woodland Sage Candle",
+    quantity: 1,
+    price: 24.0,
+    formattedPrice: "$24.00",
+    imageUrl:
+      "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
+    sku: "EW-WS-001",
+    options: [{ name: "Size", value: "4 oz" }],
+  },
+];
+
+export const MOCK_CHECKOUT_CART_DATA = {
+  id: "sample-checkout-cart-001",
+  items: MOCK_CHECKOUT_CART_ITEMS,
+  itemCount: 2,
+  subtotal: 62.0,
+  tax: 4.96,
+  shipping: 5.95,
+  total: 72.91,
+  formattedSubtotal: "$62.00",
+  formattedTax: "$4.96",
+  formattedShipping: "$5.95",
+  formattedTotal: "$72.91",
+  currencyCode: "USD",
+  hasPromo: false,
+  promoCode: null as string | null,
+  promoDiscount: 0,
+  formattedPromoDiscount: null as string | null,
+};

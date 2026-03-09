@@ -2,13 +2,28 @@ import { registerEPCheckoutForm } from "./registerEPCheckoutForm";
 import { registerEPPaymentForm } from "./registerEPPaymentForm";
 import { registerEPOrderSummary } from "./registerEPOrderSummary";
 import { registerEPCheckoutConfirmation } from "./registerEPCheckoutConfirmation";
+import { registerEPCheckoutCartField } from "./checkout/composable/EPCheckoutCartField";
+import { registerEPCheckoutCartItemList } from "./checkout/composable/EPCheckoutCartItemList";
+import { registerEPCheckoutCartSummary } from "./checkout/composable/EPCheckoutCartSummary";
+import { registerEPPromoCodeInput } from "./checkout/composable/EPPromoCodeInput";
+import { registerEPCountrySelect } from "./checkout/composable/EPCountrySelect";
+import { registerEPBillingAddressToggle } from "./checkout/composable/EPBillingAddressToggle";
 import { Registerable } from "./registerable";
 
 export function registerEPCheckout(loader?: Registerable) {
+  // Legacy monolithic checkout components
   registerEPCheckoutForm(loader);
   registerEPPaymentForm(loader);
   registerEPOrderSummary(loader);
   registerEPCheckoutConfirmation(loader);
+
+  // Composable checkout components (leaf-first registration order)
+  registerEPCheckoutCartField(loader);
+  registerEPCheckoutCartItemList(loader);
+  registerEPCheckoutCartSummary(loader);
+  registerEPPromoCodeInput(loader);
+  registerEPCountrySelect(loader);
+  registerEPBillingAddressToggle(loader);
 }
 
 // Export individual registration functions
@@ -17,6 +32,12 @@ export {
   registerEPPaymentForm,
   registerEPOrderSummary,
   registerEPCheckoutConfirmation,
+  registerEPCheckoutCartField,
+  registerEPCheckoutCartItemList,
+  registerEPCheckoutCartSummary,
+  registerEPPromoCodeInput,
+  registerEPCountrySelect,
+  registerEPBillingAddressToggle,
 };
 
 // Export component metas for advanced usage
@@ -32,3 +53,21 @@ export {
 export {
   epCheckoutConfirmationMeta,
 } from "./registerEPCheckoutConfirmation";
+export {
+  epCheckoutCartFieldMeta,
+} from "./checkout/composable/EPCheckoutCartField";
+export {
+  epCheckoutCartItemListMeta,
+} from "./checkout/composable/EPCheckoutCartItemList";
+export {
+  epCheckoutCartSummaryMeta,
+} from "./checkout/composable/EPCheckoutCartSummary";
+export {
+  epPromoCodeInputMeta,
+} from "./checkout/composable/EPPromoCodeInput";
+export {
+  epCountrySelectMeta,
+} from "./checkout/composable/EPCountrySelect";
+export {
+  epBillingAddressToggleMeta,
+} from "./checkout/composable/EPBillingAddressToggle";

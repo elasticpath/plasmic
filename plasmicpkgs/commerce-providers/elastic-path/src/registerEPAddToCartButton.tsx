@@ -82,10 +82,6 @@ export function EPAddToCartButton(props: EPAddToCartButtonProps) {
       : (!product || isLoading);
 
   const addToCart = async () => {
-    if (!form) {
-      log.warn("Add to cart aborted: no form context");
-      return;
-    }
     if (!product) {
       log.warn("Add to cart aborted: no product in context");
       return;
@@ -95,7 +91,7 @@ export function EPAddToCartButton(props: EPAddToCartButtonProps) {
     setIsLoading(true);
 
     try {
-      const formValues = form.getValues();
+      const formValues = form ? form.getValues() : {};
       log.debug("Form values", formValues as Record<string, unknown>);
 
       const quantityValidation = validateAndParseQuantity(
