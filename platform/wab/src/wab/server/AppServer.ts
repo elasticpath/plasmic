@@ -1885,11 +1885,6 @@ export function addMainAppServerRoutes(
     passport.authenticate('provision-jwt', { session: false }),
     withNext(projectProvisioningRoutes.provisionProject)
   );
-  app.post(
-    "/api/v1/provision/projects/:projectId/users",
-    passport.authenticate('provision-jwt', { session: false }),
-    withNext(projectProvisioningRoutes.grantProjectUserPermissions)
-  );
 
   /**
    * CMS

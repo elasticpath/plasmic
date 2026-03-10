@@ -30,29 +30,3 @@ export async function provisionProject(req: Request, res: Response) {
   res.json({ project: mkApiProject(project) });
 }
 
-export async function grantProjectUserPermissions(req: Request, res: Response) {
-  const mgr = superDbMgr(req);
-  const { projectId } = req.params;
-  const { userId, accessLevel } = req.body;
-
-  logger().info("Granting project permissions", {
-    projectId,
-    userId,
-    accessLevel,
-  });
-
-  const user = await mgr.getUserById(userId);
-  const perm = await mgr.grantProjectPermissionByEmail(
-    projectId,
-    user.email,
-    accessLevel
-  );
-
-  logger().info("Granted project permissions", {
-    projectId,
-    userId,
-    accessLevel: perm.accessLevel,
-  });
-
-  res.json({ perm });
-}
