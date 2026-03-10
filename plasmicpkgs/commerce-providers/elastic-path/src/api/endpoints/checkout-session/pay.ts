@@ -178,70 +178,86 @@ export async function handlePay(
   }
 
   // 6. EP checkout: cart → order
-  // EP's BillingAddress and ShippingAddress types require fields like
-  // company_name, phone_number, and instructions that SessionAddress doesn't
-  // carry. Provide safe empty-string defaults for optional EP fields.
-  const epBilling = toEPAddress(billingAddress);
-  const epShipping = toEPAddress(shippingAddress);
-
+  // On retry (session.order already populated from a previous failed attempt),
+  // skip checkout and reuse the existing EP order. This prevents creating
+  // duplicate orders when the gateway charge failed but EP checkout succeeded.
   let orderId: string;
-  let orderMeta: any;
-  try {
-    const checkoutResponse = await checkoutApi({
-      client,
-      path: { cartID: session.cartId },
-      body: {
-        data: {
-          customer: toEPCustomer(customerInfo),
-          billing_address: {
-            ...epBilling,
-            company_name: "",
-            line_2: epBilling.line_2 ?? "",
-            county: epBilling.county ?? "",
-          },
-          shipping_address: {
-            ...epShipping,
-            company_name: "",
-            phone_number: "",
-            line_2: epShipping.line_2 ?? "",
-            county: epShipping.county ?? "",
-            instructions: "",
-          },
-        } as any,
-      },
-    });
+  let totals = session.totals;
+  const isRetry = !!session.order;
 
-    const orderData = (checkoutResponse.data as any)?.data;
-    if (!orderData?.id) {
-      throw new Error("EP checkout response missing order ID");
-    }
-    orderId = orderData.id as string;
-    orderMeta = orderData.meta;
-  } catch (err) {
-    log.error("EP checkout (cart→order) failed", {
-      cartId: session.cartId,
-      error: err instanceof Error ? err.message : String(err),
+  if (isRetry) {
+    orderId = session.order!.id;
+    log.info("Retry detected — reusing existing EP order", {
+      orderId,
+      sessionId: session.id,
     } as Record<string, unknown>);
-    return {
-      status: 502,
-      body: { success: false, error: { message: "Failed to create order", code: "EP_ERROR" } },
+  } else {
+    // EP's BillingAddress and ShippingAddress types require fields like
+    // company_name, phone_number, and instructions that SessionAddress doesn't
+    // carry. Provide safe empty-string defaults for optional EP fields.
+    const epBilling = toEPAddress(billingAddress);
+    const epShipping = toEPAddress(shippingAddress);
+
+    let orderMeta: any;
+    try {
+      const checkoutResponse = await checkoutApi({
+        client,
+        path: { cartID: session.cartId },
+        body: {
+          data: {
+            customer: toEPCustomer(customerInfo),
+            billing_address: {
+              ...epBilling,
+              company_name: "",
+              line_2: epBilling.line_2 ?? "",
+              county: epBilling.county ?? "",
+            },
+            shipping_address: {
+              ...epShipping,
+              company_name: "",
+              phone_number: "",
+              line_2: epShipping.line_2 ?? "",
+              county: epShipping.county ?? "",
+              instructions: "",
+            },
+          } as any,
+        },
+      });
+
+      const orderData = (checkoutResponse.data as any)?.data;
+      if (!orderData?.id) {
+        throw new Error("EP checkout response missing order ID");
+      }
+      orderId = orderData.id as string;
+      orderMeta = orderData.meta;
+    } catch (err) {
+      log.error("EP checkout (cart→order) failed", {
+        cartId: session.cartId,
+        error: err instanceof Error ? err.message : String(err),
+      } as Record<string, unknown>);
+      return {
+        status: 502,
+        body: { success: false, error: { message: "Failed to create order", code: "EP_ERROR" } },
+      };
+    }
+
+    // 7. Extract totals from order meta
+    const displayPrice = orderMeta?.display_price;
+    totals = {
+      subtotal: displayPrice?.without_tax?.amount ?? 0,
+      tax: displayPrice?.tax?.amount ?? 0,
+      shipping: displayPrice?.shipping?.amount ?? 0,
+      total: displayPrice?.with_tax?.amount ?? 0,
+      currency:
+        displayPrice?.with_tax?.currency ??
+        displayPrice?.without_tax?.currency ??
+        "USD",
     };
   }
 
-  // 7. Extract totals from order meta
-  const displayPrice = orderMeta?.display_price;
-  const totals = {
-    subtotal: displayPrice?.without_tax?.amount ?? 0,
-    tax: displayPrice?.tax?.amount ?? 0,
-    shipping: displayPrice?.shipping?.amount ?? 0,
-    total: displayPrice?.with_tax?.amount ?? 0,
-    currency:
-      displayPrice?.with_tax?.currency ??
-      displayPrice?.without_tax?.currency ??
-      "USD",
-  };
-
   // 8. EP authorize: create manual/authorize transaction
+  // A new authorization is created on every /pay attempt (including retries)
+  // because the previous authorization may have been voided or expired.
   let transactionId: string;
   try {
     const authResponse = await paymentSetup({

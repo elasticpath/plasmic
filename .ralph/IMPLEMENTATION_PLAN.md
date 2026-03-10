@@ -1,6 +1,6 @@
 # Implementation Plan
 
-**Last updated:** 2026-03-10 (rev 9 — COMPLETE, condensed)
+**Last updated:** 2026-03-10 (rev 10 — EP order retry fix)
 **Branch:** `feat/server-cart-shopper-context`
 **Focus:** Checkout session model — server-authoritative session, payment adapters, gateway components
 
@@ -11,9 +11,9 @@
 | Category | Count |
 |----------|-------|
 | Active specs | 5 (checkout-session-*) |
-| Total items implemented | 78 / 78 |
+| Total items implemented | 79 / 79 |
 | Test suites | 72 |
-| Total tests | 1,365 |
+| Total tests | 1,370 |
 | Build verified | 2026-03-10 |
 
 | Spec | Phase | Status |
@@ -124,6 +124,7 @@
 - **Consumer route helper pattern:** `lib/checkout-handler.ts` provides `runHandler(req, res, handler)` that adapts Next.js `NextApiRequest` → `SessionRequest`, calls handler, writes `SessionResponse`. All 5 route files are thin wrappers (~15 lines each).
 - **EP SDK client pattern:** Handlers use `{ settings: { application_id, host } } as any` for the EP client, matching the existing handler pattern. Not `createShopperClient()`.
 - **`EPCloverCardField.tsx`:** Internal shared component created to avoid 4× duplication across card field components. Not referenced in any spec.
+- **EP order retry in `/pay`:** When `session.order` already exists (from a previous failed payment attempt), the handler skips `checkoutApi` and reuses the existing order ID. A new `paymentSetup` (authorize) is still created because the previous authorization may have been voided or expired. The double-submit guard (`session.status !== "open"`) prevents concurrent retries; the `failed` case in the adapter result mapping resets status to `"open"` to enable retries.
 
 ---
 

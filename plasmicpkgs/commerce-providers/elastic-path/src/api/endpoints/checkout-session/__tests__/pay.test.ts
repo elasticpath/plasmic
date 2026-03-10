@@ -534,6 +534,108 @@ describe("handlePay", () => {
   });
 
   // -------------------------------------------------------------------------
+  // EP order retry — reuse existing order on payment retry
+  // -------------------------------------------------------------------------
+
+  describe("EP order retry", () => {
+    it("skips checkoutApi when session already has an order (retry path)", async () => {
+      const session = makeSession({
+        order: { id: "existing-order", transactionId: "old-tx" },
+        totals: { subtotal: 8000, tax: 1000, shipping: 500, total: 9000, currency: "USD" },
+      });
+
+      const res = await handlePay(
+        createMockReq({ gateway: "stripe" }),
+        createMockCtx(session, createMockAdapter({ status: "ready" }))
+      );
+
+      expect(res.status).toBe(200);
+      // checkoutApi should NOT have been called — the order already exists
+      expect(epSdk.checkoutApi).not.toHaveBeenCalled();
+      // paymentSetup SHOULD have been called on the existing order
+      expect(epSdk.paymentSetup).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: { orderID: "existing-order" },
+        })
+      );
+    });
+
+    it("preserves existing totals on retry (no order meta to extract from)", async () => {
+      const existingTotals = { subtotal: 5000, tax: 500, shipping: 300, total: 5800, currency: "USD" };
+      const session = makeSession({
+        order: { id: "existing-order", transactionId: "old-tx" },
+        totals: existingTotals,
+      });
+
+      const res = await handlePay(
+        createMockReq({ gateway: "stripe" }),
+        createMockCtx(session, createMockAdapter({ status: "ready" }))
+      );
+
+      expect(res.status).toBe(200);
+      const returnedTotals = (res.body as any).data.session.totals;
+      expect(returnedTotals).toEqual(existingTotals);
+    });
+
+    it("uses new transactionId from re-authorization on retry", async () => {
+      epSdk.paymentSetup.mockResolvedValue(makePaymentSetupResponse("new-tx-retry") as any);
+
+      const session = makeSession({
+        order: { id: "existing-order", transactionId: "old-tx" },
+        totals: { subtotal: 8000, tax: 1000, shipping: 500, total: 9000, currency: "USD" },
+      });
+
+      const res = await handlePay(
+        createMockReq({ gateway: "stripe" }),
+        createMockCtx(session, createMockAdapter({ status: "ready" }))
+      );
+
+      expect(res.status).toBe(200);
+      expect(
+        (res.body as any).data.session.payment.gatewayMetadata.epTransactionId
+      ).toBe("new-tx-retry");
+      expect((res.body as any).data.session.order.id).toBe("existing-order");
+    });
+
+    it("still validates cart hash on retry", async () => {
+      const differentItems = [
+        { id: "item-1", quantity: 99, unit_price: { amount: 1500 } },
+      ];
+      epSdk.getACart.mockResolvedValue(makeCartResponse(differentItems) as any);
+
+      const session = makeSession({
+        order: { id: "existing-order", transactionId: "old-tx" },
+        totals: { subtotal: 8000, tax: 1000, shipping: 500, total: 9000, currency: "USD" },
+      });
+
+      const res = await handlePay(
+        createMockReq({ gateway: "stripe" }),
+        createMockCtx(session, createMockAdapter())
+      );
+
+      expect(res.status).toBe(409);
+      expect((res.body as any).error.code).toBe("CART_MISMATCH");
+    });
+
+    it("returns 502 when re-authorization fails on retry", async () => {
+      epSdk.paymentSetup.mockRejectedValue(new Error("Auth failed on retry"));
+
+      const session = makeSession({
+        order: { id: "existing-order", transactionId: "old-tx" },
+        totals: { subtotal: 8000, tax: 1000, shipping: 500, total: 9000, currency: "USD" },
+      });
+
+      const res = await handlePay(
+        createMockReq({ gateway: "stripe" }),
+        createMockCtx(session, createMockAdapter())
+      );
+
+      expect(res.status).toBe(502);
+      expect((res.body as any).error.code).toBe("EP_ERROR");
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // Response invariants
   // -------------------------------------------------------------------------
 
