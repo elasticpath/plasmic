@@ -30,10 +30,10 @@ import type {
 import { useCheckoutSession } from "./use-checkout-session";
 import type { PreviewState } from "./design-time-data";
 import { getMockSession } from "./design-time-data";
-import {
-  PaymentRegistrationContext,
-  type GatewayRegistration,
-  type PaymentRegistrationContextValue,
+import { PaymentRegistrationContext } from "./payment-registration-context";
+import type {
+  GatewayRegistration,
+  PaymentRegistrationContextValue,
 } from "./payment-registration-context";
 
 const log = createLogger("EPCheckoutSessionProvider");

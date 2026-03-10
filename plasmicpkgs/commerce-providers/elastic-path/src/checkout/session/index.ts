@@ -43,6 +43,46 @@ export { hashCart } from "./cart-hash";
 export { getMockSession } from "./design-time-data";
 export type { PreviewState } from "./design-time-data";
 
+// Clover payment components
+export {
+  EPCloverPayment,
+  epCloverPaymentMeta,
+  registerEPCloverPayment,
+  handleClover3DS,
+} from "./EPCloverPayment";
+export {
+  EPCloverCardNumber,
+  epCloverCardNumberMeta,
+  registerEPCloverCardNumber,
+} from "./EPCloverCardNumber";
+export {
+  EPCloverCardExpiry,
+  epCloverCardExpiryMeta,
+  registerEPCloverCardExpiry,
+} from "./EPCloverCardExpiry";
+export {
+  EPCloverCardCVV,
+  epCloverCardCVVMeta,
+  registerEPCloverCardCVV,
+} from "./EPCloverCardCVV";
+export {
+  EPCloverCardPostalCode,
+  epCloverCardPostalCodeMeta,
+  registerEPCloverCardPostalCode,
+} from "./EPCloverCardPostalCode";
+
+// Clover context
+export { CloverElementsContext, useCloverElements } from "./clover-context";
+export type { CloverElementsContextValue } from "./clover-context";
+
+// Clover SDK singletons
+export { getOrCreateCloverInstance, createToken, destroyCloverInstance } from "./clover-singleton";
+export { loadClover3DSSDK, getClover3DSUtil, waitForExecutePatch } from "./clover-3ds-sdk";
+
+// Adapters
+export { createCloverAdapter } from "./adapters/clover-adapter";
+export type { CloverAdapterConfig } from "./adapters/clover-adapter";
+
 // Types
 export type {
   CheckoutSession,

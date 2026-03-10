@@ -1,6 +1,6 @@
 # Implementation Plan
 
-**Last updated:** 2026-03-10 (rev 4 — Phase A complete)
+**Last updated:** 2026-03-10 (rev 5 — Phase B complete)
 **Branch:** `feat/server-cart-shopper-context`
 **Focus:** Checkout session model — server-authoritative session, payment adapters, gateway components
 
@@ -10,21 +10,26 @@
 |----------|-------|
 | Active specs | 5 (checkout-session-*) |
 | Total items to implement | 78 |
-| Completed items | 29 |
+| Completed items | 45 |
 
 ### Recent Completions
+- **Phase B complete** (2026-03-10): All 16 items implemented + tested. 3 test files, 34 new tests.
 - **Phase A complete** (2026-03-10): All 27 items implemented + tested. 8 test files, 157 new tests.
 - **D-1.1 + D-6.1** (cart-hash) completed early — required by A-4.5 pay.ts.
 - **Build note**: tsdx build cache can corrupt; clear `node_modules/.cache` if `ENOENT` errors appear.
 - **EP SDK note**: `getShippingOptions` exists in `@epcc-sdk/sdks-shopper` (the build agent incorrectly assumed it didn't). calculate-shipping.ts handler uses it correctly.
 - **EP SDK client pattern**: Handlers use `{ settings: { application_id, host } } as any` for the EP client, matching the existing handler pattern. Not `createShopperClient()`.
+- **EPCloverCardField.tsx internal shared component created** to avoid 4x duplication across card field components.
+- **esbuild mock pattern**: use jest.mock() at top, then require() to get mocked refs (same as Phase A handlers).
+- **Session exports expanded** in session/index.ts — all Clover components, context, singletons, and adapter exports added.
+- **Build note**: tsdx's rollup-plugin-typescript2 does NOT support inline `type` imports (`import { Foo, type Bar }`). Use separate `import type { Bar }` statements. Fixed in EPCheckoutSessionProvider.tsx and all Clover components.
 
 ## Active Spec Status
 
 | Spec | Phase | Status |
 |------|-------|--------|
 | `checkout-session-foundation.md` | A | Complete |
-| `checkout-session-clover.md` | B | Pending |
+| `checkout-session-clover.md` | B | Complete |
 | `checkout-session-stripe.md` | C | Pending |
 | `checkout-session-hardening.md` | D | Pending |
 | `checkout-session-consumer-routes.md` | Consumer | Pending |
@@ -301,11 +306,11 @@ All files in `plasmicpkgs/commerce-providers/elastic-path/src/` unless noted oth
 ### Phase B: Clover Payment Components (checkout-session-clover.md)
 
 #### B-1: Clover adapter (server-side)
-- [ ] **B-1.1** Create `src/checkout/session/adapters/clover-types.ts`
+- [x] **B-1.1** Create `src/checkout/session/adapters/clover-types.ts`
   - Clover API types: `CloverChargeRequest`, `CloverChargeResponse`, `CloverThreeDsData`, `CloverFinalizeRequest`
   - **No deps beyond A-1.1**
 
-- [ ] **B-1.2** Create `src/checkout/session/adapters/clover-api.ts`
+- [x] **B-1.2** Create `src/checkout/session/adapters/clover-api.ts`
   - `chargeClover(token, amount, currency, orderId, idempotencyKey, apiKey, apiBase)` — POST /v1/charges
   - `finalizeCloverPayment(chargeId, flowStatus, apiKey, apiBase)` — POST /v1/charges/finalize_payment
   - `deriveIdempotencyKey(orderId)` — returns `clover-charge-${orderId}`
@@ -314,7 +319,7 @@ All files in `plasmicpkgs/commerce-providers/elastic-path/src/` unless noted oth
   - **Signature note:** The storefront version passes `orderId` as a separate parameter (used in the charge description `Online order #${orderId}`). The package version should preserve this: `chargeClover(token, amount, currency, orderId, idempotencyKey, apiKey, apiBase)`.
   - **Deps:** B-1.1
 
-- [ ] **B-1.3** Create `src/checkout/session/adapters/clover-adapter.ts`
+- [x] **B-1.3** Create `src/checkout/session/adapters/clover-adapter.ts`
   - `cloverAdapter` implementing `PaymentAdapter`
   - `initializePayment()`: calls `chargeClover()` with token from gatewayData, idempotency key `clover-charge-${orderId}`
     - Inspects `threeDsData.status`: null → "ready", METHOD_FLOW → "requires_action" with `actionData.type: "3ds_method"`, CHALLENGE → "requires_action" with `actionData.type: "3ds_challenge"`
@@ -327,20 +332,20 @@ All files in `plasmicpkgs/commerce-providers/elastic-path/src/` unless noted oth
   - **Deps:** A-1.1 (PaymentAdapter), B-1.2
 
 #### B-2: Clover client components
-- [ ] **B-2.1** Create `src/checkout/session/clover-context.ts`
+- [x] **B-2.1** Create `src/checkout/session/clover-context.ts`
   - React context for Clover SDK elements instance
   - `CloverElementsContext` — provides clover instance + elements to child field components
   - `useCloverElements()` hook
   - **Deps:** None (React only)
 
-- [ ] **B-2.2** Create `src/checkout/session/clover-singleton.ts`
+- [x] **B-2.2** Create `src/checkout/session/clover-singleton.ts`
   - Singleton lazy-loader for the main Clover SDK (card fields + tokenization)
   - `loadCloverSDK(pakmsKey)` → Promise<CloverInstance> — loads `https://checkout.clover.com/sdk.js` via script tag, initializes `new Clover(pakmsKey)`, caches instance
   - Module-level `let cloverSdkPromise: Promise<CloverInstance> | null = null` — resets on error for retry
   - No duplicate script tags (checks `document.querySelector` before injecting)
   - **Deps:** None (browser-only)
 
-- [ ] **B-2.2b** Create `src/checkout/session/clover-3ds-sdk.ts`
+- [x] **B-2.2b** Create `src/checkout/session/clover-3ds-sdk.ts`
   - Singleton lazy-loader for `clover3DS-sdk.js` (separate from card SDK)
   - 3DS SDK URL: `https://checkout.clover.com/clover3DS/clover3DS-sdk.js` — loaded as a singleton promise (module-level `let threeDsSdkPromise: Promise<void> | null = null`)
   - `loadClover3DSSDK()` → Promise<void> (loads script tag once, checks `window.clover3DSUtil` existence, resets promise on load error for retry)
@@ -348,7 +353,7 @@ All files in `plasmicpkgs/commerce-providers/elastic-path/src/` unless noted oth
   - Ported from storefront's `CartPayButton.tsx` inline 3DS loader (lines 36-84 of the reference file)
   - **Deps:** None
 
-- [ ] **B-2.3** Create `src/checkout/session/EPCloverPayment.tsx`
+- [x] **B-2.3** Create `src/checkout/session/EPCloverPayment.tsx`
   - Props: `children` (slot), `pakmsKey`, `merchantId?`, `environment?` ("sandbox" | "production"), `className?`, `previewState?`
   - DataProvider `"cloverPaymentData"`: `{ isReady, isProcessing, error, isTokenizing, is3DSActive }`
   - Registers gateway "clover" with EPCheckoutSessionProvider via PaymentRegistrationContext
@@ -360,7 +365,7 @@ All files in `plasmicpkgs/commerce-providers/elastic-path/src/` unless noted oth
   - `registerEPCloverPayment(loader)` function
   - **Deps:** A-8.1 (EPCheckoutSessionProvider), A-6.1 (PaymentRegistrationContext), B-2.1, B-2.2, B-2.2b
 
-- [ ] **B-2.4** Create `src/checkout/session/EPCloverCardNumber.tsx`
+- [x] **B-2.4** Create `src/checkout/session/EPCloverCardNumber.tsx`
   - Reads Clover elements from CloverElementsContext
   - Mounts Clover iframe for CARD_NUMBER
   - Style props: className, placeholder, inputFontFamily, inputFontSize, inputColor, inputPadding, fieldHeight, fieldBorderColor, fieldBorderRadius, errorColor
@@ -368,29 +373,29 @@ All files in `plasmicpkgs/commerce-providers/elastic-path/src/` unless noted oth
   - Warning if outside EPCloverPayment
   - **Deps:** B-2.1
 
-- [ ] **B-2.5** Create `src/checkout/session/EPCloverCardExpiry.tsx`
+- [x] **B-2.5** Create `src/checkout/session/EPCloverCardExpiry.tsx`
   - Same pattern as B-2.4 but CARD_DATE field
   - **Deps:** B-2.1
 
-- [ ] **B-2.6** Create `src/checkout/session/EPCloverCardCVV.tsx`
+- [x] **B-2.6** Create `src/checkout/session/EPCloverCardCVV.tsx`
   - Same pattern as B-2.4 but CARD_CVV field
   - **Deps:** B-2.1
 
-- [ ] **B-2.7** Create `src/checkout/session/EPCloverCardPostalCode.tsx`
+- [x] **B-2.7** Create `src/checkout/session/EPCloverCardPostalCode.tsx`
   - Same pattern as B-2.4 but CARD_POSTAL_CODE field
   - **Deps:** B-2.1
 
 #### B-3: Integration
-- [ ] **B-3.1** Register Clover adapter in adapter registry (export from `src/checkout/session/adapters/index.ts`)
+- [x] **B-3.1** Register Clover adapter in adapter registry (export from `src/checkout/session/adapters/index.ts`)
   - **Deps:** B-1.3, A-3.1
 
-- [ ] **B-3.2** Register EPCloverPayment + 4 field components in `src/registerCheckout.tsx`
+- [x] **B-3.2** Register EPCloverPayment + 4 field components in `src/registerCheckout.tsx`
   - **Deps:** B-2.3 through B-2.7
 
 #### B-4: Tests
-- [ ] **B-4.1** Create `src/checkout/session/__tests__/clover-adapter.test.ts` — charge success, 3DS method, 3DS challenge, escalation, card declined, retry on network error, idempotency key
-- [ ] **B-4.2** Create `src/checkout/session/__tests__/EPCloverPayment.test.tsx` — SDK init, tokenization, 3DS flow, registration, previewStates, outside-provider warning
-- [ ] **B-4.3** Create `src/checkout/session/__tests__/EPCloverCardNumber.test.tsx` — mount, style props, outside-context warning
+- [x] **B-4.1** Create `src/checkout/session/__tests__/clover-adapter.test.ts` — charge success, 3DS method, 3DS challenge, escalation, card declined, retry on network error, idempotency key
+- [x] **B-4.2** Create `src/checkout/session/__tests__/EPCloverPayment.test.tsx` — SDK init, tokenization, 3DS flow, registration, previewStates, outside-provider warning
+- [x] **B-4.3** Create `src/checkout/session/__tests__/EPCloverCardNumber.test.tsx` — mount, style props, outside-context warning
 
 **Phase B total: 16 items** (13 implementation + 3 tests)
 

@@ -17,6 +17,12 @@ import { registerEPShippingAddressFields } from "./checkout/composable/EPShippin
 import { registerEPBillingAddressFields } from "./checkout/composable/EPBillingAddressFields";
 import { registerEPShippingMethodSelector } from "./checkout/composable/EPShippingMethodSelector";
 import { registerEPPaymentElements } from "./checkout/composable/EPPaymentElements";
+import { registerEPCheckoutSessionProvider } from "./checkout/session/EPCheckoutSessionProvider";
+import { registerEPCloverPayment } from "./checkout/session/EPCloverPayment";
+import { registerEPCloverCardNumber } from "./checkout/session/EPCloverCardNumber";
+import { registerEPCloverCardExpiry } from "./checkout/session/EPCloverCardExpiry";
+import { registerEPCloverCardCVV } from "./checkout/session/EPCloverCardCVV";
+import { registerEPCloverCardPostalCode } from "./checkout/session/EPCloverCardPostalCode";
 import { Registerable } from "./registerable";
 
 export function registerEPCheckout(loader?: Registerable) {
@@ -44,6 +50,14 @@ export function registerEPCheckout(loader?: Registerable) {
 
   // Composable checkout provider (registered last — parent of leaf components)
   registerEPCheckoutProvider(loader);
+
+  // Session-based checkout components (leaf-first)
+  registerEPCloverCardNumber(loader);
+  registerEPCloverCardExpiry(loader);
+  registerEPCloverCardCVV(loader);
+  registerEPCloverCardPostalCode(loader);
+  registerEPCloverPayment(loader);
+  registerEPCheckoutSessionProvider(loader);
 }
 
 // Export individual registration functions
@@ -67,6 +81,12 @@ export {
   registerEPBillingAddressFields,
   registerEPShippingMethodSelector,
   registerEPPaymentElements,
+  registerEPCheckoutSessionProvider,
+  registerEPCloverPayment,
+  registerEPCloverCardNumber,
+  registerEPCloverCardExpiry,
+  registerEPCloverCardCVV,
+  registerEPCloverCardPostalCode,
 };
 
 // Export component metas for advanced usage
@@ -127,3 +147,21 @@ export {
 export {
   epPaymentElementsMeta,
 } from "./checkout/composable/EPPaymentElements";
+export {
+  epCheckoutSessionProviderMeta,
+} from "./checkout/session/EPCheckoutSessionProvider";
+export {
+  epCloverPaymentMeta,
+} from "./checkout/session/EPCloverPayment";
+export {
+  epCloverCardNumberMeta,
+} from "./checkout/session/EPCloverCardNumber";
+export {
+  epCloverCardExpiryMeta,
+} from "./checkout/session/EPCloverCardExpiry";
+export {
+  epCloverCardCVVMeta,
+} from "./checkout/session/EPCloverCardCVV";
+export {
+  epCloverCardPostalCodeMeta,
+} from "./checkout/session/EPCloverCardPostalCode";
