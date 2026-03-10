@@ -73,6 +73,11 @@ export const EPShippingMethodSelector = React.forwardRef<
 
   const inEditor = !!usePlasmicCanvasContext();
 
+  // Read composable checkout context (EPCheckoutProvider flow)
+  const checkoutData = useSelector("checkoutData") as
+    | { step?: string; selectedShippingRate?: { id: string } | null }
+    | undefined;
+
   // Read checkout session context (session-based flow)
   const checkoutSessionCtx = useSelector("checkoutSession") as
     | {
@@ -92,7 +97,7 @@ export const EPShippingMethodSelector = React.forwardRef<
       }
     | undefined;
 
-  // Read shipping address to trigger rate fetch (legacy composable flow)
+  // Read shipping address to trigger rate fetch (composable/legacy flow)
   const shippingAddress = useSelector("shippingAddressFieldsData") as
     | {
         isValid?: boolean;
@@ -108,7 +113,7 @@ export const EPShippingMethodSelector = React.forwardRef<
   const hasSessionRates = !!(checkoutSessionCtx?.session?.availableShippingRates?.length);
 
   // Design-time preview
-  if (previewState !== "auto" || (inEditor && !checkoutSessionCtx && !shippingAddress)) {
+  if (previewState !== "auto" || (inEditor && !checkoutSessionCtx && !checkoutData && !shippingAddress)) {
     const effectivePreview = previewState === "auto" ? "withRates" : previewState;
 
     if (effectivePreview === "loading") {
@@ -411,6 +416,7 @@ export const epShippingMethodSelectorMeta: ComponentMeta<EPShippingMethodSelecto
     },
     importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
     importName: "EPShippingMethodSelector",
+    parentComponentName: "plasmic-commerce-ep-checkout-provider",
     providesData: true,
     refActions: {
       selectMethod: {

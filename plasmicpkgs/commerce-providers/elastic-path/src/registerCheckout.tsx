@@ -13,6 +13,7 @@ import { registerEPCustomerInfoFields } from "./checkout/composable/EPCustomerIn
 import { registerEPShippingAddressFields } from "./checkout/composable/EPShippingAddressFields";
 import { registerEPBillingAddressFields } from "./checkout/composable/EPBillingAddressFields";
 import { registerEPShippingMethodSelector } from "./checkout/composable/EPShippingMethodSelector";
+import { registerEPPaymentElements } from "./checkout/composable/EPPaymentElements";
 import { registerEPCheckoutProvider } from "./checkout/composable/EPCheckoutProvider";
 import { registerEPCheckoutStepIndicator } from "./checkout/composable/EPCheckoutStepIndicator";
 import { registerEPCheckoutButton } from "./checkout/composable/EPCheckoutButton";
@@ -46,6 +47,7 @@ export function registerEPCheckout(loader?: Registerable) {
   registerEPShippingMethodSelector(loader);
 
   // Composable checkout orchestration (leaf-first: children before parent)
+  registerEPPaymentElements(loader);
   registerEPCheckoutButton(loader);
   registerEPCheckoutStepIndicator(loader);
   registerEPCheckoutProvider(loader);
@@ -80,6 +82,7 @@ export {
   registerEPCheckoutProvider,
   registerEPCheckoutStepIndicator,
   registerEPCheckoutButton,
+  registerEPPaymentElements,
   registerEPCheckoutSessionProvider,
   registerEPCloverPayment,
   registerEPCloverCardNumber,
@@ -144,6 +147,9 @@ export {
 export {
   epCheckoutButtonMeta,
 } from "./checkout/composable/EPCheckoutButton";
+export {
+  epPaymentElementsMeta,
+} from "./checkout/composable/EPPaymentElements";
 export {
   epCheckoutSessionProviderMeta,
 } from "./checkout/session/EPCheckoutSessionProvider";

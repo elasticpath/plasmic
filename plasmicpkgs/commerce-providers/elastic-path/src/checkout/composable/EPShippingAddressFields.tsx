@@ -5,7 +5,7 @@
  * and optional address suggestion support. Exposes `shippingAddressFieldsData`
  * via DataProvider for designer binding.
  *
- * refActions: setField, validate, clear
+ * refActions: setField, validate, clear, useAccountAddress
  */
 import {
   DataProvider,
@@ -93,6 +93,7 @@ interface EPShippingAddressFieldsActions {
   setField(name: AddressFieldName, value: string): void;
   validate(): boolean;
   clear(): void;
+  useAccountAddress(addressId: string): void;
 }
 
 interface EPShippingAddressFieldsProps {
@@ -187,12 +188,25 @@ export const EPShippingAddressFields = React.forwardRef<
 
   const inEditor = !!usePlasmicCanvasContext();
 
-  // Read checkout session for pre-population
+  // Pre-population priority:
+  // 1. checkoutData.shippingAddress (from EPCheckoutProvider — composable flow)
+  // 2. checkoutSession.shippingAddress (from EPCheckoutSessionProvider — session flow)
+  const checkoutData = useSelector("checkoutData") as
+    | { shippingAddress?: Record<string, string> | null }
+    | undefined;
   const checkoutSessionCtx = useSelector("checkoutSession") as
     | { session?: { shippingAddress?: Record<string, string> | null } }
     | undefined;
 
-  const effectiveAddress = checkoutSessionCtx?.session?.shippingAddress ?? undefined;
+  const effectiveAddress = useMemo(() => {
+    // Source 1: EPCheckoutProvider (composable flow)
+    const cd = checkoutData?.shippingAddress;
+    if (cd && (cd.firstName || cd.first_name || cd.line1 || cd.line_1)) {
+      return cd;
+    }
+    // Source 2: EPCheckoutSessionProvider (session flow)
+    return checkoutSessionCtx?.session?.shippingAddress ?? undefined;
+  }, [checkoutData?.shippingAddress, checkoutSessionCtx?.session?.shippingAddress]);
 
   const useMock =
     previewState !== "auto" ||
@@ -323,8 +337,15 @@ const EPShippingAddressFieldsRuntime = React.forwardRef<
     setSuggestions(null);
   }, [SETTERS]);
 
-  useImperativeHandle(ref, () => ({ setField, validate, clear }), [
-    setField, validate, clear,
+  // useAccountAddress: copies a saved address from shopperContextData by ID.
+  // ShopperContext currently only provides cartId/accountId/locale/currency,
+  // so this is a no-op until account addresses are available in shopperContextData.
+  const useAccountAddress = useCallback((_addressId: string) => {
+    log.debug("useAccountAddress called — shopperContextData.addresses not yet available, no-op");
+  }, []);
+
+  useImperativeHandle(ref, () => ({ setField, validate, clear, useAccountAddress }), [
+    setField, validate, clear, useAccountAddress,
   ]);
 
   const data = useMemo<ShippingAddressFieldsData>(
@@ -422,6 +443,12 @@ export const epShippingAddressFieldsMeta: ComponentMeta<EPShippingAddressFieldsP
       clear: {
         displayName: "Clear",
         argTypes: [],
+      },
+      useAccountAddress: {
+        displayName: "Use Account Address",
+        argTypes: [
+          { name: "addressId", type: "string", displayName: "Address ID" },
+        ],
       },
     },
   };

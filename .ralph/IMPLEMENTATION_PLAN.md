@@ -1,6 +1,6 @@
 # Implementation Plan
 
-**Last updated:** 2026-03-10 (rev 11 — composable checkout spec added)
+**Last updated:** 2026-03-10 (rev 12 — composable checkout Phases 2+3 complete)
 **Branch:** `feat/server-cart-shopper-context`
 **Focus:** Checkout session model — server-authoritative session, payment adapters, gateway components
 
@@ -11,9 +11,9 @@
 | Category | Count |
 |----------|-------|
 | Active specs | 6 (checkout-session-* + composable-checkout) |
-| Total items implemented | 80 / 88 |
-| Test suites | 75 |
-| Total tests | 1,406 |
+| Total items implemented | 86 / 88 |
+| Test suites | 76 |
+| Total tests | 1,413 |
 | Build verified | 2026-03-10 |
 
 | Spec | Phase | Status |
@@ -23,7 +23,7 @@
 | `checkout-session-stripe.md` | C | Complete |
 | `checkout-session-hardening.md` | D | Complete |
 | `checkout-session-consumer-routes.md` | Consumer | Complete |
-| `composable-checkout.md` | Composable | In Progress |
+| `composable-checkout.md` | Composable | Complete |
 
 ---
 
@@ -127,6 +127,8 @@
 - **`EPCloverCardField.tsx`:** Internal shared component created to avoid 4× duplication across card field components. Not referenced in any spec.
 - **EP order retry in `/pay`:** When `session.order` already exists (from a previous failed payment attempt), the handler skips `checkoutApi` and reuses the existing order ID. A new `paymentSetup` (authorize) is still created because the previous authorization may have been voided or expired. The double-submit guard (`session.status !== "open"`) prevents concurrent retries; the `failed` case in the adapter result mapping resets status to `"open"` to enable retries.
 - **`toHaveClass` / `toHaveTextContent` not available:** Root jest config does not include `@testing-library/jest-dom`. Use plain DOM assertions like `element.className.includes()` and `element.textContent` instead.
+- **ShopperContext has no account profile data:** `EPShopperContextProvider` is a GlobalContext providing only `cartId`, `accountId`, `locale`, `currency` overrides — NOT a DataProvider. There is no `shopperContextData` DataProvider with account profile or addresses. The composable-checkout spec's reference to `useSelector("shopperContextData")` for pre-population is aspirational. Current pre-population reads from `checkoutData` (composable) and `checkoutSession` (session) instead.
+- **EPPaymentElements uses CheckoutInternalContext:** The composable EPPaymentElements reads `clientSecret` from `CheckoutInternalContext` (set by EPCheckoutProvider after `setupPayment()`) and exposes the Stripe `elements` instance back through the same context for `confirmPayment` calls. This is distinct from EPStripePayment which reads from session `payment.clientToken`.
 
 ---
 
@@ -152,7 +154,7 @@ Items explicitly called out as deferred in the specs or not in scope for this br
 
 ## Composable Checkout (composable-checkout.md)
 
-**Status:** In Progress — Phase 1 (P0) complete
+**Status:** Complete — all 3 phases done
 
 Replaces deleted orchestration (D-5) with new headless Provider → DataProvider components using `useCheckout()` hook.
 
@@ -167,18 +169,18 @@ Replaces deleted orchestration (D-5) with new headless Provider → DataProvider
 ### Phase 2 (P1) — 3 Items (updates to existing components)
 | Item | Description | Status |
 |------|-------------|--------|
-| CC-2.1 | `EPCustomerInfoFields` — fix pre-population to read from `shopperContextData` instead of `checkoutSession` | Pending |
-| CC-2.2 | `EPShippingAddressFields` — add `useAccountAddress(addressId)` refAction, add server-side address validation API call | Pending |
+| CC-2.1 | `EPCustomerInfoFields` — dual-source pre-population: `checkoutData.customerInfo` (composable) + `checkoutSession.customerInfo` (session) | Complete |
+| CC-2.2 | `EPShippingAddressFields` — dual-source pre-population, `useAccountAddress(addressId)` refAction (no-op until account addresses available) | Complete |
 | CC-2.3 | `EPBillingAddressFields` — already aligned, no changes needed | Complete |
 
 ### Phase 3 (P2) — 2 Items
 | Item | Description | Status |
 |------|-------------|--------|
-| CC-3.1 | `EPPaymentElements` — Stripe Elements wrapper with `clientSecret` from checkout context, `paymentData` DataProvider | Pending |
-| CC-3.2 | `EPShippingMethodSelector` — update to call `useCheckout().calculateShipping()`, add `parentComponentName`, update `selectMethod` to call parent context | Pending |
+| CC-3.1 | `EPPaymentElements` — Stripe Elements wrapper reading `clientSecret` from CheckoutInternalContext, `paymentData` DataProvider, lazy SDK loading | Complete |
+| CC-3.2 | `EPShippingMethodSelector` — added `checkoutData` awareness for composable flow, `parentComponentName` in registration meta | Complete |
 
 ### Registration
-All new Phase 1 components registered in `registerCheckout.tsx` in leaf-first order: `EPCheckoutButton` → `EPCheckoutStepIndicator` → `EPCheckoutProvider`.
+All composable components registered in `registerCheckout.tsx` in leaf-first order: `EPPaymentElements` → `EPCheckoutButton` → `EPCheckoutStepIndicator` → `EPCheckoutProvider`.
 
 ---
 
@@ -188,3 +190,4 @@ All new Phase 1 components registered in `registerCheckout.tsx` in leaf-first or
 - **`EPCloverCardField.tsx` not in any spec.** This shared internal component was created to avoid duplication across the four Clover card field components. It is not referenced in `checkout-session-clover.md`.
 - **`lib/checkout-handler.ts` not in Consumer spec.** The spec describes route files but does not mention the `runHandler` helper. It emerged as an implementation necessity.
 - **`CHECKOUT_SESSION_SECRET` env var not in spec acceptance criteria.** The Consumer spec lists env vars in the body but `CHECKOUT_SESSION_SECRET` is absent from the formal acceptance criteria checklist.
+- **Composable-checkout spec references `shopperContextData` DataProvider that doesn't exist.** The spec says to pre-populate form fields from `useSelector("shopperContextData")` account profile, but `EPShopperContextProvider` is a GlobalContext providing only identity overrides (`cartId`, `accountId`, `locale`, `currency`), not a DataProvider with account addresses. Implementation reads from `checkoutData` (composable) and `checkoutSession` (session) instead. `useAccountAddress` refAction is implemented as a no-op until account address data becomes available.

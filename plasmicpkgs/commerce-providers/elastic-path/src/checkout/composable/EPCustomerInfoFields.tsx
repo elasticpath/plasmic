@@ -116,24 +116,34 @@ export const EPCustomerInfoFields = React.forwardRef<
 
   const inEditor = !!usePlasmicCanvasContext();
 
-  // Read checkout session context for pre-population
+  // Pre-population priority:
+  // 1. checkoutData.customerInfo (from EPCheckoutProvider — already split)
+  // 2. checkoutSession.customerInfo (from EPCheckoutSessionProvider — name needs split)
+  const checkoutData = useSelector("checkoutData") as
+    | { customerInfo?: { firstName?: string; lastName?: string; email?: string } | null }
+    | undefined;
   const checkoutSessionCtx = useSelector("checkoutSession") as
     | { session?: { customerInfo?: { name?: string; email?: string } } }
     | undefined;
 
-  // Derive customerInfo from session (split name into first/last)
-  const sessionCustomerInfo = useMemo(() => {
-    const ci = checkoutSessionCtx?.session?.customerInfo;
-    if (!ci) return undefined;
-    const parts = (ci.name ?? "").split(/\s+/);
-    return {
-      firstName: parts[0] ?? "",
-      lastName: parts.slice(1).join(" "),
-      email: ci.email ?? "",
-    };
-  }, [checkoutSessionCtx?.session?.customerInfo]);
-
-  const effectiveCustomerInfo = sessionCustomerInfo;
+  const effectiveCustomerInfo = useMemo(() => {
+    // Source 1: EPCheckoutProvider (composable flow)
+    const ci = checkoutData?.customerInfo;
+    if (ci?.firstName || ci?.email) {
+      return { firstName: ci.firstName ?? "", lastName: ci.lastName ?? "", email: ci.email ?? "" };
+    }
+    // Source 2: EPCheckoutSessionProvider (session flow)
+    const sci = checkoutSessionCtx?.session?.customerInfo;
+    if (sci) {
+      const parts = (sci.name ?? "").split(/\s+/);
+      return {
+        firstName: parts[0] ?? "",
+        lastName: parts.slice(1).join(" "),
+        email: sci.email ?? "",
+      };
+    }
+    return undefined;
+  }, [checkoutData?.customerInfo, checkoutSessionCtx?.session?.customerInfo]);
 
   // Design-time preview
   const useMock =
