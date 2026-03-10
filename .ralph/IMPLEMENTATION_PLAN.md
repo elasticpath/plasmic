@@ -1,538 +1,608 @@
 # Implementation Plan
 
-**Last updated:** 2026-03-09
-**Last verified against codebase:** 2026-03-09
+**Last updated:** 2026-03-10 (rev 4 — Phase A complete)
 **Branch:** `feat/server-cart-shopper-context`
-**Focus:** Server-only cart architecture with ShopperContext + composable checkout for Elastic Path commerce in Plasmic
+**Focus:** Checkout session model — server-authoritative session, payment adapters, gateway components
 
 ## Status Summary
 
 | Category | Count |
 |----------|-------|
-| Active specs | 6 (server-cart + composable-checkout) |
-| Deferred specs | 0 |
-| Completed specs | 8 (product discovery + MCP) |
-| Total items to implement | 34 (25 server-cart + 9 composable checkout) |
-| Completed items | 34 (25 server-cart + 9 composable checkout) |
+| Active specs | 5 (checkout-session-*) |
+| Total items to implement | 78 |
+| Completed items | 29 |
+
+### Recent Completions
+- **Phase A complete** (2026-03-10): All 27 items implemented + tested. 8 test files, 157 new tests.
+- **D-1.1 + D-6.1** (cart-hash) completed early — required by A-4.5 pay.ts.
+- **Build note**: tsdx build cache can corrupt; clear `node_modules/.cache` if `ENOENT` errors appear.
+- **EP SDK note**: `getShippingOptions` exists in `@epcc-sdk/sdks-shopper` (the build agent incorrectly assumed it didn't). calculate-shipping.ts handler uses it correctly.
+- **EP SDK client pattern**: Handlers use `{ settings: { application_id, host } } as any` for the EP client, matching the existing handler pattern. Not `createShopperClient()`.
 
 ## Active Spec Status
 
-| Spec | Phase | Priority | Status |
-|------|-------|----------|--------|
-| `server-cart-architecture.md` | Overview | — | Reference doc (no items) |
-| `phase-0-shopper-context.md` | Phase 0 | P0 | **DONE** (9/9 items) |
-| `phase-1-cart-reads.md` | Phase 1 | P1 | **DONE** (5/5 items) |
-| `phase-2-cart-mutations.md` | Phase 2 | P2 | **DONE** (4/4 items) |
-| `phase-3-credential-removal.md` | Phase 3 | P3 | **DONE** (5/5 items) |
-| `composable-checkout.md` | Phase 1 (P0) | CC-P0 | **DONE** (4/4 items) |
-| `composable-checkout.md` | Phase 2 (P1) | CC-P1 | **DONE** (3/3 items) |
-| `composable-checkout.md` | Phase 3 (P2) | CC-P2 | **DONE** (2/2 items) |
+| Spec | Phase | Status |
+|------|-------|--------|
+| `checkout-session-foundation.md` | A | Complete |
+| `checkout-session-clover.md` | B | Pending |
+| `checkout-session-stripe.md` | C | Pending |
+| `checkout-session-hardening.md` | D | Pending |
+| `checkout-session-consumer-routes.md` | Consumer | Pending |
 
 ---
 
-## Verified Codebase State (2026-03-09)
+## Codebase Baseline (Confirmed via Code Search)
 
-- `src/shopper-context/` directory does **NOT exist** — confirmed
-- No ShopperContext, useShopperFetch, or server-cart code exists anywhere in the codebase
-- `src/const.ts` has no `EP_CART_COOKIE_NAME` or `SHOPPER_CONTEXT_HEADER` constants yet
-- `EPCheckoutCartSummary` has NO `cartData` prop — only: children, className, showImages, collapsible, isExpanded, onExpandedChange, previewState
-- No `@deprecated` markers exist on any cart hooks or cookie utils
-- `swr` IS in `package.json` peerDependencies (added in Phase 1)
-- `src/shopper-context/use-cart.ts` exists (Phase 1)
-- `src/shopper-context/use-checkout-cart.ts` exists (Phase 1)
-- `src/shopper-context/design-time-data.ts` exists (Phase 1)
-- Existing cart cookie constant is `ELASTICPATH_CART_COOKIE = 'elasticpath_cart'` (client-side, js-cookie)
-- New server-side cookie will use `EP_CART_COOKIE_NAME = 'ep_cart'` (httpOnly, different name)
-- `src/shopper-context/use-add-item.ts` exists (Phase 2)
-- `src/shopper-context/use-remove-item.ts` exists (Phase 2)
-- `src/shopper-context/use-update-item.ts` exists (Phase 2)
-- No TODOs, FIXMEs, or placeholders in existing code (except EPPromoCodeInput hardcoded `-$10.00` discount)
-- `src/registerCommerceProvider.test.tsx` exists (Phase 3)
-- `src/checkout/composable/__tests__/EPPromoCodeInput.test.tsx` exists (Phase 3)
-- EPPromoCodeInput refactored to two-component pattern (outer wrapper → EPPromoCodeInputClient | EPPromoCodeInputServer)
-- `jest.mock()` confirmed not working for EPPromoCodeInput tests — used global.fetch mocking pattern
-- `src/shopper-context/ServerCartActionsProvider.tsx` exists (Phase 3)
-- `registerCommerceProvider.tsx` uses `ServerCartActionsProvider` when `serverCartMode=true` (Phase 3)
-- All 1027 tests pass across 50 test suites (as of P3-5 completion)
-- `src/checkout/composable/EPCheckoutProvider.tsx` exists (CC-P0-1)
-- `src/checkout/composable/CheckoutContext.tsx` exists (CC-P0-1)
-- `useCheckout()` cartId is optional — server resolves from cookie in server-cart mode
-- All 1036 tests pass across 51 test suites (as of CC-P0-1 completion)
-- `src/checkout/composable/EPCheckoutStepIndicator.tsx` exists (CC-P0-2)
-- `src/checkout/composable/EPCheckoutButton.tsx` exists (CC-P0-3)
-- `src/checkout/composable/EPOrderTotalsBreakdown.tsx` exists (CC-P0-4)
-- All 1050 tests pass across 54 test suites (as of CC-P0-4 completion)
-- `src/checkout/composable/EPCustomerInfoFields.tsx` exists (CC-P1-1)
-- `src/checkout/composable/EPShippingAddressFields.tsx` exists (CC-P1-2)
-- `src/checkout/composable/EPBillingAddressFields.tsx` exists (CC-P1-3)
-- All 1073 tests pass across 57 test suites (as of CC-P1-3 completion)
-- `src/checkout/composable/EPShippingMethodSelector.tsx` exists (CC-P2-1)
-- `src/checkout/composable/EPPaymentElements.tsx` exists (CC-P2-2)
-- All 1084 tests pass across 59 test suites (as of CC-P2-2 completion)
+### Directories That DO NOT Exist Yet
+- `src/checkout/session/` — all Phase A/B/C files are new
+- `src/api/endpoints/checkout-session/` — all session handler files are new
 
-### Singleton Context Pattern (from BundleContext.tsx)
+### Existing Code That Will Be Deleted (Phase D)
+- `src/checkout/composable/EPCheckoutProvider.tsx` — client-side state machine, 9 refActions, `checkoutData` DataProvider
+- `src/checkout/composable/CheckoutContext.tsx` — Stripe bridge context (Symbol.for singleton)
+- `src/checkout/composable/EPCheckoutButton.tsx` — step-aware button with `checkoutButtonData` DataProvider
+- `src/checkout/composable/EPCheckoutStepIndicator.tsx` — 4-step repeater with `currentStep` DataProvider
+- `src/checkout/composable/EPPaymentElements.tsx` — Stripe Elements wrapper with `paymentData` DataProvider
 
-```typescript
-const KEY = Symbol.for("@elasticpath/ep-{name}-context");
-function getSingletonContext<T>(key: symbol): React.Context<T | null> {
-  const g = globalThis as any;
-  if (!g[key]) { g[key] = React.createContext<T | null>(null); }
-  return g[key];
-}
-```
+### Existing Code That Will Be Modified (Phase D)
+- `src/checkout/composable/EPOrderTotalsBreakdown.tsx` — currently reads `checkoutData.summary` or `checkoutCartData`; must adapt to `checkoutSession.totals`
+- `src/checkout/composable/EPShippingMethodSelector.tsx` — currently self-fetches rates from `/api/checkout/calculate-shipping`; must read `checkoutSession.availableShippingRates` and call `updateSession()`
+- `src/checkout/composable/index.ts` — remove deleted exports, add session exports
+- `src/registerCheckout.tsx` — remove deleted registrations, add session component registrations
 
-**ShopperContext differs:** Default value is `{}` (not `null`) so hooks work without a provider.
+### Existing Code That Survives Unchanged
+- `src/checkout/composable/EPCustomerInfoFields.tsx` — manages own state, falls back gracefully when `checkoutData` absent
+- `src/checkout/composable/EPShippingAddressFields.tsx` — same pattern
+- `src/checkout/composable/EPBillingAddressFields.tsx` — same pattern
+- `src/checkout/composable/EPBillingAddressToggle.tsx` — standalone toggle
+- `src/checkout/composable/EPCountrySelect.tsx` — standalone select
+- `src/checkout/composable/EPCheckoutCartSummary.tsx` — provides `checkoutCartData`, independent of checkout flow
+- `src/checkout/composable/EPCheckoutCartItemList.tsx` — reads from `checkoutCartData`
+- `src/checkout/composable/EPCheckoutCartField.tsx` — reads from `checkoutCartData`
+- `src/checkout/composable/EPPromoCodeInput.tsx` — standalone promo input
 
-### Test Infrastructure
+### Existing Dependencies Confirmed
+- `swr` — already a peerDependency (>=1.0.0), no change needed for Phase A
+- `@stripe/stripe-js` + `@stripe/react-stripe-js` — already bundled deps, reusable in Phase C
+- `zod` — already a dependency, available for session schema validation
+- `js-cookie` — already a dependency, available for cookie operations
+- No Clover dependencies exist — Phase B will need Clover types defined manually
 
-- Framework: Jest with esbuild transform (root `jest.config.js`)
-- Root config matches: `plasmicpkgs/**/*.test.{ts,tsx}` — shopper-context tests will auto-discover
-- Client tests need `@jest-environment jsdom` pragma
-- Server tests use default (node) environment
-- Test locations: `src/shopper-context/__tests__/`, `src/shopper-context/server/__tests__/`
+### Existing API Patterns (to follow)
+- Handler functions are default-exported async functions in `src/api/endpoints/`
+- Use `APIResponse<T>` pattern from `src/api/utils/api-helpers.ts`
+- Validation via `src/api/utils/validation.ts` — **note:** `validateEnvironmentVariables()` only checks Stripe env vars, NOT Clover or session vars (see SG-8)
+- Error handling via `src/api/utils/error-handling.ts` (CheckoutError class hierarchy) — **note:** has `StripeError` but no `CloverError` (see SG-7)
+- EP SDK calls via `@epcc-sdk/sdks-shopper`
+- Cart cookie pattern in `src/shopper-context/server/cart-cookie.ts`
 
----
+### Known Gaps in Existing Checkout Flow
+- **EP confirmPayment never called:** In the existing composable checkout, `EPPaymentElements` calls Stripe's client-side `confirmPayment()` but the EP server-side `confirmPayment()` endpoint is never called afterward. The session model fixes this by design (the confirm handler captures the EP transaction after the gateway confirms).
+- **stripe server SDK not in package.json:** `setup-payment.ts` and `confirm-payment.ts` import `stripe` but it's not listed in `package.json` dependencies (see SG-9).
 
-## Items To Implement (Prioritized)
-
-### Phase 0: ShopperContext Foundation (P0) — 9 Items
-
-- [x] **P0-1: ShopperContext component** — `src/shopper-context/ShopperContext.tsx`
-  - GlobalContext providing override channel for cart identity
-  - Symbol.for singleton pattern (matching BundleContext.tsx)
-  - Default context value: `{}` (empty overrides = production mode, NOT null)
-  - Exports: `ShopperOverrides` interface, `ShopperContextProps`, `getShopperContext()`, `ShopperContext` component
-  - Props: cartId, accountId, locale, currency (all optional strings)
-  - `useMemo` to avoid re-renders when prop values haven't changed
-  - Coerce empty strings to undefined (`cartId || undefined`)
-  - Test: `src/shopper-context/__tests__/ShopperContext.test.tsx` — renders children, provides overrides, empty when no props, singleton identity
-
-- [x] **P0-2: useShopperContext hook** — `src/shopper-context/useShopperContext.ts`
-  - `useContext(getShopperContext())` — reads current ShopperOverrides
-  - Returns `{}` when no provider above (safe default)
-  - 5 lines of code, no test file needed (tested via ShopperContext tests)
-
-- [x] **P0-3: useShopperFetch hook** — `src/shopper-context/useShopperFetch.ts`
-  - Returns memoized async fetch function via `useCallback`
-  - Auto-sets `Content-Type: application/json` if not present
-  - Attaches `X-Shopper-Context` header (JSON-encoded overrides) when any override value is non-null
-  - Omits header entirely when no overrides (production browsing — cookie-only flow)
-  - Uses `credentials: 'same-origin'` for cookie forwarding
-  - Throws on non-ok response with response text as message
-  - Generic return type: `<T = unknown>(path, init?) => Promise<T>`
-  - Test: `src/shopper-context/__tests__/useShopperFetch.test.ts` — header attached when overrides, omitted when empty, error thrown on non-ok
-
-- [x] **P0-4: Server resolve-cart-id** — `src/shopper-context/server/resolve-cart-id.ts`
-  - `parseShopperHeader(headers)` — parse X-Shopper-Context JSON from request headers, returns `ShopperHeader` or `{}`
-  - `resolveCartId(headers, cookies, cookieName?)` — priority: header.cartId > cookies[cookieName] > null
-  - Default cookieName: `'ep_cart'`
-  - Framework-agnostic: accepts `Record<string, string | string[] | undefined>` (works with Express, Next.js, etc.)
-  - Handles malformed JSON gracefully (returns `{}`)
-  - Test: `src/shopper-context/server/__tests__/resolve-cart-id.test.ts` — priority resolution, malformed header, missing header
-
-- [x] **P0-5: Server cart-cookie** — `src/shopper-context/server/cart-cookie.ts`
-  - `buildCartCookieHeader(cartId, opts?)` — builds `Set-Cookie` header string
-  - `buildClearCartCookieHeader(opts?)` — builds clear cookie header (Max-Age=0)
-  - Options: cookieName (default 'ep_cart'), secure (default: NODE_ENV=production), maxAge (default 30 days), path (default '/')
-  - Always includes: HttpOnly, SameSite=Lax
-  - No `cookie` package dependency — string concatenation
-  - Test: `src/shopper-context/server/__tests__/cart-cookie.test.ts` — valid httpOnly string, Secure flag in production, clear cookie
-
-- [x] **P0-6: Server barrel** — `src/shopper-context/server/index.ts`
-  - Re-exports: `parseShopperHeader`, `resolveCartId`, `ShopperHeader` from resolve-cart-id
-  - Re-exports: `buildCartCookieHeader`, `buildClearCartCookieHeader`, `CartCookieOptions` from cart-cookie
-
-- [x] **P0-7: Client barrel** — `src/shopper-context/index.ts`
-  - Exports: `ShopperContext`, `getShopperContext`, `ShopperOverrides`, `ShopperContextProps` from ShopperContext
-  - Exports: `useShopperContext` from useShopperContext
-  - Exports: `useShopperFetch` from useShopperFetch
-
-- [x] **P0-8: Registration** — `src/shopper-context/registerShopperContext.ts` + `src/index.tsx`
-  - Create `registerShopperContext.ts`:
-    - `shopperContextMeta`: GlobalContextMeta with name `plasmic-commerce-ep-shopper-context`
-    - displayName: "EP Shopper Context"
-    - importPath: `@elasticpath/plasmic-ep-commerce-elastic-path`
-    - importName: `ShopperContext`
-    - Props: cartId (string), accountId (string, advanced), locale (string, advanced), currency (string, advanced)
-    - `registerShopperContext(loader?)` function following existing pattern
-  - Edit `src/index.tsx`:
-    - Add import: `import { registerShopperContext } from './shopper-context/registerShopperContext'`
-    - Add call in `registerAll()` right after `registerCommerceProvider(loader)`: `registerShopperContext(loader)`
-    - Add export: `export * from './shopper-context'`
-    - Add export: `export * from './shopper-context/server'` (so consumer API routes can import `resolveCartId`, `buildCartCookieHeader` from main package entry without needing `package.json` subpath exports)
-
-- [x] **P0-9: Constants** — `src/const.ts`
-  - Add: `export const EP_CART_COOKIE_NAME = 'ep_cart'`
-  - Add: `export const SHOPPER_CONTEXT_HEADER = 'x-shopper-context'`
-  - Note: These are for documentation/reference. The server utilities hardcode the values to avoid import coupling.
-
-### Phase 1: Cart Read Hooks (P1) — 5 Items
-
-**Prerequisite:** Add `"swr": ">=1.0.0"` to `peerDependencies` in `package.json` (first thing in Phase 1).
-
-- [x] **P1-1: useCart hook** — `src/shopper-context/use-cart.ts`
-  - SWR hook fetching `GET /api/cart` via `useShopperFetch()`
-  - Cache key: `cartId ? ['cart', cartId] : 'cart'` — Studio preview triggers refetch on cartId change
-  - SWR options: `revalidateOnFocus: false`
-  - Types defined inline (NOT imported from EP SDK):
-    - `CartItem` — id, type, product_id, name, description, sku, slug, quantity, image?, meta.display_price
-    - `CartMeta` — display_price with with_tax, without_tax, tax, discount?
-    - `CartData` — items: CartItem[], meta: CartMeta | null
-    - `UseCartReturn` — data, error, isLoading, isEmpty, mutate
-  - `mutate()` exposed for Phase 2 mutation hooks
-  - Test: `src/shopper-context/__tests__/use-cart.test.ts` — fetch call to /api/cart, SWR key varies with cartId, error handling
-
-- [x] **P1-2: useCheckoutCart hook** — `src/shopper-context/use-checkout-cart.ts`
-  - Wraps `useCart()`, normalizes raw EP cart data into checkout display format
-  - `useMemo` for normalization (only recomputes when data changes)
-  - Types:
-    - `CheckoutCartItem` — id, productId, name, sku, quantity, unitPrice, linePrice, formattedUnitPrice, formattedLinePrice, imageUrl
-    - `CheckoutCartData` — items, itemCount, subtotal, tax, shipping(=0), total, formatted*, currencyCode, showImages, hasPromo, promoCode, promoDiscount, formattedPromoDiscount
-  - Returns `null` when no data or no meta
-  - Shipping hardcoded to 0 (calculated during checkout, not in cart)
-  - Test: `src/shopper-context/__tests__/use-checkout-cart.test.ts` — normalization, null handling, formatted prices
-
-- [x] **P1-3: Design-time mock data** — `src/shopper-context/design-time-data.ts`
-  - `MOCK_SERVER_CART_DATA: CheckoutCartData` with 2 items:
-    - "Ember Glow Soy Candle" (2x $38.00 = $76.00)
-    - "Midnight Wick Reed Diffuser" (1x $24.00 = $24.00)
-  - Total: $108.25 (subtotal $100.00 + tax $8.25)
-
-- [x] **P1-4: EPCheckoutCartSummary enhancement** — `src/checkout/composable/EPCheckoutCartSummary.tsx`
-  - Add optional `cartData?: CheckoutCartData` prop to interface
-  - When `cartData` provided: wrap children in DataProvider with external data, skip internal useCart() fetch
-  - When `cartData` not provided: existing internal behavior unchanged (backward compatible)
-  - Minimal change to existing file — add prop, use two-component pattern (outer wrapper + inner component)
-  - NOTE: The spec originally said "early return guard" but that would violate React hooks rules since useCart() etc. are called after the guard. Instead, the implementation uses a thin outer wrapper that checks for `cartData` and either renders a DataProvider directly or delegates to the inner component that calls hooks.
-  - NOTE: Do NOT add to Plasmic meta props (this is a code-only integration prop, not designer-facing)
-  - **Shape difference note:** New `CheckoutCartData` item fields (`unitPrice`, `linePrice`, `formattedUnitPrice`, `formattedLinePrice`) differ from existing internal normalization (`price`, `formattedPrice`). Consumers using the new `cartData` prop opt into the new shape; existing Plasmic bindings remain on the old internal shape when `cartData` is not provided.
-
-- [x] **P1-5: Update barrel exports** — `src/shopper-context/index.ts`
-  - Add: `useCart`, `CartItem`, `CartMeta`, `CartData`, `UseCartReturn` from use-cart
-  - Add: `useCheckoutCart`, `CheckoutCartItem`, `CheckoutCartData` from use-checkout-cart
-  - Add: `MOCK_SERVER_CART_DATA` from design-time-data
-
-### Phase 2: Cart Mutation Hooks (P2) — 4 Items
-
-- [x] **P2-1: useAddItem hook** — `src/shopper-context/use-add-item.ts`
-  - Returns memoized async function via `useCallback`
-  - `POST /api/cart/items` with JSON body via `useShopperFetch()`
-  - `AddItemInput` type: productId (required), variantId?, quantity?, bundleConfiguration?, locationId?, selectedOptions?
-  - Calls `mutate()` from `useCart()` after successful add
-  - Returns server response
-  - Test: `src/shopper-context/__tests__/use-add-item.test.ts` — POST call, body shape, mutate called
-
-- [x] **P2-2: useRemoveItem hook** — `src/shopper-context/use-remove-item.ts`
-  - Returns memoized async function via `useCallback`
-  - `DELETE /api/cart/items/${encodeURIComponent(itemId)}` via `useShopperFetch()`
-  - URL-encodes itemId to prevent path injection
-  - Calls `mutate()` after successful removal
-  - Test: `src/shopper-context/__tests__/use-remove-item.test.ts` — DELETE call, URL encoding, mutate called
-
-- [x] **P2-3: useUpdateItem hook** — `src/shopper-context/use-update-item.ts`
-  - Returns memoized function via `useCallback` (NOT async — fires debounced)
-  - `PUT /api/cart/items/${encodeURIComponent(itemId)}` with `{ quantity }` body
-  - Debounced at `DEFAULT_DEBOUNCE_MS` (500ms) from `src/const.ts` using `useRef<setTimeout>`
-  - Calls `mutate()` after debounce completes
-  - Quantity 0 = remove (server handles this)
-  - Test: `src/shopper-context/__tests__/use-update-item.test.ts` — PUT call, debounce behavior, mutate called
-
-- [x] **P2-4: Update barrel exports** — `src/shopper-context/index.ts`
-  - Add: `useAddItem`, `AddItemInput` from use-add-item
-  - Add: `useRemoveItem` from use-remove-item
-  - Add: `useUpdateItem` from use-update-item
-
-### Phase 3: Credential Removal (P3) — 5 Items
-
-- [x] **P3-1: Deprecate old cart hooks** — `src/cart/*.tsx` + `src/utils/cart-cookie.ts`
-  - Add `@deprecated` JSDoc to:
-    - `src/cart/use-cart.tsx` — "Use useCart from shopper-context/use-cart.ts"
-    - `src/cart/use-add-item.tsx` — "Use useAddItem from shopper-context/use-add-item.ts"
-    - `src/cart/use-remove-item.tsx` — "Use useRemoveItem from shopper-context/use-remove-item.ts"
-    - `src/cart/use-update-item.tsx` — "Use useUpdateItem from shopper-context/use-update-item.ts"
-    - `src/utils/cart-cookie.ts` — getCartId, setCartId, removeCartCookie — "Use server-side httpOnly cookie via shopper-context/server/cart-cookie.ts"
-
-- [x] **P3-2: CommerceProvider serverCartMode** — `src/registerCommerceProvider.tsx`
-  - Add `serverCartMode` boolean prop (advanced, default false)
-  - When true + no clientId: skip EP SDK init, render children only
-  - Existing behavior unchanged when false
-  - Add to meta props: `serverCartMode: { type: 'boolean', displayName: 'Server Cart Mode', advanced: true, defaultValue: false }`
-  - Test: `src/registerCommerceProvider.test.tsx` — serverCartMode renders children without EP client
-
-- [x] **P3-3: EPPromoCodeInput server mode** — `src/checkout/composable/EPPromoCodeInput.tsx`
-  - Add `useServerRoutes` boolean prop
-  - When true: apply promo via `POST /api/cart/promo` with `{ code }`, remove via `DELETE /api/cart/promo` with `{ promoItemId }`
-  - Uses `useShopperFetch()` internally (requires ShopperContext above in tree)
-  - Existing behavior unchanged when false (default)
-  - Test: `src/checkout/composable/__tests__/EPPromoCodeInput.test.tsx` — useServerRoutes mode calls /api/cart/promo
-
-- [x] **P3-4: Audit and document** — Review all `getEPClient()` / `useCommerce()` usage for cart operations
-  - All 4 deprecated cart hooks (`src/cart/use-cart.tsx`, `use-add-item.tsx`, `use-remove-item.tsx`, `use-update-item.tsx`) have server-route alternatives via `shopper-context/` hooks
-  - EPPromoCodeInput has dual-mode (`useServerRoutes` prop) — client or server routes
-  - Remaining client-side EP SDK usage (intentionally kept, public data only):
-    - `src/product/use-product.tsx` — product detail fetch via `getByContextProduct`
-    - `src/product/use-search.tsx` — product listing via `getByContextAllProducts`
-    - `src/site/use-categories.tsx` — category hierarchy via `getByContextAllNodes`
-    - `src/inventory/use-stock.tsx`, `use-locations.tsx` — stock/location reads
-    - `src/bundle/use-bundle-configuration.tsx` — bundle config via `configureByContextProduct`
-    - `src/catalog-search/EPCatalogSearchProvider.tsx` — Algolia adapter initialization
-  - All above use `client_id` only (public key), no `client_secret` — acceptable risk
-  - `client_secret` exists only server-side in `api/endpoints/checkout/` (calculate-shipping, setup-payment)
-
-- [x] **P3-5: CartActionsProvider review** — ServerCartActionsProvider created
-  - `CartActionsProvider` from `@plasmicpkgs/commerce` was NOT available in `serverCartMode` (no global actions)
-  - Created `src/shopper-context/ServerCartActionsProvider.tsx` — bridges shopper-context hooks to Plasmic global actions
-  - Updated `registerCommerceProvider.tsx`: uses `ServerCartActionsProvider` when `serverCartMode=true`, `CartActionsProvider` when false
-  - Works both with and without `clientId` (no `clientId` = cart-only server mode; with `clientId` = products client-side + cart server-side)
-  - Test: `src/shopper-context/__tests__/ServerCartActionsProvider.test.tsx` — renders children, hooks initialize
-  - Exported via `src/shopper-context/index.ts` barrel
-
-### Composable Checkout Phase 1: Core Checkout Provider (CC-P0) — 4 Items
-
-- [x] **CC-P0-1: EPCheckoutProvider** — `src/checkout/composable/EPCheckoutProvider.tsx`
-  - Root checkout orchestrator wrapping useCheckout() hook
-  - Exposes complete checkoutData via DataProvider + 9 refActions via useImperativeHandle
-  - Design-time preview with mock data for all 4 steps
-  - Shared CheckoutPaymentContext for EPPaymentElements integration (Phase 3)
-  - Made useCheckout() cartId optional for server-cart mode (server resolves from cookie)
-  - Test: `src/checkout/composable/__tests__/EPCheckoutProvider.test.tsx` (9 tests)
-  - Also added: CheckoutContext.tsx, design-time mock data, registration, barrel exports
-
-- [x] **CC-P0-2: EPCheckoutStepIndicator** — `src/checkout/composable/EPCheckoutStepIndicator.tsx`
-  - Repeater over 4 checkout steps with per-step DataProvider (currentStep, currentStepIndex)
-  - Uses repeatedElement() pattern, reads stepIndex from checkoutData
-  - Design-time mock with stepIndex=1 (Shipping active)
-  - Test: `src/checkout/composable/__tests__/EPCheckoutStepIndicator.test.tsx` (4 tests)
-
-- [x] **CC-P0-3: EPCheckoutButton** — `src/checkout/composable/EPCheckoutButton.tsx`
-  - Step-aware button with label/disabled/processing data via checkoutButtonData DataProvider
-  - data-step attribute for CSS targeting, onComplete event for confirmation step
-  - Test: `src/checkout/composable/__tests__/EPCheckoutButton.test.tsx` (6 tests)
-
-- [x] **CC-P0-4: EPOrderTotalsBreakdown** — `src/checkout/composable/EPOrderTotalsBreakdown.tsx`
-  - Financial totals via orderTotalsData DataProvider
-  - Reads from checkoutData.summary > checkoutCartData > mock fallback
-  - Test: `src/checkout/composable/__tests__/EPOrderTotalsBreakdown.test.tsx` (4 tests)
-
-### Composable Checkout Phase 2: Form Fields (CC-P1) — 3 Items
-
-- [x] **CC-P1-1: EPCustomerInfoFields** — `src/checkout/composable/EPCustomerInfoFields.tsx`
-  - Headless provider for firstName, lastName, email with validation
-  - refActions: setField, validate (returns boolean), clear
-  - Preview states: auto, empty, filled, withErrors
-  - Two-component pattern: outer handles design-time, inner uses hooks
-  - Test: `__tests__/EPCustomerInfoFields.test.tsx` (8 tests)
-
-- [x] **CC-P1-2: EPShippingAddressFields** — `src/checkout/composable/EPShippingAddressFields.tsx`
-  - Headless provider for shipping address with postcode validation by country (US, CA)
-  - refActions: setField, validate (returns boolean), clear
-  - Preview states: auto, empty, filled, withErrors, withSuggestions
-  - showPhoneField prop controls phone validation
-  - Test: `__tests__/EPShippingAddressFields.test.tsx` (9 tests)
-
-- [x] **CC-P1-3: EPBillingAddressFields** — `src/checkout/composable/EPBillingAddressFields.tsx`
-  - Headless provider that mirrors shipping when isSameAsShipping is active
-  - Reads billingToggleData from EPBillingAddressToggle or checkoutData.sameAsShipping
-  - Mirror mode: exposes shipping data as billing, refActions are no-ops
-  - Independent mode: full field state + validation (same as shipping minus phone)
-  - Preview states: auto, sameAsShipping, different, withErrors
-  - Test: `__tests__/EPBillingAddressFields.test.tsx` (6 tests)
-
-### Composable Checkout Phase 3: Shipping & Payment (CC-P2) — 2 Items
-
-- [x] **CC-P2-1: EPShippingMethodSelector** — `src/checkout/composable/EPShippingMethodSelector.tsx`
-  - Repeater for shipping rates with per-rate DataProvider (currentShippingMethod)
-  - Fetches rates from /api/checkout/calculate-shipping when shipping address is valid
-  - Preview states: auto, withRates, loading, empty
-  - refAction: selectMethod(rateId)
-  - Test: `__tests__/EPShippingMethodSelector.test.tsx` (6 tests)
-
-- [x] **CC-P2-2: EPPaymentElements** — `src/checkout/composable/EPPaymentElements.tsx`
-  - Stripe Elements wrapper reading clientSecret from CheckoutPaymentContext
-  - Lazy-loads @stripe/stripe-js and @stripe/react-stripe-js at runtime
-  - Design-time: renders static mock payment form (card number, MM/YY, CVC)
-  - Exposes paymentData (isReady, isProcessing, error, paymentMethodType, clientSecret)
-  - Registers Elements instance back to context via setStripeElements
-  - Test: `__tests__/EPPaymentElements.test.tsx` (5 tests)
+### Clover 3DS Flow (Reference from Storefront — Verified)
+- Token: `clover.createToken()` → single-use token
+- Charge: `POST /v1/charges` with idempotency key `clover-charge-${orderId}`
+- 3DS detection: `threeDsData.status` → `METHOD_FLOW` | `CHALLENGE` | null
+- Method: `perform3DSFingerPrinting({ _3DSServerTransId, acsMethodUrl, methodNotificationUrl })` → `executePatch` CustomEvent (detail._3DSStatus) → `finalizeCloverPayment(chargeId, flowStatus)`
+- Challenge: `perform3DSChallenge({ messageVersion, acsTransID, acsUrl, threeDSServerTransID })` → `executePatch` CustomEvent → `finalizeCloverPayment(chargeId, flowStatus)`
+- Escalation: method → challenge possible (finalize returns status that maps to `requires_challenge`)
+- EP capture: `POST /v2/orders/{id}/transactions/{id}/capture` with `custom_reference: chargeId`
+- **State machine phases (from CartPayButton):** idle → tokenizing → charging → fingerprinting/challenging → completing → done/error
+- **Verified:** `waitForExecutePatch()` in storefront has NO timeout (resolves when event fires). Session model adds 30s timeout (improvement).
+- **Verified:** `chargeClover()` signature includes `orderId` as separate param (used in charge description).
+- **Verified:** Card declined = HTTP 402 from Clover → error with `code: "card_declined"`.
+- **Verified:** `clover3DS-sdk.js` URL = `https://checkout.clover.com/clover3DS/clover3DS-sdk.js`, loaded as singleton promise with `threeDsSdkPromise` module-level variable.
+- **Verified:** 3DS SDK exposes `window.clover3DSUtil` with `perform3DSFingerPrinting()` and `perform3DSChallenge()` methods.
 
 ---
 
-## Implementation Order
+## Spec Gaps & Decisions
 
-Build strictly in phase order. Within each phase, build in item order.
+### SG-1: Form Field Pre-Population After Page Refresh
+**Gap:** Surviving form components (EPCustomerInfoFields, EPShippingAddressFields, EPBillingAddressFields) read from `checkoutData` DataProvider for initial pre-population. After Phase D deletes EPCheckoutProvider, `checkoutData` won't exist. EPCheckoutSessionProvider exposes `checkoutSession` (different shape).
+**Decision:** EPCheckoutSessionProvider should ALSO expose a `checkoutData`-compatible subset for backwards compatibility with surviving form components. Alternatively, form components fall back to empty fields (acceptable for MVP — session stores form data server-side, but page refresh loses local form state until the components are adapted to read from `checkoutSession`).
+**Recommendation:** Phase D adds D-4.3 to adapt all 3 form components to also read from `checkoutSession.customerInfo` / `checkoutSession.shippingAddress` / `checkoutSession.billingAddress` when `checkoutData` is absent.
 
-```
-Phase 0 (P0-1 → P0-9) — ShopperContext foundation
-  ↓
-Phase 1 (P1-1 → P1-5) — Cart read hooks (+ add swr peerDep)
-  ↓
-Phase 2 (P2-1 → P2-4) — Cart mutation hooks
-  ↓
-Phase 3 (P3-1 → P3-5) — Credential removal + deprecation
-  ↓
-Composable Checkout Phase 1 (CC-P0-1 → CC-P0-4) — Core checkout provider
-  ↓
-Composable Checkout Phase 2 (CC-P1-1 → CC-P1-3) — Form fields
-  ↓
-Composable Checkout Phase 3 (CC-P2-1 → CC-P2-2) — Shipping & payment
-```
+### SG-2: Orphaned Hooks After Phase D
+**Gap:** `src/checkout/hooks/use-checkout.tsx` is imported by EPCheckoutProvider (deleted) and legacy components (EPCheckoutForm, EPPaymentForm). `src/checkout/hooks/use-stripe-payment.tsx` is imported by `EPPaymentForm` (legacy) and exported from `src/checkout/index.ts`.
+**Decision:** Legacy monolithic components (EPCheckoutForm, EPPaymentForm, EPOrderSummary, EPCheckoutConfirmation) are registered in `registerCheckout.tsx` and are NOT mentioned in Phase D deletion list. They may still be in use. Leave hooks and legacy components untouched for now. Phase D only deletes the composable components listed in the spec.
+**Note:** `use-stripe-payment.tsx` is NOT dead code — it's used by the legacy `EPPaymentForm`. It is out of scope for the session model work.
 
-**ALL PHASES COMPLETE.** Server-cart (P0 → P3) + Composable Checkout (CC-P0 → CC-P2) — 34/34 items done.
+### SG-3: Cookie Encryption
+**Gap:** Spec says "encrypted JSON in httpOnly cookie" but no crypto dependency exists.
+**Decision:** Use Node.js built-in `crypto` module (AES-256-GCM) for server-side encryption. This is available in all server runtimes (Next.js, Express, etc.). Encryption key from env var `CHECKOUT_SESSION_SECRET`.
 
----
+### SG-4: Clover SDK Types
+**Gap:** No Clover TypeScript package exists as a dependency.
+**Decision:** Define Clover types manually in `src/checkout/session/adapters/clover-types.ts`. Clover SDK is loaded via script tag at runtime (not npm package). 3DS SDK loaded lazily.
 
-## New Files Summary
+### SG-5: Server-Side Stripe Import
+**Gap:** Spec says "Stripe (server-side) imported only in the adapter (not bundled client-side)". The `stripe` npm package (server-side) is NOT currently a dependency — only `@stripe/stripe-js` (client-side) and `@stripe/react-stripe-js` are.
+**Decision:** Phase C must add `stripe` (server-side) as a dependency for the adapter. Use dynamic import or conditional require to avoid client-side bundling.
 
-### Server-Cart Implementation Files (15)
+### SG-6: Request Object Abstraction
+**Gap:** Handler functions need a framework-agnostic request/response type. The spec says handlers accept typed request objects but doesn't define the shape. Currently `calculate-shipping.ts` and other existing handlers accept `(req: any, res: any)` (Express/Next.js Pages Router style).
+**Decision:** `SessionHandlerContext` in A-1.1 should include a `SessionRequest` type: `{ body: Record<string, unknown>, headers: Record<string, string>, cookies: Record<string, string> }` and handlers should return a `SessionResponse` type: `{ status: number, body: unknown, headers?: Record<string, string> }`. The consumer route files are responsible for translating their framework's req/res into this shape. This avoids coupling handlers to Express, Next.js Pages Router, or App Router.
 
-```
-src/shopper-context/              ← Created in Phase 0
-  index.ts                          — barrel exports (Phase 0, updated in P1/P2/P3)
-  ShopperContext.tsx                 — GlobalContext component (Phase 0)
-  useShopperContext.ts              — context hook (Phase 0)
-  useShopperFetch.ts               — fetch wrapper (Phase 0)
-  registerShopperContext.ts        — Plasmic registration (Phase 0)
-  use-cart.ts                       — SWR cart hook (Phase 1)
-  use-checkout-cart.ts             — normalized checkout cart (Phase 1)
-  design-time-data.ts              — mock data (Phase 1)
-  use-add-item.ts                  — add mutation (Phase 2)
-  use-remove-item.ts               — remove mutation (Phase 2)
-  use-update-item.ts               — update mutation (Phase 2)
-  ServerCartActionsProvider.tsx    — global actions via server routes (Phase 3)
-  server/
-    index.ts                        — server barrel (Phase 0)
-    resolve-cart-id.ts             — header/cookie resolution (Phase 0)
-    cart-cookie.ts                 — httpOnly cookie builder (Phase 0)
-```
+### SG-7: No CloverError in Error Hierarchy
+**Gap:** `src/api/utils/error-handling.ts` has `StripeError` but no `CloverError`. The Clover adapter needs a gateway-specific error type.
+**Decision:** The Clover adapter should use `PaymentError` with a `details.gateway: "clover"` field and gateway-specific `details.code` values (e.g., `"card_declined"`, `"authentication_failed"`). No need to add a new `CloverError` class — `PaymentError` already covers payment gateway failures. `handleStripeError()` provides a pattern for mapping gateway-specific error shapes to `PaymentError`.
 
-### Server-Cart Test Files (12)
+### SG-8: validateEnvironmentVariables() Only Checks Stripe
+**Gap:** `src/api/utils/validation.ts` exports `validateEnvironmentVariables()` which hardcodes checks for `EP_CLIENT_ID`, `EP_HOST`, `STRIPE_SECRET_KEY`, and `STRIPE_PUBLISHABLE_KEY`. Session handlers need their own validation that checks `CHECKOUT_SESSION_SECRET` and gateway-specific vars dynamically (based on which adapters are registered).
+**Decision:** Session handlers should NOT call the existing `validateEnvironmentVariables()`. Instead, `SessionHandlerContext` should require credentials to be passed explicitly by the consumer route (already the case — EP credentials come from the config). The `CHECKOUT_SESSION_SECRET` env var should be validated in `CookieSessionStore` constructor at boot time. Gateway env vars are validated when adapters are instantiated in the consumer's `checkout-config.ts`.
 
-```
-src/shopper-context/__tests__/
-  ShopperContext.test.tsx            — context component + singleton (Phase 0)
-  useShopperFetch.test.ts           — header attach/omit (Phase 0)
-  use-cart.test.ts                  — SWR hook, cache key (Phase 1)
-  use-checkout-cart.test.ts         — normalization (Phase 1)
-  use-add-item.test.ts              — POST mutation (Phase 2)
-  use-remove-item.test.ts           — DELETE mutation (Phase 2)
-  use-update-item.test.ts           — PUT + debounce (Phase 2)
-  ServerCartActionsProvider.test.tsx — global actions provider (Phase 3)
-src/shopper-context/server/__tests__/
-  resolve-cart-id.test.ts           — priority resolution (Phase 0)
-  cart-cookie.test.ts               — cookie string building (Phase 0)
-src/registerCommerceProvider.test.tsx  — serverCartMode thin shell (Phase 3)
-src/checkout/composable/__tests__/
-  EPPromoCodeInput.test.tsx          — useServerRoutes promo via /api/cart/promo (Phase 3)
-```
-
-### Composable Checkout Files (CC-P0+)
-
-```
-src/checkout/composable/         ← Composable checkout (CC-P0+)
-  CheckoutContext.tsx              — shared payment context (CC-P0-1)
-  EPCheckoutProvider.tsx           — root checkout orchestrator (CC-P0-1)
-  EPCheckoutStepIndicator.tsx      — step repeater (CC-P0-2)
-  EPCheckoutButton.tsx             — step-aware button (CC-P0-3)
-  EPOrderTotalsBreakdown.tsx       — financial totals (CC-P0-4)
-  EPCustomerInfoFields.tsx         — customer name/email (CC-P1-1)
-  EPShippingAddressFields.tsx      — shipping address (CC-P1-2)
-  EPBillingAddressFields.tsx       — billing address (CC-P1-3)
-  EPShippingMethodSelector.tsx     — shipping rates (CC-P2-1)
-  EPPaymentElements.tsx            — Stripe Elements (CC-P2-2)
-  __tests__/
-    EPCheckoutProvider.test.tsx        — provider tests (CC-P0-1)
-    EPCustomerInfoFields.test.tsx      — customer info validation tests (CC-P1-1)
-    EPShippingAddressFields.test.tsx   — shipping address validation tests (CC-P1-2)
-    EPBillingAddressFields.test.tsx    — billing address mirror tests (CC-P1-3)
-    EPCheckoutStepIndicator.test.tsx   — step indicator tests (CC-P0-2)
-    EPCheckoutButton.test.tsx          — step-aware button tests (CC-P0-3)
-    EPOrderTotalsBreakdown.test.tsx    — financial totals tests (CC-P0-4)
-    EPShippingMethodSelector.test.tsx  — shipping rate repeater tests (CC-P2-1)
-    EPPaymentElements.test.tsx         — Stripe Elements wrapper tests (CC-P2-2)
-```
-
-## Existing Files to Modify
-
-| File | Change | Phase |
-|------|--------|-------|
-| `src/const.ts` | Add 2 constants (EP_CART_COOKIE_NAME, SHOPPER_CONTEXT_HEADER) | P0 |
-| `src/index.tsx` | Add import, registerShopperContext() call, export * | P0 |
-| `package.json` | Add `"swr": ">=1.0.0"` to peerDependencies | P1 |
-| `src/checkout/composable/EPCheckoutCartSummary.tsx` | Add optional `cartData` prop + early return | P1 |
-| `src/cart/use-cart.tsx` | Add @deprecated JSDoc | P3 |
-| `src/cart/use-add-item.tsx` | Add @deprecated JSDoc | P3 |
-| `src/cart/use-remove-item.tsx` | Add @deprecated JSDoc | P3 |
-| `src/cart/use-update-item.tsx` | Add @deprecated JSDoc | P3 |
-| `src/utils/cart-cookie.ts` | Add @deprecated JSDoc to 3 exports | P3 |
-| `src/registerCommerceProvider.tsx` | Add `serverCartMode` boolean prop + ServerCartActionsProvider | P3 |
-| `src/checkout/composable/EPPromoCodeInput.tsx` | Add `useServerRoutes` boolean prop | P3 |
-| `src/checkout/hooks/use-checkout.tsx` | Make cartId optional in calculateShipping/createOrder | CC-P0-1 |
-| `src/registerCheckout.tsx` | Register EPCheckoutProvider | CC-P0-1 |
-| `src/registerCheckout.tsx` | Register EPCheckoutStepIndicator, EPCheckoutButton, EPOrderTotalsBreakdown | CC-P0-2..4 |
-| `src/checkout/composable/index.ts` | Add EPCheckoutProvider + CheckoutContext exports | CC-P0-1 |
-| `src/checkout/composable/index.ts` | Add EPCheckoutStepIndicator, EPCheckoutButton, EPOrderTotalsBreakdown exports | CC-P0-2..4 |
-| `src/checkout/composable/index.ts` | Add EPCustomerInfoFields, EPShippingAddressFields, EPBillingAddressFields exports | CC-P1-1..3 |
-| `src/registerCheckout.tsx` | Register EPCustomerInfoFields, EPShippingAddressFields, EPBillingAddressFields | CC-P1-1..3 |
-| `src/utils/design-time-data.ts` | Add composable checkout mock data | CC-P0-1 |
-| `src/utils/design-time-data.ts` | Add form field mock data (empty, withErrors, suggestions, billing) | CC-P1-1..3 |
-| `src/checkout/composable/index.ts` | Add EPShippingMethodSelector, EPPaymentElements exports | CC-P2-1..2 |
-| `src/registerCheckout.tsx` | Register EPShippingMethodSelector, EPPaymentElements | CC-P2-1..2 |
+### SG-9: Existing stripe Server SDK Missing from package.json
+**Gap:** `src/api/endpoints/checkout/setup-payment.ts` and `confirm-payment.ts` both import `stripe` (server-side SDK), but `stripe` is not in `package.json` dependencies. This is a pre-existing issue, not introduced by the session model.
+**Decision:** Phase C (C-1.1) adds `stripe` to `package.json` which also fixes this existing gap. No separate fix needed.
 
 ---
 
-## Completed Specs (Reference)
+## Items To Implement
 
-### Product Discovery (Phases 1-3) — 22 Items — ALL COMPLETE
-- See git history for implementation details
-- Components: EPProductListProvider, EPProductGrid, EPCatalogSearchProvider, EPSearchBox, EPSearchHits, etc.
+### Phase A: Foundation (checkout-session-foundation.md)
 
-### MCP Server (Gaps #33-39) — 5 Specs — ALL COMPLETE
-- Batch architecture, element styling, interaction improvements, toggle variant state, visibility API
+All files in `plasmicpkgs/commerce-providers/elastic-path/src/` unless noted otherwise.
+
+#### A-1: Session types and interfaces
+- [x] **A-1.1** Create `src/checkout/session/types.ts`
+  - `CheckoutSession` interface (status, cartId, cartHash, customerInfo, shippingAddress, billingAddress, selectedShippingRateId, availableShippingRates, totals, payment { gateway, status, clientToken, gatewayMetadata { epTransactionId }, actionData }, order { id }, expiresAt)
+  - `CheckoutSessionStatus` type: "open" | "processing" | "complete" | "expired"
+  - `PaymentStatus` type: "idle" | "pending" | "requires_action" | "succeeded" | "failed"
+  - `PaymentAdapter` interface: `initializePayment(session, gatewayData)` → `{ status, clientToken?, gatewayMetadata?, actionData? }`, `confirmPayment(session, confirmData)` → `{ status, gatewayOrderId?, actionData? }`
+  - `PaymentAdapterResult` type: `{ status: "requires_action" | "ready" | "succeeded" | "failed", ... }`
+  - `SessionStore` interface: `get(id)`, `set(id, session, ttl)`, `delete(id)`
+  - `SessionHandlerContext` type: EP credentials, adapter registry reference, session store
+  - `SessionRequest` type: `{ body: Record<string, unknown>, headers: Record<string, string>, cookies: Record<string, string> }` — framework-agnostic input (see SG-6)
+  - `SessionResponse` type: `{ status: number, body: unknown, headers?: Record<string, string> }` — framework-agnostic output
+  - Request/response types for each handler
+  - **No deps.** Foundation for everything.
+
+#### A-2: Session store
+- [x] **A-2.1** Create `src/checkout/session/cookie-store.ts`
+  - `CookieSessionStore` implementing `SessionStore`
+  - Encrypted JSON in httpOnly cookie using Node.js `crypto` (AES-256-GCM)
+  - `encrypt(data, secret)` / `decrypt(ciphertext, secret)` helpers
+  - Cookie name: `ep_checkout_session`
+  - Cookie options: httpOnly, SameSite=Lax, Secure in production, maxAge from TTL
+  - `get(id)`: parse cookie from request headers, decrypt, validate expiry
+  - `set(id, session, ttl)`: encrypt, build Set-Cookie header
+  - `delete(id)`: build clear cookie header
+  - **Deps:** A-1.1 (SessionStore interface)
+
+#### A-3: Adapter registry
+- [x] **A-3.1** Create `src/checkout/session/adapter-registry.ts`
+  - `AdapterRegistry` class or object: `register(name, adapter)`, `getAdapter(name)` → PaymentAdapter | undefined
+  - `createAdapterRegistry()` factory function
+  - Validation: `getAdapter()` on unknown name returns undefined (handler returns 400)
+  - **Deps:** A-1.1 (PaymentAdapter interface)
+
+#### A-4: API route handlers
+- [x] **A-4.1** Create `src/api/endpoints/checkout-session/create-session.ts`
+  - `handleCreateSession(req, ctx)` — POST
+  - Accepts `{ cartId }`, fetches cart from EP, snapshots cart data, computes cartHash
+  - Creates `CheckoutSession` with status "open", sets cookie
+  - Returns session (excluding server-only fields)
+  - **Deps:** A-1.1, A-2.1, A-3.1
+
+- [x] **A-4.2** Create `src/api/endpoints/checkout-session/get-session.ts`
+  - `handleGetSession(req, ctx)` — GET
+  - Reads session from cookie, validates expiry
+  - Returns session or null (expired/missing → null)
+  - **Note:** Spec says "reconstructs from EP if needed" — this is NOT needed. Session is ephemeral (cookie-only). If cookie is expired or missing, return null and let the client call `createSession()` again. No EP reconstruction.
+  - **Deps:** A-1.1, A-2.1
+
+- [x] **A-4.3** Create `src/api/endpoints/checkout-session/update-session.ts`
+  - `handleUpdateSession(req, ctx)` — PATCH
+  - Accepts partial session update (customerInfo, shippingAddress, billingAddress, selectedShippingRateId)
+  - Merges into existing session, updates cookie
+  - Returns updated session
+  - Validates session exists and status === "open"
+  - **Deps:** A-1.1, A-2.1
+
+- [x] **A-4.4** Create `src/api/endpoints/checkout-session/calculate-shipping.ts`
+  - `handleCalculateShipping(req, ctx)` — POST
+  - Reads session from cookie, calls EP shipping API with session's shipping address
+  - Returns available rates, stores them in session
+  - **Note:** Existing `src/api/endpoints/checkout/calculate-shipping.ts` requires `cartId` in the POST body. The session version reads `cartId` from the session cookie instead — no `cartId` in the request body. Reuse shipping rate normalization logic but not the handler structure.
+  - **Deps:** A-1.1, A-2.1. Reuse shipping rate normalization from existing `src/api/endpoints/checkout/calculate-shipping.ts`
+
+- [x] **A-4.5** Create `src/api/endpoints/checkout-session/pay.ts`
+  - `handlePay(req, ctx)` — POST
+  - Accepts `{ gateway, ...gatewayData }` (e.g., `{ gateway: "clover", token: "..." }`)
+  - Validates: session status === "open", cart hash matches (re-fetch cart), all required fields present
+  - EP checkout sequence: validate hash → checkout cart (address translation camelCase→snake_case) → read tax → authorize payment → call adapter.initializePayment()
+  - On adapter "ready": set session status to "processing", return session
+  - On adapter "requires_action": set session payment status to "requires_action", store actionData, return session
+  - On adapter "failed": return error, session stays "open" for retry
+  - Cart hash mismatch: return 409 with refreshed session
+  - Double-submit: reject if status !== "open"
+  - Store EP order ID and transaction ID in session
+  - **Deps:** A-1.1, A-2.1, A-3.1. Most complex handler.
+
+- [x] **A-4.6** Create `src/api/endpoints/checkout-session/confirm.ts`
+  - `handleConfirm(req, ctx)` — POST
+  - Accepts `{ ...confirmData }` (gateway-specific, e.g., `{ stage: "method", flowStatus: "Y" }` for Clover)
+  - Validates: session status === "processing" or payment status === "requires_action"
+  - Calls adapter.confirmPayment()
+  - On "succeeded": capture EP transaction (POST /v2/orders/{id}/transactions/{id}/capture with gatewayOrderId as custom_reference), set session status "complete"
+  - On "requires_action": update actionData, return session (for 3DS escalation)
+  - On "failed": reset session status to "open" for retry
+  - **Deps:** A-1.1, A-2.1, A-3.1
+
+- [x] **A-4.7** Create `src/api/endpoints/checkout-session/index.ts`
+  - Export all 6 handler functions
+  - **Deps:** A-4.1 through A-4.6
+
+#### A-5: Address translation utility
+- [x] **A-5.1** Create `src/checkout/session/address-utils.ts`
+  - `toEPAddress(sessionAddress)` — camelCase to snake_case conversion for EP API
+  - `fromEPAddress(epAddress)` — snake_case to camelCase for session
+  - Used by pay.ts for EP checkout call
+  - **Deps:** A-1.1
+
+#### A-6: Client-side hook
+- [x] **A-6.1** Create `src/checkout/session/payment-registration-context.ts`
+  - React context (Symbol.for singleton pattern, matching existing BundleContext/CheckoutPaymentContext conventions)
+  - `PaymentRegistrationContextValue`: `registerGateway(name, confirmHandler)`, `getRegisteredGateway()` → `{ name, confirm }`
+  - `usePaymentRegistration()` hook
+  - **Deps:** A-1.1
+
+- [x] **A-6.2** Create `src/checkout/session/use-checkout-session.ts`
+  - `useCheckoutSession(apiBaseUrl)` hook
+  - SWR-cached fetch from `GET {apiBaseUrl}/checkout/sessions/current`
+  - Mutation helpers: `createSession(cartId)`, `updateSession(data)`, `calculateShipping()`, `placeOrder(gatewayData)`, `confirmPayment(confirmData)`, `reset()`
+  - Each mutation calls the corresponding API endpoint, then SWR mutate to refresh
+  - Returns `{ session, isLoading, error, ...mutationHelpers }`
+  - **Deps:** A-1.1, SWR (already peerDep)
+
+#### A-7: Design-time data
+- [x] **A-7.1** Create `src/checkout/session/design-time-data.ts`
+  - Mock `CheckoutSession` objects for previewStates: auto, collecting, paying, complete
+  - Realistic mock data matching the session interface
+  - **Deps:** A-1.1
+
+#### A-8: Plasmic provider component
+- [x] **A-8.1** Create `src/checkout/session/EPCheckoutSessionProvider.tsx`
+  - Props: `children`, `apiBaseUrl` (default "/api"), `previewState` ("auto" | "collecting" | "paying" | "complete")
+  - Wraps `useCheckoutSession()` hook
+  - DataProvider `"checkoutSession"` exposing session data
+  - PaymentRegistrationContext.Provider wrapping children
+  - refActions: `createSession()`, `updateSession(data)`, `calculateShipping()`, `placeOrder(shippingRateId?)`, `confirmPayment(gatewayData)`, `reset()`
+  - Design-time: returns mock data based on previewState
+  - On mount: check cookie → GET to hydrate or wait for `createSession()`
+  - `epCheckoutSessionProviderMeta` ComponentMeta with refActions, props, DataProvider
+  - `registerEPCheckoutSessionProvider(loader)` function
+  - **Deps:** A-6.1, A-6.2, A-7.1
+
+#### A-9: Package exports
+- [x] **A-9.1** Create `src/checkout/session/index.ts`
+  - Export: EPCheckoutSessionProvider (component, meta, register), useCheckoutSession hook, all types, PaymentRegistrationContext
+  - **Deps:** A-8.1, A-6.2, A-6.1, A-1.1
+
+#### A-10: Tests
+- [x] **A-10.1** Create `src/checkout/session/__tests__/cookie-store.test.ts` — encrypt/decrypt, get/set/delete, expiry, malformed data
+- [x] **A-10.2** Create `src/checkout/session/__tests__/adapter-registry.test.ts` — register/get, unknown adapter
+- [x] **A-10.3** Create `src/api/endpoints/checkout-session/__tests__/create-session.test.ts`
+- [x] **A-10.4** Create `src/api/endpoints/checkout-session/__tests__/get-session.test.ts`
+- [x] **A-10.5** Create `src/api/endpoints/checkout-session/__tests__/update-session.test.ts`
+- [x] **A-10.6** Create `src/api/endpoints/checkout-session/__tests__/calculate-shipping.test.ts`
+- [x] **A-10.7** Create `src/api/endpoints/checkout-session/__tests__/pay.test.ts` — happy path, cart hash mismatch (409), double-submit, missing fields, unknown gateway, EP failure (502), adapter failure
+- [x] **A-10.8** Create `src/api/endpoints/checkout-session/__tests__/confirm.test.ts` — happy path, requires_action escalation, failed → retry, status validation
+- [x] **A-10.9** Create `src/checkout/session/__tests__/EPCheckoutSessionProvider.test.tsx` — mount, refActions, DataProvider, previewStates
+- [x] **A-10.10** Create `src/checkout/session/__tests__/use-checkout-session.test.ts` — SWR caching, mutation helpers
+- [x] **A-10.11** Create `src/checkout/session/__tests__/address-utils.test.ts` — camelCase ↔ snake_case
+
+**Phase A total: 27 items** (16 implementation + 11 tests)
 
 ---
 
-## Cross-Cutting Concerns
+### Phase B: Clover Payment Components (checkout-session-clover.md)
 
-### Upstream Merge Strategy
-- All new code in `src/shopper-context/` (new directory) — zero merge conflict risk
-- Phase 3 modifications to existing files are minimal (@deprecated JSDoc, additive props)
+#### B-1: Clover adapter (server-side)
+- [ ] **B-1.1** Create `src/checkout/session/adapters/clover-types.ts`
+  - Clover API types: `CloverChargeRequest`, `CloverChargeResponse`, `CloverThreeDsData`, `CloverFinalizeRequest`
+  - **No deps beyond A-1.1**
 
-### Dependencies
-- **Phase 0:** Zero new npm dependencies — React context only
-- **Phase 1-2:** Add `swr` as peerDependency (>=1.0.0) — NOT currently in package.json, comes indirectly via @plasmicpkgs/commerce
-- **Phase 3:** Zero new dependencies
+- [ ] **B-1.2** Create `src/checkout/session/adapters/clover-api.ts`
+  - `chargeClover(token, amount, currency, orderId, idempotencyKey, apiKey, apiBase)` — POST /v1/charges
+  - `finalizeCloverPayment(chargeId, flowStatus, apiKey, apiBase)` — POST /v1/charges/finalize_payment
+  - `deriveIdempotencyKey(orderId)` — returns `clover-charge-${orderId}`
+  - Ported from storefront's `lib/clover-api.ts` but framework-agnostic (no Next.js deps)
+  - **Reference implementation:** The storefront's `clover-api.ts` at `/Users/robert.field/Documents/Projects/EP/clover/worktree-alpha/apps/storefront/lib/clover-api.ts` is the exact code to port. Key differences for the package version: accept `apiBase` as an explicit param instead of reading from env var; accept `apiKey` as required (not optional with env fallback).
+  - **Signature note:** The storefront version passes `orderId` as a separate parameter (used in the charge description `Online order #${orderId}`). The package version should preserve this: `chargeClover(token, amount, currency, orderId, idempotencyKey, apiKey, apiBase)`.
+  - **Deps:** B-1.1
 
-### Cookie Name Distinction
-- **Existing:** `ELASTICPATH_CART_COOKIE = 'elasticpath_cart'` — client-side, js-cookie readable
-- **New:** `EP_CART_COOKIE_NAME = 'ep_cart'` — server-side, httpOnly, not JS-readable
-- Different cookie names prevent conflicts during migration. Old cookie continues working for existing cart hooks; new cookie used only by server-cart architecture.
+- [ ] **B-1.3** Create `src/checkout/session/adapters/clover-adapter.ts`
+  - `cloverAdapter` implementing `PaymentAdapter`
+  - `initializePayment()`: calls `chargeClover()` with token from gatewayData, idempotency key `clover-charge-${orderId}`
+    - Inspects `threeDsData.status`: null → "ready", METHOD_FLOW → "requires_action" with `actionData.type: "3ds_method"`, CHALLENGE → "requires_action" with `actionData.type: "3ds_challenge"`
+    - Card declined (402) → "failed" with "Your card was declined"
+    - Network error → one retry with same idempotency key
+  - `confirmPayment()`: calls `finalizeCloverPayment(chargeId, flowStatus)`
+    - Success → "succeeded" with gatewayOrderId = chargeId
+    - CHALLENGE escalation → "requires_action" with challenge data
+    - AUTHENTICATION_FAILED → "failed"
+  - **Deps:** A-1.1 (PaymentAdapter), B-1.2
 
-### Export Strategy
-- **Barrel exports from `src/index.tsx`** (not package.json subpath exports)
-- `export * from './shopper-context'` — client hooks + context
-- `export * from './shopper-context/server'` — server utilities (resolveCartId, buildCartCookieHeader)
-- Consumer imports everything from `@elasticpath/plasmic-ep-commerce-elastic-path` root
-- Server utilities are pure functions (string building) safe to include in client bundles — tree-shakeable
-- `cart-cookie.ts` references `process.env.NODE_ENV` at module init — bundlers replace this at build time
+#### B-2: Clover client components
+- [ ] **B-2.1** Create `src/checkout/session/clover-context.ts`
+  - React context for Clover SDK elements instance
+  - `CloverElementsContext` — provides clover instance + elements to child field components
+  - `useCloverElements()` hook
+  - **Deps:** None (React only)
 
-### CheckoutCartData Shape Compatibility
-- **Existing EPCheckoutCartSummary** internal normalization uses: `price`, `formattedPrice`, `imageUrl` (string), `options`
-- **New CheckoutCartData** type uses: `unitPrice`, `linePrice`, `formattedUnitPrice`, `formattedLinePrice`, `imageUrl` (string | null)
-- These shapes intentionally differ — the new `cartData` prop is code-only (not Plasmic meta)
-- Consumers opting into server-cart architecture bind Plasmic children to new field names
-- Existing pages continue using the internal normalization when `cartData` is not provided
+- [ ] **B-2.2** Create `src/checkout/session/clover-singleton.ts`
+  - Singleton lazy-loader for the main Clover SDK (card fields + tokenization)
+  - `loadCloverSDK(pakmsKey)` → Promise<CloverInstance> — loads `https://checkout.clover.com/sdk.js` via script tag, initializes `new Clover(pakmsKey)`, caches instance
+  - Module-level `let cloverSdkPromise: Promise<CloverInstance> | null = null` — resets on error for retry
+  - No duplicate script tags (checks `document.querySelector` before injecting)
+  - **Deps:** None (browser-only)
 
-### Test Infrastructure
-- Root `jest.config.js` auto-discovers `plasmicpkgs/**/*.test.{ts,tsx}` with esbuild transform
-- Client tests (`__tests__/*.test.tsx`) need `/** @jest-environment jsdom */` pragma
-- Server tests (`server/__tests__/*.test.ts`) use default node environment
-- Run: `cd plasmicpkgs/commerce-providers/elastic-path && yarn test`
+- [ ] **B-2.2b** Create `src/checkout/session/clover-3ds-sdk.ts`
+  - Singleton lazy-loader for `clover3DS-sdk.js` (separate from card SDK)
+  - 3DS SDK URL: `https://checkout.clover.com/clover3DS/clover3DS-sdk.js` — loaded as a singleton promise (module-level `let threeDsSdkPromise: Promise<void> | null = null`)
+  - `loadClover3DSSDK()` → Promise<void> (loads script tag once, checks `window.clover3DSUtil` existence, resets promise on load error for retry)
+  - `waitForExecutePatch(timeout?)` → Promise<string> (listens for CustomEvent `"executePatch"` on window, resolves with `event.detail._3DSStatus`, 30s default timeout with reject on timeout — improvement over storefront reference which has no timeout)
+  - Ported from storefront's `CartPayButton.tsx` inline 3DS loader (lines 36-84 of the reference file)
+  - **Deps:** None
 
-### Learning Notes
+- [ ] **B-2.3** Create `src/checkout/session/EPCloverPayment.tsx`
+  - Props: `children` (slot), `pakmsKey`, `merchantId?`, `environment?` ("sandbox" | "production"), `className?`, `previewState?`
+  - DataProvider `"cloverPaymentData"`: `{ isReady, isProcessing, error, isTokenizing, is3DSActive }`
+  - Registers gateway "clover" with EPCheckoutSessionProvider via PaymentRegistrationContext
+  - Registers `confirm` handler: tokenizes card via Clover SDK → returns `{ token }`
+  - 3DS state machine: monitors `session.payment.status === "requires_action"` → reads `actionData` → lazy-loads 3DS SDK → handles method/challenge flows → calls `confirmPayment()`
+  - Creates Clover SDK elements from `pakmsKey`, provides via CloverElementsContext
+  - PreviewStates: auto, ready, processing, error
+  - `epCloverPaymentMeta` ComponentMeta
+  - `registerEPCloverPayment(loader)` function
+  - **Deps:** A-8.1 (EPCheckoutSessionProvider), A-6.1 (PaymentRegistrationContext), B-2.1, B-2.2, B-2.2b
 
-- `@testing-library/react-hooks` is NOT available in this repo — use `@testing-library/react` which includes `renderHook`.
-- `jest.mock()` does NOT hoist with this project's esbuild transform (`jest-transform-esbuild.js`). Tests must mock at the `global.fetch` level instead of using `jest.mock()` factories. The existing passing tests (ShopperContext.test.tsx, useShopperFetch.test.ts) confirm this pattern.
-- For SWR tests: wrap in `<SWRConfig value={{ dedupingInterval: 0, provider: () => new Map() }}>` to isolate cache between tests.
-- `useCart` `isEmpty` check must be defensive (`!data || !data.items || data.items.length === 0`) because mutation hook tests may mock fetch with responses that lack `items` field. Fixed in Phase 2.
-- EPCheckoutProvider uses a two-component pattern (outer mock check → inner runtime with hooks) to avoid conditional hook calls. The outer component handles design-time preview with static mock data; the inner component uses useCheckout(), useShopperContext(), and useState.
-- useCheckout() cartId is optional — in server-cart mode the API routes resolve cart identity from the httpOnly cookie / X-Shopper-Context header.
+- [ ] **B-2.4** Create `src/checkout/session/EPCloverCardNumber.tsx`
+  - Reads Clover elements from CloverElementsContext
+  - Mounts Clover iframe for CARD_NUMBER
+  - Style props: className, placeholder, inputFontFamily, inputFontSize, inputColor, inputPadding, fieldHeight, fieldBorderColor, fieldBorderRadius, errorColor
+  - Design-time: static div mimicking input
+  - Warning if outside EPCloverPayment
+  - **Deps:** B-2.1
+
+- [ ] **B-2.5** Create `src/checkout/session/EPCloverCardExpiry.tsx`
+  - Same pattern as B-2.4 but CARD_DATE field
+  - **Deps:** B-2.1
+
+- [ ] **B-2.6** Create `src/checkout/session/EPCloverCardCVV.tsx`
+  - Same pattern as B-2.4 but CARD_CVV field
+  - **Deps:** B-2.1
+
+- [ ] **B-2.7** Create `src/checkout/session/EPCloverCardPostalCode.tsx`
+  - Same pattern as B-2.4 but CARD_POSTAL_CODE field
+  - **Deps:** B-2.1
+
+#### B-3: Integration
+- [ ] **B-3.1** Register Clover adapter in adapter registry (export from `src/checkout/session/adapters/index.ts`)
+  - **Deps:** B-1.3, A-3.1
+
+- [ ] **B-3.2** Register EPCloverPayment + 4 field components in `src/registerCheckout.tsx`
+  - **Deps:** B-2.3 through B-2.7
+
+#### B-4: Tests
+- [ ] **B-4.1** Create `src/checkout/session/__tests__/clover-adapter.test.ts` — charge success, 3DS method, 3DS challenge, escalation, card declined, retry on network error, idempotency key
+- [ ] **B-4.2** Create `src/checkout/session/__tests__/EPCloverPayment.test.tsx` — SDK init, tokenization, 3DS flow, registration, previewStates, outside-provider warning
+- [ ] **B-4.3** Create `src/checkout/session/__tests__/EPCloverCardNumber.test.tsx` — mount, style props, outside-context warning
+
+**Phase B total: 16 items** (13 implementation + 3 tests)
+
+---
+
+### Phase C: Stripe Payment Components (checkout-session-stripe.md)
+
+#### C-1: Stripe adapter (server-side)
+- [ ] **C-1.1** Add `stripe` (server-side SDK) to package.json dependencies
+  - **No code deps**
+
+- [ ] **C-1.2** Create `src/checkout/session/adapters/stripe-adapter.ts`
+  - `stripeAdapter` implementing `PaymentAdapter`
+  - `initializePayment()`: creates Stripe PaymentIntent with `automatic_payment_methods: { enabled: true }`, amount from session.totals.total, currency from session.totals.currency, metadata `{ epOrderId }`
+    - Returns `status: "ready"`, `clientToken: paymentIntent.client_secret`, `gatewayMetadata: { paymentIntentId }`
+  - `confirmPayment()`: retrieves PaymentIntent by ID, checks `status === "succeeded"`
+    - Validates metadata `order_id` matches session `order.id`
+    - Returns `status: "succeeded"` with `gatewayOrderId: paymentIntentId`
+  - Stripe SDK from `STRIPE_SECRET_KEY` env var
+  - Dynamic import to avoid client-side bundling
+  - **Deps:** A-1.1, C-1.1
+
+#### C-2: Stripe client component
+- [ ] **C-2.1** Create `src/checkout/session/EPStripePayment.tsx`
+  - Props: `children?` (slot), `publishableKey`, `appearance?` (Stripe Elements theme), `layout?` ("tabs" | "accordion"), `className?`, `previewState?`
+  - DataProvider `"stripePaymentData"`: `{ isReady, isProcessing, error, paymentMethodType }`
+  - Registers gateway "stripe" with EPCheckoutSessionProvider via PaymentRegistrationContext
+  - Registers `confirm` handler: calls `stripe.confirmPayment({ clientSecret })` → returns `{ paymentIntentId }`
+  - Wraps children in `@stripe/react-stripe-js` Elements with `clientSecret` from `session.payment.clientToken` and `appearance`
+  - Renders Stripe `PaymentElement` (3DS handled internally by Stripe)
+  - Lazy-loads `@stripe/stripe-js` via `loadStripe()` singleton (already in codebase)
+  - PreviewStates: auto, ready, processing, error (reuse mock pattern from existing EPPaymentElements)
+  - `epStripePaymentMeta` ComponentMeta
+  - `registerEPStripePayment(loader)` function
+  - **Deps:** A-8.1, A-6.1, existing Stripe deps
+
+#### C-3: Integration
+- [ ] **C-3.1** Register Stripe adapter in adapter registry (export from `src/checkout/session/adapters/index.ts`)
+  - **Deps:** C-1.2, A-3.1
+
+- [ ] **C-3.2** Register EPStripePayment in `src/registerCheckout.tsx`
+  - **Deps:** C-2.1
+
+- [ ] **C-3.3** Verify `@stripe/stripe-js` and `@stripe/react-stripe-js` in peerDependencies (they're currently in dependencies — may move to peerDependencies if Phase D removes the old EPPaymentElements that bundled them)
+  - **Deps:** C-2.1
+
+#### C-4: Tests
+- [ ] **C-4.1** Create `src/checkout/session/__tests__/stripe-adapter.test.ts` — PaymentIntent creation, confirmation, metadata validation, missing API key
+- [ ] **C-4.2** Create `src/checkout/session/__tests__/EPStripePayment.test.tsx` — SDK lazy-load, Elements mount, registration, confirm handler, previewStates
+
+**Phase C total: 8 items** (6 implementation + 2 tests)
+
+---
+
+### Phase D: Production Hardening (checkout-session-hardening.md)
+
+#### D-1: Cart hash utility
+- [x] **D-1.1** Create `src/checkout/session/cart-hash.ts`
+  - `hashCart(cart)` — deterministic hash from sorted item IDs + quantities + prices
+  - Uses Node.js `crypto.createHash('sha256')`
+  - Sort items by ID before hashing for determinism
+  - **No deps beyond Node.js crypto**
+
+#### D-2: Hardening in existing handlers
+- [ ] **D-2.1** Update `pay.ts` handler: cart hash validation (re-fetch cart, compare hash, 409 on mismatch with refreshed session)
+  - **Deps:** D-1.1, A-4.5
+
+- [ ] **D-2.2** Update `pay.ts` handler: double-submit protection (reject if `session.status !== "open"`)
+  - **Deps:** A-4.5
+
+- [ ] **D-2.3** Update `confirm.ts` handler: status validation (reject if `session.status !== "processing"`)
+  - **Deps:** A-4.6
+
+- [ ] **D-2.4** Update `cookie-store.ts`: enforce `expiresAt` field check server-side, return null for expired sessions
+  - **Deps:** A-2.1
+
+- [ ] **D-2.5** Update handlers: return 410 Gone for expired sessions on PATCH/pay/confirm
+  - **Deps:** A-4.3, A-4.5, A-4.6
+
+- [ ] **D-2.6** Update `pay.ts` and adapter flow: payment retry — if gateway charge fails, reset session status to "open", allow re-authorize on same EP order
+  - **Deps:** A-4.5, A-4.6
+
+**Important:** Phase A handlers (A-4.5 pay.ts, A-4.6 confirm.ts) implement all safety checks fully (cart hash validation, double-submit, status checks, payment retry). D-2.x items are **verify-and-test-only** — they add dedicated test coverage for each safety measure and fix any gaps found during verification. Do NOT skip safety logic in Phase A expecting Phase D to add it later.
+
+#### D-3: Old component cleanup
+- [ ] **D-3.1** Delete `src/checkout/composable/EPCheckoutProvider.tsx` and `src/checkout/composable/__tests__/EPCheckoutProvider.test.tsx`
+- [ ] **D-3.2** Delete `src/checkout/composable/EPCheckoutButton.tsx` and `src/checkout/composable/__tests__/EPCheckoutButton.test.tsx`
+- [ ] **D-3.3** Delete `src/checkout/composable/EPCheckoutStepIndicator.tsx` and `src/checkout/composable/__tests__/EPCheckoutStepIndicator.test.tsx`
+- [ ] **D-3.4** Delete `src/checkout/composable/EPPaymentElements.tsx` and `src/checkout/composable/__tests__/EPPaymentElements.test.tsx`
+- [ ] **D-3.5** Delete `src/checkout/composable/CheckoutContext.tsx`
+
+#### D-4: Component adaptations
+- [ ] **D-4.1** Modify `EPOrderTotalsBreakdown.tsx`: add fallback to read from `checkoutSession.totals` DataProvider (in addition to existing `checkoutData.summary` and `checkoutCartData` reads)
+  - **Deps:** A-8.1
+
+- [ ] **D-4.2** Modify `EPShippingMethodSelector.tsx`: add ability to read `availableShippingRates` from `checkoutSession` DataProvider; `selectMethod(rateId)` refAction calls `updateSession({ selectedShippingRateId })` when session provider present
+  - **Deps:** A-8.1
+
+- [ ] **D-4.3** Form field compatibility: adapt EPCustomerInfoFields, EPShippingAddressFields, EPBillingAddressFields to also read initial values from `checkoutSession.customerInfo` / `checkoutSession.shippingAddress` / `checkoutSession.billingAddress` when `checkoutData` DataProvider is absent (SG-1). This ensures form fields pre-populate after page refresh in session mode.
+  - **Deps:** A-8.1, D-3.1 (EPCheckoutProvider deleted, so `checkoutData` no longer available)
+
+#### D-5: Registration cleanup
+- [ ] **D-5.1** Update `src/checkout/composable/index.ts`: remove deleted component exports (EPCheckoutProvider, EPCheckoutButton, EPCheckoutStepIndicator, EPPaymentElements, CheckoutContext, useCheckoutPaymentContext)
+- [ ] **D-5.2** Update `src/registerCheckout.tsx`: remove registrations for deleted components, add registrations for session components (EPCheckoutSessionProvider, EPCloverPayment, EPCloverCard*, EPStripePayment)
+- [ ] **D-5.3** Verify build passes after deletions (`tsdx build` or equivalent)
+- [ ] **D-5.4** Verify all remaining component tests pass
+
+#### D-6: Tests
+- [x] **D-6.1** Create `src/checkout/session/__tests__/cart-hash.test.ts` — determinism (same items different order → same hash), different quantities → different hash, empty cart
+- [ ] **D-6.2** Update/verify tests for adapted EPOrderTotalsBreakdown and EPShippingMethodSelector
+
+**Phase D total: 21 items** (19 implementation + 2 tests)
+
+---
+
+### Phase Consumer: Consumer Route Files (checkout-session-consumer-routes.md)
+
+All files in `/Users/robert.field/Documents/Projects/EP/clover/worktree-alpha/apps/storefront/` (Pages Router).
+
+#### Consumer-1: Adapter config
+- [ ] **Consumer-1.1** Create `lib/checkout-config.ts`
+  - Import `createAdapterRegistry` from package
+  - Import Clover adapter (and optionally Stripe adapter)
+  - Register adapters with credentials from env vars
+  - Export configured registry
+  - EP credentials from `EP_CLIENT_ID`, `EP_CLIENT_SECRET`, `EP_API_BASE_URL`
+  - Clover credentials from `CLOVER_ECOMMERCE_API_KEY`, `CLOVER_API_BASE_URL`
+  - **Deps:** A-3.1, B-1.3
+
+#### Consumer-2: Route files (Pages Router)
+- [ ] **Consumer-2.1** Create `pages/api/checkout/sessions/index.ts`
+  - POST → `handleCreateSession(req, ctx)` with configured registry + store
+  - **Deps:** A-4.1, Consumer-1.1
+
+- [ ] **Consumer-2.2** Create `pages/api/checkout/sessions/current.ts`
+  - GET → `handleGetSession(req, ctx)`
+  - PATCH → `handleUpdateSession(req, ctx)`
+  - **Deps:** A-4.2, A-4.3, Consumer-1.1
+
+- [ ] **Consumer-2.3** Create `pages/api/checkout/sessions/current/shipping.ts`
+  - POST → `handleCalculateShipping(req, ctx)`
+  - **Deps:** A-4.4, Consumer-1.1
+
+- [ ] **Consumer-2.4** Create `pages/api/checkout/sessions/current/pay.ts`
+  - POST → `handlePay(req, ctx)`
+  - **Deps:** A-4.5, Consumer-1.1
+
+- [ ] **Consumer-2.5** Create `pages/api/checkout/sessions/current/confirm.ts`
+  - POST → `handleConfirm(req, ctx)`
+  - **Deps:** A-4.6, Consumer-1.1
+
+**Phase Consumer total: 6 items**
+
+---
+
+## Dependency Graph (Critical Path)
+
+```
+A-1.1 (types) ─────────────────────────────────┐
+  ├─► A-2.1 (cookie-store)                      │
+  ├─► A-3.1 (adapter-registry)                  │
+  ├─► A-5.1 (address-utils)                     │
+  ├─► A-6.1 (payment-registration-context)      │
+  ├─► A-7.1 (design-time-data)                  │
+  └─► A-4.1..A-4.7 (handlers) ─► A-4.7 (index) │
+       │                                         │
+       └─► A-6.2 (use-checkout-session) ──────┐ │
+            └─► A-8.1 (EPCheckoutSessionProv) │ │
+                 └─► A-9.1 (session/index)    │ │
+                                               │ │
+Phase B (all depend on A-8.1, A-6.1, A-3.1):  │ │
+  B-1.1 (clover-types)                        │ │
+    └─► B-1.2 (clover-api)                    │ │
+         └─► B-1.3 (clover-adapter)           │ │
+  B-2.1 (clover-context)                      │ │
+  B-2.2 (clover-singleton)                    │ │
+  B-2.2b (clover-3ds-sdk)                     │ │
+    └─► B-2.3 (EPCloverPayment)               │ │
+         └─► B-2.4..B-2.7 (card fields)       │ │
+                                               │ │
+Phase C (depends on A-8.1, A-6.1, A-3.1):     │ │
+  C-1.1 (stripe dep)                          │ │
+    └─► C-1.2 (stripe-adapter)                │ │
+  C-2.1 (EPStripePayment)                     │ │
+                                               │ │
+Phase D (depends on A, B, C complete):         │ │
+  D-1.1 (cart-hash)                           │ │
+  D-2.x (handler hardening)                   │ │
+  D-3.x (delete old components)               │ │
+  D-4.x (adapt surviving components)          │ │
+  D-5.x (registration cleanup)               │ │
+                                               │ │
+Consumer (depends on A handlers + B adapter):  │ │
+  Consumer-1.1 (checkout-config)               │ │
+  Consumer-2.x (route files)                   │ │
+```
+
+## Build Order Summary
+
+| Step | Items | Can Parallelize With |
+|------|-------|---------------------|
+| 1 | A-1.1 | — |
+| 2 | A-2.1, A-3.1, A-5.1, A-6.1, A-7.1 | All parallel |
+| 3 | A-4.1 through A-4.7 | All parallel (share deps from step 2) |
+| 4 | A-6.2 | — |
+| 5 | A-8.1 | — |
+| 6 | A-9.1, A-10.x (tests) | Parallel |
+| 7 | B-1.1, B-2.1, B-2.2, B-2.2b | All parallel |
+| 8 | B-1.2 | — |
+| 9 | B-1.3, B-2.3 | Parallel |
+| 10 | B-2.4..B-2.7, B-3.x, B-4.x | Parallel |
+| 11 | C-1.1, C-1.2 | Parallel with B |
+| 12 | C-2.1, C-3.x, C-4.x | Parallel |
+| 13 | D-1.1, D-2.x, D-3.x, D-4.x, D-5.x, D-6.x | Sequential (deletions are sensitive) |
+| 14 | Consumer-1.1, Consumer-2.x | After A + B |
