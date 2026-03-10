@@ -197,6 +197,10 @@ export const EPShippingAddressFields = React.forwardRef<
   const checkoutSessionCtx = useSelector("checkoutSession") as
     | { session?: { shippingAddress?: Record<string, string> | null } }
     | undefined;
+  // shopperContextData.addresses — used by useAccountAddress refAction
+  const shopperCtx = useSelector("shopperContextData") as
+    | { addresses?: Array<Record<string, string | undefined>> | null }
+    | undefined;
 
   const effectiveAddress = useMemo(() => {
     // Source 1: EPCheckoutProvider (composable flow)
@@ -229,6 +233,7 @@ export const EPShippingAddressFields = React.forwardRef<
       className={className}
       showPhoneField={showPhoneField}
       checkoutData={effectiveAddress ? { shippingAddress: effectiveAddress } : undefined}
+      accountAddresses={shopperCtx?.addresses ?? undefined}
       inEditor={inEditor}
     >
       {children}
@@ -244,6 +249,7 @@ interface RuntimeProps {
   className?: string;
   showPhoneField: boolean;
   checkoutData?: { shippingAddress?: Record<string, string> };
+  accountAddresses?: Array<Record<string, string | undefined>>;
   inEditor: boolean;
 }
 
@@ -251,7 +257,7 @@ const EPShippingAddressFieldsRuntime = React.forwardRef<
   EPShippingAddressFieldsActions,
   RuntimeProps
 >(function EPShippingAddressFieldsRuntime(props, ref) {
-  const { children, className, showPhoneField, checkoutData, inEditor } = props;
+  const { children, className, showPhoneField, checkoutData, accountAddresses, inEditor } = props;
 
   const initial = checkoutData?.shippingAddress;
 
@@ -337,12 +343,43 @@ const EPShippingAddressFieldsRuntime = React.forwardRef<
     setSuggestions(null);
   }, [SETTERS]);
 
-  // useAccountAddress: copies a saved address from shopperContextData by ID.
-  // ShopperContext currently only provides cartId/accountId/locale/currency,
-  // so this is a no-op until account addresses are available in shopperContextData.
-  const useAccountAddress = useCallback((_addressId: string) => {
-    log.debug("useAccountAddress called — shopperContextData.addresses not yet available, no-op");
-  }, []);
+  // useAccountAddress: copies a saved address from shopperContextData.addresses by ID.
+  // Looks up the address in the array provided by any ancestor DataProvider named
+  // "shopperContextData". If the DataProvider is absent or the ID is not found, no-op.
+  // EP address fields use snake_case (name, line_1, region, phone_number); we map
+  // them to the component's camelCase field names.
+  const useAccountAddress = useCallback((addressId: string) => {
+    if (!accountAddresses || accountAddresses.length === 0) {
+      log.debug("useAccountAddress: no account addresses available, no-op");
+      return;
+    }
+    const addr = accountAddresses.find((a) => a.id === addressId);
+    if (!addr) {
+      log.debug("useAccountAddress: address not found", { addressId } as Record<string, unknown>);
+      return;
+    }
+    log.debug("useAccountAddress: copying address", { addressId } as Record<string, unknown>);
+    // EP addresses have a single "name" field — split into firstName/lastName
+    const nameParts = (addr.name ?? "").split(/\s+/);
+    const fName = nameParts[0] ?? "";
+    const lName = nameParts.slice(1).join(" ");
+    setFirstName(fName);
+    setLastName(lName);
+    setLine1(addr.line_1 ?? "");
+    setLine2(addr.line_2 ?? "");
+    setCity(addr.city ?? "");
+    // EP uses "region" for state/province; fall back to "county"
+    setCounty(addr.region ?? addr.county ?? "");
+    setPostcode(addr.postcode ?? "");
+    setCountry(addr.country ?? "");
+    setPhone(addr.phone_number ?? "");
+    setIsDirty(true);
+    // Clear any existing errors since we just populated with known-good data
+    setErrors({
+      firstName: null, lastName: null, line1: null,
+      city: null, postcode: null, country: null, phone: null,
+    });
+  }, [accountAddresses]);
 
   useImperativeHandle(ref, () => ({ setField, validate, clear, useAccountAddress }), [
     setField, validate, clear, useAccountAddress,

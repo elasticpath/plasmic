@@ -11,10 +11,10 @@
 | Category | Count |
 |----------|-------|
 | Active specs | 6 (checkout-session-* + composable-checkout) |
-| Total items implemented | 86 / 88 |
+| Total items implemented | 88 / 88 |
 | Test suites | 76 |
-| Total tests | 1,413 |
-| Build verified | 2026-03-10 |
+| Total tests | 1,424 |
+| Build verified | 2026-03-11 |
 
 | Spec | Phase | Status |
 |------|-------|--------|
@@ -50,9 +50,6 @@
 - Error handling via `src/api/utils/error-handling.ts` (`CheckoutError` hierarchy, `StripeError` but no `CloverError` — see SG-7)
 - EP SDK calls via `@epcc-sdk/sdks-shopper`
 - Cart cookie pattern in `src/shopper-context/server/cart-cookie.ts`
-
-### Known Pre-existing Gap (Fixed)
-- EP `confirmPayment` was never called in the old composable checkout. The session model fixes this by design — the confirm handler captures the EP transaction after the gateway confirms.
 
 ### Clover 3DS Flow (Reference)
 - Token: `clover.createToken()` → single-use token
@@ -127,7 +124,8 @@
 - **`EPCloverCardField.tsx`:** Internal shared component created to avoid 4× duplication across card field components. Not referenced in any spec.
 - **EP order retry in `/pay`:** When `session.order` already exists (from a previous failed payment attempt), the handler skips `checkoutApi` and reuses the existing order ID. A new `paymentSetup` (authorize) is still created because the previous authorization may have been voided or expired. The double-submit guard (`session.status !== "open"`) prevents concurrent retries; the `failed` case in the adapter result mapping resets status to `"open"` to enable retries.
 - **`toHaveClass` / `toHaveTextContent` not available:** Root jest config does not include `@testing-library/jest-dom`. Use plain DOM assertions like `element.className.includes()` and `element.textContent` instead.
-- **ShopperContext has no account profile data:** `EPShopperContextProvider` is a GlobalContext providing only `cartId`, `accountId`, `locale`, `currency` overrides — NOT a DataProvider. There is no `shopperContextData` DataProvider with account profile or addresses. The composable-checkout spec's reference to `useSelector("shopperContextData")` for pre-population is aspirational. Current pre-population reads from `checkoutData` (composable) and `checkoutSession` (session) instead.
+- **ShopperContext has no account profile data:** `EPShopperContextProvider` is a GlobalContext providing only `cartId`, `accountId`, `locale`, `currency` overrides — NOT a DataProvider. There is no built-in `shopperContextData` DataProvider with account profile or addresses.
+- **`shopperContextData` is consumer-provided:** `EPCustomerInfoFields` and `EPShippingAddressFields` read from `useSelector("shopperContextData")` — any ancestor DataProvider named `shopperContextData` suffices. The EP `ShopperContextProvider` doesn't provide this; it's the consumer's responsibility to add a DataProvider with `{ account: { name, email }, addresses: [...] }` when account data is available. This decouples account management from the checkout components.
 - **EPPaymentElements uses CheckoutInternalContext:** The composable EPPaymentElements reads `clientSecret` from `CheckoutInternalContext` (set by EPCheckoutProvider after `setupPayment()`) and exposes the Stripe `elements` instance back through the same context for `confirmPayment` calls. This is distinct from EPStripePayment which reads from session `payment.clientToken`.
 
 ---
@@ -169,8 +167,8 @@ Replaces deleted orchestration (D-5) with new headless Provider → DataProvider
 ### Phase 2 (P1) — 3 Items (updates to existing components)
 | Item | Description | Status |
 |------|-------------|--------|
-| CC-2.1 | `EPCustomerInfoFields` — dual-source pre-population: `checkoutData.customerInfo` (composable) + `checkoutSession.customerInfo` (session) | Complete |
-| CC-2.2 | `EPShippingAddressFields` — dual-source pre-population, `useAccountAddress(addressId)` refAction (no-op until account addresses available) | Complete |
+| CC-2.1 | `EPCustomerInfoFields` — triple-source pre-population: `checkoutData.customerInfo` (composable) + `checkoutSession.customerInfo` (session) + `shopperContextData.account` (consumer DataProvider) | Complete |
+| CC-2.2 | `EPShippingAddressFields` — triple-source pre-population, `useAccountAddress(addressId)` refAction copies address from `shopperContextData.addresses` when available | Complete |
 | CC-2.3 | `EPBillingAddressFields` — already aligned, no changes needed | Complete |
 
 ### Phase 3 (P2) — 2 Items
@@ -190,4 +188,4 @@ All composable components registered in `registerCheckout.tsx` in leaf-first ord
 - **`EPCloverCardField.tsx` not in any spec.** This shared internal component was created to avoid duplication across the four Clover card field components. It is not referenced in `checkout-session-clover.md`.
 - **`lib/checkout-handler.ts` not in Consumer spec.** The spec describes route files but does not mention the `runHandler` helper. It emerged as an implementation necessity.
 - **`CHECKOUT_SESSION_SECRET` env var not in spec acceptance criteria.** The Consumer spec lists env vars in the body but `CHECKOUT_SESSION_SECRET` is absent from the formal acceptance criteria checklist.
-- **Composable-checkout spec references `shopperContextData` DataProvider that doesn't exist.** The spec says to pre-populate form fields from `useSelector("shopperContextData")` account profile, but `EPShopperContextProvider` is a GlobalContext providing only identity overrides (`cartId`, `accountId`, `locale`, `currency`), not a DataProvider with account addresses. Implementation reads from `checkoutData` (composable) and `checkoutSession` (session) instead. `useAccountAddress` refAction is implemented as a no-op until account address data becomes available.
+- **Composable-checkout spec references `shopperContextData` DataProvider — resolved.** The spec says to pre-populate form fields from `useSelector("shopperContextData")`. This is now fully implemented: the components read from any ancestor DataProvider named `shopperContextData` via `useSelector`, which works regardless of whether `EPShopperContextProvider` provides it. Any DataProvider in the tree named `shopperContextData` suffices; it is the consumer's responsibility to supply `{ account: { name, email }, addresses: [...] }` when account data is available.

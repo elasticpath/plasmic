@@ -119,11 +119,15 @@ export const EPCustomerInfoFields = React.forwardRef<
   // Pre-population priority:
   // 1. checkoutData.customerInfo (from EPCheckoutProvider — already split)
   // 2. checkoutSession.customerInfo (from EPCheckoutSessionProvider — name needs split)
+  // 3. shopperContextData.account (from any ancestor DataProvider — name needs split)
   const checkoutData = useSelector("checkoutData") as
     | { customerInfo?: { firstName?: string; lastName?: string; email?: string } | null }
     | undefined;
   const checkoutSessionCtx = useSelector("checkoutSession") as
     | { session?: { customerInfo?: { name?: string; email?: string } } }
+    | undefined;
+  const shopperCtx = useSelector("shopperContextData") as
+    | { account?: { name?: string; email?: string } | null }
     | undefined;
 
   const effectiveCustomerInfo = useMemo(() => {
@@ -142,8 +146,18 @@ export const EPCustomerInfoFields = React.forwardRef<
         email: sci.email ?? "",
       };
     }
+    // Source 3: shopperContextData account profile (any ancestor DataProvider)
+    const acct = shopperCtx?.account;
+    if (acct?.name || acct?.email) {
+      const parts = (acct.name ?? "").split(/\s+/);
+      return {
+        firstName: parts[0] ?? "",
+        lastName: parts.slice(1).join(" "),
+        email: acct.email ?? "",
+      };
+    }
     return undefined;
-  }, [checkoutData?.customerInfo, checkoutSessionCtx?.session?.customerInfo]);
+  }, [checkoutData?.customerInfo, checkoutSessionCtx?.session?.customerInfo, shopperCtx?.account]);
 
   // Design-time preview
   const useMock =
