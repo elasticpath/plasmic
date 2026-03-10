@@ -13,6 +13,7 @@
 | Completed items | 78 |
 
 ### Recent Completions
+- **Missing test files + jest config fix** (2026-03-10): Created 4 missing test files that were marked complete but never existed: `get-session.test.ts` (A-10.4), `calculate-shipping.test.ts` (A-10.6), `EPCheckoutSessionProvider.test.tsx` (A-10.9), `use-checkout-session.test.ts` (A-10.10). Fixed `jest.config.checkout.js` — testMatch pattern `checkout/**` did not match `checkout-session/` directory, so 6 API endpoint checkout-session tests were never being run. Added `checkout-session/**` pattern. Total: 27 suites, 471 tests pass.
 - **Phase Consumer complete** (2026-03-10): All 6 items implemented. Created server entry point (`src/server.ts` + `build-server.mjs`) with `./server` package.json subpath export. Consumer storefront gets `lib/checkout-config.ts` (adapter registry + EP creds + CookieSessionStore), `lib/checkout-handler.ts` (Next.js ↔ SessionRequest adapter), and 5 route files. `.env.example` updated with `STRIPE_SECRET_KEY` and `CHECKOUT_SESSION_SECRET`.
 - **Phase D complete** (2026-03-10): All 21 items verified/implemented. Deleted 5 old composable components + 4 test files. Adapted 5 surviving components to read from `checkoutSession` DataProvider. 4 new session-mode tests. 291 tests pass (19 suites).
 - **Phase C complete** (2026-03-10): All 8 items implemented + tested. 2 test files, 22 new tests.
@@ -35,6 +36,7 @@
 - **EPCheckoutSessionProvider DataProvider now includes `updateSession` and `calculateShipping` callbacks** — enabling child components (EPShippingMethodSelector) to call mutations without ref access to the provider.
 - **Server entry point (`./server` subpath export)**: tsdx bundles all JS into the main entry, so server-only code (handlers, CookieSessionStore with `crypto`, adapters) can't be exported from the main entry without pulling Node.js-only deps into client bundles. Solution: separate `build-server.mjs` using esbuild (externalizes all deps) produces `dist/server.js`, and package.json `"exports"` field maps `"./server"` to it. Consumer imports from `@elasticpath/plasmic-ep-commerce-elastic-path/server`.
 - **Consumer route helper pattern**: `lib/checkout-handler.ts` provides `runHandler(req, res, handler)` that adapts Next.js `NextApiRequest` → `SessionRequest`, calls handler, writes `SessionResponse`. All 5 route files are thin wrappers (~15 lines each).
+- **jest.config.checkout.js testMatch bug fixed**: The original pattern `<rootDir>/src/api/endpoints/checkout/**/__tests__/**/*.test.{ts,tsx}` only matched `checkout/` (legacy endpoint tests), NOT `checkout-session/`. Added explicit `checkout-session/**` pattern. This means the 4 original API endpoint tests (create-session, update-session, pay, confirm) were also never running in CI — they pass now.
 
 ## Active Spec Status
 
@@ -514,7 +516,7 @@ All files in `plasmicpkgs/commerce-providers/elastic-path/src/` unless noted oth
 - [x] **D-5.1** Updated `src/checkout/composable/index.ts`: removed EPCheckoutProvider, EPCheckoutButton, EPCheckoutStepIndicator, EPPaymentElements, CheckoutContext exports
 - [x] **D-5.2** Updated `src/registerCheckout.tsx`: removed registrations/exports for 5 deleted components
 - [x] **D-5.3** Build verified (tsdx build passes)
-- [x] **D-5.4** All 291 tests pass across 19 suites
+- [x] **D-5.4** All 471 tests pass across 27 suites
 
 #### D-6: Tests
 - [x] **D-6.1** Create `src/checkout/session/__tests__/cart-hash.test.ts` — determinism (same items different order → same hash), different quantities → different hash, empty cart

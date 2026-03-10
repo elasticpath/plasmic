@@ -4,11 +4,13 @@ module.exports = {
   setupFilesAfterEnv: ['<rootDir>/src/checkout/__tests__/setup.ts'],
   testMatch: [
     '<rootDir>/src/checkout/**/__tests__/**/*.test.{ts,tsx}',
-    '<rootDir>/src/api/endpoints/checkout/**/__tests__/**/*.test.{ts,tsx}'
+    '<rootDir>/src/api/endpoints/checkout/**/__tests__/**/*.test.{ts,tsx}',
+    '<rootDir>/src/api/endpoints/checkout-session/**/__tests__/**/*.test.{ts,tsx}'
   ],
   collectCoverageFrom: [
     'src/checkout/**/*.{ts,tsx}',
     'src/api/endpoints/checkout/**/*.{ts,tsx}',
+    'src/api/endpoints/checkout-session/**/*.{ts,tsx}',
     '!src/checkout/**/__tests__/**',
     '!src/checkout/**/*.test.{ts,tsx}',
     '!src/checkout/index.ts',
