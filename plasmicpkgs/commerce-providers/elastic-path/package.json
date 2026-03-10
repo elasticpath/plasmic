@@ -5,11 +5,22 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "module": "dist/commerce-elastic-path.esm.js",
+  "exports": {
+    ".": {
+      "import": "./dist/commerce-elastic-path.esm.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./server": {
+      "require": "./dist/server.js",
+      "types": "./dist/server.d.ts"
+    }
+  },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsdx build",
+    "build": "tsdx build && node build-server.mjs",
     "start": "tsdx watch",
     "test": "TEST_CWD=`pwd` yarn --cwd=../../.. test --passWithNoTests",
     "lint": "tsdx lint",

@@ -1,6 +1,6 @@
 # Implementation Plan
 
-**Last updated:** 2026-03-10 (rev 7 — Phase D complete)
+**Last updated:** 2026-03-10 (rev 8 — ALL PHASES COMPLETE)
 **Branch:** `feat/server-cart-shopper-context`
 **Focus:** Checkout session model — server-authoritative session, payment adapters, gateway components
 
@@ -10,9 +10,10 @@
 |----------|-------|
 | Active specs | 5 (checkout-session-*) |
 | Total items to implement | 78 |
-| Completed items | 72 |
+| Completed items | 78 |
 
 ### Recent Completions
+- **Phase Consumer complete** (2026-03-10): All 6 items implemented. Created server entry point (`src/server.ts` + `build-server.mjs`) with `./server` package.json subpath export. Consumer storefront gets `lib/checkout-config.ts` (adapter registry + EP creds + CookieSessionStore), `lib/checkout-handler.ts` (Next.js ↔ SessionRequest adapter), and 5 route files. `.env.example` updated with `STRIPE_SECRET_KEY` and `CHECKOUT_SESSION_SECRET`.
 - **Phase D complete** (2026-03-10): All 21 items verified/implemented. Deleted 5 old composable components + 4 test files. Adapted 5 surviving components to read from `checkoutSession` DataProvider. 4 new session-mode tests. 291 tests pass (19 suites).
 - **Phase C complete** (2026-03-10): All 8 items implemented + tested. 2 test files, 22 new tests.
 - **Phase B complete** (2026-03-10): All 16 items implemented + tested. 3 test files, 34 new tests.
@@ -32,6 +33,8 @@
 - **jest.config.checkout.js** is the correct test config for all checkout/session tests (testEnvironment: jsdom, setup file). NOT the root jest.config.js.
 - **Composable component session-mode tests** mock `@plasmicapp/host` entirely with controllable fakes (`mockUseSelector`, `mockUsePlasmicCanvasContext`). `jest.spyOn` on `jest.requireActual()` does NOT work with esbuild — use full mock factory instead.
 - **EPCheckoutSessionProvider DataProvider now includes `updateSession` and `calculateShipping` callbacks** — enabling child components (EPShippingMethodSelector) to call mutations without ref access to the provider.
+- **Server entry point (`./server` subpath export)**: tsdx bundles all JS into the main entry, so server-only code (handlers, CookieSessionStore with `crypto`, adapters) can't be exported from the main entry without pulling Node.js-only deps into client bundles. Solution: separate `build-server.mjs` using esbuild (externalizes all deps) produces `dist/server.js`, and package.json `"exports"` field maps `"./server"` to it. Consumer imports from `@elasticpath/plasmic-ep-commerce-elastic-path/server`.
+- **Consumer route helper pattern**: `lib/checkout-handler.ts` provides `runHandler(req, res, handler)` that adapts Next.js `NextApiRequest` → `SessionRequest`, calls handler, writes `SessionResponse`. All 5 route files are thin wrappers (~15 lines each).
 
 ## Active Spec Status
 
@@ -41,7 +44,7 @@
 | `checkout-session-clover.md` | B | Complete |
 | `checkout-session-stripe.md` | C | Complete |
 | `checkout-session-hardening.md` | D | Complete |
-| `checkout-session-consumer-routes.md` | Consumer | Pending |
+| `checkout-session-consumer-routes.md` | Consumer | Complete |
 
 ---
 
@@ -526,36 +529,17 @@ All files in `plasmicpkgs/commerce-providers/elastic-path/src/` unless noted oth
 All files in `/Users/robert.field/Documents/Projects/EP/clover/worktree-alpha/apps/storefront/` (Pages Router).
 
 #### Consumer-1: Adapter config
-- [ ] **Consumer-1.1** Create `lib/checkout-config.ts`
-  - Import `createAdapterRegistry` from package
-  - Import Clover adapter (and optionally Stripe adapter)
-  - Register adapters with credentials from env vars
-  - Export configured registry
-  - EP credentials from `EP_CLIENT_ID`, `EP_CLIENT_SECRET`, `EP_API_BASE_URL`
-  - Clover credentials from `CLOVER_ECOMMERCE_API_KEY`, `CLOVER_API_BASE_URL`
-  - **Deps:** A-3.1, B-1.3
+- [x] **Consumer-1.1** Created `lib/checkout-config.ts` + `lib/checkout-handler.ts`
+  - `checkout-config.ts`: imports from `@elasticpath/plasmic-ep-commerce-elastic-path/server`, registers Clover + Stripe adapters from env vars, creates CookieSessionStore, exports `getHandlerContext(tenantSlug?)` that resolves per-tenant credentials
+  - `checkout-handler.ts`: `runHandler(req, res, handler)` adapts NextApiRequest → SessionRequest, calls handler, writes SessionResponse to NextApiResponse
+  - **Server entry point**: created `src/server.ts` + `build-server.mjs` in the package, added `"./server"` subpath export to package.json
 
 #### Consumer-2: Route files (Pages Router)
-- [ ] **Consumer-2.1** Create `pages/api/checkout/sessions/index.ts`
-  - POST → `handleCreateSession(req, ctx)` with configured registry + store
-  - **Deps:** A-4.1, Consumer-1.1
-
-- [ ] **Consumer-2.2** Create `pages/api/checkout/sessions/current.ts`
-  - GET → `handleGetSession(req, ctx)`
-  - PATCH → `handleUpdateSession(req, ctx)`
-  - **Deps:** A-4.2, A-4.3, Consumer-1.1
-
-- [ ] **Consumer-2.3** Create `pages/api/checkout/sessions/current/shipping.ts`
-  - POST → `handleCalculateShipping(req, ctx)`
-  - **Deps:** A-4.4, Consumer-1.1
-
-- [ ] **Consumer-2.4** Create `pages/api/checkout/sessions/current/pay.ts`
-  - POST → `handlePay(req, ctx)`
-  - **Deps:** A-4.5, Consumer-1.1
-
-- [ ] **Consumer-2.5** Create `pages/api/checkout/sessions/current/confirm.ts`
-  - POST → `handleConfirm(req, ctx)`
-  - **Deps:** A-4.6, Consumer-1.1
+- [x] **Consumer-2.1** Created `pages/api/checkout/sessions/index.ts` — POST → handleCreateSession
+- [x] **Consumer-2.2** Created `pages/api/checkout/sessions/current.ts` — GET → handleGetSession, PATCH → handleUpdateSession
+- [x] **Consumer-2.3** Created `pages/api/checkout/sessions/current/shipping.ts` — POST → handleCalculateShipping
+- [x] **Consumer-2.4** Created `pages/api/checkout/sessions/current/pay.ts` — POST → handlePay
+- [x] **Consumer-2.5** Created `pages/api/checkout/sessions/current/confirm.ts` — POST → handleConfirm
 
 **Phase Consumer total: 6 items**
 

@@ -1,0 +1,42 @@
+/**
+ * Server-only entry point for checkout session API route consumers.
+ *
+ * Import from "@elasticpath/plasmic-ep-commerce-elastic-path/server"
+ * in Next.js API routes (or other server-side code).
+ *
+ * This entry is built separately from the main client bundle to avoid
+ * pulling Node.js-only dependencies (crypto, stripe) into browser code.
+ */
+
+// Handler functions
+export {
+  handleCreateSession,
+  handleGetSession,
+  handleUpdateSession,
+  handleCalculateShipping,
+  handlePay,
+  handleConfirm,
+} from "./api/endpoints/checkout-session";
+
+// Session store
+export { CookieSessionStore } from "./checkout/session/cookie-store";
+
+// Adapter registry
+export { createAdapterRegistry } from "./checkout/session/adapter-registry";
+
+// Payment gateway adapters
+export { createCloverAdapter } from "./checkout/session/adapters/clover-adapter";
+export type { CloverAdapterConfig } from "./checkout/session/adapters/clover-adapter";
+export { createStripeAdapter } from "./checkout/session/adapters/stripe-adapter";
+export type { StripeAdapterConfig } from "./checkout/session/adapters/stripe-adapter";
+
+// Types needed by consumer route files
+export type {
+  SessionRequest,
+  SessionResponse,
+  SessionHandlerContext,
+  EPCredentials,
+  AdapterRegistry,
+  SessionStore,
+  PaymentAdapter,
+} from "./checkout/session/types";
