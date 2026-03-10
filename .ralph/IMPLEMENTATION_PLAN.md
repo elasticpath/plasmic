@@ -1,6 +1,6 @@
 # Implementation Plan
 
-**Last updated:** 2026-03-10 (rev 6 — Phase C complete)
+**Last updated:** 2026-03-10 (rev 7 — Phase D complete)
 **Branch:** `feat/server-cart-shopper-context`
 **Focus:** Checkout session model — server-authoritative session, payment adapters, gateway components
 
@@ -10,9 +10,10 @@
 |----------|-------|
 | Active specs | 5 (checkout-session-*) |
 | Total items to implement | 78 |
-| Completed items | 53 |
+| Completed items | 72 |
 
 ### Recent Completions
+- **Phase D complete** (2026-03-10): All 21 items verified/implemented. Deleted 5 old composable components + 4 test files. Adapted 5 surviving components to read from `checkoutSession` DataProvider. 4 new session-mode tests. 291 tests pass (19 suites).
 - **Phase C complete** (2026-03-10): All 8 items implemented + tested. 2 test files, 22 new tests.
 - **Phase B complete** (2026-03-10): All 16 items implemented + tested. 3 test files, 34 new tests.
 - **Phase A complete** (2026-03-10): All 27 items implemented + tested. 8 test files, 157 new tests.
@@ -29,6 +30,8 @@
 - **EPStripePayment uses `useCheckoutSession(apiBaseUrl)` internally** — SWR deduplicates by key, so it shares cache with EPCheckoutSessionProvider. This lets the component call confirmPayment after stripe.confirmPayment succeeds. Tests mock `../use-checkout-session` directly instead of SWR.
 - **EPStripePayment exposes `submitPayment` refAction** for the designer to wire to a "Pay" button. The refAction calls stripe.confirmPayment() then hook.confirmPayment({ paymentIntentId }).
 - **jest.config.checkout.js** is the correct test config for all checkout/session tests (testEnvironment: jsdom, setup file). NOT the root jest.config.js.
+- **Composable component session-mode tests** mock `@plasmicapp/host` entirely with controllable fakes (`mockUseSelector`, `mockUsePlasmicCanvasContext`). `jest.spyOn` on `jest.requireActual()` does NOT work with esbuild — use full mock factory instead.
+- **EPCheckoutSessionProvider DataProvider now includes `updateSession` and `calculateShipping` callbacks** — enabling child components (EPShippingMethodSelector) to call mutations without ref access to the provider.
 
 ## Active Spec Status
 
@@ -37,7 +40,7 @@
 | `checkout-session-foundation.md` | A | Complete |
 | `checkout-session-clover.md` | B | Complete |
 | `checkout-session-stripe.md` | C | Complete |
-| `checkout-session-hardening.md` | D | Pending |
+| `checkout-session-hardening.md` | D | Complete |
 | `checkout-session-consumer-routes.md` | Consumer | Pending |
 
 ---
@@ -466,52 +469,53 @@ All files in `plasmicpkgs/commerce-providers/elastic-path/src/` unless noted oth
   - **No deps beyond Node.js crypto**
 
 #### D-2: Hardening in existing handlers
-- [ ] **D-2.1** Update `pay.ts` handler: cart hash validation (re-fetch cart, compare hash, 409 on mismatch with refreshed session)
+- [x] **D-2.1** Verified `pay.ts` handler: cart hash validation (re-fetch cart, compare hash, 409 on mismatch with refreshed session) — implemented in Phase A, dedicated test in pay.test.ts "cart hash mismatch" suite
   - **Deps:** D-1.1, A-4.5
 
-- [ ] **D-2.2** Update `pay.ts` handler: double-submit protection (reject if `session.status !== "open"`)
+- [x] **D-2.2** Verified `pay.ts` handler: double-submit protection (reject if `session.status !== "open"`) — implemented in Phase A, dedicated test in pay.test.ts "guard: double-submit protection" suite
   - **Deps:** A-4.5
 
-- [ ] **D-2.3** Update `confirm.ts` handler: status validation (reject if `session.status !== "processing"`)
+- [x] **D-2.3** Verified `confirm.ts` handler: status validation (reject if `session.status !== "processing"`) — implemented in Phase A, dedicated test in confirm.test.ts
   - **Deps:** A-4.6
 
-- [ ] **D-2.4** Update `cookie-store.ts`: enforce `expiresAt` field check server-side, return null for expired sessions
+- [x] **D-2.4** Verified `cookie-store.ts`: enforce `expiresAt` field check server-side, return null for expired sessions — implemented in Phase A, dedicated test in cookie-store.test.ts
   - **Deps:** A-2.1
 
-- [ ] **D-2.5** Update handlers: return 410 Gone for expired sessions on PATCH/pay/confirm
+- [x] **D-2.5** Verified handlers: return 410 Gone for expired sessions on PATCH/pay/confirm — all handlers return SESSION_GONE for null session (from expired cookie)
   - **Deps:** A-4.3, A-4.5, A-4.6
 
-- [ ] **D-2.6** Update `pay.ts` and adapter flow: payment retry — if gateway charge fails, reset session status to "open", allow re-authorize on same EP order
+- [x] **D-2.6** Verified `pay.ts` and adapter flow: payment retry — failed adapter result keeps session "open" (pay.test.ts), failed confirm resets to "open" (confirm.test.ts)
   - **Deps:** A-4.5, A-4.6
 
-**Important:** Phase A handlers (A-4.5 pay.ts, A-4.6 confirm.ts) implement all safety checks fully (cart hash validation, double-submit, status checks, payment retry). D-2.x items are **verify-and-test-only** — they add dedicated test coverage for each safety measure and fix any gaps found during verification. Do NOT skip safety logic in Phase A expecting Phase D to add it later.
+**Note:** All D-2.x safety measures were implemented in Phase A. D-2.x was verify-and-test-only — confirmed all safety checks have dedicated test coverage.
 
 #### D-3: Old component cleanup
-- [ ] **D-3.1** Delete `src/checkout/composable/EPCheckoutProvider.tsx` and `src/checkout/composable/__tests__/EPCheckoutProvider.test.tsx`
-- [ ] **D-3.2** Delete `src/checkout/composable/EPCheckoutButton.tsx` and `src/checkout/composable/__tests__/EPCheckoutButton.test.tsx`
-- [ ] **D-3.3** Delete `src/checkout/composable/EPCheckoutStepIndicator.tsx` and `src/checkout/composable/__tests__/EPCheckoutStepIndicator.test.tsx`
-- [ ] **D-3.4** Delete `src/checkout/composable/EPPaymentElements.tsx` and `src/checkout/composable/__tests__/EPPaymentElements.test.tsx`
-- [ ] **D-3.5** Delete `src/checkout/composable/CheckoutContext.tsx`
+- [x] **D-3.1** Deleted `src/checkout/composable/EPCheckoutProvider.tsx` and `__tests__/EPCheckoutProvider.test.tsx`
+- [x] **D-3.2** Deleted `src/checkout/composable/EPCheckoutButton.tsx` and `__tests__/EPCheckoutButton.test.tsx`
+- [x] **D-3.3** Deleted `src/checkout/composable/EPCheckoutStepIndicator.tsx` and `__tests__/EPCheckoutStepIndicator.test.tsx`
+- [x] **D-3.4** Deleted `src/checkout/composable/EPPaymentElements.tsx` and `__tests__/EPPaymentElements.test.tsx`
+- [x] **D-3.5** Deleted `src/checkout/composable/CheckoutContext.tsx`
 
 #### D-4: Component adaptations
-- [ ] **D-4.1** Modify `EPOrderTotalsBreakdown.tsx`: add fallback to read from `checkoutSession.totals` DataProvider (in addition to existing `checkoutData.summary` and `checkoutCartData` reads)
+- [x] **D-4.1** Modified `EPOrderTotalsBreakdown.tsx`: reads from `checkoutSession.session.totals` DataProvider, formats cents→currency via `Intl.NumberFormat`, takes priority over `checkoutCartData`
   - **Deps:** A-8.1
 
-- [ ] **D-4.2** Modify `EPShippingMethodSelector.tsx`: add ability to read `availableShippingRates` from `checkoutSession` DataProvider; `selectMethod(rateId)` refAction calls `updateSession({ selectedShippingRateId })` when session provider present
+- [x] **D-4.2** Modified `EPShippingMethodSelector.tsx`: reads `availableShippingRates` from `checkoutSession` DataProvider when available (skips legacy fetch), `selectMethod(rateId)` calls `updateSession({ selectedShippingRateId })` in session mode
+  - Also modified `EPCheckoutSessionProvider.tsx`: DataProvider now exposes `updateSession` and `calculateShipping` callbacks alongside session data
   - **Deps:** A-8.1
 
-- [ ] **D-4.3** Form field compatibility: adapt EPCustomerInfoFields, EPShippingAddressFields, EPBillingAddressFields to also read initial values from `checkoutSession.customerInfo` / `checkoutSession.shippingAddress` / `checkoutSession.billingAddress` when `checkoutData` DataProvider is absent (SG-1). This ensures form fields pre-populate after page refresh in session mode.
-  - **Deps:** A-8.1, D-3.1 (EPCheckoutProvider deleted, so `checkoutData` no longer available)
+- [x] **D-4.3** Form field compatibility: adapted EPCustomerInfoFields (splits session `name` into firstName/lastName), EPShippingAddressFields, EPBillingAddressFields to read initial values from `checkoutSession.session.customerInfo` / `.shippingAddress` / `.billingAddress`
+  - **Deps:** A-8.1, D-3.1
 
 #### D-5: Registration cleanup
-- [ ] **D-5.1** Update `src/checkout/composable/index.ts`: remove deleted component exports (EPCheckoutProvider, EPCheckoutButton, EPCheckoutStepIndicator, EPPaymentElements, CheckoutContext, useCheckoutPaymentContext)
-- [ ] **D-5.2** Update `src/registerCheckout.tsx`: remove registrations for deleted components, add registrations for session components (EPCheckoutSessionProvider, EPCloverPayment, EPCloverCard*, EPStripePayment)
-- [ ] **D-5.3** Verify build passes after deletions (`tsdx build` or equivalent)
-- [ ] **D-5.4** Verify all remaining component tests pass
+- [x] **D-5.1** Updated `src/checkout/composable/index.ts`: removed EPCheckoutProvider, EPCheckoutButton, EPCheckoutStepIndicator, EPPaymentElements, CheckoutContext exports
+- [x] **D-5.2** Updated `src/registerCheckout.tsx`: removed registrations/exports for 5 deleted components
+- [x] **D-5.3** Build verified (tsdx build passes)
+- [x] **D-5.4** All 291 tests pass across 19 suites
 
 #### D-6: Tests
 - [x] **D-6.1** Create `src/checkout/session/__tests__/cart-hash.test.ts` — determinism (same items different order → same hash), different quantities → different hash, empty cart
-- [ ] **D-6.2** Update/verify tests for adapted EPOrderTotalsBreakdown and EPShippingMethodSelector
+- [x] **D-6.2** Updated EPOrderTotalsBreakdown.test.tsx and EPShippingMethodSelector.test.tsx with session-mode tests (mock useSelector pattern: controllable mock fakes for @plasmicapp/host)
 
 **Phase D total: 21 items** (19 implementation + 2 tests)
 

@@ -54,9 +54,9 @@ interface OrderTotalsData {
 export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
   const { children, className, previewState = "auto" } = props;
 
-  // Priority: checkoutData.summary > checkoutCartData > mock
-  const checkoutData = useSelector("checkoutData") as
-    | { summary?: any }
+  // Priority: checkoutSession.totals > checkoutCartData > mock
+  const checkoutSessionCtx = useSelector("checkoutSession") as
+    | { session?: { totals?: { subtotal?: number; tax?: number; shipping?: number; total?: number; currency?: string } } }
     | undefined;
   const checkoutCartData = useSelector("checkoutCartData") as
     | {
@@ -78,9 +78,11 @@ export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
 
   const inEditor = !!usePlasmicCanvasContext();
 
+  const sessionTotals = checkoutSessionCtx?.session?.totals;
+
   const useMock =
     previewState === "withData" ||
-    (previewState === "auto" && !checkoutData?.summary && !checkoutCartData && inEditor);
+    (previewState === "auto" && !sessionTotals && !checkoutCartData && inEditor);
 
   const totalsData = useMemo<OrderTotalsData>(() => {
     if (useMock) {
@@ -88,23 +90,33 @@ export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
       return MOCK_ORDER_TOTALS_DATA;
     }
 
-    // Source 1: checkoutData.summary (from EPCheckoutProvider)
-    const summary = checkoutData?.summary;
-    if (summary) {
+    // Source 1: checkoutSession.totals (from EPCheckoutSessionProvider)
+    if (sessionTotals) {
+      const cur = (sessionTotals.currency ?? "USD").toUpperCase();
+      const fmt = (cents: number) => {
+        try {
+          return new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: cur,
+          }).format(cents / 100);
+        } catch {
+          return `$${(cents / 100).toFixed(2)}`;
+        }
+      };
       return {
-        subtotal: summary.subtotal ?? 0,
-        subtotalFormatted: summary.subtotalFormatted ?? "$0.00",
-        tax: summary.tax ?? 0,
-        taxFormatted: summary.taxFormatted ?? "$0.00",
-        shipping: summary.shipping ?? 0,
-        shippingFormatted: summary.shippingFormatted ?? "TBD",
-        discount: summary.discount ?? 0,
-        discountFormatted: summary.discountFormatted ?? "$0.00",
-        hasDiscount: (summary.discount ?? 0) > 0,
-        total: summary.total ?? 0,
-        totalFormatted: summary.totalFormatted ?? "$0.00",
-        currency: summary.currency ?? "USD",
-        itemCount: summary.itemCount ?? 0,
+        subtotal: sessionTotals.subtotal ?? 0,
+        subtotalFormatted: fmt(sessionTotals.subtotal ?? 0),
+        tax: sessionTotals.tax ?? 0,
+        taxFormatted: fmt(sessionTotals.tax ?? 0),
+        shipping: sessionTotals.shipping ?? 0,
+        shippingFormatted: sessionTotals.shipping != null ? fmt(sessionTotals.shipping) : "TBD",
+        discount: 0,
+        discountFormatted: fmt(0),
+        hasDiscount: false,
+        total: sessionTotals.total ?? 0,
+        totalFormatted: fmt(sessionTotals.total ?? 0),
+        currency: cur,
+        itemCount: 0,
       };
     }
 
@@ -128,12 +140,12 @@ export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
       };
     }
 
-    // Fallback — outside both providers, non-production warning
+    // Fallback — outside providers, non-production warning
     if (typeof process !== "undefined" && process.env?.NODE_ENV !== "production") {
-      log.warn("EPOrderTotalsBreakdown used outside both EPCheckoutProvider and EPCheckoutCartSummary — using mock data");
+      log.warn("EPOrderTotalsBreakdown used outside both EPCheckoutSessionProvider and EPCheckoutCartSummary — using mock data");
     }
     return MOCK_ORDER_TOTALS_DATA;
-  }, [useMock, checkoutData?.summary, checkoutCartData]);
+  }, [useMock, sessionTotals, checkoutCartData]);
 
   return (
     <DataProvider name="orderTotalsData" data={totalsData}>

@@ -219,9 +219,12 @@ export const EPBillingAddressFields = React.forwardRef<
   const billingToggleData = useSelector("billingToggleData") as
     | { isSameAsShipping?: boolean }
     | undefined;
-  const checkoutData = useSelector("checkoutData") as
-    | { sameAsShipping?: boolean; billingAddress?: Record<string, string> }
+  // Read checkout session for pre-population
+  const checkoutSessionCtx = useSelector("checkoutSession") as
+    | { session?: { billingAddress?: Record<string, string> | null } }
     | undefined;
+
+  const effectiveBillingAddress = checkoutSessionCtx?.session?.billingAddress ?? undefined;
 
   // Shipping address data for mirroring
   const shippingData = useSelector("shippingAddressFieldsData") as
@@ -243,7 +246,6 @@ export const EPBillingAddressFields = React.forwardRef<
   // Determine mirroring state
   const isMirroring =
     billingToggleData?.isSameAsShipping ??
-    checkoutData?.sameAsShipping ??
     true; // default to same-as-shipping
 
   // When mirroring, expose shipping data directly
@@ -290,7 +292,7 @@ export const EPBillingAddressFields = React.forwardRef<
     <EPBillingAddressFieldsRuntime
       ref={ref}
       className={className}
-      checkoutData={checkoutData}
+      checkoutData={effectiveBillingAddress ? { billingAddress: effectiveBillingAddress } : undefined}
       inEditor={inEditor}
     >
       {children}

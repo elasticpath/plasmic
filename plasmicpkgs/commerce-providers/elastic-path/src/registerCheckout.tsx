@@ -8,15 +8,11 @@ import { registerEPCheckoutCartSummary } from "./checkout/composable/EPCheckoutC
 import { registerEPPromoCodeInput } from "./checkout/composable/EPPromoCodeInput";
 import { registerEPCountrySelect } from "./checkout/composable/EPCountrySelect";
 import { registerEPBillingAddressToggle } from "./checkout/composable/EPBillingAddressToggle";
-import { registerEPCheckoutProvider } from "./checkout/composable/EPCheckoutProvider";
-import { registerEPCheckoutStepIndicator } from "./checkout/composable/EPCheckoutStepIndicator";
-import { registerEPCheckoutButton } from "./checkout/composable/EPCheckoutButton";
 import { registerEPOrderTotalsBreakdown } from "./checkout/composable/EPOrderTotalsBreakdown";
 import { registerEPCustomerInfoFields } from "./checkout/composable/EPCustomerInfoFields";
 import { registerEPShippingAddressFields } from "./checkout/composable/EPShippingAddressFields";
 import { registerEPBillingAddressFields } from "./checkout/composable/EPBillingAddressFields";
 import { registerEPShippingMethodSelector } from "./checkout/composable/EPShippingMethodSelector";
-import { registerEPPaymentElements } from "./checkout/composable/EPPaymentElements";
 import { registerEPCheckoutSessionProvider } from "./checkout/session/EPCheckoutSessionProvider";
 import { registerEPCloverPayment } from "./checkout/session/EPCloverPayment";
 import { registerEPCloverCardNumber } from "./checkout/session/EPCloverCardNumber";
@@ -41,16 +37,10 @@ export function registerEPCheckout(loader?: Registerable) {
   registerEPCountrySelect(loader);
   registerEPBillingAddressToggle(loader);
   registerEPOrderTotalsBreakdown(loader);
-  registerEPCheckoutButton(loader);
-  registerEPCheckoutStepIndicator(loader);
   registerEPCustomerInfoFields(loader);
   registerEPShippingAddressFields(loader);
   registerEPBillingAddressFields(loader);
   registerEPShippingMethodSelector(loader);
-  registerEPPaymentElements(loader);
-
-  // Composable checkout provider (registered last — parent of leaf components)
-  registerEPCheckoutProvider(loader);
 
   // Session-based checkout components (leaf-first)
   registerEPCloverCardNumber(loader);
@@ -74,15 +64,11 @@ export {
   registerEPPromoCodeInput,
   registerEPCountrySelect,
   registerEPBillingAddressToggle,
-  registerEPCheckoutProvider,
-  registerEPCheckoutStepIndicator,
-  registerEPCheckoutButton,
   registerEPOrderTotalsBreakdown,
   registerEPCustomerInfoFields,
   registerEPShippingAddressFields,
   registerEPBillingAddressFields,
   registerEPShippingMethodSelector,
-  registerEPPaymentElements,
   registerEPCheckoutSessionProvider,
   registerEPCloverPayment,
   registerEPCloverCardNumber,
@@ -124,15 +110,6 @@ export {
   epBillingAddressToggleMeta,
 } from "./checkout/composable/EPBillingAddressToggle";
 export {
-  epCheckoutProviderMeta,
-} from "./checkout/composable/EPCheckoutProvider";
-export {
-  epCheckoutStepIndicatorMeta,
-} from "./checkout/composable/EPCheckoutStepIndicator";
-export {
-  epCheckoutButtonMeta,
-} from "./checkout/composable/EPCheckoutButton";
-export {
   epOrderTotalsBreakdownMeta,
 } from "./checkout/composable/EPOrderTotalsBreakdown";
 export {
@@ -147,9 +124,6 @@ export {
 export {
   epShippingMethodSelectorMeta,
 } from "./checkout/composable/EPShippingMethodSelector";
-export {
-  epPaymentElementsMeta,
-} from "./checkout/composable/EPPaymentElements";
 export {
   epCheckoutSessionProviderMeta,
 } from "./checkout/session/EPCheckoutSessionProvider";

@@ -188,8 +188,10 @@ const EPCheckoutSessionRuntime = React.forwardRef<
       session,
       isLoading,
       error: error?.message ?? null,
+      updateSession: updateSessionFn,
+      calculateShipping: calcShippingFn,
     }),
-    [session, isLoading, error]
+    [session, isLoading, error, updateSessionFn, calcShippingFn]
   );
 
   return (

@@ -116,15 +116,29 @@ export const EPCustomerInfoFields = React.forwardRef<
 
   const inEditor = !!usePlasmicCanvasContext();
 
-  // Read checkout context for pre-population
-  const checkoutData = useSelector("checkoutData") as
-    | { customerInfo?: { firstName?: string; lastName?: string; email?: string } }
+  // Read checkout session context for pre-population
+  const checkoutSessionCtx = useSelector("checkoutSession") as
+    | { session?: { customerInfo?: { name?: string; email?: string } } }
     | undefined;
+
+  // Derive customerInfo from session (split name into first/last)
+  const sessionCustomerInfo = useMemo(() => {
+    const ci = checkoutSessionCtx?.session?.customerInfo;
+    if (!ci) return undefined;
+    const parts = (ci.name ?? "").split(/\s+/);
+    return {
+      firstName: parts[0] ?? "",
+      lastName: parts.slice(1).join(" "),
+      email: ci.email ?? "",
+    };
+  }, [checkoutSessionCtx?.session?.customerInfo]);
+
+  const effectiveCustomerInfo = sessionCustomerInfo;
 
   // Design-time preview
   const useMock =
     previewState !== "auto" ||
-    (inEditor && !checkoutData?.customerInfo);
+    (inEditor && !effectiveCustomerInfo);
 
   if (useMock && previewState !== "auto") {
     const mockData = MOCK_MAP[previewState] ?? MOCK_MAP.empty;
@@ -142,7 +156,7 @@ export const EPCustomerInfoFields = React.forwardRef<
     <EPCustomerInfoFieldsRuntime
       ref={ref}
       className={className}
-      checkoutData={checkoutData}
+      checkoutData={effectiveCustomerInfo ? { customerInfo: effectiveCustomerInfo } : undefined}
       inEditor={inEditor}
     >
       {children}
@@ -249,7 +263,7 @@ const EPCustomerInfoFieldsRuntime = React.forwardRef<
   );
 
   // In editor with no context and auto mode — show empty mock
-  if (inEditor && !checkoutData?.customerInfo) {
+  if (inEditor && !initial) {
     return (
       <DataProvider name="customerInfoFieldsData" data={MOCK_CUSTOMER_INFO_EMPTY}>
         <div className={className} data-ep-customer-info-fields="">

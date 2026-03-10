@@ -187,13 +187,16 @@ export const EPShippingAddressFields = React.forwardRef<
 
   const inEditor = !!usePlasmicCanvasContext();
 
-  const checkoutData = useSelector("checkoutData") as
-    | { shippingAddress?: Record<string, string> }
+  // Read checkout session for pre-population
+  const checkoutSessionCtx = useSelector("checkoutSession") as
+    | { session?: { shippingAddress?: Record<string, string> | null } }
     | undefined;
+
+  const effectiveAddress = checkoutSessionCtx?.session?.shippingAddress ?? undefined;
 
   const useMock =
     previewState !== "auto" ||
-    (inEditor && !checkoutData?.shippingAddress);
+    (inEditor && !effectiveAddress);
 
   if (useMock && previewState !== "auto") {
     const mockData = MOCK_MAP[previewState] ?? MOCK_MAP.empty;
@@ -211,7 +214,7 @@ export const EPShippingAddressFields = React.forwardRef<
       ref={ref}
       className={className}
       showPhoneField={showPhoneField}
-      checkoutData={checkoutData}
+      checkoutData={effectiveAddress ? { shippingAddress: effectiveAddress } : undefined}
       inEditor={inEditor}
     >
       {children}
@@ -338,7 +341,7 @@ const EPShippingAddressFieldsRuntime = React.forwardRef<
   );
 
   // In editor with no context — show empty mock
-  if (inEditor && !checkoutData?.shippingAddress) {
+  if (inEditor && !initial) {
     return (
       <DataProvider name="shippingAddressFieldsData" data={MOCK_SHIPPING_ADDRESS_EMPTY}>
         <div className={className} data-ep-shipping-address-fields="">

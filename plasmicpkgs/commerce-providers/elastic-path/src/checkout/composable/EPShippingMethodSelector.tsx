@@ -73,12 +73,26 @@ export const EPShippingMethodSelector = React.forwardRef<
 
   const inEditor = !!usePlasmicCanvasContext();
 
-  // Read checkout context for shipping rate selection
-  const checkoutData = useSelector("checkoutData") as
-    | { selectedShippingRate?: { id?: string } }
+  // Read checkout session context (session-based flow)
+  const checkoutSessionCtx = useSelector("checkoutSession") as
+    | {
+        session?: {
+          availableShippingRates?: Array<{
+            id: string;
+            name: string;
+            amount: number;
+            currency: string;
+            deliveryTime?: string;
+            carrier?: string;
+            serviceLevel?: string;
+          }>;
+          selectedShippingRateId?: string | null;
+        };
+        updateSession?: (data: Record<string, unknown>) => Promise<void>;
+      }
     | undefined;
 
-  // Read shipping address to trigger rate fetch
+  // Read shipping address to trigger rate fetch (legacy composable flow)
   const shippingAddress = useSelector("shippingAddressFieldsData") as
     | {
         isValid?: boolean;
@@ -91,8 +105,10 @@ export const EPShippingMethodSelector = React.forwardRef<
       }
     | undefined;
 
+  const hasSessionRates = !!(checkoutSessionCtx?.session?.availableShippingRates?.length);
+
   // Design-time preview
-  if (previewState !== "auto" || (inEditor && !checkoutData)) {
+  if (previewState !== "auto" || (inEditor && !checkoutSessionCtx && !shippingAddress)) {
     const effectivePreview = previewState === "auto" ? "withRates" : previewState;
 
     if (effectivePreview === "loading") {
@@ -141,7 +157,7 @@ export const EPShippingMethodSelector = React.forwardRef<
     <EPShippingMethodSelectorRuntime
       ref={ref}
       className={className}
-      checkoutData={checkoutData}
+      checkoutSessionCtx={checkoutSessionCtx}
       shippingAddress={shippingAddress}
       loadingContent={loadingContent}
       emptyContent={emptyContent}
@@ -159,7 +175,21 @@ interface RuntimeProps {
   loadingContent?: React.ReactNode;
   emptyContent?: React.ReactNode;
   className?: string;
-  checkoutData?: { selectedShippingRate?: { id?: string } };
+  checkoutSessionCtx?: {
+    session?: {
+      availableShippingRates?: Array<{
+        id: string;
+        name: string;
+        amount: number;
+        currency: string;
+        deliveryTime?: string;
+        carrier?: string;
+        serviceLevel?: string;
+      }>;
+      selectedShippingRateId?: string | null;
+    };
+    updateSession?: (data: Record<string, unknown>) => Promise<void>;
+  };
   shippingAddress?: {
     isValid?: boolean;
     firstName?: string;
@@ -180,24 +210,49 @@ const EPShippingMethodSelectorRuntime = React.forwardRef<
     loadingContent,
     emptyContent,
     className,
-    checkoutData,
+    checkoutSessionCtx,
     shippingAddress,
   } = props;
 
-  const [rates, setRates] = useState<ShippingMethod[]>([]);
+  const sessionRates = checkoutSessionCtx?.session?.availableShippingRates;
+  const useSessionMode = !!(sessionRates && sessionRates.length > 0);
+
+  const [fetchedRates, setFetchedRates] = useState<ShippingMethod[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(
-    checkoutData?.selectedShippingRate?.id ?? null
+    checkoutSessionCtx?.session?.selectedShippingRateId ?? null
   );
 
-  // Fetch shipping rates when address is valid
+  // Session mode: derive rates from checkoutSession.availableShippingRates
+  const sessionDerivedRates = useMemo<ShippingMethod[]>(() => {
+    if (!sessionRates) return [];
+    const cur = (sessionRates[0]?.currency ?? "USD").toUpperCase();
+    const fmt = (cents: number) => {
+      try {
+        return new Intl.NumberFormat("en-US", { style: "currency", currency: cur }).format(cents / 100);
+      } catch {
+        return `$${(cents / 100).toFixed(2)}`;
+      }
+    };
+    return sessionRates.map((r) => ({
+      id: r.id,
+      name: r.name,
+      price: r.amount,
+      priceFormatted: fmt(r.amount),
+      estimatedDays: r.deliveryTime ?? "",
+      carrier: r.carrier ?? "",
+      isSelected: false,
+    }));
+  }, [sessionRates]);
+
+  // Legacy mode: fetch shipping rates when address is valid
   useEffect(() => {
+    if (useSessionMode) return; // skip fetch in session mode
     if (!shippingAddress?.isValid) return;
 
     let cancelled = false;
     setIsLoading(true);
 
-    // Use fetch directly — the API route handles cart identity from cookie
     fetch("/api/checkout/calculate-shipping", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -216,7 +271,7 @@ const EPShippingMethodSelectorRuntime = React.forwardRef<
       .then((res) => res.json())
       .then((data) => {
         if (cancelled) return;
-        const fetchedRates: ShippingMethod[] = (
+        const rates: ShippingMethod[] = (
           data?.data?.shippingRates ?? []
         ).map((r: any) => ({
           id: r.id ?? r.name,
@@ -227,13 +282,13 @@ const EPShippingMethodSelectorRuntime = React.forwardRef<
           carrier: r.carrier ?? "",
           isSelected: false,
         }));
-        setRates(fetchedRates);
+        setFetchedRates(rates);
         setIsLoading(false);
       })
       .catch((err) => {
         if (cancelled) return;
         log.warn("Failed to fetch shipping rates:", err);
-        setRates([]);
+        setFetchedRates([]);
         setIsLoading(false);
       });
 
@@ -241,6 +296,7 @@ const EPShippingMethodSelectorRuntime = React.forwardRef<
       cancelled = true;
     };
   }, [
+    useSessionMode,
     shippingAddress?.isValid,
     shippingAddress?.line1,
     shippingAddress?.city,
@@ -248,11 +304,27 @@ const EPShippingMethodSelectorRuntime = React.forwardRef<
     shippingAddress?.country,
   ]);
 
+  // Sync selectedId from session
+  useEffect(() => {
+    if (useSessionMode && checkoutSessionCtx?.session?.selectedShippingRateId) {
+      setSelectedId(checkoutSessionCtx.session.selectedShippingRateId);
+    }
+  }, [useSessionMode, checkoutSessionCtx?.session?.selectedShippingRateId]);
+
   const selectMethod = useCallback((rateId: string) => {
     setSelectedId(rateId);
-  }, []);
+    // In session mode, also update the server session
+    if (checkoutSessionCtx?.updateSession) {
+      checkoutSessionCtx.updateSession({ selectedShippingRateId: rateId }).catch((err) => {
+        log.warn("Failed to update session with selected shipping rate:", err);
+      });
+    }
+  }, [checkoutSessionCtx]);
 
   useImperativeHandle(ref, () => ({ selectMethod }), [selectMethod]);
+
+  // Choose rate source: session or fetched
+  const rates = useSessionMode ? sessionDerivedRates : fetchedRates;
 
   // Apply selection state to rates
   const ratesWithSelection = useMemo(
