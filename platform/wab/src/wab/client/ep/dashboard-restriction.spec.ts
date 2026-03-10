@@ -1,5 +1,7 @@
 import { DevFlagsType } from "@/wab/shared/devflags";
 import {
+  clearOverrideCookie,
+  hasOverrideCookie,
   isDashboardRestricted,
   redirectToDashboard,
   shouldHideForRestrictedUser,
@@ -16,6 +18,11 @@ function makeAppConfig(
     ...overrides,
   } as DevFlagsType;
 }
+
+// Clear override cookie between all tests so side-effects don't leak
+afterEach(() => {
+  document.cookie = "plasmic_admin_override=;path=/;max-age=0";
+});
 
 describe("isDashboardRestricted", () => {
   it("returns false when hideDashboardViews is false", () => {
@@ -44,6 +51,8 @@ describe("isDashboardRestricted", () => {
       adminDashboardOverrideParam: "epAdmin",
     });
     expect(isDashboardRestricted(config, "?epAdmin=true")).toBe(false);
+    // Clear cookie set by the above call so we can test the wrong param name
+    clearOverrideCookie();
     expect(isDashboardRestricted(config, "?adminDashboard=true")).toBe(true);
   });
 
@@ -65,17 +74,6 @@ describe("isDashboardRestricted", () => {
     expect(isDashboardRestricted(config, "?adminDashboard=true")).toBe(false);
   });
 
-  it("returns false when escape hatch is inside continueTo param", () => {
-    const config = makeAppConfig({ hideDashboardViews: true });
-    expect(
-      isDashboardRestricted(config, "?continueTo=%2F%3FadminDashboard%3Dtrue")
-    ).toBe(false);
-  });
-
-  it("returns true when continueTo has no query string", () => {
-    const config = makeAppConfig({ hideDashboardViews: true });
-    expect(isDashboardRestricted(config, "?continueTo=%2F")).toBe(true);
-  });
 });
 
 describe("redirectToDashboard", () => {
@@ -225,14 +223,40 @@ describe("shouldRedirectAuthRoute", () => {
       shouldRedirectAuthRoute(restrictedConfig, "/login/callback", "")
     ).toBe(true);
   });
+});
 
-  it("does not redirect when escape hatch is inside continueTo param", () => {
-    expect(
-      shouldRedirectAuthRoute(
-        restrictedConfig,
-        "/login",
-        "?continueTo=%2F%3FadminDashboard%3Dtrue"
-      )
-    ).toBe(false);
+describe("override cookie persistence", () => {
+  beforeEach(() => {
+    document.cookie = "plasmic_admin_override=;path=/;max-age=0";
+  });
+
+  it("isDashboardRestricted returns false when override cookie is set", () => {
+    document.cookie = "plasmic_admin_override=true;path=/;SameSite=Lax";
+    const config = makeAppConfig({ hideDashboardViews: true });
+    expect(isDashboardRestricted(config, "")).toBe(false);
+  });
+
+  it("param detection sets the override cookie", () => {
+    const config = makeAppConfig({ hideDashboardViews: true });
+    expect(hasOverrideCookie()).toBe(false);
+    isDashboardRestricted(config, "?adminDashboard=true");
+    expect(hasOverrideCookie()).toBe(true);
+  });
+
+  it("clearOverrideCookie makes isDashboardRestricted return true again", () => {
+    document.cookie = "plasmic_admin_override=true;path=/;SameSite=Lax";
+    const config = makeAppConfig({ hideDashboardViews: true });
+    expect(isDashboardRestricted(config, "")).toBe(false);
+    clearOverrideCookie();
+    expect(isDashboardRestricted(config, "")).toBe(true);
+  });
+
+  it("hasOverrideCookie returns false when cookie is absent", () => {
+    expect(hasOverrideCookie()).toBe(false);
+  });
+
+  it("hasOverrideCookie returns true when cookie is present", () => {
+    document.cookie = "plasmic_admin_override=true;path=/;SameSite=Lax";
+    expect(hasOverrideCookie()).toBe(true);
   });
 });

@@ -4,25 +4,37 @@ import { DevFlagsType } from "@/wab/shared/devflags";
  * EP Studio lockdown — redirects dashboard and auth routes to Commerce Manager
  * when `hideDashboardViews` devflag is enabled. Any user can bypass via the
  * escape-hatch query param (default `?adminDashboard=true`).
+ *
+ * The override is persisted in a session cookie so it survives internal
+ * redirects (login flow, / → /projects).
  */
+
+const OVERRIDE_COOKIE = "plasmic_admin_override";
+
+function setOverrideCookie(): void {
+  document.cookie = `${OVERRIDE_COOKIE}=true;path=/;SameSite=Lax`;
+}
+
+export function clearOverrideCookie(): void {
+  document.cookie = `${OVERRIDE_COOKIE}=;path=/;max-age=0`;
+}
+
+export function hasOverrideCookie(): boolean {
+  return document.cookie
+    .split(";")
+    .some((c) => c.trim() === `${OVERRIDE_COOKIE}=true`);
+}
 
 function hasEscapeHatch(appConfig: DevFlagsType, locationSearch: string): boolean {
   const paramName = appConfig.adminDashboardOverrideParam || "adminDashboard";
   const params = new URLSearchParams(locationSearch);
+
   if (params.get(paramName) === "true") {
+    setOverrideCookie();
     return true;
   }
-  // Check inside continueTo param — the escape hatch gets encoded there
-  // when redirecting unauthenticated users to the login page.
-  const continueTo = params.get("continueTo");
-  if (continueTo) {
-    const qIdx = continueTo.indexOf("?");
-    if (qIdx !== -1) {
-      const innerParams = new URLSearchParams(continueTo.substring(qIdx));
-      return innerParams.get(paramName) === "true";
-    }
-  }
-  return false;
+
+  return hasOverrideCookie();
 }
 
 /** True when dashboard routes should be locked down. */
