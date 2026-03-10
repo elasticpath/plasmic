@@ -38,6 +38,7 @@ import { REAL_PLUME_VERSION } from "@/wab/server/pkg-mgr/plume-pkg-mgr";
 import { mkApiDataSource } from "@/wab/server/routes/data-source";
 import { checkEtagSkippable } from "@/wab/server/routes/loader";
 import { moveBundleAssetsToS3 } from "@/wab/server/routes/moveAssetsToS3";
+import { filterProjectsByKind } from "@/wab/server/routes/project-kind-filter";
 import {
   maybeTriggerPaywall,
   passPaywall,
@@ -232,12 +233,13 @@ export async function listProjects(req: Request, res: Response) {
 
   const data = parseQueryParams(req) as ProjectsRequest;
 
-  const projects =
+  const allProjects =
     data.query === "byIds"
       ? await mgr.getProjectsById(data.projectIds)
       : data.query === "byWorkspace"
       ? await mgr.getProjectsByWorkspaces([data.workspaceId])
       : await mgr.listProjectsForSelf();
+  const projects = filterProjectsByKind(allProjects, data.excludeKinds);
 
   const privateProjsIds = projects
     .filter((project) => !project.readableByPublic)

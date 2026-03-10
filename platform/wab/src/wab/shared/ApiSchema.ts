@@ -105,6 +105,12 @@ export interface ProjectExtraData {
    * Allow robots to crawl the site. If undefined, robots aren't allowed.
    */
   allowRobots?: boolean;
+
+  /**
+   * Categorizes the project (e.g., "commerce-manager"). If undefined,
+   * the project is treated as a standard project.
+   */
+  projectKind?: string;
 }
 
 export interface ApiEntityBase<IdType extends string = string> {
@@ -440,9 +446,9 @@ export interface UpdateSelfAdminModeRequest {
 export type ProjectsRequest = MakeADT<
   "query",
   {
-    all: object;
-    byIds: { projectIds: string[] };
-    byWorkspace: { workspaceId: WorkspaceId };
+    all: { excludeKinds?: string };
+    byIds: { projectIds: string[]; excludeKinds?: string };
+    byWorkspace: { workspaceId: WorkspaceId; excludeKinds?: string };
   }
 >;
 

@@ -35,6 +35,7 @@ import {
 import { createRateLimiter } from "@/wab/server/rate-limit";
 import { cmCors, cmCorsPreflight, isCmOriginAllowed } from "@/wab/server/cm-cors";
 import * as adminRoutes from "@/wab/server/routes/admin";
+import * as projectProvisioningRoutes from "@/wab/server/routes/project-provisioning";
 import * as provisioningRoutes from "@/wab/server/routes/provisioning";
 import {
   getAnalyticsBillingInfoForTeam,
@@ -1878,6 +1879,11 @@ export function addMainAppServerRoutes(
     "/api/v1/provision/workspaces/:workspaceId/users",
     passport.authenticate('provision-jwt', { session: false }),
     withNext(provisioningRoutes.grantWorkspaceUserPermissions)
+  );
+  app.post(
+    "/api/v1/provision/workspaces/:workspaceId/projects",
+    passport.authenticate('provision-jwt', { session: false }),
+    withNext(projectProvisioningRoutes.provisionProject)
   );
 
   /**

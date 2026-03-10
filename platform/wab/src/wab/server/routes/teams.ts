@@ -4,6 +4,7 @@ import { sendShareEmail } from "@/wab/server/emails/share-email";
 import { Project, Team, Workspace } from "@/wab/server/entities/Entities";
 import { isTeamOnFreeTrial } from "@/wab/server/freeTrial";
 import { customCreateTeam } from "@/wab/server/routes/custom-routes";
+import { filterProjectsByKind } from "@/wab/server/routes/project-kind-filter";
 import { mkApiProject } from "@/wab/server/routes/projects";
 import { getPromotionCodeCookie } from "@/wab/server/routes/promo-code";
 import {
@@ -499,7 +500,9 @@ export async function getTeamProjects(req: Request, res: Response) {
     `User does not have access to team or any of its workspaces.`
   );
 
-  const projects = await userMgr.getAffiliatedProjects(teamId);
+  const allProjects = await userMgr.getAffiliatedProjects(teamId);
+  const excludeKinds = req.query.excludeKinds as string | undefined;
+  const projects = filterProjectsByKind(allProjects, excludeKinds);
   const projectPerms = await userMgr.getPermissionsForProjects(
     projects.map((project) => project.id),
     true
