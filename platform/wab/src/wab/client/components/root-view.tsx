@@ -59,6 +59,7 @@ import { CmsDatabaseId } from "@/wab/shared/ApiSchema";
 import { FastBundler } from "@/wab/shared/bundler";
 import { ensure, hackyCast, spawn } from "@/wab/shared/common";
 import { isAdminTeamEmail } from "@/wab/shared/devflag-utils";
+import { AdminOverrideBanner } from "@/wab/client/ep/AdminOverrideBanner";
 import {
   isDashboardRestricted,
   redirectToDashboard,
@@ -136,6 +137,7 @@ function LoggedInContainer(props: LoggedInContainerProps) {
       }
     >
       <IntroSplash />
+      <AdminOverrideBanner />
       {!selfInfo ? (
         // Not logged in users
         <Switch>
