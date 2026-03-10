@@ -28,3 +28,7 @@ export type {
   CloverConstructor,
   Clover3DSUtil,
 } from "./clover-types";
+
+// Stripe adapter
+export { createStripeAdapter } from "./stripe-adapter";
+export type { StripeAdapterConfig } from "./stripe-adapter";

@@ -1,6 +1,6 @@
 # Implementation Plan
 
-**Last updated:** 2026-03-10 (rev 5 — Phase B complete)
+**Last updated:** 2026-03-10 (rev 6 — Phase C complete)
 **Branch:** `feat/server-cart-shopper-context`
 **Focus:** Checkout session model — server-authoritative session, payment adapters, gateway components
 
@@ -10,9 +10,10 @@
 |----------|-------|
 | Active specs | 5 (checkout-session-*) |
 | Total items to implement | 78 |
-| Completed items | 45 |
+| Completed items | 53 |
 
 ### Recent Completions
+- **Phase C complete** (2026-03-10): All 8 items implemented + tested. 2 test files, 22 new tests.
 - **Phase B complete** (2026-03-10): All 16 items implemented + tested. 3 test files, 34 new tests.
 - **Phase A complete** (2026-03-10): All 27 items implemented + tested. 8 test files, 157 new tests.
 - **D-1.1 + D-6.1** (cart-hash) completed early — required by A-4.5 pay.ts.
@@ -23,6 +24,11 @@
 - **esbuild mock pattern**: use jest.mock() at top, then require() to get mocked refs (same as Phase A handlers).
 - **Session exports expanded** in session/index.ts — all Clover components, context, singletons, and adapter exports added.
 - **Build note**: tsdx's rollup-plugin-typescript2 does NOT support inline `type` imports (`import { Foo, type Bar }`). Use separate `import type { Bar }` statements. Fixed in EPCheckoutSessionProvider.tsx and all Clover components.
+- **Stripe adapter uses `require('stripe')` lazily** inside the factory function to avoid pulling the Node.js server-side SDK into client bundles. tsdx externalizes dependencies, but consumer bundlers would resolve top-level imports.
+- **`jest.mock("stripe", ..., { virtual: true })`** needed because `stripe` may not be physically installed in the monorepo dev environment. Virtual mocks let Jest mock modules that don't exist on disk.
+- **EPStripePayment uses `useCheckoutSession(apiBaseUrl)` internally** — SWR deduplicates by key, so it shares cache with EPCheckoutSessionProvider. This lets the component call confirmPayment after stripe.confirmPayment succeeds. Tests mock `../use-checkout-session` directly instead of SWR.
+- **EPStripePayment exposes `submitPayment` refAction** for the designer to wire to a "Pay" button. The refAction calls stripe.confirmPayment() then hook.confirmPayment({ paymentIntentId }).
+- **jest.config.checkout.js** is the correct test config for all checkout/session tests (testEnvironment: jsdom, setup file). NOT the root jest.config.js.
 
 ## Active Spec Status
 
@@ -30,7 +36,7 @@
 |------|-------|--------|
 | `checkout-session-foundation.md` | A | Complete |
 | `checkout-session-clover.md` | B | Complete |
-| `checkout-session-stripe.md` | C | Pending |
+| `checkout-session-stripe.md` | C | Complete |
 | `checkout-session-hardening.md` | D | Pending |
 | `checkout-session-consumer-routes.md` | Consumer | Pending |
 
@@ -404,10 +410,10 @@ All files in `plasmicpkgs/commerce-providers/elastic-path/src/` unless noted oth
 ### Phase C: Stripe Payment Components (checkout-session-stripe.md)
 
 #### C-1: Stripe adapter (server-side)
-- [ ] **C-1.1** Add `stripe` (server-side SDK) to package.json dependencies
+- [x] **C-1.1** Add `stripe` (server-side SDK) to package.json dependencies
   - **No code deps**
 
-- [ ] **C-1.2** Create `src/checkout/session/adapters/stripe-adapter.ts`
+- [x] **C-1.2** Create `src/checkout/session/adapters/stripe-adapter.ts`
   - `stripeAdapter` implementing `PaymentAdapter`
   - `initializePayment()`: creates Stripe PaymentIntent with `automatic_payment_methods: { enabled: true }`, amount from session.totals.total, currency from session.totals.currency, metadata `{ epOrderId }`
     - Returns `status: "ready"`, `clientToken: paymentIntent.client_secret`, `gatewayMetadata: { paymentIntentId }`
@@ -419,7 +425,7 @@ All files in `plasmicpkgs/commerce-providers/elastic-path/src/` unless noted oth
   - **Deps:** A-1.1, C-1.1
 
 #### C-2: Stripe client component
-- [ ] **C-2.1** Create `src/checkout/session/EPStripePayment.tsx`
+- [x] **C-2.1** Create `src/checkout/session/EPStripePayment.tsx`
   - Props: `children?` (slot), `publishableKey`, `appearance?` (Stripe Elements theme), `layout?` ("tabs" | "accordion"), `className?`, `previewState?`
   - DataProvider `"stripePaymentData"`: `{ isReady, isProcessing, error, paymentMethodType }`
   - Registers gateway "stripe" with EPCheckoutSessionProvider via PaymentRegistrationContext
@@ -433,18 +439,18 @@ All files in `plasmicpkgs/commerce-providers/elastic-path/src/` unless noted oth
   - **Deps:** A-8.1, A-6.1, existing Stripe deps
 
 #### C-3: Integration
-- [ ] **C-3.1** Register Stripe adapter in adapter registry (export from `src/checkout/session/adapters/index.ts`)
+- [x] **C-3.1** Register Stripe adapter in adapter registry (export from `src/checkout/session/adapters/index.ts`)
   - **Deps:** C-1.2, A-3.1
 
-- [ ] **C-3.2** Register EPStripePayment in `src/registerCheckout.tsx`
+- [x] **C-3.2** Register EPStripePayment in `src/registerCheckout.tsx`
   - **Deps:** C-2.1
 
-- [ ] **C-3.3** Verify `@stripe/stripe-js` and `@stripe/react-stripe-js` in peerDependencies (they're currently in dependencies — may move to peerDependencies if Phase D removes the old EPPaymentElements that bundled them)
+- [x] **C-3.3** Verify `@stripe/stripe-js` and `@stripe/react-stripe-js` in peerDependencies (they're currently in dependencies — may move to peerDependencies if Phase D removes the old EPPaymentElements that bundled them)
   - **Deps:** C-2.1
 
 #### C-4: Tests
-- [ ] **C-4.1** Create `src/checkout/session/__tests__/stripe-adapter.test.ts` — PaymentIntent creation, confirmation, metadata validation, missing API key
-- [ ] **C-4.2** Create `src/checkout/session/__tests__/EPStripePayment.test.tsx` — SDK lazy-load, Elements mount, registration, confirm handler, previewStates
+- [x] **C-4.1** Create `src/checkout/session/__tests__/stripe-adapter.test.ts` — PaymentIntent creation, confirmation, metadata validation, missing API key
+- [x] **C-4.2** Create `src/checkout/session/__tests__/EPStripePayment.test.tsx` — SDK lazy-load, Elements mount, registration, confirm handler, previewStates
 
 **Phase C total: 8 items** (6 implementation + 2 tests)
 

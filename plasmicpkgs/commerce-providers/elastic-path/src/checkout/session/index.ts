@@ -79,9 +79,18 @@ export type { CloverElementsContextValue } from "./clover-context";
 export { getOrCreateCloverInstance, createToken, destroyCloverInstance } from "./clover-singleton";
 export { loadClover3DSSDK, getClover3DSUtil, waitForExecutePatch } from "./clover-3ds-sdk";
 
+// Stripe payment component
+export {
+  EPStripePayment,
+  epStripePaymentMeta,
+  registerEPStripePayment,
+} from "./EPStripePayment";
+
 // Adapters
 export { createCloverAdapter } from "./adapters/clover-adapter";
 export type { CloverAdapterConfig } from "./adapters/clover-adapter";
+export { createStripeAdapter } from "./adapters/stripe-adapter";
+export type { StripeAdapterConfig } from "./adapters/stripe-adapter";
 
 // Types
 export type {

@@ -23,6 +23,7 @@ import { registerEPCloverCardNumber } from "./checkout/session/EPCloverCardNumbe
 import { registerEPCloverCardExpiry } from "./checkout/session/EPCloverCardExpiry";
 import { registerEPCloverCardCVV } from "./checkout/session/EPCloverCardCVV";
 import { registerEPCloverCardPostalCode } from "./checkout/session/EPCloverCardPostalCode";
+import { registerEPStripePayment } from "./checkout/session/EPStripePayment";
 import { Registerable } from "./registerable";
 
 export function registerEPCheckout(loader?: Registerable) {
@@ -57,6 +58,7 @@ export function registerEPCheckout(loader?: Registerable) {
   registerEPCloverCardCVV(loader);
   registerEPCloverCardPostalCode(loader);
   registerEPCloverPayment(loader);
+  registerEPStripePayment(loader);
   registerEPCheckoutSessionProvider(loader);
 }
 
@@ -87,6 +89,7 @@ export {
   registerEPCloverCardExpiry,
   registerEPCloverCardCVV,
   registerEPCloverCardPostalCode,
+  registerEPStripePayment,
 };
 
 // Export component metas for advanced usage
@@ -165,3 +168,6 @@ export {
 export {
   epCloverCardPostalCodeMeta,
 } from "./checkout/session/EPCloverCardPostalCode";
+export {
+  epStripePaymentMeta,
+} from "./checkout/session/EPStripePayment";
