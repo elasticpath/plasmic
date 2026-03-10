@@ -13,6 +13,9 @@ import { registerEPCustomerInfoFields } from "./checkout/composable/EPCustomerIn
 import { registerEPShippingAddressFields } from "./checkout/composable/EPShippingAddressFields";
 import { registerEPBillingAddressFields } from "./checkout/composable/EPBillingAddressFields";
 import { registerEPShippingMethodSelector } from "./checkout/composable/EPShippingMethodSelector";
+import { registerEPCheckoutProvider } from "./checkout/composable/EPCheckoutProvider";
+import { registerEPCheckoutStepIndicator } from "./checkout/composable/EPCheckoutStepIndicator";
+import { registerEPCheckoutButton } from "./checkout/composable/EPCheckoutButton";
 import { registerEPCheckoutSessionProvider } from "./checkout/session/EPCheckoutSessionProvider";
 import { registerEPCloverPayment } from "./checkout/session/EPCloverPayment";
 import { registerEPCloverCardNumber } from "./checkout/session/EPCloverCardNumber";
@@ -42,6 +45,11 @@ export function registerEPCheckout(loader?: Registerable) {
   registerEPBillingAddressFields(loader);
   registerEPShippingMethodSelector(loader);
 
+  // Composable checkout orchestration (leaf-first: children before parent)
+  registerEPCheckoutButton(loader);
+  registerEPCheckoutStepIndicator(loader);
+  registerEPCheckoutProvider(loader);
+
   // Session-based checkout components (leaf-first)
   registerEPCloverCardNumber(loader);
   registerEPCloverCardExpiry(loader);
@@ -69,6 +77,9 @@ export {
   registerEPShippingAddressFields,
   registerEPBillingAddressFields,
   registerEPShippingMethodSelector,
+  registerEPCheckoutProvider,
+  registerEPCheckoutStepIndicator,
+  registerEPCheckoutButton,
   registerEPCheckoutSessionProvider,
   registerEPCloverPayment,
   registerEPCloverCardNumber,
@@ -124,6 +135,15 @@ export {
 export {
   epShippingMethodSelectorMeta,
 } from "./checkout/composable/EPShippingMethodSelector";
+export {
+  epCheckoutProviderMeta,
+} from "./checkout/composable/EPCheckoutProvider";
+export {
+  epCheckoutStepIndicatorMeta,
+} from "./checkout/composable/EPCheckoutStepIndicator";
+export {
+  epCheckoutButtonMeta,
+} from "./checkout/composable/EPCheckoutButton";
 export {
   epCheckoutSessionProviderMeta,
 } from "./checkout/session/EPCheckoutSessionProvider";

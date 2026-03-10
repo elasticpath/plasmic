@@ -1,6 +1,6 @@
 # Implementation Plan
 
-**Last updated:** 2026-03-10 (rev 10 — EP order retry fix)
+**Last updated:** 2026-03-10 (rev 11 — composable checkout spec added)
 **Branch:** `feat/server-cart-shopper-context`
 **Focus:** Checkout session model — server-authoritative session, payment adapters, gateway components
 
@@ -10,10 +10,10 @@
 
 | Category | Count |
 |----------|-------|
-| Active specs | 5 (checkout-session-*) |
-| Total items implemented | 79 / 79 |
-| Test suites | 72 |
-| Total tests | 1,370 |
+| Active specs | 6 (checkout-session-* + composable-checkout) |
+| Total items implemented | 80 / 88 |
+| Test suites | 75 |
+| Total tests | 1,406 |
 | Build verified | 2026-03-10 |
 
 | Spec | Phase | Status |
@@ -23,6 +23,7 @@
 | `checkout-session-stripe.md` | C | Complete |
 | `checkout-session-hardening.md` | D | Complete |
 | `checkout-session-consumer-routes.md` | Consumer | Complete |
+| `composable-checkout.md` | Composable | In Progress |
 
 ---
 
@@ -125,6 +126,7 @@
 - **EP SDK client pattern:** Handlers use `{ settings: { application_id, host } } as any` for the EP client, matching the existing handler pattern. Not `createShopperClient()`.
 - **`EPCloverCardField.tsx`:** Internal shared component created to avoid 4× duplication across card field components. Not referenced in any spec.
 - **EP order retry in `/pay`:** When `session.order` already exists (from a previous failed payment attempt), the handler skips `checkoutApi` and reuses the existing order ID. A new `paymentSetup` (authorize) is still created because the previous authorization may have been voided or expired. The double-submit guard (`session.status !== "open"`) prevents concurrent retries; the `failed` case in the adapter result mapping resets status to `"open"` to enable retries.
+- **`toHaveClass` / `toHaveTextContent` not available:** Root jest config does not include `@testing-library/jest-dom`. Use plain DOM assertions like `element.className.includes()` and `element.textContent` instead.
 
 ---
 
@@ -145,6 +147,38 @@ Items explicitly called out as deferred in the specs or not in scope for this br
 - **Express / Fastify / Hono route examples** — Consumer spec only documents Next.js Pages Router; other framework adapters are mentioned but not implemented
 - **Authentication / rate-limiting middleware for routes** — Consumer route helpers have no auth or rate-limit layer
 - **Server-side payment retry rate limiting** — card testing mitigation (referenced in hardening spec)
+
+---
+
+## Composable Checkout (composable-checkout.md)
+
+**Status:** In Progress — Phase 1 (P0) complete
+
+Replaces deleted orchestration (D-5) with new headless Provider → DataProvider components using `useCheckout()` hook.
+
+### Phase 1 (P0) — 4 Items
+| Item | Description | Status |
+|------|-------------|--------|
+| CC-1.1 | `EPCheckoutProvider` — root orchestrator wrapping `useCheckout()`, 9 refActions, `checkoutData` DataProvider | Complete |
+| CC-1.2 | `EPCheckoutStepIndicator` — 4-step repeater with `currentStep` DataProvider per iteration | Complete |
+| CC-1.3 | `EPCheckoutButton` — step-aware submit/advance button with `checkoutButtonData` DataProvider | Complete |
+| CC-1.4 | `EPOrderTotalsBreakdown` — updated priority-1 source to `checkoutData.summary` | Complete |
+
+### Phase 2 (P1) — 3 Items (updates to existing components)
+| Item | Description | Status |
+|------|-------------|--------|
+| CC-2.1 | `EPCustomerInfoFields` — fix pre-population to read from `shopperContextData` instead of `checkoutSession` | Pending |
+| CC-2.2 | `EPShippingAddressFields` — add `useAccountAddress(addressId)` refAction, add server-side address validation API call | Pending |
+| CC-2.3 | `EPBillingAddressFields` — already aligned, no changes needed | Complete |
+
+### Phase 3 (P2) — 2 Items
+| Item | Description | Status |
+|------|-------------|--------|
+| CC-3.1 | `EPPaymentElements` — Stripe Elements wrapper with `clientSecret` from checkout context, `paymentData` DataProvider | Pending |
+| CC-3.2 | `EPShippingMethodSelector` — update to call `useCheckout().calculateShipping()`, add `parentComponentName`, update `selectMethod` to call parent context | Pending |
+
+### Registration
+All new Phase 1 components registered in `registerCheckout.tsx` in leaf-first order: `EPCheckoutButton` → `EPCheckoutStepIndicator` → `EPCheckoutProvider`.
 
 ---
 

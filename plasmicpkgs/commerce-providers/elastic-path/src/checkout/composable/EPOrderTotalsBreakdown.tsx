@@ -54,7 +54,10 @@ interface OrderTotalsData {
 export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
   const { children, className, previewState = "auto" } = props;
 
-  // Priority: checkoutSession.totals > checkoutCartData > mock
+  // Priority: checkoutData.summary (EPCheckoutProvider) > checkoutSession.totals > checkoutCartData > mock
+  const checkoutData = useSelector("checkoutData") as
+    | { summary?: OrderTotalsData }
+    | undefined;
   const checkoutSessionCtx = useSelector("checkoutSession") as
     | { session?: { totals?: { subtotal?: number; tax?: number; shipping?: number; total?: number; currency?: string } } }
     | undefined;
@@ -78,11 +81,12 @@ export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
 
   const inEditor = !!usePlasmicCanvasContext();
 
+  const composableSummary = checkoutData?.summary;
   const sessionTotals = checkoutSessionCtx?.session?.totals;
 
   const useMock =
     previewState === "withData" ||
-    (previewState === "auto" && !sessionTotals && !checkoutCartData && inEditor);
+    (previewState === "auto" && !composableSummary && !sessionTotals && !checkoutCartData && inEditor);
 
   const totalsData = useMemo<OrderTotalsData>(() => {
     if (useMock) {
@@ -90,7 +94,13 @@ export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
       return MOCK_ORDER_TOTALS_DATA;
     }
 
-    // Source 1: checkoutSession.totals (from EPCheckoutSessionProvider)
+    // Source 1: checkoutData.summary (from EPCheckoutProvider)
+    if (composableSummary) {
+      log.debug("Using checkoutData.summary from EPCheckoutProvider");
+      return composableSummary;
+    }
+
+    // Source 2: checkoutSession.totals (from EPCheckoutSessionProvider)
     if (sessionTotals) {
       const cur = (sessionTotals.currency ?? "USD").toUpperCase();
       const fmt = (cents: number) => {
@@ -120,7 +130,7 @@ export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
       };
     }
 
-    // Source 2: checkoutCartData (from EPCheckoutCartSummary)
+    // Source 3: checkoutCartData (from EPCheckoutCartSummary)
     if (checkoutCartData) {
       const discount = checkoutCartData.promoDiscount ?? 0;
       return {
@@ -145,7 +155,7 @@ export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
       log.warn("EPOrderTotalsBreakdown used outside both EPCheckoutSessionProvider and EPCheckoutCartSummary — using mock data");
     }
     return MOCK_ORDER_TOTALS_DATA;
-  }, [useMock, sessionTotals, checkoutCartData]);
+  }, [useMock, composableSummary, sessionTotals, checkoutCartData]);
 
   return (
     <DataProvider name="orderTotalsData" data={totalsData}>
