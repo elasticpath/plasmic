@@ -1,4 +1,6 @@
 /**
+ * @jest-environment jsdom
+ *
  * A-10.10: useCheckoutSession hook tests
  *
  * Covers: SWR fetch on mount, mutation helpers (createSession, updateSession,
@@ -9,6 +11,9 @@
  * real network requests. The hook is tested via renderHook from
  * @testing-library/react.
  */
+
+// Set up global.fetch as a jest mock before any test code runs
+global.fetch = jest.fn();
 
 // Mock SWR — we need to control what useSWR returns and capture the fetcher
 let mockSWRData: any = undefined;

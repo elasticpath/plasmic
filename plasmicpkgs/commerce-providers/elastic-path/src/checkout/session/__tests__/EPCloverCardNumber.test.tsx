@@ -1,4 +1,6 @@
 /**
+ * @jest-environment jsdom
+ *
  * B-4.3: EPCloverCardNumber component tests
  *
  * Tests card number field rendering: design-time placeholder, outside-context

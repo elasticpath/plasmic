@@ -1,4 +1,6 @@
 /**
+ * @jest-environment jsdom
+ *
  * C-4.2: EPStripePayment component tests
  *
  * Covers: design-time preview states, DataProvider exposure, className

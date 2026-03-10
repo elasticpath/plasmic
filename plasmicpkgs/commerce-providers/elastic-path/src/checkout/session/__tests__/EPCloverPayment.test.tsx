@@ -1,4 +1,6 @@
 /**
+ * @jest-environment jsdom
+ *
  * B-4.2: EPCloverPayment component tests
  *
  * Covers: design-time preview states, gateway registration with

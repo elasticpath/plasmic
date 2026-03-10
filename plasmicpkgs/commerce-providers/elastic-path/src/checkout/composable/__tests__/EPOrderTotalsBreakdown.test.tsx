@@ -1,4 +1,6 @@
 /**
+ * @jest-environment jsdom
+ *
  * EPOrderTotalsBreakdown tests
  *
  * Covers preview states, className, fallback, and session-mode integration

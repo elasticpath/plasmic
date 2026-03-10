@@ -1,4 +1,6 @@
 /**
+ * @jest-environment jsdom
+ *
  * A-10.9: EPCheckoutSessionProvider component tests
  *
  * Covers: mount with children, DataProvider exposure, design-time preview

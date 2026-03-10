@@ -1,4 +1,6 @@
 /**
+ * @jest-environment jsdom
+ *
  * EPShippingMethodSelector tests
  *
  * Covers preview states, className, refActions, and session-mode integration
