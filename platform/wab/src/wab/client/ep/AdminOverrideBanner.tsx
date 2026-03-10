@@ -2,15 +2,19 @@ import React from "react";
 import { clearOverrideCookie, hasOverrideCookie } from "./dashboard-restriction";
 
 const bannerStyle: React.CSSProperties = {
+  position: "fixed",
+  bottom: 8,
+  right: 8,
   display: "flex",
   alignItems: "center",
-  justifyContent: "center",
-  gap: 8,
-  padding: "6px 12px",
+  gap: 6,
+  padding: "3px 10px",
   background: "#fef3c7",
   color: "#92400e",
-  fontSize: 13,
+  fontSize: 11,
   fontWeight: 500,
+  borderRadius: 4,
+  boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
   zIndex: 9999,
 };
 
