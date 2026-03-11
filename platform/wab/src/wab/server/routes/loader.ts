@@ -622,9 +622,19 @@ export async function genLoaderHtmlBundleSandboxed(
   args: Parameters<typeof genLoaderHtmlBundle>[0]
 ) {
   // Acquire semaphore permit to limit concurrent subprocess spawning
+  const queueDepth = htmlPreviewSemaphore.getValue();
+  logger().info("html-preview-semaphore-wait-start", {
+    htmlPreviewQueueDepth: -Math.min(0, queueDepth),
+  });
+  const semaphoreWaitStart = Date.now();
   const [, release] = await htmlPreviewSemaphore.acquire();
+  logger().info("html-preview-semaphore-acquired", {
+    htmlPreviewWaitMs: Date.now() - semaphoreWaitStart,
+    htmlPreviewQueueDepth: -Math.min(0, htmlPreviewSemaphore.getValue()),
+  });
   try {
     const cmd = `node -r esbuild-register src/wab/server/loader/gen-html-bundle.ts`;
+    const renderStart = Date.now();
     const { stdout, stderr, exitCode } =
       process.env.DISABLE_BWRAP === "1"
         ? await execa(
@@ -642,6 +652,10 @@ export async function genLoaderHtmlBundleSandboxed(
             ],
             { reject: false }
           );
+    logger().info("html-preview-subprocess-done", {
+      htmlPreviewRenderMs: Date.now() - renderStart,
+      htmlPreviewExitCode: exitCode,
+    });
     if (stderr.trim().length > 0 && exitCode === 0) {
       logger().error(
         `Sandboxed loader subprocess succeeded with exit code 0 but got unexpected stderr ${stderr}`

@@ -1,4 +1,5 @@
 import { MIGRATION_POOL_NAME } from "@/wab/server/db/DbCon";
+import { logger } from "@/wab/server/observability";
 import { Request, Response } from "express-serve-static-core";
 import { Gauge, Histogram } from "prom-client";
 import { getConnection } from "typeorm";
@@ -114,6 +115,24 @@ export function trackPostgresPool(app: string) {
       }
     },
   });
+
+  setInterval(() => {
+    for (const conName of ["default", MIGRATION_POOL_NAME]) {
+      try {
+        const pool = getPgPool(conName);
+        if (pool.waitingCount > 0) {
+          logger().info("pg-pool-contention", {
+            pgPoolName: conName,
+            pgPoolWaiting: pool.waitingCount,
+            pgPoolTotal: pool.totalCount,
+            pgPoolIdle: pool.idleCount,
+          });
+        }
+      } catch {
+        // Pool may not be initialised yet at startup
+      }
+    }
+  }, 5000);
 }
 
 function getPgPool(conName: string) {

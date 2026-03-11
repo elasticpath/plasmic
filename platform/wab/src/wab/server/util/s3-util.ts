@@ -21,14 +21,22 @@ export async function upsertS3CacheEntry<T>(opts: {
       })
       .promise();
     const serialized = ensureInstance(obj.Body, Buffer).toString("utf8");
-    logger().info(`S3 cache hit for ${bucket} ${key}`);
+    logger().info(`S3 cache hit for ${bucket} ${key}`, {
+      s3CacheResult: "hit",
+      bucket,
+      key,
+    });
     const data = deserialize(serialized);
     return data;
   } catch (err) {
     if (err.code === "TimeoutError") {
       throw err;
     }
-    logger().info(`S3 cache miss for ${bucket} ${key}; computing`);
+    logger().info(`S3 cache miss for ${bucket} ${key}; computing`, {
+      s3CacheResult: "miss",
+      bucket,
+      key,
+    });
     const content = await f();
     const serialized = serialize(content);
     try {
