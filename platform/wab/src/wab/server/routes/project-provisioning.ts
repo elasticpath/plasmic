@@ -10,6 +10,23 @@ export async function provisionProject(req: Request, res: Response) {
 
   logger().info("Provisioning project", { workspaceId, name, projectKind });
 
+  // Idempotency: if a project with this projectKind already exists, return it
+  if (projectKind) {
+    const existing = await mgr.getProjectsByWorkspaces([workspaceId]);
+    const match = existing.find(
+      (p) => p.extraData?.projectKind === projectKind
+    );
+    if (match) {
+      logger().info("Project with kind already exists, returning existing", {
+        projectId: match.id,
+        workspaceId,
+        projectKind,
+      });
+      res.json({ project: mkApiProject(match) });
+      return;
+    }
+  }
+
   const { project } = await mgr.createProject({
     name,
     workspaceId,
