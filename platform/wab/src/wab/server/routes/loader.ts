@@ -622,15 +622,19 @@ export async function genLoaderHtmlBundleSandboxed(
   args: Parameters<typeof genLoaderHtmlBundle>[0]
 ) {
   // Acquire semaphore permit to limit concurrent subprocess spawning
-  const queueDepth = htmlPreviewSemaphore.getValue();
+  const getHtmlPreviewQueueDepth = () =>
+    (htmlPreviewSemaphore["_weightedQueues"] as unknown[][]).reduce(
+      (total, queue) => total + queue.length,
+      0
+    );
   logger().info("html-preview-semaphore-wait-start", {
-    htmlPreviewQueueDepth: -Math.min(0, queueDepth),
+    htmlPreviewQueueDepth: getHtmlPreviewQueueDepth(),
   });
   const semaphoreWaitStart = Date.now();
   const [, release] = await htmlPreviewSemaphore.acquire();
   logger().info("html-preview-semaphore-acquired", {
     htmlPreviewWaitMs: Date.now() - semaphoreWaitStart,
-    htmlPreviewQueueDepth: -Math.min(0, htmlPreviewSemaphore.getValue()),
+    htmlPreviewQueueDepth: getHtmlPreviewQueueDepth(),
   });
   try {
     const cmd = `node -r esbuild-register src/wab/server/loader/gen-html-bundle.ts`;
