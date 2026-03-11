@@ -245,11 +245,17 @@ export class ProjectsSocket {
       selfPlayerId: playerId,
     };
     socket.emit("initServerInfo", initServerInfo);
-    logger().info(
-      `Socket connected for ${getSocketUserName(
+    logger().info("socket-connected", {
+      socketConnections: this.io.sockets.sockets.size,
+      socketUser: getSocketUserName(
         ensure(socket.handshake["user"], "User should not be undefined")
-      )}`
-    );
+      ),
+    });
+    socket.on("disconnect", () => {
+      logger().info("socket-disconnected", {
+        socketConnections: this.io.sockets.sockets.size,
+      });
+    });
   }
 
   private getPlayerId(socket: Socket) {
