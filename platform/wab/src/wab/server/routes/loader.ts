@@ -71,7 +71,6 @@ export function parseHtmlPreviewPoolSize(envValue: string | undefined): number {
 const htmlPreviewSemaphore = new Semaphore(
   parseHtmlPreviewPoolSize(process.env.HTML_PREVIEW_POOL_SIZE)
 );
-let htmlPreviewWaiters = 0;
 
 /**
  * Loader version is used for backwards compatibility (otherwise we could
@@ -623,16 +622,19 @@ export async function genLoaderHtmlBundleSandboxed(
   args: Parameters<typeof genLoaderHtmlBundle>[0]
 ) {
   // Acquire semaphore permit to limit concurrent subprocess spawning
-  htmlPreviewWaiters++;
+  const getHtmlPreviewQueueDepth = () =>
+    (htmlPreviewSemaphore["_weightedQueues"] as unknown[][]).reduce(
+      (total, queue) => total + queue.length,
+      0
+    );
   logger().info("html-preview-semaphore-wait-start", {
-    htmlPreviewQueueDepth: htmlPreviewWaiters,
+    htmlPreviewQueueDepth: getHtmlPreviewQueueDepth(),
   });
   const semaphoreWaitStart = Date.now();
   const [, release] = await htmlPreviewSemaphore.acquire();
-  htmlPreviewWaiters--;
   logger().info("html-preview-semaphore-acquired", {
     htmlPreviewWaitMs: Date.now() - semaphoreWaitStart,
-    htmlPreviewQueueDepth: htmlPreviewWaiters,
+    htmlPreviewQueueDepth: getHtmlPreviewQueueDepth(),
   });
   try {
     const cmd = `node -r esbuild-register src/wab/server/loader/gen-html-bundle.ts`;
