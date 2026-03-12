@@ -4,17 +4,45 @@ import {
   Properties,
 } from "@/wab/shared/observability/Properties";
 import { context, trace } from "@opentelemetry/api";
+import { AsyncLocalStorage } from "async_hooks";
 import pino, { Logger as PinoLog } from "pino";
+
+const requestStorage = new AsyncLocalStorage<{ requestId: string }>();
+
+export function runWithRequestId<T>(requestId: string, fn: () => T): T {
+  return requestStorage.run({ requestId }, fn);
+}
 
 const SERVICE_NAME = process.env.OTEL_SERVICE_NAME || "unknown-service";
 const ENVIRONMENT = process.env.DD_ENV || process.env.NODE_ENV || "development";
 const POD_NAME = process.env.HOSTNAME || "";
 const PINO_LOGGER_LEVEL = process.env.PINO_LOGGER_LEVEL || "debug";
 
+async function resolveTaskId(): Promise<string> {
+  const metadataUri = process.env.ECS_CONTAINER_METADATA_URI_V4;
+  if (!metadataUri) {
+    return "";
+  }
+  try {
+    const res = await fetch(`${metadataUri}/task`);
+    const meta = await res.json();
+    const taskArn: string = meta?.TaskARN ?? "";
+    const taskHash = taskArn.split("/").pop() ?? "";
+    return taskHash ? `${SERVICE_NAME}-${taskHash}` : "";
+  } catch {
+    return "";
+  }
+}
+
+const TASK_ID: Promise<string> = resolveTaskId();
+
 export class PinoLogger implements Logger {
   private readonly pinoLogger: PinoLog;
 
-  constructor(private readonly loggingContext?: Properties) {
+  constructor(
+    private readonly loggingContext?: Properties,
+    taskId?: string
+  ) {
     this.pinoLogger = pino({
       level: PINO_LOGGER_LEVEL,
       formatters: {
@@ -26,9 +54,14 @@ export class PinoLogger implements Logger {
         serviceName: SERVICE_NAME,
         environment: ENVIRONMENT,
         podName: POD_NAME,
+        ...(taskId ? { taskId } : {}),
         ...loggingContext,
       },
     });
+  }
+
+  static async create(loggingContext?: Properties): Promise<PinoLogger> {
+    return new PinoLogger(loggingContext, await TASK_ID);
   }
 
   private log(
@@ -36,8 +69,10 @@ export class PinoLogger implements Logger {
     message: string,
     payload?: Record<string, any>
   ) {
+    const { requestId } = requestStorage.getStore() ?? {};
     const logEntry = {
       message,
+      ...(requestId ? { "x-request-id": requestId } : {}),
       ...payload,
     };
 
