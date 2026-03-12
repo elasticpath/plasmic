@@ -15,33 +15,35 @@ export function runWithRequestId<T>(requestId: string, fn: () => T): T {
 
 const SERVICE_NAME = process.env.OTEL_SERVICE_NAME || "unknown-service";
 const ENVIRONMENT = process.env.DD_ENV || process.env.NODE_ENV || "development";
-const POD_NAME = process.env.HOSTNAME || "";
 const PINO_LOGGER_LEVEL = process.env.PINO_LOGGER_LEVEL || "debug";
 
-async function resolveTaskId(): Promise<string> {
+async function resolvePodName(): Promise<string> {
   const metadataUri = process.env.ECS_CONTAINER_METADATA_URI_V4;
-  if (!metadataUri) {
-    return "";
+  if (metadataUri) {
+    try {
+      const res = await fetch(`${metadataUri}/task`);
+      const meta = await res.json();
+      const taskArn: string = meta?.TaskARN ?? "";
+      const taskFamily: string = meta?.Family ?? "";
+      const taskId = taskArn.split("/").pop() ?? "";
+      if (taskFamily && taskId) {
+        return `${taskFamily}-${taskId}`;
+      }
+    } catch {
+      // fall through to hostname fallback
+    }
   }
-  try {
-    const res = await fetch(`${metadataUri}/task`);
-    const meta = await res.json();
-    const taskArn: string = meta?.TaskARN ?? "";
-    const taskHash = taskArn.split("/").pop() ?? "";
-    return taskHash ? `${SERVICE_NAME}-${taskHash}` : "";
-  } catch {
-    return "";
-  }
+  return process.env.HOSTNAME || "";
 }
 
-const TASK_ID: Promise<string> = resolveTaskId();
+const POD_NAME: Promise<string> = resolvePodName();
 
 export class PinoLogger implements Logger {
   private readonly pinoLogger: PinoLog;
 
   constructor(
     private readonly loggingContext?: Properties,
-    taskId?: string
+    podName?: string
   ) {
     this.pinoLogger = pino({
       level: PINO_LOGGER_LEVEL,
@@ -53,15 +55,14 @@ export class PinoLogger implements Logger {
       base: {
         serviceName: SERVICE_NAME,
         environment: ENVIRONMENT,
-        podName: POD_NAME,
-        ...(taskId ? { taskId } : {}),
+        pod_name: podName,
         ...loggingContext,
       },
     });
   }
 
   static async create(loggingContext?: Properties): Promise<PinoLogger> {
-    return new PinoLogger(loggingContext, await TASK_ID);
+    return new PinoLogger(loggingContext, await POD_NAME);
   }
 
   private log(

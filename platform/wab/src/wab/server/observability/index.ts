@@ -6,7 +6,7 @@ import { Logger } from "@/wab/shared/observability/Logger";
 let loggerInstance: Logger = new PinoLogger();
 
 // Resolve ECS task metadata and upgrade the singleton once available.
-// Logs emitted before resolution omit taskId; all subsequent logs include it.
+// Logs emitted before resolution omit pod_name; all subsequent logs include it.
 PinoLogger.create().then((resolved) => {
   loggerInstance = resolved;
 });
