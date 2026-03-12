@@ -456,7 +456,7 @@ export function addLoggingMiddleware(app: express.Application) {
           requestMethod: req.method,
           requestOriginalUrl: req.originalUrl,
           requestStatusCode: res.statusCode,
-          requestId: req.id,
+          "x-request-id": req.id,
           remoteAddr: req.ip,
           userEmail: req.user?.email,
           referrer: req.get("referrer"),
