@@ -20,7 +20,8 @@ async function resolveTaskId(): Promise<string> {
     const res = await fetch(`${metadataUri}/task`);
     const meta = await res.json();
     const taskArn: string = meta?.TaskARN ?? "";
-    return taskArn.split("/").pop()?.slice(-8) ?? "";
+    const taskHash = taskArn.split("/").pop() ?? "";
+    return taskHash ? `${SERVICE_NAME}-${taskHash}` : "";
   } catch {
     return "";
   }
