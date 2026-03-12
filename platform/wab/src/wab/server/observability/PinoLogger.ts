@@ -4,7 +4,14 @@ import {
   Properties,
 } from "@/wab/shared/observability/Properties";
 import { context, trace } from "@opentelemetry/api";
+import { AsyncLocalStorage } from "async_hooks";
 import pino, { Logger as PinoLog } from "pino";
+
+const requestStorage = new AsyncLocalStorage<{ requestId: string }>();
+
+export function runWithRequestId<T>(requestId: string, fn: () => T): T {
+  return requestStorage.run({ requestId }, fn);
+}
 
 const SERVICE_NAME = process.env.OTEL_SERVICE_NAME || "unknown-service";
 const ENVIRONMENT = process.env.DD_ENV || process.env.NODE_ENV || "development";
@@ -62,8 +69,10 @@ export class PinoLogger implements Logger {
     message: string,
     payload?: Record<string, any>
   ) {
+    const { requestId } = requestStorage.getStore() ?? {};
     const logEntry = {
       message,
+      ...(requestId ? { requestId } : {}),
       ...payload,
     };
 

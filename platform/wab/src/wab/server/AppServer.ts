@@ -27,6 +27,7 @@ import { createMailer } from "@/wab/server/emails/Mailer";
 import { ExpressSession } from "@/wab/server/entities/Entities";
 import "@/wab/server/extensions";
 import { initAnalyticsFactory, logger } from "@/wab/server/observability";
+import { runWithRequestId } from "@/wab/server/observability/PinoLogger";
 import {
   DEFAULT_HISTOGRAM_BUCKETS,
   WabPromLiveRequestsGauge,
@@ -442,7 +443,7 @@ export function addLoggingMiddleware(app: express.Application) {
   app.use(
     safeCast<RequestHandler>(async (req: Request, res, next) => {
       req.id = mkShortId();
-      next();
+      runWithRequestId(req.id, () => next());
     })
   );
   app.use((req: Request, res: any, next) => {
