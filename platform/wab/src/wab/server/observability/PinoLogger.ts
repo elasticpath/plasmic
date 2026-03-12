@@ -73,7 +73,7 @@ export class PinoLogger implements Logger {
     const { requestId } = requestStorage.getStore() ?? {};
     const logEntry = {
       message,
-      ...(requestId ? { "x-request-id": requestId } : {}),
+      ...(requestId ? { x_request_id: requestId } : {}),
       ...payload,
     };
 
