@@ -60,17 +60,6 @@ export async function prefillCloudfront(
           publishment.projectIds
         );
 
-        const label = `Pre-filling codegen combo ${JSON.stringify(
-          resolvedProjectIdSpecs
-        )}, version=${publishment.loaderVersion}, platform=${
-          publishment.platform
-        }, browserOnly=${publishment.browserOnly}, i18n=${JSON.stringify({
-          key: publishment.i18nKeyScheme,
-          prefix: publishment.i18nTagPrefix,
-        })}, appDir=${publishment.appDir} projectIds=${JSON.stringify(
-          publishment.projectIds
-        )} pkgVersionId=${pkgVersionId}`;
-
         await withSpan(
           "loader-prefill",
           async () => {
@@ -95,7 +84,18 @@ export async function prefillCloudfront(
               })
             );
           },
-          label
+          undefined,
+          {
+            platform: publishment.platform,
+            loader_version: publishment.loaderVersion,
+            browser_only: publishment.browserOnly,
+            app_dir: publishment.appDir,
+            i18n_key_scheme: publishment.i18nKeyScheme,
+            i18n_tag_prefix: publishment.i18nTagPrefix,
+            pkg_version_id: pkgVersionId,
+            project_ids: publishment.projectIds,
+            projects: resolvedProjectIdSpecs,
+          }
         );
       })
     );

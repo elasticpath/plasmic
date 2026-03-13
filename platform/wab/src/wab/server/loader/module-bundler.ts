@@ -560,41 +560,51 @@ export async function bundleModules(
     throw new LoaderDeprecatedVersionError();
   }
 
-  return withSpan("loader-bundle-esbuild", async () => {
-    try {
-      return await bundleModulesEsbuild(
-        dir,
-        codegenOutputs,
-        componentDeps,
-        opts
-      );
-    } catch (err) {
-      const bundleErrorStr: string = err.toString();
-      logger().error(
-        `Error bundling with esbuild: ${bundleErrorStr}: ${err.stack}`
-      );
+  return withSpan(
+    "loader-bundle-esbuild",
+    async () => {
       try {
-        const errPrefix = await uploadErrorFiles(err, dir);
-        logger().error(`Errors uploaded: ${errPrefix}`);
-      } catch (err2) {
-        logger().error(`Error uploading error files: ${err2.toString()}`);
+        return await bundleModulesEsbuild(
+          dir,
+          codegenOutputs,
+          componentDeps,
+          opts
+        );
+      } catch (err) {
+        const bundleErrorStr: string = err.toString();
+        logger().error(
+          `Error bundling with esbuild: ${bundleErrorStr}: ${err.stack}`
+        );
+        try {
+          const errPrefix = await uploadErrorFiles(err, dir);
+          logger().error(`Errors uploaded: ${errPrefix}`);
+        } catch (err2) {
+          logger().error(`Error uploading error files: ${err2.toString()}`);
+        }
+
+        const transformedBundleErrorStr = transformBundlerErrors(
+          bundleErrorStr,
+          componentRefs
+        );
+
+        if (transformedBundleErrorStr) {
+          logger().error(`transformedError: ${transformedBundleErrorStr}`);
+          throw new LoaderBundlingError(transformedBundleErrorStr);
+        }
+
+        await checkEsbuildFatalError(bundleErrorStr);
+
+        throw new Error(`Error bundling with esbuild: ${bundleErrorStr}`);
       }
-
-      const transformedBundleErrorStr = transformBundlerErrors(
-        bundleErrorStr,
-        componentRefs
-      );
-
-      if (transformedBundleErrorStr) {
-        logger().error(`transformedError: ${transformedBundleErrorStr}`);
-        throw new LoaderBundlingError(transformedBundleErrorStr);
-      }
-
-      await checkEsbuildFatalError(bundleErrorStr);
-
-      throw new Error(`Error bundling with esbuild: ${bundleErrorStr}`);
+    },
+    undefined,
+    {
+      platform: opts.platform,
+      loader_version: opts.loaderVersion,
+      browser_only: opts.browserOnly,
+      mode: opts.mode,
     }
-  });
+  );
 }
 
 function deriveEsbuildDefines(opts: {

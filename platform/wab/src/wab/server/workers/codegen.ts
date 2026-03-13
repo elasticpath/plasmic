@@ -231,7 +231,13 @@ export async function doGenCode(
         indirect,
         opts.scheme
       ),
-    `Project ${projectId}`
+    undefined,
+    {
+      project_id: projectId,
+      version,
+      revision_number: revisionNumber,
+      revision_id: revisionId,
+    }
   );
 
   if (project.workspace?.teamId) {
