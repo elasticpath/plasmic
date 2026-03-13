@@ -77,7 +77,7 @@ export async function resolveLatestProjectVersions(
   opts: { prefilledOnly: boolean } = { prefilledOnly: false }
 ) {
   return withSpan(
-    `resolveLatestProjectVersions-${projectIdsAndTags.length}`,
+    "resolveLatestProjectVersions",
     async () => {
       const pkgVersions = await Promise.all(
         projectIdsAndTags.map((projectIdAndTag) =>
@@ -96,6 +96,14 @@ export async function resolveLatestProjectVersions(
           pkgVersion.version,
         ])
       );
+    },
+    undefined,
+    {
+      project_count: projectIdsAndTags.length,
+      project_ids: projectIdsAndTags.map((p) => p.projectId),
+      projects: projectIdsAndTags.map((p) =>
+        p.tag ? `${p.projectId}@${p.tag}` : p.projectId
+      ),
     }
   );
 }

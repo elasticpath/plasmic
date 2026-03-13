@@ -5,7 +5,8 @@ import {
   resolveProjectDeps,
   VersionToSync,
 } from "@/wab/server/loader/resolve-projects";
-import { withSpan } from "@/wab/server/util/apm-util";
+import { logger } from "@/wab/server/observability";
+import { withSpan, withTimeSpent } from "@/wab/server/util/apm-util";
 import { upsertS3CacheEntry } from "@/wab/server/util/s3-util";
 import {
   CachedCodegenOutputBundle,
@@ -76,7 +77,14 @@ export async function genPublishedLoaderCodeBundle(
       ...(await resolveProjectDeps(dbMgr, projectVersions)),
       ...projectVersions,
     }),
-    `Project versions ${JSON.stringify(projectVersions)}`
+    undefined,
+    {
+      project_count: Object.keys(projectVersions).length,
+      project_ids: Object.keys(projectVersions),
+      projects: Object.entries(projectVersions).map(
+        ([id, v]) => `${id}@${v.version}`
+      ),
+    }
   );
 
   await ensureDevFlags(dbMgr);
@@ -217,7 +225,16 @@ async function genLoaderCodeBundleForProjectVersions(
             // If version is a branch name, we want to get the latest of that branch
             if (v.version === "latest" || maybeBranch) {
               // If no explicit version, then we cannot cache; just perform the codegen
-              return await codegenProject(projectId, v.version, v.indirect);
+              const { result, spentTime } = await withTimeSpent(() =>
+                codegenProject(projectId, v.version, v.indirect)
+              );
+              logger().info("loader-codegen-project", {
+                project_id: projectId,
+                project_version: v.version,
+                indirect: v.indirect,
+                duration_ms: spentTime,
+              });
+              return result;
             } else {
               return await upsertS3CacheEntry<
                 [
@@ -233,18 +250,32 @@ async function genLoaderCodeBundleForProjectVersions(
                   indirect: v.indirect,
                   exportOpts,
                 }),
-                compute: async () =>
-                  await codegenProject(projectId, v.version, v.indirect),
+                compute: async () => {
+                  const { result, spentTime } = await withTimeSpent(() =>
+                    codegenProject(projectId, v.version, v.indirect)
+                  );
+                  logger().info("loader-codegen-project", {
+                    project_id: projectId,
+                    project_version: v.version,
+                    indirect: v.indirect,
+                    duration_ms: spentTime,
+                  });
+                  return result;
+                },
                 serialize: (obj) => JSON.stringify(obj),
                 deserialize: (str) => JSON.parse(str),
               });
             }
           })
         ),
-      `Projects ${JSON.stringify({
-        ...projectVersions,
-        loaderVersion: opts.loaderVersion,
-      })}`
+      undefined,
+      {
+        platform: opts.platform,
+        loader_version: opts.loaderVersion,
+        browser_only: opts.browserOnly,
+        project_count: Object.keys(projectVersions).length,
+        project_versions: JSON.stringify(projectVersions),
+      }
     )
   );
 
@@ -306,10 +337,18 @@ async function genLoaderCodeBundleForProjectVersions(
         return await bundleProjects();
       }
     },
-    `Projects ${JSON.stringify({
-      ...projectVersions,
-      loaderVersion: opts.loaderVersion,
-    })}`
+    undefined,
+    {
+      platform: opts.platform,
+      loader_version: opts.loaderVersion,
+      browser_only: opts.browserOnly,
+      mode: opts.mode,
+      project_count: Object.keys(projectVersions).length,
+      project_ids: Object.keys(projectVersions),
+      projects: Object.entries(projectVersions).map(
+        ([id, v]) => `${id}@${v.version}`
+      ),
+    }
   );
   return result;
 }
