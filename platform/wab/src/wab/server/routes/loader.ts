@@ -821,6 +821,7 @@ export async function buildVersionedLoaderReprV2(req: Request, res: Response) {
     "repr-v2",
     false,
     async (props) => {
+      setAsCacheableResource(res);
       await genReprV2(req, res, props);
     }
   );
@@ -857,6 +858,7 @@ export async function buildVersionedLoaderReprV3(req: Request, res: Response) {
     "repr-v3",
     false,
     async (props) => {
+      setAsCacheableResource(res);
       await genReprV3(req, res, props);
     }
   );
