@@ -7,7 +7,7 @@ import "core-js";
 
 async function runAppServer(config: Config) {
   await ensureDbConnections(config.databaseUri);
-  const { app } = await createApp("loader", config, addLoaderRoutes);
+  const { app } = await createApp("loader", config, addLoaderRoutes, undefined, { skipSession: true });
   return runExpressApp(app);
 }
 
