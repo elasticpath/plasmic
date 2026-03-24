@@ -6,6 +6,7 @@ on:
       - master
     paths:
       - 'platform/wab/**'
+      - 'platform/canvas-packages/**'
       - 'platform/loader-bundle-env/**'
       - '.github/**'
   workflow_dispatch:
@@ -23,6 +24,20 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect canvas-packages changes
+        id: canvas-packages-check
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          elif git diff --name-only ${{ github.event.before }} ${{ github.sha }} \
+                -- platform/canvas-packages/package.json | grep -q .; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -63,24 +78,73 @@ jobs:
 
           echo "Pushed image: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
 
-      - name: Trigger GitLab image tag update
+      - name: Setup Node.js
+        if: steps.canvas-packages-check.outputs.changed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'yarn'
+          cache-dependency-path: platform/canvas-packages/yarn.lock
+
+      - name: Build canvas-packages
+        if: steps.canvas-packages-check.outputs.changed == 'true'
+        run: |
+          cd platform/canvas-packages
+          yarn install --frozen-lockfile
+          yarn build
+
+      - name: Build and push publish-hostless image
+        id: build-publish-hostless
+        if: steps.canvas-packages-check.outputs.changed == 'true'
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          IMAGE_TAG: publish-hostless-${{ github.run_id }}
+          BASE_IMAGE: ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ github.sha }}
+        run: |
+          echo "::add-mask::$ECR_REGISTRY"
+          echo "::add-mask::$ECR_REPOSITORY"
+
+          docker build \
+            --platform linux/amd64 \
+            --build-arg BASE_IMAGE=$BASE_IMAGE \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            -f platform/wab/Dockerfile.publish-hostless \
+            platform/
+
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "Pushed publish-hostless image"
+
+      - name: Trigger GitLab deployment
         if: success()
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_API_TOKEN }}
           GITLAB_PROJECT_ID: ${{ secrets.GITLAB_PROJECT_ID }}
-          IMAGE_URL: ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ github.sha }}
+          WAB_IMAGE: ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ github.sha }}
+          PH_IMAGE: ${{ steps.build-publish-hostless.outputs.image }}
+          CANVAS_CHANGED: ${{ steps.canvas-packages-check.outputs.changed }}
         run: |
+          VARS=$(jq -cn \
+            --arg wab_image "$WAB_IMAGE" \
+            --arg ph_image "$PH_IMAGE" \
+            --arg canvas_changed "$CANVAS_CHANGED" \
+            '
+            [
+              {key: "UPDATE_IMAGE_TAGS", value: "true"},
+              {key: "TARGET_ENV",        value: "integration"},
+              {key: "CONTAINER_IMAGE",   value: $wab_image}
+            ]
+            + if $canvas_changed == "true" then [
+              {key: "PUBLISH_HOSTLESS_IMAGE", value: $ph_image}
+            ] else [] end
+            ')
+
           curl --fail --request POST \
             "https://gitlab.elasticpath.com/api/v4/projects/${GITLAB_PROJECT_ID}/pipeline" \
             --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
             --header "Content-Type: application/json" \
-            --data "$(jq -cn \
-              --arg image "${IMAGE_URL}" \
-              '{ref: "main", variables: [
-                {key: "UPDATE_IMAGE_TAGS", value: "true"},
-                {key: "TARGET_ENV",        value: "integration"},
-                {key: "CONTAINER_IMAGE",   value: $image}
-              ]}')"
+            --data "$(jq -cn --argjson vars "$VARS" '{ref: "main", variables: $vars}')"
 
       - name: Build summary
         if: success()
