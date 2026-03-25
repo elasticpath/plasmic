@@ -7082,10 +7082,6 @@ describe("setImage -- edge cases", () => {
   });
 });
 
-// =============================================================================
-// setImage -- edge cases
-// =============================================================================
-
 describe("setImage -- edge cases", () => {
   let api: ReturnType<typeof mockApiClient>;
 
