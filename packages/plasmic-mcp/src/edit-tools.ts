@@ -108,6 +108,20 @@ import { undoChanges } from "@/wab/shared/core/undo-util";
 import { extractComponent as wabExtractComponent } from "@/wab/shared/core/components";
 import cssInitials from "css-initials";
 import {
+  GAP_PROPS,
+  FLEX_CONTAINER_PROPS,
+  gridCssProps,
+  gridChildProps,
+  imageCssProps,
+  transitionProps as sharedTransitionProps,
+  typographyCssProps,
+  colorProps as sharedColorProps,
+  spacingProps as sharedSpacingProps,
+  contentLayoutProps,
+  contentLayoutChildProps,
+  flexChildProps,
+} from "@/wab/shared/core/style-props";
+import {
   findToken,
   getAllStyleTokens,
   mkTokenRef,
@@ -781,15 +795,31 @@ function camelToKebab(str: string): string {
 }
 
 /**
- * Additional CSS properties accepted by Plasmic that may not be in
- * css-initials 0.3.x. Modern CSS properties widely supported by browsers.
+ * Shared Studio property lists imported from @/wab/shared/core/style-props.
+ * These stay in sync with Studio automatically — no manual maintenance.
  */
-const ADDITIONAL_VALID_PROPERTIES = new Set([
-  "row-gap", "column-gap",
-  "justify-self", "justify-items",
+const SHARED_PROPERTY_LISTS: readonly string[][] = [
+  GAP_PROPS,
+  FLEX_CONTAINER_PROPS,
+  gridCssProps,
+  gridChildProps,
+  imageCssProps,
+  sharedTransitionProps,
+  typographyCssProps,
+  sharedColorProps,
+  sharedSpacingProps,
+  contentLayoutProps,
+  contentLayoutChildProps,
+  flexChildProps,
+];
+
+/**
+ * MCP-specific CSS properties not covered by shared lists or css-initials.
+ * Modern CSS properties widely supported by browsers.
+ */
+const MCP_ADDITIONAL_PROPERTIES = new Set([
   "place-items", "place-content", "place-self",
   "aspect-ratio",
-  "object-fit", "object-position",
   "user-select",
   "backdrop-filter",
   "will-change",
@@ -797,7 +827,7 @@ const ADDITIONAL_VALID_PROPERTIES = new Set([
   "appearance",
   "scroll-behavior", "scroll-snap-type", "scroll-snap-align",
   "overscroll-behavior", "overscroll-behavior-x", "overscroll-behavior-y",
-  "text-decoration-line", "text-decoration-style", "text-decoration-color",
+  "text-decoration-style", "text-decoration-color",
   "text-decoration-thickness", "text-underline-offset",
   "accent-color",
   "caret-color",
@@ -808,26 +838,21 @@ const ADDITIONAL_VALID_PROPERTIES = new Set([
   "clip-path",
   "mask",
   "writing-mode",
-  "text-overflow",
   "hyphens",
   "tab-size",
   "touch-action",
   "resize",
   "all",
   "background",
-  // Grid layout
-  "grid-template-columns", "grid-template-rows", "grid-template-areas",
+  // Grid shorthands not in shared gridCssProps/gridChildProps
+  "grid-template-areas",
   "grid-column", "grid-row", "grid-area",
-  "grid-column-start", "grid-column-end", "grid-row-start", "grid-row-end",
-  "grid-auto-columns", "grid-auto-rows", "grid-auto-flow",
+  "grid-auto-flow",
   "grid-gap",
   // Flex shorthand
   "flex",
   // Inset
   "inset",
-  // Transition longhands (Studio stores these separately, not the shorthand)
-  "transition-property", "transition-duration",
-  "transition-timing-function", "transition-delay",
   // Outline longhands
   "outline-width", "outline-style", "outline-color", "outline-offset",
   // Shorthands handled by sanitizeStyles — included so they appear in
@@ -843,10 +868,18 @@ let _validPropertiesCache: Set<string> | null = null;
 function getValidPropertiesSet(): Set<string> {
   if (_validPropertiesCache) return _validPropertiesCache;
   const props = new Set<string>();
+  // css-initials: core CSS properties with initial values
   for (const key of Object.keys(cssInitials)) {
     props.add(key);
   }
-  for (const prop of ADDITIONAL_VALID_PROPERTIES) {
+  // Shared Studio property lists (auto-maintained)
+  for (const list of SHARED_PROPERTY_LISTS) {
+    for (const prop of list) {
+      props.add(prop);
+    }
+  }
+  // MCP-specific additions
+  for (const prop of MCP_ADDITIONAL_PROPERTIES) {
     props.add(prop);
   }
   _validPropertiesCache = props;

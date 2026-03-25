@@ -136,6 +136,10 @@ export default defineConfig({
         find: /^@\/wab\/shared\/common$/,
         replacement: path.resolve(__dirname, "src/__mocks__/wab-common-ext"),
       },
+      {
+        find: /^@\/wab\/shared\/core\/style-props$/,
+        replacement: path.resolve(__dirname, "src/__mocks__/wab-style-props"),
+      },
     ],
     extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
   },
