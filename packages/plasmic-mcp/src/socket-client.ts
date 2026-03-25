@@ -53,7 +53,7 @@ export interface SocketClientCallbacks {
  * Create auth headers for the socket connection.
  * Matches the pattern in api-client.ts makeHeaders().
  */
-function makeSocketHeaders(auth: AuthConfig): Record<string, string> {
+function makeSocketHeaders(auth: AuthConfig, cookies?: string): Record<string, string> {
   const headers: Record<string, string> = {
     "x-plasmic-api-user": auth.user,
     "x-plasmic-api-token": auth.token,
@@ -63,6 +63,9 @@ function makeSocketHeaders(auth: AuthConfig): Record<string, string> {
       `${auth.basicAuthUser}:${auth.basicAuthPassword}`
     ).toString("base64");
     headers["Authorization"] = `Basic ${basic}`;
+  }
+  if (cookies) {
+    headers["Cookie"] = cookies;
   }
   return headers;
 }
@@ -105,29 +108,36 @@ let activeCallbacks: SocketClientCallbacks | null = null;
 export async function connectSocket(
   auth: AuthConfig,
   projectId: string,
-  callbacks: SocketClientCallbacks
+  callbacks: SocketClientCallbacks,
+  cookies?: string
 ): Promise<void> {
   // Disconnect any existing connection first
   if (activeSocket) {
     disconnectSocket();
   }
 
-  const headers = makeSocketHeaders(auth);
+  const headers = makeSocketHeaders(auth, cookies);
+
+  // Follow the watcher pattern (packages/watcher/src/watcher.ts:42-50):
+  // Use default transports (polling first, then WebSocket upgrade).
+  // Auth headers go in both top-level extraHeaders and transportOptions.polling
+  // so they're sent during the HTTP polling handshake that establishes the session.
+  const socketOpts = {
+    path: "/api/v1/socket",
+    extraHeaders: headers,
+    transportOptions: {
+      polling: {
+        extraHeaders: headers,
+      },
+    },
+  };
 
   let socket: SocketLike;
   try {
     if (socketFactory) {
-      socket = socketFactory(auth.host, {
-        path: "/api/v1/socket",
-        transports: ["websocket"],
-        extraHeaders: headers,
-      });
+      socket = socketFactory(auth.host, socketOpts);
     } else {
-      socket = await createRealSocket(auth.host, {
-        path: "/api/v1/socket",
-        transports: ["websocket"],
-        extraHeaders: headers,
-      });
+      socket = await createRealSocket(auth.host, socketOpts);
     }
   } catch (err) {
     console.error(
@@ -137,6 +147,13 @@ export async function connectSocket(
   }
 
   activeSocket = socket;
+
+  // Diagnostic logging for connection failures
+  socket.on("connect_error", (err: Error) => {
+    console.error(
+      `[plasmic-mcp] Socket connect_error: ${err.message}`
+    );
+  });
   activeProjectId = projectId;
   activeCallbacks = callbacks;
 

@@ -125,6 +125,7 @@ describe("live-sync", () => {
 
     mockApiClient = {
       getAuth: vi.fn().mockReturnValue(MOCK_AUTH),
+      getCookieString: vi.fn().mockReturnValue(""),
       getModelUpdates: vi.fn().mockResolvedValue({ data: null }),
     };
   });

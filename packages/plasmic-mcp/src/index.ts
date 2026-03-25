@@ -13,6 +13,30 @@
 
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createServer } from "./server.js";
+import { stopLiveSync } from "./live-sync.js";
+
+// Prevent silent crashes from unhandled rejections (e.g. socket.io failures)
+process.on("unhandledRejection", (reason) => {
+  console.error("[plasmic-mcp] Unhandled rejection:", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[plasmic-mcp] Uncaught exception:", err);
+});
+
+// Graceful shutdown: disconnect socket so Studio removes the player avatar immediately.
+// Claude Code closes stdin (not SIGTERM) when restarting the MCP server,
+// so we also listen for stdin end and process beforeExit.
+let shuttingDown = false;
+function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.error("[plasmic-mcp] Shutting down...");
+  stopLiveSync();
+}
+process.on("SIGTERM", () => { shutdown(); process.exit(0); });
+process.on("SIGINT", () => { shutdown(); process.exit(0); });
+process.on("beforeExit", shutdown);
+process.stdin.on("close", shutdown);
 
 async function main() {
   console.error("[plasmic-mcp] Starting Plasmic MCP server...");

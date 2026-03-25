@@ -68,6 +68,9 @@ export interface RebaseResult {
   hadLocalChanges: boolean;
   /** Updated DeletedAssetsSummary (accumulated across rebases). */
   serverUpdatesSummary: DeletedAssetsSummary;
+  /** Server changes recorded during unbundlePartial. Must be included in
+   *  the next fastBundle call so the incremental save covers all mutations. */
+  serverChanges: RecordedChanges;
 }
 
 /**
@@ -169,8 +172,9 @@ function rebaseWithUpdate(
     }
   }
 
-  // Phase 4: Apply server changes
-  recorder.withRecording(() => {
+  // Phase 4: Apply server changes — capture recorded mutations so the next
+  // fastBundle call includes them (mirrors Studio's serverChanges at StudioCtx.tsx:6559)
+  const serverChanges = recorder.withRecording(() => {
     // Step 4a: Unbundle dependency packages
     for (const depPkg of update.depPkgs) {
       try {
@@ -255,5 +259,6 @@ function rebaseWithUpdate(
     newRevisionNum: update.revision,
     hadLocalChanges: hasLocalChanges,
     serverUpdatesSummary: summary,
+    serverChanges,
   };
 }

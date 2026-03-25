@@ -14,7 +14,7 @@
  */
 
 import { PlasmicApiClient, PlasmicApiError } from "./api-client.js";
-import type { RecordedChanges } from "@/wab/shared/core/observable-model";
+import { mergeRecordedChanges, type RecordedChanges } from "@/wab/shared/core/observable-model";
 import { requireSession } from "./session.js";
 import { modelSchemaHash } from "@/wab/shared/model/classes-metas";
 import { assertSiteInvariants } from "@/wab/shared/site-invariants";
@@ -65,8 +65,14 @@ export class SaveManager {
       hostlessDataVersion,
     } = session;
 
+    // Merge any pending rebase changes so fastBundle covers server mutations
+    // (mirrors Studio's mergeRecordedChanges(serverChanges, ...) at StudioCtx.tsx:6559)
+    const allChanges = session.pendingRebaseChanges
+      ? mergeRecordedChanges(session.pendingRebaseChanges, changes)
+      : changes;
+
     // Extract changed instances for fastBundle
-    const changedInsts = changes.changes.map((c) => c.changeNode);
+    const changedInsts = allChanges.changes.map((c) => c.changeNode);
 
     // Generate incremental bundle
     const bundle = bundler.fastBundle(site, projectId, changedInsts);
@@ -106,8 +112,9 @@ export class SaveManager {
         modelSchemaHash,
       });
 
-      // Update session revision on success
+      // Update session revision on success and clear rebase changes
       session.revisionNum = newRevisionNum;
+      session.pendingRebaseChanges = undefined;
 
       console.error(
         `[plasmic-mcp] Saved revision ${newRevisionNum} (incremental, ${changedInsts.length} changes)`
@@ -234,6 +241,7 @@ export class SaveManager {
       });
 
       session.revisionNum = newRevisionNum;
+      session.pendingRebaseChanges = undefined;
 
       console.error(
         `[plasmic-mcp] Saved revision ${newRevisionNum} (full bundle, version: ${freshBundleVersion})`

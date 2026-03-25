@@ -140,7 +140,8 @@ import { beginBatch, endBatch, isBatchActive, cancelBatch, cancelBatchWithRollba
 import { registerCall, failCall, isMicroBatchActive, isCallSettled, setCurrentCallId } from "./micro-batch.js";
 import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
 import { SaveManager } from "./save-manager.js";
-import { startLiveSync, stopLiveSync } from "./live-sync.js";
+import { startLiveSync, stopLiveSync, isLiveSyncActive } from "./live-sync.js";
+import { isSocketConnected, getSocketProjectId } from "./socket-client.js";
 import { emitEditPresence, clearEditPresence, emitInspectPresence } from "./tool-presence.js";
 import { undoChanges } from "@/wab/shared/core/undo-util";
 import type { TreeReadOptions } from "./types.js";
@@ -499,6 +500,12 @@ export function createServer(): McpServer {
             if (site.globalVariantGroups?.length > 0) {
               meta.globalVariantGroupCount = site.globalVariantGroups.length;
             }
+
+            // Live sync status
+            meta.liveSync = {
+              socketConnected: isSocketConnected(),
+              liveSyncActive: isLiveSyncActive(),
+            };
 
             // Enrich with dev host registered contexts when available
             const regContexts = session.registryData?.contexts;
