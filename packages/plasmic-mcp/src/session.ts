@@ -48,6 +48,10 @@ export interface Session {
   /** Active branch ID for branch-aware socket subscriptions.
    *  null = main branch (default), string = specific branch ID. */
   activeBranchId?: string | null;
+  /** Server changes from rebases, to be merged into the next fastBundle call.
+   *  Mirrors Studio's serverChanges accumulation (StudioCtx.tsx:6559).
+   *  Cleared after a successful save. */
+  pendingRebaseChanges?: any;
 }
 
 let currentSession: Session | null = null;
