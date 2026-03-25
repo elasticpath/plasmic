@@ -197,6 +197,17 @@ export class PlasmicApiClient {
   }
 
   /**
+   * Get accumulated cookies as a header string for socket connections.
+   * Reuses the same format as makeHeaders() (lines 80-84).
+   */
+  getCookieString(): string {
+    if (this.cookies.size === 0) return "";
+    return [...this.cookies.entries()]
+      .map(([k, v]) => `${k}=${v}`)
+      .join("; ");
+  }
+
+  /**
    * Clear accumulated cookies and cached CSRF token.
    * Called on project.set to prevent session state from one project
    * leaking into API calls for the next project.
@@ -362,7 +373,7 @@ export class PlasmicApiClient {
     params.set("revisionNum", String(revisionNum));
     params.set(
       "installedDeps",
-      encodeURIComponent(JSON.stringify(installedDeps))
+      JSON.stringify(installedDeps)
     );
     if (branchId) {
       params.set("branchId", branchId);

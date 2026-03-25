@@ -100,7 +100,7 @@ describe("socket-client", () => {
   });
 
   describe("connectSocket", () => {
-    it("connects with correct auth headers", async () => {
+    it("connects with correct auth headers and polling-first transport", async () => {
       const callbacks: SocketClientCallbacks = {
         onUpdate: vi.fn(),
         onInitServerInfo: vi.fn(),
@@ -108,17 +108,53 @@ describe("socket-client", () => {
 
       await connectSocket(TEST_AUTH, "proj-123", callbacks);
 
-      expect(factoryFn).toHaveBeenCalledWith(
-        TEST_AUTH.host,
-        expect.objectContaining({
-          path: "/api/v1/socket",
-          transports: ["websocket"],
+      const callOpts = factoryFn.mock.calls[0][1];
+      expect(callOpts.path).toBe("/api/v1/socket");
+      // No transports restriction — default polling-first, then WebSocket upgrade
+      expect(callOpts.transports).toBeUndefined();
+      expect(callOpts.extraHeaders).toEqual({
+        "x-plasmic-api-user": "test-user",
+        "x-plasmic-api-token": "test-token",
+      });
+      expect(callOpts.transportOptions).toEqual({
+        polling: {
           extraHeaders: {
             "x-plasmic-api-user": "test-user",
             "x-plasmic-api-token": "test-token",
           },
+        },
+      });
+    });
+
+    it("includes cookies in socket headers when provided", async () => {
+      const callbacks: SocketClientCallbacks = {
+        onUpdate: vi.fn(),
+        onInitServerInfo: vi.fn(),
+      };
+
+      await connectSocket(TEST_AUTH, "proj-123", callbacks, "connect.sid=abc123");
+
+      const callOpts = factoryFn.mock.calls[0][1];
+      expect(callOpts.extraHeaders).toEqual(
+        expect.objectContaining({
+          Cookie: "connect.sid=abc123",
         })
       );
+      expect(callOpts.transportOptions.polling.extraHeaders).toEqual(
+        expect.objectContaining({
+          Cookie: "connect.sid=abc123",
+        })
+      );
+    });
+
+    it("registers connect_error handler for diagnostics", async () => {
+      await connectSocket(TEST_AUTH, "proj-123", {
+        onUpdate: vi.fn(),
+        onInitServerInfo: vi.fn(),
+      });
+
+      expect(mockSocket._handlers["connect_error"]).toBeDefined();
+      expect(mockSocket._handlers["connect_error"].length).toBe(1);
     });
 
     it("includes Basic Auth header when configured", async () => {

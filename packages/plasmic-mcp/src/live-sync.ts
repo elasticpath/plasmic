@@ -66,8 +66,9 @@ export async function startLiveSync(
     getActiveBranchId: () => getSession()?.activeBranchId ?? null,
   });
 
-  // Connect socket with callbacks
+  // Connect socket with callbacks, passing accumulated session cookies
   const auth = apiClient.getAuth();
+  const cookies = apiClient.getCookieString();
   await connectSocket(auth, projectId, {
     onUpdate: (data: UpdateEventData) => {
       updateQueue?.enqueue(data);
@@ -81,7 +82,7 @@ export async function startLiveSync(
       console.error("[plasmic-mcp] LiveSync: socket reconnected");
       emitViewNow();
     },
-  });
+  }, cookies);
 
   console.error(
     `[plasmic-mcp] LiveSync started for project ${projectId}`

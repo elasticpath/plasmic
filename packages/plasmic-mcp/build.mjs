@@ -128,8 +128,14 @@ const result = await esbuild.build({
 const metafilePath = path.resolve(__dirname, "dist/meta.json");
 fs.writeFileSync(metafilePath, JSON.stringify(result.metafile, null, 2));
 
-// Report
+// Add shebang for npx/bin execution
 const outfile = path.resolve(__dirname, "dist/index.cjs");
+const built = fs.readFileSync(outfile, "utf-8");
+if (!built.startsWith("#!")) {
+  fs.writeFileSync(outfile, "#!/usr/bin/env node\n" + built);
+}
+
+// Report
 const stats = fs.statSync(outfile);
 const sizeKB = (stats.size / 1024).toFixed(1);
 console.log(`✓ Built dist/index.cjs (${sizeKB} KB)`);
