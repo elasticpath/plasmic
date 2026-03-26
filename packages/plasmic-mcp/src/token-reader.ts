@@ -12,6 +12,10 @@
  */
 
 import type { StyleTokenType, TokenInfo } from "./types.js";
+import {
+  colorProps as sharedColorProps,
+  spacingProps as sharedSpacingProps,
+} from "@/wab/shared/core/style-props";
 
 const RE_TOKEN_REF = /var\(--token-([^)]+)\)/;
 
@@ -105,14 +109,35 @@ export function parseTokenRefUuid(value: string): string | undefined {
 }
 
 /**
- * Collect all accessible tokens from a site and its dependencies.
- * Local tokens appear first, then dependency tokens.
+ * Collect all accessible tokens from a site and its transitive dependencies.
+ * Local tokens appear first, then dependency tokens (breadth-first).
+ * Uses a visited set to avoid duplicates in diamond dependency graphs.
  */
 export function getAllStyleTokens(site: any): any[] {
   const tokens: any[] = [...(site.styleTokens ?? [])];
-  for (const dep of site.projectDependencies ?? []) {
-    tokens.push(...(dep.site?.styleTokens ?? []));
+  const visited = new Set<string>();
+
+  const queue: any[] = [...(site.projectDependencies ?? [])];
+  while (queue.length > 0) {
+    const dep = queue.shift();
+    const depSite = dep?.site;
+    if (!depSite) continue;
+
+    // Deduplicate by project ID when available
+    const depId = dep.projectId ?? dep.pkgId;
+    if (depId) {
+      if (visited.has(depId)) continue;
+      visited.add(depId);
+    }
+
+    tokens.push(...(depSite.styleTokens ?? []));
+
+    // Walk transitive dependencies
+    for (const transitiveDep of depSite.projectDependencies ?? []) {
+      queue.push(transitiveDep);
+    }
   }
+
   return tokens;
 }
 
@@ -145,9 +170,16 @@ export function findToken(allTokens: any[], nameOrUuid: string): any | null {
   );
 }
 
+// Pre-built sets from shared Studio property lists for token type mapping.
+const _sharedColorPropSet = new Set(sharedColorProps);
+const _sharedSpacingPropSet = new Set(sharedSpacingProps);
+
 /**
  * Get acceptable token types for a CSS property.
  * Returns null for properties where any token type could apply.
+ *
+ * Uses shared Studio property lists (colorProps, spacingProps) as the primary
+ * source, with pattern-based fallbacks for properties not in those lists.
  *
  * Prevents mismatches like using a Color token for padding (which expects
  * a length/Spacing value). Lenient for unknown properties.
@@ -157,14 +189,10 @@ export function getAcceptableTokenTypes(
 ): StyleTokenType[] | null {
   const kebab = prop.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
 
-  // Color properties
-  if (
-    kebab === "color" ||
-    kebab.endsWith("-color") ||
-    kebab === "background"
-  ) {
-    return ["Color"];
-  }
+  // Shared color properties (auto-maintained from Studio)
+  if (_sharedColorPropSet.has(kebab)) return ["Color"];
+  // Pattern-based color fallback for properties not in shared list
+  if (kebab.endsWith("-color") || kebab === "background") return ["Color"];
 
   // Font properties
   if (kebab === "font-size") return ["FontSize", "Spacing"];
@@ -172,15 +200,17 @@ export function getAcceptableTokenTypes(
   if (kebab === "line-height") return ["LineHeight"];
   if (kebab === "opacity") return ["Opacity"];
 
-  // Spacing/length properties
-  if (/^(padding|margin)/.test(kebab)) return ["Spacing"];
-  if (/^(row-gap|column-gap|gap)$/.test(kebab)) return ["Spacing"];
+  // Size properties accept both Spacing and FontSize tokens (check before spacing)
   if (
     /^(width|height|min-width|min-height|max-width|max-height)$/.test(kebab)
   ) {
     return ["Spacing", "FontSize"];
   }
-  if (/^(top|right|bottom|left)$/.test(kebab)) return ["Spacing"];
+  // Shared spacing properties (auto-maintained from Studio)
+  if (_sharedSpacingPropSet.has(kebab)) return ["Spacing"];
+  // Pattern-based spacing fallbacks for properties not in shared list
+  if (/^(padding|margin)/.test(kebab)) return ["Spacing"];
+  if (/^(row-gap|column-gap|gap)$/.test(kebab)) return ["Spacing"];
   if (kebab.startsWith("border") && kebab.endsWith("-width"))
     return ["Spacing"];
   if (kebab === "outline-width") return ["Spacing"];

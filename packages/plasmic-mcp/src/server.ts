@@ -803,15 +803,28 @@ export function createServer(): McpServer {
 
           case "add-package": {
             const pid = requireParam(projectId, "projectId", "project.add-package");
-            const result = await addPackage(apiClient, pid);
+            if (isBatchActive()) {
+              throw new Error(
+                "Package operations cannot be used inside a batch. " +
+                  "End the current batch first, then add the package."
+              );
+            }
+            const addPkgResult = await addPackage(apiClient, pid);
+            // Package ops are structural (async fetch + sync mutation) so they
+            // can't use the synchronous change tracker for incremental saves.
+            // Full bundle save persists all model state — mirrors Studio which
+            // records the sync mutation separately and lets auto-save handle it.
+            const addPkgSave = new SaveManager(apiClient);
+            const addPkgRevision = await addPkgSave.saveFullBundle();
             return {
               content: [
                 {
                   type: "text" as const,
                   text: JSON.stringify({
                     success: true,
-                    ...result,
-                    message: `Added "${result.name}" (v${result.version}) — ${result.componentCount} components now available.`,
+                    ...addPkgResult,
+                    revision: addPkgRevision.revisionNum,
+                    message: `Added "${addPkgResult.name}" (v${addPkgResult.version}) — ${addPkgResult.componentCount} components now available.`,
                   }),
                 },
               ],
@@ -820,15 +833,24 @@ export function createServer(): McpServer {
 
           case "remove-package": {
             const pkgIdOrName = requireParam(pkgId ?? projectId, "pkgId", "project.remove-package");
-            const result = await removePackage(apiClient, pkgIdOrName);
+            if (isBatchActive()) {
+              throw new Error(
+                "Package operations cannot be used inside a batch. " +
+                  "End the current batch first, then remove the package."
+              );
+            }
+            const rmPkgResult = await removePackage(apiClient, pkgIdOrName);
+            const rmPkgSave = new SaveManager(apiClient);
+            const rmPkgRevision = await rmPkgSave.saveFullBundle();
             return {
               content: [
                 {
                   type: "text" as const,
                   text: JSON.stringify({
                     success: true,
-                    ...result,
-                    message: `Removed "${result.name}" (v${result.version}).`,
+                    ...rmPkgResult,
+                    revision: rmPkgRevision.revisionNum,
+                    message: `Removed "${rmPkgResult.name}" (v${rmPkgResult.version}).`,
                   }),
                 },
               ],
@@ -836,8 +858,14 @@ export function createServer(): McpServer {
           }
 
           case "upgrade-package": {
-            const results = await upgradePackage(apiClient, pkgId);
-            if (results.length === 0) {
+            if (isBatchActive()) {
+              throw new Error(
+                "Package operations cannot be used inside a batch. " +
+                  "End the current batch first, then upgrade packages."
+              );
+            }
+            const upgResults = await upgradePackage(apiClient, pkgId);
+            if (upgResults.length === 0) {
               return {
                 content: [
                   {
@@ -851,14 +879,17 @@ export function createServer(): McpServer {
                 ],
               };
             }
+            const upgPkgSave = new SaveManager(apiClient);
+            const upgPkgRevision = await upgPkgSave.saveFullBundle();
             return {
               content: [
                 {
                   type: "text" as const,
                   text: JSON.stringify({
                     success: true,
-                    upgraded: results,
-                    message: `Upgraded ${results.length} package(s): ${results.map((r) => `${r.name} (${r.oldVersion} → ${r.newVersion})`).join(", ")}.`,
+                    upgraded: upgResults,
+                    revision: upgPkgRevision.revisionNum,
+                    message: `Upgraded ${upgResults.length} package(s): ${upgResults.map((r) => `${r.name} (${r.oldVersion} → ${r.newVersion})`).join(", ")}.`,
                   }),
                 },
               ],

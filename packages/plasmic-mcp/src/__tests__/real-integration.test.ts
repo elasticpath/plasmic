@@ -5798,3 +5798,255 @@ function findNodeByUuid(tree: any, uuid: string): any {
   }
   return null;
 }
+
+// =========================================================================
+// TplQuery Tree Integrity Tests
+// =========================================================================
+// These tests verify that tree mutations via $$$() produce correct parent
+// pointers, ownerComponent reachability, and proper cleanup — using REAL
+// WAB model objects (not mocks).
+
+describe("TplQuery tree integrity", () => {
+  /**
+   * Access the real in-memory model and verify parent pointers on all nodes.
+   * Returns { total, orphans } where orphans are non-root nodes without parent.
+   */
+  async function checkParentPointers(componentUuid: string) {
+    const { requireSession } = await import("../session.js");
+    const session = requireSession();
+    const comp = session.site.components.find(
+      (c: any) => c.uuid === componentUuid
+    );
+    if (!comp) throw new Error(`Component ${componentUuid} not found in site`);
+
+    const { flattenTpls } = await import("@/wab/shared/core/tpls");
+    const allNodes = flattenTpls(comp.tplTree);
+    const orphans: string[] = [];
+    for (const node of allNodes) {
+      if (node === comp.tplTree) continue; // root has no parent
+      if (!node.parent) {
+        orphans.push(node.uuid ?? "unknown");
+      }
+    }
+    return { total: allNodes.length, orphans };
+  }
+
+  it("node.add sets parent pointers on all descendants", async () => {
+    const comp = discoveredComponents[0];
+    const treeResult = await client.callTool({
+      name: "inspect",
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
+    });
+    const tree = parseResponse(treeResult).tree;
+
+    // Add a nested structure: vbox with text child
+    const addResult = await client.callTool({
+      name: "node",
+      arguments: {
+        action: "add",
+        componentUuid: comp.uuid,
+        parentRef: tree.uuid,
+        child: {
+          type: "vbox",
+          children: [
+            { type: "text", value: "Integrity test child" },
+          ],
+        },
+      },
+    });
+    expect(addResult.isError).toBeFalsy();
+
+    // Verify all nodes have parent pointers
+    const integrity = await checkParentPointers(comp.uuid);
+    expect(integrity.orphans).toEqual([]);
+    expect(integrity.total).toBeGreaterThan(3);
+
+    // Cleanup
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+  });
+
+  it("node.add to component slot sets parent pointers", async () => {
+    if (discoveredComponents.length < 2) return;
+
+    const targetPage =
+      discoveredComponents.find((c) => c.type === "page") ??
+      discoveredComponents[0];
+    const referencedComp = discoveredComponents.find(
+      (c) => c.uuid !== targetPage.uuid
+    )!;
+
+    // Get root node
+    const treeResult = await client.callTool({
+      name: "inspect",
+      arguments: { action: "tree", maxDepth: -1, componentUuid: targetPage.uuid },
+    });
+    const tree = parseResponse(treeResult).tree;
+
+    // First add a component instance
+    const addCompResult = await client.callTool({
+      name: "node",
+      arguments: {
+        action: "add",
+        componentUuid: targetPage.uuid,
+        parentRef: tree.uuid,
+        child: { type: "component", name: referencedComp.name },
+      },
+    });
+    if (addCompResult.isError) return; // component may not support adding
+
+    // Verify parent pointers
+    const integrity = await checkParentPointers(targetPage.uuid);
+    expect(integrity.orphans).toEqual([]);
+
+    // Cleanup
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+  });
+
+  it("node.remove cleans up parent pointers (no dangling refs)", async () => {
+    const comp = discoveredComponents[0];
+    const treeResult = await client.callTool({
+      name: "inspect",
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
+    });
+    const tree = parseResponse(treeResult).tree;
+
+    // Add then remove
+    const addResult = await client.callTool({
+      name: "node",
+      arguments: {
+        action: "add",
+        componentUuid: comp.uuid,
+        parentRef: tree.uuid,
+        child: { type: "text", value: "Will be removed" },
+      },
+    });
+    expect(addResult.isError).toBeFalsy();
+    const addOutput = parseResponse(addResult);
+
+    // Get the new node UUID from the tree
+    const afterAdd = await client.callTool({
+      name: "inspect",
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
+    });
+    const afterAddTree = parseResponse(afterAdd).tree;
+    const newChild = afterAddTree.children[afterAddTree.children.length - 1];
+
+    // Remove it
+    const removeResult = await client.callTool({
+      name: "node",
+      arguments: { action: "remove", componentUuid: comp.uuid, nodeRef: newChild.uuid },
+    });
+    expect(removeResult.isError).toBeFalsy();
+
+    // Verify tree integrity after removal
+    const integrity = await checkParentPointers(comp.uuid);
+    expect(integrity.orphans).toEqual([]);
+  });
+
+  it("node.move preserves parent pointers on both old and new parents", async () => {
+    const comp = discoveredComponents[0];
+    const treeResult = await client.callTool({
+      name: "inspect",
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
+    });
+    const tree = parseResponse(treeResult).tree;
+
+    // Add a container and a text node
+    await client.callTool({
+      name: "node",
+      arguments: {
+        action: "add",
+        componentUuid: comp.uuid,
+        parentRef: tree.uuid,
+        child: { type: "vbox", children: [] },
+      },
+    });
+
+    await client.callTool({
+      name: "node",
+      arguments: {
+        action: "add",
+        componentUuid: comp.uuid,
+        parentRef: tree.uuid,
+        child: { type: "text", value: "Move target" },
+      },
+    });
+
+    // Get tree to find the new nodes
+    const midTree = await client.callTool({
+      name: "inspect",
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
+    });
+    const midTreeData = parseResponse(midTree).tree;
+    const children = midTreeData.children;
+    const vbox = children[children.length - 2];
+    const textNode = children[children.length - 1];
+
+    // Move text into vbox
+    const moveResult = await client.callTool({
+      name: "node",
+      arguments: {
+        action: "move",
+        componentUuid: comp.uuid,
+        nodeRef: textNode.uuid,
+        newParentRef: vbox.uuid,
+      },
+    });
+    expect(moveResult.isError).toBeFalsy();
+
+    // Verify integrity
+    const integrity = await checkParentPointers(comp.uuid);
+    expect(integrity.orphans).toEqual([]);
+
+    // Cleanup
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+  });
+
+  it("node.clone sets parent pointer on cloned node", async () => {
+    const comp = discoveredComponents[0];
+    const treeResult = await client.callTool({
+      name: "inspect",
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
+    });
+    const tree = parseResponse(treeResult).tree;
+
+    // Add a node to clone
+    await client.callTool({
+      name: "node",
+      arguments: {
+        action: "add",
+        componentUuid: comp.uuid,
+        parentRef: tree.uuid,
+        child: { type: "text", value: "Clone source" },
+      },
+    });
+
+    const afterAdd = await client.callTool({
+      name: "inspect",
+      arguments: { action: "tree", maxDepth: -1, componentUuid: comp.uuid },
+    });
+    const afterAddTree = parseResponse(afterAdd).tree;
+    const sourceNode = afterAddTree.children[afterAddTree.children.length - 1];
+
+    // Clone it
+    const cloneResult = await client.callTool({
+      name: "node",
+      arguments: {
+        action: "clone",
+        componentUuid: comp.uuid,
+        nodeRef: sourceNode.uuid,
+      },
+    });
+    expect(cloneResult.isError).toBeFalsy();
+
+    // Verify integrity
+    const integrity = await checkParentPointers(comp.uuid);
+    expect(integrity.orphans).toEqual([]);
+
+    // Cleanup
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+    await client.callTool({ name: "project", arguments: { action: "undo" } });
+  });
+});

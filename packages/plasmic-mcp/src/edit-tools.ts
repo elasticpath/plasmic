@@ -106,7 +106,22 @@ import { ensureDependencyAddresses } from "./bundler-helpers.js";
 import { pushUndoOperation } from "./undo-manager.js";
 import { undoChanges } from "@/wab/shared/core/undo-util";
 import { extractComponent as wabExtractComponent } from "@/wab/shared/core/components";
+import { $$$ } from "@/wab/shared/TplQuery";
 import cssInitials from "css-initials";
+import {
+  GAP_PROPS,
+  FLEX_CONTAINER_PROPS,
+  gridCssProps,
+  gridChildProps,
+  imageCssProps,
+  transitionProps as sharedTransitionProps,
+  typographyCssProps,
+  colorProps as sharedColorProps,
+  spacingProps as sharedSpacingProps,
+  contentLayoutProps,
+  contentLayoutChildProps,
+  flexChildProps,
+} from "@/wab/shared/core/style-props";
 import {
   findToken,
   getAllStyleTokens,
@@ -781,15 +796,31 @@ function camelToKebab(str: string): string {
 }
 
 /**
- * Additional CSS properties accepted by Plasmic that may not be in
- * css-initials 0.3.x. Modern CSS properties widely supported by browsers.
+ * Shared Studio property lists imported from @/wab/shared/core/style-props.
+ * These stay in sync with Studio automatically — no manual maintenance.
  */
-const ADDITIONAL_VALID_PROPERTIES = new Set([
-  "row-gap", "column-gap",
-  "justify-self", "justify-items",
+const SHARED_PROPERTY_LISTS: readonly string[][] = [
+  GAP_PROPS,
+  FLEX_CONTAINER_PROPS,
+  gridCssProps,
+  gridChildProps,
+  imageCssProps,
+  sharedTransitionProps,
+  typographyCssProps,
+  sharedColorProps,
+  sharedSpacingProps,
+  contentLayoutProps,
+  contentLayoutChildProps,
+  flexChildProps,
+];
+
+/**
+ * MCP-specific CSS properties not covered by shared lists or css-initials.
+ * Modern CSS properties widely supported by browsers.
+ */
+const MCP_ADDITIONAL_PROPERTIES = new Set([
   "place-items", "place-content", "place-self",
   "aspect-ratio",
-  "object-fit", "object-position",
   "user-select",
   "backdrop-filter",
   "will-change",
@@ -797,7 +828,7 @@ const ADDITIONAL_VALID_PROPERTIES = new Set([
   "appearance",
   "scroll-behavior", "scroll-snap-type", "scroll-snap-align",
   "overscroll-behavior", "overscroll-behavior-x", "overscroll-behavior-y",
-  "text-decoration-line", "text-decoration-style", "text-decoration-color",
+  "text-decoration-style", "text-decoration-color",
   "text-decoration-thickness", "text-underline-offset",
   "accent-color",
   "caret-color",
@@ -808,26 +839,21 @@ const ADDITIONAL_VALID_PROPERTIES = new Set([
   "clip-path",
   "mask",
   "writing-mode",
-  "text-overflow",
   "hyphens",
   "tab-size",
   "touch-action",
   "resize",
   "all",
   "background",
-  // Grid layout
-  "grid-template-columns", "grid-template-rows", "grid-template-areas",
+  // Grid shorthands not in shared gridCssProps/gridChildProps
+  "grid-template-areas",
   "grid-column", "grid-row", "grid-area",
-  "grid-column-start", "grid-column-end", "grid-row-start", "grid-row-end",
-  "grid-auto-columns", "grid-auto-rows", "grid-auto-flow",
+  "grid-auto-flow",
   "grid-gap",
   // Flex shorthand
   "flex",
   // Inset
   "inset",
-  // Transition longhands (Studio stores these separately, not the shorthand)
-  "transition-property", "transition-duration",
-  "transition-timing-function", "transition-delay",
   // Outline longhands
   "outline-width", "outline-style", "outline-color", "outline-offset",
   // Shorthands handled by sanitizeStyles — included so they appear in
@@ -843,10 +869,18 @@ let _validPropertiesCache: Set<string> | null = null;
 function getValidPropertiesSet(): Set<string> {
   if (_validPropertiesCache) return _validPropertiesCache;
   const props = new Set<string>();
+  // css-initials: core CSS properties with initial values
   for (const key of Object.keys(cssInitials)) {
     props.add(key);
   }
-  for (const prop of ADDITIONAL_VALID_PROPERTIES) {
+  // Shared Studio property lists (auto-maintained)
+  for (const list of SHARED_PROPERTY_LISTS) {
+    for (const prop of list) {
+      props.add(prop);
+    }
+  }
+  // MCP-specific additions
+  for (const prop of MCP_ADDITIONAL_PROPERTIES) {
     props.add(prop);
   }
   _validPropertiesCache = props;
@@ -1120,32 +1154,24 @@ function isAncestorOf(ancestor: any, descendant: any): boolean {
 }
 
 /**
- * Insert a node into a parent's children array at a given position.
- * Also sets the child's parent pointer so Studio's $$$(tpl).root()
- * can traverse up to the component root.
+ * Insert a node into a parent using TplQuery — mirrors Studio's approach.
+ * TplQuery sets parent pointers, ensures implicit states, and checks for cycles.
+ * For TplTag parents, inserts into children array.
+ * For TplComponent/SlotSelection parents, inserts into slot arg.
  */
 function insertChild(
   parent: any,
   child: any,
   position?: string | number
 ): void {
-  if (!parent.children) {
-    parent.children = [];
-  }
-  child.parent = parent;
+  const $parent = $$$(parent);
   if (position === "first" || position === 0) {
-    parent.children.unshift(child);
-  } else if (
-    position === "last" ||
-    position === undefined ||
-    position === null
-  ) {
-    parent.children.push(child);
-  } else if (typeof position === "number") {
-    parent.children.splice(position, 0, child);
+    $parent.prepend(child);
+  } else if (typeof position === "number" && position > 0) {
+    $parent.insertAt(child, position);
   } else {
-    // Default: append
-    parent.children.push(child);
+    // "last", undefined, null — append
+    $parent.append(child);
   }
 }
 
@@ -2890,27 +2916,17 @@ function applyRegistryEnrichments(
 
   // 2. Populate default slot content from registry props[slotName].defaultValue.
   if (regComp?.props && typeof regComp.props === "object") {
-    const componentParams: any[] = targetComponent.params ?? [];
-
     for (const [propName, propMeta] of Object.entries(
       regComp.props as Record<string, any>
     )) {
       if (propMeta?.type !== "slot" || propMeta?.defaultValue == null) continue;
 
-      const slotParam = componentParams.find(
-        (p: any) => p.tplSlot && p.variable?.name === propName
-      );
+      const slotParam = findSlotParamByName(targetComponent, propName);
       if (!slotParam) continue;
 
       try {
         const vs = tplMgr.ensureBaseVariantSetting(tpl);
-
-        const existingArg = (vs.args ?? []).find(
-          (a: any) =>
-            a.param === slotParam ||
-            a.param?.variable?.name === propName
-        );
-        if (existingArg) continue;
+        if (findSlotArg(vs, slotParam, propName)) continue;
 
         const rawDefaults = Array.isArray(propMeta.defaultValue)
           ? propMeta.defaultValue
@@ -2945,6 +2961,162 @@ function applyRegistryEnrichments(
         );
       }
     }
+  }
+
+  // 3. Fill model-level default slot content (codeComponentMeta.defaultSlotContents).
+  //    Mirrors Studio's fillCodeComponentDefaultSlotContent from SlotUtils.ts.
+  //    This handles code components that define default content in their meta,
+  //    fixing the empty-slot bug for commerce components (EPAddToCartButton, etc.).
+  const meta = targetComponent.codeComponentMeta;
+  if (meta?.defaultSlotContents && typeof meta.defaultSlotContents === "object") {
+    for (const [propName, content] of Object.entries(meta.defaultSlotContents)) {
+      if (content == null) continue;
+
+      const slotParam = findSlotParamByName(targetComponent, propName);
+      if (!slotParam) continue;
+
+      try {
+        const vs = tplMgr.ensureBaseVariantSetting(tpl);
+        if (findSlotArg(vs, slotParam, propName)) continue;
+
+        const contents = Array.isArray(content) ? content : [content];
+        const validElements = contents.filter(
+          (elt: unknown) =>
+            typeof elt === "string" ||
+            (typeof elt === "object" && elt !== null && "type" in elt)
+        );
+        if (validElements.length === 0) continue;
+
+        const defaultTpls = validElements.map((elt: any) => {
+          // Use Studio's elementSchemaToTpl for model-level defaults
+          const result = studioElementSchemaToTpl(site, targetComponent, elt, {
+            codeComponentsOnly: false,
+            baseVariant,
+          });
+          if (result.result.isError) {
+            throw new Error(result.result.error.message);
+          }
+          return result.result.value.tpl;
+        });
+
+        const renderExpr = new RenderExpr({ tpl: defaultTpls });
+        const newArg = new Arg({ param: slotParam, expr: renderExpr });
+        if (!vs.args) {
+          vs.args = [];
+        }
+        vs.args.push(newArg);
+
+        for (const child of defaultTpls) {
+          child.parent = tpl;
+        }
+      } catch (e) {
+        console.error(
+          `[plasmic-mcp] Warning: Could not fill model default slot content ` +
+            `for "${targetComponent.name}.${propName}":`,
+          e
+        );
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Slot helpers — lightweight equivalents of @/wab/shared/SlotUtils functions.
+// Avoids importing SlotUtils directly (heavy transitive dependencies).
+// ---------------------------------------------------------------------------
+
+/**
+ * Get all slot parameters from a component.
+ * Equivalent to SlotUtils.getSlotParams().
+ */
+function getSlotParams(component: any): any[] {
+  return (component.params ?? []).filter((p: any) => p.tplSlot);
+}
+
+/**
+ * Find a slot parameter by name on a component.
+ * Equivalent to calling getSlotParams + find by variable name.
+ */
+function findSlotParamByName(component: any, name: string): any | undefined {
+  return getSlotParams(component).find(
+    (p: any) => p.variable?.name === name
+  );
+}
+
+/**
+ * Find the existing Arg for a slot parameter in a variant setting.
+ * Equivalent to SlotUtils.getSlotArg() but works with our duck-typed model.
+ */
+function findSlotArg(vs: any, slotParam: any, slotName: string): any | undefined {
+  return (vs.args ?? []).find(
+    (arg: any) =>
+      arg.param === slotParam || arg.param?.variable?.name === slotName
+  );
+}
+
+/**
+ * Validate and resolve a slot on a TplComponent.
+ * Returns the slotParam, variant setting, and existing arg (if any).
+ * Throws descriptive errors for missing slots or non-renderable content.
+ *
+ * Eliminates duplication across addChild, moveChild, and cloneChild.
+ */
+function resolveSlot(
+  tplComp: any,
+  slot: string | undefined,
+  tplMgr: any
+): { slotParam: any; vs: any; slotArg: any | undefined; slotName: string } {
+  const targetComp = tplComp.component;
+  const slotParams = getSlotParams(targetComp);
+  if (slotParams.length === 0) {
+    throw new Error(`Component "${targetComp.name}" has no slots.`);
+  }
+
+  const slotName = slot ?? "children";
+  const slotParam = findSlotParamByName(targetComp, slotName);
+  if (!slotParam) {
+    const available = slotParams
+      .map((p: any) => p.variable?.name)
+      .filter(Boolean)
+      .sort();
+    throw new Error(
+      `Slot "${slotName}" not found on component "${targetComp.name}". ` +
+        `Available slots: ${available.join(", ")}`
+    );
+  }
+
+  const vs = tplMgr.ensureBaseVariantSetting(tplComp);
+  const slotArg = findSlotArg(vs, slotParam, slotName);
+
+  if (slotArg && !isKnownRenderExpr(slotArg.expr)) {
+    throw new Error(
+      `Slot "${slotName}" contains a code expression, not renderable content.`
+    );
+  }
+
+  return { slotParam, vs, slotArg, slotName };
+}
+
+/**
+ * Insert a node into a slot using TplQuery — mirrors Studio's approach.
+ * TplQuery handles Arg/RenderExpr creation, parent pointers, and implicit states.
+ */
+function insertIntoSlot(
+  _vs: any,
+  _slotArg: any | undefined,
+  _slotParam: any,
+  tplComp: any,
+  node: any,
+  position?: string | number,
+  slotName?: string
+): void {
+  const $slot = $$$(tplComp).slot(slotName ?? "children");
+  if (position === "first" || position === 0) {
+    $slot.prepend(node);
+  } else if (typeof position === "number" && position > 0) {
+    $slot.insertAt(node, position);
+  } else {
+    $slot.append(node);
   }
 }
 
@@ -3051,51 +3223,7 @@ export async function addChild(
   // --- TplComponent parent: add to slot ---
   if (isKnownTplComponent(resolved.node)) {
     const tplComp = resolved.node;
-    const targetComp = tplComp.component;
-
-    // Validate the component has slot params
-    const slotParams = (targetComp.params ?? []).filter(
-      (p: any) => p.tplSlot
-    );
-    if (slotParams.length === 0) {
-      throw new Error(
-        `Component "${targetComp.name}" has no slots.`
-      );
-    }
-
-    // Determine target slot name (default to "children")
-    const slotName = slot ?? "children";
-
-    // Find the matching slot param
-    const slotParam = slotParams.find(
-      (p: any) => p.variable?.name === slotName
-    );
-    if (!slotParam) {
-      const available = slotParams
-        .map((p: any) => p.variable?.name)
-        .filter(Boolean)
-        .sort();
-      throw new Error(
-        `Slot "${slotName}" not found on component "${targetComp.name}". ` +
-          `Available slots: ${available.join(", ")}`
-      );
-    }
-
-    // Get base variant setting for the TplComponent instance
-    const vs = tplMgr.ensureBaseVariantSetting(tplComp);
-
-    // Find existing arg for this slot
-    let slotArg = (vs.args ?? []).find(
-      (arg: any) =>
-        arg.param === slotParam || arg.param?.variable?.name === slotName
-    );
-
-    // Validate that existing arg (if any) is a RenderExpr
-    if (slotArg && !isKnownRenderExpr(slotArg.expr)) {
-      throw new Error(
-        `Slot "${slotName}" contains a code expression, not renderable content.`
-      );
-    }
+    const { slotParam, vs, slotArg, slotName } = resolveSlot(tplComp, slot, tplMgr);
 
     const baseVariant = tplMgr.ensureBaseVariant(component);
     const tracker = getChangeTracker();
@@ -3103,20 +3231,7 @@ export async function addChild(
 
     const changes = tracker.withRecording(() => {
       newTpl = plasmicElementToTpl(child, session.site, baseVariant, registryComponents);
-
-      if (slotArg) {
-        // Slot already has a RenderExpr — insert into its tpl array
-        insertIntoArray(slotArg.expr.tpl, newTpl, position);
-      } else {
-        // No existing override — create new Arg + RenderExpr
-        const renderExpr = new RenderExpr({ tpl: [newTpl] });
-        const newArg = new Arg({ param: slotParam, expr: renderExpr });
-        if (!vs.args) { vs.args = []; }
-        vs.args.push(newArg);
-      }
-
-      // Set parent pointer for tree traversal
-      newTpl.parent = tplComp;
+      insertIntoSlot(vs, slotArg, slotParam, tplComp, newTpl, position, slotName);
     });
 
     const componentIid = getComponentIid(component);
@@ -3250,8 +3365,9 @@ export async function removeChild(
     );
   }
 
-  const parentInfo = findParent(component.tplTree, resolved.node);
-  if (!parentInfo) {
+  // Verify the node is attached to the tree.
+  // Prefer parent pointer (set by TplQuery); fall back to tree walk.
+  if (!resolved.node.parent && !findParent(component.tplTree, resolved.node)) {
     throw new Error(
       `Could not find parent of node "${nodeRef}". The node may already be detached.`
     );
@@ -3260,7 +3376,18 @@ export async function removeChild(
   const tracker = getChangeTracker();
 
   const changes = tracker.withRecording(() => {
-    parentInfo.childrenArray.splice(parentInfo.childIndex, 1);
+    // Use TplQuery for removal — mirrors Studio's approach.
+    // deep: true removes associated implicit states, private variants, etc.
+    if (resolved.node.parent) {
+      $$$(resolved.node).remove({ deep: true });
+    } else {
+      // Fallback for model objects without parent pointers (pre-TplQuery).
+      // findParent walks the tree to locate and splice the node.
+      const parentInfo = findParent(component.tplTree, resolved.node);
+      if (parentInfo) {
+        parentInfo.childrenArray.splice(parentInfo.childIndex, 1);
+      }
+    }
   });
 
   const componentIid = getComponentIid(component);
@@ -3338,66 +3465,21 @@ export async function moveChild(
   // --- TplComponent parent: move into slot ---
   if (isKnownTplComponent(newParent.node)) {
     const tplComp = newParent.node;
-    const targetComp = tplComp.component;
-
-    const slotParams = (targetComp.params ?? []).filter(
-      (p: any) => p.tplSlot
-    );
-    if (slotParams.length === 0) {
-      throw new Error(
-        `Component "${targetComp.name}" has no slots.`
-      );
-    }
-
-    const slotName = slot ?? "children";
-    const slotParam = slotParams.find(
-      (p: any) => p.variable?.name === slotName
-    );
-    if (!slotParam) {
-      const available = slotParams
-        .map((p: any) => p.variable?.name)
-        .filter(Boolean)
-        .sort();
-      throw new Error(
-        `Slot "${slotName}" not found on component "${targetComp.name}". ` +
-          `Available slots: ${available.join(", ")}`
-      );
-    }
-
     const session = requireSession();
     const tplMgr = new TplMgr({ site: session.site });
-    const vs = tplMgr.ensureBaseVariantSetting(tplComp);
-
-    let slotArg = (vs.args ?? []).find(
-      (arg: any) =>
-        arg.param === slotParam || arg.param?.variable?.name === slotName
-    );
-
-    if (slotArg && !isKnownRenderExpr(slotArg.expr)) {
-      throw new Error(
-        `Slot "${slotName}" contains a code expression, not renderable content.`
-      );
-    }
+    const { slotParam, vs, slotArg, slotName } = resolveSlot(tplComp, slot, tplMgr);
 
     const tracker = getChangeTracker();
 
     const changes = tracker.withRecording(() => {
-      // Remove from current parent
-      currentParentInfo.childrenArray.splice(
-        currentParentInfo.childIndex,
-        1
-      );
-
-      if (slotArg) {
-        insertIntoArray(slotArg.expr.tpl, resolved.node, position);
+      // Detach from current parent (shallow — preserves component-level data for move)
+      if (resolved.node.parent) {
+        $$$(resolved.node).detach();
       } else {
-        const renderExpr = new RenderExpr({ tpl: [resolved.node] });
-        const newArg = new Arg({ param: slotParam, expr: renderExpr });
-        if (!vs.args) { vs.args = []; }
-        vs.args.push(newArg);
+        currentParentInfo.childrenArray.splice(currentParentInfo.childIndex, 1);
       }
 
-      resolved.node.parent = tplComp;
+      insertIntoSlot(vs, slotArg, slotParam, tplComp, resolved.node, position, slotName);
     });
 
     const componentIid = getComponentIid(component);
@@ -3436,12 +3518,13 @@ export async function moveChild(
   const tracker = getChangeTracker();
 
   const changes = tracker.withRecording(() => {
-    // Remove from current parent (supports both direct children and slot overrides)
-    currentParentInfo.childrenArray.splice(
-      currentParentInfo.childIndex,
-      1
-    );
-    // Insert into new parent
+    // Detach from current parent (shallow — preserves component-level data for move)
+    if (resolved.node.parent) {
+      $$$(resolved.node).detach();
+    } else {
+      currentParentInfo.childrenArray.splice(currentParentInfo.childIndex, 1);
+    }
+    // Insert into new parent via TplQuery
     insertChild(newParent.node, resolved.node, position);
   });
 
@@ -3529,57 +3612,11 @@ export async function cloneChild(
       // --- TplComponent parent: clone into slot ---
       if (isKnownTplComponent(parentResolved.node)) {
         const tplComp = parentResolved.node;
-        const targetComp = tplComp.component;
-
-        const slotParams = (targetComp.params ?? []).filter(
-          (p: any) => p.tplSlot
-        );
-        if (slotParams.length === 0) {
-          throw new Error(
-            `Component "${targetComp.name}" has no slots.`
-          );
-        }
-
-        const slotName = slot ?? "children";
-        const slotParam = slotParams.find(
-          (p: any) => p.variable?.name === slotName
-        );
-        if (!slotParam) {
-          const available = slotParams
-            .map((p: any) => p.variable?.name)
-            .filter(Boolean)
-            .sort();
-          throw new Error(
-            `Slot "${slotName}" not found on component "${targetComp.name}". ` +
-              `Available slots: ${available.join(", ")}`
-          );
-        }
-
         const session = requireSession();
         const tplMgr = new TplMgr({ site: session.site });
-        const vs = tplMgr.ensureBaseVariantSetting(tplComp);
+        const { slotParam, vs, slotArg, slotName } = resolveSlot(tplComp, slot, tplMgr);
 
-        let slotArg = (vs.args ?? []).find(
-          (arg: any) =>
-            arg.param === slotParam || arg.param?.variable?.name === slotName
-        );
-
-        if (slotArg && !isKnownRenderExpr(slotArg.expr)) {
-          throw new Error(
-            `Slot "${slotName}" contains a code expression, not renderable content.`
-          );
-        }
-
-        if (slotArg) {
-          insertIntoArray(slotArg.expr.tpl, clonedNode, position);
-        } else {
-          const renderExpr = new RenderExpr({ tpl: [clonedNode] });
-          const newArg = new Arg({ param: slotParam, expr: renderExpr });
-          if (!vs.args) { vs.args = []; }
-          vs.args.push(newArg);
-        }
-
-        clonedNode.parent = tplComp;
+        insertIntoSlot(vs, slotArg, slotParam, tplComp, clonedNode, position, slotName);
         resolvedSlotName = slotName;
       } else if (isKnownTplTag(parentResolved.node)) {
         // --- TplTag parent ---
@@ -3602,16 +3639,20 @@ export async function cloneChild(
           `Slot targeting requires parentRef to specify the component instance.`
         );
       }
-      // Insert as sibling after the original
-      const parentInfo = findParent(component.tplTree, resolved.node);
-      if (!parentInfo) {
-        throw new Error(
-          `Cannot find parent of node "${nodeRef}". The node may be detached.`
-        );
+      // Insert as sibling after the original via TplQuery
+      if (resolved.node.parent) {
+        $$$(resolved.node).after(clonedNode);
+      } else {
+        // Fallback for nodes without parent pointers
+        const parentInfo = findParent(component.tplTree, resolved.node);
+        if (!parentInfo) {
+          throw new Error(
+            `Cannot find parent of node "${nodeRef}". The node may be detached.`
+          );
+        }
+        parentInfo.childrenArray.splice(parentInfo.childIndex + 1, 0, clonedNode);
+        clonedNode.parent = parentInfo.parent;
       }
-      // Insert right after the original node
-      parentInfo.childrenArray.splice(parentInfo.childIndex + 1, 0, clonedNode);
-      clonedNode.parent = parentInfo.parent;
     }
   });
 
