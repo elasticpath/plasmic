@@ -804,6 +804,9 @@ export function createServer(): McpServer {
           case "add-package": {
             const pid = requireParam(projectId, "projectId", "project.add-package");
             const result = await addPackage(apiClient, pid);
+            // Package ops bypass the change tracker — full bundle save required
+            const addPkgSave = new SaveManager(apiClient);
+            const addPkgRevision = await addPkgSave.saveFullBundle();
             return {
               content: [
                 {
@@ -811,6 +814,7 @@ export function createServer(): McpServer {
                   text: JSON.stringify({
                     success: true,
                     ...result,
+                    revision: addPkgRevision.revisionNum,
                     message: `Added "${result.name}" (v${result.version}) — ${result.componentCount} components now available.`,
                   }),
                 },
@@ -821,6 +825,9 @@ export function createServer(): McpServer {
           case "remove-package": {
             const pkgIdOrName = requireParam(pkgId ?? projectId, "pkgId", "project.remove-package");
             const result = await removePackage(apiClient, pkgIdOrName);
+            // Package ops bypass the change tracker — full bundle save required
+            const rmPkgSave = new SaveManager(apiClient);
+            const rmPkgRevision = await rmPkgSave.saveFullBundle();
             return {
               content: [
                 {
@@ -828,6 +835,7 @@ export function createServer(): McpServer {
                   text: JSON.stringify({
                     success: true,
                     ...result,
+                    revision: rmPkgRevision.revisionNum,
                     message: `Removed "${result.name}" (v${result.version}).`,
                   }),
                 },
@@ -851,6 +859,9 @@ export function createServer(): McpServer {
                 ],
               };
             }
+            // Package ops bypass the change tracker — full bundle save required
+            const upgPkgSave = new SaveManager(apiClient);
+            const upgPkgRevision = await upgPkgSave.saveFullBundle();
             return {
               content: [
                 {
@@ -858,6 +869,7 @@ export function createServer(): McpServer {
                   text: JSON.stringify({
                     success: true,
                     upgraded: results,
+                    revision: upgPkgRevision.revisionNum,
                     message: `Upgraded ${results.length} package(s): ${results.map((r) => `${r.name} (${r.oldVersion} → ${r.newVersion})`).join(", ")}.`,
                   }),
                 },
