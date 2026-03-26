@@ -140,6 +140,31 @@ export default defineConfig({
         find: /^@\/wab\/shared\/core\/style-props$/,
         replacement: path.resolve(__dirname, "src/__mocks__/wab-style-props"),
       },
+      // TplQuery and its dependencies
+      {
+        find: /^@\/wab\/shared\/TplQuery$/,
+        replacement: path.resolve(__dirname, "src/__mocks__/wab-tpl-query"),
+      },
+      {
+        find: /^@\/wab\/shared\/core\/slots$/,
+        replacement: path.resolve(__dirname, "src/__mocks__/wab-slots"),
+      },
+      {
+        find: /^@\/wab\/shared\/core\/states$/,
+        replacement: path.resolve(__dirname, "src/__mocks__/wab-states"),
+      },
+      {
+        find: /^@\/wab\/shared\/SlotUtils$/,
+        replacement: path.resolve(__dirname, "src/__mocks__/wab-slot-utils"),
+      },
+      {
+        find: /^@\/wab\/shared\/UserError$/,
+        replacement: path.resolve(__dirname, "src/__mocks__/wab-user-error"),
+      },
+      {
+        find: /^antd$/,
+        replacement: path.resolve(__dirname, "src/__mocks__/wab-antd"),
+      },
     ],
     extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
   },
