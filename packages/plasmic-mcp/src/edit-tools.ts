@@ -1154,32 +1154,24 @@ function isAncestorOf(ancestor: any, descendant: any): boolean {
 }
 
 /**
- * Insert a node into a parent's children array at a given position.
- * Also sets the child's parent pointer so Studio's $$$(tpl).root()
- * can traverse up to the component root.
+ * Insert a node into a parent using TplQuery — mirrors Studio's approach.
+ * TplQuery sets parent pointers, ensures implicit states, and checks for cycles.
+ * For TplTag parents, inserts into children array.
+ * For TplComponent/SlotSelection parents, inserts into slot arg.
  */
 function insertChild(
   parent: any,
   child: any,
   position?: string | number
 ): void {
-  if (!parent.children) {
-    parent.children = [];
-  }
-  child.parent = parent;
+  const $parent = $$$(parent);
   if (position === "first" || position === 0) {
-    parent.children.unshift(child);
-  } else if (
-    position === "last" ||
-    position === undefined ||
-    position === null
-  ) {
-    parent.children.push(child);
-  } else if (typeof position === "number") {
-    parent.children.splice(position, 0, child);
+    $parent.prepend(child);
+  } else if (typeof position === "number" && position > 0) {
+    $parent.insertAt(child, position);
   } else {
-    // Default: append
-    parent.children.push(child);
+    // "last", undefined, null — append
+    $parent.append(child);
   }
 }
 
@@ -3106,25 +3098,26 @@ function resolveSlot(
 }
 
 /**
- * Insert a node into a slot, creating or extending the slot's RenderExpr.
+ * Insert a node into a slot using TplQuery — mirrors Studio's approach.
+ * TplQuery handles Arg/RenderExpr creation, parent pointers, and implicit states.
  */
 function insertIntoSlot(
-  vs: any,
-  slotArg: any | undefined,
-  slotParam: any,
+  _vs: any,
+  _slotArg: any | undefined,
+  _slotParam: any,
   tplComp: any,
   node: any,
-  position?: string | number
+  position?: string | number,
+  slotName?: string
 ): void {
-  if (slotArg) {
-    insertIntoArray(slotArg.expr.tpl, node, position);
+  const $slot = $$$(tplComp).slot(slotName ?? "children");
+  if (position === "first" || position === 0) {
+    $slot.prepend(node);
+  } else if (typeof position === "number" && position > 0) {
+    $slot.insertAt(node, position);
   } else {
-    const renderExpr = new RenderExpr({ tpl: [node] });
-    const newArg = new Arg({ param: slotParam, expr: renderExpr });
-    if (!vs.args) { vs.args = []; }
-    vs.args.push(newArg);
+    $slot.append(node);
   }
-  node.parent = tplComp;
 }
 
 const BOX_TYPES = new Set(["box", "vbox", "hbox"]);
@@ -3238,7 +3231,7 @@ export async function addChild(
 
     const changes = tracker.withRecording(() => {
       newTpl = plasmicElementToTpl(child, session.site, baseVariant, registryComponents);
-      insertIntoSlot(vs, slotArg, slotParam, tplComp, newTpl, position);
+      insertIntoSlot(vs, slotArg, slotParam, tplComp, newTpl, position, slotName);
     });
 
     const componentIid = getComponentIid(component);
@@ -3485,7 +3478,7 @@ export async function moveChild(
         1
       );
 
-      insertIntoSlot(vs, slotArg, slotParam, tplComp, resolved.node, position);
+      insertIntoSlot(vs, slotArg, slotParam, tplComp, resolved.node, position, slotName);
     });
 
     const componentIid = getComponentIid(component);
@@ -3621,7 +3614,7 @@ export async function cloneChild(
         const tplMgr = new TplMgr({ site: session.site });
         const { slotParam, vs, slotArg, slotName } = resolveSlot(tplComp, slot, tplMgr);
 
-        insertIntoSlot(vs, slotArg, slotParam, tplComp, clonedNode, position);
+        insertIntoSlot(vs, slotArg, slotParam, tplComp, clonedNode, position, slotName);
         resolvedSlotName = slotName;
       } else if (isKnownTplTag(parentResolved.node)) {
         // --- TplTag parent ---
