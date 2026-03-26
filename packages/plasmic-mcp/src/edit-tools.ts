@@ -106,6 +106,7 @@ import { ensureDependencyAddresses } from "./bundler-helpers.js";
 import { pushUndoOperation } from "./undo-manager.js";
 import { undoChanges } from "@/wab/shared/core/undo-util";
 import { extractComponent as wabExtractComponent } from "@/wab/shared/core/components";
+import { $$$ } from "@/wab/shared/TplQuery";
 import cssInitials from "css-initials";
 import {
   GAP_PROPS,
@@ -3371,8 +3372,9 @@ export async function removeChild(
     );
   }
 
-  const parentInfo = findParent(component.tplTree, resolved.node);
-  if (!parentInfo) {
+  // Verify the node is attached to the tree.
+  // Prefer parent pointer (set by TplQuery); fall back to tree walk.
+  if (!resolved.node.parent && !findParent(component.tplTree, resolved.node)) {
     throw new Error(
       `Could not find parent of node "${nodeRef}". The node may already be detached.`
     );
@@ -3381,7 +3383,18 @@ export async function removeChild(
   const tracker = getChangeTracker();
 
   const changes = tracker.withRecording(() => {
-    parentInfo.childrenArray.splice(parentInfo.childIndex, 1);
+    // Use TplQuery for removal — mirrors Studio's approach.
+    // deep: true removes associated implicit states, private variants, etc.
+    if (resolved.node.parent) {
+      $$$(resolved.node).remove({ deep: true });
+    } else {
+      // Fallback for model objects without parent pointers (pre-TplQuery).
+      // findParent walks the tree to locate and splice the node.
+      const parentInfo = findParent(component.tplTree, resolved.node);
+      if (parentInfo) {
+        parentInfo.childrenArray.splice(parentInfo.childIndex, 1);
+      }
+    }
   });
 
   const componentIid = getComponentIid(component);
