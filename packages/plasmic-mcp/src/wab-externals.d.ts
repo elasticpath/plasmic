@@ -888,3 +888,52 @@ declare module "@/wab/shared/collections" {
 declare module "@/wab/shared/common" {
   export function xDifference<T>(a: Iterable<T>, b: Iterable<T>): Set<T>;
 }
+
+// ---------------------------------------------------------------------------
+// @/wab/shared/TplQuery
+// ---------------------------------------------------------------------------
+declare module "@/wab/shared/TplQuery" {
+  export class TplQuery {
+    readonly nodes: any[];
+    constructor(input: any);
+    one(): any;
+    toArray(): any[];
+    toArrayOfTplNodes(): any[];
+    isEmpty(): boolean;
+    append(child: any): TplQuery;
+    prepend(child: any): TplQuery;
+    insertAt(child: any, index: number): void;
+    remove(opts: { deep: boolean }): TplQuery;
+    tryRemove(opts: { deep: boolean }): TplQuery;
+    detach(): TplQuery;
+    after(toInsert: any): TplQuery;
+    before(toInsert: any): TplQuery;
+    slot(slotName: string): TplQuery;
+    param(paramName: string): any;
+    setSlotArg(argName: string, expr: any): TplQuery;
+    getSlotArg(argName: string): any | undefined;
+    tryGetOwningComponent(): any | undefined;
+    owningComponent(): any;
+    parents(): TplQuery;
+    children(): TplQuery;
+  }
+  export function $$$(input: any): TplQuery;
+}
+
+// ---------------------------------------------------------------------------
+// @/wab/shared/core/style-props
+// ---------------------------------------------------------------------------
+declare module "@/wab/shared/core/style-props" {
+  export const GAP_PROPS: string[];
+  export const FLEX_CONTAINER_PROPS: string[];
+  export const gridCssProps: string[];
+  export const gridChildProps: string[];
+  export const imageCssProps: string[];
+  export const transitionProps: string[];
+  export const typographyCssProps: string[];
+  export const colorProps: string[];
+  export const spacingProps: string[];
+  export const contentLayoutProps: string[];
+  export const contentLayoutChildProps: string[];
+  export const flexChildProps: string[];
+}
