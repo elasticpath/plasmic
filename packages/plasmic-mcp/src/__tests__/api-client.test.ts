@@ -5,6 +5,9 @@
  * Tests verify correct URL construction, auth headers, request body serialization,
  * and error handling — all critical for a stable MCP server that surfaces
  * meaningful error messages to Claude and the developer.
+ *
+ * The transport pattern mirrors Studio's SharedApi / ajax() serialization:
+ * GET params: URLSearchParams(mapValues(omitUndefined(data), v => JSON.stringify(v)))
  */
 
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -484,7 +487,7 @@ describe("PlasmicApiClient", () => {
   });
 
   describe("getPkgVersion", () => {
-    it("omits version param when requesting latest (no version arg)", async () => {
+    it("defaults version to 'latest' when no version arg (matches SharedApi)", async () => {
       const mockResponse = {
         pkg: { id: "pv-1", pkgId: "pkg-1", version: "1.0.0", model: "{}" },
         depPkgs: [],
@@ -498,7 +501,7 @@ describe("PlasmicApiClient", () => {
       const result = await client.getPkgVersion("pkg-1");
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://studio.example.com/api/v1/pkgs/pkg-1?meta=false",
+        "https://studio.example.com/api/v1/pkgs/pkg-1?version=%22latest%22&meta=false",
         expect.objectContaining({ method: "GET" })
       );
       expect(result).toEqual(mockResponse);
@@ -529,14 +532,14 @@ describe("PlasmicApiClient", () => {
       await client.getPkgVersion("pkg/special");
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://studio.example.com/api/v1/pkgs/pkg%2Fspecial?meta=false",
+        "https://studio.example.com/api/v1/pkgs/pkg%2Fspecial?version=%22latest%22&meta=false",
         expect.objectContaining({ method: "GET" })
       );
     });
   });
 
   describe("getPkgVersionMeta", () => {
-    it("omits version param when requesting latest (no version arg)", async () => {
+    it("defaults version to 'latest' when no version arg (matches SharedApi)", async () => {
       const mockResponse = {
         pkg: { id: "pv-1", pkgId: "pkg-1", version: "1.0.0" },
         depPkgs: [],
@@ -550,7 +553,7 @@ describe("PlasmicApiClient", () => {
       const result = await client.getPkgVersionMeta("pkg-1");
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://studio.example.com/api/v1/pkgs/pkg-1?meta=true",
+        "https://studio.example.com/api/v1/pkgs/pkg-1?version=%22latest%22&meta=true",
         expect.objectContaining({ method: "GET" })
       );
       expect(result).toEqual(mockResponse);
@@ -631,6 +634,174 @@ describe("PlasmicApiClient", () => {
         expect.objectContaining({ method: "GET" })
       );
       expect(result).toEqual(mockResponse);
+    });
+  });
+
+  // ==========================================================================
+  // SharedApi transport pattern: GET query param serialization
+  //
+  // Studio's ajax() serializes GET params as:
+  //   URLSearchParams(L.mapValues(L.omitBy(data, L.isUndefined), v => JSON.stringify(v)))
+  // Our req() must produce identical output.
+  // ==========================================================================
+
+  describe("GET query param serialization (SharedApi pattern)", () => {
+    it("JSON-stringifies each value and URL-encodes via URLSearchParams", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        headers: mockHeaders(),
+        json: () => Promise.resolve({}),
+      });
+
+      await client.get("/test", { str: "hello", num: 42, arr: [1, 2], bool: false });
+
+      const calledUrl = mockFetch.mock.calls[0][0] as string;
+      // String values are JSON-quoted: "hello" → %22hello%22
+      expect(calledUrl).toContain("str=%22hello%22");
+      // Numbers are plain: 42
+      expect(calledUrl).toContain("num=42");
+      // Arrays are JSON-stringified: [1,2] → %5B1%2C2%5D
+      expect(calledUrl).toContain("arr=%5B1%2C2%5D");
+      // Booleans are plain: false
+      expect(calledUrl).toContain("bool=false");
+    });
+
+    it("omits undefined values (matches L.omitBy(data, L.isUndefined))", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        headers: mockHeaders(),
+        json: () => Promise.resolve({}),
+      });
+
+      await client.get("/test", { present: "yes", absent: undefined });
+
+      const calledUrl = mockFetch.mock.calls[0][0] as string;
+      expect(calledUrl).toContain("present=%22yes%22");
+      expect(calledUrl).not.toContain("absent");
+    });
+
+    it("sends no query string when data is empty object", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        headers: mockHeaders(),
+        json: () => Promise.resolve({}),
+      });
+
+      await client.get("/test", {});
+
+      const calledUrl = mockFetch.mock.calls[0][0] as string;
+      expect(calledUrl).toBe("https://studio.example.com/api/v1/test");
+    });
+
+    it("sends no query string when data is undefined", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        headers: mockHeaders(),
+        json: () => Promise.resolve({}),
+      });
+
+      await client.get("/test");
+
+      const calledUrl = mockFetch.mock.calls[0][0] as string;
+      expect(calledUrl).toBe("https://studio.example.com/api/v1/test");
+    });
+  });
+
+  // ==========================================================================
+  // Additional API methods coverage
+  // ==========================================================================
+
+  describe("getLastBundleVersion", () => {
+    it("unwraps server response to plain string", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        headers: mockHeaders(),
+        json: () => Promise.resolve({ latestBundleVersion: "256-abc" }),
+      });
+
+      const result = await client.getLastBundleVersion();
+
+      expect(result).toBe("256-abc");
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://studio.example.com/api/v1/latest-bundle-version",
+        expect.objectContaining({ method: "GET" })
+      );
+    });
+  });
+
+  describe("saveRevision", () => {
+    it("fetches CSRF token before POST and sends body as JSON", async () => {
+      // First call: CSRF token fetch
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: mockHeaders(["session=xyz; Path=/"]),
+        json: () => Promise.resolve({ csrf: "csrf-tok" }),
+      });
+      // Second call: actual save
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: mockHeaders(),
+        json: () => Promise.resolve({ success: true }),
+      });
+
+      const body = {
+        data: "{}",
+        modelVersion: 1,
+        hostlessDataVersion: 0,
+        incremental: false,
+        toDeleteIids: [],
+        modifiedComponentIids: [],
+        modelSchemaHash: "abc123",
+      };
+      await client.saveRevision("proj-1", 5, body);
+
+      // CSRF fetch
+      expect(mockFetch.mock.calls[0][0]).toBe(
+        "https://studio.example.com/api/v1/auth/csrf"
+      );
+      // Save call with CSRF token and cookies
+      expect(mockFetch.mock.calls[1][0]).toBe(
+        "https://studio.example.com/api/v1/projects/proj-1/revisions/5"
+      );
+      expect(mockFetch.mock.calls[1][1].method).toBe("POST");
+      expect(mockFetch.mock.calls[1][1].body).toBe(JSON.stringify(body));
+      expect(mockFetch.mock.calls[1][1].headers["x-csrf-token"]).toBe("csrf-tok");
+      expect(mockFetch.mock.calls[1][1].headers["Cookie"]).toContain("session=xyz");
+    });
+  });
+
+  describe("getModelUpdates", () => {
+    it("serializes revisionNum, installedDeps, and optional branchId as query params", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        headers: mockHeaders(),
+        json: () => Promise.resolve({ data: null }),
+      });
+
+      await client.getModelUpdates("proj-1", 5, ["dep-a", "dep-b"], "branch-1");
+
+      const calledUrl = mockFetch.mock.calls[0][0] as string;
+      // revisionNum: JSON.stringify(5) = "5"
+      expect(calledUrl).toContain("revisionNum=5");
+      // installedDeps: JSON.stringify(["dep-a","dep-b"])
+      expect(calledUrl).toContain(
+        `installedDeps=${encodeURIComponent(JSON.stringify(["dep-a", "dep-b"]))}`
+      );
+      // branchId: JSON.stringify("branch-1") = '"branch-1"'
+      expect(calledUrl).toContain("branchId=%22branch-1%22");
+    });
+
+    it("omits branchId when not provided", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        headers: mockHeaders(),
+        json: () => Promise.resolve({ data: null }),
+      });
+
+      await client.getModelUpdates("proj-1", 3, []);
+
+      const calledUrl = mockFetch.mock.calls[0][0] as string;
+      expect(calledUrl).not.toContain("branchId");
     });
   });
 });
