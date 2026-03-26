@@ -3472,11 +3472,12 @@ export async function moveChild(
     const tracker = getChangeTracker();
 
     const changes = tracker.withRecording(() => {
-      // Remove from current parent
-      currentParentInfo.childrenArray.splice(
-        currentParentInfo.childIndex,
-        1
-      );
+      // Detach from current parent (shallow — preserves component-level data for move)
+      if (resolved.node.parent) {
+        $$$(resolved.node).detach();
+      } else {
+        currentParentInfo.childrenArray.splice(currentParentInfo.childIndex, 1);
+      }
 
       insertIntoSlot(vs, slotArg, slotParam, tplComp, resolved.node, position, slotName);
     });
@@ -3517,12 +3518,13 @@ export async function moveChild(
   const tracker = getChangeTracker();
 
   const changes = tracker.withRecording(() => {
-    // Remove from current parent (supports both direct children and slot overrides)
-    currentParentInfo.childrenArray.splice(
-      currentParentInfo.childIndex,
-      1
-    );
-    // Insert into new parent
+    // Detach from current parent (shallow — preserves component-level data for move)
+    if (resolved.node.parent) {
+      $$$(resolved.node).detach();
+    } else {
+      currentParentInfo.childrenArray.splice(currentParentInfo.childIndex, 1);
+    }
+    // Insert into new parent via TplQuery
     insertChild(newParent.node, resolved.node, position);
   });
 
@@ -3637,16 +3639,20 @@ export async function cloneChild(
           `Slot targeting requires parentRef to specify the component instance.`
         );
       }
-      // Insert as sibling after the original
-      const parentInfo = findParent(component.tplTree, resolved.node);
-      if (!parentInfo) {
-        throw new Error(
-          `Cannot find parent of node "${nodeRef}". The node may be detached.`
-        );
+      // Insert as sibling after the original via TplQuery
+      if (resolved.node.parent) {
+        $$$(resolved.node).after(clonedNode);
+      } else {
+        // Fallback for nodes without parent pointers
+        const parentInfo = findParent(component.tplTree, resolved.node);
+        if (!parentInfo) {
+          throw new Error(
+            `Cannot find parent of node "${nodeRef}". The node may be detached.`
+          );
+        }
+        parentInfo.childrenArray.splice(parentInfo.childIndex + 1, 0, clonedNode);
+        clonedNode.parent = parentInfo.parent;
       }
-      // Insert right after the original node
-      parentInfo.childrenArray.splice(parentInfo.childIndex + 1, 0, clonedNode);
-      clonedNode.parent = parentInfo.parent;
     }
   });
 
