@@ -4,16 +4,18 @@
   "description": "Plasmic registration calls for elastic path commerce provider",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "module": "dist/commerce-elastic-path.esm.js",
+  "module": "dist/plasmic-ep-commerce-elastic-path.esm.js",
   "exports": {
     ".": {
-      "import": "./dist/commerce-elastic-path.esm.js",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/plasmic-ep-commerce-elastic-path.esm.js",
       "require": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "default": "./dist/index.js"
     },
     "./server": {
+      "types": "./dist/server.d.ts",
       "require": "./dist/server.js",
-      "types": "./dist/server.d.ts"
+      "default": "./dist/server.js"
     }
   },
   "files": [

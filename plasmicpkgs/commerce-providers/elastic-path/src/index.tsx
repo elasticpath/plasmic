@@ -21,7 +21,7 @@ import { registerEPCartItemRemoveButton } from "./cart-drawer/EPCartItemRemoveBu
 import { registerEPCartItemQuantityButton } from "./cart-drawer/EPCartItemQuantityButton";
 import { registerEPCartItemQuantityControl } from "./cart-drawer/EPCartItemQuantityControl";
 import { registerEPCartItemList } from "./cart-drawer/EPCartItemList";
-import { registerEPCartDrawer } from "./cart-drawer/EPCartDrawer";
+import { registerEPCartDrawer, registerEPCartInline } from "./cart-drawer/EPCartDrawer";
 import { registerEPCartDrawerTrigger } from "./cart-drawer/EPCartDrawerTrigger";
 import { registerEPBundleProvider } from "./bundle/composable/EPBundleProvider";
 import { registerEPBundleComponentList } from "./bundle/composable/EPBundleComponentList";
@@ -102,6 +102,7 @@ export function registerAll(loader?: Registerable) {
   registerEPCartItemQuantityControl(loader);
   registerEPCartItemList(loader);
   registerEPCartDrawer(loader);
+  registerEPCartInline(loader);
   registerEPCartDrawerTrigger(loader);
 
   // Composable bundle configurator
