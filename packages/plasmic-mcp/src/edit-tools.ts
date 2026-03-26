@@ -2923,27 +2923,17 @@ function applyRegistryEnrichments(
 
   // 2. Populate default slot content from registry props[slotName].defaultValue.
   if (regComp?.props && typeof regComp.props === "object") {
-    const componentParams: any[] = targetComponent.params ?? [];
-
     for (const [propName, propMeta] of Object.entries(
       regComp.props as Record<string, any>
     )) {
       if (propMeta?.type !== "slot" || propMeta?.defaultValue == null) continue;
 
-      const slotParam = componentParams.find(
-        (p: any) => p.tplSlot && p.variable?.name === propName
-      );
+      const slotParam = findSlotParamByName(targetComponent, propName);
       if (!slotParam) continue;
 
       try {
         const vs = tplMgr.ensureBaseVariantSetting(tpl);
-
-        const existingArg = (vs.args ?? []).find(
-          (a: any) =>
-            a.param === slotParam ||
-            a.param?.variable?.name === propName
-        );
-        if (existingArg) continue;
+        if (findSlotArg(vs, slotParam, propName)) continue;
 
         const rawDefaults = Array.isArray(propMeta.defaultValue)
           ? propMeta.defaultValue
@@ -2979,6 +2969,161 @@ function applyRegistryEnrichments(
       }
     }
   }
+
+  // 3. Fill model-level default slot content (codeComponentMeta.defaultSlotContents).
+  //    Mirrors Studio's fillCodeComponentDefaultSlotContent from SlotUtils.ts.
+  //    This handles code components that define default content in their meta,
+  //    fixing the empty-slot bug for commerce components (EPAddToCartButton, etc.).
+  const meta = targetComponent.codeComponentMeta;
+  if (meta?.defaultSlotContents && typeof meta.defaultSlotContents === "object") {
+    for (const [propName, content] of Object.entries(meta.defaultSlotContents)) {
+      if (content == null) continue;
+
+      const slotParam = findSlotParamByName(targetComponent, propName);
+      if (!slotParam) continue;
+
+      try {
+        const vs = tplMgr.ensureBaseVariantSetting(tpl);
+        if (findSlotArg(vs, slotParam, propName)) continue;
+
+        const contents = Array.isArray(content) ? content : [content];
+        const validElements = contents.filter(
+          (elt: unknown) =>
+            typeof elt === "string" ||
+            (typeof elt === "object" && elt !== null && "type" in elt)
+        );
+        if (validElements.length === 0) continue;
+
+        const defaultTpls = validElements.map((elt: any) => {
+          // Use Studio's elementSchemaToTpl for model-level defaults
+          const result = studioElementSchemaToTpl(site, targetComponent, elt, {
+            codeComponentsOnly: false,
+            baseVariant,
+          });
+          if (result.result.isError) {
+            throw new Error(result.result.error.message);
+          }
+          return result.result.value.tpl;
+        });
+
+        const renderExpr = new RenderExpr({ tpl: defaultTpls });
+        const newArg = new Arg({ param: slotParam, expr: renderExpr });
+        if (!vs.args) {
+          vs.args = [];
+        }
+        vs.args.push(newArg);
+
+        for (const child of defaultTpls) {
+          child.parent = tpl;
+        }
+      } catch (e) {
+        console.error(
+          `[plasmic-mcp] Warning: Could not fill model default slot content ` +
+            `for "${targetComponent.name}.${propName}":`,
+          e
+        );
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Slot helpers — lightweight equivalents of @/wab/shared/SlotUtils functions.
+// Avoids importing SlotUtils directly (heavy transitive dependencies).
+// ---------------------------------------------------------------------------
+
+/**
+ * Get all slot parameters from a component.
+ * Equivalent to SlotUtils.getSlotParams().
+ */
+function getSlotParams(component: any): any[] {
+  return (component.params ?? []).filter((p: any) => p.tplSlot);
+}
+
+/**
+ * Find a slot parameter by name on a component.
+ * Equivalent to calling getSlotParams + find by variable name.
+ */
+function findSlotParamByName(component: any, name: string): any | undefined {
+  return getSlotParams(component).find(
+    (p: any) => p.variable?.name === name
+  );
+}
+
+/**
+ * Find the existing Arg for a slot parameter in a variant setting.
+ * Equivalent to SlotUtils.getSlotArg() but works with our duck-typed model.
+ */
+function findSlotArg(vs: any, slotParam: any, slotName: string): any | undefined {
+  return (vs.args ?? []).find(
+    (arg: any) =>
+      arg.param === slotParam || arg.param?.variable?.name === slotName
+  );
+}
+
+/**
+ * Validate and resolve a slot on a TplComponent.
+ * Returns the slotParam, variant setting, and existing arg (if any).
+ * Throws descriptive errors for missing slots or non-renderable content.
+ *
+ * Eliminates duplication across addChild, moveChild, and cloneChild.
+ */
+function resolveSlot(
+  tplComp: any,
+  slot: string | undefined,
+  tplMgr: any
+): { slotParam: any; vs: any; slotArg: any | undefined; slotName: string } {
+  const targetComp = tplComp.component;
+  const slotParams = getSlotParams(targetComp);
+  if (slotParams.length === 0) {
+    throw new Error(`Component "${targetComp.name}" has no slots.`);
+  }
+
+  const slotName = slot ?? "children";
+  const slotParam = findSlotParamByName(targetComp, slotName);
+  if (!slotParam) {
+    const available = slotParams
+      .map((p: any) => p.variable?.name)
+      .filter(Boolean)
+      .sort();
+    throw new Error(
+      `Slot "${slotName}" not found on component "${targetComp.name}". ` +
+        `Available slots: ${available.join(", ")}`
+    );
+  }
+
+  const vs = tplMgr.ensureBaseVariantSetting(tplComp);
+  const slotArg = findSlotArg(vs, slotParam, slotName);
+
+  if (slotArg && !isKnownRenderExpr(slotArg.expr)) {
+    throw new Error(
+      `Slot "${slotName}" contains a code expression, not renderable content.`
+    );
+  }
+
+  return { slotParam, vs, slotArg, slotName };
+}
+
+/**
+ * Insert a node into a slot, creating or extending the slot's RenderExpr.
+ */
+function insertIntoSlot(
+  vs: any,
+  slotArg: any | undefined,
+  slotParam: any,
+  tplComp: any,
+  node: any,
+  position?: string | number
+): void {
+  if (slotArg) {
+    insertIntoArray(slotArg.expr.tpl, node, position);
+  } else {
+    const renderExpr = new RenderExpr({ tpl: [node] });
+    const newArg = new Arg({ param: slotParam, expr: renderExpr });
+    if (!vs.args) { vs.args = []; }
+    vs.args.push(newArg);
+  }
+  node.parent = tplComp;
 }
 
 const BOX_TYPES = new Set(["box", "vbox", "hbox"]);
@@ -3084,51 +3229,7 @@ export async function addChild(
   // --- TplComponent parent: add to slot ---
   if (isKnownTplComponent(resolved.node)) {
     const tplComp = resolved.node;
-    const targetComp = tplComp.component;
-
-    // Validate the component has slot params
-    const slotParams = (targetComp.params ?? []).filter(
-      (p: any) => p.tplSlot
-    );
-    if (slotParams.length === 0) {
-      throw new Error(
-        `Component "${targetComp.name}" has no slots.`
-      );
-    }
-
-    // Determine target slot name (default to "children")
-    const slotName = slot ?? "children";
-
-    // Find the matching slot param
-    const slotParam = slotParams.find(
-      (p: any) => p.variable?.name === slotName
-    );
-    if (!slotParam) {
-      const available = slotParams
-        .map((p: any) => p.variable?.name)
-        .filter(Boolean)
-        .sort();
-      throw new Error(
-        `Slot "${slotName}" not found on component "${targetComp.name}". ` +
-          `Available slots: ${available.join(", ")}`
-      );
-    }
-
-    // Get base variant setting for the TplComponent instance
-    const vs = tplMgr.ensureBaseVariantSetting(tplComp);
-
-    // Find existing arg for this slot
-    let slotArg = (vs.args ?? []).find(
-      (arg: any) =>
-        arg.param === slotParam || arg.param?.variable?.name === slotName
-    );
-
-    // Validate that existing arg (if any) is a RenderExpr
-    if (slotArg && !isKnownRenderExpr(slotArg.expr)) {
-      throw new Error(
-        `Slot "${slotName}" contains a code expression, not renderable content.`
-      );
-    }
+    const { slotParam, vs, slotArg, slotName } = resolveSlot(tplComp, slot, tplMgr);
 
     const baseVariant = tplMgr.ensureBaseVariant(component);
     const tracker = getChangeTracker();
@@ -3136,20 +3237,7 @@ export async function addChild(
 
     const changes = tracker.withRecording(() => {
       newTpl = plasmicElementToTpl(child, session.site, baseVariant, registryComponents);
-
-      if (slotArg) {
-        // Slot already has a RenderExpr — insert into its tpl array
-        insertIntoArray(slotArg.expr.tpl, newTpl, position);
-      } else {
-        // No existing override — create new Arg + RenderExpr
-        const renderExpr = new RenderExpr({ tpl: [newTpl] });
-        const newArg = new Arg({ param: slotParam, expr: renderExpr });
-        if (!vs.args) { vs.args = []; }
-        vs.args.push(newArg);
-      }
-
-      // Set parent pointer for tree traversal
-      newTpl.parent = tplComp;
+      insertIntoSlot(vs, slotArg, slotParam, tplComp, newTpl, position);
     });
 
     const componentIid = getComponentIid(component);
@@ -3371,46 +3459,9 @@ export async function moveChild(
   // --- TplComponent parent: move into slot ---
   if (isKnownTplComponent(newParent.node)) {
     const tplComp = newParent.node;
-    const targetComp = tplComp.component;
-
-    const slotParams = (targetComp.params ?? []).filter(
-      (p: any) => p.tplSlot
-    );
-    if (slotParams.length === 0) {
-      throw new Error(
-        `Component "${targetComp.name}" has no slots.`
-      );
-    }
-
-    const slotName = slot ?? "children";
-    const slotParam = slotParams.find(
-      (p: any) => p.variable?.name === slotName
-    );
-    if (!slotParam) {
-      const available = slotParams
-        .map((p: any) => p.variable?.name)
-        .filter(Boolean)
-        .sort();
-      throw new Error(
-        `Slot "${slotName}" not found on component "${targetComp.name}". ` +
-          `Available slots: ${available.join(", ")}`
-      );
-    }
-
     const session = requireSession();
     const tplMgr = new TplMgr({ site: session.site });
-    const vs = tplMgr.ensureBaseVariantSetting(tplComp);
-
-    let slotArg = (vs.args ?? []).find(
-      (arg: any) =>
-        arg.param === slotParam || arg.param?.variable?.name === slotName
-    );
-
-    if (slotArg && !isKnownRenderExpr(slotArg.expr)) {
-      throw new Error(
-        `Slot "${slotName}" contains a code expression, not renderable content.`
-      );
-    }
+    const { slotParam, vs, slotArg, slotName } = resolveSlot(tplComp, slot, tplMgr);
 
     const tracker = getChangeTracker();
 
@@ -3421,16 +3472,7 @@ export async function moveChild(
         1
       );
 
-      if (slotArg) {
-        insertIntoArray(slotArg.expr.tpl, resolved.node, position);
-      } else {
-        const renderExpr = new RenderExpr({ tpl: [resolved.node] });
-        const newArg = new Arg({ param: slotParam, expr: renderExpr });
-        if (!vs.args) { vs.args = []; }
-        vs.args.push(newArg);
-      }
-
-      resolved.node.parent = tplComp;
+      insertIntoSlot(vs, slotArg, slotParam, tplComp, resolved.node, position);
     });
 
     const componentIid = getComponentIid(component);
@@ -3562,57 +3604,11 @@ export async function cloneChild(
       // --- TplComponent parent: clone into slot ---
       if (isKnownTplComponent(parentResolved.node)) {
         const tplComp = parentResolved.node;
-        const targetComp = tplComp.component;
-
-        const slotParams = (targetComp.params ?? []).filter(
-          (p: any) => p.tplSlot
-        );
-        if (slotParams.length === 0) {
-          throw new Error(
-            `Component "${targetComp.name}" has no slots.`
-          );
-        }
-
-        const slotName = slot ?? "children";
-        const slotParam = slotParams.find(
-          (p: any) => p.variable?.name === slotName
-        );
-        if (!slotParam) {
-          const available = slotParams
-            .map((p: any) => p.variable?.name)
-            .filter(Boolean)
-            .sort();
-          throw new Error(
-            `Slot "${slotName}" not found on component "${targetComp.name}". ` +
-              `Available slots: ${available.join(", ")}`
-          );
-        }
-
         const session = requireSession();
         const tplMgr = new TplMgr({ site: session.site });
-        const vs = tplMgr.ensureBaseVariantSetting(tplComp);
+        const { slotParam, vs, slotArg, slotName } = resolveSlot(tplComp, slot, tplMgr);
 
-        let slotArg = (vs.args ?? []).find(
-          (arg: any) =>
-            arg.param === slotParam || arg.param?.variable?.name === slotName
-        );
-
-        if (slotArg && !isKnownRenderExpr(slotArg.expr)) {
-          throw new Error(
-            `Slot "${slotName}" contains a code expression, not renderable content.`
-          );
-        }
-
-        if (slotArg) {
-          insertIntoArray(slotArg.expr.tpl, clonedNode, position);
-        } else {
-          const renderExpr = new RenderExpr({ tpl: [clonedNode] });
-          const newArg = new Arg({ param: slotParam, expr: renderExpr });
-          if (!vs.args) { vs.args = []; }
-          vs.args.push(newArg);
-        }
-
-        clonedNode.parent = tplComp;
+        insertIntoSlot(vs, slotArg, slotParam, tplComp, clonedNode, position);
         resolvedSlotName = slotName;
       } else if (isKnownTplTag(parentResolved.node)) {
         // --- TplTag parent ---
