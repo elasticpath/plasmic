@@ -500,6 +500,12 @@ export function createServer(): McpServer {
             if (site.globalVariantGroups?.length > 0) {
               meta.globalVariantGroupCount = site.globalVariantGroups.length;
             }
+            if (site.globalContexts?.length > 0) {
+              meta.globalContextCount = site.globalContexts.length;
+              meta.globalContexts = site.globalContexts.map((gc: any) =>
+                gc.component?.name ?? "unknown"
+              );
+            }
 
             // Live sync status
             meta.liveSync = {
@@ -937,10 +943,11 @@ export function createServer(): McpServer {
         "- preview-url: Get preview and studio URLs. Example: {action:\"preview-url\",componentUuid:\"abc\"} → {previewUrl:\"https://...\",studioUrl:\"https://...\"}\n" +
         "- page-meta: Read page SEO metadata. Example: {action:\"page-meta\",componentUuid:\"abc\"} → {title:\"Home\",path:\"/\",description:\"...\"}\n" +
         "- list-design-system: Consolidated summary of all design tokens, mixins, and themes. Example: {action:\"list-design-system\"} → {tokens:{Color:[...],Spacing:[...]},mixins:[...],themes:[...]}\n" +
+        "- list-global-contexts: List all global context providers configured on the project with their component names, source packages, and configured prop values. Example: {action:\"list-global-contexts\"} → {contexts:[{name:\"Provider\",props:{apiKey:\"...\"}}]}\n" +
         "- list-patterns: List available UI patterns (heroes, cards, navbars, etc.) that can be applied with node.apply-pattern. No session required. Example: {action:\"list-patterns\"} → [{name:\"hero-centered\",description:\"...\",tags:[...],customisationKeys:[...]}]\n" +
         "- capture-screenshot: Capture a PNG screenshot of a component via headless Chromium and the dev host. Requires dev host running. Example: {action:\"capture-screenshot\",componentUuid:\"abc\"} → PNG image",
       inputSchema: {
-        action: z.enum(["tree", "summary", "node", "subtree", "export", "style-properties", "preview-url", "page-meta", "list-design-system", "list-patterns", "capture-screenshot"]),
+        action: z.enum(["tree", "summary", "node", "subtree", "export", "style-properties", "preview-url", "page-meta", "list-design-system", "list-global-contexts", "list-patterns", "capture-screenshot"]),
         componentUuid: z.string().optional().describe("UUID of the component to inspect"),
         nodeRef: z.string().optional().describe("Node reference: UUID, name, path, or index"),
         maxDepth: z.number().optional().describe("Maximum tree depth to return. Defaults to 3 for tree, 2 for summary. Pass -1 for unlimited."),
@@ -1407,6 +1414,58 @@ export function createServer(): McpServer {
             }
 
             return inspectResult(result);
+          }
+
+          case "list-global-contexts": {
+            const session = requireSession();
+            const globalContexts = session.site.globalContexts ?? [];
+            const contexts = globalContexts.map((tplComp: any) => {
+              const comp = tplComp.component;
+              const name = comp?.name ?? "unknown";
+
+              // Extract configured prop values from vsettings[0].args
+              // (mirrors Studio's LeftProjectSettingsPanel read pattern)
+              const props: Record<string, unknown> = {};
+              const vs = tplComp.vsettings?.[0];
+              for (const arg of vs?.args ?? []) {
+                const paramName = arg.param?.variable?.name;
+                if (!paramName) continue;
+                const expr = arg.expr;
+                if (expr?._type === "CustomCode") {
+                  try {
+                    props[paramName] = JSON.parse(expr.code);
+                  } catch {
+                    props[paramName] = expr.code;
+                  }
+                } else if (expr?._type === "ObjectPath") {
+                  props[paramName] = expr.path?.join(".") ?? String(expr);
+                } else {
+                  props[paramName] = "(expression)";
+                }
+              }
+
+              // Identify source package if from a dependency
+              let sourcePackage: string | undefined;
+              if (comp?.codeComponentMeta?.importPath) {
+                sourcePackage = comp.codeComponentMeta.importPath;
+              }
+
+              return {
+                name,
+                componentUuid: comp?.uuid,
+                ...(sourcePackage ? { sourcePackage } : {}),
+                propCount: Object.keys(props).length,
+                props,
+              };
+            });
+
+            return inspectResult({
+              contextCount: contexts.length,
+              contexts,
+              ...(contexts.length === 0 ? {
+                note: "No global context providers configured. Global contexts are added automatically when installing packages that include context components."
+              } : {}),
+            });
           }
 
           case "list-patterns": {
