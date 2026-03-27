@@ -126,6 +126,12 @@ export class PlasmicApiClient {
     data?: Record<string, unknown>,
     opts?: { headers?: Record<string, string> }
   ): Promise<any> {
+    // Auto-fetch CSRF token before write operations, matching Studio's
+    // behavior where _headers() always includes the token (fetched at page load).
+    if (method !== "get" && !url.includes("/auth/csrf")) {
+      await this.ensureCsrfToken();
+    }
+
     // Prepend host + /api/v1/ prefix (matches Studio's fullApiPath)
     const fullUrl = `${this.auth.host}/api/v1/${url.replace(/^\//, "")}`;
 
@@ -233,6 +239,20 @@ export class PlasmicApiClient {
     return this.req("post", url, data);
   }
 
+  /**
+   * Mirrors Studio.put(). URL is relative, data becomes JSON body.
+   */
+  async put(url: string, data?: Record<string, unknown>): Promise<any> {
+    return this.req("put", url, data);
+  }
+
+  /**
+   * Mirrors Studio.delete(). URL is relative, data becomes query params.
+   */
+  async del(url: string, data?: Record<string, unknown>): Promise<any> {
+    return this.req("delete", url, data);
+  }
+
   // ---------------------------------------------------------------------------
   // Session management (MCP-only)
   // ---------------------------------------------------------------------------
@@ -324,14 +344,13 @@ export class PlasmicApiClient {
   /**
    * Save an incremental or full revision to the Plasmic server.
    * Studio: saveProjectRevChanges(projectId, rev)
-   * Automatically fetches a CSRF token if one hasn't been obtained yet.
+   * CSRF handled automatically by req() for all write methods.
    */
   async saveRevision(
     projectId: string,
     revisionNum: number,
     body: SaveRevisionReq
   ): Promise<unknown> {
-    await this.ensureCsrfToken();
     return this.post(
       `/projects/${encodeURIComponent(projectId)}/revisions/${revisionNum}`,
       body as unknown as Record<string, unknown>
@@ -394,5 +413,147 @@ export class PlasmicApiClient {
       installedDeps,
       ...(branchId ? { branchId } : {}),
     }) as Promise<GetModelUpdatesResponse>;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Branch management — mirrors Studio's branch methods
+  // ---------------------------------------------------------------------------
+
+  async listBranches(projectId: string): Promise<any> {
+    return this.get(`/projects/${encodeURIComponent(projectId)}/branches`);
+  }
+
+  async createBranch(
+    projectId: string,
+    data: { name: string; sourceBranchId?: string; base?: "new" | "latest" }
+  ): Promise<any> {
+    return this.post(`/projects/${encodeURIComponent(projectId)}/branches`, data);
+  }
+
+  async updateBranch(
+    projectId: string,
+    branchId: string,
+    data: { name?: string; status?: string }
+  ): Promise<any> {
+    return this.put(
+      `/projects/${encodeURIComponent(projectId)}/branches/${encodeURIComponent(branchId)}`,
+      data
+    );
+  }
+
+  async deleteBranch(projectId: string, branchId: string): Promise<any> {
+    return this.del(
+      `/projects/${encodeURIComponent(projectId)}/branches/${encodeURIComponent(branchId)}`
+    );
+  }
+
+  async tryMergeBranch(projectId: string, data: Record<string, unknown>): Promise<any> {
+    return this.post(`/projects/${encodeURIComponent(projectId)}/merge`, data);
+  }
+
+  async setMainBranchProtection(projectId: string, isProtected: boolean): Promise<any> {
+    return this.post(
+      `/projects/${encodeURIComponent(projectId)}/main-branch-protection`,
+      { protected: isProtected }
+    );
+  }
+
+  async getRevisionInfo(
+    projectId: string,
+    revisionId?: string,
+    branchId?: string
+  ): Promise<any> {
+    return this.get(`/projects/${encodeURIComponent(projectId)}/revision-without-data`, {
+      ...(revisionId ? { revisionId } : {}),
+      ...(branchId ? { branchId } : {}),
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Comments — mirrors Studio's comment methods
+  // ---------------------------------------------------------------------------
+
+  private projectBranchId(projectId: string, branchId?: string): string {
+    return branchId ? `${projectId}:${branchId}` : projectId;
+  }
+
+  async getComments(projectId: string, branchId?: string): Promise<any> {
+    return this.get(`/comments/${this.projectBranchId(projectId, branchId)}`);
+  }
+
+  async postRootComment(
+    projectId: string,
+    branchId: string | undefined,
+    data: Record<string, unknown>
+  ): Promise<any> {
+    return this.post(`/comments/${this.projectBranchId(projectId, branchId)}`, data);
+  }
+
+  async postThreadComment(
+    projectId: string,
+    branchId: string | undefined,
+    threadId: string,
+    data: Record<string, unknown>
+  ): Promise<any> {
+    return this.post(
+      `/comments/${this.projectBranchId(projectId, branchId)}/thread/${encodeURIComponent(threadId)}`,
+      data
+    );
+  }
+
+  async editComment(
+    projectId: string,
+    branchId: string | undefined,
+    commentId: string,
+    data: { body: string }
+  ): Promise<any> {
+    return this.put(
+      `/comments/${this.projectBranchId(projectId, branchId)}/comment/${encodeURIComponent(commentId)}`,
+      data
+    );
+  }
+
+  async deleteComment(
+    projectId: string,
+    branchId: string | undefined,
+    commentId: string
+  ): Promise<any> {
+    return this.del(
+      `/comments/${this.projectBranchId(projectId, branchId)}/comment/${encodeURIComponent(commentId)}`
+    );
+  }
+
+  async resolveThread(
+    projectId: string,
+    branchId: string | undefined,
+    threadId: string,
+    data: { id: string; resolved: boolean }
+  ): Promise<any> {
+    return this.put(
+      `/comments/${this.projectBranchId(projectId, branchId)}/thread/${encodeURIComponent(threadId)}`,
+      data
+    );
+  }
+
+  async addReaction(
+    projectId: string,
+    branchId: string | undefined,
+    commentId: string,
+    data: { id: string; data: { emojiName: string } }
+  ): Promise<any> {
+    return this.post(
+      `/comments/${this.projectBranchId(projectId, branchId)}/comment/${encodeURIComponent(commentId)}/reactions`,
+      data
+    );
+  }
+
+  async removeReaction(
+    projectId: string,
+    branchId: string | undefined,
+    reactionId: string
+  ): Promise<any> {
+    return this.del(
+      `/comments/${this.projectBranchId(projectId, branchId)}/reactions/${encodeURIComponent(reactionId)}`
+    );
   }
 }

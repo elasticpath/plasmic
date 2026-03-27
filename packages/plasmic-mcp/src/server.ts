@@ -5832,5 +5832,383 @@ export function createServer(): McpServer {
     }
   );
 
+  // =========================================================================
+  // Branch tool — branch management (list, create, update, delete, merge)
+  // =========================================================================
+  server.tool(
+    "branch",
+    "Branch management for version control workflows.\n" +
+      "Actions: list, create, update, delete, merge, protect, revision-info.\n" +
+      "- list: List all branches for the current project. Example: {action:\"list\"} → {branches:[{id:\"br1\",name:\"feature-x\",status:\"active\"}]}\n" +
+      "- create: Create a new branch. Example: {action:\"create\",name:\"feature-x\"} → {branch:{id:\"br1\",name:\"feature-x\"}}\n" +
+      "- update: Rename or change status of a branch. Example: {action:\"update\",branchId:\"br1\",name:\"renamed\"}\n" +
+      "- delete: Delete a branch. Example: {action:\"delete\",branchId:\"br1\"}\n" +
+      "- merge: Merge branches. Use pretend:true to preview. Example: {action:\"merge\",fromBranchId:\"br1\",toBranchId:\"main\",pretend:true}\n" +
+      "- protect: Set main branch protection. Example: {action:\"protect\",protected:true}\n" +
+      "- revision-info: Get project revision metadata. Example: {action:\"revision-info\"}",
+    {
+      action: z.enum(["list", "create", "update", "delete", "merge", "protect", "revision-info"]),
+      name: z.string().optional().describe("Branch name (for create/update)"),
+      branchId: z.string().optional().describe("Branch ID (for update/delete/merge)"),
+      sourceBranchId: z.string().optional().describe("Source branch ID to branch from (for create)"),
+      base: z.enum(["new", "latest"]).optional().describe("Base for new branch (for create)"),
+      status: z.string().optional().describe("Branch status: active, merged, abandoned (for update)"),
+      fromBranchId: z.string().optional().describe("Source branch ID (for merge)"),
+      toBranchId: z.string().optional().describe("Destination branch ID or 'main' (for merge)"),
+      pretend: z.boolean().optional().describe("Preview merge without committing (for merge)"),
+      description: z.string().optional().describe("Merge commit description (for merge)"),
+      protected: z.boolean().optional().describe("Enable/disable main branch protection (for protect)"),
+      revisionId: z.string().optional().describe("Specific revision ID (for revision-info)"),
+    },
+    async (params) => {
+      const { action } = params;
+      try {
+        const session = requireSession();
+        const projectId = session.projectId;
+
+        switch (action) {
+          case "list": {
+            const result = await apiClient.listBranches(projectId);
+            return {
+              content: [{ type: "text" as const, text: JSON.stringify({
+                branches: result.branches ?? [],
+                count: (result.branches ?? []).length,
+              }) }],
+            };
+          }
+
+          case "create": {
+            const name = params.name;
+            if (!name) throw new Error("branch.create requires a name");
+            // Branching requires at least one published version (commit).
+            // Check early to give a clear error instead of a server 500.
+            const pkgCheck = await apiClient.getPkgByProjectId(projectId);
+            if (!pkgCheck.pkg) {
+              throw new Error(
+                "Cannot create branches: this project has never been published. " +
+                "Publish the project first (via Studio > Publish) to enable branching."
+              );
+            }
+            const result = await apiClient.createBranch(projectId, {
+              name,
+              ...(params.sourceBranchId ? { sourceBranchId: params.sourceBranchId } : {}),
+              ...(params.base ? { base: params.base } : {}),
+            });
+            return {
+              content: [{ type: "text" as const, text: JSON.stringify({
+                success: true,
+                branch: result.branch,
+                message: `Branch "${name}" created`,
+              }) }],
+            };
+          }
+
+          case "update": {
+            const branchId = params.branchId;
+            if (!branchId) throw new Error("branch.update requires a branchId");
+            const data: Record<string, string> = {};
+            if (params.name) data.name = params.name;
+            if (params.status) data.status = params.status;
+            await apiClient.updateBranch(projectId, branchId, data);
+            return {
+              content: [{ type: "text" as const, text: JSON.stringify({
+                success: true,
+                message: `Branch ${branchId} updated`,
+              }) }],
+            };
+          }
+
+          case "delete": {
+            const branchId = params.branchId;
+            if (!branchId) throw new Error("branch.delete requires a branchId");
+            await apiClient.deleteBranch(projectId, branchId);
+            return {
+              content: [{ type: "text" as const, text: JSON.stringify({
+                success: true,
+                message: `Branch ${branchId} deleted`,
+              }) }],
+            };
+          }
+
+          case "merge": {
+            const fromBranchId = params.fromBranchId;
+            const toBranchId = params.toBranchId;
+            if (!fromBranchId || !toBranchId) {
+              throw new Error("branch.merge requires fromBranchId and toBranchId");
+            }
+            const result = await apiClient.tryMergeBranch(projectId, {
+              subject: { fromBranchId, toBranchId },
+              pretend: params.pretend ?? false,
+              ...(params.description ? { description: params.description } : {}),
+            });
+            return {
+              content: [{ type: "text" as const, text: JSON.stringify({
+                status: result.status,
+                ...(result.mergeStep ? { mergeStep: result.mergeStep } : {}),
+                pretend: params.pretend ?? false,
+                message: result.status === "can be merged"
+                  ? (params.pretend ? "Merge is possible (dry run)" : "Merge completed")
+                  : result.status === "has conflicts"
+                  ? "Merge has conflicts that need resolution"
+                  : `Merge status: ${result.status}`,
+              }) }],
+            };
+          }
+
+          case "protect": {
+            if (params.protected === undefined) {
+              throw new Error("branch.protect requires protected: true or false");
+            }
+            await apiClient.setMainBranchProtection(projectId, params.protected);
+            return {
+              content: [{ type: "text" as const, text: JSON.stringify({
+                success: true,
+                mainBranchProtected: params.protected,
+                message: params.protected
+                  ? "Main branch protection enabled"
+                  : "Main branch protection disabled",
+              }) }],
+            };
+          }
+
+          case "revision-info": {
+            const result = await apiClient.getRevisionInfo(
+              projectId,
+              params.revisionId,
+              params.branchId
+            );
+            return {
+              content: [{ type: "text" as const, text: JSON.stringify(result) }],
+            };
+          }
+
+          default:
+            throw new Error(`Unknown action '${action}' for branch tool.`);
+        }
+      } catch (err: unknown) {
+        return {
+          content: [{ type: "text" as const, text: `Error branch.${action}: ${errorMessage(err)}` }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // =========================================================================
+  // Comment tool — collaboration comments and reactions
+  // =========================================================================
+  server.tool(
+    "comment",
+    "Project comments and collaboration.\n" +
+      "Actions: list, add, reply, edit, delete, resolve, react.\n" +
+      "- list: List all comment threads. Example: {action:\"list\"} → {threads:[...],reactions:[...]}\n" +
+      "- add: Create a new comment thread on a component or element. Example: {action:\"add\",componentUuid:\"abc\",body:\"Review this layout\"}\n" +
+      "- reply: Reply to a thread. Example: {action:\"reply\",threadId:\"t1\",body:\"Looks good\"}\n" +
+      "- edit: Edit a comment. Example: {action:\"edit\",commentId:\"c1\",body:\"Updated text\"}\n" +
+      "- delete: Delete a comment. Example: {action:\"delete\",commentId:\"c1\"}\n" +
+      "- resolve: Resolve/unresolve a thread. Example: {action:\"resolve\",threadId:\"t1\",resolved:true}\n" +
+      "- react: Add/remove emoji reaction. Example: {action:\"react\",commentId:\"c1\",emoji:\"thumbsup\"}",
+    {
+      action: z.enum(["list", "add", "reply", "edit", "delete", "resolve", "react"]),
+      branchId: z.string().optional().describe("Branch ID (optional, defaults to main)"),
+      componentUuid: z.string().optional().describe("Component UUID to attach comment to (required for add)"),
+      nodeRef: z.string().optional().describe("Node UUID or name within component (optional for add, defaults to root)"),
+      threadId: z.string().optional().describe("Comment thread ID (for reply/resolve)"),
+      commentId: z.string().optional().describe("Comment ID (for edit/delete/react)"),
+      body: z.string().optional().describe("Comment text (for add/reply/edit)"),
+      resolved: z.boolean().optional().describe("Resolve/unresolve thread (for resolve)"),
+      emoji: z.string().optional().describe("Emoji name (for react)"),
+      reactionId: z.string().optional().describe("Reaction ID to remove (for react)"),
+    },
+    async (params) => {
+      const { action } = params;
+      try {
+        const session = requireSession();
+        const projectId = session.projectId;
+        const branchId = params.branchId;
+
+        switch (action) {
+          case "list": {
+            const result = await apiClient.getComments(projectId, branchId);
+            const threads = result.threads ?? [];
+            return {
+              content: [{ type: "text" as const, text: JSON.stringify({
+                threadCount: threads.length,
+                threads: threads.map((t: any) => ({
+                  id: t.id,
+                  resolved: t.resolved,
+                  commentCount: t.comments?.length ?? 0,
+                  location: t.location,
+                  comments: (t.comments ?? []).map((c: any) => ({
+                    id: c.id,
+                    body: c.body,
+                    createdBy: c.createdBy?.email ?? c.createdById,
+                    createdAt: c.createdAt,
+                  })),
+                })),
+              }) }],
+            };
+          }
+
+          case "add": {
+            const body = params.body;
+            if (!body) throw new Error("comment.add requires body text");
+            const cuuid = params.componentUuid;
+            if (!cuuid) throw new Error("comment.add requires componentUuid to attach the comment to a component");
+
+            // Resolve the component (and optionally a specific node) to a bundler address.
+            // Studio always attaches comments to a specific model element via ModelAddr.
+            const session = requireSession();
+            const component = session.site.components?.find((c: any) => c.uuid === cuuid);
+            if (!component) throw new Error(`Component "${cuuid}" not found`);
+
+            let targetNode = component.tplTree; // default: root of component
+            if (params.nodeRef) {
+              const { flattenTpls } = await import("@/wab/shared/core/tpls");
+              const allNodes = flattenTpls(component.tplTree);
+              const found = allNodes.find((n: any) =>
+                n.uuid === params.nodeRef || n.name === params.nodeRef
+              );
+              if (found) targetNode = found;
+            }
+
+            const addr = session.bundler.addrOf(targetNode);
+            if (!addr) throw new Error("Could not resolve bundler address for the target element");
+
+            const commentThreadId = randomUUID();
+            const commentId = randomUUID();
+            await apiClient.postRootComment(projectId, branchId, {
+              commentThreadId,
+              commentId,
+              body,
+              location: {
+                subject: { uuid: addr.uuid, iid: addr.iid },
+                variants: [],
+              },
+            });
+            return {
+              content: [{ type: "text" as const, text: JSON.stringify({
+                success: true,
+                threadId: commentThreadId,
+                commentId,
+                componentUuid: cuuid,
+                ...(params.nodeRef ? { nodeRef: params.nodeRef } : {}),
+                message: "Comment thread created",
+              }) }],
+            };
+          }
+
+          case "reply": {
+            const threadId = params.threadId;
+            const body = params.body;
+            if (!threadId) throw new Error("comment.reply requires threadId");
+            if (!body) throw new Error("comment.reply requires body text");
+            const commentId = randomUUID();
+            await apiClient.postThreadComment(projectId, branchId, threadId, {
+              id: commentId,
+              body,
+            });
+            return {
+              content: [{ type: "text" as const, text: JSON.stringify({
+                success: true,
+                commentId,
+                threadId,
+                message: "Reply added",
+              }) }],
+            };
+          }
+
+          case "edit": {
+            const commentId = params.commentId;
+            const body = params.body;
+            if (!commentId) throw new Error("comment.edit requires commentId");
+            if (!body) throw new Error("comment.edit requires body text");
+            await apiClient.editComment(projectId, branchId, commentId, { body });
+            return {
+              content: [{ type: "text" as const, text: JSON.stringify({
+                success: true,
+                commentId,
+                message: "Comment updated",
+              }) }],
+            };
+          }
+
+          case "delete": {
+            const commentId = params.commentId;
+            if (!commentId) throw new Error("comment.delete requires commentId");
+            await apiClient.deleteComment(projectId, branchId, commentId);
+            return {
+              content: [{ type: "text" as const, text: JSON.stringify({
+                success: true,
+                commentId,
+                message: "Comment deleted",
+              }) }],
+            };
+          }
+
+          case "resolve": {
+            const threadId = params.threadId;
+            if (!threadId) throw new Error("comment.resolve requires threadId");
+            const resolved = params.resolved ?? true;
+            await apiClient.resolveThread(projectId, branchId, threadId, {
+              id: randomUUID(),
+              resolved,
+            });
+            return {
+              content: [{ type: "text" as const, text: JSON.stringify({
+                success: true,
+                threadId,
+                resolved,
+                message: resolved ? "Thread resolved" : "Thread reopened",
+              }) }],
+            };
+          }
+
+          case "react": {
+            const commentId = params.commentId;
+            const emoji = params.emoji;
+            const reactionId = params.reactionId;
+            if (reactionId) {
+              // Remove reaction
+              await apiClient.removeReaction(projectId, branchId, reactionId);
+              return {
+                content: [{ type: "text" as const, text: JSON.stringify({
+                  success: true,
+                  removed: reactionId,
+                  message: "Reaction removed",
+                }) }],
+              };
+            }
+            if (!commentId || !emoji) {
+              throw new Error("comment.react requires commentId + emoji (to add) or reactionId (to remove)");
+            }
+            const newReactionId = randomUUID();
+            await apiClient.addReaction(projectId, branchId, commentId, {
+              id: newReactionId,
+              data: { emojiName: emoji },
+            });
+            return {
+              content: [{ type: "text" as const, text: JSON.stringify({
+                success: true,
+                reactionId: newReactionId,
+                commentId,
+                emoji,
+                message: `Reaction :${emoji}: added`,
+              }) }],
+            };
+          }
+
+          default:
+            throw new Error(`Unknown action '${action}' for comment tool.`);
+        }
+      } catch (err: unknown) {
+        return {
+          content: [{ type: "text" as const, text: `Error comment.${action}: ${errorMessage(err)}` }],
+          isError: true,
+        };
+      }
+    }
+  );
+
   return server;
 }
