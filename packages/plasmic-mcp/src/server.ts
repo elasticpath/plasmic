@@ -5529,7 +5529,7 @@ export function createServer(): McpServer {
       description: "Event handler interactions on elements.\n" +
         "Actions: list, add, update, remove.\n" +
         "- list: List all interactions on an element. Example: {action:\"list\",componentUuid:\"abc\",nodeRef:\"btn\"} → {interactions:[{event:\"onClick\",actionName:\"navigation\",args:{destination:\"/about\"}}]}\n" +
-        "- add: Add an event handler (navigation, updateVariable, customFunction). Example: {action:\"add\",componentUuid:\"abc\",nodeRef:\"btn\",event:\"onClick\",actionName:\"navigation\",args:{destination:\"/about\"}} → {interactionUuid:\"i1\"}\n" +
+        "- add: Add an event handler (navigation, updateVariable, customFunction). customFunction code has access to: event (DOM event object), $state, $props, $ctx, $steps. Example: {action:\"add\",componentUuid:\"abc\",nodeRef:\"btn\",event:\"onClick\",actionName:\"navigation\",args:{destination:\"/about\"}} → {interactionUuid:\"i1\"}\n" +
         "- update: Modify an existing interaction's action, args, or condition. Example: {action:\"update\",componentUuid:\"abc\",nodeRef:\"btn\",interactionIndex:0,args:{destination:\"/home\"}} → {success:true}\n" +
         "- remove: Remove interaction(s) from an element. Example: {action:\"remove\",componentUuid:\"abc\",nodeRef:\"btn\",interactionIndex:0} → {success:true}",
       inputSchema: {
@@ -5640,6 +5640,7 @@ export function createServer(): McpServer {
                       actionName: result.actionName,
                       interactionName: result.interactionName,
                       revision: result.save.revisionNum,
+                      ...(result.warnings?.length ? { warnings: result.warnings } : {}),
                     }
                   ),
                 },

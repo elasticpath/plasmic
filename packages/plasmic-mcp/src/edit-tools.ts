@@ -302,9 +302,28 @@ function checkLiteralWarning(value: string): string | null {
  */
 function createAttrExpr(value: unknown, warnings: string[]): any {
   if (typeof value === "string") {
+    // Reject $expr: prefix — not supported for attributes
+    if (value.startsWith("$expr:")) {
+      throw new Error(
+        `"$expr:" prefix is not supported for attributes. ` +
+        `Use $<expression> (e.g., $$props.x) or {{expression}} syntax instead.`
+      );
+    }
     // Dynamic value: $expression
     if (value.startsWith("$")) {
       const code = value.slice(1);
+      // Detect bare scope variables after $ stripping — the user likely
+      // intended $$props.x (dynamic $props.x), not $props.x (bare props.x)
+      const BARE_SCOPE_RE = /^(props|state|ctx|queries|pageCtx)\./;
+      if (BARE_SCOPE_RE.test(code)) {
+        const corrected = "$" + code;
+        warnings.push(
+          `Expression "${code}" was corrected to "${corrected}". ` +
+          `Plasmic scope variables use $ prefix ($props, $state, $ctx).`
+        );
+        validateJsExpression(corrected);
+        return new CustomCode({ code: corrected, fallback: null });
+      }
       validateJsExpression(code);
       return new CustomCode({ code, fallback: null });
     }
@@ -6007,13 +6026,15 @@ export interface AddInteractionResult {
   event: string;
   actionName: string;
   interactionName: string;
+  warnings?: string[];
 }
 
 /**
  * Build NameArg[] for the given action and user-provided args.
  */
-function buildActionArgs(actionName: string, args: Record<string, string>, component?: any): any[] {
+function buildActionArgs(actionName: string, args: Record<string, string>, component?: any): { nameArgs: any[]; warnings: string[] } {
   const nameArgs: any[] = [];
+  const warnings: string[] = [];
 
   switch (actionName) {
     case "navigation": {
@@ -6034,6 +6055,10 @@ function buildActionArgs(actionName: string, args: Record<string, string>, compo
       let stateName = args.variable ?? args.state;
       if (!stateName) {
         throw new Error('Action "updateVariable" requires a "variable" (or "state") arg with the state name.');
+      }
+      // Strip accidental $state. prefix — the ObjectPath adds it automatically
+      if (stateName.startsWith("$state.")) {
+        stateName = stateName.slice("$state.".length);
       }
 
       // Resolve variant group name/UUID to linked implicit state (Gap #33)
@@ -6095,6 +6120,15 @@ function buildActionArgs(actionName: string, args: Record<string, string>, compo
       if (!code) {
         throw new Error('Action "customFunction" requires a "code" (or "customFunction") arg.');
       }
+      // Warn on unknown arg keys
+      const KNOWN_CUSTOM_FN_KEYS = new Set(["customFunction", "code"]);
+      const unknownKeys = Object.keys(args).filter(k => !KNOWN_CUSTOM_FN_KEYS.has(k));
+      if (unknownKeys.length > 0) {
+        warnings.push(
+          `Unknown customFunction arg(s) ignored: ${unknownKeys.join(", ")}. ` +
+          `customFunction accepts: { code: "expression" }`
+        );
+      }
       const normalizedCode = normalizeCustomFunctionCode(code);
       nameArgs.push(new NameArg({
         name: "customFunction",
@@ -6110,7 +6144,7 @@ function buildActionArgs(actionName: string, args: Record<string, string>, compo
       throw new Error(`Unsupported action for arg building: ${actionName}`);
   }
 
-  return nameArgs;
+  return { nameArgs, warnings };
 }
 
 /**
@@ -6157,7 +6191,7 @@ export async function addInteraction(
   const tracker = getChangeTracker();
 
   // Build NameArgs for the action (pass component for variant group resolution)
-  const nameArgs = buildActionArgs(resolvedAction, args ?? {}, component);
+  const { nameArgs, warnings: argWarnings } = buildActionArgs(resolvedAction, args ?? {}, component);
 
   // Generate a default interaction name if not provided
   const defaultName = interactionName ?? `${event} → ${resolvedAction}`;
@@ -6212,6 +6246,7 @@ export async function addInteraction(
     event,
     actionName: resolvedAction,
     interactionName: defaultName,
+    ...(argWarnings.length > 0 ? { warnings: argWarnings } : {}),
   };
 }
 
@@ -6366,11 +6401,11 @@ export async function updateInteraction(
       const resolvedAction = resolveActionName(updates.actionName);
       interaction.actionName = resolvedAction;
       // When changing action, args must be provided for the new action
-      const newArgs = buildActionArgs(resolvedAction, updates.args ?? {}, component);
+      const { nameArgs: newArgs } = buildActionArgs(resolvedAction, updates.args ?? {}, component);
       interaction.args = newArgs;
     } else if (updates.args !== undefined) {
       // Rebuild args for the current action with new values
-      const newArgs = buildActionArgs(interaction.actionName, updates.args, component);
+      const { nameArgs: newArgs } = buildActionArgs(interaction.actionName, updates.args, component);
       interaction.args = newArgs;
     }
 
