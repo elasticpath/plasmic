@@ -513,6 +513,32 @@ export function resolveTokenReferences(
  *
  * Accepts both camelCase and kebab-case input.
  */
+
+/**
+ * Expand CSS repeat() in grid-template values to longhand.
+ * e.g., "repeat(3, 1fr)" → "1fr 1fr 1fr"
+ * Only handles integer counts; rejects auto-fill/auto-fit.
+ */
+function expandCssRepeat(value: string): string {
+  if (!value.includes("repeat(")) return value;
+  return value.replace(
+    /repeat\(\s*(\S+?)\s*,\s*([^)]+)\)/g,
+    (match, count, pattern) => {
+      const n = parseInt(count, 10);
+      if (isNaN(n) || n < 1) {
+        throw new Error(
+          `CSS repeat() with "${count}" cannot be expanded statically. ` +
+          `Use an explicit value instead (e.g., "1fr 1fr 1fr" instead of "repeat(3, 1fr)").`
+        );
+      }
+      if (n > 20) {
+        throw new Error(`CSS repeat() count must be 1-20, got ${n}.`);
+      }
+      return Array(n).fill(pattern.trim()).join(" ");
+    }
+  );
+}
+
 export function sanitizeStyles(
   styles: Record<string, string>
 ): Record<string, string> {
@@ -721,6 +747,14 @@ export function sanitizeStyles(
         result["left"] = l;
         break;
       }
+
+      // --- Grid template: expand repeat() to longhand ---
+      case "gridTemplateColumns":
+      case "grid-template-columns":
+      case "gridTemplateRows":
+      case "grid-template-rows":
+        result[key] = expandCssRepeat(value);
+        break;
 
       default:
         result[key] = value;
@@ -2699,6 +2733,13 @@ export async function updateProps(
             }
             expr = new VariantsRef({ variants: [matchedVariant] });
           } else {
+            // Reject event handler props — these must be set via interaction.add
+            if (param.type?._type === "FunctionType") {
+              throw new Error(
+                `Prop "${propName}" is an event handler. ` +
+                `Use interaction.add to set event handlers, not update-props.`
+              );
+            }
             // Scalar or dynamic expression — reuse createAttrExpr
             expr = createAttrExpr(value, warnings);
           }
@@ -2821,6 +2862,25 @@ function normalizePlasmicElement(element: PlasmicElement): PlasmicElement {
 }
 
 /**
+ * Recursively resolve token: references in PlasmicElement inline styles.
+ * Must be called BEFORE studioElementSchemaToTpl which doesn't know
+ * about the MCP's token: prefix syntax.
+ */
+function resolveElementTokens(element: PlasmicElement, site: any): void {
+  if (typeof element === "string") return;
+  const el = element as any;
+  if (el.styles && typeof el.styles === "object") {
+    el.styles = resolveTokenReferences(el.styles, site);
+  }
+  if (el.children) {
+    const children = Array.isArray(el.children) ? el.children : [el.children];
+    for (const child of children) {
+      resolveElementTokens(child, site);
+    }
+  }
+}
+
+/**
  * Convert a PlasmicElement JSON tree to a live Tpl node.
  *
  * Delegates to Studio's elementSchemaToTpl which correctly handles all
@@ -2838,6 +2898,7 @@ function plasmicElementToTpl(
   registryComponents?: RegistryComponent[]
 ): any {
   element = normalizePlasmicElement(element);
+  resolveElementTokens(element, site);
 
   const result = studioElementSchemaToTpl(site, undefined, element, {
     codeComponentsOnly: false,
@@ -5021,6 +5082,12 @@ function toDefaultExpr(propType: string, defaultValue: string): any {
         );
       }
       code = defaultValue;
+      break;
+    case "href":
+      // href default values are URLs — wrap as JS string literals.
+      // Without this, bare URLs like "https://example.com" are stored
+      // as invalid JS expressions (they need to be '"https://example.com"').
+      code = JSON.stringify(defaultValue);
       break;
     default:
       code = defaultValue;
