@@ -333,7 +333,6 @@ import {
   VariantGroup,
   isKnownArenaFrame,
   isKnownComponentArena,
-  isKnownProjectDependency,
   isKnownVariantSetting,
 } from "@/wab/shared/model/classes";
 import { modelSchemaHash } from "@/wab/shared/model/classes-metas";
@@ -5826,7 +5825,7 @@ export class StudioCtx extends WithDbCtx {
       })();
       runInAction(() => {
         const newBundler = new FastBundler();
-        const { site, depPkgs: depPkgVersions } = unbundleSite(
+        const { site } = unbundleSite(
           newBundler,
           this.siteInfo.id,
           bundle,
@@ -5834,15 +5833,7 @@ export class StudioCtx extends WithDbCtx {
         );
         this.appCtx.bundler = newBundler;
         this.dbCtx().setSite(site, branch, versionOrRevision);
-        spawn(
-          checkDepPkgHosts(
-            this.appCtx,
-            this.siteInfo,
-            depPkgVersions.filter((dep): dep is ProjectDependency =>
-              isKnownProjectDependency(dep)
-            )
-          )
-        );
+        checkDepPkgHosts(this.appCtx, this.siteInfo, depPkgs);
         this.projectDependencyManager.syncDirectDeps();
         this.pruneInvalidViewCtxs();
         this.pruneDetachedTpls();

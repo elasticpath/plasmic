@@ -368,17 +368,13 @@ export class ProjectDependencyManager {
       pkg.id
     );
 
-    const { projectDependency, depPkgs: depPkgVersions } =
-      unbundleProjectDependency(this._sc.bundler(), latest, depPkgs);
-
-    spawn(
-      checkDepPkgHosts(this._sc.appCtx, this._sc.siteInfo, [
-        projectDependency,
-        ...depPkgVersions.filter((dep): dep is ProjectDependency =>
-          isKnownProjectDependency(dep)
-        ),
-      ])
+    const { projectDependency } = unbundleProjectDependency(
+      this._sc.bundler(),
+      latest,
+      depPkgs
     );
+
+    checkDepPkgHosts(this._sc.appCtx, this._sc.siteInfo, [latest, ...depPkgs]);
 
     this.canAddDependency(projectDependency, maybeMyPkg);
     await this.addDependency(projectDependency);
