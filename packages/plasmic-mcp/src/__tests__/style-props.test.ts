@@ -370,6 +370,64 @@ describe("sanitizeStyles", () => {
       expect(sanitizeStyles({})).toEqual({});
     });
   });
+
+  describe("grid-template repeat() expansion", () => {
+    it("expands repeat(3, 1fr) to 1fr 1fr 1fr", () => {
+      expect(sanitizeStyles({ gridTemplateColumns: "repeat(3, 1fr)" })).toEqual({
+        gridTemplateColumns: "1fr 1fr 1fr",
+      });
+    });
+
+    it("expands multi-track pattern repeat(2, 100px 1fr)", () => {
+      expect(sanitizeStyles({ gridTemplateRows: "repeat(2, 100px 1fr)" })).toEqual({
+        gridTemplateRows: "100px 1fr 100px 1fr",
+      });
+    });
+
+    it("expands repeat() mixed with explicit tracks", () => {
+      expect(
+        sanitizeStyles({ gridTemplateColumns: "1fr repeat(2, 200px) 1fr" })
+      ).toEqual({
+        gridTemplateColumns: "1fr 200px 200px 1fr",
+      });
+    });
+
+    it("passes through grid values without repeat()", () => {
+      expect(sanitizeStyles({ gridTemplateColumns: "1fr 2fr 3fr" })).toEqual({
+        gridTemplateColumns: "1fr 2fr 3fr",
+      });
+    });
+
+    it("handles kebab-case grid-template-columns", () => {
+      expect(
+        sanitizeStyles({ "grid-template-columns": "repeat(2, 1fr)" })
+      ).toEqual({
+        "grid-template-columns": "1fr 1fr",
+      });
+    });
+
+    it("rejects auto-fill (cannot be expanded statically)", () => {
+      expect(() =>
+        sanitizeStyles({
+          gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+        })
+      ).toThrow(/cannot be expanded statically/);
+    });
+
+    it("rejects auto-fit (cannot be expanded statically)", () => {
+      expect(() =>
+        sanitizeStyles({
+          gridTemplateColumns: "repeat(auto-fit, 1fr)",
+        })
+      ).toThrow(/cannot be expanded statically/);
+    });
+
+    it("rejects count over 20", () => {
+      expect(() =>
+        sanitizeStyles({ gridTemplateColumns: "repeat(50, 1fr)" })
+      ).toThrow(/must be 1-20/);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

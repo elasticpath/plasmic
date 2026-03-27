@@ -6910,6 +6910,44 @@ describe("updateProps", () => {
     expect(result.updatedProps).toEqual(["currency"]);
     expect(result.warnings).toBeUndefined();
   });
+
+  // --- Gap #61: eventHandler prop type guard ---
+
+  it("rejects eventHandler prop with expression (gap #61)", async () => {
+    const onClickParam = mkParam("onClick");
+    // Mark as FunctionType — this is what eventHandler props have
+    onClickParam.type = { _type: "FunctionType", name: "func", params: [] };
+    const tplComp = mkTplComponent("Button", [onClickParam]);
+    const comp = { uuid: "comp-1", name: "Page", tplTree: tplComp };
+    setupSession(comp);
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+      if (!tpl.vsettings[0].args) tpl.vsettings[0].args = [];
+      return tpl.vsettings[0];
+    });
+
+    await expect(
+      updateProps(api, "comp-1", "Button", { onClick: "{{handleClick}}" })
+    ).rejects.toThrow(/event handler.*interaction\.add/i);
+  });
+
+  it("allows non-FunctionType prop with expression (no false positive for gap #61)", async () => {
+    const labelParam = mkParam("label");
+    // Explicitly NOT a FunctionType
+    labelParam.type = { _type: "Text", name: "text" };
+    const tplComp = mkTplComponent("Button", [labelParam]);
+    const comp = { uuid: "comp-1", name: "Page", tplTree: tplComp };
+    setupSession(comp);
+
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
+      if (!tpl.vsettings[0].args) tpl.vsettings[0].args = [];
+      return tpl.vsettings[0];
+    });
+
+    const result = await updateProps(api, "comp-1", "Button", { label: "{{$props.title}}" });
+
+    expect(result.updatedProps).toEqual(["label"]);
+  });
 });
 
 // =============================================================================

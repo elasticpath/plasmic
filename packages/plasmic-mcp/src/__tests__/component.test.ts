@@ -576,6 +576,23 @@ describe("addProp", () => {
     expect(comp.params[0].type._type).toBe("HrefType");
   });
 
+  it("wraps href default value as JS string literal (gap #60)", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).params = [];
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await addProp(api, "comp-1", "link", "href", "https://example.com");
+
+    expect(comp.params[0].type._type).toBe("HrefType");
+    expect(comp.params[0].defaultExpr._type).toBe("CustomCode");
+    // Must be a valid JS string literal, not bare URL
+    expect(comp.params[0].defaultExpr.code).toBe('"https://example.com"');
+  });
+
   it("creates an eventHandler prop", async () => {
     const root = mkTag({ uuid: "root-1" });
     const comp = mkComponent({ uuid: "comp-1", tplTree: root });
