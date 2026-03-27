@@ -1569,7 +1569,7 @@ export function addMainAppServerRoutes(
     "/api/v1/projects/:projectId/main-branch-protection",
     withNext(setMainBranchProtection)
   );
-  app.get("/api/v1/projects/:projectBranchId", withNext(getProjectRev));
+  app.get("/api/v1/projects/:projectBranchId", getProjectRev);
   app.get(
     "/api/v1/projects/:projectId/revision-without-data",
     getProjectRevWithoutData

@@ -7,7 +7,7 @@ import {
 } from "@/wab/client/cli-routes";
 import * as DbMod from "@/wab/client/db";
 import { ApiBranch, MainBranchId, ProjectId } from "@/wab/shared/ApiSchema";
-import { SiteInfo } from "@/wab/shared/SharedApi";
+import { PkgVersionInfo, SiteInfo } from "@/wab/shared/SharedApi";
 import * as slotUtils from "@/wab/shared/SlotUtils";
 import { $$$ } from "@/wab/shared/TplQuery";
 import { getBundle } from "@/wab/shared/bundles";
@@ -18,7 +18,6 @@ import { unbundleSite } from "@/wab/shared/core/tagged-unbundle";
 import * as tpls from "@/wab/shared/core/tpls";
 import { getProjectFlags } from "@/wab/shared/devflags";
 import { instUtil } from "@/wab/shared/model/InstUtil";
-import { ProjectDependency } from "@/wab/shared/model/classes";
 import { APP_ROUTES } from "@/wab/shared/route/app-routes";
 import { fillRoute } from "@/wab/shared/route/route";
 import { fixPageHrefsToLocal } from "@/wab/shared/utils/split-site-utils";
@@ -57,6 +56,7 @@ export async function loadSiteDbCtx(
     appAuthProvider,
     workspaceTutorialDbs,
     isMainBranchProtected,
+    latestDepPkgVersions,
   } = await (async () => {
     try {
       return await baseApi.getSiteInfo(siteId, { branchId: branch?.id });
@@ -85,14 +85,14 @@ export async function loadSiteDbCtx(
   siteInfo.isMainBranchProtected = isMainBranchProtected;
 
   const bundle = getBundle(rev, appCtx.lastBundleVersion);
-  const { site, depPkgs: depPkgVersions } = unbundleSite(
+  const { site } = unbundleSite(
     bundler,
     siteInfo.id,
     bundle,
     depPkgs
   );
   appCtx.appConfig = getProjectFlags(site, appCtx.appConfig);
-  spawn(checkDepPkgHosts(appCtx, siteInfo, depPkgVersions));
+  spawn(checkDepPkgHosts(appCtx, siteInfo, depPkgs));
 
   // Enable data queries after RSC release if any components already use them.
   // Occurs after applyPlasmicUserDevFlagOverrides, so skip if already enabled
@@ -124,25 +124,21 @@ export async function loadSiteDbCtx(
     appCtx,
     revisionNum: rev.revision,
     branch,
+    latestDepPkgVersions,
   });
 
   return dbCtx;
 }
 
-export async function checkDepPkgHosts(
+export function checkDepPkgHosts(
   appCtx: AppCtx,
   siteInfo: SiteInfo,
-  deps: ProjectDependency[]
+  deps: PkgVersionInfo[]
 ) {
-  const pkgMetas = await Promise.all(
-    deps.map((dep) => appCtx.api.getPkgVersionMeta(dep.pkgId, dep.version))
-  );
-  for (const pkgVersion of pkgMetas) {
+  for (const dep of deps) {
     if (
-      pkgVersion.pkg.hostUrl &&
-      ![siteInfo.hostUrl, appCtx.appConfig.defaultHostUrl].includes(
-        pkgVersion.pkg.hostUrl
-      )
+      dep.hostUrl &&
+      ![siteInfo.hostUrl, appCtx.appConfig.defaultHostUrl].includes(dep.hostUrl)
     ) {
       notification.warn({
         message: "This project imports from a project hosted by another app",
@@ -153,12 +149,12 @@ export async function checkDepPkgHosts(
             <a
               target="_blank"
               href={fillRoute(APP_ROUTES.project, {
-                projectId: pkgVersion.pkg.pkg?.projectId,
+                projectId: dep.pkg?.projectId,
               })}
             >
-              {pkgVersion.pkg.pkg?.name}
+              {dep.pkg?.name}
             </a>
-            , which is hosted by {pkgVersion.pkg.hostUrl}. <br />
+            , which is hosted by {dep.hostUrl}. <br />
             Notice this can prevent the canvas from rendering components
             correctly.
           </p>

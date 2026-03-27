@@ -481,6 +481,7 @@ export function filteredApi(
     "listUnpublishedProjectRevisions",
     "revertProjectToRevision",
     "getPkgVersionMeta",
+    "listPkgVersionsWithoutData",
     "refreshCsrfToken",
     "getLastBundleVersion",
     "getAppConfig",
@@ -586,12 +587,6 @@ export function filteredApi(
     saveProjectRevChanges: checkProjectIdInFirstArg,
     computeNextProjectVersion: checkProjectIdInFirstArg,
     publishProject: checkProjectIdInFirstArg,
-    listPkgVersionsWithoutData:
-      (f) =>
-      async (...args) => {
-        assert(args[0] === (await getPkgId()), "Unexpected pkgId");
-        return f(...args);
-      },
     updatePkgVersion:
       (f) =>
       async (...args) => {

@@ -164,6 +164,19 @@ export async function upgradeHostlessProject(
   );
 }
 
+// Set to true on startup and whenever bumpHostlessVersion is called.
+// Causes the next getHostlessData() call to reload from DB.
+// Never expires on a timer — only invalidated by an explicit publish.
+let _hostlessCacheStale = true;
+
+/**
+ * Called by DbMgr.bumpHostlessVersion() after a hostless package is published.
+ * Forces the next getHostlessData() call to reload from the DB.
+ */
+export function invalidateHostlessCache() {
+  _hostlessCacheStale = true;
+}
+
 export const getHostlessData = (() => {
   const fn = async (db: MigrationDbMgr) => {
     logger().info("Refreshing hostless data");
@@ -201,35 +214,25 @@ export const getHostlessData = (() => {
         latestVersions.add(latestVersion.id);
       })
     );
+    // Mark the cache as fresh only after a successful load.
+    _hostlessCacheStale = false;
     return {
       versionIdToLatestVersion,
       latestVersions,
-      hostlessVersionCount: (await db.getHostlessVersion()).versionCount,
     };
   };
   let cachedData: ReturnType<typeof fn> | undefined = undefined;
-  let lastEvaluationTime = 0;
   const runAndCache = (db: MigrationDbMgr, opts?: { clearCache?: boolean }) => {
-    if (
-      !cachedData ||
-      opts?.clearCache ||
-      performance.now() - lastEvaluationTime >= 1000 * 60 * 10
-    ) {
+    if (!cachedData || opts?.clearCache) {
       cachedData = fn(db);
-      lastEvaluationTime = performance.now();
     }
     return cachedData;
   };
-  return async (db: MigrationDbMgr) => {
-    const result = await runAndCache(db);
-    if (
-      db instanceof DbMgr &&
-      result?.hostlessVersionCount !==
-        (await db.getHostlessVersion()).versionCount
-    ) {
+  return (db: MigrationDbMgr) => {
+    if (_hostlessCacheStale) {
       return runAndCache(db, { clearCache: true });
     }
-    return result;
+    return runAndCache(db);
   };
 })();
 

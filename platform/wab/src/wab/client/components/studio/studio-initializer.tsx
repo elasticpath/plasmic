@@ -94,7 +94,11 @@ class StudioInitializer_ extends React.Component<
     if (appCtx.appConfig.incrementalObservables) {
       makeGlobalObservable();
     }
+    // Plume package doesn't depend on project data — fetch it in parallel with
+    // project load so it's ready (or nearly ready) by the time refreshDeps runs.
+    const plumePkgFetch = appCtx.api.getPlumePkg();
     const studioCtx = await initStudioCtx(appCtx, projectId, onRefreshUi);
+    studioCtx.projectDependencyManager.setPlumePkgFetch(plumePkgFetch);
     const previewCtx = new PreviewCtx(hostFrameCtx, studioCtx);
 
     spawn(studioCtx.startListeningForSocketEvents());

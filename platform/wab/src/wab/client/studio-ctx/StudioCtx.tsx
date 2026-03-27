@@ -705,6 +705,9 @@ export class StudioCtx extends WithDbCtx {
     spawn(this.handleInitialRoute());
 
     this.projectDependencyManager = new ProjectDependencyManager(this);
+    this.projectDependencyManager.seedLatestVersionMeta(
+      this._dbCtx.latestDepPkgVersions
+    );
 
     // styleMgr must be instantiated after ProjectDependencyManager, as
     // it makes use of TPL_COMPONENT_ROOT updates that ProjectDependencyManager
