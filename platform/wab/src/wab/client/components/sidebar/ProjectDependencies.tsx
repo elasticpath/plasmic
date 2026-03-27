@@ -347,7 +347,7 @@ function _ProjectDependenciesPanel() {
           : {
               onClick: () => {
                 setState("refreshing");
-                spawn(sc.projectDependencyManager.refreshDeps({ forceVersionMeta: true }));
+                spawn(sc.projectDependencyManager.refreshDeps());
                 setState(undefined);
               },
               "data-test-id": "check-for-updates-btn",

@@ -190,11 +190,9 @@ export async function getMigratedBundle(
     const fixedBundle = await conn.transaction(async (txMgr) => {
       const db = new DbMgr(txMgr, SUPER_USER);
 
-      const stale = await bundleHasStaleHostlessDeps(bundle, db);
-
       if (
         isExpectedBundleVersion(bundle, await getLastBundleVersion()) &&
-        !stale
+        !(await bundleHasStaleHostlessDeps(bundle, db))
       ) {
         return bundle;
       }

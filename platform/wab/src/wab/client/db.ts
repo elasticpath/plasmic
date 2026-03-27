@@ -31,7 +31,6 @@ class DbCtxArgs {
   appCtx: AppCtx;
   revisionNum: number;
   branch?: ApiBranch;
-  latestDepPkgVersions: Record<string, PkgVersionInfoMeta>;
 }
 
 // for use in views
@@ -74,9 +73,6 @@ export class DbCtx {
   }
   get api() {
     return this.args.api;
-  }
-  get latestDepPkgVersions() {
-    return this.args.latestDepPkgVersions ?? {};
   }
   get siteInfo() {
     return this._siteInfo.get();

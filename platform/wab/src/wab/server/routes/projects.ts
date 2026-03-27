@@ -115,7 +115,6 @@ import {
 import {
   Bundle,
   OutdatedBundleError,
-  UnsafeBundle,
   getBundle,
   getSerializedBundleSize,
   isExpectedBundleVersion,
@@ -1536,90 +1535,63 @@ export async function getProjectRev(req: Request, res: Response) {
   const { projectId, branchId } = parseProjectBranchId(
     req.params.projectBranchId
   );
-  // Round 1: all independent queries run in parallel
-  const [
-    branch,
-    project,
-    rev,
-    allPerms,
-    modelVersion,
-    hostlessVersion,
-    latestRevisionSynced,
-    appAuthConfig,
-    allowedDataSources,
-  ] = await Promise.all([
-    branchId ? mgr.getBranchById(branchId) : Promise.resolve(undefined),
-    mgr.getProjectById(projectId),
+  const branch = branchId ? await mgr.getBranchById(branchId) : undefined;
+  const project = await mgr.getProjectById(projectId);
+  req.promLabels.projectId = projectId;
+  const rev =
     revisionNum !== undefined || revisionId
-      ? mgr.getProjectRevision(
+      ? await mgr.getProjectRevision(
           projectId,
           revisionNum !== undefined ? +revisionNum : revisionId!,
           branchId
         )
-      : mgr.getLatestProjectRev(projectId, { branchId }),
-    mgr.getPermissionsForProject(projectId),
-    getCurrentModelVersion(req.noTxMgr),
-    mgr.getHostlessVersion(),
-    getLatestRevisionSynced(mgr, projectId),
-    mgr.getPublicAppAuthConfig(projectId),
-    mgr.listAllowedDataSourcesForProject(projectId as ProjectId),
-  ]);
-
-  req.promLabels.projectId = projectId;
-
+      : await mgr.getLatestProjectRev(projectId, { branchId });
   const perms = project.readableByPublic
-    ? allPerms.filter(
-        (perm) =>
+    ? (await mgr.getPermissionsForProject(projectId)).filter((perm) => {
+        return (
           accessLevelRank(perm.accessLevel) >= accessLevelRank("commenter")
-      )
-    : allPerms;
+        );
+      })
+    : await mgr.getPermissionsForProject(projectId);
+  const depPkgs = await loadDepPackages(
+    mgr,
+    dontMigrateProject ? JSON.parse(rev.data) : await getMigratedBundle(rev),
+    { dontMigrateBundle: dontMigrateProject }
+  );
+  const modelVersion = await getCurrentModelVersion(req.txMgr || req.noTxMgr);
+  const hostlessDataVersion = (await mgr.getHostlessVersion()).versionCount;
+  let owner: User | undefined;
+  if (!project.createdById) {
+    const actorId = mgr.tryGetNormalActorId();
+    if (actorId) {
+      await mgr.claimPublicProject(project.id, actorId);
+    }
+  } else {
+    owner = await mgr.tryGetUserById(project.createdById);
+  }
+  const latestRevisionSynced = await getLatestRevisionSynced(mgr, projectId);
+  // Make sure this revision bundle is up to date.
+  if (!dontMigrateProject) {
+    await getMigratedBundle(rev);
+  }
 
-  // Round 2: depends on project/rev from Round 1
-  const [migratedBundle, owner, workspaceTutorialDbsRaw] = await Promise.all([
-    dontMigrateProject
-      ? Promise.resolve(JSON.parse(rev.data) as UnsafeBundle)
-      : getMigratedBundle(rev),
-    project.createdById
-      ? mgr.tryGetUserById(project.createdById)
-      : (async () => {
-          const actorId = mgr.tryGetNormalActorId();
-          if (actorId) {
-            await startTransaction(req, async () => {
-              await mgr.claimPublicProject(project.id, actorId);
-              return commitTransaction();
-            });
-          }
-          return undefined;
-        })(),
-    project.workspaceId
-      ? mgr.getWorkspaceTutorialDataSources(project.workspaceId)
-      : Promise.resolve([]),
-  ]);
-
-  // Round 3: depends on migratedBundle from Round 2
-  const depPkgs = await loadDepPackages(mgr, migratedBundle, {
-    dontMigrateBundle: dontMigrateProject,
-  });
-
-  // Identify direct dep pkgIds from bundle.deps (which contains PkgVersion IDs)
-  const directDepPkgVersionIds = new Set<string>(migratedBundle.deps ?? []);
-  const directDepPkgIds = depPkgs
-    .filter((p) => directDepPkgVersionIds.has(p.id as string))
-    .map((p) => p.pkgId)
-    .filter((pkgId): pkgId is string => pkgId != null);
-  const latestDepPkgVersions =
-    await mgr.getLatestPkgVersionsForPkgIds(directDepPkgIds);
-
-  const allowedDataSourceIds = allowedDataSources.map((ds) => ds.dataSourceId);
-  const workspaceTutorialDbs = workspaceTutorialDbsRaw
-    .filter(
-      (ds) =>
-        ds.source === "tutorialdb" && allowedDataSourceIds.includes(ds.id)
-    )
-    .map((ds) => mkApiDataSource(ds));
-
+  const appAuthConfig = await mgr.getPublicAppAuthConfig(projectId);
   const hasAppAuth = !!appAuthConfig;
   const appAuthProvider = appAuthConfig?.provider;
+
+  const allowedDataSourceIds = (
+    await mgr.listAllowedDataSourcesForProject(projectId as ProjectId)
+  ).map((ds) => ds.dataSourceId);
+
+  const workspaceTutorialDbs = project.workspaceId
+    ? (await mgr.getWorkspaceTutorialDataSources(project.workspaceId))
+        .filter(
+          (ds) =>
+            ds.source === "tutorialdb" && allowedDataSourceIds.includes(ds.id)
+        )
+
+        .map((ds) => mkApiDataSource(ds))
+    : [];
 
   req.analytics.track("Open project", {
     projectId: project.id,
@@ -1634,14 +1606,13 @@ export async function getProjectRev(req: Request, res: Response) {
     perms,
     depPkgs,
     modelVersion,
-    hostlessDataVersion: hostlessVersion.versionCount,
+    hostlessDataVersion,
     owner,
     latestRevisionSynced,
     hasAppAuth,
     appAuthProvider,
     workspaceTutorialDbs,
     isMainBranchProtected: !!project.isMainBranchProtected,
-    latestDepPkgVersions,
   });
 }
 
@@ -2020,9 +1991,10 @@ export async function getPkgVersion(req: Request, res: Response) {
     return;
   }
 
-  const result = await getPkgWithDeps(mgr, pkg, meta, { dontMigrateProject });
-
-  res.json({ ...result, etag });
+  res.json({
+    ...(await getPkgWithDeps(mgr, pkg, meta, { dontMigrateProject })),
+    etag,
+  });
 }
 
 export async function listUnpublishedProjectRevisions(

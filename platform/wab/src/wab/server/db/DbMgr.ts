@@ -2585,16 +2585,15 @@ export class DbMgr implements MigrationDbMgr {
     const pkg = ensureFound(await this.pkgs().findOne(pkgId), `Pkg ${pkgId}`);
     // The only pkg without a projectId should be "base".
     if (!pkg.projectId) {
-      return pkg;
+      return;
     }
-    await this.checkProjectPerms(
+    return await this.checkProjectPerms(
       pkg.projectId,
       requireLevel,
       action,
       suggestion,
       true
     );
-    return pkg;
   };
 
   async deleteProject(id: string, _proof: ProofSafeDelete) {
@@ -4328,7 +4327,8 @@ export class DbMgr implements MigrationDbMgr {
   }
 
   async getPkgById(id: string) {
-    return ensureFound(await this.checkPkgPerms(id, "viewer", "get"), `Pkg ${id}`);
+    await this.checkPkgPerms(id, "viewer", "get");
+    return ensureFound(await this.pkgs().findOne(id), `Pkg ${id}`);
   }
 
   async getPkgByProjectId(projectId: string) {
@@ -4370,6 +4370,7 @@ export class DbMgr implements MigrationDbMgr {
       branchId,
     }: { prefilledOnly?: boolean; branchId?: BranchId } = {}
   ) {
+    await this.checkPkgPerms(pkgId, "viewer", "get");
     if (branchId) {
       await this.checkBranchPerms(branchId, "viewer", "get pkg version", true);
     }
@@ -4595,7 +4596,9 @@ export class DbMgr implements MigrationDbMgr {
     branchId?: BranchId,
     id?: string
   ) {
-    const pkg = await this.checkPkgPerms(pkgId, "content", "publish");
+    await this.checkPkgPerms(pkgId, "content", "publish");
+
+    const pkg = await this.getPkgById(pkgId);
     const pkgVersion = this.pkgVersions().create({
       ...this.stampNew(),
       pkg,
@@ -4655,47 +4658,11 @@ export class DbMgr implements MigrationDbMgr {
       .sort((a, b) => (semver.gt(a.version, b.version) ? -1 : +1));
   }
 
-  /**
-   * Single-query batch fetch of the latest main-branch version for each of the
-   * given pkgIds.  No permission check — only call this server-side within an
-   * already-authenticated handler where the caller has verified project access
-   * (same trust level as loadDepPackages).  Returns a map pkgId → PkgVersion.
-   */
-  async getLatestPkgVersionsForPkgIds(
-    pkgIds: string[]
-  ): Promise<Record<string, PkgVersion>> {
-    if (pkgIds.length === 0) {
-      return {};
-    }
-    const columns = this.entMgr.connection
-      .getMetadata(PkgVersion)
-      .columns.filter((c) => c.databaseName !== "model")
-      .map((c) => `pkgVersion.${c.databaseName}`);
-
-    const rows = await this.pkgVersions()
-      .createQueryBuilder("pkgVersion")
-      .select(columns)
-      .leftJoinAndSelect("pkgVersion.pkg", "pkg")
-      .leftJoinAndSelect("pkgVersion.branch", "branch")
-      .where("pkgVersion.pkgId IN (:...pkgIds)", { pkgIds })
-      .andWhere("pkgVersion.branchId IS NULL")
-      .andWhere("pkgVersion.deletedAt IS NULL")
-      .getMany();
-
-    // Group by pkgId and pick the highest semver per pkg.
-    const grouped = L.groupBy(rows, (r) => r.pkgId);
-    return Object.fromEntries(
-      Object.entries(grouped).map(([pkgId, versions]) => [
-        pkgId,
-        versions.sort((a, b) => (semver.gt(a.version, b.version) ? -1 : 1))[0],
-      ])
-    );
-  }
-
   private async listPkgVersionsRaw(
     pkgId: string,
     opts: { includeData?: boolean; branchId?: BranchId } = {}
   ) {
+    await this.checkPkgPerms(pkgId, "viewer", "get");
     const columns = this.entMgr.connection
       .getMetadata(PkgVersion)
       .columns.map((c) => `pkgVersion.${c.databaseName}`);

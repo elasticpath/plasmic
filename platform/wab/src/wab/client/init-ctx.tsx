@@ -56,7 +56,6 @@ export async function loadSiteDbCtx(
     appAuthProvider,
     workspaceTutorialDbs,
     isMainBranchProtected,
-    latestDepPkgVersions,
   } = await (async () => {
     try {
       return await baseApi.getSiteInfo(siteId, { branchId: branch?.id });
@@ -124,7 +123,6 @@ export async function loadSiteDbCtx(
     appCtx,
     revisionNum: rev.revision,
     branch,
-    latestDepPkgVersions,
   });
 
   return dbCtx;

@@ -1853,7 +1853,6 @@ export interface GetProjectResponse {
   appAuthProvider?: AppAuthProvider;
   workspaceTutorialDbs?: ApiDataSource[];
   isMainBranchProtected: boolean;
-  latestDepPkgVersions: Record<string, PkgVersionInfoMeta>;
 }
 
 export type MergeSrcDst =

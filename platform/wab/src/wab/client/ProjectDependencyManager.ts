@@ -1,6 +1,6 @@
 import { checkDepPkgHosts } from "@/wab/client/init-ctx";
 import { StudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
-import { PkgInfo, PkgVersionInfo, PkgVersionInfoMeta } from "@/wab/shared/SharedApi";
+import { PkgInfo, PkgVersionInfoMeta } from "@/wab/shared/SharedApi";
 import { FastBundler } from "@/wab/shared/bundler";
 import { getUsedDataSourcesFromDep } from "@/wab/shared/cached-selectors";
 import { Dict } from "@/wab/shared/collections";
@@ -71,12 +71,6 @@ export class ProjectDependencyManager {
   // Stores the Site of the Plume project
   plumeSite: Site | undefined;
 
-  // Pre-fetched plumePkg promise — set externally before refreshDeps() is called
-  // so the fetch can run in parallel with project load.
-  private _plumePkgFetch:
-    | Promise<{ pkg: PkgVersionInfo; depPkgs: PkgVersionInfo[] }>
-    | undefined;
-
   // Tracks Component, Mixin, StyleToken, Theme, ImageAsset and global VariantGroup to
   // the ProjectDependency it was imported from
   // This will include all assets across the ENTIRE dependency tree
@@ -93,26 +87,14 @@ export class ProjectDependencyManager {
   }
 
   /**
-   * Call this as early as possible (before refreshDeps) to pre-warm the Plume
-   * package fetch so it runs in parallel with project load.
-   */
-  setPlumePkgFetch(
-    fetch: Promise<{ pkg: PkgVersionInfo; depPkgs: PkgVersionInfo[] }>
-  ) {
-    this._plumePkgFetch = fetch;
-  }
-
-  seedLatestVersionMeta(latestVersions: Record<string, PkgVersionInfoMeta>) {
-    for (const [pkgId, meta] of Object.entries(latestVersions)) {
-      if (this._dependencyMap[pkgId]) {
-        this._dependencyMap[pkgId].latestPkgVersionMeta = meta;
-      }
-    }
-  }
-
-  // Fetches latest version metadata for all direct deps (used for update badges).
-  // Non-critical — spawned so it doesn't block studio startup.
-  private async _fetchLatestVersionMeta(force?: boolean) {
+   * Fetch any missing data from the server
+   * TODO: this currently only fetches data once on load and caches it
+   * - It does not know when to refresh the data if it has changed
+   *  (i.e. if new version published while editing)
+   * - We could add some logic to know when to refresh
+   **/
+  private async _fetchData(force?: boolean) {
+    // Get PkgVersionMeta of all project dependencies
     const data = await Promise.all(
       L.map(L.values(this._dependencyMap), async (dep) => {
         return {
@@ -120,11 +102,8 @@ export class ProjectDependencyManager {
           latestPkgVersionMeta:
             dep.latestPkgVersionMeta && !force
               ? dep.latestPkgVersionMeta
-              : (
-                  await this._sc.appCtx.api.listPkgVersionsWithoutData(
-                    dep.model.pkgId
-                  )
-                ).pkgVersions[0],
+              : (await this._sc.appCtx.api.getPkgVersionMeta(dep.model.pkgId))
+                  .pkg,
         };
       })
     );
@@ -134,16 +113,12 @@ export class ProjectDependencyManager {
           d.latestPkgVersionMeta;
       });
     });
-  }
 
-  // Fetches and unbundles the Plume site. Must complete before sync.
-  // Uses a pre-fetched promise if setPlumePkgFetch() was called earlier.
-  private async _fetchPlumeSite() {
     // We no longer plan to make any updates to plume site. So its unnecessary to re-fetch it if it has already been fetched.
     if (!this.plumeSite) {
       const bundler = new FastBundler();
-      const plumePkg = await (this._plumePkgFetch ??
-        this._sc.appCtx.api.getPlumePkg());
+      // Get Plume site
+      const plumePkg = await this._sc.appCtx.api.getPlumePkg();
       const plumeSite = unbundleProjectDependency(
         bundler,
         plumePkg.pkg,
@@ -151,20 +126,6 @@ export class ProjectDependencyManager {
       ).projectDependency.site;
       this.plumeSite = this.inlineAssets(plumeSite);
     }
-  }
-
-  /**
-   * Fetch any missing data from the server
-   * TODO: this currently only fetches data once on load and caches it
-   * - It does not know when to refresh the data if it has changed
-   *  (i.e. if new version published while editing)
-   * - We could add some logic to know when to refresh
-   **/
-  private async _fetchData(force?: boolean) {
-    // Update badges — non-blocking, runs in background
-    spawn(this._fetchLatestVersionMeta(force));
-    // Plume site — must be ready before sync; likely already in-flight
-    await this._fetchPlumeSite();
   }
 
   /**
@@ -529,8 +490,8 @@ export class ProjectDependencyManager {
     }
   }
 
-  async refreshDeps({ forceVersionMeta = false }: { forceVersionMeta?: boolean } = {}) {
-    return this._fetchData(forceVersionMeta);
+  async refreshDeps() {
+    return this._fetchData(true);
   }
 
   private _trackDepObjs(dep: ProjectDependency) {
