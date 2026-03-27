@@ -1533,6 +1533,7 @@ export function createServer(): McpServer {
       variableType: z.string().optional().describe("State variable type"),
       accessType: z.string().optional().describe("State access type"),
       initialValue: z.string().optional().describe("State initial value"),
+      includeImplicit: z.boolean().optional().describe("Include implicit states in list-states (default: false)"),
       dryRun: z.boolean().optional().describe("Preview changes without persisting"),
       },
       annotations: { destructiveHint: true },
@@ -2379,7 +2380,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const states = listStates(component);
+            const states = listStates(component, params.includeImplicit);
             return {
               content: [
                 {

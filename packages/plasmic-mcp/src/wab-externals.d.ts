@@ -32,6 +32,15 @@ declare module "@/wab/shared/Variants" {
 // ---------------------------------------------------------------------------
 // @/wab/shared/core/tpls
 // ---------------------------------------------------------------------------
+declare module "@/wab/shared/core/states" {
+  export function ensureCorrectImplicitStates(...args: any[]): void;
+  export function removeImplicitStatesAfterRemovingTplNode(
+    site: any,
+    component: any,
+    node: any
+  ): void;
+}
+
 declare module "@/wab/shared/core/tpls" {
   export const TplTagType: {
     Text: string;

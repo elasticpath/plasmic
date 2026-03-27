@@ -340,6 +340,9 @@ describe("edit-tools", () => {
       expect(result.deletedName).toBe("Card");
     });
 
+    // Gap #58 cascade behavior is verified via manual/integration tests
+    // since it requires real TplQuery for $$$(node).tryRemove({ deep: true })
+
     it("throws for unknown component UUID", async () => {
       const root = mkTag({ uuid: "root-1" });
       const comp = mkComponent({ uuid: "comp-1", tplTree: root });
@@ -1018,6 +1021,35 @@ describe("listStates", () => {
     const result = listStates(comp);
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe("count");
+  });
+
+  it("includes implicit states when includeImplicit is true (gap #56)", () => {
+    const namedState = {
+      _type: "NamedState",
+      name: "count",
+      variableType: "number",
+      accessType: "private",
+      param: { _type: "StateParam", uuid: "sp1", variable: { name: "count" } },
+    };
+    const implicitState = {
+      _type: "State",
+      variableType: "text",
+      accessType: "private",
+      tplNode: { uuid: "tpl-widget-1" },
+      param: { _type: "StateParam", uuid: "sp2", variable: { name: "widgetValue" } },
+    };
+    const comp = { states: [namedState, implicitState], params: [] };
+
+    // Without includeImplicit — only named states
+    expect(listStates(comp)).toHaveLength(1);
+
+    // With includeImplicit — both
+    const all = listStates(comp, true);
+    expect(all).toHaveLength(2);
+    const implicit = all.find((s: any) => s.implicit);
+    expect(implicit).toBeDefined();
+    expect((implicit as any).tplNodeUuid).toBe("tpl-widget-1");
+    expect(implicit!.name).toBe("widgetValue");
   });
 });
 
