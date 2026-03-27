@@ -3417,7 +3417,7 @@ describe("edit-tools", () => {
       expect(attrs.title.code).toBe('"About page"');
     });
 
-    it("sets dynamic attribute with $ prefix", async () => {
+    it("auto-corrects bare scope variable after $ stripping (gap #31)", async () => {
       const node = mkTag({ uuid: "node-1", name: "Link" });
       const root = mkTag({ uuid: "root-1", children: [node] });
       const comp = mkComponent({ uuid: "comp-1", tplTree: root });
@@ -3428,13 +3428,16 @@ describe("edit-tools", () => {
       });
       setupSession(comp);
 
-      await updateAttrs(api, "comp-1", "Link", {
+      const result = await updateAttrs(api, "comp-1", "Link", {
         href: "$props.url",
       });
 
       const attrs = node.vsettings[0].attrs;
       expect(attrs.href._type).toBe("CustomCode");
-      expect(attrs.href.code).toBe("props.url");
+      // $props.url → strips $ → detects bare "props." → corrects to "$props.url"
+      expect(attrs.href.code).toBe("$props.url");
+      expect(result.warnings).toBeDefined();
+      expect(result.warnings![0]).toContain("corrected");
     });
 
     it("sets dynamic attribute with {{...}} wrapper", async () => {
@@ -3693,7 +3696,7 @@ describe("edit-tools", () => {
   // --- updateAttrs expression safety ---
 
   describe("updateAttrs expression safety", () => {
-    it("accepts valid dynamic expression with $ prefix", async () => {
+    it("auto-corrects $state.firstName to $state.firstName with warning (gap #31)", async () => {
       const node = mkTag({ uuid: "node-1", name: "Input" });
       const root = mkTag({ uuid: "root-1", children: [node] });
       const comp = mkComponent({ uuid: "comp-1", tplTree: root });
@@ -3709,10 +3712,12 @@ describe("edit-tools", () => {
       });
 
       expect(result.updatedAttributes).toEqual(["value"]);
-      expect(result.warnings).toBeUndefined();
+      // $state.firstName → strips $ → detects bare "state." → corrects to "$state.firstName"
+      expect(result.warnings).toBeDefined();
+      expect(result.warnings![0]).toContain("corrected");
       const attrs = node.vsettings[0].attrs;
       expect(attrs.value._type).toBe("CustomCode");
-      expect(attrs.value.code).toBe("state.firstName");
+      expect(attrs.value.code).toBe("$state.firstName");
     });
 
     it("rejects invalid JS expression with $ prefix", async () => {
@@ -3917,10 +3922,10 @@ describe("edit-tools", () => {
         updateAttrs(api, "comp-1", "Input", {
           src: "$expr:$props.imageSrc",
         })
-      ).rejects.toThrow(/Invalid JS expression/);
+      ).rejects.toThrow(/\$expr:.*not supported/);
     });
 
-    it("rejects $expr:handleClick partial parse", async () => {
+    it("rejects $expr:handleClick with clear error", async () => {
       const node = mkTag({ uuid: "node-1", name: "Input" });
       const root = mkTag({ uuid: "root-1", children: [node] });
       const comp = mkComponent({ uuid: "comp-1", tplTree: root });
@@ -3935,7 +3940,7 @@ describe("edit-tools", () => {
         updateAttrs(api, "comp-1", "Input", {
           value: "$expr:handleClick",
         })
-      ).rejects.toThrow(/Invalid JS expression/);
+      ).rejects.toThrow(/\$expr:.*not supported/);
     });
 
     it("rejects expression with trailing content (two tokens)", async () => {
@@ -6627,7 +6632,7 @@ describe("updateProps", () => {
     expect(callArgs[3].code).toBe('"USD"');
   });
 
-  it("sets dynamic prop with $ prefix", async () => {
+  it("auto-corrects bare scope variable in prop with $ prefix (gap #31)", async () => {
     const orderIdParam = mkParam("orderId");
     const tplComp = mkTplComponent("PayButton", [orderIdParam]);
     const comp = { uuid: "comp-1", name: "Page", tplTree: tplComp };
@@ -6643,7 +6648,10 @@ describe("updateProps", () => {
     expect(result.updatedProps).toEqual(["orderId"]);
     const callArgs = mockSetTplComponentArg.mock.calls[0];
     expect(callArgs[3]._type).toBe("CustomCode");
-    expect(callArgs[3].code).toBe("ctx.params.orderId"); // $ stripped
+    // $ctx.params.orderId → strips $ → detects bare "ctx." → corrects to "$ctx.params.orderId"
+    expect(callArgs[3].code).toBe("$ctx.params.orderId");
+    expect(result.warnings).toBeDefined();
+    expect(result.warnings![0]).toContain("corrected");
   });
 
   it("sets dynamic prop with {{expr}} syntax", async () => {
