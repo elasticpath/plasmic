@@ -87,6 +87,13 @@ import {
 } from "@/wab/server/routes/cmse";
 import { addCommentsRoutes } from "@/wab/server/routes/comments";
 import {
+  queryCopilot,
+  queryCopilotFeedback,
+  queryPublicUiCopilot,
+  queryUiCopilot,
+  sendCopilotFeedback,
+} from "@/wab/server/routes/copilot";
+import {
   ROUTES_WITH_TIMING,
   addInternalRoutes,
 } from "@/wab/server/routes/custom-routes";
@@ -1180,6 +1187,21 @@ export function addImgOptimizerRoutes(app: express.Application) {
   // Image optimization endpoints
   app.get("/img-optimizer/v1/img", optimizeImageHandler);
   app.get("/img-optimizer/v1/img/:imageId", optimizeImageStaticHandler);
+}
+
+export function addCopilotRoutes(app: express.Application) {
+  // Main copilot endpoint for code/chat/sql/debug
+  app.post("/api/v1/copilot", apiAuth, withNext(queryCopilot));
+
+  // UI copilot endpoint for HTML/token generation
+  app.post("/api/v1/copilot/ui", apiAuth, withNext(queryUiCopilot));
+
+  // Public UI copilot endpoint (no auth required)
+  app.post("/api/v1/copilot/ui/public", withNext(queryPublicUiCopilot));
+
+  // Copilot feedback endpoints
+  app.post("/api/v1/copilot-feedback", apiAuth, withNext(sendCopilotFeedback));
+  app.get("/api/v1/copilot-feedback", apiAuth, withNext(queryCopilotFeedback));
 }
 
 export function addMainAppServerRoutes(
