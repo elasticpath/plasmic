@@ -705,6 +705,9 @@ declare module "@/wab/shared/TplMgr" {
       fillMode?: string,
       playState?: string
     ): any;
+    ensureSubtreeCorrectlyNamed(component: any, tree: any): void;
+    filterAllNodes(pred: (node: any) => boolean): any[];
+    getComponents(): any[];
   }
 
   export function getTplComponentArg(tpl: any, vs: any, argVar: any): any;
@@ -914,6 +917,7 @@ declare module "@/wab/shared/collections" {
 
 declare module "@/wab/shared/common" {
   export function xDifference<T>(a: Iterable<T>, b: Iterable<T>): Set<T>;
+  export function notNil<T>(x: T | null | undefined): x is T;
 }
 
 // ---------------------------------------------------------------------------
