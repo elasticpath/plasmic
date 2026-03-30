@@ -135,6 +135,7 @@ export async function rebaseFromServer(
     site: session.site,
     bundler: session.bundler,
     projectId: session.projectId,
+    branchId: session.activeBranchId ?? undefined,
     revisionNum: session.revisionNum,
     recorder: tracker.getRecorder(),
     serverUpdatesSummary:
@@ -190,6 +191,7 @@ async function handleUpdate(data: UpdateEventData): Promise<void> {
     site: session.site,
     bundler: session.bundler,
     projectId: session.projectId,
+    branchId: session.activeBranchId ?? undefined,
     revisionNum: session.revisionNum,
     recorder: tracker.getRecorder(),
     serverUpdatesSummary:

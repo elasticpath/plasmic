@@ -140,6 +140,32 @@ export default defineConfig({
         find: /^@\/wab\/shared\/core\/style-props$/,
         replacement: path.resolve(__dirname, "src/__mocks__/wab-style-props"),
       },
+      // Fixup pipeline dependencies
+      {
+        find: /^@\/wab\/shared\/model\/model-change-util$/,
+        replacement: path.resolve(
+          __dirname,
+          "src/__mocks__/wab-model-change-util"
+        ),
+      },
+      {
+        find: /^@\/wab\/shared\/Grids$/,
+        replacement: path.resolve(__dirname, "src/__mocks__/wab-grids"),
+      },
+      {
+        find: /^@\/wab\/shared\/core\/rich-text-util$/,
+        replacement: path.resolve(
+          __dirname,
+          "src/__mocks__/wab-rich-text-util"
+        ),
+      },
+      {
+        find: /^@\/wab\/shared\/cached-selectors$/,
+        replacement: path.resolve(
+          __dirname,
+          "src/__mocks__/wab-cached-selectors"
+        ),
+      },
       // TplQuery and its dependencies
       {
         find: /^@\/wab\/shared\/TplQuery$/,

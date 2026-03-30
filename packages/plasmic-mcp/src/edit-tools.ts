@@ -108,6 +108,7 @@ import { undoChanges } from "@/wab/shared/core/undo-util";
 import { extractComponent as wabExtractComponent } from "@/wab/shared/core/components";
 import { removeImplicitStatesAfterRemovingTplNode } from "@/wab/shared/core/states";
 import { $$$ } from "@/wab/shared/TplQuery";
+import { applyFixups } from "./fixup-pipeline.js";
 import cssInitials from "css-initials";
 import {
   GAP_PROPS,
@@ -1240,6 +1241,11 @@ async function saveOrAccumulate(
   description: string,
   modifiedComponentIids?: string[]
 ): Promise<SaveResult> {
+  // Apply post-change fixups before saving — mirrors Studio's fixupForChanges().
+  // Critical: stamps component.updatedAt so the merge algorithm detects changes.
+  const tracker = getChangeTracker();
+  changes = applyFixups(requireSession().site, changes, tracker.getRecorder());
+
   if (isBatchActive()) {
     accumulateChanges(changes, modifiedComponentIids);
     const session = requireSession();

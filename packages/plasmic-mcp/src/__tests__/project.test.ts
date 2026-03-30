@@ -13,6 +13,12 @@
 
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 
+// Mock the fixup pipeline as pass-through so it doesn't interfere with
+// save/undo tests that verify specific RecordedChanges flow.
+vi.mock("../fixup-pipeline", () => ({
+  applyFixups: (_site: any, changes: any, _recorder: any) => changes,
+}));
+
 import { updateText, updateStyles } from "../edit-tools";
 import { setSession, clearSession } from "../session";
 import { initChangeTracker, disposeChangeTracker } from "../change-tracker";
@@ -74,7 +80,8 @@ describe("edit-tools", () => {
       expect(api.saveRevision).toHaveBeenCalledWith(
         "proj1",
         11,
-        expect.objectContaining({ incremental: true })
+        expect.objectContaining({ incremental: true }),
+        undefined // no active branch
       );
     });
 

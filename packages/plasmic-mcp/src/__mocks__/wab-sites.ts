@@ -16,3 +16,11 @@ export const isHostLessPackage = (...args: any[]) =>
   mockIsHostLessPackage(...args);
 export const getNonTransitiveDepDefaultComponents = (...args: any[]) =>
   mockGetNonTransitiveDepDefaultComponents(...args);
+
+// Fixup pipeline
+export function isTplAttachedToSite(_site: any, _tpl: any): boolean {
+  return true;
+}
+export function getAllSiteFrames(_site: any): any[] {
+  return [];
+}

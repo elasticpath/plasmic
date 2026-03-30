@@ -64,12 +64,13 @@ function parseDepModel(model: unknown): any {
 
 export async function loadProject(
   apiClient: PlasmicApiClient,
-  projectId: string
+  projectId: string,
+  branchId?: string
 ): Promise<LoadedModel> {
   initMobx();
 
-  console.error(`[plasmic-mcp] Fetching project bundle for ${projectId}...`);
-  const response = await apiClient.getProjectBundle(projectId);
+  console.error(`[plasmic-mcp] Fetching project bundle for ${projectId}${branchId ? ` (branch: ${branchId})` : ""}...`);
+  const response = await apiClient.getProjectBundle(projectId, branchId);
 
   const bundleJson = JSON.parse(response.rev.data);
   const projectName = response.project?.name ?? projectId;

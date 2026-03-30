@@ -9,3 +9,7 @@ export function xDifference<T>(a: Iterable<T>, b: Iterable<T>): Set<T> {
   const bSet = new Set(b);
   return new Set([...a].filter((x) => !bSet.has(x)));
 }
+
+export function notNil<T>(x: T | null | undefined): x is T {
+  return x != null;
+}

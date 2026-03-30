@@ -342,13 +342,14 @@ export function createServer(): McpServer {
       inputSchema: {
         action: z.enum(["set", "list", "get-meta", "save", "refresh", "begin-batch", "end-batch", "undo", "list-packages", "list-available-packages", "list-package-components", "add-package", "remove-package", "upgrade-package"]),
         projectId: z.string().optional().describe("The Plasmic project ID (required for 'set' and 'add-package')"),
+        branchId: z.string().optional().describe("Branch ID to load (omit for main branch). Use branch.list to get available branch IDs."),
         batchId: z.string().optional().describe("Optional batch ID for verification (used by 'end-batch')"),
         pkgId: z.string().optional().describe("Package ID for 'remove-package' and 'upgrade-package' (optional for upgrade-all)"),
         packageName: z.string().optional().describe("Package name filter for 'list-package-components'"),
       },
       annotations: { idempotentHint: true },
     },
-    async ({ action, projectId, batchId, pkgId, packageName }) => {
+    async ({ action, projectId, branchId, batchId, pkgId, packageName }) => {
       try {
         switch (action) {
           case "set": {
@@ -370,7 +371,7 @@ export function createServer(): McpServer {
               hostlessDataVersion,
               hostUrl,
               bundleVersion,
-            } = await loadProject(apiClient, pid);
+            } = await loadProject(apiClient, pid, branchId);
 
             // Sync code component variants from the dev host (non-fatal)
             const syncResult = await syncFromDevHost(site, hostUrl);
@@ -386,6 +387,7 @@ export function createServer(): McpServer {
               bundleVersion,
               projectUuid: pid,
               hostUrl,
+              activeBranchId: branchId ?? null,
               devHostSynced: syncResult.devHostSynced,
               syncedVariantComponents: syncResult.syncedVariantComponents,
               registryData: syncResult.registryData,
@@ -432,6 +434,7 @@ export function createServer(): McpServer {
                   text: JSON.stringify({
                     projectId: pid,
                     projectName,
+                    ...(branchId ? { branchId } : {}),
                     componentCount: components.length,
                     pageCount: pages.length,
                     hostUrl: hostUrl ?? null,
@@ -592,7 +595,7 @@ export function createServer(): McpServer {
               hostlessDataVersion,
               hostUrl,
               bundleVersion,
-            } = await loadProject(apiClient, session.projectId);
+            } = await loadProject(apiClient, session.projectId, session.activeBranchId ?? undefined);
 
             // Clear registry cache to force fresh fetch on explicit refresh
             clearRegistryCache(hostUrl);
@@ -611,6 +614,7 @@ export function createServer(): McpServer {
               bundleVersion,
               projectUuid: session.projectId,
               hostUrl,
+              activeBranchId: session.activeBranchId,
               devHostSynced: syncResult.devHostSynced,
               syncedVariantComponents: syncResult.syncedVariantComponents,
               registryData: syncResult.registryData,
@@ -1658,7 +1662,7 @@ export function createServer(): McpServer {
                 hostlessDataVersion: newHostlessDataVersion,
                 hostUrl: reloadedHostUrl,
                 bundleVersion: newBundleVersion,
-              } = await loadProject(apiClient, session.projectId);
+              } = await loadProject(apiClient, session.projectId, session.activeBranchId ?? undefined);
 
               // Re-sync code component variants from the dev host (non-fatal)
               const syncResult = await syncFromDevHost(site, reloadedHostUrl);
@@ -1674,6 +1678,7 @@ export function createServer(): McpServer {
                 bundleVersion: newBundleVersion,
                 projectUuid: session.projectId,
                 hostUrl: reloadedHostUrl,
+                activeBranchId: session.activeBranchId,
                 devHostSynced: syncResult.devHostSynced,
                 syncedVariantComponents: syncResult.syncedVariantComponents,
                 registryData: syncResult.registryData,
@@ -1755,7 +1760,7 @@ export function createServer(): McpServer {
                 hostlessDataVersion: newHostlessDataVersion,
                 hostUrl: reloadedHostUrl,
                 bundleVersion: newBundleVersion,
-              } = await loadProject(apiClient, session.projectId);
+              } = await loadProject(apiClient, session.projectId, session.activeBranchId ?? undefined);
 
               // Re-sync code component variants from the dev host (non-fatal)
               const syncResult = await syncFromDevHost(site, reloadedHostUrl);
@@ -1771,6 +1776,7 @@ export function createServer(): McpServer {
                 bundleVersion: newBundleVersion,
                 projectUuid: session.projectId,
                 hostUrl: reloadedHostUrl,
+                activeBranchId: session.activeBranchId,
                 devHostSynced: syncResult.devHostSynced,
                 syncedVariantComponents: syncResult.syncedVariantComponents,
                 registryData: syncResult.registryData,
@@ -1877,7 +1883,7 @@ export function createServer(): McpServer {
                 hostlessDataVersion: newHostlessDataVersion,
                 hostUrl: reloadedHostUrl,
                 bundleVersion: newBundleVersion,
-              } = await loadProject(apiClient, session.projectId);
+              } = await loadProject(apiClient, session.projectId, session.activeBranchId ?? undefined);
 
               // Re-sync code component variants from the dev host (non-fatal)
               const syncResult = await syncFromDevHost(site, reloadedHostUrl);
@@ -1893,6 +1899,7 @@ export function createServer(): McpServer {
                 bundleVersion: newBundleVersion,
                 projectUuid: session.projectId,
                 hostUrl: reloadedHostUrl,
+                activeBranchId: session.activeBranchId,
                 devHostSynced: syncResult.devHostSynced,
                 syncedVariantComponents: syncResult.syncedVariantComponents,
                 registryData: syncResult.registryData,
@@ -5941,11 +5948,56 @@ export function createServer(): McpServer {
               pretend: params.pretend ?? false,
               ...(params.description ? { description: params.description } : {}),
             });
+
+            // After a successful (non-pretend) merge, reload the project if the
+            // merge target matches the active branch — mirrors Studio's
+            // handleBranchMerged() → fetchUpdates() (StudioCtx.tsx:6339-6342).
+            let reloaded = false;
+            const mergeSucceeded =
+              !params.pretend &&
+              (result.status === "can be merged" || result.status === "resolution accepted");
+            if (mergeSucceeded) {
+              const activeBranch = session.activeBranchId ?? null;
+              const targetIsActive =
+                (toBranchId === "main" && activeBranch === null) ||
+                toBranchId === activeBranch;
+              if (targetIsActive) {
+                // Reload project to pick up merged changes
+                stopLiveSync();
+                cancelBatch();
+                disposeChangeTracker();
+                clearUndoStack();
+                clearNodeCache();
+                const loaded = await loadProject(apiClient, session.projectId, session.activeBranchId ?? undefined);
+                clearRegistryCache(loaded.hostUrl);
+                const syncResult = await syncFromDevHost(loaded.site, loaded.hostUrl);
+                setSession({
+                  projectId: session.projectId,
+                  projectName: loaded.projectName,
+                  site: loaded.site,
+                  bundler: loaded.bundler,
+                  revisionNum: loaded.revisionNum,
+                  modelVersion: loaded.modelVersion,
+                  hostlessDataVersion: loaded.hostlessDataVersion,
+                  bundleVersion: loaded.bundleVersion,
+                  projectUuid: session.projectId,
+                  hostUrl: loaded.hostUrl,
+                  activeBranchId: session.activeBranchId,
+                  devHostSynced: syncResult.devHostSynced,
+                  syncedVariantComponents: syncResult.syncedVariantComponents,
+                  registryData: syncResult.registryData,
+                });
+                initChangeTracker(loaded.site);
+                startLiveSync(apiClient, session.projectId).catch(() => {});
+                reloaded = true;
+              }
+            }
+
             return {
               content: [{ type: "text" as const, text: JSON.stringify({
                 status: result.status,
-                ...(result.mergeStep ? { mergeStep: result.mergeStep } : {}),
                 pretend: params.pretend ?? false,
+                ...(reloaded ? { reloaded: true, revisionNum: requireSession().revisionNum } : {}),
                 message: result.status === "can be merged"
                   ? (params.pretend ? "Merge is possible (dry run)" : "Merge completed")
                   : result.status === "has conflicts"

@@ -346,7 +346,8 @@ describe("live-sync", () => {
       expect(mockApiClient.getModelUpdates).toHaveBeenCalledWith(
         "proj-123",
         5, // session revisionNum
-        []  // bundler.allUuids()
+        [],  // bundler.allUuids()
+        undefined // no active branch
       );
     });
 
@@ -385,7 +386,8 @@ describe("live-sync", () => {
       expect(mockApiClient.getModelUpdates).toHaveBeenCalledWith(
         "proj-123",
         5,
-        []
+        [],
+        "branch-abc" // session activeBranchId
       );
     });
 
