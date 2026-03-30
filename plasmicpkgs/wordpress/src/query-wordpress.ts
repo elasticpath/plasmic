@@ -198,7 +198,6 @@ function appendFiltersToParams(
     }
   }
 }
-}
 
 export const queryWordpressMeta: CustomFunctionMeta<typeof queryWordpress> = {
   name: "queryWordpress",
