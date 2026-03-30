@@ -872,9 +872,7 @@ export class PlasmicComponentLoader {
 
   getExecFuncModule(
     renderData: ComponentRenderData,
-    fileNameKey:
-      | "serverQueriesExecFuncFileName"
-      | "generateMetadataFuncFileName"
+    fileNameKey: "serverQueriesExecFuncFileName"
   ) {
     if (renderData.entryCompMetas.length === 0) {
       return undefined;
@@ -915,7 +913,7 @@ export class PlasmicComponentLoader {
   ) {
     const module = this.getExecFuncModule(
       renderData,
-      "generateMetadataFuncFileName"
+      "serverQueriesExecFuncFileName"
     );
     const fallback = renderData.entryCompMetas[0]?.pageMetadata || {};
     if (!module) {
