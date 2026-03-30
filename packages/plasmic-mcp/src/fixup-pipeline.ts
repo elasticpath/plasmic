@@ -105,13 +105,19 @@ export function applyFixups(
     return applyUpdatedAtOnly(site, changes, recorder);
   }
 
+  // After the guard, summary is guaranteed to be a valid ChangeSummary.
+  let currentSummary: ChangeSummary = summary;
+
   const applyFix = (f: () => void): void => {
     const fixChanges = recorder.withRecording(f);
     if (fixChanges && fixChanges.changes) {
       changes = mergeRecordedChanges(changes, fixChanges);
       // Re-summarize after each fixup so subsequent fixups see the updated state
       try {
-        summary = summarizeChanges(ctx, changes);
+        const updated = summarizeChanges(ctx, changes);
+        if (updated) {
+          currentSummary = updated;
+        }
       } catch {
         // If re-summarize fails, continue with existing summary
       }
@@ -120,22 +126,22 @@ export function applyFixups(
 
   // Model-related fixups (same order as Studio)
   if (changes.changes.length > 0) {
-    applyFix(() => fixupVirtualSlotArgs(tplMgr, summary));
-    applyFix(() => fixupGridChildren(summary));
+    applyFix(() => fixupVirtualSlotArgs(tplMgr, currentSummary));
+    applyFix(() => fixupGridChildren(currentSummary));
     applyFix(() => {
-      fixupBaseVariantSettings(tplMgr, summary);
+      fixupBaseVariantSettings(tplMgr, currentSummary);
       fixupFrameViewModeByRootSize(site);
     });
-    applyFix(() => fixupTextTags(summary));
+    applyFix(() => fixupTextTags(currentSummary));
     applyFix(() => {
-      fixupIncorrectlyNamedNodes(tplMgr, summary);
-      fixupImplicitStates(summary);
+      fixupIncorrectlyNamedNodes(tplMgr, currentSummary);
+      fixupImplicitStates(currentSummary);
     });
-    applyFix(() => fixupSlotParamsOrder(summary));
+    applyFix(() => fixupSlotParamsOrder(currentSummary));
   }
 
   // Always stamp updatedAt (runs even for CSS-only changes)
-  applyFix(() => fixupComponentUpdatedAt(summary));
+  applyFix(() => fixupComponentUpdatedAt(currentSummary));
 
   return changes;
 }
