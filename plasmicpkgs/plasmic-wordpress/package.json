@@ -1,6 +1,6 @@
 {
   "name": "@plasmicpkgs/plasmic-wordpress",
-  "version": "0.0.158",
+  "version": "0.0.169",
   "description": "Plasmic Wordpress components.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -44,11 +44,11 @@
     }
   ],
   "devDependencies": {
-    "@plasmicapp/host": "1.0.233",
-    "@plasmicapp/query": "0.1.81",
-    "@plasmicpkgs/wordpress": "0.0.9",
-    "@types/react": "^18.0.27",
-    "@types/react-dom": "^18.0.10",
+    "@plasmicapp/host": "2.0.0",
+    "@plasmicapp/query": "0.1.84",
+    "@plasmicpkgs/wordpress": "0.0.19",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
     "husky": "^7.0.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"

@@ -1,4 +1,4 @@
-import { CodeComponentMeta } from "@plasmicapp/host";
+import { type CodeComponentMeta } from "@plasmicapp/host/registerComponent";
 import React from "react";
 
 const ARIA_COMPONENTS_VARIANTS = {
@@ -93,7 +93,9 @@ export function VariantUpdater<T extends AriaVariant[]>({
     if (updateVariant) {
       updateVariant(changes);
     }
-  }, [changes, updateVariant]);
+    // Compare by value: changes is a new object every render (inline literal
+    // in a render prop), so we use JSON.stringify to avoid an infinite update loop.
+  }, [JSON.stringify(changes), updateVariant]);
   return null;
 }
 

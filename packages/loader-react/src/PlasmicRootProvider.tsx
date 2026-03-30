@@ -279,20 +279,6 @@ export function PlasmicRootProvider(
     currentContextValue,
   ]);
 
-  React.useEffect(() => {
-    loader.trackRender({
-      renderCtx: {
-        // We track the provider as a single entity
-        rootComponentId: "provider",
-        teamIds: loader.getTeamIds(),
-        projectIds: loader.getProjectIds(),
-      },
-      variation: value.variation,
-    });
-  }, [loader, value]);
-
-  const reactMajorVersion = +React.version.split(".")[0];
-
   const shouldDisableRootLoadingBoundary =
     disableRootLoadingBoundary ??
     loader.getBundle().disableRootLoadingBoundaryByDefault;
@@ -316,7 +302,7 @@ export function PlasmicRootProvider(
           query={pageQuery}
         >
           <MaybeWrap
-            cond={!shouldDisableRootLoadingBoundary && reactMajorVersion >= 18}
+            cond={!shouldDisableRootLoadingBoundary}
             wrapper={(contents) => (
               <React.Suspense fallback={suspenseFallback ?? "Loading..."}>
                 {contents}

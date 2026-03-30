@@ -559,7 +559,11 @@
         },
         "bhyR3dfmQCxq": {
           "name": "arg",
+<<<<<<< HEAD
           "argName": "$queries",
+=======
+          "argName": "$q",
+>>>>>>> upstream/master
           "displayName": null,
           "type": { "__ref": "TPol_kLbChXZ" },
           "__type": "ArgType"
@@ -599,7 +603,11 @@
         }
       },
       "deps": [],
+<<<<<<< HEAD
       "version": "256-wrap-page-meta-og-image-in-ref"
+=======
+      "version": "255-wrap-page-meta-og-image-in-ref"
+>>>>>>> upstream/master
     }
   ],
   [
@@ -1585,7 +1593,11 @@
         },
         "stgTPxBK3cZQ": {
           "name": "arg",
+<<<<<<< HEAD
           "argName": "$queries",
+=======
+          "argName": "$q",
+>>>>>>> upstream/master
           "displayName": null,
           "type": { "__ref": "o5mWQ-gl7uG_" },
           "__type": "ArgType"
@@ -2614,7 +2626,11 @@
           "__type": "Var"
         },
         "uD9NHdl3BHxv": {
+<<<<<<< HEAD
           "code": "($queries.query?.data?.body?.data ?? [{ message: \"dummy response\" }])",
+=======
+          "code": "($q.query?.data?.body?.data ?? [{ message: \"dummy response\" }])",
+>>>>>>> upstream/master
           "fallback": { "__ref": "LLi6wuLSLRUN" },
           "__type": "CustomCode"
         },
@@ -3140,7 +3156,11 @@
         }
       },
       "deps": ["3f6783bc-83da-4ce7-98cc-69413a54d3b3"],
+<<<<<<< HEAD
       "version": "256-wrap-page-meta-og-image-in-ref"
+=======
+      "version": "255-wrap-page-meta-og-image-in-ref"
+>>>>>>> upstream/master
     }
   ]
 ]

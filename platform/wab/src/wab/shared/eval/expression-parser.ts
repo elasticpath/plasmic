@@ -1,3 +1,4 @@
+import { ProjectId } from "@/wab/shared/ApiSchema";
 import {
   jsLiteral,
   makeShortProjectId,
@@ -6,6 +7,7 @@ import {
 import {
   arrayEq,
   filterFalsy,
+  switchType,
   unexpected,
   xDifference,
   xUnion,
@@ -48,6 +50,7 @@ const DOLLAR_VARS = [
   "$ctx",
   "$props",
   "$queries",
+  "$q",
   "$state",
   "$steps",
   "$dataTokens",
@@ -529,6 +532,18 @@ export function isPathDataToken(
   return typeof path[0] === "string" && path[0].startsWith("$dataTokens_");
 }
 
+/**
+ * All possible expressions that can contain data tokens. CompositeExpr, TemplatedString,
+ * FunctionExpr can contain data tokens, but the sub-Exprs referencing tokens are always
+ * flatteded with flattenExprs.
+ * TODO - encode this to the model schema
+ */
+type DataTokenExpr = CustomCode | ObjectPath;
+
+export function isDataTokenExpr(expr: Expr): expr is DataTokenExpr {
+  return isKnownCustomCode(expr) || isKnownObjectPath(expr);
+}
+
 export function parseObjectPath(obj: ObjectPath): ParsedExprInfo {
   const info = emptyParsedExprInfo();
   if (typeof obj.path[0] === "string") {
@@ -720,6 +735,17 @@ export function transformDataTokens(
   return isCodeWrappedWithParens(code) ? `(${newCode})` : newCode;
 }
 
+export function extractDataTokenIdentifiers(expr: DataTokenExpr): string[] {
+  return switchType(expr)
+    .when(ObjectPath, (objectPath) =>
+      isPathDataToken(objectPath.path) ? [objectPath.path[0]] : []
+    )
+    .when(CustomCode, (customCode) =>
+      extractDataTokenIdentifiersFromCode(customCode.code)
+    )
+    .result();
+}
+
 export function extractDataTokenIdentifiersFromCode(code: string): string[] {
   if (!code.includes("$dataTokens_")) {
     return [];
@@ -812,7 +838,7 @@ function replaceIdentifierWithMemberExpr(node: ast.Identifier, path: string[]) {
 export function transformDataTokensInCode(
   code: string,
   site: Site,
-  projectId: string
+  projectId: ProjectId
 ): string {
   code = wrapJavaScriptCodeInParens(code);
   const shortProjectId = makeShortProjectId(projectId);
@@ -894,7 +920,7 @@ export function transformDataTokensInCode(
 export function transformDataTokensToDisplay(
   code: string,
   site: Site,
-  currentProjectId: string
+  currentProjectId: ProjectId
 ): string {
   const shortProjectId = makeShortProjectId(currentProjectId);
 
@@ -943,7 +969,7 @@ export function transformDataTokensToDisplay(
 export function transformDataTokenPathToDisplay(
   path: (string | number)[],
   site: Site,
-  projectId: string
+  projectId: ProjectId
 ): (string | number)[] {
   if (path.length === 0 || typeof path[0] !== "string") {
     return path;
@@ -976,7 +1002,7 @@ export function transformDataTokenPathToDisplay(
 export function pathToDisplayString(
   path: (string | number)[],
   site: Site,
-  projectId: string
+  projectId: ProjectId
 ): string {
   return pathToString(transformDataTokenPathToDisplay(path, site, projectId));
 }
@@ -993,7 +1019,7 @@ export function pathToDisplayString(
 export function transformDataTokenPathToBundle(
   path: (string | number)[],
   site: Site,
-  projectId: string
+  projectId: ProjectId
 ): (string | number)[] {
   if (path.length < 2 || path[0] !== "$dataTokens") {
     return path;

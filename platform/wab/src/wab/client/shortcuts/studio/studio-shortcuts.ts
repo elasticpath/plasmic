@@ -101,6 +101,10 @@ export const CHROME_SHORTCUT_GROUP = mkShortcutGroup("Chrome", {
     combos: "mod+k",
     description: "Toggle Copilot!",
   },
+  TOGGLE_COPILOT_CHAT: {
+    combos: "mod+alt+k",
+    description: "Toggle Copilot Chat!",
+  },
   SWITCH_TO_COPILOT_TAB: {
     combos: "alt+c",
     description: "Engage Copilot!",
@@ -286,6 +290,10 @@ export const EDIT_SHORTCUT_GROUP = mkShortcutGroup("Edit", {
   COPY: {
     combos: "ctrl+c",
     description: "Copy element",
+  },
+  CUT: {
+    combos: "ctrl+x",
+    description: "Cut element",
   },
   COPY_ELEMENT_STYLE: {
     combos: "ctrl+alt+c",

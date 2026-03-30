@@ -298,11 +298,10 @@ test.describe("data token usages", () => {
       const targetElement = models.studio.rightPanel.frame.locator(
         '[data-test-id="text-content"]'
       );
-      // right-click on the text content to create a data token
-      await targetElement.locator("label").click({ button: "right" });
-      await models.studio.createDataTokenButton.click();
+      await models.studio.createDataTokenForRow(targetElement.locator("label"));
       const dataTokenPopover = await models.studio.getDataTokenPopoverForTarget(
-        targetElement
+        targetElement,
+        { waitForFocus: true }
       );
 
       const expectedType = "Text";
@@ -335,8 +334,7 @@ test.describe("data token usages", () => {
       await models.studio.leftPanel.assertDataTokenExists("Welcome Text 2");
     });
 
-    // Skip: Flaky in CI - right panel loading timing issues
-    test.skip("can create data token by right clicking component props", async ({
+    test("can create data token by right clicking component props", async ({
       models,
       page,
     }) => {
@@ -355,10 +353,10 @@ test.describe("data token usages", () => {
           editDataTokenValue: "output value",
         },
         {
-          displayName: "Value",
-          jsName: "value",
+          displayName: "Initial value",
+          jsName: "initialValue",
           type: "Number",
-          initialValue: "0",
+          initialValue: "50",
         },
         {
           displayName: "Show label",
@@ -391,9 +389,9 @@ test.describe("data token usages", () => {
           await models.studio.page.keyboard.type(propInfo.newTextValue);
           await models.studio.page.keyboard.press("Enter");
         }
-        // right-click on the text content to create a data token
-        await propRow.locator("label").nth(0).click({ button: "right" });
-        await models.studio.createDataTokenButton.click();
+        await models.studio.createDataTokenForRow(
+          propRow.locator("label").nth(0)
+        );
         const dataTokenPopover =
           await models.studio.getDataTokenPopoverForTarget(propRow);
 
@@ -465,9 +463,11 @@ test.describe("data token usages", () => {
         .click();
       const serverQueryModal = models.studio.serverQueryBottomModal;
       await serverQueryModal.waitFor();
-      const previewResult = serverQueryModal.locator(".code-preview-inner");
+      await expect(serverQueryModal).toContainText(
+        "Press Execute to preview results"
+      );
 
-      await expect(previewResult).not.toContainText("data: Array(7)");
+
       const strapiHostRow = serverQueryModal.locator(
         `[data-test-id="prop-editor-row-host"]`
       );
@@ -480,11 +480,11 @@ test.describe("data token usages", () => {
 
       await strapiHostInput.click();
       await models.studio.page.keyboard.type(mockStrapiHost);
-      await strapiHostInput.click({ button: "right" });
 
-      await models.studio.createDataTokenButton.click();
+      await models.studio.createDataTokenForRow(strapiHostInput);
       let dataTokenPopover = await models.studio.getDataTokenPopoverForTarget(
-        strapiHostRow
+        strapiHostRow,
+        { waitForFocus: true }
       );
 
       const expectedName = "Host";
@@ -515,10 +515,10 @@ test.describe("data token usages", () => {
       await strapiCollectionInput.click();
       await page.waitForTimeout(200);
       await models.studio.page.keyboard.type(mockStrapiCollection);
-      await strapiCollectionInput.click({ button: "right" });
-      await models.studio.createDataTokenButton.click();
+      await models.studio.createDataTokenForRow(strapiCollectionInput);
       dataTokenPopover = await models.studio.getDataTokenPopoverForTarget(
-        strapiCollectionRow
+        strapiCollectionRow,
+        { waitForFocus: true }
       );
       await dataTokenPopover.expectDataToken({
         expectedName: "Collection",
@@ -536,7 +536,9 @@ test.describe("data token usages", () => {
       );
 
       await serverQueryModal.locator("button").getByText("Execute").click();
-      await expect(previewResult).toContainText("data: Array(7)");
+      await expect(
+        serverQueryModal.locator(".code-preview-inner")
+      ).toContainText("data: Array(7)");
       await serverQueryModal.locator("button").getByText("Save").click();
       await serverQueryModal.waitFor({ state: "hidden" });
       await models.studio.leftPanel.assertDataTokenExists(newExpectedName);

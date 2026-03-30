@@ -1,5 +1,5 @@
 import { Config } from "@/wab/server/config";
-import { logger } from "@/wab/server/observability";
+import { withSpan } from "@/wab/server/util/apm-util";
 import type { workerBuildAssets } from "@/wab/server/workers/build-loader-assets";
 import type { workerGenCode } from "@/wab/server/workers/codegen";
 import type { workerLocalizationStrings } from "@/wab/server/workers/localization-worker";
@@ -33,24 +33,14 @@ class WorkerPoolWrapper {
   ) {}
 
   exec(method: string, params: any) {
-    const pool = method === "loader-assets" ? this.loaderPool : this.genericPool;
-    const stats = pool.stats();
-    logger().info("worker-pool-task-queued", {
-      workerPoolMethod: method,
-      workerPoolPendingTasks: stats.pendingTasks,
-      workerPoolActiveTasks: stats.activeTasks,
-    });
-    const start = Date.now();
-    return pool
-      .exec(method, params)
-      .timeout(TIMEOUT_MS)
-      .then((result) => {
-        logger().info("worker-pool-task-done", {
-          workerPoolMethod: method,
-          workerPoolWaitMs: Date.now() - start,
-        });
-        return result;
-      });
+    return withSpan(
+      `workerpool-exec-${method}`,
+      async () => {
+        return (method === "loader-assets" ? this.loaderPool : this.genericPool)
+          .exec(method, params)
+          .timeout(TIMEOUT_MS);
+      },
+    );
   }
 }
 

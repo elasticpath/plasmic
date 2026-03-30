@@ -1,13 +1,12 @@
+import { getDataSourcesPackageName } from "@/wab/shared/codegen/react-p/data-sources";
 import {
   getExportedComponentName,
   makeDefaultExternalPropsName,
   makePlasmicComponentName,
   makeTaggedPlasmicImport,
 } from "@/wab/shared/codegen/react-p/serialize-utils";
-import { isServerQueryWithOperation } from "@/wab/shared/codegen/react-p/server-queries/utils";
 import { SerializerBaseContext } from "@/wab/shared/codegen/react-p/types";
 import { ExportOpts } from "@/wab/shared/codegen/types";
-import { jsLiteral, toVarName } from "@/wab/shared/codegen/util";
 import { ExprCtx, asCode, stripParens } from "@/wab/shared/core/exprs";
 import { Component, CustomFunctionExpr } from "@/wab/shared/model/classes";
 import { groupBy } from "lodash";
@@ -46,7 +45,9 @@ export function makePlasmicClientRscComponentName(component: Component) {
 }
 
 export function makeLoaderServerFunctionFileName(component: Component) {
-  return `__loader_rsc_${getExportedComponentName(component)}.tsx`;
+  return `__loader_rsc_${getExportedComponentName(component)}_${
+    component.uuid
+  }.tsx`;
 }
 
 export function makePlasmicServerRscComponentFileName(component: Component) {
@@ -57,53 +58,19 @@ export function makePlasmicClientRscComponentFileName(component: Component) {
   return `${makePlasmicClientRscComponentName(component)}.tsx`;
 }
 
-export function makeServerQueryClientDollarQueryInit(
-  ctx: SerializerBaseContext
-) {
-  if (ctx.hasServerQueries) {
-    return `...useDollarServerQueries($ctx, $queries, $props?.${SERVER_QUERIES_VAR_NAME} ?? {})`;
-  }
-
-  return undefined;
-}
-
-function makeServerQueryOpType(op: CustomFunctionExpr) {
-  return `Awaited<ReturnType<typeof ${op.func.importName}>>`;
-}
-
 export function makePlasmicQueryImports(ctx: SerializerBaseContext) {
   if (ctx.useRSC || !ctx.hasServerQueries) {
     return "";
   }
-
-  return `import {
-  useMutablePlasmicQueryData,
-} from "@plasmicapp/query";`;
+  return `import { useMutablePlasmicQueryData } from "@plasmicapp/query";`;
 }
 
-export function serializeServerQueryEntryType(component: Component) {
-  if (component.serverQueries.length === 0) {
-    return null;
-  }
-
-  return `
-${SERVER_QUERIES_VAR_NAME}?: {
-${component.serverQueries
-  .filter(isServerQueryWithOperation)
-  .map(
-    (query) => `${toVarName(query.name)}: ${makeServerQueryOpType(query.op)};`
-  )
-  .join("\n")}
-};
-`.trim();
+export function makeDataSourcesQueryTypeImports() {
+  return `import type { PlasmicQuery, PlasmicQueryResult } from "${getDataSourcesPackageName()}";`;
 }
 
-export function serializeServerQueryArgPropType(component: Component) {
-  if (component.serverQueries.length === 0) {
-    return null;
-  }
-
-  return jsLiteral(SERVER_QUERIES_VAR_NAME);
+export function makeDataSourcesServerQueryImports() {
+  return `import { unstable_createDollarQueries, unstable_executePlasmicQueries } from "${getDataSourcesPackageName()}";`;
 }
 
 export function serializeServerQueryCustomFunctionArgs(
@@ -144,4 +111,59 @@ export function makeComponentTypeImport(
   ].join("/");
 
   return makeTaggedPlasmicImport(imports, path, component.uuid, "render");
+}
+
+export function serializeMetadataPropType(propTypeName: string) {
+  return `export interface ${propTypeName} {
+  params?: Promise<Record<string, string | string[] | undefined>>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}`;
+}
+
+export function serializeMakeAppRouterPageCtx(
+  ctx: SerializerBaseContext,
+  propTypeName: string
+) {
+  const pageMeta = ctx.component.pageMeta;
+  if (!pageMeta) {
+    return serializeMetadataPropType(propTypeName);
+  }
+  return `${MK_PATH_FROM_ROUTE_AND_PARAMS_SER}
+
+${serializeMetadataPropType(propTypeName)}
+
+export async function makeAppRouterPageCtx({ params, searchParams }: ${propTypeName}) {
+  const pageRoute = "${pageMeta.path}";
+  const pageParams = (await params) ?? {};
+  const pagePath = mkPathFromRouteAndParams(pageRoute, pageParams);
+
+  const ctx = {
+    pageRoute,
+    pagePath,
+    params: pageParams,
+    query: (await searchParams) ?? {},
+  };
+  return ctx;
+}`;
+}
+
+export function makeServerQueryImports(
+  ctx: SerializerBaseContext,
+  componentName: string
+) {
+  const { component, exportOpts } = ctx;
+
+  const importNames = ["makeAppRouterPageCtx", "generateDynamicMetadata"];
+  if (ctx.hasServerQueries) {
+    importNames.push("create$Queries", "createQueries");
+  }
+  const imports = makeTaggedPlasmicImport(
+    importNames,
+    `${exportOpts.relPathFromImplToManagedDir}/${
+      ctx.useRSC ? makePlasmicServerRscComponentName(component) : componentName
+    }`,
+    component.uuid,
+    ctx.useRSC ? "rscServer" : "render"
+  );
+  return imports;
 }

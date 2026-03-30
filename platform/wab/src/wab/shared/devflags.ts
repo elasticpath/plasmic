@@ -410,10 +410,18 @@ const DEFAULT_DEVFLAGS = {
   showCopilot: true,
   allowHtmlPaste: false,
   enableUiCopilot: false,
+  enableChatCopilot: false,
   uiCopilotModelProviderOpts: {
     provider: "OpenAI",
     modelName: "gpt-4.1",
     maxTokens: 32000,
+    temperature: 0,
+  } as ModelProviderOpts,
+  chatCopilotModelProviderOpts: {
+    provider: "Anthropic",
+    modelName: "claude-sonnet-4-20250514",
+    maxTokens: 32000,
+    temperature: 0,
   } as ModelProviderOpts,
 
   hostLessWorkspaceId: undefined as WorkspaceId | undefined,
@@ -458,7 +466,6 @@ const DEFAULT_DEVFLAGS = {
   splits: true,
   refActions: false,
   multiSelect: false,
-  dataTabTourForUsersBefore: "2023-02-28",
   pageLayout: false,
   mainContentSlots: false,
   insertTemplatesIntoMainContentSlots: false,
@@ -521,13 +528,12 @@ const DEFAULT_DEVFLAGS = {
   debugCmsForms: false,
 
   hiddenDataSources: [] as string[],
-  serverQueries: false,
 
   // Custom top frame URLs; if Studio is loaded from a custom
   // domain, then this allows us to recognize it as the top frame
   // Hard-coding this for now as db-based flag overrides are
   // not yet loaded when it is needed.
-  topFrameUrls: ["https://studio.plsmc.dev"] as string[],
+  topFrameUrls: [] as string[],
 
   defaultContentCreatorConfig: {
     styleSectionVisibilities: {
@@ -555,8 +561,6 @@ const DEFAULT_DEVFLAGS = {
   // Existing users from these domains can still log in; this only blocks signup.
   blockedSignupDomains: [] as string[],
 
-  onboardingTours: false,
-
   newProjectModal: false,
 
   authUsersTab: false,
@@ -570,6 +574,8 @@ const DEFAULT_DEVFLAGS = {
   autoOpen: false,
   autoOpen2: false,
   cmsUniqueFields: false,
+  // Enable new data queries.
+  serverQueries: false,
   // Disable auth and backend integrations for new projects
   rscRelease: false,
   // Overrides rscRelease to allow using integrations in a project.
@@ -665,8 +671,8 @@ export function applyPlasmicUserDevFlagOverrides(target: DevFlagsType) {
     autoOpen2: true,
     allowHtmlPaste: true,
     enableUiCopilot: true,
+    enableChatCopilot: true,
     cmsUniqueFields: true,
-    enableDataQueries: true,
     showAnimations: true,
     dataTokens: true,
   } as Partial<DevFlagsType>);

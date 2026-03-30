@@ -20,6 +20,8 @@ export class RightPanel extends BaseModel {
   readonly serverQueriesSection: Locator = this.frame.locator(
     '[id="server-queries-section"]'
   );
+  readonly serverQueriesSectionContent: Locator =
+    this.serverQueriesSection.locator(`[class*="SidebarSection__Body"]`);
   readonly stateButton: Locator = this.frame.locator(
     '[data-plasmic-prop="variable"]'
   );
@@ -78,12 +80,19 @@ export class RightPanel extends BaseModel {
   readonly variantsRow: Locator = this.frame.locator(
     'div[data-test-class="variant-row"]'
   );
-  readonly variantStopRecording: Locator = this.frame.locator(
-    '[data-test-class="variant-record-button-stop"]'
-  );
-  readonly variantStopViewing: Locator = this.frame.locator(
-    '[data-test-class="variant-pin-button-deactivate"]'
-  );
+  /**
+   * Toggles off an element variant by clicking on its row.
+   * With the new click behavior, clicking an active variant row
+   * stops recording AND deactivates in one action.
+   * @param selectorText - The text of the variant selector (e.g., ":nth-child(odd)", ":hover")
+   */
+  async toggleOffElementVariant(selectorText: string) {
+    const variantRow = this.frame
+      .locator('[data-test-id="private-style-variants-section"]')
+      .locator('[data-test-class="variant-row"]')
+      .filter({ hasText: selectorText });
+    await variantRow.click();
+  }
   readonly variantsInput: Locator = this.frame
     .locator('div[data-test-class="variant-row"]')
     .locator("div.flex-fill")
@@ -183,6 +192,10 @@ export class RightPanel extends BaseModel {
 
   readonly defaultValueMenuButton: Locator = this.frame.locator(
     '[data-test-id="default-value-menu-btn"]'
+  );
+
+  readonly pagePanel: Locator = this.frame.locator(
+    '[data-test-id="page-panel"]'
   );
 
   readonly pagePathInput: Locator = this.frame.locator(
@@ -1194,18 +1207,6 @@ export class RightPanel extends BaseModel {
           const w = window as any;
           if (w.dbg?.testControls?.dataSource?.setByValue) {
             const dataSourceControl = w.dbg.testControls.dataSource;
-            if (dataSourceControl.options) {
-              for (const option of dataSourceControl.options) {
-                if (
-                  option.value &&
-                  (option.label?.toLowerCase().includes("tutorial") ||
-                    option.label?.toLowerCase().includes("tutorialdb") ||
-                    option.value.includes("tutorial"))
-                ) {
-                  return dataSourceControl.setByValue(option.value);
-                }
-              }
-            }
             if (
               dataSourceControl.options &&
               dataSourceControl.options.length > 0

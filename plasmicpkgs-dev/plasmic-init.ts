@@ -1,7 +1,6 @@
 import { initPlasmicLoader } from "@plasmicapp/loader-nextjs/react-server-conditional";
-import * as NextNavigation from "next/navigation";
 
-const host = "https://codegen.integration.storefront.elasticpath.com";
+const host = process.env.NEXT_PUBLIC_HOST;
 const projectId = process.env.NEXT_PUBLIC_PROJECT_ID;
 const projectToken = process.env.NEXT_PUBLIC_PROJECT_TOKEN;
 

@@ -6,12 +6,11 @@ import {
   setupNextJs,
   teardownNextJs,
 } from "../../nextjs/nextjs-setup";
+import { makeEnvName } from "../setup-utils";
 
 test.describe(`@plasmicpkgs/react-aria code components`, async () => {
   for (const versions of LOADER_NEXTJS_VERSIONS) {
-    const { loaderVersion, nextVersion } = versions;
-
-    test.describe(`loader-nextjs@${loaderVersion}, next@${nextVersion}`, async () => {
+    test.describe(makeEnvName({ type: "nextjs", ...versions }), async () => {
       let ctx: NextJsContext;
 
       test.beforeAll(async () => {
@@ -22,8 +21,7 @@ test.describe(`@plasmicpkgs/react-aria code components`, async () => {
           bundleFile: "react-aria.json",
           projectName: "Plexus Loader Test",
           removeComponentsPage: true,
-          loaderVersion,
-          nextVersion,
+          ...versions,
         });
       });
 
@@ -787,7 +785,9 @@ test.describe(`@plasmicpkgs/react-aria code components`, async () => {
           placement: "top",
         });
         await insideTooltipEl.hover();
-        await expect(insideTooltipEl).not.toBeVisible();
+        // Demos in docs show its correct behavior for the tooltip to stay open when the cursor is inside it
+        // https://react-aria.adobe.com/Tooltip
+        await expect(insideTooltipEl).toBeVisible();
         await outsideEl.hover();
         await expect(insideTooltipEl).not.toBeVisible();
 
@@ -797,6 +797,8 @@ test.describe(`@plasmicpkgs/react-aria code components`, async () => {
         await overlayArrowStateChecker.checkState({
           placement: "bottom",
         });
+        await outsideEl.hover();
+        await expect(insideTooltipEl).not.toBeVisible();
 
         await setPlacementLeftEl.click();
         await page.getByText("Hover me").hover();
@@ -804,6 +806,8 @@ test.describe(`@plasmicpkgs/react-aria code components`, async () => {
         await overlayArrowStateChecker.checkState({
           placement: "left",
         });
+        await outsideEl.hover();
+        await expect(insideTooltipEl).not.toBeVisible();
 
         await setPlacementRightEl.click();
         await page.getByText("Hover me").hover();
@@ -811,6 +815,8 @@ test.describe(`@plasmicpkgs/react-aria code components`, async () => {
         await overlayArrowStateChecker.checkState({
           placement: "right",
         });
+        await outsideEl.hover();
+        await expect(insideTooltipEl).not.toBeVisible();
 
         await setPlacementTopEl.click();
         await page.getByText("Hover me").hover();
@@ -818,6 +824,8 @@ test.describe(`@plasmicpkgs/react-aria code components`, async () => {
         await overlayArrowStateChecker.checkState({
           placement: "top",
         });
+        await outsideEl.hover();
+        await expect(insideTooltipEl).not.toBeVisible();
       });
       test(`Slider`, async ({ page }) => {
         const valueEl = page.locator("#value");

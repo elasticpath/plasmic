@@ -20,6 +20,7 @@ import {
   parseSvgXml,
 } from "@/wab/shared/data-urls";
 import { Rect } from "@/wab/shared/geom";
+import { ImageAsset } from "@/wab/shared/model/classes";
 import {
   clearExplicitColors,
   convertSvgToTextSized,
@@ -669,17 +670,52 @@ export function upsertJQSelector(
 }
 
 export function downloadBlob(blob: Blob, fileName: string) {
-  const $link = $("<a />").css("display", "none").appendTo("body");
   // Data URL has a size limit. However, object url doesn't.
   const downloadUrl = URL.createObjectURL(blob);
-  $link.attr("href", downloadUrl);
-  $link.attr("download", fileName);
-  $link[0].click();
-  $link.remove();
+  downloadFromLink(fileName, downloadUrl, false);
   // Note that the URL created by URL.createObjectURL(blob) won't be
   // released until the document is unloaded or the URL is explicitly
   // released. So here we release it explicitly.
   URL.revokeObjectURL(downloadUrl);
+}
+
+function downloadFromLink(name: string, href: string, isExternal: boolean) {
+  const $link = $("<a />").css("display", "none").appendTo("body");
+  $link.attr("href", href);
+  $link.attr("download", name);
+  if (isExternal) {
+    $link.attr("target", "_blank");
+    $link.attr("rel", "noopener noreferrer");
+  }
+  $link[0].click();
+  $link.remove();
+}
+
+const MIME_TO_EXT: Record<string, string> = {
+  "image/svg+xml": "svg",
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/gif": "gif",
+  "image/webp": "webp",
+  "image/avif": "avif",
+  "image/tiff": "tif",
+};
+
+export function downloadImageAsset(asset: ImageAsset) {
+  if (!asset.dataUri) {
+    return;
+  }
+  if (asset.dataUri.startsWith("data:")) {
+    const parsed = parseDataUrl(asset.dataUri);
+    const ext = MIME_TO_EXT[parsed.contentType];
+    const blob = imageDataUriToBlob(asset.dataUri);
+    const hasExt = /\.[^.]+$/.test(asset.name);
+    const nameWithExt = hasExt || !ext ? asset.name : `${asset.name}.${ext}`;
+    downloadBlob(blob, nameWithExt);
+  } else {
+    // Fallback for external links
+    downloadFromLink(asset.name, asset.dataUri, true);
+  }
 }
 
 export function fixStudioIframePositionAndOverflow() {

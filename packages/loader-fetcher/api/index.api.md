@@ -12,16 +12,11 @@ export class Api {
             token: string;
         }[];
         host?: string;
+        apiHost?: string;
+        cdnHost?: string;
         nativeFetch?: boolean;
         manualRedirect?: boolean;
     });
-    // (undocumented)
-    fetchHtmlData(opts: {
-        projectId: string;
-        component: string;
-        hydrate?: boolean;
-        embedHydrate?: boolean;
-    }): Promise<LoaderHtmlOutput>;
     // (undocumented)
     fetchLoaderData(projectIds: string[], opts: {
         platform?: "react" | "nextjs" | "gatsby";
@@ -106,17 +101,16 @@ export interface ExperimentSlice extends Slice {
 
 // @public (undocumented)
 export interface FetcherOptions {
+    apiHost?: string;
     // (undocumented)
     cache?: LoaderBundleCache;
-    // (undocumented)
+    cdnHost?: string;
     host?: string;
     // (undocumented)
     i18n?: {
         keyScheme: "content" | "hash" | "path";
         tagPrefix?: string;
     };
-    // @deprecated (undocumented)
-    i18nKeyScheme?: "content" | "hash" | "path";
     // (undocumented)
     manualRedirect?: boolean;
     // (undocumented)
@@ -178,12 +172,6 @@ export interface LoaderBundleCache {
 export interface LoaderBundleOutput extends ApiLoaderBundleOutput {
     // (undocumented)
     filteredIds: Record<string, string[]>;
-}
-
-// @public (undocumented)
-export interface LoaderHtmlOutput {
-    // (undocumented)
-    html: string;
 }
 
 // @public (undocumented)

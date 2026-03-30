@@ -2,21 +2,25 @@ import { RenderingCtx } from "@/wab/client/components/canvas/canvas-rendering";
 import { DeepMap } from "@/wab/commons/deep-map";
 import { ReactHookSpec } from "@/wab/shared/codegen/react-p/react-hook-spec";
 import {
+  Full,
   arrayEq,
   assert,
-  Full,
   isLiteralObjectByName,
   objsEq,
   removeWhere,
 } from "@/wab/shared/common";
+import {
+  StatefulQueryResult,
+  unwrapStatefulQueryResult,
+} from "@/wab/shared/core/custom-functions";
 import { CanvasEnv } from "@/wab/shared/eval";
 import { TplNode } from "@/wab/shared/model/classes";
 import { isEqual, uniq } from "lodash";
 import {
-  _isComputingDerivation,
-  computed,
   IComputedValue,
   IComputedValueOptions,
+  _isComputingDerivation,
+  computed,
   onBecomeUnobserved,
 } from "mobx";
 
@@ -47,6 +51,7 @@ function computeHashFromStableFields(node: TplNode, ctx: RenderingCtx) {
     ctx.nodeNamer,
     ctx.projectFlags,
     ctx.setDollarQueries,
+    ctx.setDollarQ,
     JSON.stringify([...ctx.activeVariants.keys()].map((v) => v.uuid).sort()),
     JSON.stringify(
       [
@@ -85,6 +90,7 @@ type HandledCtxFields =
   | "slate"
   | "projectFlags"
   | "setDollarQueries"
+  | "setDollarQ"
   | "reactHookSpecs"
   | "triggers"
   | "triggerProps"
@@ -102,6 +108,16 @@ function computeNonStableFields(ctx: RenderingCtx): NonStableFieldsFromCtx {
     env: {
       ...ctx.env,
       $queries: Object.fromEntries(Object.entries(ctx.env.$queries)),
+      // Snapshot the current state of each StatefulQueryResult so that
+      // oneLevelDeepComparison will detect changes.
+      $q: Object.fromEntries(
+        Object.entries(ctx.env.$q).map(
+          ([k, v]: [string, StatefulQueryResult]) => [
+            k,
+            unwrapStatefulQueryResult(v),
+          ]
+        )
+      ),
     },
     wrappingEnv: ctx.wrappingEnv,
     overrides: ctx.overrides,
@@ -193,7 +209,13 @@ const areStateSnapshotsEquiv = cachedEquiv(
 const cachedOneLevelDeepComparison = cachedEquiv(oneLevelDeepComparison);
 
 const areCanvasEnvLocalsEquiv = cachedEquiv((a: CanvasEnv, b: CanvasEnv) => {
-  return oneLevelDeepComparison(a, b, ["$props", "$ctx", "$state", "$queries"]);
+  return oneLevelDeepComparison(a, b, [
+    "$props",
+    "$ctx",
+    "$state",
+    "$queries",
+    "$q",
+  ]);
 });
 
 const areCanvasEnvsEquiv = cachedEquiv((a: CanvasEnv, b: CanvasEnv) => {
@@ -205,6 +227,9 @@ const areCanvasEnvsEquiv = cachedEquiv((a: CanvasEnv, b: CanvasEnv) => {
   }
 
   if (!cachedOneLevelDeepComparison(a.$queries, b.$queries)) {
+    return false;
+  }
+  if (!cachedOneLevelDeepComparison(a.$q, b.$q)) {
     return false;
   }
   if (!areCanvasEnvLocalsEquiv(a, b)) {

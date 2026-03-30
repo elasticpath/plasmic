@@ -15,28 +15,29 @@ import {
   TplNode,
   isKnownComponentServerQuery,
 } from "@/wab/shared/model/classes";
+import { PlasmicQueryDataProvider } from "@plasmicapp/query";
 import { observer } from "mobx-react";
 import * as React from "react";
 
 /**
- * Removes a query from the environment's $queries object to avoid circular references.
+ * Removes a query from the environment's $q object to avoid circular references.
  * This is useful when computing the environment for a query's own expression preview.
  */
 export function omitQueryFromEnv(
   env: Record<string, any> | undefined,
   query: ComponentServerQuery | { name: string }
 ): Record<string, any> | undefined {
-  if (env?.$queries) {
-    const { $queries, ...restEnv } = env;
+  if (env?.$q) {
+    const { $q, ...restEnv } = env;
     const currentKey = toVarName(query.name);
-    const { [currentKey]: _omit, ...filteredQueries } = $queries;
-    return { ...restEnv, $queries: filteredQueries };
+    const { [currentKey]: _omit, ...filteredQueries } = $q;
+    return { ...restEnv, $q: filteredQueries };
   }
   return env;
 }
 
 interface ServerQueryOpExprBottomModalContentProps {
-  value?: CustomFunctionExpr;
+  value: CustomFunctionExpr | ComponentServerQuery | undefined;
   onSave: (expr: CustomFunctionExpr, opExprName?: string) => unknown;
   onCancel: () => unknown;
   readOnly?: boolean;
@@ -48,7 +49,6 @@ interface ServerQueryOpExprBottomModalContentProps {
   viewCtx?: ViewCtx;
   tpl?: TplNode;
   schema?: DataPickerTypesSchema;
-  parent?: ComponentServerQuery | TplNode;
   eventHandlerKey?: EventHandlerKeyType;
 }
 
@@ -72,7 +72,6 @@ export function useServerQueryBottomModal(queryKey: string) {
 
 /** For managing multiple query modals or an unknown/dynamic query. */
 export function useServerQueryBottomModals() {
-  // const ctx = useDataSourceOpPickerContext();
   const modalActions = useBottomModalActions();
   return {
     open: (
@@ -103,7 +102,6 @@ const ServerQueryOpExprBottomModalContent = observer(
     onCancel,
     readOnly,
     schema,
-    parent,
     allowedOps,
     interaction,
     exprCtx,
@@ -111,12 +109,17 @@ const ServerQueryOpExprBottomModalContent = observer(
     tpl,
     eventHandlerKey,
   }: ServerQueryOpExprBottomModalContentProps) {
+    const parentQuery = isKnownComponentServerQuery(value) ? value : undefined;
     const wrappedOnSave = React.useCallback(
       (newExpr: CustomFunctionExpr, opExprName?: string) => {
         onSave(newExpr, opExprName);
       },
       [onSave]
     );
+
+    // Server query modal gets its own isolated cache so it doesn't interfere
+    // with the cache in the current canvas.
+    const swrCache = React.useMemo(() => new Map<string, unknown>(), []);
 
     const env = (() => {
       const computedEnv =
@@ -129,27 +132,28 @@ const ServerQueryOpExprBottomModalContent = observer(
               eventHandlerKey
             )
           : undefined;
-      // Exclude the current query from $queries to avoid circular references
-      if (isKnownComponentServerQuery(parent)) {
-        return omitQueryFromEnv(computedEnv, parent);
+      // Exclude the current query from $q to avoid circular references
+      if (parentQuery) {
+        return omitQueryFromEnv(computedEnv, parentQuery);
       }
       return computedEnv;
     })();
 
     return (
       <PopoverFrameProvider containerSelector=".bottom-modals">
-        <ServerQueryOpExprFormAndPreview
-          value={value}
-          onSave={wrappedOnSave}
-          onCancel={onCancel}
-          env={env}
-          schema={schema}
-          parent={parent}
-          readOnly={readOnly}
-          allowedOps={allowedOps}
-          exprCtx={exprCtx}
-          interaction={interaction}
-        />
+        <PlasmicQueryDataProvider provider={() => swrCache}>
+          <ServerQueryOpExprFormAndPreview
+            value={value}
+            onSave={wrappedOnSave}
+            onCancel={onCancel}
+            env={env}
+            schema={schema}
+            readOnly={readOnly}
+            allowedOps={allowedOps}
+            exprCtx={exprCtx}
+            interaction={interaction}
+          />
+        </PlasmicQueryDataProvider>
       </PopoverFrameProvider>
     );
   }

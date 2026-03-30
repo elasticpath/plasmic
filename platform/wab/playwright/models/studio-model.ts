@@ -67,6 +67,18 @@ export class StudioModel extends BaseModel {
   readonly serverQueryBottomModal: Locator = this.frame.locator(
     '[data-test-id="server-query-bottom-modal"]'
   );
+  readonly notification: Locator = this.frame.locator(
+    ".ant-notification-notice"
+  );
+  readonly notificationMessage: Locator = this.frame.locator(
+    ".ant-notification-notice-message"
+  );
+  readonly notificationDescription: Locator = this.frame.locator(
+    ".ant-notification-notice-description"
+  );
+  readonly notificationClose: Locator = this.frame.locator(
+    ".ant-notification-notice-close"
+  );
   readonly newDropdownItem = this.frame.locator(".ant-dropdown-menu-item");
   readonly newArenaInput = this.frame.locator('[data-test-id="prompt"]');
   readonly commentsTab = this.frame.locator(".comments-tab");
@@ -1021,15 +1033,34 @@ export class StudioModel extends BaseModel {
   }
 
   /**
+   * Create a data token by right clicking a prop row.
+   * rowLocator can be any element within the target row.
+   */
+  async createDataTokenForRow(rowLocator: Locator) {
+    const createMenuItem = this.frame.getByText("Create data token");
+    await rowLocator.click({ button: "right" });
+    await createMenuItem.click();
+  }
+
+  /**
    * Helper for interacting with the data token popover (PopoverFrame).
    * This is used when creating data tokens via right-click context menu.
    */
-  async getDataTokenPopoverForTarget(targetElement: Locator) {
+  async getDataTokenPopoverForTarget(
+    targetElement: Locator,
+    opts?: { waitForFocus?: boolean }
+  ) {
     const popover = this.propsPopover;
     await popover.waitFor({ state: "visible" });
 
     const titleInput = popover.locator("[class*='propTitle'] input");
     const contentContainer = popover.locator("[class*='contentWrap']");
+    const valueInput = contentContainer.locator(
+      `[data-plasmic-role="labeled-item"] input`
+    );
+    if (opts?.waitForFocus) {
+      await expect(valueInput).toBeFocused();
+    }
 
     return {
       getTitleInput: () => titleInput,
@@ -1039,8 +1070,7 @@ export class StudioModel extends BaseModel {
       /**
        * Get the value input locator (for non-code types)
        */
-      getValueInput: () =>
-        contentContainer.locator(`[data-plasmic-role="labeled-item"] input`),
+      getValueInput: () => valueInput,
 
       /**
        * Get the value code editor locator (for code type)
@@ -1087,6 +1117,8 @@ export class StudioModel extends BaseModel {
                 `[data-plasmic-role="labeled-item"] input`
               )
             ).toHaveValue(expectedValue);
+            // Value input is auto-focused when popover opens. Wait for focus here so
+            // later steps don't have their focus interrupted.
           }
           await expect(
             targetElement

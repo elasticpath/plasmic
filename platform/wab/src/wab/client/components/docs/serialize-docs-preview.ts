@@ -10,6 +10,7 @@ import {
   createComponentModules,
   createComponentOutput,
   createDepsProjectMods,
+  createDepsProjectOutput,
   createGlobalVariantGroupModule,
   createIconAssetModule,
   createProjectMods,
@@ -164,7 +165,8 @@ export function serializeDependentModules(docsCtx: DocsPortalCtx) {
 
   const projectOutput = createProjectOutput(site, siteInfo.id, siteInfo.name);
   modules.push(...createProjectMods(projectOutput));
-  modules.push(...createDepsProjectMods(site));
+  const depsProjectConfigs = createDepsProjectOutput(site);
+  modules.push(...createDepsProjectMods(depsProjectConfigs));
 
   // Give access to all icons, so that the user can use different icons
   // in the custom code editor
@@ -389,7 +391,7 @@ export function __run() {
   document.body.style.overflow = "auto";
 
   ${before}
-  Sub.setPlasmicRootNode(${content});
+  Sub.hostUtils.setPlasmicRootNode(${content});
 
   console.log("RENDERING TOOK", performance.now() - startRenderTime);
   window.postMessage({

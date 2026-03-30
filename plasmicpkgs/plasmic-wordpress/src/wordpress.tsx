@@ -1,12 +1,8 @@
-import {
-  ComponentMeta,
-  DataProvider,
-  GlobalContextMeta,
-  repeatedElement,
-  useSelector,
-} from "@plasmicapp/host";
+import { DataProvider, repeatedElement, useSelector } from "@plasmicapp/host";
+import { CodeComponentMeta } from "@plasmicapp/host/registerComponent";
+import { GlobalContextMeta } from "@plasmicapp/host/registerGlobalContext";
 import { usePlasmicQueryData } from "@plasmicapp/query";
-import { queryWordpress } from "@plasmicpkgs/wordpress";
+import { _queryWordpress } from "@plasmicpkgs/wordpress";
 import get from "dlv";
 import React, { ReactNode, useContext } from "react";
 import { ensure, queryOperators, type QueryOperator } from "./utils";
@@ -64,7 +60,7 @@ interface WordpressFetcherProps {
   }) => void;
 }
 
-export const WordpressFetcherMeta: ComponentMeta<WordpressFetcherProps> = {
+export const WordpressFetcherMeta: CodeComponentMeta<WordpressFetcherProps> = {
   name: "WordpressFetcher",
   displayName: "Wordpress Fetcher",
   importName: "WordpressFetcher",
@@ -163,7 +159,7 @@ export function WordpressFetcher({
   const { data } = usePlasmicQueryData<any | null>(
     queryType && wordpressUrl ? cacheKey : null,
     async () => {
-      return queryWordpress({
+      return _queryWordpress({
         wordpressUrl,
         queryType,
         queryOperator,
@@ -185,7 +181,7 @@ export function WordpressFetcher({
   if (!queryOperator && filterValue) {
     return <div>Please specify Query Operator</div>;
   }
-  if (hasFilter && data?.length === 0) {
+  if (hasFilter && data?.items.length === 0) {
     return <div>No published {queryType} found</div>;
   }
 
@@ -194,15 +190,14 @@ export function WordpressFetcher({
   }`;
   const renderedData = noAutoRepeat
     ? children
-    : data?.map((item: any, i: number) => (
+    : data?.items.map((item: any, i: number) => (
         <DataProvider key={item.id} name={currentName} data={item}>
           {repeatedElement(i, children)}
         </DataProvider>
       ));
 
-  const response = data;
   return (
-    <DataProvider data={response} name="wordpressItems">
+    <DataProvider data={data?.items} name="wordpressItems">
       {noLayout ? (
         <> {renderedData} </>
       ) : (
@@ -217,7 +212,7 @@ interface WordpressFieldProps {
   field?: string;
   setControlContextData?: (data: { data: any }) => void;
 }
-export const WordpressFieldMeta: ComponentMeta<WordpressFieldProps> = {
+export const WordpressFieldMeta: CodeComponentMeta<WordpressFieldProps> = {
   name: "WordpressField",
   displayName: "Wordpress Field",
   importName: "WordpressField",

@@ -1,4 +1,3 @@
-import { ProjectId } from "@/wab/shared/ApiSchema";
 import { makeSerializedClassNameRef } from "@/wab/shared/codegen/react-p/class-names";
 import {
   makeArgPropsName,
@@ -8,10 +7,6 @@ import {
   makeVariantPropsName,
   makeVariantsArgTypeName,
 } from "@/wab/shared/codegen/react-p/serialize-utils";
-import {
-  serializeServerQueryArgPropType,
-  serializeServerQueryEntryType,
-} from "@/wab/shared/codegen/react-p/server-queries/serializer";
 import { SerializerBaseContext } from "@/wab/shared/codegen/react-p/types";
 import {
   jsLiteral,
@@ -80,7 +75,7 @@ export function serializeArgsDefaultValues(ctx: SerializerBaseContext) {
         localizable: param.isLocalizable,
         source: {
           type: "default-param-expr",
-          projectId: ctx.projectConfig.projectId as ProjectId,
+          projectId: ctx.projectConfig.projectId,
           site: ctx.site,
           component: ctx.component,
           attr: varName,
@@ -144,10 +139,8 @@ export function serializeParamsTypeContent(ctx: SerializerBaseContext) {
 }
 
 export function getArgsTypeContent(ctx: SerializerBaseContext) {
-  const argsTypeContent = withoutNils([
-    serializeParamsTypeContent(ctx),
-    serializeServerQueryEntryType(ctx.component),
-  ]).join("\n");
+  const paramsContent = serializeParamsTypeContent(ctx);
+  const argsTypeContent = withoutNils([paramsContent]).join("\n");
 
   return `{${argsTypeContent}}`;
 }
@@ -160,7 +153,6 @@ export function serializeArgsType(ctx: SerializerBaseContext) {
       ? `"${makePlasmicIsPreviewRootComponent()}"`
       : null,
     ...getParamNames(ctx.component, getArgParams(ctx)).map(jsLiteral),
-    serializeServerQueryArgPropType(ctx.component),
   ]).join(", ");
 
   return `

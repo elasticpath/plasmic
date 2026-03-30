@@ -1,3 +1,4 @@
+import { ProjectId } from "@/wab/shared/ApiSchema";
 import {
   makeDataTokensFileName,
   makeTaggedPlasmicImport,
@@ -5,23 +6,24 @@ import {
 import { ExportOpts } from "@/wab/shared/codegen/types";
 import { makeShortProjectId, stripExtension } from "@/wab/shared/codegen/util";
 import { walkDependencyTree } from "@/wab/shared/core/project-deps";
-import { findExprsInComponent } from "@/wab/shared/core/tpls";
+import { findExprsInComponent, flattenExprs } from "@/wab/shared/core/tpls";
 import {
-  extractDataTokenIdentifiersFromCode,
-  isPathDataToken,
+  extractDataTokenIdentifiers,
+  isDataTokenExpr,
   parseDataTokenIdentifier,
 } from "@/wab/shared/eval/expression-parser";
 import {
   Component,
+  Expr,
+  PageMeta,
   Site,
-  isKnownCustomCode,
-  isKnownObjectPath,
+  isKnownExpr,
 } from "@/wab/shared/model/classes";
 
 export function generateDataTokenImports(
   tokenIdentifiers: Set<string>,
   site: Site,
-  projectId: string,
+  projectId: ProjectId,
   exportOpts: ExportOpts
 ): string {
   if (tokenIdentifiers.size === 0) {
@@ -57,12 +59,15 @@ export function generateDataTokenImports(
     } else {
       // Dependency tokens - find the dep (including transitive dependencies)
       const dep = allDeps.find(
-        (d) => makeShortProjectId(d.projectId) === projectShortId
+        (d) => makeShortProjectId(d.projectId as ProjectId) === projectShortId
       );
       if (!dep) {
         continue;
       }
-      importPath = makeDataTokensFileName(dep.projectId, exportOpts);
+      importPath = makeDataTokensFileName(
+        dep.projectId as ProjectId,
+        exportOpts
+      );
       tokenProjectId = dep.projectId;
     }
 
@@ -85,24 +90,57 @@ export function generateDataTokenImports(
   return imports.join("\n");
 }
 
+export function getDataTokenIdentifiersFromExprs(
+  exprs: Array<Expr | null | undefined>
+): Set<string> {
+  const tokenIdentifiers = exprs
+    .filter((expr): expr is Expr => !!expr)
+    .flatMap((expr) => flattenExprs(expr))
+    .filter(isDataTokenExpr)
+    .flatMap(extractDataTokenIdentifiers);
+
+  return new Set(tokenIdentifiers);
+}
+
+export function getDataTokenIdentifiersFromPageMeta(
+  pageMeta: PageMeta
+): Set<string> {
+  const fieldsToCheck = [
+    pageMeta.title,
+    pageMeta.description,
+    pageMeta.canonical,
+    pageMeta.openGraphImage,
+  ];
+
+  const exprFields: Expr[] = [];
+  for (const field of fieldsToCheck) {
+    if (isKnownExpr(field)) {
+      exprFields.push(field);
+    }
+  }
+
+  return getDataTokenIdentifiersFromExprs(exprFields);
+}
+
+
 /**
  * Returns all necessary data token imports for a component.
  */
 export function makeComponentDataTokenImports(
   component: Component,
   site: Site,
-  projectId: string,
+  projectId: ProjectId,
   exportOpts: ExportOpts
 ): string {
-  const tokenIdentifiers = new Set<string>();
-
-  for (const { expr } of findExprsInComponent(component)) {
-    if (isKnownObjectPath(expr) && isPathDataToken(expr.path)) {
-      tokenIdentifiers.add(expr.path[0]);
-    } else if (isKnownCustomCode(expr)) {
-      extractDataTokenIdentifiersFromCode(expr.code).forEach((id) =>
-        tokenIdentifiers.add(id)
-      );
+  const tokenIdentifiers = getDataTokenIdentifiersFromExprs(
+    findExprsInComponent(component).map(({ expr }) => expr)
+  );
+  const pageMetaTokenIdentifiers = component.pageMeta
+    ? getDataTokenIdentifiersFromPageMeta(component.pageMeta)
+    : undefined;
+  if (pageMetaTokenIdentifiers) {
+    for (const tokenIdentifier of pageMetaTokenIdentifiers) {
+      tokenIdentifiers.add(tokenIdentifier);
     }
   }
   return generateDataTokenImports(

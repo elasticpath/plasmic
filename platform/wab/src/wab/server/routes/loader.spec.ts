@@ -1,11 +1,14 @@
 /** @jest-environment node */
+import { getLastBundleVersion } from "@/wab/server/db/BundleMigrator";
 import { ensureDbConnection } from "@/wab/server/db/DbCon";
 import { seedTestUserAndProjects } from "@/wab/server/db/DbInit";
 import { DbMgr, normalActor } from "@/wab/server/db/DbMgr";
 import { Project, User } from "@/wab/server/entities/Entities";
-import { parseHtmlPreviewPoolSize } from "@/wab/server/routes/loader";
+import { _testonly, parseHtmlPreviewPoolSize } from "@/wab/server/routes/loader";
 import { PublicApiTester } from "@/wab/server/test/api-tester";
 import { createBackend, createDatabase } from "@/wab/server/test/backend-util";
+import { Bundler } from "@/wab/shared/bundler";
+import { createSite } from "@/wab/shared/core/sites";
 
 describe("parseHtmlPreviewPoolSize", () => {
   it("returns default for undefined", () => {
@@ -45,6 +48,7 @@ describe("loader", () => {
   let userToken: string;
   let user: User;
   let projects: Project[];
+  let polyfillProject: Project;
 
   beforeAll(async () => {
     const {
@@ -83,6 +87,25 @@ describe("loader", () => {
       expect(await publish(db, projects[2], false)).toEqual("0.0.1");
 
       // projects[3] is never published
+
+      // polyfillProject uses the hardcoded Angular polyfill project ID and has a prefilled version
+      const { project: polyfillProjectObj } = await db.createProject({
+        name: "Angular Polyfill Project",
+        projectId: _testonly.ANGULAR_POLYFILL_PROJECT_ID,
+      });
+      const site = createSite();
+      const siteBundle = new Bundler().bundle(
+        site,
+        "",
+        await getLastBundleVersion()
+      );
+      await db.saveProjectRev({
+        projectId: polyfillProjectObj.id,
+        data: JSON.stringify(siteBundle),
+        revisionNum: 2,
+      });
+      expect(await publish(db, polyfillProjectObj, true)).toEqual("0.0.1");
+      polyfillProject = polyfillProjectObj;
     });
 
     const { host, cleanup: cleanupBackend } = await createBackend(dburi);
@@ -107,6 +130,16 @@ describe("loader", () => {
 
   afterAll(async () => {
     await cleanup();
+  });
+
+  it("resolves polyfill project", async () => {
+    const res = await publicApi.getPublishedLoaderAssets([polyfillProject], {});
+    expect(res.status()).toEqual(200);
+    const body = await res.json();
+    expect(body.redirectUrl).toEqual(
+      `/api/v1/loader/code/versioned?cb=20&platform=react&loaderVersion=0&projectId=${polyfillProject.id}%400.0.1`
+    );
+    expect(res.headers()["cache-control"]).toEqual("s-maxage=30");
   });
 
   it("resolves 1 project", async () => {
@@ -159,6 +192,72 @@ describe("loader", () => {
     expect(res.headers()["cache-control"]).toEqual(
       "no-store, no-cache, must-revalidate, private"
     );
+  });
+
+  it("resolves component as HTML", async () => {
+    const redirectRes = await publicApi.getPublishedLoaderHtml(
+      projects[0],
+      "Homepage"
+    );
+    expect(redirectRes.status()).toEqual(302);
+    expect(redirectRes.headers()["location"]).toEqual(
+      `/api/v1/loader/html/versioned/${projects[0].id}@0.0.2/Homepage?cb=20&embedHydrate=0&hydrate=0&componentProps=%7B%7D&globalVariants=%5B%5D&prepass=0`
+    );
+    expect(redirectRes.headers()["cache-control"]).toEqual("s-maxage=30");
+
+    const htmlRes = await publicApi.getPublishedLoaderHtml(
+      projects[0],
+      "Homepage",
+      { followRedirect: true }
+    );
+    expect(htmlRes.status()).toEqual(200);
+    expect(await htmlRes.text()).toInclude("Hello, world!");
+  });
+
+  it("resolves component as HTML with hydration", async () => {
+    const redirectRes = await publicApi.getPublishedLoaderHtml(
+      projects[0],
+      "Homepage?hydrate=1&embedHydrate=1"
+    );
+    expect(redirectRes.status()).toEqual(302);
+    expect(redirectRes.headers()["location"]).toEqual(
+      `/api/v1/loader/html/versioned/${projects[0].id}@0.0.2/Homepage?cb=20&embedHydrate=1&hydrate=1&componentProps=%7B%7D&globalVariants=%5B%5D&prepass=0`
+    );
+    expect(redirectRes.headers()["cache-control"]).toEqual("s-maxage=30");
+
+    const htmlRes = await publicApi.getPublishedLoaderHtml(
+      projects[0],
+      "Homepage?hydrate=1&embedHydrate=1",
+      { followRedirect: true }
+    );
+    expect(htmlRes.status()).toEqual(200);
+    expect(await htmlRes.text()).toInclude("Hello, world!");
+  });
+
+  it("responds 404 if component does not exist", async () => {
+    const redirectRes = await publicApi.getPublishedLoaderHtml(
+      projects[0],
+      "NonExistentComponent"
+    );
+    expect(redirectRes.status()).toEqual(302);
+    expect(redirectRes.headers()["location"]).toEqual(
+      `/api/v1/loader/html/versioned/${projects[0].id}@0.0.2/NonExistentComponent?cb=20&embedHydrate=0&hydrate=0&componentProps=%7B%7D&globalVariants=%5B%5D&prepass=0`
+    );
+    expect(redirectRes.headers()["cache-control"]).toEqual("s-maxage=30");
+
+    const htmlRes = await publicApi.getPublishedLoaderHtml(
+      projects[0],
+      "NonExistentComponent",
+      { followRedirect: true }
+    );
+    expect(htmlRes.status()).toEqual(404);
+    expect(await htmlRes.json()).toEqual({
+      error: {
+        name: "NotFoundError",
+        statusCode: 404,
+        message: `Error: Unable to find components NonExistentComponent (project ${projects[0].id})`,
+      },
+    });
   });
 });
 

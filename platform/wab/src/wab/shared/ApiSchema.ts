@@ -6,6 +6,7 @@ import { StyleTokenType } from "@/wab/commons/StyleToken";
 import { Bundle } from "@/wab/shared/bundles";
 import { Dict } from "@/wab/shared/collections";
 import {
+  CopilotChat,
   CopilotUiActions,
   CopilotUiProps,
   CopilotUiResponse,
@@ -1851,7 +1852,6 @@ export interface GetProjectResponse {
   latestRevisionSynced: number;
   hasAppAuth: boolean;
   appAuthProvider?: AppAuthProvider;
-  workspaceTutorialDbs?: ApiDataSource[];
   isMainBranchProtected: boolean;
 }
 
@@ -2059,6 +2059,13 @@ export type QueryCopilotUiRequest = {
   modelProviderOverride?: ModelProviderOpts;
   copilotSystemPromptOverride?: string;
 } & CopilotUiProps;
+
+export type QueryCopilotChatUiStreamRequest = {
+  type: "chat-ui";
+  projectId: ProjectId;
+  modelProviderOverride?: ModelProviderOpts;
+  copilotSystemPromptOverride?: string;
+} & CopilotChat;
 
 export type QueryCopilotRequest =
   | QueryCopilotChatRequest

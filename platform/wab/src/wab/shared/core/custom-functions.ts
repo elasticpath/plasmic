@@ -9,6 +9,7 @@ import {
 } from "@/wab/shared/core/exprs";
 import { findExprsInNode } from "@/wab/shared/core/tpls";
 import { tryEvalExpr } from "@/wab/shared/eval";
+import { noopFn } from "@/wab/shared/functions";
 import {
   CustomFunction,
   CustomFunctionExpr,
@@ -17,50 +18,98 @@ import {
   isKnownCustomFunctionExpr,
   isKnownEventHandler,
 } from "@/wab/shared/model/classes";
+import type { PlasmicQueryResult } from "@plasmicapp/data-sources";
+import { SWRResponse } from "@plasmicapp/query";
 import {
-  executeServerQuery,
-  usePlasmicServerQuery,
+  _StatefulQueryResult as StatefulQueryResult,
+  _StatefulQueryState as StatefulQueryState,
+  unstable_createDollarQueries as createDollarQueries,
+  unstable_usePlasmicQueries as usePlasmicQueries,
 } from "@plasmicapp/react-web/lib/data-sources";
 import { groupBy } from "lodash";
+import React from "react";
 
-export async function executeCustomFunctionOp(
-  fn: (...args: any[]) => any,
-  expr: CustomFunctionExpr,
-  env: Record<string, any> | undefined,
-  exprCtx: ExprCtx,
-  currGlobalThis?: typeof globalThis
-) {
-  try {
-    const serverData = await executeServerQuery({
-      id: customFunctionId(expr.func),
-      fn,
-      execParams: () =>
-        getCustomFunctionParams(expr, env, exprCtx, currGlobalThis),
-    });
+export {
+  _StatefulQueryResult as StatefulQueryResult,
+  type _StatefulQueryState as StatefulQueryState,
+} from "@plasmicapp/react-web/lib/data-sources";
 
-    return serverData;
-  } catch (err) {
-    return { error: err };
-  }
+export interface CustomFunctionOpArgs {
+  fnId: string;
+  fn: (...args: any[]) => any;
+  expr: CustomFunctionExpr | undefined;
+  env: Record<string, any> | undefined;
+  exprCtx: ExprCtx;
+  currGlobalThis?: typeof globalThis;
 }
 
+export interface CustomFunctionOpResult<T> {
+  queryState: StatefulQueryState<T>;
+  swrResponse: SWRResponse<T>;
+}
+
+const NOOP_ID = "__noop__";
+
+/** Runs custom function only if all args are present. */
 export function useCustomFunctionOp(
-  fn: (...args: any[]) => any,
-  expr: CustomFunctionExpr | undefined,
-  env: Record<string, any> | undefined,
-  exprCtx: ExprCtx,
-  currGlobalThis?: typeof globalThis
-) {
-  return usePlasmicServerQuery(
-    {
-      id: expr ? customFunctionId(expr.func) : "",
-      fn,
-      execParams: () =>
-        expr ? getCustomFunctionParams(expr, env, exprCtx, currGlobalThis) : [],
-    },
-    undefined,
-    { noUndefinedDataProxy: true }
-  );
+  args: CustomFunctionOpArgs
+): CustomFunctionOpResult<unknown>;
+export function useCustomFunctionOp(args: undefined): undefined;
+export function useCustomFunctionOp(
+  args: CustomFunctionOpArgs | undefined
+): CustomFunctionOpResult<unknown> | undefined;
+export function useCustomFunctionOp(
+  args: CustomFunctionOpArgs | undefined
+): CustomFunctionOpResult<unknown> | undefined {
+  const fnId = args?.fnId ?? NOOP_ID;
+  const queries = React.useMemo(() => {
+    if (args) {
+      const { fn, expr, env, exprCtx, currGlobalThis } = args;
+      return {
+        [fnId]: {
+          id: fnId,
+          fn,
+          execParams: () =>
+            expr
+              ? getCustomFunctionParams(expr, env, exprCtx, currGlobalThis)
+              : [],
+        },
+      };
+    } else {
+      return {
+        [fnId]: {
+          id: fnId,
+          fn: noopFn,
+          execParams: () => [],
+        },
+      };
+    }
+  }, [
+    fnId,
+    args?.fn,
+    args?.expr,
+    args?.env,
+    args?.exprCtx,
+    args?.currGlobalThis,
+  ]);
+
+  // Even if no args are present, we still need to run the hooks to obey
+  // React hook rules, but we will ignore the results and return undefined.
+  const $queries = React.useMemo(() => createDollarQueries([fnId]), [fnId]);
+  const swrResponses = usePlasmicQueries($queries, queries);
+  if (fnId === NOOP_ID) {
+    return undefined;
+  }
+
+  // $query is a mutable object and will not trigger React updates as normal,
+  // so we secretly use the internal state which is guaranteed to change.
+  const $query = $queries[fnId];
+  const queryState = ($query as StatefulQueryResult)
+    .current as StatefulQueryState;
+  return {
+    queryState,
+    swrResponse: swrResponses[fnId],
+  };
 }
 
 export function getCustomFunctionParams(
@@ -174,4 +223,31 @@ export function fixCustomFunctionsInTpl(
       }
     }
   }
+}
+
+/**
+ * A plain-object snapshot of a StatefulQueryResult. Unlike StatefulQueryResult,
+ * this is safe to compare by value — the `data` getter on StatefulQueryResult
+ * throws (for Suspense/error-boundary semantics), so we catch and surface the
+ * thrown value as `error` instead, making all fields readable without side effects.
+ */
+export interface UnwrappedQueryResult extends Omit<PlasmicQueryResult, "key"> {
+  error: unknown;
+}
+
+export function unwrapStatefulQueryResult(
+  result: StatefulQueryResult
+): UnwrappedQueryResult {
+  let data: unknown = undefined;
+  let error: unknown = undefined;
+  try {
+    data = result.data;
+  } catch (e) {
+    error = e;
+  }
+  return {
+    isLoading: result.isLoading,
+    data,
+    error,
+  };
 }

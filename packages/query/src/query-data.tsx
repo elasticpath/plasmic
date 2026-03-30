@@ -1,5 +1,6 @@
 import React, { PropsWithChildren } from "react";
 import useSWR, {
+  Cache,
   Fetcher,
   Key,
   SWRConfig,
@@ -7,6 +8,7 @@ import useSWR, {
   SWRResponse,
   useSWRConfig,
 } from "swr";
+import { reactCurrentDispatcher } from "./react-utils";
 
 export type { SWRResponse } from "swr";
 
@@ -154,11 +156,12 @@ export function useMutablePlasmicQueryData<T, E>(
 }
 
 export function PlasmicQueryDataProvider(props: {
-  suspense?: boolean;
   children: React.ReactNode;
+  suspense?: boolean;
   prefetchedCache?: Record<string, any>;
+  provider?: () => Cache;
 }) {
-  const { children, suspense, prefetchedCache } = props;
+  const { children, suspense, prefetchedCache, provider } = props;
   const prepass = React.useContext(PrepassContext);
   if (prepass) {
     // If we're in prepass, then there's already a wrappign SWRConfig;
@@ -170,6 +173,7 @@ export function PlasmicQueryDataProvider(props: {
         value={{
           fallback: prefetchedCache ?? {},
           suspense,
+          provider,
         }}
       >
         {children}
@@ -256,8 +260,7 @@ function isPromiseLike(x: any) {
 }
 
 export function isPlasmicPrepass() {
-  return !!(React as any).__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED
-    ?.ReactCurrentDispatcher?.current?.isPlasmicPrepass;
+  return reactCurrentDispatcher()?.isPlasmicPrepass ?? false;
 }
 
 export type HeadMetadata = {

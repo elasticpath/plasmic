@@ -1365,6 +1365,10 @@
           "__type": "Site"
         },
         "6S9GQR7NW1vz": {
+<<<<<<< HEAD
+=======
+          "__type": "TplTag",
+>>>>>>> upstream/master
           "tag": "h1",
           "name": null,
           "children": [],
@@ -1374,11 +1378,19 @@
           "uuid": "7bxt0VIVqA-L",
           "parent": { "__ref": "8ArrriklbNoa" },
           "locked": null,
+<<<<<<< HEAD
           "vsettings": [{ "__ref": "6QfAN_bqFztQ" }],
           "__type": "TplTag"
         },
         "LM8VP4KP1Hun": { "markers": [], "text": "Move", "__type": "RawText" },
         "6QfAN_bqFztQ": {
+=======
+          "vsettings": [{ "__ref": "6QfAN_bqFztQ" }]
+        },
+        "LM8VP4KP1Hun": { "__type": "RawText", "markers": [], "text": "Move" },
+        "6QfAN_bqFztQ": {
+          "__type": "VariantSetting",
+>>>>>>> upstream/master
           "variants": [{ "__ref": "YqZ8JrVuOoZR" }],
           "args": [],
           "attrs": {},
@@ -1386,10 +1398,17 @@
           "dataCond": null,
           "dataRep": null,
           "text": { "__ref": "KyjLhPA6LfrB" },
+<<<<<<< HEAD
           "columnsConfig": null,
           "__type": "VariantSetting"
         },
         "EfdC05ZXj3Yn": {
+=======
+          "columnsConfig": null
+        },
+        "EfdC05ZXj3Yn": {
+          "__type": "RuleSet",
+>>>>>>> upstream/master
           "values": {
             "position": "relative",
             "width": "stretch",
@@ -1398,6 +1417,7 @@
             "transform": "rotate3d(0.678598, -0.281085, 0.678598, 62.7994deg)"
           },
           "mixins": [],
+<<<<<<< HEAD
           "animations": null,
           "__type": "RuleSet"
         },
@@ -1407,6 +1427,17 @@
           "__type": "RawText"
         },
         "6C1KqnDhpkeM": {
+=======
+          "animations": null
+        },
+        "KyjLhPA6LfrB": {
+          "__type": "RawText",
+          "markers": [],
+          "text": "Rotate"
+        },
+        "6C1KqnDhpkeM": {
+          "__type": "TplTag",
+>>>>>>> upstream/master
           "tag": "h1",
           "name": null,
           "children": [],
@@ -1416,10 +1447,17 @@
           "uuid": "n2faTO_merOH",
           "parent": { "__ref": "8ArrriklbNoa" },
           "locked": null,
+<<<<<<< HEAD
           "vsettings": [{ "__ref": "WLASxo3b9bjG" }],
           "__type": "TplTag"
         },
         "WLASxo3b9bjG": {
+=======
+          "vsettings": [{ "__ref": "WLASxo3b9bjG" }]
+        },
+        "WLASxo3b9bjG": {
+          "__type": "VariantSetting",
+>>>>>>> upstream/master
           "variants": [{ "__ref": "YqZ8JrVuOoZR" }],
           "args": [],
           "attrs": {},
@@ -1427,10 +1465,17 @@
           "dataCond": null,
           "dataRep": null,
           "text": { "__ref": "6qPEzR8EFdQC" },
+<<<<<<< HEAD
           "columnsConfig": null,
           "__type": "VariantSetting"
         },
         "d0EuBg7oiP6x": {
+=======
+          "columnsConfig": null
+        },
+        "d0EuBg7oiP6x": {
+          "__type": "RuleSet",
+>>>>>>> upstream/master
           "values": {
             "position": "relative",
             "width": "stretch",
@@ -1439,11 +1484,19 @@
             "transform": "skew(20deg, 10deg)"
           },
           "mixins": [],
+<<<<<<< HEAD
           "animations": null,
           "__type": "RuleSet"
         },
         "6qPEzR8EFdQC": { "markers": [], "text": "Skew", "__type": "RawText" },
         "COmBIzdK9tUw": {
+=======
+          "animations": null
+        },
+        "6qPEzR8EFdQC": { "__type": "RawText", "markers": [], "text": "Skew" },
+        "COmBIzdK9tUw": {
+          "__type": "TplTag",
+>>>>>>> upstream/master
           "tag": "h1",
           "name": null,
           "children": [],
@@ -1453,10 +1506,17 @@
           "uuid": "QwQrgh2SOcXy",
           "parent": { "__ref": "8ArrriklbNoa" },
           "locked": null,
+<<<<<<< HEAD
           "vsettings": [{ "__ref": "vS7QD1xrgLFG" }],
           "__type": "TplTag"
         },
         "vS7QD1xrgLFG": {
+=======
+          "vsettings": [{ "__ref": "vS7QD1xrgLFG" }]
+        },
+        "vS7QD1xrgLFG": {
+          "__type": "VariantSetting",
+>>>>>>> upstream/master
           "variants": [{ "__ref": "YqZ8JrVuOoZR" }],
           "args": [],
           "attrs": {},
@@ -1464,10 +1524,17 @@
           "dataCond": null,
           "dataRep": null,
           "text": { "__ref": "bxOJfYG8arZE" },
+<<<<<<< HEAD
           "columnsConfig": null,
           "__type": "VariantSetting"
         },
         "V9opmM89d2Xk": {
+=======
+          "columnsConfig": null
+        },
+        "V9opmM89d2Xk": {
+          "__type": "RuleSet",
+>>>>>>> upstream/master
           "values": {
             "position": "relative",
             "height": "wrap",
@@ -1475,10 +1542,17 @@
             "transform": "scale3d(2, 3, 1)"
           },
           "mixins": [],
+<<<<<<< HEAD
           "animations": null,
           "__type": "RuleSet"
         },
         "ou6zlJEmHDCx": {
+=======
+          "animations": null
+        },
+        "ou6zlJEmHDCx": {
+          "__type": "TplTag",
+>>>>>>> upstream/master
           "tag": "h1",
           "name": null,
           "children": [],
@@ -1488,10 +1562,17 @@
           "uuid": "At0Qcby3_oz8",
           "parent": { "__ref": "8ArrriklbNoa" },
           "locked": null,
+<<<<<<< HEAD
           "vsettings": [{ "__ref": "y0Kn1TGiGnmC" }],
           "__type": "TplTag"
         },
         "y0Kn1TGiGnmC": {
+=======
+          "vsettings": [{ "__ref": "y0Kn1TGiGnmC" }]
+        },
+        "y0Kn1TGiGnmC": {
+          "__type": "VariantSetting",
+>>>>>>> upstream/master
           "variants": [{ "__ref": "YqZ8JrVuOoZR" }],
           "args": [],
           "attrs": {},
@@ -1499,10 +1580,17 @@
           "dataCond": null,
           "dataRep": null,
           "text": { "__ref": "93toMy6u8qLL" },
+<<<<<<< HEAD
           "columnsConfig": null,
           "__type": "VariantSetting"
         },
         "Xq9XUmuiJtEA": {
+=======
+          "columnsConfig": null
+        },
+        "Xq9XUmuiJtEA": {
+          "__type": "RuleSet",
+>>>>>>> upstream/master
           "values": {
             "position": "relative",
             "height": "wrap",
@@ -1510,6 +1598,7 @@
             "transform": "skew(45deg, 0deg) rotate3d(0, 0, 1, 15deg) scale3d(2, 3, 1)"
           },
           "mixins": [],
+<<<<<<< HEAD
           "animations": null,
           "__type": "RuleSet"
         },
@@ -1522,6 +1611,19 @@
       },
       "deps": [],
       "version": "256-wrap-page-meta-og-image-in-ref"
+=======
+          "animations": null
+        },
+        "bxOJfYG8arZE": { "__type": "RawText", "markers": [], "text": "Scale" },
+        "93toMy6u8qLL": {
+          "__type": "RawText",
+          "markers": [],
+          "text": "Multiple transforms"
+        }
+      },
+      "deps": [],
+      "version": "255-wrap-page-meta-og-image-in-ref"
+>>>>>>> upstream/master
     }
   ]
 ]

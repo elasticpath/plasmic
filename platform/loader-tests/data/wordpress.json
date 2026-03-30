@@ -1,6 +1,10 @@
 [
   [
+<<<<<<< HEAD
     "dd10007d-d4ff-486b-9118-d8a6a1fa66fe",
+=======
+    "e3ce0173-4a2b-49d7-94de-203f89ff7556",
+>>>>>>> upstream/master
     {
       "root": "kqgH0FuoFQqf",
       "map": {
@@ -107,20 +111,34 @@
         },
         "kqgH0FuoFQqf": {
           "uuid": "f8KPdhMET1DG",
+<<<<<<< HEAD
           "pkgId": "ea158537-e803-4864-a44a-c7220344a13c",
           "projectId": "g7Nk2vxhoW6FGUvHLcQxma",
           "version": "0.1.0",
+=======
+          "pkgId": "73087bf2-4249-47a9-8504-9844a88ebf4f",
+          "projectId": "sBAv4iq1U72Do4yHc2YtFM",
+          "version": "0.0.1",
+>>>>>>> upstream/master
           "name": "Imported Dep",
           "site": { "__ref": "jKpExFHoCr5u" },
           "__type": "ProjectDependency"
         }
       },
       "deps": [],
+<<<<<<< HEAD
       "version": "256-wrap-page-meta-og-image-in-ref"
     }
   ],
   [
     "9VCrHsfmzE5rjkhPjMBYHv",
+=======
+      "version": "255-wrap-page-meta-og-image-in-ref"
+    }
+  ],
+  [
+    "g6d6dhe5SSdb8cYHdEW1ff",
+>>>>>>> upstream/master
     {
       "root": "G5KIgTWQ75nF",
       "map": {
@@ -389,6 +407,7 @@
           "uuid": "10Yz7x2JlzFP",
           "__type": "Var"
         },
+<<<<<<< HEAD
         "VFPKoNvq73NF": { "name": "any", "__type": "AnyType" },
         "I-IrtcuB1iKr": {
           "name": "arg",
@@ -406,6 +425,10 @@
         },
         "Q23UYG3DYg-K": {
           "type": { "__ref": "qvmnl3g9c7sW" },
+=======
+        "Q23UYG3DYg-K": {
+          "type": { "__ref": "CLCgZfJfaE1T" },
+>>>>>>> upstream/master
           "tplSlot": { "__ref": "nHe9jTMADEsa" },
           "variable": { "__ref": "rnNqP3rOcpnK" },
           "uuid": "hMwGBY8qXL7f",
@@ -601,7 +624,11 @@
           "figmaMappings": [],
           "alwaysAutoName": true,
           "trapsFocus": false,
+<<<<<<< HEAD
           "updatedAt": 1760364195213,
+=======
+          "updatedAt": 1770869969972,
+>>>>>>> upstream/master
           "__type": "Component"
         },
         "Y80Pm3Wd3Zx9": {
@@ -691,7 +718,11 @@
           "figmaMappings": [],
           "alwaysAutoName": false,
           "trapsFocus": false,
+<<<<<<< HEAD
           "updatedAt": 1767630630994,
+=======
+          "updatedAt": 1770870149847,
+>>>>>>> upstream/master
           "__type": "Component"
         },
         "ONVvmbxAhAPX": {
@@ -778,7 +809,11 @@
           "figmaMappings": [],
           "alwaysAutoName": false,
           "trapsFocus": false,
+<<<<<<< HEAD
           "updatedAt": 1767631053550,
+=======
+          "updatedAt": 1770870187448,
+>>>>>>> upstream/master
           "__type": "Component"
         },
         "8fomm9jHp7Je": {
@@ -865,7 +900,11 @@
           "figmaMappings": [],
           "alwaysAutoName": false,
           "trapsFocus": false,
+<<<<<<< HEAD
           "updatedAt": 1767631017671,
+=======
+          "updatedAt": 1770870165263,
+>>>>>>> upstream/master
           "__type": "Component"
         },
         "ZXkrkZRcxAkm": {
@@ -1731,7 +1770,11 @@
           "globalVariant": { "__ref": "OHqfmJmQYbXH" },
           "styleTokens": [],
           "styleTokenOverrides": [],
+<<<<<<< HEAD
           "dataTokens": [],
+=======
+          "dataTokens": [{ "__ref": "NWOc0EICyKCn" }],
+>>>>>>> upstream/master
           "mixins": [],
           "animationSequences": [],
           "themes": [{ "__ref": "xCD7KcWwz4U7" }],
@@ -1740,7 +1783,11 @@
           "projectDependencies": [
             {
               "__xref": {
+<<<<<<< HEAD
                 "uuid": "dd10007d-d4ff-486b-9118-d8a6a1fa66fe",
+=======
+                "uuid": "e3ce0173-4a2b-49d7-94de-203f89ff7556",
+>>>>>>> upstream/master
                 "iid": "kqgH0FuoFQqf"
               }
             }
@@ -1760,13 +1807,21 @@
         "h9dc6FKHKi29": {
           "uuid": "9Xtwsub8Un1K",
           "name": "posts",
+<<<<<<< HEAD
           "op": { "__ref": "ZNqcnoAP75QL" },
+=======
+          "op": { "__ref": "QuOpcabSwcte" },
+>>>>>>> upstream/master
           "__type": "ComponentServerQuery"
         },
         "qAoDkFC_o1fv": {
           "uuid": "fisRMibg8iD1",
           "name": "pages",
+<<<<<<< HEAD
           "op": { "__ref": "GnHVeeYS0ikZ" },
+=======
+          "op": { "__ref": "htelWExKuek4" },
+>>>>>>> upstream/master
           "__type": "ComponentServerQuery"
         },
         "R3SqPZBH9oAs": {
@@ -1927,7 +1982,11 @@
           "__type": "Var"
         },
         "9tNu464zE7l7": {
+<<<<<<< HEAD
           "path": ["$queries", "pages", "data"],
+=======
+          "path": ["$q", "pages", "data", "items"],
+>>>>>>> upstream/master
           "fallback": { "__ref": "mdyPeEan6qhG" },
           "__type": "ObjectPath"
         },
@@ -1998,7 +2057,11 @@
           "__type": "Var"
         },
         "AbzTS5ssJPIK": {
+<<<<<<< HEAD
           "path": ["$queries", "posts", "data"],
+=======
+          "path": ["$q", "posts", "data", "items"],
+>>>>>>> upstream/master
           "fallback": { "__ref": "UjhVogbpfnJR" },
           "__type": "ObjectPath"
         },
@@ -2046,7 +2109,11 @@
         "oZfFloaqroip": {
           "uuid": "LCEgliSg1Hvm",
           "name": "page",
+<<<<<<< HEAD
           "op": { "__ref": "QqgObFkF7TCg" },
+=======
+          "op": { "__ref": "uIVheoX1PO1R" },
+>>>>>>> upstream/master
           "__type": "ComponentServerQuery"
         },
         "L1FdZ4rxd3Tl": {
@@ -2126,7 +2193,11 @@
           "__type": "ExprText"
         },
         "Bcg0920sCMmk": {
+<<<<<<< HEAD
           "path": ["$queries", "page", "data", 0, "title", "rendered"],
+=======
+          "path": ["$q", "page", "data", "items", 0, "title", "rendered"],
+>>>>>>> upstream/master
           "fallback": { "__ref": "8E2ngCNYrsWq" },
           "__type": "ObjectPath"
         },
@@ -2171,7 +2242,11 @@
           "__type": "ExprText"
         },
         "dcpylxHB7VKQ": {
+<<<<<<< HEAD
           "path": ["$queries", "page", "data", 0, "modified"],
+=======
+          "path": ["$q", "page", "data", "items", 0, "modified"],
+>>>>>>> upstream/master
           "fallback": { "__ref": "A2yEloHRuBoq" },
           "__type": "ObjectPath"
         },
@@ -2216,7 +2291,11 @@
           "__type": "ExprText"
         },
         "MiK3oWo9UaEP": {
+<<<<<<< HEAD
           "path": ["$queries", "page", "data", 0, "content", "rendered"],
+=======
+          "path": ["$q", "page", "data", "items", 0, "content", "rendered"],
+>>>>>>> upstream/master
           "fallback": { "__ref": "zGbGT9C58QTb" },
           "__type": "ObjectPath"
         },
@@ -2397,7 +2476,11 @@
         "WO_6KihToebD": {
           "uuid": "-fQ-4_g-QJ5l",
           "name": "post",
+<<<<<<< HEAD
           "op": { "__ref": "RLrKdYNFrv6O" },
+=======
+          "op": { "__ref": "zKr9n0Oo0-Id" },
+>>>>>>> upstream/master
           "__type": "ComponentServerQuery"
         },
         "0ZzPu16A3CWS": {
@@ -2406,7 +2489,11 @@
           "__type": "ExprText"
         },
         "hl7moeujQjmg": {
+<<<<<<< HEAD
           "path": ["$queries", "post", "data", 0, "title", "rendered"],
+=======
+          "path": ["$q", "post", "data", "items", 0, "title", "rendered"],
+>>>>>>> upstream/master
           "fallback": { "__ref": "6sfo4jRobuOp" },
           "__type": "ObjectPath"
         },
@@ -2421,7 +2508,11 @@
           "__type": "ExprText"
         },
         "lkXyKXYZyBKL": {
+<<<<<<< HEAD
           "code": "($queries.post.data[0].modified)",
+=======
+          "code": "($q.post.data.items[0].modified)",
+>>>>>>> upstream/master
           "fallback": { "__ref": "C5lDTjAHfFcz" },
           "__type": "CustomCode"
         },
@@ -2436,7 +2527,11 @@
           "__type": "ExprText"
         },
         "-9aSg_1yVIDI": {
+<<<<<<< HEAD
           "code": "($queries.post.data[0].content.rendered)",
+=======
+          "code": "($q.post.data.items[0].content.rendered)",
+>>>>>>> upstream/master
           "fallback": { "__ref": "1e8PWyXOp8_6" },
           "__type": "CustomCode"
         },
@@ -2466,6 +2561,7 @@
           "fallback": null,
           "__type": "CustomCode"
         },
+<<<<<<< HEAD
         "ZNqcnoAP75QL": {
           "__type": "CustomFunctionExpr",
           "func": {
@@ -2500,10 +2596,73 @@
           "text": ["https://plasmic-loader-test.test/"]
         },
         "ukav-17STf62": {
+=======
+        "CLCgZfJfaE1T": {
+          "__type": "RenderFuncType",
+          "name": "renderFunc",
+          "params": [{ "__ref": "awpw37IRVAfF" }],
+          "allowed": [],
+          "allowRootWrapper": null
+        },
+        "awpw37IRVAfF": {
+          "__type": "ArgType",
+          "name": "arg",
+          "argName": "$queries",
+          "displayName": null,
+          "type": { "__ref": "0v1b-9maHCah" }
+        },
+        "0v1b-9maHCah": { "__type": "AnyType", "name": "any" },
+        "NWOc0EICyKCn": {
+          "__type": "DataToken",
+          "type": "Data",
+          "name": "WordPress URL",
+          "uuid": "Vuy6bl5m69i2",
+          "value": "\"<REPLACE_WITH_WORDPRESS_URL>\"",
+          "variantedValues": [],
+          "isRegistered": false,
+          "regKey": null
+        },
+        "QuOpcabSwcte": {
+          "__type": "CustomFunctionExpr",
+          "func": {
+            "__xref": {
+              "uuid": "e3ce0173-4a2b-49d7-94de-203f89ff7556",
+              "iid": "JK8NgkunX0h-"
+            }
+          },
+          "args": [{ "__ref": "2VHk9scnwe30" }]
+        },
+        "2VHk9scnwe30": {
+          "__type": "FunctionArg",
+          "uuid": "iJAsGDvH5Scl",
+          "argType": {
+            "__xref": {
+              "uuid": "e3ce0173-4a2b-49d7-94de-203f89ff7556",
+              "iid": "qZDYgAk39tGn"
+            }
+          },
+          "expr": { "__ref": "l6cCDH6KxaFg" }
+        },
+        "l6cCDH6KxaFg": {
+          "__type": "CompositeExpr",
+          "hostLiteral": "{\"wordpressUrl\":null,\"queryType\":null}",
+          "substitutions": {
+            "[\"wordpressUrl\"]": { "__ref": "XxlNjv6qhAtZ" },
+            "[\"queryType\"]": { "__ref": "Rl6YwhI-EG2T" }
+          }
+        },
+        "XxlNjv6qhAtZ": {
+          "__type": "ObjectPath",
+          "path": ["$dataTokens_g6d6d_wordPressUrl"],
+          "fallback": null
+        },
+        "Rl6YwhI-EG2T": {
+>>>>>>> upstream/master
           "__type": "CustomCode",
           "code": "\"posts\"",
           "fallback": null
         },
+<<<<<<< HEAD
         "GnHVeeYS0ikZ": {
           "__type": "CustomFunctionExpr",
           "func": {
@@ -2597,10 +2756,53 @@
           "fallback": { "__ref": "9D7UbdKuQ_UX" }
         },
         "9D7UbdKuQ_UX": {
+=======
+        "htelWExKuek4": {
+          "__type": "CustomFunctionExpr",
+          "func": {
+            "__xref": {
+              "uuid": "e3ce0173-4a2b-49d7-94de-203f89ff7556",
+              "iid": "JK8NgkunX0h-"
+            }
+          },
+          "args": [{ "__ref": "Wp8W2WhCIyJm" }]
+        },
+        "Wp8W2WhCIyJm": {
+          "__type": "FunctionArg",
+          "uuid": "O60uCasu_Jne",
+          "argType": {
+            "__xref": {
+              "uuid": "e3ce0173-4a2b-49d7-94de-203f89ff7556",
+              "iid": "qZDYgAk39tGn"
+            }
+          },
+          "expr": { "__ref": "RjOZyJXt-C0N" }
+        },
+        "RjOZyJXt-C0N": {
+          "__type": "CompositeExpr",
+          "hostLiteral": "{\"wordpressUrl\":null,\"queryType\":null}",
+          "substitutions": {
+            "[\"wordpressUrl\"]": { "__ref": "HpbFFvkT5SmI" },
+            "[\"queryType\"]": { "__ref": "tq7n3SqQfB92" }
+          }
+        },
+        "HpbFFvkT5SmI": {
+          "__type": "ObjectPath",
+          "path": ["$dataTokens_g6d6d_wordPressUrl"],
+          "fallback": { "__ref": "ijzzMcn1dJ-9" }
+        },
+        "tq7n3SqQfB92": {
+          "__type": "CustomCode",
+          "code": "\"pages\"",
+          "fallback": null
+        },
+        "ijzzMcn1dJ-9": {
+>>>>>>> upstream/master
           "__type": "CustomCode",
           "code": "undefined",
           "fallback": null
         },
+<<<<<<< HEAD
         "RLrKdYNFrv6O": {
           "__type": "CustomFunctionExpr",
           "func": {
@@ -2642,10 +2844,55 @@
           "fallback": null
         },
         "KBS9DVByuXnB": {
+=======
+        "uIVheoX1PO1R": {
+          "__type": "CustomFunctionExpr",
+          "func": {
+            "__xref": {
+              "uuid": "e3ce0173-4a2b-49d7-94de-203f89ff7556",
+              "iid": "JK8NgkunX0h-"
+            }
+          },
+          "args": [{ "__ref": "MepZ5EdCQXtx" }]
+        },
+        "MepZ5EdCQXtx": {
+          "__type": "FunctionArg",
+          "uuid": "AO9G8p9q0y2i",
+          "argType": {
+            "__xref": {
+              "uuid": "e3ce0173-4a2b-49d7-94de-203f89ff7556",
+              "iid": "qZDYgAk39tGn"
+            }
+          },
+          "expr": { "__ref": "4PCO642VL26n" }
+        },
+        "4PCO642VL26n": {
+          "__type": "CompositeExpr",
+          "hostLiteral": "{\"wordpressUrl\":null,\"queryType\":null,\"queryOperator\":null,\"filterValue\":null}",
+          "substitutions": {
+            "[\"wordpressUrl\"]": { "__ref": "0_iDdlCPNdc4" },
+            "[\"queryType\"]": { "__ref": "_sFNZxlRVFjT" },
+            "[\"queryOperator\"]": { "__ref": "CnSbYRmWpR1G" },
+            "[\"filterValue\"]": { "__ref": "VNvTcGiBx-N5" }
+          }
+        },
+        "0_iDdlCPNdc4": {
+          "__type": "ObjectPath",
+          "path": ["$dataTokens_g6d6d_wordPressUrl"],
+          "fallback": { "__ref": "F0DM8jD782LH" }
+        },
+        "_sFNZxlRVFjT": {
+          "__type": "CustomCode",
+          "code": "\"pages\"",
+          "fallback": null
+        },
+        "CnSbYRmWpR1G": {
+>>>>>>> upstream/master
           "__type": "CustomCode",
           "code": "\"slug\"",
           "fallback": null
         },
+<<<<<<< HEAD
         "p4yBYl2sbBjG": {
           "__type": "TemplatedString",
           "text": ["", { "__ref": "CuezdEKTN1Am" }, ""]
@@ -2656,13 +2903,100 @@
           "fallback": { "__ref": "jMWVH4jGsDT1" }
         },
         "jMWVH4jGsDT1": {
+=======
+        "VNvTcGiBx-N5": {
+          "__type": "TemplatedString",
+          "text": ["", { "__ref": "yUOzw4T1AKlL" }, ""]
+        },
+        "F0DM8jD782LH": {
+          "__type": "CustomCode",
+          "code": "undefined",
+          "fallback": null
+        },
+        "yUOzw4T1AKlL": {
+          "__type": "ObjectPath",
+          "path": ["$ctx", "params", "slug"],
+          "fallback": { "__ref": "JOI5xQyhIrtQ" }
+        },
+        "JOI5xQyhIrtQ": {
+          "__type": "CustomCode",
+          "code": "undefined",
+          "fallback": null
+        },
+        "zKr9n0Oo0-Id": {
+          "__type": "CustomFunctionExpr",
+          "func": {
+            "__xref": {
+              "uuid": "e3ce0173-4a2b-49d7-94de-203f89ff7556",
+              "iid": "JK8NgkunX0h-"
+            }
+          },
+          "args": [{ "__ref": "MXYDvkCvtGbc" }]
+        },
+        "MXYDvkCvtGbc": {
+          "__type": "FunctionArg",
+          "uuid": "mjSWVtqlVCBR",
+          "argType": {
+            "__xref": {
+              "uuid": "e3ce0173-4a2b-49d7-94de-203f89ff7556",
+              "iid": "qZDYgAk39tGn"
+            }
+          },
+          "expr": { "__ref": "nxYejK9jqUht" }
+        },
+        "nxYejK9jqUht": {
+          "__type": "CompositeExpr",
+          "hostLiteral": "{\"wordpressUrl\":null,\"queryType\":null,\"queryOperator\":null,\"filterValue\":null}",
+          "substitutions": {
+            "[\"wordpressUrl\"]": { "__ref": "GI1oTvd-eXa_" },
+            "[\"queryType\"]": { "__ref": "uBkQc6o7hh0Q" },
+            "[\"queryOperator\"]": { "__ref": "CGuzE2jYX-14" },
+            "[\"filterValue\"]": { "__ref": "fnew0ihxF0JF" }
+          }
+        },
+        "GI1oTvd-eXa_": {
+          "__type": "ObjectPath",
+          "path": ["$dataTokens_g6d6d_wordPressUrl"],
+          "fallback": { "__ref": "s8xxhwsDb4ef" }
+        },
+        "uBkQc6o7hh0Q": {
+          "__type": "CustomCode",
+          "code": "\"posts\"",
+          "fallback": null
+        },
+        "CGuzE2jYX-14": {
+          "__type": "CustomCode",
+          "code": "\"slug\"",
+          "fallback": null
+        },
+        "fnew0ihxF0JF": {
+          "__type": "TemplatedString",
+          "text": ["", { "__ref": "ZrEyzk-_CwG2" }, ""]
+        },
+        "s8xxhwsDb4ef": {
+          "__type": "CustomCode",
+          "code": "undefined",
+          "fallback": null
+        },
+        "ZrEyzk-_CwG2": {
+          "__type": "ObjectPath",
+          "path": ["$ctx", "params", "slug"],
+          "fallback": { "__ref": "wdpsalh_m0r1" }
+        },
+        "wdpsalh_m0r1": {
+>>>>>>> upstream/master
           "__type": "CustomCode",
           "code": "undefined",
           "fallback": null
         }
       },
+<<<<<<< HEAD
       "deps": ["dd10007d-d4ff-486b-9118-d8a6a1fa66fe"],
       "version": "256-wrap-page-meta-og-image-in-ref"
+=======
+      "deps": ["e3ce0173-4a2b-49d7-94de-203f89ff7556"],
+      "version": "255-wrap-page-meta-og-image-in-ref"
+>>>>>>> upstream/master
     }
   ]
 ]

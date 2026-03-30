@@ -1,5 +1,4 @@
-import { Bundler } from "@/wab/shared/bundler";
-import { Bundle } from "@/wab/shared/bundles";
+import { ProjectId } from "@/wab/shared/ApiSchema";
 import {
   exportProjectConfig,
   exportStyleConfig,
@@ -9,17 +8,14 @@ import {
   CodegenScheme,
   ExportOpts,
   ExportPlatform,
+  ExportPlatformOptions,
   StylesScheme,
 } from "@/wab/shared/codegen/types";
 import { jsonClone } from "@/wab/shared/common";
 import { initBuiltinActions } from "@/wab/shared/core/states";
 import { deepTrackComponents } from "@/wab/shared/core/tpls";
 import { DEVFLAGS } from "@/wab/shared/devflags";
-import {
-  Site,
-  isKnownProjectDependency,
-  isKnownSite,
-} from "@/wab/shared/model/classes";
+import { Site } from "@/wab/shared/model/classes";
 import { exec } from "child_process";
 import fs from "fs";
 import path from "path";
@@ -31,21 +27,27 @@ export async function codegen(
   site: Site,
   opts: {
     platform: ExportPlatform;
+    platformVersion?: string;
     codegenScheme: CodegenScheme;
     stylesScheme: StylesScheme;
+    platformOptions?: ExportPlatformOptions;
+    projectId?: ProjectId;
   } = {
     platform: "react",
+    platformVersion: undefined,
     codegenScheme: "blackbox",
     stylesScheme: "css-modules",
   }
 ) {
   console.log(`Codegen output dir`, dir, opts);
 
-  const projectId = "1234567890";
+  const projectId = opts.projectId ?? ("1234567890" as ProjectId);
 
   const exportOpts: ExportOpts = {
     lang: "ts",
     platform: opts.platform,
+    platformVersion: opts.platformVersion,
+    platformOptions: opts.platformOptions,
     relPathFromImplToManagedDir: ".",
     relPathFromManagedToImplDir: ".",
     forceAllProps: false,
@@ -146,6 +148,23 @@ export async function codegen(
       path.join(dir, bundle.skeletonModuleFileName),
       bundle.skeletonModule
     );
+    if (bundle.rscMetadata) {
+      const { pageWrappers, serverQueriesExecFunc } = bundle.rscMetadata;
+      if (serverQueriesExecFunc) {
+        fs.writeFileSync(
+          path.join(dir, serverQueriesExecFunc.fileName),
+          serverQueriesExecFunc.module
+        );
+      }
+      fs.writeFileSync(
+        path.join(dir, pageWrappers.server.fileName),
+        pageWrappers.server.module
+      );
+      fs.writeFileSync(
+        path.join(dir, pageWrappers.client.fileName),
+        pageWrappers.client.module
+      );
+    }
   }
 
   for (const bundle of globalVariantBundles) {
@@ -196,13 +215,28 @@ export async function codegen(
     );
   }
 
+  if (opts.platform === "nextjs") {
+    // Write type declarations for platform-specific modules not available in wab's node_modules
+    fs.writeFileSync(
+      path.join(dir, "externals.d.ts"),
+      [
+        "declare module 'next/link';",
+        "declare module 'next/router';",
+        "declare module 'next/navigation';",
+        // Declare types from 'next' used in generated skeletons
+        "declare module 'next' {",
+        "  export type Metadata = Record<string, unknown>;",
+        "  export type ResolvingMetadata = Promise<Metadata>;",
+        "}",
+      ].join("\n")
+    );
+  }
   try {
     // Compile ts to js
     await promisify(exec)("node_modules/.bin/tsc", { cwd: dir });
   } catch (err) {
     throw new Error(`Typescript compilation failed: ${err.stdout}`);
   }
-
   return { importFromProject, readFromProject, existsInProject };
 }
 
@@ -222,29 +256,4 @@ export function collectSnapshotForDir(dir: string): string {
     }
   }
   return allFileContents;
-}
-
-/**
- * Generates a site object from bundle data of a project with dependencies.
- */
-export function generateSiteFromBundle(
-  bundleWithDeps: [string, Bundle][]
-): Site {
-  let site: Site | undefined;
-  const bundler = new Bundler();
-
-  for (const bundle of bundleWithDeps as [string, Bundle][]) {
-    const unbundled = bundler.unbundle(bundle[1], bundle[0]);
-    if (isKnownSite(unbundled)) {
-      site = unbundled;
-    } else if (isKnownProjectDependency(unbundled)) {
-      site = unbundled.site;
-    }
-  }
-
-  if (!site) {
-    throw new Error("Could not extract site from bundle");
-  }
-
-  return site;
 }

@@ -1,8 +1,6 @@
-import { processWebImporterTree } from "@/wab/client/WebImporter";
-import { InsertRelLoc } from "@/wab/client/components/canvas/view-ops";
 import { CopilotPromptDialog } from "@/wab/client/components/copilot/CopilotPromptDialog";
 import { useStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
-import { parseHtmlToWebImporterTree } from "@/wab/client/web-importer/html-parser";
+import { pasteFromWebImporter } from "@/wab/client/web-importer/WebImporter";
 import { addOrUpsertTokens } from "@/wab/commons/StyleToken";
 import {
   QueryCopilotUiRequest,
@@ -15,9 +13,6 @@ import * as React from "react";
 
 function CopilotUiPrompt() {
   const studioCtx = useStudioCtx();
-  const insertRelLoc = studioCtx.focusedViewCtx()?.enforcePastingAsSibling
-    ? InsertRelLoc.after
-    : undefined;
 
   return (
     <CopilotPromptDialog<QueryCopilotUiResponse["response"]>
@@ -97,17 +92,10 @@ function CopilotUiPrompt() {
                 }));
                 addOrUpsertTokens(studioCtx.site, upsertTokens);
 
-                const { wiTree, animationSequences } =
-                  await studioCtx.app.withSpinner(
-                    parseHtmlToWebImporterTree(html, studioCtx.site)
-                  );
-                if (wiTree) {
-                  await processWebImporterTree(wiTree, animationSequences, {
-                    studioCtx,
-                    insertRelLoc,
-                    cursorClientPt: undefined,
-                  });
-                }
+                await pasteFromWebImporter(html, {
+                  studioCtx,
+                  cursorClientPt: undefined,
+                });
               })()
             );
 

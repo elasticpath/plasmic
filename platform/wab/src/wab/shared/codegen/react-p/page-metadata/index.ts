@@ -1,30 +1,26 @@
 import { serializeCustomFunctionsAndLibs } from "@/wab/shared/codegen/react-p/custom-functions";
 import { generateDataTokenImports } from "@/wab/shared/codegen/react-p/data-tokens/imports";
 import {
-  getExportedComponentName,
+  generateDataTokenImports,
+  getDataTokenIdentifiersFromPageMeta,
+} from "@/wab/shared/codegen/react-p/data-tokens/imports";
+import {
   makePlasmicComponentName,
   makeTanStackHeadOptionsExportName,
 } from "@/wab/shared/codegen/react-p/serialize-utils";
-import { MK_PATH_FROM_ROUTE_AND_PARAMS_SER } from "@/wab/shared/codegen/react-p/server-queries/serializer";
+import { getDataTokensFromServerQueries } from "@/wab/shared/codegen/react-p/server-queries";
 import { SerializerBaseContext } from "@/wab/shared/codegen/react-p/types";
+import { isPlatformNextJs } from "@/wab/shared/codegen/react-p/utils";
 import { PageMetadata } from "@/wab/shared/codegen/types";
 import { assert, strict } from "@/wab/shared/common";
-import { isPageComponent } from "@/wab/shared/core/components";
 import { asCode, stripParens } from "@/wab/shared/core/exprs";
-import {
-  extractDataTokenIdentifiersFromCode,
-  isPathDataToken,
-} from "@/wab/shared/eval/expression-parser";
 import {
   Component,
   Expr,
-  ImageAsset,
   ImageAssetRef,
   PageMeta,
-  isKnownCustomCode,
   isKnownExpr,
   isKnownImageAssetRef,
-  isKnownObjectPath,
   isKnownTemplatedString,
 } from "@/wab/shared/model/classes";
 import L from "lodash";
@@ -76,33 +72,26 @@ function getOgImageLink(
   return undefined;
 }
 
-export function serializePageMetadata(
-  ctx: SerializerBaseContext,
-  page: Component
-): string {
-  if (!isPageComponent(page)) {
-    return "";
-  }
-
-  const title = flattenMetadataValueToString(page.pageMeta?.title);
-  const description = flattenMetadataValueToString(page.pageMeta?.description);
-  const ogImageSrc = getOgImageLink(ctx, page.pageMeta?.openGraphImage) || "";
-  const canonical = flattenMetadataValueToString(page.pageMeta?.canonical);
-
-  const pageMetadata = JSON.stringify(
-    { title, description, ogImageSrc, canonical },
-    undefined,
-    2
-  );
-
+export function serializePageMetadata(component: Component): string {
+  const pageRoute = component.pageMeta?.path ?? "";
   return `
-    // Page metadata
-    pageMetadata: ${pageMetadata},
+    pageMetadata: generateDynamicMetadata(
+      wrapQueriesWithLoadingProxy({}),
+      { pageRoute: "${pageRoute}", pagePath: "${pageRoute}", params: {}, query: {} }
+    )
   `;
 }
 
+/**
+ * Old page metadata reference format
+ * TODO - replace Tanstack head with local/dynamic metadata
+ */
 function serializePageMetadataKey(componentName: string, key: string) {
   return `${componentName}.pageMetadata.${key}`;
+}
+
+function serializeLocalMetadataKey(key: string) {
+  return `pageMetadata.${key}`;
 }
 
 /**
@@ -112,11 +101,11 @@ function serializeMetaTags(props: {
   componentName: string;
   key: string;
   metaKeys: string[];
+  isNextJs: boolean;
 }) {
-  const serializedKey = serializePageMetadataKey(
-    props.componentName,
-    props.key
-  );
+  const serializedKey = props.isNextJs
+    ? serializeLocalMetadataKey(props.key)
+    : serializePageMetadataKey(props.componentName, props.key);
   return props.metaKeys
     .map((metaKey) =>
       metaKey === "title"
@@ -130,6 +119,7 @@ export function renderPageHead(
   ctx: SerializerBaseContext,
   page: Component
 ): string {
+  const isNextJs = isPlatformNextJs(ctx);
   const title = page.pageMeta?.title;
   const description = page.pageMeta?.description;
   const ogImageSrc = getOgImageLink(ctx, page.pageMeta?.openGraphImage);
@@ -137,10 +127,7 @@ export function renderPageHead(
 
   const shouldRenderHead = title || description || ogImageSrc || canonical;
 
-  // Skip <Head> generation for Next.js App Router (uses generateMetadata instead)
-  const isAppRouter = !!ctx.exportOpts.platformOptions?.nextjs?.appDir;
-
-  if (!shouldRenderHead || ctx.exportOpts.skipHead || isAppRouter) {
+  if (!shouldRenderHead || ctx.exportOpts.skipHead) {
     return "";
   }
   const componentName = makePlasmicComponentName(ctx.component);
@@ -157,6 +144,7 @@ export function renderPageHead(
             componentName,
             key: "title",
             metaKeys: ["title", "og:title", "twitter:title"],
+            isNextJs,
           })
         : ""
     }
@@ -166,6 +154,7 @@ export function renderPageHead(
             componentName,
             key: "description",
             metaKeys: ["description", "og:description", "twitter:description"],
+            isNextJs,
           })
         : ""
     }
@@ -175,15 +164,17 @@ export function renderPageHead(
             componentName,
             key: "ogImageSrc",
             metaKeys: ["og:image", "twitter:image"],
+            isNextJs,
           })
         : ""
     }
     ${
       canonical
-        ? strict`<link rel="canonical" href={${serializePageMetadataKey(
-            componentName,
-            "canonical"
-          )}} />`
+        ? strict`<link rel="canonical" href={${
+            isNextJs
+              ? serializeLocalMetadataKey("alternates?.canonical")
+              : serializePageMetadataKey(componentName, "alternates?.canonical")
+          }} />`
         : ""
     }
   `;
@@ -294,7 +285,8 @@ function serializeMetadataValue(
   }
   if (isKnownExpr(value)) {
     // Serialize the expression to JavaScript code
-    return stripParens(asCode(value, ctx.exprCtx).code);
+    // TODO - String() is used to coerce query proxies (is there a better way?)
+    return `String(${stripParens(asCode(value, ctx.exprCtx).code)})`;
   }
   return undefined;
 }
@@ -315,50 +307,23 @@ function flattenMetadataValueToString(
 }
 
 /**
- * Recursively extract data token identifiers from an expression
- */
-function getDataTokensFromExpr(
-  expr: string | Expr | ImageAsset | null | undefined,
-  tokenIdentifiers: Set<string>
-): void {
-  if (!expr || typeof expr === "string") {
-    return;
-  }
-
-  if (isKnownObjectPath(expr) && isPathDataToken(expr.path)) {
-    tokenIdentifiers.add(expr.path[0]);
-  } else if (isKnownCustomCode(expr)) {
-    extractDataTokenIdentifiersFromCode(expr.code).forEach((id) =>
-      tokenIdentifiers.add(id)
-    );
-  } else if (isKnownTemplatedString(expr)) {
-    for (const part of expr.text) {
-      getDataTokensFromExpr(part, tokenIdentifiers);
-    }
-  }
-}
-
-/**
  * Gets data token imports needed for metadata generation from PageMeta.
+ * excludeQueries is use in the app router server page skeleton. We import
+ * server queries there, so only page meta token references are needed
  */
-function getDataTokenImportsForPageMeta(
+export function getDataTokenImportsForPageMeta(
   ctx: SerializerBaseContext,
-  pageMeta: PageMeta
+  pageMeta: PageMeta | null | undefined,
+  opts?: { excludeQueries?: boolean }
 ): string {
-  const tokenIdentifiers = new Set<string>();
-
-  // Check each PageMeta field for data token usage
-  const fieldsToCheck = [
-    pageMeta.title,
-    pageMeta.description,
-    pageMeta.canonical,
-    pageMeta.openGraphImage,
-  ];
-
-  for (const field of fieldsToCheck) {
-    getDataTokensFromExpr(field, tokenIdentifiers);
+  const tokenIdentifiers = pageMeta
+    ? getDataTokenIdentifiersFromPageMeta(pageMeta)
+    : new Set<string>();
+  if (!opts?.excludeQueries) {
+    getDataTokensFromServerQueries(ctx.component.serverQueries).forEach(
+      (identifier) => tokenIdentifiers.add(identifier)
+    );
   }
-
   return generateDataTokenImports(
     tokenIdentifiers,
     ctx.site,
@@ -396,9 +361,50 @@ function getOgImageValue(
 }
 
 /**
+ * Function that accepts serverQueries and resolves dynamic metadata entries
+ */
+export function serializeDynamicMetadataProxies() {
+  const metaWithProxies = `
+const emptyProxy: any = new Proxy(() => "", {
+  get(_, prop) {
+    return prop === Symbol.toPrimitive ? () => "" : emptyProxy;
+  },
+});
+
+function wrapQueriesWithLoadingProxy($q: any): any {
+  return new Proxy($q, {
+    get(target, queryName) {
+      const query = target[queryName];
+      return !query || query.isLoading || !query.data ? emptyProxy : query;
+    },
+  });
+}
+`;
+  return metaWithProxies;
+}
+
+export function serializeGenerateDynamicMetadataFunction(
+  ctx: SerializerBaseContext
+) {
+  const pageMeta = ctx.component.pageMeta;
+  const metaFunction = `
+export type PageCtx = {
+  pageRoute: string;
+  pagePath: string;
+  params: Record<string, string | string[] | undefined>;
+  query: Record<string, string | string[] | undefined>;
+};
+
+export function generateDynamicMetadata($q: any, $ctx: PageCtx) {
+  return ${pageMeta ? serializeDynamicMetadataObject(ctx, pageMeta) : "{}"};
+}`;
+  return metaFunction;
+}
+
+/**
  * Platform-agnostic page metadata type, structurally compatible with Next.js Metadata
  */
-function getMetadataTypeDefinition(): string {
+export function getMetadataTypeDefinition(): string {
   return `/**
  * Platform-agnostic page metadata type.
  * Structurally compatible with Next.js Metadata and other meta frameworks.
@@ -423,18 +429,10 @@ type PlasmicPageMetadata = {
 };`;
 }
 
-export function serializeGenerateMetadataFunction(
-  ctx: SerializerBaseContext
-): { module: string; fileName: string } | undefined {
-  const { component } = ctx;
-
-  if (!isPageComponent(component) || !component.pageMeta) {
-    return undefined;
-  }
-
-  const pageMeta = component.pageMeta;
-  const isDynamic = hasDynamicMetadata(pageMeta);
-
+function serializeDynamicMetadataObject(
+  ctx: SerializerBaseContext,
+  pageMeta: PageMeta
+) {
   // Serialize metadata field values
   const titleValue = serializeMetadataValue(ctx, pageMeta.title);
   const descriptionValue = serializeMetadataValue(ctx, pageMeta.description);
@@ -449,7 +447,8 @@ export function serializeGenerateMetadataFunction(
     ? `description: ${descriptionValue},`
     : "";
   const ogImageKeyValue = ogImageValue ? `images: [${ogImageValue}],` : "";
-  const metadataObject = `{
+
+  return `{
     ${titleKeyValue}
     ${descriptionKeyValue}
     openGraph: {
@@ -458,72 +457,13 @@ export function serializeGenerateMetadataFunction(
       ${ogImageKeyValue}
     },
     twitter: {
-      card: ${ogImageValue ? '"summary_large_image"' : '"summary"'},
+      card: ${
+        ogImageValue ? '"summary_large_image" as const' : '"summary" as const'
+      },
       ${titleKeyValue}
       ${descriptionKeyValue}
       ${ogImageKeyValue}
     },
     ${canonicalValue ? `alternates: { canonical: ${canonicalValue} },` : ""}
   }`;
-
-  // Generate static metadata export if no dynamic values
-  if (!isDynamic) {
-    return {
-      module: `
-${getMetadataTypeDefinition()}
-
-export const metadata: PlasmicPageMetadata = ${metadataObject};
-`,
-      fileName: `__generateMetadata_${makePlasmicComponentName(component)}.tsx`,
-    };
-  }
-
-  // Generate dynamic generateMetadata function
-  const { customFunctionsAndLibsImport, serializedCustomFunctionsAndLibs } =
-    serializeCustomFunctionsAndLibs(ctx);
-
-  const serverQueriesImport = `import { executeServerQueries } from "./__loader_rsc_${getExportedComponentName(
-    component
-  )}";`;
-
-  // Get data token imports for metadata expressions
-  const dataTokenImports = getDataTokenImportsForPageMeta(ctx, pageMeta);
-
-  const module = `
-${getMetadataTypeDefinition()}
-${serverQueriesImport}
-${customFunctionsAndLibsImport}
-${dataTokenImports}
-
-${serializedCustomFunctionsAndLibs}
-${MK_PATH_FROM_ROUTE_AND_PARAMS_SER}
-
-type ParamsRecord = Record<string, string | string[] | undefined>;
-type GenerateMetadataProps = {
-  params: Promise<ParamsRecord> | ParamsRecord;
-  query: Promise<ParamsRecord> | ParamsRecord;
-};
-
-export async function generateMetadata(props: GenerateMetadataProps): Promise<PlasmicPageMetadata> {
-  const { params, query } = props;
-
-  const pageRoute = "${pageMeta.path}";
-  const pageParams = (await params) ?? {};
-  const pagePath = mkPathFromRouteAndParams(pageRoute, pageParams);
-
-  const $ctx = {
-    pageRoute,
-    pagePath,
-    params: pageParams,
-    query: (await query) ?? {},
-  };
-  const $queries = await executeServerQueries($ctx);
-  return ${metadataObject};
-}
-`;
-
-  return {
-    module,
-    fileName: `__generateMetadata_${makePlasmicComponentName(component)}.tsx`,
-  };
 }

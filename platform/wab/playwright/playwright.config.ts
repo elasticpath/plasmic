@@ -8,14 +8,23 @@ export default defineConfig({
   workers: process.env.CI ? 8 : undefined,
   reporter: process.env.CI
     ? [["github"], ["playwright-ctrf-json-reporter", {}]]
-    : "html",
+    : [
+        [
+          "html",
+          {
+            host: "127.0.0.1",
+            port: Number(process.env.PLAYWRIGHT_REPORTER_PORT ?? 9323),
+            open: process.env.PLAYWRIGHT_REPORTER_OPEN ?? "on-failure",
+          },
+        ],
+      ],
   timeout: 400_000,
   use: {
     actionTimeout: 10_000,
-    baseURL: "http://localhost:3003",
-    trace: process.env.CI ? "off" : "retain-on-failure",
-    video: process.env.CI ? "off" : "retain-on-failure",
-    screenshot: "only-on-failure",
+    navigationTimeout: 15_000,
+    baseURL: process.env.WAB_HOST ?? "http://localhost:3003",
+    trace: "retain-on-failure",
+    video: "retain-on-failure",
   },
   projects: [
     {

@@ -1,5 +1,7 @@
 import process from "process";
 
+export const PNPM_CACHE_DIR = "/tmp/.loader-pnpm-store";
+
 const DEFAULT_ENV = {
   NPM_CONFIG_REGISTRY: "https://registry.npmjs.org",
   NPM_CONFIG_CACHE: "",
@@ -16,16 +18,36 @@ export function getEnvVar(variable: keyof typeof DEFAULT_ENV): string {
     : value;
 }
 
+export const LOADER_NEXTJS_TEMPLATES = [
+  // latest (v2) loader has a peer dependency on Next >= 14
+  { loaderVersion: "latest", template: "template-pages", nextVersion: "^14" },
+  { loaderVersion: "^1", template: "template-pages", nextVersion: "^12" },
+  {
+    loaderVersion: "latest",
+    template: "template-app",
+    reactVersion: "latest",
+    nextVersion: "^15",
+  },
+];
+
 export const LOADER_NEXTJS_VERSIONS = [
-  { loaderVersion: "latest", nextVersion: "latest" },
+  { loaderVersion: "latest", reactVersion: "latest", nextVersion: "latest" },
+  { loaderVersion: "^1", reactVersion: "latest", nextVersion: "latest" },
   // Before PlasmicLinkProvider / usePlasmicLink is added
-  { loaderVersion: "1.0.287", nextVersion: "^12" },
+  { loaderVersion: "1.0.287", reactVersion: "^18", nextVersion: "^12" },
+];
+
+export const LOADER_REACT_VERSIONS = [
+  // latest (v2) loader has a peer dependency on React >= 18
+  // this configuration is used by CRA templates. CRA is deprecated and does not support React 19
+  { reactVersion: "^18", loaderReactVersion: "latest" },
 ];
 
 export const LOADER_NEXTJS_VERSIONS_EXHAUSTIVE = [
   ...LOADER_NEXTJS_VERSIONS,
-  { loaderVersion: "^1", nextVersion: "^13" },
-  { loaderVersion: "^1", nextVersion: "^14" },
+  { loaderVersion: "latest", reactVersion: "^18", nextVersion: "^13" },
+  { loaderVersion: "latest", reactVersion: "^18", nextVersion: "^14" },
+  { loaderVersion: "latest", reactVersion: "^18", nextVersion: "^15" },
 ];
 
 function maybeSwapWithDockerLocalhost(value: string | undefined) {

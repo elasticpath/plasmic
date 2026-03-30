@@ -3,12 +3,13 @@ import {
   _testOnlyUtils,
   parseHtmlToWebImporterTree,
 } from "@/wab/client/web-importer/html-parser";
+import { createComponentTestSite } from "@/wab/client/web-importer/testonly/utils";
 import { WIElement } from "@/wab/client/web-importer/types";
+import { TplMgr } from "@/wab/shared/TplMgr";
+import { VariantGroupType } from "@/wab/shared/Variants";
 import { toVarName } from "@/wab/shared/codegen/util";
 import { assert } from "@/wab/shared/common";
 import { createSite } from "@/wab/shared/core/sites";
-import { TplMgr } from "@/wab/shared/TplMgr";
-import { VariantGroupType } from "@/wab/shared/Variants";
 import { readFileSync } from "fs";
 import path from "path";
 
@@ -27,28 +28,15 @@ describe("parseHtmlToWebImporterTree", () => {
     // no @font-face definitions or CSS variables
     expect(fontDefinitions).toEqual([]);
 
-    // root is a container whose first child is the span we provided
+    // root is a fragment whose first child is the span we provided
     expect(rootEl).toMatchObject<Partial<WIElement>>({
-      type: "container",
-      tag: "div",
+      type: "fragment",
       children: [
         {
           type: "text",
           tag: "span",
           text: "plasmic",
           variantSettings: [],
-        },
-      ],
-      variantSettings: [
-        {
-          unsanitizedStyles: {
-            width: "100%",
-          },
-          safeStyles: {
-            width: "100%",
-          },
-          unsafeStyles: {},
-          variantCombo: [{ type: "base" }],
         },
       ],
     });
@@ -61,10 +49,8 @@ describe("parseHtmlToWebImporterTree", () => {
 
     assert(rootEl, "rootEl should not be null");
 
-    expect(rootEl).toMatchObject<WIElement>({
-      type: "container",
-      tag: "div",
-      attrs: {},
+    expect(rootEl).toMatchObject<Partial<WIElement>>({
+      type: "fragment",
       children: [
         {
           type: "container",
@@ -101,18 +87,6 @@ describe("parseHtmlToWebImporterTree", () => {
           ],
         },
       ],
-      variantSettings: [
-        {
-          unsanitizedStyles: {
-            width: "100%",
-          },
-          safeStyles: {
-            width: "100%",
-          },
-          unsafeStyles: {},
-          variantCombo: [{ type: "base" }],
-        },
-      ],
     });
   });
 
@@ -135,10 +109,8 @@ describe("parseHtmlToWebImporterTree", () => {
 
     assert(rootEl, "rootEl should not be null");
 
-    expect(rootEl).toMatchObject<WIElement>({
-      type: "container",
-      tag: "div",
-      attrs: {},
+    expect(rootEl).toMatchObject<Partial<WIElement>>({
+      type: "fragment",
       children: [
         {
           type: "container",
@@ -192,18 +164,6 @@ describe("parseHtmlToWebImporterTree", () => {
           ],
         },
       ],
-      variantSettings: [
-        {
-          unsanitizedStyles: {
-            width: "100%",
-          },
-          safeStyles: {
-            width: "100%",
-          },
-          unsafeStyles: {},
-          variantCombo: [{ type: "base" }],
-        },
-      ],
     });
   });
 
@@ -218,8 +178,7 @@ describe("parseHtmlToWebImporterTree", () => {
     assert(rootEl, "rootEl should not be null");
 
     expect(rootEl).toMatchObject<Partial<WIElement>>({
-      type: "container",
-      tag: "div",
+      type: "fragment",
       children: [
         {
           type: "container",
@@ -238,18 +197,6 @@ describe("parseHtmlToWebImporterTree", () => {
           attrs: {},
         },
       ],
-      variantSettings: [
-        {
-          unsanitizedStyles: {
-            width: "100%",
-          },
-          safeStyles: {
-            width: "100%",
-          },
-          unsafeStyles: {},
-          variantCombo: [{ type: "base" }],
-        },
-      ],
     });
   });
 
@@ -260,8 +207,7 @@ describe("parseHtmlToWebImporterTree", () => {
     assert(rootEl, "rootEl should not be null");
 
     expect(rootEl).toMatchObject<Partial<WIElement>>({
-      type: "container",
-      tag: "div",
+      type: "fragment",
       children: [
         {
           type: "container",
@@ -303,8 +249,7 @@ describe("parseHtmlToWebImporterTree", () => {
     assert(rootEl, "rootEl should not be null");
 
     expect(rootEl).toMatchObject<Partial<WIElement>>({
-      type: "container",
-      tag: "div",
+      type: "fragment",
       children: [
         {
           type: "container",
@@ -1339,18 +1284,231 @@ describe("fixCSSValue", () => {
 });
 
 describe("snapshot tests", () => {
-  const site = createSite();
+  const site = createComponentTestSite();
 
   it("parse landing page html properly", async () => {
     const landingPageFilePath = path.join(
       __dirname,
-      "test/data/landing-page.html"
+      "testonly/data/landing-page.html"
     );
     const landingPageHtml = readFileSync(landingPageFilePath, "utf8");
 
     const output = await parseHtmlToWebImporterTree(landingPageHtml, site);
 
     expect(output).toMatchSnapshot();
+  });
+
+  it("parses component page with props and slots correctly", async () => {
+    const fixturePath = path.join(
+      __dirname,
+      "testonly/data/component-page.html"
+    );
+    const html = readFileSync(fixturePath, "utf8");
+
+    const output = await parseHtmlToWebImporterTree(html, site);
+
+    expect(output).toMatchSnapshot();
+  });
+});
+
+describe("keyframes and animations parsing", () => {
+  const site = createSite();
+
+  it("parses basic @keyframes rule with from/to", async () => {
+    const html = `
+      <div class="animated-div">Test</div>
+      <style>
+        @keyframes fadeIn {
+          from { opacity: 0; background: #0000ff; }
+          to { opacity: 1; background: #ff0000;}
+        }
+        .animated-div {
+          -webkit-animation: fadeIn 2s ease-in-out;
+          animation: fadeIn 2s ease-in-out;
+        }
+      </style>
+    `;
+
+    const { wiTree: rootEl, animationSequences } =
+      await parseHtmlToWebImporterTree(html, site);
+
+    expect(animationSequences).toMatchObject([
+      {
+        name: "fadeIn",
+        keyframes: [
+          {
+            percentage: 0,
+            safeStyles: {
+              opacity: "0",
+              background: "linear-gradient(#0000ff, #0000ff)",
+            },
+            unsafeStyles: {},
+          },
+          {
+            percentage: 100,
+            safeStyles: {
+              opacity: "1",
+              background: "linear-gradient(#ff0000, #ff0000)",
+            },
+            unsafeStyles: {},
+          },
+        ],
+      },
+    ]);
+
+    // Check that animation property is parsed on the element
+    expect(rootEl).toMatchObject<Partial<WIElement>>({
+      type: "fragment",
+      children: [
+        {
+          type: "container",
+          tag: "div",
+          children: [
+            {
+              type: "text",
+              tag: "span",
+              text: "Test",
+              variantSettings: [],
+            },
+          ],
+          attrs: {},
+          variantSettings: [
+            {
+              unsanitizedStyles: {
+                "-webkit-animation": "fadeIn 2s ease-in-out",
+                animation: "fadeIn 2s ease-in-out",
+              },
+              safeStyles: {
+                animation: "fadeIn 2s ease-in-out",
+              },
+              unsafeStyles: {},
+              variantCombo: [{ type: "base" }],
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("parses @keyframes rules and ignores @-webkit-keyframes", async () => {
+    const html = `
+      <div>Test</div>
+      <style>
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @-webkit-keyframes slideUp {
+          0% { transform: translateY(20px); }
+          100% { transform: translateY(0); }
+        }
+        
+      </style>
+    `;
+
+    const { animationSequences } = await parseHtmlToWebImporterTree(html, site);
+    expect(animationSequences).toMatchObject([
+      {
+        name: "fadeIn",
+        keyframes: [
+          { percentage: 0, safeStyles: { opacity: "0" }, unsafeStyles: {} },
+          { percentage: 100, safeStyles: { opacity: "1" }, unsafeStyles: {} },
+        ],
+      },
+    ]);
+    expect(animationSequences).toHaveLength(1);
+  });
+
+  it("sorts keyframes by percentage", async () => {
+    const html = `
+      <div>Test</div>
+      <style>
+        @keyframes unorderedAnimation {
+          100% { opacity: 1; }
+          25% { opacity: 0.25; }
+          75% { opacity: 0.75; }
+          0% { opacity: 0; }
+          50% { opacity: 0.5; }
+        }
+      </style>
+    `;
+
+    const { animationSequences } = await parseHtmlToWebImporterTree(html, site);
+
+    expect(animationSequences).toMatchObject([
+      {
+        name: "unorderedAnimation",
+        keyframes: [
+          { percentage: 0, safeStyles: { opacity: "0" }, unsafeStyles: {} },
+          { percentage: 25, safeStyles: { opacity: "0.25" }, unsafeStyles: {} },
+          { percentage: 50, safeStyles: { opacity: "0.5" }, unsafeStyles: {} },
+          { percentage: 75, safeStyles: { opacity: "0.75" }, unsafeStyles: {} },
+          { percentage: 100, safeStyles: { opacity: "1" }, unsafeStyles: {} },
+        ],
+      },
+    ]);
+  });
+
+  it("handles empty keyframes gracefully", async () => {
+    const html = `
+      <div>Test</div>
+      <style>
+        @keyframes emptyAnimation {
+          /* no keyframes defined */
+        }
+      </style>
+    `;
+
+    const { animationSequences } = await parseHtmlToWebImporterTree(html, site);
+    expect(animationSequences[0]).toMatchObject({
+      name: "emptyAnimation",
+      keyframes: [],
+    });
+  });
+
+  it("skips invalid keyframe selectors", async () => {
+    const html = `
+      <div>Test</div>
+      <style>
+        @keyframes mixedAnimation {
+          0% { opacity: 0; }
+          invalid { opacity: 0.5; }
+          100% { opacity: 1; }
+        }
+      </style>
+    `;
+
+    const { animationSequences } = await parseHtmlToWebImporterTree(html, site);
+
+    expect(animationSequences[0].keyframes).toEqual([
+      { percentage: 0, safeStyles: { opacity: "0" }, unsafeStyles: {} },
+      { percentage: 100, safeStyles: { opacity: "1" }, unsafeStyles: {} },
+    ]);
+  });
+
+  it("returns WIFragment when html has no explicit body tag, keeps root when it does", async () => {
+    const fragment = "<p>Hello</p>";
+    const { wiTree: fragmentTree } = await parseHtmlToWebImporterTree(
+      fragment,
+      site
+    );
+    expect(fragmentTree).toMatchObject({
+      type: "fragment",
+      children: [
+        {
+          type: "text",
+          tag: "p",
+          text: "Hello",
+        },
+      ],
+    });
+
+    const fullPage = "<body><p>Hello</p></body>";
+    const { wiTree: fullPageTree } = await parseHtmlToWebImporterTree(
+      fullPage,
+      site
+    );
+    expect(fullPageTree?.type).toEqual("container");
   });
 });
 

@@ -24,8 +24,7 @@ testMultiplayer.describe("multiplayer comments", () => {
     await admin.apiClient.removeProject(projectId);
   });
 
-  // Skip: Flaky in CI - WebSocket real-time updates timing issues
-  testMultiplayer.skip(
+  testMultiplayer(
     "send and receive comments with multiple users in real-time",
     async ({ admin, user1, user2 }) => {
       const sessions = [admin, user1, user2];

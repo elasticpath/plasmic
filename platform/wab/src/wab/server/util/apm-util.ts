@@ -9,7 +9,11 @@ export async function withSpan<T>(
   msg?: string,
   payload?: Properties
 ) {
+  const suffix = msg ? `: ${msg}` : "";
+
   const start = new Date().getTime();
+  logger().debug(`span "${name}" started at ${start}${suffix}`);
+
   const promTimer = new WabPromTimer(name);
   const tracer = trace.getTracer("app");
   return tracer.startActiveSpan(name, async (span) => {

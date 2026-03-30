@@ -1227,7 +1227,11 @@
           }
         },
         "deps": [],
+<<<<<<< HEAD
         "version": "256-wrap-page-meta-og-image-in-ref"
+=======
+        "version": "255-wrap-page-meta-og-image-in-ref"
+>>>>>>> upstream/master
       },
       "projectId": "jktPeioPm3Q1RvAsGWDSCe",
       "version": "3.0.0",
@@ -2491,7 +2495,11 @@
           }
         },
         "deps": [],
+<<<<<<< HEAD
         "version": "256-wrap-page-meta-og-image-in-ref"
+=======
+        "version": "255-wrap-page-meta-og-image-in-ref"
+>>>>>>> upstream/master
       }
     },
     {
@@ -3711,7 +3719,11 @@
           }
         },
         "deps": [],
+<<<<<<< HEAD
         "version": "256-wrap-page-meta-og-image-in-ref"
+=======
+        "version": "255-wrap-page-meta-og-image-in-ref"
+>>>>>>> upstream/master
       }
     }
   ]

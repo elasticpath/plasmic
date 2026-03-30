@@ -183,6 +183,7 @@ export const SEARCH_PARAM_REVISION = "revision";
 export const SEARCH_PARAM_ARENA_TYPE = "arena_type";
 export const SEARCH_PARAM_ARENA = "arena";
 export const SEARCH_PARAM_COMMENT = "comment";
+export const SEARCH_PARAM_COPILOT_CHAT = "copilot_chat";
 export const SEARCH_PROMPT = "prompt";
 
 export interface ProjectLocationParams {
@@ -195,6 +196,7 @@ export interface ProjectLocationParams {
   arenaUuidOrNameOrPath: string | undefined;
   isPreview?: boolean;
   threadId?: string;
+  copilotChat?: boolean;
 }
 
 export function mkProjectLocation({
@@ -206,6 +208,7 @@ export function mkProjectLocation({
   arenaType,
   arenaUuidOrNameOrPath,
   threadId,
+  copilotChat,
 }: ProjectLocationParams): {
   pathname: string;
   search?: string;
@@ -228,6 +231,9 @@ export function mkProjectLocation({
   }
   if (threadId) {
     searchParams.push([SEARCH_PARAM_COMMENT, threadId]);
+  }
+  if (copilotChat) {
+    searchParams.push([SEARCH_PARAM_COPILOT_CHAT, "true"]);
   }
   const search =
     searchParams.length === 0 ? undefined : "?" + encodeUriParams(searchParams);

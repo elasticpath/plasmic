@@ -24,8 +24,6 @@ import { downloadBlob, getUploadedFile } from "@/wab/client/dom-utils";
 import { useAsyncStrict } from "@/wab/client/hooks/useAsyncStrict";
 import CheckIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__Check";
 import CircleCloseIcon from "@/wab/client/plasmic/plasmic_kit_design_system/icons/PlasmicIcon__CircleClose";
-import { stepsToCypress } from "@/wab/client/tours/tutorials/tutorials-helpers";
-import { STUDIO_ONBOARDING_TUTORIALS } from "@/wab/client/tours/tutorials/tutorials-meta";
 import { ApiFeatureTier, ApiProjectRevision } from "@/wab/shared/ApiSchema";
 import { assert, tryRemove } from "@/wab/shared/common";
 import { DEVFLAGS } from "@/wab/shared/devflags";
@@ -127,9 +125,6 @@ function AdminPageTabs() {
           label: "Development",
           children: (
             <div className="flex-col gap-xxxlg">
-              <CreateTutorialDb />
-              <ResetTutorialDb />
-              <TourCypressTest />
               <DownloadPkgForPkgMgr />
               <DownloadPlumePkg />
               <AdminImportProjectsFromProd />
@@ -683,11 +678,19 @@ function RevertProjectRev() {
       <p>Creates a new revision with data from a specific revision</p>
       <Form
         onFinish={async (event) => {
-          console.log(`Reverting ${event.projectId} to ${event.revision}`);
+          const revision = Number(event.revision);
+          console.log(`Reverting ${event.projectId} to ${revision}`);
+          if (!Number.isSafeInteger(revision)) {
+            notification.error({
+              message: `Invalid revision: ${event.revision}`,
+            });
+            return;
+          }
+
           try {
             await nonAuthCtx.api.revertProjectRevision(
               event.projectId,
-              event.revision
+              revision
             );
             notification.success({ message: "Successfully reverted!" });
           } catch (e) {
@@ -733,105 +736,6 @@ function ChangeProjectOwner() {
         </Form.Item>
         <Button htmlType="submit">Update</Button>
       </Form>
-    </div>
-  );
-}
-
-function CreateTutorialDb() {
-  const nonAuthCtx = useNonAuthCtx();
-  return (
-    <div>
-      <h2>Create a TutorialDB</h2>
-      <p>
-        Enter the name of the tutorialdb directory in src/wab/server/tutorialdb
-      </p>
-      <Form
-        onFinish={async (event) => {
-          try {
-            const type = event.type;
-            console.log("Creating tutorial db", type);
-            const result = await nonAuthCtx.api.createTutorialDb(type);
-            console.log("Created", result);
-            notification.success({
-              message: (
-                <div>
-                  <div>
-                    <strong>Tutorial DB created!</strong>
-                  </div>
-                  <div>TutorialDB ID: {result.id}</div>
-                </div>
-              ),
-              duration: 0,
-            });
-          } catch (e) {
-            notification.error({ message: `${e}` });
-          }
-        }}
-      >
-        <Form.Item name="type" label="Template">
-          <Input placeholder="northwind" />
-        </Form.Item>
-        <Form.Item>
-          <Button htmlType="submit">Create</Button>
-        </Form.Item>
-      </Form>
-    </div>
-  );
-}
-
-function ResetTutorialDb() {
-  const nonAuthCtx = useNonAuthCtx();
-  return (
-    <div>
-      <h2>Reset a TutorialDB</h2>
-      <Form
-        onFinish={async (event) => {
-          try {
-            const { sourceId } = event;
-            console.log("Resetting tutorial db", sourceId);
-            await nonAuthCtx.api.resetTutorialDb(sourceId);
-            notification.success({
-              message: (
-                <div>
-                  <div>
-                    <strong>Tutorial DB reset!</strong>
-                  </div>
-                </div>
-              ),
-              duration: 0,
-            });
-          } catch (e) {
-            notification.error({ message: `${e}` });
-          }
-        }}
-      >
-        <Form.Item name="sourceId" label="Data source ID">
-          <Input />
-        </Form.Item>
-        <Form.Item>
-          <Button htmlType="submit">Reset</Button>
-        </Form.Item>
-      </Form>
-    </div>
-  );
-}
-
-function TourCypressTest() {
-  return (
-    <div>
-      <h2> Get updated tour Cypress test</h2>
-      <Button
-        onClick={async () => {
-          const content = stepsToCypress(STUDIO_ONBOARDING_TUTORIALS.complete);
-          // move content to the clipboard
-          await navigator.clipboard.writeText(content);
-          notification.success({
-            message: "Copied to clipboard!",
-          });
-        }}
-      >
-        Generate
-      </Button>
     </div>
   );
 }

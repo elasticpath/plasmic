@@ -31,6 +31,8 @@ import { runWithRequestId } from "@/wab/server/observability/PinoLogger";
 import {
   DEFAULT_HISTOGRAM_BUCKETS,
   WabPromLiveRequestsGauge,
+  getTemplatedEndpointFromExpressRoutePath,
+  incHttpRequestCount,
   trackPostgresPool,
 } from "@/wab/server/promstats";
 import { createRateLimiter } from "@/wab/server/rate-limit";
@@ -215,9 +217,7 @@ import {
   deleteProject,
   fmtCode,
   genCode,
-  genIcons,
   genStyleConfig,
-  genStyleTokens,
   getFullProjectData,
   getLatestBundleVersion,
   getLatestPlumePkg,
@@ -327,9 +327,8 @@ const csrfFreeStaticRoutes = [
   "/api/v1/plume-pkg/versions",
   "/api/v1/localization/gen-texts",
   "/api/v1/hosting-hit",
-  "/api/v1/socket/",
-  "/api/v1/init-token/",
-  "/api/v1/promo-code/",
+  "/api/v1/socket",
+  "/api/v1/init-token",
 
   // csrf-free routes to the socket server routes, if socket server
   // is not running and the routes are mounted on this server
@@ -342,15 +341,14 @@ const isCsrfFreeRoute = (pathname: string, config: Config) => {
   return (
     csrfFreeStaticRoutes.includes(pathname) ||
     pathname.includes("/api/v1/clip/") ||
-    pathname.includes("/code/") ||
-    pathname.includes("/api/v1/loader/code") ||
-    pathname.includes("/api/v1/loader/chunks") ||
-    pathname.includes("/jsbundle") ||
+    pathname.includes("/api/v1/code/") ||
     pathname.includes("/api/v1/loader/") ||
+    pathname.includes("/api/v1/promo-code/") ||
     pathname.includes("/api/v1/server-data/") ||
     pathname.includes("/api/v1/wl/") ||
     pathname.includes("/api/v1/cms/") ||
     pathname.match("/api/v1/projects/[^/]+$") ||
+    pathname.match("/api/v1/projects/[^/]+/code/") ||
     pathname.match("/api/v1/auth/sso/.*/consume") ||
     pathname.includes("/api/v1/app-auth/user") ||
     pathname.includes("/api/v1/app-auth/userinfo") ||
@@ -450,6 +448,10 @@ export function addLoggingMiddleware(app: express.Application) {
     const start = Date.now();
     res.on("finish", () => {
       const duration = Date.now() - start;
+      incHttpRequestCount({
+        endpoint: getTemplatedEndpointFromExpressRoutePath(req.route?.path),
+        responseCode: res.statusCode,
+      });
       logger().info(
         `${req.method} ${req.originalUrl} ${res.statusCode} (${duration}ms)`,
         {
@@ -1058,16 +1060,6 @@ export function addCodegenOnlyRoutes(app: express.Application) {
     "/api/v1/projects/:projectId/code/components",
     apiAuth,
     withNext(genCode)
-  );
-  app.post(
-    "/api/v1/projects/:projectId/code/tokens",
-    apiAuth,
-    withNext(genStyleTokens)
-  );
-  app.post(
-    "/api/v1/projects/:projectId/code/icons",
-    apiAuth,
-    withNext(genIcons)
   );
   app.post(
     "/api/v1/projects/:projectId/code/meta",
@@ -2128,7 +2120,19 @@ export function makeExpressSessionMiddleware(config: Config) {
     // https, so that we can set secure cookies above.
     proxy: true,
     resave: false,
-    saveUninitialized: true,
+    // saveUninitialized (true by default) forces new session
+    // creation and sends Set-Cookie response header, even if the
+    // session was not modified.
+    // We set saveUninitialized: false to avoid:
+    //  1) creating unnecessary sessions
+    //  2) sending Set-Cookie response header, which makes responses
+    //     uncacheable for some CDNs
+    // The above is mainly relevant for API endpoints that originate
+    // from our CLI or SDKs, where CSRF protection is disabled.
+    // Normal web app usage is unaffected (a new session will be
+    // created on the first visit), since lusca.csrf will immediately
+    // set a CSRF token in the session.
+    saveUninitialized: false,
     secret: config.sessionSecret,
     store: new TypeormStore({
       // Don't clean up expired sessions for now till we figure out

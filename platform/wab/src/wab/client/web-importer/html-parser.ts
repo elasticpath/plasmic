@@ -1,4 +1,5 @@
 import { ALL_CONTAINER_TAGS } from "@/wab/client/components/sidebar-tabs/HTMLAttributesSection";
+import { parseComponent } from "@/wab/client/web-importer/component";
 import {
   BASE_VARIANT,
   ignoredStyles,
@@ -17,6 +18,7 @@ import {
   WIAnimationSequence,
   WIContainer,
   WIElement,
+  WIFragment,
   WIKeyFrame,
   WIRule,
   WISafeStyles,
@@ -454,8 +456,7 @@ function parseContextToVariantCombo(context: string): WIVariant[] {
 
 function getVariantSettingsForNode(
   node: Node,
-  defaultStyles: CSSStyleDeclaration,
-  site: Site
+  defaultStyles: CSSStyleDeclaration
 ): WIVariantSettings[] {
   ensure(getInternalId(node), "Expected node to have wiID");
 
@@ -626,11 +627,7 @@ function isLikelyEmptyContainer(containerNode: WIContainer) {
   );
 }
 
-function getElementsWITree(
-  node: Node,
-  defaultStyles: CSSStyleDeclaration,
-  site: Site
-) {
+function getElementsWITree(node: Node, defaultStyles: CSSStyleDeclaration) {
   function rec(elt: Node): WIElement | null {
     if (elt.nodeType === Node.TEXT_NODE) {
       const text = (elt.textContent ?? "").trim();
@@ -665,11 +662,7 @@ function getElementsWITree(
       return null;
     }
 
-    const allVariantSettings = getVariantSettingsForNode(
-      elt,
-      defaultStyles,
-      site
-    );
+    const allVariantSettings = getVariantSettingsForNode(elt, defaultStyles);
 
     if ((elt as any).__wi_component) {
       return {
@@ -677,7 +670,13 @@ function getElementsWITree(
         tag,
         component: (elt as any).__wi_component,
         variantSettings: allVariantSettings,
+        props: {},
+        slots: {},
       };
+    }
+
+    if (elt instanceof HTMLElement && tag === "plasmic-component") {
+      return parseComponent(elt, allVariantSettings, rec);
     }
 
     if (tag === "svg") {
@@ -967,10 +966,7 @@ export async function parseHtmlToWebImporterTree(
           // already traversed inside processMediaRule
         } else if (node.name === "font-face") {
           processFontFaceRule(node);
-        } else if (
-          node.name === "keyframes" ||
-          node.name === "-webkit-keyframes"
-        ) {
+        } else if (node.name === "keyframes") {
           const animationSequence = processKeyframesRule(node);
           if (animationSequence) {
             animationSequences.push(animationSequence);
@@ -987,7 +983,19 @@ export async function parseHtmlToWebImporterTree(
   const element = document.createElement("div");
   document.body.appendChild(element);
   const defaultStyles = window.getComputedStyle(element);
-  const wiTree = getElementsWITree(root, defaultStyles, site);
+  const wiTree = getElementsWITree(root, defaultStyles);
+
+  // DOMParser always produces a <body> element, even when the input HTML has
+  // no explicit <body> tag. Wrap children in a WIFragment so WebImporter
+  // pastes them directly rather than including the synthetic body wrapper.
+  const hasExplicitBody = htmlString.toLowerCase().includes("<body");
+  if (!hasExplicitBody && wiTree?.type === "container") {
+    const wiFragmentRoot: WIFragment = {
+      type: "fragment",
+      children: wiTree.children,
+    };
+    return { wiTree: wiFragmentRoot, fontDefinitions, animationSequences };
+  }
 
   return { wiTree, fontDefinitions, animationSequences };
 }

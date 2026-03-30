@@ -7,7 +7,7 @@
 /// <reference types="react" />
 
 import { AssetModule } from '@plasmicapp/loader-core';
-import type { CodeComponentMeta as CodeComponentMeta_2 } from '@plasmicapp/host';
+import type { CodeComponentMeta as CodeComponentMeta_2 } from '@plasmicapp/host/registerComponent';
 import { CodeModule } from '@plasmicapp/loader-fetcher';
 import type { ComponentHelpers } from '@plasmicapp/host';
 import { ComponentMeta } from '@plasmicapp/loader-core';
@@ -41,6 +41,7 @@ import { react } from 'react';
 import * as React_2 from 'react';
 import { default as React_3 } from 'react';
 import { reactDom } from 'react-dom';
+import ReactDOMClient from 'react-dom/client';
 import { reactJsxDevRuntime } from 'react/jsx-dev-runtime';
 import { reactJsxRuntime } from 'react/jsx-runtime';
 import { Registry } from '@plasmicapp/loader-core';
@@ -49,7 +50,6 @@ import { Split } from '@plasmicapp/loader-fetcher';
 import type { StateHelpers } from '@plasmicapp/host';
 import type { StateSpec } from '@plasmicapp/host';
 import { TokenRegistration } from '@plasmicapp/host';
-import { TrackRenderOptions } from '@plasmicapp/loader-core';
 import { TraitMeta } from '@plasmicapp/host';
 import { useDataEnv } from '@plasmicapp/host';
 import type { useMutablePlasmicQueryData } from '@plasmicapp/query';
@@ -102,7 +102,7 @@ export { DataProvider }
 // @public
 export function extractPlasmicQueryData(element: React.ReactElement): Promise<Record<string, any>>;
 
-// @public (undocumented)
+// @public
 export function extractPlasmicQueryDataFromElement(loader: PlasmicComponentLoader, lookup: ComponentLookupSpec, opts?: {
     prefetchedData?: ComponentRenderData;
     componentProps?: any;
@@ -134,28 +134,27 @@ export interface GlobalVariantSpec {
     value: any;
 }
 
-// @public (undocumented)
+// @public
 export function hydrateFromElement(loader: PlasmicComponentLoader, target: HTMLElement, lookup: ComponentLookupSpec, opts?: {
     prefetchedData?: ComponentRenderData;
     componentProps?: any;
     globalVariants?: GlobalVariantSpec[];
     prefetchedQueryData?: Record<string, any>;
-}): Promise<void>;
+}): ReactDOMClient.Root;
 
 // @public (undocumented)
 export interface InitOptions {
     alwaysFresh?: boolean;
+    apiHost?: string;
     // (undocumented)
     cache?: LoaderBundleCache;
-    // (undocumented)
+    cdnHost?: string;
     host?: string;
     // (undocumented)
     i18n?: {
         keyScheme: "content" | "hash" | "path";
         tagPrefix?: string;
     };
-    // @deprecated (undocumented)
-    i18nKeyScheme?: "content" | "hash";
     manualRedirect?: boolean;
     nativeFetch?: boolean;
     // (undocumented)
@@ -248,14 +247,13 @@ export class PlasmicComponentLoader {
     // (undocumented)
     getChunksUrl(bundle: LoaderBundleOutput, modules: CodeModule[]): string;
     // (undocumented)
-    getExecFuncModule(renderData: ComponentRenderData, fileNameKey: "serverQueriesExecFuncFileName" | "generateMetadataFuncFileName"): any;
+    getExecFuncModule(renderData: ComponentRenderData, fileNameKey: "serverQueriesExecFuncFileName"): any;
     // (undocumented)
     getExternalVariation(variation: Record<string, string>, filters?: Parameters<typeof getExternalIds>[2]): Record<string, string>;
     maybeFetchComponentData(...specs: ComponentLookupSpec[]): Promise<ComponentRenderData | null>;
     // (undocumented)
     maybeFetchComponentData(specs: ComponentLookupSpec[], opts?: FetchComponentDataOpts): Promise<ComponentRenderData | null>;
     registerComponent<T extends React.ComponentType<any>>(component: T, meta: CodeComponentMeta<React.ComponentProps<T>>): void;
-    registerComponent<T extends React.ComponentType<any>>(component: T, name: ComponentLookupSpec): void;
     // (undocumented)
     registerFunction<F extends (...args: any[]) => any>(fn: F, meta: CustomFunctionMeta<F>): void;
     // (undocumented)
@@ -269,8 +267,6 @@ export class PlasmicComponentLoader {
     setGlobalVariants(globalVariants: GlobalVariantSpec[]): void;
     substituteComponent<P>(component: React.ComponentType<P>, name: ComponentLookupSpec): void;
     // (undocumented)
-    trackConversion(value?: number): void;
-    // (undocumented)
     unstable__generateMetadata(renderData: ComponentRenderData, props: {
         params: Promise<ParamsRecord> | ParamsRecord;
         query: Promise<ParamsRecord> | ParamsRecord;
@@ -278,9 +274,6 @@ export class PlasmicComponentLoader {
     // (undocumented)
     unstable__getServerQueriesData(renderData: ComponentRenderData, $ctx: Record<string, any>): Promise<any>;
 }
-
-// @public @deprecated (undocumented)
-export function plasmicPrepass(element: React.ReactElement): Promise<void>;
 
 // @public
 export function PlasmicRootProvider(props: {
@@ -317,7 +310,7 @@ export { PlasmicTranslatorContext }
 
 export { PropType }
 
-// @public (undocumented)
+// @public
 export function renderToElement(loader: PlasmicComponentLoader, target: HTMLElement, lookup: ComponentLookupSpec, opts?: {
     prefetchedData?: ComponentRenderData;
     componentProps?: any;
@@ -325,9 +318,9 @@ export function renderToElement(loader: PlasmicComponentLoader, target: HTMLElem
     prefetchedQueryData?: Record<string, any>;
     pageParams?: Record<string, any>;
     pageQuery?: Record<string, any>;
-}): Promise<void>;
+}): ReactDOMClient.Root;
 
-// @public (undocumented)
+// @public
 export function renderToString(loader: PlasmicComponentLoader, lookup: ComponentLookupSpec, opts?: {
     prefetchedData?: ComponentRenderData;
     componentProps?: any;

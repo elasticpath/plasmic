@@ -239,7 +239,6 @@ export interface SiteInfo {
   latestRevisionSynced: number;
   hasAppAuth: boolean;
   appAuthProvider?: AppAuthProvider;
-  workspaceTutorialDbs?: ApiDataSource[];
   readableByPublic: boolean;
   isMainBranchProtected: boolean;
   revisions: ProjectRevision[];
@@ -314,7 +313,7 @@ export abstract class SharedApi {
   async get(url: string, data?: {}, extraHeaders?: {}) {
     return this.req("get", url, data, {
       headers: {
-        ...this._headers(),
+        ...this.headers(),
         ...(extraHeaders ?? {}),
       },
     });
@@ -333,7 +332,7 @@ export abstract class SharedApi {
       data,
       {
         headers: {
-          ...this._headers(),
+          ...this.headers(),
           ...(extraHeaders ?? {}),
         },
       },
@@ -354,7 +353,7 @@ export abstract class SharedApi {
       data,
       {
         headers: {
-          ...this._headers(),
+          ...this.headers(),
           ...(extraHeaders ?? {}),
         },
       },
@@ -365,7 +364,7 @@ export abstract class SharedApi {
   async delete(url: string, data?: {}, extraHeaders?: {}) {
     return this.req("delete", url, data, {
       headers: {
-        ...this._headers(),
+        ...this.headers(),
         ...(extraHeaders ?? {}),
       },
     });
@@ -832,7 +831,7 @@ export abstract class SharedApi {
 
   protected _csrf?: string;
 
-  protected _headers(): { [key: string]: string } {
+  headers(): { [key: string]: string } {
     if (this.expectFailure) {
       return {
         "x-expect-failure": "true",

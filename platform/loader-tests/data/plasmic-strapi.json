@@ -828,7 +828,11 @@
         }
       },
       "deps": [],
+<<<<<<< HEAD
       "version": "256-wrap-page-meta-og-image-in-ref"
+=======
+      "version": "255-wrap-page-meta-og-image-in-ref"
+>>>>>>> upstream/master
     }
   ],
   [
@@ -2711,7 +2715,11 @@
           "__type": "RenderExpr"
         },
         "oixxEGa32ufM": {
+<<<<<<< HEAD
           "code": "\"restaurants\"",
+=======
+          "code": "\"restaurants-v5\"",
+>>>>>>> upstream/master
           "fallback": null,
           "__type": "CustomCode"
         },
@@ -2720,7 +2728,11 @@
           "__type": "RenderExpr"
         },
         "KfknGlUnYtRJ": {
+<<<<<<< HEAD
           "code": "\"restaurants\"",
+=======
+          "code": "\"restaurants-v5\"",
+>>>>>>> upstream/master
           "fallback": null,
           "__type": "CustomCode"
         },
@@ -3014,7 +3026,11 @@
           "__type": "CustomCode"
         },
         "G2IBYX9ovc-2": {
+<<<<<<< HEAD
           "code": "($ctx.currentStrapiRestaurantsItem.photo.url)",
+=======
+          "code": "($ctx.currentStrapiRestaurantsV5Item.photo.url)",
+>>>>>>> upstream/master
           "fallback": { "__ref": "2B_nldW8JQ4q" },
           "__type": "CustomCode"
         },
@@ -3029,7 +3045,11 @@
           "__type": "ExprText"
         },
         "c_UYtKOh5mww": {
+<<<<<<< HEAD
           "code": "($ctx.currentStrapiRestaurantsItem.name)",
+=======
+          "code": "($ctx.currentStrapiRestaurantsV5Item.name)",
+>>>>>>> upstream/master
           "fallback": { "__ref": "Cb2lptcl-Tmx" },
           "__type": "CustomCode"
         },
@@ -3039,12 +3059,20 @@
           "__type": "CustomCode"
         },
         "hbajE3dAzxne": {
+<<<<<<< HEAD
           "text": ["https://plasmic-loader-test.test"],
+=======
+          "text": ["<REPLACE_WITH_STRAPI_URL>"],
+>>>>>>> upstream/master
           "__type": "TemplatedString"
         }
       },
       "deps": ["6acc467a-ae43-4b00-9fe2-d90e71958278"],
+<<<<<<< HEAD
       "version": "256-wrap-page-meta-og-image-in-ref"
+=======
+      "version": "255-wrap-page-meta-og-image-in-ref"
+>>>>>>> upstream/master
     }
   ]
 ]
