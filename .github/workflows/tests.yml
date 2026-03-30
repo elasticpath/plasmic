@@ -155,10 +155,11 @@ jobs:
           NODE_OPTIONS: '--max-old-space-size=4096 --experimental-vm-modules'
         run: yarn jest --testPathPattern='packages/' --testPathIgnorePatterns='packages/data-sources/src/serverQueries' --passWithNoTests
 
-      - name: Run SDK packages Vitest tests
+      - name: Run SDK packages Vitest tests (data-sources)
         env:
           CI: true
-        run: npx vitest run packages/data-sources --passWithNoTests
+        working-directory: packages/data-sources
+        run: yarn test
 
       - name: Test Summary
         if: always()
