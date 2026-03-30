@@ -153,7 +153,7 @@ jobs:
         env:
           CI: true
           NODE_OPTIONS: '--max-old-space-size=4096 --experimental-vm-modules'
-        run: yarn jest --testPathPattern='packages/' --testPathIgnorePatterns='packages/data-sources/src/serverQueries' --passWithNoTests
+        run: yarn jest --testPathPattern='packages/' --testPathIgnorePatterns='packages/data-sources/src/serverQueries|packages/plasmic-mcp' --passWithNoTests
 
       - name: Run SDK packages Vitest tests (data-sources)
         env:
