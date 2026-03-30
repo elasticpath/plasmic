@@ -17,3 +17,15 @@ export function extractComponent(opts: any): any {
 export function isReusableComponent(c: any): boolean {
   return mockIsReusableComponent(c);
 }
+
+export function isCodeComponent(_c: any): boolean {
+  return false;
+}
+
+export function isPageComponent(_c: any): boolean {
+  return false;
+}
+
+export function allComponentVariants(_c: any): any[] {
+  return [];
+}

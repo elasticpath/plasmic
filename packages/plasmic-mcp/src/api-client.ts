@@ -311,10 +311,10 @@ export class PlasmicApiClient {
     }
   }
 
-  /** MCP-only — fetches full project bundle by ID */
-  async getProjectBundle(projectId: string): Promise<ProjectBundleResponse> {
+  /** MCP-only — fetches full project bundle by ID (optionally on a branch) */
+  async getProjectBundle(projectId: string, branchId?: string): Promise<ProjectBundleResponse> {
     return this.get(
-      `/projects/${encodeURIComponent(projectId)}`
+      `/projects/${this.showProjectBranchId(projectId, branchId)}`
     ) as Promise<ProjectBundleResponse>;
   }
 
@@ -349,10 +349,11 @@ export class PlasmicApiClient {
   async saveRevision(
     projectId: string,
     revisionNum: number,
-    body: SaveRevisionReq
+    body: SaveRevisionReq,
+    branchId?: string
   ): Promise<unknown> {
     return this.post(
-      `/projects/${encodeURIComponent(projectId)}/revisions/${revisionNum}`,
+      `/projects/${this.showProjectBranchId(projectId, branchId)}/revisions/${revisionNum}`,
       body as unknown as Record<string, unknown>
     );
   }
@@ -473,12 +474,17 @@ export class PlasmicApiClient {
   // Comments — mirrors Studio's comment methods
   // ---------------------------------------------------------------------------
 
-  private projectBranchId(projectId: string, branchId?: string): string {
-    return branchId ? `${projectId}:${branchId}` : projectId;
+  /**
+   * Encode projectId[@branchId] for URL paths, matching Studio's
+   * showProjectBranchId() from ApiSchemaUtil.ts:79-83.
+   */
+  private showProjectBranchId(projectId: string, branchId?: string): string {
+    const pid = encodeURIComponent(projectId);
+    return branchId ? `${pid}@${encodeURIComponent(branchId)}` : pid;
   }
 
   async getComments(projectId: string, branchId?: string): Promise<any> {
-    return this.get(`/comments/${this.projectBranchId(projectId, branchId)}`);
+    return this.get(`/comments/${this.showProjectBranchId(projectId, branchId)}`);
   }
 
   async postRootComment(
@@ -486,7 +492,7 @@ export class PlasmicApiClient {
     branchId: string | undefined,
     data: Record<string, unknown>
   ): Promise<any> {
-    return this.post(`/comments/${this.projectBranchId(projectId, branchId)}`, data);
+    return this.post(`/comments/${this.showProjectBranchId(projectId, branchId)}`, data);
   }
 
   async postThreadComment(
@@ -496,7 +502,7 @@ export class PlasmicApiClient {
     data: Record<string, unknown>
   ): Promise<any> {
     return this.post(
-      `/comments/${this.projectBranchId(projectId, branchId)}/thread/${encodeURIComponent(threadId)}`,
+      `/comments/${this.showProjectBranchId(projectId, branchId)}/thread/${encodeURIComponent(threadId)}`,
       data
     );
   }
@@ -508,7 +514,7 @@ export class PlasmicApiClient {
     data: { body: string }
   ): Promise<any> {
     return this.put(
-      `/comments/${this.projectBranchId(projectId, branchId)}/comment/${encodeURIComponent(commentId)}`,
+      `/comments/${this.showProjectBranchId(projectId, branchId)}/comment/${encodeURIComponent(commentId)}`,
       data
     );
   }
@@ -519,7 +525,7 @@ export class PlasmicApiClient {
     commentId: string
   ): Promise<any> {
     return this.del(
-      `/comments/${this.projectBranchId(projectId, branchId)}/comment/${encodeURIComponent(commentId)}`
+      `/comments/${this.showProjectBranchId(projectId, branchId)}/comment/${encodeURIComponent(commentId)}`
     );
   }
 
@@ -530,7 +536,7 @@ export class PlasmicApiClient {
     data: { id: string; resolved: boolean }
   ): Promise<any> {
     return this.put(
-      `/comments/${this.projectBranchId(projectId, branchId)}/thread/${encodeURIComponent(threadId)}`,
+      `/comments/${this.showProjectBranchId(projectId, branchId)}/thread/${encodeURIComponent(threadId)}`,
       data
     );
   }
@@ -542,7 +548,7 @@ export class PlasmicApiClient {
     data: { id: string; data: { emojiName: string } }
   ): Promise<any> {
     return this.post(
-      `/comments/${this.projectBranchId(projectId, branchId)}/comment/${encodeURIComponent(commentId)}/reactions`,
+      `/comments/${this.showProjectBranchId(projectId, branchId)}/comment/${encodeURIComponent(commentId)}/reactions`,
       data
     );
   }
@@ -553,7 +559,7 @@ export class PlasmicApiClient {
     reactionId: string
   ): Promise<any> {
     return this.del(
-      `/comments/${this.projectBranchId(projectId, branchId)}/reactions/${encodeURIComponent(reactionId)}`
+      `/comments/${this.showProjectBranchId(projectId, branchId)}/reactions/${encodeURIComponent(reactionId)}`
     );
   }
 }

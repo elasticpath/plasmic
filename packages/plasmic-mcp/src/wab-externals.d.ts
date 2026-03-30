@@ -60,8 +60,20 @@ declare module "@/wab/shared/core/tpls" {
   export function flattenTpls(tplRoot: any): any[];
   export function clone(node: any): any;
   export function isTplTag(x: any): boolean;
+  export function isTplSlot(x: any): boolean;
+  export function isTplComponent(x: any): boolean;
+  export function isTplContainer(x: any): boolean;
+  export function isTplTagOrComponent(x: any): boolean;
+  export function isTplVariantable(x: any): boolean;
+  export function isGrid(x: any): boolean;
+  export function isComponentRoot(x: any): boolean;
+  export function isTplColumns(x: any): boolean;
+  export function findVariantSettingsUnderTpl(tpl: any): any[];
+  export function getTplOwnerComponent(tpl: any): any;
+  export function tryGetOwnerSite(comp: any): any | undefined;
   export function trackComponentRoot(comp: any): void;
   export function trackComponentSite(comp: any, site: any): void;
+  export function buildParamToComponent(components: any[]): Map<any, any>;
 }
 
 // ---------------------------------------------------------------------------
@@ -83,6 +95,7 @@ declare module "@/wab/shared/model/classes" {
   export function isKnownExprText(obj: any): boolean;
   export function isKnownCustomCode(obj: any): boolean;
   export function isKnownRenderExpr(obj: any): boolean;
+  export function isKnownVirtualRenderExpr(obj: any): boolean;
   export function isKnownVarRef(obj: any): boolean;
   export function isKnownObjectPath(obj: any): boolean;
   export function isKnownImageAsset(obj: any): boolean;
@@ -692,6 +705,9 @@ declare module "@/wab/shared/TplMgr" {
       fillMode?: string,
       playState?: string
     ): any;
+    ensureSubtreeCorrectlyNamed(component: any, tree: any): void;
+    filterAllNodes(pred: (node: any) => boolean): any[];
+    getComponents(): any[];
   }
 
   export function getTplComponentArg(tpl: any, vs: any, argVar: any): any;
@@ -711,6 +727,9 @@ declare module "@/wab/shared/core/undo-util" {
 declare module "@/wab/shared/core/components" {
   export function extractComponent(opts: any): any;
   export function isReusableComponent(component: any): boolean;
+  export function isCodeComponent(component: any): boolean;
+  export function isPageComponent(component: any): boolean;
+  export function allComponentVariants(component: any): any[];
 }
 
 // ---------------------------------------------------------------------------
@@ -759,6 +778,8 @@ declare module "@/wab/shared/core/sites" {
   export function getNonTransitiveDepDefaultComponents(
     site: any
   ): Record<string, any>;
+  export function isTplAttachedToSite(site: any, tpl: any): boolean;
+  export function getAllSiteFrames(site: any): any[];
 }
 
 // ---------------------------------------------------------------------------
@@ -896,6 +917,7 @@ declare module "@/wab/shared/collections" {
 
 declare module "@/wab/shared/common" {
   export function xDifference<T>(a: Iterable<T>, b: Iterable<T>): Set<T>;
+  export function notNil<T>(x: T | null | undefined): x is T;
 }
 
 // ---------------------------------------------------------------------------
@@ -921,7 +943,9 @@ declare module "@/wab/shared/TplQuery" {
     param(paramName: string): any;
     setSlotArg(argName: string, expr: any): TplQuery;
     getSlotArg(argName: string): any | undefined;
+    getSlotArgForParam(param: any): any | undefined;
     tryGetOwningComponent(): any | undefined;
+    filterDescendants(pred: (node: any) => boolean): any[];
     owningComponent(): any;
     parents(): TplQuery;
     children(): TplQuery;
@@ -932,6 +956,67 @@ declare module "@/wab/shared/TplQuery" {
 // ---------------------------------------------------------------------------
 // @/wab/shared/core/style-props
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// @/wab/shared/model/model-change-util — ChangeSummary + summarizeChanges
+// ---------------------------------------------------------------------------
+declare module "@/wab/shared/model/model-change-util" {
+  import type { RecordedChanges } from "@/wab/shared/core/observable-model";
+  export interface ChangeSummary {
+    newTrees: Set<any>;
+    updatedNodes: Set<any>;
+    updatedComponents: Set<any>;
+    deepUpdatedComponents: Set<any>;
+    updatedRuleSets: Map<any, any>;
+    changesType: any;
+    styleForcesEval: boolean;
+    tokenOrMixinChangeType: any;
+    deletedVariantSettings: Map<any, any>;
+    regenMixins: Map<any, any>;
+    rulesReorderedComponents: Set<any>;
+    updatedDeps: Set<any>;
+    deletedDeps: Set<any>;
+    changes: any[];
+  }
+  export function summarizeChanges(studioCtx: any, recordedData: RecordedChanges): ChangeSummary;
+}
+
+// ---------------------------------------------------------------------------
+// @/wab/shared/Grids — grid child CSS adjustments
+// ---------------------------------------------------------------------------
+declare module "@/wab/shared/Grids" {
+  export function adjustAllGridChildren(tpl: any): void;
+  export function removeAllGridChildProps(tpl: any): void;
+}
+
+// ---------------------------------------------------------------------------
+// @/wab/shared/SlotUtils — virtual slot arg management
+// ---------------------------------------------------------------------------
+declare module "@/wab/shared/SlotUtils" {
+  export function fillVirtualSlotContents(tplMgr: any, tplComp: any, slots?: any[]): void;
+  export function findParentArgs(node: any): Array<{ arg: any }>;
+  export function findParentSlot(node: any): any | undefined;
+  export function isDefaultSlotArg(arg: any): boolean;
+}
+
+// ---------------------------------------------------------------------------
+// @/wab/shared/core/rich-text-util
+// ---------------------------------------------------------------------------
+declare module "@/wab/shared/core/rich-text-util" {
+  export function isTagListContainer(tag: string): boolean;
+}
+
+// ---------------------------------------------------------------------------
+// @/wab/shared/cached-selectors
+// ---------------------------------------------------------------------------
+declare module "@/wab/shared/cached-selectors" {
+  export function componentToTplComponents(...args: any[]): any;
+  export function componentsReferencingDataToken(...args: any[]): any;
+  export function deepComponentToReferencers(...args: any[]): any;
+  export function extractComponentVariantSettings(...args: any[]): any;
+  export function extractImageAssetRefsByAttrs(...args: any[]): any;
+  export function getActiveVariantsForFrame(...args: any[]): any;
+}
+
 declare module "@/wab/shared/core/style-props" {
   export const GAP_PROPS: string[];
   export const FLEX_CONTAINER_PROPS: string[];

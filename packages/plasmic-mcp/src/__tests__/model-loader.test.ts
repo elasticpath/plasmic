@@ -76,7 +76,7 @@ describe("loadProject", () => {
 
     const result = await loadProject(mockApiClient, "proj1");
 
-    expect(mockGetProjectBundle).toHaveBeenCalledWith("proj1");
+    expect(mockGetProjectBundle).toHaveBeenCalledWith("proj1", undefined);
     expect(result.site).toBe(mockSite);
     expect(result.projectName).toBe("Test Project");
     expect(result.bundler).toBeDefined();

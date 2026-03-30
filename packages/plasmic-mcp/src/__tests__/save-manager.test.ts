@@ -111,7 +111,8 @@ describe("SaveManager", () => {
           hostlessDataVersion: 2,
           toDeleteIids: [],
           modifiedComponentIids: [],
-        })
+        }),
+        undefined
       );
 
       expect(result.revisionNum).toBe(11);
@@ -149,7 +150,8 @@ describe("SaveManager", () => {
         11,
         expect.objectContaining({
           toDeleteIids: ["iid-42"],
-        })
+        }),
+        undefined
       );
     });
 
@@ -166,7 +168,8 @@ describe("SaveManager", () => {
         11,
         expect.objectContaining({
           modifiedComponentIids: ["comp-iid-1", "comp-iid-2"],
-        })
+        }),
+        undefined
       );
     });
 
@@ -186,7 +189,8 @@ describe("SaveManager", () => {
         11,
         expect.objectContaining({
           data: JSON.stringify(mockBundle),
-        })
+        }),
+        undefined
       );
     });
 
@@ -298,7 +302,8 @@ describe("SaveManager", () => {
           incremental: false,
           toDeleteIids: [],
           modifiedComponentIids: [],
-        })
+        }),
+        undefined
       );
       expect(result.incremental).toBe(false);
     });

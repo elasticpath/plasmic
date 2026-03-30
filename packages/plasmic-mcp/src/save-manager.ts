@@ -110,7 +110,7 @@ export class SaveManager {
         toDeleteIids,
         modifiedComponentIids: modifiedComponentIids ?? [],
         modelSchemaHash,
-      });
+      }, session.activeBranchId ?? undefined);
 
       // Update session revision on success and clear rebase changes
       session.revisionNum = newRevisionNum;
@@ -238,7 +238,7 @@ export class SaveManager {
         toDeleteIids: [],
         modifiedComponentIids: [],
         modelSchemaHash,
-      });
+      }, session.activeBranchId ?? undefined);
 
       session.revisionNum = newRevisionNum;
       session.pendingRebaseChanges = undefined;

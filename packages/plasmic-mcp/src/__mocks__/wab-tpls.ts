@@ -122,3 +122,41 @@ export function trackComponentRoot(comp: any): void {
 export function trackComponentSite(comp: any, site: any): void {
   mockTrackComponentSite(comp, site);
 }
+
+// Fixup pipeline predicates
+export function isTplSlot(x: any): boolean {
+  return x?._type === "TplSlot";
+}
+export function isTplComponent(x: any): boolean {
+  return x?._type === "TplComponent";
+}
+export function isTplContainer(x: any): boolean {
+  return x?._type === "TplTag" && !x?.type;
+}
+export function isTplTagOrComponent(x: any): boolean {
+  return isTplTag(x) || isTplComponent(x);
+}
+export function isTplVariantable(x: any): boolean {
+  return isTplTag(x) || isTplComponent(x) || isTplSlot(x);
+}
+export function isGrid(_x: any): boolean {
+  return false;
+}
+export function isComponentRoot(_x: any): boolean {
+  return false;
+}
+export function isTplColumns(_x: any): boolean {
+  return false;
+}
+export function findVariantSettingsUnderTpl(_tpl: any): any[] {
+  return [];
+}
+export function getTplOwnerComponent(_tpl: any): any {
+  return undefined;
+}
+export function tryGetOwnerSite(_comp: any): any | undefined {
+  return undefined;
+}
+export function buildParamToComponent(_components: any[]): Map<any, any> {
+  return new Map();
+}

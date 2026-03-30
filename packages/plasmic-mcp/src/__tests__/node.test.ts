@@ -1321,7 +1321,8 @@ describe("edit-tools", () => {
         11,
         expect.objectContaining({
           modifiedComponentIids: ["comp-iid-42"],
-        })
+        }),
+        undefined // no active branch
       );
     });
 

@@ -43,6 +43,8 @@ export interface RebaseContext {
   bundler: any;
   /** The project ID (UUID). */
   projectId: string;
+  /** Active branch ID (undefined = main branch). */
+  branchId?: string;
   /** Current session revision number. */
   revisionNum: number;
   /** The ChangeRecorder (IChangeRecorder) from ChangeTracker. */
@@ -88,7 +90,8 @@ export async function fetchAndRebase(
   const updatedModel = await apiClient.getModelUpdates(
     ctx.projectId,
     ctx.revisionNum,
-    ctx.bundler.allUuids()
+    ctx.bundler.allUuids(),
+    ctx.branchId
   );
 
   return applyServerUpdate(updatedModel, ctx);

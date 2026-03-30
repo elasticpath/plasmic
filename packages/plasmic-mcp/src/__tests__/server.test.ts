@@ -660,7 +660,7 @@ describe("tool handlers", () => {
       // Verify wiring: dispose old tracker → clear cache → load → set session → init tracker
       expect(mockDisposeChangeTracker).toHaveBeenCalled();
       expect(mockClearNodeCache).toHaveBeenCalled();
-      expect(mockLoadProject).toHaveBeenCalledWith(mockApiClient, "proj-123");
+      expect(mockLoadProject).toHaveBeenCalledWith(mockApiClient, "proj-123", undefined);
       expect(mockSetSession).toHaveBeenCalledWith(
         expect.objectContaining({
           projectId: "proj-123",
@@ -1923,7 +1923,7 @@ describe("tool handlers", () => {
       // Verify model reload sequence includes cache clear
       expect(mockDisposeChangeTracker).toHaveBeenCalled();
       expect(mockClearNodeCache).toHaveBeenCalled();
-      expect(mockLoadProject).toHaveBeenCalledWith(mockApiClient, "proj-123");
+      expect(mockLoadProject).toHaveBeenCalledWith(mockApiClient, "proj-123", undefined);
       expect(mockSetSession).toHaveBeenCalled();
       expect(mockInitChangeTracker).toHaveBeenCalledWith(newSite);
     });
@@ -2078,7 +2078,7 @@ describe("tool handlers", () => {
       // Verify model reload
       expect(mockDisposeChangeTracker).toHaveBeenCalled();
       expect(mockClearNodeCache).toHaveBeenCalled();
-      expect(mockLoadProject).toHaveBeenCalledWith(mockApiClient, "proj-123");
+      expect(mockLoadProject).toHaveBeenCalledWith(mockApiClient, "proj-123", undefined);
       expect(mockSetSession).toHaveBeenCalled();
       expect(mockInitChangeTracker).toHaveBeenCalledWith(newSite);
     });
@@ -4741,7 +4741,7 @@ describe("tool handlers", () => {
       expect(mockClearUndoStack).toHaveBeenCalled();
       expect(mockClearNodeCache).toHaveBeenCalled();
       expect(mockClearRegistryCache).toHaveBeenCalled();
-      expect(mockLoadProject).toHaveBeenCalledWith(mockApiClient, "proj-123");
+      expect(mockLoadProject).toHaveBeenCalledWith(mockApiClient, "proj-123", undefined);
       expect(mockSetSession).toHaveBeenCalled();
       expect(mockInitChangeTracker).toHaveBeenCalledWith(refreshedSite);
     });
