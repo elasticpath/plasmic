@@ -24,10 +24,7 @@
       "dependsOn": "build"
     }
   },
-<<<<<<< HEAD
-=======
   "nxCloudAccessToken": "NzkyNDA1ZTktODUwMy00ZWViLWFkYWQtYmYxYTQ0YjI5MzE2fHJlYWQtd3JpdGU=",
->>>>>>> upstream/master
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
   "namedInputs": {
     "default": ["{projectRoot}/**/*", "sharedGlobals"],

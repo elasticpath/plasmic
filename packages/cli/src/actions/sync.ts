@@ -790,15 +790,6 @@ async function syncProjectConfig(
     checksums
   );
 
-  await syncDataTokens(
-    context,
-    projectBundle,
-    projectConfig,
-    projectLock,
-    checksums,
-    baseDir
-  );
-
   // Write out components
   await syncProjectComponents(
     context,
