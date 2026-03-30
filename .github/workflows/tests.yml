@@ -153,7 +153,12 @@ jobs:
         env:
           CI: true
           NODE_OPTIONS: '--max-old-space-size=4096 --experimental-vm-modules'
-        run: yarn jest --testPathPattern='packages/' --passWithNoTests
+        run: yarn jest --testPathPattern='packages/' --testPathIgnorePatterns='packages/data-sources/src/serverQueries' --passWithNoTests
+
+      - name: Run SDK packages Vitest tests
+        env:
+          CI: true
+        run: npx vitest run packages/data-sources --passWithNoTests
 
       - name: Test Summary
         if: always()
@@ -188,7 +193,7 @@ jobs:
         env:
           CI: true
           NODE_OPTIONS: '--max-old-space-size=4096 --experimental-vm-modules'
-        run: yarn jest --testPathPattern='plasmicpkgs/' --testPathIgnorePatterns='plasmicpkgs/wordpress' --passWithNoTests
+        run: yarn jest --testPathPattern='plasmicpkgs/' --testPathIgnorePatterns='plasmicpkgs/wordpress|plasmicpkgs/contentful' --passWithNoTests
 
       - name: Run plasmicpkgs Vitest tests
         env:
