@@ -50,6 +50,8 @@ export interface LoadedModel {
    *  Fetched via /api/v1/latest-bundle-version, matching Studio's appCtx.lastBundleVersion.
    *  Must be passed to bundler.bundle() for full saves. */
   bundleVersion: string;
+  /** Project-specific API token for loader/preview SSR endpoints. */
+  projectApiToken?: string;
 }
 
 /**
@@ -79,6 +81,7 @@ export async function loadProject(
   const hostlessDataVersion = response.hostlessDataVersion ?? 0;
   // Dev host URL: prefer project settings, fall back to env var (spec requirement)
   const hostUrl = response.project?.hostUrl ?? process.env.PLASMIC_DEV_HOST_URL;
+  const projectApiToken = response.project?.projectApiToken ?? undefined;
 
   // Fetch the authoritative bundle version from the server API, exactly like
   // Studio does (root-view.tsx → api.getLastBundleVersion() → appCtx.lastBundleVersion).
@@ -133,7 +136,7 @@ export async function loadProject(
     `[plasmic-mcp] Project loaded: ${componentCount} components`
   );
 
-  return { site, bundler, projectName, revisionNum, modelVersion, hostlessDataVersion, hostUrl, bundleVersion };
+  return { site, bundler, projectName, revisionNum, modelVersion, hostlessDataVersion, hostUrl, bundleVersion, projectApiToken };
 }
 
 /**

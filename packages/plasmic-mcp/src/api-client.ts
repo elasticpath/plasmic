@@ -228,8 +228,12 @@ export class PlasmicApiClient {
    * Mirrors Studio.get(). URL is relative (e.g., "/projects").
    * Data object becomes GET query params via Studio's serialization pattern.
    */
-  async get(url: string, data?: Record<string, unknown>): Promise<any> {
-    return this.req("get", url, data);
+  async get(
+    url: string,
+    data?: Record<string, unknown>,
+    opts?: { headers?: Record<string, string> }
+  ): Promise<any> {
+    return this.req("get", url, data, opts);
   }
 
   /**

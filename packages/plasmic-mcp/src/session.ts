@@ -52,6 +52,8 @@ export interface Session {
    *  Mirrors Studio's serverChanges accumulation (StudioCtx.tsx:6559).
    *  Cleared after a successful save. */
   pendingRebaseChanges?: any;
+  /** Project-specific API token for loader/preview SSR endpoints. */
+  projectApiToken?: string;
 }
 
 let currentSession: Session | null = null;

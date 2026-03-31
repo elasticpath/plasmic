@@ -226,7 +226,6 @@ describe("tool handlers", () => {
   let mockClearRegistryCache: ReturnType<typeof vi.fn>;
   let mockRecordVariantMetadataSync: ReturnType<typeof vi.fn>;
   let mockUpdateProps: ReturnType<typeof vi.fn>;
-  let mockCaptureScreenshot: ReturnType<typeof vi.fn>;
   let mockApplyPattern: ReturnType<typeof vi.fn>;
   let mockListPatternsMeta: ReturnType<typeof vi.fn>;
 
@@ -359,7 +358,6 @@ describe("tool handlers", () => {
     mockClearRegistryCache = vi.fn();
     mockRecordVariantMetadataSync = vi.fn().mockReturnValue([]);
     mockUpdateProps = vi.fn();
-    mockCaptureScreenshot = vi.fn();
     mockApplyPattern = vi.fn();
     mockListPatternsMeta = vi.fn().mockReturnValue([]);
     mockBeginBatch = vi.fn();
@@ -574,9 +572,6 @@ describe("tool handlers", () => {
       recordVariantMetadataSync: (...args: any[]) => mockRecordVariantMetadataSync(...args),
     }));
 
-    vi.doMock("../headless-canvas", () => ({
-      captureScreenshot: (...args: any[]) => mockCaptureScreenshot(...args),
-    }));
 
     vi.doMock("../patterns/registry", () => ({
       listPatternsMeta: () => mockListPatternsMeta(),
@@ -590,6 +585,13 @@ describe("tool handlers", () => {
       emitEditPresence: vi.fn(),
       clearEditPresence: vi.fn(),
       emitInspectPresence: vi.fn(),
+    }));
+
+    vi.doMock("../preview-server", () => ({
+      startPreviewServer: vi.fn().mockResolvedValue(0),
+      stopPreviewServer: vi.fn().mockResolvedValue(undefined),
+      getPreviewPort: vi.fn().mockReturnValue(null),
+      getPreviewUrl: vi.fn().mockReturnValue(null),
     }));
 
     // --- Create server and connect transport ---
@@ -8329,160 +8331,4 @@ describe("tool handlers", () => {
     });
   });
 
-  // =====================================================================
-  // inspect.capture-screenshot
-  // =====================================================================
-
-  describe("inspect.capture-screenshot", () => {
-    it("returns image data and metadata on success", async () => {
-      mockRequireSession.mockReturnValue({
-        projectId: "proj-123",
-        site: {
-          components: [
-            { uuid: "comp-1", name: "Homepage" },
-          ],
-        },
-        hostUrl: "http://localhost:3021",
-      });
-
-      const mockTree = { type: "tag", tag: "div", name: "root", children: [] };
-      mockReadComponentTree.mockReturnValue(mockTree);
-
-      mockCaptureScreenshot.mockResolvedValue({
-        imageData: "iVBORw0KGgoAAAANSUhEUg==",
-        width: 1280,
-        height: 800,
-      });
-
-      const result = await client.callTool({
-        name: "inspect",
-        arguments: {
-          action: "capture-screenshot",
-          componentUuid: "comp-1",
-        },
-      });
-
-      expect(result.isError).toBeFalsy();
-      // First content block is the image
-      expect(result.content[0].type).toBe("image");
-      expect(result.content[0].data).toBe("iVBORw0KGgoAAAANSUhEUg==");
-      expect(result.content[0].mimeType).toBe("image/png");
-      // Second content block is metadata
-      const meta = JSON.parse(result.content[1].text);
-      expect(meta.component).toBe("Homepage");
-      expect(meta.componentUuid).toBe("comp-1");
-      expect(meta.width).toBe(1280);
-      expect(meta.height).toBe(800);
-
-      expect(mockCaptureScreenshot).toHaveBeenCalledWith({
-        devHostUrl: "http://localhost:3021",
-        componentName: "Homepage",
-        tree: mockTree,
-      });
-    });
-
-    it("returns error when componentUuid is missing", async () => {
-      mockRequireSession.mockReturnValue({
-        projectId: "proj-123",
-        site: { components: [] },
-      });
-
-      const result = await client.callTool({
-        name: "inspect",
-        arguments: {
-          action: "capture-screenshot",
-        },
-      });
-
-      const output = parseResponse(result);
-      expect(output.error).toContain("componentUuid is required");
-    });
-
-    it("returns error when component not found", async () => {
-      mockRequireSession.mockReturnValue({
-        projectId: "proj-123",
-        site: { components: [] },
-        hostUrl: "http://localhost:3021",
-      });
-
-      const result = await client.callTool({
-        name: "inspect",
-        arguments: {
-          action: "capture-screenshot",
-          componentUuid: "nonexistent-uuid",
-        },
-      });
-
-      const output = parseResponse(result);
-      expect(output.error).toContain("not found");
-    });
-
-    it("returns error when no dev host URL configured", async () => {
-      mockRequireSession.mockReturnValue({
-        projectId: "proj-123",
-        site: {
-          components: [{ uuid: "comp-1", name: "Page" }],
-        },
-        // hostUrl intentionally omitted
-      });
-
-      const result = await client.callTool({
-        name: "inspect",
-        arguments: {
-          action: "capture-screenshot",
-          componentUuid: "comp-1",
-        },
-      });
-
-      const output = parseResponse(result);
-      expect(output.error).toContain("No dev host URL configured");
-    });
-
-    it("returns error when component has no template tree", async () => {
-      mockRequireSession.mockReturnValue({
-        projectId: "proj-123",
-        site: {
-          components: [{ uuid: "comp-1", name: "EmptyComp" }],
-        },
-        hostUrl: "http://localhost:3021",
-      });
-
-      mockReadComponentTree.mockReturnValue(null);
-
-      const result = await client.callTool({
-        name: "inspect",
-        arguments: {
-          action: "capture-screenshot",
-          componentUuid: "comp-1",
-        },
-      });
-
-      const output = parseResponse(result);
-      expect(output.error).toContain("no template tree");
-    });
-
-    it("returns error when captureScreenshot throws", async () => {
-      mockRequireSession.mockReturnValue({
-        projectId: "proj-123",
-        site: {
-          components: [{ uuid: "comp-1", name: "Page" }],
-        },
-        hostUrl: "http://localhost:3021",
-      });
-
-      mockReadComponentTree.mockReturnValue({ type: "tag", tag: "div", children: [] });
-      mockCaptureScreenshot.mockRejectedValue(new Error("Playwright not installed"));
-
-      const result = await client.callTool({
-        name: "inspect",
-        arguments: {
-          action: "capture-screenshot",
-          componentUuid: "comp-1",
-        },
-      });
-
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Playwright not installed");
-    });
-  });
 });
