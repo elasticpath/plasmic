@@ -116,11 +116,7 @@
         }
       },
       "deps": [],
-<<<<<<< HEAD
-      "version": "256-wrap-page-meta-og-image-in-ref"
-=======
       "version": "255-wrap-page-meta-og-image-in-ref"
->>>>>>> upstream/master
     }
   ],
   [
@@ -486,11 +482,7 @@
         "RTwcaENXpL9W": { "name": "any", "__type": "AnyType" },
         "07_Nwx1r95q7": {
           "name": "arg",
-<<<<<<< HEAD
-          "argName": "$queries",
-=======
           "argName": "$q",
->>>>>>> upstream/master
           "displayName": null,
           "type": { "__ref": "RTwcaENXpL9W" },
           "__type": "ArgType"
@@ -1339,11 +1331,7 @@
           "__type": "Var"
         },
         "vZ90fPgUGZOd": {
-<<<<<<< HEAD
-          "path": ["$queries", "restaurants", "data", "data"],
-=======
           "path": ["$q", "restaurants", "data", "data"],
->>>>>>> upstream/master
           "fallback": { "__ref": "jbKgqU1cXJGI" },
           "__type": "ObjectPath"
         },
@@ -1739,11 +1727,7 @@
           "__type": "Var"
         },
         "BgVppc2r2IvN": {
-<<<<<<< HEAD
-          "path": ["$queries", "restaurants", "data", "data"],
-=======
           "path": ["$q", "restaurants", "data", "data"],
->>>>>>> upstream/master
           "fallback": { "__ref": "dNHThQauSQ9b" },
           "__type": "ObjectPath"
         },
@@ -1984,11 +1968,7 @@
           "__type": "Var"
         },
         "HQrEfdEpC_G-": {
-<<<<<<< HEAD
-          "path": ["$queries", "restaurants", "data", "data"],
-=======
           "path": ["$q", "restaurants", "data", "data"],
->>>>>>> upstream/master
           "fallback": { "__ref": "rf5NbnVhiyQi" },
           "__type": "ObjectPath"
         },
@@ -2168,11 +2148,7 @@
           "__type": "Var"
         },
         "WIkZYCmPRRt7": {
-<<<<<<< HEAD
-          "path": ["$queries", "restaurants", "data", "data"],
-=======
           "path": ["$q", "restaurants", "data", "data"],
->>>>>>> upstream/master
           "fallback": { "__ref": "oGvIApTmHMW-" },
           "__type": "ObjectPath"
         },
@@ -2226,11 +2202,7 @@
           "__type": "CompositeExpr"
         },
         "QFQaO3YkGchb": {
-<<<<<<< HEAD
-          "text": ["https://plasmic-loader-test.test/"],
-=======
           "text": ["<REPLACE_WITH_STRAPI_URL>"],
->>>>>>> upstream/master
           "__type": "TemplatedString"
         },
         "v5F8TN86xhwM": {
@@ -2268,14 +2240,6 @@
         },
         "3MiUAaKUlCNn": {
           "__type": "TemplatedString",
-<<<<<<< HEAD
-          "text": ["https://plasmic-loader-test.test/"]
-        },
-        "-D2MZRj8Lvep": { "__type": "TemplatedString", "text": ["restaurants"] }
-      },
-      "deps": ["f63b0b63-47ac-4cf5-8ca3-329a60321d4f"],
-      "version": "256-wrap-page-meta-og-image-in-ref"
-=======
           "text": ["<REPLACE_WITH_STRAPI_URL>"]
         },
         "-D2MZRj8Lvep": {
@@ -2285,7 +2249,6 @@
       },
       "deps": ["f63b0b63-47ac-4cf5-8ca3-329a60321d4f"],
       "version": "255-wrap-page-meta-og-image-in-ref"
->>>>>>> upstream/master
     }
   ]
 ]

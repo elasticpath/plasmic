@@ -1332,11 +1332,7 @@
         }
       },
       "deps": [],
-<<<<<<< HEAD
-      "version": "256-wrap-page-meta-og-image-in-ref"
-=======
       "version": "255-wrap-page-meta-og-image-in-ref"
->>>>>>> upstream/master
     }
   ]
 ]

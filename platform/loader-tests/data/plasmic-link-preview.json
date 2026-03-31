@@ -467,11 +467,7 @@
         }
       },
       "deps": [],
-<<<<<<< HEAD
-      "version": "256-wrap-page-meta-og-image-in-ref"
-=======
       "version": "255-wrap-page-meta-og-image-in-ref"
->>>>>>> upstream/master
     }
   ],
   [
@@ -2222,11 +2218,7 @@
         }
       },
       "deps": ["1f6fbbaf-82a8-43b5-abd3-ead1dee4ab4c"],
-<<<<<<< HEAD
-      "version": "256-wrap-page-meta-og-image-in-ref"
-=======
       "version": "255-wrap-page-meta-og-image-in-ref"
->>>>>>> upstream/master
     }
   ]
 ]

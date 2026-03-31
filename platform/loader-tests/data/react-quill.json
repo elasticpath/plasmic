@@ -769,11 +769,7 @@
         }
       },
       "deps": [],
-<<<<<<< HEAD
-      "version": "256-wrap-page-meta-og-image-in-ref"
-=======
       "version": "255-wrap-page-meta-og-image-in-ref"
->>>>>>> upstream/master
     }
   ],
   [
@@ -2215,11 +2211,7 @@
         "tkbX31iChEAr": { "text": ["quill-state"], "__type": "TemplatedString" }
       },
       "deps": ["b911462e-59ce-455d-b8d3-0d84f50a35dd"],
-<<<<<<< HEAD
-      "version": "256-wrap-page-meta-og-image-in-ref"
-=======
       "version": "255-wrap-page-meta-og-image-in-ref"
->>>>>>> upstream/master
     }
   ]
 ]

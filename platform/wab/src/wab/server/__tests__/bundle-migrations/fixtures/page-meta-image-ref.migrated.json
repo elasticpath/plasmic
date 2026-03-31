@@ -1223,28 +1223,13 @@
           "__type": "Site"
         },
         "TEST_IID_1": {
-<<<<<<< HEAD
-=======
           "__type": "ImageAsset",
->>>>>>> upstream/master
           "uuid": "u9DOhqrilfSv",
           "name": "logo.png",
           "type": "picture",
           "dataUri": "https://site-assets.plasmic.app/93f3368d6745a86b3a0d36fbf933480c.png",
           "width": 128,
           "height": 128,
-<<<<<<< HEAD
-          "aspectRatio": null,
-          "__type": "ImageAsset"
-        },
-        "ref_TEST_IID_1": {
-          "asset": { "__ref": "TEST_IID_1" },
-          "__type": "ImageAssetRef"
-        }
-      },
-      "deps": [],
-      "version": "256-wrap-page-meta-og-image-in-ref"
-=======
           "aspectRatio": null
         },
         "ref_TEST_IID_1": {
@@ -1254,7 +1239,6 @@
       },
       "deps": [],
       "version": "255-wrap-page-meta-og-image-in-ref"
->>>>>>> upstream/master
     }
   ]
 ]

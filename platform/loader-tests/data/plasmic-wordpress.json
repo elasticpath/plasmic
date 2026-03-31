@@ -804,11 +804,7 @@
         }
       },
       "deps": [],
-<<<<<<< HEAD
-      "version": "256-wrap-page-meta-og-image-in-ref"
-=======
       "version": "255-wrap-page-meta-og-image-in-ref"
->>>>>>> upstream/master
     }
   ],
   [
@@ -2136,11 +2132,7 @@
         },
         "q2DE32Sxts_9": {
           "__type": "TemplatedString",
-<<<<<<< HEAD
-          "text": ["https://plasmic-loader-test.test/"]
-=======
           "text": ["<REPLACE_WITH_WORDPRESS_URL>"]
->>>>>>> upstream/master
         },
         "TavmIN4dOKXM": {
           "__type": "Arg",
@@ -3407,11 +3399,7 @@
         }
       },
       "deps": ["2dc79160-ffbd-455c-b456-7145513379e5"],
-<<<<<<< HEAD
-      "version": "256-wrap-page-meta-og-image-in-ref"
-=======
       "version": "255-wrap-page-meta-og-image-in-ref"
->>>>>>> upstream/master
     }
   ]
 ]

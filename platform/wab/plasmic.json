@@ -3581,12 +3581,8 @@
       "splitsProviderFilePath": "",
       "customFunctions": [],
       "styleTokensProviderFilePath": "wab/client/plasmic/plasmic_kit_variants/PlasmicStyleTokensProvider.tsx",
-<<<<<<< HEAD
-      "projectModuleFilePath": "wab/client/plasmic/plasmic_kit_variants/plasmic.tsx"
-=======
       "projectModuleFilePath": "wab/client/plasmic/plasmic_kit_variants/plasmic.tsx",
       "dataTokensFilePath": ""
->>>>>>> upstream/master
     },
     {
       "projectId": "gYEVvAzCcLMHDVPvuYxkFh",
@@ -9587,8 +9583,6 @@
           "cssFilePath": "wab/client/plasmic/plasmic_kit_data_binding/PlasmicPopoverFrameTitle.module.css",
           "scheme": "blackbox",
           "componentType": "component"
-<<<<<<< HEAD
-=======
         },
         {
           "id": "6Cb3e8nRgrBg",
@@ -9617,7 +9611,6 @@
           "cssFilePath": "wab/client/plasmic/plasmic_kit_data_binding/PlasmicCopilotChatDialog.module.css",
           "scheme": "blackbox",
           "componentType": "component"
->>>>>>> upstream/master
         }
       ],
       "icons": [
@@ -11959,11 +11952,6 @@
   "postSyncCommands": [
     "git ls-files -m | xargs pre-commit run prettier --files"
   ],
-<<<<<<< HEAD
-  "cliVersion": "0.1.348",
-  "$schema": "https://unpkg.com/@plasmicapp/cli@0.1.348/dist/plasmic.schema.json"
-=======
   "cliVersion": "0.1.359",
   "$schema": "https://unpkg.com/@plasmicapp/cli@0.1.359/dist/plasmic.schema.json"
->>>>>>> upstream/master
 }

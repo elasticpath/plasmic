@@ -1,7 +1,5 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-<<<<<<< HEAD
-=======
 exports[`data tokens: codegen should codegen correct app dir contents with data tokens in metadata 1`] = `
 "
 --- ClientSeo.js ---
@@ -1726,7 +1724,6 @@ export async function generateMetadata(
 }"
 `;
 
->>>>>>> upstream/master
 exports[`data tokens: codegen should codegen correct contents with data tokens 1`] = `
 "
 --- P1.js ---
@@ -1881,8 +1878,6 @@ import "@plasmicapp/react-web/lib/plasmic.css";
 import "./plasmic__default_style.css"; // plasmic-import: global/defaultcss
 import "./plasmic.css"; // plasmic-import: 1234567890/projectcss
 import "./PlasmicP1.css"; // plasmic-import: _OsB_FsYM5mY/css
-<<<<<<< HEAD
-=======
 var emptyProxy = new Proxy(function () { return ""; }, {
     get: function (_, prop) {
         return prop === Symbol.toPrimitive ? function () { return ""; } : emptyProxy;
@@ -1904,7 +1899,6 @@ export function generateDynamicMetadata($q, $ctx) {
         },
     };
 }
->>>>>>> upstream/master
 createPlasmicElementProxy;
 export var PlasmicP1__VariantProps = new Array();
 export var PlasmicP1__ArgProps = new Array();
@@ -2004,17 +1998,7 @@ makeNodeComponent("root"), {
     // Metadata about props expected for PlasmicP1
     internalVariantProps: PlasmicP1__VariantProps,
     internalArgProps: PlasmicP1__ArgProps,
-<<<<<<< HEAD
-    // Page metadata
-    pageMetadata: {
-        "title": "",
-        "description": "",
-        "ogImageSrc": "",
-        "canonical": ""
-    },
-=======
     pageMetadata: generateDynamicMetadata(wrapQueriesWithLoadingProxy({}), { pageRoute: "/p-1", pagePath: "/p-1", params: {}, query: {} })
->>>>>>> upstream/master
 });
 export default PlasmicP1;
 /* prettier-ignore-end */
@@ -2090,12 +2074,9 @@ import {
 
 
 
-<<<<<<< HEAD
-=======
 
 
 
->>>>>>> upstream/master
 import { _useGlobalVariants } from "./plasmic.tsx"; // plasmic-import: 1234567890/projectModule
 import { _useStyleTokens } from "./PlasmicStyleTokensProvider.tsx"; // plasmic-import: 1234567890/styleTokensProvider
 import { myText as $dataTokens_1T8AH_myText } from "./plasmic-data-tokens"; // plasmic-import: 1T8AHUHZeUyK1iDkHxrRw6/dataTokens
@@ -2113,8 +2094,6 @@ import { dep2Token as $dataTokens_3SFZd_dep2Token } from "./plasmic-data-tokens"
 
 
 
-<<<<<<< HEAD
-=======
 const emptyProxy: any = new Proxy(() => "", {
   get(_, prop) {
     return prop === Symbol.toPrimitive ? () => "" : emptyProxy;
@@ -2157,7 +2136,6 @@ export function generateDynamicMetadata($q: any, $ctx: PageCtx) {
   };
 }
 
->>>>>>> upstream/master
 
 createPlasmicElementProxy
 
@@ -2195,11 +2173,6 @@ override?: Flex__<"div">;
 
 
 
-<<<<<<< HEAD
-
-
-=======
->>>>>>> upstream/master
 const $$ = {};
 
 
@@ -2250,11 +2223,8 @@ const $$ = {};
     
 
     
-<<<<<<< HEAD
-=======
 
     
->>>>>>> upstream/master
     
     
     
@@ -2262,10 +2232,7 @@ const $$ = {};
     
 
     
-<<<<<<< HEAD
-=======
     
->>>>>>> upstream/master
 
     
     const styleTokensClassNames = _useStyleTokens();
@@ -2460,20 +2427,10 @@ override: makeNodeComponent("override"),
         
 
         
-<<<<<<< HEAD
-    // Page metadata
-    pageMetadata: {
-  "title": "",
-  "description": "",
-  "ogImageSrc": "",
-  "canonical": ""
-},
-=======
     pageMetadata: generateDynamicMetadata(
       wrapQueriesWithLoadingProxy({}),
       { pageRoute: "/p-1", pagePath: "/p-1", params: {}, query: {} }
     )
->>>>>>> upstream/master
   
       }
     );
@@ -2493,10 +2450,7 @@ export default PlasmicP1;
 // plasmic-unformatted
 import { createUseStyleTokens } from "@plasmicapp/react-web";
 import { _useGlobalVariants } from "./plasmic.tsx"; // plasmic-import: 1234567890/projectModule
-<<<<<<< HEAD
-=======
 import "./plasmic.css"; // plasmic-import: 1234567890/projectcss
->>>>>>> upstream/master
 var data = {
     base: "".concat("plasmic_tokens_1234567890"),
     varianted: [],
@@ -2517,11 +2471,7 @@ export var _useStyleTokens = createUseStyleTokens(data, _useGlobalVariants);
 
     import { _useGlobalVariants } from "./plasmic.tsx"; // plasmic-import: 1234567890/projectModule
   
-<<<<<<< HEAD
-    
-=======
     import "./plasmic.css"; // plasmic-import: 1234567890/projectcss
->>>>>>> upstream/master
 
     
   
@@ -2569,11 +2519,7 @@ catch (e) {
     // plasmic-unformatted
 export const myNum = 999;
 
-<<<<<<< HEAD
-export const myCode = (() => { try { return ("test" + " code"); } catch (e) { return undefined; } })();
-=======
 export const myCode: any = (() => { try { return ("test" + " code"); } catch (e) { return undefined; } })();
->>>>>>> upstream/master
 
 --- plasmic.css ---
 

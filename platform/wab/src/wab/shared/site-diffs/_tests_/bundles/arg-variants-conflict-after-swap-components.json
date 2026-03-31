@@ -1520,11 +1520,7 @@
           }
         },
         "deps": [],
-<<<<<<< HEAD
-        "version": "256-wrap-page-meta-og-image-in-ref"
-=======
         "version": "255-wrap-page-meta-og-image-in-ref"
->>>>>>> upstream/master
       },
       "projectId": "wHtfg2nLs5zqybWknqMXbm",
       "version": "6.0.0",
@@ -3049,11 +3045,7 @@
           }
         },
         "deps": [],
-<<<<<<< HEAD
-        "version": "256-wrap-page-meta-og-image-in-ref"
-=======
         "version": "255-wrap-page-meta-og-image-in-ref"
->>>>>>> upstream/master
       },
       "projectId": "wHtfg2nLs5zqybWknqMXbm",
       "version": "4.1.0",
@@ -4547,11 +4539,7 @@
           }
         },
         "deps": ["a1a67f8a-ec8a-402a-87da-eb8b7ebf18e8"],
-<<<<<<< HEAD
-        "version": "256-wrap-page-meta-og-image-in-ref"
-=======
         "version": "255-wrap-page-meta-og-image-in-ref"
->>>>>>> upstream/master
       },
       "projectId": "uGrWS46cRJ2qquYfzAsaTw",
       "version": "6.1.0",
@@ -6491,11 +6479,7 @@
           }
         },
         "deps": ["e59019e7-b245-4e0c-b862-91a12b98b3c5"],
-<<<<<<< HEAD
-        "version": "256-wrap-page-meta-og-image-in-ref"
-=======
         "version": "255-wrap-page-meta-og-image-in-ref"
->>>>>>> upstream/master
       },
       "projectId": "uGrWS46cRJ2qquYfzAsaTw",
       "version": "6.2.0",
@@ -8530,11 +8514,7 @@
           }
         },
         "deps": ["e59019e7-b245-4e0c-b862-91a12b98b3c5"],
-<<<<<<< HEAD
-        "version": "256-wrap-page-meta-og-image-in-ref"
-=======
         "version": "255-wrap-page-meta-og-image-in-ref"
->>>>>>> upstream/master
       }
     },
     {
@@ -10462,11 +10442,7 @@
           }
         },
         "deps": ["e59019e7-b245-4e0c-b862-91a12b98b3c5"],
-<<<<<<< HEAD
-        "version": "256-wrap-page-meta-og-image-in-ref"
-=======
         "version": "255-wrap-page-meta-og-image-in-ref"
->>>>>>> upstream/master
       }
     }
   ]

@@ -398,12 +398,9 @@ import {
 
 
 
-<<<<<<< HEAD
-=======
 
 
 
->>>>>>> upstream/master
 import DepComp from "./DepComp";  // plasmic-import: u4_D7ezQ-9rk/component
 import { _useGlobalVariants } from "./plasmic.tsx"; // plasmic-import: 1234567890/projectModule
 import { _useStyleTokens } from "./PlasmicStyleTokensProvider.tsx"; // plasmic-import: 1234567890/styleTokensProvider
@@ -419,8 +416,6 @@ import { _useStyleTokens } from "./PlasmicStyleTokensProvider.tsx"; // plasmic-i
 
 
 
-<<<<<<< HEAD
-=======
 const emptyProxy: any = new Proxy(() => "", {
   get(_, prop) {
     return prop === Symbol.toPrimitive ? () => "" : emptyProxy;
@@ -463,7 +458,6 @@ export function generateDynamicMetadata($q: any, $ctx: PageCtx) {
   };
 }
 
->>>>>>> upstream/master
 
 createPlasmicElementProxy
 
@@ -501,9 +495,6 @@ p?: Flex__<"p">;
 
 
 
-<<<<<<< HEAD
-
-
 const $$ = {};
 
 
@@ -512,16 +503,6 @@ const $$ = {};
 
 
 
-=======
-const $$ = {};
-
-
-
-
-
-
-
->>>>>>> upstream/master
 
     function PlasmicHomepage__RenderFunc(
       props: {
@@ -1705,12 +1686,9 @@ import {
 
 
 
-<<<<<<< HEAD
-=======
 
 
 
->>>>>>> upstream/master
 import DepComp from "./DepComp";  // plasmic-import: u4_D7ezQ-9rk/component
 import { _useGlobalVariants } from "./plasmic.tsx"; // plasmic-import: 1234567890/projectModule
 import { _useStyleTokens } from "./PlasmicStyleTokensProvider.tsx"; // plasmic-import: 1234567890/styleTokensProvider
@@ -1726,8 +1704,6 @@ import { _useStyleTokens } from "./PlasmicStyleTokensProvider.tsx"; // plasmic-i
 
 
 
-<<<<<<< HEAD
-=======
 const emptyProxy: any = new Proxy(() => "", {
   get(_, prop) {
     return prop === Symbol.toPrimitive ? () => "" : emptyProxy;
@@ -1770,7 +1746,6 @@ export function generateDynamicMetadata($q: any, $ctx: PageCtx) {
   };
 }
 
->>>>>>> upstream/master
 
 createPlasmicElementProxy
 
@@ -1808,9 +1783,6 @@ p?: Flex__<"p">;
 
 
 
-<<<<<<< HEAD
-
-
 const $$ = {};
 
 
@@ -1819,16 +1791,6 @@ const $$ = {};
 
 
 
-=======
-const $$ = {};
-
-
-
-
-
-
-
->>>>>>> upstream/master
 
     function PlasmicHomepage__RenderFunc(
       props: {
