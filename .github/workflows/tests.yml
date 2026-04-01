@@ -110,7 +110,7 @@ jobs:
         env:
           CI: true
           NODE_OPTIONS: '--max-old-space-size=8192'
-        run: yarn test --shard=${{ matrix.shard }}/4
+        run: yarn test:ci --shard=${{ matrix.shard }}/4
 
       - name: Test Summary
         if: always()

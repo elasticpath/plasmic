@@ -40,6 +40,7 @@
     "prepare": "if [ -n \"$PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD\" ]; then echo \"Skipping Playwright download (PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD set)\"; else playwright install chromium; fi",
     "eslint-all": "yarn --cwd ../.. eslint platform/wab",
     "test": "NODE_OPTIONS='--max-old-space-size=8192' jest --runInBand --forceExit",
+    "test:ci": "NODE_OPTIONS='--max-old-space-size=8192' jest --maxWorkers=1 --workerIdleMemoryLimit=4096MB --forceExit",
     "test:coverage": "NODE_OPTIONS='--max-old-space-size=8192' jest --coverage",
     "test:inspect": "node --inspect-brk node_modules/.bin/jest --runInBand",
     "backend": "bash tools/backend-server.bash",

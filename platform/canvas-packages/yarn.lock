@@ -1385,6 +1385,23 @@
   dependencies:
     tslib "^2.0.0"
 
+"@elasticpath/plasmic-ep-commerce-elastic-path@^0.0.3":
+  version "0.0.3"
+  resolved "https://registry.yarnpkg.com/@elasticpath/plasmic-ep-commerce-elastic-path/-/plasmic-ep-commerce-elastic-path-0.0.3.tgz#005a9253fbbb40da4089d6c6a70f2717e7127c2d"
+  integrity sha512-xRWXxHCdmqfZAJbl83EIOOiPMP7WwlCcORqjLL2K7xhbX+TKC3+5hAfyjTtCmrsmKXtUOibxZAAJmn25PQbcIQ==
+  dependencies:
+    "@epcc-sdk/sdks-shopper" "^0.0.40"
+    "@hookform/resolvers" "^3.3.2"
+    "@plasmicpkgs/commerce" "0.0.232"
+    "@stripe/react-stripe-js" "^2.4.0"
+    "@stripe/stripe-js" "^2.4.0"
+    "@types/react" "^18.0.27"
+    debounce "^2.0.0"
+    js-cookie "^3.0.5"
+    qs "^6.11.0"
+    react-hook-form "^7.48.2"
+    zod "^3.22.4"
+
 "@emotion/babel-plugin@^11.10.5":
   version "11.10.5"
   resolved "https://registry.yarnpkg.com/@emotion/babel-plugin/-/babel-plugin-11.10.5.tgz#65fa6e1790ddc9e23cc22658a4c5dea423c55c3c"
@@ -1603,6 +1620,13 @@
   resolved "https://registry.yarnpkg.com/@emotion/weak-memoize/-/weak-memoize-0.3.1.tgz#d0fce5d07b0620caa282b5131c297bb60f9d87e6"
   integrity sha512-EsBwpc7hBUJWAsNPBmJy4hxWx12v6bshQsldrVmjxJoc3isbxhOrF2IcCpaXxfvq03NwkI7sbsOLXbYuqF/8Ww==
 
+"@epcc-sdk/sdks-shopper@^0.0.40":
+  version "0.0.40"
+  resolved "https://registry.yarnpkg.com/@epcc-sdk/sdks-shopper/-/sdks-shopper-0.0.40.tgz#15b18bc558677a1fc845c4ac47be89c2bbb957ee"
+  integrity sha512-N7a9O0E5s5lPx++SYTJ/hKWIqZ5cwF+WObPwycEsTk4RErT2QzLviy3vaCByMafS3Oj4rlsrcrBq6eQIDkv5rg==
+  dependencies:
+    "@hey-api/client-fetch" "0.6.0"
+
 "@esbuild/android-arm@0.15.15":
   version "0.15.15"
   resolved "https://registry.yarnpkg.com/@esbuild/android-arm/-/android-arm-0.15.15.tgz#35b3cc0f9e69cb53932d44f60b99dd440335d2f0"
@@ -1683,6 +1707,16 @@
   integrity sha512-9QTjdSBpQ7wHShZgsNzNig5qT3rCPvmZogS/wXZzKotns5skbXgs0I7J8cuN0PPqXyynvNVuN+iOKhNS2eb+ZA==
   dependencies:
     tslib "2.4.0"
+
+"@hey-api/client-fetch@0.6.0":
+  version "0.6.0"
+  resolved "https://registry.yarnpkg.com/@hey-api/client-fetch/-/client-fetch-0.6.0.tgz#50e10b29d3d08ff740061fd9fe54cc4445571a8b"
+  integrity sha512-FlhFsVeH8RxJe/nq8xUzxNbiOpe+GadxlD2pfvDyOyLdCTU4o/LRv46ZVWstaW7DgF4nxhI328chy3+AulwVXw==
+
+"@hookform/resolvers@^3.3.2":
+  version "3.10.0"
+  resolved "https://registry.yarnpkg.com/@hookform/resolvers/-/resolvers-3.10.0.tgz#7bfd18113daca4e57e27e1205b7d5a2d371aa59a"
+  integrity sha512-79Dv+3mDF7i+2ajj7SkypSKHhl1cbln1OGavqrsF7p6mbUv11xpqpacPsGDCTRvCSjEEIez2ef1NveSVL3b0Ag==
 
 "@internationalized/date@^3.8.1":
   version "3.8.1"
@@ -2011,6 +2045,19 @@
     debounce "^1.2.1"
     js-cookie "^3.0.5"
     swell-js "^3.13.0"
+
+"@plasmicpkgs/commerce@0.0.232":
+  version "0.0.232"
+  resolved "https://registry.yarnpkg.com/@plasmicpkgs/commerce/-/commerce-0.0.232.tgz#1f32f70cc00eab79a076fd3c477d79c19ad0fd18"
+  integrity sha512-uUY+4PngY/cBQ7qldXwQbd/f/n9jo94TkbCWubMxDAMtv0sJolZoQXrIGVXKZuhuJTtI7ChJMqDnpsG4LJehig==
+  dependencies:
+    "@types/react" "^18.0.27"
+    "@vercel/fetch" "^6.2.0"
+    debounce "^1.2.1"
+    js-cookie "^3.0.1"
+    lodash.debounce "^4.0.8"
+    react-hook-form "^7.28.0"
+    swr "^1.2.2"
 
 "@plasmicpkgs/commerce@0.0.241", "@plasmicpkgs/commerce@^0.0.241":
   version "0.0.241"
@@ -4116,6 +4163,18 @@
   dependencies:
     estimo "^3.0.5"
 
+"@stripe/react-stripe-js@^2.4.0":
+  version "2.9.0"
+  resolved "https://registry.yarnpkg.com/@stripe/react-stripe-js/-/react-stripe-js-2.9.0.tgz#1f1a9a3d5eab8ca144e060df1e9fd855a7658aca"
+  integrity sha512-+/j2g6qKAKuWSurhgRMfdlIdKM+nVVJCy/wl0US2Ccodlqx0WqfIIBhUkeONkCG+V/b+bZzcj4QVa3E/rXtT4Q==
+  dependencies:
+    prop-types "^15.7.2"
+
+"@stripe/stripe-js@^2.4.0":
+  version "2.4.0"
+  resolved "https://registry.yarnpkg.com/@stripe/stripe-js/-/stripe-js-2.4.0.tgz#7a7e5b187b9e9bb43073edd946ec3e9a778e61bd"
+  integrity sha512-WFkQx1mbs2b5+7looI9IV1BLa3bIApuN3ehp9FP58xGg7KL9hCHDECgW3BwO9l9L+xBPVAD7Yjn1EhGe6EDTeA==
+
 "@swc/helpers@^0.5.0":
   version "0.5.3"
   resolved "https://registry.yarnpkg.com/@swc/helpers/-/helpers-0.5.3.tgz#98c6da1e196f5f08f977658b80d6bd941b5f294f"
@@ -4378,6 +4437,14 @@
   dependencies:
     "@types/prop-types" "*"
     csstype "^3.0.2"
+
+"@types/react@^18.0.27":
+  version "18.3.28"
+  resolved "https://registry.yarnpkg.com/@types/react/-/react-18.3.28.tgz#0a85b1a7243b4258d9f626f43797ba18eb5f8781"
+  integrity sha512-z9VXpC7MWrhfWipitjNdgCauoMLRdIILQsAEV+ZesIzBq/oUlxk0m3ApZuMFCXdnS4U7KrI+l3WRUEGQ8K1QKw==
+  dependencies:
+    "@types/prop-types" "*"
+    csstype "^3.2.2"
 
 "@types/resolve@1.17.1":
   version "1.17.1"
@@ -5251,6 +5318,11 @@ csstype@^3.0.11, csstype@^3.0.2, csstype@^3.1.2, csstype@^3.1.3:
   version "3.1.3"
   resolved "https://registry.yarnpkg.com/csstype/-/csstype-3.1.3.tgz#d80ff294d114fb0e6ac500fbf85b60137d7eff81"
   integrity sha512-M1uQkMl8rQK/szD0LNhtqxIPLpimGm8sOBwU7lLnCpSbTyY3yeU1Vc7l4KT5zT4s/yOxHH5O7tIuuLOCnLADRw==
+
+csstype@^3.2.2:
+  version "3.2.3"
+  resolved "https://registry.yarnpkg.com/csstype/-/csstype-3.2.3.tgz#ec48c0f3e993e50648c86da559e2610995cf989a"
+  integrity sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==
 
 csv-writer-browser@^1.0.0:
   version "1.0.0"
@@ -7264,7 +7336,7 @@ promise.series@^0.2.0:
   resolved "https://registry.yarnpkg.com/promise.series/-/promise.series-0.2.0.tgz#2cc7ebe959fc3a6619c04ab4dbdc9e452d864bbd"
   integrity sha512-VWQJyU2bcDTgZw8kpfBpB/ejZASlCrzwz5f2hjb/zlujOEB4oeiAhHygAWq8ubsX2GVkD4kCU5V2dwOTaCY5EQ==
 
-prop-types@15.8.1, prop-types@^15.6.2:
+prop-types@15.8.1, prop-types@^15.6.2, prop-types@^15.7.2:
   version "15.8.1"
   resolved "https://registry.yarnpkg.com/prop-types/-/prop-types-15.8.1.tgz#67d87bf1a694f48435cf332c24af10214a3140b5"
   integrity sha512-oj87CgZICdulUohogVAR7AjlC0327U4el4L6eAvOqCeudMDVU0NThNaV+b9Df4dXgSP1gXMTnPdhfe/2qDH5cg==
@@ -8338,6 +8410,11 @@ react-hook-form@^7.28.0:
   version "7.63.0"
   resolved "https://registry.yarnpkg.com/react-hook-form/-/react-hook-form-7.63.0.tgz#ff601754989bdd5cfc19fcbb02a3c0d4fbb29284"
   integrity sha512-ZwueDMvUeucovM2VjkCf7zIHcs1aAlDimZu2Hvel5C5907gUzMpm4xCrQXtRzCvsBqFjonB4m3x4LzCFI1ZKWA==
+
+react-hook-form@^7.48.2:
+  version "7.72.0"
+  resolved "https://registry.yarnpkg.com/react-hook-form/-/react-hook-form-7.72.0.tgz#995a655b894249fd8798f36383e43f55ed66ae25"
+  integrity sha512-V4v6jubaf6JAurEaVnT9aUPKFbNtDgohj5CIgVGyPHvT9wRx5OZHVjz31GsxnPNI278XMu+ruFz+wGOscHaLKw==
 
 react-intersection-observer@^9.10.3:
   version "9.10.3"
