@@ -191,6 +191,23 @@ export default defineConfig({
         find: /^antd$/,
         replacement: path.resolve(__dirname, "src/__mocks__/wab-antd"),
       },
+      // Codegen pipeline (preview-server.ts) — stubbed in unit tests
+      {
+        find: /^@\/wab\/shared\/codegen\/react-p$/,
+        replacement: path.resolve(__dirname, "src/__mocks__/wab-codegen-react-p"),
+      },
+      {
+        find: /^@\/wab\/shared\/codegen\/codegen-helpers$/,
+        replacement: path.resolve(__dirname, "src/__mocks__/wab-codegen-helpers"),
+      },
+      {
+        find: /^@\/wab\/shared\/core\/styles$/,
+        replacement: path.resolve(__dirname, "src/__mocks__/wab-styles"),
+      },
+      {
+        find: /^@\/wab\/shared\/codegen\/types$/,
+        replacement: path.resolve(__dirname, "src/__mocks__/wab-codegen-types"),
+      },
     ],
     extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
   },

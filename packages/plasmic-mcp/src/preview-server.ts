@@ -17,6 +17,14 @@ import * as url from "node:url";
 import type { PlasmicApiClient } from "./api-client.js";
 import { getSession } from "./session.js";
 import { getAuth } from "./auth.js";
+import {
+  exportReactPresentational,
+  exportProjectConfig,
+  computeSerializerSiteContext,
+} from "@/wab/shared/codegen/react-p";
+import { SiteGenHelper, ComponentGenHelper } from "@/wab/shared/codegen/codegen-helpers";
+import { CssVarResolver } from "@/wab/shared/core/styles";
+import type { ExportOpts, ComponentExportOutput } from "@/wab/shared/codegen/types";
 
 let server: http.Server | null = null;
 let serverPort: number | null = null;
@@ -29,6 +37,9 @@ let cachedHostHtml: string | null = null;
 
 /** Commit hash extracted from host.html script URL. */
 let commitHash: string | null = null;
+
+/** Reference to the API client (kept for future use). */
+let apiClientRef: PlasmicApiClient | null = null;
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -62,6 +73,8 @@ export async function startPreviewServer(
   if (platformHostUrl) {
     await fetchAndCacheHostHtml();
   }
+
+  apiClientRef = apiClient;
 
   return new Promise((resolve, reject) => {
     const srv = http.createServer(async (req, res) => {
@@ -110,6 +123,7 @@ export async function stopPreviewServer(): Promise<void> {
       platformHostUrl = null;
       cachedHostHtml = null;
       commitHash = null;
+      apiClientRef = null;
       resolve();
     });
     setTimeout(() => {
@@ -118,6 +132,7 @@ export async function stopPreviewServer(): Promise<void> {
       platformHostUrl = null;
       cachedHostHtml = null;
       commitHash = null;
+      apiClientRef = null;
       resolve();
     }, 2000);
   });
@@ -200,6 +215,178 @@ async function fetchAndCacheHostHtml(): Promise<void> {
     }
   } catch (err) {
     console.error(`[plasmic-mcp] Failed to fetch host.html from ${hostHtmlUrl}:`, err);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// In-memory codegen (matches Studio's live-syncer.ts createComponentOutput)
+// ---------------------------------------------------------------------------
+
+/**
+ * Generate SystemJS-compatible modules for a component using the same codegen
+ * pipeline as Studio's live preview (live-syncer.ts → createComponentOutput).
+ *
+ * Uses exportReactPresentational + SiteGenHelper + CssVarResolver directly
+ * against the in-memory site model — no external API calls needed.
+ */
+function generateComponentModules(component: any): CodeModule[] | null {
+  const session = getSession();
+  if (!session) return null;
+
+  try {
+    const site = session.site;
+
+    // ExportOpts matching Studio's live preview mode (live-syncer.ts:798-831)
+    const exportOpts: ExportOpts = {
+      lang: "ts",
+      platform: "react",
+      forceAllProps: true,
+      uncontrolledProps: true,
+      shouldTransformWritableStates: true,
+      forceRootDisabled: false,
+      imageOpts: { scheme: "cdn" },
+      stylesOpts: { scheme: "css" },
+      codeOpts: { reactRuntime: "classic" },
+      fontOpts: { scheme: "import" },
+      codeComponentStubs: false,
+      skinnyReactWeb: false,
+      skinny: false,
+      importHostFromReactWeb: false,
+      idFileNames: true,
+      hostLessComponentsConfig: "stub",
+      includeImportedTokens: true,
+      useComponentSubstitutionApi: false,
+      useGlobalVariantsSubstitutionApi: false,
+      useCodeComponentHelpersRegistry: false,
+      useCustomFunctionsStub: true,
+      isLivePreview: true,
+      targetEnv: "preview",
+    };
+
+    // Step 1: Project config (same as Studio's exportProjectConfig call)
+    const projectConfig = exportProjectConfig(
+      site,
+      session.projectName,
+      session.projectId,
+      session.revisionNum ?? 0,
+      "mcp-preview",
+      "latest",
+      exportOpts
+    );
+
+    // Step 2: Codegen helpers (same as Studio's createComponentOutput)
+    const siteGenHelper = new SiteGenHelper(site, false);
+    const cssVarResolver = new CssVarResolver(
+      siteGenHelper.allStyleTokensAndOverrides(),
+      siteGenHelper.allMixins(),
+      siteGenHelper.allImageAssets(),
+      site.activeTheme,
+      { keepAssetRefs: false, useCssVariables: true }
+    );
+    const compGenHelper = new ComponentGenHelper(siteGenHelper, cssVarResolver);
+
+    // Step 3: Serializer site context
+    const siteCtx = computeSerializerSiteContext(site);
+
+    // Step 4: Image asset URI map (HTTP-based CDN URLs)
+    const imageAssetUriMap = Object.fromEntries(
+      (site.imageAssets ?? [])
+        .filter((asset: any) => asset.dataUri && asset.dataUri.startsWith("http"))
+        .map((asset: any) => [asset.uuid, asset.dataUri as string])
+    );
+
+    // Step 5: Generate component code
+    const output: ComponentExportOutput = exportReactPresentational(
+      compGenHelper,
+      component,
+      site,
+      projectConfig,
+      imageAssetUriMap,
+      false,  // isPlasmicHosted
+      false,  // forceAllCsr
+      undefined,  // appAuthProvider
+      exportOpts,
+      siteCtx
+    );
+
+    console.error(`[plasmic-mcp] Codegen complete for "${component.name}": ${output.renderModuleFileName}`);
+
+    // Step 6: Convert to SystemJS modules (same format as live-syncer createComponentModules)
+    const modules: CodeModule[] = [];
+
+    // Project-level CSS
+    if (projectConfig.cssRules) {
+      modules.push({
+        name: `./${projectConfig.cssFileName}`,
+        source: projectConfig.cssRules,
+        lang: "css",
+      });
+    }
+
+    // Project module bundle
+    if (projectConfig.projectModuleBundle) {
+      modules.push({
+        name: `./${projectConfig.projectModuleBundle.fileName}`,
+        source: projectConfig.projectModuleBundle.module,
+        lang: "tsx",
+      });
+    }
+
+    // Style tokens provider
+    if (projectConfig.styleTokensProviderBundle) {
+      modules.push({
+        name: `./${projectConfig.styleTokensProviderBundle.fileName}`,
+        source: projectConfig.styleTokensProviderBundle.module,
+        lang: "tsx",
+      });
+    }
+
+    // Component CSS
+    if (output.cssRules) {
+      modules.push({
+        name: `./${output.cssFileName}`,
+        source: output.cssRules,
+        lang: "css",
+      });
+    }
+
+    // Component render module (the blackbox Plasmic component)
+    modules.push({
+      name: `./${output.renderModuleFileName}`,
+      source: output.renderModule,
+      lang: "tsx",
+    });
+
+    // Skeleton module (the user-facing component wrapper)
+    modules.push({
+      name: `./${output.skeletonModuleFileName}`,
+      source: output.skeletonModule,
+      lang: "tsx",
+    });
+
+    // Entry module: import the skeleton and render via setPlasmicRootNode
+    const entrySource = `
+      var React = window.__Sub.React;
+      var mod = require("./${output.skeletonModuleFileName}");
+      var Comp = mod.default || mod[Object.keys(mod).find(function(k) { return k !== '__esModule'; }) || ''];
+      window.__Sub.setPlasmicRootNode(
+        React.createElement(Comp, null)
+      );
+      window.parent.postMessage({ source: "plasmic-preview", type: "rendered" }, "*");
+    `;
+
+    modules.push({
+      name: "./preview-entry.tsx",
+      source: entrySource,
+      lang: "tsx",
+      run: true,
+    });
+
+    return modules;
+  } catch (err) {
+    const msg = err instanceof Error ? err.stack ?? err.message : String(err);
+    console.error(`[plasmic-mcp] Codegen failed for "${component.name}":`, msg);
+    return { error: msg };
   }
 }
 
@@ -332,34 +519,37 @@ function handlePreview(
     return;
   }
 
-  // TODO: Replace with codegen-preview.ts generatePreviewModules()
-  // For now, use a test module that renders the component name
-  const modules = [
-    {
-      name: `./preview-entry.tsx`,
-      source: `
-        const React = window.__Sub.React;
-        const el = React.createElement;
-        window.__Sub.setPlasmicRootNode(
-          el("div", { style: { padding: "40px", fontFamily: "system-ui" } },
-            el("h1", {}, ${JSON.stringify(component.name)}),
-            el("p", { style: { color: "#666" } }, "Preview rendering via codegen coming soon..."),
-            el("p", { style: { color: "#999", fontSize: "14px" } },
-              "Host: " + ${JSON.stringify(platformHostUrl)},
-              el("br"),
-              "Commit: " + ${JSON.stringify(commitHash)}
-            )
-          )
-        );
-        window.parent.postMessage({ source: "plasmic-preview", type: "rendered" }, "*");
-      `,
-      lang: "tsx",
-      run: true,
-    },
-  ];
+  // Generate component code using the same codegen pipeline as Studio's live preview
+  let modules: CodeModule[];
+  const result = generateComponentModules(component);
 
-  // The origin param tells PlasmicCanvasHost where to load getlibs.js from.
-  // Must point to the Studio host (where /static/js/getlibs.js lives).
+  if (result && !("error" in result)) {
+    modules = result;
+  } else {
+    // Fallback: show error details inline for debugging
+    const errorMsg = result && "error" in result ? result.error : "Unknown error";
+    const escapedError = JSON.stringify(errorMsg);
+    modules = [
+      {
+        name: "./preview-entry.tsx",
+        source: `
+          var React = window.__Sub.React;
+          var el = React.createElement;
+          window.__Sub.setPlasmicRootNode(
+            el("div", { style: { padding: "40px", fontFamily: "system-ui" } },
+              el("h1", {}, ${JSON.stringify(component.name)}),
+              el("p", { style: { color: "#c00" } }, "Codegen failed:"),
+              el("pre", { style: { color: "#666", fontSize: "12px", whiteSpace: "pre-wrap", maxWidth: "800px" } }, ${escapedError})
+            )
+          );
+          window.parent.postMessage({ source: "plasmic-preview", type: "rendered" }, "*");
+        `,
+        lang: "tsx",
+        run: true,
+      },
+    ];
+  }
+
   const studioOrigin = getStudioOrigin();
   const previewHtml = generatePreviewPage(component.name, modules, commitHash, studioOrigin);
 

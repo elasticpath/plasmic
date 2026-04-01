@@ -67,19 +67,16 @@ const bundlePlugin = {
       return { path: resolved };
     });
 
-    // Layer 4: Stub out optional packages that wab/shared imports but the MCP
-    // server doesn't need at runtime. These are packages from the Plasmic
-    // monorepo that may not be built, plus their peer dependencies (React, antd).
+    // Layer 4: Stub out packages that the codegen pipeline doesn't need at
+    // runtime. React and @plasmicapp/* are NOT stubbed — the codegen pipeline
+    // needs them for builtin component metadata (FetcherMeta, PlasmicHead etc.)
+    // and they work fine in Node.js as real external requires.
     const stubPatterns = [
-      /^@plasmicapp\//,
       /^@plasmicpkgs\//,
       /^@ant-design\//,
       /^@react-awesome-query-builder\//,
       /^@sentry/,
       /^antd/,
-      /^react$/,
-      /^react\//,
-      /^react-dom/,
     ];
     const STUB_NAMESPACE = "stub-module";
 
