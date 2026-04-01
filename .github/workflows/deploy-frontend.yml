@@ -18,6 +18,7 @@ on:
         options:
           - integration
           - production
+          - prod-us
 
 jobs:
   deploy-frontend:
