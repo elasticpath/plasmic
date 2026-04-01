@@ -47,7 +47,6 @@ import {
 import { readTokens, getAllStyleTokens } from "./token-reader.js";
 import { resolveNode, requireSingleNode, invalidateNodeCache, clearNodeCache } from "./node-resolver.js";
 import { listPatternsMeta } from "./patterns/registry.js";
-import { captureScreenshot } from "./headless-canvas.js";
 import { applyPattern } from "./patterns/applier.js";
 import { initChangeTracker, disposeChangeTracker, getChangeTracker } from "./change-tracker.js";
 import {
@@ -141,6 +140,7 @@ import { registerCall, failCall, isMicroBatchActive, isCallSettled, setCurrentCa
 import { undo as undoOperation, clearUndoStack, getUndoDepth } from "./undo-manager.js";
 import { SaveManager } from "./save-manager.js";
 import { startLiveSync, stopLiveSync, isLiveSyncActive } from "./live-sync.js";
+import { startPreviewServer, stopPreviewServer, getPreviewPort, getPreviewUrl } from "./preview-server.js";
 import { isSocketConnected, getSocketProjectId } from "./socket-client.js";
 import { emitEditPresence, clearEditPresence, emitInspectPresence } from "./tool-presence.js";
 import { undoChanges } from "@/wab/shared/core/undo-util";
@@ -356,6 +356,7 @@ export function createServer(): McpServer {
             const pid = requireParam(projectId, "projectId", "project.set");
             // Clean up previous session state before loading new project
             stopLiveSync();
+            stopPreviewServer().catch(() => {});
             apiClient.clearSessionState();
             cancelBatch();
             clearUndoStack();
@@ -371,6 +372,7 @@ export function createServer(): McpServer {
               hostlessDataVersion,
               hostUrl,
               bundleVersion,
+              projectApiToken,
             } = await loadProject(apiClient, pid, branchId);
 
             // Sync code component variants from the dev host (non-fatal)
@@ -391,6 +393,7 @@ export function createServer(): McpServer {
               devHostSynced: syncResult.devHostSynced,
               syncedVariantComponents: syncResult.syncedVariantComponents,
               registryData: syncResult.registryData,
+              projectApiToken,
             });
 
             // Initialize change tracking for incremental saves (M2)
@@ -424,6 +427,15 @@ export function createServer(): McpServer {
               );
             });
 
+            // Start preview server (non-blocking — continues if it fails)
+            startPreviewServer(apiClient).catch((err) => {
+              console.error(
+                `[plasmic-mcp] Preview server start failed (non-fatal): ${
+                  err instanceof Error ? err.message : String(err)
+                }`
+              );
+            });
+
             const components = site.components ?? [];
             const pages = components.filter((c: any) => c.pageMeta?.path);
 
@@ -438,6 +450,7 @@ export function createServer(): McpServer {
                     componentCount: components.length,
                     pageCount: pages.length,
                     hostUrl: hostUrl ?? null,
+                    previewPort: getPreviewPort(),
                     devHostSynced: syncResult.devHostSynced,
                     ...(syncResult.devHostSynced && {
                       syncedVariantComponents: syncResult.syncedVariantComponents,
@@ -595,6 +608,7 @@ export function createServer(): McpServer {
               hostlessDataVersion,
               hostUrl,
               bundleVersion,
+              projectApiToken: refreshedToken,
             } = await loadProject(apiClient, session.projectId, session.activeBranchId ?? undefined);
 
             // Clear registry cache to force fresh fetch on explicit refresh
@@ -618,6 +632,7 @@ export function createServer(): McpServer {
               devHostSynced: syncResult.devHostSynced,
               syncedVariantComponents: syncResult.syncedVariantComponents,
               registryData: syncResult.registryData,
+              projectApiToken: refreshedToken,
             });
 
             // Re-initialize change tracking
@@ -937,21 +952,20 @@ export function createServer(): McpServer {
     "inspect",
     {
       description: "Read-only queries on component trees, nodes, style properties, page metadata, and visual capture.\n" +
-        "Actions: tree, summary, node, subtree, export, style-properties, preview-url, page-meta, list-design-system, list-patterns, capture-screenshot.\n" +
+        "Actions: tree, summary, node, subtree, export, style-properties, preview-url, page-meta, list-design-system, list-patterns.\n" +
         "- tree: Full element tree with styles, text, layout. Example: {action:\"tree\",componentUuid:\"abc\"} → {type:\"tag\",tag:\"div\",layoutType:\"vbox\",layoutHint:\"flex-col\",children:[...]}\n" +
         "- summary: Compact outline (type, tag, name, uuid, childCount). Example: {action:\"summary\",componentUuid:\"abc\"} → {name:\"Hero\",tree:{type:\"tag\",tag:\"div\",childCount:3}}\n" +
         "- node: Full details for a single node. Example: {action:\"node\",componentUuid:\"abc\",nodeRef:\"heading\"} → {type:\"tag\",tag:\"h1\",styles:{fontSize:\"32px\"},text:\"Hello\"}\n" +
         "- subtree: Tree from a specific node downward. Example: {action:\"subtree\",componentUuid:\"abc\",nodeRef:\"card-container\"} → {type:\"tag\",tag:\"div\",children:[...]}\n" +
         "- export: Write full tree to temp file. Example: {action:\"export\",componentUuid:\"abc\"} → {filePath:\"/tmp/tree-abc.json\"}\n" +
         "- style-properties: List valid CSS property names. Example: {action:\"style-properties\",filter:\"flex\"} → [\"flex\",\"flexDirection\",\"flexGrow\",...]\n" +
-        "- preview-url: Get preview and studio URLs. Example: {action:\"preview-url\",componentUuid:\"abc\"} → {previewUrl:\"https://...\",studioUrl:\"https://...\"}\n" +
+        "- preview-url: Get navigable preview URL for visual feedback via Playwright MCP. Returns navigateUrl (local SSR preview server), devHostUrl (if custom host), studioUrl, and viewport presets. After edits, use navigateUrl with Playwright browser_navigate + browser_take_screenshot for visual verification. Example: {action:\"preview-url\",componentUuid:\"abc\"} → {navigateUrl:\"http://127.0.0.1:PORT/preview/Name\",studioUrl:\"https://...\"}\n" +
         "- page-meta: Read page SEO metadata. Example: {action:\"page-meta\",componentUuid:\"abc\"} → {title:\"Home\",path:\"/\",description:\"...\"}\n" +
         "- list-design-system: Consolidated summary of all design tokens, mixins, and themes. Example: {action:\"list-design-system\"} → {tokens:{Color:[...],Spacing:[...]},mixins:[...],themes:[...]}\n" +
         "- list-global-contexts: List all global context providers configured on the project with their component names, source packages, and configured prop values. Example: {action:\"list-global-contexts\"} → {contexts:[{name:\"Provider\",props:{apiKey:\"...\"}}]}\n" +
-        "- list-patterns: List available UI patterns (heroes, cards, navbars, etc.) that can be applied with node.apply-pattern. No session required. Example: {action:\"list-patterns\"} → [{name:\"hero-centered\",description:\"...\",tags:[...],customisationKeys:[...]}]\n" +
-        "- capture-screenshot: Capture a PNG screenshot of a component via headless Chromium and the dev host. Requires dev host running. Example: {action:\"capture-screenshot\",componentUuid:\"abc\"} → PNG image",
+        "- list-patterns: List available UI patterns (heroes, cards, navbars, etc.) that can be applied with node.apply-pattern. No session required. Example: {action:\"list-patterns\"} → [{name:\"hero-centered\",description:\"...\",tags:[...],customisationKeys:[...]}]",
       inputSchema: {
-        action: z.enum(["tree", "summary", "node", "subtree", "export", "style-properties", "preview-url", "page-meta", "list-design-system", "list-global-contexts", "list-patterns", "capture-screenshot"]),
+        action: z.enum(["tree", "summary", "node", "subtree", "export", "style-properties", "preview-url", "page-meta", "list-design-system", "list-global-contexts", "list-patterns"]),
         componentUuid: z.string().optional().describe("UUID of the component to inspect"),
         nodeRef: z.string().optional().describe("Node reference: UUID, name, path, or index"),
         maxDepth: z.number().optional().describe("Maximum tree depth to return. Defaults to 3 for tree, 2 for summary. Pass -1 for unlimited."),
@@ -1323,10 +1337,47 @@ export function createServer(): McpServer {
 
             const host = auth.host.replace(/\/$/, ""); // Normalize trailing slash
             const studioUrl = `${host}/projects/${session.projectId}`;
+            const studioComponentUrl = `${studioUrl}?arena_type=component&arena=${encodeURIComponent(cuuid)}`;
+            const isPage = !!component.pageMeta?.path;
 
-            const result: Record<string, string> = { studioUrl };
+            const result: Record<string, unknown> = {
+              studioUrl,
+              studioComponentUrl,
+              componentType: isPage ? "page" : "component",
+              viewport: { width: 1280, height: 800 },
+              viewportPresets: {
+                desktop: { width: 1280, height: 800 },
+                tablet: { width: 768, height: 1024 },
+                mobile: { width: 375, height: 812 },
+              },
+            };
 
-            if (component.pageMeta?.path) {
+            // Local preview server URL (SSR, works for all project types)
+            const localUrl = getPreviewUrl(component.name);
+            if (localUrl) {
+              result.navigateUrl = localUrl;
+              result.usage = "To capture a visual preview, use the Playwright MCP tools: " +
+                "1) browser_navigate to navigateUrl, " +
+                "2) browser_take_screenshot to capture the rendered component. " +
+                "Use browser_resize with viewportPresets for responsive testing. " +
+                "Requires the Playwright MCP plugin to be enabled.";
+            } else {
+              result.navigateUrl = null;
+              result.usage = "Preview server not running. The preview server starts automatically " +
+                "when a project is loaded via project.set. Visual preview requires the Playwright " +
+                "MCP plugin to be enabled alongside this Plasmic MCP server.";
+            }
+
+            // Dev host URL (preferred for custom host projects — real app rendering)
+            if (session.hostUrl) {
+              const hostBase = session.hostUrl.replace(/\/$/, "");
+              result.devHostUrl = isPage
+                ? `${hostBase}${component.pageMeta.path}`
+                : hostBase;
+            }
+
+            // Backward compat
+            if (isPage) {
               result.previewUrl = `${host}/projects/${session.projectId}/preview${component.pageMeta.path}`;
             }
 
@@ -1477,63 +1528,8 @@ export function createServer(): McpServer {
             return inspectResult({ patternCount: patterns.length, patterns });
           }
 
-          case "capture-screenshot": {
-            const session = requireSession();
-            const cuuid = componentUuid;
-            if (!cuuid) {
-              return inspectResult({ error: "componentUuid is required for capture-screenshot" });
-            }
-            const component = session.site.components?.find(
-              (c: any) => c.uuid === cuuid
-            );
-            if (!component) {
-              return inspectResult({ error: `Component ${cuuid} not found` });
-            }
-            if (!session.hostUrl) {
-              return inspectResult({
-                error: "No dev host URL configured. Set PLASMIC_DEV_HOST_URL environment variable or configure hostUrl in project settings.",
-              });
-            }
-
-            const tree = readComponentTree(component);
-            if (!tree) {
-              return inspectResult({ error: `Component "${component.name}" has no template tree` });
-            }
-
-            const result = await captureScreenshot({
-              devHostUrl: session.hostUrl,
-              componentName: component.name,
-              tree,
-            });
-
-            return {
-              content: [
-                {
-                  type: "image" as const,
-                  data: result.imageData,
-                  mimeType: "image/png",
-                },
-                {
-                  type: "text" as const,
-                  text: JSON.stringify({
-                    component: component.name,
-                    componentUuid: cuuid,
-                    width: result.width,
-                    height: result.height,
-                  }),
-                },
-              ],
-              structuredContent: {
-                component: component.name,
-                componentUuid: cuuid,
-                width: result.width,
-                height: result.height,
-              },
-            };
-          }
-
           default:
-            throw new Error(`Unknown action '${action}' for inspect tool. Available: tree, summary, node, subtree, export, style-properties, preview-url, page-meta, list-design-system, list-patterns, capture-screenshot`);
+            throw new Error(`Unknown action '${action}' for inspect tool. Available: tree, summary, node, subtree, export, style-properties, preview-url, page-meta, list-design-system, list-patterns`);
         }
       } catch (err: unknown) {
         return {
@@ -1662,6 +1658,7 @@ export function createServer(): McpServer {
                 hostlessDataVersion: newHostlessDataVersion,
                 hostUrl: reloadedHostUrl,
                 bundleVersion: newBundleVersion,
+                projectApiToken: reloadedToken,
               } = await loadProject(apiClient, session.projectId, session.activeBranchId ?? undefined);
 
               // Re-sync code component variants from the dev host (non-fatal)
@@ -1682,6 +1679,7 @@ export function createServer(): McpServer {
                 devHostSynced: syncResult.devHostSynced,
                 syncedVariantComponents: syncResult.syncedVariantComponents,
                 registryData: syncResult.registryData,
+                projectApiToken: reloadedToken,
               });
               initChangeTracker(site);
 
@@ -1760,6 +1758,7 @@ export function createServer(): McpServer {
                 hostlessDataVersion: newHostlessDataVersion,
                 hostUrl: reloadedHostUrl,
                 bundleVersion: newBundleVersion,
+                projectApiToken: reloadedToken,
               } = await loadProject(apiClient, session.projectId, session.activeBranchId ?? undefined);
 
               // Re-sync code component variants from the dev host (non-fatal)
@@ -1780,6 +1779,7 @@ export function createServer(): McpServer {
                 devHostSynced: syncResult.devHostSynced,
                 syncedVariantComponents: syncResult.syncedVariantComponents,
                 registryData: syncResult.registryData,
+                projectApiToken: reloadedToken,
               });
               initChangeTracker(site);
 
@@ -1883,6 +1883,7 @@ export function createServer(): McpServer {
                 hostlessDataVersion: newHostlessDataVersion,
                 hostUrl: reloadedHostUrl,
                 bundleVersion: newBundleVersion,
+                projectApiToken: reloadedToken,
               } = await loadProject(apiClient, session.projectId, session.activeBranchId ?? undefined);
 
               // Re-sync code component variants from the dev host (non-fatal)
@@ -1903,6 +1904,7 @@ export function createServer(): McpServer {
                 devHostSynced: syncResult.devHostSynced,
                 syncedVariantComponents: syncResult.syncedVariantComponents,
                 registryData: syncResult.registryData,
+                projectApiToken: reloadedToken,
               });
               initChangeTracker(site);
 
@@ -5986,6 +5988,7 @@ export function createServer(): McpServer {
                   devHostSynced: syncResult.devHostSynced,
                   syncedVariantComponents: syncResult.syncedVariantComponents,
                   registryData: syncResult.registryData,
+                  projectApiToken: loaded.projectApiToken,
                 });
                 initChangeTracker(loaded.site);
                 startLiveSync(apiClient, session.projectId).catch(() => {});

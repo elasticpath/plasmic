@@ -1183,3 +1183,167 @@ declare module "@/wab/shared/common" {
   /** Set difference: returns elements in `a` that are not in `b`. */
   export function xDifference<T>(a: Iterable<T>, b: Iterable<T>): Set<T>;
 }
+
+// ---------------------------------------------------------------------------
+// Codegen pipeline (used by preview-server.ts for in-memory component rendering)
+// ---------------------------------------------------------------------------
+
+declare module "@/wab/shared/codegen/types" {
+  export interface ExportOpts {
+    lang: string;
+    platform: string;
+    forceAllProps?: boolean;
+    uncontrolledProps?: boolean;
+    shouldTransformWritableStates?: boolean;
+    forceRootDisabled?: boolean;
+    imageOpts: { scheme: string };
+    stylesOpts: { scheme: string };
+    codeOpts: { reactRuntime: string };
+    fontOpts: { scheme: string };
+    codeComponentStubs: boolean;
+    skinnyReactWeb: boolean;
+    skinny: boolean;
+    importHostFromReactWeb: boolean;
+    idFileNames?: boolean;
+    hostLessComponentsConfig: string;
+    includeImportedTokens?: boolean;
+    useComponentSubstitutionApi: boolean;
+    useGlobalVariantsSubstitutionApi: boolean;
+    useCodeComponentHelpersRegistry: boolean;
+    useCustomFunctionsStub: boolean;
+    isLivePreview?: boolean;
+    targetEnv: string;
+    localization?: any;
+  }
+
+  export interface ComponentExportOutput {
+    id: string;
+    componentName: string;
+    plasmicName: string;
+    displayName: string;
+    renderModule: string;
+    skeletonModule: string;
+    cssRules: string;
+    renderModuleFileName: string;
+    skeletonModuleFileName: string;
+    cssFileName: string;
+    scheme: string;
+    isPage: boolean;
+    path?: string;
+  }
+
+  export interface ProjectConfig {
+    cssFileName: string;
+    cssRules: string;
+    projectId: string;
+    projectName: string;
+    indirect: boolean;
+    revision: number;
+    version: string;
+    projectRevId: string;
+    hasStyleTokenOverrides: boolean;
+    projectModuleBundle?: { fileName: string; module: string };
+    styleTokensProviderBundle?: { fileName: string; module: string };
+    dataTokensBundle?: { fileName: string; module: string };
+    globalContextBundle?: { fileName: string; module: string };
+    splitsProviderBundle?: { fileName: string; module: string };
+  }
+
+  export interface SerializerSiteContext {
+    projectFlags: any;
+    cssProjectDependencies: any;
+    cssVarResolver: any;
+    customFunctionToOwnerSite: Map<any, any>;
+  }
+}
+
+declare module "@/wab/shared/codegen/react-p" {
+  import type {
+    ExportOpts,
+    ComponentExportOutput,
+    ProjectConfig,
+    SerializerSiteContext,
+  } from "@/wab/shared/codegen/types";
+
+  export function exportReactPresentational(
+    componentGenHelper: any,
+    component: any,
+    site: any,
+    projectConfig: ProjectConfig,
+    s3ImageLinks: Record<string, string>,
+    isPlasmicHosted: boolean,
+    forceAllCsr: boolean,
+    appAuthProvider: any,
+    opts?: ExportOpts,
+    siteCtx?: SerializerSiteContext
+  ): ComponentExportOutput;
+
+  export function exportStyleConfig(
+    opts: { targetEnv: string }
+  ): { defaultStyleCssFileName: string; defaultStyleCssRules: string };
+
+  export function exportProjectConfig(
+    site: any,
+    projectName: string,
+    projectId: string,
+    revision: number,
+    projectRevId: string,
+    version: string,
+    exportOpts: Partial<ExportOpts>,
+    indirect?: boolean,
+    scheme?: string
+  ): ProjectConfig;
+
+  export function computeSerializerSiteContext(site: any): SerializerSiteContext;
+}
+
+declare module "@/wab/shared/codegen/codegen-helpers" {
+  export class SiteGenHelper {
+    constructor(site: any, isStudio: boolean);
+    allStyleTokensAndOverrides(): any[];
+    allMixins(): any[];
+    allImageAssets(): any[];
+  }
+
+  export class ComponentGenHelper {
+    constructor(siteHelper: SiteGenHelper, resolver: any);
+  }
+}
+
+declare module "@/wab/shared/codegen/variants" {
+  export function exportGlobalVariantGroup(
+    group: any,
+    opts: { idFileNames: boolean }
+  ): { contextFileName: string; contextModule: string };
+}
+
+declare module "@/wab/shared/codegen/image-assets" {
+  export function exportIconAsset(
+    asset: any,
+    opts: { idFileNames: boolean }
+  ): { fileName: string; module: string };
+
+  export function extractUsedIconAssetsForComponents(
+    site: any,
+    components: any[]
+  ): Set<any>;
+}
+
+declare module "@/wab/shared/core/project-deps" {
+  export function walkDependencyTree(
+    site: any,
+    scope: "all" | "direct"
+  ): Array<{ site: any; projectId: string; name: string }>;
+}
+
+declare module "@/wab/shared/core/styles" {
+  export class CssVarResolver {
+    constructor(
+      tokens: any[],
+      mixins: any[],
+      assets: any[],
+      activeTheme: any,
+      opts?: { keepAssetRefs?: boolean; useCssVariables?: boolean }
+    );
+  }
+}

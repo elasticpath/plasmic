@@ -47,7 +47,7 @@ You have access to Plasmic MCP tools for interacting with Plasmic Studio.
 - `component({ action: "extract", componentUuid, nodeRef, name })` — Extract subtree into a new reusable component.
 - `inspect({ action: "page-meta", componentUuid })` — Read SEO metadata (title, description, OG image, canonical).
 - `component({ action: "update-page-meta", componentUuid, title?, description?, openGraphImage?, canonical?, path? })` — Set SEO metadata.
-- `inspect({ action: "preview-url", componentUuid })` — Preview and studio URLs.
+- `inspect({ action: "preview-url", componentUuid })` — Local preview URL (`navigateUrl`) for visual verification via Playwright. Also returns `studioUrl` and `viewportPresets`. Use: `browser_navigate({ url: navigateUrl })` → wait 8s → `browser_take_screenshot`.
 
 ### Variants
 - `variant({ action: "create-style", componentUuid, selector, nodeRef? })` — Create :hover, :focus, :active, etc. Also accepts code component attribute selectors (e.g., `[data-selected]`) on code component roots.

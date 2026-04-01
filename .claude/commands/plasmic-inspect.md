@@ -37,7 +37,7 @@ You are inspecting a Plasmic project to help the developer understand its struct
 
 ### Page Metadata
 - `inspect({ action: "page-meta", componentUuid })` — SEO: title, description, OG image, canonical URL, path.
-- `inspect({ action: "preview-url", componentUuid })` — Preview and studio URLs.
+- `inspect({ action: "preview-url", componentUuid })` — Local preview URL (`navigateUrl`) for visual verification via Playwright. The preview server renders actual component code using the same codegen pipeline as Studio. Use with `browser_navigate` + `browser_take_screenshot` for visual feedback after edits. Also returns `studioUrl`, `viewportPresets` (desktop/tablet/mobile), and `devHostUrl` (if custom host).
 
 ## Navigation Pattern
 

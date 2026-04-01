@@ -14,6 +14,7 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createServer } from "./server.js";
 import { stopLiveSync } from "./live-sync.js";
+import { stopPreviewServer } from "./preview-server.js";
 
 // Prevent silent crashes from unhandled rejections (e.g. socket.io failures)
 process.on("unhandledRejection", (reason) => {
@@ -32,6 +33,7 @@ function shutdown() {
   shuttingDown = true;
   console.error("[plasmic-mcp] Shutting down...");
   stopLiveSync();
+  stopPreviewServer().catch(() => {});
 }
 process.on("SIGTERM", () => { shutdown(); process.exit(0); });
 process.on("SIGINT", () => { shutdown(); process.exit(0); });

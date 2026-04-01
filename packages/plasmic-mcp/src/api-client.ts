@@ -67,6 +67,11 @@ export class PlasmicApiClient {
     return this.auth;
   }
 
+  /** Expose auth headers for direct fetch calls (e.g., loader service on a different host). */
+  getAuthHeaders(): Record<string, string> {
+    return this.makeHeaders();
+  }
+
   private makeHeaders(): Record<string, string> {
     const headers: Record<string, string> = {
       "x-plasmic-api-user": this.auth.user,
@@ -124,7 +129,7 @@ export class PlasmicApiClient {
     method: string,
     url: string,
     data?: Record<string, unknown>,
-    opts?: { headers?: Record<string, string> }
+    opts?: { headers?: Record<string, string>; rawQuery?: boolean }
   ): Promise<any> {
     // Auto-fetch CSRF token before write operations, matching Studio's
     // behavior where _headers() always includes the token (fetched at page load).
@@ -139,11 +144,12 @@ export class PlasmicApiClient {
     const headers = { ...this.makeHeaders(), ...(opts?.headers ?? {}) };
 
     // GET/DELETE: serialize data as query params matching Studio's ajax() pattern
+    // rawQuery: skip JSON.stringify for endpoints like /loader/* that expect plain values
     let search = "";
     if ((method === "get" || method === "delete") && data) {
       const entries: string[][] = Object.entries(data)
         .filter(([, v]) => v !== undefined)
-        .map(([k, v]) => [k, JSON.stringify(v)]);
+        .map(([k, v]) => [k, opts?.rawQuery ? String(v) : JSON.stringify(v)]);
       if (entries.length > 0) {
         search = "?" + new URLSearchParams(entries).toString();
       }
@@ -228,8 +234,12 @@ export class PlasmicApiClient {
    * Mirrors Studio.get(). URL is relative (e.g., "/projects").
    * Data object becomes GET query params via Studio's serialization pattern.
    */
-  async get(url: string, data?: Record<string, unknown>): Promise<any> {
-    return this.req("get", url, data);
+  async get(
+    url: string,
+    data?: Record<string, unknown>,
+    opts?: { headers?: Record<string, string>; rawQuery?: boolean }
+  ): Promise<any> {
+    return this.req("get", url, data, opts);
   }
 
   /**
