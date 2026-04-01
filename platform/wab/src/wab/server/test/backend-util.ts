@@ -1,5 +1,6 @@
 import { runAppServer } from "@/wab/server/app-backend-real";
 import { closeDbConnections, ensureDbConnection } from "@/wab/server/db/DbCon";
+import { register } from "prom-client";
 import { initDb } from "@/wab/server/db/DbInitUtil";
 import { DbMgr, normalActor, SUPER_USER } from "@/wab/server/db/DbMgr";
 import { Project, User } from "@/wab/server/entities/Entities";
@@ -156,6 +157,7 @@ export async function createBackend(
         cleanup: async () => {
           server.close();
           await closeDbConnections();
+          register.clear();
         },
       };
     }
