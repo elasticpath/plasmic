@@ -1,5 +1,5 @@
 import { runAppServer } from "@/wab/server/app-backend-real";
-import { ensureDbConnection } from "@/wab/server/db/DbCon";
+import { closeDbConnections, ensureDbConnection } from "@/wab/server/db/DbCon";
 import { initDb } from "@/wab/server/db/DbInitUtil";
 import { DbMgr, normalActor, SUPER_USER } from "@/wab/server/db/DbMgr";
 import { Project, User } from "@/wab/server/entities/Entities";
@@ -153,7 +153,10 @@ export async function createBackend(
 
       return {
         host: `http://localhost:${port}`,
-        cleanup: async () => server.close(),
+        cleanup: async () => {
+          server.close();
+          await closeDbConnections();
+        },
       };
     }
   );
