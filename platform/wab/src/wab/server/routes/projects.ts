@@ -224,22 +224,6 @@ export function mkRevisionBroadcastData(
   };
 }
 
-/**
- * Extracts consistent revision metadata for broadcasting project updates.
- * This ensures all broadcast messages contain the same revision fields.
- */
-export function mkRevisionBroadcastData(
-  rev: ProjectRevision
-): MinimalRevisionInfo {
-  return {
-    createdAt: rev.createdAt,
-    createdById: rev.createdById,
-    id: rev.id,
-    branchId: rev.branchId,
-    revision: rev.revision,
-  };
-}
-
 export async function listProjects(req: Request, res: Response) {
   const mgr = userDbMgr(req);
 
