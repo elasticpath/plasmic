@@ -23,3 +23,6 @@ export const syncGlobalContexts = (...args: any[]) =>
   mockSyncGlobalContexts(...args);
 export const upgradeProjectDeps = (...args: any[]) =>
   mockUpgradeProjectDeps(...args);
+
+// Used by preview-server.ts codegen
+export function walkDependencyTree() { return []; }

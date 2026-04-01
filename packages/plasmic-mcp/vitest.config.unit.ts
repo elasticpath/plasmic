@@ -208,6 +208,14 @@ export default defineConfig({
         find: /^@\/wab\/shared\/codegen\/types$/,
         replacement: path.resolve(__dirname, "src/__mocks__/wab-codegen-types"),
       },
+      {
+        find: /^@\/wab\/shared\/codegen\/variants$/,
+        replacement: path.resolve(__dirname, "src/__mocks__/wab-codegen-variants"),
+      },
+      {
+        find: /^@\/wab\/shared\/codegen\/image-assets$/,
+        replacement: path.resolve(__dirname, "src/__mocks__/wab-codegen-image-assets"),
+      },
     ],
     extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
   },

@@ -20,10 +20,14 @@ import { getAuth } from "./auth.js";
 import {
   exportReactPresentational,
   exportProjectConfig,
+  exportStyleConfig,
   computeSerializerSiteContext,
 } from "@/wab/shared/codegen/react-p";
 import { SiteGenHelper, ComponentGenHelper } from "@/wab/shared/codegen/codegen-helpers";
 import { CssVarResolver } from "@/wab/shared/core/styles";
+import { exportGlobalVariantGroup } from "@/wab/shared/codegen/variants";
+import { exportIconAsset, extractUsedIconAssetsForComponents } from "@/wab/shared/codegen/image-assets";
+import { walkDependencyTree } from "@/wab/shared/core/project-deps";
 import type { ExportOpts, ComponentExportOutput } from "@/wab/shared/codegen/types";
 
 let server: http.Server | null = null;
@@ -40,6 +44,10 @@ let commitHash: string | null = null;
 
 /** Reference to the API client (kept for future use). */
 let apiClientRef: PlasmicApiClient | null = null;
+
+/** Cache of generated module content, keyed by filename. Served at /static/{filename}
+ *  so SystemJS can fetch CSS/JS modules that the codegen output imports. */
+const generatedModules = new Map<string, { content: string; contentType: string }>();
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -124,6 +132,7 @@ export async function stopPreviewServer(): Promise<void> {
       cachedHostHtml = null;
       commitHash = null;
       apiClientRef = null;
+      generatedModules.clear();
       resolve();
     });
     setTimeout(() => {
@@ -133,6 +142,7 @@ export async function stopPreviewServer(): Promise<void> {
       cachedHostHtml = null;
       commitHash = null;
       apiClientRef = null;
+      generatedModules.clear();
       resolve();
     }, 2000);
   });
@@ -229,7 +239,7 @@ async function fetchAndCacheHostHtml(): Promise<void> {
  * Uses exportReactPresentational + SiteGenHelper + CssVarResolver directly
  * against the in-memory site model — no external API calls needed.
  */
-function generateComponentModules(component: any): CodeModule[] | null {
+function generateComponentModules(component: any): CodeModule[] | { error: string } | null {
   const session = getSession();
   if (!session) return null;
 
@@ -311,58 +321,67 @@ function generateComponentModules(component: any): CodeModule[] | null {
 
     console.error(`[plasmic-mcp] Codegen complete for "${component.name}": ${output.renderModuleFileName}`);
 
-    // Step 6: Convert to SystemJS modules (same format as live-syncer createComponentModules)
+    // Step 6: Convert to SystemJS modules — replicates live-syncer.ts autorun
+    // (lines 144-249) module assembly order exactly.
     const modules: CodeModule[] = [];
 
-    // Project-level CSS
-    if (projectConfig.cssRules) {
-      modules.push({
-        name: `./${projectConfig.cssFileName}`,
-        source: projectConfig.cssRules,
-        lang: "css",
-      });
-    }
-
-    // Project module bundle
-    if (projectConfig.projectModuleBundle) {
-      modules.push({
-        name: `./${projectConfig.projectModuleBundle.fileName}`,
-        source: projectConfig.projectModuleBundle.module,
-        lang: "tsx",
-      });
-    }
-
-    // Style tokens provider
-    if (projectConfig.styleTokensProviderBundle) {
-      modules.push({
-        name: `./${projectConfig.styleTokensProviderBundle.fileName}`,
-        source: projectConfig.styleTokensProviderBundle.module,
-        lang: "tsx",
-      });
-    }
-
-    // Component CSS
-    if (output.cssRules) {
-      modules.push({
-        name: `./${output.cssFileName}`,
-        source: output.cssRules,
-        lang: "css",
-      });
-    }
-
-    // Component render module (the blackbox Plasmic component)
+    // 6a. Default style CSS (live-syncer:151)
+    const styleOutput = exportStyleConfig({ targetEnv: "preview" });
     modules.push({
-      name: `./${output.renderModuleFileName}`,
-      source: output.renderModule,
-      lang: "tsx",
+      name: `./${styleOutput.defaultStyleCssFileName}`,
+      source: styleOutput.defaultStyleCssRules,
+      lang: "css",
     });
 
-    // Skeleton module (the user-facing component wrapper)
-    modules.push({
-      name: `./${output.skeletonModuleFileName}`,
-      source: output.skeletonModule,
-      lang: "tsx",
-    });
+    // 6b. Project mods: CSS + projectModuleBundle + styleTokensProvider + dataTokens (live-syncer:167, createProjectMods)
+    const pushProjectMods = (pc: any) => {
+      if (pc.cssRules) modules.push({ name: `./${pc.cssFileName}`, source: pc.cssRules, lang: "css" });
+      if (pc.projectModuleBundle) modules.push({ name: `./${pc.projectModuleBundle.fileName}`, source: pc.projectModuleBundle.module, lang: "tsx" });
+      if (pc.styleTokensProviderBundle) modules.push({ name: `./${pc.styleTokensProviderBundle.fileName}`, source: pc.styleTokensProviderBundle.module, lang: "tsx" });
+      if (pc.dataTokensBundle) modules.push({ name: `./${pc.dataTokensBundle.fileName}`, source: pc.dataTokensBundle.module, lang: "tsx" });
+    };
+    pushProjectMods(projectConfig);
+
+    // 6c. Dependency project mods (live-syncer:168, createDepsProjectMods)
+    try {
+      for (const dep of walkDependencyTree(site, "all")) {
+        const depConfig = exportProjectConfig(dep.site, dep.name, dep.projectId, 0, "dep", "latest", exportOpts);
+        pushProjectMods(depConfig);
+      }
+    } catch (e) {
+      console.error("[plasmic-mcp] Dependency project mods failed (non-fatal):", e instanceof Error ? e.message : e);
+    }
+
+    // 6d. Component CSS + render + skeleton (live-syncer:185, createComponentModules)
+    if (output.cssRules) modules.push({ name: `./${output.cssFileName}`, source: output.cssRules, lang: "css" });
+    modules.push({ name: `./${output.renderModuleFileName}`, source: output.renderModule, lang: "tsx" });
+    modules.push({ name: `./${output.skeletonModuleFileName}`, source: output.skeletonModule, lang: "tsx" });
+
+    // 6e. Icon assets (live-syncer:214-220)
+    try {
+      const icons = extractUsedIconAssetsForComponents(site, [component]);
+      for (const asset of icons) {
+        if (asset.dataUri) {
+          const iconBundle = exportIconAsset(asset, { idFileNames: true });
+          modules.push({ name: `./${iconBundle.fileName}`, source: iconBundle.module, lang: "tsx" });
+        }
+      }
+    } catch (e) {
+      console.error("[plasmic-mcp] Icon asset export failed (non-fatal):", e instanceof Error ? e.message : e);
+    }
+
+    // 6f. Global variant groups (live-syncer:222-237)
+    try {
+      const groups = site.globalVariantGroups ?? [];
+      for (const group of groups) {
+        if (group.variants?.length > 0) {
+          const bundle = exportGlobalVariantGroup(group, { idFileNames: true });
+          modules.push({ name: `./${bundle.contextFileName}`, source: bundle.contextModule, lang: "tsx" });
+        }
+      }
+    } catch (e) {
+      console.error("[plasmic-mcp] Global variant export failed (non-fatal):", e instanceof Error ? e.message : e);
+    }
 
     // Entry module: import the skeleton and render via setPlasmicRootNode
     const entrySource = `
@@ -416,8 +435,22 @@ async function handleRequest(
     return;
   }
 
-  // GET /static/* — proxy to platform host
+  // GET /static/{filename} — serve codegen-generated modules (CSS, JS) before
+  // falling through to the platform proxy. SystemJS resolves imports like
+  // "./plasmic__default_style.css" relative to the iframe URL (/static/host.html),
+  // so they become /static/plasmic__default_style.css.
   if (req.method === "GET" && pathname.startsWith("/static/")) {
+    const filename = pathname.slice("/static/".length);
+    const generated = generatedModules.get(filename);
+    if (generated) {
+      res.writeHead(200, {
+        "Content-Type": generated.contentType,
+        "Cache-Control": "no-cache",
+      });
+      res.end(generated.content);
+      return;
+    }
+    // Not a generated module — proxy to platform host
     await handleStaticProxy(pathname, res);
     return;
   }
@@ -525,6 +558,16 @@ function handlePreview(
 
   if (result && !("error" in result)) {
     modules = result;
+    // Cache generated modules so SystemJS can fetch them at /static/{filename}.
+    // SystemJS resolves "./foo.css" relative to the iframe (/static/host.html)
+    // → GET /static/foo.css, which we intercept and serve from this cache.
+    generatedModules.clear();
+    for (const mod of modules) {
+      // Strip leading "./" to get the bare filename
+      const filename = mod.name.replace(/^\.\//, "");
+      const contentType = mod.lang === "css" ? "text/css; charset=utf-8" : "application/javascript; charset=utf-8";
+      generatedModules.set(filename, { content: mod.source, contentType });
+    }
   } else {
     // Fallback: show error details inline for debugging
     const errorMsg = result && "error" in result ? result.error : "Unknown error";

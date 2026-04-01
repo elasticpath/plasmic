@@ -1278,6 +1278,10 @@ declare module "@/wab/shared/codegen/react-p" {
     siteCtx?: SerializerSiteContext
   ): ComponentExportOutput;
 
+  export function exportStyleConfig(
+    opts: { targetEnv: string }
+  ): { defaultStyleCssFileName: string; defaultStyleCssRules: string };
+
   export function exportProjectConfig(
     site: any,
     projectName: string,
@@ -1304,6 +1308,32 @@ declare module "@/wab/shared/codegen/codegen-helpers" {
   export class ComponentGenHelper {
     constructor(siteHelper: SiteGenHelper, resolver: any);
   }
+}
+
+declare module "@/wab/shared/codegen/variants" {
+  export function exportGlobalVariantGroup(
+    group: any,
+    opts: { idFileNames: boolean }
+  ): { contextFileName: string; contextModule: string };
+}
+
+declare module "@/wab/shared/codegen/image-assets" {
+  export function exportIconAsset(
+    asset: any,
+    opts: { idFileNames: boolean }
+  ): { fileName: string; module: string };
+
+  export function extractUsedIconAssetsForComponents(
+    site: any,
+    components: any[]
+  ): Set<any>;
+}
+
+declare module "@/wab/shared/core/project-deps" {
+  export function walkDependencyTree(
+    site: any,
+    scope: "all" | "direct"
+  ): Array<{ site: any; projectId: string; name: string }>;
 }
 
 declare module "@/wab/shared/core/styles" {
