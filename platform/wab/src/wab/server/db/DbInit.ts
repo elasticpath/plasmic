@@ -2,7 +2,7 @@
 // environment we're running in.
 import { loadConfig } from "@/wab/server/config";
 import { getLastBundleVersion } from "@/wab/server/db/BundleMigrator";
-import { ensureDbConnection } from "@/wab/server/db/DbCon";
+import { ensureDbConnection, ensureDbConnections } from "@/wab/server/db/DbCon";
 import { initDb } from "@/wab/server/db/DbInitUtil";
 import {
   DbMgr,
@@ -40,6 +40,7 @@ if (require.main === module) {
 
 async function main() {
   const config = loadConfig();
+  await ensureDbConnections(config.databaseUri);
   const con = await ensureDbConnection(config.databaseUri, "default");
   await con.transaction(async (em) => {
     await initDb(em);
