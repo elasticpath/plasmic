@@ -65,7 +65,7 @@ You are editing an existing page or component in a Plasmic project.
 - `component({ action: "extract", componentUuid, nodeRef, name })` — Extract subtree into a new reusable component.
 - `component({ action: "update-page-meta", componentUuid, ... })` — Set SEO metadata.
 - `inspect({ action: "page-meta", componentUuid })` — Read SEO metadata.
-- `inspect({ action: "preview-url", componentUuid })` — Preview/studio URLs.
+- `inspect({ action: "preview-url", componentUuid })` — Get local preview URL (`navigateUrl`) for visual verification via Playwright. Also returns `studioUrl` and `viewportPresets`.
 - `component({ action: "delete", componentUuid, force? })` — Delete.
 - `inspect({ action: "style-properties", filter? })` — Valid CSS property names.
 - `project({ action: "begin-batch" })` / `project({ action: "end-batch" })` — Group edits into a single save.
@@ -86,6 +86,13 @@ All edit tools accept `dryRun: true` to preview changes without persisting.
 8. If a save conflict occurs (412), explain and suggest `project({ action: "refresh" })`.
 
 **Verification rule**: After editing, always verify with `inspect.node` on the specific node you changed. Never use `inspect.tree` to confirm a single edit — it wastes thousands of context tokens to re-read an entire tree when you only need one node's state.
+
+**Visual verification**: For style-heavy edits (layout changes, responsive work, design tasks), use the preview server to visually confirm results:
+1. `inspect({ action: "preview-url", componentUuid })` → get `navigateUrl`
+2. `browser_navigate({ url: navigateUrl })` → wait 8s → `browser_take_screenshot({ type: "png" })`
+3. Actually examine the screenshot and compare against the intended result. If a reference was provided, screenshot that too for side-by-side comparison.
+
+This is especially important when matching a reference design — structural inspection alone cannot catch visual regressions like wrong spacing, font weight, or color mismatches.
 
 **Following truncation hints**: If any inspect response contains `truncated: true`, read the `hint` field and follow its guidance — typically call `inspect.subtree` with a deeper `nodeRef` or pass `maxDepth` to control depth.
 

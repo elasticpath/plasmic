@@ -180,29 +180,49 @@ Skip this sub-phase entirely if the plan has no enhancements. If mid-execution c
 
 ## Phase 4 — Verify + Self-Correct
 
-**Goal:** Confirm each sub-phase matches the plan. Auto-correct deviations with bounded retries.
+**Goal:** Confirm each sub-phase matches the plan using both structural inspection AND visual screenshots. Auto-correct deviations with bounded retries.
 
 Run this after each sub-phase (3a, 3b, 3c, 3d):
 
+### Structural verification
 1. Call `inspect({ action: "summary", componentUuid, maxDepth: 2, format: "concise" })` on the affected component(s).
 2. Compare the actual tree structure against the plan:
    - Are all planned sections/nodes present?
    - Is the hierarchy correct (nesting, flex direction)?
    - Are key styles applied (spot-check via `inspect.node` if summary shows issues)?
-3. **If deviation found:**
-   - Identify what's wrong (missing node, wrong parent, missing style)
+
+### Visual verification (after sub-phases 3b, 3c, 3d)
+3. Get the preview URL: `inspect({ action: "preview-url", componentUuid })` → use the `navigateUrl` field.
+4. Navigate with Playwright: `browser_navigate({ url: navigateUrl })`, wait 8 seconds, then `browser_take_screenshot({ type: "png" })`.
+5. **Actually look at the screenshot** — compare it against the plan and any reference material:
+   - Does the layout match the intended design?
+   - Are fonts, colors, spacing visually correct?
+   - Is text content rendering properly?
+   - Are there broken layouts, overlapping elements, or missing sections?
+6. If the user provided a reference URL or image, screenshot that too and compare side by side. Be honest about differences — don't claim "close match" when the visual output clearly differs.
+
+### Correction loop
+7. **If deviation found (structural or visual):**
+   - Identify what's wrong (missing node, wrong parent, missing style, visual mismatch)
    - Apply corrective tool calls
-   - Re-verify with `inspect.summary`
+   - Re-verify with `inspect.summary` AND a fresh screenshot
    - **Maximum 2 correction attempts per sub-phase**
-4. **If deviation persists after 2 retries:**
+8. **If deviation persists after 2 retries:**
    - Stop retrying
    - Report clearly to the user: what was expected, what was found, what was attempted
+   - Include the screenshot for the user to see
    - Ask the user how to proceed
-5. **If no deviation:** Proceed to the next sub-phase.
+9. **If no deviation:** Proceed to the next sub-phase.
+
+### Visual verification prerequisites
+- The preview server starts automatically on `project.set` — no extra setup needed.
+- Requires the Playwright MCP plugin to be enabled alongside the Plasmic MCP server.
+- If Playwright is unavailable, fall back to structural verification only and note the limitation.
+- For design-heavy tasks (matching a reference site, pixel-perfect work), consider building an HTML/CSS prototype first to nail down exact values, then translating those into Plasmic operations.
 
 ## Completion
 
-After all sub-phases are verified, output a **Final Summary**:
+After all sub-phases are verified, take a **final screenshot** of the completed component and output a **Final Summary**:
 
 ```
 ### Result
@@ -216,6 +236,8 @@ After all sub-phases are verified, output a **Final Summary**:
 **Corrections Made:** [list any auto-corrections, or "none needed"]
 
 **Deviations:** [list any unresolved deviations, or "none"]
+
+**Preview:** [screenshot of the final rendered component]
 ```
 
 Then suggest relevant next steps based on what was built:
