@@ -5,7 +5,7 @@ export default defineConfig({
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 8 : undefined,
+  workers: process.env.CI ? 4 : undefined,
   reporter: process.env.CI
     ? [["github"], ["playwright-ctrf-json-reporter", {}]]
     : [
@@ -21,7 +21,7 @@ export default defineConfig({
   timeout: 400_000,
   use: {
     actionTimeout: 10_000,
-    navigationTimeout: 15_000,
+    navigationTimeout: 30_000,
     baseURL: process.env.WAB_HOST ?? "http://localhost:3003",
     trace: "retain-on-failure",
     video: "retain-on-failure",

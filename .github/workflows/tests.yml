@@ -344,6 +344,10 @@ jobs:
         working-directory: platform/wab/playwright
         run: npx playwright install chromium
 
+      - name: Build production frontend
+        working-directory: platform/wab
+        run: PUBLIC_URL=http://localhost:3003 bash tools/dev-server.bash build
+
       - name: Start application servers
         working-directory: platform/wab
         env:
@@ -357,10 +361,13 @@ jobs:
           # Start host server in background
           yarn host-server &
 
-          # Start frontend dev server in background
-          yarn start &
+          # Serve production frontend build with API proxy to backend
+          cd build && npx -p local-web-server ws --spa index.html --port 3003 \
+            --cors.origin '*' \
+            --rewrite '/api/(.*) -> http://localhost:3004/api/$1' &
+          cd ..
 
-          # Wait for all servers to be ready (longer timeout for dev server startup)
+          # Wait for all servers to be ready
           npx wait-on http://localhost:3003 http://localhost:3004 http://localhost:3005 --timeout 300000
 
       - name: Run Playwright tests
