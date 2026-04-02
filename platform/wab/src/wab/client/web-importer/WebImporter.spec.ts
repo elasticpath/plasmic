@@ -77,7 +77,7 @@ describe("WebImporter", () => {
       expect(Tpls.getTplTextBlockContent(textTpl, pageViewCtx)).toEqual(
         "Hello World"
       );
-      expect(pageViewCtx.focusedTpls()).toEqual([containerTpl]);
+      expect(pageViewCtx.focusedTpls()).toEqual([pastedTpl]);
     });
 
     it("pastes multi-color SVG from web importer as image", async () => {
@@ -131,7 +131,7 @@ describe("WebImporter", () => {
       );
       expect(baseVs.attrs.loading.code).toBe('"lazy"');
 
-      expect(pageViewCtx.focusedTpls()).toEqual([containerTpl]);
+      expect(pageViewCtx.focusedTpls()).toEqual([pastedTpl]);
     });
 
     it("pastes single-color SVG from web importer as icon", async () => {
@@ -205,65 +205,7 @@ describe("WebImporter", () => {
         "Playfair Display"
       );
 
-      expect(pageViewCtx.focusedTpls()).toEqual([containerTpl]);
-    });
-
-    it("pastes animations and animation sequences from web importer", async () => {
-      // Create html with text element that has multi-font font-family
-      const htmlStr = `
-<style>
-  @keyframes fadeIn {
-    0% {
-      opacity: 0;
-    }
-    100% {
-      opacity: 1;
-    }
-  }
-
-.text { animation: fadeIn 1s linear infinite alternate-reverse; }
-.text:hover { animation: none; }
-</style>
-<div class="text">Text with fadeIn animation</div>`;
-
-      pageViewCtx.selectNewTpl(page.tplTree);
-      expect(
-        await paste({
-          clipboard: htmlToClipboard(htmlStr),
-          studioCtx,
-          cursorClientPt: undefined,
-        })
-      ).toBe(true);
-
-      const { containerTpl, pastedTpl } = getPastedTpl(page.tplTree);
-
-      // Verify animation
-      const baseVs = pageViewCtx
-        .variantTplMgr()
-        .ensureBaseVariantSetting(pastedTpl);
-
-      expect(baseVs.rs.animations).toMatchObject([
-        {
-          sequence: {
-            name: "fadeIn",
-          },
-          timingFunction: "linear",
-          duration: "1s",
-          delay: "0s",
-          iterationCount: "infinite",
-          fillMode: "none",
-          direction: "alternate-reverse",
-          playState: "running",
-        },
-      ]);
-
-      const hoverVs = pastedTpl.vsettings.find((vs) =>
-        vs.variants.find((v) => v.selectors?.includes(":hover"))
-      );
-      assert(hoverVs, "Expected Hover VariantSetting to exists, found null");
-      expect(hoverVs.rs.animations).toMatchObject([]);
-
-      expect(pageViewCtx.focusedTpls()).toEqual([containerTpl]);
+      expect(pageViewCtx.focusedTpls()).toEqual([pastedTpl]);
     });
 
     it("pastes animations and animation sequences from web importer", async () => {
