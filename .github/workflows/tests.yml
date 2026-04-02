@@ -81,12 +81,8 @@ jobs:
         with:
           fail-on-cache-miss: 'true'
 
-      - name: Install root dependencies
-        run: yarn install --frozen-lockfile
-
-      - name: Install platform/wab dependencies
-        working-directory: platform/wab
-        run: yarn install --frozen-lockfile
+      - name: Validate cached dependencies
+        run: yarn install --frozen-lockfile --check-files
 
       - name: Generate required files (PEG parsers, model classes)
         working-directory: platform/wab
@@ -246,12 +242,8 @@ jobs:
         with:
           fail-on-cache-miss: 'true'
 
-      - name: Install root dependencies
-        run: yarn install --frozen-lockfile
-
-      - name: Install platform/wab dependencies
-        working-directory: platform/wab
-        run: yarn install --frozen-lockfile
+      - name: Validate cached dependencies
+        run: yarn install --frozen-lockfile --check-files
 
       - name: Generate required files (PEG parsers, model classes)
         working-directory: platform/wab
