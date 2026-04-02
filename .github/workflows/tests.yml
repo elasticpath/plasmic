@@ -346,7 +346,7 @@ jobs:
 
       - name: Build production frontend
         working-directory: platform/wab
-        run: PUBLIC_URL=http://localhost:3003 bash tools/dev-server.bash build
+        run: NODE_ENV=development PUBLIC_URL=http://localhost:3003 bash tools/dev-server.bash build
 
       - name: Start application servers
         working-directory: platform/wab
