@@ -346,6 +346,7 @@ jobs:
           NODE_ENV: development
           CI: true
           TUTORIAL_DB_SUPER_PASSSWORD: SEKRET
+          SKIP_GRANT_REVOKE_EMAILS: 'true'
         run: |
           # Start backend server in background
           yarn dev:backend &
