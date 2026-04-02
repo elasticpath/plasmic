@@ -293,15 +293,99 @@ jobs:
             echo "Some tests failed." >> $GITHUB_STEP_SUMMARY
           fi
 
-  test-e2e:
-    name: E2E Tests
+  # Build step for E2E: builds sibling packages, host-test, and production
+  # frontend once, then uploads as artifact for sharded test runners.
+  setup-e2e:
+    name: E2E Build
     needs: setup
     runs-on: ubuntu-latest
-    # Only run if manually triggered, push, or PR has 'run-e2e-tests' label
     if: |
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'push' ||
       contains(github.event.pull_request.labels.*.name, 'run-e2e-tests')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        uses: ./.github/actions/setup-env
+        with:
+          fail-on-cache-miss: 'true'
+
+      - name: Validate cached dependencies
+        run: yarn install --frozen-lockfile --check-files
+
+      - name: Ensure platform/wab binaries
+        working-directory: platform/wab
+        run: yarn install --frozen-lockfile --check-files
+
+      - name: Generate required files (PEG parsers, model classes)
+        working-directory: platform/wab
+        run: make
+
+      - name: Build sibling packages and CSS
+        run: |
+          set -e
+          echo "Building platform/sub..."
+          (cd platform/sub && yarn && yarn build-dev)
+          rm -rf platform/sub/node_modules
+
+          echo "Building platform/live-frame..."
+          (cd platform/live-frame && yarn && yarn build)
+          rm -rf platform/live-frame/node_modules
+
+          echo "Building platform/react-web-bundle..."
+          (cd platform/react-web-bundle && yarn && yarn build)
+          rm -rf platform/react-web-bundle/node_modules
+
+          echo "Building platform/canvas-packages..."
+          (cd platform/canvas-packages && yarn && yarn build)
+          rm -rf platform/canvas-packages/node_modules
+
+          echo "Building platform/loader-html-hydrate..."
+          (cd platform/loader-html-hydrate && yarn && yarn build)
+          rm -rf platform/loader-html-hydrate/node_modules
+
+          echo "Building CSS..."
+          (cd platform/wab && yarn build-css)
+
+          yarn cache clean
+
+      - name: Build host-test
+        run: |
+          cd platform/host-test
+          yarn install
+          yarn build
+
+      - name: Build production frontend
+        working-directory: platform/wab
+        run: NODE_ENV=development PUBLIC_URL=http://localhost:3003 bash tools/dev-server.bash build
+
+      - name: Upload E2E build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-build
+          retention-days: 1
+          path: |
+            platform/wab/build/
+            platform/wab/dev-build/
+            platform/host-test/.next/
+            platform/host-test/node_modules/.package-lock.json
+            platform/sub/build/
+            platform/live-frame/build/
+            platform/react-web-bundle/build/
+            platform/canvas-packages/build/
+            platform/loader-html-hydrate/build/
+
+  test-e2e:
+    name: E2E Tests (Shard ${{ matrix.shard }}/2)
+    needs: [setup, setup-e2e]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
 
     services:
       postgres:
@@ -339,6 +423,11 @@ jobs:
         working-directory: platform/wab
         run: make
 
+      - name: Download E2E build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: e2e-build
+
       - name: Setup PostgreSQL users and extensions
         env:
           PGPASSWORD: postgres
@@ -361,62 +450,12 @@ jobs:
         working-directory: platform/wab
         run: yarn seed
 
-      - name: Build sibling packages and CSS
+      - name: Start host-test server
         run: |
-          set -e  # Exit on first error
-
-          echo "=== Initial disk space ==="
-          df -h
-
-          echo "Building platform/sub..."
-          (cd platform/sub && yarn && yarn build-dev)
-          rm -rf platform/sub/node_modules
-          echo "Cleaned up platform/sub/node_modules"
-
-          echo "Building platform/live-frame..."
-          (cd platform/live-frame && yarn && yarn build)
-          rm -rf platform/live-frame/node_modules
-          echo "Cleaned up platform/live-frame/node_modules"
-
-          echo "Building platform/react-web-bundle..."
-          (cd platform/react-web-bundle && yarn && yarn build)
-          rm -rf platform/react-web-bundle/node_modules
-          echo "Cleaned up platform/react-web-bundle/node_modules"
-
-          echo "Building platform/canvas-packages..."
-          (cd platform/canvas-packages && yarn && yarn build)
-          rm -rf platform/canvas-packages/node_modules
-          echo "Cleaned up platform/canvas-packages/node_modules"
-
-          echo "Building platform/loader-html-hydrate..."
-          (cd platform/loader-html-hydrate && yarn && yarn build)
-          rm -rf platform/loader-html-hydrate/node_modules
-          echo "Cleaned up platform/loader-html-hydrate/node_modules"
-
-          echo "Building CSS..."
-          (cd platform/wab && yarn build-css)
-
-          echo "Cleaning yarn cache..."
-          yarn cache clean
-
-          echo "=== Final disk space ==="
-          df -h
-
-          echo "All sibling packages built successfully"
-
-      - name: Build and start host-test server
-        run: |
-          echo "Building host-test Next.js app..."
           cd platform/host-test
-          yarn install
-          yarn build
-
-          echo "Starting host-test server on port 3000..."
+          yarn install --frozen-lockfile
           yarn start &
-
-          # Wait for it to be ready
           npx wait-on http://localhost:3000/plasmic-host --timeout 60000
-          echo "Host-test server is ready"
 
       - name: Install Playwright dependencies
         working-directory: platform/wab/playwright
@@ -425,10 +464,6 @@ jobs:
       - name: Install Playwright browsers
         working-directory: platform/wab/playwright
         run: npx playwright install chromium
-
-      - name: Build production frontend
-        working-directory: platform/wab
-        run: NODE_ENV=development PUBLIC_URL=http://localhost:3003 bash tools/dev-server.bash build
 
       - name: Start application servers
         working-directory: platform/wab
@@ -453,17 +488,17 @@ jobs:
           # Wait for all servers to be ready
           npx wait-on http://localhost:3003 http://localhost:3004 http://localhost:3005 --timeout 300000
 
-      - name: Run Playwright tests
+      - name: Run Playwright tests (Shard ${{ matrix.shard }}/2)
         working-directory: platform/wab/playwright
         env:
           CI: true
-        run: npx playwright test
+        run: npx playwright test --shard=${{ matrix.shard }}/2
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: playwright-report
+          name: playwright-report-shard-${{ matrix.shard }}
           path: platform/wab/playwright/playwright-report/
           retention-days: 30
 
@@ -471,14 +506,14 @@ jobs:
         uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-test-results
+          name: playwright-test-results-shard-${{ matrix.shard }}
           path: platform/wab/playwright/test-results/
           retention-days: 30
 
       - name: Test Summary
         if: always()
         run: |
-          echo "### E2E Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "### E2E Test Results (Shard ${{ matrix.shard }}/2)" >> $GITHUB_STEP_SUMMARY
           if [ "${{ job.status }}" == "success" ]; then
             echo "All E2E tests passed." >> $GITHUB_STEP_SUMMARY
           else
@@ -487,7 +522,7 @@ jobs:
 
   all-tests:
     name: All Tests
-    needs: [setup, test-wab, test-wab-loader, test-packages, test-plasmicpkgs, test-e2e]
+    needs: [setup, test-wab, test-wab-loader, test-packages, test-plasmicpkgs, setup-e2e, test-e2e]
     if: always()
     runs-on: ubuntu-latest
 
