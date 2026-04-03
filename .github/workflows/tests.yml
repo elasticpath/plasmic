@@ -38,10 +38,6 @@ jobs:
         working-directory: platform/wab
         run: yarn install --frozen-lockfile
 
-      - name: Install loader-bundle-env dependencies
-        working-directory: platform/loader-bundle-env
-        run: yarn install --frozen-lockfile
-
       - name: Generate required files (PEG parsers, model classes)
         working-directory: platform/wab
         run: make

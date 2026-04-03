@@ -25,7 +25,6 @@ runs:
         path: |
           node_modules
           platform/wab/node_modules
-          platform/loader-bundle-env/node_modules
           platform/wab/src/wab/gen
           platform/wab/src/wab/shared/model/classes.ts
           platform/wab/src/wab/shared/model/classes-metas.ts
@@ -33,5 +32,5 @@ runs:
           platform/wab/src/wab/styles/_tokens.ts
           platform/wab/src/wab/styles/css-variables.ts
           platform/wab/src/wab/styles/css-variables.scss
-        key: deps-v4-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
+        key: deps-v5-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
         fail-on-cache-miss: ${{ inputs.fail-on-cache-miss }}
