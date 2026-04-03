@@ -90,7 +90,7 @@ jobs:
 
       - name: Ensure platform/wab binaries
         working-directory: platform/wab
-        run: yarn install --frozen-lockfile --check-files
+        run: yarn install --frozen-lockfile --check-files --ignore-optional
 
       - name: Generate required files (PEG parsers, model classes)
         working-directory: platform/wab
@@ -171,7 +171,7 @@ jobs:
 
       - name: Ensure platform/wab binaries
         working-directory: platform/wab
-        run: yarn install --frozen-lockfile --check-files
+        run: yarn install --frozen-lockfile --check-files --ignore-optional
 
       - name: Generate required files (PEG parsers, model classes)
         working-directory: platform/wab
@@ -341,7 +341,7 @@ jobs:
 
       - name: Ensure platform/wab binaries
         working-directory: platform/wab
-        run: yarn install --frozen-lockfile --check-files
+        run: yarn install --frozen-lockfile --check-files --ignore-optional
 
       - name: Generate required files (PEG parsers, model classes)
         working-directory: platform/wab
