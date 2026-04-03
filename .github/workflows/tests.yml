@@ -186,6 +186,10 @@ jobs:
           psql -c "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"
           psql -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
 
+      - name: Install loader-bundle-env dependencies
+        working-directory: platform/loader-bundle-env
+        run: yarn install --frozen-lockfile
+
       - name: Run loader HTML tests
         working-directory: platform/wab
         env:
@@ -427,6 +431,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: e2e-build
+          path: platform
 
       - name: Setup PostgreSQL users and extensions
         env:
