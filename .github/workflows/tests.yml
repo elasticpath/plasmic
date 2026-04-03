@@ -375,11 +375,11 @@ jobs:
         with:
           name: e2e-build
           retention-days: 1
+          include-hidden-files: true
           path: |
             platform/wab/build/
             platform/wab/dev-build/
             platform/host-test/.next/
-            platform/host-test/node_modules/.package-lock.json
             platform/sub/build/
             platform/live-frame/build/
             platform/react-web-bundle/build/
