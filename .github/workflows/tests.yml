@@ -88,10 +88,6 @@ jobs:
       - name: Validate cached dependencies
         run: yarn install --frozen-lockfile --check-files
 
-      - name: Ensure platform/wab binaries
-        working-directory: platform/wab
-        run: yarn install --frozen-lockfile --check-files --ignore-optional
-
       - name: Generate required files (PEG parsers, model classes)
         working-directory: platform/wab
         run: make
@@ -168,10 +164,6 @@ jobs:
 
       - name: Validate cached dependencies
         run: yarn install --frozen-lockfile --check-files
-
-      - name: Ensure platform/wab binaries
-        working-directory: platform/wab
-        run: yarn install --frozen-lockfile --check-files --ignore-optional
 
       - name: Generate required files (PEG parsers, model classes)
         working-directory: platform/wab
@@ -338,10 +330,6 @@ jobs:
 
       - name: Validate cached dependencies
         run: yarn install --frozen-lockfile --check-files
-
-      - name: Ensure platform/wab binaries
-        working-directory: platform/wab
-        run: yarn install --frozen-lockfile --check-files --ignore-optional
 
       - name: Generate required files (PEG parsers, model classes)
         working-directory: platform/wab
