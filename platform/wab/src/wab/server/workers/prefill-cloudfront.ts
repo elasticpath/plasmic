@@ -1,5 +1,12 @@
+import {
+  CloudFrontClient,
+  CreateInvalidationCommand,
+} from "@aws-sdk/client-cloudfront";
 import { DbMgr } from "@/wab/server/db/DbMgr";
-import { genPublishedLoaderCodeBundle } from "@/wab/server/loader/gen-code-bundle";
+import {
+  genPublishedLoaderCodeBundle,
+  LOADER_CACHE_BUST,
+} from "@/wab/server/loader/gen-code-bundle";
 import {
   getResolvedProjectVersions,
   mkVersionToSync,
@@ -9,6 +16,7 @@ import { makeGenPublishedLoaderCodeBundleOpts } from "@/wab/server/routes/loader
 import { withSpan } from "@/wab/server/util/apm-util";
 import { PlasmicWorkerPool } from "@/wab/server/workers/pool";
 import { ensureDevFlags } from "@/wab/server/workers/worker-utils";
+import { getCodegenPublicUrl } from "@/wab/shared/urls";
 import { uniqBy } from "lodash";
 
 export async function prefillCloudfront(
@@ -51,6 +59,13 @@ export async function prefillCloudfront(
     )}`
   );
 
+  // Collect resolved specs alongside bundle generation so we can reuse them
+  // for CDN warming without a second DB query.
+  const warmingData: Array<{
+    publishment: (typeof loaderPublishments)[0];
+    resolvedProjectIdSpecs: string[];
+  }> = [];
+
   try {
     await Promise.all(
       // Prefill both browser + server and browserOnly builds
@@ -59,6 +74,8 @@ export async function prefillCloudfront(
           mgr,
           publishment.projectIds
         );
+
+        warmingData.push({ publishment, resolvedProjectIdSpecs });
 
         await withSpan(
           "loader-prefill",
@@ -103,6 +120,9 @@ export async function prefillCloudfront(
     // Even if there was an error, we set isPrefilled to true, else it'll
     // never be pre-filled.
   }
+
+  // isPrefilled must be set before warming so that origin can serve
+  // pre-computed bundles on any CloudFront cache miss during the warm requests.
   await mgr.updatePkgVersion(
     pkgVersion.pkgId,
     pkgVersion.version,
@@ -111,5 +131,73 @@ export async function prefillCloudfront(
       isPrefilled: true,
     }
   );
+
+  // Warm CloudFront's versioned cache by GETting each versioned URL through
+  // the CDN. This must happen before invalidating the published cache so that
+  // when clients follow the published→versioned redirect they get a cache hit.
+  if (warmingData.length > 0) {
+    const baseUrl = getCodegenPublicUrl();
+    await Promise.allSettled(
+      warmingData.map(({ publishment, resolvedProjectIdSpecs }) => {
+        const params = new URLSearchParams();
+        params.set("cb", LOADER_CACHE_BUST);
+        params.set("platform", publishment.platform);
+        if (publishment.loaderVersion != null) {
+          params.set("loaderVersion", String(publishment.loaderVersion));
+        }
+        for (const spec of resolvedProjectIdSpecs) {
+          params.append("projectId", spec);
+        }
+        if (publishment.browserOnly) {
+          params.set("browserOnly", "true");
+        }
+        if (publishment.i18nKeyScheme) {
+          params.set("i18nKeyScheme", publishment.i18nKeyScheme);
+        }
+        if (publishment.i18nTagPrefix) {
+          params.set("i18nTagPrefix", publishment.i18nTagPrefix);
+        }
+        if (publishment.appDir) {
+          params.set("nextjsAppDir", "true");
+        }
+        return fetch(
+          `${baseUrl}/api/v1/loader/code/versioned?${params.toString()}`
+        );
+      })
+    );
+    logger().info(`Warmed CloudFront versioned cache for ${projectId}`);
+  }
+
+  // Invalidate published CDN paths so clients are redirected to the
+  // now-warmed versioned entries.
+  const distributionId = process.env.CLOUDFRONT_DISTRIBUTION_ID;
+  if (distributionId) {
+    try {
+      const cloudfront = new CloudFrontClient({});
+      await cloudfront.send(
+        new CreateInvalidationCommand({
+          DistributionId: distributionId,
+          InvalidationBatch: {
+            CallerReference: pkgVersionId,
+            Paths: {
+              Quantity: 4,
+              Items: [
+                "/api/v1/loader/code/published*",
+                "/api/v1/loader/repr-v2/published*",
+                "/api/v1/loader/repr-v3/published*",
+                "/api/v1/loader/html/published*",
+              ],
+            },
+          },
+        })
+      );
+      logger().info(`CloudFront invalidation triggered for ${projectId}`);
+    } catch (err) {
+      logger().warn(
+        `CloudFront invalidation failed for ${projectId}: ${err}`
+      );
+    }
+  }
+
   logger().info(`Done prefilling cloudfront for ${projectId}`);
 }
