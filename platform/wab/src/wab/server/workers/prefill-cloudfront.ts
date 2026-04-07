@@ -160,9 +160,12 @@ export async function prefillCloudfront(
         if (publishment.appDir) {
           params.set("nextjsAppDir", "true");
         }
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30_000);
         return fetch(
-          `${baseUrl}/api/v1/loader/code/versioned?${params.toString()}`
-        );
+          `${baseUrl}/api/v1/loader/code/versioned?${params.toString()}`,
+          { signal: controller.signal }
+        ).finally(() => clearTimeout(timeoutId));
       })
     );
     const warmingFailures = warmingResults.filter(
@@ -205,7 +208,8 @@ export async function prefillCloudfront(
         `/api/v1/loader/repr-v3/published/${projectId}*`,
         `/api/v1/loader/html/published/${projectId}*`,
       ];
-      const cloudfront = new CloudFrontClient({});
+      // CloudFront is a global service; us-east-1 is the correct region for all CF API calls
+      const cloudfront = new CloudFrontClient({ region: "us-east-1" });
       await cloudfront.send(
         new CreateInvalidationCommand({
           DistributionId: distributionId,
@@ -221,7 +225,7 @@ export async function prefillCloudfront(
       logger().info(`CloudFront invalidation triggered for ${projectId}`);
     } catch (err) {
       logger().warn(
-        `CloudFront invalidation failed for ${projectId}: ${err}`
+        `CloudFront invalidation failed for ${projectId}: ${err instanceof Error ? err.message : String(err)}`
       );
     }
   }
