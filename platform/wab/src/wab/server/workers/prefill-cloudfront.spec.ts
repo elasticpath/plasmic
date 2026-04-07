@@ -309,6 +309,9 @@ describe("Prefill cloudfront", () => {
         const invalidationOrder = mockSend.mock.invocationCallOrder[0];
         expect(firstFetchOrder).toBeLessThan(invalidationOrder);
 
+        // The mock has 4 publishments but 2 share the same dedup key, so 3 unique
+        // combinations: [p1,p2,p3], [p1,p2,p3] (nextjs i18n — same ids), [p1].
+        // After dedup: p1,p2,p3 and p1.
         expect(mockSend).toHaveBeenCalledTimes(1);
         expect(mockSend).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -316,12 +319,14 @@ describe("Prefill cloudfront", () => {
             InvalidationBatch: expect.objectContaining({
               CallerReference: PKG_VERSION_ID,
               Paths: expect.objectContaining({
-                Quantity: 4,
+                // 2 unique code paths + 3 repr/html paths = 5
+                Quantity: 5,
                 Items: expect.arrayContaining([
-                  "/api/v1/loader/code/published*",
-                  "/api/v1/loader/repr-v2/published*",
-                  "/api/v1/loader/repr-v3/published*",
-                  "/api/v1/loader/html/published*",
+                  "/api/v1/loader/code/published/p1,p2,p3*",
+                  "/api/v1/loader/code/published/p1*",
+                  "/api/v1/loader/repr-v2/published/P1*",
+                  "/api/v1/loader/repr-v3/published/P1*",
+                  "/api/v1/loader/html/published/P1*",
                 ]),
               }),
             }),

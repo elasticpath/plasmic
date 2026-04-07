@@ -170,9 +170,32 @@ export async function prefillCloudfront(
 
   // Invalidate published CDN paths so clients are redirected to the
   // now-warmed versioned entries.
+  //
+  // code/published paths are keyed by sorted project IDs embedded in the URL
+  // path by the CloudFront Function (e.g. /published/aaa,zzz*). One path per
+  // unique project-ID combination covers all platform/loaderVersion variants.
+  //
+  // repr/html published paths already have :projectId in the route, so we
+  // can scope invalidation to just the published project.
   const distributionId = process.env.CLOUDFRONT_DISTRIBUTION_ID;
   if (distributionId) {
     try {
+      const codePaths = [
+        ...new Set(
+          warmingData.map(
+            ({ publishment }) =>
+              `/api/v1/loader/code/published/${[...publishment.projectIds]
+                .sort()
+                .join(",")}*`
+          )
+        ),
+      ];
+      const invalidationPaths = [
+        ...codePaths,
+        `/api/v1/loader/repr-v2/published/${projectId}*`,
+        `/api/v1/loader/repr-v3/published/${projectId}*`,
+        `/api/v1/loader/html/published/${projectId}*`,
+      ];
       const cloudfront = new CloudFrontClient({});
       await cloudfront.send(
         new CreateInvalidationCommand({
@@ -180,13 +203,8 @@ export async function prefillCloudfront(
           InvalidationBatch: {
             CallerReference: pkgVersionId,
             Paths: {
-              Quantity: 4,
-              Items: [
-                "/api/v1/loader/code/published*",
-                "/api/v1/loader/repr-v2/published*",
-                "/api/v1/loader/repr-v3/published*",
-                "/api/v1/loader/html/published*",
-              ],
+              Quantity: invalidationPaths.length,
+              Items: invalidationPaths,
             },
           },
         })

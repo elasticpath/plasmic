@@ -1082,6 +1082,15 @@ export function addLoaderRoutes(app: express.Application) {
     apiAuth,
     withNext(buildPublishedLoaderAssets)
   );
+  // Route for CloudFront-rewritten URLs where sorted project IDs are embedded
+  // in the path (e.g. /published/aaa,zzz?projectId=aaa&projectId=zzz&...).
+  // The handler reads from req.query.projectId as normal; the path segment is ignored.
+  app.get(
+    "/api/v1/loader/code/published/:projectIds",
+    cors(),
+    apiAuth,
+    withNext(buildPublishedLoaderAssets)
+  );
   app.get(
     "/api/v1/loader/code/versioned",
     cors(),
