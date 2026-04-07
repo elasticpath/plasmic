@@ -66,21 +66,17 @@ jobs:
       - name: Trigger GitLab image tag update
         if: success()
         env:
-          GITLAB_TOKEN: ${{ secrets.GITLAB_API_TOKEN }}
+          GITLAB_PIPELINE_TRIGGER_TOKEN: ${{ secrets.GITLAB_PIPELINE_TRIGGER_TOKEN }}
           GITLAB_PROJECT_ID: ${{ secrets.GITLAB_PROJECT_ID }}
           IMAGE_URL: ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ github.sha }}
         run: |
           curl --fail --request POST \
-            "https://gitlab.elasticpath.com/api/v4/projects/${GITLAB_PROJECT_ID}/pipeline" \
-            --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
-            --header "Content-Type: application/json" \
-            --data "$(jq -cn \
-              --arg image "${IMAGE_URL}" \
-              '{ref: "main", variables: [
-                {key: "UPDATE_IMAGE_TAGS", value: "true"},
-                {key: "TARGET_ENV",        value: "integration"},
-                {key: "CONTAINER_IMAGE",   value: $image}
-              ]}')"
+            "https://gitlab.elasticpath.com/api/v4/projects/${GITLAB_PROJECT_ID}/trigger/pipeline" \
+            --form "token=${GITLAB_PIPELINE_TRIGGER_TOKEN}" \
+            --form "ref=main" \
+            --form "variables[UPDATE_IMAGE_TAGS]=true" \
+            --form "variables[TARGET_ENV]=integration" \
+            --form "variables[CONTAINER_IMAGE]=${IMAGE_URL}"
 
       - name: Build summary
         if: success()
