@@ -335,6 +335,24 @@ describe("Prefill cloudfront", () => {
       });
     });
 
+    it("should warn and continue if warming fetches fail", async () => {
+      await withDb(async (sudo) => {
+        setupMocks(sudo);
+        process.env.CODEGEN_HOST = CODEGEN_HOST;
+        process.env.CLOUDFRONT_DISTRIBUTION_ID = "EDFDVBD6EXAMPLE";
+        // All warming fetches return 500
+        (global.fetch as jest.Mock).mockResolvedValue({ ok: false, status: 500 } as Response);
+
+        const pool: any = {};
+
+        // Should not throw — warming failures are non-fatal
+        await expect(prefillCloudfront(sudo, pool, PKG_VERSION_ID)).resolves.not.toThrow();
+
+        // Invalidation should still be attempted after warming failures
+        expect(mockSend).toHaveBeenCalledTimes(1);
+      });
+    });
+
     it("should skip invalidation when CLOUDFRONT_DISTRIBUTION_ID is not set", async () => {
       await withDb(async (sudo) => {
         setupMocks(sudo);

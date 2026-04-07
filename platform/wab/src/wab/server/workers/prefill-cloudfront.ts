@@ -137,7 +137,7 @@ export async function prefillCloudfront(
   // when clients follow the published→versioned redirect they get a cache hit.
   if (warmingData.length > 0) {
     const baseUrl = getCodegenPublicUrl();
-    await Promise.allSettled(
+    const warmingResults = await Promise.allSettled(
       warmingData.map(({ publishment, resolvedProjectIdSpecs }) => {
         const params = new URLSearchParams();
         params.set("cb", LOADER_CACHE_BUST);
@@ -165,7 +165,16 @@ export async function prefillCloudfront(
         );
       })
     );
-    logger().info(`Warmed CloudFront versioned cache for ${projectId}`);
+    const warmingFailures = warmingResults.filter(
+      (r) => r.status === "rejected" || (r.status === "fulfilled" && !r.value.ok)
+    );
+    if (warmingFailures.length > 0) {
+      logger().warn(
+        `CloudFront versioned cache warming had ${warmingFailures.length}/${warmingResults.length} failures for ${projectId} — invalidation will proceed but some clients may hit origin`
+      );
+    } else {
+      logger().info(`Warmed CloudFront versioned cache for ${projectId}`);
+    }
   }
 
   // Invalidate published CDN paths so clients are redirected to the
