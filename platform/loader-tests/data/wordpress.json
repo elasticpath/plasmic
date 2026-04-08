@@ -1,6 +1,6 @@
 [
   [
-    "dd10007d-d4ff-486b-9118-d8a6a1fa66fe",
+    "e3ce0173-4a2b-49d7-94de-203f89ff7556",
     {
       "root": "kqgH0FuoFQqf",
       "map": {
@@ -107,9 +107,9 @@
         },
         "kqgH0FuoFQqf": {
           "uuid": "f8KPdhMET1DG",
-          "pkgId": "ea158537-e803-4864-a44a-c7220344a13c",
-          "projectId": "g7Nk2vxhoW6FGUvHLcQxma",
-          "version": "0.1.0",
+          "pkgId": "73087bf2-4249-47a9-8504-9844a88ebf4f",
+          "projectId": "sBAv4iq1U72Do4yHc2YtFM",
+          "version": "0.0.1",
           "name": "Imported Dep",
           "site": { "__ref": "jKpExFHoCr5u" },
           "__type": "ProjectDependency"
@@ -120,7 +120,7 @@
     }
   ],
   [
-    "9VCrHsfmzE5rjkhPjMBYHv",
+    "g6d6dhe5SSdb8cYHdEW1ff",
     {
       "root": "G5KIgTWQ75nF",
       "map": {
@@ -389,23 +389,8 @@
           "uuid": "10Yz7x2JlzFP",
           "__type": "Var"
         },
-        "VFPKoNvq73NF": { "name": "any", "__type": "AnyType" },
-        "I-IrtcuB1iKr": {
-          "name": "arg",
-          "argName": "$queries",
-          "displayName": null,
-          "type": { "__ref": "VFPKoNvq73NF" },
-          "__type": "ArgType"
-        },
-        "qvmnl3g9c7sW": {
-          "name": "renderFunc",
-          "params": [{ "__ref": "I-IrtcuB1iKr" }],
-          "allowed": [],
-          "allowRootWrapper": null,
-          "__type": "RenderFuncType"
-        },
         "Q23UYG3DYg-K": {
-          "type": { "__ref": "qvmnl3g9c7sW" },
+          "type": { "__ref": "CLCgZfJfaE1T" },
           "tplSlot": { "__ref": "nHe9jTMADEsa" },
           "variable": { "__ref": "rnNqP3rOcpnK" },
           "uuid": "hMwGBY8qXL7f",
@@ -601,7 +586,7 @@
           "figmaMappings": [],
           "alwaysAutoName": true,
           "trapsFocus": false,
-          "updatedAt": 1760364195213,
+          "updatedAt": 1770869969972,
           "__type": "Component"
         },
         "Y80Pm3Wd3Zx9": {
@@ -691,7 +676,7 @@
           "figmaMappings": [],
           "alwaysAutoName": false,
           "trapsFocus": false,
-          "updatedAt": 1767630630994,
+          "updatedAt": 1770870149847,
           "__type": "Component"
         },
         "ONVvmbxAhAPX": {
@@ -778,7 +763,7 @@
           "figmaMappings": [],
           "alwaysAutoName": false,
           "trapsFocus": false,
-          "updatedAt": 1767631053550,
+          "updatedAt": 1770870187448,
           "__type": "Component"
         },
         "8fomm9jHp7Je": {
@@ -865,7 +850,7 @@
           "figmaMappings": [],
           "alwaysAutoName": false,
           "trapsFocus": false,
-          "updatedAt": 1767631017671,
+          "updatedAt": 1770870165263,
           "__type": "Component"
         },
         "ZXkrkZRcxAkm": {
@@ -1731,7 +1716,7 @@
           "globalVariant": { "__ref": "OHqfmJmQYbXH" },
           "styleTokens": [],
           "styleTokenOverrides": [],
-          "dataTokens": [],
+          "dataTokens": [{ "__ref": "NWOc0EICyKCn" }],
           "mixins": [],
           "animationSequences": [],
           "themes": [{ "__ref": "xCD7KcWwz4U7" }],
@@ -1740,7 +1725,7 @@
           "projectDependencies": [
             {
               "__xref": {
-                "uuid": "dd10007d-d4ff-486b-9118-d8a6a1fa66fe",
+                "uuid": "e3ce0173-4a2b-49d7-94de-203f89ff7556",
                 "iid": "kqgH0FuoFQqf"
               }
             }
@@ -1760,13 +1745,13 @@
         "h9dc6FKHKi29": {
           "uuid": "9Xtwsub8Un1K",
           "name": "posts",
-          "op": { "__ref": "ZNqcnoAP75QL" },
+          "op": { "__ref": "QuOpcabSwcte" },
           "__type": "ComponentServerQuery"
         },
         "qAoDkFC_o1fv": {
           "uuid": "fisRMibg8iD1",
           "name": "pages",
-          "op": { "__ref": "GnHVeeYS0ikZ" },
+          "op": { "__ref": "htelWExKuek4" },
           "__type": "ComponentServerQuery"
         },
         "R3SqPZBH9oAs": {
@@ -1927,7 +1912,7 @@
           "__type": "Var"
         },
         "9tNu464zE7l7": {
-          "path": ["$queries", "pages", "data"],
+          "path": ["$q", "pages", "data", "items"],
           "fallback": { "__ref": "mdyPeEan6qhG" },
           "__type": "ObjectPath"
         },
@@ -1998,7 +1983,7 @@
           "__type": "Var"
         },
         "AbzTS5ssJPIK": {
-          "path": ["$queries", "posts", "data"],
+          "path": ["$q", "posts", "data", "items"],
           "fallback": { "__ref": "UjhVogbpfnJR" },
           "__type": "ObjectPath"
         },
@@ -2046,7 +2031,7 @@
         "oZfFloaqroip": {
           "uuid": "LCEgliSg1Hvm",
           "name": "page",
-          "op": { "__ref": "QqgObFkF7TCg" },
+          "op": { "__ref": "uIVheoX1PO1R" },
           "__type": "ComponentServerQuery"
         },
         "L1FdZ4rxd3Tl": {
@@ -2126,7 +2111,7 @@
           "__type": "ExprText"
         },
         "Bcg0920sCMmk": {
-          "path": ["$queries", "page", "data", 0, "title", "rendered"],
+          "path": ["$q", "page", "data", "items", 0, "title", "rendered"],
           "fallback": { "__ref": "8E2ngCNYrsWq" },
           "__type": "ObjectPath"
         },
@@ -2171,7 +2156,7 @@
           "__type": "ExprText"
         },
         "dcpylxHB7VKQ": {
-          "path": ["$queries", "page", "data", 0, "modified"],
+          "path": ["$q", "page", "data", "items", 0, "modified"],
           "fallback": { "__ref": "A2yEloHRuBoq" },
           "__type": "ObjectPath"
         },
@@ -2216,7 +2201,7 @@
           "__type": "ExprText"
         },
         "MiK3oWo9UaEP": {
-          "path": ["$queries", "page", "data", 0, "content", "rendered"],
+          "path": ["$q", "page", "data", "items", 0, "content", "rendered"],
           "fallback": { "__ref": "zGbGT9C58QTb" },
           "__type": "ObjectPath"
         },
@@ -2397,7 +2382,7 @@
         "WO_6KihToebD": {
           "uuid": "-fQ-4_g-QJ5l",
           "name": "post",
-          "op": { "__ref": "RLrKdYNFrv6O" },
+          "op": { "__ref": "zKr9n0Oo0-Id" },
           "__type": "ComponentServerQuery"
         },
         "0ZzPu16A3CWS": {
@@ -2406,7 +2391,7 @@
           "__type": "ExprText"
         },
         "hl7moeujQjmg": {
-          "path": ["$queries", "post", "data", 0, "title", "rendered"],
+          "path": ["$q", "post", "data", "items", 0, "title", "rendered"],
           "fallback": { "__ref": "6sfo4jRobuOp" },
           "__type": "ObjectPath"
         },
@@ -2421,7 +2406,7 @@
           "__type": "ExprText"
         },
         "lkXyKXYZyBKL": {
-          "code": "($queries.post.data[0].modified)",
+          "code": "($q.post.data.items[0].modified)",
           "fallback": { "__ref": "C5lDTjAHfFcz" },
           "__type": "CustomCode"
         },
@@ -2436,7 +2421,7 @@
           "__type": "ExprText"
         },
         "-9aSg_1yVIDI": {
-          "code": "($queries.post.data[0].content.rendered)",
+          "code": "($q.post.data.items[0].content.rendered)",
           "fallback": { "__ref": "1e8PWyXOp8_6" },
           "__type": "CustomCode"
         },
@@ -2466,202 +2451,246 @@
           "fallback": null,
           "__type": "CustomCode"
         },
-        "ZNqcnoAP75QL": {
+        "CLCgZfJfaE1T": {
+          "__type": "RenderFuncType",
+          "name": "renderFunc",
+          "params": [{ "__ref": "awpw37IRVAfF" }],
+          "allowed": [],
+          "allowRootWrapper": null
+        },
+        "awpw37IRVAfF": {
+          "__type": "ArgType",
+          "name": "arg",
+          "argName": "$queries",
+          "displayName": null,
+          "type": { "__ref": "0v1b-9maHCah" }
+        },
+        "0v1b-9maHCah": { "__type": "AnyType", "name": "any" },
+        "NWOc0EICyKCn": {
+          "__type": "DataToken",
+          "type": "Data",
+          "name": "WordPress URL",
+          "uuid": "Vuy6bl5m69i2",
+          "value": "\"<REPLACE_WITH_WORDPRESS_URL>\"",
+          "variantedValues": [],
+          "isRegistered": false,
+          "regKey": null
+        },
+        "QuOpcabSwcte": {
           "__type": "CustomFunctionExpr",
           "func": {
             "__xref": {
-              "uuid": "dd10007d-d4ff-486b-9118-d8a6a1fa66fe",
+              "uuid": "e3ce0173-4a2b-49d7-94de-203f89ff7556",
               "iid": "JK8NgkunX0h-"
             }
           },
-          "args": [{ "__ref": "3u3xOUU5d7UG" }]
+          "args": [{ "__ref": "2VHk9scnwe30" }]
         },
-        "3u3xOUU5d7UG": {
+        "2VHk9scnwe30": {
           "__type": "FunctionArg",
-          "uuid": "R9Il2CJGFT-5",
+          "uuid": "iJAsGDvH5Scl",
           "argType": {
             "__xref": {
-              "uuid": "dd10007d-d4ff-486b-9118-d8a6a1fa66fe",
+              "uuid": "e3ce0173-4a2b-49d7-94de-203f89ff7556",
               "iid": "qZDYgAk39tGn"
             }
           },
-          "expr": { "__ref": "qyyM9TbBBAn-" }
+          "expr": { "__ref": "l6cCDH6KxaFg" }
         },
-        "qyyM9TbBBAn-": {
+        "l6cCDH6KxaFg": {
           "__type": "CompositeExpr",
           "hostLiteral": "{\"wordpressUrl\":null,\"queryType\":null}",
           "substitutions": {
-            "[\"wordpressUrl\"]": { "__ref": "2YmOWMf-KW40" },
-            "[\"queryType\"]": { "__ref": "ukav-17STf62" }
+            "[\"wordpressUrl\"]": { "__ref": "XxlNjv6qhAtZ" },
+            "[\"queryType\"]": { "__ref": "Rl6YwhI-EG2T" }
           }
         },
-        "2YmOWMf-KW40": {
-          "__type": "TemplatedString",
-          "text": ["https://plasmic-loader-test.test/"]
+        "XxlNjv6qhAtZ": {
+          "__type": "ObjectPath",
+          "path": ["$dataTokens_g6d6d_wordPressUrl"],
+          "fallback": null
         },
-        "ukav-17STf62": {
+        "Rl6YwhI-EG2T": {
           "__type": "CustomCode",
           "code": "\"posts\"",
           "fallback": null
         },
-        "GnHVeeYS0ikZ": {
+        "htelWExKuek4": {
           "__type": "CustomFunctionExpr",
           "func": {
             "__xref": {
-              "uuid": "dd10007d-d4ff-486b-9118-d8a6a1fa66fe",
+              "uuid": "e3ce0173-4a2b-49d7-94de-203f89ff7556",
               "iid": "JK8NgkunX0h-"
             }
           },
-          "args": [{ "__ref": "QFEGn777uwKN" }]
+          "args": [{ "__ref": "Wp8W2WhCIyJm" }]
         },
-        "QFEGn777uwKN": {
+        "Wp8W2WhCIyJm": {
           "__type": "FunctionArg",
-          "uuid": "VwkUxZVtxbpY",
+          "uuid": "O60uCasu_Jne",
           "argType": {
             "__xref": {
-              "uuid": "dd10007d-d4ff-486b-9118-d8a6a1fa66fe",
+              "uuid": "e3ce0173-4a2b-49d7-94de-203f89ff7556",
               "iid": "qZDYgAk39tGn"
             }
           },
-          "expr": { "__ref": "XnYoPIZhrRSf" }
+          "expr": { "__ref": "RjOZyJXt-C0N" }
         },
-        "XnYoPIZhrRSf": {
+        "RjOZyJXt-C0N": {
           "__type": "CompositeExpr",
           "hostLiteral": "{\"wordpressUrl\":null,\"queryType\":null}",
           "substitutions": {
-            "[\"wordpressUrl\"]": { "__ref": "MpM_7-BmS1-L" },
-            "[\"queryType\"]": { "__ref": "-_UxvkCl5Mq3" }
+            "[\"wordpressUrl\"]": { "__ref": "HpbFFvkT5SmI" },
+            "[\"queryType\"]": { "__ref": "tq7n3SqQfB92" }
           }
         },
-        "MpM_7-BmS1-L": {
-          "__type": "TemplatedString",
-          "text": ["https://plasmic-loader-test.test/"]
-        },
-        "-_UxvkCl5Mq3": {
-          "__type": "CustomCode",
-          "code": "\"pages\"",
-          "fallback": null
-        },
-        "QqgObFkF7TCg": {
-          "__type": "CustomFunctionExpr",
-          "func": {
-            "__xref": {
-              "uuid": "dd10007d-d4ff-486b-9118-d8a6a1fa66fe",
-              "iid": "JK8NgkunX0h-"
-            }
-          },
-          "args": [{ "__ref": "KqAtpWrGxfeF" }]
-        },
-        "KqAtpWrGxfeF": {
-          "__type": "FunctionArg",
-          "uuid": "vuK_sTBHd7SE",
-          "argType": {
-            "__xref": {
-              "uuid": "dd10007d-d4ff-486b-9118-d8a6a1fa66fe",
-              "iid": "qZDYgAk39tGn"
-            }
-          },
-          "expr": { "__ref": "q-G1Lv8pOSAq" }
-        },
-        "q-G1Lv8pOSAq": {
-          "__type": "CompositeExpr",
-          "hostLiteral": "{\"wordpressUrl\":null,\"queryType\":null,\"queryOperator\":null,\"filterValue\":null}",
-          "substitutions": {
-            "[\"wordpressUrl\"]": { "__ref": "VYZNH1o48Ylh" },
-            "[\"queryType\"]": { "__ref": "jeTIhyuvvdMO" },
-            "[\"queryOperator\"]": { "__ref": "kmL9QS9z1hQK" },
-            "[\"filterValue\"]": { "__ref": "lvolQC-Rcv8Q" }
-          }
-        },
-        "VYZNH1o48Ylh": {
-          "__type": "TemplatedString",
-          "text": ["https://plasmic-loader-test.test/"]
-        },
-        "jeTIhyuvvdMO": {
-          "__type": "CustomCode",
-          "code": "\"pages\"",
-          "fallback": null
-        },
-        "kmL9QS9z1hQK": {
-          "__type": "CustomCode",
-          "code": "\"slug\"",
-          "fallback": null
-        },
-        "lvolQC-Rcv8Q": {
-          "__type": "TemplatedString",
-          "text": ["", { "__ref": "mAn3uDKXhxrK" }, ""]
-        },
-        "mAn3uDKXhxrK": {
+        "HpbFFvkT5SmI": {
           "__type": "ObjectPath",
-          "path": ["$ctx", "params", "slug"],
-          "fallback": { "__ref": "9D7UbdKuQ_UX" }
+          "path": ["$dataTokens_g6d6d_wordPressUrl"],
+          "fallback": { "__ref": "ijzzMcn1dJ-9" }
         },
-        "9D7UbdKuQ_UX": {
+        "tq7n3SqQfB92": {
+          "__type": "CustomCode",
+          "code": "\"pages\"",
+          "fallback": null
+        },
+        "ijzzMcn1dJ-9": {
           "__type": "CustomCode",
           "code": "undefined",
           "fallback": null
         },
-        "RLrKdYNFrv6O": {
+        "uIVheoX1PO1R": {
           "__type": "CustomFunctionExpr",
           "func": {
             "__xref": {
-              "uuid": "dd10007d-d4ff-486b-9118-d8a6a1fa66fe",
+              "uuid": "e3ce0173-4a2b-49d7-94de-203f89ff7556",
               "iid": "JK8NgkunX0h-"
             }
           },
-          "args": [{ "__ref": "tTvG1jH-exZG" }]
+          "args": [{ "__ref": "MepZ5EdCQXtx" }]
         },
-        "tTvG1jH-exZG": {
+        "MepZ5EdCQXtx": {
           "__type": "FunctionArg",
-          "uuid": "3Rza7eMdSuVA",
+          "uuid": "AO9G8p9q0y2i",
           "argType": {
             "__xref": {
-              "uuid": "dd10007d-d4ff-486b-9118-d8a6a1fa66fe",
+              "uuid": "e3ce0173-4a2b-49d7-94de-203f89ff7556",
               "iid": "qZDYgAk39tGn"
             }
           },
-          "expr": { "__ref": "ztkjohIB-H_T" }
+          "expr": { "__ref": "4PCO642VL26n" }
         },
-        "ztkjohIB-H_T": {
+        "4PCO642VL26n": {
           "__type": "CompositeExpr",
           "hostLiteral": "{\"wordpressUrl\":null,\"queryType\":null,\"queryOperator\":null,\"filterValue\":null}",
           "substitutions": {
-            "[\"wordpressUrl\"]": { "__ref": "GLHjMq9Rn5Jc" },
-            "[\"queryType\"]": { "__ref": "5BRdjxdYKcVR" },
-            "[\"queryOperator\"]": { "__ref": "KBS9DVByuXnB" },
-            "[\"filterValue\"]": { "__ref": "p4yBYl2sbBjG" }
+            "[\"wordpressUrl\"]": { "__ref": "0_iDdlCPNdc4" },
+            "[\"queryType\"]": { "__ref": "_sFNZxlRVFjT" },
+            "[\"queryOperator\"]": { "__ref": "CnSbYRmWpR1G" },
+            "[\"filterValue\"]": { "__ref": "VNvTcGiBx-N5" }
           }
         },
-        "GLHjMq9Rn5Jc": {
-          "__type": "TemplatedString",
-          "text": ["https://plasmic-loader-test.test/"]
+        "0_iDdlCPNdc4": {
+          "__type": "ObjectPath",
+          "path": ["$dataTokens_g6d6d_wordPressUrl"],
+          "fallback": { "__ref": "F0DM8jD782LH" }
         },
-        "5BRdjxdYKcVR": {
+        "_sFNZxlRVFjT": {
           "__type": "CustomCode",
-          "code": "\"posts\"",
+          "code": "\"pages\"",
           "fallback": null
         },
-        "KBS9DVByuXnB": {
+        "CnSbYRmWpR1G": {
           "__type": "CustomCode",
           "code": "\"slug\"",
           "fallback": null
         },
-        "p4yBYl2sbBjG": {
+        "VNvTcGiBx-N5": {
           "__type": "TemplatedString",
-          "text": ["", { "__ref": "CuezdEKTN1Am" }, ""]
+          "text": ["", { "__ref": "yUOzw4T1AKlL" }, ""]
         },
-        "CuezdEKTN1Am": {
+        "F0DM8jD782LH": {
+          "__type": "CustomCode",
+          "code": "undefined",
+          "fallback": null
+        },
+        "yUOzw4T1AKlL": {
           "__type": "ObjectPath",
           "path": ["$ctx", "params", "slug"],
-          "fallback": { "__ref": "jMWVH4jGsDT1" }
+          "fallback": { "__ref": "JOI5xQyhIrtQ" }
         },
-        "jMWVH4jGsDT1": {
+        "JOI5xQyhIrtQ": {
+          "__type": "CustomCode",
+          "code": "undefined",
+          "fallback": null
+        },
+        "zKr9n0Oo0-Id": {
+          "__type": "CustomFunctionExpr",
+          "func": {
+            "__xref": {
+              "uuid": "e3ce0173-4a2b-49d7-94de-203f89ff7556",
+              "iid": "JK8NgkunX0h-"
+            }
+          },
+          "args": [{ "__ref": "MXYDvkCvtGbc" }]
+        },
+        "MXYDvkCvtGbc": {
+          "__type": "FunctionArg",
+          "uuid": "mjSWVtqlVCBR",
+          "argType": {
+            "__xref": {
+              "uuid": "e3ce0173-4a2b-49d7-94de-203f89ff7556",
+              "iid": "qZDYgAk39tGn"
+            }
+          },
+          "expr": { "__ref": "nxYejK9jqUht" }
+        },
+        "nxYejK9jqUht": {
+          "__type": "CompositeExpr",
+          "hostLiteral": "{\"wordpressUrl\":null,\"queryType\":null,\"queryOperator\":null,\"filterValue\":null}",
+          "substitutions": {
+            "[\"wordpressUrl\"]": { "__ref": "GI1oTvd-eXa_" },
+            "[\"queryType\"]": { "__ref": "uBkQc6o7hh0Q" },
+            "[\"queryOperator\"]": { "__ref": "CGuzE2jYX-14" },
+            "[\"filterValue\"]": { "__ref": "fnew0ihxF0JF" }
+          }
+        },
+        "GI1oTvd-eXa_": {
+          "__type": "ObjectPath",
+          "path": ["$dataTokens_g6d6d_wordPressUrl"],
+          "fallback": { "__ref": "s8xxhwsDb4ef" }
+        },
+        "uBkQc6o7hh0Q": {
+          "__type": "CustomCode",
+          "code": "\"posts\"",
+          "fallback": null
+        },
+        "CGuzE2jYX-14": {
+          "__type": "CustomCode",
+          "code": "\"slug\"",
+          "fallback": null
+        },
+        "fnew0ihxF0JF": {
+          "__type": "TemplatedString",
+          "text": ["", { "__ref": "ZrEyzk-_CwG2" }, ""]
+        },
+        "s8xxhwsDb4ef": {
+          "__type": "CustomCode",
+          "code": "undefined",
+          "fallback": null
+        },
+        "ZrEyzk-_CwG2": {
+          "__type": "ObjectPath",
+          "path": ["$ctx", "params", "slug"],
+          "fallback": { "__ref": "wdpsalh_m0r1" }
+        },
+        "wdpsalh_m0r1": {
           "__type": "CustomCode",
           "code": "undefined",
           "fallback": null
         }
       },
-      "deps": ["dd10007d-d4ff-486b-9118-d8a6a1fa66fe"],
+      "deps": ["e3ce0173-4a2b-49d7-94de-203f89ff7556"],
       "version": "256-wrap-page-meta-og-image-in-ref"
     }
   ]

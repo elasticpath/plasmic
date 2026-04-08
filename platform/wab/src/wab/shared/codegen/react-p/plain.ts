@@ -1,3 +1,4 @@
+import { ProjectId } from "@/wab/shared/ApiSchema";
 import { componentToReferenced } from "@/wab/shared/cached-selectors";
 import {
   ComponentGenHelper,
@@ -250,10 +251,7 @@ import {
   ${getHostNamedImportsForSkeleton()}
 } from "@plasmicapp/react-web/lib/host";
 ${
-  ctx.usesDataSourceInteraction ||
-  ctx.usesComponentLevelQueries ||
-  ctx.useRSC ||
-  ctx.hasServerQueries
+  ctx.usesDataSourceInteraction || ctx.usesComponentLevelQueries || ctx.useRSC
     ? `import { usePlasmicDataConfig, executePlasmicDataOp, usePlasmicDataOp } from "@plasmicapp/react-web/lib/data-sources";`
     : ""
 }
@@ -604,7 +602,7 @@ function makeComponentPropsTypeName(component: Component) {
 export function exportReactPlainTypical(
   project: Site,
   projectName: string,
-  projectId: string,
+  projectId: ProjectId,
   component: Component,
   extraOpts?: Partial<SerializerBaseContext>
 ) {

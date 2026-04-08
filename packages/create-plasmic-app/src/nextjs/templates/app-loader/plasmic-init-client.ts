@@ -20,7 +20,7 @@ import { PLASMIC } from "@/plasmic-init";
  * ClientPlasmicRootProvider is a Client Component that passes in the loader for you.
  *
  * Why? Props passed from Server to Client Components must be serializable.
- * https://beta.nextjs.org/docs/rendering/server-and-client-components#passing-props-from-server-to-client-components-serialization
+ * https://nextjs.org/docs/app/getting-started/server-and-client-components#passing-data-from-server-to-client-components
  * However, PlasmicRootProvider requires a loader, but the loader is NOT serializable.
  *
  * In a Server Component like app/<your-path>/path.tsx, rendering the following would not work:

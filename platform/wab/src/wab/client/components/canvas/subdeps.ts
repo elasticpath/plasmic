@@ -22,6 +22,7 @@ import type * as jsxRuntime from "react/jsx-runtime";
 import type ResizeObserver from "resize-observer-polyfill";
 import type * as slate from "slate";
 import type * as slateReact from "slate-react";
+import type { SetOptional } from "type-fest";
 
 // Most (not all) of these deps are provided by @plasmicapp/host.
 // TODO: Clearly indicate where each dep comes from.
@@ -33,9 +34,12 @@ export type SubDeps = {
   ReactDOMClient?: typeof ReactDOMClient;
   jsxRuntime?: typeof jsxRuntime;
   jsxDevRuntime?: typeof jsxDevRuntime;
-  setPlasmicRootNode: (node: React.ReactElement | null) => void;
+  hostUtils: {
+    setPlasmicRootNode: (node: React.ReactElement | null) => void;
+    setRepeatedElementFn?: (fn: RepeatedElementFnType) => void;
+    registerRenderErrorListener: (listener: (err: Error) => void) => () => void;
+  };
   repeatedElement: RepeatedElementFnType;
-  setRepeatedElementFn?: (fn: RepeatedElementFnType) => void;
   PlasmicCanvasContext?: typeof PlasmicCanvasContext;
   PlasmicQuery?: typeof PlasmicQuery;
   PageParamsProvider: typeof PageParamsProvider;
@@ -44,7 +48,14 @@ export type SubDeps = {
   useDataEnv: typeof useDataEnv;
   DataCtxReader: typeof DataCtxReader;
   reactWeb: typeof ReactWeb;
-  dataSources?: typeof PlasmicDataSources;
+  // See canvas-ctx.ts for why dataSources has this type.
+  dataSources?: SetOptional<
+    typeof PlasmicDataSources,
+    | "usePlasmicDataConfig"
+    | "usePlasmicInvalidate"
+    | "unstable_usePlasmicQueries"
+    | "unstable_createDollarQueries"
+  >;
   dataSourcesContext: typeof PlasmicDataSourcesContext;
   useGlobalActions?: typeof useGlobalActions;
 } & CanvasPkgs;

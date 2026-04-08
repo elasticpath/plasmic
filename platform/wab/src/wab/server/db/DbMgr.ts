@@ -205,7 +205,6 @@ import {
   mkUuid,
   only,
   pairwise,
-  spawn,
   tuple,
   unexpected,
   unreachable,
@@ -2102,11 +2101,9 @@ export class DbMgr implements MigrationDbMgr {
     this.allowAnyone();
     const _bcrypt = await this._getUserBcrypt(userId);
     return new Promise<boolean>((resolve, reject) => {
-      spawn(
-        bcrypt.compare(candidatePassword, _bcrypt, (err, isMatch) => {
-          err ? reject(err) : resolve(isMatch);
-        })
-      );
+      bcrypt.compare(candidatePassword, _bcrypt, (err, isMatch) => {
+        err ? reject(err) : resolve(isMatch);
+      });
     });
   }
 
@@ -3244,7 +3241,7 @@ export class DbMgr implements MigrationDbMgr {
         this.projectRevs()
           .createQueryBuilder("rev")
           .where(
-            `${conditionalWhereClause} AND "projectId"=:projectId AND (:branchId::text is null AND "branchId" is null OR "branchId" = :branchId::text)`,
+            `${conditionalWhereClause} AND "projectId"=:projectId AND ((:branchId::text is null AND "branchId" is null) OR "branchId" = :branchId::text)`,
             {
               projectId,
               branchId,
@@ -3556,7 +3553,7 @@ export class DbMgr implements MigrationDbMgr {
       : this.getLatestProjectRev(projectId, { branchId }));
     if (pkg) {
       const prevPkgVersionIds = await this.getLatestPkgVersionIds(
-        projectId as ProjectId,
+        projectId,
         branchId,
         pkg.id,
         1
@@ -4018,7 +4015,7 @@ export class DbMgr implements MigrationDbMgr {
     fixDataTokenProjectRefs(clonedSite, fromProject.id, project.id);
 
     const fromAppAuthConfig = await this.getAppAuthConfig(fromProject.id, true);
-    let oldToNewSourceIds: Record<string, string> = {};
+    const oldToNewSourceIds: Record<string, string> = {};
     let oldToNewRoleIds: Record<string, string> = {};
     let reevaluateOpIds = false;
 
@@ -4089,15 +4086,6 @@ export class DbMgr implements MigrationDbMgr {
       }
     }
 
-    if (projectWorkspaceId) {
-      oldToNewSourceIds = (
-        await this.cloneTutorialDbsFromProject(clonedSite, projectWorkspaceId)
-      ).oldToNewSourceIds;
-      if (_.keys(oldToNewSourceIds).length > 0) {
-        reevaluateOpIds = true;
-      }
-    }
-
     // reevaluateOpIds is only used for opIds present in the model, so we check user properties
     // separately
     if (fromAppAuthConfig) {
@@ -4119,7 +4107,6 @@ export class DbMgr implements MigrationDbMgr {
       );
     }
 
-    // By now, cloned site already has the new source ids for the new project (including cloned tutorial dbs)
     const sourceIds = getAllOpExprSourceIdsUsedInSite(clonedSite);
     // Enable each source id independently, so that if one fails, the others still get enabled
     for (const sourceId of sourceIds) {
@@ -5906,46 +5893,40 @@ export class DbMgr implements MigrationDbMgr {
     if (!user && grantExistingUsersOnly) {
       throw new GrantUserNotFoundError();
     }
-    const existingPerms = await this.getPermissionsForResources(
-      taggedResourceIds,
-      true,
-      user ? { user } : { email }
-    );
-
-    const resourcesAccessLevel = await this._getActorAccessLevelToResources(
-      taggedResourceIds
-    );
-    await this.checkGrantAccessPermission(
+    const [actorDesc, userPerms, ownerPerms, actorResourceLevels] =
+      await Promise.all([
+        this.describeActor(),
+        this.getPermissionsForResources(
+          taggedResourceIds,
+          true,
+          user ? { user } : { email }
+        ),
+        this.getPermissionsForResources(taggedResourceIds, true, {
+          accessLevel: "owner",
+        }),
+        this._getActorAccessLevelToResources(taggedResourceIds),
+      ]);
+    this.checkGrantAccessPermission(
+      actorDesc,
       taggedResourceIds.type,
       user,
       email,
       levelToGrant,
-      existingPerms,
-      resourcesAccessLevel
+      userPerms,
+      ownerPerms,
+      actorResourceLevels
     );
 
     let createdPerm = false;
 
     const addedResourceSet = new Set<string>();
 
-    if (existingPerms.length > 0) {
-      existingPerms.forEach(async (perm) => {
-        const resourceId = ensureResourceIdFromPermission(perm);
-        addedResourceSet.add(resourceId);
-        const selfLevel = resourcesAccessLevel[resourceId];
-        checkPermissions(
-          accessLevelRank(perm.accessLevel) <= accessLevelRank(selfLevel),
-          `${await this.describeActor()} with access level tried to set permissions for ${email} who already has ${
-            perm.accessLevel
-          } on ${taggedResourceIds.type} ${resourceId}`
-        );
+    if (userPerms.length > 0) {
+      userPerms.forEach((perm) => {
+        addedResourceSet.add(ensureResourceIdFromPermission(perm));
+        mergeSane(perm, this.stampUpdate(), { accessLevel: levelToGrant });
       });
-      existingPerms.forEach((perm) =>
-        mergeSane(perm, this.stampUpdate(), {
-          accessLevel: levelToGrant,
-        })
-      );
-      await this.entMgr.save(existingPerms);
+      await this.entMgr.save(userPerms);
       createdPerm = true;
     }
     const perms = taggedResourceIds.ids
@@ -5965,36 +5946,22 @@ export class DbMgr implements MigrationDbMgr {
 
   /**
    * Do not allow the grant to happen if:
-   * 1. The user to be granted already is the owner of the resource
-   * 2. The user granting has a lower access level than the granted access level
+   * 1. The actor has a lower access level than the level being granted
+   * 2. The user to be granted already has a higher access level than the actor
+   * 3. The grant would leave a resource with no owners
    */
-  private async checkGrantAccessPermission(
+  private checkGrantAccessPermission(
+    actorDesc: string,
     resourceType: string,
     user: User | undefined,
     email: string,
     levelToGrant: AccessLevel,
-    permissions: Permission[],
-    resourcesAccessLevel: Record<string, AccessLevel>
+    userPerms: Permission[],
+    ownerPerms: Permission[],
+    actorResourceLevels: Record<string, AccessLevel>
   ) {
-    const actor = await this.describeActor();
-    const ownerPerms = user
-      ? permissions.filter(
-          (perm) => perm.userId === user.id && perm.accessLevel === "owner"
-        )
-      : [];
-    checkPermissions(
-      ownerPerms.length === 0,
-      ownerPerms
-        .map(
-          (perm) =>
-            `${actor} tried to set permissions for ${email} who is an owner on ${resourceType} ${ensureResourceIdFromPermission(
-              perm
-            )}`
-        )
-        .join("\n")
-    );
-
-    const wrongAccessLevelEntries = Object.entries(resourcesAccessLevel).filter(
+    // 1. The actor has a lower access level than the level being granted
+    const wrongAccessLevelEntries = Object.entries(actorResourceLevels).filter(
       ([_id, selfLevel]) =>
         accessLevelRank(selfLevel) < accessLevelRank(levelToGrant)
     );
@@ -6003,10 +5970,57 @@ export class DbMgr implements MigrationDbMgr {
       wrongAccessLevelEntries
         .map(
           ([id, selfLevel]) =>
-            `${actor} with access level ${selfLevel} tried to grant higher level ${levelToGrant} to ${email} on ${resourceType} ${id}`
+            `${actorDesc} (${selfLevel}) tried to grant ${levelToGrant} to ${email} on ${resourceType} ${id}, but actor did not have permission`
         )
         .join("\n")
     );
+
+    // 2. The user to be granted already has a higher access level than the actor
+    const higherLevelEntries = userPerms.filter(
+      (perm) =>
+        accessLevelRank(perm.accessLevel) >
+        accessLevelRank(
+          actorResourceLevels[ensureResourceIdFromPermission(perm)]
+        )
+    );
+    checkPermissions(
+      higherLevelEntries.length === 0,
+      higherLevelEntries
+        .map((perm) => {
+          const id = ensureResourceIdFromPermission(perm);
+          const selfLevel = actorResourceLevels[id];
+          return `${actorDesc} (${selfLevel}) tried to grant ${levelToGrant} to ${email} on ${resourceType} ${id}, but user already has higher level ${perm.accessLevel}`;
+        })
+        .join("\n")
+    );
+
+    // 3. The grant would leave a resource with no owners
+    if (levelToGrant !== "owner") {
+      const granteeOwnerPerms = userPerms.filter(
+        (perm) => perm.accessLevel === "owner"
+      );
+      const resourcesWithOtherOwners = new Set(
+        ownerPerms
+          .filter((perm) =>
+            user ? perm.userId !== user.id : perm.email !== email
+          )
+          .map(ensureResourceIdFromPermission)
+      );
+      const wouldLeaveOwnerless = granteeOwnerPerms.filter(
+        (perm) =>
+          !resourcesWithOtherOwners.has(ensureResourceIdFromPermission(perm))
+      );
+      checkPermissions(
+        wouldLeaveOwnerless.length === 0,
+        wouldLeaveOwnerless
+          .map((perm) => {
+            const id = ensureResourceIdFromPermission(perm);
+            const selfLevel = actorResourceLevels[id];
+            return `${actorDesc} (${selfLevel}) tried to grant ${levelToGrant} to ${email} on ${resourceType} ${id}, but would result in resource becoming ownerless`;
+          })
+          .join("\n")
+      );
+    }
   }
 
   /**
@@ -6730,27 +6744,6 @@ export class DbMgr implements MigrationDbMgr {
     return await this.dataSources().find({
       workspaceId,
       deletedAt: IsNull(),
-    });
-  }
-
-  async getWorkspaceTutorialDataSources(workspaceId: WorkspaceId) {
-    // We don't check permissions here because we don't want to require permissions
-    // to view the tutorial data sources. That could throw errors by sharing the project.
-    return await this.dataSources().find({
-      // Don't select credentials to reduce processing time, involved in decrypting it
-      select: [
-        "id",
-        "name",
-        "workspaceId",
-        "source",
-        "settings",
-        "createdById",
-      ],
-      where: {
-        workspaceId,
-        source: "tutorialdb",
-        deletedAt: IsNull(),
-      },
     });
   }
 
@@ -10315,51 +10308,6 @@ export class DbMgr implements MigrationDbMgr {
       }),
       `Tutorial DB with id ${id}`
     );
-  }
-
-  async cloneTutorialDbsFromProject(site: Site, workspaceId: WorkspaceId) {
-    const usedSourceIds = getAllOpExprSourceIdsUsedInSite(site);
-
-    const siteDataSources = await Promise.all(
-      usedSourceIds.map(async (id) => {
-        const dataSource = await this.getDataSourceById(id, {
-          // Based on the nature of cloning tutorial db, we will skip the permission check for workspaces here
-          skipPermissionCheck: true,
-        });
-
-        return dataSource;
-      })
-    );
-
-    const siteTutorialDbs = await Promise.all(
-      siteDataSources
-        .filter((ds) => ds.source === "tutorialdb")
-        .map(async (ds) => {
-          const tutorialDbId = ds.credentials.tutorialDbId;
-          const tutorialDb = await this.getTutorialDb(tutorialDbId);
-          return {
-            dataSource: ds,
-            tutorialDb,
-          };
-        })
-    );
-
-    const oldToNewSourceIds: Record<string, string> = {};
-
-    for (const { dataSource, tutorialDb } of siteTutorialDbs) {
-      // We always create a new tutorial db for the workspace so that all opIds
-      // get updated and we don't have to worry about not issuing a new opId
-      const newDataSource = await this.createTutorialDbDataSource(
-        tutorialDb.info.type,
-        workspaceId,
-        dataSource.name
-      );
-      oldToNewSourceIds[dataSource.id] = newDataSource.id;
-    }
-
-    return {
-      oldToNewSourceIds,
-    };
   }
 
   async createTutorialDbDataSource(

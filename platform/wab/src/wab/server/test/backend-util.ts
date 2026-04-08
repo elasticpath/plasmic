@@ -1,5 +1,7 @@
 import { runAppServer } from "@/wab/server/app-backend-real";
-import { ensureDbConnection } from "@/wab/server/db/DbCon";
+import { closeDbConnections, ensureDbConnection, MIGRATION_POOL_NAME } from "@/wab/server/db/DbCon";
+import { getConnectionManager } from "typeorm";
+import { register } from "prom-client";
 import { initDb } from "@/wab/server/db/DbInitUtil";
 import { DbMgr, normalActor, SUPER_USER } from "@/wab/server/db/DbMgr";
 import { Project, User } from "@/wab/server/entities/Entities";
@@ -98,6 +100,9 @@ export async function createDatabase(name = "test") {
   await sucon.query(`grant pg_signal_backend to wab;`);
   const dburi = `postgresql://wab@localhost/${dbname}`;
   const con = await ensureDbConnection(dburi, dbname);
+  // Also create migration-pool pointing at the same test DB — needed by
+  // BundleMigrator.getMigratedBundle() during seedPkg/unbundleWithDeps
+  await ensureDbConnection(dburi, MIGRATION_POOL_NAME, { maxConnections: 2 });
   await con.synchronize();
   await con.transaction(async (em) => {
     await initDb(em);
@@ -109,6 +114,14 @@ export async function createDatabase(name = "test") {
     con,
     cleanup: async () => {
       await con.close();
+      // Close migration-pool so next test suite can recreate it for its DB
+      try {
+        const mgr = getConnectionManager();
+        if (mgr.has(MIGRATION_POOL_NAME)) {
+          const migConn = mgr.get(MIGRATION_POOL_NAME);
+          if (migConn.isConnected) await migConn.close();
+        }
+      } catch {}
       if (isCI) {
         await sucon.query(`drop database if exists ${dbname} with (force);`);
       }
@@ -127,6 +140,9 @@ export async function createBackend(
     // Casting as any because the type definition is behind
     (opts?.preferredPorts ? { port: opts.preferredPorts } : undefined) as any
   );
+
+  process.env.DISABLE_BWRAP = "1";
+  process.env.CODEGEN_HOST = `http://localhost:${port}`;
 
   return await withEnvOverrides(
     {
@@ -150,7 +166,11 @@ export async function createBackend(
 
       return {
         host: `http://localhost:${port}`,
-        cleanup: async () => server.close(),
+        cleanup: async () => {
+          server.close();
+          await closeDbConnections();
+          register.clear();
+        },
       };
     }
   );

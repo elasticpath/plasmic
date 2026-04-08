@@ -3433,6 +3433,11 @@
           "id": "cRhITljQuV",
           "name": "DoubleDotsVerticalSvgIcon",
           "moduleFilePath": "wab/client/plasmic/plasmic_kit_design_system/icons/PlasmicIcon__DoubleDotsVerticalSvg.tsx"
+        },
+        {
+          "id": "Be4M_W3C1jbV",
+          "name": "AnimationsIcon",
+          "moduleFilePath": "wab/client/plasmic/plasmic_kit_design_system/icons/PlasmicIcon__Animations.tsx"
         }
       ],
       "images": [
@@ -3492,7 +3497,8 @@
       "customFunctions": [],
       "splitsProviderFilePath": "",
       "styleTokensProviderFilePath": "wab/client/plasmic/plasmic_kit_design_system/PlasmicStyleTokensProvider.tsx",
-      "projectModuleFilePath": "wab/client/plasmic/plasmic_kit_design_system/plasmic.tsx"
+      "projectModuleFilePath": "wab/client/plasmic/plasmic_kit_design_system/plasmic.tsx",
+      "dataTokensFilePath": ""
     },
     {
       "projectId": "wT5BWZPEc2fYxyqbTLXMt2",
@@ -3575,7 +3581,8 @@
       "splitsProviderFilePath": "",
       "customFunctions": [],
       "styleTokensProviderFilePath": "wab/client/plasmic/plasmic_kit_variants/PlasmicStyleTokensProvider.tsx",
-      "projectModuleFilePath": "wab/client/plasmic/plasmic_kit_variants/plasmic.tsx"
+      "projectModuleFilePath": "wab/client/plasmic/plasmic_kit_variants/plasmic.tsx",
+      "dataTokensFilePath": ""
     },
     {
       "projectId": "gYEVvAzCcLMHDVPvuYxkFh",
@@ -5404,19 +5411,6 @@
           "componentType": "component"
         },
         {
-          "id": "SsRHEyfw_M",
-          "name": "QueriesSection",
-          "type": "managed",
-          "projectId": "9csusiyEETC5n9fFKLeYNK",
-          "renderModuleFilePath": "wab/client/plasmic/plasmic_kit_data_queries/PlasmicQueriesSection.tsx",
-          "importSpec": {
-            "modulePath": "wab/client/components/QueriesSection.tsx"
-          },
-          "cssFilePath": "wab/client/plasmic/plasmic_kit_data_queries/PlasmicQueriesSection.module.css",
-          "scheme": "blackbox",
-          "componentType": "component"
-        },
-        {
           "id": "dtgx0NGfys",
           "name": "QueryRow",
           "type": "managed",
@@ -5772,7 +5766,8 @@
       "splitsProviderFilePath": "",
       "customFunctions": [],
       "styleTokensProviderFilePath": "wab/client/plasmic/plasmic_kit_text_mixins_product/PlasmicStyleTokensProvider.tsx",
-      "projectModuleFilePath": "wab/client/plasmic/plasmic_kit_text_mixins_product/plasmic.tsx"
+      "projectModuleFilePath": "wab/client/plasmic/plasmic_kit_text_mixins_product/plasmic.tsx",
+      "dataTokensFilePath": ""
     },
     {
       "projectId": "oT38tGyqov9SPWHpf3Y2Rf",
@@ -8678,7 +8673,8 @@
       "splitsProviderFilePath": "",
       "customFunctions": [],
       "styleTokensProviderFilePath": "wab/client/plasmic/plasmic_kit_icons/PlasmicStyleTokensProvider.tsx",
-      "projectModuleFilePath": "wab/client/plasmic/plasmic_kit_icons/plasmic.tsx"
+      "projectModuleFilePath": "wab/client/plasmic/plasmic_kit_icons/plasmic.tsx",
+      "dataTokensFilePath": ""
     },
     {
       "projectId": "95xp9cYcv7HrNWpFWWhbcv",
@@ -8714,7 +8710,8 @@
       "splitsProviderFilePath": "",
       "customFunctions": [],
       "styleTokensProviderFilePath": "wab/client/plasmic/plasmic_kit_color_tokens/PlasmicStyleTokensProvider.tsx",
-      "projectModuleFilePath": "wab/client/plasmic/plasmic_kit_color_tokens/plasmic.tsx"
+      "projectModuleFilePath": "wab/client/plasmic/plasmic_kit_color_tokens/plasmic.tsx",
+      "dataTokensFilePath": ""
     },
     {
       "projectId": "sZNLVjiaeNGLXmdsrbRQAX",
@@ -9586,6 +9583,34 @@
           "cssFilePath": "wab/client/plasmic/plasmic_kit_data_binding/PlasmicPopoverFrameTitle.module.css",
           "scheme": "blackbox",
           "componentType": "component"
+        },
+        {
+          "id": "6Cb3e8nRgrBg",
+          "name": "ChatMessage",
+          "type": "managed",
+          "projectId": "w2GXN278dkQ2gQTVQnPehW",
+          "renderModuleFilePath": "wab/client/plasmic/plasmic_kit_data_binding/PlasmicChatMessage.tsx",
+          "importSpec": {
+            "modulePath": "wab/client/components/copilot/ChatMessage.tsx",
+            "exportName": "ChatMessage"
+          },
+          "cssFilePath": "wab/client/plasmic/plasmic_kit_data_binding/PlasmicChatMessage.module.css",
+          "scheme": "blackbox",
+          "componentType": "component"
+        },
+        {
+          "id": "zXJ41ZVTz7ne",
+          "name": "CopilotChatDialog",
+          "type": "managed",
+          "projectId": "w2GXN278dkQ2gQTVQnPehW",
+          "renderModuleFilePath": "wab/client/plasmic/plasmic_kit_data_binding/PlasmicCopilotChatDialog.tsx",
+          "importSpec": {
+            "modulePath": "wab/client/components/copilot/CopilotChatDialog.tsx",
+            "exportName": "CopilotChatDialog"
+          },
+          "cssFilePath": "wab/client/plasmic/plasmic_kit_data_binding/PlasmicCopilotChatDialog.module.css",
+          "scheme": "blackbox",
+          "componentType": "component"
         }
       ],
       "icons": [
@@ -9656,7 +9681,8 @@
       "customFunctions": [],
       "splitsProviderFilePath": "",
       "styleTokensProviderFilePath": "wab/client/plasmic/plasmic_kit_data_binding/PlasmicStyleTokensProvider.tsx",
-      "projectModuleFilePath": "wab/client/plasmic/plasmic_kit_data_binding/plasmic.tsx"
+      "projectModuleFilePath": "wab/client/plasmic/plasmic_kit_data_binding/plasmic.tsx",
+      "dataTokensFilePath": ""
     },
     {
       "projectId": "28Ba3BDvRe7EiWdfFNnLB6",
@@ -11681,7 +11707,8 @@
       ],
       "customFunctions": [],
       "styleTokensProviderFilePath": "wab/client/plasmic/react_aria/PlasmicStyleTokensProvider.tsx",
-      "projectModuleFilePath": "wab/client/plasmic/react_aria/plasmic.tsx"
+      "projectModuleFilePath": "wab/client/plasmic/react_aria/plasmic.tsx",
+      "dataTokensFilePath": ""
     },
     {
       "projectId": "kTSMroKPFv65RRTb44SCtk",
@@ -11925,6 +11952,6 @@
   "postSyncCommands": [
     "git ls-files -m | xargs pre-commit run prettier --files"
   ],
-  "cliVersion": "0.1.348",
-  "$schema": "https://unpkg.com/@plasmicapp/cli@0.1.348/dist/plasmic.schema.json"
+  "cliVersion": "0.1.359",
+  "$schema": "https://unpkg.com/@plasmicapp/cli@0.1.359/dist/plasmic.schema.json"
 }

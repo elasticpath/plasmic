@@ -58,6 +58,7 @@ export type PlasmicListItem__VariantMembers = {
   alwaysShowDragHandle: "alwaysShowDragHandle";
   hasRightContents: "hasRightContents";
   isHighlighted: "isHighlighted";
+  removeAdditionalRowLeftPadding: "removeAdditionalRowLeftPadding";
 };
 export type PlasmicListItem__VariantsArgs = {
   isSelected?: SingleBooleanChoiceArg<"isSelected">;
@@ -73,6 +74,7 @@ export type PlasmicListItem__VariantsArgs = {
   alwaysShowDragHandle?: SingleBooleanChoiceArg<"alwaysShowDragHandle">;
   hasRightContents?: SingleBooleanChoiceArg<"hasRightContents">;
   isHighlighted?: SingleBooleanChoiceArg<"isHighlighted">;
+  removeAdditionalRowLeftPadding?: SingleBooleanChoiceArg<"removeAdditionalRowLeftPadding">;
 };
 type VariantPropType = keyof PlasmicListItem__VariantsArgs;
 export const PlasmicListItem__VariantProps = new Array<VariantPropType>(
@@ -88,25 +90,26 @@ export const PlasmicListItem__VariantProps = new Array<VariantPropType>(
   "color",
   "alwaysShowDragHandle",
   "hasRightContents",
-  "isHighlighted"
+  "isHighlighted",
+  "removeAdditionalRowLeftPadding"
 );
 
 export type PlasmicListItem__ArgsType = {
   icon?: React.ReactNode;
   children?: React.ReactNode;
-  actions?: React.ReactNode;
-  addendum?: React.ReactNode;
-  additional?: React.ReactNode;
   rightContent?: React.ReactNode;
+  addendum?: React.ReactNode;
+  actions?: React.ReactNode;
+  additional?: React.ReactNode;
 };
 type ArgPropType = keyof PlasmicListItem__ArgsType;
 export const PlasmicListItem__ArgProps = new Array<ArgPropType>(
   "icon",
   "children",
-  "actions",
+  "rightContent",
   "addendum",
-  "additional",
-  "rightContent"
+  "actions",
+  "additional"
 );
 
 export type PlasmicListItem__OverridesType = {
@@ -127,10 +130,10 @@ export type PlasmicListItem__OverridesType = {
 export interface DefaultListItemProps {
   icon?: React.ReactNode;
   children?: React.ReactNode;
-  actions?: React.ReactNode;
-  addendum?: React.ReactNode;
-  additional?: React.ReactNode;
   rightContent?: React.ReactNode;
+  addendum?: React.ReactNode;
+  actions?: React.ReactNode;
+  additional?: React.ReactNode;
   isSelected?: SingleBooleanChoiceArg<"isSelected">;
   isFocused?: SingleBooleanChoiceArg<"isFocused">;
   showActions?: SingleBooleanChoiceArg<"showActions">;
@@ -144,6 +147,7 @@ export interface DefaultListItemProps {
   alwaysShowDragHandle?: SingleBooleanChoiceArg<"alwaysShowDragHandle">;
   hasRightContents?: SingleBooleanChoiceArg<"hasRightContents">;
   isHighlighted?: SingleBooleanChoiceArg<"isHighlighted">;
+  removeAdditionalRowLeftPadding?: SingleBooleanChoiceArg<"removeAdditionalRowLeftPadding">;
   className?: string;
 }
 
@@ -183,82 +187,93 @@ function PlasmicListItem__RenderFunc(props: {
         path: "isSelected",
         type: "private",
         variableType: "variant",
-        initFunc: ({ $props, $state, $queries, $ctx }) => $props.isSelected,
+        initFunc: ({ $props, $state, $queries, $q, $ctx }) => $props.isSelected,
       },
       {
         path: "isFocused",
         type: "private",
         variableType: "variant",
-        initFunc: ({ $props, $state, $queries, $ctx }) => $props.isFocused,
+        initFunc: ({ $props, $state, $queries, $q, $ctx }) => $props.isFocused,
       },
       {
         path: "showActions",
         type: "private",
         variableType: "variant",
-        initFunc: ({ $props, $state, $queries, $ctx }) => $props.showActions,
+        initFunc: ({ $props, $state, $queries, $q, $ctx }) =>
+          $props.showActions,
       },
       {
         path: "isDragging",
         type: "private",
         variableType: "variant",
-        initFunc: ({ $props, $state, $queries, $ctx }) => $props.isDragging,
+        initFunc: ({ $props, $state, $queries, $q, $ctx }) => $props.isDragging,
       },
       {
         path: "isDraggable",
         type: "private",
         variableType: "variant",
-        initFunc: ({ $props, $state, $queries, $ctx }) => $props.isDraggable,
+        initFunc: ({ $props, $state, $queries, $q, $ctx }) =>
+          $props.isDraggable,
       },
       {
         path: "showAddendums",
         type: "private",
         variableType: "variant",
-        initFunc: ({ $props, $state, $queries, $ctx }) => $props.showAddendums,
+        initFunc: ({ $props, $state, $queries, $q, $ctx }) =>
+          $props.showAddendums,
       },
       {
         path: "hideIcon",
         type: "private",
         variableType: "variant",
-        initFunc: ({ $props, $state, $queries, $ctx }) => $props.hideIcon,
+        initFunc: ({ $props, $state, $queries, $q, $ctx }) => $props.hideIcon,
       },
       {
         path: "hasMenu",
         type: "private",
         variableType: "variant",
-        initFunc: ({ $props, $state, $queries, $ctx }) => $props.hasMenu,
+        initFunc: ({ $props, $state, $queries, $q, $ctx }) => $props.hasMenu,
       },
       {
         path: "showAdditionalRow",
         type: "private",
         variableType: "variant",
-        initFunc: ({ $props, $state, $queries, $ctx }) =>
+        initFunc: ({ $props, $state, $queries, $q, $ctx }) =>
           $props.showAdditionalRow,
       },
       {
         path: "color",
         type: "private",
         variableType: "variant",
-        initFunc: ({ $props, $state, $queries, $ctx }) => $props.color,
+        initFunc: ({ $props, $state, $queries, $q, $ctx }) => $props.color,
       },
       {
         path: "alwaysShowDragHandle",
         type: "private",
         variableType: "variant",
-        initFunc: ({ $props, $state, $queries, $ctx }) =>
+        initFunc: ({ $props, $state, $queries, $q, $ctx }) =>
           $props.alwaysShowDragHandle,
       },
       {
         path: "hasRightContents",
         type: "private",
         variableType: "variant",
-        initFunc: ({ $props, $state, $queries, $ctx }) =>
+        initFunc: ({ $props, $state, $queries, $q, $ctx }) =>
           $props.hasRightContents,
       },
       {
         path: "isHighlighted",
         type: "private",
         variableType: "variant",
-        initFunc: ({ $props, $state, $queries, $ctx }) => $props.isHighlighted,
+        initFunc: ({ $props, $state, $queries, $q, $ctx }) =>
+          $props.isHighlighted,
+      },
+      {
+        path: "removeAdditionalRowLeftPadding",
+        type: "private",
+        variableType: "variant",
+        initFunc: ({ $props, $state, $queries, $q, $ctx }) =>
+          $props.removeAdditionalRowLeftPadding,
       },
     ],
     [$props, $ctx, $refs]
@@ -267,6 +282,7 @@ function PlasmicListItem__RenderFunc(props: {
     $props,
     $ctx,
     $queries: {},
+    $q: {},
     $refs,
   });
 
@@ -1132,6 +1148,11 @@ function PlasmicListItem__RenderFunc(props: {
             [sty.additionalisSelected_color_variant]:
               hasVariant($state, "color", "variant") &&
               hasVariant($state, "isSelected", "isSelected"),
+            [sty.additionalremoveAdditionalRowLeftPadding]: hasVariant(
+              $state,
+              "removeAdditionalRowLeftPadding",
+              "removeAdditionalRowLeftPadding"
+            ),
             [sty.additionalshowAdditionalRow]: hasVariant(
               $state,
               "showAdditionalRow",
@@ -1216,7 +1237,8 @@ type NodeComponentProps<T extends NodeNameType> =
     variants?: PlasmicListItem__VariantsArgs;
     args?: PlasmicListItem__ArgsType;
     overrides?: NodeOverridesType<T>;
-  } & Omit<PlasmicListItem__VariantsArgs, ReservedPropsType> & // Specify variants directly as props
+  } & // Specify variants directly as props
+  Omit<PlasmicListItem__VariantsArgs, ReservedPropsType> &
     // Specify args directly as props
     Omit<PlasmicListItem__ArgsType, ReservedPropsType> &
     // Specify overrides for each element directly as props

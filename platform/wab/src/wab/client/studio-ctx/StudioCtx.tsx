@@ -14,9 +14,15 @@ import {
 } from "@/wab/client/api-hooks";
 import { storageViewAsKey } from "@/wab/client/app-auth/constants";
 import { parseProjectLocation, parseRoute } from "@/wab/client/cli-routes";
-import { LocalClipboard } from "@/wab/client/clipboard/local";
+import { ReadableClipboard } from "@/wab/client/clipboard/ReadableClipboard";
+import { WritableClipboard } from "@/wab/client/clipboard/WritableClipboard";
+import { PLASMIC_CLIPBOARD_FORMAT } from "@/wab/client/clipboard/common";
+import {
+  LocalClipboard,
+  LocalClipboardAction,
+} from "@/wab/client/clipboard/local";
+import { paste } from "@/wab/client/clipboard/paste";
 import { syncCodeComponentsAndHandleErrors } from "@/wab/client/code-components/code-components";
-import { CodeFetchersRegistry } from "@/wab/client/code-fetchers";
 import {
   showForbiddenError,
   showReloadError,
@@ -79,7 +85,10 @@ import {
   getRootSubReact,
 } from "@/wab/client/frame-ctx/windows";
 import { checkDepPkgHosts } from "@/wab/client/init-ctx";
-import { postInsertableTemplate } from "@/wab/client/insertable-templates";
+import {
+  getCopyState,
+  postInsertableTemplate,
+} from "@/wab/client/insertable-templates";
 import { PLATFORM } from "@/wab/client/platform";
 import { requestIdleCallbackAsync } from "@/wab/client/requestidlecallback";
 import { plasmicExtensionAvailable } from "@/wab/client/screenshot-util";
@@ -346,6 +355,7 @@ import { reorderPageArenaCols } from "@/wab/shared/page-arenas";
 import { getAccessLevelToResource } from "@/wab/shared/perms";
 import {
   APP_ROUTES,
+  SEARCH_PARAM_COPILOT_CHAT,
   SEARCH_PROMPT,
   mkProjectLocation,
 } from "@/wab/shared/route/app-routes";
@@ -1117,7 +1127,6 @@ export class StudioCtx extends WithDbCtx {
       latestRevisionSynced,
       hasAppAuth,
       appAuthProvider,
-      workspaceTutorialDbs,
       isMainBranchProtected,
     } = await this.appCtx.api.getSiteInfo(this.siteInfo.id);
     this.dbCtx().setSiteInfo({
@@ -1127,7 +1136,6 @@ export class StudioCtx extends WithDbCtx {
       latestRevisionSynced,
       hasAppAuth,
       appAuthProvider,
-      workspaceTutorialDbs,
       isMainBranchProtected,
     });
     return this.siteInfo;
@@ -1935,6 +1943,13 @@ export class StudioCtx extends WithDbCtx {
     replace?: boolean;
     stopWatching?: boolean;
   }) {
+    // Preserve copilot_chat param across arena switches
+    const currentSearchParams = new URLSearchParams(
+      this.appCtx.history.location.search
+    );
+    const copilotChat =
+      currentSearchParams.get(SEARCH_PARAM_COPILOT_CHAT) === "true";
+
     const branchName = branch?.name || MainBranchId;
     const branchVersion = pkgVersionInfoMeta?.version || latestTag;
     if (arena) {
@@ -1959,6 +1974,7 @@ export class StudioCtx extends WithDbCtx {
         slug,
         replace,
         stopWatching,
+        copilotChat,
       });
     } else {
       // Arena could be null/undefined if the project has no arenas (i.e. 0 pages/components)
@@ -1972,6 +1988,7 @@ export class StudioCtx extends WithDbCtx {
         slug: undefined,
         replace,
         stopWatching,
+        copilotChat,
       });
     }
   }
@@ -1991,6 +2008,7 @@ export class StudioCtx extends WithDbCtx {
     slug,
     replace = false,
     stopWatching = true,
+    copilotChat,
   }: {
     branchName: string;
     branchVersion: string;
@@ -2001,6 +2019,7 @@ export class StudioCtx extends WithDbCtx {
     slug: string | undefined;
     replace?: boolean;
     stopWatching?: boolean;
+    copilotChat?: boolean;
   }) {
     if (stopWatching) {
       this.setWatchPlayerId(null);
@@ -2015,6 +2034,7 @@ export class StudioCtx extends WithDbCtx {
       arenaType,
       arenaUuidOrNameOrPath: arenaUuidOrName,
       threadId,
+      copilotChat,
     });
 
     if (replace) {
@@ -2534,17 +2554,24 @@ export class StudioCtx extends WithDbCtx {
     this.setHighLevelFocusOnly(this.tryGetViewCtxForFrame(frame), undefined);
   }
 
-  async setStudioFocusOnTpl(
+  /**
+   * Navigate to the appropriate arena and frame for a given component and
+   * optional variant combo, returning the ViewCtx.
+   *
+   * Handles frame components, mixed arenas, dedicated arenas, focused mode
+   * variant activation, and custom arena variant frames.
+   */
+  async getViewCtxForComponent(
     component: Component,
-    tpl: TplNode,
     variants?: VariantCombo,
-    threadId?: string
-  ) {
+    opts?: { threadId?: string }
+  ): Promise<ViewCtx> {
+    const threadId = opts?.threadId;
+
     // If the current focused ViewCtx is already on the target component and no variant switching is needed
     const currentViewCtx = this.focusedViewCtx();
     if (currentViewCtx?.component === component && !variants) {
-      currentViewCtx.setStudioFocusByTpl(tpl);
-      return;
+      return currentViewCtx;
     }
 
     // when component is a frame (artboard) or we're in a custom arena
@@ -2584,11 +2611,11 @@ export class StudioCtx extends WithDbCtx {
 
         const viewCtx = await this.awaitViewCtxForFrame(frame);
         if (viewCtx) {
-          viewCtx.setStudioFocusByTpl(tpl);
+          return viewCtx;
         }
-        return;
       }
     }
+
     const componentArena = this.getDedicatedArena(component);
     const arena =
       componentArena !== this.currentArena
@@ -2603,56 +2630,71 @@ export class StudioCtx extends WithDbCtx {
           )
         : this.currentArena;
 
-    if (arena) {
-      assert(
-        isPageArena(arena) || isComponentArena(arena),
-        "Current arena should be a page or component arena"
-      );
-      const baseFrame = getComponentArenaBaseFrame(arena);
-      const hasVariants = !!variants?.length;
-      const arenaDetails = hasVariants
-        ? this.getArenaFrameForSetOfVariants(arena, variants) ??
-          this.getComponentFrameForSetOfVariantsInCustomArenas(
-            arena.component,
-            variants
-          )
-        : null;
-      const frame = arenaDetails?.frame ?? baseFrame;
-
-      let viewCtx: ViewCtx | undefined = undefined;
-      if (this.focusedMode) {
-        const vcontroller = makeVariantsController(this);
-        if (vcontroller && variants?.length) {
-          await this.change(
-            ({ success }) => {
-              vcontroller.onActivateCombo(variants);
-              vcontroller.onToggleTargetingOfActiveVariants();
-              return success();
-            },
-            { noUndoRecord: true }
-          );
-        }
-        // In focus mode, there's guaranteed to be only one visible ViewCtx, so always use that.
-        viewCtx = this.focusedOrFirstViewCtx();
-      }
-
-      // switch to custom arena, as awaitViewCtxForFrame cannot create viewCtx for non visible custom arena
-      if (
-        arenaDetails &&
-        arenaDetails?.arena !== arena &&
-        arenaDetails?.arena !== this.currentArena &&
-        isMixedArena(arenaDetails?.arena)
-      ) {
-        await this.change(({ success }) => {
-          this.switchToArena(arenaDetails?.arena, { threadId });
-          return success();
-        });
-      }
-      viewCtx = viewCtx ?? (await this.awaitViewCtxForFrame(frame));
-      if (viewCtx) {
-        viewCtx.setStudioFocusByTpl(tpl);
-      }
+    if (!arena || !(isPageArena(arena) || isComponentArena(arena))) {
+      throw new Error(`No arena found for component "${component.name}".`);
     }
+
+    const baseFrame = getComponentArenaBaseFrame(arena);
+    const hasVariants = !!variants?.length;
+    const arenaDetails = hasVariants
+      ? this.getArenaFrameForSetOfVariants(arena, variants) ??
+        this.getComponentFrameForSetOfVariantsInCustomArenas(
+          arena.component,
+          variants
+        )
+      : null;
+    const frame = arenaDetails?.frame ?? baseFrame;
+
+    let viewCtx: ViewCtx | undefined = undefined;
+    if (this.focusedMode) {
+      const vcontroller = makeVariantsController(this);
+      if (vcontroller && variants?.length) {
+        await this.change(
+          ({ success }) => {
+            vcontroller.onActivateCombo(variants);
+            vcontroller.onToggleTargetingOfActiveVariants();
+            return success();
+          },
+          { noUndoRecord: true }
+        );
+      }
+      // In focus mode, there's guaranteed to be only one visible ViewCtx, so always use that.
+      viewCtx = this.focusedOrFirstViewCtx();
+    }
+
+    // switch to custom arena, as awaitViewCtxForFrame cannot create viewCtx for non visible custom arena
+    if (
+      arenaDetails &&
+      arenaDetails?.arena !== arena &&
+      arenaDetails?.arena !== this.currentArena &&
+      isMixedArena(arenaDetails?.arena)
+    ) {
+      await this.change(({ success }) => {
+        this.switchToArena(arenaDetails?.arena, { threadId });
+        return success();
+      });
+    }
+    viewCtx = viewCtx ?? (await this.awaitViewCtxForFrame(frame));
+
+    if (!viewCtx) {
+      throw new Error(
+        `Could not get ViewCtx for component "${component.name}".`
+      );
+    }
+
+    return viewCtx;
+  }
+
+  async setStudioFocusOnTpl(
+    component: Component,
+    tpl: TplNode,
+    variants?: VariantCombo,
+    threadId?: string
+  ) {
+    const viewCtx = await this.getViewCtxForComponent(component, variants, {
+      threadId,
+    });
+    viewCtx.setStudioFocusByTpl(tpl);
   }
 
   getArenaFrameForSetOfVariants(
@@ -3075,6 +3117,90 @@ export class StudioCtx extends WithDbCtx {
   }
 
   //
+  // Copy/paste commands
+  //
+
+  // clipboardAction keeps track of last clipboard action. It is used in
+  // "paste as sibling" because Clipboard API only lets us know about the
+  // existence of "application/vnd.plasmic.clipboardjson" but does not let
+  // us read data from it.
+  private clipboardAction: LocalClipboardAction = "copy";
+
+  private cursorClientPt?: Pt;
+
+  setCursorClientPt(clientPt: Pt) {
+    this.cursorClientPt = clientPt;
+  }
+
+  async copy(clipboard: WritableClipboard, viewCtx: ViewCtx) {
+    trackEvent("Copy");
+    const copyObj = viewCtx.viewOps.copy();
+    if (!copyObj) {
+      return;
+    }
+    viewCtx.enforcePastingAsSibling = true;
+    const copyState = getCopyState(viewCtx, copyObj);
+    spawn(viewCtx.appCtx.api.whitelistProjectIdToCopy(copyState.projectId));
+    if (copyState.references.length > 0) {
+      clipboard.setData(copyState);
+    } else {
+      clipboard.setData({ action: "copy" });
+    }
+    this.clipboardAction = "copy";
+  }
+
+  async cut(clipboard: WritableClipboard, viewCtx: ViewCtx) {
+    trackEvent("Cut");
+    const copyObj = await viewCtx.viewOps.cut();
+    if (!copyObj) {
+      return;
+    }
+    const copyState = getCopyState(viewCtx, copyObj);
+    spawn(viewCtx.appCtx.api.whitelistProjectIdToCopy(copyState.projectId));
+    if (copyState.references.length > 0) {
+      clipboard.setData(copyState);
+    } else {
+      clipboard.setData({ action: "cut" });
+    }
+    this.clipboardAction = "cut";
+  }
+
+  async paste(clipboard: ReadableClipboard, as?: "sibling") {
+    trackEvent("Paste");
+    await paste({
+      clipboard,
+      studioCtx: this,
+      cursorClientPt: this.cursorClientPt,
+      as,
+    });
+  }
+
+  async pasteAsSibling() {
+    const clipboard = await this.readClipboardForPaste();
+    await this.paste(clipboard, "sibling");
+  }
+
+  /**
+   * Read the current clipboard via the navigator API. Fall back to a synthetic marker
+   * so the paste router can fall through to the in-process local clipboard.
+   */
+  async readClipboardForPaste(): Promise<ReadableClipboard> {
+    try {
+      const clipboardData = await this.appCtx.api.readNavigatorClipboard(
+        this.clipboardAction
+      );
+      return ReadableClipboard.fromData(clipboardData);
+    } catch (e) {
+      console.error(e);
+      return ReadableClipboard.fromData({
+        [PLASMIC_CLIPBOARD_FORMAT]: JSON.stringify({
+          action: this.clipboardAction,
+        }),
+      });
+    }
+  }
+
+  //
   // Branching
   //
   showBranching() {
@@ -3107,12 +3233,21 @@ export class StudioCtx extends WithDbCtx {
   //
   // Copilot
   //
-  uiCopilotEnabled() {
+  uiCopilotEnabled(): boolean {
     const team = this.appCtx.teams.find((t) => t.id === this.siteInfo.teamId);
     return (
       // enableUiCopilot flag is false by default and overriden for plasmic users only,
       // we will enable it when we decide to release this feature to all user
-      this.appCtx.appConfig.enableUiCopilot || checkIsOrgOnPaidTierOrTrial(team)
+      this.appCtx.appConfig.enableUiCopilot ||
+      (!!team && checkIsOrgOnPaidTierOrTrial(team))
+    );
+  }
+
+  chatCopilotEnabled() {
+    return (
+      // enableUiCopilot flag is false by default and overriden for plasmic users only,
+      // we will enable it when we decide to release this feature to all user
+      this.appCtx.appConfig.enableChatCopilot
     );
   }
 
@@ -3540,14 +3675,9 @@ export class StudioCtx extends WithDbCtx {
     window.parent,
     getBuiltinComponentRegistrations()
   );
-  private _codeFetchersRegistry = new CodeFetchersRegistry(window.parent);
 
   get codeComponentsRegistry() {
     return this._ccRegistry;
-  }
-
-  get codeFetchersRegistry() {
-    return this._codeFetchersRegistry;
   }
 
   getRegisteredContextsMap() {
@@ -4784,18 +4914,14 @@ export class StudioCtx extends WithDbCtx {
       const canvasCtx = viewCtx.canvasCtx;
       this.styleMgr.upsertStyleSheets(canvasCtx.$doc()[0], viewCtx.component);
     },
-    playAnimationPreview: (
-      tpl: TplNode,
-      rs: RuleSet,
-      animations: Animation[]
-    ) => {
-      return this.styleMgr.playAnimationPreview(tpl, rs, animations);
+    playAnimationPreview: (tpl: TplNode, animations: Animation[]) => {
+      return this.styleMgr.playAnimationPreview(tpl, animations);
     },
-    stopAnimationPreview: (tpl: TplNode, rs: RuleSet) => {
-      this.styleMgr.stopAnimationPreview(tpl, rs);
+    stopAnimationPreview: (tpl: TplNode) => {
+      this.styleMgr.stopAnimationPreview(tpl);
     },
-    hasActiveAnimationPreview: (tpl: TplNode, rs: RuleSet) => {
-      return this.styleMgr.hasActiveAnimationPreview(tpl, rs);
+    hasActiveAnimationPreview: (tpl: TplNode) => {
+      return this.styleMgr.hasActiveAnimationPreview(tpl);
     },
   };
 
@@ -6651,7 +6777,6 @@ export class StudioCtx extends WithDbCtx {
     const _styleChanges = summaryToStyleChanges(summary);
     if (_styleChanges) {
       this.styleMgr.upsertStyles(_styleChanges);
-      // themeSnapshotChanged = this.jsBundleMgr.updateAllThemeSnapshot();
 
       if (_styleChanges.updatedDeps) {
         for (const dep of _styleChanges.updatedDeps) {
@@ -6872,19 +6997,6 @@ export class StudioCtx extends WithDbCtx {
     this._findReferencesDataToken.set(c);
     if (!this.leftTabKey) {
       this.switchLeftTab("dataTokens");
-    }
-  }
-
-  private _findReferencesDataToken = observable.box<DataToken | undefined>(
-    undefined
-  );
-  get findReferencesDataToken() {
-    return this._findReferencesDataToken.get();
-  }
-  set findReferencesDataToken(c: DataToken | undefined) {
-    this._findReferencesDataToken.set(c);
-    if (!this.leftTabKey) {
-      this.leftTabKey = "dataTokens";
     }
   }
 
@@ -7577,8 +7689,8 @@ export function checkIsOrgOnFreeTierOrTrial(team?: ApiTeam) {
   );
 }
 
-export function checkIsOrgOnPaidTierOrTrial(team?: ApiTeam) {
-  return (team?.featureTierId && team?.stripeCustomerId) || team?.onTrial;
+export function checkIsOrgOnPaidTierOrTrial(team: ApiTeam): boolean {
+  return !!(team.featureTierId && team.stripeCustomerId) || team.onTrial;
 }
 
 export function cssPropsForInvertTransform(

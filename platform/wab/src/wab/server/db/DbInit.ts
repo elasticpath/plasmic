@@ -2,7 +2,7 @@
 // environment we're running in.
 import { loadConfig } from "@/wab/server/config";
 import { getLastBundleVersion } from "@/wab/server/db/BundleMigrator";
-import { ensureDbConnection } from "@/wab/server/db/DbCon";
+import { ensureDbConnection, ensureDbConnections } from "@/wab/server/db/DbCon";
 import { initDb } from "@/wab/server/db/DbInitUtil";
 import {
   DbMgr,
@@ -16,14 +16,21 @@ import { logger } from "@/wab/server/observability";
 import { getBundleInfo, PkgMgr } from "@/wab/server/pkg-mgr";
 import { Bundler } from "@/wab/shared/bundler";
 import { ensureType, spawn } from "@/wab/shared/common";
-import { defaultComponentKinds } from "@/wab/shared/core/components";
+import {
+  ComponentType,
+  defaultComponentKinds,
+} from "@/wab/shared/core/components";
 import { createSite } from "@/wab/shared/core/sites";
+import { mkTplInlinedText } from "@/wab/shared/core/tpls";
 import { InsertableTemplatesGroup, Installable } from "@/wab/shared/devflags";
 import {
   InsertableId,
   PLEXUS_INSERTABLE_ID,
   PLUME_INSERTABLE_ID,
 } from "@/wab/shared/insertables";
+import { TplMgr } from "@/wab/shared/TplMgr";
+import { $$$ } from "@/wab/shared/TplQuery";
+import { getBaseVariant } from "@/wab/shared/Variants";
 import { kebabCase, startCase } from "lodash";
 import { EntityManager } from "typeorm";
 
@@ -33,6 +40,7 @@ if (require.main === module) {
 
 async function main() {
   const config = loadConfig();
+  await ensureDbConnections(config.databaseUri);
   const con = await ensureDbConnection(config.databaseUri, "default");
   await con.transaction(async (em) => {
     await initDb(em);
@@ -233,15 +241,18 @@ export async function seedTestUserAndProjects(
       id: project.id,
       name: `The real Plasmic project ${projectNum}`,
     });
-    await db.saveProjectRev({
-      projectId: project.id,
-      data: '{"hello": "world"}',
-      revisionNum: 2,
-    });
-    await db.getLatestProjectRev(project.id);
 
-    // Need to set this back to the normal placeholder.
+    // Add a Homepage page with "Hello, world!" text.
     const site = createSite();
+    const tplMgr = new TplMgr({ site });
+    const comp = tplMgr.addComponent({
+      type: ComponentType.Page,
+      name: "Homepage",
+    });
+    $$$(comp.tplTree).append(
+      mkTplInlinedText("Hello, world!", [getBaseVariant(comp)])
+    );
+
     const siteBundle = new Bundler().bundle(
       site,
       "",
@@ -250,7 +261,7 @@ export async function seedTestUserAndProjects(
     await db.saveProjectRev({
       projectId: project.id,
       data: JSON.stringify(siteBundle),
-      revisionNum: 3,
+      revisionNum: 2,
     });
   }
 

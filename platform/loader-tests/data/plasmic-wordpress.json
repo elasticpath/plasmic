@@ -2132,7 +2132,7 @@
         },
         "q2DE32Sxts_9": {
           "__type": "TemplatedString",
-          "text": ["https://plasmic-loader-test.test/"]
+          "text": ["<REPLACE_WITH_WORDPRESS_URL>"]
         },
         "TavmIN4dOKXM": {
           "__type": "Arg",

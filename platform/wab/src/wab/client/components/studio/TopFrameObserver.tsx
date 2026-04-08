@@ -1,5 +1,10 @@
 import { usePreviewCtx } from "@/wab/client/components/live/PreviewCtx";
-import { HostFrameApi } from "@/wab/client/frame-ctx/host-frame-api";
+import { COPILOT_TOOLS } from "@/wab/client/copilot/tools";
+import {
+  CopilotToolCallResult,
+  HostFrameApi,
+  serializeCopilotError,
+} from "@/wab/client/frame-ctx/host-frame-api";
 import { useHostFrameCtx } from "@/wab/client/frame-ctx/host-frame-ctx";
 import { StudioAppUser, useStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import { ApiBranch } from "@/wab/shared/ApiSchema";
@@ -157,6 +162,35 @@ export const TopFrameObserver = observer(function _TopFrameObserver({
       },
       async handleBranchMerged(): Promise<void> {
         await studioCtx.handleBranchMerged();
+      },
+      async executeCopilotToolCall(
+        toolName: string,
+        toolArgs: Record<string, unknown>
+      ): Promise<CopilotToolCallResult> {
+        const copilotTool = COPILOT_TOOLS[toolName];
+
+        if (!copilotTool) {
+          return {
+            success: false,
+            error: {
+              message: `Copilot tool "${toolName}" not found.`,
+              type: "TOOL_NOT_FOUND",
+            },
+          };
+        }
+
+        try {
+          const output = await copilotTool.execute(studioCtx, toolArgs);
+          return { success: true, output };
+        } catch (err) {
+          return {
+            success: false,
+            error: {
+              message: serializeCopilotError(err),
+              type: "EXECUTION_FAILED",
+            },
+          };
+        }
       },
     }),
     [studioCtx]

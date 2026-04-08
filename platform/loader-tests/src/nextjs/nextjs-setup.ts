@@ -28,9 +28,11 @@ export async function prepareTemplate(opts: {
   removeComponentsPage?: boolean;
   nextVersion: string;
   loaderVersion: string;
+  reactVersion?: string;
   projectId: string;
   projectToken: string;
   authRedirectUri?: string;
+  isAppRouter?: boolean;
 }) {
   const {
     templateDir,
@@ -38,60 +40,56 @@ export async function prepareTemplate(opts: {
     removeComponentsPage,
     nextVersion,
     loaderVersion,
+    reactVersion,
     projectId,
     projectToken,
     authRedirectUri,
+    isAppRouter,
   } = opts;
 
   const npmRegistry = getEnvVar("NPM_CONFIG_REGISTRY");
   const codegenHost = getEnvVar("WAB_HOST");
-  const npmCache =
-    getEnvVar("NPM_CONFIG_CACHE") || path.join(tmpdir, ".npm-cache");
-  const npmTmp = path.join(tmpdir, ".npm-tmp");
+  const pnpmStoreDir = "/tmp/.nextjs-loader-pnpm-store";
 
   copySync(templateDir, tmpdir, { recursive: true });
 
-  if (removeComponentsPage) {
+  if (removeComponentsPage && !isAppRouter) {
     fs.unlinkSync(path.join(tmpdir, "pages/components.tsx"));
   }
 
-  await runCommand(
-    `npm install --registry ${npmRegistry} --cache "${npmCache}"`,
-    {
-      dir: tmpdir,
-      env: {
-        npm_config_cache: npmCache,
-        npm_config_tmp: npmTmp,
-      },
-    }
-  );
+  const loaderRegistry =
+    loaderVersion !== "latest" ? "https://registry.npmjs.org" : npmRegistry;
 
-  // Remove and install the designated next version
-  await runCommand("npm uninstall next", { dir: tmpdir });
-  await runCommand(`npm install next@${nextVersion} --cache "${npmCache}"`, {
+  // Write .npmrc to configure registries for pnpm
+  const npmrcLines = [
+    `registry=${npmRegistry}`,
+    `@plasmicapp:registry=${loaderRegistry}`,
+    `store-dir=${pnpmStoreDir}`,
+    `shamefully-hoist=true`,
+  ];
+  fs.writeFileSync(path.join(tmpdir, ".npmrc"), npmrcLines.join("\n") + "\n");
+
+  const pnpmOptions = {
     dir: tmpdir,
     env: {
-      npm_config_cache: npmCache,
-      npm_config_tmp: npmTmp,
+      COREPACK_ENABLE_STRICT: "0",
     },
-  });
+  };
+  await runCommand(`pnpm install --frozen-lockfile`, pnpmOptions);
 
-  // Remove and install the designated @plasmicapp/loader-nextjs version
-  await runCommand("npm uninstall @plasmicapp/loader-nextjs", {
-    dir: tmpdir,
-  });
-  await runCommand(
-    `npm install --registry ${
-      loaderVersion !== "latest" ? "https://registry.npmjs.org" : npmRegistry
-    } @plasmicapp/loader-nextjs@${loaderVersion} --cache "${npmCache}"`,
-    {
-      dir: tmpdir,
-      env: {
-        npm_config_cache: npmCache,
-        npm_config_tmp: npmTmp,
-      },
-    }
-  );
+  const updatePackages = [
+    `@plasmicapp/loader-nextjs@${loaderVersion}`,
+    `next@${nextVersion}`,
+  ];
+  if (reactVersion) {
+    updatePackages.push(
+      `react@${reactVersion}`,
+      `react-dom@${reactVersion}`,
+      `@types/react@${reactVersion}`,
+      `@types/react-dom@${reactVersion}`
+    );
+  }
+  await runCommand(`pnpm update ${updatePackages.join(" ")}`, pnpmOptions);
 
   fs.writeFileSync(
     path.join(tmpdir, "config.json"),
@@ -106,20 +104,31 @@ export async function prepareTemplate(opts: {
     })
   );
 
-  const catchAllPath = path.join(tmpdir, "pages", "[[...catchall]].tsx");
-  const catchAllContent = fs.readFileSync(catchAllPath);
-  let adjustedCatchAllContent = catchAllContent
-    .toString()
-    .replace("undefined; // __DATA_HOST__", `"${codegenHost}";`);
+  if (isAppRouter) {
+    // For app router, update plasmic-init.ts
+    const initPath = path.join(tmpdir, "plasmic-init.ts");
+    const initContent = fs.readFileSync(initPath);
+    const adjustedInitContent = initContent
+      .toString()
+      .replace("undefined; // __DATA_HOST__", `"${codegenHost}";`);
+    fs.writeFileSync(initPath, adjustedInitContent);
+  } else {
+    // For pages router, update pages/[[...catchall]].tsx
+    const catchAllPath = path.join(tmpdir, "pages", "[[...catchall]].tsx");
+    const catchAllContent = fs.readFileSync(catchAllPath);
+    let adjustedCatchAllContent = catchAllContent
+      .toString()
+      .replace("undefined; // __DATA_HOST__", `"${codegenHost}";`);
 
-  if (authRedirectUri) {
-    adjustedCatchAllContent = adjustedCatchAllContent.replace(
-      "undefined; // __AUTH_REDIRECT_URI__",
-      `"${authRedirectUri}/";`
-    );
+    if (authRedirectUri) {
+      adjustedCatchAllContent = adjustedCatchAllContent.replace(
+        "undefined; // __AUTH_REDIRECT_URI__",
+        `"${authRedirectUri}/";`
+      );
+    }
+
+    fs.writeFileSync(catchAllPath, adjustedCatchAllContent);
   }
-
-  fs.writeFileSync(catchAllPath, adjustedCatchAllContent);
 }
 
 export async function setupNextJs(opts: {
@@ -130,9 +139,11 @@ export async function setupNextJs(opts: {
   bundleTransformation?: (value: string) => string;
   loaderVersion?: string;
   nextVersion?: string;
+  reactVersion?: string;
   dataSourceReplacement?: {
     type: string;
   };
+  env?: Record<string, string>;
 }): Promise<NextJsContext> {
   const {
     bundleFile,
@@ -140,9 +151,10 @@ export async function setupNextJs(opts: {
     removeComponentsPage,
     bundleTransformation,
     loaderVersion = "latest",
-    // TODO: Only works with 12 sine we're running with node 14 for now...
-    nextVersion = "^12",
+    nextVersion = "14",
+    reactVersion,
     dataSourceReplacement,
+    env,
   } = opts;
   const { projectId, projectToken } = await uploadProject(
     bundleFile,
@@ -161,10 +173,12 @@ export async function setupNextJs(opts: {
       type: "nextjs",
       loaderVersion,
       nextVersion,
+      reactVersion,
       removeComponentsPage,
       template: opts.template,
     },
-    tmpdir
+    tmpdir,
+    env
   );
 
   return {
@@ -181,6 +195,10 @@ export async function teardownNextJs(ctx: NextJsContext) {
   const { tmpdirCleanup } = ctx;
 
   await teardownNextJsServer(ctx);
+
+  // TODO -- implement a way to identify/delete dependency projects. Without that, this leaves
+  // dangling deps in the workspace
+  // await removeProject(ctx.projectId);
 
   await new Promise((resolve) => setTimeout(resolve, 3000));
 
@@ -220,10 +238,12 @@ export async function teardownNextJsServer(ctx: {
 export async function setupNextjsServer(
   project: ProjectContext,
   env: NextJsEnv,
-  dir: string
+  dir: string,
+  envVars?: Record<string, string>
 ) {
-  const template = env.template ?? "template";
+  const template = env.template ?? "template-pages";
   const templateDir = path.resolve(path.join(__dirname, template));
+  const isAppRouter = template.includes("template-app");
 
   await prepareTemplate({
     templateDir,
@@ -231,16 +251,21 @@ export async function setupNextjsServer(
     removeComponentsPage: env.removeComponentsPage,
     nextVersion: env.nextVersion,
     loaderVersion: env.loaderVersion,
+    reactVersion: env.reactVersion,
     projectId: project.projectId,
     projectToken: project.projectToken,
+    isAppRouter,
   });
 
-  await runCommand(`npm run build`, { dir });
+  await runCommand(`pnpm run build`, {
+    dir,
+    env: { ...envVars, COREPACK_ENABLE_STRICT: "0" },
+  });
 
   const port = await getPort();
   const nextServer = runCommand(
     `./node_modules/.bin/next start --port ${port}`,
-    { dir, output: "inherit", noExit: true }
+    { dir, output: "inherit", noExit: true, env: envVars }
   );
   const host = `http://localhost:${port}`;
   await waitUntilServerUp(host, { process: nextServer });

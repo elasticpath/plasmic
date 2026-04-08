@@ -1,4 +1,6 @@
+import type { ImageAssetOpts, ResizableImage } from "@/wab/client/dom-utils";
 import { StyleTokenType } from "@/wab/commons/StyleToken";
+import { ProjectId } from "@/wab/shared/ApiSchema";
 import {
   FrameViewMode,
   cloneArenaFrame,
@@ -102,6 +104,7 @@ import {
   PageComponent,
   allComponentVariants,
   cloneComponent,
+  cloneComponentServerQuery,
   clonePageMeta,
   cloneVariant,
   extractParamsFromPagePath,
@@ -189,14 +192,20 @@ import {
   isTplVariantable,
   mkTplComponent,
   mkTplTagX,
+  pushExprs,
   reconnectChildren,
   summarizeTpl,
   trackComponentSite,
   walkTpls,
 } from "@/wab/shared/core/tpls";
 import { ScreenSizeSpec } from "@/wab/shared/css-size";
+import { parseDataUrlToSvgXml, parseSvgXml } from "@/wab/shared/data-urls";
 import { CONTENT_LAYOUT_INITIALS } from "@/wab/shared/default-styles";
 import { DEVFLAGS } from "@/wab/shared/devflags";
+import {
+  mergeParsedExprInfos,
+  parseExpr,
+} from "@/wab/shared/eval/expression-parser";
 import { Pt, Rect, findSpaceForRectSweepRight } from "@/wab/shared/geom";
 import { ensureComponentsObserved } from "@/wab/shared/mobx-util";
 import { instUtil } from "@/wab/shared/model/InstUtil";
@@ -261,6 +270,7 @@ import {
 } from "@/wab/shared/refactoring";
 import { FrameSize } from "@/wab/shared/responsiveness";
 import { setPageSizeType } from "@/wab/shared/sizingutils";
+import { removeSvgIds } from "@/wab/shared/svg-utils";
 import { makeComponentSwapper } from "@/wab/shared/swap-components";
 import {
   TplVisibility,
@@ -1795,6 +1805,84 @@ export class TplMgr {
     });
   }
 
+  duplicateComponentServerQuery(
+    component: Component,
+    query: ComponentServerQuery
+  ) {
+    const cloned = cloneComponentServerQuery(query);
+    cloned.name = this.getUniqueServerQueryName(component, query.name);
+    component.serverQueries.push(cloned);
+    return cloned;
+  }
+
+  /**
+   * Copies a server query from a source component to the target component,
+   * including any server queries it depends on (via $queries/$q references).
+   * Dependencies that already exist on the target component are skipped.
+   */
+  copyServerQueryWithDependencies(
+    targetComponent: Component,
+    sourceComponent: Component,
+    query: ComponentServerQuery
+  ) {
+    const targetQueryNames = new Set(
+      targetComponent.serverQueries.map((q) => toVarName(q.name))
+    );
+
+    const toCopy: ComponentServerQuery[] = [];
+    const visited = new Set<string>();
+    const componentVarRefs: { [varType: string]: Set<string> } = {};
+
+    const collectDependencies = (q: ComponentServerQuery) => {
+      if (visited.has(q.uuid)) {
+        return;
+      }
+      visited.add(q.uuid);
+
+      if (q.op) {
+        const allExprs: Expr[] = [];
+        pushExprs(allExprs, q.op);
+        const info = mergeParsedExprInfos(allExprs.map((e) => parseExpr(e)));
+
+        for (const refName of info.usedDollarVarKeys.$q) {
+          const depQuery = sourceComponent.serverQueries.find(
+            (sq) => toVarName(sq.name) === refName
+          );
+          if (depQuery && !targetQueryNames.has(toVarName(depQuery.name))) {
+            collectDependencies(depQuery);
+          }
+        }
+
+        for (const varType of ["$state", "$props", "$ctx"]) {
+          for (const key of info.usedDollarVarKeys[varType]) {
+            if (!componentVarRefs[varType]) {
+              componentVarRefs[varType] = new Set();
+            }
+            componentVarRefs[varType].add(key);
+          }
+        }
+      }
+
+      toCopy.push(q);
+    };
+
+    collectDependencies(query);
+
+    const copied: ComponentServerQuery[] = [];
+    for (const q of toCopy) {
+      copied.push(this.duplicateComponentServerQuery(targetComponent, q));
+    }
+    return { copied, componentVarRefs };
+  }
+
+  getUniqueServerQueryName(component: Component, name: string) {
+    const existingNames = component.serverQueries.map((q) => q.name);
+    return uniqueName(existingNames, name, {
+      separator: " ",
+      normalize: toVarName,
+    });
+  }
+
   addAnimationSequence(name?: string, animationSequence?: AnimationSequence) {
     const newSequence =
       animationSequence ||
@@ -1930,6 +2018,57 @@ export class TplMgr {
     });
     this.site().imageAssets.push(asset);
     return asset;
+  }
+
+  getOrCreateImageAsset(image: ResizableImage, opts: ImageAssetOpts) {
+    const existing = this.findExistingImageAsset(image.url, opts.type);
+    // If there's already an existing asset, then reuse it
+    if (existing) {
+      return { asset: existing, iconColor: opts.iconColor };
+    }
+    const asset = this.addImageAsset({
+      name: opts.name,
+      type: opts.type,
+      dataUri: image.url,
+      width: image.width,
+      height: image.height,
+      aspectRatio: image.scaledRoundedAspectRatio,
+    });
+
+    return { asset, iconColor: opts.iconColor };
+  }
+
+  private findExistingImageAsset(dataUri: string, type: ImageAssetType) {
+    if (type === ImageAssetType.Picture) {
+      return this.site().imageAssets.find(
+        (asset) => asset.type === type && asset.dataUri === dataUri
+      );
+    } else {
+      // To match SVGs, we do so in an ID-agnostic way.  That's because SVGs can
+      // define global IDs, and so we try to generate a random prefix for those
+      // IDs when we clean them.  Then, when we are matching them back up, we need
+      // to ignore those random IDs.
+      // This is a more expensive search than comparing dataUri directly,
+      // and should only be used when handling new image data (like from pasted
+      // clipboard).  If you expect an exact match already, then just use
+      // TplMgr.addImageAsset() directly.
+      const parseSvg = (uri: string) => {
+        const xml = parseDataUrlToSvgXml(uri);
+        const svg = parseSvgXml(xml);
+        return removeSvgIds(svg.cloneNode(true) as SVGSVGElement);
+      };
+
+      const svg = parseSvg(dataUri);
+      for (const asset of this.site().imageAssets) {
+        if (asset.type === ImageAssetType.Icon && asset.dataUri) {
+          const svg2 = parseSvg(asset.dataUri);
+          if (svg.isEqualNode(svg2)) {
+            return asset;
+          }
+        }
+      }
+      return undefined;
+    }
   }
 
   renameImageAsset(asset: ImageAsset, name: string) {
@@ -2174,7 +2313,7 @@ export class TplMgr {
     return token;
   }
 
-  renameDataToken(projectId: string, token: DataToken, name: string) {
+  renameDataToken(projectId: ProjectId, token: DataToken, name: string) {
     if (toVarName(name) !== toVarName(token.name)) {
       const newName = this.getUniqueDataTokenName(name);
       // Update expressions before renaming the token

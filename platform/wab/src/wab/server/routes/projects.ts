@@ -35,7 +35,7 @@ import {
 import "@/wab/server/extensions";
 import { logger } from "@/wab/server/observability";
 import { REAL_PLUME_VERSION } from "@/wab/server/pkg-mgr/plume-pkg-mgr";
-import { mkApiDataSource } from "@/wab/server/routes/data-source";
+
 import { checkEtagSkippable } from "@/wab/server/routes/loader";
 import { moveBundleAssetsToS3 } from "@/wab/server/routes/moveAssetsToS3";
 import { filterProjectsByKind } from "@/wab/server/routes/project-kind-filter";
@@ -122,12 +122,8 @@ import {
 } from "@/wab/shared/bundles";
 import { componentToDeepReferenced } from "@/wab/shared/cached-selectors";
 import { elementSchemaToTpl } from "@/wab/shared/code-components/code-components";
-import {
-  exportIconAsset,
-  extractUsedIconAssetsForComponents,
-} from "@/wab/shared/codegen/image-assets";
+import { extractUsedIconAssetsForComponents } from "@/wab/shared/codegen/image-assets";
 import { exportStyleConfig } from "@/wab/shared/codegen/react-p";
-import { exportStyleTokens } from "@/wab/shared/codegen/style-tokens";
 import { ExportOpts } from "@/wab/shared/codegen/types";
 import { toClassName } from "@/wab/shared/codegen/util";
 import { Dict, mkIdMap } from "@/wab/shared/collections";
@@ -1393,12 +1389,18 @@ export async function saveProjectRev(req: Request, res: Response) {
     const data = JSON.stringify(mergedBundle);
 
     req.promLabels.projectId = projectId;
-    req.analytics.track("Save project", {
-      projectId: project.id,
-      projectName: project.name,
-      revision: +req.params.revision,
-      branchId,
-    });
+    req.analytics.track(
+      "Save project",
+      {
+        projectId: project.id,
+        projectName: project.name,
+        revision: +req.params.revision,
+        branchId,
+      },
+      {
+        sampleThreshold: 0.1,
+      }
+    );
 
     const rev = await mgr.saveProjectRev({
       projectId,
@@ -1579,20 +1581,6 @@ export async function getProjectRev(req: Request, res: Response) {
   const hasAppAuth = !!appAuthConfig;
   const appAuthProvider = appAuthConfig?.provider;
 
-  const allowedDataSourceIds = (
-    await mgr.listAllowedDataSourcesForProject(projectId as ProjectId)
-  ).map((ds) => ds.dataSourceId);
-
-  const workspaceTutorialDbs = project.workspaceId
-    ? (await mgr.getWorkspaceTutorialDataSources(project.workspaceId))
-        .filter(
-          (ds) =>
-            ds.source === "tutorialdb" && allowedDataSourceIds.includes(ds.id)
-        )
-
-        .map((ds) => mkApiDataSource(ds))
-    : [];
-
   req.analytics.track("Open project", {
     projectId: project.id,
     projectName: project.name,
@@ -1611,7 +1599,6 @@ export async function getProjectRev(req: Request, res: Response) {
     latestRevisionSynced,
     hasAppAuth,
     appAuthProvider,
-    workspaceTutorialDbs,
     isMainBranchProtected: !!project.isMainBranchProtected,
   });
 }
@@ -2216,7 +2203,22 @@ export async function getPkgVersionPublishStatus(req: Request, res: Response) {
         },
       }
     );
-    const redirectLocation = redirectRes.headers.get("location");
+
+    let redirectLocation = redirectRes.headers.get("location");
+
+    // Handle special case for polyfill projects that return 200 with JSON body
+    // instead of a redirect (see PLA-12576)
+    if (!redirectLocation && redirectRes.status === 200) {
+      try {
+        const jsonBody = await redirectRes.json();
+        if (jsonBody.redirectUrl) {
+          redirectLocation = jsonBody.redirectUrl;
+        }
+      } catch (e) {
+        // If JSON parsing fails, continue without redirect location
+      }
+    }
+
     if (redirectLocation) {
       try {
         const decodedUri = decodeURIComponent(redirectLocation);
@@ -2514,18 +2516,6 @@ async function doResolveSync(
   return result;
 }
 
-function doGenIcons(site: Site, iconIds?: string[]) {
-  //If iconIds is empty/not-specified, return everything
-  const iconAssets = localIcons(site)
-    .filter((x) => !iconIds || iconIds.includes(x.uuid))
-    .map((x) => {
-      const output = exportIconAsset(x);
-      output.module = Prettier.format(output.module, { parser: "typescript" });
-      return output;
-    });
-  return iconAssets;
-}
-
 export async function resolveSync(req: Request, res: Response) {
   // Resolve performs its own auth checks using the project API tokens inside
   // body.projects.
@@ -2557,7 +2547,7 @@ export async function requiredPackages(req: Request, res: Response) {
   res.json(requiredPackageVersions);
 }
 
-const _latestCodegenVersion = "0.0.2";
+const _latestCodegenVersion = "0.0.3";
 export async function latestCodegenVersion(req: Request, res: Response) {
   res.json(_latestCodegenVersion);
 }
@@ -2585,11 +2575,13 @@ export async function genCode(req: Request, res: Response) {
     req.body.platform === "tanstack"
       ? req.body.platform
       : "react";
+  const platformVersion = req.body.platformVersion;
   const platformOptions = req.body.platformOptions || {};
   const project = await mgr.getProjectById(req.params.projectId);
   req.promLabels.projectId = project.id;
   const exportOpts: ExportOpts = {
     platform,
+    platformVersion,
     platformOptions,
     lang: "ts",
     relPathFromImplToManagedDir: ".",
@@ -2663,47 +2655,6 @@ export async function genCode(req: Request, res: Response) {
     })),
     checksums,
   });
-}
-
-export async function genStyleTokens(req: Request, res: Response) {
-  const mgr = userDbMgr(req);
-  const projectId = req.params.projectId;
-  const branchName = req.query.branchName;
-  const resolvedVersion =
-    req.body.versionRange === "latest" && req.query.branchName
-      ? branchName === "main"
-        ? "latest"
-        : branchName
-      : req.body.versionRange;
-  const { site } = await mgr.tryGetPkgVersionByProjectVersionOrTag(
-    req.bundler,
-    projectId,
-    resolvedVersion
-  );
-  req.promLabels.projectId = projectId;
-
-  res.json(exportStyleTokens(projectId, site));
-}
-
-export async function genIcons(req: Request, res: Response) {
-  const mgr = userDbMgr(req);
-  const projectId = req.params.projectId;
-  const branchName = req.query.branchName;
-  const resolvedVersion =
-    req.body.versionRange === "latest" && req.query.branchName
-      ? branchName === "main"
-        ? "latest"
-        : branchName
-      : req.body.versionRange;
-  const { version, site } = await mgr.tryGetPkgVersionByProjectVersionOrTag(
-    req.bundler,
-    projectId,
-    resolvedVersion
-  );
-  req.promLabels.projectId = projectId;
-
-  const iconAssets = doGenIcons(site, req.body.iconIds);
-  res.json({ version, icons: iconAssets });
 }
 
 export async function fmtCode(req: Request, res: Response) {

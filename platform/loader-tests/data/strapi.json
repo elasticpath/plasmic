@@ -482,7 +482,7 @@
         "RTwcaENXpL9W": { "name": "any", "__type": "AnyType" },
         "07_Nwx1r95q7": {
           "name": "arg",
-          "argName": "$queries",
+          "argName": "$q",
           "displayName": null,
           "type": { "__ref": "RTwcaENXpL9W" },
           "__type": "ArgType"
@@ -1331,7 +1331,7 @@
           "__type": "Var"
         },
         "vZ90fPgUGZOd": {
-          "path": ["$queries", "restaurants", "data", "data"],
+          "path": ["$q", "restaurants", "data", "data"],
           "fallback": { "__ref": "jbKgqU1cXJGI" },
           "__type": "ObjectPath"
         },
@@ -1727,7 +1727,7 @@
           "__type": "Var"
         },
         "BgVppc2r2IvN": {
-          "path": ["$queries", "restaurants", "data", "data"],
+          "path": ["$q", "restaurants", "data", "data"],
           "fallback": { "__ref": "dNHThQauSQ9b" },
           "__type": "ObjectPath"
         },
@@ -1968,7 +1968,7 @@
           "__type": "Var"
         },
         "HQrEfdEpC_G-": {
-          "path": ["$queries", "restaurants", "data", "data"],
+          "path": ["$q", "restaurants", "data", "data"],
           "fallback": { "__ref": "rf5NbnVhiyQi" },
           "__type": "ObjectPath"
         },
@@ -2148,7 +2148,7 @@
           "__type": "Var"
         },
         "WIkZYCmPRRt7": {
-          "path": ["$queries", "restaurants", "data", "data"],
+          "path": ["$q", "restaurants", "data", "data"],
           "fallback": { "__ref": "oGvIApTmHMW-" },
           "__type": "ObjectPath"
         },
@@ -2202,7 +2202,7 @@
           "__type": "CompositeExpr"
         },
         "QFQaO3YkGchb": {
-          "text": ["https://plasmic-loader-test.test/"],
+          "text": ["<REPLACE_WITH_STRAPI_URL>"],
           "__type": "TemplatedString"
         },
         "v5F8TN86xhwM": {
@@ -2240,9 +2240,12 @@
         },
         "3MiUAaKUlCNn": {
           "__type": "TemplatedString",
-          "text": ["https://plasmic-loader-test.test/"]
+          "text": ["<REPLACE_WITH_STRAPI_URL>"]
         },
-        "-D2MZRj8Lvep": { "__type": "TemplatedString", "text": ["restaurants"] }
+        "-D2MZRj8Lvep": {
+          "__type": "TemplatedString",
+          "text": ["restaurants-v5"]
+        }
       },
       "deps": ["f63b0b63-47ac-4cf5-8ca3-329a60321d4f"],
       "version": "256-wrap-page-meta-og-image-in-ref"

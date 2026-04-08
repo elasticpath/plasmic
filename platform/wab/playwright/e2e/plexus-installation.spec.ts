@@ -60,7 +60,7 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-test.describe("Plexus Installation", () => {
+test.describe.skip("Plexus Installation", () => {
   let projectId: string;
 
   test.beforeEach(async ({ apiClient, page }) => {

@@ -44,6 +44,7 @@ import { isPageComponent } from "@/wab/shared/core/components";
 import {
   CONTENT_LAYOUT_FULL_BLEED,
   CONTENT_LAYOUT_WIDE,
+  sizeSectionProps,
 } from "@/wab/shared/core/style-props";
 import {
   isComponentRoot,
@@ -129,7 +130,7 @@ class SizeSection_ extends StyleComponent<
     return (
       <StylePanelSection
         expsProvider={this.props.expsProvider}
-        styleProps={sizeStyleProps}
+        styleProps={sizeSectionProps}
         title={"Size"}
         hasMore
         data-test-id="size-section"

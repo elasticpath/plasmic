@@ -559,7 +559,7 @@
         },
         "bhyR3dfmQCxq": {
           "name": "arg",
-          "argName": "$queries",
+          "argName": "$q",
           "displayName": null,
           "type": { "__ref": "TPol_kLbChXZ" },
           "__type": "ArgType"
@@ -1585,7 +1585,7 @@
         },
         "stgTPxBK3cZQ": {
           "name": "arg",
-          "argName": "$queries",
+          "argName": "$q",
           "displayName": null,
           "type": { "__ref": "o5mWQ-gl7uG_" },
           "__type": "ArgType"
@@ -2614,7 +2614,7 @@
           "__type": "Var"
         },
         "uD9NHdl3BHxv": {
-          "code": "($queries.query?.data?.body?.data ?? [{ message: \"dummy response\" }])",
+          "code": "($q.query?.data?.body?.data ?? [{ message: \"dummy response\" }])",
           "fallback": { "__ref": "LLi6wuLSLRUN" },
           "__type": "CustomCode"
         },

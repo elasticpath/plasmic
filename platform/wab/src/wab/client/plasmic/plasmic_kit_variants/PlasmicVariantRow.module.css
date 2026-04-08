@@ -72,6 +72,10 @@
   max-width: 100%;
   min-width: 0;
 }
+.freeBoxshowAddAnimation__t0Gv2NTmg2 {
+  column-gap: 4px;
+  row-gap: 0px;
+}
 .recordButton:global(.__wab_instance) {
   flex-shrink: 0;
 }
@@ -84,14 +88,33 @@
 .recordButtonisReadOnly:global(.__wab_instance) {
   flex-shrink: 0;
 }
+.recordButtonshowAddAnimation:global(.__wab_instance) {
+  flex-shrink: 0;
+}
+.recordButtonshowAddAnimation_type_baseVariant:global(.__wab_instance) {
+  flex-shrink: 0;
+}
+.recordButtonpinState_selected_showAddAnimation:global(.__wab_instance) {
+  flex-shrink: 0;
+  display: none;
+}
 .root:hover .recordButton:global(.__wab_instance) {
+  flex-shrink: 0;
+}
+.rootpinState_selected:hover
+  .recordButtonpinState_selected:global(.__wab_instance) {
   flex-shrink: 0;
 }
 .rootisReadOnly:hover .recordButtonisReadOnly:global(.__wab_instance) {
   flex-shrink: 0;
   display: none;
 }
-.svg__fzeqg {
+.rootshowAddAnimation:hover
+  .recordButtonshowAddAnimation:global(.__wab_instance) {
+  flex-shrink: 0;
+  display: none;
+}
+.svg__ct2Fs {
   display: flex;
   position: relative;
   object-fit: cover;
@@ -99,7 +122,7 @@
   height: 16px;
   color: var(--token-Y2CWh0ci95a);
 }
-.svg__wxygf {
+.svg__lyXlx {
   display: flex;
   position: relative;
   object-fit: cover;
@@ -108,6 +131,17 @@
 }
 .variantPinButton:global(.__wab_instance):global(.__wab_instance) {
   position: relative;
+}
+.variantPinButtonpinState_selected_showAddAnimation:global(
+    .__wab_instance
+  ):global(.__wab_instance) {
+  display: none;
+}
+.rootshowAddAnimation:hover
+  .variantPinButtonshowAddAnimation:global(.__wab_instance):global(
+    .__wab_instance
+  ) {
+  display: none;
 }
 .exprButton:global(.__wab_instance) {
   max-width: 100%;
@@ -132,6 +166,58 @@
   display: flex;
   position: relative;
   object-fit: cover;
+  height: 1em;
+}
+.previewAnimationContainer {
+  display: flex;
+  flex-direction: row;
+  position: relative;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+.rootshowAddAnimation:hover .previewAnimationContainershowAddAnimation {
+  display: flex;
+}
+.previewAnimation:global(.__wab_instance):global(.__wab_instance) {
+  max-width: 100%;
+}
+.rootpinState_selected_isReadOnly:hover
+  .previewAnimationpinState_selected_isReadOnly:global(.__wab_instance):global(
+    .__wab_instance
+  ) {
+  display: none;
+}
+.svg__edSho {
+  position: relative;
+  height: 1em;
+}
+.svg__sGUw {
+  position: relative;
+  height: 1em;
+}
+.addAnimation:global(.__wab_instance):global(.__wab_instance) {
+  max-width: 100%;
+}
+.addAnimationshowAddAnimation:global(.__wab_instance):global(.__wab_instance) {
+  display: flex;
+}
+.addAnimationshowAddAnimation_type_baseVariant:global(.__wab_instance):global(
+    .__wab_instance
+  ) {
+  display: flex;
+}
+.rootpinState_selected_isReadOnly:hover
+  .addAnimationpinState_selected_isReadOnly:global(.__wab_instance):global(
+    .__wab_instance
+  ) {
+  display: none;
+}
+.svg__dyTn {
+  position: relative;
+  height: 1em;
+}
+.svg___5NsPa {
+  position: relative;
   height: 1em;
 }
 .indicator:global(.__wab_instance) {

@@ -29,6 +29,7 @@ import {
   getOrAddProjectLock,
   updateConfig,
 } from "../utils/config-utils";
+import { detectNextJsVersion } from "../utils/envdetect";
 import { HandledError } from "../utils/error";
 import {
   assertAllPathsInRootDir,
@@ -357,7 +358,7 @@ export async function sync(
     }
 
     // Now we know config.components are all correct, so we can go ahead and fix up all the import statements
-    await fixAllImportStatements(context, opts.baseDir, summary);
+    await fixAllImportStatements(context, summary);
 
     const codegenVersion = await context.api.latestCodegenVersion();
     context.lock.projects.forEach((p) => {
@@ -370,7 +371,7 @@ export async function sync(
       }
     });
     // Write the new ComponentConfigs to disk
-    await updateConfig(context, context.config, baseDir);
+    await updateConfig(context, context.config);
   };
 
   // Perform the actual sync
@@ -545,6 +546,7 @@ async function syncProject(
     branchName,
     {
       platform: context.config.platform,
+      platformVersion: detectNextJsVersion(),
       platformOptions:
         context.config.platform === "nextjs"
           ? {
@@ -580,27 +582,23 @@ async function syncProject(
     for (const c of projectBundle.components) {
       [c.renderModuleFileName, c.renderModule] = await maybeConvertTsxToJsx(
         c.renderModuleFileName,
-        c.renderModule,
-        opts.baseDir
+        c.renderModule
       );
       [c.skeletonModuleFileName, c.skeletonModule] = await maybeConvertTsxToJsx(
         c.skeletonModuleFileName,
-        c.skeletonModule,
-        opts.baseDir
+        c.skeletonModule
       );
     }
     for (const icon of projectBundle.iconAssets) {
       [icon.fileName, icon.module] = await maybeConvertTsxToJsx(
         icon.fileName,
-        icon.module,
-        opts.baseDir
+        icon.module
       );
     }
     for (const gv of projectBundle.globalVariants) {
       [gv.contextFileName, gv.contextModule] = await maybeConvertTsxToJsx(
         gv.contextFileName,
-        gv.contextModule,
-        opts.baseDir
+        gv.contextModule
       );
     }
   }
@@ -609,8 +607,7 @@ async function syncProject(
     projectBundle.projectConfig,
     projectBundle.globalVariants,
     projectBundle.checksums,
-    branchName,
-    opts.baseDir
+    branchName
   );
 
   await syncProjectConfig(
@@ -624,7 +621,6 @@ async function syncProject(
     opts.forceOverwrite,
     summary,
     projectBundle.checksums,
-    opts.baseDir,
     indirect
   );
   syncCodeComponentsMeta(context, projectId, projectBundle.codeComponentMetas);
@@ -644,8 +640,7 @@ async function syncProject(
     branchName,
     projectVersion,
     projectBundle.iconAssets,
-    projectBundle.checksums,
-    opts.baseDir
+    projectBundle.checksums
   );
   await syncProjectImageAssets(
     context,
@@ -690,7 +685,6 @@ async function syncProjectConfig(
   forceOverwrite: boolean,
   summary: Map<string, ComponentUpdateSummary>,
   checksums: ChecksumBundle,
-  baseDir: string,
   indirect: boolean
 ) {
   const defaultCssFilePath = defaultResourcePath(
@@ -734,8 +728,7 @@ async function syncProjectConfig(
   if (projectBundle.cssRules) {
     const formattedCssRules = await formatAsLocal(
       projectBundle.cssRules,
-      projectConfig.cssFilePath,
-      baseDir
+      projectConfig.cssFilePath
     );
 
     // Write out project css
@@ -757,17 +750,12 @@ async function syncProjectConfig(
     checksum: checksums.projectCssChecksum,
   });
 
-  if (projectConfig.jsBundleThemes?.length === 0) {
-    delete projectConfig.jsBundleThemes;
-  }
-
   await syncGlobalContexts(
     context,
     projectBundle,
     projectConfig,
     projectLock,
-    checksums,
-    baseDir
+    checksums
   );
 
   await syncSplitsProvider(
@@ -775,8 +763,7 @@ async function syncProjectConfig(
     projectBundle,
     projectConfig,
     projectLock,
-    checksums,
-    baseDir
+    checksums
   );
 
   await syncProjectModule(
@@ -784,8 +771,7 @@ async function syncProjectConfig(
     projectBundle,
     projectConfig,
     projectLock,
-    checksums,
-    baseDir
+    checksums
   );
 
   await syncStyleTokensProvider(
@@ -793,8 +779,7 @@ async function syncProjectConfig(
     projectBundle,
     projectConfig,
     projectLock,
-    checksums,
-    baseDir
+    checksums
   );
 
   await syncDataTokens(
@@ -802,8 +787,7 @@ async function syncProjectConfig(
     projectBundle,
     projectConfig,
     projectLock,
-    checksums,
-    baseDir
+    checksums
   );
 
   // Write out components
@@ -815,8 +799,7 @@ async function syncProjectConfig(
     forceOverwrite,
     summary,
     projectLock,
-    checksums,
-    baseDir
+    checksums
   );
 }
 

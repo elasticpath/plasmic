@@ -1,6 +1,5 @@
 /// <reference types="@types/resize-observer-browser" />
 import { handleError, normalizeError } from "@/wab/client/ErrorNotifications";
-import { CodeFetchersRegistry } from "@/wab/client/code-fetchers";
 import { isCanvasOverlay } from "@/wab/client/components/canvas/CanvasFrame";
 import {
   CanvasFrameInfo,
@@ -46,7 +45,6 @@ import {
   ComponentRegistration,
   CustomFunctionRegistration,
 } from "@plasmicapp/host";
-import { FetcherRegistration } from "@plasmicapp/host/dist/fetcher";
 import { notification } from "antd";
 import $ from "jquery";
 import L from "lodash";
@@ -70,7 +68,6 @@ export class CanvasCtx {
    */
   private _index = gCanvasCtxIndex++;
   private ccRegistry: CodeComponentsRegistry;
-  private codeFetchersRegistry: CodeFetchersRegistry;
 
   _$viewport: /*TWZ*/ JQuery<HTMLIFrameElement>;
   _win: /*TWZ*/ typeof window;
@@ -254,7 +251,6 @@ export class CanvasCtx {
       "unhandledrejection",
       (e: PromiseRejectionEvent) => handleCanvasError(e.reason)
     );
-    this.codeFetchersRegistry = new CodeFetchersRegistry(this._win);
     const doc = this._win.document;
     const $doc = (this._$doc = $(doc) as JQuery<HTMLDocument>);
 
@@ -361,13 +357,33 @@ export class CanvasCtx {
 
     const hostWin = (DEVFLAGS.artboardEval ? this._win : window) as any;
     const hostVersion = hostWin.__Sub.hostVersion;
+
+    // @plasmicapp/host <1.0.47 don't set hostVersion
+    // and also don't have @plasmicapp/data-sources.
+    let dataSources: SubDeps["dataSources"] = !hostVersion
+      ? undefined
+      : (this._win as any).__PlasmicDataSourcesBundle;
+    // Also need to check usePlasmicDataConfig() as usePlasmicInvalidate() and
+    // unstable_usePlasmicQueries() depend on it, and usePlasmicDataConfig() is
+    // actually re-exported from @plasmicapp/query, so just because
+    // usePlasmicInvalidate() exists doesn't mean usePlasmicDataConfig() exists.
+    // That's because data-sources is provided by react-web, but query is provided
+    // by the user's custom host. This also applies to usePlasmicQueries.
+    if (dataSources && typeof dataSources.usePlasmicDataConfig !== "function") {
+      dataSources = {
+        ...dataSources,
+        usePlasmicDataConfig: undefined,
+        usePlasmicInvalidate: undefined,
+        unstable_usePlasmicQueries: undefined,
+        unstable_createDollarQueries: undefined,
+      };
+    }
+
     this.Sub = {
       ...hostWin.__Sub,
       ...hostWin.__CanvasPkgs,
       reactWeb: (this._win as any).__PlasmicReactWebBundle,
-      dataSources: !hostVersion
-        ? undefined
-        : (this._win as any).__PlasmicDataSourcesBundle,
+      dataSources,
       dataSourcesContext: (this._win as any).__PlasmicDataSourcesContextBundle,
     };
 
@@ -498,14 +514,6 @@ export class CanvasCtx {
 
   getRegisteredCodeComponentsAndContextsMap() {
     return this.ccRegistry.getRegisteredComponentsAndContextsMap();
-  }
-
-  getRegisteredCodeFetchers(): FetcherRegistration[] {
-    return this.codeFetchersRegistry.getRegisteredCodeFetchers();
-  }
-
-  getRegisteredCodeFetchersMap() {
-    return this.codeFetchersRegistry.getRegisteredCodeFetchersMap();
   }
 
   getRegisteredFunctions(): CustomFunctionRegistration[] {
@@ -725,7 +733,7 @@ export class CanvasCtx {
       children
     );
 
-    this.Sub.setPlasmicRootNode(node);
+    this.Sub.hostUtils.setPlasmicRootNode(node);
   }
   dispose() {
     this._resizeObserver?.disconnect();

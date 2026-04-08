@@ -25,6 +25,7 @@ import {
 } from "@/wab/server/loader/resolve-projects";
 import { logger } from "@/wab/server/observability";
 import { superDbMgr, userDbMgr } from "@/wab/server/routes/util";
+import { withSpan } from "@/wab/server/util/apm-util";
 import { prefillCloudfront } from "@/wab/server/workers/prefill-cloudfront";
 import { BadRequestError, NotFoundError } from "@/wab/shared/ApiErrors/errors";
 import { ProjectId } from "@/wab/shared/ApiSchema";
@@ -120,6 +121,8 @@ function getLoaderOptions(req: Request) {
   };
 }
 
+const ANGULAR_POLYFILL_PROJECT_ID = "nRGmCYqvZMnYyNtcGY29Aw";
+
 export async function buildPublishedLoaderAssets(req: Request, res: Response) {
   const mgr = userDbMgr(req);
   const {
@@ -156,12 +159,13 @@ export async function buildPublishedLoaderAssets(req: Request, res: Response) {
 
   // Special case for projects with Angular polyfills that cause redirects to fail in Safari.
   // Return 200 with redirect URL - https://linear.app/plasmic/issue/PLA-12576
-  const polyfillProjectId = "nRGmCYqvZMnYyNtcGY29Aw";
+  const polyfillProjectId = ANGULAR_POLYFILL_PROJECT_ID;
   const isPolyfillProject = projectIdSpecs.some(
     (spec) => parseProjectIdSpec(spec).projectId === polyfillProjectId
   );
 
   if (isPolyfillProject) {
+    setAsCacheableRedirect(res);
     res.status(200).json({ redirectUrl: destination });
     return;
   }
@@ -637,6 +641,7 @@ export async function genLoaderHtmlBundleSandboxed(
     htmlPreviewQueueDepth: getHtmlPreviewQueueDepth(),
   });
   try {
+    return await withSpan("genLoaderHtmlBundleSandboxed", async () => {
     const cmd = `node -r esbuild-register src/wab/server/loader/gen-html-bundle.ts`;
     const renderStart = Date.now();
     const { stdout, stderr, exitCode } =
@@ -665,11 +670,21 @@ export async function genLoaderHtmlBundleSandboxed(
         `Sandboxed loader subprocess succeeded with exit code 0 but got unexpected stderr ${stderr}`
       );
     } else if (exitCode !== 0) {
+      // This error comes from @plasmicapp/loader-react
+      if (stderr.includes("Unable to find components")) {
+        // Split at the first new line to avoid returning the stack trace.
+        throw new NotFoundError(stderr.split("\n")[0]);
+      }
+
       logger().error(
         `Sandboxed loader subprocess failed with exit code ${exitCode} with stderr: ${stderr}`
       );
     }
+    if (stdout.length === 0) {
+      throw new Error("Sandboxed loader subprocess returned no HTML");
+    }
     return { html: stdout };
+    });
   } finally {
     release();
   }
@@ -893,9 +908,13 @@ export async function prefillPublishedLoader(req: Request, res: Response) {
 }
 
 function redirectToCacheableResource(res: Response, destination: string) {
-  // We do want to ask cloudfront to cache redirects for us for a short time
-  res.setHeader("Cache-Control", "s-maxage=30");
+  setAsCacheableRedirect(res);
   res.redirect(destination);
+}
+
+function setAsCacheableRedirect(res: Response) {
+  // We ask the CDN to cache redirects for us for a short time
+  res.setHeader("Cache-Control", "s-maxage=30");
 }
 
 function setAsCacheableResource(res: Response, maxAge = 31536000) {
@@ -1006,3 +1025,7 @@ export function getHydrationScriptVersioned(req: Request, res: Response) {
   res.setHeader("Cache-Control", "maxage=31536000, s-maxage=31536000");
   res.sendFile(path.join(dir, filename));
 }
+
+export const _testonly = {
+  ANGULAR_POLYFILL_PROJECT_ID,
+};

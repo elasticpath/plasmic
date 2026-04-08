@@ -38,6 +38,10 @@ jobs:
         working-directory: platform/wab
         run: yarn install --frozen-lockfile
 
+      - name: Install loader-bundle-env dependencies
+        working-directory: platform/loader-bundle-env
+        run: yarn install --frozen-lockfile
+
       - name: Generate required files (PEG parsers, model classes)
         working-directory: platform/wab
         run: make
@@ -81,12 +85,17 @@ jobs:
         with:
           fail-on-cache-miss: 'true'
 
-      - name: Install root dependencies
-        run: yarn install --frozen-lockfile
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          df -h
 
-      - name: Install platform/wab dependencies
+      - name: Validate cached dependencies
+        run: yarn install --frozen-lockfile --check-files
+
+      - name: Ensure platform/wab binaries
         working-directory: platform/wab
-        run: yarn install --frozen-lockfile
+        run: yarn install --frozen-lockfile --check-files
 
       - name: Generate required files (PEG parsers, model classes)
         working-directory: platform/wab
@@ -110,12 +119,103 @@ jobs:
         env:
           CI: true
           NODE_OPTIONS: '--max-old-space-size=8192'
-        run: yarn test --shard=${{ matrix.shard }}/4
+        run: yarn test:ci --shard=${{ matrix.shard }}/4 --testPathIgnorePatterns='loader.spec.ts'
 
       - name: Test Summary
         if: always()
         run: |
           echo "### WAB Test Results (Shard ${{ matrix.shard }}/4)" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "All tests passed." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Some tests failed." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # Isolated runner for loader HTML tests. These tests spawn a subprocess
+  # (~500MB-1GB) to render HTML previews. When run alongside other Jest tests
+  # on the same 7GB runner (with Jest's 8GB heap), the subprocess OOMs.
+  # Running on a dedicated runner with a 4GB Jest heap leaves room for the
+  # subprocess. The sharded WAB tests exclude loader.spec.ts via
+  # --testPathIgnorePatterns to avoid duplication.
+  test-wab-loader:
+    name: WAB Loader HTML Tests
+    needs: setup
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      contains(github.event.pull_request.labels.*.name, 'run-wab-tests')
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        uses: ./.github/actions/setup-env
+        with:
+          fail-on-cache-miss: 'true'
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          df -h
+
+      - name: Validate cached dependencies
+        run: yarn install --frozen-lockfile --check-files
+
+      - name: Ensure platform/wab binaries
+        working-directory: platform/wab
+        run: yarn install --frozen-lockfile --check-files
+
+      - name: Generate required files (PEG parsers, model classes)
+        working-directory: platform/wab
+        run: make
+
+      - name: Setup PostgreSQL users and extensions
+        env:
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGUSER: postgres
+        run: |
+          psql -c "CREATE USER wab PASSWORD 'SEKRET';"
+          psql -c "CREATE USER superwab PASSWORD 'SEKRET' CREATEDB CREATEROLE IN GROUP wab;"
+          psql -c "GRANT pg_signal_backend TO superwab;"
+          psql -c "CREATE DATABASE wab OWNER wab;"
+          psql -c "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"
+          psql -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+
+      - name: Install loader-bundle-env dependencies
+        working-directory: platform/loader-bundle-env
+        run: yarn install --frozen-lockfile
+
+      - name: Run loader HTML tests
+        working-directory: platform/wab
+        env:
+          CI: true
+          NODE_OPTIONS: '--max-old-space-size=4096'
+          HTML_PREVIEW_POOL_SIZE: '1'
+        run: yarn test:ci --testPathPattern='loader.spec.ts'
+
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "### WAB Loader HTML Test Results" >> $GITHUB_STEP_SUMMARY
           if [ "${{ job.status }}" == "success" ]; then
             echo "All tests passed." >> $GITHUB_STEP_SUMMARY
           else
@@ -153,7 +253,13 @@ jobs:
         env:
           CI: true
           NODE_OPTIONS: '--max-old-space-size=4096 --experimental-vm-modules'
-        run: yarn jest --testPathPattern='packages/' --passWithNoTests
+        run: yarn jest --testPathPattern='packages/' --testPathIgnorePatterns='packages/data-sources/src/serverQueries|packages/plasmic-mcp' --passWithNoTests
+
+      - name: Run SDK packages Vitest tests (data-sources)
+        env:
+          CI: true
+        working-directory: packages/data-sources
+        run: yarn test
 
       - name: Test Summary
         if: always()
@@ -188,7 +294,7 @@ jobs:
         env:
           CI: true
           NODE_OPTIONS: '--max-old-space-size=4096 --experimental-vm-modules'
-        run: yarn jest --testPathPattern='plasmicpkgs/' --testPathIgnorePatterns='plasmicpkgs/wordpress' --passWithNoTests
+        run: yarn jest --testPathPattern='plasmicpkgs/' --testPathIgnorePatterns='plasmicpkgs/wordpress|plasmicpkgs/contentful' --passWithNoTests
 
       - name: Run plasmicpkgs Vitest tests
         env:
@@ -240,12 +346,17 @@ jobs:
         with:
           fail-on-cache-miss: 'true'
 
-      - name: Install root dependencies
-        run: yarn install --frozen-lockfile
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          df -h
 
-      - name: Install platform/wab dependencies
+      - name: Validate cached dependencies
+        run: yarn install --frozen-lockfile --check-files
+
+      - name: Ensure platform/wab binaries
         working-directory: platform/wab
-        run: yarn install --frozen-lockfile
+        run: yarn install --frozen-lockfile --check-files
 
       - name: Generate required files (PEG parsers, model classes)
         working-directory: platform/wab
@@ -338,12 +449,17 @@ jobs:
         working-directory: platform/wab/playwright
         run: npx playwright install chromium
 
+      - name: Build production frontend
+        working-directory: platform/wab
+        run: NODE_ENV=development PUBLIC_URL=http://localhost:3003 bash tools/dev-server.bash build
+
       - name: Start application servers
         working-directory: platform/wab
         env:
           NODE_ENV: development
           CI: true
           TUTORIAL_DB_SUPER_PASSSWORD: SEKRET
+          SKIP_GRANT_REVOKE_EMAILS: 'true'
         run: |
           # Start backend server in background
           yarn dev:backend &
@@ -351,10 +467,13 @@ jobs:
           # Start host server in background
           yarn host-server &
 
-          # Start frontend dev server in background
-          yarn start &
+          # Serve production frontend build with API proxy to backend
+          cd build && npx -p local-web-server ws --spa index.html --port 3003 \
+            --cors.origin '*' \
+            --rewrite '/api/(.*) -> http://localhost:3004/api/$1' &
+          cd ..
 
-          # Wait for all servers to be ready (longer timeout for dev server startup)
+          # Wait for all servers to be ready
           npx wait-on http://localhost:3003 http://localhost:3004 http://localhost:3005 --timeout 300000
 
       - name: Run Playwright tests
@@ -391,7 +510,7 @@ jobs:
 
   all-tests:
     name: All Tests
-    needs: [setup, test-wab, test-packages, test-plasmicpkgs, test-e2e]
+    needs: [setup, test-wab, test-wab-loader, test-packages, test-plasmicpkgs, test-e2e]
     if: always()
     runs-on: ubuntu-latest
 
@@ -403,6 +522,7 @@ jobs:
 
           setup_result="${{ needs.setup.result }}"
           wab_result="${{ needs.test-wab.result }}"
+          wab_loader_result="${{ needs.test-wab-loader.result }}"
           packages_result="${{ needs.test-packages.result }}"
           plasmicpkgs_result="${{ needs.test-plasmicpkgs.result }}"
           e2e_result="${{ needs.test-e2e.result }}"
@@ -411,6 +531,7 @@ jobs:
           echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Setup | ${setup_result} |" >> $GITHUB_STEP_SUMMARY
           echo "| WAB Tests | ${wab_result} |" >> $GITHUB_STEP_SUMMARY
+          echo "| WAB Loader HTML | ${wab_loader_result} |" >> $GITHUB_STEP_SUMMARY
           echo "| SDK Packages | ${packages_result} |" >> $GITHUB_STEP_SUMMARY
           echo "| Plasmic Packages | ${plasmicpkgs_result} |" >> $GITHUB_STEP_SUMMARY
           echo "| E2E Tests | ${e2e_result} |" >> $GITHUB_STEP_SUMMARY
@@ -430,6 +551,12 @@ jobs:
           fi
 
           # WAB tests are optional (can be skipped on PRs without label)
+          if [[ "${wab_loader_result}" == "failure" ]]; then
+            echo ""
+            echo "WAB Loader HTML tests failed."
+            exit 1
+          fi
+
           if [[ "${wab_result}" == "failure" ]]; then
             echo ""
             echo "WAB tests failed."

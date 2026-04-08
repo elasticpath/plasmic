@@ -24,6 +24,7 @@
       "dependsOn": "build"
     }
   },
+  "nxCloudAccessToken": "NzkyNDA1ZTktODUwMy00ZWViLWFkYWQtYmYxYTQ0YjI5MzE2fHJlYWQtd3JpdGU=",
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
   "namedInputs": {
     "default": ["{projectRoot}/**/*", "sharedGlobals"],

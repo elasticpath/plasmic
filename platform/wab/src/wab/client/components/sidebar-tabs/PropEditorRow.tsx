@@ -394,6 +394,24 @@ export const inferPropTypeFromAttr = (
           label: capitalize(op),
         })),
       };
+    } else if (tpl.tag === "img" && attr === "quality") {
+      return {
+        type: "number" as const,
+        min: 0,
+        max: 100,
+        defaultValueHint: 75,
+      };
+    } else if (tpl.tag === "img" && attr === "format") {
+      return {
+        type: "choice" as const,
+        options: [
+          { value: "avif", label: "AVIF" },
+          { value: "jpeg", label: "JPEG" },
+          { value: "png", label: "PNG" },
+          { value: "webp", label: "WebP" },
+        ],
+        defaultValueHint: "webp",
+      };
     } else if (attr === "style") {
       return {
         type: "object" as const,
@@ -823,17 +841,14 @@ function InnerPropEditorRow_(props: PropEditorRowProps) {
       {!readOnly &&
         !referencedParam &&
         expr &&
+        onDelete &&
         ["set", "none", "invariantable", "setNonVariable"].includes(
           definedIndicator.source
         ) &&
         !["functionArgs"].includes(getPropTypeType(propType) ?? "") && (
-          <>
-            {onDelete && (
-              <Menu.Item onClick={() => onDelete()}>
-                {RESET_CAP} <strong>{label}</strong> prop
-              </Menu.Item>
-            )}
-          </>
+          <Menu.Item onClick={onDelete}>
+            {RESET_CAP} <strong>{label}</strong> prop
+          </Menu.Item>
         )}
       {!readOnly &&
         referencedParam &&
@@ -952,7 +967,6 @@ function InnerPropEditorRow_(props: PropEditorRowProps) {
         )}
     </Menu>
   );
-
   React.useEffect(() => {
     if (ref.current && shouldHighlight) {
       ref.current.focus();

@@ -98,6 +98,7 @@ import {
   mkRuleSet,
   parseCssValue,
 } from "@/wab/shared/core/styles";
+import { toFinalToken } from "@/wab/shared/core/tokens";
 import {
   EventHandlerKeyType,
   TplTagType,
@@ -197,12 +198,10 @@ import { getPlumeEditorPlugin } from "@/wab/shared/plume/plume-registry";
 import { canComponentTakeRef } from "@/wab/shared/react-utils";
 import { CodeLibraryRegistration } from "@/wab/shared/register-library";
 import { isValidJsIdentifier } from "@/wab/shared/utils/regex-js-identifier";
-
 import type {
   ChoiceObject,
   ComponentContextConfig,
   ComponentControlContext,
-  ComponentMeta,
   ComponentRegistration,
   CustomFunctionRegistration,
   GlobalContextMeta,
@@ -224,6 +223,10 @@ import type {
   PropTypeBase,
   PropTypeBaseDefault,
 } from "@plasmicapp/host/dist/prop-types";
+import type {
+  CodeComponentMeta as CodeComponentRegistrationMeta,
+  ObjectType,
+} from "@plasmicapp/host/registerComponent";
 import { RefActionRegistration } from "@plasmicapp/host/registerComponent";
 import type { Config } from "@react-awesome-query-builder/antd";
 import {
@@ -650,7 +653,7 @@ export interface CodeComponentSyncCallbackFns {
   ) => Promise<IFailable<void, never>>;
   onCreateCodeComponent?: (
     name: string,
-    meta: ComponentMeta<any> | GlobalContextMeta<any>
+    meta: CodeComponentRegistrationMeta<any> | GlobalContextMeta<any>
   ) => void;
   onInvalidComponentImportNames: (componentNames: string[]) => void;
   onAddedNewProps?: () => void;
@@ -1234,7 +1237,7 @@ async function addNewRegisteredComponents(
 function createCodeComponent(
   site: Site,
   name: string,
-  meta: ComponentMeta<any> | GlobalContextMeta<any>,
+  meta: CodeComponentRegistrationMeta<any> | GlobalContextMeta<any>,
   fns: CodeComponentSyncCallbackFns
 ) {
   const prefs = site.activeTheme?.addItemPrefs as AddItemPrefs | undefined;
@@ -1536,7 +1539,7 @@ async function refreshCodeComponentMetas(
 function refreshCodeComponentMeta(
   site: Site,
   c: Component,
-  meta: ComponentMeta<any>,
+  meta: CodeComponentRegistrationMeta<any>,
   fns: Pick<CodeComponentSyncCallbackFns, "onElementStyleWarnings">
 ) {
   return failable<boolean, never>(({ success }) => {
@@ -1632,7 +1635,7 @@ function refreshCodeComponentMeta(
 
 function checkUniqueCodeComponentNames(ctx: SiteCtx) {
   return failable<void, DuplicateCodeComponentError>(({ success, failure }) => {
-    const namesToMetas = new Map<string, ComponentMeta<any>>();
+    const namesToMetas = new Map<string, CodeComponentRegistrationMeta<any>>();
     for (const registration of ctx.codeComponentsRegistry.getRegisteredComponentsAndContexts(
       false
     )) {
@@ -1771,7 +1774,7 @@ async function checkParentComponents(ctx: SiteCtx) {
       .getRegisteredCodeComponents()
       .map((r) => r.meta);
     const ccMap = ctx.codeComponentsRegistry.getRegisteredCodeComponentsMap();
-    const dfs = (meta: ComponentMeta<any>) =>
+    const dfs = (meta: CodeComponentRegistrationMeta<any>) =>
       failable<void, UnknownComponentError | CyclicComponentReferencesError>(
         ({ success: dfsSuccess, run: dfsRun, failure }) => {
           const status = compStatus.get(meta.name) ?? notSeen;
@@ -1863,7 +1866,7 @@ interface StateChanges {
 export function compareComponentStatesWithMeta(
   site: Site,
   component: Component,
-  meta: ComponentMeta<any>
+  meta: CodeComponentRegistrationMeta<any>
 ) {
   return failable<
     StateChanges,
@@ -2155,7 +2158,10 @@ function buildComponentToMeta(
     includePlume?: boolean;
   }
 ) {
-  const map = new Map<Component, ComponentMeta<any> | GlobalContextMeta<any>>();
+  const map = new Map<
+    Component,
+    CodeComponentRegistrationMeta<any> | GlobalContextMeta<any>
+  >();
   for (const comp of ctx.site.components) {
     if (isCodeComponent(comp)) {
       const { meta } = ensure(
@@ -2222,7 +2228,7 @@ export interface CodeComponentMetaDiffWithComponent
 export function compareComponentPropsWithMeta(
   site: Site,
   component: Component,
-  meta: ComponentMeta<any>
+  meta: CodeComponentRegistrationMeta<any>
 ) {
   return failable<
     CodeComponentMetaDiff,
@@ -3415,7 +3421,7 @@ export function propMetasToComponentParams(
   props: { [p: string]: StudioPropType<any> },
   site: Site,
   componentDisplayName: string,
-  meta: ComponentMeta<any>
+  meta: CodeComponentRegistrationMeta<any>
 ) {
   return failable<
     Param[],
@@ -3510,7 +3516,7 @@ export function stateMetasToComponentParams(
 
 export function componentMetaToComponentParams(
   site: Site,
-  meta: ComponentMeta<any>
+  meta: CodeComponentRegistrationMeta<any>
 ) {
   return failable<
     Param[],
@@ -3548,7 +3554,10 @@ export function componentMetaToComponentParams(
   });
 }
 
-function metaToComponentStates(component: Component, meta: ComponentMeta<any>) {
+function metaToComponentStates(
+  component: Component,
+  meta: CodeComponentRegistrationMeta<any>
+) {
   return mapMultiple(
     Object.entries(meta.states ?? {}),
     ([stateName, stateSpec]) =>
@@ -3591,7 +3600,7 @@ function metaToComponentStates(component: Component, meta: ComponentMeta<any>) {
 
 export function mkCodeComponent(
   name: string,
-  meta: ComponentMeta<any> | GlobalContextMeta<any>,
+  meta: CodeComponentRegistrationMeta<any> | GlobalContextMeta<any>,
   opts: {
     prefs?: AddItemPrefs;
     parsedDefaultStyles?: CSSProperties;
@@ -3611,7 +3620,7 @@ export function mkCodeComponent(
     codeComponentMeta: new CodeComponentMeta({
       importPath: meta.importPath,
       defaultExport: !!meta.isDefaultExport,
-      classNameProp: (meta as ComponentMeta<any>).classNameProp,
+      classNameProp: (meta as CodeComponentRegistrationMeta<any>).classNameProp,
       refProp: meta.refProp,
       displayName: meta.displayName,
       importName: meta.importName,
@@ -3625,7 +3634,8 @@ export function mkCodeComponent(
             ),
           })
         : null,
-      defaultDisplay: (meta as ComponentMeta<any>).defaultDisplay,
+      defaultDisplay: (meta as CodeComponentRegistrationMeta<any>)
+        .defaultDisplay,
       isHostLess: isBuiltinCodeComponentImportPath(meta.importPath),
       isContext: isGlobalContextMeta(meta),
       isAttachment: !isGlobalContextMeta(meta) && !!meta.isAttachment,
@@ -3670,7 +3680,7 @@ export function mkCodeComponent(
 }
 
 export function isGlobalContextMeta(
-  meta: ComponentMeta<any> | GlobalContextMeta<any>
+  meta: CodeComponentRegistrationMeta<any> | GlobalContextMeta<any>
 ): meta is GlobalContextMeta<any> {
   if ((meta as any).__isContext) {
     return true;
@@ -3750,7 +3760,7 @@ export function getPropTypeType(
 
 export function isFlattenedObjectPropType(
   propType: StudioPropType<any> | undefined
-): propType is ObjectStudioPropType<any> {
+): propType is ObjectType<any> {
   return (
     isPlainObjectPropType(propType) &&
     propType.type === "object" &&
@@ -3992,7 +4002,7 @@ export function maybePropTypeToDefaultExpr(
 }
 
 export function mkCodeComponentHelperFromMeta(
-  meta: ComponentMeta<any> | GlobalContextMeta<any>
+  meta: CodeComponentRegistrationMeta<any> | GlobalContextMeta<any>
 ) {
   if (!("componentHelpers" in meta) || !meta.componentHelpers) {
     return undefined;
@@ -4011,7 +4021,7 @@ export function mkCodeComponentHelperFromMeta(
 }
 
 function typeCheckVariantsFromMeta(
-  meta: ComponentMeta<any> | GlobalContextMeta<any>,
+  meta: CodeComponentRegistrationMeta<any> | GlobalContextMeta<any>,
   errorPrefix: string
 ) {
   return failable<void, CodeComponentRegistrationTypeError>(
@@ -4052,7 +4062,7 @@ function typeCheckVariantsFromMeta(
 }
 
 export function mkCodeComponentVariantsFromMeta(
-  meta: ComponentMeta<any> | GlobalContextMeta<any>
+  meta: CodeComponentRegistrationMeta<any> | GlobalContextMeta<any>
 ) {
   if (!("variants" in meta) || !meta.variants) {
     return {};
@@ -4344,7 +4354,7 @@ export function wabTypeToPropType(type: Type): StudioPropType<any> {
 export function getNewProps(
   site: Site,
   component: Component,
-  meta: ComponentMeta<any>
+  meta: CodeComponentRegistrationMeta<any>
 ) {
   return failable<
     {
@@ -4379,7 +4389,7 @@ export function getNewProps(
 export function getNewStates(
   site: Site,
   component: Component,
-  meta: ComponentMeta<any>
+  meta: CodeComponentRegistrationMeta<any>
 ) {
   return failable<State[], UnknownComponentError | UnknownComponentPropError>(
     ({ run, success }) => {
@@ -4644,13 +4654,20 @@ async function upsertRegisteredTokens(
               }
 
               const removeToken = (token: StyleToken) => {
+                const finalToken = toFinalToken(token, site);
+                if (finalToken.override) {
+                  // Since the token usages will be flattened before deletion, we want to ensure the effective (overridden) value is used. (Varianted values are lost during flattening, so we only copy the value.)
+                  token.value = finalToken.value;
+                  // remove the associated override
+                  arrayRemove(site.styleTokenOverrides, finalToken.override);
+                }
                 const [usages, summary] = extractTokenUsages(site, token);
                 ctx.observeComponents([
                   ...summary.components,
                   ...summary.frames.map((f) => f.container.component),
                 ]);
                 for (const usage of usages) {
-                  changeTokenUsage(site, token, usage, "reset");
+                  changeTokenUsage(site, token, usage, "inline");
                 }
                 arrayRemove(site.styleTokens, token);
               };
@@ -5172,7 +5189,9 @@ export function syncPlumeComponent(siteCtx: SiteCtx, comp: Component) {
   });
 }
 
-export function makePlumeComponentMeta(comp: Component): ComponentMeta<any> {
+export function makePlumeComponentMeta(
+  comp: Component
+): CodeComponentRegistrationMeta<any> {
   const plugin = getPlumeEditorPlugin(comp);
   const codeMeta = plugin?.codeComponentMeta?.(comp);
   return {
@@ -5195,7 +5214,10 @@ export function isCodeComponentWithHelpers(
   return !!c.codeComponentMeta?.helpers;
 }
 
-export function tryGetStateHelpers(c: ComponentMeta<any>, state: NamedState) {
+export function tryGetStateHelpers(
+  c: CodeComponentRegistrationMeta<any>,
+  state: NamedState
+) {
   return c.componentHelpers?.helpers.states?.[state.name];
 }
 
@@ -5250,7 +5272,9 @@ async function refreshDefaultSlotContents(siteCtx: SiteCtx) {
   });
 }
 
-export function extractDefaultSlotContents(meta: ComponentMeta<any>) {
+export function extractDefaultSlotContents(
+  meta: CodeComponentRegistrationMeta<any>
+) {
   return Object.fromEntries(
     withoutNils(
       Object.entries(meta.props).map(([prop, propMeta]) => {

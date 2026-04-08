@@ -2711,7 +2711,7 @@
           "__type": "RenderExpr"
         },
         "oixxEGa32ufM": {
-          "code": "\"restaurants\"",
+          "code": "\"restaurants-v5\"",
           "fallback": null,
           "__type": "CustomCode"
         },
@@ -2720,7 +2720,7 @@
           "__type": "RenderExpr"
         },
         "KfknGlUnYtRJ": {
-          "code": "\"restaurants\"",
+          "code": "\"restaurants-v5\"",
           "fallback": null,
           "__type": "CustomCode"
         },
@@ -3014,7 +3014,7 @@
           "__type": "CustomCode"
         },
         "G2IBYX9ovc-2": {
-          "code": "($ctx.currentStrapiRestaurantsItem.photo.url)",
+          "code": "($ctx.currentStrapiRestaurantsV5Item.photo.url)",
           "fallback": { "__ref": "2B_nldW8JQ4q" },
           "__type": "CustomCode"
         },
@@ -3029,7 +3029,7 @@
           "__type": "ExprText"
         },
         "c_UYtKOh5mww": {
-          "code": "($ctx.currentStrapiRestaurantsItem.name)",
+          "code": "($ctx.currentStrapiRestaurantsV5Item.name)",
           "fallback": { "__ref": "Cb2lptcl-Tmx" },
           "__type": "CustomCode"
         },
@@ -3039,7 +3039,7 @@
           "__type": "CustomCode"
         },
         "hbajE3dAzxne": {
-          "text": ["https://plasmic-loader-test.test"],
+          "text": ["<REPLACE_WITH_STRAPI_URL>"],
           "__type": "TemplatedString"
         }
       },

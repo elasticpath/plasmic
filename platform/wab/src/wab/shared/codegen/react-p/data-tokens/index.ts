@@ -1,4 +1,5 @@
 import { getDataTokenType } from "@/wab/commons/DataToken";
+import { ProjectId } from "@/wab/shared/ApiSchema";
 import {
   makeDataTokensFileName,
   makePlasmicModulePrelude,
@@ -20,7 +21,7 @@ function serializeDataTokenExport(token: FinalToken<DataToken>): string {
 
   if (tokenType === "code") {
     const processedCode = stripParensAndMaybeConvertToIife(token.value);
-    return `export const ${varName} = (() => { try { return (${processedCode}); } catch (e) { return undefined; } })();`;
+    return `export const ${varName}: any = (() => { try { return (${processedCode}); } catch (e) { return undefined; } })();`;
   } else {
     const parsedValue = JSON.parse(token.value);
     return `export const ${varName} = ${jsLiteral(parsedValue)};`;
@@ -29,7 +30,7 @@ function serializeDataTokenExport(token: FinalToken<DataToken>): string {
 
 export function makeDataTokensBundle(
   site: Site,
-  projectId: string,
+  projectId: ProjectId,
   exportOpts: SetRequired<Partial<ExportOpts>, "targetEnv">
 ): DataTokensBundle | undefined {
   const localTokens = siteFinalDataTokens(site);

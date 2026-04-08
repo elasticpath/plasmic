@@ -64,9 +64,30 @@ export interface WISVG extends WIBase {
 export interface WIComponent extends WIBase {
   type: "component";
   component: string;
+  props: Record<string, any>;
+  slots: Record<string, WIElement[]>;
 }
 
-export type WIElement = WIContainer | WIText | WISVG | WIComponent;
+/** A fragment is a transparent wrapper — only its children are pasted. */
+export interface WIFragment {
+  type: "fragment";
+  children: WIElement[];
+}
+
+export type WIElement = WIContainer | WIText | WISVG | WIComponent | WIFragment;
+
+export interface WIKeyFrame {
+  percentage: number;
+  /** Css style props/values in correct format supported by Plasmic and that is not considered a site invariant such as color, paddingTop, paddingRight */
+  safeStyles: WISafeStyles;
+  /** Css style props/values that are not safe. */
+  unsafeStyles: WIUnsafeStyles;
+}
+
+export interface WIAnimationSequence {
+  name: string;
+  keyframes: WIKeyFrame[];
+}
 
 export interface WIKeyFrame {
   percentage: number;

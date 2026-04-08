@@ -22,8 +22,7 @@ export async function syncDataTokens(
   projectMeta: ProjectMetaBundle,
   projectConfig: ProjectConfig,
   projectLock: ProjectLock,
-  checksums: ChecksumBundle,
-  baseDir: string
+  checksums: ChecksumBundle
 ) {
   const resourcePath = getDataTokensResourcePath(context, projectConfig);
   if (checksums.dataTokensChecksum && projectMeta.dataTokensBundle) {
@@ -34,8 +33,7 @@ export async function syncDataTokens(
     }
     if (context.config.code.lang === "js") {
       projectMeta.dataTokensBundle.module = await formatScript(
-        tsxToJsx(projectMeta.dataTokensBundle.module),
-        baseDir
+        tsxToJsx(projectMeta.dataTokensBundle.module)
       );
     }
     writeFileContent(
@@ -59,13 +57,10 @@ export async function syncDataTokens(
       });
     }
   } else if (!checksums.dataTokensChecksum && !projectMeta.dataTokensBundle) {
-    // Only try to delete if there was a previously configured path
-    if (projectConfig.dataTokensFilePath) {
-      if (fileExists(context, projectConfig.dataTokensFilePath)) {
-        deleteFile(context, projectConfig.dataTokensFilePath);
-      }
-      projectConfig.dataTokensFilePath = "";
+    if (fileExists(context, resourcePath)) {
+      deleteFile(context, resourcePath);
     }
+    projectConfig.dataTokensFilePath = "";
     L.remove(
       projectLock.fileLocks,
       (fl) => fl.assetId === projectConfig.projectId && fl.type === "dataTokens"
