@@ -57,10 +57,10 @@ jobs:
             exit 1
           fi
 
-          # Get image from task definition
+          # Get WAB container image (not the sidecar containers like log-router or datadog-agent)
           DEPLOYED_IMAGE=$(aws ecs describe-task-definition \
             --task-definition "$TASK_DEF_ARN" \
-            --query 'taskDefinition.containerDefinitions[0].image' \
+            --query "taskDefinition.containerDefinitions[?name=='wab'].image | [0]" \
             --output text)
 
           echo "::add-mask::$DEPLOYED_IMAGE"
