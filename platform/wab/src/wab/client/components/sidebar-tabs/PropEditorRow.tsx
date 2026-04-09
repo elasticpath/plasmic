@@ -13,7 +13,10 @@ import {
   URLParamTooltip,
   URLParamType,
 } from "@/wab/client/components/sidebar-tabs/PageURLParametersSection";
-import { PropValueEditor } from "@/wab/client/components/sidebar-tabs/PropValueEditor";
+import {
+  PropValueEditor,
+  shouldEditAsTemplatedString,
+} from "@/wab/client/components/sidebar-tabs/PropValueEditor";
 import WarningIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__WarningTriangleSvg";
 
 import { extractExpectedValues } from "@/wab/client/components/sidebar-tabs/DataBinding/DataPickerUtil";
@@ -88,7 +91,6 @@ import {
   extractValueSavedFromDataPicker,
   getLastDynExprFromTemplatedString,
   hasDynamicParts,
-  hasOnlyDynamicValues,
   isAllowedDefaultExpr,
   isDynamicExpr,
   isFallbackSet,
@@ -588,7 +590,7 @@ interface PropEditorRowProps {
   attr: string;
   enumValues?: ChoiceValue[];
   disableLinkToProp?: boolean;
-  disableDynamicValue?: true;
+  disableDynamicValue?: boolean;
   disableFallback?: boolean;
   disabled?: boolean;
   controlExtras?: ControlExtras;
@@ -648,6 +650,8 @@ export interface PropEditorRef {
   focus: () => void;
   isFocused: () => boolean;
   element: HTMLElement | null;
+  /** For editors that may implement dynamic values internally. */
+  useDynamicValue?: () => void;
 }
 
 export const InnerPropEditorRow = observer(InnerPropEditorRow_);
@@ -684,15 +688,18 @@ function InnerPropEditorRow_(props: PropEditorRowProps) {
     viewCtx,
   } = currValueEditorCtx;
 
-  const canvasEnv = {
-    ...origCanvasEnv,
-    ...getExtraEnvFromPropType(
-      propType,
-      componentPropValues,
-      ccContextData,
-      controlExtras
-    ),
-  };
+  const extraEnv = getExtraEnvFromPropType(
+    propType,
+    componentPropValues,
+    ccContextData,
+    controlExtras
+  );
+  const canvasEnv = origCanvasEnv
+    ? {
+        ...origCanvasEnv,
+        ...extraEnv,
+      }
+    : undefined;
   const ref = React.useRef<PropEditorRef>(null);
 
   const { maybeUnwrapExpr, maybeWrapExpr } =
@@ -710,8 +717,8 @@ function InnerPropEditorRow_(props: PropEditorRowProps) {
   >(undefined);
   const disabledDynamicValue =
     props.disableDynamicValue ??
-    (isDynamicValueDisabledInPropType(propType) ||
-      isExprValuePropType(propType));
+    isDynamicValueDisabledInPropType(propType) ??
+    false;
   const [showFallback, setShowFallback] = React.useState<boolean>(
     expr !== undefined && isFallbackSet(expr) && !disabledDynamicValue
   );
@@ -719,12 +726,26 @@ function InnerPropEditorRow_(props: PropEditorRowProps) {
   const isFlattenedObjectProp = isFlattenedObjectPropType(propType);
   const wabType = ensurePropTypeToWabType(studioCtx.site, propType);
   const propTypeType = getPropTypeType(propType);
+  const isStringPropType = propTypeType === "string";
+  const isTemplatedStringWithDynamicParts =
+    isKnownTemplatedString(expr) && hasDynamicParts(expr);
+  const isEditedAsTemplatedString = shouldEditAsTemplatedString(
+    propType,
+    disabledDynamicValue
+  );
   const ownerComponent = tpl && $$$(tpl).owningComponent();
   const referencedParam =
     ownerComponent && expr && !disableLinkToProp
       ? extractReferencedParam(ownerComponent, expr)
       : undefined;
   const isCustomCode = isRealCodeExpr(expr);
+  // True when prop supports callback: is a CustomCode dynamic expression,
+  // is not edited as a templated string (which manages dynamic parts inline),
+  // and is not a direct query binding (which manages its own loading state).
+  const canPropHaveFallback =
+    isCustomCode &&
+    !isEditedAsTemplatedString &&
+    !(isKnownQueryData(wabType) && isQuery(expr));
   const forceSetState = isNested ? ("isSet" as const) : undefined;
   const canLinkToProp =
     !disableLinkToProp &&
@@ -767,11 +788,7 @@ function InnerPropEditorRow_(props: PropEditorRowProps) {
     enablePointerInteractionsForPropType(propType);
 
   const allowDynamicValue =
-    !readOnly &&
-    !referencedParam &&
-    !disabledDynamicValue &&
-    !disabled &&
-    !isExprValuePropType(propType);
+    !readOnly && !referencedParam && !disabledDynamicValue && !disabled;
 
   const showDynamicValueButton =
     allowDynamicValue &&
@@ -779,14 +796,26 @@ function InnerPropEditorRow_(props: PropEditorRowProps) {
     !studioCtx.contentEditorMode &&
     !isCustomCode;
 
+  /**
+   * Called when "Use dynamic value" is clicked.
+   *
+   * First tries to call internal editor's useDyanmicValue,
+   * and falls back to switching the entire value to expr.
+   */
+  const onUseDynamicValueClick = () => {
+    if (ref.current?.useDynamicValue) {
+      ref.current.useDynamicValue();
+    } else {
+      switchToDynamicValue();
+    }
+  };
+
+  /** Directly change the current value to a dynamic value expr. */
   function switchToDynamicValue(dataToken?: DataToken) {
     const currentExpr = exprRef.current;
     const shortId = makeShortProjectId(studioCtx.siteInfo.id);
 
-    const shouldSetFallback =
-      currentExpr &&
-      (propTypeType !== "string" ||
-        (isKnownTemplatedString(currentExpr) && !hasDynamicParts(currentExpr)));
+    const shouldSetFallback = currentExpr && !isStringPropType;
 
     const newExpr = new ObjectPath({
       path: dataToken
@@ -909,14 +938,11 @@ function InnerPropEditorRow_(props: PropEditorRowProps) {
       {!readOnly &&
         allowDynamicValue &&
         !isCustomCode &&
-        !isExprValuePropType(propType) &&
-        !(isKnownTemplatedString(expr) && hasDynamicParts(expr)) && (
+        !isTemplatedStringWithDynamicParts && (
           <Menu.Item
             id="use-dynamic-value-btn"
             key={"customCode"}
-            onClick={() => {
-              switchToDynamicValue();
-            }}
+            onClick={onUseDynamicValueClick}
           >
             Use dynamic value
           </Menu.Item>
@@ -924,8 +950,7 @@ function InnerPropEditorRow_(props: PropEditorRowProps) {
       {!readOnly &&
         allowDynamicValue &&
         !isCustomCode &&
-        !isExprValuePropType(propType) &&
-        !(isKnownTemplatedString(expr) && hasDynamicParts(expr)) &&
+        !isTemplatedStringWithDynamicParts &&
         viewCtx?.studioCtx.showDataTokens() && (
           <Menu.Item
             id="create-data-token-btn"
@@ -938,10 +963,9 @@ function InnerPropEditorRow_(props: PropEditorRowProps) {
           </Menu.Item>
         )}
       {!readOnly &&
-        isCustomCode &&
+        !disabled &&
+        canPropHaveFallback &&
         !showFallback &&
-        isExprValuePropType(propType) &&
-        allowDynamicValue &&
         !disableFallback && (
           <Menu.Item key={"fallback"} onClick={() => setShowFallback(true)}>
             Change fallback value
@@ -949,8 +973,7 @@ function InnerPropEditorRow_(props: PropEditorRowProps) {
         )}
       {!readOnly &&
         !referencedParam &&
-        (isCustomCode ||
-          (isKnownTemplatedString(expr) && hasDynamicParts(expr))) &&
+        (isCustomCode || isTemplatedStringWithDynamicParts) &&
         !isExprValuePropType(propType) && (
           <Menu.Item
             key={"!customCode"}
@@ -997,10 +1020,9 @@ function InnerPropEditorRow_(props: PropEditorRowProps) {
     // displaying a "whole" custom code expression.
     // Template literals are not here, since they still display a string editor and can have mixed text and expressions.
     // However, we need to handle TemplatedStrings with dynamic expressions (from page meta fields or when clicking the dynamic value caret)
-    const codeExpr =
-      isKnownTemplatedString(expr) && hasDynamicParts(expr)
-        ? getLastDynExprFromTemplatedString(expr)
-        : ensureInstance(expr, CustomCode, ObjectPath);
+    const codeExpr = isTemplatedStringWithDynamicParts
+      ? getLastDynExprFromTemplatedString(expr as TemplatedString)
+      : ensureInstance(expr, CustomCode, ObjectPath);
     return (
       <DataPickerEditor
         viewCtx={viewCtx}
@@ -1046,6 +1068,7 @@ function InnerPropEditorRow_(props: PropEditorRowProps) {
         }
         propType={propType}
         component={ownerComponent}
+        disableDynamicValue={props.disableDynamicValue}
         onChange={(val) => {
           if (exprLit == null && val == null) {
             return;
@@ -1155,23 +1178,17 @@ function InnerPropEditorRow_(props: PropEditorRowProps) {
                     menu={!isMenuEmpty(contextMenu) ? contextMenu : undefined}
                     showDynamicValueButton={showDynamicValueButton}
                     tooltip={
-                      isKnownTemplatedString(expr)
+                      isEditedAsTemplatedString
                         ? "Append dynamic value"
                         : undefined
                     }
-                    onIndicatorClickDefault={() => {
-                      switchToDynamicValue();
-                    }}
+                    onIndicatorClickDefault={onUseDynamicValueClick}
                     className="qb-custom-widget"
                     fullWidth={!isBooleanPropType(propType) || isCustomCode}
                   >
                     {referencedParam && !disableLinkToProp
                       ? renderEditorForReferencedParam()
-                      : (isCustomCode ||
-                          (isKnownTemplatedString(expr) &&
-                            hasOnlyDynamicValues(expr))) &&
-                        !(isKnownQueryData(wabType) && isQuery(expr)) &&
-                        !disabledDynamicValue
+                      : canPropHaveFallback && !disabledDynamicValue
                       ? renderDataPickerEditorForDynamicValue()
                       : renderDefaultEditor()}
                   </ContextMenuIndicator>
@@ -1212,7 +1229,7 @@ function InnerPropEditorRow_(props: PropEditorRowProps) {
                 }}
               />
             )}
-            {isPageHref(expr) && (
+            {canvasEnv && isPageHref(expr) && (
               <PageHrefRows
                 expr={expr}
                 exprCtx={exprCtx}
@@ -1224,9 +1241,7 @@ function InnerPropEditorRow_(props: PropEditorRowProps) {
                 onChange={onChange}
               />
             )}
-            {isCustomCode &&
-              !(isKnownQueryData(wabType) && isQuery(expr)) &&
-              allowDynamicValue &&
+            {canPropHaveFallback &&
               showFallback &&
               !disableFallback &&
               viewCtx &&

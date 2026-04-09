@@ -455,6 +455,7 @@ const DEFAULT_DEVFLAGS = {
   useLoadingState: false,
   showHiddenHostLessComponents: false,
   ccStubs: false,
+  fnStubs: false,
   workspaces: false,
   noObserve: false,
   plexus: false,
@@ -510,7 +511,6 @@ const DEFAULT_DEVFLAGS = {
   branching: false,
   disableBranching: false,
   branchingTeamIds: [] as TeamId[],
-  dataTokenTeamIds: [] as TeamId[],
   commitsOnBranches: false,
   serverPublishProjectIds: [] as ProjectId[],
   focusable: false,
@@ -608,6 +608,7 @@ function normalizeDevFlags(flags: DevFlagsType) {
   if (flags.debug) {
     flags.autoSave = false;
     flags.ccStubs = true;
+    flags.fnStubs = true;
     flags.logToConsole = true;
     flags.enableReactDevTools = true;
   }

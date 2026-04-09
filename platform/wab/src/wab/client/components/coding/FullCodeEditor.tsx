@@ -26,10 +26,6 @@ export interface FullCodeEditorProps {
   onSave?: (val: string) => void;
   onChange?: (val: string) => void;
   data?: Record<string, any>;
-  /**
-   * Optionally specify data for intellisense, defaults to `data`
-   */
-  completionData?: Record<string, any>;
   hideLineNumbers?: boolean;
   enableMinimap?: boolean;
   editorHeight?: number;
@@ -46,6 +42,8 @@ export interface FullCodeEditor {
   getValue: () => string;
   /** Reset to the default value. */
   resetValue: () => void;
+  /** Insert text at the current cursor position. */
+  insertAtCursor: (text: string) => void;
 }
 
 export const FullCodeEditor = React.forwardRef(
@@ -54,7 +52,6 @@ export const FullCodeEditor = React.forwardRef(
       language = "typescript",
       defaultValue,
       data,
-      completionData,
       enableMinimap = true,
       editorHeight,
       hideGlobalSuggestions,
@@ -108,6 +105,9 @@ export const FullCodeEditor = React.forwardRef(
         : {},
     };
 
+    const editorRef = React.useRef<monaco.editor.IStandaloneCodeEditor | null>(
+      null
+    );
     const [containerEl, setContainerEl] = React.useState<HTMLElement | null>(
       null
     );
@@ -131,7 +131,7 @@ export const FullCodeEditor = React.forwardRef(
           const dataLanguage =
             language === "javascript" && schema ? "typescript" : language;
 
-          const dataCode = dataObjToCode(completionData ?? data, schema);
+          const dataCode = dataObjToCode(data, schema);
           const envUri = createFilePathWithExtension("env", dataLanguage);
           yield upsertMonacoExtraLib(langDefaults, envUri, dataCode);
           yield upsertMonacoModel(envUri, dataLanguage, dataCode);
@@ -147,6 +147,7 @@ export const FullCodeEditor = React.forwardRef(
         }
       },
       onAfterEditorCreate: function* (editor, actions) {
+        editorRef.current = editor;
         yield editor.onDidChangeModelContent(() => {
           handlersRef.current.onChange?.(actions.getUserValue());
         });
@@ -166,6 +167,23 @@ export const FullCodeEditor = React.forwardRef(
       () => ({
         getValue: () => editorActions?.getUserValue() ?? "",
         resetValue: () => editorActions?.resetUserValue(defaultValue),
+        insertAtCursor: (text: string) => {
+          const editor = editorRef.current;
+          if (!editor) {
+            return;
+          }
+          const selection = editor.getSelection();
+          if (!selection) {
+            return;
+          }
+          editor.executeEdits("insert", [
+            {
+              range: selection,
+              text,
+            },
+          ]);
+          editor.focus();
+        },
       }),
       [editorActions, defaultValue]
     );

@@ -204,6 +204,7 @@ test.describe("registered variants", () => {
 
   test.beforeEach(async ({ apiClient, page }) => {
     projectId = await apiClient.setupProjectWithHostlessPackages({
+      name: "registered-variants",
       hostLessPackagesInfo: [
         {
           name: "react-aria",
@@ -435,9 +436,9 @@ test.describe("registered variants", () => {
     await models.studio.leftPanel.selectTreeNode(["Aria Button"]);
     await expectVariantAbsent(models, "Hovered");
 
-    await page.keyboard.press("Control+z");
+    await page.keyboard.press("ControlOrMeta+z");
     await page.waitForTimeout(500);
-    await page.keyboard.press("Control+z");
+    await page.keyboard.press("ControlOrMeta+z");
     await page.waitForTimeout(1000);
 
     await models.studio.leftPanel.selectTreeNode(["Aria Button"]);

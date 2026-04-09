@@ -4,6 +4,10 @@ import ContextMenuIndicator from "@/wab/client/components/ContextMenuIndicator/C
 import styles from "@/wab/client/components/PageSettings.module.css";
 import { DataPickerEditor } from "@/wab/client/components/sidebar-tabs/ComponentProps/DataPickerEditor";
 import {
+  convertExprToPageMetaString,
+  convertPageMetaStringToExpr,
+} from "@/wab/client/components/sidebar-tabs/PageMetaPanel";
+import {
   PropEditorRow,
   PropValueEditorContext,
 } from "@/wab/client/components/sidebar-tabs/PropEditorRow";
@@ -21,8 +25,6 @@ import {
   ExprCtx,
   asCode,
   codeLit,
-  convertExprToStringOrTemplatedString,
-  convertTemplatedStringToExpr,
   createExprForDataPickerValue,
   extractValueSavedFromDataPicker,
   getLastDynExprFromTemplatedString,
@@ -222,22 +224,24 @@ const PageSettings = observer(function PageSettings({
     : undefined;
 
   const title = React.useMemo(
-    () => convertTemplatedStringToExpr(page.pageMeta?.title),
+    () => convertPageMetaStringToExpr(page.pageMeta?.title),
     [page.pageMeta?.title]
   );
   const description = React.useMemo(
-    () => convertTemplatedStringToExpr(page.pageMeta?.description),
+    () => convertPageMetaStringToExpr(page.pageMeta?.description),
     [page.pageMeta?.description]
   );
   const canonical = React.useMemo(
-    () => convertTemplatedStringToExpr(page.pageMeta?.canonical),
+    () => convertPageMetaStringToExpr(page.pageMeta?.canonical),
     [page.pageMeta?.canonical]
   );
 
-  const env: Record<string, any> =
-    viewCtx.getCanvasEnvForTpl(page.tplTree) ?? {};
+  const env = viewCtx.getCanvasEnvForTpl(page.tplTree);
 
   const pageMetaEnv = React.useMemo(() => {
+    if (!env) {
+      return undefined;
+    }
     const { $queries, $$: _$, $state: _s, ...rest } = env;
     rest.$queries = {};
     for (const queryName of Object.keys($queries ?? {})) {
@@ -252,7 +256,7 @@ const PageSettings = observer(function PageSettings({
     const desc = pageMeta.description;
     if (typeof desc === "string") {
       return desc.length;
-    } else if (viewCtx && isDynamicExpr(desc)) {
+    } else if (viewCtx && pageMetaEnv && isDynamicExpr(desc)) {
       const evaluated = tryEvalExpr(asCode(desc, exprCtx).code, pageMetaEnv);
       return evaluated?.val?.toString()?.length ?? 0;
     }
@@ -265,7 +269,7 @@ const PageSettings = observer(function PageSettings({
         value={{
           componentPropValues: {},
           ccContextData: {},
-          env: {},
+          env: undefined,
         }}
       >
         <PlasmicPageSettings
@@ -287,7 +291,7 @@ const PageSettings = observer(function PageSettings({
               propType={{ type: "string", defaultValueHint: "Title" }}
               expr={title}
               onChange={(expr) => {
-                const newTitle = convertExprToStringOrTemplatedString(expr);
+                const newTitle = convertExprToPageMetaString(expr);
                 spawn(sc.tryChangePageMeta(page, "title", newTitle));
               }}
               viewCtx={viewCtx}
@@ -308,8 +312,7 @@ const PageSettings = observer(function PageSettings({
               }}
               expr={description}
               onChange={(expr) => {
-                const newDesc =
-                  convertExprToStringOrTemplatedString(expr) ?? "";
+                const newDesc = convertExprToPageMetaString(expr) ?? "";
                 spawn(sc.tryChangePageMetaDescription(page, newDesc));
               }}
               viewCtx={viewCtx}
@@ -329,7 +332,7 @@ const PageSettings = observer(function PageSettings({
               propType={{ type: "string", defaultValueHint: "Canonical URL" }}
               expr={canonical}
               onChange={(expr) => {
-                const newCanonical = convertExprToStringOrTemplatedString(expr);
+                const newCanonical = convertExprToPageMetaString(expr);
                 spawn(sc.tryChangePageMeta(page, "canonical", newCanonical));
               }}
               viewCtx={viewCtx}
