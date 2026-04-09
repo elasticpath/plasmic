@@ -81,6 +81,13 @@ declare module "@/wab/shared/core/tpls" {
 // ---------------------------------------------------------------------------
 declare module "@/wab/shared/code-components/code-components" {
   export function elementSchemaToTpl(...args: any[]): any;
+  export function isCodeComponentWithHelpers(component: any): component is CodeComponentWithHelpers;
+  export interface CodeComponentWithHelpers {
+    name: string;
+    uuid: string;
+    codeComponentMeta: { helpers?: { defaultExport?: boolean }; [key: string]: any };
+    [key: string]: any;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -727,9 +734,17 @@ declare module "@/wab/shared/core/undo-util" {
 declare module "@/wab/shared/core/components" {
   export function extractComponent(opts: any): any;
   export function isReusableComponent(component: any): boolean;
-  export function isCodeComponent(component: any): boolean;
+  export function isCodeComponent(component: any): component is CodeComponent;
   export function isPageComponent(component: any): boolean;
   export function allComponentVariants(component: any): any[];
+  export function getCodeComponentImportName(component: CodeComponent): string;
+  export function getCodeComponentHelperImportName(component: any): string;
+  export interface CodeComponent {
+    name: string;
+    uuid: string;
+    codeComponentMeta: any;
+    [key: string]: any;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -996,6 +1011,7 @@ declare module "@/wab/shared/SlotUtils" {
   export function findParentArgs(node: any): Array<{ arg: any }>;
   export function findParentSlot(node: any): any | undefined;
   export function isDefaultSlotArg(arg: any): boolean;
+  export function getSlotParams(component: any): Array<{ variable: { name: string }; [key: string]: any }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -1010,11 +1026,27 @@ declare module "@/wab/shared/core/rich-text-util" {
 // ---------------------------------------------------------------------------
 declare module "@/wab/shared/cached-selectors" {
   export function componentToTplComponents(...args: any[]): any;
+  export function componentToDeepReferenced(component: any, includeSubComps?: boolean): Set<any>;
   export function componentsReferencingDataToken(...args: any[]): any;
   export function deepComponentToReferencers(...args: any[]): any;
   export function extractComponentVariantSettings(...args: any[]): any;
   export function extractImageAssetRefsByAttrs(...args: any[]): any;
   export function getActiveVariantsForFrame(...args: any[]): any;
+}
+
+// ---------------------------------------------------------------------------
+// @/wab/shared/codegen/react-p/serialize-utils
+// ---------------------------------------------------------------------------
+declare module "@/wab/shared/codegen/react-p/serialize-utils" {
+  export function makeComponentSkeletonIdFileName(component: any): string;
+  export function makeCodeComponentHelperSkeletonIdFileName(component: any): string;
+}
+
+// ---------------------------------------------------------------------------
+// @/wab/shared/codegen/util
+// ---------------------------------------------------------------------------
+declare module "@/wab/shared/codegen/util" {
+  export function jsLiteral(val: any): string;
 }
 
 declare module "@/wab/shared/core/style-props" {
