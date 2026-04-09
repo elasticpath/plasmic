@@ -26,15 +26,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Fetch upstream and graft ref
+      - name: Fetch upstream
         run: |
           git remote add upstream https://github.com/plasmicapp/plasmic.git || true
           git fetch upstream master
-
-          # Fetch the graft ref that fixes ancestry after PR #201's squash-merge.
-          # This is temporary — once the first real merge commit lands on master,
-          # git merge-base works naturally and this line can be removed.
-          git fetch origin 'refs/replace/*:refs/replace/*' 2>/dev/null || true
 
       - name: Check for new upstream commits
         id: check
@@ -61,14 +56,10 @@ jobs:
             echo "has_conflicts=false" >> $GITHUB_OUTPUT
           else
             echo "Merge has conflicts."
-
-            # Capture conflicted file list before staging
             CONFLICTED=$(git diff --name-only --diff-filter=U 2>/dev/null)
             echo "conflicted_files<<EOF" >> $GITHUB_OUTPUT
             echo "$CONFLICTED" >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
-
-            # Stage conflict markers so we can commit and push
             git add -A
             git commit --no-edit -m "merge: upstream (conflicts to resolve)" || true
             echo "has_conflicts=true" >> $GITHUB_OUTPUT
@@ -85,13 +76,13 @@ jobs:
           echo "## Upstream Merge" > /tmp/pr-body.md
           echo "" >> /tmp/pr-body.md
           echo "**$COMMIT_COUNT new commits** from [plasmicapp/plasmic](https://github.com/plasmicapp/plasmic) master." >> /tmp/pr-body.md
+          echo "" >> /tmp/pr-body.md
+          echo "> Review using the **Files Changed** tab. The commit list includes upstream history." >> /tmp/pr-body.md
 
           if [ "$HAS_CONFLICTS" = "true" ]; then
             cat >> /tmp/pr-body.md << 'HEREDOC_END'
 
           ### Conflicts to resolve
-
-          This merge has conflicts. Check out the branch, resolve them, and push:
 
           ```bash
           git fetch origin merge/upstream
@@ -110,7 +101,7 @@ jobs:
 
           ### Clean merge — no conflicts
 
-          This merge applied cleanly. Review the diff and merge when ready.
+          Review the diff and merge when ready.
           HEREDOC_END
           fi
 
@@ -118,12 +109,12 @@ jobs:
 
           ### Before merging
 
-          See [Upstream Merge Runbook](docs/internal/UPSTREAM_MERGE_RUNBOOK.md) for detailed guidance.
+          See [Upstream Merge Runbook](docs/internal/UPSTREAM_MERGE_RUNBOOK.md).
 
           - [ ] Conflicts resolved (if any)
-          - [ ] EP integrity tests pass (`npx jest --testPathPattern=ep-fork-integrity`)
-          - [ ] yarn.lock files regenerated for any modified package.json
-          - [ ] CI triggered (close/reopen PR or push a commit to trigger workflows)
+          - [ ] EP integrity tests pass
+          - [ ] yarn.lock regenerated for modified package.json
+          - [ ] CI triggered (close/reopen PR to trigger checks)
           - [ ] **Merge with "Create a merge commit" — do NOT squash**
           HEREDOC_END
 
@@ -150,11 +141,11 @@ jobs:
           echo "### Upstream Merge" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "$HAS_CHANGES" = "false" ]; then
-            echo "No new upstream commits. Nothing to do." >> $GITHUB_STEP_SUMMARY
+            echo "No new upstream commits." >> $GITHUB_STEP_SUMMARY
           else
             echo "**Commits:** $COMMIT_COUNT" >> $GITHUB_STEP_SUMMARY
             if [ "$HAS_CONFLICTS" = "true" ]; then
-              echo "**Status:** Conflicts detected — PR created for manual resolution" >> $GITHUB_STEP_SUMMARY
+              echo "**Status:** Conflicts — PR needs manual resolution" >> $GITHUB_STEP_SUMMARY
             else
               echo "**Status:** Clean merge — PR ready for review" >> $GITHUB_STEP_SUMMARY
             fi
