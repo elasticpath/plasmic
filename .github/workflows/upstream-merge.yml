@@ -168,29 +168,22 @@ jobs:
           PR_BODY: ${{ steps.pr-body.outputs.body }}
         run: |
           TITLE="merge: upstream $(date +%Y-%m-%d) ($COMMIT_COUNT commits)"
-          DRAFT_FLAG=""
-          if [ "$HAS_CONFLICTS" = "true" ]; then
-            DRAFT_FLAG="--draft"
-          fi
 
           if [ "$PR_EXISTS" = "true" ]; then
             echo "Updating existing PR #$PR_NUMBER"
             gh pr edit "$PR_NUMBER" \
               --title "$TITLE" \
               --body "$PR_BODY"
-
-            # Set draft status based on conflicts
-            if [ "$HAS_CONFLICTS" = "true" ]; then
-              gh pr ready "$PR_NUMBER" --undo 2>/dev/null || true
-            fi
           else
             echo "Creating new PR"
+            # Not using --draft because the GITHUB_TOKEN GraphQL
+            # permissions don't support createPullRequest with draft.
+            # The PR body clearly indicates conflict status instead.
             gh pr create \
               --head merge/upstream \
               --base master \
               --title "$TITLE" \
-              --body "$PR_BODY" \
-              $DRAFT_FLAG
+              --body "$PR_BODY"
           fi
 
       - name: Summary
