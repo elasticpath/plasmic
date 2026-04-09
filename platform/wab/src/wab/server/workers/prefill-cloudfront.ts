@@ -43,7 +43,7 @@ export async function prefillCloudfront(
       publishment.i18nKeyScheme,
       publishment.i18nTagPrefix,
       publishment.appDir ?? false,
-      ...publishment.projectIds,
+      ...[...publishment.projectIds].sort(),
     ].join(",")
   );
 
