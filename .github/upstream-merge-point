@@ -1,0 +1,7 @@
+# Last upstream commit (plasmicapp/plasmic master) merged into this fork.
+# Updated automatically by the upstream-merge workflow after each merge.
+# Used to determine which upstream commits are genuinely new.
+#
+# IMPORTANT: Upstream merge PRs must use "Create a merge commit" (not squash)
+# so git can track ancestry naturally. This file is a safety net.
+c943b23982dba5982e83da909db7ac5c15b3c33d
