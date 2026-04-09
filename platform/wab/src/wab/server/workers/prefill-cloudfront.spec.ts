@@ -226,6 +226,9 @@ describe("Prefill cloudfront", () => {
           }
         );
 
+        expect(getResolvedProjectVersions).toHaveBeenCalledTimes(4);
+        expect(genPublishedLoaderCodeBundle).toHaveBeenCalledTimes(4);
+
         expect(sudo.updatePkgVersion).toBeCalledWith(
           PKG_ID,
           PKG_VERSION,
