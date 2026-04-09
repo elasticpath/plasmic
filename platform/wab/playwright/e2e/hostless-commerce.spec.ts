@@ -34,6 +34,10 @@ test.describe("hostless-commerce", () => {
     context,
   }) => {
     projectId = await apiClient.setupProjectWithHostlessPackages({
+<<<<<<< HEAD
+=======
+      name: "commerce",
+>>>>>>> upstream/master
       hostLessPackagesInfo: [
         {
           name: "commerce",
@@ -258,6 +262,10 @@ test.describe("hostless-commerce", () => {
 
   test("can use context to data bind", async ({ page, apiClient, models }) => {
     projectId = await apiClient.setupProjectWithHostlessPackages({
+<<<<<<< HEAD
+=======
+      name: "commerce",
+>>>>>>> upstream/master
       hostLessPackagesInfo: [
         {
           name: "commerce",
@@ -299,7 +307,11 @@ test.describe("hostless-commerce", () => {
     await page.keyboard.press("Enter");
     await page.keyboard.press("Enter");
     await page.waitForTimeout(500);
+<<<<<<< HEAD
     await page.keyboard.press("Control+r");
+=======
+    await page.keyboard.press("ControlOrMeta+r");
+>>>>>>> upstream/master
     await page.waitForTimeout(200);
     await page.keyboard.type("Product Container");
     await page.keyboard.press("Enter");
@@ -325,7 +337,11 @@ test.describe("hostless-commerce", () => {
       .click();
     await models.studio.leftPanel.insertNode("Text");
 
+<<<<<<< HEAD
     await page.keyboard.press("Control+r");
+=======
+    await page.keyboard.press("ControlOrMeta+r");
+>>>>>>> upstream/master
     await page.waitForTimeout(200);
     await page.keyboard.type("Product Name");
     await page.keyboard.press("Enter");

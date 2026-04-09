@@ -588,10 +588,13 @@ const DEFAULT_DEVFLAGS = {
   presetAnimationsProjectId: "",
   // Show Data Tokens tab in Left Pane
   dataTokens: false,
+<<<<<<< HEAD
   // EP Studio lockdown: redirect dashboard/auth routes to Commerce Manager
   hideDashboardViews: false,
   dashboardRedirectUrl: "",
   adminDashboardOverrideParam: "adminDashboard",
+=======
+>>>>>>> upstream/master
 };
 
 Object.assign(DEFAULT_DEVFLAGS, DEFAULT_DEVFLAG_OVERRIDES);
@@ -660,7 +663,10 @@ export function applyPlasmicUserDevFlagOverrides(target: DevFlagsType) {
     simplifiedScreenVariants: true,
     simplifiedForms: true,
     schemaDrivenForms: true,
+<<<<<<< HEAD
     onboardingTours: true,
+=======
+>>>>>>> upstream/master
     posthog: true,
     linting: true,
     componentThumbnails: false,

@@ -1,6 +1,10 @@
 {
   "name": "create-plasmic-app",
+<<<<<<< HEAD
   "version": "0.0.138",
+=======
+  "version": "0.0.139",
+>>>>>>> upstream/master
   "description": "Create Plasmic-powered React apps",
   "main": "./dist/lib.js",
   "types": "./dist/lib.d.ts",

@@ -9,6 +9,12 @@ import {
 } from "@/wab/shared/codegen/react-p/page-metadata";
 import { serializeGeneratePageMetadataBody } from "@/wab/shared/codegen/react-p/page-metadata/serializer";
 import {
+  getDataTokenImportsForPageMeta,
+  getMetadataTypeDefinition,
+  serializeGenerateDynamicMetadataFunction,
+} from "@/wab/shared/codegen/react-p/page-metadata";
+import { serializeGeneratePageMetadataBody } from "@/wab/shared/codegen/react-p/page-metadata/serializer";
+import {
   makeDefaultExternalPropsName,
   makePlasmicComponentName,
   makeServerPageSkeletonPropsName,
@@ -26,7 +32,10 @@ import {
   serializeMakeAppRouterPageCtx,
   serializeServerQueryCustomFunctionArgs,
 } from "@/wab/shared/codegen/react-p/server-queries/serializer";
-import { isServerQueryWithOperation } from "@/wab/shared/codegen/react-p/server-queries/utils";
+import {
+  getReferencedQueryNamesInCustomCode,
+  isServerQueryWithOperation,
+} from "@/wab/shared/codegen/react-p/server-queries/utils";
 import { SerializerBaseContext } from "@/wab/shared/codegen/react-p/types";
 import { ComponentExportOutput, ExportOpts } from "@/wab/shared/codegen/types";
 import { toVarName } from "@/wab/shared/codegen/util";
@@ -37,7 +46,17 @@ import {
   extractDataTokenIdentifiers,
   isDataTokenExpr,
 } from "@/wab/shared/eval/expression-parser";
+<<<<<<< HEAD
 import { ComponentServerQuery } from "@/wab/shared/model/classes";
+=======
+import {
+  ComponentServerQuery,
+  Expr,
+  isKnownCustomCode,
+  isKnownCustomFunctionExpr,
+} from "@/wab/shared/model/classes";
+import { convertToFunction } from "@/wab/shared/parser-utils";
+>>>>>>> upstream/master
 
 export function getRscMetadata(
   ctx: SerializerBaseContext
@@ -167,13 +186,31 @@ export function getDataTokensFromServerQueries(
   // Flatten all server query arg Exprs and extract their data token references
   const tokenIdentifiers = queries
     .filter(isServerQueryWithOperation)
+<<<<<<< HEAD
     .flatMap((query) => query.op.args)
+=======
+    .flatMap((query): Expr[] =>
+      isKnownCustomFunctionExpr(query.op) ? query.op.args : [query.op]
+    )
+>>>>>>> upstream/master
     .flatMap(flattenExprs)
     .filter(isDataTokenExpr)
     .flatMap(extractDataTokenIdentifiers);
   return new Set(tokenIdentifiers);
 }
 
+<<<<<<< HEAD
+=======
+function serializeCustomCodeServerQuery(code: string): string {
+  try {
+    return convertToFunction(code);
+  } catch (err) {
+    console.warn("Failed to convert to function:", err);
+    throw new Error("Invalid server query code");
+  }
+}
+
+>>>>>>> upstream/master
 export function serializeCreateDollarQueries(ctx: SerializerBaseContext) {
   if (!ctx.hasServerQueries) {
     return "";
@@ -199,7 +236,24 @@ export function createQueries(
 ): Record<QueryName, PlasmicQuery> {
   return {
     ${serverQueries
+<<<<<<< HEAD
       .map(({ op, name }) => {
+=======
+      .map((query) => {
+        const { op, name, uuid } = query;
+        if (isKnownCustomCode(op)) {
+          const depNames = getReferencedQueryNamesInCustomCode(
+            query,
+            component
+          );
+          const depParams = depNames.map((n) => `$q.${n}.data`);
+          return `${toVarName(name)}: {
+          id: "custom:${uuid}",
+          fn: ${serializeCustomCodeServerQuery(op.code)},
+          execParams: () => [${depParams.join(", ")}],
+        }`;
+        }
+>>>>>>> upstream/master
         const namespace = op.func.namespace ? `${op.func.namespace}.` : "";
         return `${toVarName(name)}: {
           id: "${customFunctionId(op.func)}",

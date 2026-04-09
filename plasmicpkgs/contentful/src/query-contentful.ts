@@ -15,7 +15,10 @@ import {
 
 export const modulePath = "@plasmicpkgs/contentful";
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> upstream/master
 export function denormalizeData(data: any | null): any {
   if (!data?.items || !data?.includes) {
     return data;
@@ -129,7 +132,10 @@ export interface QueryContentfulOldFilterProps {
   filterValue?: string | number;
 }
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> upstream/master
 export interface QueryContentfulOpts {
   space?: string;
   accessToken?: string;
@@ -220,7 +226,10 @@ export async function _queryContentful({
     searchParams.set(key, value.toString());
   }
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> upstream/master
   if (limit) {
     searchParams.set("limit", limit.toString());
   }
@@ -229,7 +238,10 @@ export async function _queryContentful({
     searchParams.set("skip", skip.toString());
   }
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> upstream/master
   if (order) {
     searchParams.set(
       "order",
@@ -300,7 +312,10 @@ export async function queryContentful({
   });
 }
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> upstream/master
 export const queryContentfulMeta: CustomFunctionMeta<typeof queryContentful> = {
   name: "queryContentful",
   displayName: "Query Contentful",

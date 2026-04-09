@@ -2228,7 +2228,11 @@
         }
       },
       "deps": [],
+<<<<<<< HEAD
       "version": "256-wrap-page-meta-og-image-in-ref"
+=======
+      "version": "255-wrap-page-meta-og-image-in-ref"
+>>>>>>> upstream/master
     }
   ],
   [
@@ -4677,7 +4681,11 @@
         "gSz0yES8G7SG": { "__type": "TemplatedString", "text": [""] }
       },
       "deps": ["802d7b73-55ba-45e6-a41b-b9b5a127cf12"],
+<<<<<<< HEAD
       "version": "256-wrap-page-meta-og-image-in-ref"
+=======
+      "version": "255-wrap-page-meta-og-image-in-ref"
+>>>>>>> upstream/master
     }
   ]
 ]

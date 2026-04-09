@@ -3217,6 +3217,7 @@ export class StudioCtx extends WithDbCtx {
   }
 
   showDataTokens() {
+<<<<<<< HEAD
     if (this.appCtx.appConfig.rscRelease || this.appCtx.appConfig.dataTokens) {
       return true;
     }
@@ -3228,6 +3229,9 @@ export class StudioCtx extends WithDbCtx {
       (teamId && allowedTeamIds.includes(teamId)) ||
       (team?.parentTeamId && allowedTeamIds.includes(team.parentTeamId))
     );
+=======
+    return this.appCtx.appConfig.dataTokens;
+>>>>>>> upstream/master
   }
 
   //

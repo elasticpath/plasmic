@@ -105,6 +105,7 @@ test.describe("hostless-strapi", () => {
       { apiClient, page, models }: RunTestProps
     ) {
       projectId = await apiClient.setupProjectWithHostlessPackages({
+        name: "strapi",
         hostLessPackagesInfo: {
           name: "plasmic-strapi",
           npmPkg: ["@plasmicpkgs/plasmic-strapi"],
@@ -135,7 +136,7 @@ test.describe("hostless-strapi", () => {
       );
       await nameInput.click();
 
-      await page.keyboard.press("Control+a");
+      await page.keyboard.press("ControlOrMeta+a");
       await page.keyboard.press("Backspace");
       const collectionName = version === 5 ? "restaurants-v5" : "restaurants";
       await page.keyboard.type(collectionName);
@@ -202,7 +203,11 @@ test.describe("hostless-strapi", () => {
       await expect(canvasImages.first()).toHaveAttribute("src", /.+/);
 
       await models.studio.withinLiveMode(async (liveFrame) => {
+<<<<<<< HEAD
         const images = liveFrame.locator(".plasmic_default__div img");
+=======
+        const images = liveFrame.locator(`.plasmic_default__all img`);
+>>>>>>> upstream/master
         await expect(images.first()).toHaveAttribute("src", /.+/);
       });
 
@@ -224,6 +229,7 @@ test.describe("hostless-strapi", () => {
       { apiClient, page, models }: RunTestProps
     ) {
       projectId = await apiClient.setupProjectWithHostlessPackages({
+        name: "strapi",
         hostLessPackagesInfo: {
           name: "plasmic-strapi",
           npmPkg: ["@plasmicpkgs/plasmic-strapi"],
@@ -241,7 +247,7 @@ test.describe("hostless-strapi", () => {
       );
       await nameInput.click();
 
-      await page.keyboard.press("Control+a");
+      await page.keyboard.press("ControlOrMeta+a");
       await page.keyboard.press("Backspace");
       const collectionName = version === 5 ? "restaurants-v5" : "restaurants";
       await page.keyboard.type(collectionName);

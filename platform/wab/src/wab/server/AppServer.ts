@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 import tracer from "dd-trace";
+=======
+import * as Sentry from "@sentry/node";
+>>>>>>> upstream/master
 import * as bodyParser from "body-parser";
 import cookieParser from "cookie-parser";
 import cors from "cors";
@@ -27,7 +31,10 @@ import { createMailer } from "@/wab/server/emails/Mailer";
 import { ExpressSession } from "@/wab/server/entities/Entities";
 import "@/wab/server/extensions";
 import { initAnalyticsFactory, logger } from "@/wab/server/observability";
+<<<<<<< HEAD
 import { runWithRequestId } from "@/wab/server/observability/PinoLogger";
+=======
+>>>>>>> upstream/master
 import {
   DEFAULT_HISTOGRAM_BUCKETS,
   WabPromLiveRequestsGauge,
@@ -374,9 +381,39 @@ function shouldIgnoreErrorByMessage(message: string) {
   return ignoredErrorMessages.some((pattern) => message.includes(pattern));
 }
 
+<<<<<<< HEAD
 function addDatadogMiddleware(app: express.Application) {
   // dd-trace auto-instruments Express — no requestHandler/tracingHandler needed.
   // Tag the active span with projectId for correlation in Datadog APM.
+=======
+function addSentry(app: express.Application, config: Config) {
+  if (!config.sentryDSN) {
+    return;
+  }
+  logger().debug(`Initializing Sentry with DSN: ${config.sentryDSN}`);
+  Sentry.init({
+    dsn: config.sentryDSN,
+    environment: process.env.SENTRY_ENVIRONMENT,
+    // We need beforeSend because errors don't necessarily make their way through the Express pipeline - they can be
+    // thrown from anywhere, in Express or outside (or from random async event loop iterations).
+    async beforeSend(event: Sentry.Event): Promise<Sentry.Event | null> {
+      const msg = event.exception?.values?.[0].value;
+      if (msg) {
+        if (shouldIgnoreErrorByMessage(msg)) {
+          return null;
+        }
+      }
+      return event;
+    },
+  });
+
+  app.use(Sentry.Handlers.requestHandler());
+  app.use(Sentry.Handlers.tracingHandler());
+
+  // This anonymous handler uses Sentry.setTag() to modify the current scope.
+  // To ensure the global scope is not modified, the handler must be after
+  // Sentry.Handlers.requestHandler(), which creates a new scope per-request.
+>>>>>>> upstream/master
   app.use((req, _res, next) => {
     const projectId =
       req.params.projectId ?? req.query.projectId ?? req.params.projectBranchId;
@@ -751,6 +788,7 @@ export function addCmsPublicRoutes(app: express.Application) {
 
 export function addCmsEditorRoutes(app: express.Application) {
   // CMS API for use by studio to crud; access by usual browser login
+<<<<<<< HEAD
   app.get("/api/v1/cmse/databases", cmCors, listDatabases);
   app.post("/api/v1/cmse/databases", cmCors, withNext(createDatabase));
   app.post("/api/v1/cmse/databases/:dbId/clone", cmCors, withNext(cloneDatabase));
@@ -759,6 +797,16 @@ export function addCmsEditorRoutes(app: express.Application) {
   app.get("/api/v1/cmse/databases-meta", listDatabasesMeta);
   app.put("/api/v1/cmse/databases/:dbId", cmCors, withNext(updateDatabase));
   app.delete("/api/v1/cmse/databases/:dbId", cmCors, withNext(deleteDatabase));
+=======
+  app.get("/api/v1/cmse/databases", listDatabases);
+  app.post("/api/v1/cmse/databases", withNext(createDatabase));
+  app.post("/api/v1/cmse/databases/:dbId/clone", withNext(cloneDatabase));
+  app.get("/api/v1/cmse/databases/:dbId", getCmsDatabaseAndSecretTokenById);
+  app.get("/api/v1/cmse/databases-meta/:dbId", getDatabaseMeta);
+  app.get("/api/v1/cmse/databases-meta", listDatabasesMeta);
+  app.put("/api/v1/cmse/databases/:dbId", withNext(updateDatabase));
+  app.delete("/api/v1/cmse/databases/:dbId", withNext(deleteDatabase));
+>>>>>>> upstream/master
 
   app.post("/api/v1/cmse/databases/:dbId/tables", withNext(createTable));
   app.put("/api/v1/cmse/tables/:tableId", withNext(updateTable));
@@ -822,9 +870,15 @@ export function addIntegrationsRoutes(app: express.Application) {
 }
 
 export function addDataSourceRoutes(app: express.Application) {
+<<<<<<< HEAD
   app.get("/api/v1/data-source/sources", cmCors, listDataSources);
   app.get("/api/v1/data-source/sources/:dataSourceId", cmCors, getDataSourceById);
   app.post("/api/v1/data-source/sources", cmCors, withNext(createDataSource));
+=======
+  app.get("/api/v1/data-source/sources", listDataSources);
+  app.get("/api/v1/data-source/sources/:dataSourceId", getDataSourceById);
+  app.post("/api/v1/data-source/sources", withNext(createDataSource));
+>>>>>>> upstream/master
   app.post(
     "/api/v1/data-source/sources/test",
     cmCors,
@@ -1067,12 +1121,15 @@ export function addCodegenOnlyRoutes(app: express.Application) {
     withNext(getProjectMeta)
   );
   app.get("/api/v1/localization/gen-texts", genTranslatableStrings);
+<<<<<<< HEAD
   app.post(
     "/api/v1/loader/code/prefill/:pkgVersionId",
     cors(),
     withNext(prefillPublishedLoader)
   );
 }
+=======
+>>>>>>> upstream/master
 
 // Loader routes: Production SDK traffic (high volume)
 export function addLoaderRoutes(app: express.Application) {
@@ -1095,6 +1152,27 @@ export function addLoaderRoutes(app: express.Application) {
     withNext(buildLatestLoaderAssets)
   );
   app.get("/api/v1/loader/chunks", cors(), getLoaderChunk);
+<<<<<<< HEAD
+=======
+  app.get(
+    "/api/v1/loader/html/published/:projectId/:component",
+    cors(),
+    apiAuth,
+    withNext(buildPublishedLoaderHtml)
+  );
+  app.get(
+    "/api/v1/loader/html/versioned/:projectId/:component",
+    cors(),
+    apiAuth,
+    withNext(buildVersionedLoaderHtml)
+  );
+  app.get(
+    "/api/v1/loader/html/preview/:projectId/:component",
+    cors(),
+    apiAuth,
+    buildLatestLoaderHtml
+  );
+>>>>>>> upstream/master
   app.get(
     "/api/v1/loader/repr-v2/published/:projectId",
     cors(),
@@ -1135,6 +1213,7 @@ export function addLoaderRoutes(app: express.Application) {
   app.get("/static/js/loader-hydrate.:hash.js", getHydrationScriptVersioned);
 }
 
+<<<<<<< HEAD
 // Loader HTML routes: REST API SSR (subprocess-based)
 export function addLoaderHtmlRoutes(app: express.Application) {
   app.get(
@@ -1172,6 +1251,18 @@ export function addImgOptimizerRoutes(app: express.Application) {
   // Image optimization endpoints
   app.get("/img-optimizer/v1/img", optimizeImageHandler);
   app.get("/img-optimizer/v1/img/:imageId", optimizeImageStaticHandler);
+=======
+  app.post(
+    "/api/v1/loader/code/prefill/:pkgVersionId",
+    cors(),
+    // intentionally no apiAuth()
+    withNext(prefillPublishedLoader)
+  );
+
+  app.get("/static/js/loader-hydrate.js", getHydrationScript);
+  app.get("/static/js/loader-hydrate-js", getHydrationScript);
+  app.get("/static/js/loader-hydrate.:hash.js", getHydrationScriptVersioned);
+>>>>>>> upstream/master
 }
 
 export function addMainAppServerRoutes(
@@ -1206,7 +1297,11 @@ export function addMainAppServerRoutes(
   /**
    * Auth Routes
    */
+<<<<<<< HEAD
   app.get("/api/v1/auth/csrf", cmCors, authRoutes.csrf);
+=======
+  app.get("/api/v1/auth/csrf", authRoutes.csrf);
+>>>>>>> upstream/master
   app.post(
     "/api/v1/auth/login",
     sensitiveRateLimiter,
@@ -1217,9 +1312,15 @@ export function addMainAppServerRoutes(
     sensitiveRateLimiter,
     withNext(authRoutes.signUp)
   );
+<<<<<<< HEAD
   app.get("/api/v1/auth/self", cmCors, withNext(authRoutes.self));
   app.post("/api/v1/auth/self", cmCors, withNext(authRoutes.updateSelf));
   app.delete("/api/v1/auth/self", cmCors, withNext(authRoutes.deleteSelf));
+=======
+  app.get("/api/v1/auth/self", authRoutes.self);
+  app.post("/api/v1/auth/self", withNext(authRoutes.updateSelf));
+  app.delete("/api/v1/auth/self", withNext(authRoutes.deleteSelf));
+>>>>>>> upstream/master
   app.post(
     "/api/v1/auth/self/password",
     sensitiveRateLimiter,
@@ -1250,6 +1351,7 @@ export function addMainAppServerRoutes(
     "/api/v1/auth/getEmailVerificationToken",
     authRoutes.getEmailVerificationToken
   );
+<<<<<<< HEAD
   // OAuth signup routes disabled - no new user registration via OAuth
   // app.get("/api/v1/auth/google", authRoutes.googleLogin);
   // app.get(
@@ -1262,6 +1364,19 @@ export function addMainAppServerRoutes(
   //   "/api/v1/auth/sso/:tenantId/consume",
   //   withNext(authRoutes.ssoCallback)
   // );
+=======
+  app.get("/api/v1/auth/google", authRoutes.googleLogin);
+  app.get(
+    "/api/v1/oauth2/google/callback",
+    withNext(authRoutes.googleCallback)
+  );
+  app.get("/api/v1/auth/sso/test", authRoutes.isValidSsoEmail);
+  app.get("/api/v1/auth/sso/:tenantId/login", authRoutes.ssoLogin);
+  app.get(
+    "/api/v1/auth/sso/:tenantId/consume",
+    withNext(authRoutes.ssoCallback)
+  );
+>>>>>>> upstream/master
   app.get("/api/v1/auth/airtable", authRoutes.airtableLogin);
   app.get("/api/v1/auth/google-sheets", authRoutes.googleSheetsLogin);
   app.get(
@@ -1475,7 +1590,11 @@ export function addMainAppServerRoutes(
   /**
    * Self routes
    */
+<<<<<<< HEAD
   app.get("/api/v1/app-config", cmCors, getAppConfig);
+=======
+  app.get("/api/v1/app-config", getAppConfig);
+>>>>>>> upstream/master
   app.get("/api/v1/app-ctx", withNext(getAppCtx));
 
   /**
@@ -1567,7 +1686,11 @@ export function addMainAppServerRoutes(
     getProjectRevWithoutData
   );
   app.get("/api/v1/project-data/:projectId", adminOnly, getFullProjectData);
+<<<<<<< HEAD
   app.put("/api/v1/projects/:projectId", cmCors, updateProject);
+=======
+  app.put("/api/v1/projects/:projectId", updateProject);
+>>>>>>> upstream/master
   app.delete(
     "/api/v1/projects/:projectId",
     cmCors,
@@ -1575,7 +1698,11 @@ export function addMainAppServerRoutes(
     withNext(deleteProject)
   );
   app.put("/api/v1/projects/:projectId/revert-to-version", revertToVersion);
+<<<<<<< HEAD
   app.put("/api/v1/projects/:projectId/update-host", cmCors, withNext(updateHostUrl));
+=======
+  app.put("/api/v1/projects/:projectId/update-host", withNext(updateHostUrl));
+>>>>>>> upstream/master
   app.delete("/api/v1/projects/:projectId/perm", withNext(removeSelfPerm));
   app.get("/api/v1/projects/:projectId/updates", getModelUpdates);
   app.post(
@@ -1690,9 +1817,15 @@ export function addMainAppServerRoutes(
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
     createWorkspace
   );
+<<<<<<< HEAD
   app.get("/api/v1/workspaces/:workspaceId", cmCors, getWorkspace);
   app.get("/api/v1/personal-workspace", cmCors, getPersonalWorkspace);
   app.put("/api/v1/workspaces/:workspaceId", cmCors, updateWorkspace);
+=======
+  app.get("/api/v1/workspaces/:workspaceId", getWorkspace);
+  app.get("/api/v1/personal-workspace", getPersonalWorkspace);
+  app.put("/api/v1/workspaces/:workspaceId", updateWorkspace);
+>>>>>>> upstream/master
   app.delete(
     "/api/v1/workspaces/:workspaceId",
     cmCors,
@@ -1739,12 +1872,17 @@ export function addMainAppServerRoutes(
   app.get("/api/v1/clip/:clipId", getClip);
   app.put("/api/v1/clip/:clipId", withNext(putClip));
 
+<<<<<<< HEAD
   app.get("/api/v1/settings/apitokens", cmCors, apiTokenRoutes.listTokens);
   app.put(
     "/api/v1/settings/apitokens",
     cmCors,
     withNext(apiTokenRoutes.createToken)
   );
+=======
+  app.get("/api/v1/settings/apitokens", apiTokenRoutes.listTokens);
+  app.put("/api/v1/settings/apitokens", withNext(apiTokenRoutes.createToken));
+>>>>>>> upstream/master
   app.delete(
     "/api/v1/settings/apitokens/:token",
     cmCors,
@@ -1949,11 +2087,15 @@ function addEndErrorHandlers(app: express.Application) {
       ) => {
         // Too noisy in CI to print AuthError all the time
         if (!(origErr instanceof AuthError)) {
+<<<<<<< HEAD
           logger().error("ERROR!", {
             error: origErr.message,
             stack: origErr.stack,
             name: origErr.name,
           });
+=======
+          logger().error("ERROR!", origErr);
+>>>>>>> upstream/master
         }
         if (res.headersSent || res.writableEnded) {
           logError(origErr, "Tried to edit closed response");

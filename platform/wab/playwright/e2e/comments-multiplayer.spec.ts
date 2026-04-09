@@ -7,10 +7,14 @@ import {
 } from "../utils/multiplayer-utils";
 import { goToProject, waitForFrameToLoad } from "../utils/studio-utils";
 
+<<<<<<< HEAD
 // Skip: comment reply propagation across sessions is unreliable — replies
 // posted by one user are not consistently visible to other sessions within
 // the timeout window. Needs investigation into the real-time update mechanism.
 testMultiplayer.describe.skip("multiplayer comments", () => {
+=======
+testMultiplayer.describe("multiplayer comments", () => {
+>>>>>>> upstream/master
   let projectId: string;
 
   testMultiplayer.beforeEach(async ({ admin, user1, user2 }) => {
@@ -104,7 +108,11 @@ testMultiplayer.describe.skip("multiplayer comments", () => {
           const replyLoc = s.models.studio
             .getCommentPost(threadIdValue)
             .getByText(replyText);
+<<<<<<< HEAD
           await expect(replyLoc).toBeVisible({ timeout: 15000 });
+=======
+          await expect(replyLoc).toBeVisible({ timeout: 5000 });
+>>>>>>> upstream/master
         });
       });
 

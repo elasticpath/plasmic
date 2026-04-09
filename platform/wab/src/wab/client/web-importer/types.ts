@@ -88,6 +88,7 @@ export interface WIAnimationSequence {
   name: string;
   keyframes: WIKeyFrame[];
 }
+<<<<<<< HEAD
 
 export interface WIKeyFrame {
   percentage: number;
@@ -101,6 +102,8 @@ export interface WIAnimationSequence {
   name: string;
   keyframes: WIKeyFrame[];
 }
+=======
+>>>>>>> upstream/master
 
 export const getWIVariantKey = (variant: WIVariant) => {
   if (variant.type === "base") {

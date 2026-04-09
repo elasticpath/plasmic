@@ -248,7 +248,11 @@ test.describe("data-rep", () => {
     const elementNameInput = models.studio.frame.locator(
       '[data-test-id="repeating-element-name"] input'
     );
+<<<<<<< HEAD
     await elementNameInput.press("Control+a");
+=======
+    await elementNameInput.press("ControlOrMeta+a");
+>>>>>>> upstream/master
     await elementNameInput.fill("item");
     await elementNameInput.press("Enter");
 

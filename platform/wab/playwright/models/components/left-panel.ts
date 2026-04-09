@@ -160,7 +160,11 @@ export class LeftPanel extends BaseModel {
         await this.sidebarModal.locator(".code-editor-input").click();
         await this.sidebarModal.locator(".monaco-editor").waitFor();
 
+<<<<<<< HEAD
         await this.page.keyboard.press("Control+A");
+=======
+        await this.page.keyboard.press("ControlOrMeta+A");
+>>>>>>> upstream/master
         await this.page.keyboard.press("Delete");
         await this.page.keyboard.press("Backspace");
         await this.page.keyboard.type(value);

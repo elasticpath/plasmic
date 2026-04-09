@@ -29,11 +29,16 @@ import {
   isRealCodeExpr,
   summarizeExpr,
 } from "@/wab/shared/core/exprs";
+import { tryGetOwnerSite } from "@/wab/shared/core/tpls";
 import {
   getDynamicBindings,
   isDynamicValue,
 } from "@/wab/shared/dynamic-bindings";
 import { tryEvalExpr } from "@/wab/shared/eval";
+import {
+  isPathDataToken,
+  pathToDisplayString,
+} from "@/wab/shared/eval/expression-parser";
 import {
   Component,
   CustomCode,
@@ -194,7 +199,14 @@ export const TemplatedTextEditor = React.forwardRef<
     const viewCtx = studioCtx.focusedViewCtx();
 
     const slateContainerRef = React.useRef<HTMLDivElement>(null);
-
+    const ctx = useContext(ContextMenuContext);
+    const insertDynamicValue = React.useCallback(() => {
+      if (!templatedString) {
+        ctx.useDynamicValue();
+      } else {
+        insertCodeTag(editor);
+      }
+    }, [templatedString, editor, ctx]);
     React.useImperativeHandle<PropEditorRef, PropEditorRef>(
       outerRef,
       () => ({
@@ -204,8 +216,19 @@ export const TemplatedTextEditor = React.forwardRef<
         },
         isFocused: () => ReactEditor.isFocused(editor),
         element: slateContainerRef.current,
+        useDynamicValue: insertDynamicValue,
       }),
-      [slateContainerRef, editor]
+      [slateContainerRef, editor, insertDynamicValue]
+    );
+
+    const exprCtx = React.useMemo(
+      () => ({
+        projectFlags: studioCtx.projectFlags(),
+        component: component ?? null,
+        projectId: viewCtx?.siteInfo.id,
+        inStudio: true,
+      }),
+      [component, studioCtx]
     );
 
     const exprCtx = React.useMemo(
@@ -335,8 +358,8 @@ export const TemplatedTextEditor = React.forwardRef<
         >
           <Slate
             editor={editor}
-            value={value as SlateDescendant[]}
-            onChange={onSlateChange}
+            initialValue={value as SlateDescendant[]}
+            onValueChange={onSlateChange}
           >
             <CustomCaret
               slateContainerRef={slateContainerRef}
@@ -772,13 +795,29 @@ function CodeTag({
     }
   }, [element, path, editor]);
 
-  let previewValue: any;
-  try {
-    previewValue = data ? tryEvalExpr(element.label, data).val : undefined;
-  } catch {
-    previewValue = undefined;
-  }
-  const codePreviewValue = summarizeExpr(element.jsSnippet, exprCtx);
+  const previewValue = React.useMemo(() => {
+    if (showExpressionAsPreviewValue) {
+      if (
+        isKnownObjectPath(element.jsSnippet) &&
+        isPathDataToken(element.jsSnippet.path) &&
+        exprCtx.component &&
+        exprCtx.projectId &&
+        exprCtx.inStudio
+      ) {
+        const site = tryGetOwnerSite(exprCtx.component);
+        if (site) {
+          return pathToDisplayString(
+            element.jsSnippet.path,
+            site,
+            exprCtx.projectId
+          );
+        }
+      }
+      return summarizeExpr(element.jsSnippet, exprCtx);
+    } else {
+      return data ? tryEvalExpr(element.label, data).val : undefined;
+    }
+  }, [showExpressionAsPreviewValue, element, exprCtx, data]);
 
   const value = extractValueSavedFromDataPicker(element.jsSnippet, exprCtx);
 
@@ -828,11 +867,11 @@ function CodeTag({
           schema={schema}
         />
       }
-      open={open}
+      visible={open}
       // We want this only so that the popover dismisses on click outside,
       // and doesn't dismiss on pointer leave.
       trigger={"click"}
-      onOpenChange={(newOpen) => {
+      onVisibleChange={(newOpen) => {
         if (!newOpen && preventPopoverClosingRef.current) {
           setOpen(false);
         } else {
@@ -863,7 +902,7 @@ function CodeTag({
         )}
       >
         {children}
-        {`${showExpressionAsPreviewValue ? codePreviewValue : previewValue}`}
+        {previewValue}
       </div>
     </Popover>
   );
@@ -944,7 +983,7 @@ function CustomCaret({
         break;
       } else {
         element = element.children[pathPosition];
-        if (Editor.isVoid(editor, element)) {
+        if (SlateElement.isElement(element) && Editor.isVoid(editor, element)) {
           voidOrNotFoundElement = true;
           break;
         }

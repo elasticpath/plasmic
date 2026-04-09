@@ -41,10 +41,14 @@ const POD_NAME: Promise<string> = resolvePodName();
 export class PinoLogger implements Logger {
   private readonly pinoLogger: PinoLog;
 
+<<<<<<< HEAD
   constructor(
     private readonly loggingContext?: Properties,
     podName?: string
   ) {
+=======
+  constructor(private readonly loggingContext?: Properties) {
+>>>>>>> upstream/master
     this.pinoLogger = pino({
       level: PINO_LOGGER_LEVEL,
       formatters: {

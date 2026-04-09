@@ -31,6 +31,10 @@ test.describe("Auto Open", () => {
   test.describe("Auto Open (Code components)", () => {
     test.beforeEach(async ({ apiClient, page }) => {
       projectId = await apiClient.setupProjectWithHostlessPackages({
+<<<<<<< HEAD
+=======
+        name: "auto-open",
+>>>>>>> upstream/master
         hostLessPackagesInfo: [
           {
             name: "react-aria",
@@ -478,7 +482,11 @@ test.describe("Auto Open", () => {
         await page.keyboard.press("Delete");
         await expect(pageFrame.getByText(text)).not.toBeVisible();
         await expect(getAutoOpenBanner(models)).not.toBeVisible();
+<<<<<<< HEAD
         await page.keyboard.press("Control+z");
+=======
+        await page.keyboard.press("ControlOrMeta+z");
+>>>>>>> upstream/master
         await expect(getAutoOpenBanner(models)).toBeVisible();
 
         await models.studio.withinLiveMode(async (liveFrame) => {

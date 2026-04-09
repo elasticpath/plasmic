@@ -625,6 +625,7 @@ async function buildLoader(
 export async function genLoaderHtmlBundleSandboxed(
   args: Parameters<typeof genLoaderHtmlBundle>[0]
 ) {
+<<<<<<< HEAD
   // Acquire semaphore permit to limit concurrent subprocess spawning
   const getHtmlPreviewQueueDepth = () =>
     (htmlPreviewSemaphore["_weightedQueues"] as unknown[][]).reduce(
@@ -644,6 +645,10 @@ export async function genLoaderHtmlBundleSandboxed(
     return await withSpan("genLoaderHtmlBundleSandboxed", async () => {
     const cmd = `node -r esbuild-register src/wab/server/loader/gen-html-bundle.ts`;
     const renderStart = Date.now();
+=======
+  return withSpan("genLoaderHtmlBundleSandboxed", async () => {
+    const cmd = `node -r esbuild-register src/wab/server/loader/gen-html-bundle.ts`;
+>>>>>>> upstream/master
     const { stdout, stderr, exitCode } =
       process.env.DISABLE_BWRAP === "1"
         ? await execa(
@@ -654,17 +659,24 @@ export async function genLoaderHtmlBundleSandboxed(
         : await execa(
             `bwrap`,
             [
+<<<<<<< HEAD
               ...`--clearenv --setenv CODEGEN_HOST ${getLoaderInternalUrl()} --unshare-user --unshare-pid --unshare-ipc --unshare-uts --unshare-cgroup --ro-bind /lib /lib --ro-bind /usr /usr --ro-bind /etc /etc --ro-bind /run /run ${
+=======
+              ...`--clearenv --setenv CODEGEN_HOST ${getCodegenUrl()} --unshare-user --unshare-pid --unshare-ipc --unshare-uts --unshare-cgroup --ro-bind /lib /lib --ro-bind /usr /usr --ro-bind /etc /etc --ro-bind /run /run ${
+>>>>>>> upstream/master
                 process.env.BWRAP_ARGS || ""
               } --chdir ${process.cwd()} ${cmd}`.split(/\s+/g),
               JSON.stringify(args),
             ],
             { reject: false }
           );
+<<<<<<< HEAD
     logger().info("html-preview-subprocess-done", {
       htmlPreviewRenderMs: Date.now() - renderStart,
       htmlPreviewExitCode: exitCode,
     });
+=======
+>>>>>>> upstream/master
     if (stderr.trim().length > 0 && exitCode === 0) {
       logger().error(
         `Sandboxed loader subprocess succeeded with exit code 0 but got unexpected stderr ${stderr}`
@@ -684,10 +696,14 @@ export async function genLoaderHtmlBundleSandboxed(
       throw new Error("Sandboxed loader subprocess returned no HTML");
     }
     return { html: stdout };
+<<<<<<< HEAD
     });
   } finally {
     release();
   }
+=======
+  });
+>>>>>>> upstream/master
 }
 
 export async function buildVersionedLoaderHtml(req: Request, res: Response) {

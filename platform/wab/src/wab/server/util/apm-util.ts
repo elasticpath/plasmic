@@ -20,6 +20,7 @@ export async function withSpan<T>(
     try {
       return await f();
     } finally {
+<<<<<<< HEAD
       const durationMs = new Date().getTime() - start;
       const suffix = msg ? `: ${msg}` : "";
       logger().info(`${name} took ${durationMs}ms${suffix}`, {
@@ -27,6 +28,11 @@ export async function withSpan<T>(
         duration_ms: durationMs,
         ...payload,
       });
+=======
+      logger().info(
+        `span "${name}" finished in ${new Date().getTime() - start}ms${suffix}`
+      );
+>>>>>>> upstream/master
       promTimer.end();
       span.end();
     }

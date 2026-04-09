@@ -5,6 +5,13 @@ import {
   getDataTokenIdentifiersFromPageMeta,
 } from "@/wab/shared/codegen/react-p/data-tokens/imports";
 import {
+<<<<<<< HEAD
+=======
+  generateDataTokenImports,
+  getDataTokenIdentifiersFromPageMeta,
+} from "@/wab/shared/codegen/react-p/data-tokens/imports";
+import {
+>>>>>>> upstream/master
   makePlasmicComponentName,
   makeTanStackHeadOptionsExportName,
 } from "@/wab/shared/codegen/react-p/serialize-utils";
@@ -13,7 +20,15 @@ import { SerializerBaseContext } from "@/wab/shared/codegen/react-p/types";
 import { isPlatformNextJs } from "@/wab/shared/codegen/react-p/utils";
 import { PageMetadata } from "@/wab/shared/codegen/types";
 import { assert, strict } from "@/wab/shared/common";
+<<<<<<< HEAD
 import { asCode, stripParens } from "@/wab/shared/core/exprs";
+=======
+import {
+  asCode,
+  flattenTemplatedStringToString,
+  stripParens,
+} from "@/wab/shared/core/exprs";
+>>>>>>> upstream/master
 import {
   Component,
   Expr,
@@ -301,7 +316,11 @@ function flattenMetadataValueToString(
     return value;
   }
   if (isKnownTemplatedString(value)) {
+<<<<<<< HEAD
     return value.text.filter((val) => L.isString(val)).join("");
+=======
+    return flattenTemplatedStringToString(value);
+>>>>>>> upstream/master
   }
   return "";
 }

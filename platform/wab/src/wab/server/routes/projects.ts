@@ -224,6 +224,22 @@ export function mkRevisionBroadcastData(
   };
 }
 
+/**
+ * Extracts consistent revision metadata for broadcasting project updates.
+ * This ensures all broadcast messages contain the same revision fields.
+ */
+export function mkRevisionBroadcastData(
+  rev: ProjectRevision
+): MinimalRevisionInfo {
+  return {
+    createdAt: rev.createdAt,
+    createdById: rev.createdById,
+    id: rev.id,
+    branchId: rev.branchId,
+    revision: rev.revision,
+  };
+}
+
 export async function listProjects(req: Request, res: Response) {
   const mgr = userDbMgr(req);
 
@@ -287,7 +303,7 @@ export async function createProjectWithHostlessPackages(
   const { bundler } = req;
 
   const site = createSite();
-  const { hostLessPackagesInfo } = req.body;
+  const { hostLessPackagesInfo, name } = req.body;
   for (const hostLessPackageInfo of hostLessPackagesInfo) {
     const projectDependency = await mgr.createHostLessProject(
       hostLessPackageInfo,
@@ -301,7 +317,7 @@ export async function createProjectWithHostlessPackages(
   const { project, rev } = await mgr.createProjectAndSaveRev({
     site,
     bundler,
-    name: "Untitled Project",
+    name: name ?? "Untitled Project",
   });
 
   req.promLabels.projectId = project.id;
@@ -1352,7 +1368,11 @@ export async function saveProjectRev(req: Request, res: Response) {
         try {
           checkExistingReferences(mergedData);
         } catch (e) {
+<<<<<<< HEAD
           captureException(e);
+=======
+          Sentry.captureException(e);
+>>>>>>> upstream/master
           // If there are errors in references, it could be due to dangling
           // references pointing to invalid external deps after upgrading
           // a project dependency.  Not sure how they are dangling.  But we
@@ -1362,7 +1382,11 @@ export async function saveProjectRev(req: Request, res: Response) {
             checkExistingReferences(mergedData);
           } catch (err) {
             // If there are still errors, then we give up :-/
+<<<<<<< HEAD
             captureException(err);
+=======
+            Sentry.captureException(err);
+>>>>>>> upstream/master
             throw new UnknownReferencesError();
           }
         }
@@ -1370,7 +1394,11 @@ export async function saveProjectRev(req: Request, res: Response) {
           checkBundleFields(mergedData);
           checkRefsInBundle(mergedData);
         } catch (e) {
+<<<<<<< HEAD
           captureException(e);
+=======
+          Sentry.captureException(e);
+>>>>>>> upstream/master
           throw new BundleTypeError();
         }
         return mergedData;
@@ -2858,6 +2886,7 @@ export async function updateProjectData(req: Request, res: Response) {
       }
 
       // TODO: check for cyclic refs and other possible errors
+<<<<<<< HEAD
       if (compReq.body != null) {
         const maybeError = elementSchemaToTpl(site, component, compReq.body, {
           codeComponentsOnly: false,
@@ -2878,6 +2907,26 @@ export async function updateProjectData(req: Request, res: Response) {
         component.tplTree = tpl;
         tplMgr.ensureSubtreeCorrectlyNamed(component, component.tplTree);
       }
+=======
+      const maybeError = elementSchemaToTpl(site, component, compReq.body, {
+        codeComponentsOnly: false,
+      });
+
+      if (maybeError.result.isError) {
+        throw new BadRequestError(maybeError.result.error.message);
+      }
+
+      const { tpl, warnings: componentWarnings } = maybeError.result.value;
+      componentWarnings.forEach((err) =>
+        warnings.push({
+          message:
+            err.message + (err.description ? "\n" + err.description : ""),
+        })
+      );
+
+      component.tplTree = tpl;
+      tplMgr.ensureSubtreeCorrectlyNamed(component, component.tplTree);
+>>>>>>> upstream/master
 
       if (!allowUpdate) {
         result.newComponents.push({
@@ -2914,6 +2963,7 @@ export async function updateProjectData(req: Request, res: Response) {
       );
     }
 
+<<<<<<< HEAD
     if (data.updateGlobalContexts && data.updateGlobalContexts.length > 0) {
       const contexts = data.updateGlobalContexts.map((c) => c.name).join(", ");
       logger().info(`Update project data: Updating global contexts ${contexts}`);
@@ -2922,6 +2972,8 @@ export async function updateProjectData(req: Request, res: Response) {
       gcWarnings.forEach((message) => warnings.push({ message }));
     }
 
+=======
+>>>>>>> upstream/master
     if (data.regenerateSecretApiToken) {
       const project = await dbMgr.updateProject(
         {

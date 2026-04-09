@@ -99,6 +99,7 @@ test.describe("hostless-cms", () => {
     const cmsPublicToken =
       (await page.locator('[data-test-id="publicToken"]').textContent()) || "";
     projectId = await apiClient.setupProjectWithHostlessPackages({
+      name: "cms",
       hostLessPackagesInfo: {
         name: "plasmic-cms",
         npmPkg: ["@plasmicpkgs/plasmic-cms"],
@@ -160,7 +161,7 @@ test.describe("hostless-cms", () => {
       .first();
     await cmsDataFetcherLabel.click();
     await page.waitForTimeout(500);
-    await cmsDataFetcherLabel.press("Control+r");
+    await cmsDataFetcherLabel.press("ControlOrMeta+r");
     await page.waitForTimeout(200);
     await page.keyboard.type("CMS Container");
     await page.keyboard.press("Enter");
@@ -206,7 +207,7 @@ test.describe("hostless-cms", () => {
       .first();
     await cmsDataFetcherLabel2.click();
     await page.waitForTimeout(500);
-    await cmsDataFetcherLabel2.press("Control+r");
+    await cmsDataFetcherLabel2.press("ControlOrMeta+r");
     await page.waitForTimeout(200);
     await page.keyboard.type("CMS Container");
     await page.keyboard.press("Enter");

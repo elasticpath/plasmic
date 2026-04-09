@@ -253,7 +253,7 @@ export class StudioModel extends BaseModel {
   }
 
   async extractComponentNamed(name: string) {
-    await this.page.keyboard.press("Control+Alt+k");
+    await this.page.keyboard.press("ControlOrMeta+Alt+k");
     await this.extractComponentNameInput.fill(name);
     await this.extractSubmitButton.click();
   }
@@ -447,7 +447,11 @@ export class StudioModel extends BaseModel {
 
   async renameTreeNode(name: string) {
     await this.page.waitForTimeout(200);
+<<<<<<< HEAD
     await this.page.keyboard.press("Control+r");
+=======
+    await this.page.keyboard.press("ControlOrMeta+r");
+>>>>>>> upstream/master
     await this.page.waitForTimeout(200);
     await this.page.keyboard.type(name);
     await this.page.waitForTimeout(200);
@@ -1077,7 +1081,11 @@ export class StudioModel extends BaseModel {
        */
       getValueCodeEditor: () =>
         contentContainer.locator(
+<<<<<<< HEAD
           `[data-plasmic-role="labeled-item"] .code-editor-input`
+=======
+          `[data-plasmic-role="labeled-item"] .code-editor-input, [data-plasmic-role="labeled-item"] .templated-string-input`
+>>>>>>> upstream/master
         ),
 
       /**
@@ -1108,7 +1116,11 @@ export class StudioModel extends BaseModel {
           if (isCodeType) {
             await expect(
               contentContainer.locator(
+<<<<<<< HEAD
                 `[data-plasmic-role="labeled-item"] .code-editor-input`
+=======
+                `[data-plasmic-role="labeled-item"] .code-editor-input, [data-plasmic-role="labeled-item"] .templated-string-input`
+>>>>>>> upstream/master
               )
             ).toHaveText(expectedValue);
           } else {
@@ -1122,7 +1134,11 @@ export class StudioModel extends BaseModel {
           }
           await expect(
             targetElement
+<<<<<<< HEAD
               .locator(".code-editor-input")
+=======
+              .locator(".code-editor-input, .templated-string-input")
+>>>>>>> upstream/master
               .getByText(`$dataTokens.${expectedJsName}`)
           ).toBeVisible();
         });

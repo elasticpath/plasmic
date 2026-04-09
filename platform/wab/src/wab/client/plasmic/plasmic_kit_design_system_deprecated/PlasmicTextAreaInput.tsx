@@ -188,12 +188,15 @@ function PlasmicTextAreaInput__RenderFunc(props: {
         type: "private",
         variableType: "variant",
         initFunc: ({ $props, $state, $queries, $q, $ctx }) => $props.autoResize,
+<<<<<<< HEAD
       },
       {
         path: "autoResize",
         type: "private",
         variableType: "variant",
         initFunc: ({ $props, $state, $queries, $ctx }) => $props.autoResize,
+=======
+>>>>>>> upstream/master
       },
     ],
     [$props, $ctx, $refs]

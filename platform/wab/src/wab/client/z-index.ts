@@ -3,7 +3,10 @@
 export const zIndex = {
   quickModal: 4000,
   tour: 3000,
+<<<<<<< HEAD
   tourHighlightAboveMenus: 1051,
+=======
+>>>>>>> upstream/master
   dropdownMenu: 1050, // .ant-dropdown (e.g. right-click context menus)
   tourHighlight: 1049,
   dataPicker: 1040,

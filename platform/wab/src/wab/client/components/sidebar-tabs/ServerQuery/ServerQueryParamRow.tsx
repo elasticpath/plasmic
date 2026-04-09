@@ -175,9 +175,12 @@ export function getServerQueryParamRowItems(opts: {
               valueSetState={fieldValue !== undefined ? "isSet" : undefined}
               propValueEditorContext={propValueEditorContext}
               onChange={(newFieldVal) => {
+<<<<<<< HEAD
                 if (newFieldVal == null) {
                   return;
                 }
+=======
+>>>>>>> upstream/master
                 // Re-read the current arg to avoid stale closures
                 const existingArg =
                   param.argName in argsMap
