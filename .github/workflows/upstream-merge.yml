@@ -57,9 +57,24 @@ jobs:
         if: steps.check.outputs.has_changes == 'true'
         id: merge
         run: |
+          UPSTREAM_SHA=$(git rev-parse upstream/master)
+
           if git merge upstream/master --no-edit; then
             echo "Merge succeeded — no conflicts."
             echo "has_conflicts=false" >> $GITHUB_OUTPUT
+
+            # Update the merge point marker so the next run knows where we left off
+            cat > .github/upstream-merge-point << MARKER_EOF
+          # Last upstream commit (plasmicapp/plasmic master) merged into this fork.
+          # Updated automatically by the upstream-merge workflow after each merge.
+          # Used to determine which upstream commits are genuinely new.
+          #
+          # IMPORTANT: Upstream merge PRs must use "Create a merge commit" (not squash)
+          # so git can track ancestry naturally. This file is a safety net.
+          $UPSTREAM_SHA
+          MARKER_EOF
+            git add .github/upstream-merge-point
+            git commit --amend --no-edit
           else
             echo "Merge has conflicts."
 
@@ -126,7 +141,9 @@ jobs:
           - [ ] yarn.lock files regenerated for any modified package.json
           - [ ] CI triggered (close/reopen PR or push a commit to trigger workflows)
           - [ ] **Merge with "Create a merge commit" — do NOT squash**
-          - [ ] After merge: update `.github/upstream-merge-point` to the new upstream HEAD
+
+          The `.github/upstream-merge-point` marker is updated automatically in clean merges.
+          For conflict merges, update it manually after resolving conflicts.
           HEREDOC_END
 
           echo "body_file=/tmp/pr-body.md" >> $GITHUB_OUTPUT
