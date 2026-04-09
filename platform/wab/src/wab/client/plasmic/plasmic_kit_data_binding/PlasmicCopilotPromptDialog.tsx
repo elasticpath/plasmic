@@ -137,13 +137,13 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
         path: "state",
         type: "private",
         variableType: "variant",
-        initFunc: ({ $props, $state, $queries, $ctx }) => $props.state,
+        initFunc: ({ $props, $state, $queries, $q, $ctx }) => $props.state,
       },
       {
         path: "type",
         type: "private",
         variableType: "variant",
-        initFunc: ({ $props, $state, $queries, $ctx }) => $props.type,
+        initFunc: ({ $props, $state, $queries, $q, $ctx }) => $props.type,
       },
       {
         path: "withAdminOverrides",
@@ -159,6 +159,7 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
     $props,
     $ctx,
     $queries: {},
+    $q: {},
     $refs,
   });
 
@@ -326,6 +327,7 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
               className={classNames(
                 projectcss.all,
                 projectcss.h6,
+                projectcss.h6__w2GXN,
                 projectcss.__wab_text,
                 sty.history,
                 {
