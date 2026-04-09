@@ -35,16 +35,22 @@ jobs:
         id: check
         run: |
           UPSTREAM_HEAD=$(git rev-parse upstream/master)
-          MERGE_BASE=$(git merge-base HEAD upstream/master)
 
-          if [ "$UPSTREAM_HEAD" = "$MERGE_BASE" ]; then
-            echo "No new upstream commits. Nothing to do."
+          # Use the marker file to determine the last merged upstream commit.
+          # git merge-base doesn't work because PR #201 was squash-merged,
+          # which lost the upstream ancestry. Future merges must use "Create
+          # a merge commit" (not squash) so git can track this naturally.
+          LAST_MERGED=$(grep -v '^#' .github/upstream-merge-point | tr -d '[:space:]')
+
+          if [ "$UPSTREAM_HEAD" = "$LAST_MERGED" ]; then
+            echo "No new upstream commits since ${LAST_MERGED:0:12}. Nothing to do."
             echo "has_changes=false" >> $GITHUB_OUTPUT
           else
-            COMMIT_COUNT=$(git rev-list --count HEAD..$UPSTREAM_HEAD)
-            echo "Found $COMMIT_COUNT new upstream commits."
+            COMMIT_COUNT=$(git rev-list --count "$LAST_MERGED".."$UPSTREAM_HEAD")
+            echo "Found $COMMIT_COUNT new upstream commits since ${LAST_MERGED:0:12}."
             echo "has_changes=true" >> $GITHUB_OUTPUT
             echo "commit_count=$COMMIT_COUNT" >> $GITHUB_OUTPUT
+            echo "last_merged=$LAST_MERGED" >> $GITHUB_OUTPUT
           fi
 
       - name: Attempt merge
@@ -77,10 +83,7 @@ jobs:
           HAS_CONFLICTS: ${{ steps.merge.outputs.has_conflicts }}
           CONFLICTED_FILES: ${{ steps.merge.outputs.conflicted_files }}
         run: |
-          cat > /tmp/pr-body.md << 'HEREDOC_END'
-          ## Upstream Merge
-          HEREDOC_END
-
+          echo "## Upstream Merge" > /tmp/pr-body.md
           echo "" >> /tmp/pr-body.md
           echo "**$COMMIT_COUNT new commits** from [plasmicapp/plasmic](https://github.com/plasmicapp/plasmic) master." >> /tmp/pr-body.md
 
@@ -94,12 +97,12 @@ jobs:
           ```bash
           git fetch origin merge/upstream
           git checkout merge/upstream
-          # Resolve conflicts...
+          # Resolve conflicts, then:
           git push origin merge/upstream
           ```
 
-          **Conflicted files:**
           HEREDOC_END
+            echo "**Conflicted files:**" >> /tmp/pr-body.md
             echo '```' >> /tmp/pr-body.md
             echo "$CONFLICTED_FILES" >> /tmp/pr-body.md
             echo '```' >> /tmp/pr-body.md
@@ -114,14 +117,16 @@ jobs:
 
           cat >> /tmp/pr-body.md << 'HEREDOC_END'
 
-          ### Checklist
+          ### Before merging
 
           See [Upstream Merge Runbook](docs/internal/UPSTREAM_MERGE_RUNBOOK.md) for detailed guidance.
 
           - [ ] Conflicts resolved (if any)
           - [ ] EP integrity tests pass (`npx jest --testPathPattern=ep-fork-integrity`)
           - [ ] yarn.lock files regenerated for any modified package.json
-          - [ ] Mark ready for review (auto-adds CI test labels)
+          - [ ] CI triggered (close/reopen PR or push a commit to trigger workflows)
+          - [ ] **Merge with "Create a merge commit" — do NOT squash**
+          - [ ] After merge: update `.github/upstream-merge-point` to the new upstream HEAD
           HEREDOC_END
 
           echo "body_file=/tmp/pr-body.md" >> $GITHUB_OUTPUT
