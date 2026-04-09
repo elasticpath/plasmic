@@ -1,0 +1,216 @@
+name: Upstream Merge
+
+on:
+  schedule:
+    # Every Monday at 08:00 UTC
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  merge:
+    name: Merge upstream/master
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/plasmicapp/plasmic.git || true
+          git fetch upstream master
+
+      - name: Check for new upstream commits
+        id: check
+        run: |
+          UPSTREAM_HEAD=$(git rev-parse upstream/master)
+          MERGE_BASE=$(git merge-base HEAD upstream/master)
+
+          if [ "$UPSTREAM_HEAD" = "$MERGE_BASE" ]; then
+            echo "No new upstream commits. Nothing to do."
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            COMMIT_COUNT=$(git rev-list --count HEAD..$UPSTREAM_HEAD)
+            echo "Found $COMMIT_COUNT new upstream commits."
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "commit_count=$COMMIT_COUNT" >> $GITHUB_OUTPUT
+            echo "upstream_head=${UPSTREAM_HEAD:0:12}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check for existing merge PR
+        if: steps.check.outputs.has_changes == 'true'
+        id: existing-pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER=$(gh pr list --head merge/upstream --base master --json number --jq '.[0].number // empty')
+          if [ -n "$PR_NUMBER" ]; then
+            echo "Existing PR: #$PR_NUMBER"
+            echo "pr_exists=true" >> $GITHUB_OUTPUT
+            echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          else
+            echo "No existing merge PR."
+            echo "pr_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create or update merge branch
+        if: steps.check.outputs.has_changes == 'true'
+        id: merge
+        run: |
+          # If branch exists remotely, check it out; otherwise create from master
+          if git ls-remote --heads origin merge/upstream | grep -q merge/upstream; then
+            git checkout merge/upstream
+            git reset --hard origin/master
+          else
+            git checkout -b merge/upstream
+          fi
+
+          # Attempt the merge
+          if git merge upstream/master --no-edit; then
+            echo "Merge succeeded — no conflicts."
+            echo "has_conflicts=false" >> $GITHUB_OUTPUT
+          else
+            echo "Merge has conflicts."
+            # Stage everything (including conflict markers) so we can push
+            git add -A
+            git commit --no-edit -m "merge: upstream (conflicts to resolve)" || true
+            echo "has_conflicts=true" >> $GITHUB_OUTPUT
+
+            # List conflicted files for the PR description
+            CONFLICTED=$(git diff --name-only --diff-filter=U HEAD 2>/dev/null || echo "")
+            if [ -z "$CONFLICTED" ]; then
+              # Conflicts were auto-staged, list from the merge attempt
+              CONFLICTED=$(git log -1 --format="" --name-only 2>/dev/null || echo "See branch for details")
+            fi
+            echo "conflicted_files<<EOF" >> $GITHUB_OUTPUT
+            echo "$CONFLICTED" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Push merge branch
+        if: steps.check.outputs.has_changes == 'true'
+        run: git push origin merge/upstream --force
+
+      - name: Build PR description
+        if: steps.check.outputs.has_changes == 'true'
+        id: pr-body
+        env:
+          COMMIT_COUNT: ${{ steps.check.outputs.commit_count }}
+          HAS_CONFLICTS: ${{ steps.merge.outputs.has_conflicts }}
+          CONFLICTED_FILES: ${{ steps.merge.outputs.conflicted_files }}
+        run: |
+          BODY="## Upstream Merge"
+          BODY="$BODY
+
+          **$COMMIT_COUNT new commits** from [plasmicapp/plasmic](https://github.com/plasmicapp/plasmic) master."
+
+          if [ "$HAS_CONFLICTS" = "true" ]; then
+            BODY="$BODY
+
+          ### Conflicts to resolve
+
+          This merge has conflicts. Check out the branch, resolve them, and push:
+
+          \`\`\`bash
+          git fetch origin merge/upstream
+          git checkout merge/upstream
+          # Resolve conflicts...
+          git push origin merge/upstream
+          \`\`\`
+
+          **Conflicted files:**
+          \`\`\`
+          $CONFLICTED_FILES
+          \`\`\`"
+          else
+            BODY="$BODY
+
+          ### Clean merge — no conflicts
+
+          This merge applied cleanly. Review the diff and merge when ready."
+          fi
+
+          BODY="$BODY
+
+          ### Checklist
+
+          See [Upstream Merge Runbook](docs/internal/UPSTREAM_MERGE_RUNBOOK.md) for detailed guidance.
+
+          - [ ] Conflicts resolved (if any)
+          - [ ] EP integrity tests pass (\`npx jest --testPathPattern=ep-fork-integrity\`)
+          - [ ] yarn.lock files regenerated for any modified package.json
+          - [ ] Mark ready for review (auto-adds CI test labels)"
+
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create or update PR
+        if: steps.check.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT_COUNT: ${{ steps.check.outputs.commit_count }}
+          HAS_CONFLICTS: ${{ steps.merge.outputs.has_conflicts }}
+          PR_EXISTS: ${{ steps.existing-pr.outputs.pr_exists }}
+          PR_NUMBER: ${{ steps.existing-pr.outputs.pr_number }}
+          PR_BODY: ${{ steps.pr-body.outputs.body }}
+        run: |
+          TITLE="merge: upstream $(date +%Y-%m-%d) ($COMMIT_COUNT commits)"
+          DRAFT_FLAG=""
+          if [ "$HAS_CONFLICTS" = "true" ]; then
+            DRAFT_FLAG="--draft"
+          fi
+
+          if [ "$PR_EXISTS" = "true" ]; then
+            echo "Updating existing PR #$PR_NUMBER"
+            gh pr edit "$PR_NUMBER" \
+              --title "$TITLE" \
+              --body "$PR_BODY"
+
+            # Set draft status based on conflicts
+            if [ "$HAS_CONFLICTS" = "true" ]; then
+              gh pr ready "$PR_NUMBER" --undo 2>/dev/null || true
+            fi
+          else
+            echo "Creating new PR"
+            gh pr create \
+              --head merge/upstream \
+              --base master \
+              --title "$TITLE" \
+              --body "$PR_BODY" \
+              $DRAFT_FLAG
+          fi
+
+      - name: Summary
+        if: steps.check.outputs.has_changes == 'true'
+        env:
+          COMMIT_COUNT: ${{ steps.check.outputs.commit_count }}
+          HAS_CONFLICTS: ${{ steps.merge.outputs.has_conflicts }}
+        run: |
+          echo "### Upstream Merge" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Commits:** $COMMIT_COUNT" >> $GITHUB_STEP_SUMMARY
+          if [ "$HAS_CONFLICTS" = "true" ]; then
+            echo "**Status:** Conflicts detected — draft PR created" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Status:** Clean merge — PR ready for review" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Summary (no changes)
+        if: steps.check.outputs.has_changes == 'false'
+        run: |
+          echo "### Upstream Merge" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "No new upstream commits. Nothing to do." >> $GITHUB_STEP_SUMMARY
