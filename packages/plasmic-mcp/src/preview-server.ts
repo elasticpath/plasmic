@@ -29,6 +29,21 @@ import { exportGlobalVariantGroup } from "@/wab/shared/codegen/variants";
 import { exportIconAsset, extractUsedIconAssetsForComponents } from "@/wab/shared/codegen/image-assets";
 import { walkDependencyTree } from "@/wab/shared/core/project-deps";
 import type { ExportOpts, ComponentExportOutput } from "@/wab/shared/codegen/types";
+import { componentToDeepReferenced } from "@/wab/shared/cached-selectors";
+import {
+  isCodeComponent,
+  getCodeComponentImportName,
+  getCodeComponentHelperImportName,
+} from "@/wab/shared/core/components";
+import type { CodeComponent } from "@/wab/shared/core/components";
+import { isCodeComponentWithHelpers } from "@/wab/shared/code-components/code-components";
+import type { CodeComponentWithHelpers } from "@/wab/shared/code-components/code-components";
+import {
+  makeComponentSkeletonIdFileName,
+  makeCodeComponentHelperSkeletonIdFileName,
+} from "@/wab/shared/codegen/react-p/serialize-utils";
+import { getSlotParams } from "@/wab/shared/SlotUtils";
+import { jsLiteral } from "@/wab/shared/codegen/util";
 
 let server: http.Server | null = null;
 let serverPort: number | null = null;
@@ -352,14 +367,39 @@ function generateComponentModules(component: any): CodeModule[] | { error: strin
       console.error("[plasmic-mcp] Dependency project mods failed (non-fatal):", e instanceof Error ? e.message : e);
     }
 
-    // 6d. Component CSS + render + skeleton (live-syncer:185, createComponentModules)
+    // 6d. Root component + all referenced components (live-syncer:185-212)
     if (output.cssRules) modules.push({ name: `./${output.cssFileName}`, source: output.cssRules, lang: "css" });
     modules.push({ name: `./${output.renderModuleFileName}`, source: output.renderModule, lang: "tsx" });
     modules.push({ name: `./${output.skeletonModuleFileName}`, source: output.skeletonModule, lang: "tsx" });
 
-    // 6e. Icon assets (live-syncer:214-220)
+    const referencedComponents = extractDependentComponents(component);
+    for (const refComp of referencedComponents) {
+      if (isCodeComponent(refComp)) {
+        modules.push(createCodeComponentStubModule(refComp));
+        if (isCodeComponentWithHelpers(refComp)) {
+          modules.push(createCodeComponentHelperStubModule(refComp));
+        }
+      } else if (refComp !== component) {
+        try {
+          const refOutput: ComponentExportOutput = exportReactPresentational(
+            compGenHelper, refComp, site, projectConfig, imageAssetUriMap,
+            false, false, undefined, exportOpts, siteCtx
+          );
+          if (refOutput.cssRules) {
+            modules.push({ name: `./${refOutput.cssFileName}`, source: refOutput.cssRules, lang: "css" });
+          }
+          modules.push({ name: `./${refOutput.renderModuleFileName}`, source: refOutput.renderModule, lang: "tsx" });
+          modules.push({ name: `./${refOutput.skeletonModuleFileName}`, source: refOutput.skeletonModule, lang: "tsx" });
+        } catch (e) {
+          console.error(`[plasmic-mcp] Codegen for referenced "${refComp.name}" failed (non-fatal):`, e instanceof Error ? e.message : e);
+        }
+      }
+    }
+    console.error(`[plasmic-mcp] Generated modules for ${referencedComponents.size} referenced components`);
+
+    // 6e. Icon assets for all referenced components (live-syncer:214-220)
     try {
-      const icons = extractUsedIconAssetsForComponents(site, [component]);
+      const icons = extractUsedIconAssetsForComponents(site, [...referencedComponents]);
       for (const asset of icons) {
         if (asset.dataUri) {
           const iconBundle = exportIconAsset(asset, { idFileNames: true });
@@ -767,6 +807,83 @@ function generatePreviewPage(
   </script>
 </body>
 </html>`;
+}
+
+// ---------------------------------------------------------------------------
+// Component dependency helpers (mirrors live-syncer.ts logic using shared imports)
+// ---------------------------------------------------------------------------
+
+/**
+ * Recursively collect all components that `component` depends on.
+ * Mirrors live-syncer.ts extractDependentComponents — uses shared
+ * componentToDeepReferenced + superComp/subComp walk.
+ */
+function extractDependentComponents(component: any): Set<any> {
+  const referencedComps = new Set<any>();
+  const seen = new Set<any>();
+
+  const check = (comp: any) => {
+    if (seen.has(comp)) return;
+    seen.add(comp);
+
+    for (const dep of componentToDeepReferenced(comp)) {
+      check(dep);
+      referencedComps.add(dep);
+    }
+
+    if (comp.superComp) {
+      referencedComps.add(comp.superComp);
+      check(comp.superComp);
+    }
+
+    for (const subComp of comp.subComps) {
+      referencedComps.add(subComp);
+      check(subComp);
+    }
+  };
+
+  check(component);
+  return referencedComps;
+}
+
+/**
+ * Create a stub module for a code component (no real implementation available
+ * in the preview context). Renders a <div> that passes through slot children.
+ * Mirrors live-syncer.ts createCodeComponentModule with ccStubs=true.
+ */
+function createCodeComponentStubModule(component: CodeComponent): CodeModule {
+  const importName = getCodeComponentImportName(component);
+  const slotNames = getSlotParams(component).map((p: any) => p.variable.name);
+  const impl = `(props: {}) => {
+    const slotNames = ${JSON.stringify(slotNames)};
+    const filteredProps = Object.fromEntries(Object.entries(props).filter(([key]) => !slotNames.includes(key)));
+    return (<div {...filteredProps}>{slotNames.map((name) => props[name]).filter((v) => v != null)}</div>);
+  }`;
+  const source = `
+  import React from "react";
+  ${component.codeComponentMeta.defaultExport ? "" : "export "}const ${importName} = ${impl};
+  ${component.codeComponentMeta.defaultExport ? `export default ${importName}` : ""}
+  `;
+  const fileName = makeComponentSkeletonIdFileName(component);
+  return { name: `./${fileName}.tsx`, lang: "tsx", source };
+}
+
+/**
+ * Create a stub module for a code component's helpers.
+ * Mirrors live-syncer.ts createCodeComponentHelperModule with ccStubs=true.
+ */
+function createCodeComponentHelperStubModule(component: CodeComponentWithHelpers): CodeModule {
+  const importName = getCodeComponentHelperImportName(component);
+  const impl = `([...(window as any).__PlasmicComponentRegistry, ...((window as any).__PlasmicBuiltinRegistry ?? [])]).find(
+    ({meta}) => meta.name === ${jsLiteral(component.name)}
+  ).meta.componentHelpers?.helpers`;
+  const source = `
+  import React from "react";
+  ${component.codeComponentMeta.helpers?.defaultExport ? "" : "export "}const ${importName} = ${impl};
+  ${component.codeComponentMeta.helpers?.defaultExport ? `export default ${importName}` : ""}
+  `;
+  const fileName = makeCodeComponentHelperSkeletonIdFileName(component);
+  return { name: `./${fileName}.tsx`, lang: "tsx", source };
 }
 
 // ---------------------------------------------------------------------------
