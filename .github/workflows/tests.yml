@@ -6,6 +6,8 @@ on:
     branches: [master]
     paths:
       - 'platform/wab/**'
+      - 'platform/loader-bundle-env/**'
+      - 'platform/canvas-packages/**'
       - 'packages/**'
       - 'plasmicpkgs/**'
       - '.github/workflows/tests.yml'
@@ -14,6 +16,8 @@ on:
     branches: [master]
     paths:
       - 'platform/wab/**'
+      - 'platform/loader-bundle-env/**'
+      - 'platform/canvas-packages/**'
       - 'packages/**'
       - 'plasmicpkgs/**'
       - '.github/workflows/tests.yml'
@@ -45,6 +49,31 @@ jobs:
       - name: Generate required files (PEG parsers, model classes)
         working-directory: platform/wab
         run: make
+
+  # Fast check (~2 min) that EP-specific customizations haven't been dropped.
+  # Runs on all PRs without labels. Blocks merge if any EP dep/file is missing.
+  test-ep-integrity:
+    name: EP Fork Integrity
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install WAB dependencies
+        working-directory: platform/wab
+        run: yarn install --frozen-lockfile
+
+      - name: Run EP integrity tests
+        working-directory: platform/wab
+        run: |
+          NODE_OPTIONS='--max-old-space-size=4096' npx jest --runInBand --forceExit \
+            --testPathPattern='ep-fork-integrity' --no-coverage
 
   test-wab:
     name: WAB Tests (Shard ${{ matrix.shard }}/4)
@@ -510,7 +539,7 @@ jobs:
 
   all-tests:
     name: All Tests
-    needs: [setup, test-wab, test-wab-loader, test-packages, test-plasmicpkgs, test-e2e]
+    needs: [setup, test-ep-integrity, test-wab, test-wab-loader, test-packages, test-plasmicpkgs, test-e2e]
     if: always()
     runs-on: ubuntu-latest
 
@@ -521,6 +550,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
 
           setup_result="${{ needs.setup.result }}"
+          ep_integrity_result="${{ needs.test-ep-integrity.result }}"
           wab_result="${{ needs.test-wab.result }}"
           wab_loader_result="${{ needs.test-wab-loader.result }}"
           packages_result="${{ needs.test-packages.result }}"
@@ -530,11 +560,19 @@ jobs:
           echo "| Job | Result |" >> $GITHUB_STEP_SUMMARY
           echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Setup | ${setup_result} |" >> $GITHUB_STEP_SUMMARY
+          echo "| EP Fork Integrity | ${ep_integrity_result} |" >> $GITHUB_STEP_SUMMARY
           echo "| WAB Tests | ${wab_result} |" >> $GITHUB_STEP_SUMMARY
           echo "| WAB Loader HTML | ${wab_loader_result} |" >> $GITHUB_STEP_SUMMARY
           echo "| SDK Packages | ${packages_result} |" >> $GITHUB_STEP_SUMMARY
           echo "| Plasmic Packages | ${plasmicpkgs_result} |" >> $GITHUB_STEP_SUMMARY
           echo "| E2E Tests | ${e2e_result} |" >> $GITHUB_STEP_SUMMARY
+
+          # Fail if EP integrity check failed (EP customizations dropped)
+          if [[ "${ep_integrity_result}" == "failure" ]]; then
+            echo ""
+            echo "EP fork integrity check failed — EP customizations may have been dropped."
+            exit 1
+          fi
 
           # Fail if setup failed (required for WAB tests)
           if [[ "${setup_result}" == "failure" ]]; then
