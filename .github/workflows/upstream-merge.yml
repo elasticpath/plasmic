@@ -71,11 +71,9 @@ jobs:
             echo "has_conflicts=false" >> $GITHUB_OUTPUT
 
             # Update the merge point marker
-            cat > .github/upstream-merge-point << MARKER_EOF
-# Last upstream commit (plasmicapp/plasmic master) merged into this fork.
-# Updated automatically by the upstream-merge workflow after each merge.
-$UPSTREAM_SHA
-MARKER_EOF
+            echo "# Last upstream commit (plasmicapp/plasmic master) merged into this fork." > .github/upstream-merge-point
+            echo "# Updated automatically by the upstream-merge workflow after each merge." >> .github/upstream-merge-point
+            echo "$UPSTREAM_SHA" >> .github/upstream-merge-point
             git add .github/upstream-merge-point
             git commit -m "chore: update upstream-merge-point to ${UPSTREAM_SHA:0:12}"
           else
