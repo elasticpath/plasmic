@@ -19,6 +19,10 @@ import { ensureDevFlags } from "@/wab/server/workers/worker-utils";
 import { getCodegenPublicUrl } from "@/wab/shared/urls";
 import { uniqBy } from "lodash";
 
+// Reuse a single client instance across publishes — the AWS SDK client is
+// designed to be long-lived and credential resolution is done once at init.
+let cloudfrontClient: CloudFrontClient | undefined;
+
 export async function prefillCloudfront(
   mgr: DbMgr,
   pool: PlasmicWorkerPool,
@@ -38,7 +42,7 @@ export async function prefillCloudfront(
       publishment.browserOnly ?? false,
       publishment.i18nKeyScheme,
       publishment.i18nTagPrefix,
-      publishment.appDir,
+      publishment.appDir ?? false,
       ...publishment.projectIds,
     ].join(",")
   );
@@ -66,59 +70,66 @@ export async function prefillCloudfront(
     resolvedProjectIdSpecs: string[];
   }> = [];
 
-  try {
-    await Promise.all(
-      // Prefill both browser + server and browserOnly builds
-      loaderPublishments.map(async (publishment) => {
-        const resolvedProjectIdSpecs = await getResolvedProjectVersions(
-          mgr,
-          publishment.projectIds
-        );
-
-        warmingData.push({ publishment, resolvedProjectIdSpecs });
-
-        await withSpan(
-          "loader-prefill",
-          async () => {
-            await genPublishedLoaderCodeBundle(
-              mgr,
-              pool,
-              makeGenPublishedLoaderCodeBundleOpts({
-                projectVersions: Object.fromEntries(
-                  resolvedProjectIdSpecs.map((spec) => {
-                    const [pid, version] = spec.split("@");
-                    return [pid, mkVersionToSync(version, false)];
-                  })
-                ),
-                platform: publishment.platform,
-                appDir: publishment.appDir ?? false,
-                loaderVersion: publishment.loaderVersion,
-                browserOnly: publishment.browserOnly,
-                i18n: {
-                  keyScheme: publishment.i18nKeyScheme ?? undefined,
-                  tagPrefix: publishment.i18nTagPrefix ?? undefined,
-                },
-              })
-            );
-          },
-          undefined,
-          {
-            platform: publishment.platform,
-            loader_version: publishment.loaderVersion,
-            browser_only: publishment.browserOnly,
-            app_dir: publishment.appDir,
-            i18n_key_scheme: publishment.i18nKeyScheme,
-            i18n_tag_prefix: publishment.i18nTagPrefix,
-            pkg_version_id: pkgVersionId,
-            project_ids: publishment.projectIds,
-            projects: resolvedProjectIdSpecs,
-          }
-        );
-      })
+  // Phase 1: resolve all project versions upfront so warmingData is fully
+  // populated before bundle generation starts. This ensures CDN warming and
+  // invalidation cover all variants even if a later bundle generation fails.
+  for (const publishment of loaderPublishments) {
+    const resolvedProjectIdSpecs = await getResolvedProjectVersions(
+      mgr,
+      publishment.projectIds
     );
-  } catch (err) {
-    // Even if there was an error, we set isPrefilled to true, else it'll
-    // never be pre-filled.
+    warmingData.push({ publishment, resolvedProjectIdSpecs });
+  }
+
+  // Phase 2: generate bundles sequentially to bound peak memory usage.
+  // Each variant is wrapped independently so a single failure does not abort
+  // the remaining variants — all are still warmed and invalidated below.
+  for (const { publishment, resolvedProjectIdSpecs } of warmingData) {
+    try {
+      await withSpan(
+        "loader-prefill",
+        async () => {
+          await genPublishedLoaderCodeBundle(
+            mgr,
+            pool,
+            makeGenPublishedLoaderCodeBundleOpts({
+              projectVersions: Object.fromEntries(
+                resolvedProjectIdSpecs.map((spec) => {
+                  const [pid, version] = spec.split("@");
+                  return [pid, mkVersionToSync(version, false)];
+                })
+              ),
+              platform: publishment.platform,
+              appDir: publishment.appDir ?? false,
+              loaderVersion: publishment.loaderVersion,
+              browserOnly: publishment.browserOnly ?? false,
+              i18n: {
+                keyScheme: publishment.i18nKeyScheme ?? undefined,
+                tagPrefix: publishment.i18nTagPrefix ?? undefined,
+              },
+            })
+          );
+        },
+        undefined,
+        {
+          platform: publishment.platform,
+          loader_version: publishment.loaderVersion,
+          browser_only: publishment.browserOnly,
+          app_dir: publishment.appDir,
+          i18n_key_scheme: publishment.i18nKeyScheme,
+          i18n_tag_prefix: publishment.i18nTagPrefix,
+          pkg_version_id: pkgVersionId,
+          project_ids: publishment.projectIds,
+          projects: resolvedProjectIdSpecs,
+        }
+      );
+    } catch (err) {
+      // Even if there was an error, we set isPrefilled to true, else it'll
+      // never be pre-filled.
+      logger().warn(
+        `Bundle generation failed during prefill for ${projectId} (${publishment.platform}): ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
   }
 
   // isPrefilled must be set before warming so that origin can serve
@@ -200,12 +211,14 @@ export async function prefillCloudfront(
         `/api/v1/loader/html/published/${projectId}*`,
       ];
       // CloudFront is a global service; us-east-1 is the correct region for all CF API calls
-      const cloudfront = new CloudFrontClient({ region: "us-east-1" });
-      await cloudfront.send(
+      cloudfrontClient ??= new CloudFrontClient({ region: "us-east-1" });
+      await cloudfrontClient.send(
         new CreateInvalidationCommand({
           DistributionId: distributionId,
           InvalidationBatch: {
-            CallerReference: pkgVersionId,
+            // Append timestamp so retries of the same pkgVersionId get a fresh
+            // CallerReference — CloudFront rejects reuse of an in-progress reference.
+            CallerReference: `${pkgVersionId}-${Date.now()}`,
             Paths: {
               Quantity: invalidationPaths.length,
               Items: invalidationPaths,

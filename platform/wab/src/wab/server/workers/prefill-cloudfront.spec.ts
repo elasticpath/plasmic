@@ -253,9 +253,10 @@ describe("Prefill cloudfront", () => {
           .invocationCallOrder[0];
         expect(updateCallOrder).toBeLessThan(firstFetchCallOrder);
 
-        // One warming GET per unique publishment (4 publishments, but 2 share
-        // the same dedup key so expect 3 unique fetches)
-        expect(global.fetch).toHaveBeenCalledTimes(3);
+        // One warming GET per unique publishment. All 4 mock publishments have
+        // distinct uniqBy keys (react/8/false, nextjs/8/false+i18n, react/8/true,
+        // react/1/true) so all 4 survive dedup and each gets a warming fetch.
+        expect(global.fetch).toHaveBeenCalledTimes(4);
 
         // Verify URL construction for a known publishment
         const fetchedUrls = (global.fetch as jest.Mock).mock.calls.map(
@@ -309,15 +310,16 @@ describe("Prefill cloudfront", () => {
         const invalidationOrder = mockSend.mock.invocationCallOrder[0];
         expect(firstFetchOrder).toBeLessThan(invalidationOrder);
 
-        // The mock has 4 publishments but 2 share the same dedup key, so 3 unique
-        // combinations: [p1,p2,p3], [p1,p2,p3] (nextjs i18n — same ids), [p1].
-        // After dedup: p1,p2,p3 and p1.
+        // codePaths deduplicates on sorted projectId strings (not on all
+        // platform/loaderVersion fields), so publishments sharing the same
+        // projectId set collapse to one invalidation path. Here [p1,p2,p3]
+        // appears in 2 publishments and [p1] in 2 others → 2 unique code paths.
         expect(mockSend).toHaveBeenCalledTimes(1);
         expect(mockSend).toHaveBeenCalledWith(
           expect.objectContaining({
             DistributionId: "EDFDVBD6EXAMPLE",
             InvalidationBatch: expect.objectContaining({
-              CallerReference: PKG_VERSION_ID,
+              CallerReference: expect.stringContaining(PKG_VERSION_ID),
               Paths: expect.objectContaining({
                 // 2 unique code paths + 3 repr/html paths = 5
                 Quantity: 5,
@@ -332,6 +334,29 @@ describe("Prefill cloudfront", () => {
             }),
           })
         );
+      });
+    });
+
+    it("should continue generating remaining variants if one bundle fails", async () => {
+      await withDb(async (sudo) => {
+        const { genPublishedLoaderCodeBundle } = setupMocks(sudo);
+        process.env.CODEGEN_HOST = CODEGEN_HOST;
+        process.env.CLOUDFRONT_DISTRIBUTION_ID = "EDFDVBD6EXAMPLE";
+
+        // Fail only the second variant
+        (genPublishedLoaderCodeBundle as jest.Mock).mockResolvedValueOnce(undefined);
+        (genPublishedLoaderCodeBundle as jest.Mock).mockRejectedValueOnce(
+          new Error("esbuild OOM")
+        );
+
+        const pool: any = {};
+
+        // Should not throw — per-variant errors are non-fatal
+        await expect(prefillCloudfront(sudo, pool, PKG_VERSION_ID)).resolves.not.toThrow();
+
+        // All 4 variants still get warming fetches and invalidation proceeds
+        expect(global.fetch).toHaveBeenCalledTimes(4);
+        expect(mockSend).toHaveBeenCalledTimes(1);
       });
     });
 
