@@ -79,7 +79,20 @@ For verification, always use `inspect.summary` — not `inspect.tree`. Drill wit
 
 ## Phase 1 — Gather Context
 
-**Goal:** Understand the project's design system, component inventory, and target state before planning.
+**Goal:** Understand the project's design system, component inventory, target state, AND the visual reference before planning.
+
+### 1a. Visual Reference (MANDATORY when a prototype/reference exists)
+
+**If the user provides a reference URL, prototype directory, or design file — you MUST screenshot it before doing anything else.** Never build from text descriptions alone when a visual reference exists.
+
+1. **Serve the prototype** — if a local HTML prototype directory is provided, start a local server: `python3 -m http.server 8765 --directory <path>` via Bash.
+2. **Screenshot each relevant section** — navigate Playwright to each page/section and take screenshots. These are your ground truth.
+3. **Read the prototype HTML** — extract exact text content, image URLs, CSS values, and layout structure from the source. Don't paraphrase or generalize — use the prototype's specific copy verbatim.
+4. **Keep screenshots open for comparison** — after building each component/section, take a Plasmic preview screenshot and compare against the reference screenshot. Fix differences immediately, not in a later pass.
+
+**Why this is mandatory:** Working from design spec prose (e.g., "positioned left or center") leads to guessing. A 2-second screenshot comparison eliminates guesswork. Text specs describe intent; rendered prototypes show reality. When both exist, the rendered prototype is the source of truth.
+
+### 1b. Project Setup
 
 1. If no project is active, call `project({ action: "list" })`, ask which project, then `project({ action: "set", projectId })`.
 2. Load design tokens: `design({ action: "list-tokens" })` — discover all token types (colors, spacing, fonts).
@@ -93,6 +106,25 @@ For verification, always use `inspect.summary` — not `inspect.tree`. Drill wit
    - `variant({ action: "list-global-groups" })` — screen breakpoints and custom global variants
    - `design({ action: "list-assets" })` — uploaded images
 6. If the request is underspecified or ambiguous (e.g., "make it look good", "create a page"), ask 1–2 targeted clarifying questions. Never guess silently on ambiguous intent.
+
+### Known Plasmic Defaults to Watch For
+
+When creating containers via MCP (`vbox`, `hbox`, `box`), Plasmic applies defaults that often don't match designs:
+- **`padding: 8px`** on all sides — almost always needs to be reset to `0px`
+- **`align-items: center`** — usually needs to be `stretch` or `flex-start`
+- **Component instances** get `max-width: 100%` and `object-fit: cover` — set `width: stretch` on instances in page layouts
+
+Always check these against the visual reference and reset as needed.
+
+### Hover Variant Scoping
+
+Two types of `:hover` exist — choosing the wrong one is a common source of bugs:
+- **Component-level** (`create-style` with NO `nodeRef`): Hovering the component root applies overrides to ALL children. Use when hover needs to affect multiple elements (e.g., text color + underline width).
+- **Element-scoped** (`create-style` WITH `nodeRef`): Only affects that one element. Use for simple self-contained hover effects (e.g., button background change).
+
+**Rule:** If hovering element A needs to change element B, extract A and B into a dedicated component and use component-level `:hover`. See `/plasmic-patterns` for the "Animated Hover Underline" pattern.
+
+**`::after`/`::before` pseudo-elements are NOT supported by the MCP.** Use real nodes with `position: absolute` + component-level `:hover` instead. See the Animated Hover Underline pattern in `/plasmic-patterns`.
 
 ## Phase 2 — Written Plan + Confirmation
 
@@ -194,12 +226,13 @@ Run this after each sub-phase (3a, 3b, 3c, 3d):
 ### Visual verification (after sub-phases 3b, 3c, 3d)
 3. Get the preview URL: `inspect({ action: "preview-url", componentUuid })` → use the `navigateUrl` field.
 4. Navigate with Playwright: `browser_navigate({ url: navigateUrl })`, wait 8 seconds, then `browser_take_screenshot({ type: "png" })`.
-5. **Actually look at the screenshot** — compare it against the plan and any reference material:
-   - Does the layout match the intended design?
+5. **Compare against the reference screenshot from Phase 1a** — this is not optional. Open the reference screenshot you took earlier and compare:
+   - Does the alignment match? (centered vs left vs right — this is the #1 missed issue)
+   - Does the text content match verbatim? (don't paraphrase prototype copy)
+   - Are images, backgrounds, and overlays present and correct?
    - Are fonts, colors, spacing visually correct?
-   - Is text content rendering properly?
    - Are there broken layouts, overlapping elements, or missing sections?
-6. If the user provided a reference URL or image, screenshot that too and compare side by side. Be honest about differences — don't claim "close match" when the visual output clearly differs.
+6. **Be brutally honest about differences** — don't claim "close match" or "looks good" when there are visible discrepancies. If the reference shows centered content and your output shows left-aligned, that's a bug, not a style choice. Fix it before proceeding.
 
 ### Correction loop
 7. **If deviation found (structural or visual):**

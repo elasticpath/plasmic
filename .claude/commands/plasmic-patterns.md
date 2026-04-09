@@ -535,5 +535,31 @@ Apply entrance animations:
 2. `node({ action: "add-animation", componentUuid: uuid, nodeRef: "HeroTitle", seqRef: "fade-in-up", duration: "0.8s", timingFunction: "ease-out" })`
 3. `node({ action: "add-animation", componentUuid: uuid, nodeRef: "HeroSubtitle", seqRef: "fade-in-up", duration: "0.8s", delay: "0.2s", timingFunction: "ease-out" })`
 
+### Animated Hover Underline (::after Alternative)
+CSS `::after` pseudo-elements are NOT supported by the MCP. Use a real node + **component-level** `:hover` variant instead. This produces the same visual result — a line that expands from left to right on hover.
+
+**Critical concept: component-level vs element-scoped hover.**
+- **Element-scoped** `:hover` (with `nodeRef`): Only affects that one node. Cannot change siblings or children.
+- **Component-level** `:hover` (NO `nodeRef`): Affects ALL children when the component is hovered. **Required when hover on element A needs to change element B.**
+
+**Steps:**
+1. Create a dedicated component for the link:
+   `component({ action: "create", name: "Animated Link", body: { type: "hbox", tag: "a", children: [{ type: "text", value: "Link", tag: "span" }, { type: "box", children: [] }] } })`
+2. Style the root: `position: relative, display: inline-flex, width: auto, padding: 4px 0, cursor: pointer`
+3. Style the text span: font styles + `transitionProperty: "color", transitionDuration: "150ms"`
+4. Style the underline box: `position: absolute, bottom: 0px, left: 0px, height: 1.5px, width: 0%, backgroundColor: #2563EB, transitionProperty: "width", transitionDuration: "250ms", transitionTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)", padding: 0px`
+5. Create **component-level** hover — omit `nodeRef`:
+   `variant({ action: "create-style", componentUuid: uuid, selector: ":hover" })`
+6. Apply hover overrides on children:
+   - Text: `update-styles({ variant: ":hover", styles: { color: "token:Blue 600" } })`
+   - Underline: `update-styles({ variant: ":hover", styles: { width: "100%" } })`
+7. Add a `label` prop with dynamic text binding for reuse.
+8. Use instances in parent components: `node({ action: "add", child: { type: "component", name: "Animated Link" } })` then `update-props({ props: { label: "Shop" } })`
+
+**Common mistakes:**
+- Using element-scoped `:hover` — the underline won't animate because it's a separate node
+- Putting all links in a parent component with one component-level `:hover` — ALL links animate at once
+- Using `background-image` + `background-size` CSS trick — breaks Plasmic's `background` property management
+
 ## User's Request
 $ARGUMENTS
