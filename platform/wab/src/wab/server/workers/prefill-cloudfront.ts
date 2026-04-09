@@ -3,16 +3,16 @@ import {
   CreateInvalidationCommand,
 } from "@aws-sdk/client-cloudfront";
 import { DbMgr } from "@/wab/server/db/DbMgr";
-import {
-  genPublishedLoaderCodeBundle,
-  LOADER_CACHE_BUST,
-} from "@/wab/server/loader/gen-code-bundle";
+import { genPublishedLoaderCodeBundle } from "@/wab/server/loader/gen-code-bundle";
 import {
   getResolvedProjectVersions,
   mkVersionToSync,
 } from "@/wab/server/loader/resolve-projects";
 import { logger } from "@/wab/server/observability";
-import { makeGenPublishedLoaderCodeBundleOpts } from "@/wab/server/routes/loader";
+import {
+  makeGenPublishedLoaderCodeBundleOpts,
+  makeCacheableVersionedLoaderQuery,
+} from "@/wab/server/routes/loader";
 import { withSpan } from "@/wab/server/util/apm-util";
 import { PlasmicWorkerPool } from "@/wab/server/workers/pool";
 import { ensureDevFlags } from "@/wab/server/workers/worker-utils";
@@ -139,31 +139,22 @@ export async function prefillCloudfront(
     const baseUrl = getCodegenPublicUrl();
     const warmingResults = await Promise.allSettled(
       warmingData.map(({ publishment, resolvedProjectIdSpecs }) => {
-        const params = new URLSearchParams();
-        params.set("cb", LOADER_CACHE_BUST);
-        params.set("platform", publishment.platform);
-        if (publishment.loaderVersion != null) {
-          params.set("loaderVersion", String(publishment.loaderVersion));
-        }
-        for (const spec of resolvedProjectIdSpecs) {
-          params.append("projectId", spec);
-        }
-        if (publishment.browserOnly) {
-          params.set("browserOnly", "true");
-        }
-        if (publishment.i18nKeyScheme) {
-          params.set("i18nKeyScheme", publishment.i18nKeyScheme);
-        }
-        if (publishment.i18nTagPrefix) {
-          params.set("i18nTagPrefix", publishment.i18nTagPrefix);
-        }
-        if (publishment.appDir) {
-          params.set("nextjsAppDir", "true");
-        }
+        // Use the same query builder as buildPublishedLoaderAssets so the
+        // warming URL is identical to the versioned redirect URL clients follow,
+        // producing the same CloudFront cache key.
+        const query = makeCacheableVersionedLoaderQuery({
+          platform: publishment.platform,
+          nextjsAppDir: publishment.appDir ?? false,
+          loaderVersion: publishment.loaderVersion,
+          resolvedProjectIdSpecs,
+          browserOnly: publishment.browserOnly ?? false,
+          i18nKeyScheme: publishment.i18nKeyScheme ?? undefined,
+          i18nTagPrefix: publishment.i18nTagPrefix ?? undefined,
+        });
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30_000);
         return fetch(
-          `${baseUrl}/api/v1/loader/code/versioned?${params.toString()}`,
+          `${baseUrl}/api/v1/loader/code/versioned?${query}`,
           { signal: controller.signal }
         ).finally(() => clearTimeout(timeoutId));
       })
