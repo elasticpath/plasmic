@@ -1884,12 +1884,18 @@
     js-cookie "^3.0.5"
     swell-js "^3.13.0"
 
+<<<<<<< HEAD
 "@plasmicpkgs/commerce@0.0.232":
   version "0.0.232"
   resolved "https://registry.yarnpkg.com/@plasmicpkgs/commerce/-/commerce-0.0.232.tgz#1f32f70cc00eab79a076fd3c477d79c19ad0fd18"
   integrity sha512-uUY+4PngY/cBQ7qldXwQbd/f/n9jo94TkbCWubMxDAMtv0sJolZoQXrIGVXKZuhuJTtI7ChJMqDnpsG4LJehig==
+=======
+"@plasmicpkgs/commerce@0.0.241", "@plasmicpkgs/commerce@^0.0.241":
+  version "0.0.241"
+  resolved "https://registry.yarnpkg.com/@plasmicpkgs/commerce/-/commerce-0.0.241.tgz#71f469ef8257cf54999eb71019c2cbe367a7dfb5"
+  integrity sha512-8VvtIrIKOd+srLQzYcUU3U/LY4f8VVTVGIjnvN9P+iAO7VVYF83Gl30I2+zQL5kXIxiBOspwrVqVbnOJJgrIuA==
+>>>>>>> upstream/master
   dependencies:
-    "@types/react" "^18.0.27"
     "@vercel/fetch" "^6.2.0"
     debounce "^1.2.1"
     js-cookie "^3.0.1"
@@ -1897,6 +1903,7 @@
     react-hook-form "^7.28.0"
     swr "^1.2.2"
 
+<<<<<<< HEAD
 "@plasmicpkgs/commerce@0.0.241", "@plasmicpkgs/commerce@^0.0.241":
   version "0.0.241"
   resolved "https://registry.yarnpkg.com/@plasmicpkgs/commerce/-/commerce-0.0.241.tgz#71f469ef8257cf54999eb71019c2cbe367a7dfb5"
@@ -1914,6 +1921,13 @@
   resolved "https://registry.yarnpkg.com/@plasmicpkgs/contentful/-/contentful-0.0.15.tgz#f503eea91e2998539192970926d245890b90869e"
   integrity sha512-WHBDu9sFulZDpk5QVmd7FFeaRt9C9wuDkckgg6+2CoNMpjn1vuN7QwP0OGcPkZ9rH+leuBGUz7EKoL+trjJ4oA==
 
+=======
+"@plasmicpkgs/contentful@^0.0.15":
+  version "0.0.15"
+  resolved "https://registry.yarnpkg.com/@plasmicpkgs/contentful/-/contentful-0.0.15.tgz#f503eea91e2998539192970926d245890b90869e"
+  integrity sha512-WHBDu9sFulZDpk5QVmd7FFeaRt9C9wuDkckgg6+2CoNMpjn1vuN7QwP0OGcPkZ9rH+leuBGUz7EKoL+trjJ4oA==
+
+>>>>>>> upstream/master
 "@plasmicpkgs/fetch@^0.0.33":
   version "0.0.33"
   resolved "https://registry.yarnpkg.com/@plasmicpkgs/fetch/-/fetch-0.0.33.tgz#913b7cf5a8c79ef89ab71fdbf8a14943cb2c45c9"
@@ -4103,11 +4117,14 @@
   resolved "https://registry.yarnpkg.com/@types/parse-json/-/parse-json-4.0.0.tgz#2f8bb441434d163b35fb8ffdccd7138927ffb8c0"
   integrity sha512-//oorEZjL6sbPcKUaCdIGlIUeH26mgzimjBB77G6XRgnDl/L5wOnpyBGRe/Mmf5CVW3PwEBE1NjiMZ/ssFh4wA==
 
+<<<<<<< HEAD
 "@types/prop-types@*":
   version "15.7.15"
   resolved "https://registry.yarnpkg.com/@types/prop-types/-/prop-types-15.7.15.tgz#e6e5a86d602beaca71ce5163fadf5f95d70931c7"
   integrity sha512-F6bEyamV9jKGAFBEmlQnesRPGOQqS2+Uwi0Em15xenOxHaf2hv6L8YCVn3rPdPJOiJfPiCnLIRyvwVaqMY3MIw==
 
+=======
+>>>>>>> upstream/master
 "@types/quill@^1.3.10":
   version "1.3.10"
   resolved "https://registry.yarnpkg.com/@types/quill/-/quill-1.3.10.tgz#dc1f7b6587f7ee94bdf5291bc92289f6f0497613"
@@ -4115,6 +4132,7 @@
   dependencies:
     parchment "^1.1.2"
 
+<<<<<<< HEAD
 "@types/react@^18.0.27":
   version "18.3.28"
   resolved "https://registry.yarnpkg.com/@types/react/-/react-18.3.28.tgz#0a85b1a7243b4258d9f626f43797ba18eb5f8781"
@@ -4123,6 +4141,8 @@
     "@types/prop-types" "*"
     csstype "^3.2.2"
 
+=======
+>>>>>>> upstream/master
 "@types/retry@*":
   version "0.12.1"
   resolved "https://registry.yarnpkg.com/@types/retry/-/retry-0.12.1.tgz#d8f1c0d0dc23afad6dc16a9e993a0865774b4065"

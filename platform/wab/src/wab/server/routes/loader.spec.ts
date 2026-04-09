@@ -4,11 +4,16 @@ import { ensureDbConnection } from "@/wab/server/db/DbCon";
 import { seedTestUserAndProjects } from "@/wab/server/db/DbInit";
 import { DbMgr, normalActor } from "@/wab/server/db/DbMgr";
 import { Project, User } from "@/wab/server/entities/Entities";
+<<<<<<< HEAD
 import { _testonly, parseHtmlPreviewPoolSize } from "@/wab/server/routes/loader";
+=======
+import { _testonly } from "@/wab/server/routes/loader";
+>>>>>>> upstream/master
 import { PublicApiTester } from "@/wab/server/test/api-tester";
 import { createBackend, createDatabase } from "@/wab/server/test/backend-util";
 import { Bundler } from "@/wab/shared/bundler";
 import { createSite } from "@/wab/shared/core/sites";
+<<<<<<< HEAD
 
 describe("parseHtmlPreviewPoolSize", () => {
   it("returns default for undefined", () => {
@@ -39,6 +44,8 @@ describe("parseHtmlPreviewPoolSize", () => {
     expect(parseHtmlPreviewPoolSize("2.9")).toBe(2);
   });
 });
+=======
+>>>>>>> upstream/master
 
 describe("loader", () => {
   let publicApi: PublicApiTester;

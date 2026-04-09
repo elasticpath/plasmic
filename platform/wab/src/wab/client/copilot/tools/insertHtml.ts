@@ -4,7 +4,11 @@ import { unwrap } from "@/wab/commons/failable-utils";
 import {
   COPILOT_TOOL_DEFS,
   defineCopilotTool,
+<<<<<<< HEAD
 } from "@/wab/shared/copilot/internal/copilot-tools";
+=======
+} from "@/wab/shared/copilot/enterprise/copilot-tools";
+>>>>>>> upstream/master
 import {
   getComponentByUuid,
   getTplByUuid,

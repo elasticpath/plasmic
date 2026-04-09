@@ -1366,6 +1366,7 @@ export function mkTemplatedStringOfOneDynExpr(expr: CustomCode | ObjectPath) {
   });
 }
 
+<<<<<<< HEAD
 export function convertExprToStringOrTemplatedString(
   expr: Expr | null | undefined
 ): TemplatedString | string | null {
@@ -1391,6 +1392,11 @@ export function convertTemplatedStringToExpr(
     return value;
   }
   return codeLit(value);
+=======
+/** Joins all string parts of a TemplatedString, discarding any dynamic expressions. */
+export function flattenTemplatedStringToString(text: TemplatedString): string {
+  return text.text.filter(isString).join("");
+>>>>>>> upstream/master
 }
 
 export function getSingleDynExprFromTemplatedString(expr: TemplatedString) {

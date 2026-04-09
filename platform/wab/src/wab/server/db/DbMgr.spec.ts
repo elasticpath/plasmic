@@ -1746,6 +1746,7 @@ describe("DbMgr.user", () => {
   });
 });
 
+<<<<<<< HEAD
 describe("DbMgr.isOrgStarter", () => {
   it("team editor can set isOrgStarter on a project", () =>
     withDb(async (sudo, [user1, user2], [db1, db2], project) => {
@@ -1821,6 +1822,8 @@ describe("DbMgr.isOrgStarter", () => {
     }));
 });
 
+=======
+>>>>>>> upstream/master
 describe("DbMgr.project revisions", () => {
   it("reverts by revision id (string)", async () => {
     await withDb(async (_sudo, _users, [db1], project) => {

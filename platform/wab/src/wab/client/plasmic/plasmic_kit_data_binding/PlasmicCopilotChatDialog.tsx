@@ -124,6 +124,10 @@ function PlasmicCopilotChatDialog__RenderFunc(props: {
             className={classNames(
               projectcss.all,
               projectcss.h3,
+<<<<<<< HEAD
+=======
+              projectcss.h3__w2GXN,
+>>>>>>> upstream/master
               projectcss.__wab_text,
               sty.h3
             )}

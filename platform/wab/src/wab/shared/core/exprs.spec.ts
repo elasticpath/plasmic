@@ -3,7 +3,10 @@ import {
   asCode,
   code,
   codeLit,
+<<<<<<< HEAD
   convertExprToStringOrTemplatedString,
+=======
+>>>>>>> upstream/master
   customCode,
   deserCompositeExpr,
   deserCompositeExprMaybe,
@@ -304,6 +307,7 @@ describe("serCompositeExprMaybe/deserCompositeExprMaybe/deserCompositeExpr", () 
         },
       ]);
     });
+<<<<<<< HEAD
   });
 });
 
@@ -368,5 +372,7 @@ describe("convertExprToStringOrTemplatedString", () => {
     });
     const result = convertExprToStringOrTemplatedString(otherExpr);
     expect(result).toBeNull();
+=======
+>>>>>>> upstream/master
   });
 });

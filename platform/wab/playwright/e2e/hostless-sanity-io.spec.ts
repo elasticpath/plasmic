@@ -94,6 +94,7 @@ test.describe("hostless-sanity-io", () => {
     models,
   }) => {
     projectId = await apiClient.setupProjectWithHostlessPackages({
+      name: "sanity-io",
       hostLessPackagesInfo: {
         name: "plasmic-sanity-io",
         npmPkg: ["@plasmicpkgs/plasmic-sanity-io"],
@@ -181,7 +182,7 @@ test.describe("hostless-sanity-io", () => {
       '[data-plasmic-prop="path"]'
     );
     await pathInput.click();
-    await page.keyboard.press("Control+a");
+    await page.keyboard.press("ControlOrMeta+a");
     await page.keyboard.press("Backspace");
     await page.keyboard.type("poster");
     await page.keyboard.press("Enter");
@@ -191,7 +192,7 @@ test.describe("hostless-sanity-io", () => {
     await expect(canvasImages.first()).toHaveAttribute("src", /.+/);
 
     await models.studio.withinLiveMode(async (liveFrame) => {
-      const images = liveFrame.locator(".plasmic_default__div img");
+      const images = liveFrame.locator(`.plasmic_default__all img`);
       await expect(images.first()).toHaveAttribute("src", /.+/);
     });
 

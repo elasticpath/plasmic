@@ -1139,9 +1139,15 @@ test.describe("Imported token overrides", () => {
         frame
       );
 
+<<<<<<< HEAD
       await page.keyboard.press("Control+z");
       await page.waitForTimeout(200);
       await page.keyboard.press("Control+y");
+=======
+      await page.keyboard.press("ControlOrMeta+z");
+      await page.waitForTimeout(200);
+      await page.keyboard.press("ControlOrMeta+y");
+>>>>>>> upstream/master
       await page.waitForTimeout(200);
 
       await assertTokenIndicator(
@@ -1622,6 +1628,10 @@ test.describe("Imported token overrides", () => {
     apiClient,
   }) => {
     const depProjectId = await apiClient.setupProjectWithHostlessPackages({
+<<<<<<< HEAD
+=======
+      name: "imported-token-overrides",
+>>>>>>> upstream/master
       hostLessPackagesInfo: [
         {
           name: "antd5",

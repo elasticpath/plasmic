@@ -66,7 +66,10 @@ const hostParam = {
   advanced: true,
 } as const;
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> upstream/master
 const cmsIdParam = {
   type: "string",
   description: "ID of the CMS.",

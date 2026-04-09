@@ -1,3 +1,8 @@
+<<<<<<< HEAD
+=======
+import { TplMgr } from "@/wab/shared/TplMgr";
+import { VariantTplMgr } from "@/wab/shared/VariantTplMgr";
+>>>>>>> upstream/master
 import { Bundler } from "@/wab/shared/bundler";
 import { Bundle } from "@/wab/shared/bundles";
 import {
@@ -30,3 +35,31 @@ export function generateSiteFromBundle(
 
   return site;
 }
+<<<<<<< HEAD
+=======
+
+export const createTplMgr = (site: Site) => new TplMgr({ site });
+
+const emptyVariants = {
+  getTargetVariants: () => [],
+  getPinnedVariants: () => {},
+};
+
+export const createVariantTplMgr = (site: Site, tplMgr: TplMgr) => {
+  return new VariantTplMgr(
+    [
+      {
+        // @ts-ignore
+        component: {
+          name: "jest-root",
+          variants: [],
+        },
+        ...emptyVariants,
+      },
+    ],
+    site,
+    tplMgr,
+    emptyVariants
+  );
+};
+>>>>>>> upstream/master

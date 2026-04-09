@@ -362,6 +362,7 @@ export async function changeResourcePermissions(req: Request, res: Response) {
       passResponse
     );
     if (paywall.paywall == "pass" && !req.apiTeam?.whiteLabelInfo) {
+<<<<<<< HEAD
       // Temporary bypass for SMTP issues
       if (process.env.SKIP_GRANT_REVOKE_EMAILS === "true") {
         console.log("Skipping grant-revoke emails due to SKIP_GRANT_REVOKE_EMAILS=true");
@@ -383,6 +384,21 @@ export async function changeResourcePermissions(req: Request, res: Response) {
         );
         await Promise.all(promises);
       }
+=======
+      const promises = emailsToSend.map(
+        async (x) =>
+          await sendShareEmail(
+            req,
+            getUser(req),
+            x.email,
+            x.resourceType,
+            x.resourceName,
+            x.resourceUrl,
+            !!(await mgr.tryGetUserByEmail(x.email))
+          )
+      );
+      await Promise.all(promises);
+>>>>>>> upstream/master
     }
     if (paywall.paywall === "pass") {
       return commitTransaction(paywall);

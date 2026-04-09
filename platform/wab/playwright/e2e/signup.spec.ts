@@ -2,8 +2,12 @@ import { v4 } from "uuid";
 import { test } from "../fixtures/test";
 import { waitForFrameToLoad } from "../utils/studio-utils";
 
+<<<<<<< HEAD
 // EP fork: public signup is disabled; signups are done via EPCC provisioning
 test.describe.skip("Signup flow", () => {
+=======
+test.describe("Signup flow", () => {
+>>>>>>> upstream/master
   let projectId: string;
 
   test.afterEach(async ({ apiClient }) => {

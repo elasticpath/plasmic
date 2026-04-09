@@ -548,7 +548,13 @@ function getVariantSettingsForNode(
   return variantSettings;
 }
 
+<<<<<<< HEAD
 function processUnsanitizedStyles(unsanitizedStyles: WIUnsanitizedStyles): {
+=======
+export function processUnsanitizedStyles(
+  unsanitizedStyles: WIUnsanitizedStyles
+): {
+>>>>>>> upstream/master
   safe: WISafeStyles;
   unsafe: WIUnsafeStyles;
 } {

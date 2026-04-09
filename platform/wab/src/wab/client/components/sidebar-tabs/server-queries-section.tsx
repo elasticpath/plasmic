@@ -1,8 +1,14 @@
 import { WithContextMenu } from "@/wab/client/components/ContextMenu";
 import {
+  CustomCodePreview,
   CustomFunctionExprPreview,
+<<<<<<< HEAD
   CustomFunctionExprSummary,
 } from "@/wab/client/components/sidebar-tabs/ServerQuery/CustomFunctionExprPreview";
+=======
+  ServerQueryOpSummary,
+} from "@/wab/client/components/sidebar-tabs/ServerQuery/QueryResultPreview";
+>>>>>>> upstream/master
 import {
   omitQueryFromEnv,
   useServerQueryBottomModal,
@@ -23,7 +29,14 @@ import {
   SERVER_QUERY_LOWER,
   SERVER_QUERY_PLURAL_CAP,
 } from "@/wab/shared/Labels";
+<<<<<<< HEAD
 import { isServerQueryWithOperation } from "@/wab/shared/codegen/react-p/server-queries/utils";
+=======
+import {
+  ServerQueryOp,
+  isServerQueryWithOperation,
+} from "@/wab/shared/codegen/react-p/server-queries/utils";
+>>>>>>> upstream/master
 import { mkShortId, spawn } from "@/wab/shared/common";
 import {
   getComponentDisplayName,
@@ -33,7 +46,8 @@ import { ExprCtx } from "@/wab/shared/core/exprs";
 import {
   Component,
   ComponentServerQuery,
-  CustomFunctionExpr,
+  isKnownCustomCode,
+  isKnownCustomFunctionExpr,
 } from "@/wab/shared/model/classes";
 import { renameServerQueryAndFixExprs } from "@/wab/shared/refactoring";
 import { Menu, notification } from "antd";
@@ -72,7 +86,7 @@ const ServerQueryRow = observer(
     };
 
     const handleCustomFunctionExprChange = async (
-      newOp: CustomFunctionExpr,
+      newOp: ServerQueryOp,
       opExprName?: string
     ) => {
       await studioCtx.change(({ success }) => {
@@ -116,6 +130,13 @@ const ServerQueryRow = observer(
         </Menu>
       );
     };
+    const title = `Query data results for "${query.name}"`;
+    const env = omitQueryFromEnv(
+      viewCtx.getCanvasEnvForTpl(tpl, {
+        forDataRepCollection: true,
+      }),
+      query
+    );
 
     return (
       <WithContextMenu overlay={menu}>
@@ -126,6 +147,7 @@ const ServerQueryRow = observer(
         >
           {query.op ? (
             <div className="flex flex-col fill-width">
+<<<<<<< HEAD
               <CustomFunctionExprSummary expr={query.op} />
               <CustomFunctionExprPreview
                 expr={query.op}
@@ -138,6 +160,24 @@ const ServerQueryRow = observer(
                 title={`Query data results for "${query.name}"`}
                 exprCtx={exprCtx}
               />
+=======
+              <ServerQueryOpSummary expr={query.op} />
+              {isKnownCustomFunctionExpr(query.op) ? (
+                <CustomFunctionExprPreview
+                  expr={query.op}
+                  env={env}
+                  title={title}
+                  exprCtx={exprCtx}
+                />
+              ) : isKnownCustomCode(query.op) ? (
+                <CustomCodePreview
+                  queryUuid={query.uuid}
+                  expr={query.op}
+                  env={env}
+                  title={title}
+                />
+              ) : null}
+>>>>>>> upstream/master
             </div>
           ) : (
             <div className="dimfg">Click to configure...</div>

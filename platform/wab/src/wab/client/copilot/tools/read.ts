@@ -1,7 +1,11 @@
 import {
   COPILOT_TOOL_DEFS,
   defineCopilotTool,
+<<<<<<< HEAD
 } from "@/wab/shared/copilot/internal/copilot-tools";
+=======
+} from "@/wab/shared/copilot/enterprise/copilot-tools";
+>>>>>>> upstream/master
 import { flattenTpls } from "@/wab/shared/core/tpls";
 import {
   serializeComponent,

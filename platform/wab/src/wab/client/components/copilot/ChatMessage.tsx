@@ -4,7 +4,11 @@ import {
   PlasmicChatMessage,
 } from "@/wab/client/plasmic/plasmic_kit_data_binding/PlasmicChatMessage";
 import { unreachable } from "@/wab/shared/common";
+<<<<<<< HEAD
 import { COPILOT_TOOL_DEFS } from "@/wab/shared/copilot/internal/copilot-tools";
+=======
+import { COPILOT_TOOL_DEFS } from "@/wab/shared/copilot/enterprise/copilot-tools";
+>>>>>>> upstream/master
 import { isDataUIPart, isToolUIPart } from "ai";
 import * as React from "react";
 

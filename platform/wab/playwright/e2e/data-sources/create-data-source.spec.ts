@@ -68,7 +68,11 @@ test.describe("create-data-source", () => {
 
     const userInput = page.locator(`[data-test-id="user"]`);
     await userInput.click();
+<<<<<<< HEAD
     await userInput.press("Control+a");
+=======
+    await userInput.press("ControlOrMeta+a");
+>>>>>>> upstream/master
     await userInput.press("Backspace");
     await userInput.fill("cypress");
 

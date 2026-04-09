@@ -67,7 +67,11 @@ async function replaceDataTokenInCurrentElement(
 ) {
   await studio.rightPanel.frame
     .locator('[data-test-id="text-content"]')
+<<<<<<< HEAD
     .locator(".code-editor-input")
+=======
+    .locator(".code-editor-input, .templated-string-input")
+>>>>>>> upstream/master
     .click();
   await selectTokenInDataPicker(studio, token);
   return token.evaluatedValue ?? token.value;
@@ -87,6 +91,10 @@ test.describe("data token usages", () => {
     test.beforeEach(async ({ apiClient, page }) => {
       // We need to setup a project with the strapi hostless package to test data tokens created from server queries in one of the below test cases
       projectId = await apiClient.setupProjectWithHostlessPackages({
+<<<<<<< HEAD
+=======
+        name: "data-tokens",
+>>>>>>> upstream/master
         hostLessPackagesInfo: {
           name: "strapi",
           npmPkg: ["@plasmicpkgs/strapi"],
@@ -467,7 +475,10 @@ test.describe("data token usages", () => {
         "Press Execute to preview results"
       );
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> upstream/master
       const strapiHostRow = serverQueryModal.locator(
         `[data-test-id="prop-editor-row-host"]`
       );
@@ -528,12 +539,17 @@ test.describe("data token usages", () => {
       });
       await page.waitForTimeout(500);
       await dataTokenPopover.close();
+<<<<<<< HEAD
       const strapiCollectionCodeInput =
         strapiCollectionRow.locator(".code-editor-input");
       await strapiCollectionCodeInput.waitFor({ state: "visible" });
       await expect(strapiCollectionCodeInput).toHaveText(
         `$dataTokens.collection`
       );
+=======
+      await strapiCollectionInput.waitFor({ state: "visible" });
+      await expect(strapiCollectionInput).toHaveText(`$dataTokens.collection`);
+>>>>>>> upstream/master
 
       await serverQueryModal.locator("button").getByText("Execute").click();
       await expect(

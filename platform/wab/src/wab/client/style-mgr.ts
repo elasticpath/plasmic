@@ -946,7 +946,10 @@ export class StyleMgr {
     }
     const valKey = vals[0].key;
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> upstream/master
     // Get the valOwner (valKey of the frame's user root) to scope the animation
     // to this specific frame. This prevents the animation from playing in other
     // frames that may share the same base variant class.

@@ -100,7 +100,11 @@ function PlasmicChatMessage__RenderFunc(props: {
         path: "type",
         type: "private",
         variableType: "variant",
+<<<<<<< HEAD
         initFunc: ({ $props, $state, $queries, $ctx }) => $props.type,
+=======
+        initFunc: ({ $props, $state, $queries, $q, $ctx }) => $props.type,
+>>>>>>> upstream/master
       },
     ],
     [$props, $ctx, $refs]
@@ -109,6 +113,10 @@ function PlasmicChatMessage__RenderFunc(props: {
     $props,
     $ctx,
     $queries: {},
+<<<<<<< HEAD
+=======
+    $q: {},
+>>>>>>> upstream/master
     $refs,
   });
 

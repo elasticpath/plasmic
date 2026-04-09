@@ -18,10 +18,17 @@ export default defineConfig({
           },
         ],
       ],
+<<<<<<< HEAD
   timeout: 600_000,
   use: {
     actionTimeout: 10_000,
     navigationTimeout: 30_000,
+=======
+  timeout: 400_000,
+  use: {
+    actionTimeout: 10_000,
+    navigationTimeout: 15_000,
+>>>>>>> upstream/master
     baseURL: process.env.WAB_HOST ?? "http://localhost:3003",
     trace: "retain-on-failure",
     video: "retain-on-failure",

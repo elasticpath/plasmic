@@ -284,7 +284,11 @@ export const queryWordpressMeta: CustomFunctionMeta<typeof queryWordpress> = {
               value: "modified",
             },
             {
+<<<<<<< HEAD
               label: "Title (A-Z)",
+=======
+              label: "Title (A–Z)",
+>>>>>>> upstream/master
               value: "title",
             },
             {
