@@ -53,40 +53,48 @@ jobs:
             echo "last_merged=$LAST_MERGED" >> $GITHUB_OUTPUT
           fi
 
-      - name: Attempt merge
+      - name: Cherry-pick upstream commits
         if: steps.check.outputs.has_changes == 'true'
         id: merge
+        env:
+          LAST_MERGED: ${{ steps.check.outputs.last_merged }}
         run: |
           UPSTREAM_SHA=$(git rev-parse upstream/master)
 
-          if git merge upstream/master --no-edit; then
-            echo "Merge succeeded — no conflicts."
+          # Cherry-pick the range of new commits (oldest first).
+          # We use cherry-pick instead of merge because the previous upstream
+          # merge (PR #201) was squash-merged, which broke git merge-base
+          # tracking. git merge would try to re-merge all 500+ already-
+          # incorporated commits and produce hundreds of false conflicts.
+          if git cherry-pick "${LAST_MERGED}..upstream/master" --no-edit; then
+            echo "Cherry-pick succeeded — no conflicts."
             echo "has_conflicts=false" >> $GITHUB_OUTPUT
 
-            # Update the merge point marker so the next run knows where we left off
+            # Update the merge point marker
             cat > .github/upstream-merge-point << MARKER_EOF
-          # Last upstream commit (plasmicapp/plasmic master) merged into this fork.
-          # Updated automatically by the upstream-merge workflow after each merge.
-          # Used to determine which upstream commits are genuinely new.
-          #
-          # IMPORTANT: Upstream merge PRs must use "Create a merge commit" (not squash)
-          # so git can track ancestry naturally. This file is a safety net.
-          $UPSTREAM_SHA
-          MARKER_EOF
+# Last upstream commit (plasmicapp/plasmic master) merged into this fork.
+# Updated automatically by the upstream-merge workflow after each merge.
+$UPSTREAM_SHA
+MARKER_EOF
             git add .github/upstream-merge-point
-            git commit --amend --no-edit
+            git commit -m "chore: update upstream-merge-point to ${UPSTREAM_SHA:0:12}"
           else
-            echo "Merge has conflicts."
+            echo "Cherry-pick has conflicts."
 
-            # Capture conflicted file list before staging
+            # Capture conflicted file list
             CONFLICTED=$(git diff --name-only --diff-filter=U 2>/dev/null)
             echo "conflicted_files<<EOF" >> $GITHUB_OUTPUT
             echo "$CONFLICTED" >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
 
-            # Stage everything (including conflict markers) so we can commit
+            # Abort the cherry-pick so we can commit the partial state
+            git cherry-pick --abort 2>/dev/null || true
+
+            # Re-apply just the commits that succeeded, stop before conflicts
+            # This gives the human a clean starting point
+            git cherry-pick "${LAST_MERGED}..upstream/master" --no-edit 2>/dev/null || true
             git add -A
-            git commit --no-edit -m "merge: upstream (conflicts to resolve)" || true
+            git commit --no-edit -m "merge: upstream (conflicts to resolve — see PR description)" || true
             echo "has_conflicts=true" >> $GITHUB_OUTPUT
           fi
 
