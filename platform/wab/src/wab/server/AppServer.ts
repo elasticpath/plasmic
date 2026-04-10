@@ -1082,6 +1082,25 @@ export function addLoaderRoutes(app: express.Application) {
     apiAuth,
     withNext(buildPublishedLoaderAssets)
   );
+  // A CloudFront Function (viewer-request) rewrites published requests to embed
+  // sorted base project IDs into the URL path before CloudFront caches the
+  // response, e.g.:
+  //   /api/v1/loader/code/published?projectId=zzz&projectId=aaa&platform=react
+  //   → /api/v1/loader/code/published/aaa,zzz?projectId=zzz&projectId=aaa&...
+  //
+  // This makes CloudFront cache entries addressable per-project so that
+  // CreateInvalidation can target /published/{projectIds}* on publish rather
+  // than wiping the cache for all projects at once.
+  //
+  // The :projectIds path segment is intentionally ignored here — the handler
+  // reads projectId from the query string as normal, which the CF Function
+  // preserves verbatim.
+  app.get(
+    "/api/v1/loader/code/published/:projectIds",
+    cors(),
+    apiAuth,
+    withNext(buildPublishedLoaderAssets)
+  );
   app.get(
     "/api/v1/loader/code/versioned",
     cors(),
