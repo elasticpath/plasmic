@@ -24,7 +24,11 @@ import {
   QueryBuilderValue,
 } from "@/wab/client/components/sidebar-tabs/ComponentProps/QueryBuilderPropEditor";
 import { RichTextPropEditor } from "@/wab/client/components/sidebar-tabs/ComponentProps/RichTextPropEditor";
-import { TemplatedStringPropEditor } from "@/wab/client/components/sidebar-tabs/ComponentProps/StringPropEditor";
+import {
+  StringPropEditor,
+  TemplatedStringPropEditor,
+  isTemplatedStringEditorValue,
+} from "@/wab/client/components/sidebar-tabs/ComponentProps/StringPropEditor";
 import {
   DataSourceEditor,
   ExprEditor,
@@ -59,6 +63,7 @@ import {
   StudioPropType,
   getPropTypeType,
   isCustomControlType,
+  isDynamicValueDisabledInPropType,
   isPlainObjectPropType,
   propTypeToWabType,
   wabTypeToPropType,
@@ -80,6 +85,7 @@ import {
   codeLit,
   createExprForDataPickerValue,
   deserCompositeExprMaybe,
+  flattenTemplatedStringToString,
   getRawCode,
   isRealCodeExpr,
   isRealCodeExprEnsuringType,
@@ -113,6 +119,7 @@ import {
   ensureKnownFunctionType,
   ensureKnownVarRef,
   ensureKnownVariantsRef,
+  isKnownCustomCode,
   isKnownCustomFunctionExpr,
   isKnownDataSourceOpExpr,
   isKnownEventHandler,
@@ -162,6 +169,7 @@ const PropValueEditor_ = (
     label: string;
     value: JsonValue | Expr | undefined;
     disabled?: boolean;
+    disableDynamicValue?: boolean;
     valueSetState?: ValueSetState;
     onChange: (value: JsonValue | Expr | undefined) => void;
     onDelete?: () => void;
@@ -179,6 +187,7 @@ const PropValueEditor_ = (
     onChange,
     onDelete,
     disabled = false,
+    disableDynamicValue,
     propType,
     controlExtras = { path: [] },
     hideDefaultValueHint,
@@ -600,17 +609,16 @@ const PropValueEditor_ = (
               propType={argParameterType}
               expr={arg?.expr}
               onChange={(val) => {
-                if (!val) {
-                  return;
-                }
                 const newCollectionExpr: CollectionExpr = args
                   ? clone(args)
                   : new CollectionExpr({ exprs: [] });
-                const newFunctionArg = new FunctionArgClass({
-                  uuid: mkShortId(),
-                  argType: p,
-                  expr: isKnownExpr(val) ? val : codeLit(val),
-                });
+                const newFunctionArg = val
+                  ? new FunctionArgClass({
+                      uuid: mkShortId(),
+                      argType: p,
+                      expr: isKnownExpr(val) ? val : codeLit(val),
+                    })
+                  : undefined;
                 newCollectionExpr.exprs[i] = newFunctionArg;
                 onChange(newCollectionExpr);
               }}
@@ -807,8 +815,10 @@ const PropValueEditor_ = (
     propType.type === "customFunctionOp"
   ) {
     assert(
-      isKnownCustomFunctionExpr(value) || value === undefined,
-      "Value is expected to be either a CustomFunctionExpr or undefined"
+      isKnownCustomFunctionExpr(value) ||
+        isKnownCustomCode(value) ||
+        value === undefined,
+      "Value is expected to be either a CustomFunctionExpr, CustomCode, or undefined"
     );
     const allowedOps = _getContextDependentValue(propType.allowedOps);
     return (
@@ -1049,15 +1059,16 @@ const PropValueEditor_ = (
       );
       let deseredValue = deserCompositeExprMaybe(value);
 
-      let evaluated = isKnownExpr(value)
-        ? tryEvalExpr(getRawCode(value, evalExprCtx), env ?? {}).val
-        : value;
-      if (userMinimalValue) {
+      let evaluated =
+        isKnownExpr(value) && env
+          ? tryEvalExpr(getRawCode(value, evalExprCtx), env).val
+          : value;
+      if (userMinimalValue && env) {
         deseredValue = mergeUserMinimalValueWithCompositeExpr(
           userMinimalValue,
           value,
           evalExprCtx,
-          env ?? {},
+          env,
           propType.unstable__keyFunc
         );
         evaluated = userMinimalValue;
@@ -1107,12 +1118,13 @@ const PropValueEditor_ = (
       propType.fields &&
       (viewCtx || exprCtx)
     ) {
-      const evaluated = isKnownExpr(value)
-        ? tryEvalExpr(
-            getRawCode(value, getEvalExprCtx(viewCtx, exprCtx)),
-            env ?? {}
-          ).val
-        : value;
+      const evaluated =
+        isKnownExpr(value) && env
+          ? tryEvalExpr(
+              getRawCode(value, getEvalExprCtx(viewCtx, exprCtx)),
+              env
+            ).val
+          : value;
       const compositeValue = deserCompositeExprMaybe(value);
       return (
         <ObjectPropEditor
@@ -1265,7 +1277,36 @@ const PropValueEditor_ = (
       />
     );
   } else {
-    // Extract control type from string propType if available
+    // Else should be string type.
+    // We usually prefer to use TemplatedStringPropEditor (allows dynamic),
+    // but there are a few cases where we use StringPropEditor (static only).
+    const disabledDynamicValue = !!(
+      disableDynamicValue ?? isDynamicValueDisabledInPropType(propType)
+    );
+    if (!shouldEditAsTemplatedString(propType, disabledDynamicValue)) {
+      return (
+        <StringPropEditor
+          value={
+            typeof value === "string"
+              ? value
+              : isKnownTemplatedString(value)
+              ? flattenTemplatedStringToString(value)
+              : undefined
+          }
+          readOnly={readOnly}
+          onChange={onChange as (value: string) => void}
+          disabled={disabled}
+          defaultValueHint={defaultValueHint}
+          data-plasmic-prop={attr}
+          leftAligned
+          valueSetState={valueSetState}
+          ref={ref}
+        />
+      );
+    }
+
+    // stringControl only applies when propType is an object with type === "string"
+    // (not shorthand "string"), since only the object form has a `control` field.
     const stringControl =
       isPlainObjectPropType(propType) &&
       propType.type === "string" &&
@@ -1277,7 +1318,7 @@ const PropValueEditor_ = (
         data={env}
         schema={schema}
         viewCtx={viewCtx}
-        value={value as string}
+        value={isTemplatedStringEditorValue(value) ? value : undefined}
         readOnly={readOnly}
         onChange={onChange}
         disabled={disabled}
@@ -1294,3 +1335,10 @@ const PropValueEditor_ = (
 };
 
 export const PropValueEditor = observer(React.forwardRef(PropValueEditor_));
+
+export function shouldEditAsTemplatedString(
+  propType: StudioPropType<any>,
+  disabledDynamicValue: boolean
+): boolean {
+  return getPropTypeType(propType) === "string" && !disabledDynamicValue;
+}

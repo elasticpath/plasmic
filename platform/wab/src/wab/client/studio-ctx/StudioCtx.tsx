@@ -314,6 +314,7 @@ import {
   InsertableTemplatesItem,
 } from "@/wab/shared/devflags";
 import { DataSourceUser } from "@/wab/shared/dynamic-bindings";
+import { noopFn } from "@/wab/shared/functions";
 import { Box, Pt } from "@/wab/shared/geom";
 import { cloneInsertableTemplateComponent } from "@/wab/shared/insertable-templates";
 import { InsertableTemplateComponentExtraInfo } from "@/wab/shared/insertable-templates/types";
@@ -3217,17 +3218,7 @@ export class StudioCtx extends WithDbCtx {
   }
 
   showDataTokens() {
-    if (this.appCtx.appConfig.rscRelease || this.appCtx.appConfig.dataTokens) {
-      return true;
-    }
-
-    const team = this.getCurrentTeam();
-    const teamId = this.siteInfo.teamId;
-    const allowedTeamIds = this.appCtx.appConfig.dataTokenTeamIds;
-    return !!(
-      (teamId && allowedTeamIds.includes(teamId)) ||
-      (team?.parentTeamId && allowedTeamIds.includes(team.parentTeamId))
-    );
+    return this.appCtx.appConfig.dataTokens;
   }
 
   //
@@ -3737,12 +3728,25 @@ export class StudioCtx extends WithDbCtx {
   }
 
   getRegisteredFunctionsMap() {
-    return new Map([
+    const map = new Map([
       ...Array.from(this._ccRegistry.getRegisteredFunctionsMap().entries()),
       ...Array.from(
         this.hostLessRegistry.getRegisteredFunctionsMap().entries()
       ),
     ]);
+    if (DEVFLAGS.fnStubs) {
+      for (const f of this.site.customFunctions) {
+        map.set(customFunctionId(f), {
+          function: noopFn,
+          meta: {
+            name: f.importName,
+            namespace: f.namespace ?? undefined,
+            importPath: f.importPath,
+          },
+        });
+      }
+    }
+    return map;
   }
 
   getRegisteredLibraries() {
