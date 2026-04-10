@@ -240,7 +240,7 @@ describe("Prefill cloudfront", () => {
       });
     });
 
-    it("should warm CloudFront versioned cache after setting isPrefilled", async () => {
+    it("should warm CloudFront versioned cache before setting isPrefilled", async () => {
       await withDb(async (sudo) => {
         setupMocks(sudo);
         process.env.CODEGEN_HOST = CODEGEN_HOST;
@@ -250,11 +250,12 @@ describe("Prefill cloudfront", () => {
 
         await prefillCloudfront(sudo, pool, PKG_VERSION_ID);
 
-        // isPrefilled must be set before any warming fetch is called
+        // Warming fetches must complete before isPrefilled is set so that
+        // status only becomes "ready" once the CDN is actually primed.
         const updateCallOrder = updatePkgVersionMock.mock.invocationCallOrder[0];
-        const firstFetchCallOrder = (global.fetch as jest.Mock).mock
-          .invocationCallOrder[0];
-        expect(updateCallOrder).toBeLessThan(firstFetchCallOrder);
+        const lastFetchCallOrder = (global.fetch as jest.Mock).mock
+          .invocationCallOrder.at(-1);
+        expect(lastFetchCallOrder).toBeLessThan(updateCallOrder);
 
         // One warming GET per unique publishment. All 4 mock publishments have
         // distinct uniqBy keys (react/8/false, nextjs/8/false+i18n, react/8/true,
@@ -307,7 +308,8 @@ describe("Prefill cloudfront", () => {
 
         await prefillCloudfront(sudo, pool, PKG_VERSION_ID);
 
-        // Warming must happen before invalidation
+        // Warming must complete before isPrefilled is set and before invalidation,
+        // so that "status=ready" is only signalled once the CDN is primed.
         const firstFetchOrder = (global.fetch as jest.Mock).mock
           .invocationCallOrder[0];
         const invalidationOrder = mockSend.mock.invocationCallOrder[0];
