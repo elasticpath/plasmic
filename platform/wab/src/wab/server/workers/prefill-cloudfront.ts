@@ -132,20 +132,12 @@ export async function prefillCloudfront(
     }
   }
 
-  // isPrefilled must be set before warming so that origin can serve
-  // pre-computed bundles on any CloudFront cache miss during the warm requests.
-  await mgr.updatePkgVersion(
-    pkgVersion.pkgId,
-    pkgVersion.version,
-    pkgVersion.branchId,
-    {
-      isPrefilled: true,
-    }
-  );
-
   // Warm CloudFront's versioned cache by GETting each versioned URL through
   // the CDN. This must happen before invalidating the published cache so that
   // when clients follow the published→versioned redirect they get a cache hit.
+  // Warming works here without isPrefilled being set because the versioned
+  // endpoint serves directly from S3 by projectId@version — isPrefilled is
+  // only checked by the published redirect endpoint.
   if (warmingData.length > 0) {
     const baseUrl = getCodegenPublicUrl();
     const warmingResults = await Promise.allSettled(
@@ -181,6 +173,22 @@ export async function prefillCloudfront(
       logger().info(`Warmed CloudFront versioned cache for ${projectId}`);
     }
   }
+
+  // Mark as prefilled immediately before invalidation. Setting it here (after
+  // warming, before invalidation) ensures two things:
+  //   1. The versioned cache is already hot, so cache misses on the published
+  //      redirect are cheap.
+  //   2. The window between "status = ready" and "published cache invalidated"
+  //      is minimised to just the invalidation API call (~100ms), rather than
+  //      the full warming duration (up to 30s × N variants).
+  await mgr.updatePkgVersion(
+    pkgVersion.pkgId,
+    pkgVersion.version,
+    pkgVersion.branchId,
+    {
+      isPrefilled: true,
+    }
+  );
 
   // Invalidate published CDN paths so clients are redirected to the
   // now-warmed versioned entries.
