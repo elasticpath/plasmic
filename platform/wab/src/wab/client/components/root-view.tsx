@@ -142,6 +142,16 @@ function LoggedInContainer(props: LoggedInContainerProps) {
         // Not logged in users
         <Switch>
           {projectRoute()}
+          {routerRoute({
+            exact: true,
+            path: APP_ROUTES.plasmicInit,
+            render: ({ match }) => (
+              <InitTokenPage
+                appCtx={appCtx}
+                initToken={match.params.initToken}
+              />
+            ),
+          })}
           {isDashboardRestricted(
             appCtx.appConfig,
             currentLocation.search
