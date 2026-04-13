@@ -45,9 +45,23 @@ export const COPILOT_TOOL_DEFS = {
     description:
       "Read project data including components, elements, and tokens.",
     inputSchema: z.object({
-      project: z.boolean().optional(),
+      project: z
+        .object({
+          components: z.boolean().optional(),
+          screenBreakpoints: z.boolean().optional(),
+          globalVariants: z.boolean().optional(),
+          tokens: z.boolean().optional(),
+        })
+        .optional(),
       components: z.array(z.string()).optional(),
-      elements: z.array(z.string()).optional(),
+      elements: z
+        .array(
+          z.object({
+            componentUuid: z.string(),
+            elementUuid: z.string(),
+          })
+        )
+        .optional(),
       tokens: z.array(z.string()).optional(),
     }),
   },
@@ -61,6 +75,30 @@ export const COPILOT_TOOL_DEFS = {
       tplUuid: z.string(),
       insertRelLoc: z.string().optional(),
       variantUuids: z.array(z.string()).optional(),
+    }),
+  },
+  changeStyles: {
+    toolName: "changeStyles",
+    title: "Change Styles",
+    description: "Change CSS styles on elements in a component.",
+    inputSchema: z.object({
+      componentUuid: z.string(),
+      variantUuids: z.array(z.string()).optional(),
+      changes: z.array(
+        z.object({
+          tplUuid: z.string(),
+          styles: z.record(z.string(), z.string().nullable()),
+        })
+      ),
+    }),
+  },
+  deleteElement: {
+    toolName: "deleteElement",
+    title: "Delete Element",
+    description: "Delete an element from a component.",
+    inputSchema: z.object({
+      componentUuid: z.string(),
+      tplUuid: z.string(),
     }),
   },
 } as const satisfies Record<string, CopilotToolDef>;

@@ -834,18 +834,6 @@ export function getRenderBySection(
         ),
     ],
     [
-      Section.AnimationsPanel,
-      () =>
-        (isTag || codeComponentTpl) &&
-        DEVFLAGS.showAnimations &&
-        showSection(Section.AnimationsPanel) && (
-          <AnimationsSection
-            key={`${tpl.uuid}-animations`}
-            expsProvider={expsProvider}
-          />
-        ),
-    ],
-    [
       Section.TransitionsPanel,
       () =>
         isTransitionValidForTpl(tpl) &&
