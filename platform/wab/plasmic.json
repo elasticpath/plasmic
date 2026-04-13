@@ -9624,8 +9624,6 @@
           "cssFilePath": "wab/client/plasmic/plasmic_kit_data_binding/PlasmicDataQueryCodeEditorLayout.module.css",
           "scheme": "blackbox",
           "componentType": "component"
-<<<<<<< HEAD
-=======
         },
         {
           "id": "cdd2zPdEWaRL",
@@ -9668,7 +9666,6 @@
           "cssFilePath": "wab/client/plasmic/plasmic_kit_data_binding/PlasmicMessagePartLabel.module.css",
           "scheme": "blackbox",
           "componentType": "component"
->>>>>>> upstream/master
         }
       ],
       "icons": [

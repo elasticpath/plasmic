@@ -144,16 +144,13 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
         type: "private",
         variableType: "variant",
         initFunc: ({ $props, $state, $queries, $q, $ctx }) => $props.type,
-<<<<<<< HEAD
       },
       {
         path: "withAdminOverrides",
         type: "private",
         variableType: "variant",
-        initFunc: ({ $props, $state, $queries, $ctx }) =>
+        initFunc: ({ $props, $state, $queries, $q, $ctx }) =>
           $props.withAdminOverrides,
-=======
->>>>>>> upstream/master
       },
     ],
     [$props, $ctx, $refs]

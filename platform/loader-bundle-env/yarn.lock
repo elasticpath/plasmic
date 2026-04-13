@@ -1231,46 +1231,7 @@
   dependencies:
     tslib "^2.0.0"
 
-<<<<<<< HEAD
-"@elasticpath/plasmic-ep-commerce-elastic-path@^0.0.3":
-  version "0.0.3"
-  resolved "https://registry.yarnpkg.com/@elasticpath/plasmic-ep-commerce-elastic-path/-/plasmic-ep-commerce-elastic-path-0.0.3.tgz#005a9253fbbb40da4089d6c6a70f2717e7127c2d"
-  integrity sha512-xRWXxHCdmqfZAJbl83EIOOiPMP7WwlCcORqjLL2K7xhbX+TKC3+5hAfyjTtCmrsmKXtUOibxZAAJmn25PQbcIQ==
-  dependencies:
-    "@epcc-sdk/sdks-shopper" "^0.0.40"
-    "@hookform/resolvers" "^3.3.2"
-    "@plasmicpkgs/commerce" "0.0.232"
-    "@stripe/react-stripe-js" "^2.4.0"
-    "@stripe/stripe-js" "^2.4.0"
-    "@types/react" "^18.0.27"
-    debounce "^2.0.0"
-    js-cookie "^3.0.5"
-    qs "^6.11.0"
-    react-hook-form "^7.48.2"
-    zod "^3.22.4"
-
-"@emotion/babel-plugin@^11.10.0":
-  version "11.10.2"
-  resolved "https://registry.yarnpkg.com/@emotion/babel-plugin/-/babel-plugin-11.10.2.tgz#879db80ba622b3f6076917a1e6f648b1c7d008c7"
-  integrity sha512-xNQ57njWTFVfPAc3cjfuaPdsgLp5QOSuRsj9MA6ndEhH/AzuZM86qIQzt6rq+aGBwj3n5/TkLmU5lhAfdRmogA==
-  dependencies:
-    "@babel/helper-module-imports" "^7.16.7"
-    "@babel/plugin-syntax-jsx" "^7.17.12"
-    "@babel/runtime" "^7.18.3"
-    "@emotion/hash" "^0.9.0"
-    "@emotion/memoize" "^0.8.0"
-    "@emotion/serialize" "^1.1.0"
-    babel-plugin-macros "^3.1.0"
-    convert-source-map "^1.5.0"
-    escape-string-regexp "^4.0.0"
-    find-root "^1.1.0"
-    source-map "^0.5.7"
-    stylis "4.0.13"
-
-"@emotion/babel-plugin@^11.11.0":
-=======
 "@emotion/babel-plugin@^11.10.0", "@emotion/babel-plugin@^11.11.0":
->>>>>>> upstream/master
   version "11.11.0"
   resolved "https://registry.yarnpkg.com/@emotion/babel-plugin/-/babel-plugin-11.11.0.tgz#c2d872b6a7767a9d176d007f5b31f7d504bb5d6c"
   integrity sha512-m4HEDZleaaCH+XgDDsPF15Ht6wTLsgDTeR3WYj9Q/k76JtWhrJjcP4+/XlG8LGT/Rol9qUfOIztXeA84ATpqPQ==

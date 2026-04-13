@@ -659,7 +659,7 @@ declare module "@/wab/shared/TplMgr" {
     ensureBaseVariant(comp: any): any;
     renameComponent(component: any, name: string): void;
     removeComponent(component: any): void;
-    createStyleVariant(component: any, selectors?: string[]): any;
+    createStyleVariant(component: any, selectors?: string[]): [any, boolean];
     createPrivateStyleVariant(component: any, tpl: any, selectors?: string[]): any;
     createVariantGroup(opts: { component: any; name?: string; optionsType?: string }): any;
     createVariant(component: any, group: any, name?: string): any;

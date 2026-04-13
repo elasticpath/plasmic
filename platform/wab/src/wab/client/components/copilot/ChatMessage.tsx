@@ -7,11 +7,7 @@ import {
 } from "@/wab/client/plasmic/plasmic_kit_data_binding/PlasmicChatMessage";
 import { unreachable } from "@/wab/shared/common";
 import { COPILOT_TOOL_DEFS } from "@/wab/shared/copilot/enterprise/copilot-tools";
-<<<<<<< HEAD
-import { isDataUIPart, isToolUIPart } from "ai";
-=======
 import { ReasoningUIPart, ToolUIPart, isDataUIPart, isToolUIPart } from "ai";
->>>>>>> upstream/master
 import * as React from "react";
 
 export type ChatMessageProps = DefaultChatMessageProps & {

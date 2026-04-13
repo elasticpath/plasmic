@@ -814,7 +814,7 @@ declare module "@/wab/shared/TplMgr" {
     removeComponent(component: any): void;
     /** Create a component-level style variant (hover/focus/pressed).
      *  Pushes to component.variants (not variantGroups). */
-    createStyleVariant(component: any, selectors?: string[]): any;
+    createStyleVariant(component: any, selectors?: string[]): [any, boolean];
     /** Create an element-level (private) style variant.
      *  The variant is scoped to a specific TplNode via forTpl. */
     createPrivateStyleVariant(component: any, tpl: any, selectors?: string[]): any;
