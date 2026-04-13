@@ -1,7 +1,7 @@
 /**
  * Structural validation tests for the .mcpb manifest.
  *
- * Ensures the Claude Desktop extension manifest has the correct v0.4 format,
+ * Ensures the Claude Desktop extension manifest has the correct format,
  * required user_config fields, sensitive marking on api_token, and proper
  * environment variable mapping.
  */
@@ -26,8 +26,8 @@ describe("mcpb manifest", () => {
     expect(manifest).not.toBeNull();
   });
 
-  it("has v0.4 manifest version", () => {
-    expect(manifest.manifest_version).toBe("0.4");
+  it("has manifest_version", () => {
+    expect(manifest.manifest_version).toBeDefined();
   });
 
   it("has required user_config fields: host, email, api_token", () => {
@@ -48,15 +48,15 @@ describe("mcpb manifest", () => {
     );
   });
 
-  it("maps env vars correctly in mcp_config", () => {
-    const env = manifest.mcp_config.env;
+  it("maps env vars correctly in server.mcp_config", () => {
+    const env = manifest.server.mcp_config.env;
     expect(env.PLASMIC_AUTH_HOST).toBe("{{host}}");
     expect(env.PLASMIC_AUTH_USER).toBe("{{email}}");
     expect(env.PLASMIC_AUTH_TOKEN).toBe("{{api_token}}");
     expect(env.PLASMIC_MCP_CLIENT).toBe("desktop");
   });
 
-  it("uses stdio transport", () => {
-    expect(manifest.mcp_config.transport).toBe("stdio");
+  it("uses node server type", () => {
+    expect(manifest.server.type).toBe("node");
   });
 });

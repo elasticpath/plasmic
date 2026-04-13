@@ -9,6 +9,7 @@
   "main": "./dist/index.cjs",
   "scripts": {
     "build": "node build.mjs",
+    "build:mcpb": "node build.mjs && rm -rf dist/mcpb-staging && mkdir -p dist/mcpb-staging/server && cp manifest.json dist/mcpb-staging/ && cp dist/index.cjs dist/mcpb-staging/server/ && npx @anthropic-ai/mcpb pack dist/mcpb-staging dist/visual-builder.mcpb && rm -rf dist/mcpb-staging",
     "dev": "tsx src/index.ts",
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
