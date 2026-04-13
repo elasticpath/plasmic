@@ -24,6 +24,11 @@ import { uniqBy } from "lodash";
 // designed to be long-lived and credential resolution is done once at init.
 let cloudfrontClient: CloudFrontClient | undefined;
 
+/** @internal Reset the cached client — test-only. */
+export function _resetCloudfrontClientForTest() {
+  cloudfrontClient = undefined;
+}
+
 export async function prefillCloudfront(
   mgr: DbMgr,
   pool: PlasmicWorkerPool,
