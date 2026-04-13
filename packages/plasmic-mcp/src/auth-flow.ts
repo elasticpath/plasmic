@@ -1,13 +1,14 @@
 /**
- * Browser-based init-token authentication flow.
+ * Authentication flow for the MCP server.
  *
- * Replicates the Plasmic CLI's auth pattern:
- * 1. Generate a UUID init token
- * 2. Open browser to {host}/auth/plasmic-init/{initToken}
- * 3. Listen via socket.io on /api/v1/init-token for the token callback
- * 4. Write credentials to ~/.plasmic.auth
+ * Default: interactive credential entry via terminal prompts.
  *
- * Falls back to manual credential entry if the browser flow times out.
+ * Browser-based init-token flow (deferred): replicates the Plasmic CLI's
+ * auth pattern — generate UUID init token, open browser to
+ * {host}/auth/plasmic-init/{initToken}, listen via socket.io for callback.
+ * Currently disabled because EP-hosted environments redirect unauthenticated
+ * users to Commerce Manager, which doesn't yet support the init-token route.
+ * Enable with `{ browser: true }` once a CM route is available.
  *
  * Reference: packages/cli/src/utils/auth-utils.ts
  */
@@ -19,6 +20,8 @@ const DEFAULT_TIMEOUT_MS = 60_000;
 
 export interface AcquireAuthOptions {
   timeoutMs?: number;
+  /** Use browser-based init-token flow instead of terminal prompts. */
+  browser?: boolean;
 }
 
 export async function acquireAuth(
@@ -26,24 +29,39 @@ export async function acquireAuth(
   options?: AcquireAuthOptions
 ): Promise<AuthConfig> {
   const cleanHost = host.replace(/\/+$/, "");
-  const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
+  if (options?.browser) {
+    return browserFlow(cleanHost, options?.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  }
+
+  console.error("[plasmic-mcp] Visual Builder authentication");
+  console.error(`[plasmic-mcp] Host: ${cleanHost}`);
+  console.error("[plasmic-mcp] Enter your credentials (from your account settings):\n");
+
+  return manualEntry(cleanHost);
+}
+
+// ---------------------------------------------------------------------------
+// Browser init-token flow (deferred — enable when CM supports the route)
+// ---------------------------------------------------------------------------
+
+async function browserFlow(
+  host: string,
+  timeoutMs: number
+): Promise<AuthConfig> {
   const initToken = randomUUID();
-  const authUrl = `${cleanHost}/auth/plasmic-init/${initToken}`;
+  const authUrl = `${host}/auth/plasmic-init/${initToken}`;
 
-  // Open browser
   const open = (await import("open")).default;
   await open(authUrl);
   console.error(`[plasmic-mcp] Opened browser for authentication: ${authUrl}`);
 
-  // Try socket.io polling for the token
   try {
-    const authData = await pollForToken(cleanHost, initToken, timeoutMs);
-    return { host: cleanHost, user: authData.user, token: authData.token };
+    const authData = await pollForToken(host, initToken, timeoutMs);
+    return { host, user: authData.user, token: authData.token };
   } catch {
-    // Timeout — fall back to manual entry
     console.error("[plasmic-mcp] Browser auth timed out, falling back to manual entry");
-    return manualEntry(cleanHost);
+    return manualEntry(host);
   }
 }
 
@@ -89,6 +107,10 @@ function pollForToken(
     });
   });
 }
+
+// ---------------------------------------------------------------------------
+// Manual credential entry (current default)
+// ---------------------------------------------------------------------------
 
 async function manualEntry(host: string): Promise<AuthConfig> {
   const prompts = (await import("prompts")).default;
