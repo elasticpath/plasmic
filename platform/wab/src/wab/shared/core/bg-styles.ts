@@ -24,7 +24,6 @@ import {
   extractDimensionFromNode,
   extractUrlFromNode,
   findAndMap,
-  isDimCssFunction,
   isDimensionNode,
   isLinearGradientFunction,
   isRadialGradientFunction,

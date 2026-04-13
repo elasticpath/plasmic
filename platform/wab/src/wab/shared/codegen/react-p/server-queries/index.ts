@@ -4,7 +4,6 @@ import {
   serializeCustomFunctionsAndLibs,
 } from "@/wab/shared/codegen/react-p/custom-functions";
 import { getDataSourcesPackageName } from "@/wab/shared/codegen/react-p/data-sources";
-import { serializeGenerateMetadataFunction } from "@/wab/shared/codegen/react-p/page-metadata";
 import {
   getDataTokenImportsForPageMeta,
   getMetadataTypeDefinition,

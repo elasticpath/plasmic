@@ -161,6 +161,7 @@ export default defineConfig({
       "src/__tests__/package-manager.integration.test.ts",
     ],
     testTimeout: 30_000,
+    hookTimeout: 30_000,
     environment: "node",
   },
 });
