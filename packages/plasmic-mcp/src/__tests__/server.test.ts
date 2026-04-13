@@ -63,7 +63,7 @@ describe("createServer", () => {
     expect(server).toBeDefined();
   });
 
-  it("throws when auth is not configured", async () => {
+  it("starts without auth (graceful unauthenticated mode)", async () => {
     delete process.env.PLASMIC_AUTH_HOST;
     delete process.env.PLASMIC_AUTH_USER;
     delete process.env.PLASMIC_AUTH_TOKEN;
@@ -86,7 +86,50 @@ describe("createServer", () => {
     });
 
     const { createServer } = await import("../server");
-    expect(() => createServer()).toThrow("Plasmic authentication required");
+    const server = createServer();
+    expect(server).toBeDefined();
+  });
+
+  it("returns content-level auth error when tool called without credentials", async () => {
+    delete process.env.PLASMIC_AUTH_HOST;
+    delete process.env.PLASMIC_AUTH_USER;
+    delete process.env.PLASMIC_AUTH_TOKEN;
+
+    vi.resetModules();
+    vi.doMock("mobx", () => {
+      const mock = { configure: vi.fn() };
+      return { ...mock, default: mock };
+    });
+    vi.doMock("fs", () => {
+      const mock = {
+        readFileSync: () => { throw new Error("ENOENT"); },
+        writeFileSync: vi.fn(),
+      };
+      return { ...mock, default: mock };
+    });
+    vi.doMock("os", () => {
+      const mock = { homedir: () => "/mock/home", tmpdir: () => "/tmp" };
+      return { ...mock, default: mock };
+    });
+
+    const { createServer } = await import("../server");
+    const mcpServer = createServer();
+
+    const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await mcpServer.connect(serverTransport);
+    const client = new Client({ name: "test-client", version: "1.0" });
+    await client.connect(clientTransport);
+
+    // Call project.list — should get a content-level auth error, not a protocol error
+    const result = await client.callTool({ name: "project", arguments: { action: "list" } });
+    expect(result.content).toBeDefined();
+    const text = (result.content as any[])[0]?.text;
+    expect(text).toContain("authentication required");
+
+    await client.close();
   });
 });
 

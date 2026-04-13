@@ -30,6 +30,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { PlasmicApiClient } from "./api-client.js";
 import { getAuth } from "./auth.js";
+import { requireAuth } from "./auth-guard.js";
 import { requireSession, setSession } from "./session.js";
 import { loadProject } from "./model-loader.js";
 import { listPackages, addPackage, removePackage, upgradePackage, listAvailablePackages, listPackageComponents } from "./package-manager.js";
@@ -312,9 +313,18 @@ export function createServer(): McpServer {
   });
 
   const auth = getAuth();
-  const apiClient = new PlasmicApiClient(auth);
+  const apiClient = auth ? new PlasmicApiClient(auth) : null;
 
-  console.error(`[plasmic-mcp] Authenticated as ${auth.user} against ${auth.host}`);
+  if (auth) {
+    console.error(`[plasmic-mcp] Authenticated as ${auth.user} against ${auth.host}`);
+  } else {
+    console.error("[plasmic-mcp] Starting without authentication — tool calls will require auth");
+  }
+
+  /** Get the authenticated API client or throw a descriptive auth error. */
+  function getClient(): PlasmicApiClient {
+    return requireAuth(apiClient);
+  }
 
   // ========================================================================
   // DOMAIN 1: project (8 actions)
@@ -338,9 +348,10 @@ export function createServer(): McpServer {
         "- list-package-components: List components from installed hostless packages\n" +
         "- add-package: Add a hostless package by its source projectId\n" +
         "- remove-package: Remove an installed package by pkgId or name\n" +
-        "- upgrade-package: Upgrade one or all packages to latest version",
+        "- upgrade-package: Upgrade one or all packages to latest version\n" +
+        "- health-check: Check server status, version, and authentication state (works without auth)",
       inputSchema: {
-        action: z.enum(["set", "list", "get-meta", "save", "refresh", "begin-batch", "end-batch", "undo", "list-packages", "list-available-packages", "list-package-components", "add-package", "remove-package", "upgrade-package"]),
+        action: z.enum(["set", "list", "get-meta", "save", "refresh", "begin-batch", "end-batch", "undo", "list-packages", "list-available-packages", "list-package-components", "add-package", "remove-package", "upgrade-package", "health-check"]),
         projectId: z.string().optional().describe("The Plasmic project ID (required for 'set' and 'add-package')"),
         branchId: z.string().optional().describe("Branch ID to load (omit for main branch). Use branch.list to get available branch IDs."),
         batchId: z.string().optional().describe("Optional batch ID for verification (used by 'end-batch')"),
@@ -357,7 +368,7 @@ export function createServer(): McpServer {
             // Clean up previous session state before loading new project
             stopLiveSync();
             stopPreviewServer().catch(() => {});
-            apiClient.clearSessionState();
+            getClient().clearSessionState();
             cancelBatch();
             clearUndoStack();
             disposeChangeTracker();
@@ -373,7 +384,7 @@ export function createServer(): McpServer {
               hostUrl,
               bundleVersion,
               projectApiToken,
-            } = await loadProject(apiClient, pid, branchId);
+            } = await loadProject(getClient(), pid, branchId);
 
             // Sync code component variants from the dev host (non-fatal)
             const syncResult = await syncFromDevHost(site, hostUrl);
@@ -411,7 +422,7 @@ export function createServer(): McpServer {
                   recordVariantMetadataSync(site, variantComponents);
                 });
                 if (changes.changes.length > 0) {
-                  const saveManager = new SaveManager(apiClient);
+                  const saveManager = new SaveManager(getClient());
                   await saveManager.saveChanges(changes);
                   console.error("[plasmic-mcp] Persisted variant metadata to server");
                 }
@@ -419,7 +430,7 @@ export function createServer(): McpServer {
             }
 
             // Start live sync (non-blocking — continues in HTTP-only mode if socket fails)
-            startLiveSync(apiClient, pid).catch((err) => {
+            startLiveSync(getClient(), pid).catch((err) => {
               console.error(
                 `[plasmic-mcp] LiveSync start failed (non-fatal): ${
                   err instanceof Error ? err.message : String(err)
@@ -428,7 +439,7 @@ export function createServer(): McpServer {
             });
 
             // Start preview server (non-blocking — continues if it fails)
-            startPreviewServer(apiClient).catch((err) => {
+            startPreviewServer(getClient()).catch((err) => {
               console.error(
                 `[plasmic-mcp] Preview server start failed (non-fatal): ${
                   err instanceof Error ? err.message : String(err)
@@ -471,7 +482,7 @@ export function createServer(): McpServer {
           }
 
           case "list": {
-            const response = await apiClient.listProjects();
+            const response = await getClient().listProjects();
             const projects = response.projects.map((p) => ({
               id: p.id,
               name: p.name,
@@ -561,7 +572,7 @@ export function createServer(): McpServer {
 
           case "save": {
             requireSession();
-            const saveManager = new SaveManager(apiClient);
+            const saveManager = new SaveManager(getClient());
             const save = await saveManager.saveFullBundle();
 
             return {
@@ -609,7 +620,7 @@ export function createServer(): McpServer {
               hostUrl,
               bundleVersion,
               projectApiToken: refreshedToken,
-            } = await loadProject(apiClient, session.projectId, session.activeBranchId ?? undefined);
+            } = await loadProject(getClient(), session.projectId, session.activeBranchId ?? undefined);
 
             // Clear registry cache to force fresh fetch on explicit refresh
             clearRegistryCache(hostUrl);
@@ -649,7 +660,7 @@ export function createServer(): McpServer {
                   recordVariantMetadataSync(site, variantComponents);
                 });
                 if (changes.changes.length > 0) {
-                  const saveManager = new SaveManager(apiClient);
+                  const saveManager = new SaveManager(getClient());
                   await saveManager.saveChanges(changes);
                   console.error("[plasmic-mcp] Persisted variant metadata to server");
                 }
@@ -657,7 +668,7 @@ export function createServer(): McpServer {
             }
 
             // Restart live sync after reload (non-blocking)
-            startLiveSync(apiClient, session.projectId).catch((err) => {
+            startLiveSync(getClient(), session.projectId).catch((err) => {
               console.error(
                 `[plasmic-mcp] LiveSync restart failed (non-fatal): ${
                   err instanceof Error ? err.message : String(err)
@@ -721,7 +732,7 @@ export function createServer(): McpServer {
 
           case "end-batch": {
             requireSession();
-            const result = await endBatch(apiClient, batchId);
+            const result = await endBatch(getClient(), batchId);
             const batchRevision = result.save?.revisionNum ?? null;
             return {
               content: [
@@ -749,7 +760,7 @@ export function createServer(): McpServer {
                 "Cannot undo during a batch session. Call end-batch first, then undo."
               );
             }
-            const result = await undoOperation(apiClient);
+            const result = await undoOperation(getClient());
             const undoRevision = result.save?.revisionNum ?? null;
             return {
               content: [
@@ -771,7 +782,7 @@ export function createServer(): McpServer {
 
           case "list-packages": {
             requireSession();
-            const packages = await listPackages(apiClient);
+            const packages = await listPackages(getClient());
             return {
               content: [
                 {
@@ -790,7 +801,7 @@ export function createServer(): McpServer {
 
           case "list-available-packages": {
             requireSession();
-            const packages = await listAvailablePackages(apiClient);
+            const packages = await listAvailablePackages(getClient());
             return {
               content: [
                 {
@@ -809,7 +820,7 @@ export function createServer(): McpServer {
 
           case "list-package-components": {
             requireSession();
-            const components = await listPackageComponents(apiClient, packageName);
+            const components = await listPackageComponents(getClient(), packageName);
             return {
               content: [
                 {
@@ -834,12 +845,12 @@ export function createServer(): McpServer {
                   "End the current batch first, then add the package."
               );
             }
-            const addPkgResult = await addPackage(apiClient, pid);
+            const addPkgResult = await addPackage(getClient(), pid);
             // Package ops are structural (async fetch + sync mutation) so they
             // can't use the synchronous change tracker for incremental saves.
             // Full bundle save persists all model state — mirrors Studio which
             // records the sync mutation separately and lets auto-save handle it.
-            const addPkgSave = new SaveManager(apiClient);
+            const addPkgSave = new SaveManager(getClient());
             const addPkgRevision = await addPkgSave.saveFullBundle();
             return {
               content: [
@@ -864,8 +875,8 @@ export function createServer(): McpServer {
                   "End the current batch first, then remove the package."
               );
             }
-            const rmPkgResult = await removePackage(apiClient, pkgIdOrName);
-            const rmPkgSave = new SaveManager(apiClient);
+            const rmPkgResult = await removePackage(getClient(), pkgIdOrName);
+            const rmPkgSave = new SaveManager(getClient());
             const rmPkgRevision = await rmPkgSave.saveFullBundle();
             return {
               content: [
@@ -889,7 +900,7 @@ export function createServer(): McpServer {
                   "End the current batch first, then upgrade packages."
               );
             }
-            const upgResults = await upgradePackage(apiClient, pkgId);
+            const upgResults = await upgradePackage(getClient(), pkgId);
             if (upgResults.length === 0) {
               return {
                 content: [
@@ -904,7 +915,7 @@ export function createServer(): McpServer {
                 ],
               };
             }
-            const upgPkgSave = new SaveManager(apiClient);
+            const upgPkgSave = new SaveManager(getClient());
             const upgPkgRevision = await upgPkgSave.saveFullBundle();
             return {
               content: [
@@ -921,8 +932,23 @@ export function createServer(): McpServer {
             };
           }
 
+          case "health-check": {
+            const healthResult: Record<string, unknown> = {
+              status: "ok",
+              version: "0.1.0",
+              authenticated: apiClient !== null,
+            };
+            if (auth) {
+              healthResult.host = auth.host;
+              healthResult.user = auth.user;
+            }
+            return {
+              content: [{ type: "text" as const, text: JSON.stringify(healthResult, null, 2) }],
+            };
+          }
+
           default:
-            throw new Error(`Unknown action '${action}' for project tool. Available: set, list, get-meta, save, refresh, begin-batch, end-batch, undo, list-packages, list-available-packages, list-package-components, add-package, remove-package, upgrade-package`);
+            throw new Error(`Unknown action '${action}' for project tool. Available: set, list, get-meta, save, refresh, begin-batch, end-batch, undo, list-packages, list-available-packages, list-package-components, add-package, remove-package, upgrade-package, health-check`);
         }
       } catch (err: unknown) {
         return {
@@ -1335,7 +1361,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const host = auth.host.replace(/\/$/, ""); // Normalize trailing slash
+            const host = auth?.host.replace(/\/$/, "") ?? ""; // Normalize trailing slash
             const studioUrl = `${host}/projects/${session.projectId}`;
             const studioComponentUrl = `${studioUrl}?arena_type=component&arena=${encodeURIComponent(cuuid)}`;
             const isPage = !!component.pageMeta?.path;
@@ -1637,7 +1663,7 @@ export function createServer(): McpServer {
             const pagePath = requireParam(params.path, "path", "component.create-page");
             const session = requireSession();
 
-            const apiResponse = await apiClient.updateProject(session.projectId, {
+            const apiResponse = await getClient().updateProject(session.projectId, {
               newComponents: [{ name: pageName, path: pagePath, body: params.body }],
             });
 
@@ -1659,7 +1685,7 @@ export function createServer(): McpServer {
                 hostUrl: reloadedHostUrl,
                 bundleVersion: newBundleVersion,
                 projectApiToken: reloadedToken,
-              } = await loadProject(apiClient, session.projectId, session.activeBranchId ?? undefined);
+              } = await loadProject(getClient(), session.projectId, session.activeBranchId ?? undefined);
 
               // Re-sync code component variants from the dev host (non-fatal)
               const syncResult = await syncFromDevHost(site, reloadedHostUrl);
@@ -1737,7 +1763,7 @@ export function createServer(): McpServer {
             if (compName.length < 1) throw new Error("Component name is required");
             const session = requireSession();
 
-            const apiResponse = await apiClient.updateProject(session.projectId, {
+            const apiResponse = await getClient().updateProject(session.projectId, {
               newComponents: [{ name: compName, body: params.body }],
             });
 
@@ -1759,7 +1785,7 @@ export function createServer(): McpServer {
                 hostUrl: reloadedHostUrl,
                 bundleVersion: newBundleVersion,
                 projectApiToken: reloadedToken,
-              } = await loadProject(apiClient, session.projectId, session.activeBranchId ?? undefined);
+              } = await loadProject(getClient(), session.projectId, session.activeBranchId ?? undefined);
 
               // Re-sync code component variants from the dev host (non-fatal)
               const syncResult = await syncFromDevHost(site, reloadedHostUrl);
@@ -1862,7 +1888,7 @@ export function createServer(): McpServer {
               req.path = params.path;
             }
 
-            const apiResponse = await apiClient.updateProject(session.projectId, {
+            const apiResponse = await getClient().updateProject(session.projectId, {
               newComponents: [req],
             });
 
@@ -1884,7 +1910,7 @@ export function createServer(): McpServer {
                 hostUrl: reloadedHostUrl,
                 bundleVersion: newBundleVersion,
                 projectApiToken: reloadedToken,
-              } = await loadProject(apiClient, session.projectId, session.activeBranchId ?? undefined);
+              } = await loadProject(getClient(), session.projectId, session.activeBranchId ?? undefined);
 
               // Re-sync code component variants from the dev host (non-fatal)
               const syncResult = await syncFromDevHost(site, reloadedHostUrl);
@@ -1960,7 +1986,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                renameComponent(apiClient, cuuid, nn, params.newPath)
+                renameComponent(getClient(), cuuid, nn, params.newPath)
               );
               return {
                 content: [
@@ -1981,7 +2007,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await renameComponent(apiClient, cuuid, nn, params.newPath);
+            const result = await renameComponent(getClient(), cuuid, nn, params.newPath);
             return {
               content: [
                 {
@@ -2007,7 +2033,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                deleteComponent(apiClient, cuuid, params.force)
+                deleteComponent(getClient(), cuuid, params.force)
               );
               return {
                 content: [
@@ -2026,7 +2052,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await deleteComponent(apiClient, cuuid, params.force);
+            const result = await deleteComponent(getClient(), cuuid, params.force);
             return {
               content: [
                 {
@@ -2053,7 +2079,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                extractToComponent(apiClient, cuuid, nRef, eName)
+                extractToComponent(getClient(), cuuid, nRef, eName)
               );
               return {
                 content: [
@@ -2074,7 +2100,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await extractToComponent(apiClient, cuuid, nRef, eName);
+            const result = await extractToComponent(getClient(), cuuid, nRef, eName);
             clearNodeCache();
             return {
               content: [
@@ -2101,7 +2127,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                convertToPage(apiClient, cuuid, params.path)
+                convertToPage(getClient(), cuuid, params.path)
               );
               return {
                 content: [
@@ -2120,7 +2146,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await convertToPage(apiClient, cuuid, params.path);
+            const result = await convertToPage(getClient(), cuuid, params.path);
             return {
               content: [
                 {
@@ -2144,7 +2170,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                convertToComponent(apiClient, cuuid)
+                convertToComponent(getClient(), cuuid)
               );
               return {
                 content: [
@@ -2162,7 +2188,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await convertToComponent(apiClient, cuuid);
+            const result = await convertToComponent(getClient(), cuuid);
             return {
               content: [
                 {
@@ -2192,7 +2218,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                updatePageMeta(apiClient, cuuid, meta)
+                updatePageMeta(getClient(), cuuid, meta)
               );
               return {
                 content: [
@@ -2212,7 +2238,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await updatePageMeta(apiClient, cuuid, meta);
+            const result = await updatePageMeta(getClient(), cuuid, meta);
             return {
               content: [
                 {
@@ -2276,7 +2302,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                addProp(apiClient, cuuid, propName, propType, params.defaultValue, params.description)
+                addProp(getClient(), cuuid, propName, propType, params.defaultValue, params.description)
               );
               return {
                 content: [
@@ -2297,7 +2323,7 @@ export function createServer(): McpServer {
             }
 
             const result = await addProp(
-              apiClient, cuuid, propName, propType, params.defaultValue, params.description
+              getClient(), cuuid, propName, propType, params.defaultValue, params.description
             );
             return {
               content: [
@@ -2341,7 +2367,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                updateProp(apiClient, cuuid, pRef, params.name, params.defaultValue, params.description)
+                updateProp(getClient(), cuuid, pRef, params.name, params.defaultValue, params.description)
               );
               return {
                 content: [
@@ -2363,7 +2389,7 @@ export function createServer(): McpServer {
             }
 
             const result = await updateProp(
-              apiClient, cuuid, pRef, params.name, params.defaultValue, params.description
+              getClient(), cuuid, pRef, params.name, params.defaultValue, params.description
             );
             return {
               content: [
@@ -2390,7 +2416,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                removeProp(apiClient, cuuid, pRef)
+                removeProp(getClient(), cuuid, pRef)
               );
               return {
                 content: [
@@ -2410,7 +2436,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await removeProp(apiClient, cuuid, pRef);
+            const result = await removeProp(getClient(), cuuid, pRef);
             return {
               content: [
                 {
@@ -2474,7 +2500,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                addState(apiClient, cuuid, stateName, varType, accType, params.initialValue)
+                addState(getClient(), cuuid, stateName, varType, accType, params.initialValue)
               );
               return {
                 content: [
@@ -2497,7 +2523,7 @@ export function createServer(): McpServer {
             }
 
             const result = await addState(
-              apiClient, cuuid, stateName, varType, accType, params.initialValue
+              getClient(), cuuid, stateName, varType, accType, params.initialValue
             );
             return {
               content: [
@@ -2543,7 +2569,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                updateState(apiClient, cuuid, sRef, params.name, params.accessType, params.initialValue)
+                updateState(getClient(), cuuid, sRef, params.name, params.accessType, params.initialValue)
               );
               return {
                 content: [
@@ -2565,7 +2591,7 @@ export function createServer(): McpServer {
             }
 
             const result = await updateState(
-              apiClient, cuuid, sRef, params.name, params.accessType, params.initialValue
+              getClient(), cuuid, sRef, params.name, params.accessType, params.initialValue
             );
             return {
               content: [
@@ -2592,7 +2618,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                removeState(apiClient, cuuid, sRef)
+                removeState(getClient(), cuuid, sRef)
               );
               return {
                 content: [
@@ -2612,7 +2638,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await removeState(apiClient, cuuid, sRef);
+            const result = await removeState(getClient(), cuuid, sRef);
             return {
               content: [
                 {
@@ -2746,7 +2772,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                addChild(apiClient, cuuid, pRef, childBody, params.position, params.slot)
+                addChild(getClient(), cuuid, pRef, childBody, params.position, params.slot)
               );
               return {
                 content: [
@@ -2770,7 +2796,7 @@ export function createServer(): McpServer {
             }
 
             const result = await addChild(
-              apiClient, cuuid, pRef, childBody, params.position, params.slot
+              getClient(), cuuid, pRef, childBody, params.position, params.slot
             );
             // Structural edit: invalidate node resolver cache for this component
             invalidateNodeCache(cuuid);
@@ -2801,7 +2827,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                removeChild(apiClient, cuuid, nref)
+                removeChild(getClient(), cuuid, nref)
               );
               return {
                 content: [
@@ -2819,7 +2845,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await removeChild(apiClient, cuuid, nref);
+            const result = await removeChild(getClient(), cuuid, nref);
             invalidateNodeCache(cuuid);
             return {
               content: [
@@ -2844,7 +2870,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                moveChild(apiClient, cuuid, nref, npRef, params.position, params.slot)
+                moveChild(getClient(), cuuid, nref, npRef, params.position, params.slot)
               );
               return {
                 content: [
@@ -2866,7 +2892,7 @@ export function createServer(): McpServer {
             }
 
             const result = await moveChild(
-              apiClient, cuuid, nref, npRef, params.position, params.slot
+              getClient(), cuuid, nref, npRef, params.position, params.slot
             );
             invalidateNodeCache(cuuid);
             return {
@@ -2894,7 +2920,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                cloneChild(apiClient, cuuid, nref, params.newName, params.parentRef, params.position, params.slot)
+                cloneChild(getClient(), cuuid, nref, params.newName, params.parentRef, params.position, params.slot)
               );
               return {
                 content: [
@@ -2916,7 +2942,7 @@ export function createServer(): McpServer {
             }
 
             const result = await cloneChild(
-              apiClient, cuuid, nref, params.newName, params.parentRef, params.position, params.slot
+              getClient(), cuuid, nref, params.newName, params.parentRef, params.position, params.slot
             );
             invalidateNodeCache(cuuid);
             return {
@@ -2945,7 +2971,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                reorderChildren(apiClient, cuuid, pRef, cRefs)
+                reorderChildren(getClient(), cuuid, pRef, cRefs)
               );
               return {
                 content: [
@@ -2963,7 +2989,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await reorderChildren(apiClient, cuuid, pRef, cRefs);
+            const result = await reorderChildren(getClient(), cuuid, pRef, cRefs);
             invalidateNodeCache(cuuid);
             return {
               content: [
@@ -2990,7 +3016,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                updateStyles(apiClient, cuuid, nref, sty, params.variant)
+                updateStyles(getClient(), cuuid, nref, sty, params.variant)
               );
               return {
                 content: [
@@ -3011,7 +3037,7 @@ export function createServer(): McpServer {
             }
 
             const result = await updateStyles(
-              apiClient, cuuid, nref, sty, params.variant
+              getClient(), cuuid, nref, sty, params.variant
             );
             return {
               content: [
@@ -3038,7 +3064,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                updateText(apiClient, cuuid, nref, txt, params.variant, params.dynamic, params.fallback, params.html)
+                updateText(getClient(), cuuid, nref, txt, params.variant, params.dynamic, params.fallback, params.html)
               );
               return {
                 content: [
@@ -3060,7 +3086,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await updateText(apiClient, cuuid, nref, txt, params.variant, params.dynamic, params.fallback, params.html);
+            const result = await updateText(getClient(), cuuid, nref, txt, params.variant, params.dynamic, params.fallback, params.html);
             return {
               content: [
                 {
@@ -3089,7 +3115,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                updateRichText(apiClient, cuuid, nref, txt, mrks, params.variant)
+                updateRichText(getClient(), cuuid, nref, txt, mrks, params.variant)
               );
               return {
                 content: [
@@ -3110,7 +3136,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await updateRichText(apiClient, cuuid, nref, txt, mrks, params.variant);
+            const result = await updateRichText(getClient(), cuuid, nref, txt, mrks, params.variant);
             return {
               content: [
                 {
@@ -3137,7 +3163,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                updateAttrs(apiClient, cuuid, nref, at, params.variant)
+                updateAttrs(getClient(), cuuid, nref, at, params.variant)
               );
               return {
                 content: [
@@ -3159,7 +3185,7 @@ export function createServer(): McpServer {
             }
 
             const result = await updateAttrs(
-              apiClient, cuuid, nref, at, params.variant
+              getClient(), cuuid, nref, at, params.variant
             );
             return {
               content: [
@@ -3187,7 +3213,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                updateProps(apiClient, cuuid, nref, pr, params.variant)
+                updateProps(getClient(), cuuid, nref, pr, params.variant)
               );
               return {
                 content: [
@@ -3209,7 +3235,7 @@ export function createServer(): McpServer {
             }
 
             const result = await updateProps(
-              apiClient, cuuid, nref, pr, params.variant
+              getClient(), cuuid, nref, pr, params.variant
             );
             return {
               content: [
@@ -3237,7 +3263,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                setVisibility(apiClient, cuuid, nref, vis, params.variant)
+                setVisibility(getClient(), cuuid, nref, vis, params.variant)
               );
               return {
                 content: [
@@ -3259,7 +3285,7 @@ export function createServer(): McpServer {
             }
 
             const result = await setVisibility(
-              apiClient, cuuid, nref, vis, params.variant
+              getClient(), cuuid, nref, vis, params.variant
             );
             return {
               content: [
@@ -3304,7 +3330,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                setImage(apiClient, cuuid, nref, { assetRef: params.assetRef, src: params.src }, params.variant)
+                setImage(getClient(), cuuid, nref, { assetRef: params.assetRef, src: params.src }, params.variant)
               );
               return {
                 content: [
@@ -3324,7 +3350,7 @@ export function createServer(): McpServer {
             }
 
             const result = await setImage(
-              apiClient, cuuid, nref,
+              getClient(), cuuid, nref,
               { assetRef: params.assetRef, src: params.src },
               params.variant
             );
@@ -3352,7 +3378,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                applyMixin(apiClient, cuuid, nref, mref)
+                applyMixin(getClient(), cuuid, nref, mref)
               );
               return {
                 content: [
@@ -3371,7 +3397,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await applyMixin(apiClient, cuuid, nref, mref);
+            const result = await applyMixin(getClient(), cuuid, nref, mref);
             return {
               content: [
                 {
@@ -3396,7 +3422,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                detachMixin(apiClient, cuuid, nref, mref)
+                detachMixin(getClient(), cuuid, nref, mref)
               );
               return {
                 content: [
@@ -3415,7 +3441,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await detachMixin(apiClient, cuuid, nref, mref);
+            const result = await detachMixin(getClient(), cuuid, nref, mref);
             return {
               content: [
                 {
@@ -3440,7 +3466,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                addNodeAnimation(apiClient, cuuid, nref, sref,
+                addNodeAnimation(getClient(), cuuid, nref, sref,
                   params.duration, params.delay, params.timingFunction,
                   params.iterationCount, params.direction, params.fillMode, params.playState)
               );
@@ -3462,7 +3488,7 @@ export function createServer(): McpServer {
             }
 
             const result = await addNodeAnimation(
-              apiClient, cuuid, nref, sref,
+              getClient(), cuuid, nref, sref,
               params.duration, params.delay, params.timingFunction,
               params.iterationCount, params.direction, params.fillMode, params.playState
             );
@@ -3489,7 +3515,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                removeNodeAnimation(apiClient, cuuid, nref, params.seqRef, params.animationIndex)
+                removeNodeAnimation(getClient(), cuuid, nref, params.seqRef, params.animationIndex)
               );
               return {
                 content: [
@@ -3508,7 +3534,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await removeNodeAnimation(apiClient, cuuid, nref, params.seqRef, params.animationIndex);
+            const result = await removeNodeAnimation(getClient(), cuuid, nref, params.seqRef, params.animationIndex);
             return {
               content: [
                 {
@@ -3532,7 +3558,7 @@ export function createServer(): McpServer {
             const pName = requireParam(params.patternName, "patternName", "node.apply-pattern");
 
             const result = await applyPattern(
-              apiClient, cuuid, pRef, pName, params.customisations, params.position
+              getClient(), cuuid, pRef, pName, params.customisations, params.position
             );
 
             if (result.error) {
@@ -3678,7 +3704,7 @@ export function createServer(): McpServer {
             const sel = requireParam(params.selector, "selector", "variant.create-style");
 
             const result = await createStyleVariant(
-              apiClient, cuuid, sel, params.nodeRef
+              getClient(), cuuid, sel, params.nodeRef
             );
             return {
               content: [
@@ -3711,7 +3737,7 @@ export function createServer(): McpServer {
             if (gname.length < 1) throw new Error("Group name is required");
 
             const result = await createVariantGroup(
-              apiClient, cuuid, gname, params.type, params.initialVariants
+              getClient(), cuuid, gname, params.type, params.initialVariants
             );
             return {
               content: [
@@ -3755,7 +3781,7 @@ export function createServer(): McpServer {
                 `Invalid type "toggle" for variant.create-global-group. Global variant groups support "single" or "multi" only.`
               );
             }
-            const result = await createGlobalVariantGroup(apiClient, gname, params.type, params.initialVariants);
+            const result = await createGlobalVariantGroup(getClient(), gname, params.type, params.initialVariants);
             return {
               content: [
                 {
@@ -3775,7 +3801,7 @@ export function createServer(): McpServer {
           case "add-global": {
             const gref = requireParam(params.groupRef, "groupRef", "variant.add-global");
             const vname = requireParam(params.name, "name", "variant.add-global");
-            const result = await addGlobalVariant(apiClient, gref, vname);
+            const result = await addGlobalVariant(getClient(), gref, vname);
             return {
               content: [
                 {
@@ -3794,7 +3820,7 @@ export function createServer(): McpServer {
 
           case "remove-global-group": {
             const gref = requireParam(params.groupRef, "groupRef", "variant.remove-global-group");
-            const result = await removeGlobalVariantGroup(apiClient, gref);
+            const result = await removeGlobalVariantGroup(getClient(), gref);
             return {
               content: [
                 {
@@ -3815,7 +3841,7 @@ export function createServer(): McpServer {
           case "rename-global": {
             const vref = requireParam(params.variantRef, "variantRef", "variant.rename-global");
             const nn = requireParam(params.newName, "newName", "variant.rename-global");
-            const result = await renameGlobalVariant(apiClient, vref, nn);
+            const result = await renameGlobalVariant(getClient(), vref, nn);
             return {
               content: [
                 {
@@ -3836,7 +3862,7 @@ export function createServer(): McpServer {
           case "create-screen": {
             const screenName = requireParam(params.name, "name", "variant.create-screen");
             const result = await createScreenVariantAction(
-              apiClient, screenName, params.minWidth, params.maxWidth
+              getClient(), screenName, params.minWidth, params.maxWidth
             );
             return {
               content: [
@@ -3859,7 +3885,7 @@ export function createServer(): McpServer {
 
           case "update-screen": {
             const vref = requireParam(params.variantRef, "variantRef", "variant.update-screen");
-            const result = await updateScreenVariant(apiClient, vref, params.minWidth, params.maxWidth);
+            const result = await updateScreenVariant(getClient(), vref, params.minWidth, params.maxWidth);
             return {
               content: [
                 {
@@ -3882,7 +3908,7 @@ export function createServer(): McpServer {
           case "rename": {
             const vref = requireParam(params.variantRef, "variantRef", "variant.rename");
             const nn = requireParam(params.newName, "newName", "variant.rename");
-            const result = await renameVariantAction(apiClient, vref, nn, params.componentUuid);
+            const result = await renameVariantAction(getClient(), vref, nn, params.componentUuid);
             return {
               content: [
                 {
@@ -3903,7 +3929,7 @@ export function createServer(): McpServer {
 
           case "remove": {
             const vref = requireParam(params.variantRef, "variantRef", "variant.remove");
-            const result = await removeVariantAction(apiClient, vref, params.componentUuid);
+            const result = await removeVariantAction(getClient(), vref, params.componentUuid);
             return {
               content: [
                 {
@@ -4060,7 +4086,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                createToken(apiClient, tName, tType, tValue)
+                createToken(getClient(), tName, tType, tValue)
               );
               return {
                 content: [
@@ -4080,7 +4106,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await createToken(apiClient, tName, tType, tValue);
+            const result = await createToken(getClient(), tName, tType, tValue);
             return {
               content: [
                 {
@@ -4123,7 +4149,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                updateToken(apiClient, tRef, params.value, params.name)
+                updateToken(getClient(), tRef, params.value, params.name)
               );
               return {
                 content: [
@@ -4145,7 +4171,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await updateToken(apiClient, tRef, params.value, params.name);
+            const result = await updateToken(getClient(), tRef, params.value, params.name);
             return {
               content: [
                 {
@@ -4171,7 +4197,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                removeToken(apiClient, tRef)
+                removeToken(getClient(), tRef)
               );
               return {
                 content: [
@@ -4191,7 +4217,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await removeToken(apiClient, tRef);
+            const result = await removeToken(getClient(), tRef);
             return {
               content: [
                 {
@@ -4215,7 +4241,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                duplicateToken(apiClient, tRef, params.newName)
+                duplicateToken(getClient(), tRef, params.newName)
               );
               return {
                 content: [
@@ -4237,7 +4263,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await duplicateToken(apiClient, tRef, params.newName);
+            const result = await duplicateToken(getClient(), tRef, params.newName);
             return {
               content: [
                 {
@@ -4279,7 +4305,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                createMixin(apiClient, mName, params.styles)
+                createMixin(getClient(), mName, params.styles)
               );
               return {
                 content: [
@@ -4298,7 +4324,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await createMixin(apiClient, mName, params.styles);
+            const result = await createMixin(getClient(), mName, params.styles);
             return {
               content: [
                 {
@@ -4324,7 +4350,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                updateMixin(apiClient, mRef, params.newName, params.styles)
+                updateMixin(getClient(), mRef, params.newName, params.styles)
               );
               return {
                 content: [
@@ -4344,7 +4370,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await updateMixin(apiClient, mRef, params.newName, params.styles);
+            const result = await updateMixin(getClient(), mRef, params.newName, params.styles);
             return {
               content: [
                 {
@@ -4368,7 +4394,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                removeMixin(apiClient, mRef)
+                removeMixin(getClient(), mRef)
               );
               return {
                 content: [
@@ -4387,7 +4413,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await removeMixin(apiClient, mRef);
+            const result = await removeMixin(getClient(), mRef);
             return {
               content: [
                 {
@@ -4426,7 +4452,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                createAnimationSequence(apiClient, aName, params.keyframes)
+                createAnimationSequence(getClient(), aName, params.keyframes)
               );
               return {
                 content: [
@@ -4445,7 +4471,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await createAnimationSequence(apiClient, aName, params.keyframes);
+            const result = await createAnimationSequence(getClient(), aName, params.keyframes);
             return {
               content: [
                 {
@@ -4471,7 +4497,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                updateAnimationSequence(apiClient, sRef, params.newName, params.keyframes)
+                updateAnimationSequence(getClient(), sRef, params.newName, params.keyframes)
               );
               return {
                 content: [
@@ -4491,7 +4517,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await updateAnimationSequence(apiClient, sRef, params.newName, params.keyframes);
+            const result = await updateAnimationSequence(getClient(), sRef, params.newName, params.keyframes);
             return {
               content: [
                 {
@@ -4515,7 +4541,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                removeAnimationSequence(apiClient, sRef)
+                removeAnimationSequence(getClient(), sRef)
               );
               return {
                 content: [
@@ -4534,7 +4560,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await removeAnimationSequence(apiClient, sRef);
+            const result = await removeAnimationSequence(getClient(), sRef);
             return {
               content: [
                 {
@@ -4571,7 +4597,7 @@ export function createServer(): McpServer {
           case "create-theme": {
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                createTheme(apiClient, params.defaultStyles, params.themeStyles, params.setActive)
+                createTheme(getClient(), params.defaultStyles, params.themeStyles, params.setActive)
               );
               return {
                 content: [
@@ -4589,7 +4615,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await createTheme(apiClient, params.defaultStyles, params.themeStyles, params.setActive);
+            const result = await createTheme(getClient(), params.defaultStyles, params.themeStyles, params.setActive);
             return {
               content: [
                 {
@@ -4611,7 +4637,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                updateTheme(apiClient, tIdx as number, params.defaultStyles, params.themeStyles)
+                updateTheme(getClient(), tIdx as number, params.defaultStyles, params.themeStyles)
               );
               return {
                 content: [
@@ -4630,7 +4656,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await updateTheme(apiClient, tIdx as number, params.defaultStyles, params.themeStyles);
+            const result = await updateTheme(getClient(), tIdx as number, params.defaultStyles, params.themeStyles);
             return {
               content: [
                 {
@@ -4653,7 +4679,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                removeTheme(apiClient, tIdx as number)
+                removeTheme(getClient(), tIdx as number)
               );
               return {
                 content: [
@@ -4671,7 +4697,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await removeTheme(apiClient, tIdx as number);
+            const result = await removeTheme(getClient(), tIdx as number);
             return {
               content: [
                 {
@@ -4696,7 +4722,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                setActiveTheme(apiClient, params.themeIndex as number | null)
+                setActiveTheme(getClient(), params.themeIndex as number | null)
               );
               return {
                 content: [
@@ -4714,7 +4740,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await setActiveTheme(apiClient, params.themeIndex as number | null);
+            const result = await setActiveTheme(getClient(), params.themeIndex as number | null);
             return {
               content: [
                 {
@@ -4748,7 +4774,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                uploadAsset(apiClient, aName, aType, { url: params.url, dataUri: params.dataUri, width: params.width, height: params.height })
+                uploadAsset(getClient(), aName, aType, { url: params.url, dataUri: params.dataUri, width: params.width, height: params.height })
               );
               return {
                 content: [
@@ -4767,7 +4793,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await uploadAsset(apiClient, aName, aType, { url: params.url, dataUri: params.dataUri, width: params.width, height: params.height });
+            const result = await uploadAsset(getClient(), aName, aType, { url: params.url, dataUri: params.dataUri, width: params.width, height: params.height });
             return {
               content: [
                 {
@@ -4792,7 +4818,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                renameAsset(apiClient, aRef, nn)
+                renameAsset(getClient(), aRef, nn)
               );
               return {
                 content: [
@@ -4811,7 +4837,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await renameAsset(apiClient, aRef, nn);
+            const result = await renameAsset(getClient(), aRef, nn);
             return {
               content: [
                 {
@@ -4835,7 +4861,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                removeAsset(apiClient, aRef)
+                removeAsset(getClient(), aRef)
               );
               return {
                 content: [
@@ -4854,7 +4880,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await removeAsset(apiClient, aRef);
+            const result = await removeAsset(getClient(), aRef);
             return {
               content: [
                 {
@@ -4961,7 +4987,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                setDataCond(apiClient, cuuid, nref, params.condition!, params.variant)
+                setDataCond(getClient(), cuuid, nref, params.condition!, params.variant)
               );
               return {
                 content: [
@@ -4982,7 +5008,7 @@ export function createServer(): McpServer {
             }
 
             const result = await setDataCond(
-              apiClient, cuuid, nref, params.condition!, params.variant
+              getClient(), cuuid, nref, params.condition!, params.variant
             );
             return {
               content: [
@@ -5013,7 +5039,7 @@ export function createServer(): McpServer {
             if (params.dryRun) {
               const result = await withDryRun(() =>
                 setDataRep(
-                  apiClient, cuuid, nref, params.collection!,
+                  getClient(), cuuid, nref, params.collection!,
                   params.elementVariable, params.indexVariable, params.variant
                 )
               );
@@ -5036,7 +5062,7 @@ export function createServer(): McpServer {
             }
 
             const result = await setDataRep(
-              apiClient, cuuid, nref, params.collection!,
+              getClient(), cuuid, nref, params.collection!,
               params.elementVariable, params.indexVariable, params.variant
             );
             return {
@@ -5100,7 +5126,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                addQuery(apiClient, cuuid, qName, qType)
+                addQuery(getClient(), cuuid, qName, qType)
               );
               return {
                 content: [
@@ -5120,7 +5146,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await addQuery(apiClient, cuuid, qName, qType);
+            const result = await addQuery(getClient(), cuuid, qName, qType);
             return {
               content: [
                 {
@@ -5146,7 +5172,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                updateQuery(apiClient, cuuid, qRef, qName)
+                updateQuery(getClient(), cuuid, qRef, qName)
               );
               return {
                 content: [
@@ -5166,7 +5192,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await updateQuery(apiClient, cuuid, qRef, qName);
+            const result = await updateQuery(getClient(), cuuid, qRef, qName);
             return {
               content: [
                 {
@@ -5191,7 +5217,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                removeQuery(apiClient, cuuid, qRef)
+                removeQuery(getClient(), cuuid, qRef)
               );
               return {
                 content: [
@@ -5211,7 +5237,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await removeQuery(apiClient, cuuid, qRef);
+            const result = await removeQuery(getClient(), cuuid, qRef);
             return {
               content: [
                 {
@@ -5244,7 +5270,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                createDataToken(apiClient, dtName, params.value)
+                createDataToken(getClient(), dtName, params.value)
               );
               return {
                 content: [
@@ -5262,7 +5288,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await createDataToken(apiClient, dtName, params.value);
+            const result = await createDataToken(getClient(), dtName, params.value);
             return {
               content: [
                 {
@@ -5287,7 +5313,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                updateDataToken(apiClient, dtRef, params.name, params.value)
+                updateDataToken(getClient(), dtRef, params.name, params.value)
               );
               return {
                 content: [
@@ -5305,7 +5331,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await updateDataToken(apiClient, dtRef, params.name, params.value);
+            const result = await updateDataToken(getClient(), dtRef, params.name, params.value);
             return {
               content: [
                 {
@@ -5327,7 +5353,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                removeDataToken(apiClient, dtRef)
+                removeDataToken(getClient(), dtRef)
               );
               return {
                 content: [
@@ -5346,7 +5372,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await removeDataToken(apiClient, dtRef);
+            const result = await removeDataToken(getClient(), dtRef);
             return {
               content: [
                 {
@@ -5380,7 +5406,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                createSplit(apiClient, sName, sType, sSlices)
+                createSplit(getClient(), sName, sType, sSlices)
               );
               return {
                 content: [
@@ -5398,7 +5424,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await createSplit(apiClient, sName, sType, sSlices);
+            const result = await createSplit(getClient(), sName, sType, sSlices);
             return {
               content: [
                 {
@@ -5423,7 +5449,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                updateSplit(apiClient, sRef, params.name, params.status, params.slices)
+                updateSplit(getClient(), sRef, params.name, params.status, params.slices)
               );
               return {
                 content: [
@@ -5441,7 +5467,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await updateSplit(apiClient, sRef, params.name, params.status, params.slices);
+            const result = await updateSplit(getClient(), sRef, params.name, params.status, params.slices);
             return {
               content: [
                 {
@@ -5463,7 +5489,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                removeSplit(apiClient, sRef)
+                removeSplit(getClient(), sRef)
               );
               return {
                 content: [
@@ -5482,7 +5508,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await removeSplit(apiClient, sRef);
+            const result = await removeSplit(getClient(), sRef);
             return {
               content: [
                 {
@@ -5672,7 +5698,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                addInteraction(apiClient, cuuid, nref, evt, actName, argz, params.interactionName, params.condition)
+                addInteraction(getClient(), cuuid, nref, evt, actName, argz, params.interactionName, params.condition)
               );
               return {
                 content: [
@@ -5694,7 +5720,7 @@ export function createServer(): McpServer {
             }
 
             const result = await addInteraction(
-              apiClient, cuuid, nref, evt, actName, argz, params.interactionName, params.condition
+              getClient(), cuuid, nref, evt, actName, argz, params.interactionName, params.condition
             );
             return {
               content: [
@@ -5734,7 +5760,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                updateInteraction(apiClient, cuuid, nref, evt, idx, updates)
+                updateInteraction(getClient(), cuuid, nref, evt, idx, updates)
               );
               return {
                 content: [
@@ -5755,7 +5781,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await updateInteraction(apiClient, cuuid, nref, evt, idx, updates);
+            const result = await updateInteraction(getClient(), cuuid, nref, evt, idx, updates);
             return {
               content: [
                 {
@@ -5782,7 +5808,7 @@ export function createServer(): McpServer {
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                removeInteraction(apiClient, cuuid, nref, evt, params.interactionIndex)
+                removeInteraction(getClient(), cuuid, nref, evt, params.interactionIndex)
               );
               return {
                 content: [
@@ -5802,7 +5828,7 @@ export function createServer(): McpServer {
             }
 
             const result = await removeInteraction(
-              apiClient, cuuid, nref, evt, params.interactionIndex
+              getClient(), cuuid, nref, evt, params.interactionIndex
             );
             return {
               content: [
@@ -5877,7 +5903,7 @@ export function createServer(): McpServer {
 
         switch (action) {
           case "list": {
-            const result = await apiClient.listBranches(projectId);
+            const result = await getClient().listBranches(projectId);
             return {
               content: [{ type: "text" as const, text: JSON.stringify({
                 branches: result.branches ?? [],
@@ -5891,14 +5917,14 @@ export function createServer(): McpServer {
             if (!name) throw new Error("branch.create requires a name");
             // Branching requires at least one published version (commit).
             // Check early to give a clear error instead of a server 500.
-            const pkgCheck = await apiClient.getPkgByProjectId(projectId);
+            const pkgCheck = await getClient().getPkgByProjectId(projectId);
             if (!pkgCheck.pkg) {
               throw new Error(
                 "Cannot create branches: this project has never been published. " +
                 "Publish the project first (via Studio > Publish) to enable branching."
               );
             }
-            const result = await apiClient.createBranch(projectId, {
+            const result = await getClient().createBranch(projectId, {
               name,
               ...(params.sourceBranchId ? { sourceBranchId: params.sourceBranchId } : {}),
               ...(params.base ? { base: params.base } : {}),
@@ -5918,7 +5944,7 @@ export function createServer(): McpServer {
             const data: Record<string, string> = {};
             if (params.name) data.name = params.name;
             if (params.status) data.status = params.status;
-            await apiClient.updateBranch(projectId, branchId, data);
+            await getClient().updateBranch(projectId, branchId, data);
             return {
               content: [{ type: "text" as const, text: JSON.stringify({
                 success: true,
@@ -5930,7 +5956,7 @@ export function createServer(): McpServer {
           case "delete": {
             const branchId = params.branchId;
             if (!branchId) throw new Error("branch.delete requires a branchId");
-            await apiClient.deleteBranch(projectId, branchId);
+            await getClient().deleteBranch(projectId, branchId);
             return {
               content: [{ type: "text" as const, text: JSON.stringify({
                 success: true,
@@ -5945,7 +5971,7 @@ export function createServer(): McpServer {
             if (!fromBranchId || !toBranchId) {
               throw new Error("branch.merge requires fromBranchId and toBranchId");
             }
-            const result = await apiClient.tryMergeBranch(projectId, {
+            const result = await getClient().tryMergeBranch(projectId, {
               subject: { fromBranchId, toBranchId },
               pretend: params.pretend ?? false,
               ...(params.description ? { description: params.description } : {}),
@@ -5970,7 +5996,7 @@ export function createServer(): McpServer {
                 disposeChangeTracker();
                 clearUndoStack();
                 clearNodeCache();
-                const loaded = await loadProject(apiClient, session.projectId, session.activeBranchId ?? undefined);
+                const loaded = await loadProject(getClient(), session.projectId, session.activeBranchId ?? undefined);
                 clearRegistryCache(loaded.hostUrl);
                 const syncResult = await syncFromDevHost(loaded.site, loaded.hostUrl);
                 setSession({
@@ -5991,7 +6017,7 @@ export function createServer(): McpServer {
                   projectApiToken: loaded.projectApiToken,
                 });
                 initChangeTracker(loaded.site);
-                startLiveSync(apiClient, session.projectId).catch(() => {});
+                startLiveSync(getClient(), session.projectId).catch(() => {});
                 reloaded = true;
               }
             }
@@ -6014,7 +6040,7 @@ export function createServer(): McpServer {
             if (params.protected === undefined) {
               throw new Error("branch.protect requires protected: true or false");
             }
-            await apiClient.setMainBranchProtection(projectId, params.protected);
+            await getClient().setMainBranchProtection(projectId, params.protected);
             return {
               content: [{ type: "text" as const, text: JSON.stringify({
                 success: true,
@@ -6027,7 +6053,7 @@ export function createServer(): McpServer {
           }
 
           case "revision-info": {
-            const result = await apiClient.getRevisionInfo(
+            const result = await getClient().getRevisionInfo(
               projectId,
               params.revisionId,
               params.branchId
@@ -6084,7 +6110,7 @@ export function createServer(): McpServer {
 
         switch (action) {
           case "list": {
-            const result = await apiClient.getComments(projectId, branchId);
+            const result = await getClient().getComments(projectId, branchId);
             const threads = result.threads ?? [];
             return {
               content: [{ type: "text" as const, text: JSON.stringify({
@@ -6132,7 +6158,7 @@ export function createServer(): McpServer {
 
             const commentThreadId = randomUUID();
             const commentId = randomUUID();
-            await apiClient.postRootComment(projectId, branchId, {
+            await getClient().postRootComment(projectId, branchId, {
               commentThreadId,
               commentId,
               body,
@@ -6159,7 +6185,7 @@ export function createServer(): McpServer {
             if (!threadId) throw new Error("comment.reply requires threadId");
             if (!body) throw new Error("comment.reply requires body text");
             const commentId = randomUUID();
-            await apiClient.postThreadComment(projectId, branchId, threadId, {
+            await getClient().postThreadComment(projectId, branchId, threadId, {
               id: commentId,
               body,
             });
@@ -6178,7 +6204,7 @@ export function createServer(): McpServer {
             const body = params.body;
             if (!commentId) throw new Error("comment.edit requires commentId");
             if (!body) throw new Error("comment.edit requires body text");
-            await apiClient.editComment(projectId, branchId, commentId, { body });
+            await getClient().editComment(projectId, branchId, commentId, { body });
             return {
               content: [{ type: "text" as const, text: JSON.stringify({
                 success: true,
@@ -6191,7 +6217,7 @@ export function createServer(): McpServer {
           case "delete": {
             const commentId = params.commentId;
             if (!commentId) throw new Error("comment.delete requires commentId");
-            await apiClient.deleteComment(projectId, branchId, commentId);
+            await getClient().deleteComment(projectId, branchId, commentId);
             return {
               content: [{ type: "text" as const, text: JSON.stringify({
                 success: true,
@@ -6205,7 +6231,7 @@ export function createServer(): McpServer {
             const threadId = params.threadId;
             if (!threadId) throw new Error("comment.resolve requires threadId");
             const resolved = params.resolved ?? true;
-            await apiClient.resolveThread(projectId, branchId, threadId, {
+            await getClient().resolveThread(projectId, branchId, threadId, {
               id: randomUUID(),
               resolved,
             });
@@ -6225,7 +6251,7 @@ export function createServer(): McpServer {
             const reactionId = params.reactionId;
             if (reactionId) {
               // Remove reaction
-              await apiClient.removeReaction(projectId, branchId, reactionId);
+              await getClient().removeReaction(projectId, branchId, reactionId);
               return {
                 content: [{ type: "text" as const, text: JSON.stringify({
                   success: true,
@@ -6238,7 +6264,7 @@ export function createServer(): McpServer {
               throw new Error("comment.react requires commentId + emoji (to add) or reactionId (to remove)");
             }
             const newReactionId = randomUUID();
-            await apiClient.addReaction(projectId, branchId, commentId, {
+            await getClient().addReaction(projectId, branchId, commentId, {
               id: newReactionId,
               data: { emojiName: emoji },
             });

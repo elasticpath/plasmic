@@ -1,0 +1,35 @@
+{
+  "manifest_version": "0.4",
+  "name": "Visual Builder",
+  "description": "Edit Visual Builder projects with AI — design, build, and manage pages, components, and design systems.",
+  "icon": "icon.png",
+  "user_config": {
+    "host": {
+      "type": "string",
+      "description": "Visual Builder host URL. US East: https://useast.storefront.elasticpath.com (default), EU West: https://euwest.storefront.elasticpath.com, or your custom instance URL.",
+      "default": "https://useast.storefront.elasticpath.com"
+    },
+    "email": {
+      "type": "string",
+      "description": "Your Visual Builder account email address.",
+      "required": true
+    },
+    "api_token": {
+      "type": "string",
+      "description": "Your Visual Builder API token. Found in your account settings.",
+      "required": true,
+      "sensitive": true
+    }
+  },
+  "mcp_config": {
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@elasticpath/plasmic-mcp"],
+    "env": {
+      "PLASMIC_AUTH_HOST": "{{host}}",
+      "PLASMIC_AUTH_USER": "{{email}}",
+      "PLASMIC_AUTH_TOKEN": "{{api_token}}",
+      "PLASMIC_MCP_CLIENT": "desktop"
+    }
+  }
+}
