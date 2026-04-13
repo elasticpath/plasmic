@@ -1,6 +1,6 @@
 {
   "name": "plasmicpkgs-dev",
-  "version": "0.0.59",
+  "version": "0.0.60",
   "private": true,
   "scripts": {
     "dev": "next dev --port 3001",
@@ -8,9 +8,13 @@
     "test": "vitest run"
   },
   "dependencies": {
+<<<<<<< HEAD
     "@elasticpath/plasmic-ep-commerce-elastic-path": "0.0.3",
     "@elasticpath/plasmic-mcp-registry": "file:../packages/plasmic-mcp-registry",
     "@plasmicapp/loader-nextjs": "2.0.0",
+=======
+    "@plasmicapp/loader-nextjs": "2.0.1",
+>>>>>>> upstream/master
     "@plasmicpkgs/cms": "0.0.20",
     "@plasmicpkgs/commerce": "0.0.241",
     "@plasmicpkgs/commerce-shopify": "0.0.249",
