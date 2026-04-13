@@ -1385,6 +1385,23 @@
   dependencies:
     tslib "^2.0.0"
 
+"@elasticpath/plasmic-ep-commerce-elastic-path@^0.0.3":
+  version "0.0.3"
+  resolved "https://registry.yarnpkg.com/@elasticpath/plasmic-ep-commerce-elastic-path/-/plasmic-ep-commerce-elastic-path-0.0.3.tgz#005a9253fbbb40da4089d6c6a70f2717e7127c2d"
+  integrity sha512-xRWXxHCdmqfZAJbl83EIOOiPMP7WwlCcORqjLL2K7xhbX+TKC3+5hAfyjTtCmrsmKXtUOibxZAAJmn25PQbcIQ==
+  dependencies:
+    "@epcc-sdk/sdks-shopper" "^0.0.40"
+    "@hookform/resolvers" "^3.3.2"
+    "@plasmicpkgs/commerce" "0.0.232"
+    "@stripe/react-stripe-js" "^2.4.0"
+    "@stripe/stripe-js" "^2.4.0"
+    "@types/react" "^18.0.27"
+    debounce "^2.0.0"
+    js-cookie "^3.0.5"
+    qs "^6.11.0"
+    react-hook-form "^7.48.2"
+    zod "^3.22.4"
+
 "@emotion/babel-plugin@^11.10.5", "@emotion/babel-plugin@^11.11.0":
   version "11.11.0"
   resolved "https://registry.yarnpkg.com/@emotion/babel-plugin/-/babel-plugin-11.11.0.tgz#c2d872b6a7767a9d176d007f5b31f7d504bb5d6c"
