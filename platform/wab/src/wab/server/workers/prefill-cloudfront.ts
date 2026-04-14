@@ -153,7 +153,8 @@ export async function prefillCloudfront(
       // get a cache hit. Warming works without isPrefilled being set because the
       // versioned endpoint serves directly from S3 by projectId@version.
       if (warmingData.length > 0) {
-        const baseUrl = getCodegenPublicUrl();
+        const baseUrl =
+          process.env.CODEGEN_CLOUDFRONT_URL ?? getCodegenPublicUrl();
         await withSpan(
           "loader-prefill-warming",
           async () => {
