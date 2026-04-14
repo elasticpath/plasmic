@@ -14,6 +14,7 @@ import {
   isWIBaseVariantSettings,
   WIAnimationSequence,
   WIElement,
+  WIFragment,
   WIScreenVariant,
   WIStyleVariant,
   WIVariant,
@@ -259,7 +260,7 @@ async function wiTreeToTpl(wiTree: WIElement, vc: ViewCtx, vtm: VariantTplMgr) {
   >();
   const tplVariantSettingsData = new Map<TplNode, TplVariantSettingsData[]>();
 
-  function collectWIVariantData(node: WIElement, tpl: TplNode) {
+  function collectWIVariantData(node: Exclude<WIElement, WIFragment>, tpl: TplNode) {
     const defaultStyles: Record<string, string> =
       node.type === "text"
         ? {}
@@ -413,6 +414,15 @@ async function wiTreeToTpl(wiTree: WIElement, vc: ViewCtx, vtm: VariantTplMgr) {
         return tplComponent;
       }
       return null;
+    }
+
+    if (node.type === "fragment") {
+      const children = withoutNils(
+        await Promise.all(
+          node.children.map(async (child) => await rec(child))
+        )
+      );
+      return children.length === 1 ? children[0] : null;
     }
 
     if (node.tag === "img") {

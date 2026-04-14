@@ -4221,7 +4221,7 @@ export async function createStyleVariant(
 
     let variant: any;
     const changes = tracker.withRecording(() => {
-      variant = tplMgr.createStyleVariant(component, [selector]);
+      [variant] = tplMgr.createStyleVariant(component, [selector]);
     });
 
     const componentIid = getComponentIid(component);

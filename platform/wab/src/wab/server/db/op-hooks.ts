@@ -5,5 +5,5 @@ import { DomainValidator } from "@/wab/shared/hosting";
 export async function onProjectDelete(
   dbMgr: DbMgr,
   projectId: ProjectId,
-  domainValidator: DomainValidator
+  domainValidator?: DomainValidator
 ) {}

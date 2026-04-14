@@ -186,8 +186,8 @@ export class TplMgr {
     mockRemoveComponent(component);
   }
 
-  createStyleVariant(component: any, selectors?: string[]): any {
-    return mockCreateStyleVariant(component, selectors);
+  createStyleVariant(component: any, selectors?: string[]): [any, boolean] {
+    return [mockCreateStyleVariant(component, selectors), true];
   }
 
   createPrivateStyleVariant(component: any, tpl: any, selectors?: string[]): any {

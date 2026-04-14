@@ -1,7 +1,10 @@
 import * as genCodeBundleMod from "@/wab/server/loader/gen-code-bundle";
 import * as resolveProjectsMod from "@/wab/server/loader/resolve-projects";
 import { withDb } from "@/wab/server/test/backend-util";
-import { prefillCloudfront } from "@/wab/server/workers/prefill-cloudfront";
+import {
+  prefillCloudfront,
+  _resetCloudfrontClientForTest,
+} from "@/wab/server/workers/prefill-cloudfront";
 
 const mockSend = jest.fn();
 jest.mock("@aws-sdk/client-cloudfront", () => ({
@@ -58,7 +61,16 @@ describe("Prefill cloudfront", () => {
     const PKG_VERSION_ID = "pkg-version-1";
 
     beforeEach(() => {
-      jest.resetAllMocks();
+      jest.restoreAllMocks();
+      _resetCloudfrontClientForTest();
+      // Re-establish mock implementations (restoreAllMocks clears them)
+      const cf = require("@aws-sdk/client-cloudfront");
+      (cf.CloudFrontClient as jest.Mock).mockImplementation(() => ({
+        send: mockSend,
+      }));
+      (cf.CreateInvalidationCommand as jest.Mock).mockImplementation(
+        (input: any) => input
+      );
       global.fetch = jest.fn().mockResolvedValue({ ok: true } as Response);
     });
 

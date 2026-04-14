@@ -1,12 +1,14 @@
+import { toOpaque } from "@/wab/commons/types";
 import { logger } from "@/wab/server/observability";
 import { mkApiProject } from "@/wab/server/routes/projects";
 import { superDbMgr } from "@/wab/server/routes/util";
+import { WorkspaceId } from "@/wab/shared/ApiSchema";
 import { Request, Response } from "express-serve-static-core";
 
 export async function provisionProject(req: Request, res: Response) {
   const mgr = superDbMgr(req);
   const { name, projectKind, ownerId } = req.body;
-  const { workspaceId } = req.params;
+  const workspaceId = toOpaque(req.params.workspaceId) as WorkspaceId;
 
   logger().info("Provisioning project", { workspaceId, name, projectKind });
 

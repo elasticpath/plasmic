@@ -1,5 +1,4 @@
 import { serializeCustomFunctionsAndLibs } from "@/wab/shared/codegen/react-p/custom-functions";
-import { generateDataTokenImports } from "@/wab/shared/codegen/react-p/data-tokens/imports";
 import {
   generateDataTokenImports,
   getDataTokenIdentifiersFromPageMeta,
