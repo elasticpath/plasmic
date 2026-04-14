@@ -9,7 +9,7 @@
   "main": "./dist/index.cjs",
   "scripts": {
     "build": "node build.mjs",
-    "build:mcpb": "node build.mjs && rm -rf dist/mcpb-staging && mkdir -p dist/mcpb-staging/server && cp manifest.json dist/mcpb-staging/ && cp dist/index.cjs dist/mcpb-staging/server/ && npx @anthropic-ai/mcpb pack dist/mcpb-staging dist/visual-builder.mcpb && rm -rf dist/mcpb-staging",
+    "build:mcpb": "node build.mjs && node build-mcpb.mjs",
     "dev": "tsx src/index.ts",
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
@@ -23,6 +23,11 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.0",
     "@xmldom/xmldom": "^0.8.0",
+    "@plasmicapp/host": "*",
+    "@plasmicapp/loader-react": "*",
+    "@plasmicapp/react-web": "*",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
     "acorn": "^8.0.0",
     "acorn-walk": "^8.0.0",
     "class-validator": "^0.14.0",

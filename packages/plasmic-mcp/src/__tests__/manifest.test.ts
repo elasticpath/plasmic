@@ -50,9 +50,9 @@ describe("mcpb manifest", () => {
 
   it("maps env vars correctly in server.mcp_config", () => {
     const env = manifest.server.mcp_config.env;
-    expect(env.PLASMIC_AUTH_HOST).toBe("{{host}}");
-    expect(env.PLASMIC_AUTH_USER).toBe("{{email}}");
-    expect(env.PLASMIC_AUTH_TOKEN).toBe("{{api_token}}");
+    expect(env.PLASMIC_AUTH_HOST).toBe("${user_config.host}");
+    expect(env.PLASMIC_AUTH_USER).toBe("${user_config.email}");
+    expect(env.PLASMIC_AUTH_TOKEN).toBe("${user_config.api_token}");
     expect(env.PLASMIC_MCP_CLIENT).toBe("desktop");
   });
 

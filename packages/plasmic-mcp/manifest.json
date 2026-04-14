@@ -13,9 +13,9 @@
       "command": "node",
       "args": ["${__dirname}/server/index.cjs"],
       "env": {
-        "PLASMIC_AUTH_HOST": "{{host}}",
-        "PLASMIC_AUTH_USER": "{{email}}",
-        "PLASMIC_AUTH_TOKEN": "{{api_token}}",
+        "PLASMIC_AUTH_HOST": "${user_config.host}",
+        "PLASMIC_AUTH_USER": "${user_config.email}",
+        "PLASMIC_AUTH_TOKEN": "${user_config.api_token}",
         "PLASMIC_MCP_CLIENT": "desktop"
       }
     }

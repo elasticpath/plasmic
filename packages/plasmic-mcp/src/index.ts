@@ -41,8 +41,6 @@ process.on("uncaughtException", (err) => {
 });
 
 // Graceful shutdown: disconnect socket so Studio removes the player avatar immediately.
-// Claude Code closes stdin (not SIGTERM) when restarting the MCP server,
-// so we also listen for stdin end and process beforeExit.
 let shuttingDown = false;
 function shutdown() {
   if (shuttingDown) return;
@@ -51,10 +49,8 @@ function shutdown() {
   stopLiveSync();
   stopPreviewServer().catch(() => {});
 }
-process.on("SIGTERM", () => { shutdown(); process.exit(0); });
-process.on("SIGINT", () => { shutdown(); process.exit(0); });
-process.on("beforeExit", shutdown);
-process.stdin.on("close", shutdown);
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
 
 async function startServer() {
   console.error("[plasmic-mcp] Starting Plasmic MCP server...");
