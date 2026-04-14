@@ -125,12 +125,15 @@ const result = await esbuild.build({
 const metafilePath = path.resolve(__dirname, "dist/meta.json");
 fs.writeFileSync(metafilePath, JSON.stringify(result.metafile, null, 2));
 
-// Add shebang for npx/bin execution
+// Add shebang and stdout protection.
+// CRITICAL: console.log = console.error MUST be the first executable line
+// (after shebang). Bundled WAB shared code contains console.log() calls that
+// would corrupt the JSON-RPC stdout transport in stdio mode.
 const outfile = path.resolve(__dirname, "dist/index.cjs");
 const built = fs.readFileSync(outfile, "utf-8");
-if (!built.startsWith("#!")) {
-  fs.writeFileSync(outfile, "#!/usr/bin/env node\n" + built);
-}
+const prefix = '#!/usr/bin/env node\nconsole.log = console.error;\n';
+const stripped = built.startsWith("#!") ? built.replace(/^#!.*\n/, "") : built;
+fs.writeFileSync(outfile, prefix + stripped);
 
 // Report
 const stats = fs.statSync(outfile);

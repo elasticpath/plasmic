@@ -14,6 +14,12 @@
  * All logging uses console.error().
  */
 
+// CRITICAL: Redirect console.log to stderr BEFORE any imports.
+// Bundled WAB shared code contains console.log() calls that would write to
+// stdout, corrupting the JSON-RPC transport. This must be the very first
+// thing that executes.
+console.log = console.error;
+
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createServer } from "./server.js";
 import { stopLiveSync } from "./live-sync.js";
@@ -21,6 +27,7 @@ import { stopPreviewServer } from "./preview-server.js";
 import { parseArgs } from "./cli.js";
 import { getAuth, writeAuth } from "./auth.js";
 import { acquireAuth } from "./auth-flow.js";
+import * as logger from "./logger.js";
 
 const VERSION = "0.1.3";
 
@@ -34,10 +41,10 @@ const KNOWN_HOSTS: Record<string, string> = {
 
 // Prevent silent crashes from unhandled rejections (e.g. socket.io failures)
 process.on("unhandledRejection", (reason) => {
-  console.error("[plasmic-mcp] Unhandled rejection:", reason);
+  logger.error(`Unhandled rejection: ${reason}`);
 });
 process.on("uncaughtException", (err) => {
-  console.error("[plasmic-mcp] Uncaught exception:", err);
+  logger.error(`Uncaught exception: ${err?.stack ?? err}`);
 });
 
 // Graceful shutdown: disconnect socket so Studio removes the player avatar immediately.
@@ -45,7 +52,7 @@ let shuttingDown = false;
 function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
-  console.error("[plasmic-mcp] Shutting down...");
+  logger.info("Shutting down...");
   stopLiveSync();
   stopPreviewServer().catch(() => {});
 }
@@ -53,15 +60,16 @@ process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
 
 async function startServer() {
-  console.error("[plasmic-mcp] Starting Plasmic MCP server...");
+  logger.info("Starting Plasmic MCP server...");
 
   try {
     const server = createServer();
+    logger.setMcpServer(server);
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    console.error("[plasmic-mcp] Server connected via stdio");
+    logger.info("Server connected via stdio");
   } catch (error) {
-    console.error("[plasmic-mcp] Failed to start:", error);
+    logger.error(`Failed to start: ${error}`);
     process.exit(1);
   }
 }

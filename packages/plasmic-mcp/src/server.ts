@@ -310,6 +310,10 @@ export function createServer(): McpServer {
   const server = new McpServer({
     name: "plasmic",
     version: "0.1.0",
+  }, {
+    capabilities: {
+      logging: {},
+    },
   });
 
   const auth = getAuth();
