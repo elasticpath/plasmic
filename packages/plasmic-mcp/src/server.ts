@@ -282,9 +282,65 @@ async function withDryRun<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-/** Extract a human-readable message from an unknown thrown value. */
+/**
+ * Extract a human-readable message from an unknown thrown value.
+ *
+ * Walks the error cause chain (following Sentry MCP's pattern) and handles:
+ * - PlasmicApiError (statusCode + errorType)
+ * - Standard Error with message
+ * - Errors with cause chains
+ * - HTML error responses (server returning error pages instead of JSON)
+ * - Non-Error thrown values
+ *
+ * Never returns an empty string.
+ *
+ * Reference: getsentry/sentry-mcp packages/mcp-core/src/api-client/client.ts
+ */
 function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
+  if (err == null) return "Unknown error (null)";
+
+  // Walk the cause chain to find the root cause (Sentry pattern)
+  let rootCause: unknown = err;
+  while (rootCause instanceof Error && (rootCause as any).cause) {
+    rootCause = (rootCause as any).cause;
+  }
+
+  // PlasmicApiError — include status code and error type
+  if (err instanceof Error && "statusCode" in err) {
+    const apiErr = err as Error & { statusCode: number; errorType?: string };
+    const parts: string[] = [];
+    if (apiErr.statusCode) parts.push(`HTTP ${apiErr.statusCode}`);
+    if (apiErr.errorType) parts.push(apiErr.errorType);
+    if (apiErr.message) {
+      // Detect HTML error pages (server returning error page instead of JSON)
+      if (apiErr.message.includes("<!doctype") || apiErr.message.includes("<html")) {
+        parts.push("Server returned HTML instead of JSON. The host URL may be incorrect or the server may be down.");
+      } else {
+        parts.push(apiErr.message);
+      }
+    }
+    return parts.join(": ") || `API error (status ${apiErr.statusCode})`;
+  }
+
+  // Standard Error — prefer root cause message if original is empty
+  if (err instanceof Error) {
+    const msg = err.message || (rootCause instanceof Error ? rootCause.message : "");
+    if (msg) {
+      // Detect HTML in error message
+      if (msg.includes("<!doctype") || msg.includes("<html")) {
+        return "Server returned HTML instead of JSON. Check the host URL is correct and the server is reachable.";
+      }
+      return msg;
+    }
+    return `${err.name || "Error"} (no message)`;
+  }
+
+  // Non-Error thrown value
+  const str = String(err);
+  if (!str || str === "[object Object]") {
+    try { return JSON.stringify(err).slice(0, 500); } catch { return "Unknown error (unserializable)"; }
+  }
+  return str;
 }
 
 /**
