@@ -1,9 +1,11 @@
 /**
  * Authentication for the Plasmic API.
  *
- * Reads credentials from environment variables (same as @plasmicapp/cli) or
- * from a .plasmic.auth JSON file. The MCP server requires auth to be present
- * at startup — interactive flows are not supported.
+ * Reads credentials from environment variables or from a .plasmic.auth JSON
+ * file. Returns null when no credentials are found (graceful unauthenticated
+ * startup). Writes credentials to ~/.plasmic.auth with 0600 permissions.
+ *
+ * Resolution order: env vars → .plasmic.auth file → null
  *
  * Reference: packages/cli/src/utils/auth-utils.ts
  */
@@ -18,7 +20,7 @@ const ENV_AUTH_USER = "PLASMIC_AUTH_USER";
 const ENV_AUTH_TOKEN = "PLASMIC_AUTH_TOKEN";
 const AUTH_FILE_NAME = ".plasmic.auth";
 
-export function getAuth(): AuthConfig {
+export function getAuth(): AuthConfig | null {
   // Priority 1: environment variables
   const host = process.env[ENV_AUTH_HOST];
   const user = process.env[ENV_AUTH_USER];
@@ -28,7 +30,7 @@ export function getAuth(): AuthConfig {
     if (!host) {
       throw new Error(
         "PLASMIC_AUTH_HOST is required when PLASMIC_AUTH_USER and PLASMIC_AUTH_TOKEN are set. " +
-          "Set it to your self-hosted Plasmic instance URL (e.g., https://studio.plasmic.app)."
+          "Set it to your Visual Builder instance URL (e.g., https://useast.storefront.elasticpath.com)."
       );
     }
     return {
@@ -54,14 +56,19 @@ export function getAuth(): AuthConfig {
     return authFromFile;
   }
 
-  throw new Error(
-    "Plasmic authentication required. Set environment variables:\n" +
-      "  PLASMIC_AUTH_HOST=https://your-plasmic-instance.example.com\n" +
-      "  PLASMIC_AUTH_USER=<your-api-user-id>\n" +
-      "  PLASMIC_AUTH_TOKEN=<your-api-token>\n\n" +
-      "Or create a .plasmic.auth file with:\n" +
-      '  { "host": "...", "user": "...", "token": "..." }'
+  return null;
+}
+
+export function writeAuth(config: AuthConfig, filePath?: string): void {
+  const target = filePath ?? path.join(os.homedir(), AUTH_FILE_NAME);
+  const content = JSON.stringify(
+    { host: config.host, user: config.user, token: config.token },
+    null,
+    2
   );
+  fs.writeFileSync(target, content, "utf-8");
+  fs.chmodSync(target, 0o600);
+  console.error(`[plasmic-mcp] Credentials written to ${target}`);
 }
 
 function readAuthFile(): AuthConfig | null {

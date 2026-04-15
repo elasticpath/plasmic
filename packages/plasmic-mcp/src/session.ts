@@ -64,6 +64,16 @@ export function getSession(): Session | null {
 
 export function requireSession(): Session {
   if (!currentSession) {
+    // Log to file for debugging — stderr may not be captured in all environments
+    try {
+      const fs = require("fs");
+      const os = require("os");
+      const path = require("path");
+      fs.appendFileSync(
+        path.join(os.homedir(), ".plasmic-mcp.log"),
+        `${new Date().toISOString()} [error] requireSession failed — currentSession is null (pid=${process.pid})\n`
+      );
+    } catch {}
     throw new Error("No active project. Use project tool with action 'set' first.");
   }
   return currentSession;
@@ -71,8 +81,26 @@ export function requireSession(): Session {
 
 export function setSession(session: Session): void {
   currentSession = session;
+  try {
+    const fs = require("fs");
+    const os = require("os");
+    const path = require("path");
+    fs.appendFileSync(
+      path.join(os.homedir(), ".plasmic-mcp.log"),
+      `${new Date().toISOString()} [info] setSession projectId=${session.projectId} name=${session.projectName} (pid=${process.pid})\n`
+    );
+  } catch {}
 }
 
 export function clearSession(): void {
   currentSession = null;
+  try {
+    const fs = require("fs");
+    const os = require("os");
+    const path = require("path");
+    fs.appendFileSync(
+      path.join(os.homedir(), ".plasmic-mcp.log"),
+      `${new Date().toISOString()} [info] clearSession (pid=${process.pid})\n`
+    );
+  } catch {}
 }

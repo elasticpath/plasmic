@@ -1,0 +1,45 @@
+{
+  "manifest_version": "0.2",
+  "name": "Visual Builder",
+  "version": "0.1.3",
+  "description": "Edit Visual Builder projects with AI — design, build, and manage pages, components, and design systems.",
+  "author": {
+    "name": "Elastic Path"
+  },
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.cjs",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.cjs"],
+      "env": {
+        "PLASMIC_AUTH_HOST": "${user_config.host}",
+        "PLASMIC_AUTH_USER": "${user_config.email}",
+        "PLASMIC_AUTH_TOKEN": "${user_config.api_token}",
+        "PLASMIC_MCP_CLIENT": "desktop"
+      }
+    }
+  },
+  "user_config": {
+    "host": {
+      "title": "Visual Builder Host",
+      "type": "string",
+      "description": "Visual Builder host URL. US East: https://useast.storefront.elasticpath.com (default), EU West: https://euwest.storefront.elasticpath.com, or your custom instance URL.",
+      "default": "https://useast.storefront.elasticpath.com"
+    },
+    "email": {
+      "title": "Email Address",
+      "type": "string",
+      "description": "Your Visual Builder account email address.",
+      "required": true
+    },
+    "api_token": {
+      "title": "API Token",
+      "type": "string",
+      "description": "Your Visual Builder API token. Found in your account settings.",
+      "required": true,
+      "sensitive": true
+    }
+  },
+  "license": "MIT"
+}

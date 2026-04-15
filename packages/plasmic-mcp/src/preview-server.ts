@@ -151,6 +151,9 @@ export async function stopPreviewServer(): Promise<void> {
 /** Get the Studio origin URL (for getlibs.js loading). */
 function getStudioOrigin(): string {
   const auth = getAuth();
+  if (!auth) {
+    throw new Error("Cannot determine Studio origin: no authentication configured");
+  }
   return auth.host.replace(/\/$/, "");
 }
 
