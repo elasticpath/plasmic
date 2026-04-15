@@ -21,7 +21,7 @@ const MAX_LOG_SIZE = 5 * 1024 * 1024; // 5MB — rotate when exceeded
 type LogLevel = "debug" | "info" | "warning" | "error";
 
 /** MCP server reference — set after server is created. */
-let mcpServer: { sendLoggingMessage: (params: { level: string; logger?: string; data: unknown }) => Promise<void> } | null = null;
+let mcpServer: { sendLoggingMessage: (params: { level: LogLevel; logger?: string; data: unknown }) => Promise<void> } | null = null;
 
 export function setMcpServer(server: typeof mcpServer): void {
   mcpServer = server;
