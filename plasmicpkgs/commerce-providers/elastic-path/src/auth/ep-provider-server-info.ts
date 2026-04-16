@@ -23,9 +23,12 @@ export function epProviderGetServerInfo(
   const serverToken = props.serverToken;
   if (!serverToken) return {};
 
+  const host = props.host === "custom" ? props.customHost : props.host;
+
   return {
     providedContexts: [
       { contextKey: "ep-server-token", value: serverToken },
+      { contextKey: "ep-host", value: host },
     ],
   };
 }

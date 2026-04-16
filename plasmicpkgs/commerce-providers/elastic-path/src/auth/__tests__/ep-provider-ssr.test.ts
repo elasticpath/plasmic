@@ -12,15 +12,16 @@ describe("epProviderGetServerInfo", () => {
     fetchData: jest.fn(),
   };
 
-  it("provides ep-server-token context when serverToken is present", () => {
+  it("provides ep-server-token and ep-host contexts when serverToken is present", () => {
     const result = epProviderGetServerInfo(
-      { serverToken: "my-server-token" },
+      { serverToken: "my-server-token", host: "https://useast.api.elasticpath.com" },
       mockOps
     );
 
     expect(result).toEqual({
       providedContexts: [
         { contextKey: "ep-server-token", value: "my-server-token" },
+        { contextKey: "ep-host", value: "https://useast.api.elasticpath.com" },
       ],
     });
   });
