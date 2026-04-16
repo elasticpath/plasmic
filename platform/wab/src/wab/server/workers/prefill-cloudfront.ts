@@ -7,6 +7,7 @@ import { genPublishedLoaderCodeBundle } from "@/wab/server/loader/gen-code-bundl
 import {
   getResolvedProjectVersions,
   mkVersionToSync,
+  parseProjectIdSpec,
 } from "@/wab/server/loader/resolve-projects";
 import { logger } from "@/wab/server/observability";
 import { captureException } from "@/wab/server/observability/datadog";
@@ -172,11 +173,28 @@ export async function prefillCloudfront(
                   i18nKeyScheme: publishment.i18nKeyScheme ?? undefined,
                   i18nTagPrefix: publishment.i18nTagPrefix ?? undefined,
                 });
+                // Look up API tokens for all projects in this variant so the
+                // warming GET is authorised — the versioned endpoint requires
+                // x-plasmic-api-project-tokens to serve the bundle.
+                const projectTokens = await Promise.all(
+                  resolvedProjectIdSpecs.map(async (spec) => {
+                    const { projectId: specProjectId } =
+                      parseProjectIdSpec(spec);
+                    const token =
+                      await mgr.sudo().validateOrGetProjectApiToken(
+                        specProjectId
+                      );
+                    return `${specProjectId}:${token}`;
+                  })
+                );
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 30_000);
                 const { result, spentTime } = await withTimeSpent(() =>
                   fetch(`${baseUrl}/api/v1/loader/code/versioned?${query}`, {
                     signal: controller.signal,
+                    headers: {
+                      "x-plasmic-api-project-tokens": projectTokens.join(","),
+                    },
                   }).finally(() => clearTimeout(timeoutId))
                 );
                 logger().info("loader-prefill-warming-url", {
