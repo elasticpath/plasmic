@@ -104,7 +104,7 @@ describe("useCart", () => {
     // useShopperFetch calls fetch with the path as first arg
     expect(mockFetch).toHaveBeenCalled();
     const fetchUrl = mockFetch.mock.calls[0][0];
-    expect(fetchUrl).toBe("/api/cart");
+    expect(fetchUrl).toBe("/api/ep/cart");
 
     expect(result.current.data).toEqual(SAMPLE_CART_DATA);
     expect(result.current.isEmpty).toBe(false);

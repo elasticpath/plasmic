@@ -46,7 +46,7 @@ describe("useRemoveItem", () => {
     expect(deleteCall).toBeDefined();
 
     const [url, init] = deleteCall!;
-    expect(url).toBe("/api/cart/items/item-abc");
+    expect(url).toBe("/api/ep/cart/items/item-abc");
     expect(init.method).toBe("DELETE");
   });
 
@@ -66,7 +66,7 @@ describe("useRemoveItem", () => {
     );
     const [url] = deleteCall!;
     expect(url).toBe(
-      `/api/cart/items/${encodeURIComponent("item/../../secret")}`
+      `/api/ep/cart/items/${encodeURIComponent("item/../../secret")}`
     );
     // Must not contain raw slashes from the item ID
     expect(url).not.toContain("item/../../secret");

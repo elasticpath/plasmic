@@ -1,5 +1,6 @@
 import { useCallback, useRef } from "react";
 import { useShopperFetch } from "./useShopperFetch";
+import { useShopperContext } from "./useShopperContext";
 import { useCart } from "./use-cart";
 import { DEFAULT_DEBOUNCE_MS } from "../const";
 
@@ -11,6 +12,7 @@ import { DEFAULT_DEBOUNCE_MS } from "../const";
  */
 export function useUpdateItem() {
   const shopperFetch = useShopperFetch();
+  const { basePath = "/api/ep" } = useShopperContext();
   const { mutate } = useCart();
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -20,7 +22,7 @@ export function useUpdateItem() {
 
       timerRef.current = setTimeout(async () => {
         await shopperFetch(
-          `/api/cart/items/${encodeURIComponent(itemId)}`,
+          `${basePath}/cart/items/${encodeURIComponent(itemId)}`,
           {
             method: "PUT",
             body: JSON.stringify({ quantity }),

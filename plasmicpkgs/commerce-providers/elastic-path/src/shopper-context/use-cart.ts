@@ -69,14 +69,14 @@ export interface UseCartReturn {
  */
 export function useCart(): UseCartReturn {
   const shopperFetch = useShopperFetch();
-  const { cartId } = useShopperContext();
+  const { cartId, basePath = "/api/ep" } = useShopperContext();
 
   // Include cartId in cache key so SWR refetches when designer changes it in Studio
   const cacheKey = cartId ? ["cart", cartId] : "cart";
 
   const { data, error, mutate } = useSWR<CartData>(
     cacheKey,
-    () => shopperFetch<CartData>("/api/cart"),
+    () => shopperFetch<CartData>(`${basePath}/cart`),
     { revalidateOnFocus: false }
   );
 

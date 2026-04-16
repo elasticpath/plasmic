@@ -5,6 +5,7 @@ export interface ShopperOverrides {
   accountId?: string;
   locale?: string;
   currency?: string;
+  basePath?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -49,6 +50,7 @@ export function ShopperContext({
   accountId,
   locale,
   currency,
+  basePath,
   children,
 }: ShopperContextProps) {
   const ShopperCtx = getSingletonContext();
@@ -59,8 +61,9 @@ export function ShopperContext({
       accountId: accountId || undefined,
       locale: locale || undefined,
       currency: currency || undefined,
+      basePath: basePath || undefined,
     }),
-    [cartId, accountId, locale, currency]
+    [cartId, accountId, locale, currency, basePath]
   );
 
   return (

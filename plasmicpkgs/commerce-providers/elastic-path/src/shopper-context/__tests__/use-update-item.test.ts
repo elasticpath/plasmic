@@ -62,7 +62,7 @@ describe("useUpdateItem", () => {
     expect(putCall).toBeDefined();
 
     const [url, init] = putCall!;
-    expect(url).toBe("/api/cart/items/item-abc");
+    expect(url).toBe("/api/ep/cart/items/item-abc");
     expect(init.method).toBe("PUT");
 
     const body = JSON.parse(init.body as string);
@@ -121,7 +121,7 @@ describe("useUpdateItem", () => {
     );
     const [url] = putCall!;
     expect(url).toBe(
-      `/api/cart/items/${encodeURIComponent("item/../admin")}`
+      `/api/ep/cart/items/${encodeURIComponent("item/../admin")}`
     );
   });
 

@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { useShopperFetch } from "./useShopperFetch";
+import { useShopperContext } from "./useShopperContext";
 import { useCart } from "./use-cart";
 
 /**
@@ -10,12 +11,13 @@ import { useCart } from "./use-cart";
  */
 export function useRemoveItem() {
   const shopperFetch = useShopperFetch();
+  const { basePath = "/api/ep" } = useShopperContext();
   const { mutate } = useCart();
 
   return useCallback(
     async (itemId: string) => {
       await shopperFetch(
-        `/api/cart/items/${encodeURIComponent(itemId)}`,
+        `${basePath}/cart/items/${encodeURIComponent(itemId)}`,
         { method: "DELETE" }
       );
       await mutate();

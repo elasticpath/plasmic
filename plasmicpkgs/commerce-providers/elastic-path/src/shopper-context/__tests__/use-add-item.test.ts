@@ -56,7 +56,7 @@ describe("useAddItem", () => {
     expect(postCall).toBeDefined();
 
     const [url, init] = postCall!;
-    expect(url).toBe("/api/cart/items");
+    expect(url).toBe("/api/ep/cart/items");
     expect(init.method).toBe("POST");
 
     const body = JSON.parse(init.body as string);
@@ -111,7 +111,7 @@ describe("useAddItem", () => {
     // So we expect at least: initial GET, POST, refetch GET
     const getCalls = mockFetch.mock.calls.filter(
       ([url, init]: [string, RequestInit?]) =>
-        url === "/api/cart" && (!init?.method || init?.method === "GET")
+        url === "/api/ep/cart" && (!init?.method || init?.method === "GET")
     );
     expect(getCalls.length).toBeGreaterThanOrEqual(1);
   });

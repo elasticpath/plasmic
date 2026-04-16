@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { useShopperFetch } from "./useShopperFetch";
+import { useShopperContext } from "./useShopperContext";
 import { useCart } from "./use-cart";
 
 export interface AddItemInput {
@@ -28,11 +29,12 @@ export interface AddItemInput {
  */
 export function useAddItem() {
   const shopperFetch = useShopperFetch();
+  const { basePath = "/api/ep" } = useShopperContext();
   const { mutate } = useCart();
 
   return useCallback(
     async (item: AddItemInput) => {
-      const result = await shopperFetch("/api/cart/items", {
+      const result = await shopperFetch(`${basePath}/cart/items`, {
         method: "POST",
         body: JSON.stringify(item),
       });
