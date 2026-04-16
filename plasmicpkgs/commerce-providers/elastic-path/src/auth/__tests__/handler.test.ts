@@ -174,6 +174,107 @@ describe("cart DELETE (remove item)", () => {
   });
 });
 
+describe("checkout routes", () => {
+  it("routes POST /api/ep/checkout/sessions to create session", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({ data: { id: "session-1", status: "open" } }),
+    });
+
+    const handler = toNextJsHandler(makeEpAuth());
+    const req = makeRequest(
+      "POST",
+      "/api/ep/checkout/sessions",
+      { cartId: "cart-123" },
+      { ep_token: encode(validTokenData), ep_cart: "cart-123" }
+    );
+    const res = await handler.POST(req as any);
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.accountStatus).toBe("anonymous");
+  });
+
+  it("routes POST /api/ep/checkout/sessions/pay", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({ data: { status: "processing" } }),
+    });
+
+    const handler = toNextJsHandler(makeEpAuth());
+    const req = makeRequest(
+      "POST",
+      "/api/ep/checkout/sessions/pay",
+      { paymentMethod: "stripe" },
+      { ep_token: encode(validTokenData), ep_cart: "cart-123" }
+    );
+    const res = await handler.POST(req as any);
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.accountStatus).toBeDefined();
+  });
+
+  it("routes POST /api/ep/checkout/sessions/confirm", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({ data: { status: "complete" } }),
+    });
+
+    const handler = toNextJsHandler(makeEpAuth());
+    const req = makeRequest(
+      "POST",
+      "/api/ep/checkout/sessions/confirm",
+      {},
+      { ep_token: encode(validTokenData), ep_cart: "cart-123" }
+    );
+    const res = await handler.POST(req as any);
+
+    expect(res.status).toBe(200);
+  });
+
+  it("routes POST /api/ep/checkout/sessions/shipping", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({ data: { rates: [] } }),
+    });
+
+    const handler = toNextJsHandler(makeEpAuth());
+    const req = makeRequest(
+      "POST",
+      "/api/ep/checkout/sessions/shipping",
+      { address: {} },
+      { ep_token: encode(validTokenData), ep_cart: "cart-123" }
+    );
+    const res = await handler.POST(req as any);
+
+    expect(res.status).toBe(200);
+  });
+
+  it("routes PATCH /api/ep/checkout/sessions/current", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({ data: { status: "open" } }),
+    });
+
+    const handler = toNextJsHandler(makeEpAuth());
+    const req = makeRequest(
+      "PATCH",
+      "/api/ep/checkout/sessions/current",
+      { customerInfo: { name: "Test", email: "test@test.com" } },
+      { ep_token: encode(validTokenData), ep_cart: "cart-123" }
+    );
+    const res = await handler.PATCH(req as any);
+
+    expect(res.status).toBe(200);
+  });
+});
+
 describe("custom basePath", () => {
   it("routes using custom basePath", async () => {
     mockFetch.mockResolvedValue({

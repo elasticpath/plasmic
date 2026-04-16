@@ -24,6 +24,27 @@ function extractPath(url: string, basePath: string): string | null {
   return pathname.slice(basePath.length) || "/";
 }
 
+async function resolveClientCredentials(
+  clientId: string,
+  clientSecret: string,
+  host: string
+): Promise<string> {
+  const response = await fetch(`${host}/oauth/access_token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "client_credentials",
+      client_id: clientId,
+      client_secret: clientSecret,
+    }).toString(),
+  });
+  if (!response.ok) {
+    throw new Error(`Client credentials OAuth failed: ${response.status}`);
+  }
+  const data = await response.json();
+  return data.access_token;
+}
+
 function jsonResponse(
   data: any,
   status: number,
@@ -142,6 +163,117 @@ async function handleRoute(
         headers: authHeaders,
       }
     );
+    const epData = await epRes.json();
+    return jsonResponse(
+      { ...epData, accountStatus: accountStatus(session) },
+      epRes.ok ? 200 : epRes.status,
+      cookies
+    );
+  }
+
+  // --- Checkout routes ---
+
+  // POST /checkout/sessions — create checkout session
+  if (method === "POST" && route === "/checkout/sessions") {
+    const body = await req.json();
+    const epRes = await fetch(`${epHost}/v2/carts/${cartId}/checkout`, {
+      method: "POST",
+      headers: { ...authHeaders, "Content-Type": "application/json" },
+      body: JSON.stringify({ data: body }),
+    });
+    const epData = await epRes.json();
+    return jsonResponse(
+      { ...epData, accountStatus: accountStatus(session) },
+      epRes.ok ? 200 : epRes.status,
+      cookies
+    );
+  }
+
+  // PATCH /checkout/sessions/current — update session
+  if (method === "PATCH" && route === "/checkout/sessions/current") {
+    const body = await req.json();
+    const epRes = await fetch(`${epHost}/v2/carts/${cartId}/checkout`, {
+      method: "PUT",
+      headers: { ...authHeaders, "Content-Type": "application/json" },
+      body: JSON.stringify({ data: body }),
+    });
+    const epData = await epRes.json();
+    return jsonResponse(
+      { ...epData, accountStatus: accountStatus(session) },
+      epRes.ok ? 200 : epRes.status,
+      cookies
+    );
+  }
+
+  // POST /checkout/sessions/shipping — calculate shipping
+  if (method === "POST" && route === "/checkout/sessions/shipping") {
+    const body = await req.json();
+    const epRes = await fetch(`${epHost}/v2/carts/${cartId}/shipping-rates`, {
+      method: "POST",
+      headers: { ...authHeaders, "Content-Type": "application/json" },
+      body: JSON.stringify({ data: body }),
+    });
+    const epData = await epRes.json();
+    return jsonResponse(
+      { ...epData, accountStatus: accountStatus(session) },
+      epRes.ok ? 200 : epRes.status,
+      cookies
+    );
+  }
+
+  // POST /checkout/sessions/pay — process payment
+  if (method === "POST" && route === "/checkout/sessions/pay") {
+    const body = await req.json();
+
+    // Try with implicit token first
+    let epRes = await fetch(`${epHost}/v2/orders/${body.orderId}/payments`, {
+      method: "POST",
+      headers: { ...authHeaders, "Content-Type": "application/json" },
+      body: JSON.stringify({ data: body }),
+    });
+
+    // Payment escalation: on 403, retry with client_credentials if configured
+    if (epRes.status === 403 && epAuth.config.epClientSecret) {
+      const escalatedToken = await resolveClientCredentials(
+        session.session!.clientId,
+        epAuth.config.epClientSecret,
+        epHost
+      );
+      epRes = await fetch(`${epHost}/v2/orders/${body.orderId}/payments`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${escalatedToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ data: body }),
+      });
+    } else if (epRes.status === 403) {
+      return jsonResponse(
+        {
+          error: "Payment requires client_credentials. Configure epClientSecret in createEpAuth.",
+          accountStatus: accountStatus(session),
+        },
+        403,
+        cookies
+      );
+    }
+
+    const epData = await epRes.json();
+    return jsonResponse(
+      { ...epData, accountStatus: accountStatus(session) },
+      epRes.ok ? 200 : epRes.status,
+      cookies
+    );
+  }
+
+  // POST /checkout/sessions/confirm — confirm payment
+  if (method === "POST" && route === "/checkout/sessions/confirm") {
+    const body = await req.json();
+    const epRes = await fetch(`${epHost}/v2/orders/${body.orderId}/confirm`, {
+      method: "POST",
+      headers: { ...authHeaders, "Content-Type": "application/json" },
+      body: JSON.stringify({ data: body }),
+    });
     const epData = await epRes.json();
     return jsonResponse(
       { ...epData, accountStatus: accountStatus(session) },
