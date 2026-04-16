@@ -211,6 +211,12 @@ export type GlobalContextMeta<P> = Omit<
    * Optional: not used by Plasmic headless API, only by codegen.
    */
   importPath?: string;
+
+  /**
+   * Helper function to enable data extraction when running Plasmic from
+   * Next.js App Router with global contexts that provide server-side data.
+   */
+  getServerInfo?: (props: P, ops: ReactServerOps) => ServerInfo;
 };
 
 export type CustomFunctionMeta<F extends (...args: any[]) => any> = Omit<

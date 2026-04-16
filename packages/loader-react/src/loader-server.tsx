@@ -492,7 +492,57 @@ export class InternalPrepassPlasmicLoader extends BaseInternalPlasmicComponentLo
     context: T,
     meta: GlobalContextMeta<React.ComponentProps<T>>
   ) {
-    this.substituteComponent(context, { name: meta.name, isCode: true });
+    this.internalSubstituteComponent(
+      meta.getServerInfo
+        ? (props: any) => {
+            const { readContextValue } = getPrepassContextEnv();
+
+            const serverInfo = meta.getServerInfo?.(props, {
+              readContext: readContextValue as any,
+              readDataEnv: () => readContextValue(FakeDataContext),
+              readDataSelector: fakeUseSelector,
+              readDataSelectors: fakeUseSelectors,
+              fetchData: fakeUseMutablePlasmicQueryData,
+            });
+
+            if (serverInfo && serverInfo.children) {
+              const contents: React.ReactNode[] = [] as React.ReactNode[];
+              const children = Array.isArray(serverInfo.children)
+                ? serverInfo.children
+                : [serverInfo.children];
+              children.forEach((childData) => {
+                contents.push(
+                  <ContextAndDataProviderWrapper contextAndData={childData}>
+                    {childData.node}
+                  </ContextAndDataProviderWrapper>
+                );
+              });
+              return (
+                <ContextAndDataProviderWrapper contextAndData={serverInfo}>
+                  {contents}
+                </ContextAndDataProviderWrapper>
+              );
+            } else {
+              return (
+                <ContextAndDataProviderWrapper
+                  contextAndData={serverInfo ?? {}}
+                >
+                  {Object.values(props)
+                    .flat(Infinity)
+                    .filter(
+                      (v: any): v is React.ReactNode =>
+                        v &&
+                        typeof v == "object" &&
+                        v.$$typeof &&
+                        React.isValidElement(v)
+                    )}
+                </ContextAndDataProviderWrapper>
+              );
+            }
+          }
+        : context,
+      { name: meta.name, isCode: true }
+    );
   }
 
   registerTrait: (trait: string, meta: TraitMeta) => void = noop;
