@@ -29,7 +29,7 @@ import { getAuth, writeAuth } from "./auth.js";
 import { acquireAuth } from "./auth-flow.js";
 import * as logger from "./logger.js";
 
-const VERSION = "0.1.3";
+const VERSION = "0.1.4";
 
 const US_EAST_HOST = "https://useast.storefront.elasticpath.com";
 const EU_WEST_HOST = "https://euwest.storefront.elasticpath.com";

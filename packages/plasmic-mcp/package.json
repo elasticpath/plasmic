@@ -1,12 +1,17 @@
 {
   "name": "@elasticpath/plasmic-mcp",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "MCP server for Plasmic Studio with embedded editing engine",
   "type": "module",
   "bin": {
     "plasmic-mcp": "./dist/index.cjs"
   },
   "main": "./dist/index.cjs",
+  "files": [
+    "dist/index.cjs",
+    "dist/index.cjs.map",
+    "manifest.json"
+  ],
   "scripts": {
     "build": "node build.mjs",
     "build:mcpb": "node build.mjs && node build-mcpb.mjs",
