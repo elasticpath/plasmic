@@ -1,14 +1,23 @@
 import { createShopperClient } from "@epcc-sdk/sdks-shopper";
 import { ElasticPathCredentials } from './provider';
 
-const initElasticPathClient = (creds: ElasticPathCredentials) => {
+/** In-memory StorageAdapter pre-loaded with a server-resolved token. */
+function serverTokenAdapter(token: string) {
+  let current: string | undefined = token;
+  return {
+    get: () => current,
+    set: (t?: string) => { current = t; },
+  };
+}
+
+const initElasticPathClient = (creds: ElasticPathCredentials, serverToken?: string) => {
   const { client } = createShopperClient(
     {
       baseUrl: creds.host || "https://euwest.api.elasticpath.com",
     },
     {
       clientId: creds.clientId,
-      storage: "localStorage",
+      storage: serverToken ? serverTokenAdapter(serverToken) : "localStorage",
     }
   );
 

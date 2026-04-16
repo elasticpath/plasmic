@@ -9,12 +9,14 @@ import { getCommerceProvider } from "./elastic-path";
 import { ElasticPathCredentials } from "./provider";
 import { Registerable } from "./registerable";
 import { ServerCartActionsProvider } from "./shopper-context/ServerCartActionsProvider";
+import { epProviderGetServerInfo } from "./auth/ep-provider-server-info";
 
 interface CommerceProviderProps extends ElasticPathCredentials {
   children?: React.ReactNode;
   locale?: string;
   customHost?: string;
   serverCartMode?: boolean;
+  serverToken?: string;
 }
 
 const globalContextName = "plasmic-commerce-elastic-path-provider";
@@ -58,8 +60,15 @@ export const commerceProviderMeta: GlobalContextMeta<CommerceProviderProps> = {
       advanced: true,
       defaultValue: false,
     },
+    serverToken: {
+      type: "string",
+      hidden: () => true,
+      description:
+        "Server-resolved EP access token. Set programmatically via session.providerProps(), never shown in Studio.",
+    },
   },
   ...{ globalActions: globalActionsRegistrations },
+  getServerInfo: epProviderGetServerInfo,
   importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
   importName: "CommerceProviderComponent",
 };
@@ -72,6 +81,7 @@ export function CommerceProviderComponent(props: CommerceProviderProps) {
     customHost,
     locale = "en-US",
     serverCartMode = false,
+    serverToken,
   } = props;
 
   if (!clientId) {
@@ -98,8 +108,8 @@ export function CommerceProviderComponent(props: CommerceProviderProps) {
   );
 
   const CommerceProvider = React.useMemo(
-    () => getCommerceProvider(creds, locale),
-    [creds, locale]
+    () => getCommerceProvider(creds, locale, serverToken),
+    [creds, locale, serverToken]
   );
 
   const ActionsProvider = serverCartMode

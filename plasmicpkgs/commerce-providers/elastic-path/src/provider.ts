@@ -50,9 +50,10 @@ const createFetcher = (creds: ElasticPathCredentials): Fetcher => {
 
 export const getElasticPathProvider = (
   creds: ElasticPathCredentials,
-  locale: string
+  locale: string,
+  serverToken?: string
 ) => {
-  const client = initElasticPathClient(creds);
+  const client = initElasticPathClient(creds, serverToken);
 
   return {
     locale,
