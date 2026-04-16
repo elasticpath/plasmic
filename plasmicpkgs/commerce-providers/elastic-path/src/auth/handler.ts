@@ -45,6 +45,49 @@ async function resolveClientCredentials(
   return data.access_token;
 }
 
+async function handleCartMerge(
+  cartId: string | null | undefined,
+  strategy: "merge" | "replace" | "prompt",
+  epHost: string,
+  authHeaders: Record<string, string>,
+  accountId: string,
+  cookies: string[]
+): Promise<Record<string, any>> {
+  if (!cartId) return {};
+
+  switch (strategy) {
+    case "merge": {
+      // Associate anonymous cart with account
+      await fetch(`${epHost}/v2/carts/${cartId}/relationships/accounts`, {
+        method: "POST",
+        headers: { ...authHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data: [{ type: "account", id: accountId }],
+        }),
+      });
+      return {};
+    }
+
+    case "replace": {
+      // Abandon anonymous cart — clear ep_cart cookie
+      cookies.push("ep_cart=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0");
+      return {};
+    }
+
+    case "prompt": {
+      // Fetch anonymous cart contents for consumer to present choice
+      const cartRes = await fetch(`${epHost}/v2/carts/${cartId}/items`, {
+        headers: authHeaders,
+      });
+      const cartData = await cartRes.json();
+      return { anonymousCart: cartData };
+    }
+
+    default:
+      return {};
+  }
+}
+
 function jsonResponse(
   data: any,
   status: number,
@@ -305,7 +348,7 @@ async function handleRoute(
     );
     const epData = await epRes.json();
 
-    // Single account: auto-select, set cookie immediately
+    // Single account: auto-select, set cookie, handle cart merge
     if (epRes.ok && epData.data?.length === 1) {
       const acct = epData.data[0];
       cookies.push(
@@ -317,8 +360,19 @@ async function handleRoute(
           expires: acct.expires,
         })
       );
+
+      // Cart merge on login
+      const mergeResult = await handleCartMerge(
+        cartId,
+        epAuth.config.cartMergeStrategy,
+        epHost,
+        authHeaders,
+        acct.account_id,
+        cookies
+      );
+
       return jsonResponse(
-        { ...epData, accountStatus: "authenticated" },
+        { ...epData, ...mergeResult, accountStatus: "authenticated" },
         200,
         cookies
       );

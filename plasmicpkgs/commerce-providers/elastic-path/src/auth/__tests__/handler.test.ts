@@ -22,11 +22,12 @@ function encode(data: any): string {
   return Buffer.from(JSON.stringify(data)).toString("base64");
 }
 
-function makeEpAuth(basePath?: string) {
+function makeEpAuth(basePath?: string, cartMergeStrategy?: "merge" | "replace" | "prompt") {
   return createEpAuth({
     clientId: "my-client-id",
     host: "https://useast.api.elasticpath.com",
     basePath,
+    cartMergeStrategy,
   });
 }
 
@@ -334,6 +335,163 @@ describe("account auth routes", () => {
     });
     const hasAccountCookie = allHeaders.some((c) => c.includes("ep_account="));
     expect(hasAccountCookie).toBe(true);
+  });
+
+  it("merges anonymous cart on login (merge strategy)", async () => {
+    // First call: login endpoint; second call: cart association
+    let callCount = 0;
+    mockFetch.mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) {
+        // Login response — single account
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              data: [
+                {
+                  account_id: "acc-1",
+                  account_name: "Acme",
+                  account_member_id: "mem-1",
+                  token: "account-token",
+                  expires: Math.floor(Date.now() / 1000) + 86400,
+                },
+              ],
+            }),
+        });
+      }
+      // Cart association call
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ data: {} }),
+      });
+    });
+
+    const handler = toNextJsHandler(makeEpAuth());
+    const req = makeRequest(
+      "POST",
+      "/api/ep/account/login",
+      { username: "user@test.com", password: "pass", passwordProfileId: "pp-1" },
+      { ep_token: encode(validTokenData), ep_cart: "anon-cart-123" }
+    );
+    const res = await handler.POST(req as any);
+
+    expect(res.status).toBe(200);
+    // Should have made the cart association call
+    expect(mockFetch.mock.calls.length).toBeGreaterThanOrEqual(2);
+    const assocCall = mockFetch.mock.calls[1];
+    expect(assocCall[0]).toContain("/v2/carts/anon-cart-123/relationships/accounts");
+  });
+
+  it("replaces anonymous cart on login (replace strategy)", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          data: [
+            {
+              account_id: "acc-1",
+              account_name: "Acme",
+              account_member_id: "mem-1",
+              token: "account-token",
+              expires: Math.floor(Date.now() / 1000) + 86400,
+            },
+          ],
+        }),
+    });
+
+    const handler = toNextJsHandler(makeEpAuth(undefined, "replace"));
+    const req = makeRequest(
+      "POST",
+      "/api/ep/account/login",
+      { username: "user@test.com", password: "pass", passwordProfileId: "pp-1" },
+      { ep_token: encode(validTokenData), ep_cart: "anon-cart-123" }
+    );
+    const res = await handler.POST(req as any);
+
+    expect(res.status).toBe(200);
+    // Should clear the ep_cart cookie
+    const allHeaders: string[] = [];
+    res.headers.forEach((v, k) => {
+      if (k === "set-cookie") allHeaders.push(v);
+    });
+    const clearCart = allHeaders.find((c) => c.includes("ep_cart="));
+    expect(clearCart).toContain("Max-Age=0");
+  });
+
+  it("returns anonymous cart in response (prompt strategy)", async () => {
+    let callCount = 0;
+    mockFetch.mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) {
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              data: [
+                {
+                  account_id: "acc-1",
+                  account_name: "Acme",
+                  account_member_id: "mem-1",
+                  token: "account-token",
+                  expires: Math.floor(Date.now() / 1000) + 86400,
+                },
+              ],
+            }),
+        });
+      }
+      // Cart fetch for prompt
+      return Promise.resolve({
+        ok: true,
+        json: () =>
+          Promise.resolve({ data: [{ id: "item-1", quantity: 2 }] }),
+      });
+    });
+
+    const handler = toNextJsHandler(makeEpAuth(undefined, "prompt"));
+    const req = makeRequest(
+      "POST",
+      "/api/ep/account/login",
+      { username: "user@test.com", password: "pass", passwordProfileId: "pp-1" },
+      { ep_token: encode(validTokenData), ep_cart: "anon-cart-123" }
+    );
+    const res = await handler.POST(req as any);
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.anonymousCart).toBeDefined();
+    expect(json.anonymousCart.data).toHaveLength(1);
+  });
+
+  it("skips merge when no anonymous cart", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          data: [
+            {
+              account_id: "acc-1",
+              account_name: "Acme",
+              account_member_id: "mem-1",
+              token: "account-token",
+              expires: Math.floor(Date.now() / 1000) + 86400,
+            },
+          ],
+        }),
+    });
+
+    const handler = toNextJsHandler(makeEpAuth());
+    const req = makeRequest(
+      "POST",
+      "/api/ep/account/login",
+      { username: "user@test.com", password: "pass", passwordProfileId: "pp-1" },
+      { ep_token: encode(validTokenData) }  // no ep_cart
+    );
+    const res = await handler.POST(req as any);
+
+    expect(res.status).toBe(200);
+    // Only the login call, no cart association
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   it("routes DELETE /api/ep/account/logout", async () => {
