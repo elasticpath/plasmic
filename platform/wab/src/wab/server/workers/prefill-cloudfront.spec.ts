@@ -151,6 +151,10 @@ describe("Prefill cloudfront", () => {
 
       sudo.updatePkgVersion = jest.fn();
 
+      sudo.validateOrGetProjectApiToken = jest
+        .fn()
+        .mockImplementation((pid: string) => Promise.resolve(`token-${pid}`));
+
       return { getResolvedProjectVersions, genPublishedLoaderCodeBundle };
     }
 
@@ -305,6 +309,31 @@ describe("Prefill cloudfront", () => {
             url.includes("browserOnly=true") &&
             url.includes("projectId=p1%400.0.1") &&
             !url.includes("projectId=p2")
+          )
+        ).toBe(true);
+
+        // Every warming fetch must include x-plasmic-api-project-tokens so the
+        // versioned endpoint authorises the request instead of returning 401.
+        const fetchCalls = (global.fetch as jest.Mock).mock.calls as [string, RequestInit][];
+        for (const [, opts] of fetchCalls) {
+          expect(
+            (opts?.headers as Record<string, string>)?.["x-plasmic-api-project-tokens"]
+          ).toBeTruthy();
+        }
+        // Multi-project variant includes tokens for all resolved specs
+        expect(
+          fetchCalls.some(([, opts]) =>
+            (opts?.headers as Record<string, string>)?.[
+              "x-plasmic-api-project-tokens"
+            ] === "p1:token-p1,p2:token-p2,p3:token-p3"
+          )
+        ).toBe(true);
+        // Single-project variant includes only that project's token
+        expect(
+          fetchCalls.some(([, opts]) =>
+            (opts?.headers as Record<string, string>)?.[
+              "x-plasmic-api-project-tokens"
+            ] === "p1:token-p1"
           )
         ).toBe(true);
       });
