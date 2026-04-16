@@ -206,6 +206,7 @@ export async function prefillCloudfront(
                   duration_ms: spentTime,
                   ok: result.ok,
                   status: result.status,
+                  url: `${baseUrl}/api/v1/loader/code/versioned?${query}`,
                 });
                 return result;
               })
