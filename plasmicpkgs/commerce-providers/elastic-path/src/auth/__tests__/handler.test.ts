@@ -275,6 +275,88 @@ describe("checkout routes", () => {
   });
 });
 
+describe("account auth routes", () => {
+  it("routes POST /api/ep/account/login", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          data: [
+            {
+              account_id: "acc-1",
+              account_name: "Acme",
+              account_member_id: "mem-1",
+              token: "account-token",
+              expires: Math.floor(Date.now() / 1000) + 86400,
+            },
+          ],
+        }),
+    });
+
+    const handler = toNextJsHandler(makeEpAuth());
+    const req = makeRequest(
+      "POST",
+      "/api/ep/account/login",
+      { username: "user@test.com", password: "pass", passwordProfileId: "pp-1" },
+      { ep_token: encode(validTokenData) }
+    );
+    const res = await handler.POST(req as any);
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.accountStatus).toBeDefined();
+  });
+
+  it("routes POST /api/ep/account/select", async () => {
+    mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+
+    const handler = toNextJsHandler(makeEpAuth());
+    const req = makeRequest(
+      "POST",
+      "/api/ep/account/select",
+      {
+        accountId: "acc-1",
+        accountName: "Acme",
+        accountMemberId: "mem-1",
+        token: "account-token",
+        expires: Math.floor(Date.now() / 1000) + 86400,
+      },
+      { ep_token: encode(validTokenData) }
+    );
+    const res = await handler.POST(req as any);
+
+    expect(res.status).toBe(200);
+    // Should set ep_account cookie
+    const setCookies = res.headers.getSetCookie?.() ?? [];
+    const allHeaders: string[] = [];
+    res.headers.forEach((v, k) => {
+      if (k === "set-cookie") allHeaders.push(v);
+    });
+    const hasAccountCookie = allHeaders.some((c) => c.includes("ep_account="));
+    expect(hasAccountCookie).toBe(true);
+  });
+
+  it("routes DELETE /api/ep/account/logout", async () => {
+    const handler = toNextJsHandler(makeEpAuth());
+    const req = makeRequest(
+      "DELETE",
+      "/api/ep/account/logout",
+      undefined,
+      { ep_token: encode(validTokenData) }
+    );
+    const res = await handler.DELETE(req as any);
+
+    expect(res.status).toBe(200);
+    // Should clear ep_account cookie (Max-Age=0)
+    const allHeaders: string[] = [];
+    res.headers.forEach((v, k) => {
+      if (k === "set-cookie") allHeaders.push(v);
+    });
+    const clearCookie = allHeaders.find((c) => c.includes("ep_account="));
+    expect(clearCookie).toContain("Max-Age=0");
+  });
+});
+
 describe("custom basePath", () => {
   it("routes using custom basePath", async () => {
     mockFetch.mockResolvedValue({

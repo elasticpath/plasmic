@@ -1,5 +1,5 @@
 import { EpAuth } from "./create-ep-auth";
-import { buildEpCartCookieHeader } from "./cookies";
+import { buildEpCartCookieHeader, buildEpAccountCookieHeader } from "./cookies";
 import { EpSession } from "./session";
 
 interface HandlerRequest {
@@ -278,6 +278,96 @@ async function handleRoute(
     return jsonResponse(
       { ...epData, accountStatus: accountStatus(session) },
       epRes.ok ? 200 : epRes.status,
+      cookies
+    );
+  }
+
+  // --- Account auth routes ---
+
+  // POST /account/login
+  if (method === "POST" && route === "/account/login") {
+    const body = await req.json();
+    const epRes = await fetch(
+      `${epHost}/v2/account-members/tokens`,
+      {
+        method: "POST",
+        headers: { ...authHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data: {
+            type: "account_management_authentication_token",
+            authentication_mechanism: "password",
+            username: body.username,
+            password: body.password,
+            password_profile_id: body.passwordProfileId,
+          },
+        }),
+      }
+    );
+    const epData = await epRes.json();
+
+    // Single account: auto-select, set cookie immediately
+    if (epRes.ok && epData.data?.length === 1) {
+      const acct = epData.data[0];
+      cookies.push(
+        buildEpAccountCookieHeader({
+          accountId: acct.account_id,
+          accountName: acct.account_name,
+          accountMemberId: acct.account_member_id,
+          token: acct.token,
+          expires: acct.expires,
+        })
+      );
+      return jsonResponse(
+        { ...epData, accountStatus: "authenticated" },
+        200,
+        cookies
+      );
+    }
+
+    // Multiple accounts: return list, consumer presents selection UI
+    if (epRes.ok && epData.data?.length > 1) {
+      return jsonResponse(
+        { ...epData, needsSelection: true, accountStatus: "anonymous" },
+        200,
+        cookies
+      );
+    }
+
+    return jsonResponse(
+      { ...epData, accountStatus: accountStatus(session) },
+      epRes.ok ? 200 : epRes.status,
+      cookies
+    );
+  }
+
+  // POST /account/select — select account from multi-account login
+  if (method === "POST" && route === "/account/select") {
+    const body = await req.json();
+    cookies.push(
+      buildEpAccountCookieHeader({
+        accountId: body.accountId,
+        accountName: body.accountName,
+        accountMemberId: body.accountMemberId,
+        token: body.token,
+        expires: body.expires,
+      })
+    );
+    return jsonResponse(
+      { accountStatus: "authenticated" },
+      200,
+      cookies
+    );
+  }
+
+  // DELETE /account/logout
+  if (method === "DELETE" && route === "/account/logout") {
+    // Clear ep_account cookie with Max-Age=0
+    cookies.push(
+      "ep_account=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"
+    );
+    return jsonResponse(
+      { accountStatus: "anonymous" },
+      200,
       cookies
     );
   }
