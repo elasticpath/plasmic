@@ -233,11 +233,10 @@ Help
           tabKey: "splits",
           icon: <IconIcon />,
           label: "Split content",
-          cond:
-            isLoggedIn &&
-            DEVFLAGS.splits &&
-            canViewTab("splits") &&
-            !isRestrictedUser,
+          // Splits is a core editing feature — not gated by isRestrictedUser.
+          // Access is controlled by DEVFLAGS.splits, canViewTab, and the
+          // splitContent feature tier (checked at publish time).
+          cond: isLoggedIn && DEVFLAGS.splits && canViewTab("splits"),
         },
         imports: {
           type: "item",
