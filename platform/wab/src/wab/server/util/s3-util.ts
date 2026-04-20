@@ -1,4 +1,5 @@
 import { logger } from "@/wab/server/observability";
+import { withTiming } from "@/wab/server/util/server-timing";
 import { ensureInstance } from "@/wab/shared/common";
 import S3 from "aws-sdk/clients/s3";
 import path from "path";
@@ -12,21 +13,21 @@ export async function upsertS3CacheEntry<T>(opts: {
 }) {
   const { bucket, key, compute: f, serialize, deserialize } = opts;
   const s3 = new S3({ endpoint: process.env.S3_ENDPOINT });
+  const shortKey = key.split("/").slice(-1)[0].slice(0, 24);
 
   try {
-    const obj = await s3
-      .getObject({
-        Bucket: bucket,
-        Key: key,
-      })
-      .promise();
+    const obj = await withTiming(`s3-get-${shortKey}`, () =>
+      s3.getObject({ Bucket: bucket, Key: key }).promise()
+    );
     const serialized = ensureInstance(obj.Body, Buffer).toString("utf8");
     logger().info(`S3 cache hit for ${bucket} ${key}`, {
       s3CacheResult: "hit",
       bucket,
       key,
     });
-    const data = deserialize(serialized);
+    const data = await withTiming(`s3-deserialize-${shortKey}`, async () =>
+      deserialize(serialized)
+    );
     return data;
   } catch (err) {
     if (err.code === "TimeoutError") {
@@ -37,16 +38,12 @@ export async function upsertS3CacheEntry<T>(opts: {
       bucket,
       key,
     });
-    const content = await f();
+    const content = await withTiming(`s3-compute-${shortKey}`, f);
     const serialized = serialize(content);
     try {
-      await s3
-        .putObject({
-          Bucket: bucket,
-          Key: key,
-          Body: serialized,
-        })
-        .promise();
+      await withTiming(`s3-put-${shortKey}`, () =>
+        s3.putObject({ Bucket: bucket, Key: key, Body: serialized }).promise()
+      );
     } catch (e) {
       if (process.env.NODE_ENV === "production") {
         throw e;
