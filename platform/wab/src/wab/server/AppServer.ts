@@ -583,7 +583,8 @@ function addMiddlewares(
     if (
       isAdminTeamEmail(req.user?.email, DEVFLAGS) ||
       req.path.includes("/server-data") ||
-      ROUTES_WITH_TIMING.some((route) => req.path.includes(route))
+      ROUTES_WITH_TIMING.some((route) => req.path.includes(route)) ||
+      process.env.ENABLE_SERVER_TIMING === "true"
     ) {
       const timingStore = { calls: [], cur: undefined };
       req.timingStore = timingStore;
