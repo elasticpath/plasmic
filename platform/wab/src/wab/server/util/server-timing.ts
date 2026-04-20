@@ -30,23 +30,35 @@ export async function withTiming<T>(
 }
 
 export function timedProxy<T extends object>(target: T, prefix = ""): T {
-  return new Proxy(target, {
-    get(obj, prop, receiver) {
-      const val = Reflect.get(obj, prop, receiver);
-      if (typeof val !== "function") return val;
-      const name = prefix ? `${prefix}-${String(prop)}` : String(prop);
-      return function (this: unknown, ...args: unknown[]) {
-        const result = (val as Function).apply(this ?? obj, args);
-        if (result instanceof Promise) {
-          const start = Date.now();
-          return result.finally(() => {
-            recordTiming(name, Date.now() - start);
-          });
-        }
-        return result;
-      };
-    },
-  });
+  // Proxy cannot wrap non-configurable data properties (arrow function class
+  // fields) without violating JS invariants. Instead, walk the full prototype
+  // chain and build a plain wrapper object with timed versions of each method.
+  const methods = new Map<string, Function>();
+  let curr: object = target;
+  while (curr && curr !== Object.prototype) {
+    for (const prop of Object.getOwnPropertyNames(curr)) {
+      if (prop === "constructor" || methods.has(prop)) continue;
+      const val = (target as any)[prop];
+      if (typeof val === "function") {
+        methods.set(prop, val);
+      }
+    }
+    curr = Object.getPrototypeOf(curr);
+  }
+
+  const wrapper = Object.create(Object.getPrototypeOf(target));
+  for (const [prop, fn] of methods) {
+    const name = prefix ? `${prefix}-${prop}` : prop;
+    wrapper[prop] = function (...args: unknown[]) {
+      const result = fn.apply(target, args);
+      if (result instanceof Promise) {
+        const start = Date.now();
+        return result.finally(() => recordTiming(name, Date.now() - start));
+      }
+      return result;
+    };
+  }
+  return wrapper as T;
 }
 
 export function getServerTimingHeader(): string | undefined {
