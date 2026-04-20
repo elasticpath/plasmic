@@ -304,7 +304,7 @@ export async function buildVersionedLoaderAssets(req: Request, res: Response) {
       appDir: nextjsAppDir,
     });
 
-    if (process.env.NODE_ENV !== "production") {
+    if (process.env.ENABLE_SERVER_TIMING === "true") {
       const timingHeader = getServerTimingHeader();
       if (timingHeader) {
         res.setHeader("Server-Timing", timingHeader);
