@@ -26,6 +26,11 @@ import {
 import { logger } from "@/wab/server/observability";
 import { superDbMgr, userDbMgr } from "@/wab/server/routes/util";
 import { withSpan } from "@/wab/server/util/apm-util";
+import {
+  getServerTimingHeader,
+  runWithServerTiming,
+  timedProxy,
+} from "@/wab/server/util/server-timing";
 import { prefillCloudfront } from "@/wab/server/workers/prefill-cloudfront";
 import { BadRequestError, NotFoundError } from "@/wab/shared/ApiErrors/errors";
 import { ProjectId } from "@/wab/shared/ApiSchema";
@@ -220,84 +225,94 @@ export function makeCacheableVersionedLoaderQuery({
 }
 
 export async function buildVersionedLoaderAssets(req: Request, res: Response) {
-  const mgr = userDbMgr(req);
-  const {
-    platform,
-    nextjsAppDir,
-    browserOnly,
-    projectIdSpecs,
-    loaderVersion,
-    i18nKeyScheme,
-    i18nTagPrefix,
-    skipHead,
-  } = getLoaderOptions(req);
-
-  const projectVersions = projectIdSpecs.map(parseProjectIdSpec);
-
-  for (const { projectId, version } of projectVersions) {
-    if (!version) {
-      throw new BadRequestError(
-        `Project ${projectId} does not have a specified version`
-      );
-    }
-  }
-
-  await Promise.all(
-    projectVersions.map(({ projectId }) =>
-      mgr.checkProjectPerms(projectId, "viewer", "get")
-    )
-  );
-
-  const projects = await Promise.all(
-    projectVersions.map(
-      async ({ projectId }) => await mgr.getProjectById(projectId)
-    )
-  );
-  trackLoaderCodegenEvent(req, projects, {
-    versionType: "versioned",
-    platform,
-  });
-
-  req.promLabels.projectId = projects.map((p) => p.id).join(",");
-
-  const result = await genPublishedLoaderCodeBundle(
-    mgr,
-    req.workerpool,
-    makeGenPublishedLoaderCodeBundleOpts({
+  return runWithServerTiming(async () => {
+    const mgr = userDbMgr(req);
+    const {
       platform,
-      appDir: nextjsAppDir,
-      projectVersions: Object.fromEntries(
-        projectVersions.map(({ projectId, version }) => [
-          projectId,
-          mkVersionToSync(
-            ensure(version, "Unexpected nullish version in projectVersions")
-          ),
-        ])
-      ),
-      i18n: {
-        keyScheme: i18nKeyScheme,
-        tagPrefix: i18nTagPrefix,
-      },
+      nextjsAppDir,
+      browserOnly,
+      projectIdSpecs,
+      loaderVersion,
+      i18nKeyScheme,
+      i18nTagPrefix,
+      skipHead,
+    } = getLoaderOptions(req);
+
+    const projectVersions = projectIdSpecs.map(parseProjectIdSpec);
+
+    for (const { projectId, version } of projectVersions) {
+      if (!version) {
+        throw new BadRequestError(
+          `Project ${projectId} does not have a specified version`
+        );
+      }
+    }
+
+    const timedMgr = timedProxy(mgr, "db");
+
+    await Promise.all(
+      projectVersions.map(({ projectId }) =>
+        timedMgr.checkProjectPerms(projectId, "viewer", "get")
+      )
+    );
+
+    const projects = await Promise.all(
+      projectVersions.map(
+        async ({ projectId }) => await timedMgr.getProjectById(projectId)
+      )
+    );
+    trackLoaderCodegenEvent(req, projects, {
+      versionType: "versioned",
+      platform,
+    });
+
+    req.promLabels.projectId = projects.map((p) => p.id).join(",");
+
+    const result = await genPublishedLoaderCodeBundle(
+      timedMgr,
+      req.workerpool,
+      makeGenPublishedLoaderCodeBundleOpts({
+        platform,
+        appDir: nextjsAppDir,
+        projectVersions: Object.fromEntries(
+          projectVersions.map(({ projectId, version }) => [
+            projectId,
+            mkVersionToSync(
+              ensure(version, "Unexpected nullish version in projectVersions")
+            ),
+          ])
+        ),
+        i18n: {
+          keyScheme: i18nKeyScheme,
+          tagPrefix: i18nTagPrefix,
+        },
+        loaderVersion,
+        browserOnly,
+        skipHead,
+      })
+    );
+
+    const projectIds = projectVersions.map(({ projectId }) => projectId);
+
+    await timedMgr.upsertLoaderPublishmentEntities({
+      projectIds,
+      platform,
       loaderVersion,
       browserOnly,
-      skipHead,
-    })
-  );
+      i18nKeyScheme,
+      i18nTagPrefix,
+      appDir: nextjsAppDir,
+    });
 
-  const projectIds = projectVersions.map(({ projectId }) => projectId);
-
-  await mgr.upsertLoaderPublishmentEntities({
-    projectIds,
-    platform,
-    loaderVersion,
-    browserOnly,
-    i18nKeyScheme,
-    i18nTagPrefix,
-    appDir: nextjsAppDir,
+    if (process.env.NODE_ENV !== "production") {
+      const timingHeader = getServerTimingHeader();
+      if (timingHeader) {
+        res.setHeader("Server-Timing", timingHeader);
+      }
+    }
+    setAsCacheableResource(res);
+    res.json(result);
   });
-
-  setAsCacheableResource(res);
-  res.json(result);
 }
 
 /**

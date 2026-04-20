@@ -1,5 +1,6 @@
 import { logger } from "@/wab/server/observability";
 import { WabPromTimer } from "@/wab/server/promstats";
+import { recordTiming } from "@/wab/server/util/server-timing";
 import { Properties } from "@/wab/shared/observability/Properties";
 import { trace } from "@opentelemetry/api";
 
@@ -27,6 +28,7 @@ export async function withSpan<T>(
         duration_ms: durationMs,
         ...payload,
       });
+      recordTiming(name, durationMs);
       promTimer.end();
       span.end();
     }
