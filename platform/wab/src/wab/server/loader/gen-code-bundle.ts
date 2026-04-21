@@ -78,23 +78,7 @@ export async function genPublishedLoaderCodeBundle(
   // (non-indirect) project versions, which are already known here. Check
   // whether the final bundle is already cached before doing any dep resolution
   // or DB work.
-  const earlyExportOpts: ExportOpts = {
-    ...LOADER_CODEGEN_OPTS_DEFAULTS,
-    platform: (opts.platform ??
-      LOADER_CODEGEN_OPTS_DEFAULTS.platform) as ExportOpts["platform"],
-    platformOptions: opts.platformOptions,
-    defaultExportHostLessComponents: opts.loaderVersion > 2 ? false : true,
-    useComponentSubstitutionApi: opts.loaderVersion >= 6 ? true : false,
-    useGlobalVariantsSubstitutionApi: opts.loaderVersion >= 7 ? true : false,
-    useCodeComponentHelpersRegistry: opts.loaderVersion >= 10 ? true : false,
-    ...(opts.i18nKeyScheme && {
-      localization: {
-        keyScheme: opts.i18nKeyScheme ?? "content",
-        tagPrefix: opts.i18nTagPrefix,
-      },
-    }),
-    skipHead: opts.skipHead,
-  };
+  const earlyExportOpts = makeExportOpts(opts);
   const earlyBundleKey = makeBundleBucketPath({
     projectVersions,
     platform: earlyExportOpts.platform,
@@ -107,7 +91,7 @@ export async function genPublishedLoaderCodeBundle(
     key: earlyBundleKey,
     deserialize: (str) => JSON.parse(str),
   });
-  if (cachedBundle) {
+  if (cachedBundle !== null) {
     cachedBundle.bundleKey = earlyBundleKey;
     return cachedBundle;
   }
@@ -212,23 +196,7 @@ async function genLoaderCodeBundleForProjectVersions(
     skipHead?: boolean;
   }
 ) {
-  const exportOpts: ExportOpts = {
-    ...LOADER_CODEGEN_OPTS_DEFAULTS,
-    platform: (opts.platform ??
-      LOADER_CODEGEN_OPTS_DEFAULTS.platform) as ExportOpts["platform"],
-    platformOptions: opts.platformOptions,
-    defaultExportHostLessComponents: opts.loaderVersion > 2 ? false : true,
-    useComponentSubstitutionApi: opts.loaderVersion >= 6 ? true : false,
-    useGlobalVariantsSubstitutionApi: opts.loaderVersion >= 7 ? true : false,
-    useCodeComponentHelpersRegistry: opts.loaderVersion >= 10 ? true : false,
-    ...(opts.i18nKeyScheme && {
-      localization: {
-        keyScheme: opts.i18nKeyScheme ?? "content",
-        tagPrefix: opts.i18nTagPrefix,
-      },
-    }),
-    skipHead: opts.skipHead,
-  };
+  const exportOpts = makeExportOpts(opts);
 
   const codegenProject = async (
     projectId: string,
@@ -417,6 +385,33 @@ export const LOADER_CODEGEN_OPTS_DEFAULTS: ExportOpts = {
   useCustomFunctionsStub: true,
   targetEnv: "loader",
 };
+
+function makeExportOpts(opts: {
+  platform?: string;
+  platformOptions: ExportPlatformOptions;
+  loaderVersion: number;
+  i18nKeyScheme?: LocalizationKeyScheme;
+  i18nTagPrefix: string | undefined;
+  skipHead?: boolean;
+}): ExportOpts {
+  return {
+    ...LOADER_CODEGEN_OPTS_DEFAULTS,
+    platform: (opts.platform ??
+      LOADER_CODEGEN_OPTS_DEFAULTS.platform) as ExportOpts["platform"],
+    platformOptions: opts.platformOptions,
+    defaultExportHostLessComponents: opts.loaderVersion > 2 ? false : true,
+    useComponentSubstitutionApi: opts.loaderVersion >= 6 ? true : false,
+    useGlobalVariantsSubstitutionApi: opts.loaderVersion >= 7 ? true : false,
+    useCodeComponentHelpersRegistry: opts.loaderVersion >= 10 ? true : false,
+    ...(opts.i18nKeyScheme && {
+      localization: {
+        keyScheme: opts.i18nKeyScheme ?? "content",
+        tagPrefix: opts.i18nTagPrefix,
+      },
+    }),
+    skipHead: opts.skipHead,
+  };
+}
 
 function makeCodegenBucketPath(opts: {
   projectId: string;

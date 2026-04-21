@@ -33,7 +33,7 @@ jest.mock("@/wab/server/observability", () => ({
 }));
 
 jest.mock("@/wab/server/util/apm-util", () => ({
-  withSpan: jest.fn((_name: string, fn: () => Promise<unknown>) => fn()),
+  withSpan: jest.fn(),
   withTimeSpent: jest.fn(),
 }));
 
@@ -75,7 +75,12 @@ describe("genPublishedLoaderCodeBundle fast-path", () => {
   };
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    // resetMocks:true (jest.config.ts) resets all mock implementations before
+    // each test, including the factory-set implementation. Re-establish withSpan
+    // so it actually invokes its callback, enabling the full call chain.
+    (withSpan as jest.Mock).mockImplementation(
+      (_name: string, fn: () => Promise<unknown>) => fn()
+    );
   });
 
   it("returns cached bundle and skips dep resolution on S3 hit", async () => {
@@ -95,19 +100,14 @@ describe("genPublishedLoaderCodeBundle fast-path", () => {
 
   it("calls dep resolution on S3 miss", async () => {
     mockTryGetS3CacheEntry.mockResolvedValue(null);
+    mockResolveProjectDeps.mockResolvedValue({});
 
-    // Will throw eventually (pool/dbMgr not fully mocked), but we only
-    // care that the fast-path was NOT taken — verified by checking that
-    // withSpan was called with "loader-resolve-deps".
+    // Will throw eventually when pool.exec is called on the empty mock object,
+    // but we only care that dep resolution was reached (not short-circuited).
     await expect(
       genPublishedLoaderCodeBundle({} as any, {} as any, baseOpts)
     ).rejects.toThrow();
 
-    expect(withSpan as jest.Mock).toHaveBeenCalledWith(
-      "loader-resolve-deps",
-      expect.any(Function),
-      undefined,
-      expect.any(Object)
-    );
+    expect(mockResolveProjectDeps).toHaveBeenCalled();
   });
 });

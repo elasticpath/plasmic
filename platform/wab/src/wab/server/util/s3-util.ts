@@ -4,6 +4,13 @@ import { ensureInstance } from "@/wab/shared/common";
 import S3 from "aws-sdk/clients/s3";
 import path from "path";
 
+// Lazily-created singleton — avoids re-instantiating the S3 client on every
+// cache call. Reset via _testonly.resetS3Client in tests.
+let _s3: S3 | undefined;
+function getS3Client(): S3 {
+  return (_s3 ??= new S3({ endpoint: process.env.S3_ENDPOINT }));
+}
+
 export async function upsertS3CacheEntry<T>(opts: {
   bucket: string;
   key: string;
@@ -12,7 +19,7 @@ export async function upsertS3CacheEntry<T>(opts: {
   deserialize: (str: string) => T;
 }) {
   const { bucket, key, compute: f, serialize, deserialize } = opts;
-  const s3 = new S3({ endpoint: process.env.S3_ENDPOINT });
+  const s3 = getS3Client();
   const shortKey = key.split("/").slice(-1)[0].slice(0, 24);
 
   try {
@@ -65,7 +72,7 @@ export async function tryGetS3CacheEntry<T>(opts: {
   deserialize: (str: string) => T;
 }): Promise<T | null> {
   const { bucket, key, deserialize } = opts;
-  const s3 = new S3({ endpoint: process.env.S3_ENDPOINT });
+  const s3 = getS3Client();
   try {
     const obj = await s3.getObject({ Bucket: bucket, Key: key }).promise();
     const serialized = ensureInstance(obj.Body, Buffer).toString("utf8");
@@ -75,7 +82,10 @@ export async function tryGetS3CacheEntry<T>(opts: {
       key,
     });
     return deserialize(serialized);
-  } catch (_err) {
+  } catch (err) {
+    if (err.code === "TimeoutError") {
+      throw err;
+    }
     return null;
   }
 }
@@ -86,7 +96,7 @@ export async function uploadFilesToS3(opts: {
   files: Record<string, string>;
 }) {
   const { bucket, key, files } = opts;
-  const s3 = new S3({ endpoint: process.env.S3_ENDPOINT });
+  const s3 = getS3Client();
   await Promise.all(
     Object.entries(files).map(async ([file, content]) => {
       await s3
@@ -99,3 +109,9 @@ export async function uploadFilesToS3(opts: {
     })
   );
 }
+
+export const _testonly = {
+  resetS3Client: () => {
+    _s3 = undefined;
+  },
+};

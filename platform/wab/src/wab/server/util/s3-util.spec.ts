@@ -1,4 +1,4 @@
-import { tryGetS3CacheEntry } from "@/wab/server/util/s3-util";
+import { _testonly, tryGetS3CacheEntry } from "@/wab/server/util/s3-util";
 
 jest.mock("aws-sdk/clients/s3");
 jest.mock("@/wab/server/observability", () => ({
@@ -13,8 +13,11 @@ describe("tryGetS3CacheEntry", () => {
   };
 
   beforeEach(() => {
+    // resetMocks:true wipes mock implementations before each test; re-establish
+    // the S3 constructor mock and reset the singleton so getS3Client() creates
+    // a fresh instance using the current mock.
+    _testonly.resetS3Client();
     (S3 as unknown as jest.Mock).mockImplementation(() => s3Instance);
-    jest.clearAllMocks();
   });
 
   it("returns deserialized value on cache hit", async () => {
@@ -63,5 +66,22 @@ describe("tryGetS3CacheEntry", () => {
     });
 
     expect(result).toBeNull();
+  });
+
+  it("re-throws TimeoutError rather than returning null", async () => {
+    const err = Object.assign(new Error("Request timed out"), {
+      code: "TimeoutError",
+    });
+    s3Instance.getObject.mockReturnValue({
+      promise: () => Promise.reject(err),
+    });
+
+    await expect(
+      tryGetS3CacheEntry({
+        bucket: "my-bucket",
+        key: "some/key",
+        deserialize: (str) => JSON.parse(str),
+      })
+    ).rejects.toThrow("Request timed out");
   });
 });
