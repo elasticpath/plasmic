@@ -1,9 +1,17 @@
 import {
   genPublishedLoaderCodeBundle,
 } from "@/wab/server/loader/gen-code-bundle";
+import { tryGetCachedPublishedBundle } from "@/wab/server/loader/ep-gen-code-bundle";
 import { resolveProjectDeps } from "@/wab/server/loader/resolve-projects";
 import { withSpan } from "@/wab/server/util/apm-util";
-import { tryGetS3CacheEntry } from "@/wab/server/util/s3-util";
+
+jest.mock("@/wab/server/loader/ep-gen-code-bundle", () => ({
+  tryGetCachedPublishedBundle: jest.fn(),
+  makeCodegenBucketPath: jest.fn(),
+  makeBundleBucketPath: jest.fn(),
+  LOADER_CACHE_BUST: "20",
+  LOADER_ASSETS_BUCKET: "test-bucket",
+}));
 
 jest.mock("@/wab/server/util/s3-util", () => ({
   tryGetS3CacheEntry: jest.fn(),
@@ -19,6 +27,11 @@ jest.mock("@/wab/server/loader/resolve-projects", () => ({
     version,
     indirect: !!indirect,
   }),
+}));
+
+jest.mock("@/wab/server/loader/ep-loader-export-opts", () => ({
+  makeExportOpts: jest.fn(() => ({ platform: "react" })),
+  LOADER_CODEGEN_OPTS_DEFAULTS: {},
 }));
 
 jest.mock("@/wab/server/workers/worker-utils", () => ({
@@ -39,7 +52,7 @@ jest.mock("typeorm", () => ({
 }));
 
 describe("genPublishedLoaderCodeBundle fast-path", () => {
-  const mockTryGetS3CacheEntry = tryGetS3CacheEntry as jest.Mock;
+  const mockTryGetCachedPublishedBundle = tryGetCachedPublishedBundle as jest.Mock;
   const mockResolveProjectDeps = resolveProjectDeps as jest.Mock;
 
   const baseOpts = {
@@ -61,8 +74,8 @@ describe("genPublishedLoaderCodeBundle fast-path", () => {
   });
 
   it("returns cached bundle and skips dep resolution on S3 hit", async () => {
-    const fakeBundle = { components: [], external: [] };
-    mockTryGetS3CacheEntry.mockResolvedValue(fakeBundle);
+    const fakeBundle = { components: [], external: [], bundleKey: "some-key" };
+    mockTryGetCachedPublishedBundle.mockResolvedValue(fakeBundle);
 
     const result = await genPublishedLoaderCodeBundle(
       {} as any,
@@ -76,7 +89,7 @@ describe("genPublishedLoaderCodeBundle fast-path", () => {
   });
 
   it("calls dep resolution on S3 miss", async () => {
-    mockTryGetS3CacheEntry.mockResolvedValue(null);
+    mockTryGetCachedPublishedBundle.mockResolvedValue(null);
     mockResolveProjectDeps.mockResolvedValue({});
 
     // Will throw eventually when pool.exec is called on the empty mock object,
