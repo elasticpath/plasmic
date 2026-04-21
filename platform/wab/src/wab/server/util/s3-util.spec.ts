@@ -68,6 +68,21 @@ describe("tryGetS3CacheEntry", () => {
     expect(result).toBeNull();
   });
 
+  it("returns null when deserialization throws", async () => {
+    s3Instance.getObject.mockReturnValue({
+      promise: () =>
+        Promise.resolve({ Body: Buffer.from("not valid json {") }),
+    });
+
+    const result = await tryGetS3CacheEntry({
+      bucket: "my-bucket",
+      key: "some/key",
+      deserialize: (str) => JSON.parse(str),
+    });
+
+    expect(result).toBeNull();
+  });
+
   it("re-throws TimeoutError rather than returning null", async () => {
     const err = Object.assign(new Error("Request timed out"), {
       code: "TimeoutError",

@@ -73,8 +73,11 @@ export async function tryGetS3CacheEntry<T>(opts: {
 }): Promise<T | null> {
   const { bucket, key, deserialize } = opts;
   const s3 = getS3Client();
+  const shortKey = key.split("/").slice(-1)[0].slice(0, 24);
   try {
-    const obj = await s3.getObject({ Bucket: bucket, Key: key }).promise();
+    const obj = await withTiming(`s3-early-get-${shortKey}`, () =>
+      s3.getObject({ Bucket: bucket, Key: key }).promise()
+    );
     const serialized = ensureInstance(obj.Body, Buffer).toString("utf8");
     logger().info(`S3 early cache hit for ${bucket} ${key}`, {
       s3CacheResult: "hit",
