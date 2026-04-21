@@ -1,15 +1,5 @@
 import { DbMgr } from "@/wab/server/db/DbMgr";
 import {
-  LOADER_ASSETS_BUCKET,
-  LOADER_CACHE_BUST,
-  makeCodegenBucketPath,
-  makeBundleBucketPath,
-  tryGetCachedPublishedBundle,
-} from "@/wab/server/loader/ep-gen-code-bundle";
-import {
-  makeExportOpts,
-} from "@/wab/server/loader/ep-loader-export-opts";
-import {
   extractProjectId,
   mkVersionToSync,
   resolveProjectDeps,
@@ -32,10 +22,27 @@ import { ExportOpts, ExportPlatformOptions } from "@/wab/shared/codegen/types";
 import { unzip3 } from "@/wab/shared/collections";
 import { tuple } from "@/wab/shared/common";
 import { LocalizationKeyScheme } from "@/wab/shared/localization";
+import { createHash } from "crypto";
 import { getConnection } from "typeorm";
 
-export { LOADER_CACHE_BUST, LOADER_ASSETS_BUCKET };
-export { LOADER_CODEGEN_OPTS_DEFAULTS } from "@/wab/server/loader/ep-loader-export-opts";
+/**
+ * This is used for busting codegen caches.  You should increment this number if
+ * any of our cached codegen responses should be considered _invalid_.  You don't
+ * need to increment this if new codegen responses have changed but cached ones are
+ * still valid.  Mostly this is for when there is a _bug_ in the generated code.
+ *
+ * This should be part of any cacheable request as `cb={LOADER_CACHE_BUST}` and as
+ * part of the key in our S3 loader cache.
+ *
+ * Note that incrementing this number is EXPENSIVE and will create a huge volume of
+ * codegen requests!  Provision codegen cluster appropriately.
+ *
+ * 17 - bumped for using shortened css class names
+ * 18 - started returning list of component refs in codegen response to handle errors
+ * 19 - fix css class name generation
+ * 20 - style token overrides
+ */
+export const LOADER_CACHE_BUST = "20";
 
 /**
  * This represents the version of the loader API wire format; should reflect the
@@ -47,6 +54,9 @@ export { LOADER_CODEGEN_OPTS_DEFAULTS } from "@/wab/server/loader/ep-loader-expo
  * you bump this version!
  */
 export const LATEST_LOADER_VERSION = 10;
+
+export const LOADER_ASSETS_BUCKET =
+  process.env.LOADER_ASSETS_BUCKET ?? "plasmic-loader-assets-dev";
 
 export async function genPublishedLoaderCodeBundle(
   dbMgr: DbMgr,
@@ -64,6 +74,8 @@ export async function genPublishedLoaderCodeBundle(
 ) {
   const { projectVersions } = opts;
 
+  // EP: Fast path — check S3 for a pre-built bundle before any dep resolution
+  // or DB work. Returns early on a warm hit; falls through on miss.
   const cachedBundle = await tryGetCachedPublishedBundle(projectVersions, opts);
   if (cachedBundle !== null) {
     return cachedBundle;
@@ -169,7 +181,7 @@ async function genLoaderCodeBundleForProjectVersions(
     skipHead?: boolean;
   }
 ) {
-  const exportOpts = makeExportOpts(opts);
+  const exportOpts = makeExportOpts(opts); // EP: extracted helper
 
   const codegenProject = async (
     projectId: string,
@@ -335,9 +347,137 @@ async function genLoaderCodeBundleForProjectVersions(
   return result;
 }
 
+export const LOADER_CODEGEN_OPTS_DEFAULTS: ExportOpts = {
+  platform: "react",
+  lang: "ts",
+  relPathFromImplToManagedDir: ".",
+  relPathFromManagedToImplDir: ".",
+  forceAllProps: false,
+  forceRootDisabled: false,
+  imageOpts: { scheme: "cdn" },
+  stylesOpts: { scheme: "css" },
+  codeOpts: { reactRuntime: "classic" },
+  fontOpts: { scheme: "none" },
+  idFileNames: true,
+  codeComponentStubs: true,
+  skinnyReactWeb: true,
+  importHostFromReactWeb: false,
+  skinny: true,
+  hostLessComponentsConfig: "package", // Maybe make it configurable
+  useComponentSubstitutionApi: false,
+  useGlobalVariantsSubstitutionApi: false,
+  useCodeComponentHelpersRegistry: false,
+  useCustomFunctionsStub: true,
+  targetEnv: "loader",
+};
+
+// EP: extracted from duplicate inline blocks in genPublishedLoaderCodeBundle
+// and genLoaderCodeBundleForProjectVersions.
+function makeExportOpts(opts: {
+  platform?: string;
+  platformOptions: ExportPlatformOptions;
+  loaderVersion: number;
+  i18nKeyScheme?: LocalizationKeyScheme;
+  i18nTagPrefix: string | undefined;
+  skipHead?: boolean;
+}): ExportOpts {
+  return {
+    ...LOADER_CODEGEN_OPTS_DEFAULTS,
+    platform: (opts.platform ??
+      LOADER_CODEGEN_OPTS_DEFAULTS.platform) as ExportOpts["platform"],
+    platformOptions: opts.platformOptions,
+    defaultExportHostLessComponents: opts.loaderVersion > 2 ? false : true,
+    useComponentSubstitutionApi: opts.loaderVersion >= 6 ? true : false,
+    useGlobalVariantsSubstitutionApi: opts.loaderVersion >= 7 ? true : false,
+    useCodeComponentHelpersRegistry: opts.loaderVersion >= 10 ? true : false,
+    ...(opts.i18nKeyScheme && {
+      localization: {
+        keyScheme: opts.i18nKeyScheme ?? "content",
+        tagPrefix: opts.i18nTagPrefix,
+      },
+    }),
+    skipHead: opts.skipHead,
+  };
+}
+
+// EP: fast-path S3 bundle probe. Checks whether the final bundle is already
+// cached before doing any dep resolution or DB work. Returns the cached bundle
+// (with bundleKey set) on a hit, or null to fall through to the full path.
+async function tryGetCachedPublishedBundle(
+  projectVersions: Record<string, VersionToSync>,
+  opts: {
+    platform?: string;
+    platformOptions: ExportPlatformOptions;
+    loaderVersion: number;
+    browserOnly: boolean;
+    i18nKeyScheme?: LocalizationKeyScheme;
+    i18nTagPrefix: string | undefined;
+    skipHead?: boolean;
+  }
+): Promise<any | null> {
+  const earlyExportOpts = makeExportOpts(opts);
+  const earlyBundleKey = makeBundleBucketPath({
+    projectVersions,
+    platform: earlyExportOpts.platform,
+    loaderVersion: opts.loaderVersion,
+    browserOnly: opts.browserOnly,
+    exportOpts: earlyExportOpts,
+  });
+  const cachedBundle = await tryGetS3CacheEntry({
+    bucket: LOADER_ASSETS_BUCKET,
+    key: earlyBundleKey,
+    deserialize: (str) => JSON.parse(str),
+  });
+  if (cachedBundle !== null) {
+    cachedBundle.bundleKey = earlyBundleKey;
+    return cachedBundle;
+  }
+  return null;
+}
+
+function makeCodegenBucketPath(opts: {
+  projectId: string;
+  version: string;
+  // affects whether page components are included; is not indirect, no page components
+  indirect: boolean;
+  exportOpts: ExportOpts;
+}) {
+  return `codegen/cb=${LOADER_CACHE_BUST}/pid=${opts.projectId}/v=${
+    opts.version
+  }/indirect=${opts.indirect}/opts=${makeExportOptsKey(opts.exportOpts)}`;
+}
+
+function makeBundleBucketPath(opts: {
+  projectVersions: Record<string, VersionToSync>;
+  platform: string;
+  loaderVersion: number;
+  browserOnly: boolean;
+  exportOpts: ExportOpts;
+}) {
+  const projectSpecs = Object.entries(opts.projectVersions)
+    .filter(([_, v]) => !v.indirect)
+    .map(([p, v]) => `${p}@${v.version}`)
+    .sort();
+  const key = `bundle/cb=${LOADER_CACHE_BUST}/loaderVersion=${
+    opts.loaderVersion
+  }/ps=${projectSpecs.join(",")}/platform=${
+    opts.platform
+  }/browserOnly=${!!opts.browserOnly}/opts=${makeExportOptsKey(
+    opts.exportOpts
+  )}`;
+  return key;
+}
+
 export function extractBundleKeyProjectIds(bundleKey: string): ProjectId[] {
   const ps = bundleKey.split("/ps=")[1].split("/")[0];
   return ps.split(",").map(extractProjectId);
+}
+
+function makeExportOptsKey(opts: ExportOpts) {
+  // We use a hash of the json string to avoid blowing the S3 object
+  // key length limit of 1024 chars
+  const str = JSON.stringify(opts);
+  return createHash("sha256").update(str).digest("hex");
 }
 
 export const _testonly = {
