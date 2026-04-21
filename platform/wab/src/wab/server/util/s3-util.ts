@@ -1,8 +1,15 @@
 import { logger } from "@/wab/server/observability";
+import {
+  getS3Client,
+  _testonly,
+  tryGetS3CacheEntry,
+} from "@/wab/server/util/ep-s3-cache";
 import { withTiming } from "@/wab/server/util/server-timing";
 import { ensureInstance } from "@/wab/shared/common";
 import S3 from "aws-sdk/clients/s3";
 import path from "path";
+
+export { tryGetS3CacheEntry, _testonly };
 
 export async function upsertS3CacheEntry<T>(opts: {
   bucket: string;
@@ -12,7 +19,7 @@ export async function upsertS3CacheEntry<T>(opts: {
   deserialize: (str: string) => T;
 }) {
   const { bucket, key, compute: f, serialize, deserialize } = opts;
-  const s3 = new S3({ endpoint: process.env.S3_ENDPOINT });
+  const s3 = getS3Client();
   const shortKey = key.split("/").slice(-1)[0].slice(0, 24);
 
   try {
@@ -60,7 +67,7 @@ export async function uploadFilesToS3(opts: {
   files: Record<string, string>;
 }) {
   const { bucket, key, files } = opts;
-  const s3 = new S3({ endpoint: process.env.S3_ENDPOINT });
+  const s3 = getS3Client();
   await Promise.all(
     Object.entries(files).map(async ([file, content]) => {
       await s3

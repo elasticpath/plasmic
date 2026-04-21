@@ -7,7 +7,10 @@ import {
 } from "@/wab/server/loader/resolve-projects";
 import { logger } from "@/wab/server/observability";
 import { withSpan, withTimeSpent } from "@/wab/server/util/apm-util";
-import { upsertS3CacheEntry } from "@/wab/server/util/s3-util";
+import {
+  tryGetS3CacheEntry,
+  upsertS3CacheEntry,
+} from "@/wab/server/util/s3-util";
 import {
   CachedCodegenOutputBundle,
   ComponentReference,
@@ -70,6 +73,13 @@ export async function genPublishedLoaderCodeBundle(
   }
 ) {
   const { projectVersions } = opts;
+
+  // EP: Fast path — check S3 for a pre-built bundle before any dep resolution
+  // or DB work. Returns early on a warm hit; falls through on miss.
+  const cachedBundle = await tryGetCachedPublishedBundle(projectVersions, opts);
+  if (cachedBundle !== null) {
+    return cachedBundle;
+  }
 
   const allProjectVersions = await withSpan(
     "loader-resolve-deps",
@@ -171,23 +181,7 @@ async function genLoaderCodeBundleForProjectVersions(
     skipHead?: boolean;
   }
 ) {
-  const exportOpts: ExportOpts = {
-    ...LOADER_CODEGEN_OPTS_DEFAULTS,
-    platform: (opts.platform ??
-      LOADER_CODEGEN_OPTS_DEFAULTS.platform) as ExportOpts["platform"],
-    platformOptions: opts.platformOptions,
-    defaultExportHostLessComponents: opts.loaderVersion > 2 ? false : true,
-    useComponentSubstitutionApi: opts.loaderVersion >= 6 ? true : false,
-    useGlobalVariantsSubstitutionApi: opts.loaderVersion >= 7 ? true : false,
-    useCodeComponentHelpersRegistry: opts.loaderVersion >= 10 ? true : false,
-    ...(opts.i18nKeyScheme && {
-      localization: {
-        keyScheme: opts.i18nKeyScheme ?? "content",
-        tagPrefix: opts.i18nTagPrefix,
-      },
-    }),
-    skipHead: opts.skipHead,
-  };
+  const exportOpts = makeExportOpts(opts); // EP: extracted helper
 
   const codegenProject = async (
     projectId: string,
@@ -376,6 +370,70 @@ export const LOADER_CODEGEN_OPTS_DEFAULTS: ExportOpts = {
   useCustomFunctionsStub: true,
   targetEnv: "loader",
 };
+
+// EP: extracted from duplicate inline blocks in genPublishedLoaderCodeBundle
+// and genLoaderCodeBundleForProjectVersions.
+function makeExportOpts(opts: {
+  platform?: string;
+  platformOptions: ExportPlatformOptions;
+  loaderVersion: number;
+  i18nKeyScheme?: LocalizationKeyScheme;
+  i18nTagPrefix: string | undefined;
+  skipHead?: boolean;
+}): ExportOpts {
+  return {
+    ...LOADER_CODEGEN_OPTS_DEFAULTS,
+    platform: (opts.platform ??
+      LOADER_CODEGEN_OPTS_DEFAULTS.platform) as ExportOpts["platform"],
+    platformOptions: opts.platformOptions,
+    defaultExportHostLessComponents: opts.loaderVersion > 2 ? false : true,
+    useComponentSubstitutionApi: opts.loaderVersion >= 6 ? true : false,
+    useGlobalVariantsSubstitutionApi: opts.loaderVersion >= 7 ? true : false,
+    useCodeComponentHelpersRegistry: opts.loaderVersion >= 10 ? true : false,
+    ...(opts.i18nKeyScheme && {
+      localization: {
+        keyScheme: opts.i18nKeyScheme ?? "content",
+        tagPrefix: opts.i18nTagPrefix,
+      },
+    }),
+    skipHead: opts.skipHead,
+  };
+}
+
+// EP: fast-path S3 bundle probe. Checks whether the final bundle is already
+// cached before doing any dep resolution or DB work. Returns the cached bundle
+// (with bundleKey set) on a hit, or null to fall through to the full path.
+async function tryGetCachedPublishedBundle(
+  projectVersions: Record<string, VersionToSync>,
+  opts: {
+    platform?: string;
+    platformOptions: ExportPlatformOptions;
+    loaderVersion: number;
+    browserOnly: boolean;
+    i18nKeyScheme?: LocalizationKeyScheme;
+    i18nTagPrefix: string | undefined;
+    skipHead?: boolean;
+  }
+): Promise<any | null> {
+  const earlyExportOpts = makeExportOpts(opts);
+  const earlyBundleKey = makeBundleBucketPath({
+    projectVersions,
+    platform: earlyExportOpts.platform,
+    loaderVersion: opts.loaderVersion,
+    browserOnly: opts.browserOnly,
+    exportOpts: earlyExportOpts,
+  });
+  const cachedBundle = await tryGetS3CacheEntry({
+    bucket: LOADER_ASSETS_BUCKET,
+    key: earlyBundleKey,
+    deserialize: (str) => JSON.parse(str),
+  });
+  if (cachedBundle !== null) {
+    cachedBundle.bundleKey = earlyBundleKey;
+    return cachedBundle;
+  }
+  return null;
+}
 
 function makeCodegenBucketPath(opts: {
   projectId: string;
