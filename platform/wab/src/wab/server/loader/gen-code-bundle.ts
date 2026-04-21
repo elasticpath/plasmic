@@ -1,5 +1,9 @@
 import { DbMgr } from "@/wab/server/db/DbMgr";
 import {
+  LOADER_CODEGEN_OPTS_DEFAULTS,
+  makeExportOpts,
+} from "@/wab/server/loader/ep-loader-export-opts";
+import {
   extractProjectId,
   mkVersionToSync,
   resolveProjectDeps,
@@ -24,6 +28,8 @@ import { tuple } from "@/wab/shared/common";
 import { LocalizationKeyScheme } from "@/wab/shared/localization";
 import { createHash } from "crypto";
 import { getConnection } from "typeorm";
+
+export { LOADER_CODEGEN_OPTS_DEFAULTS };
 
 /**
  * This is used for busting codegen caches.  You should increment this number if
@@ -360,57 +366,6 @@ async function genLoaderCodeBundleForProjectVersions(
     }
   );
   return result;
-}
-
-export const LOADER_CODEGEN_OPTS_DEFAULTS: ExportOpts = {
-  platform: "react",
-  lang: "ts",
-  relPathFromImplToManagedDir: ".",
-  relPathFromManagedToImplDir: ".",
-  forceAllProps: false,
-  forceRootDisabled: false,
-  imageOpts: { scheme: "cdn" },
-  stylesOpts: { scheme: "css" },
-  codeOpts: { reactRuntime: "classic" },
-  fontOpts: { scheme: "none" },
-  idFileNames: true,
-  codeComponentStubs: true,
-  skinnyReactWeb: true,
-  importHostFromReactWeb: false,
-  skinny: true,
-  hostLessComponentsConfig: "package", // Maybe make it configurable
-  useComponentSubstitutionApi: false,
-  useGlobalVariantsSubstitutionApi: false,
-  useCodeComponentHelpersRegistry: false,
-  useCustomFunctionsStub: true,
-  targetEnv: "loader",
-};
-
-function makeExportOpts(opts: {
-  platform?: string;
-  platformOptions: ExportPlatformOptions;
-  loaderVersion: number;
-  i18nKeyScheme?: LocalizationKeyScheme;
-  i18nTagPrefix: string | undefined;
-  skipHead?: boolean;
-}): ExportOpts {
-  return {
-    ...LOADER_CODEGEN_OPTS_DEFAULTS,
-    platform: (opts.platform ??
-      LOADER_CODEGEN_OPTS_DEFAULTS.platform) as ExportOpts["platform"],
-    platformOptions: opts.platformOptions,
-    defaultExportHostLessComponents: opts.loaderVersion > 2 ? false : true,
-    useComponentSubstitutionApi: opts.loaderVersion >= 6 ? true : false,
-    useGlobalVariantsSubstitutionApi: opts.loaderVersion >= 7 ? true : false,
-    useCodeComponentHelpersRegistry: opts.loaderVersion >= 10 ? true : false,
-    ...(opts.i18nKeyScheme && {
-      localization: {
-        keyScheme: opts.i18nKeyScheme ?? "content",
-        tagPrefix: opts.i18nTagPrefix,
-      },
-    }),
-    skipHead: opts.skipHead,
-  };
 }
 
 function makeCodegenBucketPath(opts: {

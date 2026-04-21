@@ -1,8 +1,11 @@
-import { _testonly, tryGetS3CacheEntry } from "@/wab/server/util/s3-util";
+import { _testonly, tryGetS3CacheEntry } from "@/wab/server/util/ep-s3-cache";
 
 jest.mock("aws-sdk/clients/s3");
 jest.mock("@/wab/server/observability", () => ({
   logger: () => ({ info: jest.fn(), error: jest.fn() }),
+}));
+jest.mock("@/wab/server/util/server-timing", () => ({
+  withTiming: (_name: string, fn: () => unknown) => fn(),
 }));
 
 import S3 from "aws-sdk/clients/s3";
