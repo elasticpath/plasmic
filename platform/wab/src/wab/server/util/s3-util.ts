@@ -54,6 +54,32 @@ export async function upsertS3CacheEntry<T>(opts: {
   }
 }
 
+/**
+ * Returns the cached value from S3, or null if not found or on any error.
+ * Does not compute or store anything — purely a read-only probe used for
+ * fast-path cache checks before doing heavier work.
+ */
+export async function tryGetS3CacheEntry<T>(opts: {
+  bucket: string;
+  key: string;
+  deserialize: (str: string) => T;
+}): Promise<T | null> {
+  const { bucket, key, deserialize } = opts;
+  const s3 = new S3({ endpoint: process.env.S3_ENDPOINT });
+  try {
+    const obj = await s3.getObject({ Bucket: bucket, Key: key }).promise();
+    const serialized = ensureInstance(obj.Body, Buffer).toString("utf8");
+    logger().info(`S3 early cache hit for ${bucket} ${key}`, {
+      s3CacheResult: "hit",
+      bucket,
+      key,
+    });
+    return deserialize(serialized);
+  } catch (_err) {
+    return null;
+  }
+}
+
 export async function uploadFilesToS3(opts: {
   bucket: string;
   key: string;

@@ -7,7 +7,10 @@ import {
 } from "@/wab/server/loader/resolve-projects";
 import { logger } from "@/wab/server/observability";
 import { withSpan, withTimeSpent } from "@/wab/server/util/apm-util";
-import { upsertS3CacheEntry } from "@/wab/server/util/s3-util";
+import {
+  tryGetS3CacheEntry,
+  upsertS3CacheEntry,
+} from "@/wab/server/util/s3-util";
 import {
   CachedCodegenOutputBundle,
   ComponentReference,
@@ -70,6 +73,44 @@ export async function genPublishedLoaderCodeBundle(
   }
 ) {
   const { projectVersions } = opts;
+
+  // Fast path: the bundle S3 key is determined solely by the top-level
+  // (non-indirect) project versions, which are already known here. Check
+  // whether the final bundle is already cached before doing any dep resolution
+  // or DB work.
+  const earlyExportOpts: ExportOpts = {
+    ...LOADER_CODEGEN_OPTS_DEFAULTS,
+    platform: (opts.platform ??
+      LOADER_CODEGEN_OPTS_DEFAULTS.platform) as ExportOpts["platform"],
+    platformOptions: opts.platformOptions,
+    defaultExportHostLessComponents: opts.loaderVersion > 2 ? false : true,
+    useComponentSubstitutionApi: opts.loaderVersion >= 6 ? true : false,
+    useGlobalVariantsSubstitutionApi: opts.loaderVersion >= 7 ? true : false,
+    useCodeComponentHelpersRegistry: opts.loaderVersion >= 10 ? true : false,
+    ...(opts.i18nKeyScheme && {
+      localization: {
+        keyScheme: opts.i18nKeyScheme ?? "content",
+        tagPrefix: opts.i18nTagPrefix,
+      },
+    }),
+    skipHead: opts.skipHead,
+  };
+  const earlyBundleKey = makeBundleBucketPath({
+    projectVersions,
+    platform: earlyExportOpts.platform,
+    loaderVersion: opts.loaderVersion,
+    browserOnly: opts.browserOnly,
+    exportOpts: earlyExportOpts,
+  });
+  const cachedBundle = await tryGetS3CacheEntry({
+    bucket: LOADER_ASSETS_BUCKET,
+    key: earlyBundleKey,
+    deserialize: (str) => JSON.parse(str),
+  });
+  if (cachedBundle) {
+    cachedBundle.bundleKey = earlyBundleKey;
+    return cachedBundle;
+  }
 
   const allProjectVersions = await withSpan(
     "loader-resolve-deps",
