@@ -54,7 +54,6 @@ describe("Prefill cloudfront", () => {
   });
 
   describe("prefillCloudfront", () => {
-    const CODEGEN_HOST = "http://cghost";
     const PROJECT_ID = "P1";
     const PKG_ID = "p1-pkgId-1";
     const PKG_VERSION = "0.0.1";
@@ -71,11 +70,9 @@ describe("Prefill cloudfront", () => {
       (cf.CreateInvalidationCommand as jest.Mock).mockImplementation(
         (input: any) => input
       );
-      global.fetch = jest.fn().mockResolvedValue({ ok: true } as Response);
     });
 
     afterEach(() => {
-      delete process.env.CODEGEN_HOST;
       delete process.env.CLOUDFRONT_DISTRIBUTION_ID;
     });
 
@@ -150,10 +147,6 @@ describe("Prefill cloudfront", () => {
       }));
 
       sudo.updatePkgVersion = jest.fn();
-
-      sudo.validateOrGetProjectApiToken = jest
-        .fn()
-        .mockImplementation((pid: string) => Promise.resolve(`token-${pid}`));
 
       return { getResolvedProjectVersions, genPublishedLoaderCodeBundle };
     }
@@ -256,105 +249,14 @@ describe("Prefill cloudfront", () => {
       });
     });
 
-    it("should warm CloudFront versioned cache before setting isPrefilled", async () => {
+    it("should invalidate published CloudFront paths after bundle generation", async () => {
       await withDb(async (sudo) => {
         setupMocks(sudo);
-        process.env.CODEGEN_HOST = CODEGEN_HOST;
-
-        const pool: any = {};
-        const updatePkgVersionMock = sudo.updatePkgVersion as jest.Mock;
-
-        await prefillCloudfront(sudo, pool, PKG_VERSION_ID);
-
-        // Warming fetches must complete before isPrefilled is set so that
-        // status only becomes "ready" once the CDN is actually primed.
-        const updateCallOrder = updatePkgVersionMock.mock.invocationCallOrder[0];
-        const lastFetchCallOrder = (global.fetch as jest.Mock).mock
-          .invocationCallOrder.at(-1);
-        expect(lastFetchCallOrder).toBeLessThan(updateCallOrder);
-
-        // One warming GET per unique publishment. All 4 mock publishments have
-        // distinct uniqBy keys (react/8/false, nextjs/8/false+i18n, react/8/true,
-        // react/1/true) so all 4 survive dedup and each gets a warming fetch.
-        expect(global.fetch).toHaveBeenCalledTimes(4);
-
-        // Verify URL construction for a known publishment
-        const fetchedUrls = (global.fetch as jest.Mock).mock.calls.map(
-          (c: any[]) => c[0]
-        );
-        expect(
-          fetchedUrls.some((url: string) =>
-            url.includes("/api/v1/loader/code/versioned") &&
-            url.includes("platform=react") &&
-            url.includes("loaderVersion=8") &&
-            url.includes("projectId=p1%400.0.1") &&
-            url.includes("projectId=p2%400.0.2") &&
-            url.includes("projectId=p3%400.0.3") &&
-            !url.includes("browserOnly")
-          )
-        ).toBe(true);
-
-        expect(
-          fetchedUrls.some((url: string) =>
-            url.includes("platform=nextjs") &&
-            url.includes("nextjsAppDir=true") &&
-            url.includes("i18nKeyScheme=hash") &&
-            url.includes("i18nTagPrefix=n")
-          )
-        ).toBe(true);
-
-        expect(
-          fetchedUrls.some((url: string) =>
-            url.includes("platform=react") &&
-            url.includes("browserOnly=true") &&
-            url.includes("projectId=p1%400.0.1") &&
-            !url.includes("projectId=p2")
-          )
-        ).toBe(true);
-
-        // Every warming fetch must include x-plasmic-api-project-tokens so the
-        // versioned endpoint authorises the request instead of returning 401.
-        const fetchCalls = (global.fetch as jest.Mock).mock.calls as [string, RequestInit][];
-        for (const [, opts] of fetchCalls) {
-          expect(
-            (opts?.headers as Record<string, string>)?.["x-plasmic-api-project-tokens"]
-          ).toBeTruthy();
-        }
-        // Multi-project variant includes tokens for all resolved specs
-        expect(
-          fetchCalls.some(([, opts]) =>
-            (opts?.headers as Record<string, string>)?.[
-              "x-plasmic-api-project-tokens"
-            ] === "p1:token-p1,p2:token-p2,p3:token-p3"
-          )
-        ).toBe(true);
-        // Single-project variant includes only that project's token
-        expect(
-          fetchCalls.some(([, opts]) =>
-            (opts?.headers as Record<string, string>)?.[
-              "x-plasmic-api-project-tokens"
-            ] === "p1:token-p1"
-          )
-        ).toBe(true);
-      });
-    });
-
-    it("should invalidate published CloudFront paths after warming", async () => {
-      await withDb(async (sudo) => {
-        setupMocks(sudo);
-        process.env.CODEGEN_HOST = CODEGEN_HOST;
         process.env.CLOUDFRONT_DISTRIBUTION_ID = "EDFDVBD6EXAMPLE";
 
         const pool: any = {};
 
         await prefillCloudfront(sudo, pool, PKG_VERSION_ID);
-
-        // Warming must complete before isPrefilled is set and before invalidation,
-        // so that "status=ready" is only signalled once the CDN is primed.
-        const firstFetchOrder = (global.fetch as jest.Mock).mock
-          .invocationCallOrder[0];
-        const invalidationOrder = mockSend.mock.invocationCallOrder[0];
-        expect(firstFetchOrder).toBeLessThan(invalidationOrder);
 
         // codePaths deduplicates on sorted projectId strings (not on all
         // platform/loaderVersion fields), so publishments sharing the same
@@ -386,7 +288,6 @@ describe("Prefill cloudfront", () => {
     it("should continue generating remaining variants if one bundle fails", async () => {
       await withDb(async (sudo) => {
         const { genPublishedLoaderCodeBundle } = setupMocks(sudo);
-        process.env.CODEGEN_HOST = CODEGEN_HOST;
         process.env.CLOUDFRONT_DISTRIBUTION_ID = "EDFDVBD6EXAMPLE";
 
         // Fail only the second variant
@@ -400,26 +301,7 @@ describe("Prefill cloudfront", () => {
         // Should not throw — per-variant errors are non-fatal
         await expect(prefillCloudfront(sudo, pool, PKG_VERSION_ID)).resolves.not.toThrow();
 
-        // All 4 variants still get warming fetches and invalidation proceeds
-        expect(global.fetch).toHaveBeenCalledTimes(4);
-        expect(mockSend).toHaveBeenCalledTimes(1);
-      });
-    });
-
-    it("should warn and continue if warming fetches fail", async () => {
-      await withDb(async (sudo) => {
-        setupMocks(sudo);
-        process.env.CODEGEN_HOST = CODEGEN_HOST;
-        process.env.CLOUDFRONT_DISTRIBUTION_ID = "EDFDVBD6EXAMPLE";
-        // All warming fetches return 500
-        (global.fetch as jest.Mock).mockResolvedValue({ ok: false, status: 500 } as Response);
-
-        const pool: any = {};
-
-        // Should not throw — warming failures are non-fatal
-        await expect(prefillCloudfront(sudo, pool, PKG_VERSION_ID)).resolves.not.toThrow();
-
-        // Invalidation should still be attempted after warming failures
+        // Invalidation still proceeds despite one bundle failure
         expect(mockSend).toHaveBeenCalledTimes(1);
       });
     });

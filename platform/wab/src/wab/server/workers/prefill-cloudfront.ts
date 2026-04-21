@@ -7,18 +7,13 @@ import { genPublishedLoaderCodeBundle } from "@/wab/server/loader/gen-code-bundl
 import {
   getResolvedProjectVersions,
   mkVersionToSync,
-  parseProjectIdSpec,
 } from "@/wab/server/loader/resolve-projects";
 import { logger } from "@/wab/server/observability";
 import { captureException } from "@/wab/server/observability/datadog";
-import {
-  makeGenPublishedLoaderCodeBundleOpts,
-  makeCacheableVersionedLoaderQuery,
-} from "@/wab/server/routes/loader";
-import { withSpan, withTimeSpent } from "@/wab/server/util/apm-util";
+import { makeGenPublishedLoaderCodeBundleOpts } from "@/wab/server/routes/loader";
+import { withSpan } from "@/wab/server/util/apm-util";
 import { PlasmicWorkerPool } from "@/wab/server/workers/pool";
 import { ensureDevFlags } from "@/wab/server/workers/worker-utils";
-import { getCodegenPublicUrl } from "@/wab/shared/urls";
 import { uniqBy } from "lodash";
 
 // Reuse a single client instance across publishes — the AWS SDK client is
@@ -73,30 +68,30 @@ export async function prefillCloudfront(
         })),
       });
 
-      // Collect resolved specs alongside bundle generation so we can reuse them
-      // for CDN warming without a second DB query.
-      const warmingData: Array<{
+      // Collect resolved specs alongside bundle generation so they can be
+      // reused for CloudFront invalidation without a second DB query.
+      const prefillData: Array<{
         publishment: (typeof loaderPublishments)[0];
         resolvedProjectIdSpecs: string[];
       }> = [];
 
-      // Phase 1: resolve all project versions upfront so warmingData is fully
-      // populated before bundle generation starts. This ensures CDN warming and
-      // invalidation cover all variants even if a later bundle generation fails.
+      // Phase 1: resolve all project versions upfront so prefillData is fully
+      // populated before bundle generation starts. This ensures invalidation
+      // covers all variants even if a later bundle generation fails.
       for (const publishment of loaderPublishments) {
         const resolvedProjectIdSpecs = await getResolvedProjectVersions(
           mgr,
           publishment.projectIds
         );
-        warmingData.push({ publishment, resolvedProjectIdSpecs });
+        prefillData.push({ publishment, resolvedProjectIdSpecs });
       }
 
       // Phase 2: generate bundles sequentially to bound peak memory usage.
       // Each variant is wrapped independently so a single failure does not abort
-      // the remaining variants — all are still warmed and invalidated below.
+      // the remaining variants — all are still invalidated below.
       let bundleSuccesses = 0;
       let bundleFailures = 0;
-      for (const { publishment, resolvedProjectIdSpecs } of warmingData) {
+      for (const { publishment, resolvedProjectIdSpecs } of prefillData) {
         try {
           await withSpan(
             "loader-prefill-bundle",
@@ -148,98 +143,9 @@ export async function prefillCloudfront(
         }
       }
 
-      // Phase 3: warm CloudFront's versioned cache by GETting each versioned
-      // URL through the CDN. This must happen before invalidating the published
-      // cache so that when clients follow the published→versioned redirect they
-      // get a cache hit. Warming works without isPrefilled being set because the
-      // versioned endpoint serves directly from S3 by projectId@version.
-      if (warmingData.length > 0) {
-        const baseUrl =
-          process.env.CODEGEN_CLOUDFRONT_URL ?? getCodegenPublicUrl();
-        await withSpan(
-          "loader-prefill-warming",
-          async () => {
-            const warmingResults = await Promise.allSettled(
-              warmingData.map(async ({ publishment, resolvedProjectIdSpecs }) => {
-                // Use the same query builder as buildPublishedLoaderAssets so
-                // the warming URL is identical to the versioned redirect URL
-                // clients follow, producing the same CloudFront cache key.
-                const query = makeCacheableVersionedLoaderQuery({
-                  platform: publishment.platform,
-                  nextjsAppDir: publishment.appDir ?? false,
-                  loaderVersion: publishment.loaderVersion,
-                  resolvedProjectIdSpecs,
-                  browserOnly: publishment.browserOnly ?? false,
-                  i18nKeyScheme: publishment.i18nKeyScheme ?? undefined,
-                  i18nTagPrefix: publishment.i18nTagPrefix ?? undefined,
-                });
-                // Look up API tokens for all projects in this variant so the
-                // warming GET is authorised — the versioned endpoint requires
-                // x-plasmic-api-project-tokens to serve the bundle.
-                const projectTokens = await Promise.all(
-                  resolvedProjectIdSpecs.map(async (spec) => {
-                    const { projectId: specProjectId } =
-                      parseProjectIdSpec(spec);
-                    const token =
-                      await mgr.sudo().validateOrGetProjectApiToken(
-                        specProjectId
-                      );
-                    return `${specProjectId}:${token}`;
-                  })
-                );
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 30_000);
-                const { result, spentTime } = await withTimeSpent(() =>
-                  fetch(`${baseUrl}/api/v1/loader/code/versioned?${query}`, {
-                    signal: controller.signal,
-                    headers: {
-                      "x-plasmic-api-project-tokens": projectTokens.join(","),
-                    },
-                  }).finally(() => clearTimeout(timeoutId))
-                );
-                logger().info("loader-prefill-warming-url", {
-                  project_id: projectId,
-                  platform: publishment.platform,
-                  loader_version: publishment.loaderVersion,
-                  browser_only: publishment.browserOnly ?? false,
-                  app_dir: publishment.appDir ?? false,
-                  duration_ms: spentTime,
-                  ok: result.ok,
-                  status: result.status,
-                  url: `${baseUrl}/api/v1/loader/code/versioned?${query}`,
-                });
-                return result;
-              })
-            );
-
-            const warmingSucceeded = warmingResults.filter(
-              (r) => r.status === "fulfilled" && r.value.ok
-            ).length;
-            const warmingFailed = warmingResults.length - warmingSucceeded;
-            logger().info("loader-prefill-warming-summary", {
-              project_id: projectId,
-              total: warmingResults.length,
-              succeeded: warmingSucceeded,
-              failed: warmingFailed,
-            });
-            if (warmingFailed > 0) {
-              logger().warn(
-                `CloudFront versioned cache warming had ${warmingFailed}/${warmingResults.length} failures for ${projectId} — invalidation will proceed but some clients may hit origin`
-              );
-            }
-          },
-          undefined,
-          { project_id: projectId, variant_count: warmingData.length }
-        );
-      }
-
-      // Mark as prefilled immediately before invalidation. Setting it here
-      // (after warming, before invalidation) ensures:
-      //   1. The versioned cache is already hot for any cache miss on the
-      //      published redirect.
-      //   2. The window between "status = ready" and "published cache
-      //      invalidated" is minimised to just the invalidation API call
-      //      (~100ms), rather than the full warming duration (up to 30s × N).
+      // Mark as prefilled before invalidation to minimise the window between
+      // "status = ready" and "published cache invalidated" to just the
+      // CloudFront API call (~100ms).
       await mgr.updatePkgVersion(
         pkgVersion.pkgId,
         pkgVersion.version,
@@ -247,8 +153,8 @@ export async function prefillCloudfront(
         { isPrefilled: true }
       );
 
-      // Phase 4: invalidate published CDN paths so clients are redirected to
-      // the now-warmed versioned entries.
+      // Phase 3: invalidate published CDN paths so clients see the new redirect
+      // to the freshly S3-prefilled versioned bundle.
       //
       // code/published paths are keyed by sorted project IDs embedded in the
       // URL path by the CloudFront Function (e.g. /published/aaa,zzz*). One
@@ -261,7 +167,7 @@ export async function prefillCloudfront(
       if (distributionId) {
         const codePaths = [
           ...new Set(
-            warmingData.map(
+            prefillData.map(
               ({ publishment }) =>
                 `/api/v1/loader/code/published/${[...publishment.projectIds]
                   .sort()
@@ -325,7 +231,6 @@ export async function prefillCloudfront(
         variant_count: loaderPublishments.length,
         bundle_successes: bundleSuccesses,
         bundle_failures: bundleFailures,
-        warming_variant_count: warmingData.length,
         invalidation_enabled: !!process.env.CLOUDFRONT_DISTRIBUTION_ID,
       });
     },
