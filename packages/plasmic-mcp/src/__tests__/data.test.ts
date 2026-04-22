@@ -817,7 +817,7 @@ describe("updateQuery", () => {
     ).rejects.toThrow(/already exists/);
   });
 
-  it("throws when no name provided", async () => {
+  it("throws when no name or functionCall provided", async () => {
     const root = mkTag({ uuid: "root-1" });
     const comp = mkComponent({ uuid: "comp-1", tplTree: root });
     (comp as any).dataQueries = [{ uuid: "q1", name: "products", op: null }];
@@ -829,7 +829,7 @@ describe("updateQuery", () => {
 
     await expect(
       updateQuery(api, "comp-1", "products", undefined)
-    ).rejects.toThrow(/name must be provided/);
+    ).rejects.toThrow(/at least one of.*name.*functionCall/i);
   });
 
   it("throws when query not found", async () => {
@@ -845,6 +845,259 @@ describe("updateQuery", () => {
     await expect(
       updateQuery(api, "comp-1", "nonexistent", "newName")
     ).rejects.toThrow(/not found/);
+  });
+
+  // Gap #74 — functionCall param binds a server query to a registered
+  // custom function. Tracer test: the happy path on a freshly-added server
+  // query (op=null) should leave query.op as a CustomFunctionExpr whose
+  // `func` points at the matching CustomFunction from site.customFunctions
+  // and whose `args` carry one FunctionArg per provided arg name.
+  it("gap #74 tracer: functionCall sets query.op to CustomFunctionExpr referencing the matching CustomFunction", async () => {
+    // Mirror the Studio query-builder shape: a CustomFunction with one
+    // `input` param of type ArgType.
+    const inputParam: any = {
+      _type: "ArgType",
+      argName: "input",
+      type: { _type: "AnyType" },
+    };
+    const { CustomFunction } = await import("../__mocks__/wab-classes");
+    const getProductFn = new CustomFunction({
+      namespace: "ep",
+      importName: "getProduct",
+      importPath: "@elasticpath/plasmic-ep-commerce-elastic-path/server",
+      params: [inputParam],
+      uid: 42,
+    });
+
+    const serverQuery: any = {
+      _type: "ComponentServerQuery",
+      uuid: "sq1",
+      name: "product",
+      op: null,
+    };
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).dataQueries = [];
+    (comp as any).serverQueries = [serverQuery];
+    const site = {
+      components: [comp],
+      styleTokens: [],
+      customFunctions: [getProductFn],
+      projectDependencies: [],
+    };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await updateQuery(api, "comp-1", "product", undefined, {
+      functionCall: {
+        namespace: "ep",
+        name: "getProduct",
+        args: { input: "{id: $ctx.params.slug}" },
+      },
+    });
+
+    expect(serverQuery.op).toBeTruthy();
+    expect(serverQuery.op._type).toBe("CustomFunctionExpr");
+    expect(serverQuery.op.func).toBe(getProductFn);
+    expect(serverQuery.op.args).toHaveLength(1);
+    expect(serverQuery.op.args[0]._type).toBe("FunctionArg");
+    expect(serverQuery.op.args[0].argType).toBe(inputParam);
+    // The user passed a JS expression, so the arg expr should be a
+    // CustomCode carrying that code (same shape update-text produces for
+    // dynamic text). `{{...}}` delimiters are stripped; `$foo` is unwrapped.
+    expect(serverQuery.op.args[0].expr._type).toBe("CustomCode");
+    // Stored wrapped in parens so `isRealCodeExpr` returns true — matches
+    // Studio's `createExprForDataPickerValue` convention. See exprs.ts in
+    // platform/wab. Without parens the op compiles to bare code and breaks
+    // scope resolution for $q / $queries / $ctx references.
+    expect(serverQuery.op.args[0].expr.code).toBe("({id: $ctx.params.slug})");
+  });
+
+  // Gap #74 error path — if the user supplies a functionCall pointing at a
+  // function that isn't in site.customFunctions (typically because the dev
+  // host never registered it, or project.sync-dev-host hasn't run since it
+  // was added), surface a clear error that names the function and points
+  // at the right recovery action. This prevents silent misconfiguration
+  // where a server query gets bound to a phantom function reference.
+  it("gap #74: throws with clear message when functionCall targets an unregistered function", async () => {
+    const serverQuery: any = {
+      _type: "ComponentServerQuery",
+      uuid: "sq1",
+      name: "product",
+      op: null,
+    };
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).dataQueries = [];
+    (comp as any).serverQueries = [serverQuery];
+    const site = {
+      components: [comp],
+      styleTokens: [],
+      customFunctions: [],
+      projectDependencies: [],
+    };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await expect(
+      updateQuery(api, "comp-1", "product", undefined, {
+        functionCall: {
+          namespace: "ep",
+          name: "getProduct",
+          args: { input: "{id: 'abc'}" },
+        },
+      })
+    ).rejects.toThrow(/ep\.getProduct.*not found.*sync-dev-host/s);
+    // Bundle must not be mutated when lookup fails.
+    expect(serverQuery.op).toBeNull();
+  });
+
+  // Gap #74 composition — rename + bind in one call must mutate both fields
+  // on the same query. This protects users from having to make two MCP
+  // calls (rename, then bind) and avoids a partial-state window where a
+  // query has a new name but its old op — or vice versa.
+  it("gap #74: rename + functionCall in one call applies both atomically", async () => {
+    const inputParam: any = {
+      _type: "ArgType",
+      argName: "input",
+      type: { _type: "AnyType" },
+    };
+    const { CustomFunction } = await import("../__mocks__/wab-classes");
+    const getProductFn = new CustomFunction({
+      namespace: "ep",
+      importName: "getProduct",
+      importPath: "@elasticpath/plasmic-ep-commerce-elastic-path/server",
+      params: [inputParam],
+      uid: 99,
+    });
+
+    const serverQuery: any = {
+      _type: "ComponentServerQuery",
+      uuid: "sq1",
+      name: "oldName",
+      op: null,
+    };
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).dataQueries = [];
+    (comp as any).serverQueries = [serverQuery];
+    const site = {
+      components: [comp],
+      styleTokens: [],
+      customFunctions: [getProductFn],
+      projectDependencies: [],
+    };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    const result = await updateQuery(api, "comp-1", "oldName", "product", {
+      functionCall: {
+        namespace: "ep",
+        name: "getProduct",
+        args: { input: "{id: $ctx.params.slug}" },
+      },
+    });
+
+    expect(result.name).toBe("product");
+    expect(serverQuery.name).toBe("product");
+    expect(serverQuery.op?._type).toBe("CustomFunctionExpr");
+    expect(serverQuery.op?.func).toBe(getProductFn);
+  });
+
+  // Gap #74 detach path — explicit functionCall: null clears an existing
+  // op back to null, so the user can unbind a query without deleting and
+  // re-adding it. Distinct from "functionCall field absent" (preserve).
+  it("gap #74: functionCall: null clears the query op", async () => {
+    const { CustomFunction, CustomFunctionExpr } = await import(
+      "../__mocks__/wab-classes"
+    );
+    const existingFn = new CustomFunction({
+      namespace: "ep",
+      importName: "getProduct",
+      importPath: "@elasticpath/plasmic-ep-commerce-elastic-path/server",
+      params: [],
+      uid: 7,
+    });
+    const existingOp = new CustomFunctionExpr({
+      func: existingFn,
+      args: [],
+    });
+
+    const serverQuery: any = {
+      _type: "ComponentServerQuery",
+      uuid: "sq1",
+      name: "product",
+      op: existingOp,
+    };
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).dataQueries = [];
+    (comp as any).serverQueries = [serverQuery];
+    const site = {
+      components: [comp],
+      styleTokens: [],
+      customFunctions: [existingFn],
+      projectDependencies: [],
+    };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await updateQuery(api, "comp-1", "product", undefined, {
+      functionCall: null,
+    });
+
+    expect(serverQuery.op).toBeNull();
+    // Name preserved
+    expect(serverQuery.name).toBe("product");
+  });
+
+  // Counter-case guard — NOT passing functionCall at all (only newName)
+  // must leave an existing op untouched. Distinguishes "absent field"
+  // from "explicit null".
+  it("gap #74: rename alone preserves existing op", async () => {
+    const { CustomFunction, CustomFunctionExpr } = await import(
+      "../__mocks__/wab-classes"
+    );
+    const existingFn = new CustomFunction({
+      namespace: "ep",
+      importName: "getProduct",
+      importPath: "@elasticpath/plasmic-ep-commerce-elastic-path/server",
+      params: [],
+      uid: 11,
+    });
+    const existingOp = new CustomFunctionExpr({
+      func: existingFn,
+      args: [],
+    });
+    const serverQuery: any = {
+      _type: "ComponentServerQuery",
+      uuid: "sq1",
+      name: "oldName",
+      op: existingOp,
+    };
+    const root = mkTag({ uuid: "root-1" });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    (comp as any).dataQueries = [];
+    (comp as any).serverQueries = [serverQuery];
+    const site = {
+      components: [comp],
+      styleTokens: [],
+      customFunctions: [existingFn],
+      projectDependencies: [],
+    };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await updateQuery(api, "comp-1", "oldName", "newName");
+
+    expect(serverQuery.name).toBe("newName");
+    // Op reference identity preserved — not replaced/cloned
+    expect(serverQuery.op).toBe(existingOp);
   });
 });
 

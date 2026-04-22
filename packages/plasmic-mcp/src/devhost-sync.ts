@@ -109,7 +109,30 @@ export interface SyncResult {
   syncedVariantComponents: string[];
   /** Full registry data from the dev host (available when devHostSynced is true). */
   registryData?: FullRegistryData;
+  /**
+   * Populated when `syncMode === "full"` (default). Reports which dev-host
+   * code components were ingested into `site.components` this pass, which
+   * were found to be no-longer-registered (preserved as warnings), and any
+   * structural-corruption fatal error. Absent in `variants-only` mode.
+   *
+   * When a ChangeTracker was active during the ingestion, `recordedChanges`
+   * carries the merged `RecordedChanges` from all internal `ctx.change()`
+   * passes. Callers are expected to pipe these into `SaveManager.saveChanges`
+   * so the newly-ingested Component / Param / State instances are broadcast
+   * to Studio clients over the normal incremental-save socket channel
+   * (preserves MCP→Studio live sync).
+   */
+  ingestion?: {
+    addedComponents: string[];
+    removedComponents: string[];
+    warnings: Array<{ code: string; componentName?: string; message: string }>;
+    fatalError?: { code: string; message: string };
+    recordedChanges?: unknown;
+  };
 }
+
+/** Sync mode selects how aggressively dev-host state is reconciled. */
+export type SyncMode = "full" | "variants-only";
 
 const FETCH_TIMEOUT_MS = 5_000;
 
@@ -451,9 +474,31 @@ export function ensureVariantObjects(
  * Called from server.ts on `project.set` and `project.refresh`.
  * Non-fatal — returns `{ devHostSynced: false }` on any failure.
  */
+/**
+ * Decide which sync mode to run given an explicit opts override and the
+ * `PLASMIC_MCP_SKIP_DEV_HOST_INGESTION` env var.
+ *
+ * Default is "full" — ingests newly-registered dev-host code components into
+ * `site.components` via Studio's shared `syncCodeComponents`. Ingestion runs
+ * inside `ChangeRecorder.withRecording()` so the FastBundler and live-sync
+ * socket path see the new instances. `PLASMIC_MCP_SKIP_DEV_HOST_INGESTION=1`
+ * or per-call `syncMode: "variants-only"` skips ingestion — legacy behavior.
+ */
+export function resolveSyncMode(opts?: { syncMode?: SyncMode }): SyncMode {
+  if (opts?.syncMode) return opts.syncMode;
+  if (
+    typeof process !== "undefined" &&
+    process.env?.PLASMIC_MCP_SKIP_DEV_HOST_INGESTION === "1"
+  ) {
+    return "variants-only";
+  }
+  return "full";
+}
+
 export async function syncFromDevHost(
   site: any,
-  hostUrl: string | undefined
+  hostUrl: string | undefined,
+  opts?: { syncMode?: SyncMode; tracker?: unknown }
 ): Promise<SyncResult> {
   if (!hostUrl) {
     return { devHostSynced: false, syncedVariantComponents: [], registryData: undefined };
@@ -474,31 +519,46 @@ export async function syncFromDevHost(
     (c) => c.variants && Object.keys(c.variants).length > 0
   );
 
-  if (variantComponents.length === 0) {
-    console.error(
-      `[plasmic-mcp] Dev host sync: no variant-bearing components found`
-    );
-    return { devHostSynced: true, syncedVariantComponents: [], registryData: registry };
-  }
-
-  console.error(
-    `[plasmic-mcp] Dev host sync: ${variantComponents.length} variant-bearing component(s) found`
-  );
-
-  // Identify which components WILL be synced, but do NOT write to the model
-  // here. Writing must happen inside a ChangeRecorder.withRecording() block
-  // (via recordVariantMetadataSync) so the FastBundler can track the changes
-  // for incremental saves. If we write here eagerly, recordVariantMetadataSync
-  // sees no diff and skips the recording — so the metadata never persists.
+  // Identify which components WILL be variant-synced, but do NOT write to the
+  // model here. Writing must happen inside a ChangeRecorder.withRecording()
+  // block (via recordVariantMetadataSync) so the FastBundler can track the
+  // changes for incremental saves. If we write here eagerly,
+  // recordVariantMetadataSync sees no diff and skips the recording — so the
+  // metadata never persists.
   const syncedNames: string[] = [];
   for (const regComp of variantComponents) {
     const codeComp = findCodeComponentByName(site, regComp.name);
     if (codeComp) syncedNames.push(codeComp.name);
   }
 
+  if (variantComponents.length > 0) {
+    console.error(
+      `[plasmic-mcp] Dev host sync: ${variantComponents.length} variant-bearing component(s) found: ${syncedNames.join(", ")}`
+    );
+  }
+
+  const mode = resolveSyncMode(opts);
+  if (mode === "variants-only") {
+    console.error(
+      `[plasmic-mcp] Dev host sync: variants-only mode, skipping code-component ingestion`
+    );
+    return { devHostSynced: true, syncedVariantComponents: syncedNames, registryData: registry };
+  }
+
+  // Lazy import — devhost-ingestion pulls in real Plasmic model code, which
+  // we don't want loaded when MCP runs in variants-only mode.
+  const { ingestDevHostComponents } = await import("./devhost-ingestion.js");
+  const ingestion = await ingestDevHostComponents(site, registry, {
+    tracker: opts?.tracker as any,
+  });
   console.error(
-    `[plasmic-mcp] Dev host sync complete: ${syncedNames.length} variant-bearing component(s) found: ${syncedNames.join(", ")}`
+    `[plasmic-mcp] Dev host ingestion: added ${ingestion.addedComponents.length}, removed ${ingestion.removedComponents.length}, warnings ${ingestion.warnings.length}${ingestion.fatalError ? `, fatal ${ingestion.fatalError.code}` : ""}`
   );
 
-  return { devHostSynced: true, syncedVariantComponents: syncedNames, registryData: registry };
+  return {
+    devHostSynced: true,
+    syncedVariantComponents: syncedNames,
+    registryData: registry,
+    ingestion,
+  };
 }

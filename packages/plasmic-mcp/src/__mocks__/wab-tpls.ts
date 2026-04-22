@@ -160,3 +160,16 @@ export function tryGetOwnerSite(_comp: any): any | undefined {
 export function buildParamToComponent(_components: any[]): Map<any, any> {
   return new Map();
 }
+
+/**
+ * Unit-test stub for Studio's `findExprsInComponent` — returns an empty
+ * list so reference-detection guards (e.g. the gap #70 pre-flight check
+ * in `removeQuery`) treat mock components as having no bindings.
+ * Integration tests in `real-integration.test.ts` use the real helper
+ * against a real bundle.
+ */
+export function findExprsInComponent(
+  _component: any
+): Array<{ node: any; expr: any }> {
+  return [];
+}

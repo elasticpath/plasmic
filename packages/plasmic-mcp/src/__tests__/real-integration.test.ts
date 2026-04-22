@@ -4212,6 +4212,299 @@ describe("data queries", () => {
     // Undo
     await client.callTool({ name: "project", arguments: { action: "undo" } });
   });
+
+  // Gap #70 guard — part A: pre-flight reference check on remove-query.
+  //
+  // Studio's UI refuses to delete a query that's referenced anywhere in the
+  // component (see platform/wab/src/wab/client/components/canvas/site-ops.tsx
+  // removeComponentServerQuery — it surfaces a "Cannot delete server query"
+  // notification). The MCP skipped this check, so it happily removed a query
+  // whose expressions were still bound to it, leaving the bundle in a state
+  // where downstream mutations could trip the `parentKey already used`
+  // assertion. This test asserts the MCP now performs the same pre-flight
+  // check using Studio's shared `findExprsInComponent` / `isQueryUsedInExpr`
+  // helpers.
+  it("gap #70: remove-query refuses to delete a server query that is still referenced", async () => {
+    const page = discoveredComponents.find((c) => c.type === "page") ??
+      discoveredComponents[0];
+    const queryName = "gap70Probe";
+
+    // Step 1 — add a server query.
+    const addResult = parseResponse(
+      await client.callTool({
+        name: "data",
+        arguments: {
+          action: "add-query",
+          componentUuid: page.uuid,
+          name: queryName,
+          queryType: "serverQuery",
+        },
+      })
+    );
+    expect(addResult.success).toBe(true);
+
+    // Step 2 — reference it from a node's dynamic text. This mirrors the
+    // real-world pattern: designer binds an h1 to `$queries.gap70Probe.data`.
+    const tree = parseResponse(
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: page.uuid, maxDepth: 2 },
+      })
+    ).tree;
+
+    // Add a text node we can bind.
+    const addNode = parseResponse(
+      await client.callTool({
+        name: "node",
+        arguments: {
+          action: "add",
+          componentUuid: page.uuid,
+          parentRef: tree.uuid,
+          child: { type: "text", value: "placeholder" },
+        },
+      })
+    );
+    const textNodeUuid = addNode.uuid ?? addNode.child ?? tree.children?.[0]?.uuid;
+    // Fall back to the last child of the root if the add response doesn't
+    // echo the node uuid.
+    const afterAdd = parseResponse(
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: page.uuid, maxDepth: 2 },
+      })
+    ).tree;
+    const newest = afterAdd.children[afterAdd.children.length - 1];
+
+    // Bind the text to a dynamic expression that references the query.
+    await client.callTool({
+      name: "node",
+      arguments: {
+        action: "update-text",
+        componentUuid: page.uuid,
+        nodeRef: textNodeUuid ?? newest.uuid,
+        text: "$queries.gap70Probe.data",
+        dynamic: true,
+        fallback: "loading",
+      },
+    });
+
+    // Step 3 — try to remove the query. Under the fix this must fail with a
+    // clear "in use" error; under the bug this silently succeeds and seeds
+    // the orphan-parentKey class of corruption.
+    const removeCall = await client.callTool({
+      name: "data",
+      arguments: {
+        action: "remove-query",
+        componentUuid: page.uuid,
+        queryRef: queryName,
+      },
+    });
+    const removeResult = parseResponse(removeCall);
+
+    expect({
+      isError: (removeCall as any).isError,
+      body: removeResult,
+    }).toMatchObject({
+      isError: true,
+      body: expect.stringMatching(/still referenced|in use|cannot (remove|delete)/i),
+    });
+
+    // Cleanup — clear the binding, then remove the query cleanly, then remove
+    // the probe node so later tests start from the original fixture state.
+    await client.callTool({
+      name: "node",
+      arguments: {
+        action: "update-text",
+        componentUuid: page.uuid,
+        nodeRef: textNodeUuid ?? newest.uuid,
+        text: "placeholder",
+      },
+    });
+    await client.callTool({
+      name: "data",
+      arguments: {
+        action: "remove-query",
+        componentUuid: page.uuid,
+        queryRef: queryName,
+      },
+    });
+    await client.callTool({
+      name: "node",
+      arguments: {
+        action: "remove",
+        componentUuid: page.uuid,
+        nodeRef: textNodeUuid ?? newest.uuid,
+      },
+    });
+    await client.callTool({ name: "project", arguments: { action: "save" } });
+  });
+
+  // Gap #70 guard — part B: unreferenced remove + re-add + downstream
+  // mutation completes cleanly. If the pre-flight check (part A) is the
+  // only thing blocking corruption, this case should already be safe
+  // because nothing was bound to the query. This test locks in the
+  // invariant: a fresh add/remove cycle with no references must never
+  // leave the bundle in a state where subsequent mutations throw.
+  it("gap #70: remove + re-add of an unreferenced server query leaves the bundle healthy", async () => {
+    const page = discoveredComponents.find((c) => c.type === "page") ??
+      discoveredComponents[0];
+    const queryName = "gap70Plain";
+
+    // Add → remove → re-add, all without any references to the query.
+    await client.callTool({
+      name: "data",
+      arguments: {
+        action: "add-query",
+        componentUuid: page.uuid,
+        name: queryName,
+        queryType: "serverQuery",
+      },
+    });
+    await client.callTool({ name: "project", arguments: { action: "save" } });
+
+    const firstRemove = parseResponse(
+      await client.callTool({
+        name: "data",
+        arguments: {
+          action: "remove-query",
+          componentUuid: page.uuid,
+          queryRef: queryName,
+        },
+      })
+    );
+    expect(firstRemove.success).toBe(true);
+    await client.callTool({ name: "project", arguments: { action: "save" } });
+
+    const secondAdd = parseResponse(
+      await client.callTool({
+        name: "data",
+        arguments: {
+          action: "add-query",
+          componentUuid: page.uuid,
+          name: queryName,
+          queryType: "serverQuery",
+        },
+      })
+    );
+    expect(secondAdd.success).toBe(true);
+    await client.callTool({ name: "project", arguments: { action: "save" } });
+
+    // Any downstream mutation must succeed. If the bundler has a stale
+    // `_iid2Parents` entry for the removed query, this throws.
+    const tree = parseResponse(
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: page.uuid, maxDepth: 1 },
+      })
+    ).tree;
+    const trivial = await client.callTool({
+      name: "node",
+      arguments: {
+        action: "add",
+        componentUuid: page.uuid,
+        parentRef: tree.uuid,
+        child: { type: "text", value: "Gap70 Part B" },
+      },
+    });
+    const trivialBody = parseResponse(trivial);
+    expect((trivial as any).isError).toBeFalsy();
+    expect(trivialBody).toMatchObject({ success: true });
+
+    // Cleanup.
+    const freshTree = parseResponse(
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: page.uuid, maxDepth: 1 },
+      })
+    ).tree;
+    const probe = freshTree.children[freshTree.children.length - 1];
+    if (probe?.uuid) {
+      await client.callTool({
+        name: "node",
+        arguments: {
+          action: "remove",
+          componentUuid: page.uuid,
+          nodeRef: probe.uuid,
+        },
+      });
+    }
+    await client.callTool({
+      name: "data",
+      arguments: {
+        action: "remove-query",
+        componentUuid: page.uuid,
+        queryRef: queryName,
+      },
+    });
+    await client.callTool({ name: "project", arguments: { action: "save" } });
+  });
+
+  // Pre-save bundle validation (gap #71): if the live bundle has a
+  // dangling `__ref` (points to an IID not in `bundle.map`),
+  // `checkExistingReferences` — a shared Studio helper from
+  // `@/wab/shared/bundler` — must throw, and the MCP save path must
+  // surface that error prefixed with "Pre-save bundle validation failed"
+  // so a corrupt bundle never reaches the server.
+  it("gap #71: save rejects when the cached bundle has a dangling __ref", async () => {
+    const comp = discoveredComponents[0];
+
+    // Step 1 — establish a healthy baseline save so `bundler.cachedBundle()`
+    // contains a well-formed bundle we can then corrupt.
+    await client.callTool({ name: "project", arguments: { action: "save" } });
+
+    // Step 2 — inject a dangling `__ref` into the live bundle, then make a
+    // trivial edit so the save path's validators walk the corrupted bundle.
+    // The corruption lives on a REACHABLE node (the bundle root) so
+    // upstream "unreachable instance" detection doesn't catch it — only
+    // `checkExistingReferences` (which walks every map entry and asserts
+    // each `__ref` points at an existing IID) will surface it. That's the
+    // specific shared Studio validator we wired into save-manager.ts.
+    const { requireSession } = await import("../session.js");
+    const session = requireSession() as any;
+    const fullBundle = session.bundler.cachedBundle();
+    expect(fullBundle).toBeTruthy();
+    const rootEntry = fullBundle.map[fullBundle.root];
+    expect(rootEntry).toBeTruthy();
+    const ghostIid = "ghost-iid-does-not-exist-in-bundle";
+    // Poison the root with a new field that carries a dangling __ref.
+    // We snapshot the original value so cleanup can restore it.
+    const poisonKey = "__mcpTestPoison__";
+    const originalValue = rootEntry[poisonKey];
+    rootEntry[poisonKey] = { __ref: ghostIid };
+
+    // Step 3 — make any trivial edit so `fastBundle` runs and the pre-save
+    // validator walks the (now corrupt) bundle. The validator must reject.
+    const tree = parseResponse(
+      await client.callTool({
+        name: "inspect",
+        arguments: { action: "tree", componentUuid: comp.uuid, maxDepth: 1 },
+      })
+    ).tree;
+    const trivialAdd = await client.callTool({
+      name: "node",
+      arguments: {
+        action: "add",
+        componentUuid: comp.uuid,
+        parentRef: tree.uuid,
+        child: { type: "text", value: "gap71 probe" },
+      },
+    });
+
+    expect((trivialAdd as any).isError).toBe(true);
+    const body = parseResponse(trivialAdd);
+    expect(typeof body).toBe("string");
+    expect(body).toContain("Pre-save bundle validation failed");
+    expect(body).toContain(ghostIid);
+
+    // Cleanup — restore the root entry so later tests work against a
+    // well-formed bundle. Saves are idempotent against the live site,
+    // so the next save will re-bundle from the clean in-memory site.
+    if (originalValue === undefined) {
+      delete rootEntry[poisonKey];
+    } else {
+      rootEntry[poisonKey] = originalValue;
+    }
+  });
 });
 
 // =============================================================================

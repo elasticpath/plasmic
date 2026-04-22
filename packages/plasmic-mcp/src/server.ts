@@ -147,6 +147,22 @@ import { emitEditPresence, clearEditPresence, emitInspectPresence } from "./tool
 import { undoChanges } from "@/wab/shared/core/undo-util";
 import type { TreeReadOptions } from "./types.js";
 
+/**
+ * Strip the internal-only `recordedChanges` field from the ingestion object
+ * before it goes into a tool response. `recordedChanges` holds live Plasmic
+ * model references (TplSlot ↔ TplTag cycles etc.) that break JSON.stringify.
+ * The field is only meant to flow from `syncFromDevHost` → `SaveManager`
+ * internally; callers get the summary shape instead.
+ */
+function publicIngestion(
+  ingestion: NonNullable<
+    Awaited<ReturnType<typeof import("./devhost-sync.js").syncFromDevHost>>["ingestion"]
+  >
+) {
+  const { recordedChanges: _recordedChanges, ...rest } = ingestion;
+  return rest;
+}
+
 // ---------------------------------------------------------------------------
 // PlasmicElement schema — strict top level, z.any() for recursive children.
 //
@@ -394,12 +410,13 @@ export function createServer(): McpServer {
     "project",
     {
       description: "Project session lifecycle, persistence, batch operations, undo, and package management.\n" +
-        "Actions: set, list, get-meta, save, refresh, begin-batch, end-batch, undo, list-packages, list-available-packages, list-package-components, add-package, remove-package, upgrade-package.\n" +
-        "- set: Load a project into memory (required before other tools). Example: {action:\"set\",projectId:\"pId123\"} → {success:true,projectName:\"My App\"}\n" +
+        "Actions: set, list, get-meta, save, refresh, sync-dev-host, begin-batch, end-batch, undo, list-packages, list-available-packages, list-package-components, add-package, remove-package, upgrade-package.\n" +
+        "- set: Load a project into memory (required before other tools). Default syncMode='full' auto-ingests newly-registered dev-host code components into site.components (runs under ChangeRecorder so new instances broadcast via live-sync to Studio). Example: {action:\"set\",projectId:\"pId123\"} → {success:true,projectName:\"My App\",ingestion:{addedComponents:[...]}}\n" +
         "- list: List all accessible projects. Example: {action:\"list\"} → {projects:[{id:\"pId123\",name:\"My App\"}]}\n" +
         "- get-meta: Get project metadata (name, counts, pages, components). Example: {action:\"get-meta\"} → {name:\"My App\",pageCount:3,componentCount:5}\n" +
         "- save: Force full save to server\n" +
         "- refresh: Reload project from server\n" +
+        "- sync-dev-host: Re-fetch the dev host registry and re-run ingestion without reloading the project. Use after registering a new code component on the dev host mid-session. Example: {action:\"sync-dev-host\"} → {ingestion:{addedComponents:[\"my-comp\"]}}\n" +
         "- begin-batch: Start accumulating edits. Example: {action:\"begin-batch\"} → {batchId:\"batch-1\"}\n" +
         "- end-batch: Save accumulated edits in one revision. Example: {action:\"end-batch\",batchId:\"batch-1\"} → {success:true,revision:42}\n" +
         "- undo: Revert most recent edit\n" +
@@ -411,16 +428,22 @@ export function createServer(): McpServer {
         "- upgrade-package: Upgrade one or all packages to latest version\n" +
         "- health-check: Check server status, version, and authentication state (works without auth)",
       inputSchema: {
-        action: z.enum(["set", "list", "get-meta", "save", "refresh", "begin-batch", "end-batch", "undo", "list-packages", "list-available-packages", "list-package-components", "add-package", "remove-package", "upgrade-package", "health-check"]),
+        action: z.enum(["set", "list", "get-meta", "save", "refresh", "sync-dev-host", "begin-batch", "end-batch", "undo", "list-packages", "list-available-packages", "list-package-components", "add-package", "remove-package", "upgrade-package", "health-check"]),
         projectId: z.string().optional().describe("The Plasmic project ID (required for 'set' and 'add-package')"),
         branchId: z.string().optional().describe("Branch ID to load (omit for main branch). Use branch.list to get available branch IDs."),
         batchId: z.string().optional().describe("Optional batch ID for verification (used by 'end-batch')"),
         pkgId: z.string().optional().describe("Package ID for 'remove-package' and 'upgrade-package' (optional for upgrade-all)"),
         packageName: z.string().optional().describe("Package name filter for 'list-package-components'"),
+        syncMode: z
+          .enum(["full", "variants-only"])
+          .optional()
+          .describe(
+            "Dev-host sync behavior on 'set' / 'refresh' / 'sync-dev-host'. Default 'full' ingests newly-registered code components into site.components. 'variants-only' skips ingestion (faster, preserves legacy behavior). Overrides the PLASMIC_MCP_SKIP_DEV_HOST_INGESTION env var."
+          ),
       },
       annotations: { idempotentHint: true },
     },
-    async ({ action, projectId, branchId, batchId, pkgId, packageName }) => {
+    async ({ action, projectId, branchId, batchId, pkgId, packageName, syncMode }) => {
       try {
         switch (action) {
           case "set": {
@@ -446,8 +469,24 @@ export function createServer(): McpServer {
               projectApiToken,
             } = await loadProject(getClient(), pid, branchId);
 
-            // Sync code component variants from the dev host (non-fatal)
-            const syncResult = await syncFromDevHost(site, hostUrl);
+            // Tracker must exist BEFORE syncFromDevHost's ingestion pass so
+            // its internal `ctx.change` mutations are captured. We bypass the
+            // session for the tracker's isExternalRef plumbing so we can init
+            // the tracker before setSession — avoids a double-setSession that
+            // would reset transient session fields like `pendingSavedRevisionNum`.
+            initChangeTracker(site, { bundler, projectUuid: pid });
+            const tracker = getChangeTracker();
+
+            // Sync from dev host. When mode is 'full' (default), ingestion
+            // runs under the tracker — any new Component / Param / State
+            // instances get captured in
+            // `syncResult.ingestion.recordedChanges` for us to save+broadcast
+            // via the normal SaveManager path (same pipeline as every other
+            // edit, so Studio sees the ingestion via live sync).
+            const syncResult = await syncFromDevHost(site, hostUrl, {
+              syncMode,
+              tracker,
+            });
 
             setSession({
               projectId: pid,
@@ -467,9 +506,6 @@ export function createServer(): McpServer {
               projectApiToken,
             });
 
-            // Initialize change tracking for incremental saves (M2)
-            initChangeTracker(site);
-
             // Phase 2: Persist variant metadata inside change tracker so it's
             // included in the save delta (codeComponentMeta.variants with cssSelector).
             if (syncResult.registryData) {
@@ -477,7 +513,6 @@ export function createServer(): McpServer {
                 (c) => c.variants && Object.keys(c.variants).length > 0
               );
               if (variantComponents.length > 0) {
-                const tracker = getChangeTracker();
                 const changes = tracker.withRecording(() => {
                   recordVariantMetadataSync(site, variantComponents);
                 });
@@ -486,6 +521,30 @@ export function createServer(): McpServer {
                   await saveManager.saveChanges(changes);
                   console.error("[plasmic-mcp] Persisted variant metadata to server");
                 }
+              }
+            }
+
+            // Persist ingestion changes (new code components + their params +
+            // states) via the normal incremental-save path. This broadcasts
+            // to Studio via socket so its UI updates in real time.
+            const ingestionChanges = (syncResult.ingestion as any)?.recordedChanges;
+            if (
+              ingestionChanges &&
+              (ingestionChanges.changes?.length > 0 ||
+                ingestionChanges.removedInsts?.length > 0)
+            ) {
+              try {
+                const saveManager = new SaveManager(getClient());
+                await saveManager.saveChanges(ingestionChanges);
+                console.error(
+                  `[plasmic-mcp] Persisted dev-host ingestion to server: +${syncResult.ingestion?.addedComponents.length ?? 0} components`
+                );
+              } catch (err) {
+                console.error(
+                  `[plasmic-mcp] Persisting dev-host ingestion failed: ${
+                    err instanceof Error ? err.message : String(err)
+                  }`
+                );
               }
             }
 
@@ -534,6 +593,7 @@ export function createServer(): McpServer {
                           traitCount: syncResult.registryData.traits?.length ?? 0,
                         },
                       }),
+                      ...(syncResult.ingestion && { ingestion: publicIngestion(syncResult.ingestion) }),
                     }),
                   }),
                 },
@@ -685,8 +745,22 @@ export function createServer(): McpServer {
             // Clear registry cache to force fresh fetch on explicit refresh
             clearRegistryCache(hostUrl);
 
-            // Re-sync code component variants from the dev host (non-fatal)
-            const syncResult = await syncFromDevHost(site, hostUrl);
+            // Tracker must exist BEFORE syncFromDevHost so the ingestion
+            // pass captures mutations through ChangeRecorder (required for
+            // live-sync socket broadcasts to Studio). Bypasses session here
+            // to avoid a double-setSession pattern.
+            initChangeTracker(site, {
+              bundler,
+              projectUuid: session.projectId,
+            });
+            const tracker = getChangeTracker();
+
+            // Re-sync code component variants + ingestion from the dev host
+            // (non-fatal). Under the tracker so mutations flow to Studio.
+            const syncResult = await syncFromDevHost(site, hostUrl, {
+              syncMode,
+              tracker,
+            });
 
             setSession({
               projectId: session.projectId,
@@ -706,16 +780,12 @@ export function createServer(): McpServer {
               projectApiToken: refreshedToken,
             });
 
-            // Re-initialize change tracking
-            initChangeTracker(site);
-
             // Phase 2: Persist variant metadata inside change tracker
             if (syncResult.registryData) {
               const variantComponents = syncResult.registryData.components.filter(
                 (c) => c.variants && Object.keys(c.variants).length > 0
               );
               if (variantComponents.length > 0) {
-                const tracker = getChangeTracker();
                 const changes = tracker.withRecording(() => {
                   recordVariantMetadataSync(site, variantComponents);
                 });
@@ -724,6 +794,28 @@ export function createServer(): McpServer {
                   await saveManager.saveChanges(changes);
                   console.error("[plasmic-mcp] Persisted variant metadata to server");
                 }
+              }
+            }
+
+            // Persist ingestion changes via the normal incremental-save path.
+            const ingestionChanges = (syncResult.ingestion as any)?.recordedChanges;
+            if (
+              ingestionChanges &&
+              (ingestionChanges.changes?.length > 0 ||
+                ingestionChanges.removedInsts?.length > 0)
+            ) {
+              try {
+                const saveManager = new SaveManager(getClient());
+                await saveManager.saveChanges(ingestionChanges);
+                console.error(
+                  `[plasmic-mcp] Persisted dev-host ingestion to server: +${syncResult.ingestion?.addedComponents.length ?? 0} components`
+                );
+              } catch (err) {
+                console.error(
+                  `[plasmic-mcp] Persisting dev-host ingestion failed: ${
+                    err instanceof Error ? err.message : String(err)
+                  }`
+                );
               }
             }
 
@@ -762,9 +854,47 @@ export function createServer(): McpServer {
                             traitCount: syncResult.registryData.traits?.length ?? 0,
                           },
                         }),
+                        ...(syncResult.ingestion && { ingestion: publicIngestion(syncResult.ingestion) }),
                       }),
                     }
                   ),
+                },
+              ],
+            };
+          }
+
+          case "sync-dev-host": {
+            const session = requireSession();
+            if (!session.hostUrl) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify({
+                      success: false,
+                      message:
+                        "No dev host URL configured on this project. Set a dev host URL on the project in Plasmic first.",
+                    }),
+                  },
+                ],
+                isError: true,
+              };
+            }
+            const { clearRegistryCache } = await import("./devhost-sync.js");
+            clearRegistryCache(session.hostUrl);
+            const syncResult = await syncFromDevHost(session.site, session.hostUrl, {
+              syncMode,
+            });
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    success: true,
+                    devHostSynced: syncResult.devHostSynced,
+                    syncedVariantComponents: syncResult.syncedVariantComponents,
+                    ...(syncResult.ingestion && { ingestion: syncResult.ingestion }),
+                  }),
                 },
               ],
             };
@@ -1045,7 +1175,7 @@ export function createServer(): McpServer {
         "- subtree: Tree from a specific node downward. Example: {action:\"subtree\",componentUuid:\"abc\",nodeRef:\"card-container\"} → {type:\"tag\",tag:\"div\",children:[...]}\n" +
         "- export: Write full tree to temp file. Example: {action:\"export\",componentUuid:\"abc\"} → {filePath:\"/tmp/tree-abc.json\"}\n" +
         "- style-properties: List valid CSS property names. Example: {action:\"style-properties\",filter:\"flex\"} → [\"flex\",\"flexDirection\",\"flexGrow\",...]\n" +
-        "- preview-url: Get navigable preview URL for visual feedback via Playwright MCP. Returns navigateUrl (local SSR preview server), devHostUrl (if custom host), studioUrl, and viewport presets. After edits, use navigateUrl with Playwright browser_navigate + browser_take_screenshot for visual verification. Example: {action:\"preview-url\",componentUuid:\"abc\"} → {navigateUrl:\"http://127.0.0.1:PORT/preview/Name\",studioUrl:\"https://...\"}\n" +
+        "- preview-url: Get navigable preview URL for visual feedback via Playwright MCP. Pages use a path-based URL that matches the component's pageMeta.path — e.g. /product/[slug] becomes /preview/product/<slug>. Pass pageParams to substitute path segments (e.g. {slug:\"test-product\"}); defaults from pageMeta.params fill in any missing ones. pageQuery is appended as ?k=v. Non-page components use /preview/<Name>. Returns navigateUrl, devHostUrl, studioUrl, viewport presets. After edits, use navigateUrl with Playwright browser_navigate + browser_take_screenshot for visual verification. Example: {action:\"preview-url\",componentUuid:\"abc\",pageParams:{slug:\"test-product\"}} → {navigateUrl:\"http://127.0.0.1:PORT/preview/product/test-product\"}\n" +
         "- page-meta: Read page SEO metadata. Example: {action:\"page-meta\",componentUuid:\"abc\"} → {title:\"Home\",path:\"/\",description:\"...\"}\n" +
         "- list-design-system: Consolidated summary of all design tokens, mixins, and themes. Example: {action:\"list-design-system\"} → {tokens:{Color:[...],Spacing:[...]},mixins:[...],themes:[...]}\n" +
         "- list-global-contexts: List all global context providers configured on the project with their component names, source packages, and configured prop values. Example: {action:\"list-global-contexts\"} → {contexts:[{name:\"Provider\",props:{apiKey:\"...\"}}]}\n" +
@@ -1060,6 +1190,8 @@ export function createServer(): McpServer {
         summaryOnly: z.boolean().optional().describe("Return compact outline (same as summary action)"),
         format: z.enum(["concise", "full"]).optional().describe('Response format. "concise" strips UUIDs (except root), abbreviates keys (childCount→cc, componentName→comp), replaces detail fields with booleans. ~70% token reduction for orientation. Default: "full".'),
         filter: z.string().optional().describe("Filter string for style-properties action"),
+        pageParams: z.record(z.string()).optional().describe('For preview-url on page components: path-param values to substitute into the pageMeta.path template. e.g. {slug:"test-product"} on route /product/[slug] → /preview/product/test-product. Unspecified keys fall back to pageMeta.params defaults.'),
+        pageQuery: z.record(z.string()).optional().describe('For preview-url on page components: query-string values appended as ?k=v. Merged over pageMeta.query defaults.'),
       },
       outputSchema: {
         // Union of output shapes per action. All fields optional since each action
@@ -1086,7 +1218,7 @@ export function createServer(): McpServer {
       },
       annotations: { readOnlyHint: true },
     },
-    async ({ action, componentUuid, nodeRef, maxDepth, maxChars, excludeStyles, summaryOnly, format, filter }) => {
+    async ({ action, componentUuid, nodeRef, maxDepth, maxChars, excludeStyles, summaryOnly, format, filter, pageParams, pageQuery }) => {
       try {
         // Emit inspect presence so Studio users see which component the agent is viewing
         if (componentUuid) {
@@ -1439,7 +1571,7 @@ export function createServer(): McpServer {
             };
 
             // Local preview server URL (SSR, works for all project types)
-            const localUrl = getPreviewUrl(component.name);
+            const localUrl = getPreviewUrl(component, { pageParams, pageQuery });
             if (localUrl) {
               result.navigateUrl = localUrl;
               result.usage = "To capture a visual preview, use the Playwright MCP tools: " +
@@ -4990,6 +5122,7 @@ export function createServer(): McpServer {
         "- set-data-cond: Conditional rendering expression (null to remove). Example: {action:\"set-data-cond\",componentUuid:\"abc\",nodeRef:\"banner\",condition:\"$ctx.showBanner === true\"} → {success:true}\n" +
         "- set-data-rep: Repeat element for each item in collection (null to remove). Example: {action:\"set-data-rep\",componentUuid:\"abc\",nodeRef:\"card\",collection:\"$ctx.items\",elementVariable:\"item\",indexVariable:\"idx\"} → {success:true}\n" +
         "- Queries: Manage component data queries. Example: {action:\"add-query\",componentUuid:\"abc\",name:\"fetchUsers\",queryType:\"dataQuery\"} → {success:true,queryUuid:\"q1\"}\n" +
+        "- update-query binds a serverQuery to a registered custom function via `functionCall`. Example: {action:\"update-query\",componentUuid:\"abc\",queryRef:\"product\",functionCall:{namespace:\"ep\",name:\"getProduct\",args:{input:\"{id: $ctx.params.slug}\"}}} → {success:true}. Rename by passing `name`. Pass `functionCall:null` to clear the op. Function must exist in site.customFunctions (run project.sync-dev-host after registering).\n" +
         "- Data tokens: Site-level JSON values ($ctx.tokenName). Example: {action:\"create-data-token\",name:\"apiUrl\",value:\"\\\"https://api.example.com\\\"\"} → {success:true}\n" +
         "- Splits: A/B tests and segments. Example: {action:\"create-split\",name:\"CTATest\",splitType:\"experiment\",slices:[{name:\"Control\",prob:50},{name:\"Variant\",prob:50}]} → {success:true}\n" +
         "- get-code-meta/list-functions: Code component introspection. Example: {action:\"list-functions\",componentUuid:\"abc\"} → {functions:[{name:\"handleSubmit\",params:[...]}]}",
@@ -5011,6 +5144,19 @@ export function createServer(): McpServer {
       name: z.string().optional().describe("Name for create/rename operations"),
       queryRef: z.string().optional().describe("Query reference (name or UUID)"),
       queryType: z.enum(["dataQuery", "serverQuery"]).optional().describe("Query type"),
+      functionCall: z
+        .union([
+          z.object({
+            namespace: z.string().optional(),
+            name: z.string(),
+            args: z.record(z.string(), z.string()),
+          }),
+          z.null(),
+        ])
+        .optional()
+        .describe(
+          "For update-query on a serverQuery: bind the query's op to a registered custom function. Shape: {namespace, name, args: {argName: jsExpressionString}}. Pass null to clear the op (detach). The function must exist in site.customFunctions — run project.sync-dev-host if the dev host was just updated."
+        ),
       tokenRef: z.string().optional().describe("Data token reference (UUID or name)"),
       value: z.string().optional().describe("Value for data token or token update"),
       splitRef: z.string().optional().describe("Split reference (UUID or name)"),
@@ -5228,11 +5374,20 @@ export function createServer(): McpServer {
           case "update-query": {
             const cuuid = requireParam(params.componentUuid, "componentUuid", "data.update-query");
             const qRef = requireParam(params.queryRef, "queryRef", "data.update-query");
-            const qName = requireParam(params.name, "name", "data.update-query");
+            // `name` and `functionCall` are each optional, but at least one
+            // must be provided — updateQuery() enforces this.
+            const qName = params.name as string | undefined;
+            const hasFunctionCallField = Object.prototype.hasOwnProperty.call(
+              params,
+              "functionCall"
+            );
+            const options = hasFunctionCallField
+              ? { functionCall: params.functionCall as any }
+              : undefined;
 
             if (params.dryRun) {
               const result = await withDryRun(() =>
-                updateQuery(getClient(), cuuid, qRef, qName)
+                updateQuery(getClient(), cuuid, qRef, qName, options)
               );
               return {
                 content: [
@@ -5252,7 +5407,7 @@ export function createServer(): McpServer {
               };
             }
 
-            const result = await updateQuery(getClient(), cuuid, qRef, qName);
+            const result = await updateQuery(getClient(), cuuid, qRef, qName, options);
             return {
               content: [
                 {

@@ -69,17 +69,21 @@ let currentTracker: ChangeTracker | null = null;
  * the ChangeRecorder observes all reachable instances including the entire
  * dependency tree, which is wasteful and can cause spurious change recordings.
  */
-export function initChangeTracker(site: any): ChangeTracker {
+export function initChangeTracker(
+  site: any,
+  opts?: { bundler?: any; projectUuid?: string }
+): ChangeTracker {
   if (currentTracker) {
     currentTracker.dispose();
   }
 
-  // Auto-detect bundler and projectId from session to create isExternalRef.
-  // This works because initChangeTracker is always called AFTER setSession().
+  // Prefer explicit opts (callable BEFORE setSession) and fall back to the
+  // current session for backward-compatible callers.
   let isExternalRef: ((obj: any) => boolean) | undefined;
-  const session = getSession();
-  if (session?.bundler && session?.projectUuid) {
-    isExternalRef = makeIsExternalRef(session.bundler, session.projectUuid);
+  const bundler = opts?.bundler ?? getSession()?.bundler;
+  const projectUuid = opts?.projectUuid ?? getSession()?.projectUuid;
+  if (bundler && projectUuid) {
+    isExternalRef = makeIsExternalRef(bundler, projectUuid);
   }
 
   currentTracker = new ChangeTracker(site, isExternalRef);

@@ -3436,7 +3436,10 @@ describe("edit-tools", () => {
       const attrs = node.vsettings[0].attrs;
       expect(attrs.href._type).toBe("CustomCode");
       // $props.url → strips $ → detects bare "props." → corrects to "$props.url"
-      expect(attrs.href.code).toBe("$props.url");
+      // Stored wrapped in parens — matches Studio's `createExprForDataPickerValue`
+      // so `isRealCodeExpr` returns true and Plasmic codegen emits the safe
+      // wrapper around scope references ($q, $queries, $ctx, $state, $props).
+      expect(attrs.href.code).toBe("($props.url)");
       expect(result.warnings).toBeDefined();
       expect(result.warnings![0]).toContain("corrected");
     });
@@ -3458,7 +3461,7 @@ describe("edit-tools", () => {
 
       const attrs = node.vsettings[0].attrs;
       expect(attrs.href._type).toBe("CustomCode");
-      expect(attrs.href.code).toBe("props.url");
+      expect(attrs.href.code).toBe("(props.url)");
     });
 
     it("removes attributes with null value", async () => {
@@ -3718,7 +3721,7 @@ describe("edit-tools", () => {
       expect(result.warnings![0]).toContain("corrected");
       const attrs = node.vsettings[0].attrs;
       expect(attrs.value._type).toBe("CustomCode");
-      expect(attrs.value.code).toBe("$state.firstName");
+      expect(attrs.value.code).toBe("($state.firstName)");
     });
 
     it("rejects invalid JS expression with $ prefix", async () => {
@@ -6650,7 +6653,10 @@ describe("updateProps", () => {
     const callArgs = mockSetTplComponentArg.mock.calls[0];
     expect(callArgs[3]._type).toBe("CustomCode");
     // $ctx.params.orderId → strips $ → detects bare "ctx." → corrects to "$ctx.params.orderId"
-    expect(callArgs[3].code).toBe("$ctx.params.orderId");
+    // Wrapped in parens per Studio's `createExprForDataPickerValue` convention
+    // — ensures `isRealCodeExpr` returns true and Plasmic codegen wraps the
+    // expression in a safe IIFE that exposes $q / $queries / $ctx in scope.
+    expect(callArgs[3].code).toBe("($ctx.params.orderId)");
     expect(result.warnings).toBeDefined();
     expect(result.warnings![0]).toContain("corrected");
   });
@@ -6670,7 +6676,7 @@ describe("updateProps", () => {
 
     expect(result.updatedProps).toEqual(["amount"]);
     const callArgs = mockSetTplComponentArg.mock.calls[0];
-    expect(callArgs[3].code).toBe("$queries.cart.data.total");
+    expect(callArgs[3].code).toBe("($queries.cart.data.total)");
   });
 
   it("sets boolean and number props", async () => {

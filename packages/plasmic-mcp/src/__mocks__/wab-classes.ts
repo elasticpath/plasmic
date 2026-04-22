@@ -560,8 +560,65 @@ export const isKnownComponentDataQuery = (obj: any): boolean =>
   obj?._type === "ComponentDataQuery";
 export const isKnownComponentServerQuery = (obj: any): boolean =>
   obj?._type === "ComponentServerQuery";
+export const isKnownCustomFunctionExpr = (obj: any): boolean =>
+  obj?._type === "CustomFunctionExpr";
 export const isKnownMixin = (obj: any): boolean =>
   obj?._type === "Mixin";
+
+/** Mock constructor for CustomFunction — site-level registered function.
+ * Real shape (from classes.ts): namespace?, importName, importPath, params, uid.
+ * Only the fields referenced by MCP edit paths are modelled. */
+export class CustomFunction {
+  _type = "CustomFunction";
+  namespace?: string;
+  importName: string;
+  importPath: string;
+  params: any[];
+  uid: number;
+  isDefaultExport?: boolean;
+  isQuery?: boolean;
+  constructor(args: {
+    namespace?: string;
+    importName: string;
+    importPath: string;
+    params?: any[];
+    uid?: number;
+    isDefaultExport?: boolean;
+    isQuery?: boolean;
+  }) {
+    this.namespace = args.namespace;
+    this.importName = args.importName;
+    this.importPath = args.importPath;
+    this.params = args.params ?? [];
+    this.uid = args.uid ?? Math.floor(Math.random() * 1e9);
+    this.isDefaultExport = args.isDefaultExport;
+    this.isQuery = args.isQuery;
+  }
+}
+
+/** Mock constructor for FunctionArg — a single argument of a CustomFunctionExpr. */
+export class FunctionArg {
+  _type = "FunctionArg";
+  uuid: string;
+  expr: any;
+  argType: any;
+  constructor(args: { uuid: string; expr: any; argType: any }) {
+    this.uuid = args.uuid;
+    this.expr = args.expr;
+    this.argType = args.argType;
+  }
+}
+
+/** Mock constructor for CustomFunctionExpr — the query op that calls a custom function. */
+export class CustomFunctionExpr {
+  _type = "CustomFunctionExpr";
+  func: any;
+  args: any[];
+  constructor(args: { func: any; args: any[] }) {
+    this.func = args.func;
+    this.args = args.args;
+  }
+}
 
 /** Mock constructor for Mixin — reusable style bundle stored at site level. */
 export class Mixin {

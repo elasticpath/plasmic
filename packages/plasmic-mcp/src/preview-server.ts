@@ -28,16 +28,53 @@ import { CssVarResolver } from "@/wab/shared/core/styles";
 import { exportGlobalVariantGroup } from "@/wab/shared/codegen/variants";
 import { exportIconAsset, extractUsedIconAssetsForComponents } from "@/wab/shared/codegen/image-assets";
 import { walkDependencyTree } from "@/wab/shared/core/project-deps";
+import {
+  isCodeComponent,
+  isPageComponent,
+  getCodeComponentImportName,
+  getCodeComponentHelperImportName,
+} from "@/wab/shared/core/components";
+import { isCodeComponentWithHelpers } from "@/wab/shared/code-components/code-components";
+import { componentToDeepReferenced } from "@/wab/shared/cached-selectors";
+import { tryGetOwnerSite } from "@/wab/shared/core/tpls";
+import { getSlotParams } from "@/wab/shared/SlotUtils";
+import { jsLiteral, toVarName } from "@/wab/shared/codegen/util";
+import {
+  makeComponentSkeletonIdFileName,
+  makeCodeComponentHelperSkeletonIdFileName,
+  makeGlobalContextsImport,
+  makeGlobalGroupImports,
+  makePlasmicIsPreviewRootComponent,
+  wrapGlobalProviderWithCustomValue,
+} from "@/wab/shared/codegen/react-p/serialize-utils";
+import { allGlobalVariantGroups } from "@/wab/shared/core/sites";
+import { getRawCode, ExprCtx } from "@/wab/shared/core/exprs";
+import { DEVFLAGS } from "@/wab/shared/devflags";
+import { getPlumeEditorPlugin } from "@/wab/shared/plume/plume-registry";
+import { isKnownPropParam } from "@/wab/shared/model/classes";
+import {
+  getMatchingPagePathParams,
+  substituteUrlParams,
+} from "@/wab/shared/utils/url-utils";
 import type { ExportOpts, ComponentExportOutput } from "@/wab/shared/codegen/types";
 
 let server: http.Server | null = null;
 let serverPort: number | null = null;
 
-/** Resolved platform host URL (e.g., https://integration.host.elasticpathdev.com). */
-let platformHostUrl: string | null = null;
-
-/** Cached host.html content from the platform host. */
+/** Cached host.html content from the Studio platform (hostless fallback). */
 let cachedHostHtml: string | null = null;
+
+/** Cached app-host HTML rewritten for same-origin iframe embedding.
+ *  Keyed by app host URL so switching projects doesn't reuse stale HTML. */
+const cachedAppHostHtml = new Map<string, string>();
+
+/** App host URL that was most recently served at /static/host.html. Used so
+ *  our fallback static proxy can forward unresolved paths like /_next/* to
+ *  the right upstream. */
+let activeAppHostOrigin: string | null = null;
+
+/** Last app-host fetch error (surfaced via /debug for diagnosis). */
+let lastAppHostFetchError: string | null = null;
 
 /** Commit hash extracted from host.html script URL. */
 let commitHash: string | null = null;
@@ -58,15 +95,54 @@ export function getPreviewPort(): number | null {
   return serverPort;
 }
 
-/** Get the full preview URL for a component, or null if server not running. */
-export function getPreviewUrl(componentName: string): string | null {
+/**
+ * Get the full preview URL for a component, or null if server not running.
+ *
+ * For page components, emits a Studio-style path URL: given route
+ * `/product/[slug]` and pageParams `{slug: "test-product"}`, returns
+ * `/preview/product/test-product`. Without explicit pageParams, substitutes
+ * the component's `pageMeta.params` defaults (matches Studio's PreviewCtx
+ * `mkPreviewRoute` behavior) — any unresolved `[x]` placeholders are kept.
+ *
+ * For non-page components, emits `/preview/<ComponentName>`.
+ *
+ * Query params are appended as `?key=value` when provided.
+ */
+export function getPreviewUrl(
+  component: { name: string; pageMeta?: { path?: string; params?: Record<string, string>; query?: Record<string, string> } },
+  opts?: { pageParams?: Record<string, string>; pageQuery?: Record<string, string> }
+): string | null {
   if (!serverPort) return null;
-  return `http://127.0.0.1:${serverPort}/preview/${encodeURIComponent(componentName)}`;
+  const base = `http://127.0.0.1:${serverPort}/preview`;
+
+  let pathSuffix: string;
+  if (component.pageMeta?.path) {
+    const params = { ...(component.pageMeta.params ?? {}), ...(opts?.pageParams ?? {}) };
+    const substituted = substituteUrlParams(component.pageMeta.path, params);
+    // substituteUrlParams keeps leading `/`; our base URL has /preview so the
+    // result is `/preview/<path>`. Strip the leading slash from the substituted
+    // path to avoid double slashes.
+    pathSuffix = substituted.replace(/^\/+/, "");
+  } else {
+    pathSuffix = encodeURIComponent(component.name);
+  }
+
+  const queryEntries = Object.entries({
+    ...(component.pageMeta?.query ?? {}),
+    ...(opts?.pageQuery ?? {}),
+  });
+  const queryString = queryEntries.length
+    ? "?" +
+      queryEntries
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+        .join("&")
+    : "";
+  return `${base}/${pathSuffix}${queryString}`;
 }
 
 /**
  * Start the preview HTTP server on a random available port.
- * Resolves the platform host URL and caches host.html.
+ * Pre-fetches host.html from the Studio platform.
  * Stops any existing server first.
  */
 export async function startPreviewServer(
@@ -74,13 +150,7 @@ export async function startPreviewServer(
 ): Promise<number> {
   await stopPreviewServer();
 
-  // Resolve the platform host URL
-  await resolveHostUrl(apiClient);
-
-  // Pre-fetch and cache host.html
-  if (platformHostUrl) {
-    await fetchAndCacheHostHtml();
-  }
+  await fetchAndCacheHostHtml();
 
   apiClientRef = apiClient;
 
@@ -103,8 +173,7 @@ export async function startPreviewServer(
         serverPort = addr.port;
         server = srv;
         console.error(
-          `[plasmic-mcp] Preview server started on http://127.0.0.1:${serverPort}` +
-          (platformHostUrl ? ` (host: ${platformHostUrl})` : " (no host URL)")
+          `[plasmic-mcp] Preview server started on http://127.0.0.1:${serverPort} (host: ${getStudioOrigin()})`
         );
         resolve(serverPort);
       } else {
@@ -128,8 +197,9 @@ export async function stopPreviewServer(): Promise<void> {
       console.error("[plasmic-mcp] Preview server stopped");
       server = null;
       serverPort = null;
-      platformHostUrl = null;
       cachedHostHtml = null;
+      cachedAppHostHtml.clear();
+      activeAppHostOrigin = null;
       commitHash = null;
       apiClientRef = null;
       generatedModules.clear();
@@ -138,8 +208,9 @@ export async function stopPreviewServer(): Promise<void> {
     setTimeout(() => {
       server = null;
       serverPort = null;
-      platformHostUrl = null;
       cachedHostHtml = null;
+      cachedAppHostHtml.clear();
+      activeAppHostOrigin = null;
       commitHash = null;
       apiClientRef = null;
       generatedModules.clear();
@@ -158,60 +229,24 @@ function getStudioOrigin(): string {
 }
 
 // ---------------------------------------------------------------------------
-// Host URL resolution
+// Host.html fetch
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve the platform host URL using the same logic as Studio's getHostUrl():
- * 1. session.hostUrl (custom host from project settings)
- * 2. appConfig.defaultHostUrl (platform default for hostless projects)
- * 3. PLASMIC_PREVIEW_HOST_URL env var (manual override)
- */
-async function resolveHostUrl(apiClient: PlasmicApiClient): Promise<void> {
-  const session = getSession();
-
-  // Custom host projects already have the URL
-  if (session?.hostUrl) {
-    platformHostUrl = session.hostUrl.replace(/\/$/, "");
-    console.error(`[plasmic-mcp] Preview host: ${platformHostUrl} (project hostUrl)`);
-    return;
-  }
-
-  // Try env var override
-  if (process.env.PLASMIC_PREVIEW_HOST_URL) {
-    platformHostUrl = process.env.PLASMIC_PREVIEW_HOST_URL.replace(/\/$/, "");
-    console.error(`[plasmic-mcp] Preview host: ${platformHostUrl} (env var)`);
-    return;
-  }
-
-  // Fetch from app config (same as Studio's appConfig.defaultHostUrl)
-  try {
-    const appConfig = await apiClient.getAppConfig();
-    const defaultHost = (appConfig?.config as any)?.defaultHostUrl;
-    if (defaultHost) {
-      // defaultHostUrl may include /static/host.html — strip to base URL
-      const hostUrl = new URL(defaultHost);
-      platformHostUrl = `${hostUrl.protocol}//${hostUrl.host}`;
-      console.error(`[plasmic-mcp] Preview host: ${platformHostUrl} (appConfig.defaultHostUrl)`);
-      return;
-    }
-  } catch (err) {
-    console.error("[plasmic-mcp] Failed to fetch appConfig for defaultHostUrl:", err);
-  }
-
-  console.error("[plasmic-mcp] No platform host URL available for preview proxy");
-}
-
-/**
- * Fetch host.html from the platform host and cache it.
- * Extracts the commit hash from the script URL for use with other bundles.
+ * Fetch the host page HTML and cache it. Also fetch Studio's host.html for
+ * the commit hash (shared across bundles).
+ *
+ * We always need Studio's commit hash so we can load `react-web-bundle` and
+ * `live-frame` bundles from the Studio origin. When a project has an app
+ * host, we additionally fetch and serve the app-host HTML — rewritten to be
+ * same-origin with our preview server so the outer page can inject scripts
+ * into the iframe directly (browsers block cross-origin frame access).
  */
 async function fetchAndCacheHostHtml(): Promise<void> {
-  if (!platformHostUrl) return;
-
-  const hostHtmlUrl = `${platformHostUrl}/static/host.html`;
+  // Studio's host.html — used for the commit hash and as hostless fallback.
+  const studioHostUrl = `${getStudioOrigin()}/static/host.html`;
   try {
-    const response = await fetch(hostHtmlUrl, { redirect: "follow" });
+    const response = await fetch(studioHostUrl, { redirect: "follow" });
     if (!response.ok) {
       console.error(`[plasmic-mcp] Failed to fetch host.html: HTTP ${response.status}`);
       return;
@@ -227,8 +262,167 @@ async function fetchAndCacheHostHtml(): Promise<void> {
       console.error("[plasmic-mcp] Could not extract commit hash from host.html");
     }
   } catch (err) {
-    console.error(`[plasmic-mcp] Failed to fetch host.html from ${hostHtmlUrl}:`, err);
+    console.error(`[plasmic-mcp] Failed to fetch host.html from ${studioHostUrl}:`, err);
   }
+}
+
+/**
+ * Fetch the user's app-host page (e.g. http://localhost:3456/plasmic-host)
+ * server-side and rewrite it to be served from our preview origin without
+ * breaking relative URLs in the HTML.
+ *
+ * Strategy: inject `<base href="${upstreamOrigin}/">` at the top of <head>,
+ * so `/_next/static/chunks/*.js` and other relative URLs resolve against the
+ * user's dev server. Script tags load cross-origin without CORS because
+ * `<script src>` is exempt from same-origin policy. But `iframe.contentDocument`
+ * access from our outer page is now same-origin (iframe is at our origin),
+ * so script injection via `doc.head.appendChild(...)` works — matching the
+ * approach Studio uses in CanvasFrame.tsx (doc.open / doc.write into a
+ * sourceless iframe).
+ */
+async function fetchAndRewriteAppHost(appHostUrl: string): Promise<string | null> {
+  // Fetch the app-host HTML and serve it from our origin AS-IS. Relative URLs
+  // in the HTML (like `/_next/static/chunks/*.js`) will resolve against our
+  // origin — our `handleUpstreamProxy` forwards those requests to the user's
+  // dev server. This makes the iframe same-origin with our outer page (so
+  // direct `iframe.contentDocument` access works) while still serving real
+  // Next.js chunks from the user's dev server.
+  //
+  // We deliberately do NOT inject `<base href>`: that would break the History
+  // API because Next.js's router calls `history.replaceState(...)` with URLs
+  // resolved against baseURI, and the browser rejects cross-origin history
+  // states.
+  lastAppHostFetchError = null;
+  try {
+    const response = await fetch(appHostUrl, { redirect: "follow" });
+    if (!response.ok) {
+      lastAppHostFetchError = `HTTP ${response.status} ${response.statusText}`;
+      console.error(`[plasmic-mcp] App-host fetch failed: ${lastAppHostFetchError}`);
+      return null;
+    }
+    return await response.text();
+  } catch (err) {
+    lastAppHostFetchError = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    console.error(`[plasmic-mcp] Failed to fetch app-host from ${appHostUrl}:`, err);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Dependent-component module helpers (replicated from Studio's live-syncer.ts)
+// ---------------------------------------------------------------------------
+
+/**
+ * Walk all components this root transitively depends on (deep references +
+ * super components + sub components). Excludes the root itself.
+ * Mirrors live-syncer.ts:337-373.
+ */
+function extractDependentComponents(component: any): Set<any> {
+  const referencedComps = new Set<any>();
+  const seen = new Set<any>();
+
+  const check = (comp: any) => {
+    if (seen.has(comp)) return;
+    seen.add(comp);
+
+    for (const dep of componentToDeepReferenced(comp)) {
+      check(dep);
+      referencedComps.add(dep);
+    }
+
+    if (comp.superComp) {
+      referencedComps.add(comp.superComp);
+      check(comp.superComp);
+    }
+
+    for (const subComp of comp.subComps ?? []) {
+      referencedComps.add(subComp);
+      check(subComp);
+    }
+  };
+
+  check(component);
+  return referencedComps;
+}
+
+/**
+ * Build a SystemJS module whose contents are a code component stub: the
+ * exported symbol is a runtime lookup into __PlasmicComponentRegistry,
+ * __PlasmicContextRegistry, and __PlasmicBuiltinRegistry. Matches the
+ * non-ccStubs branch of live-syncer.ts:430-482.
+ *
+ * Registration happens via the iframe's origin page (the user's app host)
+ * executing plasmic-init's registerComponent() calls, or (for builtins) via
+ * Studio's live-frame bundle.
+ */
+function createCodeComponentModule(
+  component: any,
+  opts?: { idFileNames?: boolean }
+): CodeModule {
+  const importName = getCodeComponentImportName(component);
+  const notFoundMsg = `[host-app-error] Code component '${component.name}' was not found in the current host app.`;
+  const body = `ensure(
+    ([
+      ...(window).__PlasmicComponentRegistry,
+      ...((window).__PlasmicContextRegistry ?? []),
+      ...((window).__PlasmicBuiltinRegistry ?? [])
+    ]).find(
+      ({meta}) => meta.name === ${jsLiteral(component.name)}
+    )
+  , ${jsLiteral(notFoundMsg)}).component`;
+
+  const source = `
+  const ensure = (x, msg) => {
+    if (x === undefined || x === null) {
+      throw new Error(msg);
+    }
+    return x;
+  };
+  ${component.codeComponentMeta.defaultExport ? "" : "export "}const ${importName} = ${body};
+  ${component.codeComponentMeta.defaultExport ? `export default ${importName}` : ""}
+  `;
+  const fileName = opts?.idFileNames
+    ? makeComponentSkeletonIdFileName(component)
+    : importName;
+  return { name: `./${fileName}.tsx`, lang: "tsx", source };
+}
+
+/**
+ * Companion to createCodeComponentModule for code components with helpers.
+ * Mirrors live-syncer.ts:395-424.
+ */
+function createCodeComponentHelperModule(
+  component: any,
+  opts?: { idFileNames?: boolean }
+): CodeModule {
+  const importName = getCodeComponentHelperImportName(component);
+  const body = `([...(window).__PlasmicComponentRegistry, ...((window).__PlasmicBuiltinRegistry ?? [])]).find(
+    ({meta}) => meta.name === ${jsLiteral(component.name)}
+  ).meta.componentHelpers?.helpers`;
+  const defaultExport = component.codeComponentMeta.helpers?.defaultExport;
+  const source = `
+  ${defaultExport ? "" : "export "}const ${importName} = ${body};
+  ${defaultExport ? `export default ${importName}` : ""}
+  `;
+  const fileName = opts?.idFileNames
+    ? makeCodeComponentHelperSkeletonIdFileName(component)
+    : importName;
+  return { name: `./${fileName}.tsx`, lang: "tsx", source };
+}
+
+/**
+ * Emit render + skeleton + css modules for a regular (non-code) component.
+ * Mirrors live-syncer.ts:375-393 createComponentModules.
+ */
+function createComponentModules(output: ComponentExportOutput): CodeModule[] {
+  const out: CodeModule[] = [
+    { name: `./${output.renderModuleFileName}`, source: output.renderModule, lang: "tsx" },
+    { name: `./${output.skeletonModuleFileName}`, source: output.skeletonModule, lang: "tsx" },
+  ];
+  if (output.cssRules) {
+    out.push({ name: `./${output.cssFileName}`, source: output.cssRules, lang: "css" });
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -242,7 +436,65 @@ async function fetchAndCacheHostHtml(): Promise<void> {
  * Uses exportReactPresentational + SiteGenHelper + CssVarResolver directly
  * against the in-memory site model — no external API calls needed.
  */
-function generateComponentModules(component: any): CodeModule[] | { error: string } | null {
+/**
+ * Resolve a URL-style path like `product/test-product` or a bare component
+ * name / UUID to the page component + path params.
+ *
+ * Mirrors Studio's `getComponentByPath` at platform/wab/src/wab/client/
+ * components/live/PreviewCtx.tsx:701-763. When multiple page routes match,
+ * picks the one with fewest path params (so `/products/foo` wins over
+ * `/products/[slug]` when both match). Returns `pageParams` extracted from
+ * the path via `getMatchingPagePathParams` (shared with Studio).
+ *
+ * Falls through to component-name/UUID lookup for non-page components so
+ * the preview works for reusable components too.
+ */
+function resolveComponentByPath(
+  site: any,
+  rawPath: string
+): { component: any; pageParams: Record<string, string> } | null {
+  const normalized = "/" + rawPath.replace(/^\/+/, "");
+
+  const matches = (site.components ?? [])
+    .filter(
+      (c: any) =>
+        c.uuid === rawPath ||
+        (c.pageMeta &&
+          getMatchingPagePathParams(c.pageMeta.path, normalized))
+    )
+    .map((c: any) => {
+      const params = c.pageMeta
+        ? getMatchingPagePathParams(c.pageMeta.path, normalized) || {}
+        : {};
+      return {
+        component: c,
+        paramCount: Object.keys(params).length,
+        params,
+      };
+    })
+    .sort(
+      (a: any, b: any) => a.paramCount - b.paramCount
+    );
+
+  if (matches.length > 0) {
+    const best = matches[0];
+    return { component: best.component, pageParams: best.params };
+  }
+
+  // Not a page-path match — fall back to component name / UUID.
+  const byName = (site.components ?? []).find(
+    (c: any) => c.name === rawPath || c.uuid === rawPath
+  );
+  if (byName) {
+    return { component: byName, pageParams: {} };
+  }
+  return null;
+}
+
+function generateComponentModules(
+  component: any,
+  opts?: { pageParams?: Record<string, string>; pageQuery?: Record<string, string> }
+): CodeModule[] | { error: string } | null {
   const session = getSession();
   if (!session) return null;
 
@@ -274,6 +526,7 @@ function generateComponentModules(component: any): CodeModule[] | { error: strin
       useCustomFunctionsStub: true,
       isLivePreview: true,
       targetEnv: "preview",
+      relPathFromManagedToImplDir: ".",
     };
 
     // Step 1: Project config (same as Studio's exportProjectConfig call)
@@ -345,10 +598,14 @@ function generateComponentModules(component: any): CodeModule[] | { error: strin
     };
     pushProjectMods(projectConfig);
 
-    // 6c. Dependency project mods (live-syncer:168, createDepsProjectMods)
+    // 6c. Dependency project mods (live-syncer:168, createDepsProjectMods).
+    // Also build a site → projectConfig map so step 6g can codegen dependents
+    // that live in imported projects with the right per-project CSS config.
+    const depProjectConfigs = new Map<any, any>();
     try {
       for (const dep of walkDependencyTree(site, "all")) {
         const depConfig = exportProjectConfig(dep.site, dep.name, dep.projectId, 0, "dep", "latest", exportOpts);
+        depProjectConfigs.set(dep.site, depConfig);
         pushProjectMods(depConfig);
       }
     } catch (e) {
@@ -386,23 +643,88 @@ function generateComponentModules(component: any): CodeModule[] | { error: strin
       console.error("[plasmic-mcp] Global variant export failed (non-fatal):", e instanceof Error ? e.message : e);
     }
 
-    // Entry module: import the skeleton and render via setPlasmicRootNode
-    const entrySource = `
-      var React = window.__Sub.React;
-      var mod = require("./${output.skeletonModuleFileName}");
-      var Comp = mod.default || mod[Object.keys(mod).find(function(k) { return k !== '__esModule'; }) || ''];
-      window.__Sub.setPlasmicRootNode(
-        React.createElement(Comp, null)
-      );
-      window.parent.postMessage({ source: "plasmic-preview", type: "rendered" }, "*");
-    `;
+    // 6g. Dependent components (live-syncer:192-230). For every component the
+    // root transitively references, emit either a code-component stub (looks
+    // up __PlasmicComponentRegistry at runtime) or full render+skeleton+css
+    // modules for a regular Plasmic component.
+    //
+    // This is what unblocks `require("./comp__<uuid>")` resolution in the
+    // generated render module — without these, SystemJS would try to fetch
+    // them from the iframe origin (which has no such route) and fail.
+    try {
+      for (const dep of extractDependentComponents(component)) {
+        if (isCodeComponent(dep)) {
+          modules.push(createCodeComponentModule(dep, { idFileNames: true }));
+          if (isCodeComponentWithHelpers(dep)) {
+            modules.push(createCodeComponentHelperModule(dep, { idFileNames: true }));
+          }
+        } else {
+          // Use the owning site's projectConfig so imported components
+          // reference their own project's CSS (see live-syncer:205-210).
+          const ownerSite = tryGetOwnerSite(dep);
+          const depProjectConfig =
+            ownerSite === site || !ownerSite
+              ? projectConfig
+              : depProjectConfigs.get(ownerSite) ?? projectConfig;
+          const depOutput: ComponentExportOutput = exportReactPresentational(
+            compGenHelper,
+            dep,
+            site,
+            depProjectConfig,
+            imageAssetUriMap,
+            false,
+            false,
+            undefined,
+            exportOpts,
+            siteCtx
+          );
+          modules.push(...createComponentModules(depOutput));
+        }
+      }
+    } catch (e) {
+      console.error("[plasmic-mcp] Dependent component emission failed (non-fatal):", e instanceof Error ? e.message : e);
+    }
 
-    modules.push({
-      name: "./preview-entry.tsx",
-      source: entrySource,
-      lang: "tsx",
-      run: true,
-    });
+    // 6h. Global contexts (live-syncer:320-335 processGlobalContexts).
+    // Emit stubs for each global-context code component plus the bundle's
+    // wrapper module. Uses the shared `makeGlobalContextsImport` conventions:
+    // file is `./PlasmicGlobalContextsProvider.tsx`, default export is
+    // `GlobalContextsProvider` (matches react-p/global-context/index.ts:190).
+    const globalContextBundle = (projectConfig as any).globalContextBundle;
+    try {
+      if (globalContextBundle) {
+        const globalContexts = (site.globalContexts ?? []).map((tpl: any) => tpl.component);
+        for (const ctx of globalContexts) {
+          modules.push(createCodeComponentModule(ctx, { idFileNames: true }));
+        }
+        modules.push({
+          name: "./PlasmicGlobalContextsProvider.tsx",
+          source: globalContextBundle.contextModule,
+          lang: "tsx",
+        });
+      }
+    } catch (e) {
+      console.error("[plasmic-mcp] Global context emission failed (non-fatal):", e instanceof Error ? e.message : e);
+    }
+
+    // Entry module — mirrors Studio's createPreviewScript at
+    // platform/wab/src/wab/client/components/live/live-syncer.ts:498-670.
+    // SYNC POINT: on upstream merges, diff createPreviewScript and port any
+    // changes here. MCP drops Studio's mobx `untracked()` wrapping and uses
+    // empty defaults for variant/global/pageParams/currentAppUser.
+    modules.push(buildPreviewEntryScript({
+      output,
+      site,
+      component,
+      styleTokensProviderBundle:
+        (projectConfig as any).hasStyleTokenOverrides
+          ? (projectConfig as any).styleTokensProviderBundle
+          : undefined,
+      globalContextBundle,
+      projectConfig,
+      pageParams: opts?.pageParams ?? {},
+      pageQuery: opts?.pageQuery ?? {},
+    }));
 
     return modules;
   } catch (err) {
@@ -410,6 +732,204 @@ function generateComponentModules(component: any): CodeModule[] | { error: strin
     console.error(`[plasmic-mcp] Codegen failed for "${component.name}":`, msg);
     return { error: msg };
   }
+}
+
+/**
+ * Build the preview entry module — mirror of Studio's `createPreviewScript`
+ * (platform/wab/src/wab/client/components/live/live-syncer.ts:498-670).
+ *
+ * Studio's function takes `PreviewCtx`/`StudioCtx` (mobx-reactive); MCP has
+ * neither, so we take primitive inputs and use empty defaults where Studio
+ * would read user-selected state (variants, global variants, pageParams,
+ * pageQuery, currentAppUser). `untracked()` is dropped — no mobx in MCP.
+ *
+ * Wrapping chain (outer → inner):
+ *   StyleTokensProvider        — root project's token overrides
+ *     global variant providers — theme/screen etc
+ *       GlobalContextsProvider — EPCommerceProvider and other globalContexts
+ *         PageParamsProvider   — $ctx.params/query for page components
+ *           PlasmicDataSourceContextProvider — currentAppUser / authToken
+ *             div.live-root-container(--centered) — layout frame
+ *               Component(__plasmicIsPreviewRoot=true)
+ *
+ * Then optionally wraps in `<ph.DataProvider name="..."><Suspense>` when
+ * React 18+ is detected (so async data-source integrations don't suspend
+ * the whole iframe).
+ *
+ * SYNC POINT: on upstream merges, diff live-syncer.ts:498-670 and port any
+ * changes here. See also memory: project_upstream_merge_runbook.md.
+ */
+function buildPreviewEntryScript(opts: {
+  output: ComponentExportOutput;
+  site: any;
+  component: any;
+  styleTokensProviderBundle?: { id: string; fileName: string };
+  globalContextBundle?: any;
+  projectConfig: any;
+  pageParams: Record<string, string>;
+  pageQuery: Record<string, string>;
+}): CodeModule {
+  const {
+    output,
+    site,
+    component,
+    styleTokensProviderBundle,
+    globalContextBundle,
+    projectConfig,
+    pageParams,
+    pageQuery,
+  } = opts;
+  const componentName = output.componentName;
+  const componentPath = output.skeletonModuleFileName;
+
+  // Build the component-wrapping expression inside-out, same order as
+  // live-syncer.ts:507-565.
+  let content = `React.createElement(${componentName}, {
+    ...props,
+    ${makePlasmicIsPreviewRootComponent()}: true
+  })`;
+
+  const containerClass = `live-root-container ${
+    output.isPage ? "" : "live-root-container--centered"
+  }`;
+  content = `React.createElement("div", {className: "${containerClass}"}, ${content})`;
+
+  if (styleTokensProviderBundle) {
+    content = `<StyleTokensProvider>{${content}}</StyleTokensProvider>`;
+  }
+
+  const globalGroups = allGlobalVariantGroups(site, {
+    includeDeps: "all",
+    excludeEmpty: true,
+    excludeMediaQuery: true,
+  });
+  const globalGroupImports = makeGlobalGroupImports(globalGroups, {
+    idFileNames: true,
+  });
+  const globalContextsImports = globalContextBundle
+    ? makeGlobalContextsImport(projectConfig)
+    : "";
+
+  if (globalContextBundle) {
+    // Mirror of live-syncer.ts:1111-1117. Shared `wrapGlobalContexts` in
+    // serialize-utils.ts:464 inlines content as JSX children (used by the
+    // regular codegen pipeline where content is already a JSX element); here
+    // content can be a JS expression string like `React.createElement(...)`,
+    // so we wrap in `{...}` to keep Babel's JSX parser happy.
+    content = `<GlobalContextsProvider>{${content}}</GlobalContextsProvider>`;
+  }
+  for (const vg of globalGroups) {
+    content = wrapGlobalProviderWithCustomValue(
+      vg,
+      content,
+      true,
+      `global.${toVarName(vg.param.variable.name)}`
+    );
+  }
+
+  if (isPageComponent(component)) {
+    const path = JSON.stringify(component.pageMeta?.path ?? "/");
+    const params = JSON.stringify(pageParams);
+    const query = JSON.stringify(pageQuery);
+    content = `ph.PageParamsProvider ? (
+      <ph.PageParamsProvider route={${path}} params={${params}} query={${query}}>
+        {(${content})}
+      </ph.PageParamsProvider>
+    ) : (${content})`;
+  }
+
+  // wrapContentWithCurrentUserContext (live-syncer.ts:1119-1132) — 6 lines,
+  // inlined here because it's not shared.
+  content = `
+  <p.PlasmicDataSourceContextProvider value={${jsLiteral({
+    user: undefined,
+    userAuthToken: undefined,
+  })}}>
+    {(${content})}
+  </p.PlasmicDataSourceContextProvider>
+  `;
+
+  // Serialize initial props from component.params previewExprs + Plume
+  // plugin defaults (live-syncer.ts:571-602). Skip Studio's mobx untracked().
+  const serializedInitialProps: Record<string, string> = {};
+  const exprCtx: ExprCtx = {
+    component: null,
+    projectFlags: DEVFLAGS,
+    inStudio: false,
+  };
+  for (const param of component.params ?? []) {
+    if (!isKnownPropParam(param) || !param.previewExpr) continue;
+    serializedInitialProps[toVarName(param.variable.name)] = getRawCode(
+      param.previewExpr,
+      exprCtx
+    );
+  }
+  const plugin = getPlumeEditorPlugin(component);
+  if (plugin?.getArtboardRootDefaultProps) {
+    const defaults = plugin.getArtboardRootDefaultProps(component);
+    if (defaults) {
+      for (const [key, val] of Object.entries(defaults)) {
+        serializedInitialProps[key] = JSON.stringify(val);
+      }
+    }
+  }
+
+  const source = `
+      import React from "react";
+      import ReactDOM from "react-dom";
+      import * as ph from "@plasmicapp/host";
+      import * as p from "@plasmicapp/react-web";
+      ${globalGroupImports}
+      ${globalContextsImports}
+      ${
+        styleTokensProviderBundle
+          ? `import { StyleTokensProvider } from "./${styleTokensProviderBundle.fileName}";`
+          : ""
+      }
+      import ${componentName} from "./${componentPath}";
+      const Sub = (window as any).__Sub;
+
+      function PlasmicPreviewWrapper() {
+        const [props, setProps] = React.useState({
+          ${Object.entries(serializedInitialProps)
+            .map(([key, val]) => `${key}: ${val}`)
+            .join(",\n          ")}
+        });
+        const [global, setGlobal] = React.useState({});
+        (window as any).setPreviewComponentProps = (newProps) => {
+          setProps({...props, ...newProps});
+        };
+        (window as any).setPreviewGlobalVariants = setGlobal;
+        const reactMajorVersion = +React.version.split(".")[0];
+        const content = (${content});
+        if (reactMajorVersion >= 18 && !!ph.DataProvider) {
+          return (
+            <ph.DataProvider
+              name="plasmicInternalEnableLoadingBoundary"
+              hidden
+              data={true}
+            >
+              <React.Suspense fallback="Loading...">
+                {content}
+              </React.Suspense>
+            </ph.DataProvider>
+          );
+        }
+        return content;
+      }
+
+      export function __run() {
+        Sub.hostUtils.setPlasmicRootNode(React.createElement(PlasmicPreviewWrapper, {}));
+        window.parent.postMessage({ source: "plasmic-preview", type: "rendered" }, "*");
+      }
+    `;
+
+  return {
+    name: `./script_${componentName}.tsx`,
+    source,
+    lang: "tsx",
+    run: true,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -423,11 +943,17 @@ async function handleRequest(
   const parsed = url.parse(req.url || "/", true);
   const pathname = parsed.pathname || "/";
 
-  // GET /preview/:componentName
+  // GET /preview/<path-or-name>?key=value&... — Studio-style routing
+  // (matches PreviewCtx.tsx:701-763 `getComponentByPath`). The segment after
+  // `/preview/` is matched against every page's `pageMeta.path`: if the URL
+  // is `/preview/product/test-product`, we extract `{slug: "test-product"}`
+  // from the ProductDetail route `/product/[slug]`. Query string becomes
+  // pageQuery. Falls back to component name/UUID for non-page components.
   const previewMatch = pathname.match(/^\/preview\/(.+)$/);
   if (req.method === "GET" && previewMatch) {
-    const componentName = decodeURIComponent(previewMatch[1]);
-    handlePreview(componentName, res);
+    const rawPath = decodeURIComponent(previewMatch[1]);
+    const query = parsed.query as Record<string, string | string[] | undefined>;
+    await handlePreview(rawPath, query, res);
     return;
   }
 
@@ -461,13 +987,39 @@ async function handleRequest(
   // GET /health
   if (req.method === "GET" && pathname === "/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ status: "ok", port: serverPort, hostUrl: platformHostUrl }));
+    res.end(JSON.stringify({ status: "ok", port: serverPort, hostUrl: getStudioOrigin() }));
+    return;
+  }
+
+  // GET /debug — internal state inspection (developer-only)
+  if (req.method === "GET" && pathname === "/debug") {
+    const sess = getSession();
+    const appHostUrls = Array.from(cachedAppHostHtml.keys());
+    const appHostSizes = appHostUrls.map(k => ({ origin: k, size: cachedAppHostHtml.get(k)?.length ?? 0 }));
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      sessionHostUrl: sess?.hostUrl ?? null,
+      activeAppHostOrigin,
+      cachedAppHosts: appHostSizes,
+      lastAppHostFetchError,
+      cachedHostHtmlLength: cachedHostHtml?.length ?? 0,
+      commitHash,
+    }, null, 2));
     return;
   }
 
   // GET / — component index
   if (req.method === "GET" && pathname === "/") {
     handleIndex(res);
+    return;
+  }
+
+  // Catch-all: proxy anything else to the active app host (the user's dev
+  // server). This covers `/_next/static/chunks/*.js` and other relative URLs
+  // referenced inside the rewritten app-host HTML we serve at
+  // /static/host.html. Without this the iframe 404s on every Next.js chunk.
+  if (activeAppHostOrigin) {
+    await handleUpstreamProxy(req, res, activeAppHostOrigin);
     return;
   }
 
@@ -480,7 +1032,14 @@ async function handleRequest(
 // ---------------------------------------------------------------------------
 
 function handleHostHtml(res: http.ServerResponse): void {
-  if (!cachedHostHtml) {
+  // Prefer the project's app-host HTML (rewritten for same-origin embedding)
+  // when one was fetched during the most recent /preview request. Fall back
+  // to Studio's host.html for hostless projects.
+  console.error(`[plasmic-mcp/host.html] activeAppHostOrigin=${activeAppHostOrigin} hasCached=${activeAppHostOrigin ? cachedAppHostHtml.has(activeAppHostOrigin) : "n/a"}`);
+  const html = activeAppHostOrigin
+    ? cachedAppHostHtml.get(activeAppHostOrigin) ?? cachedHostHtml
+    : cachedHostHtml;
+  if (!html) {
     res.writeHead(503, { "Content-Type": "text/html" });
     res.end(errorPage("Host Not Available", "host.html not loaded. Check platform host URL."));
     return;
@@ -490,20 +1049,14 @@ function handleHostHtml(res: http.ServerResponse): void {
     "Content-Type": "text/html; charset=utf-8",
     "Cache-Control": "no-cache",
   });
-  res.end(cachedHostHtml);
+  res.end(html);
 }
 
 async function handleStaticProxy(
   pathname: string,
   res: http.ServerResponse
 ): Promise<void> {
-  if (!platformHostUrl) {
-    res.writeHead(503, { "Content-Type": "text/plain" });
-    res.end("No platform host URL configured");
-    return;
-  }
-
-  const targetUrl = `${platformHostUrl}${pathname}`;
+  const targetUrl = `${getStudioOrigin()}${pathname}`;
   try {
     const proxyRes = await fetch(targetUrl, { redirect: "follow" });
     if (!proxyRes.ok) {
@@ -527,10 +1080,43 @@ async function handleStaticProxy(
   }
 }
 
-function handlePreview(
-  componentName: string,
+/**
+ * Transparent reverse proxy: forward a request to the user's dev server.
+ * Used for `/_next/*` and any other path the rewritten app-host HTML
+ * references relatively — those must come from the user's dev server but
+ * be served at our origin to stay same-origin with the iframe.
+ */
+async function handleUpstreamProxy(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  upstreamOrigin: string
+): Promise<void> {
+  const target = `${upstreamOrigin}${req.url || "/"}`;
+  try {
+    const proxyRes = await fetch(target, {
+      method: req.method,
+      redirect: "follow",
+      // Don't forward hop-by-hop or host-specific headers; let fetch set its own
+    });
+    const contentType = proxyRes.headers.get("content-type") || "application/octet-stream";
+    const body = Buffer.from(await proxyRes.arrayBuffer());
+    res.writeHead(proxyRes.status, {
+      "Content-Type": contentType,
+      "Cache-Control": proxyRes.headers.get("cache-control") || "no-cache",
+    });
+    res.end(body);
+  } catch (err: any) {
+    console.error(`[plasmic-mcp] Upstream proxy error for ${req.url}:`, err.message);
+    res.writeHead(502, { "Content-Type": "text/plain" });
+    res.end(`Upstream proxy failed: ${err.message}`);
+  }
+}
+
+async function handlePreview(
+  rawPath: string,
+  rawQuery: Record<string, string | string[] | undefined>,
   res: http.ServerResponse
-): void {
+): Promise<void> {
   const session = getSession();
   if (!session) {
     res.writeHead(503, { "Content-Type": "text/html" });
@@ -544,20 +1130,34 @@ function handlePreview(
     return;
   }
 
-  // Resolve component by name or UUID
-  const component = session.site.components?.find(
-    (c: any) => c.name === componentName || c.uuid === componentName
-  );
-  if (!component) {
+  // Resolve using Studio's path-matching rules. `rawPath` may be:
+  //   - `product/test-product` → matches a page with pageMeta.path `/product/[slug]`
+  //   - `ProductDetail`        → matches by component name
+  //   - `03EbS1cxqctg`         → matches by UUID
+  const resolved = resolveComponentByPath(session.site, rawPath);
+  if (!resolved) {
     const names = (session.site.components || []).map((c: any) => c.name).join(", ");
     res.writeHead(404, { "Content-Type": "text/html" });
-    res.end(errorPage("Component Not Found", `"${componentName}" not found. Available: ${names}`));
+    res.end(errorPage("Component Not Found", `"${rawPath}" didn't match any page path or component. Available components: ${names}`));
     return;
+  }
+  const { component, pageParams: pathParams } = resolved;
+
+  // Merge path-derived params with pageMeta defaults (path wins) and
+  // derive pageQuery from the query string, falling back to pageMeta.query
+  // defaults when a key is absent (mirrors Studio's PreviewCtx.tsx:390-395).
+  const pageMetaParams: Record<string, string> = component.pageMeta?.params ?? {};
+  const pageMetaQuery: Record<string, string> = component.pageMeta?.query ?? {};
+  const pageParams: Record<string, string> = { ...pageMetaParams, ...pathParams };
+  const pageQuery: Record<string, string> = { ...pageMetaQuery };
+  for (const [k, v] of Object.entries(rawQuery)) {
+    if (v === undefined) continue;
+    pageQuery[k] = Array.isArray(v) ? (v[0] ?? "") : v;
   }
 
   // Generate component code using the same codegen pipeline as Studio's live preview
   let modules: CodeModule[];
-  const result = generateComponentModules(component);
+  const result = generateComponentModules(component, { pageParams, pageQuery });
 
   if (result && !("error" in result)) {
     modules = result;
@@ -581,7 +1181,7 @@ function handlePreview(
         source: `
           var React = window.__Sub.React;
           var el = React.createElement;
-          window.__Sub.setPlasmicRootNode(
+          window.__Sub.hostUtils.setPlasmicRootNode(
             el("div", { style: { padding: "40px", fontFamily: "system-ui" } },
               el("h1", {}, ${JSON.stringify(component.name)}),
               el("p", { style: { color: "#c00" } }, "Codegen failed:"),
@@ -597,7 +1197,26 @@ function handlePreview(
   }
 
   const studioOrigin = getStudioOrigin();
-  const previewHtml = generatePreviewPage(component.name, modules, commitHash, studioOrigin);
+
+  // Track the active app host origin so the catch-all proxy forwards
+  // `/_next/*` etc. to the right upstream. The iframe loads the user's host
+  // page at its real pathname (e.g. `/plasmic-host`) through our origin,
+  // which makes it same-origin with the outer preview page (so script
+  // injection into the iframe works) while still hitting the real Next.js
+  // app for HTML/JS/CSS. Hostless projects fall back to /static/host.html
+  // (served from Studio's cached host.html).
+  const appHostPathname =
+    session.hostUrl != null ? new URL(session.hostUrl).pathname : null;
+  activeAppHostOrigin =
+    session.hostUrl != null ? new URL(session.hostUrl).origin : null;
+
+  const previewHtml = generatePreviewPage(
+    component.name,
+    modules,
+    commitHash,
+    studioOrigin,
+    appHostPathname
+  );
 
   res.writeHead(200, {
     "Content-Type": "text/html; charset=utf-8",
@@ -647,12 +1266,17 @@ function generatePreviewPage(
   componentName: string,
   modules: CodeModule[],
   hash: string,
-  studioOrigin: string
+  studioOrigin: string,
+  appHostPathname: string | null
 ): string {
   const modulesJson = JSON.stringify(modules);
-  // The iframe src must be /static/host.html (sub/index.tsx checks location.pathname)
-  // The origin param tells PlasmicCanvasHost where to load getlibs.js (SystemJS) from
-  const iframeSrc = `/static/host.html#live=true&origin=${encodeURIComponent(studioOrigin)}`;
+  // Iframe loads the app host's pathname (e.g. `/plasmic-host`) or, for
+  // hostless projects, Studio's `/static/host.html`. Either way the URL is on
+  // OUR origin so the outer page can inject scripts directly into the iframe
+  // document. The catch-all proxy forwards any unmatched paths (e.g.
+  // `/_next/static/chunks/*.js`) to the upstream.
+  const iframeBase = appHostPathname ?? "/static/host.html";
+  const iframeSrc = `${iframeBase}#live=true&origin=${encodeURIComponent(studioOrigin)}`;
 
   return `<!DOCTYPE html>
 <html lang="en">

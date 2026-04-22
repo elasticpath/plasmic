@@ -1214,6 +1214,7 @@ declare module "@/wab/shared/codegen/types" {
     isLivePreview?: boolean;
     targetEnv: string;
     localization?: any;
+    relPathFromManagedToImplDir?: string;
   }
 
   export interface ComponentExportOutput {
@@ -1346,4 +1347,110 @@ declare module "@/wab/shared/core/styles" {
       opts?: { keepAssetRefs?: boolean; useCssVariables?: boolean }
     );
   }
+}
+
+// --- Preview-script mirror dependencies (live-syncer.ts:498-670) ---
+
+declare module "@/wab/shared/codegen/util" {
+  /** JSON.stringify-equivalent string literal emitter used by code generators. */
+  export function jsLiteral(value: any): string;
+  /** Converts an identifier to a valid JS variable name (camelCase, safe chars). */
+  export function toVarName(name: string): string;
+}
+
+declare module "@/wab/shared/codegen/react-p/serialize-utils" {
+  import type { ProjectConfig } from "@/wab/shared/codegen/types";
+
+  export function makeComponentSkeletonIdFileName(component: any): string;
+  export function makeCodeComponentHelperSkeletonIdFileName(component: any): string;
+  /** `import GlobalContextsProvider from "./PlasmicGlobalContextsProvider"` */
+  export function makeGlobalContextsImport(projectConfig: ProjectConfig): string;
+  /** Wraps content in `<GlobalContextsProvider>{...}</GlobalContextsProvider>` */
+  export function wrapGlobalContexts(content: string): string;
+  /** `import {<ProviderName>} from "./<filename>"` per global variant group. */
+  export function makeGlobalGroupImports(
+    globalGroups: any[],
+    opts?: { idFileNames?: boolean }
+  ): string;
+  /** Prop name Studio sets on the root preview component (`__plasmicIsPreviewRoot`). */
+  export function makePlasmicIsPreviewRootComponent(): string;
+  /** Wraps content in the group's variant provider binding to an expression. */
+  export function wrapGlobalProviderWithCustomValue(
+    vg: any,
+    content: string,
+    curlyBrackets: boolean,
+    value: string
+  ): string;
+}
+
+declare module "@/wab/shared/core/sites" {
+  /** Returns global variant groups active for preview, optionally including deps. */
+  export function allGlobalVariantGroups(
+    site: any,
+    opts?: {
+      includeDeps?: "all" | "direct";
+      excludeEmpty?: boolean;
+      excludeMediaQuery?: boolean;
+      excludeInactiveScreenVariants?: boolean;
+      includeActiveScreenVariantsFromDeps?: boolean;
+    }
+  ): any[];
+}
+
+declare module "@/wab/shared/core/exprs" {
+  export interface ExprCtx {
+    component: any | null;
+    projectFlags: any;
+    inStudio: boolean;
+  }
+  /** Serializes a Plasmic expression node back to raw JS source. */
+  export function getRawCode(expr: any, ctx: ExprCtx): string;
+}
+
+declare module "@/wab/shared/devflags" {
+  /** Runtime dev-flags bag. Treat fields as optional booleans. */
+  export const DEVFLAGS: Record<string, any>;
+}
+
+declare module "@/wab/shared/plume/plume-registry" {
+  interface PlumeEditorPlugin {
+    getArtboardRootDefaultProps?(component: any): Record<string, any> | undefined;
+  }
+  /** Returns the Plume editor plugin for a component, if any (Select, Button, etc.). */
+  export function getPlumeEditorPlugin(component: any): PlumeEditorPlugin | undefined;
+}
+
+// --- Dev-host ingestion dependencies (mirrors Studio's
+// server/code-components/code-components.ts usage pattern) ---
+
+declare module "@/wab/shared/code-components/code-components" {
+  /** Reads registered components/contexts/tokens/traits/functions/libs from
+   *  a Window-like object's `__Plasmic*Registry` globals. */
+  export class CodeComponentsRegistry {
+    constructor(win: unknown, builtins: Record<string, unknown>);
+  }
+  /** Master orchestrator: type-checks, adds new, fixes missing, refreshes
+   *  metas, upserts tokens/functions/libs. Returns a failable result. */
+  export function syncCodeComponents(
+    ctx: unknown,
+    callbacks: unknown,
+    opts?: { force?: boolean }
+  ): Promise<unknown>;
+}
+
+declare module "@/wab/shared/utils/url-utils" {
+  /** Substitutes [slug] / [[...catchall]] placeholders in a page path template. */
+  export function substituteUrlParams(
+    template: string,
+    params: Record<string, string>
+  ): string;
+  /**
+   * Matches a URL path against a page path template.
+   * `getMatchingPagePathParams("/product/[slug]", "/product/foo")` →
+   * `{slug: "foo"}`. Returns `false` when the template doesn't match.
+   */
+  export function getMatchingPagePathParams(
+    pagePath: string,
+    lookup: string
+  ): Record<string, string> | false;
 }

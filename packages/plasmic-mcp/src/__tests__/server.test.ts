@@ -716,7 +716,10 @@ describe("tool handlers", () => {
           hostlessDataVersion: 0,
         })
       );
-      expect(mockInitChangeTracker).toHaveBeenCalledWith(mockSite);
+      expect(mockInitChangeTracker).toHaveBeenCalledWith(
+        mockSite,
+        expect.objectContaining({ bundler: { fake: true }, projectUuid: "proj-123" })
+      );
     });
 
     it("returns error on API failure", async () => {
@@ -4788,7 +4791,10 @@ describe("tool handlers", () => {
       expect(mockClearRegistryCache).toHaveBeenCalled();
       expect(mockLoadProject).toHaveBeenCalledWith(mockApiClient, "proj-123", undefined);
       expect(mockSetSession).toHaveBeenCalled();
-      expect(mockInitChangeTracker).toHaveBeenCalledWith(refreshedSite);
+      expect(mockInitChangeTracker).toHaveBeenCalledWith(
+        refreshedSite,
+        expect.objectContaining({ projectUuid: "proj-123" })
+      );
     });
 
     it("clears registry cache with hostUrl on refresh", async () => {
@@ -6737,6 +6743,76 @@ describe("tool handlers", () => {
       expect(output.success).toBe(true);
       expect(output.name).toBe("fetchItems");
       expect(output.revision).toBe(41);
+    });
+
+    // Gap #74 wiring — the MCP tool surface forwards `functionCall` through
+    // to `updateQuery` intact. The Zod schema on the data tool accepts
+    // {namespace, name, args} and null; both shapes reach the implementation
+    // via options.functionCall.
+    it("forwards functionCall through to updateQuery for serverQuery binding", async () => {
+      mockUpdateQuery.mockResolvedValue({
+        queryUuid: "q-1",
+        name: "product",
+        queryType: "serverQuery",
+        save: { revisionNum: 50, incremental: true },
+      });
+
+      const result = await client.callTool({
+        name: "data",
+        arguments: {
+          action: "update-query",
+          componentUuid: "comp-1",
+          queryRef: "product",
+          functionCall: {
+            namespace: "ep",
+            name: "getProduct",
+            args: { input: "{id: $ctx.params.slug}" },
+          },
+        },
+      });
+
+      expect(result.isError).toBeFalsy();
+      // The 5th arg (options) must carry the functionCall through verbatim.
+      expect(mockUpdateQuery).toHaveBeenCalledWith(
+        expect.anything(),
+        "comp-1",
+        "product",
+        undefined,
+        {
+          functionCall: {
+            namespace: "ep",
+            name: "getProduct",
+            args: { input: "{id: $ctx.params.slug}" },
+          },
+        }
+      );
+    });
+
+    it("forwards functionCall: null to clear a server query op", async () => {
+      mockUpdateQuery.mockResolvedValue({
+        queryUuid: "q-1",
+        name: "product",
+        queryType: "serverQuery",
+        save: { revisionNum: 51, incremental: true },
+      });
+
+      await client.callTool({
+        name: "data",
+        arguments: {
+          action: "update-query",
+          componentUuid: "comp-1",
+          queryRef: "product",
+          functionCall: null,
+        },
+      });
+
+      expect(mockUpdateQuery).toHaveBeenCalledWith(
+        expect.anything(),
+        "comp-1",
+        "product",
+        undefined,
+        { functionCall: null }
+      );
     });
   });
 

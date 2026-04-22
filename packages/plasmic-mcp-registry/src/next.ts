@@ -40,22 +40,37 @@ interface WebpackContext {
   [key: string]: unknown;
 }
 
-/** Package patterns for serverExternalPackages (all Plasmic-related). */
-const PLASMIC_PACKAGE_PATTERNS = [
+/**
+ * Package patterns for `serverExternalPackages`.
+ *
+ * We ONLY externalise workspace/monorepo packages that (a) register code
+ * components and (b) do not carry a `"use client"` directive at their entry.
+ * The Next.js RSC runtime replaces `react` with `react.shared-subset` (no
+ * `createContext`), so modules that touch `React.createContext` at the top
+ * level blow up during server evaluation of API routes that import them.
+ * Externalising forces Node's `require` to load them outside the RSC graph
+ * using the consumer's full React from `node_modules`.
+ *
+ * Explicitly NOT externalised:
+ *   - `@plasmicapp/host` and `@plasmicapp/query` — published dists that
+ *     carry `"use client"` directives. Externalising them makes Node's
+ *     `require` load their React from the consumer's node_modules, which
+ *     is a different instance than Next's internally-bundled React →
+ *     "Invalid hook call / useContext is null" under the iframe runtime.
+ *     Bundling lets Next's webpack `react$` alias point both server and
+ *     client at Next's internal React, giving one dispatcher end-to-end.
+ *
+ * A consumer who hits a genuine RSC failure from some other package can
+ * still externalise it by passing `serverExternalPackages: ["…"]` in
+ * their own config; this wrapper merges the lists.
+ */
+const PLASMIC_PACKAGE_PATTERNS: RegExp[] = [
   /^@plasmicpkgs\//,
   /^@elasticpath\/plasmic-/,
-  /^@plasmicapp\/host$/,
-  /^@plasmicapp\/query$/,
 ];
 
-/**
- * Subset for webpack externals — only monorepo/workspace packages.
- *
- * @plasmicapp/host and @plasmicapp/query are real node_modules packages,
- * so serverExternalPackages handles them correctly (preserving shared React).
- * Externalizing them via webpack would cause duplicate React in SSR pages.
- */
-const WEBPACK_EXTERNAL_PATTERNS = [
+/** Webpack externals mirror the same set — needed for monorepo packages. */
+const WEBPACK_EXTERNAL_PATTERNS: RegExp[] = [
   /^@plasmicpkgs\//,
   /^@elasticpath\/plasmic-/,
 ];
