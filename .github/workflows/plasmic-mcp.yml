@@ -34,7 +34,16 @@ jobs:
 
       - name: Generate required files (PEG parsers, model classes)
         working-directory: platform/wab
-        run: make
+        # Delete generated files first so `make` regenerates from the current
+        # schema. The restored cache (`actions/cache`) carries classes.ts with
+        # a fresh mtime, so make's mtime-based rule would otherwise skip the
+        # regen — and if the cache was built from an older schema (missing
+        # CustomFunctionExpr etc.), TypeScript then fails with spurious
+        # "no exported member" errors that don't reproduce locally.
+        run: |
+          rm -f src/wab/shared/model/classes.ts
+          rm -f src/wab/shared/model/classes-metas.ts
+          make
 
       - name: TypeScript type-check
         working-directory: packages/plasmic-mcp
