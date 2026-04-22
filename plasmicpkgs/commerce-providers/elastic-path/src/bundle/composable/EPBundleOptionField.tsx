@@ -1,6 +1,6 @@
 import { useSelector, usePlasmicCanvasContext } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../../registerable";
@@ -25,7 +25,7 @@ interface EPBundleOptionFieldProps {
   previewState?: PreviewState;
 }
 
-export const epBundleOptionFieldMeta: ComponentMeta<EPBundleOptionFieldProps> = {
+export const epBundleOptionFieldMeta: CodeComponentMeta<EPBundleOptionFieldProps> = {
   name: "plasmic-commerce-ep-bundle-option-field",
   displayName: "EP Bundle Option Field",
   description:
@@ -88,7 +88,7 @@ export function EPBundleOptionField(props: EPBundleOptionFieldProps) {
 
 export function registerEPBundleOptionField(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPBundleOptionFieldProps>
+  customMeta?: CodeComponentMeta<EPBundleOptionFieldProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

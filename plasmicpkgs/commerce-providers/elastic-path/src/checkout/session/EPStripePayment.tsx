@@ -23,7 +23,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, {
   useCallback,
@@ -489,7 +489,7 @@ function ElementsCaptureInner({
 // Registration metadata
 // ---------------------------------------------------------------------------
 
-export const epStripePaymentMeta: ComponentMeta<EPStripePaymentProps> = {
+export const epStripePaymentMeta: CodeComponentMeta<EPStripePaymentProps> = {
   name: "plasmic-commerce-ep-stripe-payment",
   displayName: "EP Stripe Payment",
   description:
@@ -549,7 +549,7 @@ export const epStripePaymentMeta: ComponentMeta<EPStripePaymentProps> = {
 
 export function registerEPStripePayment(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPStripePaymentProps>
+  customMeta?: CodeComponentMeta<EPStripePaymentProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

@@ -7,7 +7,7 @@
 
 import { DataProvider, usePlasmicCanvasContext } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useCallback, useImperativeHandle } from "react";
 import { Registerable } from "../registerable";
@@ -28,7 +28,7 @@ interface EPSearchPaginationActions {
   prevPage(): void;
 }
 
-export const epSearchPaginationMeta: ComponentMeta<EPSearchPaginationProps> = {
+export const epSearchPaginationMeta: CodeComponentMeta<EPSearchPaginationProps> = {
   name: "plasmic-commerce-ep-search-pagination",
   displayName: "EP Search Pagination",
   description:
@@ -175,7 +175,7 @@ const EPSearchPaginationInner = React.forwardRef<
 
 export function registerEPSearchPagination(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPSearchPaginationProps>
+  customMeta?: CodeComponentMeta<EPSearchPaginationProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

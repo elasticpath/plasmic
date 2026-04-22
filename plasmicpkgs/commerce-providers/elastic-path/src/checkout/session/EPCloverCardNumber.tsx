@@ -2,7 +2,7 @@
  * EPCloverCardNumber — Plasmic component for the Clover card number iframe field.
  */
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import type { Registerable } from "../../registerable";
@@ -72,7 +72,7 @@ const SHARED_STYLE_PROPS = {
   },
 };
 
-export const epCloverCardNumberMeta: ComponentMeta<EPCloverCardNumberProps> = {
+export const epCloverCardNumberMeta: CodeComponentMeta<EPCloverCardNumberProps> = {
   name: "plasmic-commerce-ep-clover-card-number",
   displayName: "EP Clover Card Number",
   description:
@@ -86,7 +86,7 @@ export const epCloverCardNumberMeta: ComponentMeta<EPCloverCardNumberProps> = {
 
 export function registerEPCloverCardNumber(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPCloverCardNumberProps>
+  customMeta?: CodeComponentMeta<EPCloverCardNumberProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

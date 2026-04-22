@@ -12,7 +12,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useMemo } from "react";
 import { Registerable } from "../../registerable";
@@ -169,7 +169,7 @@ export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
 // ---------------------------------------------------------------------------
 // Registration metadata
 // ---------------------------------------------------------------------------
-export const epOrderTotalsBreakdownMeta: ComponentMeta<EPOrderTotalsBreakdownProps> =
+export const epOrderTotalsBreakdownMeta: CodeComponentMeta<EPOrderTotalsBreakdownProps> =
   {
     name: "plasmic-commerce-ep-order-totals-breakdown",
     displayName: "EP Order Totals Breakdown",
@@ -231,7 +231,7 @@ export const epOrderTotalsBreakdownMeta: ComponentMeta<EPOrderTotalsBreakdownPro
 
 export function registerEPOrderTotalsBreakdown(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPOrderTotalsBreakdownProps>
+  customMeta?: CodeComponentMeta<EPOrderTotalsBreakdownProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

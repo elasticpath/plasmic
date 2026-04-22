@@ -49,6 +49,10 @@ export type { CloverAdapterConfig } from "./checkout/session/adapters/clover-ada
 export { createStripeAdapter } from "./checkout/session/adapters/stripe-adapter";
 export type { StripeAdapterConfig } from "./checkout/session/adapters/stripe-adapter";
 export type { SessionRequest, SessionResponse, SessionHandlerContext, EPCredentials, AdapterRegistry, SessionStore, PaymentAdapter } from "./checkout/session/types";
+export { createEpAuth, toNextJsHandler, extractEpProviderConfig } from "./auth";
+export type { EpAuth, EpAuthConfig, EpSession, EpSessionConfig, EpTokenData, EpAccountData, EpProviderBundleConfig } from "./auth";
+export { epGetProduct, epGetCart, epGetProductList, epGetRelatedProducts, registerEpCustomFunctions, buildEpCtx } from "./ep-server-functions";
+export type { EpGetProductInput, EpGetCartInput, EpGetProductListInput, EpGetRelatedProductsInput, BuildEpCtxSessionInput, EpCtx, EpServerAuth } from "./ep-server-functions";
 `;
 
 writeFileSync("dist/server.d.ts", dts);

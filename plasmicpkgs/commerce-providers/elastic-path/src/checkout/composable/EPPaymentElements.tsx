@@ -14,7 +14,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, {
   useCallback,
@@ -401,7 +401,7 @@ function ElementsCaptureInner({
 // ---------------------------------------------------------------------------
 // Registration metadata
 // ---------------------------------------------------------------------------
-export const epPaymentElementsMeta: ComponentMeta<EPPaymentElementsProps> = {
+export const epPaymentElementsMeta: CodeComponentMeta<EPPaymentElementsProps> = {
   name: "plasmic-commerce-ep-payment-elements",
   displayName: "EP Payment Elements",
   description:
@@ -440,7 +440,7 @@ export const epPaymentElementsMeta: ComponentMeta<EPPaymentElementsProps> = {
 
 export function registerEPPaymentElements(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPPaymentElementsProps>
+  customMeta?: CodeComponentMeta<EPPaymentElementsProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

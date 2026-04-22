@@ -4,7 +4,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useMemo } from "react";
 import { DEFAULT_DEBOUNCE_MS } from "../../const";
@@ -42,7 +42,7 @@ interface EPBundleProviderProps {
   notBundleContent?: React.ReactNode;
 }
 
-export const epBundleProviderMeta: ComponentMeta<EPBundleProviderProps> = {
+export const epBundleProviderMeta: CodeComponentMeta<EPBundleProviderProps> = {
   name: "plasmic-commerce-ep-bundle-provider",
   displayName: "EP Bundle Provider",
   description:
@@ -365,7 +365,7 @@ const MOCK_FORM_CONTEXT: BundleFormContextValue = {
 
 export function registerEPBundleProvider(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPBundleProviderProps>
+  customMeta?: CodeComponentMeta<EPBundleProviderProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

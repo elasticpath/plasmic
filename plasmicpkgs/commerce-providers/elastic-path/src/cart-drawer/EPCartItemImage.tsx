@@ -1,6 +1,6 @@
 import { useSelector, usePlasmicCanvasContext } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../registerable";
@@ -16,7 +16,7 @@ interface EPCartItemImageProps {
   previewState?: PreviewState;
 }
 
-export const epCartItemImageMeta: ComponentMeta<EPCartItemImageProps> = {
+export const epCartItemImageMeta: CodeComponentMeta<EPCartItemImageProps> = {
   name: "plasmic-commerce-ep-cart-item-image",
   displayName: "EP Cart Item Image",
   description:
@@ -125,7 +125,7 @@ export function EPCartItemImage(props: EPCartItemImageProps) {
 
 export function registerEPCartItemImage(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPCartItemImageProps>
+  customMeta?: CodeComponentMeta<EPCartItemImageProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

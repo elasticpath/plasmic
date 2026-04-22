@@ -14,3 +14,5 @@ export {
 } from "./cookies";
 export type { EpTokenData, EpAccountData } from "./cookies";
 export { resolveEpToken } from "./token";
+export { extractEpProviderConfig } from "./extract-ep-provider-config";
+export type { EpProviderBundleConfig } from "./extract-ep-provider-config";

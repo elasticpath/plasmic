@@ -11,7 +11,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useCallback, useMemo } from "react";
 import { Registerable } from "../../registerable";
@@ -141,7 +141,7 @@ export function EPCheckoutButton(props: EPCheckoutButtonProps) {
 // ---------------------------------------------------------------------------
 // Registration metadata
 // ---------------------------------------------------------------------------
-export const epCheckoutButtonMeta: ComponentMeta<EPCheckoutButtonProps> = {
+export const epCheckoutButtonMeta: CodeComponentMeta<EPCheckoutButtonProps> = {
   name: "plasmic-commerce-ep-checkout-button",
   displayName: "EP Checkout Button",
   description:
@@ -183,7 +183,7 @@ export const epCheckoutButtonMeta: ComponentMeta<EPCheckoutButtonProps> = {
 
 export function registerEPCheckoutButton(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPCheckoutButtonProps>
+  customMeta?: CodeComponentMeta<EPCheckoutButtonProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

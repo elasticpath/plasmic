@@ -2,7 +2,7 @@
  * EPCloverCardCVV — Plasmic component for the Clover CVV iframe field.
  */
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import type { Registerable } from "../../registerable";
@@ -22,7 +22,7 @@ export function EPCloverCardCVV(props: EPCloverCardCVVProps) {
   );
 }
 
-export const epCloverCardCVVMeta: ComponentMeta<EPCloverCardCVVProps> = {
+export const epCloverCardCVVMeta: CodeComponentMeta<EPCloverCardCVVProps> = {
   name: "plasmic-commerce-ep-clover-card-cvv",
   displayName: "EP Clover Card CVV",
   description:
@@ -36,7 +36,7 @@ export const epCloverCardCVVMeta: ComponentMeta<EPCloverCardCVVProps> = {
 
 export function registerEPCloverCardCVV(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPCloverCardCVVProps>
+  customMeta?: CodeComponentMeta<EPCloverCardCVVProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

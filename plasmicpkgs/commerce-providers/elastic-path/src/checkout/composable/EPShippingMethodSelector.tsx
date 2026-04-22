@@ -14,7 +14,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, {
   useCallback,
@@ -375,7 +375,7 @@ const EPShippingMethodSelectorRuntime = React.forwardRef<
 // ---------------------------------------------------------------------------
 // Registration metadata
 // ---------------------------------------------------------------------------
-export const epShippingMethodSelectorMeta: ComponentMeta<EPShippingMethodSelectorProps> =
+export const epShippingMethodSelectorMeta: CodeComponentMeta<EPShippingMethodSelectorProps> =
   {
     name: "plasmic-commerce-ep-shipping-method-selector",
     displayName: "EP Shipping Method Selector",
@@ -430,7 +430,7 @@ export const epShippingMethodSelectorMeta: ComponentMeta<EPShippingMethodSelecto
 
 export function registerEPShippingMethodSelector(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPShippingMethodSelectorProps>
+  customMeta?: CodeComponentMeta<EPShippingMethodSelectorProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

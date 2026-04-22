@@ -1,0 +1,27 @@
+{
+  "name": "ep-commerce-app-router",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@elasticpath/plasmic-ep-commerce-elastic-path": "*",
+    "@elasticpath/plasmic-mcp-registry": "*",
+    "@plasmicapp/loader-nextjs": "*",
+    "@plasmicapp/nextjs-app-router": "*",
+    "@plasmicapp/host": "*",
+    "@plasmicpkgs/commerce": "*",
+    "next": "^15.5.9",
+    "react": "^19",
+    "react-dom": "^19"
+  },
+  "devDependencies": {
+    "@types/node": "18.8.5",
+    "@types/react": "18.2.27",
+    "@types/react-dom": "18.2.12",
+    "typescript": "5.2.2"
+  }
+}

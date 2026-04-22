@@ -1,6 +1,6 @@
 import { useSelector } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { DEFAULT_DEBOUNCE_MS } from "./const";
@@ -29,7 +29,7 @@ interface EPBundleConfiguratorProps {
   debounceMs?: number;
 }
 
-export const epBundleConfiguratorMeta: ComponentMeta<EPBundleConfiguratorProps> = {
+export const epBundleConfiguratorMeta: CodeComponentMeta<EPBundleConfiguratorProps> = {
   name: "plasmic-commerce-ep-bundle-configurator",
   displayName: "EP Bundle Configurator",
   description:
@@ -195,7 +195,7 @@ export function EPBundleConfigurator(props: EPBundleConfiguratorProps) {
 
 export function registerEPBundleConfigurator(
   loader?: Registerable,
-  customEPBundleConfiguratorMeta?: ComponentMeta<EPBundleConfiguratorProps>
+  customEPBundleConfiguratorMeta?: CodeComponentMeta<EPBundleConfiguratorProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

@@ -7,7 +7,7 @@
 
 import { usePlasmicCanvasContext } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Registerable } from "../registerable";
@@ -23,7 +23,7 @@ interface EPSearchBoxProps {
   previewState?: PreviewState;
 }
 
-export const epSearchBoxMeta: ComponentMeta<EPSearchBoxProps> = {
+export const epSearchBoxMeta: CodeComponentMeta<EPSearchBoxProps> = {
   name: "plasmic-commerce-ep-search-box",
   displayName: "EP Search Box",
   description:
@@ -179,7 +179,7 @@ function EPSearchBoxInner(props: {
 
 export function registerEPSearchBox(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPSearchBoxProps>
+  customMeta?: CodeComponentMeta<EPSearchBoxProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

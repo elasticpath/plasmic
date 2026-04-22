@@ -12,7 +12,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../../registerable";
@@ -86,7 +86,7 @@ export function EPCheckoutStepIndicator(props: EPCheckoutStepIndicatorProps) {
 // ---------------------------------------------------------------------------
 // Registration metadata
 // ---------------------------------------------------------------------------
-export const epCheckoutStepIndicatorMeta: ComponentMeta<EPCheckoutStepIndicatorProps> =
+export const epCheckoutStepIndicatorMeta: CodeComponentMeta<EPCheckoutStepIndicatorProps> =
   {
     name: "plasmic-commerce-ep-checkout-step-indicator",
     displayName: "EP Checkout Step Indicator",
@@ -123,7 +123,7 @@ export const epCheckoutStepIndicatorMeta: ComponentMeta<EPCheckoutStepIndicatorP
 
 export function registerEPCheckoutStepIndicator(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPCheckoutStepIndicatorProps>
+  customMeta?: CodeComponentMeta<EPCheckoutStepIndicatorProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

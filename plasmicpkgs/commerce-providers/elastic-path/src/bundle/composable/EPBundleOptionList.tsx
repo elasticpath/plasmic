@@ -5,7 +5,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../../registerable";
@@ -22,7 +22,7 @@ interface EPBundleOptionListProps {
   previewState?: PreviewState;
 }
 
-export const epBundleOptionListMeta: ComponentMeta<EPBundleOptionListProps> = {
+export const epBundleOptionListMeta: CodeComponentMeta<EPBundleOptionListProps> = {
   name: "plasmic-commerce-ep-bundle-option-list",
   displayName: "EP Bundle Option List",
   description:
@@ -87,7 +87,7 @@ export function EPBundleOptionList(props: EPBundleOptionListProps) {
 
 export function registerEPBundleOptionList(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPBundleOptionListProps>
+  customMeta?: CodeComponentMeta<EPBundleOptionListProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

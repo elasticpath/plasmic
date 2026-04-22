@@ -16,7 +16,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useMemo } from "react";
 import { Registerable } from "../registerable";
@@ -74,7 +74,7 @@ export function buildCurrentProduct(product: Product): CurrentProduct {
   };
 }
 
-export const epProductGridMeta: ComponentMeta<EPProductGridProps> = {
+export const epProductGridMeta: CodeComponentMeta<EPProductGridProps> = {
   name: "plasmic-commerce-ep-product-grid",
   displayName: "EP Product Grid",
   description:
@@ -151,7 +151,7 @@ export function EPProductGrid(props: EPProductGridProps) {
 
 export function registerEPProductGrid(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPProductGridProps>
+  customMeta?: CodeComponentMeta<EPProductGridProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

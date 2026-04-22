@@ -12,7 +12,7 @@
 
 import { DataProvider, usePlasmicCanvasContext } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useMemo } from "react";
 import { useCommerce } from "../elastic-path";
@@ -36,7 +36,7 @@ interface EPCatalogSearchProviderProps {
   previewState?: PreviewState;
 }
 
-export const epCatalogSearchProviderMeta: ComponentMeta<EPCatalogSearchProviderProps> =
+export const epCatalogSearchProviderMeta: CodeComponentMeta<EPCatalogSearchProviderProps> =
   {
     name: "plasmic-commerce-ep-catalog-search-provider",
     displayName: "EP Catalog Search Provider",
@@ -290,7 +290,7 @@ function EPCatalogSearchProviderInner(props: {
 
 export function registerEPCatalogSearchProvider(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPCatalogSearchProviderProps>
+  customMeta?: CodeComponentMeta<EPCatalogSearchProviderProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

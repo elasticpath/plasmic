@@ -19,7 +19,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, {
   useCallback,
@@ -363,7 +363,7 @@ async function handleClover3DSChallenge(
 // Registration metadata
 // ---------------------------------------------------------------------------
 
-export const epCloverPaymentMeta: ComponentMeta<EPCloverPaymentProps> = {
+export const epCloverPaymentMeta: CodeComponentMeta<EPCloverPaymentProps> = {
   name: "plasmic-commerce-ep-clover-payment",
   displayName: "EP Clover Payment",
   description:
@@ -407,7 +407,7 @@ export const epCloverPaymentMeta: ComponentMeta<EPCloverPaymentProps> = {
 
 export function registerEPCloverPayment(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPCloverPaymentProps>
+  customMeta?: CodeComponentMeta<EPCloverPaymentProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

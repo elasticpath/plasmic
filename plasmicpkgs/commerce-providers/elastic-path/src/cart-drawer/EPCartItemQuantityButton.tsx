@@ -1,6 +1,6 @@
 import { usePlasmicCanvasContext } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../registerable";
@@ -15,7 +15,7 @@ interface EPCartItemQuantityButtonProps {
   previewState?: PreviewState;
 }
 
-export const epCartItemQuantityButtonMeta: ComponentMeta<EPCartItemQuantityButtonProps> =
+export const epCartItemQuantityButtonMeta: CodeComponentMeta<EPCartItemQuantityButtonProps> =
   {
     name: "plasmic-commerce-ep-cart-item-quantity-button",
     displayName: "EP Cart Item Quantity Button",
@@ -100,7 +100,7 @@ export function EPCartItemQuantityButton(
 
 export function registerEPCartItemQuantityButton(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPCartItemQuantityButtonProps>
+  customMeta?: CodeComponentMeta<EPCartItemQuantityButtonProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

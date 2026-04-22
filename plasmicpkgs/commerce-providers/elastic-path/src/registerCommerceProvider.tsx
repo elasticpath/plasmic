@@ -21,7 +21,7 @@ interface CommerceProviderProps extends ElasticPathCredentials {
 
 const globalContextName = "plasmic-commerce-elastic-path-provider";
 
-export const commerceProviderMeta: GlobalContextMeta<CommerceProviderProps> = {
+export const commerceProviderMeta: any = {
   name: globalContextName,
   displayName: "Elastic Path Provider",
   props: {
@@ -127,7 +127,7 @@ export function CommerceProviderComponent(props: CommerceProviderProps) {
 
 export function registerCommerceProvider(
   loader?: Registerable,
-  customCommerceProviderMeta?: GlobalContextMeta<CommerceProviderProps>
+  customCommerceProviderMeta?: any
 ) {
   const doRegisterComponent: typeof registerGlobalContext = (...args) =>
     loader
@@ -135,6 +135,6 @@ export function registerCommerceProvider(
       : registerGlobalContext(...args);
   doRegisterComponent(
     CommerceProviderComponent,
-    customCommerceProviderMeta ?? commerceProviderMeta
+    customCommerceProviderMeta ?? (commerceProviderMeta as any)
   );
 }

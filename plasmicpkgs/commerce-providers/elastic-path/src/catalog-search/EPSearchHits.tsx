@@ -16,7 +16,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useMemo } from "react";
 import { Registerable } from "../registerable";
@@ -131,7 +131,7 @@ function buildMockCurrentProduct(product: Product) {
   };
 }
 
-export const epSearchHitsMeta: ComponentMeta<EPSearchHitsProps> = {
+export const epSearchHitsMeta: CodeComponentMeta<EPSearchHitsProps> = {
   name: "plasmic-commerce-ep-search-hits",
   displayName: "EP Search Hits",
   description:
@@ -260,7 +260,7 @@ function EPSearchHitsInner(props: {
 
 export function registerEPSearchHits(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPSearchHitsProps>
+  customMeta?: CodeComponentMeta<EPSearchHitsProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

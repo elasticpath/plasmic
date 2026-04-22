@@ -40,3 +40,38 @@ export type {
   SessionStore,
   PaymentAdapter,
 } from "./checkout/session/types";
+
+// Auth — Better Auth-aligned session pattern
+export {
+  createEpAuth,
+  toNextJsHandler,
+  extractEpProviderConfig,
+} from "./auth";
+export type {
+  EpAuth,
+  EpAuthConfig,
+  EpSession,
+  EpSessionConfig,
+  EpTokenData,
+  EpAccountData,
+  EpProviderBundleConfig,
+} from "./auth";
+
+// Server-side custom functions for Studio Server Queries (PRD #262)
+export {
+  epGetProduct,
+  epGetCart,
+  epGetProductList,
+  epGetRelatedProducts,
+  registerEpCustomFunctions,
+  buildEpCtx,
+} from "./ep-server-functions";
+export type {
+  EpGetProductInput,
+  EpGetCartInput,
+  EpGetProductListInput,
+  EpGetRelatedProductsInput,
+  BuildEpCtxSessionInput,
+  EpCtx,
+  EpServerAuth,
+} from "./ep-server-functions";

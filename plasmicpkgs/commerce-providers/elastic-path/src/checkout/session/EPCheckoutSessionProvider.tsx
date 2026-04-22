@@ -12,7 +12,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, {
   useCallback,
@@ -257,7 +257,7 @@ export const EPCheckoutSessionProvider = React.forwardRef<
 // Registration metadata
 // ---------------------------------------------------------------------------
 
-export const epCheckoutSessionProviderMeta: ComponentMeta<EPCheckoutSessionProviderProps> =
+export const epCheckoutSessionProviderMeta: CodeComponentMeta<EPCheckoutSessionProviderProps> =
   {
     name: "plasmic-commerce-ep-checkout-session-provider",
     displayName: "EP Checkout Session Provider",
@@ -320,7 +320,7 @@ export const epCheckoutSessionProviderMeta: ComponentMeta<EPCheckoutSessionProvi
 
 export function registerEPCheckoutSessionProvider(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPCheckoutSessionProviderProps>
+  customMeta?: CodeComponentMeta<EPCheckoutSessionProviderProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

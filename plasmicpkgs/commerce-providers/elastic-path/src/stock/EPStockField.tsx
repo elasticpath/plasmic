@@ -1,6 +1,6 @@
 import { useSelector, usePlasmicCanvasContext } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../registerable";
@@ -22,7 +22,7 @@ interface EPStockFieldProps {
   previewState?: PreviewState;
 }
 
-export const epStockFieldMeta: ComponentMeta<EPStockFieldProps> = {
+export const epStockFieldMeta: CodeComponentMeta<EPStockFieldProps> = {
   name: "plasmic-commerce-ep-stock-field",
   displayName: "EP Stock Field",
   description:
@@ -86,7 +86,7 @@ export function EPStockField(props: EPStockFieldProps) {
 
 export function registerEPStockField(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPStockFieldProps>
+  customMeta?: CodeComponentMeta<EPStockFieldProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

@@ -13,7 +13,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useCallback, useImperativeHandle, useMemo, useState } from "react";
 import { Registerable } from "../../registerable";
@@ -309,7 +309,7 @@ const EPCustomerInfoFieldsRuntime = React.forwardRef<
 // ---------------------------------------------------------------------------
 // Registration metadata
 // ---------------------------------------------------------------------------
-export const epCustomerInfoFieldsMeta: ComponentMeta<EPCustomerInfoFieldsProps> =
+export const epCustomerInfoFieldsMeta: CodeComponentMeta<EPCustomerInfoFieldsProps> =
   {
     name: "plasmic-commerce-ep-customer-info-fields",
     displayName: "EP Customer Info Fields",
@@ -363,7 +363,7 @@ export const epCustomerInfoFieldsMeta: ComponentMeta<EPCustomerInfoFieldsProps> 
 
 export function registerEPCustomerInfoFields(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPCustomerInfoFieldsProps>
+  customMeta?: CodeComponentMeta<EPCustomerInfoFieldsProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

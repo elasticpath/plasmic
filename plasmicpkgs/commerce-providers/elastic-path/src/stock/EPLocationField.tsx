@@ -1,6 +1,6 @@
 import { useSelector, usePlasmicCanvasContext } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../registerable";
@@ -26,7 +26,7 @@ const PREVIEW_LOCATION_INDEX: Record<string, number> = {
   outOfStock: 2,
 };
 
-export const epLocationFieldMeta: ComponentMeta<EPLocationFieldProps> = {
+export const epLocationFieldMeta: CodeComponentMeta<EPLocationFieldProps> = {
   name: "plasmic-commerce-ep-location-field",
   displayName: "EP Location Field",
   description:
@@ -94,7 +94,7 @@ export function EPLocationField(props: EPLocationFieldProps) {
 
 export function registerEPLocationField(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPLocationFieldProps>
+  customMeta?: CodeComponentMeta<EPLocationFieldProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

@@ -2,7 +2,7 @@
  * EPCloverCardExpiry — Plasmic component for the Clover card expiry iframe field.
  */
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import type { Registerable } from "../../registerable";
@@ -22,7 +22,7 @@ export function EPCloverCardExpiry(props: EPCloverCardExpiryProps) {
   );
 }
 
-export const epCloverCardExpiryMeta: ComponentMeta<EPCloverCardExpiryProps> = {
+export const epCloverCardExpiryMeta: CodeComponentMeta<EPCloverCardExpiryProps> = {
   name: "plasmic-commerce-ep-clover-card-expiry",
   displayName: "EP Clover Card Expiry",
   description:
@@ -36,7 +36,7 @@ export const epCloverCardExpiryMeta: ComponentMeta<EPCloverCardExpiryProps> = {
 
 export function registerEPCloverCardExpiry(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPCloverCardExpiryProps>
+  customMeta?: CodeComponentMeta<EPCloverCardExpiryProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

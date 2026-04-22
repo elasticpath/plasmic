@@ -1,6 +1,6 @@
 import { useSelector } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import type { Product, ProductOption } from "@plasmicpkgs/commerce";
 import React, { useEffect, useMemo, useState } from "react";
@@ -16,7 +16,7 @@ interface EPProductVariantPickerProps {
   updateUrlOnChange?: boolean; // Whether to update the URL when variant changes
 }
 
-export const epProductVariantPickerMeta: ComponentMeta<EPProductVariantPickerProps> =
+export const epProductVariantPickerMeta: CodeComponentMeta<EPProductVariantPickerProps> =
   {
     name: "plasmic-commerce-ep-product-variant-picker",
     displayName: "EP Product Variant Picker",
@@ -184,7 +184,7 @@ export function EPProductVariantPicker(props: EPProductVariantPickerProps) {
 
 export function registerEPProductVariantPicker(
   loader?: Registerable,
-  customEPProductVariantPickerMeta?: ComponentMeta<EPProductVariantPickerProps>
+  customEPProductVariantPickerMeta?: CodeComponentMeta<EPProductVariantPickerProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

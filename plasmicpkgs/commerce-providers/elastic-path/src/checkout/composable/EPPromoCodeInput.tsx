@@ -3,7 +3,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useCallback, useState } from "react";
 import {
@@ -36,7 +36,7 @@ interface EPPromoCodeInputProps {
   useServerRoutes?: boolean;
 }
 
-export const epPromoCodeInputMeta: ComponentMeta<EPPromoCodeInputProps> = {
+export const epPromoCodeInputMeta: CodeComponentMeta<EPPromoCodeInputProps> = {
   name: "plasmic-commerce-ep-promo-code-input",
   displayName: "EP Promo Code Input",
   description:
@@ -450,7 +450,7 @@ function EPPromoCodeInputServer(props: EPPromoCodeInputProps) {
 
 export function registerEPPromoCodeInput(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPPromoCodeInputProps>
+  customMeta?: CodeComponentMeta<EPPromoCodeInputProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

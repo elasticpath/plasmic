@@ -1,6 +1,6 @@
 import { useSelector, usePlasmicCanvasContext } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../../registerable";
@@ -20,7 +20,7 @@ interface EPBundleVariationOptionTriggerProps {
   previewState?: PreviewState;
 }
 
-export const epBundleVariationOptionTriggerMeta: ComponentMeta<EPBundleVariationOptionTriggerProps> =
+export const epBundleVariationOptionTriggerMeta: CodeComponentMeta<EPBundleVariationOptionTriggerProps> =
   {
     name: "plasmic-commerce-ep-bundle-variation-option-trigger",
     displayName: "EP Bundle Variation Option Trigger",
@@ -118,7 +118,7 @@ export function EPBundleVariationOptionTrigger(
 
 export function registerEPBundleVariationOptionTrigger(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPBundleVariationOptionTriggerProps>
+  customMeta?: CodeComponentMeta<EPBundleVariationOptionTriggerProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

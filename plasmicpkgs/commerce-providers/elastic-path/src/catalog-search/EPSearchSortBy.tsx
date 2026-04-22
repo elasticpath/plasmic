@@ -7,7 +7,7 @@
 
 import { DataProvider, usePlasmicCanvasContext } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useImperativeHandle } from "react";
 import { Registerable } from "../registerable";
@@ -27,7 +27,7 @@ interface EPSearchSortByActions {
   setSort(value: string): void;
 }
 
-export const epSearchSortByMeta: ComponentMeta<EPSearchSortByProps> = {
+export const epSearchSortByMeta: CodeComponentMeta<EPSearchSortByProps> = {
   name: "plasmic-commerce-ep-search-sort-by",
   displayName: "EP Search Sort By",
   description:
@@ -148,7 +148,7 @@ const EPSearchSortByInner = React.forwardRef<
 
 export function registerEPSearchSortBy(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPSearchSortByProps>
+  customMeta?: CodeComponentMeta<EPSearchSortByProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

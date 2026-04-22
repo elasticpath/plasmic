@@ -2,7 +2,7 @@
  * EPCloverCardPostalCode — Plasmic component for the Clover postal code iframe field.
  */
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import type { Registerable } from "../../registerable";
@@ -22,7 +22,7 @@ export function EPCloverCardPostalCode(props: EPCloverCardPostalCodeProps) {
   );
 }
 
-export const epCloverCardPostalCodeMeta: ComponentMeta<EPCloverCardPostalCodeProps> =
+export const epCloverCardPostalCodeMeta: CodeComponentMeta<EPCloverCardPostalCodeProps> =
   {
     name: "plasmic-commerce-ep-clover-card-postal-code",
     displayName: "EP Clover Card Postal Code",
@@ -37,7 +37,7 @@ export const epCloverCardPostalCodeMeta: ComponentMeta<EPCloverCardPostalCodePro
 
 export function registerEPCloverCardPostalCode(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPCloverCardPostalCodeProps>
+  customMeta?: CodeComponentMeta<EPCloverCardPostalCodeProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

@@ -3,7 +3,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import ReactDOM from "react-dom";
@@ -36,7 +36,7 @@ interface EPCartDrawerProps {
   inline?: boolean;
 }
 
-export const epCartDrawerMeta: ComponentMeta<EPCartDrawerProps> = {
+export const epCartDrawerMeta: CodeComponentMeta<EPCartDrawerProps> = {
   name: "plasmic-commerce-ep-cart-drawer",
   displayName: "EP Cart Drawer",
   description:
@@ -443,7 +443,7 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
   );
 }
 
-export const epCartInlineMeta: ComponentMeta<EPCartDrawerProps> = {
+export const epCartInlineMeta: CodeComponentMeta<EPCartDrawerProps> = {
   name: "plasmic-commerce-ep-cart-inline",
   displayName: "EP Cart (Inline)",
   description:
@@ -506,7 +506,7 @@ export const epCartInlineMeta: ComponentMeta<EPCartDrawerProps> = {
 
 export function registerEPCartDrawer(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPCartDrawerProps>
+  customMeta?: CodeComponentMeta<EPCartDrawerProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);
@@ -515,7 +515,7 @@ export function registerEPCartDrawer(
 
 export function registerEPCartInline(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPCartDrawerProps>
+  customMeta?: CodeComponentMeta<EPCartDrawerProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

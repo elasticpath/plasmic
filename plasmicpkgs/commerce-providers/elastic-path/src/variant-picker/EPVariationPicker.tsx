@@ -5,7 +5,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import type { Product, ProductOption, ProductVariant } from "@plasmicpkgs/commerce";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -30,7 +30,7 @@ interface EPVariationPickerProps {
   previewState?: PreviewState;
 }
 
-export const epVariationPickerMeta: ComponentMeta<EPVariationPickerProps> = {
+export const epVariationPickerMeta: CodeComponentMeta<EPVariationPickerProps> = {
   name: "plasmic-commerce-ep-variation-picker",
   displayName: "EP Variation Picker",
   description:
@@ -267,7 +267,7 @@ export function EPVariationPicker(props: EPVariationPickerProps) {
 
 export function registerEPVariationPicker(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPVariationPickerProps>
+  customMeta?: CodeComponentMeta<EPVariationPickerProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

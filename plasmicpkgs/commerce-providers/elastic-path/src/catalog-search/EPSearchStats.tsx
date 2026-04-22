@@ -7,7 +7,7 @@
 
 import { DataProvider, usePlasmicCanvasContext } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../registerable";
@@ -22,7 +22,7 @@ interface EPSearchStatsProps {
   previewState?: PreviewState;
 }
 
-export const epSearchStatsMeta: ComponentMeta<EPSearchStatsProps> = {
+export const epSearchStatsMeta: CodeComponentMeta<EPSearchStatsProps> = {
   name: "plasmic-commerce-ep-search-stats",
   displayName: "EP Search Stats",
   description:
@@ -102,7 +102,7 @@ function EPSearchStatsInner(props: {
 
 export function registerEPSearchStats(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPSearchStatsProps>
+  customMeta?: CodeComponentMeta<EPSearchStatsProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

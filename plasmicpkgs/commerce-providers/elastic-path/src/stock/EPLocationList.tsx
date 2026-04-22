@@ -1,6 +1,6 @@
 import { DataProvider, repeatedElement } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../registerable";
@@ -14,7 +14,7 @@ interface EPLocationListProps {
   emptyContent?: React.ReactNode;
 }
 
-export const epLocationListMeta: ComponentMeta<EPLocationListProps> = {
+export const epLocationListMeta: CodeComponentMeta<EPLocationListProps> = {
   name: "plasmic-commerce-ep-location-list",
   displayName: "EP Location List",
   description:
@@ -83,7 +83,7 @@ export function EPLocationList(props: EPLocationListProps) {
 
 export function registerEPLocationList(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPLocationListProps>
+  customMeta?: CodeComponentMeta<EPLocationListProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

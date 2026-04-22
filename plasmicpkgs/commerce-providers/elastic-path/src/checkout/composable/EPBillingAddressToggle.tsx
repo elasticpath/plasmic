@@ -3,7 +3,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useState } from "react";
 import { Registerable } from "../../registerable";
@@ -17,7 +17,7 @@ interface EPBillingAddressToggleProps {
   previewState?: "auto" | "same" | "different";
 }
 
-export const epBillingAddressToggleMeta: ComponentMeta<EPBillingAddressToggleProps> =
+export const epBillingAddressToggleMeta: CodeComponentMeta<EPBillingAddressToggleProps> =
   {
     name: "plasmic-commerce-ep-billing-address-toggle",
     displayName: "EP Billing Address Toggle",
@@ -115,7 +115,7 @@ export function EPBillingAddressToggle(props: EPBillingAddressToggleProps) {
 
 export function registerEPBillingAddressToggle(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPBillingAddressToggleProps>
+  customMeta?: CodeComponentMeta<EPBillingAddressToggleProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

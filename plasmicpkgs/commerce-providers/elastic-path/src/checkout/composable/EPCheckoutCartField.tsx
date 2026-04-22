@@ -1,6 +1,6 @@
 import { useSelector, usePlasmicCanvasContext } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../../registerable";
@@ -41,7 +41,7 @@ interface EPCheckoutCartFieldProps {
   previewState?: PreviewState;
 }
 
-export const epCheckoutCartFieldMeta: ComponentMeta<EPCheckoutCartFieldProps> = {
+export const epCheckoutCartFieldMeta: CodeComponentMeta<EPCheckoutCartFieldProps> = {
   name: "plasmic-commerce-ep-checkout-cart-field",
   displayName: "EP Checkout Cart Field",
   description:
@@ -130,7 +130,7 @@ export function EPCheckoutCartField(props: EPCheckoutCartFieldProps) {
 
 export function registerEPCheckoutCartField(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPCheckoutCartFieldProps>
+  customMeta?: CodeComponentMeta<EPCheckoutCartFieldProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

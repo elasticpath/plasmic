@@ -3,7 +3,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useCallback, useMemo } from "react";
 import { Registerable } from "../../registerable";
@@ -22,7 +22,7 @@ interface EPBundleOptionTriggerProps {
   previewState?: PreviewState;
 }
 
-export const epBundleOptionTriggerMeta: ComponentMeta<EPBundleOptionTriggerProps> =
+export const epBundleOptionTriggerMeta: CodeComponentMeta<EPBundleOptionTriggerProps> =
   {
     name: "plasmic-commerce-ep-bundle-option-trigger",
     displayName: "EP Bundle Option Trigger",
@@ -171,7 +171,7 @@ export function EPBundleOptionTrigger(props: EPBundleOptionTriggerProps) {
 
 export function registerEPBundleOptionTrigger(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPBundleOptionTriggerProps>
+  customMeta?: CodeComponentMeta<EPBundleOptionTriggerProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

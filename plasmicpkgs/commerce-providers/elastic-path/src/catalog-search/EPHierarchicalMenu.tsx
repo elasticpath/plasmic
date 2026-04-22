@@ -11,7 +11,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useImperativeHandle, useMemo } from "react";
 import { Registerable } from "../registerable";
@@ -31,7 +31,7 @@ interface EPHierarchicalMenuActions {
   refineCategory(value: string): void;
 }
 
-export const epHierarchicalMenuMeta: ComponentMeta<EPHierarchicalMenuProps> = {
+export const epHierarchicalMenuMeta: CodeComponentMeta<EPHierarchicalMenuProps> = {
   name: "plasmic-commerce-ep-hierarchical-menu",
   displayName: "EP Hierarchical Menu",
   description:
@@ -204,7 +204,7 @@ const EPHierarchicalMenuInner = React.forwardRef<
 
 export function registerEPHierarchicalMenu(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPHierarchicalMenuProps>
+  customMeta?: CodeComponentMeta<EPHierarchicalMenuProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

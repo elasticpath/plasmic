@@ -41,6 +41,7 @@ import { registerEPBundleVariationOptionTrigger } from "./bundle/composable/EPBu
 import { registerEPProductGrid } from "./product-discovery/EPProductGrid";
 import { registerEPProductListProvider } from "./product-discovery/EPProductListProvider";
 import { registerEPRelatedProductsProvider } from "./product-discovery/EPRelatedProductsProvider";
+import { registerEPProductProvider } from "./product/EPProductProvider";
 import { registerEPSearchBox } from "./catalog-search/EPSearchBox";
 import { registerEPSearchHits } from "./catalog-search/EPSearchHits";
 import { registerEPRefinementList } from "./catalog-search/EPRefinementList";
@@ -127,6 +128,7 @@ export function registerAll(loader?: Registerable) {
   registerEPProductGrid(loader);
   registerEPProductListProvider(loader);
   registerEPRelatedProductsProvider(loader);
+  registerEPProductProvider(loader);
 
   // Catalog search — register leaf/field components first, then repeaters, then provider
   registerEPSearchBox(loader);
