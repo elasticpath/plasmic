@@ -440,7 +440,7 @@ function addDatadogErrorHandler(app: express.Application) {
 export function addLoggingMiddleware(app: express.Application) {
   app.use(
     safeCast<RequestHandler>(async (req: Request, res, next) => {
-      req.id = mkShortId();
+      req.id = req.get("x-request-id") ?? mkShortId();
       runWithRequestId(req.id, () => next());
     })
   );

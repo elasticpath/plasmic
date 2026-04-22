@@ -2081,6 +2081,7 @@ export async function prefillPkgVersion(
       `${req.devflags.codegenOriginHost}/api/v1/loader/code/prefill/${pkgVersion.id}`,
       {
         method: "POST",
+        headers: { "x-request-id": req.id },
       }
     );
     if (fetchResponse.status !== 200) {
