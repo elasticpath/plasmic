@@ -38,7 +38,24 @@ declare module "@/wab/shared/bundler" {
     /** Maps address key string to live instance.
      *  Public for tests and defensive access. Populated during unbundle(). */
     _addr2inst: Map<string, any>;
+
+    /** Returns the cached full bundle snapshot from the last bundle pass.
+     *  Used by save-manager's pre-save validators (gap #71) to walk the
+     *  entire bundle graph for reference integrity checks. */
+    cachedBundle(): { map: Record<string, any>; root: string; deps: string[] } | undefined;
   }
+
+  /** Pre-save validator — walks every IID in the bundle map and asserts
+   *  each `{__ref: iid}` points to an existing entry. Throws on dangling
+   *  refs. Used by save-manager to reject corrupt bundles before they
+   *  reach the server (gap #71). */
+  export function checkExistingReferences(bundle: unknown): void;
+
+  /** Pre-save validator — walks the reachable graph from bundle.root and
+   *  asserts weak/strong-ref consistency. Throws on weak refs to
+   *  unreachable instances (the classic parentKey-orphan corruption
+   *  pattern from gap #70). */
+  export function checkRefsInBundle(bundle: unknown, opts?: unknown): void;
 }
 
 declare module "@/wab/shared/model/classes-metas" {
@@ -364,6 +381,27 @@ declare module "@/wab/shared/model/classes" {
     uuid: string;
     name: string;
     op: any;
+  }
+
+  /** Model class for CustomFunctionExpr — an expression that calls a
+   *  registered CustomFunction. Used as the `op` of a serverQuery to bind
+   *  the query to `ep.getProduct` etc. Mirrors Studio's
+   *  `ServerQueryOpPicker` construction pattern — `func` is the
+   *  CustomFunction reference, `args` is the array of FunctionArgs. */
+  export class CustomFunctionExpr {
+    constructor(args: { func: any; args: any[] });
+    func: any;
+    args: any[];
+  }
+
+  /** Model class for FunctionArg — a single argument of a CustomFunctionExpr.
+   *  `argType` is a WeakRef to the ArgType in `func.params`; `expr` is
+   *  typically a CustomCode or ObjectPath carrying the argument value. */
+  export class FunctionArg {
+    constructor(args: { uuid: string; expr: any; argType: any });
+    uuid: string;
+    expr: any;
+    argType: any;
   }
 
   /** Model class for EventHandler — event handler expression containing interactions. */
@@ -762,6 +800,26 @@ declare module "@/wab/shared/core/tpls" {
   /** Register a component → site mapping in the COMPONENT_TO_SITE WeakMap.
    *  Required for getOwnerSite() lookups. */
   export function trackComponentSite(component: any, site: any): void;
+
+  /** Walk every expression (CustomCode, ObjectPath, TemplatedString, etc.)
+   *  referenced anywhere in a component's tplTree, styles, data queries,
+   *  params, and interactions. Used by `data.remove-query`'s pre-flight
+   *  reference check (gap #70) to detect `$queries.<name>` bindings
+   *  before deleting the query. */
+  export function findExprsInComponent(component: any): Array<{ expr: any; [key: string]: any }>;
+}
+
+declare module "@/wab/shared/refactoring" {
+  /** Returns true if the given expression references the named query
+   *  (`$queries.<name>`). Used alongside a regex fallback for MCP's
+   *  pre-flight check before `data.remove-query` — Studio's primary
+   *  source of truth for query reference detection. */
+  export function isQueryUsedInExpr(queryName: string, expr: any): boolean;
+
+  /** Returns true if the given expression references the named data
+   *  token (`$dataTokens.<name>`). Mirror helper to `isQueryUsedInExpr`
+   *  for the token-deletion pre-flight path. */
+  export function isDataTokenUsedInExpr(tokenName: string, expr: any): boolean;
 }
 
 declare module "@/wab/shared/RuleSetHelpers" {
