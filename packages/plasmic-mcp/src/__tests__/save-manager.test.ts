@@ -19,7 +19,14 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import { SaveManager, isSaving } from "../save-manager";
 import { setSession, clearSession } from "../session";
-import { mockFastBundle, mockAddrOf } from "../__mocks__/wab-bundler";
+import {
+  mockFastBundle,
+  mockAddrOf,
+  mockCachedBundle,
+  mockCheckExistingReferences,
+  mockCheckRefsInBundle,
+} from "../__mocks__/wab-bundler";
+import { mockAssertSiteInvariants } from "../__mocks__/wab-site-invariants";
 import { PlasmicApiError } from "../api-client";
 import type { PlasmicApiClient } from "../api-client";
 import type { Session } from "../session";
@@ -48,6 +55,7 @@ function makeSession(overrides?: Partial<Session>): Session {
       fastBundle: mockFastBundle,
       addrOf: mockAddrOf,
       bundle: vi.fn().mockReturnValue({ map: {}, root: "0", version: "256-test-version" }),
+      cachedBundle: mockCachedBundle,
     },
     revisionNum: 10,
     modelVersion: 5,
@@ -207,6 +215,146 @@ describe("SaveManager", () => {
     });
   });
 
+  // Pre-save bundle validation wires three shared Studio validators into the
+  // save path — `assertSiteInvariants`, `checkExistingReferences`,
+  // `checkRefsInBundle`. When any of them throws, the save manager must refuse
+  // to persist the bundle and surface a "Pre-save bundle validation failed"
+  // error. These tests prove that wiring: when a validator throws, the error
+  // reaches the caller with the expected prefix and the original message, and
+  // `saveRevision` is never called. Without the wiring, a corrupt bundle would
+  // reach the server (gap #71).
+  describe("pre-save bundle validation", () => {
+    it("surfaces assertSiteInvariants errors and skips saveRevision", async () => {
+      setSession(makeSession());
+      mockCachedBundle.mockReturnValue({ map: {}, root: "0", deps: [] });
+      mockAssertSiteInvariants.mockImplementation(() => {
+        throw new Error("Duplicated component name: Foo");
+      });
+
+      await expect(
+        saveManager.saveChanges({
+          changes: [],
+          newInsts: [],
+          removedInsts: [],
+        } as any)
+      ).rejects.toThrow(
+        /Pre-save bundle validation failed: Duplicated component name: Foo/
+      );
+      expect(api.saveRevision).not.toHaveBeenCalled();
+    });
+
+    it("surfaces checkExistingReferences errors and skips saveRevision", async () => {
+      setSession(makeSession());
+      mockCachedBundle.mockReturnValue({
+        map: { "0": { __type: "Site" } },
+        root: "0",
+        deps: [],
+      });
+      mockCheckExistingReferences.mockImplementation(() => {
+        throw new Error("Missing reference (IID ghost-iid)");
+      });
+
+      await expect(
+        saveManager.saveChanges({
+          changes: [],
+          newInsts: [],
+          removedInsts: [],
+        } as any)
+      ).rejects.toThrow(
+        /Pre-save bundle validation failed: Missing reference \(IID ghost-iid\)/
+      );
+      expect(api.saveRevision).not.toHaveBeenCalled();
+    });
+
+    it("surfaces checkRefsInBundle errors and skips saveRevision", async () => {
+      setSession(makeSession());
+      mockCachedBundle.mockReturnValue({
+        map: { "0": { __type: "Site" } },
+        root: "0",
+        deps: [],
+      });
+      mockCheckRefsInBundle.mockImplementation(() => {
+        throw new Error("Unreachable instance has weak refs");
+      });
+
+      await expect(
+        saveManager.saveChanges({
+          changes: [],
+          newInsts: [],
+          removedInsts: [],
+        } as any)
+      ).rejects.toThrow(
+        /Pre-save bundle validation failed: Unreachable instance has weak refs/
+      );
+      expect(api.saveRevision).not.toHaveBeenCalled();
+    });
+
+    it("includes recovery guidance pointing to refresh-project and gap #71", async () => {
+      setSession(makeSession());
+      mockCachedBundle.mockReturnValue({ map: {}, root: "0", deps: [] });
+      mockAssertSiteInvariants.mockImplementation(() => {
+        throw new Error("invariant broken");
+      });
+
+      await expect(
+        saveManager.saveChanges({
+          changes: [],
+          newInsts: [],
+          removedInsts: [],
+        } as any)
+      ).rejects.toThrow(/refresh-project/);
+      await expect(
+        (async () => {
+          mockAssertSiteInvariants.mockImplementation(() => {
+            throw new Error("invariant broken");
+          });
+          return saveManager.saveChanges({
+            changes: [],
+            newInsts: [],
+            removedInsts: [],
+          } as any);
+        })()
+      ).rejects.toThrow(/gap #71/);
+    });
+
+    it("saves normally when all three validators pass", async () => {
+      setSession(makeSession());
+      mockCachedBundle.mockReturnValue({ map: {}, root: "0", deps: [] });
+      // No validator throws — save must proceed.
+      const result = await saveManager.saveChanges({
+        changes: [],
+        newInsts: [],
+        removedInsts: [],
+      } as any);
+
+      expect(result.revisionNum).toBe(11);
+      expect(api.saveRevision).toHaveBeenCalledTimes(1);
+      expect(mockAssertSiteInvariants).toHaveBeenCalled();
+      expect(mockCheckExistingReferences).toHaveBeenCalled();
+      expect(mockCheckRefsInBundle).toHaveBeenCalled();
+    });
+
+    it("skips bundle-level validators when bundler lacks cachedBundle", async () => {
+      // Some bundler variants (pre-P0.0) don't expose cachedBundle. Verify
+      // the save-manager tolerates that without throwing, and still runs
+      // the site-level invariant check.
+      const session = makeSession();
+      (session.bundler as any).cachedBundle = undefined;
+      setSession(session);
+
+      const result = await saveManager.saveChanges({
+        changes: [],
+        newInsts: [],
+        removedInsts: [],
+      } as any);
+
+      expect(result.revisionNum).toBe(11);
+      expect(mockAssertSiteInvariants).toHaveBeenCalled();
+      expect(mockCheckExistingReferences).not.toHaveBeenCalled();
+      expect(mockCheckRefsInBundle).not.toHaveBeenCalled();
+    });
+  });
+
   describe("412 error handling", () => {
     it("throws conflict error on ProjectRevisionError", async () => {
       setSession(makeSession());
@@ -286,6 +434,49 @@ describe("SaveManager", () => {
 
       // Revision should not have been incremented
       expect(session.revisionNum).toBe(10);
+    });
+  });
+
+  // Mirrors the saveChanges pre-save tests above — `saveFullBundle` runs the
+  // same three validators, so its wiring must also refuse a corrupt bundle.
+  describe("saveFullBundle pre-save validation", () => {
+    it("surfaces assertSiteInvariants errors and skips saveRevision", async () => {
+      setSession(makeSession());
+      mockCachedBundle.mockReturnValue({ map: {}, root: "0", deps: [] });
+      mockAssertSiteInvariants.mockImplementation(() => {
+        throw new Error("site broken");
+      });
+
+      await expect(saveManager.saveFullBundle()).rejects.toThrow(
+        /Pre-save bundle validation failed: site broken/
+      );
+      expect(api.saveRevision).not.toHaveBeenCalled();
+    });
+
+    it("surfaces checkExistingReferences errors and skips saveRevision", async () => {
+      setSession(makeSession());
+      mockCachedBundle.mockReturnValue({ map: {}, root: "0", deps: [] });
+      mockCheckExistingReferences.mockImplementation(() => {
+        throw new Error("dangling __ref");
+      });
+
+      await expect(saveManager.saveFullBundle()).rejects.toThrow(
+        /Pre-save bundle validation failed: dangling __ref/
+      );
+      expect(api.saveRevision).not.toHaveBeenCalled();
+    });
+
+    it("surfaces checkRefsInBundle errors and skips saveRevision", async () => {
+      setSession(makeSession());
+      mockCachedBundle.mockReturnValue({ map: {}, root: "0", deps: [] });
+      mockCheckRefsInBundle.mockImplementation(() => {
+        throw new Error("weak ref to unreachable");
+      });
+
+      await expect(saveManager.saveFullBundle()).rejects.toThrow(
+        /Pre-save bundle validation failed: weak ref to unreachable/
+      );
+      expect(api.saveRevision).not.toHaveBeenCalled();
     });
   });
 

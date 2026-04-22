@@ -18,6 +18,10 @@ import { mergeRecordedChanges, type RecordedChanges } from "@/wab/shared/core/ob
 import { requireSession } from "./session.js";
 import { modelSchemaHash } from "@/wab/shared/model/classes-metas";
 import { assertSiteInvariants } from "@/wab/shared/site-invariants";
+import {
+  checkExistingReferences,
+  checkRefsInBundle,
+} from "@/wab/shared/bundler";
 
 export interface SaveResult {
   revisionNum: number;
@@ -88,12 +92,38 @@ export class SaveManager {
 
     const newRevisionNum = revisionNum + 1;
 
-    // Validate site invariants before saving (matches Studio's StudioCtx.trySave())
+    // Validate site invariants before saving (matches Studio's StudioCtx.trySave()).
+    // Uses shared checkers from @/wab/shared — zero duplicated logic.
+    //   assertSiteInvariants    — Site-model invariants (duplicate names,
+    //                             arena/frame integrity, arrayType conflicts,
+    //                             style-token validity).
+    //   checkExistingReferences — every `__ref` in the bundle points to an
+    //                             existing IID in bundle.map. Catches dangling
+    //                             references left over by a mutation path that
+    //                             failed to clean up (gap #71 class).
+    //   checkRefsInBundle       — weak/strong-ref consistency across the full
+    //                             reachable graph; surfaces unreachable
+    //                             instances that still carry parent refs.
+    // We validate against `bundler.cachedBundle()` (the post-fastBundle full
+    // bundle state) rather than the incremental delta — the corruption we
+    // want to catch is cross-instance, not delta-local.
     try {
       assertSiteInvariants(site);
+      // `cachedBundle()` is a FastBundler method; fall back gracefully for
+      // test stubs or any bundler variant that doesn't expose it.
+      const fullBundle =
+        typeof (bundler as { cachedBundle?: () => unknown }).cachedBundle ===
+        "function"
+          ? (bundler as { cachedBundle: () => unknown }).cachedBundle()
+          : undefined;
+      if (fullBundle) {
+        checkExistingReferences(fullBundle as never);
+        checkRefsInBundle(fullBundle as never);
+      }
     } catch (err: unknown) {
       throw new Error(
-        `Site invariant violation: ${err instanceof Error ? err.message : String(err)} ` +
+        `Pre-save bundle validation failed: ${err instanceof Error ? err.message : String(err)} ` +
+          `This prevents a corrupt bundle from being persisted (gap #71). ` +
           `Use refresh-project to reload the latest valid version, then retry your edit.`
       );
     }
@@ -216,12 +246,38 @@ export class SaveManager {
     const bundle = bundler.bundle(site, projectId, freshBundleVersion);
     const newRevisionNum = revisionNum + 1;
 
-    // Validate site invariants before saving (matches Studio's StudioCtx.trySave())
+    // Validate site invariants before saving (matches Studio's StudioCtx.trySave()).
+    // Uses shared checkers from @/wab/shared — zero duplicated logic.
+    //   assertSiteInvariants    — Site-model invariants (duplicate names,
+    //                             arena/frame integrity, arrayType conflicts,
+    //                             style-token validity).
+    //   checkExistingReferences — every `__ref` in the bundle points to an
+    //                             existing IID in bundle.map. Catches dangling
+    //                             references left over by a mutation path that
+    //                             failed to clean up (gap #71 class).
+    //   checkRefsInBundle       — weak/strong-ref consistency across the full
+    //                             reachable graph; surfaces unreachable
+    //                             instances that still carry parent refs.
+    // We validate against `bundler.cachedBundle()` (the post-fastBundle full
+    // bundle state) rather than the incremental delta — the corruption we
+    // want to catch is cross-instance, not delta-local.
     try {
       assertSiteInvariants(site);
+      // `cachedBundle()` is a FastBundler method; fall back gracefully for
+      // test stubs or any bundler variant that doesn't expose it.
+      const fullBundle =
+        typeof (bundler as { cachedBundle?: () => unknown }).cachedBundle ===
+        "function"
+          ? (bundler as { cachedBundle: () => unknown }).cachedBundle()
+          : undefined;
+      if (fullBundle) {
+        checkExistingReferences(fullBundle as never);
+        checkRefsInBundle(fullBundle as never);
+      }
     } catch (err: unknown) {
       throw new Error(
-        `Site invariant violation: ${err instanceof Error ? err.message : String(err)} ` +
+        `Pre-save bundle validation failed: ${err instanceof Error ? err.message : String(err)} ` +
+          `This prevents a corrupt bundle from being persisted (gap #71). ` +
           `Use refresh-project to reload the latest valid version, then retry your edit.`
       );
     }

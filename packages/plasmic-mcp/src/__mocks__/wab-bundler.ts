@@ -15,6 +15,21 @@ export const mockRecomputeParents = vi.fn();
 export const mockUnbundlePartial = vi.fn();
 export const mockAllUuids = vi.fn().mockReturnValue([]);
 export const mockObjByAddr = vi.fn();
+export const mockCachedBundle = vi.fn();
+
+// Pre-save bundle validators exported from @/wab/shared/bundler in Studio.
+// Exposed as vi.fn() so unit tests can configure them to throw per-case to
+// prove the save-path wiring surfaces validator errors. Default: no-op, which
+// matches the Studio behavior on a well-formed bundle.
+export const mockCheckExistingReferences = vi.fn();
+export const mockCheckRefsInBundle = vi.fn();
+
+export function checkExistingReferences(bundle: unknown): void {
+  mockCheckExistingReferences(bundle);
+}
+export function checkRefsInBundle(bundle: unknown, opts?: unknown): void {
+  mockCheckRefsInBundle(bundle, opts);
+}
 
 export class FastBundler {
   constructor(_meta: any, _classes: any) {}
@@ -49,5 +64,9 @@ export class FastBundler {
 
   objByAddr(addr: { uuid: string; iid: string }): any | undefined {
     return mockObjByAddr(addr);
+  }
+
+  cachedBundle(): any {
+    return mockCachedBundle();
   }
 }

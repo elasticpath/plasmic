@@ -65,6 +65,8 @@ import {
   ComponentServerQuery,
   isKnownComponentDataQuery,
   isKnownComponentServerQuery,
+  CustomFunctionExpr,
+  FunctionArg,
   Mixin,
   isKnownMixin,
   KeyFrame,
@@ -90,7 +92,8 @@ import { RSH } from "@/wab/shared/RuleSetHelpers";
 import { TplMgr, setTplComponentArg } from "@/wab/shared/TplMgr";
 import { ensureVariantSetting, mkVariant } from "@/wab/shared/Variants";
 import { mkTplTagX, mkTplInlinedText, mkTplComponentX, clone as cloneTpl, TplTagType } from "@/wab/shared/core/tpls";
-import { flattenTpls } from "@/wab/shared/core/tpls";
+import { flattenTpls, findExprsInComponent } from "@/wab/shared/core/tpls";
+import { isQueryUsedInExpr } from "@/wab/shared/refactoring";
 import { elementSchemaToTpl as studioElementSchemaToTpl } from "@/wab/shared/code-components/code-components";
 import { requireSession } from "./session.js";
 import { getChangeTracker } from "./change-tracker.js";
@@ -323,16 +326,23 @@ function createAttrExpr(value: unknown, warnings: string[]): any {
           `Plasmic scope variables use $ prefix ($props, $state, $ctx).`
         );
         validateJsExpression(corrected);
-        return new CustomCode({ code: corrected, fallback: null });
+        // Wrap in parens so `isRealCodeExpr` returns true — same shape
+        // Studio's `createExprForDataPickerValue` uses. Without the parens,
+        // Plasmic's codegen emits the bare code unwrapped, which breaks
+        // server-query references like `$q.x.data` where `$q` is only a
+        // local after codegen inserts the parens-triggered safe wrapper.
+        return new CustomCode({ code: `(${corrected})`, fallback: null });
       }
       validateJsExpression(code);
-      return new CustomCode({ code, fallback: null });
+      return new CustomCode({ code: `(${code})`, fallback: null });
     }
     // Dynamic value: {{expression}}
     if (value.startsWith("{{") && value.endsWith("}}")) {
       const code = value.slice(2, -2).trim();
       validateJsExpression(code);
-      return new CustomCode({ code, fallback: null });
+      // See note above — parens wrap tells Plasmic codegen this is a
+      // real code expression (see `isRealCodeExpr` in @/wab/shared/core/exprs).
+      return new CustomCode({ code: `(${code})`, fallback: null });
     }
     // Static string literal — check for accidental expression patterns
     const warning = checkLiteralWarning(value);
@@ -6631,6 +6641,41 @@ export async function removeQuery(
   const removedName = query.name;
   const removedUuid = query.uuid;
 
+  // Pre-flight reference check — mirrors Studio's
+  // site-ops.removeComponentServerQuery / removeComponentQuery behaviour.
+  // Studio refuses to delete a query whose `$queries.<name>` is still
+  // bound from any expression in the component tree; skipping this guard
+  // was one of the paths that seeded the gap #70 bundle corruption (the
+  // removed query's parentKey wasn't fully unwound because an invalidation
+  // or selector expression still held a reference).
+  // Detect any expression that references `$queries.<name>`. We use
+  // Studio's shared helper as the primary source of truth (handles the
+  // paren-wrapped "real code" case that `isQueryUsedInExpr` parses via
+  // `parseExpr`). The regex fallback below catches the case where an
+  // expression was stored as a bare `CustomCode({ code: "$queries..." })`
+  // without the `(...)` wrapping that `isRealCodeExpr` requires — the
+  // MCP's `update-text` currently produces this shape for dynamic text,
+  // so `isQueryUsedInExpr` wouldn't see it. Text-pattern fallback is
+  // strictly a superset: any `$queries.<name>` usage is a reference.
+  const queryRefPattern = new RegExp(
+    String.raw`\$queries\.` +
+      query.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") +
+      String.raw`\b`
+  );
+  const allExprs = findExprsInComponent(component);
+  const refs = allExprs.filter(({ expr }) => {
+    if (isQueryUsedInExpr(query.name, expr)) return true;
+    const code = (expr as any)?.code;
+    return typeof code === "string" && queryRefPattern.test(code);
+  });
+  if (refs.length > 0) {
+    throw new Error(
+      `Cannot remove query "${query.name}" — it is still referenced in ${refs.length} expression(s) in component "${component.name}". ` +
+        `Clear the bindings first (update-text, update-props, set-data-cond, set-data-rep) before removing the query. ` +
+        `This check prevents bundle corruption (gap #70 — server query remove/re-add).`
+    );
+  }
+
   const tplMgr = new TplMgr({ site: session.site });
 
   const changes = tracker.withRecording(() => {
@@ -6660,54 +6705,170 @@ export interface UpdateQueryResult {
 }
 
 /**
- * Update a data query's name.
+ * Specification for binding a query to a registered custom function.
+ *
+ * Mirrors the shape Studio's query builder produces via
+ * `client/components/sidebar-tabs/ServerQuery/ServerQueryOpPicker.tsx`
+ * (`new CustomFunctionExpr({ func, args })` + one `FunctionArg` per arg).
+ * `null` clears the op (detach path).
+ *
+ * Each value in `args` is a JS expression string — stored verbatim as the
+ * `CustomCode.code` for that argument. Same convention as update-text's
+ * `dynamic:true` path — no magic `$`/`{{}}` unwrapping.
+ */
+export interface FunctionCallSpec {
+  namespace?: string;
+  name: string;
+  args: Record<string, string>;
+}
+
+/**
+ * Update a data/server query — rename and/or bind its op to a registered
+ * custom function. At least one of `newName` or `options.functionCall`
+ * must be provided.
  */
 export async function updateQuery(
   apiClient: PlasmicApiClient,
   componentUuid: string,
   queryRef: string,
-  newName?: string
+  newName?: string,
+  options?: { functionCall?: FunctionCallSpec | null }
 ): Promise<UpdateQueryResult> {
   const component = findComponent(componentUuid);
-  requireSession();
+  const session = requireSession();
   const tracker = getChangeTracker();
   const { query, queryType } = findQuery(component, queryRef);
 
-  if (!newName) {
-    throw new Error("At least a new name must be provided for update-query.");
-  }
-
-  const validName = validateQueryName(newName);
-
-  // Check for duplicate names (excluding current query)
-  const allQueries = [
-    ...(component.dataQueries ?? []),
-    ...(component.serverQueries ?? []),
-  ].filter((q: any) => q.uuid !== query.uuid);
-  if (allQueries.some((q: any) => q.name === validName)) {
+  const hasFunctionCallField =
+    options !== undefined &&
+    Object.prototype.hasOwnProperty.call(options, "functionCall");
+  if (!newName && !hasFunctionCallField) {
     throw new Error(
-      `Query "${validName}" already exists on component "${component.name}".`
+      "At least one of 'name' or 'functionCall' must be provided for update-query."
     );
   }
 
+  let validName: string | undefined;
+  if (newName) {
+    validName = validateQueryName(newName);
+    const allQueries = [
+      ...(component.dataQueries ?? []),
+      ...(component.serverQueries ?? []),
+    ].filter((q: any) => q.uuid !== query.uuid);
+    if (allQueries.some((q: any) => q.name === validName)) {
+      throw new Error(
+        `Query "${validName}" already exists on component "${component.name}".`
+      );
+    }
+  }
+
   const changes = tracker.withRecording(() => {
-    query.name = validName;
+    if (validName) {
+      query.name = validName;
+    }
+    if (hasFunctionCallField) {
+      query.op = options!.functionCall
+        ? buildCustomFunctionExpr(session.site, options!.functionCall)
+        : null;
+    }
   });
 
   const componentIid = getComponentIid(component);
+  const finalName = validName ?? query.name;
   const save = await saveOrAccumulate(
     apiClient,
     changes,
-    `update-query: rename to ${validName} on ${component.name}`,
+    hasFunctionCallField
+      ? `update-query: ${finalName} → ${
+          options!.functionCall
+            ? `${options!.functionCall.namespace ? options!.functionCall.namespace + "." : ""}${options!.functionCall.name}`
+            : "(cleared)"
+        } on ${component.name}`
+      : `update-query: rename to ${finalName} on ${component.name}`,
     componentIid ? [componentIid] : []
   );
 
   return {
     save,
     queryUuid: query.uuid,
-    name: validName,
+    name: finalName,
     queryType,
   };
+}
+
+/**
+ * Build a `CustomFunctionExpr` from a user-supplied function call spec.
+ *
+ * Lookup and construction mirror Studio's `ServerQueryOpPicker` — the
+ * function is resolved from `site.customFunctions` (also traverses
+ * projectDependencies when present, matching `allCustomFunctions` from
+ * `@/wab/shared/cached-selectors`). Each named arg in `spec.args` is
+ * matched to the function's declared `params` by `argName` and wrapped
+ * in a `FunctionArg` carrying a `CustomCode` expression.
+ */
+function buildCustomFunctionExpr(site: any, spec: FunctionCallSpec): any {
+  // Collect functions from the site + all transitive project dependencies.
+  // Shape mirrors `allCustomFunctions(site)` from Studio's cached-selectors.
+  const localFns: any[] = site?.customFunctions ?? [];
+  const depFns: any[] = [];
+  for (const dep of site?.projectDependencies ?? []) {
+    for (const fn of dep?.site?.customFunctions ?? []) {
+      depFns.push(fn);
+    }
+  }
+  const allFns = [...localFns, ...depFns];
+
+  const matches = allFns.filter(
+    (fn: any) =>
+      fn.importName === spec.name &&
+      (fn.namespace ?? undefined) === (spec.namespace ?? undefined)
+  );
+  if (matches.length === 0) {
+    const label = `${spec.namespace ? spec.namespace + "." : ""}${spec.name}`;
+    throw new Error(
+      `Custom function "${label}" not found in site.customFunctions. ` +
+        `Ensure the dev host is registering it (registerFunction) and call ` +
+        `project.sync-dev-host so the MCP ingests it into site.customFunctions.`
+    );
+  }
+  const func = matches[0];
+
+  const args: any[] = [];
+  for (const [argName, codeString] of Object.entries(spec.args ?? {})) {
+    const param = (func.params ?? []).find(
+      (p: any) => p.argName === argName
+    );
+    if (!param) {
+      const label = `${spec.namespace ? spec.namespace + "." : ""}${spec.name}`;
+      const declared = (func.params ?? [])
+        .map((p: any) => p.argName)
+        .join(", ");
+      throw new Error(
+        `Unknown arg "${argName}" for custom function "${label}". ` +
+          `Declared params: ${declared || "(none)"}.`
+      );
+    }
+    if (typeof codeString !== "string") {
+      throw new Error(
+        `Arg "${argName}" must be a JS expression string (got ${typeof codeString}).`
+      );
+    }
+    validateJsExpression(codeString);
+    args.push(
+      new FunctionArg({
+        uuid: randomUUID(),
+        // Wrap in parens so `isRealCodeExpr` returns true — Studio's UI
+        // reads the arg via `argsMap[param.argName][0].expr` then decomposes
+        // for display; unwrapped CustomCode shows as "unset" and the
+        // Plasmic codegen emits the bare code without the safe IIFE wrapper.
+        // Mirrors `createExprForDataPickerValue` in @/wab/shared/core/exprs.
+        expr: new CustomCode({ code: `(${codeString})`, fallback: null }),
+        argType: param,
+      })
+    );
+  }
+
+  return new CustomFunctionExpr({ func, args });
 }
 
 // =============================================================================

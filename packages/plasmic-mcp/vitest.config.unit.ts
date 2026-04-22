@@ -59,6 +59,10 @@ export default defineConfig({
         replacement: path.resolve(__dirname, "src/__mocks__/wab-tpl-mgr"),
       },
       {
+        find: /^@\/wab\/shared\/refactoring$/,
+        replacement: path.resolve(__dirname, "src/__mocks__/wab-refactoring"),
+      },
+      {
         find: /^@\/wab\/shared\/site-invariants$/,
         replacement: path.resolve(
           __dirname,
@@ -216,6 +220,35 @@ export default defineConfig({
         find: /^@\/wab\/shared\/codegen\/image-assets$/,
         replacement: path.resolve(__dirname, "src/__mocks__/wab-codegen-image-assets"),
       },
+      // Preview-server + devhost-ingestion transitive shared imports
+      {
+        find: /^@\/wab\/shared\/codegen\/util$/,
+        replacement: path.resolve(__dirname, "src/__mocks__/wab-codegen-util"),
+      },
+      {
+        find: /^@\/wab\/shared\/codegen\/react-p\/serialize-utils$/,
+        replacement: path.resolve(__dirname, "src/__mocks__/wab-serialize-utils"),
+      },
+      {
+        find: /^@\/wab\/shared\/core\/sites$/,
+        replacement: path.resolve(__dirname, "src/__mocks__/wab-core-sites"),
+      },
+      {
+        find: /^@\/wab\/shared\/core\/exprs$/,
+        replacement: path.resolve(__dirname, "src/__mocks__/wab-core-exprs"),
+      },
+      {
+        find: /^@\/wab\/shared\/devflags$/,
+        replacement: path.resolve(__dirname, "src/__mocks__/wab-devflags"),
+      },
+      {
+        find: /^@\/wab\/shared\/plume\/plume-registry$/,
+        replacement: path.resolve(__dirname, "src/__mocks__/wab-plume-registry"),
+      },
+      {
+        find: /^@\/wab\/shared\/utils\/url-utils$/,
+        replacement: path.resolve(__dirname, "src/__mocks__/wab-url-utils"),
+      },
     ],
     extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
   },
@@ -226,6 +259,7 @@ export default defineConfig({
       "src/__tests__/real-integration.test.ts",
       "src/__tests__/devhost-sync-integration.test.ts",
       "src/__tests__/package-manager.integration.test.ts",
+      "src/__tests__/devhost-ingestion.integration.test.ts",
     ],
     environment: "node",
   },

@@ -673,7 +673,9 @@ describe("syncFromDevHost", () => {
     }) as any;
     const site = mkSite([]);
 
-    const result = await syncFromDevHost(site, "http://localhost:3388");
+    const result = await syncFromDevHost(site, "http://localhost:3388", {
+      syncMode: "variants-only",
+    });
     expect(result.devHostSynced).toBe(true);
     expect(result.syncedVariantComponents).toEqual([]);
   });
@@ -702,7 +704,13 @@ describe("syncFromDevHost", () => {
         }),
     }) as any;
 
-    const result = await syncFromDevHost(site, "http://localhost:3388");
+    // syncMode="variants-only" keeps this test scoped to the variant-metadata
+    // path (the only path this unit suite exercises). Full code-component
+    // ingestion requires a real Plasmic site and is covered by
+    // devhost-ingestion.integration.test.ts.
+    const result = await syncFromDevHost(site, "http://localhost:3388", {
+      syncMode: "variants-only",
+    });
 
     // Sync result
     expect(result.devHostSynced).toBe(true);
@@ -744,7 +752,9 @@ describe("syncFromDevHost", () => {
       json: () => Promise.resolve(registryResponse),
     }) as any;
 
-    const result = await syncFromDevHost(site, "http://localhost:3388");
+    const result = await syncFromDevHost(site, "http://localhost:3388", {
+      syncMode: "variants-only",
+    });
 
     expect(result.devHostSynced).toBe(true);
     expect(result.registryData).not.toBeUndefined();
@@ -770,7 +780,9 @@ describe("syncFromDevHost", () => {
     }) as any;
 
     const site = mkSite([]);
-    const result = await syncFromDevHost(site, "http://localhost:3388");
+    const result = await syncFromDevHost(site, "http://localhost:3388", {
+      syncMode: "variants-only",
+    });
 
     expect(result.devHostSynced).toBe(true);
     expect(result.syncedVariantComponents).toEqual([]);

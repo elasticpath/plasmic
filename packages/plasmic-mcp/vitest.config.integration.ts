@@ -159,6 +159,7 @@ export default defineConfig({
       "src/__tests__/real-integration.test.ts",
       "src/__tests__/devhost-sync-integration.test.ts",
       "src/__tests__/package-manager.integration.test.ts",
+      "src/__tests__/devhost-ingestion.integration.test.ts",
     ],
     testTimeout: 30_000,
     hookTimeout: 30_000,
