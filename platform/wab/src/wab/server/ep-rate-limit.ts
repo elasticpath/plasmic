@@ -26,6 +26,12 @@ function getRedisClient(): Redis | undefined {
   return _redisClient;
 }
 
+export interface RateLimiterDeps {
+  redis?: Redis | null;
+  windowSec?: number;
+  limit?: number;
+}
+
 // Parses "id:token,..." headers (x-plasmic-api-project-tokens, x-plasmic-api-cms-tokens)
 export function parseTokenIds(tokenHeader: string | undefined): string[] {
   if (!tokenHeader || typeof tokenHeader !== "string") {
@@ -147,12 +153,10 @@ async function resolveCmsScopeKeys(
 async function enforceRateLimit(
   redis: Redis,
   res: Response,
-  next: NextFunction,
-  keys: Set<string>
+  keys: Set<string>,
+  windowSec: number,
+  limit: number
 ): Promise<boolean> {
-  const windowSec = parseInt(process.env.RATE_LIMIT_WINDOW_SEC ?? "60", 10);
-  const limit = parseInt(process.env.RATE_LIMIT_PER_SCOPE ?? "6000", 10);
-
   const keyList = [...keys];
 
   const incrPipeline = redis.pipeline();
@@ -185,8 +189,10 @@ async function enforceRateLimit(
 // Rate limiter for loader endpoints, keyed by workspace.id or team.id resolved
 // from x-plasmic-api-project-tokens. All workspaces/teams in a multi-project
 // request are incremented independently. Fails open if Redis is unavailable.
-export function createProjectScopeRateLimiter(): RequestHandler {
-  const redis = getRedisClient();
+export function createProjectScopeRateLimiter(deps?: RateLimiterDeps): RequestHandler {
+  const redis = deps?.redis !== undefined ? deps.redis : getRedisClient();
+  const windowSec = deps?.windowSec ?? parseInt(process.env.RATE_LIMIT_WINDOW_SEC ?? "60", 10);
+  const limit = deps?.limit ?? parseInt(process.env.RATE_LIMIT_PER_SCOPE ?? "6000", 10);
 
   return async (req: Request, res: Response, next: NextFunction) => {
     if (!redis) {
@@ -205,7 +211,7 @@ export function createProjectScopeRateLimiter(): RequestHandler {
       if (keys.size === 0) {
         return next();
       }
-      const blocked = await enforceRateLimit(redis, res, next, keys);
+      const blocked = await enforceRateLimit(redis, res, keys, windowSec, limit);
       if (blocked) return;
     } catch (err) {
       logger().error("Rate limiter failed open", { err });
@@ -216,8 +222,10 @@ export function createProjectScopeRateLimiter(): RequestHandler {
 
 // Rate limiter for public CMS endpoints, keyed by workspace.id or team.id
 // resolved from x-plasmic-api-cms-tokens. Fails open if Redis is unavailable.
-export function createCmsScopeRateLimiter(): RequestHandler {
-  const redis = getRedisClient();
+export function createCmsScopeRateLimiter(deps?: RateLimiterDeps): RequestHandler {
+  const redis = deps?.redis !== undefined ? deps.redis : getRedisClient();
+  const windowSec = deps?.windowSec ?? parseInt(process.env.RATE_LIMIT_WINDOW_SEC ?? "60", 10);
+  const limit = deps?.limit ?? parseInt(process.env.RATE_LIMIT_PER_SCOPE ?? "6000", 10);
 
   return async (req: Request, res: Response, next: NextFunction) => {
     if (!redis) {
@@ -236,7 +244,7 @@ export function createCmsScopeRateLimiter(): RequestHandler {
       if (keys.size === 0) {
         return next();
       }
-      const blocked = await enforceRateLimit(redis, res, next, keys);
+      const blocked = await enforceRateLimit(redis, res, keys, windowSec, limit);
       if (blocked) return;
     } catch (err) {
       logger().error("Rate limiter failed open", { err });
