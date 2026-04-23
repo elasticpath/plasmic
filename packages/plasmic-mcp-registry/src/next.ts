@@ -43,36 +43,41 @@ interface WebpackContext {
 /**
  * Package patterns for `serverExternalPackages`.
  *
- * We ONLY externalise workspace/monorepo packages that (a) register code
- * components and (b) do not carry a `"use client"` directive at their entry.
- * The Next.js RSC runtime replaces `react` with `react.shared-subset` (no
- * `createContext`), so modules that touch `React.createContext` at the top
- * level blow up during server evaluation of API routes that import them.
- * Externalising forces Node's `require` to load them outside the RSC graph
- * using the consumer's full React from `node_modules`.
+ * We externalise two categories:
  *
- * Explicitly NOT externalised:
- *   - `@plasmicapp/host` and `@plasmicapp/query` — published dists that
- *     carry `"use client"` directives. Externalising them makes Node's
- *     `require` load their React from the consumer's node_modules, which
- *     is a different instance than Next's internally-bundled React →
- *     "Invalid hook call / useContext is null" under the iframe runtime.
- *     Bundling lets Next's webpack `react$` alias point both server and
- *     client at Next's internal React, giving one dispatcher end-to-end.
+ *   - `@plasmicapp/host` + `@plasmicapp/query` — these carry `"use client"`
+ *     at their dist entry (good for RSC client-boundary detection) but
+ *     their server-side helpers (`registerFunction`, `registerComponent`,
+ *     etc.) need to be callable from server API routes (e.g. for
+ *     MCP dev-host registration). Externalising forces Node's `require`
+ *     to load them outside the RSC graph where the `"use client"` directive
+ *     is simply a no-op string — the functions remain callable.
  *
- * A consumer who hits a genuine RSC failure from some other package can
- * still externalise it by passing `serverExternalPackages: ["…"]` in
- * their own config; this wrapper merges the lists.
+ *   - `@plasmicpkgs/*` — upstream packages that call React hooks
+ *     (`createContext`, `useState`) at module top level without carrying
+ *     their own `"use client"`. Bundled into the RSC runtime they crash on
+ *     `react.shared-subset`; externalised, Node require loads them with
+ *     full React from the consumer's `node_modules`.
+ *
+ * Consumer packages (`@elasticpath/plasmic-*`) that DO carry `"use client"`
+ * at their dist entry are deliberately NOT externalised — we want Next's
+ * webpack to read the directive and create proper client boundaries so
+ * SSR avoids rendering the components. See
+ * `plasmicpkgs/commerce-providers/elastic-path/build-server.mjs` for the
+ * post-build directive-injection pattern.
  */
 const PLASMIC_PACKAGE_PATTERNS: RegExp[] = [
   /^@plasmicpkgs\//,
-  /^@elasticpath\/plasmic-/,
 ];
 
-/** Webpack externals mirror the same set — needed for monorepo packages. */
+/**
+ * Webpack externals — smaller set. `@plasmicapp/*` packages resolve via
+ * normal node_modules so `serverExternalPackages` alone handles them.
+ * `@plasmicpkgs/*` may need the webpack externals fallback when resolved
+ * via monorepo symlinks (Next issue #48739).
+ */
 const WEBPACK_EXTERNAL_PATTERNS: RegExp[] = [
   /^@plasmicpkgs\//,
-  /^@elasticpath\/plasmic-/,
 ];
 
 /**

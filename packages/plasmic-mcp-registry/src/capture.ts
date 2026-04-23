@@ -8,20 +8,25 @@
  *
  * Solution: Wrap the PLASMIC loader object so that each registration call ALSO
  * invokes @plasmicapp/host's corresponding function, which writes to globalThis.
- * This is safe on the server — the host functions just push to arrays, no React hooks.
+ *
+ * Why eval-require for @plasmicapp/host:
+ *   The published @plasmicapp/host dist carries a `"use client"` directive. If
+ *   webpack bundles it, Next's RSC runtime treats every export as a client
+ *   reference — making `registerFunction`/`registerComponent` uncallable from
+ *   server API routes. The natural fix (add the package to serverExternalPackages)
+ *   forces Node's require to load a separate copy of React; that second React
+ *   has its own dispatcher slot, which Next never sets during SSR → calls like
+ *   `useContext` in globalContext components return null mid-render.
+ *   The `eval("require")` trick sidesteps webpack's static analysis at THIS
+ *   call site only — the host module is loaded via plain Node require at
+ *   runtime (directive becomes a no-op string), while the rest of the app
+ *   keeps webpack-bundled @plasmicapp/host so SSR renders use one React
+ *   instance with a properly-set dispatcher.
  *
  * Usage (in plasmic-register.ts):
  *   import { withRegistryCapture } from "@elasticpath/plasmic-mcp-registry";
  *   const CAPTURED = typeof window === "undefined" ? withRegistryCapture(PLASMIC) : PLASMIC;
- *   // Then register packages with CAPTURED instead of PLASMIC
  */
-import {
-  registerComponent,
-  registerGlobalContext,
-  registerFunction,
-  registerToken,
-  registerTrait,
-} from "@plasmicapp/host";
 
 /**
  * Minimal interface for a PLASMIC-like object that has registration methods.
@@ -34,6 +39,30 @@ interface PlasmicLike {
   registerToken?: (token: unknown) => void;
   registerTrait?: (trait: string, meta: unknown) => void;
   [key: string]: unknown;
+}
+
+interface HostRegistration {
+  registerComponent: (component: unknown, meta: unknown) => void;
+  registerGlobalContext: (component: unknown, meta: unknown) => void;
+  registerFunction: (fn: unknown, meta: unknown) => void;
+  registerToken: (token: unknown) => void;
+  registerTrait: (trait: string, meta: unknown) => void;
+}
+
+let _host: HostRegistration | undefined;
+
+function host(): HostRegistration {
+  if (!_host) {
+    // eval("require") avoids webpack's static-import analysis. Webpack
+    // would otherwise see this as an import of @plasmicapp/host, read the
+    // package's `"use client"` directive, and mark every export as a
+    // client reference — which would make these functions uncallable
+    // from server routes.
+    // eslint-disable-next-line no-eval
+    const nodeRequire = eval("require") as NodeRequire;
+    _host = nodeRequire("@plasmicapp/host") as HostRegistration;
+  }
+  return _host;
 }
 
 /**
@@ -51,23 +80,23 @@ export function withRegistryCapture<T extends PlasmicLike>(plasmic: T): T {
     ...plasmic,
     registerComponent(component: unknown, meta: unknown) {
       plasmic.registerComponent(component, meta);
-      registerComponent(component as any, meta as any);
+      host().registerComponent(component, meta);
     },
     registerGlobalContext(component: unknown, meta: unknown) {
       plasmic.registerGlobalContext?.(component, meta);
-      registerGlobalContext(component as any, meta as any);
+      host().registerGlobalContext(component, meta);
     },
     registerFunction(fn: unknown, meta: unknown) {
       plasmic.registerFunction?.(fn, meta);
-      registerFunction(fn as any, meta as any);
+      host().registerFunction(fn, meta);
     },
     registerToken(token: unknown) {
       plasmic.registerToken?.(token);
-      registerToken(token as any);
+      host().registerToken(token);
     },
     registerTrait(trait: string, meta: unknown) {
       plasmic.registerTrait?.(trait, meta);
-      registerTrait(trait, meta as any);
+      host().registerTrait(trait, meta);
     },
   } as T;
 }
