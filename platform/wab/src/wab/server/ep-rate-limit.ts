@@ -1,6 +1,7 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import type { EntityManager } from "typeorm";
 import Redis from "ioredis";
+import { logger } from "@/wab/server/observability";
 
 const SCOPE_CACHE_TTL_SEC = parseInt(
   process.env.RATE_LIMIT_SCOPE_CACHE_TTL_SEC ?? "300",
@@ -25,7 +26,8 @@ function getRedisClient(): Redis | undefined {
   return _redisClient;
 }
 
-function parseTokenHeader(tokenHeader: string | undefined): string[] {
+// Parses "id:token,..." headers (x-plasmic-api-project-tokens, x-plasmic-api-cms-tokens)
+export function parseTokenIds(tokenHeader: string | undefined): string[] {
   if (!tokenHeader || typeof tokenHeader !== "string") {
     return [];
   }
@@ -34,16 +36,6 @@ function parseTokenHeader(tokenHeader: string | undefined): string[] {
     .split(",")
     .map((part) => part.split(":")[0].trim())
     .filter(Boolean);
-}
-
-// Parses x-plasmic-api-project-tokens: "projectId:token,..."
-export function parseProjectIds(tokenHeader: string | undefined): string[] {
-  return parseTokenHeader(tokenHeader);
-}
-
-// Parses x-plasmic-api-cms-tokens: "databaseId:token,..."
-export function parseCmsDatabaseIds(tokenHeader: string | undefined): string[] {
-  return parseTokenHeader(tokenHeader);
 }
 
 // Returns rate limit keys for each project, keyed by workspace or team.
@@ -201,7 +193,7 @@ export function createProjectScopeRateLimiter(): RequestHandler {
       return next();
     }
 
-    const projectIds = parseProjectIds(
+    const projectIds = parseTokenIds(
       req.headers["x-plasmic-api-project-tokens"] as string | undefined
     );
     if (projectIds.length === 0) {
@@ -215,8 +207,8 @@ export function createProjectScopeRateLimiter(): RequestHandler {
       }
       const blocked = await enforceRateLimit(redis, res, next, keys);
       if (blocked) return;
-    } catch {
-      // Fail open — DB or Redis errors should not block legitimate traffic.
+    } catch (err) {
+      logger().error("Rate limiter failed open", { err });
     }
     next();
   };
@@ -232,7 +224,7 @@ export function createCmsScopeRateLimiter(): RequestHandler {
       return next();
     }
 
-    const databaseIds = parseCmsDatabaseIds(
+    const databaseIds = parseTokenIds(
       req.headers["x-plasmic-api-cms-tokens"] as string | undefined
     );
     if (databaseIds.length === 0) {
@@ -246,8 +238,8 @@ export function createCmsScopeRateLimiter(): RequestHandler {
       }
       const blocked = await enforceRateLimit(redis, res, next, keys);
       if (blocked) return;
-    } catch {
-      // Fail open — DB or Redis errors should not block legitimate traffic.
+    } catch (err) {
+      logger().error("Rate limiter failed open", { err });
     }
     next();
   };
