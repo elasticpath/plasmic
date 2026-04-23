@@ -306,6 +306,7 @@
     "html2canvas": "^1.0.0-rc.7",
     "http-proxy": "^1.18.1",
     "immer": "^10.0.2",
+    "ioredis": "^5.3.2",
     "immutable": "5.1.5",
     "inquirer": "^9.2.9",
     "is-hotkey": "^0.1.6",
