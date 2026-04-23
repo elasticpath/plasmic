@@ -1969,11 +1969,14 @@ function addEndErrorHandlers(app: express.Application) {
       ) => {
         // Too noisy in CI to print AuthError all the time
         if (!(origErr instanceof AuthError)) {
-          logger().error("ERROR!", {
-            error: origErr.message,
-            stack: origErr.stack,
-            name: origErr.name,
-          });
+          if (isApiError(origErr) && origErr.statusCode < 500) {
+            logger().warn(`${origErr.name} - ${origErr.message}`);
+          } else {
+            logger().error(
+              `${origErr.name ?? "Unhandled server error"} - ${origErr.message}`,
+              { stack: origErr.stack }
+            );
+          }
         }
         if (res.headersSent || res.writableEnded) {
           logError(origErr, "Tried to edit closed response");
