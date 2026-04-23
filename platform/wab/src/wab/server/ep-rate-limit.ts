@@ -99,7 +99,7 @@ async function resolveRateLimitKeys(
 export function createProjectRateLimiter(): RequestHandler {
   const redis = getRedisClient();
   const windowSec = parseInt(process.env.RATE_LIMIT_WINDOW_SEC ?? "60", 10);
-  const limit = parseInt(process.env.RATE_LIMIT_PER_PROJECT ?? "6000", 10);
+  const limit = parseInt(process.env.RATE_LIMIT_PER_SCOPE ?? "6000", 10);
 
   return async (req, res, next) => {
     if (!redis) {
