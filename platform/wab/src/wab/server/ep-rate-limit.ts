@@ -22,7 +22,7 @@ function getRedisClient(): Redis | undefined {
   return _redisClient;
 }
 
-function parseProjectIds(tokenHeader: string | undefined): string[] {
+export function parseProjectIds(tokenHeader: string | undefined): string[] {
   if (!tokenHeader || typeof tokenHeader !== "string") {
     return [];
   }
