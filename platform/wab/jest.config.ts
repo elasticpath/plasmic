@@ -39,6 +39,7 @@ const config: Config = {
     "^@/(.*)": "<rootDir>/src/$1",
     "^!file-loader!": "<rootDir>/__mocks__/file-loader-mock.js",
     "^!!raw-loader!(.*)$": "$1",
+    "^ioredis$": "<rootDir>/__mocks__/ioredis.ts",
   },
   moduleFileExtensions: [
     "web.js",
