@@ -36,7 +36,7 @@ import {
   trackPostgresPool,
 } from "@/wab/server/promstats";
 import { createRateLimiter } from "@/wab/server/rate-limit";
-import { createCmsScopeRateLimiter, createPreviewRateLimiter, createProjectScopeRateLimiter, createWriteRateLimiter } from "@/wab/server/ep-rate-limit";
+import { createProjectRateLimiter } from "@/wab/server/ep-rate-limit";
 import { cmCors, cmCorsPreflight, isCmOriginAllowed } from "@/wab/server/cm-cors";
 import * as adminRoutes from "@/wab/server/routes/admin";
 import * as projectProvisioningRoutes from "@/wab/server/routes/project-provisioning";
@@ -626,6 +626,10 @@ function addMiddlewares(
     })
   );
 
+  // Project-scoped rate limiting keyed by workspace.id (EP store) or team.id (EP org).
+  // Runs after req.noTxMgr is available for the project→workspace DB lookup.
+  // Requests without x-plasmic-api-project-tokens are skipped; WAF Tier 1 covers those.
+  app.use(createProjectRateLimiter());
   app.use(
     safeCast<ErrorRequestHandler>(
       async (err: Error, req: Request, res: Response, next: NextFunction) => {
