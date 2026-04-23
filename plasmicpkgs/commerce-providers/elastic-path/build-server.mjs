@@ -8,7 +8,7 @@
  * browser code.
  */
 import { buildSync } from "esbuild";
-import { readFileSync } from "fs";
+import { readFileSync, writeFileSync, existsSync } from "fs";
 import { execSync } from "child_process";
 
 // Read package.json to externalize all deps (same as tsdx behavior)
@@ -38,7 +38,28 @@ buildSync({
 // tsc would try to type-check all transitive sources, which may fail on
 // third-party type mismatches. Since tsdx already produced correct .d.ts
 // files for every module, we just write a re-export declaration.
-import { writeFileSync } from "fs";
+// Mark the main (client) bundle as "use client" so Next.js RSC creates a
+// client boundary when a server component imports this package. tsdx 0.14
+// strips directive prologues during its rollup pipeline, so we inject
+// after the fact. Without this, Next tries to server-render code
+// components like CommerceProviderComponent whose hooks expect a client
+// dispatcher — see issue #268 for the failure mode. Only the main
+// entry + Next-facing builds get the directive; /server is server-only
+// and must not be marked "use client".
+const CLIENT_ENTRY_FILES = [
+  "dist/plasmic-ep-commerce-elastic-path.cjs.development.js",
+  "dist/plasmic-ep-commerce-elastic-path.cjs.production.min.js",
+  "dist/plasmic-ep-commerce-elastic-path.esm.js",
+];
+for (const file of CLIENT_ENTRY_FILES) {
+  if (!existsSync(file)) continue;
+  const existing = readFileSync(file, "utf8");
+  if (existing.startsWith(`"use client"`) || existing.startsWith(`'use client'`)) {
+    continue;
+  }
+  writeFileSync(file, `"use client";\n${existing}`);
+  console.log(`✓ Prepended "use client" → ${file}`);
+}
 
 const dts = `\
 export { handleCreateSession, handleGetSession, handleUpdateSession, handleCalculateShipping, handlePay, handleConfirm } from "./api/endpoints/checkout-session";

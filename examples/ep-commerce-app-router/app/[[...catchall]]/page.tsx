@@ -1,4 +1,5 @@
 import { PLASMIC } from "@/plasmic-init";
+import "@/plasmic-register";
 import { PlasmicClientRootProvider } from "@/plasmic-init-client";
 import { PlasmicComponent } from "@plasmicapp/loader-nextjs";
 import { buildEpCtx } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
