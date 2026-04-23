@@ -39,7 +39,14 @@ let _configPromise: Promise<EpProviderBundleConfig | null> | null = null;
 export function getEpProviderConfig(): Promise<EpProviderBundleConfig | null> {
   if (!_configPromise) {
     _configPromise = (async () => {
-      const data = await PLASMIC.maybeFetchComponentData("/");
+      // The EP Provider globalContext config is part of the project bundle —
+      // present in the prefetchedData for ANY page in the project. We don't
+      // know which pages the user's project has, so resolve one via
+      // fetchPages and use its path. Avoids hardcoding "/" which returns
+      // null on projects without a homepage route.
+      const pages = await PLASMIC.fetchPages();
+      if (pages.length === 0) return null;
+      const data = await PLASMIC.maybeFetchComponentData(pages[0].path);
       return extractEpProviderConfig(data);
     })();
   }

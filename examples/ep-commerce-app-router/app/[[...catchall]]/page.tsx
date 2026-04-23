@@ -2,6 +2,7 @@ import { PLASMIC } from "@/plasmic-init";
 import "@/plasmic-register";
 import { PlasmicClientRootProvider } from "@/plasmic-init-client";
 import { PlasmicComponent } from "@plasmicapp/loader-nextjs";
+import { DataProvider } from "@plasmicapp/host";
 import { buildEpCtx } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
 import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
@@ -79,7 +80,6 @@ export default async function PlasmicLoaderPage({
     query: resolvedSearchParams,
     ep: epCtx,
   };
-
   // When a page has no Server Queries defined, `unstable__getServerQueriesData`
   // returns `{}` and client-side SWR falls through (backward compatible).
   const prefetchedQueryData = await PLASMIC.unstable__getServerQueriesData(
@@ -99,7 +99,13 @@ export default async function PlasmicLoaderPage({
       pageParams={pageMeta.params}
       pageQuery={queryCtx.query}
     >
-      <PlasmicComponent component={pageMeta.displayName} />
+      {/* Expose $ctx.ep to the client-side render. Studio Server Queries
+          build a cache key that includes $ctx.ep — the client must see the
+          same object so its SWR key matches `prefetchedQueryData` and avoids
+          an unauthenticated refetch. */}
+      <DataProvider name="ep" data={epCtx}>
+        <PlasmicComponent component={pageMeta.displayName} />
+      </DataProvider>
     </PlasmicClientRootProvider>
   );
 }

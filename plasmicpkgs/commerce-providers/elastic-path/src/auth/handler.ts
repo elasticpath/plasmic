@@ -429,14 +429,60 @@ async function handleRoute(
   return jsonResponse({ error: "Not found" }, 404, cookies);
 }
 
+/**
+ * Adapts the input a Next.js app-router route handler receives (a native Fetch
+ * `Request`, whose `headers` is a `Headers` instance and which exposes no
+ * plain-object `cookies` map) into the `HandlerRequest` shape used by
+ * `handleRoute` — plain-object `cookies` + plain-object `headers`.
+ *
+ * Without this, `createEpSession` reads `cookies.ep_token` and
+ * `middlewareHeaders?.["x-ep-client-id"]` as undefined and silently falls
+ * back to the placeholder clientId/host that `createEpAuth` was bootstrapped
+ * with, producing the 401 "Invalid credentials" from EP (issue #269).
+ *
+ * Pre-adapted `HandlerRequest`-shaped inputs (e.g. from tests that pass a
+ * plain object) are returned as-is so existing callers keep working.
+ */
+function adaptRequest(req: any): HandlerRequest {
+  if (
+    req &&
+    typeof req === "object" &&
+    req.cookies &&
+    !(req.headers instanceof Headers)
+  ) {
+    return req as HandlerRequest;
+  }
+  const headersObj: Record<string, string> = {};
+  const headers: Headers = req.headers;
+  headers.forEach((value, key) => {
+    headersObj[key] = value;
+  });
+  const cookieHeader = headers.get("cookie") ?? "";
+  const cookies: Record<string, string> = {};
+  for (const part of cookieHeader.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq < 0) continue;
+    const name = part.slice(0, eq).trim();
+    if (!name) continue;
+    cookies[name] = decodeURIComponent(part.slice(eq + 1).trim());
+  }
+  return {
+    url: req.url,
+    cookies,
+    headers: headersObj,
+    json: () => req.json(),
+  };
+}
+
 export function toNextJsHandler(epAuth: EpAuth) {
   return {
-    GET: ((req: HandlerRequest) => handleRoute(req, "GET", epAuth)) as Handler,
-    POST: ((req: HandlerRequest) =>
-      handleRoute(req, "POST", epAuth)) as Handler,
-    PATCH: ((req: HandlerRequest) =>
-      handleRoute(req, "PATCH", epAuth)) as Handler,
-    DELETE: ((req: HandlerRequest) =>
-      handleRoute(req, "DELETE", epAuth)) as Handler,
+    GET: ((req: any) =>
+      handleRoute(adaptRequest(req), "GET", epAuth)) as Handler,
+    POST: ((req: any) =>
+      handleRoute(adaptRequest(req), "POST", epAuth)) as Handler,
+    PATCH: ((req: any) =>
+      handleRoute(adaptRequest(req), "PATCH", epAuth)) as Handler,
+    DELETE: ((req: any) =>
+      handleRoute(adaptRequest(req), "DELETE", epAuth)) as Handler,
   };
 }

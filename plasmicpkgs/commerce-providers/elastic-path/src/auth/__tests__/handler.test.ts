@@ -515,6 +515,75 @@ describe("account auth routes", () => {
   });
 });
 
+describe("native Request adapter (Next.js app-router)", () => {
+  // Next.js app-router passes a native Fetch API Request to route handlers.
+  // That means `req.headers` is a Headers instance (no index access) and
+  // `req.cookies` does not exist as a plain object. The handler must adapt
+  // these into the plain shape that createEpSession expects — otherwise the
+  // middleware-header override (x-ep-client-id / x-ep-host) silently falls
+  // through and the session resolves against whatever placeholder clientId
+  // was passed to createEpAuth. That's the #269 production 401.
+  it("reads x-ep-client-id / x-ep-host from a native Request Headers instance", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          access_token: "tenant-fresh-token",
+          expires: Math.floor(Date.now() / 1000) + 3600,
+          expires_in: 3600,
+          token_type: "Bearer",
+        }),
+    });
+
+    const handler = toNextJsHandler(makeEpAuth());
+    const nativeReq = new Request("http://localhost:3000/api/ep/cart", {
+      method: "GET",
+      headers: {
+        "x-ep-client-id": "tenant-client-id-from-studio",
+        "x-ep-host": "https://tenant.api.elasticpath.com",
+      },
+    });
+    const res = await handler.GET(nativeReq as any);
+
+    expect(res.status).toBe(200);
+    // First fetch call is OAuth (no ep_token cookie) — must use the header
+    // override values, NOT the placeholder config passed to makeEpAuth.
+    const [oauthUrl, oauthOpts] = mockFetch.mock.calls[0];
+    expect(oauthUrl).toBe(
+      "https://tenant.api.elasticpath.com/oauth/access_token"
+    );
+    expect(oauthOpts.body).toContain("client_id=tenant-client-id-from-studio");
+  });
+
+  it("parses cookies from the native Request cookie header", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ data: [], meta: {} }),
+    });
+
+    const handler = toNextJsHandler(makeEpAuth());
+    // ep_token cookie present — handler must extract it from the cookie
+    // header and skip OAuth entirely. If the adapter is missing, the handler
+    // doesn't see the cookie and falls through to OAuth against placeholders.
+    const cookieHeader = `ep_token=${encode(
+      validTokenData
+    )}; ep_cart=cart-456`;
+    const nativeReq = new Request("http://localhost:3000/api/ep/cart", {
+      method: "GET",
+      headers: { cookie: cookieHeader },
+    });
+    const res = await handler.GET(nativeReq as any);
+
+    expect(res.status).toBe(200);
+    // Only one fetch: the EP cart call. OAuth must be skipped because the
+    // adapter recognized the ep_token cookie.
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const [url, opts] = mockFetch.mock.calls[0];
+    expect(url).toContain("/v2/carts/cart-456");
+    expect(opts.headers["Authorization"]).toBe("Bearer existing-token");
+  });
+});
+
 describe("custom basePath", () => {
   it("routes using custom basePath", async () => {
     mockFetch.mockResolvedValue({

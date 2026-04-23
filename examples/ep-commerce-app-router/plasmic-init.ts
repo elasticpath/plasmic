@@ -10,4 +10,7 @@ export const PLASMIC = initPlasmicLoader({
   ],
   host: "http://localhost:3003",
   preview: true,
+  // Required to receive server-queries exec modules
+  // (serverQueriesExecFuncFileName per page) in the bundle.
+  platformOptions: { nextjs: { appDir: true } },
 });
