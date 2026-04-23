@@ -2,7 +2,10 @@ import type { RequestHandler } from "express";
 import type { EntityManager } from "typeorm";
 import Redis from "ioredis";
 
-const SCOPE_CACHE_TTL_SEC = 300; // 5 minutes
+const SCOPE_CACHE_TTL_SEC = parseInt(
+  process.env.RATE_LIMIT_SCOPE_CACHE_TTL_SEC ?? "300",
+  10
+);
 
 let _redisClient: Redis | undefined;
 
