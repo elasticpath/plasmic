@@ -43,42 +43,23 @@ interface WebpackContext {
 /**
  * Package patterns for `serverExternalPackages`.
  *
- * We externalise two categories:
+ * Empty by default — with the `eval("require")` handling in capture.ts
+ * for `@plasmicapp/host`, there's no remaining reason to externalise
+ * Plasmic-related packages at the Next config level. Externalisation
+ * forces Node to load modules with a separate React instance, which
+ * breaks SSR of client components whose hooks then hit a null
+ * dispatcher. Empty patterns let webpack bundle everything into Next's
+ * graph where `"use client"` directives correctly trigger client-boundary
+ * handling and one React instance runs end-to-end.
  *
- *   - `@plasmicapp/host` + `@plasmicapp/query` — these carry `"use client"`
- *     at their dist entry (good for RSC client-boundary detection) but
- *     their server-side helpers (`registerFunction`, `registerComponent`,
- *     etc.) need to be callable from server API routes (e.g. for
- *     MCP dev-host registration). Externalising forces Node's `require`
- *     to load them outside the RSC graph where the `"use client"` directive
- *     is simply a no-op string — the functions remain callable.
- *
- *   - `@plasmicpkgs/*` — upstream packages that call React hooks
- *     (`createContext`, `useState`) at module top level without carrying
- *     their own `"use client"`. Bundled into the RSC runtime they crash on
- *     `react.shared-subset`; externalised, Node require loads them with
- *     full React from the consumer's `node_modules`.
- *
- * Consumer packages (`@elasticpath/plasmic-*`) that DO carry `"use client"`
- * at their dist entry are deliberately NOT externalised — we want Next's
- * webpack to read the directive and create proper client boundaries so
- * SSR avoids rendering the components. See
- * `plasmicpkgs/commerce-providers/elastic-path/build-server.mjs` for the
- * post-build directive-injection pattern.
+ * A consumer who hits a genuine RSC failure from some other package can
+ * still externalise it by passing `serverExternalPackages: ["…"]` in
+ * their own config; this wrapper merges the lists.
  */
-const PLASMIC_PACKAGE_PATTERNS: RegExp[] = [
-  /^@plasmicpkgs\//,
-];
+const PLASMIC_PACKAGE_PATTERNS: RegExp[] = [];
 
-/**
- * Webpack externals — smaller set. `@plasmicapp/*` packages resolve via
- * normal node_modules so `serverExternalPackages` alone handles them.
- * `@plasmicpkgs/*` may need the webpack externals fallback when resolved
- * via monorepo symlinks (Next issue #48739).
- */
-const WEBPACK_EXTERNAL_PATTERNS: RegExp[] = [
-  /^@plasmicpkgs\//,
-];
+/** Webpack externals mirror the same set. Empty — see comment block above. */
+const WEBPACK_EXTERNAL_PATTERNS: RegExp[] = [];
 
 /**
  * Auto-detects Plasmic-related packages from the consumer's package.json
