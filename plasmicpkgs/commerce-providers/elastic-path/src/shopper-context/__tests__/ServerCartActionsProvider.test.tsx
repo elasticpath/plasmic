@@ -56,6 +56,6 @@ describe("ServerCartActionsProvider", () => {
     // fetches /api/cart on mount via SWR
     expect(mockFetch).toHaveBeenCalled();
     const fetchUrl = mockFetch.mock.calls[0][0];
-    expect(fetchUrl).toBe("/api/cart");
+    expect(fetchUrl).toBe("/api/ep/cart");
   });
 });
