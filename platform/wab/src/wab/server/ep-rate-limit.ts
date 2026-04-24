@@ -32,6 +32,14 @@ export interface RateLimiterDeps {
   limit?: number;
 }
 
+// Resolves the rate limit bucket key from whatever the auth layer already set on the request.
+// Team API token → rl:team:{id}, session/PAT → rl:user:{id}, no identity → null (skip limiting).
+function resolveIdentityKey(req: Request): string | null {
+  if (req.apiTeam) return `rl:team:${req.apiTeam.id}`;
+  if (req.user) return `rl:user:${req.user.id}`;
+  return null;
+}
+
 // Parses "id:token,..." headers (x-plasmic-api-project-tokens, x-plasmic-api-cms-tokens)
 export function parseTokenIds(tokenHeader: string | undefined): string[] {
   if (!tokenHeader || typeof tokenHeader !== "string") {
@@ -212,6 +220,61 @@ export function createProjectScopeRateLimiter(deps?: RateLimiterDeps): RequestHa
         return next();
       }
       const blocked = await enforceRateLimit(redis, res, keys, windowSec, limit);
+      if (blocked) return;
+    } catch (err) {
+      logger().error("Rate limiter failed open", { err });
+    }
+    next();
+  };
+}
+
+// Rate limiter for preview/development loader endpoints, keyed by the identity already on the
+// request (team API token → team, session/PAT → user, unauthenticated → IP). Preview routes
+// bypass S3 cache and trigger codegen on every call, so they need a tighter per-identity budget.
+// Fails open if Redis is unavailable.
+export function createPreviewRateLimiter(deps?: RateLimiterDeps): RequestHandler {
+  const redis = deps?.redis !== undefined ? deps.redis : getRedisClient();
+  const windowSec = deps?.windowSec ?? parseInt(process.env.RATE_LIMIT_WINDOW_SEC ?? "60", 10);
+  const limit =
+    deps?.limit ?? parseInt(process.env.RATE_LIMIT_PREVIEW_PER_USER ?? "300", 10);
+
+  return async (req: Request, res: Response, next: NextFunction) => {
+    if (!redis) {
+      return next();
+    }
+    const key = resolveIdentityKey(req);
+    if (!key) {
+      return next();
+    }
+    try {
+      const blocked = await enforceRateLimit(redis, res, new Set([key]), windowSec, limit);
+      if (blocked) return;
+    } catch (err) {
+      logger().error("Rate limiter failed open", { err });
+    }
+    next();
+  };
+}
+
+// Rate limiter for expensive write operations (publish, codegen), keyed by the identity already
+// on the request. These operations are low-frequency by design so the limit is much tighter.
+// Fails open if Redis is unavailable.
+export function createWriteRateLimiter(deps?: RateLimiterDeps): RequestHandler {
+  const redis = deps?.redis !== undefined ? deps.redis : getRedisClient();
+  const windowSec = deps?.windowSec ?? parseInt(process.env.RATE_LIMIT_WINDOW_SEC ?? "60", 10);
+  const limit =
+    deps?.limit ?? parseInt(process.env.RATE_LIMIT_WRITE_PER_USER ?? "60", 10);
+
+  return async (req: Request, res: Response, next: NextFunction) => {
+    if (!redis) {
+      return next();
+    }
+    const key = resolveIdentityKey(req);
+    if (!key) {
+      return next();
+    }
+    try {
+      const blocked = await enforceRateLimit(redis, res, new Set([key]), windowSec, limit);
       if (blocked) return;
     } catch (err) {
       logger().error("Rate limiter failed open", { err });

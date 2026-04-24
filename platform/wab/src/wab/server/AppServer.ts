@@ -36,7 +36,7 @@ import {
   trackPostgresPool,
 } from "@/wab/server/promstats";
 import { createRateLimiter } from "@/wab/server/rate-limit";
-import { createCmsScopeRateLimiter, createProjectScopeRateLimiter } from "@/wab/server/ep-rate-limit";
+import { createCmsScopeRateLimiter, createPreviewRateLimiter, createProjectScopeRateLimiter, createWriteRateLimiter } from "@/wab/server/ep-rate-limit";
 import { cmCors, cmCorsPreflight, isCmOriginAllowed } from "@/wab/server/cm-cors";
 import * as adminRoutes from "@/wab/server/routes/admin";
 import * as projectProvisioningRoutes from "@/wab/server/routes/project-provisioning";
