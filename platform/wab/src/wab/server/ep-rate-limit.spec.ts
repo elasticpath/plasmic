@@ -3,7 +3,9 @@ import type { EntityManager } from "typeorm";
 import type Redis from "ioredis";
 import {
   createCmsScopeRateLimiter,
+  createPreviewRateLimiter,
   createProjectScopeRateLimiter,
+  createWriteRateLimiter,
   parseTokenIds,
 } from "./ep-rate-limit";
 
@@ -390,5 +392,187 @@ describe("createCmsScopeRateLimiter", () => {
 
     expect(status).toHaveBeenCalledWith(429);
     expect(next).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Identity request helpers
+// ---------------------------------------------------------------------------
+
+function makeUserReq(userId: string): Request {
+  return { user: { id: userId }, ip: "1.2.3.4" } as unknown as Request;
+}
+
+function makeTeamReq(teamId: string): Request {
+  return { apiTeam: { id: teamId }, ip: "1.2.3.4" } as unknown as Request;
+}
+
+
+// ---------------------------------------------------------------------------
+// createPreviewRateLimiter
+// ---------------------------------------------------------------------------
+
+describe("createPreviewRateLimiter", () => {
+  it("calls next() immediately when redis is null", async () => {
+    const middleware = createPreviewRateLimiter({ redis: null, limit: 100 });
+    const next = jest.fn() as unknown as NextFunction;
+    const { res } = makeRes();
+
+    await middleware(makeUserReq("user1"), res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("increments rl:user:{id} for session/PAT requests", async () => {
+    const { redis, counters } = createMockRedis();
+    const middleware = createPreviewRateLimiter({ redis, limit: 100 });
+    const next = jest.fn() as unknown as NextFunction;
+    const { res } = makeRes();
+
+    await middleware(makeUserReq("user1"), res, next);
+
+    expect(counters["rl:user:user1"]).toBe(1);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("increments rl:team:{id} for team API token requests", async () => {
+    const { redis, counters } = createMockRedis();
+    const middleware = createPreviewRateLimiter({ redis, limit: 100 });
+    const next = jest.fn() as unknown as NextFunction;
+    const { res } = makeRes();
+
+    await middleware(makeTeamReq("team1"), res, next);
+
+    expect(counters["rl:team:team1"]).toBe(1);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls next() without incrementing when no identity on request", async () => {
+    const { redis, counters } = createMockRedis();
+    const middleware = createPreviewRateLimiter({ redis, limit: 100 });
+    const next = jest.fn() as unknown as NextFunction;
+    const { res } = makeRes();
+
+    await middleware({} as Request, res, next);
+
+    expect(Object.keys(counters)).toHaveLength(0);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns 429 and does not call next() when count exceeds limit", async () => {
+    const { redis } = createMockRedis({}, { "rl:user:user1": 5 });
+    const middleware = createPreviewRateLimiter({ redis, limit: 5 });
+    const next = jest.fn() as unknown as NextFunction;
+    const { res, status, json } = makeRes();
+
+    await middleware(makeUserReq("user1"), res, next);
+
+    expect(status).toHaveBeenCalledWith(429);
+    expect(json).toHaveBeenCalledWith({
+      error: "Too many requests, please try again later.",
+    });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("sets RateLimit-Limit and RateLimit-Remaining headers", async () => {
+    const { redis } = createMockRedis();
+    const middleware = createPreviewRateLimiter({ redis, limit: 10 });
+    const next = jest.fn() as unknown as NextFunction;
+    const { res, setHeader } = makeRes();
+
+    await middleware(makeUserReq("user1"), res, next);
+
+    expect(setHeader).toHaveBeenCalledWith("RateLimit-Limit", "10");
+    expect(setHeader).toHaveBeenCalledWith("RateLimit-Remaining", "9");
+  });
+
+  it("fails open and logs an error when Redis throws", async () => {
+    const { logger } = jest.requireMock("@/wab/server/observability");
+    const { redis } = createMockRedis();
+    (redis.pipeline as jest.Mock).mockImplementation(() => {
+      throw new Error("Redis timeout");
+    });
+    const middleware = createPreviewRateLimiter({ redis, limit: 100 });
+    const next = jest.fn() as unknown as NextFunction;
+    const { res } = makeRes();
+
+    await middleware(makeUserReq("user1"), res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(logger().error).toHaveBeenCalledWith(
+      "Rate limiter failed open",
+      expect.objectContaining({ err: expect.any(Error) })
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// createWriteRateLimiter
+// ---------------------------------------------------------------------------
+
+describe("createWriteRateLimiter", () => {
+  it("calls next() immediately when redis is null", async () => {
+    const middleware = createWriteRateLimiter({ redis: null, limit: 10 });
+    const next = jest.fn() as unknown as NextFunction;
+    const { res } = makeRes();
+
+    await middleware(makeUserReq("user1"), res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("increments rl:user:{id} for session/PAT requests", async () => {
+    const { redis, counters } = createMockRedis();
+    const middleware = createWriteRateLimiter({ redis, limit: 10 });
+    const next = jest.fn() as unknown as NextFunction;
+    const { res } = makeRes();
+
+    await middleware(makeUserReq("user1"), res, next);
+
+    expect(counters["rl:user:user1"]).toBe(1);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("increments rl:team:{id} for team API token requests", async () => {
+    const { redis, counters } = createMockRedis();
+    const middleware = createWriteRateLimiter({ redis, limit: 10 });
+    const next = jest.fn() as unknown as NextFunction;
+    const { res } = makeRes();
+
+    await middleware(makeTeamReq("team1"), res, next);
+
+    expect(counters["rl:team:team1"]).toBe(1);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns 429 and does not call next() when count exceeds limit", async () => {
+    const { redis } = createMockRedis({}, { "rl:user:user1": 10 });
+    const middleware = createWriteRateLimiter({ redis, limit: 10 });
+    const next = jest.fn() as unknown as NextFunction;
+    const { res, status } = makeRes();
+
+    await middleware(makeUserReq("user1"), res, next);
+
+    expect(status).toHaveBeenCalledWith(429);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("fails open and logs an error when Redis throws", async () => {
+    const { logger } = jest.requireMock("@/wab/server/observability");
+    const { redis } = createMockRedis();
+    (redis.pipeline as jest.Mock).mockImplementation(() => {
+      throw new Error("Redis timeout");
+    });
+    const middleware = createWriteRateLimiter({ redis, limit: 10 });
+    const next = jest.fn() as unknown as NextFunction;
+    const { res } = makeRes();
+
+    await middleware(makeUserReq("user1"), res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(logger().error).toHaveBeenCalledWith(
+      "Rate limiter failed open",
+      expect.objectContaining({ err: expect.any(Error) })
+    );
   });
 });

@@ -36,7 +36,7 @@ import {
   trackPostgresPool,
 } from "@/wab/server/promstats";
 import { createRateLimiter } from "@/wab/server/rate-limit";
-import { createCmsScopeRateLimiter, createProjectScopeRateLimiter } from "@/wab/server/ep-rate-limit";
+import { createCmsScopeRateLimiter, createPreviewRateLimiter, createProjectScopeRateLimiter, createWriteRateLimiter } from "@/wab/server/ep-rate-limit";
 import { cmCors, cmCorsPreflight, isCmOriginAllowed } from "@/wab/server/cm-cors";
 import * as adminRoutes from "@/wab/server/routes/admin";
 import * as projectProvisioningRoutes from "@/wab/server/routes/project-provisioning";
@@ -1063,11 +1063,13 @@ export function addCodegenOnlyRoutes(app: express.Application) {
   app.post(
     "/api/v1/projects/:projectId/code/components",
     apiAuth,
+    createWriteRateLimiter(),
     withNext(genCode)
   );
   app.post(
     "/api/v1/projects/:projectId/code/meta",
     apiAuth,
+    createWriteRateLimiter(),
     withNext(getProjectMeta)
   );
   app.get("/api/v1/localization/gen-texts", genTranslatableStrings);
@@ -1117,6 +1119,7 @@ export function addLoaderRoutes(app: express.Application) {
     "/api/v1/loader/code/preview",
     cors(),
     apiAuth,
+    createPreviewRateLimiter(),
     withNext(buildLatestLoaderAssets)
   );
   app.get("/api/v1/loader/chunks", cors(), getLoaderChunk);
@@ -1136,6 +1139,7 @@ export function addLoaderRoutes(app: express.Application) {
     "/api/v1/loader/repr-v2/preview/:projectId",
     cors(),
     apiAuth,
+    createPreviewRateLimiter(),
     buildLatestLoaderReprV2
   );
   app.get(
@@ -1154,6 +1158,7 @@ export function addLoaderRoutes(app: express.Application) {
     "/api/v1/loader/repr-v3/preview/:projectId",
     cors(),
     apiAuth,
+    createPreviewRateLimiter(),
     withNext(buildLatestLoaderReprV3)
   );
   app.get("/static/js/loader-hydrate.js", getHydrationScript);
@@ -1178,6 +1183,7 @@ export function addLoaderHtmlRoutes(app: express.Application) {
     "/api/v1/loader/html/preview/:projectId/:component",
     cors(),
     apiAuth,
+    createPreviewRateLimiter(),
     buildLatestLoaderHtml
   );
 }
@@ -1611,6 +1617,7 @@ export function addMainAppServerRoutes(
   app.post(
     "/api/v1/projects/:projectId/publish",
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
+    createWriteRateLimiter(),
     publishProject
   );
   app.post(
