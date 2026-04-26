@@ -776,6 +776,62 @@ These server routes must be implemented in your Next.js app:
 
 ---
 
+## 7.5. Studio Server Queries (SSR)
+
+For SSR'd product/cart/list data — where the initial HTML payload contains real EP data without a client-side waterfall — wire up Plasmic's Server Queries against the EP custom functions exposed by `@elasticpath/plasmic-ep-commerce-elastic-path/server`. This is what makes a PDP render `Test product English` `$15.00` in the response from the first request, before any JS runs in the browser.
+
+### Architecture
+
+```
+Browser                          Server (Next.js)              Elastic Path
+-------                          ----------------              ------------
+                                 catch-all page.tsx
+                                   buildEpCtx() ----- mints ---> /oauth/access_token
+                                                                 /pcm/catalog/products
+                                   PLASMIC.unstable__getServerQueriesData
+                                     ↓ executes ep.getProduct({id, auth})
+                                     ↓ result keyed by SWR cache key
+                                   prefetchedQueryData ------> RSC payload
+                                                              + DataProvider("ep")
+PlasmicClientRootProvider <-------- prefetchedQueryData
+  $q.product.data hydrated from cache, no client refetch
+```
+
+### Custom functions (registered via `registerEpCustomFunctions(PLASMIC)`)
+
+| Function | Args | Returns |
+|---|---|---|
+| `ep.getProduct` | `{ id, auth }` | `Product \| null` — single product by EP UUID |
+| `ep.getCart` | `{ auth }` | `Cart \| null` — current cart contents |
+| `ep.getProductList` | `{ limit?, search?, categoryId?, sort?, auth }` | `Product[]` — paginated list |
+| `ep.getRelatedProducts` | `{ productId, relationshipSlug, limit?, auth }` | `Product[]` — products linked by EP custom relationship |
+
+`auth` is the resolved `$ctx.ep` shape — a normalised payload of `{ accessToken, host, clientId, cartId?, accountId?, locale? }` produced by `buildEpCtx(prefetchedData, { session })`.
+
+### Studio binding
+
+For each Server Query in the Plasmic UI:
+
+- **Function:** `ep.getProduct` (or `getCart`/`getProductList`/`getRelatedProducts`)
+- **Arguments (object editor):** `{ id: $ctx.params.slug, auth: $ctx.ep }` — note `$q` (server queries) vs `$queries` (client data queries) when binding the result.
+
+Then bind the consuming component's `product` / `cart` / `products` prop (advanced section) to `$q.<queryName>.data`.
+
+### Required Next.js setup
+
+1. **`platformOptions: { nextjs: { appDir: true } }`** in `plasmic-init.ts`. Without this the loader fetches the Pages Router bundle which omits `serverQueriesExecFuncFileName` per-page metadata.
+2. **`<DataProvider name="ep" data={epCtx}>`** wrap around `<PlasmicComponent>` in the catch-all page. Without it, server and client compute different SWR cache keys and the client refetches unauthenticated. Tracked for follow-up retirement in #272 (ALS-based session context).
+3. **Resolve a real page path for the API route's `epProviderHeaders()`** — use `PLASMIC.fetchPages()` rather than hardcoding `/`. Projects without a homepage route otherwise return `null` from `maybeFetchComponentData("/")` and the credentials-extraction path silently fails.
+
+### Common gotchas
+
+| Symptom | Likely cause |
+|---|---|
+| Page renders `Product not found` despite valid product UUID | `auth: $ctx.ep` reaching the function as `undefined` — missing `<DataProvider name="ep">` wrap |
+| `prefetchedQueryData: "$undefined"` in the SSR HTML | `appDir: true` missing from loader config |
+| `EP OAuth failed (401)` in dev log | Override headers (`x-ep-client-id`/`x-ep-host`) returned empty — usually because `getEpProviderConfig` hardcoded `/` and the project has no homepage |
+| Auth works on the page but `/api/ep/cart` returns 500 | Pre-fix: `toNextJsHandler` was passing the native Next `Request` directly; resolved by the Request adapter committed in `a363aaf23` |
+
 ## 8. Utility Components
 
 ### EPCheckoutCartSummary

@@ -276,6 +276,127 @@ The API follows [Better Auth](https://better-auth.com/) conventions:
 | `toNextJsHandler(epAuth)` | `toNextJsHandler(auth)` |
 | `session.user` / `session.session` | `session.user` / `session.session` |
 
+## Studio Server Queries (SSR)
+
+For SSR'd product data — where the initial HTML payload contains real product names, prices, and images — wire up Plasmic's Server Queries against the EP custom functions exposed by this package. The EP test project's PDP renders end-to-end this way; see `examples/ep-commerce-app-router/` for a working reference.
+
+### 1. Loader configuration
+
+```ts
+// plasmic-init.ts
+import { initPlasmicLoader } from "@plasmicapp/loader-nextjs/react-server-conditional";
+
+export const PLASMIC = initPlasmicLoader({
+  projects: [{ id: "...", token: "..." }],
+  preview: true,
+  // REQUIRED: without this the loader fetches the Pages Router bundle, which
+  // omits per-page `serverQueriesExecFuncFileName` metadata and Server Queries
+  // never execute.
+  platformOptions: { nextjs: { appDir: true } },
+});
+```
+
+### 2. Register the EP custom functions
+
+```ts
+// plasmic-register.ts
+import { PLASMIC } from "./plasmic-init";
+import { registerEpCustomFunctions } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
+
+registerEpCustomFunctions(PLASMIC);
+```
+
+This registers four functions in the `ep` namespace, callable from Studio's Server Query builder:
+
+- `ep.getProduct({ id, auth })` — single product by EP product UUID.
+- `ep.getCart({ auth })` — current cart contents.
+- `ep.getProductList({ limit?, search?, categoryId?, sort?, auth })` — paginated product list.
+- `ep.getRelatedProducts({ productId, relationshipSlug, limit?, auth })` — products linked by an EP custom relationship.
+
+### 3. Build `$ctx.ep` in the catch-all page
+
+```ts
+// app/[[...catchall]]/page.tsx
+import { PLASMIC } from "@/plasmic-init";
+import { PlasmicClientRootProvider } from "@/plasmic-init-client";
+import { PlasmicComponent } from "@plasmicapp/loader-nextjs";
+import { DataProvider } from "@plasmicapp/host";
+import { buildEpCtx } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
+import { epAuth, epProviderHeaders } from "@/lib/ep-auth";
+import { cookies } from "next/headers";
+
+export default async function PlasmicLoaderPage({ params, searchParams }) {
+  const resolvedParams = await params;
+  const plasmicPath = resolvedParams.catchall ? `/${resolvedParams.catchall.join("/")}` : "/";
+  const prefetchedData = await PLASMIC.maybeFetchComponentData(plasmicPath);
+  if (!prefetchedData) return null;
+  const pageMeta = prefetchedData.entryCompMetas[0];
+
+  // Resolve session (anonymous OAuth on first visit, cookie on return).
+  const cookieStore = await cookies();
+  const session = await epAuth.api.getSession({
+    cookies: Object.fromEntries(cookieStore.getAll().map((c) => [c.name, c.value])),
+    headers: await epProviderHeaders(prefetchedData),
+  });
+
+  // Compose $ctx.ep — auth + cart context for server-side EP calls.
+  const epCtx = buildEpCtx(prefetchedData, {
+    session: {
+      accessToken: session.session?.accessToken,
+      cartId: session.cart?.id ?? undefined,
+      accountId: session.user?.accountId ?? undefined,
+    },
+  });
+
+  // Run Studio Server Queries with the auth-enriched ctx.
+  const prefetchedQueryData = await PLASMIC.unstable__getServerQueriesData(prefetchedData, {
+    pageRoute: pageMeta.path,
+    pagePath: plasmicPath,
+    params: pageMeta.params ?? {},
+    query: (await searchParams) ?? {},
+    ep: epCtx,
+  });
+
+  return (
+    <PlasmicClientRootProvider
+      prefetchedData={prefetchedData}
+      prefetchedQueryData={prefetchedQueryData}
+      pageParams={pageMeta.params}
+    >
+      {/* Expose $ctx.ep client-side so the SWR cache key matches the
+          server-computed key. Without this wrap the client recomputes a
+          different key, misses the prefetched cache, and refetches
+          unauthenticated. Tracked for follow-up retirement in #272. */}
+      <DataProvider name="ep" data={epCtx}>
+        <PlasmicComponent component={pageMeta.displayName} />
+      </DataProvider>
+    </PlasmicClientRootProvider>
+  );
+}
+```
+
+### 4. Bind the queries in Studio
+
+For each Server Query in the Plasmic UI, set the function and arguments. For a product detail page (`/product/[slug]`):
+
+- **Function:** `ep.getProduct`
+- **Arguments:** `{ id: $ctx.params.slug, auth: $ctx.ep }`
+
+Then bind the `EPProductProvider` component's advanced `product` prop to `$q.product.data`. Server Queries appear under `$q` (not `$queries`) in the binding panel.
+
+### 5. Resolve EP credentials from Studio config
+
+`buildEpCtx` reads `clientId` and `host` from the EP Provider global context (configured in Studio), not from `.env.local`. The helper that powers the lookup, `extractEpProviderConfig`, scans the loader bundle for the global-context module. For projects without a homepage route, `epProviderHeaders` resolves a real page path via `PLASMIC.fetchPages()` rather than hardcoding `/`.
+
+### Common gotchas
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `$q.product.data` always `undefined` on the client | `<DataProvider name="ep">` wrap missing | Wrap `<PlasmicComponent>` per step 3 |
+| `prefetchedQueryData: "$undefined"` in the SSR HTML | `appDir: true` not set in `plasmic-init.ts` | Add `platformOptions: { nextjs: { appDir: true } }` |
+| `EP OAuth failed (401) Invalid credentials` | API route's `epProviderHeaders()` returned empty (project has no homepage at `/`) | Ensure the storefront resolves a real page path via `fetchPages()` (already done if you copied `lib/ep-auth.ts` from the example) |
+| `auth: undefined` reaching `epGetProduct` | Using `auth: $ctx.ep` binding without the `<DataProvider name="ep">` wrap, OR passing `disableCookieCache: true` to `getSession` | See first row; never pass `disableCookieCache` |
+
 ## Components
 
 ### Core

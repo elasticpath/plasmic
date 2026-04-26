@@ -43,3 +43,8 @@ dist/
 # Playwright test results
 test-results/
 playwright-report/
+
+# Ralph build-loop internal state — implementation plans, prompts, and specs
+# used by the autonomous build loop. Local-only, never shipped to master.
+.ralph/
+
