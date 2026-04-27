@@ -23,6 +23,7 @@
  * re-export flips to this implementation when the migration is complete.
  */
 import { betterAuth } from "better-auth";
+import { nextCookies } from "better-auth/next-js";
 import { epPlugin } from "./ep-plugin";
 
 export interface CreateEpAuthBetterInput {
@@ -163,6 +164,12 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
         host: input.host,
         resolveConfig: input.resolveConfig,
       }),
+      // `nextCookies()` MUST be the last plugin in the array per
+      // better-auth's docs. It auto-forwards Set-Cookie headers from
+      // server actions / route handlers into Next's `cookies()` writer,
+      // so /api/ep/* responses persist their session cookies without
+      // any manual handling on the consumer side.
+      nextCookies(),
     ],
     session: {
       cookieCache: {

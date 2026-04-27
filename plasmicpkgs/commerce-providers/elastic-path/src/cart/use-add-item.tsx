@@ -3,7 +3,11 @@ import type { MutationHook } from "@plasmicpkgs/commerce";
 import { useAddItem, UseAddItem } from "@plasmicpkgs/commerce";
 import { useCallback } from "react";
 import type { AddItemHook } from "../types/cart";
-import { getCartId, normalizeCart, setCartId } from "../utils";
+import { normalizeCart } from "../utils";
+import {
+  getCartIdFromSession,
+  setCartIdInSession,
+} from "./cart-session";
 import useCart from "./use-cart";
 import { buildCartItemData, validateCartItem } from "./utils/cartDataBuilder";
 import type { ExtendedCartItem } from "./utils/cartDataBuilder";
@@ -37,7 +41,7 @@ export const handler: MutationHook<AddItemHook> = {
       return undefined;
     }
 
-    let cartId = getCartId();
+    let cartId = await getCartIdFromSession();
 
     try {
       // Create cart if doesn't exist
@@ -53,7 +57,7 @@ export const handler: MutationHook<AddItemHook> = {
         });
         if (response.data && response.data.data.id) {
           cartId = response.data.data.id;
-          setCartId(cartId);
+          await setCartIdInSession(cartId);
         }
       }
 

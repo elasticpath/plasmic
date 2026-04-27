@@ -49,6 +49,7 @@ export {
   createBetterEpAuth,
   extractEpProviderConfig,
   epPlugin,
+  epAuthMiddleware,
 } from "./auth";
 export type {
   EpAuth,

@@ -11,7 +11,8 @@ import {
 } from "@plasmicpkgs/commerce";
 import { useCallback } from "react";
 import type { Cart, LineItem, RemoveItemHook } from "../types/cart";
-import { getCartId, normalizeCart, removeCartCookie } from "../utils";
+import { normalizeCart } from "../utils";
+import { getCartIdFromSession, setCartIdInSession } from "./cart-session";
 import useCart from "./use-cart";
 import { handleAPIError } from "../utils/errorHandling";
 import { getEPClient } from "../utils/getEPClient";
@@ -44,7 +45,7 @@ export const handler: MutationHook<RemoveItemHook> = {
     fetch,
     provider,
   }: HookFetcherContext<RemoveItemHook>) {
-    const cartId = getCartId();
+    const cartId = await getCartIdFromSession();
     if (!itemId || !cartId) {
       return undefined;
     }
@@ -70,15 +71,16 @@ export const handler: MutationHook<RemoveItemHook> = {
       if (response.data) {
         return normalizeCart(response.data, provider!.locale);
       } else {
-        removeCartCookie();
+        await setCartIdInSession("");
         return undefined;
       }
     } catch (error) {
       const standardError = handleAPIError(error, "removing item from cart");
       log.error("Error removing item from cart", { error: standardError.message } as Record<string, unknown>);
-      // If cart not found (404), clear cookie so next operation creates a fresh cart
+      // If cart not found (404), clear the session cartId so next
+      // operation creates a fresh cart.
       if ((error as Record<string, unknown>)?.status === 404) {
-        removeCartCookie();
+        await setCartIdInSession("");
       }
       return undefined;
     }

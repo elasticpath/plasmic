@@ -31,9 +31,14 @@ jest.mock("../../utils", () => ({
   normalizeCart: (...a: unknown[]) => mockNormalizeCart(...a),
 }));
 
-jest.mock("../../utils/cart-cookie", () => ({
-  getCartId: () => mockGetCartId(),
-  setCartId: (...a: unknown[]) => mockSetCartId(...a),
+jest.mock("../cart-session", () => ({
+  getCartIdFromSession: () => Promise.resolve(mockGetCartId()),
+  setCartIdInSession: async (...a: unknown[]) => mockSetCartId(...a),
+}));
+
+jest.mock("../cart-session", () => ({
+  getCartIdFromSession: () => Promise.resolve(mockGetCartId()),
+  setCartIdInSession: async (...a: unknown[]) => mockSetCartId(...a),
 }));
 
 jest.mock("../../utils/errorHandling", () => ({
