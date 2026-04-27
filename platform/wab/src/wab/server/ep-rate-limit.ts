@@ -74,25 +74,40 @@ export function parseTokenIds(tokenHeader: string | undefined): string[] {
     });
 }
 
-// Returns rate limit keys for each project, keyed by workspace or team.
-// Checks Redis cache first; falls back to a single DB query for uncached IDs.
-// Cached for SCOPE_CACHE_TTL_SEC so hot traffic never hits the DB.
-async function resolveProjectScopeKeys(
+const PROJECT_SCOPE_QUERY = `
+  SELECT p.id, p."workspaceId", w."teamId"
+  FROM project p
+  LEFT JOIN workspace w ON w.id = p."workspaceId"
+  WHERE p.id = ANY($1)`;
+
+const CMS_SCOPE_QUERY = `
+  SELECT d.id, d."workspaceId", w."teamId"
+  FROM cms_database d
+  LEFT JOIN workspace w ON w.id = d."workspaceId"
+  WHERE d.id = ANY($1)`;
+
+// Resolves rate limit keys for a set of entity IDs (projects or CMS databases),
+// keyed by workspace or team. Checks Redis cache first; falls back to a single
+// DB query for uncached IDs. Results are cached for SCOPE_CACHE_TTL_SEC so
+// hot traffic never hits the DB.
+async function resolveScopeKeys(
   redis: Redis,
   em: EntityManager,
-  projectIds: string[]
+  ids: string[],
+  cachePrefix: string,
+  query: string
 ): Promise<Set<string>> {
   const keys = new Set<string>();
   const uncached: string[] = [];
 
   const cached = await redis.mget(
-    ...projectIds.map((id) => `cache:project:${id}:scope`)
+    ...ids.map((id) => `${cachePrefix}:${id}:scope`)
   );
   for (const [i, value] of cached.entries()) {
     if (value) {
       keys.add(value);
     } else {
-      uncached.push(projectIds[i]);
+      uncached.push(ids[i]);
     }
   }
 
@@ -101,13 +116,7 @@ async function resolveProjectScopeKeys(
   }
 
   const rows: { id: string; workspaceId: string | null; teamId: string | null }[] =
-    await em.query(
-      `SELECT p.id, p."workspaceId", w."teamId"
-       FROM project p
-       LEFT JOIN workspace w ON w.id = p."workspaceId"
-       WHERE p.id = ANY($1)`,
-      [uncached]
-    );
+    await em.query(query, [uncached]);
 
   const cachePipeline = redis.pipeline();
   for (const row of rows) {
@@ -119,7 +128,7 @@ async function resolveProjectScopeKeys(
 
     if (key) {
       keys.add(key);
-      cachePipeline.setex(`cache:project:${row.id}:scope`, SCOPE_CACHE_TTL_SEC, key);
+      cachePipeline.setex(`${cachePrefix}:${row.id}:scope`, SCOPE_CACHE_TTL_SEC, key);
     }
   }
   await cachePipeline.exec();
@@ -127,55 +136,20 @@ async function resolveProjectScopeKeys(
   return keys;
 }
 
-// Returns rate limit keys for each CMS database, keyed by workspace or team.
-async function resolveCmsScopeKeys(
+function resolveProjectScopeKeys(
+  redis: Redis,
+  em: EntityManager,
+  projectIds: string[]
+): Promise<Set<string>> {
+  return resolveScopeKeys(redis, em, projectIds, "cache:project", PROJECT_SCOPE_QUERY);
+}
+
+function resolveCmsScopeKeys(
   redis: Redis,
   em: EntityManager,
   databaseIds: string[]
 ): Promise<Set<string>> {
-  const keys = new Set<string>();
-  const uncached: string[] = [];
-
-  const cached = await redis.mget(
-    ...databaseIds.map((id) => `cache:cms:${id}:scope`)
-  );
-  for (const [i, value] of cached.entries()) {
-    if (value) {
-      keys.add(value);
-    } else {
-      uncached.push(databaseIds[i]);
-    }
-  }
-
-  if (uncached.length === 0) {
-    return keys;
-  }
-
-  const rows: { id: string; workspaceId: string; teamId: string | null }[] =
-    await em.query(
-      `SELECT d.id, d."workspaceId", w."teamId"
-       FROM cms_database d
-       LEFT JOIN workspace w ON w.id = d."workspaceId"
-       WHERE d.id = ANY($1)`,
-      [uncached]
-    );
-
-  const cachePipeline = redis.pipeline();
-  for (const row of rows) {
-    const key = row.workspaceId
-      ? `rl:workspace:${row.workspaceId}`
-      : row.teamId
-      ? `rl:team:${row.teamId}`
-      : null;
-
-    if (key) {
-      keys.add(key);
-      cachePipeline.setex(`cache:cms:${row.id}:scope`, SCOPE_CACHE_TTL_SEC, key);
-    }
-  }
-  await cachePipeline.exec();
-
-  return keys;
+  return resolveScopeKeys(redis, em, databaseIds, "cache:cms", CMS_SCOPE_QUERY);
 }
 
 // Increments all rate limit keys within their window and enforces the limit.
@@ -201,7 +175,11 @@ async function enforceRateLimit(
     return false;
   }
 
-  const counts = results.map(([, count]) => count as number);
+  // Per-key eval errors (e.g. Redis Cluster slot errors) are treated as count=0
+  // so the request passes through — consistent with the fail-open philosophy.
+  const counts = results.map(([err, count]) =>
+    err != null ? 0 : (count as number)
+  );
   const maxCount = Math.max(...counts);
   res.setHeader("RateLimit-Limit", String(limit));
   res.setHeader("RateLimit-Remaining", String(Math.max(0, limit - maxCount)));
