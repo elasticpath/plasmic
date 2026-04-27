@@ -1082,6 +1082,10 @@ export function addCodegenOnlyRoutes(app: express.Application) {
 
 // Loader routes: Production SDK traffic (high volume)
 export function addLoaderRoutes(app: express.Application) {
+  // Scope limiter covers all loader routes (published, versioned, preview).
+  // Preview routes additionally stack createPreviewRateLimiter() for a tighter
+  // per-identity budget — session-authenticated preview requests only hit that
+  // limiter; project-token-authenticated requests hit both.
   app.use("/api/v1/loader", createProjectScopeRateLimiter());
 
   app.get(
