@@ -20,12 +20,13 @@ import React, {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useImperativeHandle,
   useMemo,
   useState,
 } from "react";
 import { Registerable } from "../../registerable";
-import { getCartId } from "../../utils/cart-cookie";
+import { getCartIdFromSession } from "../../cart/cart-session";
 import {
   MOCK_CHECKOUT_DATA_CUSTOMER_INFO,
   MOCK_CHECKOUT_DATA_SHIPPING,
@@ -219,8 +220,26 @@ const EPCheckoutProviderRuntime = React.forwardRef<
     onComplete,
   } = props;
 
-  // Resolve cart ID: prop → cookie
-  const resolvedCartId = cartIdProp || getCartId() || undefined;
+  // Resolve cart ID: prop wins; otherwise fetched from the better-auth
+  // session via /api/ep/get-session on mount. Async — there's a brief
+  // window where resolvedCartId is undefined while the fetch settles;
+  // useCheckout handles undefined cartId gracefully.
+  const [resolvedCartId, setResolvedCartId] = useState<string | undefined>(
+    cartIdProp || undefined
+  );
+  useEffect(() => {
+    if (cartIdProp) {
+      setResolvedCartId(cartIdProp);
+      return;
+    }
+    let cancelled = false;
+    getCartIdFromSession().then((id) => {
+      if (!cancelled) setResolvedCartId(id || undefined);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [cartIdProp]);
 
   const checkout = useCheckout({
     cartId: resolvedCartId,

@@ -14,7 +14,7 @@ const mockUpdateACartItem = jest.fn();
 
 const mockGetCartId = jest.fn();
 const mockNormalizeCart = jest.fn();
-const mockRemoveCartCookie = jest.fn();
+const mockSetCartId = jest.fn();
 
 const mockRemoveItemFetcher = jest.fn();
 const mockGetEPClient = jest.fn().mockReturnValue("mock-client");
@@ -29,9 +29,12 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
 }));
 
 jest.mock("../../utils", () => ({
-  getCartId: () => mockGetCartId(),
   normalizeCart: (...a: unknown[]) => mockNormalizeCart(...a),
-  removeCartCookie: () => mockRemoveCartCookie(),
+}));
+
+jest.mock("../cart-session", () => ({
+  getCartIdFromSession: () => Promise.resolve(mockGetCartId()),
+  setCartIdInSession: async (...a: unknown[]) => mockSetCartId(...a),
 }));
 
 jest.mock("../use-remove-item", () => ({
@@ -236,7 +239,7 @@ describe("useUpdateItem handler.fetcher", () => {
 
     await callFetcher({ quantity: 3 });
 
-    expect(mockRemoveCartCookie).toHaveBeenCalled();
+    expect(mockSetCartId).toHaveBeenCalled();
   });
 
   it("does not remove cart cookie on non-404 error", async () => {
@@ -244,7 +247,7 @@ describe("useUpdateItem handler.fetcher", () => {
 
     await callFetcher({ quantity: 3 });
 
-    expect(mockRemoveCartCookie).not.toHaveBeenCalled();
+    expect(mockSetCartId).not.toHaveBeenCalled();
   });
 
   it("returns undefined when response data is falsy", async () => {

@@ -19,5 +19,6 @@ export type {
   EpSessionData,
   CreateEpAuthBetterInput as EpAuthConfig,
 } from "./ep-plugin/create-ep-auth-better";
+export { epAuthMiddleware } from "./ep-plugin/middleware";
 export { extractEpProviderConfig } from "./extract-ep-provider-config";
 export type { EpProviderBundleConfig } from "./extract-ep-provider-config";

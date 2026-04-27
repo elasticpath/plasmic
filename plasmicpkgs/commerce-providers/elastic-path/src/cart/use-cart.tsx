@@ -7,7 +7,10 @@ import {
 import { useMemo } from "react";
 import { GetCartHook } from "../types/cart";
 import { normalizeCart } from "../utils";
-import { getCartId, setCartId } from "../utils/cart-cookie";
+import {
+  getCartIdFromSession,
+  setCartIdInSession,
+} from "./cart-session";
 import { handleAPIError } from "../utils/errorHandling";
 import { getEPClient } from "../utils/getEPClient";
 import { createLogger } from "../utils/logger";
@@ -26,7 +29,7 @@ export const handler: SWRHook<GetCartHook> = {
     url: "",
   },
   async fetcher({ input, options, fetch, provider }) {
-    const cartId = getCartId();
+    const cartId = await getCartIdFromSession();
     let activeCart;
 
     try {
@@ -58,7 +61,7 @@ export const handler: SWRHook<GetCartHook> = {
         });
         activeCart = response.data;
         if (activeCart && activeCart.data.id) {
-          setCartId(activeCart.data.id);
+          await setCartIdInSession(activeCart.data.id);
           // New cart has no items
           return normalizeCart(activeCart, provider!.locale);
         }

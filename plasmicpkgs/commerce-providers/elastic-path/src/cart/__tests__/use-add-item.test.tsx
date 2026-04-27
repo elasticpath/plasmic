@@ -33,9 +33,12 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
 }));
 
 jest.mock("../../utils", () => ({
-  getCartId: () => mockGetCartId(),
-  setCartId: (...a: unknown[]) => mockSetCartId(...a),
   normalizeCart: (...a: unknown[]) => mockNormalizeCart(...a),
+}));
+
+jest.mock("../cart-session", () => ({
+  getCartIdFromSession: () => Promise.resolve(mockGetCartId()),
+  setCartIdInSession: async (...a: unknown[]) => mockSetCartId(...a),
 }));
 
 jest.mock("../utils/cartDataBuilder", () => ({
