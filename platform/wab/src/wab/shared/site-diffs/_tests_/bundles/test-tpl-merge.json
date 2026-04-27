@@ -5277,11 +5277,7 @@
           }
         },
         "deps": [],
-<<<<<<< HEAD
-        "version": "256-wrap-page-meta-og-image-in-ref"
-=======
         "version": "256-add-custom-function-is-mutation"
->>>>>>> upstream/master
       },
       "projectId": "dNoM99U17XFRGCXZ5SUbc1",
       "version": "0.0.1",
@@ -10842,11 +10838,7 @@
           }
         },
         "deps": [],
-<<<<<<< HEAD
-        "version": "256-wrap-page-meta-og-image-in-ref"
-=======
         "version": "256-add-custom-function-is-mutation"
->>>>>>> upstream/master
       }
     },
     {
@@ -16229,11 +16221,7 @@
           }
         },
         "deps": [],
-<<<<<<< HEAD
-        "version": "256-wrap-page-meta-og-image-in-ref"
-=======
         "version": "256-add-custom-function-is-mutation"
->>>>>>> upstream/master
       }
     }
   ]

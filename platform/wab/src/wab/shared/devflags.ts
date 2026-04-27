@@ -657,11 +657,7 @@ export function applyPlasmicUserDevFlagOverrides(target: DevFlagsType) {
     mainContentSlots: true,
     insertTemplatesIntoMainContentSlots: true,
     simplifiedScreenVariants: true,
-<<<<<<< HEAD
-    schemaDrivenForms: true,
     onboardingTours: true,
-=======
->>>>>>> upstream/master
     posthog: true,
     linting: true,
     componentThumbnails: false,

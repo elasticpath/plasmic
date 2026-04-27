@@ -28411,11 +28411,7 @@
         }
       },
       "deps": [],
-<<<<<<< HEAD
-      "version": "256-wrap-page-meta-og-image-in-ref"
-=======
       "version": "256-add-custom-function-is-mutation"
->>>>>>> upstream/master
     }
   ],
   [
@@ -55448,11 +55444,7 @@
         "DuESJECNxPHt": { "tpl": [], "__type": "VirtualRenderExpr" }
       },
       "deps": ["968565bc-2862-4179-aa20-deebd3879e08"],
-<<<<<<< HEAD
-      "version": "256-wrap-page-meta-og-image-in-ref"
-=======
       "version": "256-add-custom-function-is-mutation"
->>>>>>> upstream/master
     }
   ]
 ]

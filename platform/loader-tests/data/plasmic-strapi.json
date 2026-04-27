@@ -828,11 +828,7 @@
         }
       },
       "deps": [],
-<<<<<<< HEAD
-      "version": "256-wrap-page-meta-og-image-in-ref"
-=======
       "version": "256-add-custom-function-is-mutation"
->>>>>>> upstream/master
     }
   ],
   [
@@ -3048,11 +3044,7 @@
         }
       },
       "deps": ["6acc467a-ae43-4b00-9fe2-d90e71958278"],
-<<<<<<< HEAD
-      "version": "256-wrap-page-meta-og-image-in-ref"
-=======
       "version": "256-add-custom-function-is-mutation"
->>>>>>> upstream/master
     }
   ]
 ]

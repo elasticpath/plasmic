@@ -1751,7 +1751,6 @@
     js-cookie "^3.0.5"
     swell-js "^3.13.0"
 
-<<<<<<< HEAD
 "@plasmicpkgs/commerce@0.0.232":
   version "0.0.232"
   resolved "https://registry.yarnpkg.com/@plasmicpkgs/commerce/-/commerce-0.0.232.tgz#1f32f70cc00eab79a076fd3c477d79c19ad0fd18"
@@ -1765,16 +1764,10 @@
     react-hook-form "^7.28.0"
     swr "^1.2.2"
 
-"@plasmicpkgs/commerce@0.0.241", "@plasmicpkgs/commerce@^0.0.241":
-  version "0.0.241"
-  resolved "https://registry.yarnpkg.com/@plasmicpkgs/commerce/-/commerce-0.0.241.tgz#71f469ef8257cf54999eb71019c2cbe367a7dfb5"
-  integrity sha512-8VvtIrIKOd+srLQzYcUU3U/LY4f8VVTVGIjnvN9P+iAO7VVYF83Gl30I2+zQL5kXIxiBOspwrVqVbnOJJgrIuA==
-=======
 "@plasmicpkgs/commerce@0.0.242", "@plasmicpkgs/commerce@^0.0.242":
   version "0.0.242"
   resolved "https://registry.yarnpkg.com/@plasmicpkgs/commerce/-/commerce-0.0.242.tgz#8f84f4c4447510d4623b811fe83e82bb8a8e3c04"
   integrity sha512-1zY/ZEMkUktoddyrQkBPE+oNSgJ271yjuVd38gqlJsYCteN/a6iKo6leMm9iu67iKjTzmBPneFEnyBCZ4Va13w==
->>>>>>> upstream/master
   dependencies:
     "@vercel/fetch" "^6.2.0"
     debounce "^1.2.1"
