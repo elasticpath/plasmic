@@ -2,8 +2,8 @@ import { getByContextAllProducts } from "@epcc-sdk/sdks-shopper";
 import { normalizeProductFromList } from "../utils/normalize";
 import { getSortVariables } from "../utils";
 import type { Product } from "../types/product";
-import type { EpServerAuth } from "./types";
 import { buildEpClient, isUsableAuth } from "./ep-client";
+import { getCurrentEpSession } from "./session-context";
 
 export interface EpGetProductListInput {
   /** Page size. Defaults to 25 (EP default). */
@@ -14,7 +14,6 @@ export interface EpGetProductListInput {
   categoryId?: string | number;
   /** Sort key understood by the shared `getSortVariables` helper. */
   sort?: string;
-  auth: EpServerAuth;
 }
 
 export async function epGetProductList({
@@ -22,8 +21,8 @@ export async function epGetProductList({
   search,
   categoryId,
   sort,
-  auth,
-}: EpGetProductListInput): Promise<Product[]> {
+}: EpGetProductListInput = {}): Promise<Product[]> {
+  const auth = getCurrentEpSession();
   if (!isUsableAuth(auth)) return [];
   const client = buildEpClient(auth);
   const query: Record<string, unknown> = {};

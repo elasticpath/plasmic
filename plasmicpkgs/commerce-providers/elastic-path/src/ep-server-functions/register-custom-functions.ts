@@ -38,16 +38,14 @@ const EP_FUNCTIONS: EpFunctionSpec[] = [
     name: "getProduct",
     description:
       "Fetch a single EP product by ID, server-side. Returns null when the product is missing.",
-    paramShape:
-      "{ id: string; auth: { accessToken, host, clientId, cartId?, accountId?, locale? } }",
+    paramShape: "{ id: string }",
   },
   {
     fn: epGetCart,
     name: "getCart",
     description:
       "Fetch the current cart, server-side. Returns null when there is no cart or the cart is unreachable.",
-    paramShape:
-      "{ auth: { accessToken, host, clientId, cartId, accountId?, locale? } }",
+    paramShape: "{}",
   },
   {
     fn: epGetProductList,
@@ -55,7 +53,7 @@ const EP_FUNCTIONS: EpFunctionSpec[] = [
     description:
       "Fetch a list of products with optional filter/sort/limit, server-side. Returns an empty array on error.",
     paramShape:
-      "{ limit?: number; search?: string; categoryId?: string; sort?: string; auth: {...} }",
+      "{ limit?: number; search?: string; categoryId?: string; sort?: string }",
   },
   {
     fn: epGetRelatedProducts,
@@ -63,7 +61,7 @@ const EP_FUNCTIONS: EpFunctionSpec[] = [
     description:
       "Fetch products related to the given product by EP custom-relationship slug. Returns an empty array on error.",
     paramShape:
-      "{ productId: string; relationshipSlug: string; limit?: number; auth: {...} }",
+      "{ productId: string; relationshipSlug: string; limit?: number }",
   },
 ];
 

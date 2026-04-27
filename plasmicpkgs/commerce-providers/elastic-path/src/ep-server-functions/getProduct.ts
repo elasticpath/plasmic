@@ -4,12 +4,11 @@ import {
 } from "@epcc-sdk/sdks-shopper";
 import { normalizeProduct } from "../utils/normalize";
 import type { Product } from "../types/product";
-import type { EpServerAuth } from "./types";
 import { buildEpClient, isUsableAuth } from "./ep-client";
+import { getCurrentEpSession } from "./session-context";
 
 export interface EpGetProductInput {
   id: string;
-  auth: EpServerAuth;
 }
 
 interface ProductWithInitialVariant extends Product {
@@ -18,9 +17,9 @@ interface ProductWithInitialVariant extends Product {
 
 export async function epGetProduct({
   id,
-  auth,
 }: EpGetProductInput): Promise<Product | null> {
   if (!id) return null;
+  const auth = getCurrentEpSession();
   if (!isUsableAuth(auth)) return null;
 
   const client = buildEpClient(auth);

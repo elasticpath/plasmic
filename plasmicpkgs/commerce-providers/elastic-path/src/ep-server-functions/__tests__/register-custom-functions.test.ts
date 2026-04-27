@@ -56,4 +56,19 @@ describe("registerEpCustomFunctions", () => {
       "@elasticpath/plasmic-ep-commerce-elastic-path/server"
     );
   });
+
+  // After PRD #272 — auth flows via AsyncLocalStorage (`withEpSession`),
+  // not through Server Query execParams. Param descriptions must NOT
+  // mention `auth` or `$ctx.ep`, otherwise designers will continue to
+  // hand-bind it in Studio and the `<DataProvider name="ep">` wrap will
+  // silently come back as a workaround. Pin this contract.
+  it("does not advertise an `auth` parameter on any registered function", () => {
+    const registerFunction = jest.fn();
+    registerEpCustomFunctions({ registerFunction } as any);
+
+    for (const [, meta] of registerFunction.mock.calls) {
+      const description = meta.params?.[0]?.description ?? "";
+      expect(description).not.toMatch(/\bauth\b/);
+    }
+  });
 });

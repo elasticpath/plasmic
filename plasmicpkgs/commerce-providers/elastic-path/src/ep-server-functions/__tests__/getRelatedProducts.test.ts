@@ -12,6 +12,15 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { epGetRelatedProducts } = require("../getRelatedProducts");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { withEpSession } = require("../session-context");
+
+const SESSION = {
+  accessToken: "tok",
+  host: "https://api.ep.com",
+  clientId: "cid",
+  serverCartMode: false,
+};
 
 beforeEach(() => {
   mockGetByContextAllRelatedProducts.mockReset();
@@ -38,16 +47,13 @@ describe("epGetRelatedProducts", () => {
       },
     });
 
-    const result = await epGetRelatedProducts({
-      productId: "base-id",
-      relationshipSlug: "CRP_related_products",
-      limit: 4,
-      auth: {
-        accessToken: "tok",
-        host: "https://api.ep.com",
-        clientId: "cid",
-      },
-    });
+    const result = await withEpSession(SESSION, () =>
+      epGetRelatedProducts({
+        productId: "base-id",
+        relationshipSlug: "CRP_related_products",
+        limit: 4,
+      })
+    );
 
     expect(result).toHaveLength(2);
     expect(result[0].id).toBe("r1");
@@ -62,27 +68,30 @@ describe("epGetRelatedProducts", () => {
   });
 
   it("returns empty array when productId or relationshipSlug is missing", async () => {
-    const noProductId = await epGetRelatedProducts({
-      productId: "",
-      relationshipSlug: "CRP_related_products",
-      auth: {
-        accessToken: "tok",
-        host: "https://api.ep.com",
-        clientId: "cid",
-      },
-    });
+    const noProductId = await withEpSession(SESSION, () =>
+      epGetRelatedProducts({
+        productId: "",
+        relationshipSlug: "CRP_related_products",
+      })
+    );
     expect(noProductId).toEqual([]);
 
-    const noSlug = await epGetRelatedProducts({
-      productId: "base-id",
-      relationshipSlug: "",
-      auth: {
-        accessToken: "tok",
-        host: "https://api.ep.com",
-        clientId: "cid",
-      },
-    });
+    const noSlug = await withEpSession(SESSION, () =>
+      epGetRelatedProducts({
+        productId: "base-id",
+        relationshipSlug: "",
+      })
+    );
     expect(noSlug).toEqual([]);
+    expect(mockGetByContextAllRelatedProducts).not.toHaveBeenCalled();
+  });
+
+  it("returns empty array when called outside withEpSession", async () => {
+    const result = await epGetRelatedProducts({
+      productId: "base-id",
+      relationshipSlug: "CRP_related_products",
+    });
+    expect(result).toEqual([]);
     expect(mockGetByContextAllRelatedProducts).not.toHaveBeenCalled();
   });
 
@@ -91,15 +100,12 @@ describe("epGetRelatedProducts", () => {
       new Error("not found")
     );
 
-    const result = await epGetRelatedProducts({
-      productId: "base-id",
-      relationshipSlug: "CRP_related_products",
-      auth: {
-        accessToken: "tok",
-        host: "https://api.ep.com",
-        clientId: "cid",
-      },
-    });
+    const result = await withEpSession(SESSION, () =>
+      epGetRelatedProducts({
+        productId: "base-id",
+        relationshipSlug: "CRP_related_products",
+      })
+    );
     expect(result).toEqual([]);
   });
 });

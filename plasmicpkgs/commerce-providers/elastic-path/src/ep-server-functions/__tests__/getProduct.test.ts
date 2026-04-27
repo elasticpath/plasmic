@@ -20,6 +20,15 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { epGetProduct } = require("../getProduct");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { withEpSession } = require("../session-context");
+
+const TEST_SESSION = {
+  accessToken: "token-abc",
+  host: "https://api.test.elasticpath.com",
+  clientId: "client-xyz",
+  serverCartMode: false,
+};
 
 beforeEach(() => {
   mockGetByContextProduct.mockReset();
@@ -54,14 +63,9 @@ describe("epGetProduct", () => {
       },
     });
 
-    const result = await epGetProduct({
-      id: "test-product-id",
-      auth: {
-        accessToken: "token-abc",
-        host: "https://api.test.elasticpath.com",
-        clientId: "client-xyz",
-      },
-    });
+    const result = await withEpSession(TEST_SESSION, () =>
+      epGetProduct({ id: "test-product-id" })
+    );
 
     expect(result).not.toBeNull();
     expect(result?.id).toBe("test-product-id");
@@ -74,44 +78,34 @@ describe("epGetProduct", () => {
     );
   });
 
-  // When the caller's auth is undefined (typical in Studio canvas, where
-  // $ctx.ep isn't populated by buildEpCtx), epGetProduct must fail-soft
-  // and return null — NOT throw. The failure mode before this guard was
-  // buildClient crashing on `auth.host` reading undefined, which blew up
-  // the designer's query preview panel.
-  it("returns null when auth is missing without calling EP", async () => {
-    const result = await epGetProduct({
-      id: "test-product-id",
-      auth: undefined as any,
-    });
+  // When called outside any withEpSession scope (typical in Studio canvas,
+  // where the loader runs in the browser without ALS), epGetProduct must
+  // fail-soft and return null — NOT throw. Designers see an empty preview
+  // instead of a crashed query panel.
+  it("returns null when called outside withEpSession", async () => {
+    const result = await epGetProduct({ id: "test-product-id" });
 
     expect(result).toBeNull();
     expect(mockGetByContextProduct).not.toHaveBeenCalled();
   });
 
-  // Same contract for a half-populated auth object — if either host,
-  // clientId, or accessToken is missing, the SDK call would either
-  // crash or send an unauthenticated request. Return null upstream so
-  // the emptyContent slot renders instead.
-  it("returns null when auth is missing required fields", async () => {
-    const result = await epGetProduct({
-      id: "test-product-id",
-      auth: { host: "", clientId: "x", accessToken: "y" } as any,
-    });
+  // Same contract when the ALS session is half-populated — host,
+  // clientId, or accessToken missing. Return null upstream so the
+  // emptyContent slot renders instead of an unauthenticated SDK call.
+  it("returns null when ALS session is missing required fields", async () => {
+    const result = await withEpSession(
+      { host: "", clientId: "x", accessToken: "y" } as any,
+      () => epGetProduct({ id: "test-product-id" })
+    );
 
     expect(result).toBeNull();
     expect(mockGetByContextProduct).not.toHaveBeenCalled();
   });
 
   it("returns null when id is empty without calling EP", async () => {
-    const result = await epGetProduct({
-      id: "",
-      auth: {
-        accessToken: "token-abc",
-        host: "https://api.test.elasticpath.com",
-        clientId: "client-xyz",
-      },
-    });
+    const result = await withEpSession(TEST_SESSION, () =>
+      epGetProduct({ id: "" })
+    );
 
     expect(result).toBeNull();
     expect(mockGetByContextProduct).not.toHaveBeenCalled();
@@ -120,14 +114,9 @@ describe("epGetProduct", () => {
   it("returns null when EP responds with no product data", async () => {
     mockGetByContextProduct.mockResolvedValue({ data: null });
 
-    const result = await epGetProduct({
-      id: "missing-id",
-      auth: {
-        accessToken: "token-abc",
-        host: "https://api.test.elasticpath.com",
-        clientId: "client-xyz",
-      },
-    });
+    const result = await withEpSession(TEST_SESSION, () =>
+      epGetProduct({ id: "missing-id" })
+    );
 
     expect(result).toBeNull();
   });
@@ -169,14 +158,9 @@ describe("epGetProduct", () => {
       .mockResolvedValueOnce(childResponse)
       .mockResolvedValueOnce(parentResponse);
 
-    const result = await epGetProduct({
-      id: "child-id",
-      auth: {
-        accessToken: "token-abc",
-        host: "https://api.test.elasticpath.com",
-        clientId: "client-xyz",
-      },
-    });
+    const result = await withEpSession(TEST_SESSION, () =>
+      epGetProduct({ id: "child-id" })
+    );
 
     expect(result).not.toBeNull();
     expect(result?.id).toBe("parent-id");

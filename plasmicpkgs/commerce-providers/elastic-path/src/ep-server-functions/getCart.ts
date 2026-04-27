@@ -1,23 +1,22 @@
 import { getACart } from "@epcc-sdk/sdks-shopper";
 import { normalizeCart } from "../utils/normalize";
-import type { EpServerAuth } from "./types";
 import { buildEpClient, isUsableAuth } from "./ep-client";
+import { getCurrentEpSession } from "./session-context";
 
-export interface EpGetCartInput {
-  auth: EpServerAuth;
-}
+export type EpGetCartInput = Record<string, never>;
 
 /**
  * Fetches a cart by ID, server-side. Returns null when:
- *  - auth is missing or incomplete (Studio canvas, unauthenticated call);
- *  - no cartId is present on the auth payload (anonymous visitor — server
- *    reads must not create carts; creation is a mutation and belongs on
+ *  - no ALS session is active (Studio canvas, unauthenticated call);
+ *  - the session lacks a cartId (anonymous visitor — server reads must
+ *    not create carts; creation is a mutation and belongs on
  *    `POST /api/ep/cart/items`);
  *  - the cart is missing or EP returns an error (stale cookie, deleted cart).
  */
-export async function epGetCart({
-  auth,
-}: EpGetCartInput): Promise<ReturnType<typeof normalizeCart> | null> {
+export async function epGetCart(
+  _input?: EpGetCartInput
+): Promise<ReturnType<typeof normalizeCart> | null> {
+  const auth = getCurrentEpSession();
   if (!isUsableAuth(auth)) return null;
   if (!auth.cartId) return null;
   const client = buildEpClient(auth);

@@ -6,8 +6,8 @@ import type { EpServerAuth } from "./types";
  *
  * Returns a configured EPCC shopper client, or `null` when auth is
  * incomplete. Callers fail-soft (typically `return null`) so Studio
- * canvas — where `$ctx.ep` isn't populated by `buildEpCtx` — sees an
- * empty response instead of blowing up on `undefined.host`.
+ * canvas — where no `withEpSession` scope is active — sees an empty
+ * response instead of blowing up on `undefined.host`.
  */
 export function isUsableAuth(auth: unknown): auth is EpServerAuth {
   if (!auth || typeof auth !== "object") return false;
