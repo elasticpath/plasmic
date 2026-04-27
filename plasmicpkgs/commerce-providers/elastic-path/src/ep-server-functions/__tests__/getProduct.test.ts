@@ -121,6 +121,67 @@ describe("epGetProduct", () => {
     expect(result).toBeNull();
   });
 
+  // Studio canvas + the data-query "Execute" panel call the function
+  // outside any withEpSession scope. To keep designer-side testability,
+  // the function falls back to `input.auth` when ALS has no session.
+  // SSR consumers never set `auth` in Studio bindings, so this fallback
+  // doesn't affect the SSR cache key.
+  it("falls back to input.auth when no ALS session is active", async () => {
+    mockGetByContextProduct.mockResolvedValue({
+      data: {
+        data: {
+          id: "canvas-product",
+          type: "product",
+          attributes: { name: "Canvas Product", slug: "canvas-product" },
+          meta: {
+            display_price: {
+              without_tax: { amount: 999, currency: "USD" },
+            },
+            product_types: [],
+          },
+        },
+        included: {},
+      },
+    });
+
+    // No withEpSession wrap — passes auth via input instead.
+    const result = await epGetProduct({
+      id: "canvas-product",
+      auth: TEST_SESSION as any,
+    } as any);
+
+    expect(result).not.toBeNull();
+    expect(result?.id).toBe("canvas-product");
+  });
+
+  it("prefers ALS session over input.auth when both are present", async () => {
+    mockGetByContextProduct.mockResolvedValue({
+      data: {
+        data: {
+          id: "test-product-id",
+          type: "product",
+          attributes: { name: "From ALS", slug: "p" },
+          meta: {
+            display_price: { without_tax: { amount: 1, currency: "USD" } },
+            product_types: [],
+          },
+        },
+        included: {},
+      },
+    });
+
+    // Both ALS and input.auth set — ALS wins (so cache-key parity holds in SSR).
+    const result = await withEpSession(TEST_SESSION, () =>
+      epGetProduct({
+        id: "test-product-id",
+        auth: { ...TEST_SESSION, accessToken: "FROM_INPUT" } as any,
+      } as any)
+    );
+
+    expect(result).not.toBeNull();
+    expect(result?.name).toBe("From ALS");
+  });
+
   it("fetches parent and attaches __initialVariantId when id points at a child variant", async () => {
     const childResponse = {
       data: {

@@ -2,8 +2,12 @@ import { getACart } from "@epcc-sdk/sdks-shopper";
 import { normalizeCart } from "../utils/normalize";
 import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession } from "./session-context";
+import type { EpServerAuth } from "./types";
 
-export type EpGetCartInput = Record<string, never>;
+export interface EpGetCartInput {
+  /** Studio canvas / Execute-panel fallback only — see EpGetProductInput. */
+  auth?: EpServerAuth;
+}
 
 /**
  * Fetches a cart by ID, server-side. Returns null when:
@@ -14,9 +18,9 @@ export type EpGetCartInput = Record<string, never>;
  *  - the cart is missing or EP returns an error (stale cookie, deleted cart).
  */
 export async function epGetCart(
-  _input?: EpGetCartInput
+  input?: EpGetCartInput
 ): Promise<ReturnType<typeof normalizeCart> | null> {
-  const auth = getCurrentEpSession();
+  const auth = getCurrentEpSession() ?? input?.auth;
   if (!isUsableAuth(auth)) return null;
   if (!auth.cartId) return null;
   const client = buildEpClient(auth);
