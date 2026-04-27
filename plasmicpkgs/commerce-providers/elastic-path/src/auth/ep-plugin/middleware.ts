@@ -68,6 +68,10 @@ export function epAuthMiddleware(epAuth: EpAuth) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        // Forward the request's Origin (or fall back to the URL origin)
+        // so better-auth's trustedOrigins check passes for this
+        // synthetic internal call.
+        Origin: request.headers.get("origin") ?? url.origin,
         ...(cookieHeader ? { cookie: cookieHeader } : {}),
       },
       body: "{}",

@@ -86,12 +86,21 @@ async function persistCartId(
   cartId: string
 ): Promise<string[]> {
   const cookieHeader = request.headers.get("cookie") ?? "";
+  const incomingOrigin =
+    request.headers.get("origin") ??
+    new URL(request.url).origin;
   const internalReq = new Request(
     `${new URL(request.url).origin}/api/ep/ep/cart`,
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        // Forward the client's Origin (or the request's URL origin as
+        // fallback) so better-auth's trustedOrigins check passes for
+        // this server-to-server-style internal call. Without this the
+        // synthetic Request has no Origin header and better-auth
+        // rejects with 403 "Invalid origin".
+        Origin: incomingOrigin,
         ...(cookieHeader ? { cookie: cookieHeader } : {}),
       },
       body: JSON.stringify({ cartId }),
