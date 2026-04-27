@@ -1,8 +1,9 @@
 import { getByContextAllRelatedProducts } from "@epcc-sdk/sdks-shopper";
 import { normalizeProductFromList } from "../utils/normalize";
 import type { Product } from "../types/product";
-import type { EpServerAuth } from "./types";
 import { buildEpClient, isUsableAuth } from "./ep-client";
+import { getCurrentEpSession } from "./session-context";
+import type { EpServerAuth } from "./types";
 
 export interface EpGetRelatedProductsInput {
   productId: string;
@@ -12,16 +13,18 @@ export interface EpGetRelatedProductsInput {
    */
   relationshipSlug: string;
   limit?: number;
-  auth: EpServerAuth;
+  /** Studio canvas / Execute-panel fallback only — see EpGetProductInput. */
+  auth?: EpServerAuth;
 }
 
 export async function epGetRelatedProducts({
   productId,
   relationshipSlug,
   limit,
-  auth,
+  auth: inputAuth,
 }: EpGetRelatedProductsInput): Promise<Product[]> {
   if (!productId || !relationshipSlug) return [];
+  const auth = getCurrentEpSession() ?? inputAuth;
   if (!isUsableAuth(auth)) return [];
   const client = buildEpClient(auth);
   const query: Record<string, unknown> = {

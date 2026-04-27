@@ -1,17 +1,16 @@
 /**
- * Composes the `$ctx.ep` payload that flows into Plasmic Studio Server
- * Queries (per PRD #262). Takes the Plasmic loader's prefetchedData (source
+ * Composes the EP session payload that drives every `ep.*` server function
+ * (per PRD #262 / #272). Takes the Plasmic loader's prefetchedData (source
  * of connection/config — clientId, host) and the resolved EP session
- * (source of per-shopper auth — accessToken, cartId, accountId), and
- * returns the shape that every `ep.*` server function accepts as its
- * `auth` parameter.
+ * (source of per-shopper auth — accessToken, cartId, accountId).
  *
- * Consumers call this in their RSC catchall page:
- *     const $ctx = {
- *       pageRoute, pagePath, params, query,
- *       ep: buildEpCtx(prefetchedData, { session }),
- *     };
- *     await PLASMIC.unstable__getServerQueriesData(prefetchedData, $ctx);
+ * Consumers call this in their RSC catchall page, then run Server Queries
+ * inside a `withEpSession` scope so each function reads the session via
+ * AsyncLocalStorage instead of a per-call `auth` argument:
+ *     const epCtx = buildEpCtx(prefetchedData, { session });
+ *     const prefetchedQueryData = await withEpSession(epCtx, () =>
+ *       PLASMIC.unstable__getServerQueriesData(prefetchedData, queryCtx)
+ *     );
  */
 
 import { extractEpProviderConfig } from "../auth/extract-ep-provider-config";

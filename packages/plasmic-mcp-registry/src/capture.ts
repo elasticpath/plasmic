@@ -76,26 +76,30 @@ function host(): HostRegistration {
  * @returns A wrapped object with the same interface
  */
 export function withRegistryCapture<T extends PlasmicLike>(plasmic: T): T {
+  // Forwarding to `plasmic.register*` is intentionally omitted: the loader's
+  // own register methods are noops server-side, AND with `@plasmicapp/host`
+  // now bundled into Next's RSC graph (no longer in serverExternalPackages),
+  // those methods carry the package's `"use client"` marker — invoking them
+  // from a server route trips Next's RSC boundary protection
+  // ("registerFunction is on the client"). The capture wrapper exists solely
+  // to populate `@plasmicapp/host`'s globalThis registries via the
+  // eval-required `host()` reference, which is what the MCP / API route
+  // reads back via `getFullRegistry()`.
   return {
     ...plasmic,
     registerComponent(component: unknown, meta: unknown) {
-      plasmic.registerComponent(component, meta);
       host().registerComponent(component, meta);
     },
     registerGlobalContext(component: unknown, meta: unknown) {
-      plasmic.registerGlobalContext?.(component, meta);
       host().registerGlobalContext(component, meta);
     },
     registerFunction(fn: unknown, meta: unknown) {
-      plasmic.registerFunction?.(fn, meta);
       host().registerFunction(fn, meta);
     },
     registerToken(token: unknown) {
-      plasmic.registerToken?.(token);
       host().registerToken(token);
     },
     registerTrait(trait: string, meta: unknown) {
-      plasmic.registerTrait?.(trait, meta);
       host().registerTrait(trait, meta);
     },
   } as T;

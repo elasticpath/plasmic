@@ -11,13 +11,22 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { epGetCart } = require("../getCart");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { withEpSession } = require("../session-context");
+
+const SESSION_BASE = {
+  accessToken: "tok",
+  host: "https://api.ep.com",
+  clientId: "cid",
+  serverCartMode: false,
+};
 
 beforeEach(() => {
   mockGetACart.mockReset();
 });
 
 describe("epGetCart", () => {
-  it("returns a normalized cart for the given cartId", async () => {
+  it("returns a normalized cart for the cartId carried by the ALS session", async () => {
     mockGetACart.mockResolvedValue({
       data: {
         data: {
@@ -43,14 +52,10 @@ describe("epGetCart", () => {
       },
     });
 
-    const result = await epGetCart({
-      auth: {
-        accessToken: "tok",
-        host: "https://api.ep.com",
-        clientId: "cid",
-        cartId: "cart-id",
-      },
-    });
+    const result = await withEpSession(
+      { ...SESSION_BASE, cartId: "cart-id" },
+      () => epGetCart()
+    );
 
     expect(result).not.toBeNull();
     expect(result?.id).toBe("cart-id");
@@ -61,14 +66,15 @@ describe("epGetCart", () => {
     );
   });
 
-  it("returns null when no cartId is present (anonymous visitor, no cart yet)", async () => {
-    const result = await epGetCart({
-      auth: {
-        accessToken: "tok",
-        host: "https://api.ep.com",
-        clientId: "cid",
-      },
-    });
+  it("returns null when no cartId is on the ALS session (anonymous visitor)", async () => {
+    const result = await withEpSession(SESSION_BASE, () => epGetCart());
+
+    expect(result).toBeNull();
+    expect(mockGetACart).not.toHaveBeenCalled();
+  });
+
+  it("returns null when called outside any withEpSession scope", async () => {
+    const result = await epGetCart();
 
     expect(result).toBeNull();
     expect(mockGetACart).not.toHaveBeenCalled();
@@ -77,14 +83,10 @@ describe("epGetCart", () => {
   it("returns null when EP throws (stale cartId, cart deleted, network error)", async () => {
     mockGetACart.mockRejectedValue(new Error("404 cart not found"));
 
-    const result = await epGetCart({
-      auth: {
-        accessToken: "tok",
-        host: "https://api.ep.com",
-        clientId: "cid",
-        cartId: "stale-cart-id",
-      },
-    });
+    const result = await withEpSession(
+      { ...SESSION_BASE, cartId: "stale-cart-id" },
+      () => epGetCart()
+    );
 
     expect(result).toBeNull();
   });

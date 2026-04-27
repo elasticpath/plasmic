@@ -308,20 +308,24 @@ registerEpCustomFunctions(PLASMIC);
 
 This registers four functions in the `ep` namespace, callable from Studio's Server Query builder:
 
-- `ep.getProduct({ id, auth })` — single product by EP product UUID.
-- `ep.getCart({ auth })` — current cart contents.
-- `ep.getProductList({ limit?, search?, categoryId?, sort?, auth })` — paginated product list.
-- `ep.getRelatedProducts({ productId, relationshipSlug, limit?, auth })` — products linked by an EP custom relationship.
+- `ep.getProduct({ id })` — single product by EP product UUID.
+- `ep.getCart()` — current cart contents.
+- `ep.getProductList({ limit?, search?, categoryId?, sort? })` — paginated product list.
+- `ep.getRelatedProducts({ productId, relationshipSlug, limit? })` — products linked by an EP custom relationship.
 
-### 3. Build `$ctx.ep` in the catch-all page
+Auth is **not** an argument. The session (`accessToken`, `clientId`, `host`, `cartId`, …) is propagated through `AsyncLocalStorage` — see step 3.
+
+### 3. Wrap Server Queries in `withEpSession`
 
 ```ts
 // app/[[...catchall]]/page.tsx
 import { PLASMIC } from "@/plasmic-init";
 import { PlasmicClientRootProvider } from "@/plasmic-init-client";
 import { PlasmicComponent } from "@plasmicapp/loader-nextjs";
-import { DataProvider } from "@plasmicapp/host";
-import { buildEpCtx } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
+import {
+  buildEpCtx,
+  withEpSession,
+} from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
 import { epAuth, epProviderHeaders } from "@/lib/ep-auth";
 import { cookies } from "next/headers";
 
@@ -339,7 +343,7 @@ export default async function PlasmicLoaderPage({ params, searchParams }) {
     headers: await epProviderHeaders(prefetchedData),
   });
 
-  // Compose $ctx.ep — auth + cart context for server-side EP calls.
+  // Compose the EP session — auth + cart context for server-side EP calls.
   const epCtx = buildEpCtx(prefetchedData, {
     session: {
       accessToken: session.session?.accessToken,
@@ -348,14 +352,18 @@ export default async function PlasmicLoaderPage({ params, searchParams }) {
     },
   });
 
-  // Run Studio Server Queries with the auth-enriched ctx.
-  const prefetchedQueryData = await PLASMIC.unstable__getServerQueriesData(prefetchedData, {
-    pageRoute: pageMeta.path,
-    pagePath: plasmicPath,
-    params: pageMeta.params ?? {},
-    query: (await searchParams) ?? {},
-    ep: epCtx,
-  });
+  // Run Studio Server Queries inside an EP session scope. Each `ep.*`
+  // function reads the active session via AsyncLocalStorage — no `auth`
+  // binding required in Studio, no `<DataProvider name="ep">` wrap on
+  // the client side.
+  const prefetchedQueryData = await withEpSession(epCtx, () =>
+    PLASMIC.unstable__getServerQueriesData(prefetchedData, {
+      pageRoute: pageMeta.path,
+      pagePath: plasmicPath,
+      params: pageMeta.params ?? {},
+      query: (await searchParams) ?? {},
+    })
+  );
 
   return (
     <PlasmicClientRootProvider
@@ -363,13 +371,7 @@ export default async function PlasmicLoaderPage({ params, searchParams }) {
       prefetchedQueryData={prefetchedQueryData}
       pageParams={pageMeta.params}
     >
-      {/* Expose $ctx.ep client-side so the SWR cache key matches the
-          server-computed key. Without this wrap the client recomputes a
-          different key, misses the prefetched cache, and refetches
-          unauthenticated. Tracked for follow-up retirement in #272. */}
-      <DataProvider name="ep" data={epCtx}>
-        <PlasmicComponent component={pageMeta.displayName} />
-      </DataProvider>
+      <PlasmicComponent component={pageMeta.displayName} />
     </PlasmicClientRootProvider>
   );
 }
@@ -380,7 +382,7 @@ export default async function PlasmicLoaderPage({ params, searchParams }) {
 For each Server Query in the Plasmic UI, set the function and arguments. For a product detail page (`/product/[slug]`):
 
 - **Function:** `ep.getProduct`
-- **Arguments:** `{ id: $ctx.params.slug, auth: $ctx.ep }`
+- **Arguments:** `{ id: $ctx.params.slug }`
 
 Then bind the `EPProductProvider` component's advanced `product` prop to `$q.product.data`. Server Queries appear under `$q` (not `$queries`) in the binding panel.
 
@@ -392,10 +394,10 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `$q.product.data` always `undefined` on the client | `<DataProvider name="ep">` wrap missing | Wrap `<PlasmicComponent>` per step 3 |
+| `$q.product.data` always `null` / queries return `null` despite valid input | `withEpSession` not wrapped around `unstable__getServerQueriesData` | Wrap the query call per step 3; functions fail-soft to `null` outside an EP session scope |
 | `prefetchedQueryData: "$undefined"` in the SSR HTML | `appDir: true` not set in `plasmic-init.ts` | Add `platformOptions: { nextjs: { appDir: true } }` |
 | `EP OAuth failed (401) Invalid credentials` | API route's `epProviderHeaders()` returned empty (project has no homepage at `/`) | Ensure the storefront resolves a real page path via `fetchPages()` (already done if you copied `lib/ep-auth.ts` from the example) |
-| `auth: undefined` reaching `epGetProduct` | Using `auth: $ctx.ep` binding without the `<DataProvider name="ep">` wrap, OR passing `disableCookieCache: true` to `getSession` | See first row; never pass `disableCookieCache` |
+| Studio binding still references `auth: $ctx.ep` | Project predates PRD #272 | Drop `auth` from each Server Query argument — the session now flows via ALS, not execParams |
 
 ## Components
 

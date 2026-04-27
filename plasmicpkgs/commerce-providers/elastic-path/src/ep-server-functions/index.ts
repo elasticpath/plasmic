@@ -12,4 +12,6 @@ export type {
   BuildEpCtxSessionInput,
   EpCtx,
 } from "./build-ep-ctx";
+export { withEpSession, getCurrentEpSession } from "./session-context";
+export type { EpSessionContext } from "./session-context";
 export type { EpServerAuth } from "./types";

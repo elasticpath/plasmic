@@ -12,6 +12,15 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { epGetProductList } = require("../getProductList");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { withEpSession } = require("../session-context");
+
+const SESSION = {
+  accessToken: "tok",
+  host: "https://api.ep.com",
+  clientId: "cid",
+  serverCartMode: false,
+};
 
 beforeEach(() => {
   mockGetByContextAllProducts.mockReset();
@@ -38,14 +47,9 @@ describe("epGetProductList", () => {
       },
     });
 
-    const result = await epGetProductList({
-      limit: 10,
-      auth: {
-        accessToken: "tok",
-        host: "https://api.ep.com",
-        clientId: "cid",
-      },
-    });
+    const result = await withEpSession(SESSION, () =>
+      epGetProductList({ limit: 10 })
+    );
 
     expect(result).toHaveLength(2);
     expect(result[0].id).toBe("p1");
@@ -62,13 +66,7 @@ describe("epGetProductList", () => {
       data: { data: [], included: {} },
     });
 
-    const result = await epGetProductList({
-      auth: {
-        accessToken: "tok",
-        host: "https://api.ep.com",
-        clientId: "cid",
-      },
-    });
+    const result = await withEpSession(SESSION, () => epGetProductList());
 
     expect(result).toEqual([]);
   });
@@ -76,14 +74,15 @@ describe("epGetProductList", () => {
   it("returns empty array on error (graceful degradation)", async () => {
     mockGetByContextAllProducts.mockRejectedValue(new Error("EP down"));
 
-    const result = await epGetProductList({
-      auth: {
-        accessToken: "tok",
-        host: "https://api.ep.com",
-        clientId: "cid",
-      },
-    });
+    const result = await withEpSession(SESSION, () => epGetProductList());
 
     expect(result).toEqual([]);
+  });
+
+  it("returns empty array when called outside withEpSession", async () => {
+    const result = await epGetProductList();
+
+    expect(result).toEqual([]);
+    expect(mockGetByContextAllProducts).not.toHaveBeenCalled();
   });
 });

@@ -788,11 +788,12 @@ Browser                          Server (Next.js)              Elastic Path
                                  catch-all page.tsx
                                    buildEpCtx() ----- mints ---> /oauth/access_token
                                                                  /pcm/catalog/products
-                                   PLASMIC.unstable__getServerQueriesData
-                                     ↓ executes ep.getProduct({id, auth})
-                                     ↓ result keyed by SWR cache key
-                                   prefetchedQueryData ------> RSC payload
-                                                              + DataProvider("ep")
+                                   withEpSession(epCtx, () =>
+                                     PLASMIC.unstable__getServerQueriesData
+                                       ↓ executes ep.getProduct({id})
+                                       ↓ each ep.* fn reads session
+                                       ↓ via getCurrentEpSession() (ALS)
+                                   ) prefetchedQueryData ------> RSC payload
 PlasmicClientRootProvider <-------- prefetchedQueryData
   $q.product.data hydrated from cache, no client refetch
 ```
@@ -801,36 +802,37 @@ PlasmicClientRootProvider <-------- prefetchedQueryData
 
 | Function | Args | Returns |
 |---|---|---|
-| `ep.getProduct` | `{ id, auth }` | `Product \| null` — single product by EP UUID |
-| `ep.getCart` | `{ auth }` | `Cart \| null` — current cart contents |
-| `ep.getProductList` | `{ limit?, search?, categoryId?, sort?, auth }` | `Product[]` — paginated list |
-| `ep.getRelatedProducts` | `{ productId, relationshipSlug, limit?, auth }` | `Product[]` — products linked by EP custom relationship |
+| `ep.getProduct` | `{ id }` | `Product \| null` — single product by EP UUID |
+| `ep.getCart` | `{}` | `Cart \| null` — current cart contents |
+| `ep.getProductList` | `{ limit?, search?, categoryId?, sort? }` | `Product[]` — paginated list |
+| `ep.getRelatedProducts` | `{ productId, relationshipSlug, limit? }` | `Product[]` — products linked by EP custom relationship |
 
-`auth` is the resolved `$ctx.ep` shape — a normalised payload of `{ accessToken, host, clientId, cartId?, accountId?, locale? }` produced by `buildEpCtx(prefetchedData, { session })`.
+The session (`accessToken`, `host`, `clientId`, `cartId?`, `accountId?`, `locale?`) is **not** an argument. `withEpSession(epCtx, callback)` establishes a per-request `AsyncLocalStorage` scope; each `ep.*` function reads the active session via `getCurrentEpSession()` internally. Outside any `withEpSession` scope (Studio canvas, mistakes), functions fail-soft to `null` / `[]` without calling EP.
 
 ### Studio binding
 
 For each Server Query in the Plasmic UI:
 
 - **Function:** `ep.getProduct` (or `getCart`/`getProductList`/`getRelatedProducts`)
-- **Arguments (object editor):** `{ id: $ctx.params.slug, auth: $ctx.ep }` — note `$q` (server queries) vs `$queries` (client data queries) when binding the result.
+- **Arguments (object editor):** `{ id: $ctx.params.slug }` — note `$q` (server queries) vs `$queries` (client data queries) when binding the result.
 
 Then bind the consuming component's `product` / `cart` / `products` prop (advanced section) to `$q.<queryName>.data`.
 
 ### Required Next.js setup
 
 1. **`platformOptions: { nextjs: { appDir: true } }`** in `plasmic-init.ts`. Without this the loader fetches the Pages Router bundle which omits `serverQueriesExecFuncFileName` per-page metadata.
-2. **`<DataProvider name="ep" data={epCtx}>`** wrap around `<PlasmicComponent>` in the catch-all page. Without it, server and client compute different SWR cache keys and the client refetches unauthenticated. Tracked for follow-up retirement in #272 (ALS-based session context).
+2. **Wrap `unstable__getServerQueriesData` in `withEpSession(epCtx, ...)`** in the catch-all page. Without it, the EP functions run outside any session scope and return `null` / `[]`.
 3. **Resolve a real page path for the API route's `epProviderHeaders()`** — use `PLASMIC.fetchPages()` rather than hardcoding `/`. Projects without a homepage route otherwise return `null` from `maybeFetchComponentData("/")` and the credentials-extraction path silently fails.
 
 ### Common gotchas
 
 | Symptom | Likely cause |
 |---|---|
-| Page renders `Product not found` despite valid product UUID | `auth: $ctx.ep` reaching the function as `undefined` — missing `<DataProvider name="ep">` wrap |
+| Queries return `null` / `[]` despite valid arguments | Missing `withEpSession(epCtx, …)` wrap around `unstable__getServerQueriesData` |
 | `prefetchedQueryData: "$undefined"` in the SSR HTML | `appDir: true` missing from loader config |
 | `EP OAuth failed (401)` in dev log | Override headers (`x-ep-client-id`/`x-ep-host`) returned empty — usually because `getEpProviderConfig` hardcoded `/` and the project has no homepage |
 | Auth works on the page but `/api/ep/cart` returns 500 | Pre-fix: `toNextJsHandler` was passing the native Next `Request` directly; resolved by the Request adapter committed in `a363aaf23` |
+| Studio binding still references `auth: $ctx.ep` | Project predates PRD #272 — drop `auth` from each Server Query argument |
 
 ## 8. Utility Components
 

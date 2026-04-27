@@ -57,7 +57,7 @@ export type {
   EpProviderBundleConfig,
 } from "./auth";
 
-// Server-side custom functions for Studio Server Queries (PRD #262)
+// Server-side custom functions for Studio Server Queries (PRD #262 / #272)
 export {
   epGetProduct,
   epGetCart,
@@ -65,6 +65,8 @@ export {
   epGetRelatedProducts,
   registerEpCustomFunctions,
   buildEpCtx,
+  withEpSession,
+  getCurrentEpSession,
 } from "./ep-server-functions";
 export type {
   EpGetProductInput,
@@ -73,5 +75,6 @@ export type {
   EpGetRelatedProductsInput,
   BuildEpCtxSessionInput,
   EpCtx,
+  EpSessionContext,
   EpServerAuth,
 } from "./ep-server-functions";

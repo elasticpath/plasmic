@@ -1,9 +1,9 @@
 /**
- * Resolved EP connection + auth context passed into every `ep.*` server
- * function. Built by the consumer's RSC catchall page from
- * `extractEpProviderConfig(prefetchedData)` (connection) and
- * `epAuth.api.getSession()` (per-shopper auth), then injected into
- * `$ctx.ep` for Studio Server Queries to reference.
+ * Resolved EP connection + auth context. Built by the consumer's RSC
+ * catchall page from `extractEpProviderConfig(prefetchedData)` (connection)
+ * and `epAuth.api.getSession()` (per-shopper auth), then handed to
+ * `withEpSession()` so every `ep.*` server function can read it via
+ * AsyncLocalStorage (per PRD #272).
  *
  * Token is input-only to server functions — never returned, never
  * serialised into the prefetched query cache (per PRD #262).

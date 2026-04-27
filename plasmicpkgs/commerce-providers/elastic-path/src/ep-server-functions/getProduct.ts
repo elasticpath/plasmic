@@ -4,12 +4,20 @@ import {
 } from "@epcc-sdk/sdks-shopper";
 import { normalizeProduct } from "../utils/normalize";
 import type { Product } from "../types/product";
-import type { EpServerAuth } from "./types";
 import { buildEpClient, isUsableAuth } from "./ep-client";
+import { getCurrentEpSession } from "./session-context";
+import type { EpServerAuth } from "./types";
 
 export interface EpGetProductInput {
   id: string;
-  auth: EpServerAuth;
+  /**
+   * Optional auth fallback for Studio canvas + the data-query
+   * "Execute" panel, where no `withEpSession` scope is established.
+   * SSR consumers should NOT set this in Studio bindings — `withEpSession`
+   * in the catchall page handles it via AsyncLocalStorage and keeps the
+   * SWR cache key minimal.
+   */
+  auth?: EpServerAuth;
 }
 
 interface ProductWithInitialVariant extends Product {
@@ -18,9 +26,10 @@ interface ProductWithInitialVariant extends Product {
 
 export async function epGetProduct({
   id,
-  auth,
+  auth: inputAuth,
 }: EpGetProductInput): Promise<Product | null> {
   if (!id) return null;
+  const auth = getCurrentEpSession() ?? inputAuth;
   if (!isUsableAuth(auth)) return null;
 
   const client = buildEpClient(auth);

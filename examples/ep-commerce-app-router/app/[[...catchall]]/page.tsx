@@ -2,8 +2,10 @@ import { PLASMIC } from "@/plasmic-init";
 import "@/plasmic-register";
 import { PlasmicClientRootProvider } from "@/plasmic-init-client";
 import { PlasmicComponent } from "@plasmicapp/loader-nextjs";
-import { DataProvider } from "@plasmicapp/host";
-import { buildEpCtx } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
+import {
+  buildEpCtx,
+  withEpSession,
+} from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
 import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
 import { epAuth, epProviderHeaders } from "@/lib/ep-auth";
@@ -63,7 +65,7 @@ export default async function PlasmicLoaderPage({
   } catch {}
 
   // ---------------------------------------------------------------------------
-  // Build $ctx.ep + run Studio Server Queries (PRD #262)
+  // Build EP session context + run Studio Server Queries (PRD #262 / #272)
   // ---------------------------------------------------------------------------
   const epCtx = buildEpCtx(prefetchedData, {
     session: {
@@ -78,13 +80,13 @@ export default async function PlasmicLoaderPage({
     pagePath: plasmicPath,
     params: pageMeta.params ?? {},
     query: resolvedSearchParams,
-    ep: epCtx,
   };
-  // When a page has no Server Queries defined, `unstable__getServerQueriesData`
-  // returns `{}` and client-side SWR falls through (backward compatible).
-  const prefetchedQueryData = await PLASMIC.unstable__getServerQueriesData(
-    prefetchedData,
-    queryCtx
+  // EP session flows via AsyncLocalStorage (PRD #272). Each `ep.*` server
+  // function reads the active session via `getCurrentEpSession()` — no
+  // `auth: $ctx.ep` binding needed in Studio Server Queries, no
+  // `<DataProvider name="ep">` wrap needed for SWR cache-key parity.
+  const prefetchedQueryData = await withEpSession(epCtx, () =>
+    PLASMIC.unstable__getServerQueriesData(prefetchedData, queryCtx)
   );
 
   const globalContextsProps = {
@@ -99,13 +101,7 @@ export default async function PlasmicLoaderPage({
       pageParams={pageMeta.params}
       pageQuery={queryCtx.query}
     >
-      {/* Expose $ctx.ep to the client-side render. Studio Server Queries
-          build a cache key that includes $ctx.ep — the client must see the
-          same object so its SWR key matches `prefetchedQueryData` and avoids
-          an unauthenticated refetch. */}
-      <DataProvider name="ep" data={epCtx}>
-        <PlasmicComponent component={pageMeta.displayName} />
-      </DataProvider>
+      <PlasmicComponent component={pageMeta.displayName} />
     </PlasmicClientRootProvider>
   );
 }
