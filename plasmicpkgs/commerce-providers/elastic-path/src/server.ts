@@ -50,6 +50,7 @@ export {
   extractEpProviderConfig,
   epPlugin,
   epAuthMiddleware,
+  createCartRoutes,
 } from "./auth";
 export type {
   EpAuth,
