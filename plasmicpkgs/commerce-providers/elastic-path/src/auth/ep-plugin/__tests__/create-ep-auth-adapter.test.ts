@@ -120,6 +120,73 @@ describe("createEpAuth adapter (PRD #273)", () => {
     expect(all).toContain("better-auth.session_data");
   });
 
+  it("auto-refreshes the EP token when session is near expiry", async () => {
+    // Session minted at boot. We force the FIRST mint to return a token
+    // that's already expiring (5s remaining, well below the 30s
+    // refresh threshold). Subsequent mints (the auto-rotation) return
+    // a fresh token. The adapter should transparently swap and queue
+    // Set-Cookie headers for commitCookies() to flush.
+    let mintCount = 0;
+    (globalThis.fetch as any).mockImplementation(async (url: any) => {
+      if (String(url) === `${EP_HOST}/oauth/access_token`) {
+        mintCount += 1;
+        const expiresIn = mintCount === 1 ? 5 : 3600;
+        return new Response(
+          JSON.stringify({
+            access_token: `mint-${mintCount}`,
+            token_type: "Bearer",
+            expires: Math.floor(Date.now() / 1000) + expiresIn,
+            expires_in: expiresIn,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const epAuth = createEpAuth({
+      clientId: EP_CLIENT_ID,
+      host: EP_HOST,
+      secret: "x".repeat(48),
+      checkout: { sessionSecret: "dev-secret-min-16-chars" },
+    });
+
+    // First call: bootstraps anonymous (mint #1 — near-expiry token).
+    // The adapter should detect this and immediately rotate via
+    // /ep/refresh (mint #2 — fresh token).
+    const session = await epAuth.api.getSession({
+      cookies: {},
+      headers: {},
+    });
+
+    expect(session.session?.accessToken).toBe("mint-2");
+    expect(mintCount).toBe(2);
+
+    // commitCookies() flushes the rotated Set-Cookies.
+    const flushed: string[] = [];
+    session.commitCookies({
+      appendHeader(_name: string, value: string) {
+        flushed.push(value);
+      },
+    });
+    expect(flushed.join("\n")).toContain("better-auth.session_data");
+  });
+
+  it("does NOT rotate when session is fresh (well within expiry window)", async () => {
+    // Default mock returns a 1-hour-expiring token; no rotation needed.
+    const epAuth = createEpAuth({
+      clientId: EP_CLIENT_ID,
+      host: EP_HOST,
+      secret: "x".repeat(48),
+      checkout: { sessionSecret: "dev-secret-min-16-chars" },
+    });
+
+    await epAuth.api.getSession({ cookies: {}, headers: {} });
+
+    // Bootstrap fired exactly one EP mint. No second mint for refresh.
+    expect((globalThis.fetch as any).mock.calls.length).toBe(1);
+  });
+
   it("config validation: rejects checkout.sessionSecret shorter than 16 chars", () => {
     expect(() =>
       createEpAuth({

@@ -30,10 +30,19 @@ export interface CreateEpAuthBetterInput {
   host: string;
   secret: string;
   basePath?: string;
+  baseURL?: string;
   cartMergeStrategy?: "merge" | "replace" | "prompt";
   checkout?: { sessionSecret: string };
   adapters?: { stripe?: { secretKey: string }; clover?: any };
   epClientSecret?: string;
+  /**
+   * Per-request resolver for clientId/host. Lets the consumer pull
+   * config from the Plasmic loader bundle on each call instead of
+   * pinning at factory construction. Forwarded directly to `epPlugin`.
+   */
+  resolveConfig?: () => Promise<
+    { clientId?: string; host?: string } | null | undefined
+  >;
 }
 
 export interface EpSessionData {
@@ -60,6 +69,15 @@ export interface EpAuth {
       headers?: Record<string, string>;
     }): Promise<EpSession>;
   };
+  /**
+   * The underlying better-auth instance. Use with `toNextJsHandler` from
+   * `better-auth/next-js` to mount the auth handler at `/api/ep/[...all]`:
+   *
+   *   import { toNextJsHandler } from "better-auth/next-js";
+   *   import { epAuth } from "@/lib/ep-auth";
+   *   export const { GET, POST } = toNextJsHandler(epAuth.handler);
+   */
+  handler: any;
   config: {
     basePath: string;
     cartMergeStrategy: "merge" | "replace" | "prompt";
@@ -88,6 +106,36 @@ function buildHeaders(
   return h;
 }
 
+/**
+ * Auto-refresh threshold (seconds). When session.epExpires is within
+ * this many seconds of `now`, the next getSession() call rotates the
+ * EP token via /ep/refresh transparently. 30s is enough buffer to
+ * avoid serving an EP API call with a token that expires mid-request,
+ * without rotating so eagerly that we trash the cache cluster.
+ */
+const REFRESH_THRESHOLD_SECONDS = 30;
+
+function isNearExpiry(epExpires: number): boolean {
+  if (!epExpires) return false;
+  return epExpires <= Math.floor(Date.now() / 1000) + REFRESH_THRESHOLD_SECONDS;
+}
+
+function extractSetCookies(response: Response): string[] {
+  const out: string[] = [];
+  response.headers.forEach((value: string, key: string) => {
+    if (key.toLowerCase() === "set-cookie") out.push(value);
+  });
+  return out;
+}
+
+function cookieHeaderFromSetCookies(setCookies: string[]): string {
+  return setCookies
+    .map((c) => c.split(";")[0])
+    .filter(Boolean)
+    .join("; ");
+}
+
+
 export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
   if (
     input.checkout?.sessionSecret &&
@@ -104,10 +152,18 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
     throw new Error("secret is required");
   }
 
+  const basePath = input.basePath ?? "/api/ep";
   const auth = betterAuth({
     secret: input.secret,
-    baseURL: "http://localhost",
-    plugins: [epPlugin({ clientId: input.clientId, host: input.host })],
+    baseURL: input.baseURL ?? "http://localhost",
+    basePath,
+    plugins: [
+      epPlugin({
+        clientId: input.clientId,
+        host: input.host,
+        resolveConfig: input.resolveConfig,
+      }),
+    ],
     session: {
       cookieCache: {
         enabled: true,
@@ -129,6 +185,7 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
     api: {
       async getSession(req) {
         const reqHeaders = buildHeaders(req.cookies, req.headers);
+        const pendingSetCookies: string[] = [];
 
         // First try to read an existing session from the cookies.
         let session: any = null;
@@ -141,7 +198,6 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
         // No existing session → bootstrap an anonymous one. Capture the
         // Set-Cookie headers from the response so commitCookies() can
         // forward them on the outgoing response.
-        const pendingSetCookies: string[] = [];
         if (!session) {
           const anonResponse = await (auth.api as any).epAnonymous({
             body: {},
@@ -153,13 +209,51 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
             // EpSession so callers fail-soft, same as the legacy impl.
             return makeEmptyEpSession(config);
           }
-          anonResponse.headers.forEach((value: string, key: string) => {
-            if (key.toLowerCase() === "set-cookie") {
-              pendingSetCookies.push(value);
-            }
-          });
+          for (const c of extractSetCookies(anonResponse)) {
+            pendingSetCookies.push(c);
+          }
           const body = await anonResponse.json();
           session = body;
+        }
+
+        // Refresh-on-expiry: if the session's EP token is about to
+        // expire (or already has), transparently rotate via /ep/refresh.
+        // The catchall page sees a fresh token without writing extra
+        // logic; commitCookies() flushes the rotated session_data
+        // cookie alongside any bootstrap cookies.
+        const sessionExpires = session?.session?.epExpires ?? 0;
+        if (isNearExpiry(sessionExpires)) {
+          // Build cookie header that combines incoming cookies + any
+          // freshly-bootstrapped Set-Cookies, so /ep/refresh sees the
+          // current session identity rather than minting a new anon.
+          const carriedCookies = pendingSetCookies.length
+            ? cookieHeaderFromSetCookies(pendingSetCookies)
+            : cookiesToHeader(req.cookies);
+          const refreshHeaders = new Headers({ cookie: carriedCookies });
+          if (req.headers) {
+            for (const [k, v] of Object.entries(req.headers)) {
+              if (k.toLowerCase() !== "cookie") {
+                refreshHeaders.set(k, v);
+              }
+            }
+          }
+          const refreshResponse = await (auth.api as any).epRefresh({
+            body: {},
+            headers: refreshHeaders,
+            asResponse: true,
+          });
+          if (refreshResponse.ok) {
+            // Rotated cookies replace the bootstrap ones — same names
+            // overwrite, so the final commitCookies() emits the
+            // freshest session.
+            for (const c of extractSetCookies(refreshResponse)) {
+              pendingSetCookies.push(c);
+            }
+            const refreshed = await refreshResponse.json();
+            session = refreshed;
+          }
+          // If refresh fails (e.g. EP outage), fall through with the
+          // near-expiry session — better than failing the page render.
         }
 
         const epSession = session?.session ?? null;
@@ -200,6 +294,7 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
         };
       },
     },
+    handler: auth,
     config,
   };
 }

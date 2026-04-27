@@ -8,7 +8,7 @@ import {
 } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
 import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
-import { epAuth, epProviderHeaders } from "@/lib/ep-auth";
+import { epAuth } from "@/lib/ep-auth";
 
 export const revalidate = 60;
 
@@ -44,7 +44,6 @@ export default async function PlasmicLoaderPage({
     cookies: Object.fromEntries(
       cookieStore.getAll().map((c) => [c.name, c.value])
     ),
-    headers: await epProviderHeaders(prefetchedData),
   });
 
   // Next 15 forbids cookie writes in plain RSC pages. Swallow — the

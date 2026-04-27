@@ -1,27 +1,42 @@
 import {
-  createEpAuth,
+  createBetterEpAuth,
   extractEpProviderConfig,
   type EpProviderBundleConfig,
 } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
 import { PLASMIC } from "@/plasmic-init";
 
 /**
- * EP Auth singleton.
+ * EP Auth singleton (PRD #273).
  *
- * clientId + host come from the EP Provider global-context configured in
- * Studio — not from `.env.local`. We bootstrap with dummy values so the
- * factory validates, and then every server-side call path overrides via the
- * middleware-header escape hatch in `createEpSession`:
+ * Backed by better-auth (`@elasticpath/plasmic-ep-commerce-elastic-path`'s
+ * `createBetterEpAuth`). Stateless mode — no DB; sessions live entirely in
+ * the JWE `session_data` cookie.
  *
- *     headers["x-ep-client-id"] ?? config.clientId
- *     headers["x-ep-host"]      ?? config.host
+ * `clientId` + `host` come from the EP Provider global-context configured
+ * in Studio. We bootstrap with dummy values so the factory validates, then
+ * the per-request `resolveConfig` callback pulls the real values from the
+ * Plasmic loader bundle on every call. (Replaces the legacy
+ * `x-ep-client-id` middleware-header hack from pre-#273.)
  *
- * The only env var still consulted is `CHECKOUT_SESSION_SECRET`, which is a
- * real secret and belongs in env.
+ * Env vars consulted:
+ *   - CHECKOUT_SESSION_SECRET — used as the better-auth JWE secret AND the
+ *     checkout-session HMAC secret. Required in production.
  */
-export const epAuth = createEpAuth({
+const SECRET =
+  process.env.CHECKOUT_SESSION_SECRET ??
+  "dev-secret-min-48-chars-long-enough-for-better-auth-jwe-cache";
+
+export const epAuth = createBetterEpAuth({
   clientId: "bootstrap-placeholder",
   host: "https://useast.api.elasticpath.com",
+  secret: SECRET,
+  baseURL: process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3456",
+  basePath: "/api/ep",
+  resolveConfig: async () => {
+    const config = await getEpProviderConfig();
+    if (!config) return null;
+    return { clientId: config.clientId, host: config.host };
+  },
   checkout: {
     sessionSecret:
       process.env.CHECKOUT_SESSION_SECRET ?? "dev-secret-min-16-chars",
@@ -54,8 +69,11 @@ export function getEpProviderConfig(): Promise<EpProviderBundleConfig | null> {
 }
 
 /**
- * Headers to forward to `epAuth.api.getSession` so the session picks up the
- * Studio-configured clientId/host instead of the bootstrap placeholder.
+ * @deprecated PRD #273 — `resolveConfig` on `createBetterEpAuth` makes this
+ * redundant. Kept temporarily for any caller still passing
+ * `epProviderHeaders()` to `epAuth.api.getSession({headers: ...})`.
+ * The new auth ignores the headers; remove call sites and delete this
+ * helper after the next release.
  */
 export async function epProviderHeaders(
   prefetchedData?: unknown
