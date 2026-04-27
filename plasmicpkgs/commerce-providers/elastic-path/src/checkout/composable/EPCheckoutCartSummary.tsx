@@ -3,12 +3,13 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useMemo, useState } from "react";
 import useCart from "../../cart/use-cart";
 import { DEFAULT_CURRENCY_CODE } from "../../const";
 import { Registerable } from "../../registerable";
+import type { CheckoutCartData } from "../../shopper-context/use-checkout-cart";
 import { formatCurrency } from "../../utils/formatCurrency";
 import { createLogger } from "../../utils/logger";
 import { MOCK_CHECKOUT_CART_DATA } from "../../utils/design-time-data";
@@ -25,9 +26,15 @@ interface EPCheckoutCartSummaryProps {
   isExpanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
   previewState?: PreviewState;
+  /**
+   * Optional external cart data from useCheckoutCart() server-route hook.
+   * When provided, skips the internal EP SDK cart fetch entirely.
+   * This is a code-only prop — not exposed in Plasmic Studio meta.
+   */
+  cartData?: CheckoutCartData;
 }
 
-export const epCheckoutCartSummaryMeta: ComponentMeta<EPCheckoutCartSummaryProps> =
+export const epCheckoutCartSummaryMeta: CodeComponentMeta<EPCheckoutCartSummaryProps> =
   {
     name: "plasmic-commerce-ep-checkout-cart-summary",
     displayName: "EP Checkout Cart Summary",
@@ -90,7 +97,31 @@ export const epCheckoutCartSummaryMeta: ComponentMeta<EPCheckoutCartSummaryProps
     providesData: true,
   };
 
+/**
+ * When external cartData is provided (server-route mode via useCheckoutCart),
+ * skip internal EP SDK hooks entirely — avoids requiring CommerceProvider.
+ * Delegates to EPCheckoutCartSummaryInternal for the hooks-based path.
+ */
 export function EPCheckoutCartSummary(props: EPCheckoutCartSummaryProps) {
+  const { cartData: externalCartData, children, className } = props;
+
+  if (externalCartData) {
+    return (
+      <DataProvider name="checkoutCartData" data={externalCartData}>
+        <div className={className} data-ep-checkout-summary="">
+          {children}
+        </div>
+      </DataProvider>
+    );
+  }
+
+  return <EPCheckoutCartSummaryInternal {...props} />;
+}
+
+/** Internal implementation with hooks — only rendered when no external cartData. */
+function EPCheckoutCartSummaryInternal(
+  props: Omit<EPCheckoutCartSummaryProps, "cartData">
+) {
   const {
     children,
     className,
@@ -214,7 +245,7 @@ export function EPCheckoutCartSummary(props: EPCheckoutCartSummaryProps) {
 
 export function registerEPCheckoutCartSummary(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPCheckoutCartSummaryProps>
+  customMeta?: CodeComponentMeta<EPCheckoutCartSummaryProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

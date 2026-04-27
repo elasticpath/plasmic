@@ -4,7 +4,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useState } from "react";
 import { useFormContext } from "react-hook-form";
@@ -27,7 +27,7 @@ interface EPAddToCartButtonProps {
   previewState?: PreviewState;
 }
 
-export const epAddToCartButtonMeta: ComponentMeta<EPAddToCartButtonProps> = {
+export const epAddToCartButtonMeta: CodeComponentMeta<EPAddToCartButtonProps> = {
   name: "plasmic-commerce-ep-add-to-cart-button",
   displayName: "EP Add To Cart Button",
   description:
@@ -156,7 +156,7 @@ export function EPAddToCartButton(props: EPAddToCartButtonProps) {
 
 export function registerEPAddToCartButton(
   loader?: Registerable,
-  customEPAddToCartButtonMeta?: ComponentMeta<EPAddToCartButtonProps>
+  customEPAddToCartButtonMeta?: CodeComponentMeta<EPAddToCartButtonProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

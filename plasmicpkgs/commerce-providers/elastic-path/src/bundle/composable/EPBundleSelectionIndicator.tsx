@@ -2,7 +2,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../../registerable";
@@ -16,7 +16,7 @@ interface EPBundleSelectionIndicatorProps {
   previewState?: PreviewState;
 }
 
-export const epBundleSelectionIndicatorMeta: ComponentMeta<EPBundleSelectionIndicatorProps> =
+export const epBundleSelectionIndicatorMeta: CodeComponentMeta<EPBundleSelectionIndicatorProps> =
   {
     name: "plasmic-commerce-ep-bundle-selection-indicator",
     displayName: "EP Bundle Selection Indicator",
@@ -75,7 +75,7 @@ export function EPBundleSelectionIndicator(
 
 export function registerEPBundleSelectionIndicator(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPBundleSelectionIndicatorProps>
+  customMeta?: CodeComponentMeta<EPBundleSelectionIndicatorProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

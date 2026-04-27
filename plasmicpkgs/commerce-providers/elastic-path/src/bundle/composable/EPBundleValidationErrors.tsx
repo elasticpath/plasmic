@@ -5,7 +5,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../../registerable";
@@ -19,7 +19,7 @@ interface EPBundleValidationErrorsProps {
   previewState?: PreviewState;
 }
 
-export const epBundleValidationErrorsMeta: ComponentMeta<EPBundleValidationErrorsProps> =
+export const epBundleValidationErrorsMeta: CodeComponentMeta<EPBundleValidationErrorsProps> =
   {
     name: "plasmic-commerce-ep-bundle-validation-errors",
     displayName: "EP Bundle Validation Errors",
@@ -87,7 +87,7 @@ export function EPBundleValidationErrors(
 
 export function registerEPBundleValidationErrors(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPBundleValidationErrorsProps>
+  customMeta?: CodeComponentMeta<EPBundleValidationErrorsProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

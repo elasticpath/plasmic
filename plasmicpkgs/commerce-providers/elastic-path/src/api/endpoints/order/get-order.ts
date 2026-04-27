@@ -170,7 +170,7 @@ function transformElasticPathOrder(
     shipping_address: epOrder.shipping_address,
     relationships: {
       items: {
-        data: items.map(item => ({
+        data: items.map((item: any) => ({
           type: 'item',
           id: item.id
         }))

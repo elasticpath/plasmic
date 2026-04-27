@@ -1,4 +1,5 @@
 import { registerCommerceProvider } from "./registerCommerceProvider";
+import { registerShopperContext } from "./shopper-context/registerShopperContext";
 import { registerEPAddToCartButton } from "./registerEPAddToCartButton";
 import { registerEPBundleConfigurator } from "./registerEPBundleConfigurator";
 import { registerEPMultiLocationStock } from "./registerEPMultiLocationStock";
@@ -20,7 +21,7 @@ import { registerEPCartItemRemoveButton } from "./cart-drawer/EPCartItemRemoveBu
 import { registerEPCartItemQuantityButton } from "./cart-drawer/EPCartItemQuantityButton";
 import { registerEPCartItemQuantityControl } from "./cart-drawer/EPCartItemQuantityControl";
 import { registerEPCartItemList } from "./cart-drawer/EPCartItemList";
-import { registerEPCartDrawer } from "./cart-drawer/EPCartDrawer";
+import { registerEPCartDrawer, registerEPCartInline } from "./cart-drawer/EPCartDrawer";
 import { registerEPCartDrawerTrigger } from "./cart-drawer/EPCartDrawerTrigger";
 import { registerEPBundleProvider } from "./bundle/composable/EPBundleProvider";
 import { registerEPBundleComponentList } from "./bundle/composable/EPBundleComponentList";
@@ -40,6 +41,7 @@ import { registerEPBundleVariationOptionTrigger } from "./bundle/composable/EPBu
 import { registerEPProductGrid } from "./product-discovery/EPProductGrid";
 import { registerEPProductListProvider } from "./product-discovery/EPProductListProvider";
 import { registerEPRelatedProductsProvider } from "./product-discovery/EPRelatedProductsProvider";
+import { registerEPProductProvider } from "./product/EPProductProvider";
 import { registerEPSearchBox } from "./catalog-search/EPSearchBox";
 import { registerEPSearchHits } from "./catalog-search/EPSearchHits";
 import { registerEPRefinementList } from "./catalog-search/EPRefinementList";
@@ -65,10 +67,13 @@ export * from "./cart-drawer";
 export * from "./bundle/composable";
 export * from "./product-discovery";
 export * from "./catalog-search";
+export * from "./shopper-context";
+export * from "./shopper-context/server";
 
 export function registerAll(loader?: Registerable) {
   // Global context
   registerCommerceProvider(loader);
+  registerShopperContext(loader);
 
   // New composable variant picker
   // Register field components first so they're available as default slot content
@@ -98,6 +103,7 @@ export function registerAll(loader?: Registerable) {
   registerEPCartItemQuantityControl(loader);
   registerEPCartItemList(loader);
   registerEPCartDrawer(loader);
+  registerEPCartInline(loader);
   registerEPCartDrawerTrigger(loader);
 
   // Composable bundle configurator
@@ -122,6 +128,7 @@ export function registerAll(loader?: Registerable) {
   registerEPProductGrid(loader);
   registerEPProductListProvider(loader);
   registerEPRelatedProductsProvider(loader);
+  registerEPProductProvider(loader);
 
   // Catalog search — register leaf/field components first, then repeaters, then provider
   registerEPSearchBox(loader);

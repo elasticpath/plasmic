@@ -18,7 +18,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../registerable";
@@ -54,7 +54,7 @@ export interface RelatedProductsData {
   isEmpty: boolean;
 }
 
-export const epRelatedProductsProviderMeta: ComponentMeta<EPRelatedProductsProviderProps> =
+export const epRelatedProductsProviderMeta: CodeComponentMeta<EPRelatedProductsProviderProps> =
   {
     name: "plasmic-commerce-ep-related-products-provider",
     displayName: "EP Related Products Provider",
@@ -342,7 +342,7 @@ function EPRelatedProductsProviderInner(props: {
 
 export function registerEPRelatedProductsProvider(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPRelatedProductsProviderProps>
+  customMeta?: CodeComponentMeta<EPRelatedProductsProviderProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

@@ -1,6 +1,6 @@
 import { useSelector } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Product } from "@plasmicpkgs/commerce";
@@ -13,7 +13,7 @@ interface EPMultiLocationStockProps extends Omit<MultiLocationStockProps, 'produ
   // No productId needed as it comes from product context
 }
 
-export const epMultiLocationStockMeta: ComponentMeta<EPMultiLocationStockProps> = {
+export const epMultiLocationStockMeta: CodeComponentMeta<EPMultiLocationStockProps> = {
   name: "plasmic-commerce-ep-multi-location-stock",
   displayName: "EP Multi-Location Stock",
   description: "Display stock levels across multiple locations for Elastic Path products",
@@ -60,7 +60,7 @@ export function EPMultiLocationStock(props: EPMultiLocationStockProps) {
 
 export function registerEPMultiLocationStock(
   loader?: Registerable,
-  customEPMultiLocationStockMeta?: ComponentMeta<EPMultiLocationStockProps>
+  customEPMultiLocationStockMeta?: CodeComponentMeta<EPMultiLocationStockProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

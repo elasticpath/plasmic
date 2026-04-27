@@ -4,7 +4,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useMemo } from "react";
 import { Registerable } from "../../registerable";
@@ -19,7 +19,7 @@ interface EPBundleOptionQuantityControlProps {
   previewState?: PreviewState;
 }
 
-export const epBundleOptionQuantityControlMeta: ComponentMeta<EPBundleOptionQuantityControlProps> =
+export const epBundleOptionQuantityControlMeta: CodeComponentMeta<EPBundleOptionQuantityControlProps> =
   {
     name: "plasmic-commerce-ep-bundle-option-quantity-control",
     displayName: "EP Bundle Option Quantity Control",
@@ -130,7 +130,7 @@ export function EPBundleOptionQuantityControl(
 
 export function registerEPBundleOptionQuantityControl(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPBundleOptionQuantityControlProps>
+  customMeta?: CodeComponentMeta<EPBundleOptionQuantityControlProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

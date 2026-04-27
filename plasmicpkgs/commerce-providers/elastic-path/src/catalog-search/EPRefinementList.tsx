@@ -12,7 +12,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useImperativeHandle, useMemo } from "react";
 import { Registerable } from "../registerable";
@@ -36,7 +36,7 @@ interface EPRefinementListActions {
   toggleRefinement(value: string): void;
 }
 
-export const epRefinementListMeta: ComponentMeta<EPRefinementListProps> = {
+export const epRefinementListMeta: CodeComponentMeta<EPRefinementListProps> = {
   name: "plasmic-commerce-ep-refinement-list",
   displayName: "EP Refinement List",
   description:
@@ -229,7 +229,7 @@ const EPRefinementListInner = React.forwardRef<
 
 export function registerEPRefinementList(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPRefinementListProps>
+  customMeta?: CodeComponentMeta<EPRefinementListProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

@@ -1,6 +1,6 @@
 import { usePlasmicCanvasContext } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useMemo } from "react";
 import { Registerable } from "../../registerable";
@@ -16,7 +16,7 @@ interface EPCountrySelectProps {
   disabled?: boolean;
 }
 
-export const epCountrySelectMeta: ComponentMeta<EPCountrySelectProps> = {
+export const epCountrySelectMeta: CodeComponentMeta<EPCountrySelectProps> = {
   name: "plasmic-commerce-ep-country-select",
   displayName: "EP Country Select",
   description:
@@ -128,7 +128,7 @@ export function EPCountrySelect(props: EPCountrySelectProps) {
 
 export function registerEPCountrySelect(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPCountrySelectProps>
+  customMeta?: CodeComponentMeta<EPCountrySelectProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

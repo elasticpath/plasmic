@@ -14,6 +14,11 @@ import { createLogger } from "../utils/logger";
 
 const log = createLogger("useCart");
 
+/**
+ * @deprecated Use `useCart` from `shopper-context/use-cart.ts` instead.
+ * The new hook fetches cart data via server routes (`/api/cart`) with httpOnly
+ * cookies, removing the need for client-side EP credentials.
+ */
 export default useCommerceCart as UseCart<typeof handler>;
 
 export const handler: SWRHook<GetCartHook> = {

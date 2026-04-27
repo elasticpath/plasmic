@@ -15,6 +15,11 @@ const log = createLogger("useAddItem");
 
 // Note: ExtendedCartItem is now imported from cartDataBuilder utils
 
+/**
+ * @deprecated Use `useAddItem` from `shopper-context/use-add-item.ts` instead.
+ * The new hook posts to `/api/cart/items` via server routes with httpOnly
+ * cookies, removing the need for client-side EP credentials.
+ */
 export default useAddItem as UseAddItem<typeof handler>;
 
 export const handler: MutationHook<AddItemHook> = {

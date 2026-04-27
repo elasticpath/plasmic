@@ -5,7 +5,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../../registerable";
@@ -22,7 +22,7 @@ interface EPCheckoutCartItemListProps {
   previewState?: PreviewState;
 }
 
-export const epCheckoutCartItemListMeta: ComponentMeta<EPCheckoutCartItemListProps> =
+export const epCheckoutCartItemListMeta: CodeComponentMeta<EPCheckoutCartItemListProps> =
   {
     name: "plasmic-commerce-ep-checkout-cart-item-list",
     displayName: "EP Checkout Cart Item List",
@@ -113,7 +113,7 @@ export function EPCheckoutCartItemList(props: EPCheckoutCartItemListProps) {
 
 export function registerEPCheckoutCartItemList(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPCheckoutCartItemListProps>
+  customMeta?: CodeComponentMeta<EPCheckoutCartItemListProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

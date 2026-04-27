@@ -5,7 +5,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useMemo } from "react";
 import { DEFAULT_CURRENCY_CODE, DEFAULT_LOW_STOCK_THRESHOLD } from "../const";
@@ -31,7 +31,7 @@ interface EPCartItemListProps {
   previewState?: PreviewState;
 }
 
-export const epCartItemListMeta: ComponentMeta<EPCartItemListProps> = {
+export const epCartItemListMeta: CodeComponentMeta<EPCartItemListProps> = {
   name: "plasmic-commerce-ep-cart-item-list",
   displayName: "EP Cart Item List",
   description:
@@ -227,7 +227,7 @@ export function EPCartItemList(props: EPCartItemListProps) {
     const map: Record<string, Record<string, number>> = {};
     for (const [productId, stock] of Object.entries(productStock)) {
       map[productId] = {};
-      for (const ls of stock.locations) {
+      for (const ls of (stock as any).locations) {
         const slug = getLocationSlug(ls.location);
         if (slug) {
           map[productId][slug] = Number(ls.stock.available ?? 0);
@@ -269,7 +269,7 @@ export function EPCartItemList(props: EPCartItemListProps) {
 
 export function registerEPCartItemList(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPCartItemListProps>
+  customMeta?: CodeComponentMeta<EPCartItemListProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

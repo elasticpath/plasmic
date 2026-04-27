@@ -31,7 +31,7 @@ export function MultiLocationStock({
   // Update form context when location changes to pass slug to add to cart
   useEffect(() => {
     if (selectedLocationId && form) {
-      const selectedLocation = locations.find(loc => loc.id === selectedLocationId);
+      const selectedLocation = locations.find((loc: any) => loc.id === selectedLocationId);
       const locationSlug = selectedLocation?.attributes?.slug || selectedLocationId;
       form.setValue("SelectedLocationSlug", locationSlug);
     } else if (form) {
@@ -80,7 +80,7 @@ export function MultiLocationStock({
   const filteredStock = selectedLocationId
     ? (() => {
         // Find the matching location slug for the selected location ID
-        const matchingLocation = locations.find(loc => loc.id === selectedLocationId);
+        const matchingLocation = locations.find((loc: any) => loc.id === selectedLocationId);
         const locationSlug = matchingLocation?.attributes?.slug;
         const filterIds = [selectedLocationId];
         if (locationSlug && locationSlug !== selectedLocationId) {
@@ -149,7 +149,7 @@ export function MultiLocationStock({
 
       {/* Location-specific stock */}
       <div role="list" aria-label="Stock by location" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        {displayLocations.map((locationStock) => {
+        {displayLocations.map((locationStock: any) => {
           const availableStock = Number(locationStock.stock.available || 0);
           const allocatedStock = Number(locationStock.stock.allocated || 0);
 

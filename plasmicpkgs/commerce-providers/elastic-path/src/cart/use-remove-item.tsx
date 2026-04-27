@@ -27,6 +27,11 @@ export type RemoveItemActionInput<T = any> = T extends LineItem
   ? Partial<RemoveItemHook["actionInput"]>
   : RemoveItemHook["actionInput"];
 
+/**
+ * @deprecated Use `useRemoveItem` from `shopper-context/use-remove-item.ts` instead.
+ * The new hook sends DELETE to `/api/cart/items/:id` via server routes with
+ * httpOnly cookies, removing the need for client-side EP credentials.
+ */
 export default useRemoveItem as UseRemoveItem<typeof handler>;
 
 export const handler: MutationHook<RemoveItemHook> = {

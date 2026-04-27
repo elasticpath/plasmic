@@ -8,7 +8,7 @@
 
 import { DataProvider, usePlasmicCanvasContext } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useCallback, useImperativeHandle } from "react";
 import { Registerable } from "../registerable";
@@ -28,7 +28,7 @@ interface EPRangeFilterActions {
   setRange(min: number, max: number): void;
 }
 
-export const epRangeFilterMeta: ComponentMeta<EPRangeFilterProps> = {
+export const epRangeFilterMeta: CodeComponentMeta<EPRangeFilterProps> = {
   name: "plasmic-commerce-ep-range-filter",
   displayName: "EP Range Filter",
   description:
@@ -158,7 +158,7 @@ const EPRangeFilterInner = React.forwardRef<
 
 export function registerEPRangeFilter(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPRangeFilterProps>
+  customMeta?: CodeComponentMeta<EPRangeFilterProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

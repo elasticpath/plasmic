@@ -3,7 +3,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import useCart from "../cart/use-cart";
@@ -20,7 +20,7 @@ interface EPCartDrawerTriggerProps {
   previewState?: PreviewState;
 }
 
-export const epCartDrawerTriggerMeta: ComponentMeta<EPCartDrawerTriggerProps> = {
+export const epCartDrawerTriggerMeta: CodeComponentMeta<EPCartDrawerTriggerProps> = {
   name: "plasmic-commerce-ep-cart-drawer-trigger",
   displayName: "EP Cart Drawer Trigger",
   description:
@@ -123,7 +123,7 @@ export function EPCartDrawerTrigger(props: EPCartDrawerTriggerProps) {
 
 export function registerEPCartDrawerTrigger(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPCartDrawerTriggerProps>
+  customMeta?: CodeComponentMeta<EPCartDrawerTriggerProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

@@ -5,7 +5,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../registerable";
@@ -26,7 +26,7 @@ interface EPVariationOptionListProps {
   previewState?: PreviewState;
 }
 
-export const epVariationOptionListMeta: ComponentMeta<EPVariationOptionListProps> =
+export const epVariationOptionListMeta: CodeComponentMeta<EPVariationOptionListProps> =
   {
     name: "plasmic-commerce-ep-variation-option-list",
     displayName: "EP Variation Option List",
@@ -185,7 +185,7 @@ export function EPVariationOptionList(props: EPVariationOptionListProps) {
 
 export function registerEPVariationOptionList(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPVariationOptionListProps>
+  customMeta?: CodeComponentMeta<EPVariationOptionListProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

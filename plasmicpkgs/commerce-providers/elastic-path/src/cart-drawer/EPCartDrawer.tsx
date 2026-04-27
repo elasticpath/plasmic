@@ -3,7 +3,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import ReactDOM from "react-dom";
@@ -33,9 +33,10 @@ interface EPCartDrawerProps {
   closeOnEscape?: boolean;
   trapFocus?: boolean;
   previewState?: PreviewState;
+  inline?: boolean;
 }
 
-export const epCartDrawerMeta: ComponentMeta<EPCartDrawerProps> = {
+export const epCartDrawerMeta: CodeComponentMeta<EPCartDrawerProps> = {
   name: "plasmic-commerce-ep-cart-drawer",
   displayName: "EP Cart Drawer",
   description:
@@ -126,6 +127,14 @@ export const epCartDrawerMeta: ComponentMeta<EPCartDrawerProps> = {
         "Force a preview state with sample data for design-time editing",
       advanced: true,
     },
+    inline: {
+      type: "boolean",
+      displayName: "Inline",
+      description:
+        "Render inline instead of as a drawer overlay (use on cart pages)",
+      defaultValue: false,
+      advanced: true,
+    },
   },
   importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
   importName: "EPCartDrawer",
@@ -184,6 +193,7 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
     closeOnEscape = true,
     trapFocus = true,
     previewState = "auto",
+    inline = false,
   } = props;
 
   const { data: cart, error: cartError } = useCart();
@@ -204,7 +214,7 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
 
   // Escape key handler
   useEffect(() => {
-    if (!isOpen || !closeOnEscape || inEditor) return;
+    if (!isOpen || !closeOnEscape || inEditor || inline) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
@@ -213,21 +223,21 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, closeOnEscape, close, inEditor]);
+  }, [isOpen, closeOnEscape, close, inEditor, inline]);
 
   // Body scroll lock
   useEffect(() => {
-    if (!isOpen || inEditor) return;
+    if (!isOpen || inEditor || inline) return;
     prevOverflowRef.current = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = prevOverflowRef.current;
     };
-  }, [isOpen, inEditor]);
+  }, [isOpen, inEditor, inline]);
 
   // Focus trap
   useEffect(() => {
-    if (!isOpen || !trapFocus || inEditor) return;
+    if (!isOpen || !trapFocus || inEditor || inline) return;
 
     previousFocusRef.current = document.activeElement;
 
@@ -269,7 +279,7 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
         previousFocusRef.current.focus();
       }
     };
-  }, [isOpen, trapFocus, inEditor]);
+  }, [isOpen, trapFocus, inEditor, inline]);
 
   // Build enriched cart data for DataProvider
   const cartData = useMemo(() => {
@@ -354,6 +364,29 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
   }
 
   // -----------------------------------------------------------------------
+  // Inline mode: render directly on the page (e.g. dedicated cart page).
+  // No portal, no backdrop, no open/close logic.
+  // -----------------------------------------------------------------------
+  if (inline) {
+    const isEmpty = effectiveCartData?.isEmpty ?? true;
+    let content: React.ReactNode;
+    if (!cart && !cartError && !useMock) {
+      content = loadingContent;
+    } else if (cartError) {
+      content = errorContent;
+    } else {
+      content = isEmpty ? emptyContent : children;
+    }
+    return (
+      <DataProvider name="cartData" data={effectiveCartData}>
+        <div className={className} data-ep-cart-inline="">
+          {content}
+        </div>
+      </DataProvider>
+    );
+  }
+
+  // -----------------------------------------------------------------------
   // Runtime: render via portal so the drawer overlays the page.
   // -----------------------------------------------------------------------
 
@@ -410,11 +443,81 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
   );
 }
 
+export const epCartInlineMeta: CodeComponentMeta<EPCartDrawerProps> = {
+  name: "plasmic-commerce-ep-cart-inline",
+  displayName: "EP Cart (Inline)",
+  description:
+    "Inline cart view for dedicated cart pages. Fetches cart data and provides it to child components without the drawer overlay.",
+  defaultStyles: {
+    width: "stretch",
+    minHeight: "200px",
+    padding: "16px",
+  },
+  props: {
+    children: {
+      type: "slot",
+      defaultValue: [
+        {
+          type: "component",
+          name: "plasmic-commerce-ep-cart-item-list",
+        },
+        {
+          type: "component",
+          name: "plasmic-commerce-ep-cart-field",
+          props: { field: "formattedTotal" },
+        },
+      ],
+    },
+    emptyContent: {
+      type: "slot",
+      displayName: "Empty Content",
+      defaultValue: { type: "text", value: "Your cart is empty" },
+    },
+    loadingContent: {
+      type: "slot",
+      displayName: "Loading Content",
+      defaultValue: { type: "text", value: "Loading cart..." },
+    },
+    errorContent: {
+      type: "slot",
+      displayName: "Error Content",
+      defaultValue: { type: "text", value: "Failed to load cart" },
+    },
+    previewState: {
+      type: "choice",
+      options: ["auto", "withItems", "empty", "loading", "error"],
+      defaultValue: "auto",
+      displayName: "Preview State",
+      description:
+        "Force a preview state with sample data for design-time editing",
+      advanced: true,
+    },
+    inline: {
+      type: "boolean",
+      defaultValue: true,
+      hidden: () => true,
+    },
+  },
+  importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
+  importName: "EPCartDrawer",
+  providesData: true,
+  // No states — inline mode doesn't need isOpen
+};
+
 export function registerEPCartDrawer(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPCartDrawerProps>
+  customMeta?: CodeComponentMeta<EPCartDrawerProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);
   doRegisterComponent(EPCartDrawer, customMeta ?? epCartDrawerMeta);
+}
+
+export function registerEPCartInline(
+  loader?: Registerable,
+  customMeta?: CodeComponentMeta<EPCartDrawerProps>
+) {
+  const doRegisterComponent: typeof registerComponent = (...args) =>
+    loader ? loader.registerComponent(...args) : registerComponent(...args);
+  doRegisterComponent(EPCartDrawer, customMeta ?? epCartInlineMeta);
 }

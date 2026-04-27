@@ -5,7 +5,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import type { Product } from "@plasmicpkgs/commerce";
 import React, { useEffect, useMemo } from "react";
@@ -44,7 +44,7 @@ interface EPStockProviderProps {
   previewState?: PreviewState;
 }
 
-export const epStockProviderMeta: ComponentMeta<EPStockProviderProps> = {
+export const epStockProviderMeta: CodeComponentMeta<EPStockProviderProps> = {
   name: "plasmic-commerce-ep-stock-provider",
   displayName: "EP Stock Provider",
   description:
@@ -191,7 +191,7 @@ export function EPStockProvider(props: EPStockProviderProps) {
   // All useMemo hooks must be called unconditionally (React rules of hooks)
   const stockLocations = useMemo<StockLocationData[]>(() => {
     if (!stock?.locations) return [];
-    const mapped = stock.locations.map((ls) => {
+    const mapped = stock.locations.map((ls: any) => {
       const available = Number(ls.stock.available || 0);
       const allocated = Number(ls.stock.allocated || 0);
       return {
@@ -210,7 +210,7 @@ export function EPStockProvider(props: EPStockProviderProps) {
       };
     });
     mapped.sort(
-      (a, b) =>
+      (a: any, b: any) =>
         (STOCK_SORT_ORDER[a.stockStatus] ?? 2) -
         (STOCK_SORT_ORDER[b.stockStatus] ?? 2)
     );
@@ -434,7 +434,7 @@ export function EPStockProvider(props: EPStockProviderProps) {
 
 export function registerEPStockProvider(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPStockProviderProps>
+  customMeta?: CodeComponentMeta<EPStockProviderProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

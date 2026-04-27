@@ -4,7 +4,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { useFormContext } from "react-hook-form";
@@ -28,7 +28,7 @@ interface EPLocationPickerProps {
   previewState?: PreviewState;
 }
 
-export const epLocationPickerMeta: ComponentMeta<EPLocationPickerProps> = {
+export const epLocationPickerMeta: CodeComponentMeta<EPLocationPickerProps> = {
   name: "plasmic-commerce-ep-location-picker",
   displayName: "EP Location Picker",
   description:
@@ -139,7 +139,7 @@ export function EPLocationPicker(props: EPLocationPickerProps) {
 
 export function registerEPLocationPicker(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPLocationPickerProps>
+  customMeta?: CodeComponentMeta<EPLocationPickerProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

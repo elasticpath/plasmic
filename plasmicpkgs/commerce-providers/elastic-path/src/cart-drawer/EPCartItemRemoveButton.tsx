@@ -4,7 +4,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useState } from "react";
 import useRemoveItem from "../cart/use-remove-item";
@@ -21,7 +21,7 @@ interface EPCartItemRemoveButtonProps {
   previewState?: PreviewState;
 }
 
-export const epCartItemRemoveButtonMeta: ComponentMeta<EPCartItemRemoveButtonProps> =
+export const epCartItemRemoveButtonMeta: CodeComponentMeta<EPCartItemRemoveButtonProps> =
   {
     name: "plasmic-commerce-ep-cart-item-remove-button",
     displayName: "EP Cart Item Remove Button",
@@ -111,7 +111,7 @@ export function EPCartItemRemoveButton(props: EPCartItemRemoveButtonProps) {
 
 export function registerEPCartItemRemoveButton(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPCartItemRemoveButtonProps>
+  customMeta?: CodeComponentMeta<EPCartItemRemoveButtonProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

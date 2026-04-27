@@ -4,7 +4,7 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import useUpdateItem from "../cart/use-update-item";
@@ -28,7 +28,7 @@ interface EPCartItemQuantityControlProps {
   previewState?: PreviewState;
 }
 
-export const epCartItemQuantityControlMeta: ComponentMeta<EPCartItemQuantityControlProps> =
+export const epCartItemQuantityControlMeta: CodeComponentMeta<EPCartItemQuantityControlProps> =
   {
     name: "plasmic-commerce-ep-cart-item-quantity-control",
     displayName: "EP Cart Item Quantity Control",
@@ -192,7 +192,7 @@ export function EPCartItemQuantityControl(
 
 export function registerEPCartItemQuantityControl(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPCartItemQuantityControlProps>
+  customMeta?: CodeComponentMeta<EPCartItemQuantityControlProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);

@@ -1,6 +1,6 @@
 import { useSelector, usePlasmicCanvasContext } from "@plasmicapp/host";
 import registerComponent, {
-  ComponentMeta,
+  CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../registerable";
@@ -12,7 +12,7 @@ interface EPVariationOptionFieldProps {
   className?: string;
 }
 
-export const epVariationOptionFieldMeta: ComponentMeta<EPVariationOptionFieldProps> =
+export const epVariationOptionFieldMeta: CodeComponentMeta<EPVariationOptionFieldProps> =
   {
     name: "plasmic-commerce-ep-variation-option-field",
     displayName: "EP Variation Option Field",
@@ -50,7 +50,7 @@ export function EPVariationOptionField(props: EPVariationOptionFieldProps) {
 
 export function registerEPVariationOptionField(
   loader?: Registerable,
-  customMeta?: ComponentMeta<EPVariationOptionFieldProps>
+  customMeta?: CodeComponentMeta<EPVariationOptionFieldProps>
 ) {
   const doRegisterComponent: typeof registerComponent = (...args) =>
     loader ? loader.registerComponent(...args) : registerComponent(...args);
