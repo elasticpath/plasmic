@@ -32,6 +32,16 @@ export interface CreateEpAuthBetterInput {
   secret: string;
   basePath?: string;
   baseURL?: string;
+  /**
+   * Origins allowed to call the auth handler. Better-auth rejects
+   * requests with an Origin header outside this list (default: strict
+   * match against `baseURL`). For Next.js dev where you may hit either
+   * `localhost:3456` OR `127.0.0.1:3456`, both must be listed.
+   *
+   * If omitted, the factory infers a sensible dev default by including
+   * both the localhost and 127.0.0.1 variants of `baseURL`.
+   */
+  trustedOrigins?: string[];
   cartMergeStrategy?: "merge" | "replace" | "prompt";
   checkout?: { sessionSecret: string };
   adapters?: { stripe?: { secretKey: string }; clover?: any };
@@ -44,6 +54,22 @@ export interface CreateEpAuthBetterInput {
   resolveConfig?: () => Promise<
     { clientId?: string; host?: string } | null | undefined
   >;
+}
+
+function defaultTrustedOrigins(baseURL: string): string[] {
+  const out = new Set<string>([baseURL]);
+  // Add localhost↔127.0.0.1 variants so dev hits via either resolve.
+  try {
+    const u = new URL(baseURL);
+    if (u.hostname === "localhost") {
+      out.add(`${u.protocol}//127.0.0.1${u.port ? `:${u.port}` : ""}`);
+    } else if (u.hostname === "127.0.0.1") {
+      out.add(`${u.protocol}//localhost${u.port ? `:${u.port}` : ""}`);
+    }
+  } catch {
+    // Non-URL baseURL — leave the set as-is.
+  }
+  return [...out];
 }
 
 export interface EpSessionData {
@@ -154,10 +180,15 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
   }
 
   const basePath = input.basePath ?? "/api/ep";
+  const baseURL = input.baseURL ?? "http://localhost";
+  const trustedOrigins =
+    input.trustedOrigins ?? defaultTrustedOrigins(baseURL);
+
   const auth = betterAuth({
     secret: input.secret,
-    baseURL: input.baseURL ?? "http://localhost",
+    baseURL,
     basePath,
+    trustedOrigins,
     plugins: [
       epPlugin({
         clientId: input.clientId,
