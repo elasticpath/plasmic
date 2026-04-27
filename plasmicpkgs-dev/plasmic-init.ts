@@ -23,4 +23,6 @@ export const PLASMIC = initPlasmicLoader({
   // only use this for development, as this is significantly slower.
   preview: true,
 
+  // Needed for Next.js app router support.
+  nextNavigation: NextNavigation,
 });
