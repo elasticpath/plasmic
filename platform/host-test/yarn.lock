@@ -167,10 +167,10 @@
   resolved "https://registry.yarnpkg.com/@nolyfill/is-core-module/-/is-core-module-1.0.39.tgz#3dc35ba0f1e66b403c00b39344f870298ebb1c8e"
   integrity sha512-nn5ozdjYQpUCZlWGuxcJY/KpxkWQs4DcbMCmKojjyrYDEAGy4Ce19NN4v5MduafTwJlbKc99UA8YhSVqq9yPZA==
 
-"@plasmicapp/host@^2.0.0":
-  version "2.0.0"
-  resolved "https://registry.yarnpkg.com/@plasmicapp/host/-/host-2.0.0.tgz#5c490eb933203bd5faad0ff6ee62fd22e807f2c4"
-  integrity sha512-xrgCYZUx/xZ5+nhFvvU+9J8u3TrXILTO0TdWgGXl0F/H+Q1Bw/bz4RHZSXzfeQnle4QS/SDEqODw3fW9JIckOA==
+"@plasmicapp/host@^2.0.1":
+  version "2.0.1"
+  resolved "https://registry.yarnpkg.com/@plasmicapp/host/-/host-2.0.1.tgz#92d8d1c9c7ae1f246cb33a10e90f80e2c05557e6"
+  integrity sha512-ghYXBzHihKemrq7RDmwGoUQrBMMba+biMfOLZFeXCm+S9cIXNM93KCk5rEst/pkwSt4Z9KOEqGAV1tTJqg7JHQ==
   dependencies:
     "@plasmicapp/query" "0.1.84"
     csstype "^3.1.2"
@@ -2467,10 +2467,10 @@ typed-array-length@^1.0.7:
     possible-typed-array-names "^1.0.0"
     reflect.getprototypeof "^1.0.6"
 
-typescript@^5.1.3:
-  version "5.9.2"
-  resolved "https://registry.yarnpkg.com/typescript/-/typescript-5.9.2.tgz#d93450cddec5154a2d5cabe3b8102b83316fb2a6"
-  integrity sha512-CWBzXQrc/qOkhidw1OzBTQuYRbfyxDXJMVJ1XNwUHGROVmuaeiEm3OslpZ1RV96d7SKKjZKrSJu3+t/xlw3R9A==
+typescript@6.0.3:
+  version "6.0.3"
+  resolved "https://registry.yarnpkg.com/typescript/-/typescript-6.0.3.tgz#90251dc007916e972786cb94d74d15b185577d21"
+  integrity sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==
 
 unbox-primitive@^1.1.0:
   version "1.1.0"

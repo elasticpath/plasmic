@@ -154,8 +154,15 @@ For maintaining these tests, the full list of EP-specific customizations is chec
 2. Add a test for it in `ep-fork-integrity.spec.ts`
 3. Add an entry to the "Resolving Conflicts" section above if it modifies an upstream file
 
+## Per-merge playbooks
+
+When a merge needs more than the generic guidance above, capture the specific resolution as a playbook in `docs/internal/merges/` and link it here. Future-you will thank present-you.
+
+- [PR #256 — April 2026 (29 commits, PLA-11988 server queries, migration 255/256/257 ordering)](merges/PR-256-april-2026.md)
+
 ## History
 
 | Date | Commits | Issues encountered |
 |------|---------|-------------------|
 | 2026-04 | 517 | Duplicate function export, ENOSPC in CI, loader-bundle-env dep dropped, WebImporter test corruption, publish-hostless picking wrong container image |
+| 2026-04-27 | 29 | Migration 255/256 collision (PR #256 — see playbook); `schemaDrivenForms` devflag removed upstream; data-sources API breaking change |

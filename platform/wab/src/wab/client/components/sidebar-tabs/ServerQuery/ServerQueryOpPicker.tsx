@@ -210,6 +210,7 @@ export const ServerQueryOpDraftForm = observer(
     showQueryName?: boolean;
     allowedOps?: string[];
     exprCtx: ExprCtx;
+    filterMode: "query" | "mutation";
   }) {
     const {
       value,
@@ -219,6 +220,7 @@ export const ServerQueryOpDraftForm = observer(
       env: data,
       schema,
       showQueryName,
+      filterMode,
       exprCtx,
     } = props;
     const studioCtx = useStudioCtx();
@@ -244,8 +246,11 @@ export const ServerQueryOpDraftForm = observer(
       [studioCtx.site.projectDependencies.length]
     );
     const availableFunctions = React.useMemo(
-      () => getAllCustomFunctions(studioCtx.site),
-      [studioCtx.site.projectDependencies.length]
+      () =>
+        getAllCustomFunctions(studioCtx.site).filter((fn) =>
+          filterMode === "mutation" ? fn.isMutation : fn.isQuery
+        ),
+      [studioCtx.site.projectDependencies.length, filterMode]
     );
 
     const argsMap = React.useMemo(
@@ -256,7 +261,13 @@ export const ServerQueryOpDraftForm = observer(
       if (!value.fnExpr || !value.fnExpr.func || !value.fnExpr.args) {
         return [];
       }
-      return getCustomFunctionParams(value.fnExpr, data, exprCtx);
+      try {
+        return getCustomFunctionParams(value.fnExpr, data, exprCtx);
+      } catch {
+        // getCustomFunctionParams throws to surface code errors, but we only use it here for
+        // prop visibility/context data, so they can be safely ignored.
+        return [];
+      }
     }, [value]);
 
     const getRegistrationMeta = (fn: CustomFunction) => {
@@ -739,6 +750,7 @@ export const ServerQueryOpExprFormAndPreview = observer(
     allowedOps?: string[];
     exprCtx: ExprCtx;
     interaction?: Interaction;
+    filterMode: "query" | "mutation";
   }) {
     const {
       value,
@@ -749,6 +761,7 @@ export const ServerQueryOpExprFormAndPreview = observer(
       schema,
       allowedOps,
       exprCtx,
+      filterMode,
     } = props;
     const studioCtx = useStudioCtx();
     const parentQuery = isKnownComponentServerQuery(value) ? value : undefined;
@@ -891,6 +904,7 @@ export const ServerQueryOpExprFormAndPreview = observer(
                 allowedOps={allowedOps}
                 showQueryName={!!parentQuery}
                 exprCtx={exprCtx}
+                filterMode={filterMode}
               />
             </div>
             <BottomModalButtons>
