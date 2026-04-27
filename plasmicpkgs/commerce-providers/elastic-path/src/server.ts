@@ -46,6 +46,8 @@ export {
   createEpAuth,
   toNextJsHandler,
   extractEpProviderConfig,
+  epPlugin,
+  createBetterEpAuth,
 } from "./auth";
 export type {
   EpAuth,
@@ -55,6 +57,7 @@ export type {
   EpTokenData,
   EpAccountData,
   EpProviderBundleConfig,
+  EpPluginOptions,
 } from "./auth";
 
 // Server-side custom functions for Studio Server Queries (PRD #262 / #272)

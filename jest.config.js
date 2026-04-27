@@ -14,6 +14,7 @@ module.exports = {
     "<rootDir>/packages/plume-stories",
     "<rootDir>/packages/plasmic-mcp", // Has its own jest.config.js with @/wab/ mocks
     "<rootDir>/plasmicpkgs/wordpress", // Uses Vitest, not Jest
+    "<rootDir>/plasmicpkgs/commerce-providers/elastic-path/src/auth/ep-plugin", // Uses Vitest (better-auth ESM)
     "/node_modules/",
   ],
   transform: {

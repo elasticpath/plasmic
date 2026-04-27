@@ -38,6 +38,13 @@
   dependencies:
     "@hey-api/client-fetch" "0.6.0"
 
+"@epcc-sdk/sdks-shopper@^0.0.42":
+  version "0.0.42"
+  resolved "https://registry.yarnpkg.com/@epcc-sdk/sdks-shopper/-/sdks-shopper-0.0.42.tgz#f5c9b5a7e0b9230a11e600d115bbe8ed1de2405d"
+  integrity sha512-Z6c7kZkDYSutL0jj3nI5HJlUDOZUhNBzn5zXFA+QYvjzOxYr5p01yBpyvN+GOkdotLJiDdCQHqk87qu3jhgxDg==
+  dependencies:
+    "@hey-api/client-fetch" "0.6.0"
+
 "@hey-api/client-fetch@0.6.0":
   version "0.6.0"
   resolved "https://registry.yarnpkg.com/@hey-api/client-fetch/-/client-fetch-0.6.0.tgz#50e10b29d3d08ff740061fd9fe54cc4445571a8b"

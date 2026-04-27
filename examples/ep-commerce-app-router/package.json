@@ -10,6 +10,7 @@
   "dependencies": {
     "@elasticpath/plasmic-ep-commerce-elastic-path": "*",
     "@elasticpath/plasmic-mcp-registry": "*",
+    "@epcc-sdk/sdks-shopper": "^0.0.42",
     "@plasmicapp/loader-nextjs": "*",
     "@plasmicapp/nextjs-app-router": "*",
     "@plasmicapp/host": "*",
