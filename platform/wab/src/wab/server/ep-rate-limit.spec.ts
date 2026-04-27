@@ -272,6 +272,24 @@ describe("createProjectScopeRateLimiter", () => {
     );
   });
 
+  it("treats a per-key eval error as count 0 and passes through (fail-open)", async () => {
+    const scopeCache = { "cache:project:proj1:scope": "rl:workspace:ws1" };
+    const { redis } = createMockRedis(scopeCache);
+    // Simulate a Redis Cluster slot error on the eval call.
+    (redis.pipeline as jest.Mock).mockImplementationOnce(() => ({
+      eval: jest.fn().mockReturnThis(),
+      exec: jest.fn().mockResolvedValue([[new Error("MOVED slot error"), null]]),
+    }));
+    const middleware = createProjectScopeRateLimiter({ redis, limit: 100 });
+    const next = jest.fn() as unknown as NextFunction;
+    const { res, status } = makeRes();
+
+    await middleware(makeProjectReq("proj1:token", createMockEm()), res, next);
+
+    expect(status).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
   it("fails open when pipeline.exec() returns null", async () => {
     // Pre-seed cache so resolveProjectScopeKeys returns immediately without a
     // cache write pipeline — then the only pipeline call is enforceRateLimit's eval.
