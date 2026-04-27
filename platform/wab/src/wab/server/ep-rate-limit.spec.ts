@@ -21,8 +21,7 @@ jest.mock("@/wab/server/observability", () => {
 // ---------------------------------------------------------------------------
 
 type MockPipeline = {
-  incr: jest.Mock;
-  expire: jest.Mock;
+  eval: jest.Mock;
   setex: jest.Mock;
   exec: jest.Mock;
 };
@@ -33,13 +32,10 @@ function createMockPipeline(
 ): MockPipeline {
   const results: [null, any][] = [];
   const pipe: MockPipeline = {
-    incr: jest.fn((key: string) => {
+    // Mimics the INCR_EXPIRE_SCRIPT Lua — increments and returns new count.
+    eval: jest.fn((_script: string, _numKeys: number, key: string, _ttl: string) => {
       counters[key] = (counters[key] ?? 0) + 1;
       results.push([null, counters[key]]);
-      return pipe;
-    }),
-    expire: jest.fn((_key: string, _ttl: number) => {
-      results.push([null, 1]);
       return pipe;
     }),
     setex: jest.fn((key: string, _ttl: number, value: string) => {
@@ -155,12 +151,8 @@ describe("parseTokenIds", () => {
     expect(parseTokenIds("abc123,def456:token2")).toEqual(["abc123", "def456"]);
   });
 
-  it("preserves duplicate project ids", () => {
-    // deduplication is not the responsibility of the parser
-    expect(parseTokenIds("abc123:token1,abc123:token2")).toEqual([
-      "abc123",
-      "abc123",
-    ]);
+  it("deduplicates repeated project ids", () => {
+    expect(parseTokenIds("abc123:token1,abc123:token2")).toEqual(["abc123"]);
   });
 });
 
@@ -262,7 +254,7 @@ describe("createProjectScopeRateLimiter", () => {
     expect(setHeader).toHaveBeenCalledWith("RateLimit-Remaining", "9");
   });
 
-  it("sets TTL on the key for the first request (count === 1)", async () => {
+  it("uses a pipelined Lua eval to atomically increment and set TTL", async () => {
     const { redis } = createMockRedis();
     const em = createMockEm([{ id: "proj1", workspaceId: "ws1", teamId: null }]);
     const middleware = createProjectScopeRateLimiter({ redis, limit: 100 });
@@ -271,22 +263,32 @@ describe("createProjectScopeRateLimiter", () => {
 
     await middleware(makeProjectReq("proj1:token", em), res, next);
 
-    // cache pipeline + incr pipeline + expire pipeline
-    const expirePipeline = redis._pipelines[redis._pipelines.length - 1];
-    expect(expirePipeline.expire).toHaveBeenCalledWith("rl:workspace:ws1", expect.any(Number));
+    const rateLimitPipeline = redis._pipelines[redis._pipelines.length - 1];
+    expect(rateLimitPipeline.eval).toHaveBeenCalledWith(
+      expect.any(String),
+      1,
+      "rl:workspace:ws1",
+      expect.any(String)
+    );
   });
 
-  it("skips TTL when the key already existed (count > 1)", async () => {
-    const { redis } = createMockRedis({}, { "rl:workspace:ws1": 5 });
-    const em = createMockEm([{ id: "proj1", workspaceId: "ws1", teamId: null }]);
+  it("fails open when pipeline.exec() returns null", async () => {
+    // Pre-seed cache so resolveProjectScopeKeys returns immediately without a
+    // cache write pipeline — then the only pipeline call is enforceRateLimit's eval.
+    const scopeCache = { "cache:project:proj1:scope": "rl:workspace:ws1" };
+    const { redis } = createMockRedis(scopeCache);
+    (redis.pipeline as jest.Mock).mockImplementationOnce(() => ({
+      eval: jest.fn().mockReturnThis(),
+      exec: jest.fn().mockResolvedValue(null),
+    }));
     const middleware = createProjectScopeRateLimiter({ redis, limit: 100 });
     const next = jest.fn() as unknown as NextFunction;
-    const { res } = makeRes();
+    const { res, status } = makeRes();
 
-    await middleware(makeProjectReq("proj1:token", em), res, next);
+    await middleware(makeProjectReq("proj1:token", createMockEm()), res, next);
 
-    const expirePipeline = redis._pipelines[redis._pipelines.length - 1];
-    expect(expirePipeline.expire).not.toHaveBeenCalled();
+    expect(status).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
   });
 
   it("fails open and logs an error when Redis throws", async () => {
@@ -407,7 +409,6 @@ function makeTeamReq(teamId: string): Request {
   return { apiTeam: { id: teamId }, ip: "1.2.3.4" } as unknown as Request;
 }
 
-
 // ---------------------------------------------------------------------------
 // createPreviewRateLimiter
 // ---------------------------------------------------------------------------
@@ -503,6 +504,28 @@ describe("createPreviewRateLimiter", () => {
       "Rate limiter failed open",
       expect.objectContaining({ err: expect.any(Error) })
     );
+  });
+
+  it("falls back to default limit (300) when env var is not a valid number", async () => {
+    const original = process.env.RATE_LIMIT_PREVIEW_PER_USER;
+    process.env.RATE_LIMIT_PREVIEW_PER_USER = "notanumber";
+    try {
+      // Seed counter at 300 so the next INCR returns 301 — above the default limit.
+      const { redis } = createMockRedis({}, { "rl:user:user1": 300 });
+      // Pass redis via deps but not limit — forces env var code path.
+      const middleware = createPreviewRateLimiter({ redis });
+      const next = jest.fn() as unknown as NextFunction;
+      const { res, status } = makeRes();
+
+      await middleware(makeUserReq("user1"), res, next);
+
+      // If NaN were used as the limit, count > NaN would be false and we'd pass through.
+      // Getting a 429 proves the default (300) was used instead.
+      expect(status).toHaveBeenCalledWith(429);
+      expect(next).not.toHaveBeenCalled();
+    } finally {
+      process.env.RATE_LIMIT_PREVIEW_PER_USER = original;
+    }
   });
 });
 

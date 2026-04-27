@@ -3,10 +3,26 @@ import type { EntityManager } from "typeorm";
 import Redis from "ioredis";
 import { logger } from "@/wab/server/observability";
 
-const SCOPE_CACHE_TTL_SEC = parseInt(
-  process.env.RATE_LIMIT_SCOPE_CACHE_TTL_SEC ?? "300",
-  10
+function parseEnvInt(value: string | undefined, defaultValue: number): number {
+  const parsed = parseInt(value ?? String(defaultValue), 10);
+  return isNaN(parsed) ? defaultValue : parsed;
+}
+
+const SCOPE_CACHE_TTL_SEC = parseEnvInt(
+  process.env.RATE_LIMIT_SCOPE_CACHE_TTL_SEC,
+  300
 );
+
+// Atomically increments the counter and sets its TTL on first use.
+// Lua ensures INCR and EXPIRE are never split by a connection drop, preventing
+// keys from being created without a TTL (and thus never expiring).
+const INCR_EXPIRE_SCRIPT = `
+  local count = redis.call('INCR', KEYS[1])
+  if count == 1 then
+    redis.call('EXPIRE', KEYS[1], ARGV[1])
+  end
+  return count
+`;
 
 let _redisClient: Redis | undefined;
 
@@ -17,7 +33,7 @@ function getRedisClient(): Redis | undefined {
   if (!_redisClient) {
     _redisClient = new Redis({
       host: process.env.REDIS_HOST,
-      port: parseInt(process.env.REDIS_PORT ?? "6379", 10),
+      port: parseEnvInt(process.env.REDIS_PORT, 6379),
       password: process.env.REDIS_AUTH_TOKEN,
       tls: process.env.REDIS_TLS === "false" ? undefined : {},
       lazyConnect: true,
@@ -40,16 +56,22 @@ function resolveIdentityKey(req: Request): string | null {
   return null;
 }
 
-// Parses "id:token,..." headers (x-plasmic-api-project-tokens, x-plasmic-api-cms-tokens)
+// Parses "id:token,..." headers (x-plasmic-api-project-tokens, x-plasmic-api-cms-tokens).
+// Deduplicates IDs so the same project appearing twice doesn't waste Redis round-trips.
 export function parseTokenIds(tokenHeader: string | undefined): string[] {
   if (!tokenHeader || typeof tokenHeader !== "string") {
     return [];
   }
+  const seen = new Set<string>();
   return tokenHeader
     .trim()
     .split(",")
     .map((part) => part.split(":")[0].trim())
-    .filter(Boolean);
+    .filter((id) => {
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
 }
 
 // Returns rate limit keys for each project, keyed by workspace or team.
@@ -156,7 +178,9 @@ async function resolveCmsScopeKeys(
   return keys;
 }
 
-// Increments all rate limit keys, sets TTL on new keys, and enforces the limit.
+// Increments all rate limit keys within their window and enforces the limit.
+// Each key is incremented via a Lua script that also sets the TTL on first use,
+// so INCR and EXPIRE are never split by a connection failure.
 // Returns true if the request was blocked (429 sent), false to continue.
 async function enforceRateLimit(
   redis: Redis,
@@ -167,22 +191,17 @@ async function enforceRateLimit(
 ): Promise<boolean> {
   const keyList = [...keys];
 
-  const incrPipeline = redis.pipeline();
+  const pipeline = redis.pipeline();
   for (const key of keyList) {
-    incrPipeline.incr(key);
+    pipeline.eval(INCR_EXPIRE_SCRIPT, 1, key, String(windowSec));
   }
-  const incrResults = await incrPipeline.exec();
+  const results = await pipeline.exec();
 
-  const expirePipeline = redis.pipeline();
-  for (const [i, key] of keyList.entries()) {
-    const count = incrResults![i][1] as number;
-    if (count === 1) {
-      expirePipeline.expire(key, windowSec);
-    }
+  if (!results) {
+    return false;
   }
-  await expirePipeline.exec();
 
-  const counts = keyList.map((_, i) => incrResults![i][1] as number);
+  const counts = results.map(([, count]) => count as number);
   const maxCount = Math.max(...counts);
   res.setHeader("RateLimit-Limit", String(limit));
   res.setHeader("RateLimit-Remaining", String(Math.max(0, limit - maxCount)));
@@ -194,13 +213,44 @@ async function enforceRateLimit(
   return false;
 }
 
+// Shared factory for identity-keyed limiters (preview and write tiers).
+// Reads the limit from the given env var, falling back to defaultLimit.
+function createIdentityRateLimiter(
+  envVar: string,
+  defaultLimit: number
+): (deps?: RateLimiterDeps) => RequestHandler {
+  return (deps?: RateLimiterDeps): RequestHandler => {
+    const redis = deps?.redis !== undefined ? deps.redis : getRedisClient();
+    const windowSec =
+      deps?.windowSec ?? parseEnvInt(process.env.RATE_LIMIT_WINDOW_SEC, 60);
+    const limit = deps?.limit ?? parseEnvInt(process.env[envVar], defaultLimit);
+
+    return async (req: Request, res: Response, next: NextFunction) => {
+      if (!redis) {
+        return next();
+      }
+      const key = resolveIdentityKey(req);
+      if (!key) {
+        return next();
+      }
+      try {
+        const blocked = await enforceRateLimit(redis, res, new Set([key]), windowSec, limit);
+        if (blocked) return;
+      } catch (err) {
+        logger().error("Rate limiter failed open", { err });
+      }
+      next();
+    };
+  };
+}
+
 // Rate limiter for loader endpoints, keyed by workspace.id or team.id resolved
 // from x-plasmic-api-project-tokens. All workspaces/teams in a multi-project
 // request are incremented independently. Fails open if Redis is unavailable.
 export function createProjectScopeRateLimiter(deps?: RateLimiterDeps): RequestHandler {
   const redis = deps?.redis !== undefined ? deps.redis : getRedisClient();
-  const windowSec = deps?.windowSec ?? parseInt(process.env.RATE_LIMIT_WINDOW_SEC ?? "60", 10);
-  const limit = deps?.limit ?? parseInt(process.env.RATE_LIMIT_PER_SCOPE ?? "6000", 10);
+  const windowSec = deps?.windowSec ?? parseEnvInt(process.env.RATE_LIMIT_WINDOW_SEC, 60);
+  const limit = deps?.limit ?? parseEnvInt(process.env.RATE_LIMIT_PER_SCOPE, 6000);
 
   return async (req: Request, res: Response, next: NextFunction) => {
     if (!redis) {
@@ -228,67 +278,12 @@ export function createProjectScopeRateLimiter(deps?: RateLimiterDeps): RequestHa
   };
 }
 
-// Rate limiter for preview/development loader endpoints, keyed by the identity already on the
-// request (team API token → team, session/PAT → user, unauthenticated → IP). Preview routes
-// bypass S3 cache and trigger codegen on every call, so they need a tighter per-identity budget.
-// Fails open if Redis is unavailable.
-export function createPreviewRateLimiter(deps?: RateLimiterDeps): RequestHandler {
-  const redis = deps?.redis !== undefined ? deps.redis : getRedisClient();
-  const windowSec = deps?.windowSec ?? parseInt(process.env.RATE_LIMIT_WINDOW_SEC ?? "60", 10);
-  const limit =
-    deps?.limit ?? parseInt(process.env.RATE_LIMIT_PREVIEW_PER_USER ?? "300", 10);
-
-  return async (req: Request, res: Response, next: NextFunction) => {
-    if (!redis) {
-      return next();
-    }
-    const key = resolveIdentityKey(req);
-    if (!key) {
-      return next();
-    }
-    try {
-      const blocked = await enforceRateLimit(redis, res, new Set([key]), windowSec, limit);
-      if (blocked) return;
-    } catch (err) {
-      logger().error("Rate limiter failed open", { err });
-    }
-    next();
-  };
-}
-
-// Rate limiter for expensive write operations (publish, codegen), keyed by the identity already
-// on the request. These operations are low-frequency by design so the limit is much tighter.
-// Fails open if Redis is unavailable.
-export function createWriteRateLimiter(deps?: RateLimiterDeps): RequestHandler {
-  const redis = deps?.redis !== undefined ? deps.redis : getRedisClient();
-  const windowSec = deps?.windowSec ?? parseInt(process.env.RATE_LIMIT_WINDOW_SEC ?? "60", 10);
-  const limit =
-    deps?.limit ?? parseInt(process.env.RATE_LIMIT_WRITE_PER_USER ?? "60", 10);
-
-  return async (req: Request, res: Response, next: NextFunction) => {
-    if (!redis) {
-      return next();
-    }
-    const key = resolveIdentityKey(req);
-    if (!key) {
-      return next();
-    }
-    try {
-      const blocked = await enforceRateLimit(redis, res, new Set([key]), windowSec, limit);
-      if (blocked) return;
-    } catch (err) {
-      logger().error("Rate limiter failed open", { err });
-    }
-    next();
-  };
-}
-
 // Rate limiter for public CMS endpoints, keyed by workspace.id or team.id
 // resolved from x-plasmic-api-cms-tokens. Fails open if Redis is unavailable.
 export function createCmsScopeRateLimiter(deps?: RateLimiterDeps): RequestHandler {
   const redis = deps?.redis !== undefined ? deps.redis : getRedisClient();
-  const windowSec = deps?.windowSec ?? parseInt(process.env.RATE_LIMIT_WINDOW_SEC ?? "60", 10);
-  const limit = deps?.limit ?? parseInt(process.env.RATE_LIMIT_PER_SCOPE ?? "6000", 10);
+  const windowSec = deps?.windowSec ?? parseEnvInt(process.env.RATE_LIMIT_WINDOW_SEC, 60);
+  const limit = deps?.limit ?? parseEnvInt(process.env.RATE_LIMIT_PER_SCOPE, 6000);
 
   return async (req: Request, res: Response, next: NextFunction) => {
     if (!redis) {
@@ -315,3 +310,21 @@ export function createCmsScopeRateLimiter(deps?: RateLimiterDeps): RequestHandle
     next();
   };
 }
+
+// Preview routes bypass S3 cache and trigger codegen on every call — tighter per-identity budget.
+// Keyed by team API token → rl:team:{id}, session/PAT → rl:user:{id};
+// no resolved identity → skip (WAF handles unauthenticated traffic).
+// Fails open if Redis is unavailable.
+export const createPreviewRateLimiter = createIdentityRateLimiter(
+  "RATE_LIMIT_PREVIEW_PER_USER",
+  300
+);
+
+// Write/publish routes are expensive and low-frequency by design — much tighter per-identity budget.
+// Keyed by team API token → rl:team:{id}, session/PAT → rl:user:{id};
+// no resolved identity → skip (WAF handles unauthenticated traffic).
+// Fails open if Redis is unavailable.
+export const createWriteRateLimiter = createIdentityRateLimiter(
+  "RATE_LIMIT_WRITE_PER_USER",
+  60
+);
