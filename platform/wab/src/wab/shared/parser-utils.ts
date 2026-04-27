@@ -1,5 +1,5 @@
 import { assertNever, jsonClone, last, withoutNils } from "@/wab/shared/common";
-import type AcornTypes from "acorn";
+import type * as AcornTypes from "acorn";
 import { full as astTraversal } from "acorn-walk";
 import { generate } from "escodegen";
 import type * as ast from "estree";
@@ -58,14 +58,15 @@ function hasAwaitExpression(ast: ast.Program): boolean {
   return hasAwait;
 }
 
-export function convertToFunction(code: string) {
+export function convertToFunction(code: string, params?: string) {
   const ast = parseJsCode(code);
 
   addImplicitReturnToAst(ast);
 
-  const functionSignature = hasAwaitExpression(ast) ? "async ()" : "()";
+  const asyncPrefix = hasAwaitExpression(ast) ? "async " : "";
+  const paramStr = params ?? "";
 
-  return `${functionSignature} => {
+  return `${asyncPrefix}(${paramStr}) => {
 ${writeJs(ast, { indentLevel: 1 })}
 }`;
 }

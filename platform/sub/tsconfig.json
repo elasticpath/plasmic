@@ -2,16 +2,17 @@
   "compilerOptions": {
     "target": "es2017",
     "module": "esnext",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
+    "rootDir": "./src",
     "lib": ["es7", "dom", "esnext", "esnext.asynciterable", "esnext.array"],
     "skipLibCheck": true,
     // Following is for the compiler invoked by webstorm
+    "rootDir": "./src",
     "outDir": "build",
     "sourceMap": true,
     "jsx": "react",
     "esModuleInterop": true
   },
   "files": ["src/index.tsx"],
-  "include": ["src/**/*"],
-  "exclude": ["node_modules"]
+  "include": ["src/**/*"]
 }

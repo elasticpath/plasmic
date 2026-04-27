@@ -1357,7 +1357,11 @@
           }
         },
         "deps": [],
+<<<<<<< HEAD
         "version": "256-wrap-page-meta-og-image-in-ref"
+=======
+        "version": "256-add-custom-function-is-mutation"
+>>>>>>> upstream/master
       },
       "projectId": "cpkeUeeErCd6XAniAHq8xq",
       "version": "0.0.1",
@@ -2961,7 +2965,11 @@
           }
         },
         "deps": [],
+<<<<<<< HEAD
         "version": "256-wrap-page-meta-og-image-in-ref"
+=======
+        "version": "256-add-custom-function-is-mutation"
+>>>>>>> upstream/master
       }
     },
     {
@@ -4549,7 +4557,11 @@
           "55543038": { "text": ["arg3"], "__type": "TemplatedString" }
         },
         "deps": [],
+<<<<<<< HEAD
         "version": "256-wrap-page-meta-og-image-in-ref"
+=======
+        "version": "256-add-custom-function-is-mutation"
+>>>>>>> upstream/master
       }
     }
   ]

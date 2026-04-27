@@ -1,12 +1,15 @@
 import { isSlot } from "@/wab/shared/SlotUtils";
 import {
+  isPrivateStyleVariant,
   isStandaloneVariantGroup,
   tryGetBaseVariantSetting,
   tryGetVariantSetting,
 } from "@/wab/shared/Variants";
 import { paramToVarName, toVarName } from "@/wab/shared/codegen/util";
 import { assert, switchType } from "@/wab/shared/common";
+import { tryGetVariantGroupValueFromArg } from "@/wab/shared/core/components";
 import { tryExtractJson } from "@/wab/shared/core/exprs";
+import { generateAnimationPropValue } from "@/wab/shared/core/styles";
 import {
   flattenTpls,
   isTplTextBlock,
@@ -16,6 +19,7 @@ import { normProp } from "@/wab/shared/css";
 import {
   Component,
   Expr,
+  RuleSet,
   TplComponent,
   TplNode,
   TplSlot,
@@ -91,19 +95,26 @@ function extractExprValue(expr: Expr): string {
   return "";
 }
 
-function getStylesFromVariantSetting(
-  vs: VariantSetting
-): Record<string, string> {
+export function getStylesFromRuleSet(rs: RuleSet): Record<string, string> {
   const styles: Record<string, string> = {};
-
-  // Collect safe styles from RuleSet
-  if (vs.rs.values) {
-    for (const [prop, value] of Object.entries(vs.rs.values)) {
+  if (rs.values) {
+    for (const [prop, value] of Object.entries(rs.values)) {
       if (value) {
-        styles[prop] = value as string;
+        styles[prop] = value;
       }
     }
   }
+  if (rs.animations && rs.animations.length > 0) {
+    const animationValue = generateAnimationPropValue(rs.animations);
+    styles["animation"] = animationValue ?? "none";
+  }
+  return styles;
+}
+
+function getStylesFromVariantSetting(
+  vs: VariantSetting
+): Record<string, string> {
+  const styles: Record<string, string> = getStylesFromRuleSet(vs.rs);
 
   // The style attr could be a dynamic expression (e.g. a code expression
   // or data binding) instead of a plain JSON object. In that case
@@ -115,6 +126,11 @@ function getStylesFromVariantSetting(
         styles[normProp(prop)] = String(value);
       }
     }
+  }
+
+  if (vs.rs.animations) {
+    const animationValue = generateAnimationPropValue(vs.rs.animations);
+    styles["animation"] = animationValue ?? "none";
   }
 
   return styles;
@@ -172,41 +188,45 @@ function buildTplComponent(tpl: TplComponent): XmlElement {
 
   const attrs: XmlAttrs = {
     id: tpl.uuid,
-    "data-plasmic-name": toVarName(component.name),
+    "data-plasmic-component": toVarName(component.name),
   };
 
-  // Collect props into a JSON object
-  const propsObj: Record<string, any> = {};
+  if (tpl.name) {
+    attrs["data-plasmic-name"] = tpl.name;
+  }
 
-  // Add regular props
+  // Collect regular props and variant-group activations into a JSON object.
+  // Variant-group activations are stored on vs.args as Args whose expr is a
+  // VariantsRef
+  const propsObj: Record<string, any> = {};
   if (vs.args) {
     for (const arg of vs.args) {
       const param = arg.param;
-      if (!isSlot(param)) {
-        const propName = paramToVarName(component, param);
-        const jsonValue = tryExtractJson(arg.expr);
-        if (jsonValue !== undefined) {
-          propsObj[propName] = jsonValue;
-        } else {
-          propsObj[propName] = extractExprValue(arg.expr);
-        }
+      if (isSlot(param)) {
+        continue;
       }
-    }
-  }
+      const propName = paramToVarName(component, param);
 
-  // Add active variants as props
-  if (vs.variants) {
-    for (const variant of vs.variants) {
-      const variantGroup = component.variantGroups.find((group) =>
-        group.variants.includes(variant)
-      );
-      if (variantGroup && variantGroup.param) {
-        const propName = paramToVarName(component, variantGroup.param);
-        if (isStandaloneVariantGroup(variantGroup)) {
-          propsObj[propName] = true;
-        } else {
-          propsObj[propName] = variant.name;
+      const vgArg = tryGetVariantGroupValueFromArg(component, arg);
+      if (vgArg) {
+        if (vgArg.variants.length === 0) {
+          continue;
         }
+        if (isStandaloneVariantGroup(vgArg.vg)) {
+          propsObj[propName] = true;
+        } else if (vgArg.vg.multi) {
+          propsObj[propName] = vgArg.variants.map((v) => v.name);
+        } else {
+          propsObj[propName] = vgArg.variants[0].name;
+        }
+        continue;
+      }
+
+      const jsonValue = tryExtractJson(arg.expr);
+      if (jsonValue !== undefined) {
+        propsObj[propName] = jsonValue;
+      } else {
+        propsObj[propName] = extractExprValue(arg.expr);
       }
     }
   }
@@ -331,8 +351,8 @@ function getTplOverrides(
 
 function buildTplOverride(o: TplOverride): XmlElement {
   return {
-    Tpl: [
-      { _attr: { id: o.tplUuid } },
+    element: [
+      { _attr: { uuid: o.tplUuid } },
       {
         VariantSetting: [
           { _attr: { id: String(o.vsUid) } },
@@ -386,27 +406,57 @@ function buildComponentProps(component: Component): XmlElement[] {
     });
 }
 
+interface SerializableVariant {
+  variant: Variant;
+  attrs: XmlAttrs;
+}
+
 /**
- * Builds component variant definitions as <variant> XmlElements.
- * Each variant gets its own entry with the variant's UUID.
+ * Collects all serializable variants (component variant groups + element state variants)
+ * with their shared attributes.
  */
-function buildComponentVariantDefs(component: Component): XmlElement[] {
-  const elements: XmlElement[] = [];
+function getComponentVariants(component: Component): SerializableVariant[] {
+  const result: SerializableVariant[] = [];
+
   for (const variantGroup of component.variantGroups) {
     const groupName = paramToVarName(component, variantGroup.param);
     const isStandalone = isStandaloneVariantGroup(variantGroup);
-
     for (const variant of variantGroup.variants) {
-      const attrs: XmlAttrs = {
-        name: variant.name,
-        uuid: variant.uuid,
-        group: groupName,
-        type: isStandalone ? "boolean" : "enum",
-      };
-      elements.push({ variant: { _attr: attrs } });
+      result.push({
+        variant,
+        attrs: {
+          name: toVarName(variant.name),
+          uuid: variant.uuid,
+          kind: "componentVariant",
+          type: isStandalone ? "boolean" : "enum",
+          group: groupName,
+        },
+      });
     }
   }
-  return elements;
+
+  for (const variant of component.variants.filter(isPrivateStyleVariant)) {
+    result.push({
+      variant,
+      attrs: {
+        name: variant.selectors.join(", "),
+        uuid: variant.uuid,
+        kind: "elementVariant",
+        elementUuid: variant.forTpl.uuid,
+      },
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Builds component variant definitions as <variant> XmlElements.
+ */
+function buildComponentVariantDefs(component: Component): XmlElement[] {
+  return getComponentVariants(component).map(({ attrs }) => ({
+    variant: { _attr: { ...attrs } },
+  }));
 }
 
 /**
@@ -415,17 +465,15 @@ function buildComponentVariantDefs(component: Component): XmlElement[] {
 function buildComponentVariants(component: Component): XmlElement | null {
   const variantElements: XmlElement[] = [];
 
-  for (const variantGroup of component.variantGroups) {
-    for (const variant of variantGroup.variants) {
-      const overrides = getTplOverrides(component, variant);
-      if (overrides.length > 0) {
-        variantElements.push({
-          variant: [
-            { _attr: { name: toVarName(variant.name), id: variant.uuid } },
-            ...overrides.map((o) => buildTplOverride(o)),
-          ],
-        });
-      }
+  for (const { variant, attrs } of getComponentVariants(component)) {
+    const overrides = getTplOverrides(component, variant);
+    if (overrides.length > 0) {
+      variantElements.push({
+        variant: [
+          { _attr: { name: attrs.name, uuid: attrs.uuid } },
+          ...overrides.map((o) => buildTplOverride(o)),
+        ],
+      });
     }
   }
 
@@ -440,32 +488,33 @@ function buildComponentVariants(component: Component): XmlElement | null {
  * Generates a prompt representation describing a Plasmic component in XML tags format.
  * Returns a formatted XML string with component metadata, props, slots, tree, and variant settings overrides.
  *
- * <component name="">
+ * <component name="" uuid="">
  *   <props>
  *     <prop name="color" uuid="..." type="text" />
  *   </props>
  *   <variants>
- *     <variant name="large" uuid="..." group="size" type="enum" />
+ *     <variant name="large" uuid="..." kind="componentVariant" type="enum" group="size" />
+ *     <variant name=":hover" uuid="..." kind="elementVariant" elementUuid="..." />
  *   </variants>
  *   <base-variant-tpl-tree>
  *     ... html-parser-representation ...
  *   </base-variant-tpl-tree>
  *   <VariantSettings>
- *     <variant name="neutral" id="sy5AokJJ7g7H">
- *       <Tpl id="P4urRFgjF3wU">
+ *     <variant name="neutral" uuid="sy5AokJJ7g7H">
+ *       <element uuid="P4urRFgjF3wU">
  *         <VariantSetting id="3008807">
  *           <RuleSet id="3008806">
  *             {"background":"..."}
  *           </RuleSet>
  *         </VariantSetting>
- *       </Tpl>
+ *       </element>
  *     </variant>
  *   </VariantSettings>
  * </component>
  */
 export function serializeComponent(component: Component): string {
   const children: XmlElement[] = [
-    { _attr: { name: component.name } },
+    { _attr: { name: component.name, uuid: component.uuid } },
     { props: buildComponentProps(component) },
     { variants: buildComponentVariantDefs(component) },
   ];

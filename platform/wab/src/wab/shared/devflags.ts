@@ -471,7 +471,6 @@ const DEFAULT_DEVFLAGS = {
   mainContentSlots: false,
   insertTemplatesIntoMainContentSlots: false,
   simplifiedScreenVariants: false,
-  schemaDrivenForms: false,
   hostUrl: "",
   globalTrustedHosts: ["https://example123.fake"],
   warningsInCanvas: false,
@@ -658,8 +657,11 @@ export function applyPlasmicUserDevFlagOverrides(target: DevFlagsType) {
     mainContentSlots: true,
     insertTemplatesIntoMainContentSlots: true,
     simplifiedScreenVariants: true,
+<<<<<<< HEAD
     schemaDrivenForms: true,
     onboardingTours: true,
+=======
+>>>>>>> upstream/master
     posthog: true,
     linting: true,
     componentThumbnails: false,

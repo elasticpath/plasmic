@@ -9,7 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@plasmicapp/host": "^2.0.0",
+    "@plasmicapp/host": "^2.0.1",
     "lodash": "^4.18.1",
     "next": "13.5.11",
     "plasmicapp__host_old": "npm:@plasmicapp/host@1.0.77",
@@ -22,6 +22,6 @@
     "@types/react-dom": "^18.2.5",
     "eslint": "8.57.1",
     "eslint-config-next": "13.5.11",
-    "typescript": "^5.1.3"
+    "typescript": "6.0.3"
   }
 }
