@@ -157,9 +157,7 @@ const TEN_MB = 10 * 1024 * 1024;
 export async function getMigratedBundle(
   entity: PkgVersion | ProjectRevision
 ): Promise<Bundle> {
-  return await withSpan(
-    "getMigratedBundle",
-    async () => {
+  return await withSpan("getMigratedBundle", async () => {
     const serializedSize = getSerializedBundleSize(entity);
     if (serializedSize > TEN_MB) {
       logger().info(
@@ -290,5 +288,5 @@ export async function getMigratedBundle(
     });
 
     return fixedBundle;
-  }, `${entity.constructor.name} ${entity.id}`);
+  });
 }
