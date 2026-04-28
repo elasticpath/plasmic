@@ -3,6 +3,14 @@ import rateLimit, {
   ValueDeterminingMiddleware,
 } from "express-rate-limit";
 
+// IP-based limiter for public unauthenticated endpoints (image optimizer, demo data, static).
+export function createPublicRateLimiter(): RateLimitRequestHandler {
+  return createRateLimiter({
+    windowMs: 60 * 1000,
+    limit: 60,
+  });
+}
+
 export function createRateLimiter({
   windowMs,
   limit,

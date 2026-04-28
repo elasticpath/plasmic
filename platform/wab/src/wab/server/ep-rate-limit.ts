@@ -298,6 +298,14 @@ export const createPreviewRateLimiter = createIdentityRateLimiter(
   300
 );
 
+// General authenticated API endpoints — studio CRUD, teams, workspaces, data sources, etc.
+// Keyed by team API token → rl:team:{id}, session/PAT → rl:user:{id}.
+// Generous budget to cover normal studio usage; blocks scripted abuse.
+export const createGeneralApiRateLimiter = createIdentityRateLimiter(
+  "RATE_LIMIT_GENERAL_API_PER_USER",
+  300
+);
+
 // Write/publish routes are expensive and low-frequency by design — much tighter per-identity budget.
 // Keyed by team API token → rl:team:{id}, session/PAT → rl:user:{id};
 // no resolved identity → skip (WAF handles unauthenticated traffic).
