@@ -222,13 +222,16 @@ function createIdentityRateLimiter(
   };
 }
 
-// Rate limiter for loader endpoints, keyed by workspace.id or team.id resolved
-// from x-plasmic-api-project-tokens. All workspaces/teams in a multi-project
-// request are incremented independently. Fails open if Redis is unavailable.
-export function createProjectScopeRateLimiter(deps?: RateLimiterDeps): RequestHandler {
+// Shared factory for project-token-keyed limiters (workspace/team scope).
+// Reads the limit from the given env var, falling back to defaultLimit.
+function makeProjectScopeLimiter(
+  envVar: string,
+  defaultLimit: number,
+  deps?: RateLimiterDeps
+): RequestHandler {
   const redis = deps?.redis !== undefined ? deps.redis : getRedisClient();
   const windowSec = deps?.windowSec ?? parseEnvInt(process.env.RATE_LIMIT_WINDOW_SEC, 60);
-  const limit = deps?.limit ?? parseEnvInt(process.env.RATE_LIMIT_PER_SCOPE, 6000);
+  const limit = deps?.limit ?? parseEnvInt(process.env[envVar], defaultLimit);
 
   return async (req: Request, res: Response, next: NextFunction) => {
     if (!redis) {
@@ -254,6 +257,19 @@ export function createProjectScopeRateLimiter(deps?: RateLimiterDeps): RequestHa
     }
     next();
   };
+}
+
+// Rate limiter for loader endpoints, keyed by workspace.id or team.id resolved
+// from x-plasmic-api-project-tokens. All workspaces/teams in a multi-project
+// request are incremented independently. Fails open if Redis is unavailable.
+export function createProjectScopeRateLimiter(deps?: RateLimiterDeps): RequestHandler {
+  return makeProjectScopeLimiter("RATE_LIMIT_PER_SCOPE", 6000, deps);
+}
+
+// Tighter workspace-keyed limiter for preview routes (project token auth).
+// Preview hits DB + codegen on every call — 10 RPS per workspace default.
+export function createProjectScopePreviewRateLimiter(deps?: RateLimiterDeps): RequestHandler {
+  return makeProjectScopeLimiter("RATE_LIMIT_PREVIEW_PER_SCOPE", 600, deps);
 }
 
 // Rate limiter for public CMS endpoints, keyed by workspace.id or team.id
