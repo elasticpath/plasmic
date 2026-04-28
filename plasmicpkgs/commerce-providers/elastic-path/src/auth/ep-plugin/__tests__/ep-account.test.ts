@@ -86,8 +86,41 @@ const ACCOUNT_INPUT = {
   name: "Test Shopper",
 };
 
+/**
+ * Install a fetch mock that verifies the supplied account token by
+ * returning EP's canonical account record. `canonicalId` defaults to
+ * the body's `epAccountId` (the happy "EP and caller agree" case);
+ * pass a different value to assert that the session stores EP's id
+ * rather than the body's claim.
+ */
+function mockEpVerificationSuccess(canonicalId = ACCOUNT_INPUT.epAccountId) {
+  globalThis.fetch = vi.fn(async (url: any) => {
+    const u = String(url);
+    if (u === `${EP_HOST}/oauth/access_token`) {
+      return new Response(
+        JSON.stringify({
+          access_token: "anon-token",
+          token_type: "Bearer",
+          expires: Math.floor(Date.now() / 1000) + 3600,
+          expires_in: 3600,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    if (u === `${EP_HOST}/v2/accounts/${ACCOUNT_INPUT.epAccountId}`) {
+      return new Response(
+        JSON.stringify({
+          data: { id: canonicalId, type: "account", name: "Test Account" },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    throw new Error(`Unexpected URL: ${url}`);
+  }) as any;
+}
+
 describe("/ep/account/login + /ep/account/logout (PRD #273)", () => {
-  it("login persists account fields, preserves anonymous epAccessToken", async () => {
+  it("login persists EP-canonical account id, preserves anonymous epAccessToken", async () => {
     const auth = buildAuth();
 
     const anonResp = await (auth.api as any).epAnonymous({
@@ -98,6 +131,11 @@ describe("/ep/account/login + /ep/account/logout (PRD #273)", () => {
     const anonCookies = cookiesFromResponse(anonResp);
     const anonBody = await anonResp.json();
 
+    // EP returns a DIFFERENT id than the body claims — session must
+    // persist EP's canonical value, not the caller's claim. Issue #280.
+    const CANONICAL_ID = "acct-canonical-from-ep";
+    mockEpVerificationSuccess(CANONICAL_ID);
+
     const loginResp = await (auth.api as any).epAccountLogin({
       body: ACCOUNT_INPUT,
       headers: new Headers({ cookie: anonCookies }),
@@ -105,7 +143,7 @@ describe("/ep/account/login + /ep/account/logout (PRD #273)", () => {
     });
     expect(loginResp.status).toBe(200);
     const loginBody = await loginResp.json();
-    expect(loginBody.session.epAccountId).toBe(ACCOUNT_INPUT.epAccountId);
+    expect(loginBody.session.epAccountId).toBe(CANONICAL_ID);
     expect(loginBody.session.epAccountToken).toBe(
       ACCOUNT_INPUT.epAccountToken
     );
@@ -131,6 +169,7 @@ describe("/ep/account/login + /ep/account/logout (PRD #273)", () => {
     const anonCookies = cookiesFromResponse(anonResp);
     const anonBody = await anonResp.json();
 
+    mockEpVerificationSuccess();
     const loginResp = await (auth.api as any).epAccountLogin({
       body: ACCOUNT_INPUT,
       headers: new Headers({ cookie: anonCookies }),
@@ -161,5 +200,98 @@ describe("/ep/account/login + /ep/account/logout (PRD #273)", () => {
       asResponse: true,
     });
     expect(resp.status).toBe(401);
+  });
+
+  it("login returns 401 with no Set-Cookie when EP verification network call throws (#280)", async () => {
+    const auth = buildAuth();
+
+    const anonResp = await (auth.api as any).epAnonymous({
+      body: {},
+      headers: new Headers(),
+      asResponse: true,
+    });
+    const anonCookies = cookiesFromResponse(anonResp);
+
+    // EP unreachable: verification fetch throws. Endpoint must fail
+    // closed rather than treat the absence of a NACK as an ACK.
+    globalThis.fetch = vi.fn(async (url: any) => {
+      const u = String(url);
+      if (u === `${EP_HOST}/oauth/access_token`) {
+        return new Response(
+          JSON.stringify({
+            access_token: "anon-token",
+            token_type: "Bearer",
+            expires: Math.floor(Date.now() / 1000) + 3600,
+            expires_in: 3600,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      if (u === `${EP_HOST}/v2/accounts/${ACCOUNT_INPUT.epAccountId}`) {
+        throw new Error("network down");
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    }) as any;
+
+    const loginResp = await (auth.api as any).epAccountLogin({
+      body: ACCOUNT_INPUT,
+      headers: new Headers({ cookie: anonCookies }),
+      asResponse: true,
+    });
+
+    expect(loginResp.status).toBe(401);
+    const setCookies: string[] = [];
+    loginResp.headers.forEach((v: string, k: string) => {
+      if (k.toLowerCase() === "set-cookie") setCookies.push(v);
+    });
+    expect(setCookies).toEqual([]);
+  });
+
+  it("login returns 401 with no Set-Cookie when EP rejects the supplied account token (#280)", async () => {
+    const auth = buildAuth();
+
+    // Bootstrap an anon session first.
+    const anonResp = await (auth.api as any).epAnonymous({
+      body: {},
+      headers: new Headers(),
+      asResponse: true,
+    });
+    const anonCookies = cookiesFromResponse(anonResp);
+
+    // Swap the fetch mock so EP's verification endpoint returns 401.
+    globalThis.fetch = vi.fn(async (url: any) => {
+      const u = String(url);
+      if (u === `${EP_HOST}/oauth/access_token`) {
+        return new Response(
+          JSON.stringify({
+            access_token: "anon-token",
+            token_type: "Bearer",
+            expires: Math.floor(Date.now() / 1000) + 3600,
+            expires_in: 3600,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      if (u === `${EP_HOST}/v2/accounts/${ACCOUNT_INPUT.epAccountId}`) {
+        return new Response(
+          JSON.stringify({ errors: [{ status: "401", title: "Unauthorized" }] }),
+          { status: 401, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    }) as any;
+
+    const loginResp = await (auth.api as any).epAccountLogin({
+      body: ACCOUNT_INPUT,
+      headers: new Headers({ cookie: anonCookies }),
+      asResponse: true,
+    });
+
+    expect(loginResp.status).toBe(401);
+    const setCookies: string[] = [];
+    loginResp.headers.forEach((v: string, k: string) => {
+      if (k.toLowerCase() === "set-cookie") setCookies.push(v);
+    });
+    expect(setCookies).toEqual([]);
   });
 });

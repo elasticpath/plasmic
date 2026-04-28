@@ -153,6 +153,43 @@ async function readExistingSession(ctx: any): Promise<any | null> {
   }
 }
 
+/**
+ * Verify an EP account token by calling EP's account endpoint with both
+ * the shopper bearer and the account-management header. EP returns 200
+ * with the account record only when the supplied token grants access to
+ * the supplied accountId. Returns the canonical id from the response so
+ * the session stores EP's source of truth, not the caller's claim.
+ *
+ * Returns null on any non-2xx, network failure, or shape mismatch — the
+ * caller treats null as a hard rejection.
+ */
+async function verifyEpAccountToken(input: {
+  host: string;
+  shopperToken: string;
+  accountId: string;
+  accountToken: string;
+}): Promise<{ canonicalAccountId: string } | null> {
+  try {
+    const url = `${input.host}/v2/accounts/${encodeURIComponent(input.accountId)}`;
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${input.shopperToken}`,
+        "EP-Account-Management-Authentication-Token": input.accountToken,
+      },
+    });
+    if (!res.ok) return null;
+    const body = (await res.json().catch(() => null)) as
+      | { data?: { id?: string } }
+      | null;
+    const id = body?.data?.id;
+    if (typeof id !== "string" || !id) return null;
+    return { canonicalAccountId: id };
+  } catch {
+    return null;
+  }
+}
+
 export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
   return {
     id: "ep",
@@ -245,6 +282,31 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             );
           }
 
+          // Verify the supplied account token against EP before persisting.
+          // Without this the endpoint trusts whatever the caller sent, so
+          // any user with a session cookie could claim arbitrary epAccountId
+          // and any storefront authorizing on session.user.epAccountId would
+          // leak data. Issue #280.
+          const verified = await verifyEpAccountToken({
+            host: existing.session.epHost,
+            shopperToken: existing.session.epAccessToken,
+            accountId: epAccountId,
+            accountToken: epAccountToken,
+          });
+          if (!verified) {
+            return new Response(
+              JSON.stringify({
+                error: "invalid_account_token",
+                message:
+                  "EP rejected the supplied account token. Re-mint via /v2/account-members/tokens.",
+              }),
+              {
+                status: 401,
+                headers: { "Content-Type": "application/json" },
+              }
+            );
+          }
+
           // Upgrade the user record. Keep the same id/createdAt; switch
           // email + name to the real account values so downstream readers
           // can distinguish "real shopper" from "anonymous" via the
@@ -259,7 +321,10 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
           const session = {
             ...existing.session,
             updatedAt: new Date(),
-            epAccountId,
+            // Trust EP's canonical id from the verification response over
+            // whatever the caller claimed. Even if the body and EP agree,
+            // taking the canonical value keeps a single source of truth.
+            epAccountId: verified.canonicalAccountId,
             epAccountToken,
             epAccountExpires,
           };
