@@ -36,7 +36,7 @@ import {
   trackPostgresPool,
 } from "@/wab/server/promstats";
 import { createRateLimiter } from "@/wab/server/rate-limit";
-import { createCmsScopeRateLimiter, createPreviewRateLimiter, createProjectScopeRateLimiter, createWriteRateLimiter } from "@/wab/server/ep-rate-limit";
+import { createCmsScopeRateLimiter, createGeneralApiRateLimiter, createPreviewRateLimiter, createProjectScopeRateLimiter, createWriteRateLimiter } from "@/wab/server/ep-rate-limit";
 import { cmCors, cmCorsPreflight, isCmOriginAllowed } from "@/wab/server/cm-cors";
 import * as adminRoutes from "@/wab/server/routes/admin";
 import * as projectProvisioningRoutes from "@/wab/server/routes/project-provisioning";
@@ -826,6 +826,7 @@ export function addIntegrationsRoutes(app: express.Application) {
 }
 
 export function addDataSourceRoutes(app: express.Application) {
+  app.use("/api/v1/data-source", createGeneralApiRateLimiter());
   app.get("/api/v1/data-source/sources", cmCors, listDataSources);
   app.get("/api/v1/data-source/sources/:dataSourceId", cmCors, getDataSourceById);
   app.post("/api/v1/data-source/sources", cmCors, withNext(createDataSource));
@@ -870,6 +871,7 @@ export function addDataSourceRoutes(app: express.Application) {
 }
 
 export function addAnalyticsRoutes(app: express.Application) {
+  app.use("/api/v1/analytics", createGeneralApiRateLimiter());
   app.get("/api/v1/analytics/team/:teamId", getAnalyticsForTeam);
   app.get(
     "/api/v1/analytics/team/:teamId/project/:projectId",
@@ -886,6 +888,7 @@ export function addAnalyticsRoutes(app: express.Application) {
 }
 
 export function addAppAuthRoutes(app: express.Application) {
+  app.use("/api/v1/app-auth", createGeneralApiRateLimiter());
   // App-auth Oauth
   app.get("/api/v1/app-auth/code", issueOauthCode);
 
@@ -897,6 +900,7 @@ export function addAppAuthRoutes(app: express.Application) {
 }
 
 export function addEndUserManagementRoutes(app: express.Application) {
+  app.use("/api/v1/end-user", createGeneralApiRateLimiter());
   /**
    * App auth config
    */
@@ -1053,9 +1057,9 @@ export function addEndUserManagementRoutes(app: express.Application) {
 
 // Codegen-only routes: CLI/developer workloads
 export function addCodegenOnlyRoutes(app: express.Application) {
-  app.post("/api/v1/code/resolve-sync", apiAuth, withNext(resolveSync));
-  app.post("/api/v1/code/style-config", apiAuth, withNext(genStyleConfig));
-  app.post("/api/v1/code/required-packages", withNext(requiredPackages));
+  app.post("/api/v1/code/resolve-sync", apiAuth, createWriteRateLimiter(), withNext(resolveSync));
+  app.post("/api/v1/code/style-config", apiAuth, createWriteRateLimiter(), withNext(genStyleConfig));
+  app.post("/api/v1/code/required-packages", createWriteRateLimiter(), withNext(requiredPackages));
   app.post(
     "/api/v1/code/latest-codegen-version",
     withNext(latestCodegenVersion)
@@ -1072,7 +1076,7 @@ export function addCodegenOnlyRoutes(app: express.Application) {
     createWriteRateLimiter(),
     withNext(getProjectMeta)
   );
-  app.get("/api/v1/localization/gen-texts", genTranslatableStrings);
+  app.get("/api/v1/localization/gen-texts", createWriteRateLimiter(), genTranslatableStrings);
   app.post(
     "/api/v1/loader/code/prefill/:pkgVersionId",
     cors(),
@@ -1204,6 +1208,7 @@ export function addCodegenRoutes(app: express.Application) {
 }
 
 export function addImgOptimizerRoutes(app: express.Application) {
+  app.use("/img-optimizer", createRateLimiter({ windowMs: 60 * 1000, limit: 60 }));
   // Image optimization endpoints
   app.get("/img-optimizer/v1/img", optimizeImageHandler);
   app.get("/img-optimizer/v1/img/:imageId", optimizeImageStaticHandler);
@@ -1231,6 +1236,19 @@ export function addMainAppServerRoutes(
     next();
   });
 
+  const generalApiLimiter = createGeneralApiRateLimiter();
+  const publicLimiter = createRateLimiter({ windowMs: 60 * 1000, limit: 60 });
+
+  app.use("/api/v1/projects", generalApiLimiter);
+  app.use("/api/v1/teams", generalApiLimiter);
+  app.use("/api/v1/workspaces", generalApiLimiter);
+  app.use("/api/v1/pkgs", generalApiLimiter);
+  app.use("/api/v1/settings", generalApiLimiter);
+  app.use("/api/v1/github", generalApiLimiter);
+  app.use("/api/v1/code", generalApiLimiter);
+  app.use("/api/v1/demodata", publicLimiter);
+  app.use("/static", publicLimiter);
+
   /**
    * Primary app routes.
    */
@@ -1252,15 +1270,15 @@ export function addMainAppServerRoutes(
     sensitiveRateLimiter,
     withNext(authRoutes.signUp)
   );
-  app.get("/api/v1/auth/self", cmCors, withNext(authRoutes.self));
-  app.post("/api/v1/auth/self", cmCors, withNext(authRoutes.updateSelf));
-  app.delete("/api/v1/auth/self", cmCors, withNext(authRoutes.deleteSelf));
+  app.get("/api/v1/auth/self", cmCors, generalApiLimiter, withNext(authRoutes.self));
+  app.post("/api/v1/auth/self", cmCors, generalApiLimiter, withNext(authRoutes.updateSelf));
+  app.delete("/api/v1/auth/self", cmCors, sensitiveRateLimiter, withNext(authRoutes.deleteSelf));
   app.post(
     "/api/v1/auth/self/password",
     sensitiveRateLimiter,
     withNext(authRoutes.updateSelfPassword)
   );
-  app.post("/api/v1/auth/logout", cmCors, withNext(authRoutes.logout));
+  app.post("/api/v1/auth/logout", cmCors, generalApiLimiter, withNext(authRoutes.logout));
   app.post(
     "/api/v1/auth/forgotPassword",
     sensitiveRateLimiter,
@@ -1283,6 +1301,7 @@ export function addMainAppServerRoutes(
   );
   app.get(
     "/api/v1/auth/getEmailVerificationToken",
+    sensitiveRateLimiter,
     authRoutes.getEmailVerificationToken
   );
   // OAuth signup routes disabled - no new user registration via OAuth
@@ -1297,14 +1316,15 @@ export function addMainAppServerRoutes(
   //   "/api/v1/auth/sso/:tenantId/consume",
   //   withNext(authRoutes.ssoCallback)
   // );
-  app.get("/api/v1/auth/airtable", authRoutes.airtableLogin);
-  app.get("/api/v1/auth/google-sheets", authRoutes.googleSheetsLogin);
+  app.get("/api/v1/auth/airtable", generalApiLimiter, authRoutes.airtableLogin);
+  app.get("/api/v1/auth/google-sheets", generalApiLimiter, authRoutes.googleSheetsLogin);
   app.get(
     "/api/v1/oauth2/google-sheets/callback",
+    generalApiLimiter,
     authRoutes.googleSheetsCallback
   );
-  app.get("/api/v1/oauth2/airtable/callback", authRoutes.airtableCallback);
-  app.get("/api/v1/auth/integrations", authRoutes.getUserAuthIntegrations);
+  app.get("/api/v1/oauth2/airtable/callback", generalApiLimiter, authRoutes.airtableCallback);
+  app.get("/api/v1/auth/integrations", generalApiLimiter, authRoutes.getUserAuthIntegrations);
 
   /**
    * Admin Routes
@@ -1551,7 +1571,7 @@ export function addMainAppServerRoutes(
     "/api/v1/projects/create-project-with-hostless-packages",
     withNext(createProjectWithHostlessPackages)
   );
-  app.post("/api/v1/projects/:projectId/clone", cmCors, withNext(cloneProject));
+  app.post("/api/v1/projects/:projectId/clone", cmCors, createWriteRateLimiter(), withNext(cloneProject));
   app.post(
     "/api/v1/templates/:projectId/clone",
     cmCors,
@@ -1636,7 +1656,7 @@ export function addMainAppServerRoutes(
     "/api/v1/projects/:projectBranchId/revisions/:revision",
     saveProjectRev
   );
-  app.post("/api/v1/projects/:projectId/merge", tryMergeBranch);
+  app.post("/api/v1/projects/:projectId/merge", createWriteRateLimiter(), tryMergeBranch);
   app.post(
     "/api/v1/projects/:projectId/code/project-sync-metadata",
     apiAuth,
@@ -1771,7 +1791,7 @@ export function addMainAppServerRoutes(
     getProjectWebhookEvents
   );
 
-  app.post("/api/v1/fmt-code", withNext(fmtCode));
+  app.post("/api/v1/fmt-code", createWriteRateLimiter(), withNext(fmtCode));
   app.get("/api/v1/clip/:clipId", getClip);
   app.put("/api/v1/clip/:clipId", withNext(putClip));
 
@@ -1854,7 +1874,7 @@ export function addMainAppServerRoutes(
   /**
    * SVG utilities.
    */
-  app.post("/api/v1/process-svg", withNext(processSvgRoute));
+  app.post("/api/v1/process-svg", createWriteRateLimiter(), withNext(processSvgRoute));
 
   /**
    * Trusted hosts
