@@ -9,7 +9,8 @@ import debounce from "debounce";
 import { useCallback } from "react";
 import type { CartItemBody, LineItem, UpdateItemHook } from "../types/cart";
 import { DEFAULT_DEBOUNCE_MS } from "../const";
-import { getCartId, normalizeCart, removeCartCookie } from "../utils";
+import { normalizeCart } from "../utils";
+import { getCartIdFromSession, setCartIdInSession } from "./cart-session";
 import useCart from "./use-cart";
 import { handler as removeItemHandler } from "./use-remove-item";
 import { handleAPIError } from "../utils/errorHandling";
@@ -50,7 +51,7 @@ export const handler: MutationHook<UpdateItemHook> = {
       });
     }
 
-    const cartId = getCartId();
+    const cartId = await getCartIdFromSession();
     if (!cartId || !itemId || !item.quantity) {
       return undefined;
     }
@@ -97,9 +98,10 @@ export const handler: MutationHook<UpdateItemHook> = {
     } catch (error) {
       const standardError = handleAPIError(error, "updating cart item");
       log.error("Error updating cart item", { error: standardError.message } as Record<string, unknown>);
-      // If cart not found (404), clear cookie so next operation creates a fresh cart
+      // If cart not found (404), clear the session's cartId so next
+      // operation creates a fresh cart.
       if ((error as Record<string, unknown>)?.status === 404) {
-        removeCartCookie();
+        await setCartIdInSession("");
       }
       return undefined;
     }

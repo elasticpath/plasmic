@@ -323,12 +323,18 @@ jobs:
         env:
           CI: true
           NODE_OPTIONS: '--max-old-space-size=4096 --experimental-vm-modules'
-        run: yarn jest --testPathPattern='plasmicpkgs/' --testPathIgnorePatterns='plasmicpkgs/wordpress|plasmicpkgs/contentful' --passWithNoTests
+        run: yarn jest --testPathPattern='plasmicpkgs/' --testPathIgnorePatterns='plasmicpkgs/wordpress|plasmicpkgs/contentful|plasmicpkgs/commerce-providers/elastic-path/src/auth/ep-plugin' --passWithNoTests
 
       - name: Run plasmicpkgs Vitest tests
         env:
           CI: true
         run: npx vitest run plasmicpkgs/wordpress plasmicpkgs/contentful --passWithNoTests
+
+      - name: Run elastic-path Vitest tests
+        env:
+          CI: true
+        working-directory: plasmicpkgs/commerce-providers/elastic-path
+        run: yarn vitest run
 
       - name: Test Summary
         if: always()

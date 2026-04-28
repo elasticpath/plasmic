@@ -8,7 +8,7 @@ import {
 } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
 import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
-import { epAuth, epProviderHeaders } from "@/lib/ep-auth";
+import { epAuth } from "@/lib/ep-auth";
 
 export const revalidate = 60;
 
@@ -44,7 +44,6 @@ export default async function PlasmicLoaderPage({
     cookies: Object.fromEntries(
       cookieStore.getAll().map((c) => [c.name, c.value])
     ),
-    headers: await epProviderHeaders(prefetchedData),
   });
 
   // Next 15 forbids cookie writes in plain RSC pages. Swallow — the
@@ -89,8 +88,12 @@ export default async function PlasmicLoaderPage({
     PLASMIC.unstable__getServerQueriesData(prefetchedData, queryCtx)
   );
 
+  // The `$dev` suffix matches `registerWithDevMeta`'s convention in
+  // plasmic-register-dev-meta.ts. When registering for production
+  // (without dev-meta), drop the suffix here too so the component name
+  // matches what's actually registered.
   const globalContextsProps = {
-    "plasmic-commerce-elastic-path-provider": session.providerProps(),
+    "plasmic-commerce-elastic-path-provider$dev": session.providerProps(),
   };
 
   return (

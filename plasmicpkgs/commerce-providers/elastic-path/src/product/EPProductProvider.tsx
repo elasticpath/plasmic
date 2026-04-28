@@ -158,7 +158,19 @@ export function EPProductProvider(props: EPProductProviderProps) {
   // SSR path — when a caller passes `product` (typically bound to a Plasmic
   // Server Query result), we skip the SWR hook entirely. This avoids a
   // duplicate client-side request and removes the loading flicker.
-  const hasPrefetched = prefetchedProduct !== undefined;
+  //
+  // Studio canvas quirk: Plasmic does not execute server queries in
+  // canvas — the binding `$q.product.data` evaluates to an unresolved
+  // Promise rather than a Product object. Treat any Promise (or other
+  // non-object) as "not prefetched" so canvas falls through to the SWR
+  // path and fetches via `productId` directly.
+  const isPromiseLike =
+    prefetchedProduct != null &&
+    typeof (prefetchedProduct as any).then === "function";
+  const hasPrefetched =
+    prefetchedProduct !== undefined &&
+    !isPromiseLike &&
+    typeof prefetchedProduct === "object";
 
   const swr = useProduct({ id: hasPrefetched ? undefined : productId });
   const product = hasPrefetched

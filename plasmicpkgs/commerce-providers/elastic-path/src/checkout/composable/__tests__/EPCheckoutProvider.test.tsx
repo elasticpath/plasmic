@@ -54,9 +54,10 @@ jest.mock("../../hooks/use-checkout", () => ({
   }),
 }));
 
-// Mock cart cookie
-jest.mock("../../../utils/cart-cookie", () => ({
-  getCartId: jest.fn().mockReturnValue("cart-123"),
+// Mock cart-session (PRD #273: replaces the legacy elasticpath_cart cookie).
+jest.mock("../../../cart/cart-session", () => ({
+  getCartIdFromSession: jest.fn().mockResolvedValue("cart-123"),
+  setCartIdInSession: jest.fn().mockResolvedValue(undefined),
 }));
 
 // Mock @plasmicapp/host

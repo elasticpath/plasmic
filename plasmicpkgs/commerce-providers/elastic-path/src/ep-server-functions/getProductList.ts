@@ -4,6 +4,7 @@ import { getSortVariables } from "../utils";
 import type { Product } from "../types/product";
 import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession } from "./session-context";
+import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
 import type { EpServerAuth } from "./types";
 
 export interface EpGetProductListInput {
@@ -15,7 +16,7 @@ export interface EpGetProductListInput {
   categoryId?: string | number;
   /** Sort key understood by the shared `getSortVariables` helper. */
   sort?: string;
-  /** Studio canvas / Execute-panel fallback only — see EpGetProductInput. */
+  /** SSR-only explicit auth. Never advertised; never bind in Studio. */
   auth?: EpServerAuth;
 }
 
@@ -27,6 +28,15 @@ export async function epGetProductList({
   auth: inputAuth,
 }: EpGetProductListInput = {}): Promise<Product[]> {
   const auth = getCurrentEpSession() ?? inputAuth;
+
+  if (!isUsableAuth(auth) && shouldUseProxy()) {
+    return callEpProxy<Product[]>(
+      "getProductList",
+      { limit, search, categoryId, sort },
+      []
+    );
+  }
+
   if (!isUsableAuth(auth)) return [];
   const client = buildEpClient(auth);
   const query: Record<string, unknown> = {};

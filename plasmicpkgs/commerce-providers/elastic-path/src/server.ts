@@ -41,20 +41,26 @@ export type {
   PaymentAdapter,
 } from "./checkout/session/types";
 
-// Auth — Better Auth-aligned session pattern
+// Auth — better-auth-backed (PRD #273). Mount the handler via
+// `toNextJsHandler` from `better-auth/next-js`, NOT a helper exported
+// from this package.
 export {
   createEpAuth,
-  toNextJsHandler,
+  createBetterEpAuth,
   extractEpProviderConfig,
+  epPlugin,
+  epAuthMiddleware,
+  createCartRoutes,
+  createEpProxyRoutes,
 } from "./auth";
 export type {
   EpAuth,
   EpAuthConfig,
   EpSession,
-  EpSessionConfig,
-  EpTokenData,
-  EpAccountData,
   EpProviderBundleConfig,
+  EpPluginOptions,
+  EpProxyRoutes,
+  CreateEpProxyRoutesOptions,
 } from "./auth";
 
 // Server-side custom functions for Studio Server Queries (PRD #262 / #272)

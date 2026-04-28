@@ -3,6 +3,7 @@ import { normalizeProductFromList } from "../utils/normalize";
 import type { Product } from "../types/product";
 import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession } from "./session-context";
+import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
 import type { EpServerAuth } from "./types";
 
 export interface EpGetRelatedProductsInput {
@@ -13,7 +14,7 @@ export interface EpGetRelatedProductsInput {
    */
   relationshipSlug: string;
   limit?: number;
-  /** Studio canvas / Execute-panel fallback only — see EpGetProductInput. */
+  /** SSR-only explicit auth. Never advertised; never bind in Studio. */
   auth?: EpServerAuth;
 }
 
@@ -25,6 +26,15 @@ export async function epGetRelatedProducts({
 }: EpGetRelatedProductsInput): Promise<Product[]> {
   if (!productId || !relationshipSlug) return [];
   const auth = getCurrentEpSession() ?? inputAuth;
+
+  if (!isUsableAuth(auth) && shouldUseProxy()) {
+    return callEpProxy<Product[]>(
+      "getRelatedProducts",
+      { productId, relationshipSlug, limit },
+      []
+    );
+  }
+
   if (!isUsableAuth(auth)) return [];
   const client = buildEpClient(auth);
   const query: Record<string, unknown> = {

@@ -12,7 +12,7 @@ import {
 } from "@epcc-sdk/sdks-shopper";
 import { Registerable } from "../../registerable";
 import { useCommerce } from "../../elastic-path";
-import { getCartId } from "../../utils/cart-cookie";
+import { getCartIdFromSession } from "../../cart/cart-session";
 import { useShopperFetch } from "../../shopper-context/useShopperFetch";
 import { createLogger } from "../../utils/logger";
 
@@ -288,7 +288,7 @@ function EPPromoCodeInputClient(props: EPPromoCodeInputProps) {
     setErrorMessage(null);
 
     try {
-      const cartId = getCartId();
+      const cartId = await getCartIdFromSession();
       if (!cartId) {
         throw new Error("No cart found");
       }
@@ -328,7 +328,7 @@ function EPPromoCodeInputClient(props: EPPromoCodeInputProps) {
     setState("loading");
 
     try {
-      const cartId = getCartId();
+      const cartId = await getCartIdFromSession();
       if (!cartId) {
         throw new Error("No cart found");
       }

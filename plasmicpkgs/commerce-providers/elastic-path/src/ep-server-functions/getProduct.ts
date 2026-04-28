@@ -6,16 +6,15 @@ import { normalizeProduct } from "../utils/normalize";
 import type { Product } from "../types/product";
 import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession } from "./session-context";
+import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
 import type { EpServerAuth } from "./types";
 
 export interface EpGetProductInput {
   id: string;
   /**
-   * Optional auth fallback for Studio canvas + the data-query
-   * "Execute" panel, where no `withEpSession` scope is established.
-   * SSR consumers should NOT set this in Studio bindings — `withEpSession`
-   * in the catchall page handles it via AsyncLocalStorage and keeps the
-   * SWR cache key minimal.
+   * Optional explicit auth. SSR consumers normally rely on
+   * `withEpSession` (AsyncLocalStorage) and never pass this; it stays
+   * non-advertised so it never leaks into Studio bindings.
    */
   auth?: EpServerAuth;
 }
@@ -30,6 +29,15 @@ export async function epGetProduct({
 }: EpGetProductInput): Promise<Product | null> {
   if (!id) return null;
   const auth = getCurrentEpSession() ?? inputAuth;
+
+  // Browser path with no ALS/explicit auth — Studio canvas and the
+  // data-query preview panel land here. Fetch via the consumer's proxy
+  // route so the call uses the better-auth session cookie just like
+  // SSR does, without exposing tokens to the browser bundle.
+  if (!isUsableAuth(auth) && shouldUseProxy()) {
+    return callEpProxy<Product | null>("getProduct", { id });
+  }
+
   if (!isUsableAuth(auth)) return null;
 
   const client = buildEpClient(auth);
