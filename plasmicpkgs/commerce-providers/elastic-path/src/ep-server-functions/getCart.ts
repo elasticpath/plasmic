@@ -2,25 +2,37 @@ import { getACart } from "@epcc-sdk/sdks-shopper";
 import { normalizeCart } from "../utils/normalize";
 import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession } from "./session-context";
+import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
 import type { EpServerAuth } from "./types";
 
 export interface EpGetCartInput {
-  /** Studio canvas / Execute-panel fallback only — see EpGetProductInput. */
+  /** SSR-only explicit auth. Never advertised; never bind in Studio. */
   auth?: EpServerAuth;
 }
 
 /**
- * Fetches a cart by ID, server-side. Returns null when:
- *  - no ALS session is active (Studio canvas, unauthenticated call);
- *  - the session lacks a cartId (anonymous visitor — server reads must
- *    not create carts; creation is a mutation and belongs on
- *    `POST /api/ep/cart/items`);
- *  - the cart is missing or EP returns an error (stale cookie, deleted cart).
+ * Fetches the current shopper's cart, server-side or via the consumer
+ * proxy. Returns null when:
+ *  - SSR with no usable session (anonymous visitor without a cartId);
+ *  - the cart is missing or EP returns an error (stale cookie, deleted cart);
+ *  - browser context with no proxy available.
+ *
+ * Browser path (Studio canvas / data-query preview) routes through the
+ * consumer's `/api/ep/proxy/getCart` so the better-auth session cookie
+ * resolves the same shopper / cart that SSR sees.
  */
 export async function epGetCart(
   input?: EpGetCartInput
 ): Promise<ReturnType<typeof normalizeCart> | null> {
   const auth = getCurrentEpSession() ?? input?.auth;
+
+  if (!isUsableAuth(auth) && shouldUseProxy()) {
+    return callEpProxy<ReturnType<typeof normalizeCart> | null>(
+      "getCart",
+      {}
+    );
+  }
+
   if (!isUsableAuth(auth)) return null;
   if (!auth.cartId) return null;
   const client = buildEpClient(auth);

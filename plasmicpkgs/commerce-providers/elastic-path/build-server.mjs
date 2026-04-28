@@ -70,8 +70,8 @@ export type { CloverAdapterConfig } from "./checkout/session/adapters/clover-ada
 export { createStripeAdapter } from "./checkout/session/adapters/stripe-adapter";
 export type { StripeAdapterConfig } from "./checkout/session/adapters/stripe-adapter";
 export type { SessionRequest, SessionResponse, SessionHandlerContext, EPCredentials, AdapterRegistry, SessionStore, PaymentAdapter } from "./checkout/session/types";
-export { createEpAuth, createBetterEpAuth, extractEpProviderConfig, epPlugin, epAuthMiddleware, createCartRoutes } from "./auth";
-export type { EpAuth, EpAuthConfig, EpSession, EpProviderBundleConfig, EpPluginOptions } from "./auth";
+export { createEpAuth, createBetterEpAuth, extractEpProviderConfig, epPlugin, epAuthMiddleware, createCartRoutes, createEpProxyRoutes } from "./auth";
+export type { EpAuth, EpAuthConfig, EpSession, EpProviderBundleConfig, EpPluginOptions, EpProxyRoutes, CreateEpProxyRoutesOptions } from "./auth";
 export { epGetProduct, epGetCart, epGetProductList, epGetRelatedProducts, registerEpCustomFunctions, buildEpCtx } from "./ep-server-functions";
 export type { EpGetProductInput, EpGetCartInput, EpGetProductListInput, EpGetRelatedProductsInput, BuildEpCtxSessionInput, EpCtx, EpServerAuth } from "./ep-server-functions";
 `;

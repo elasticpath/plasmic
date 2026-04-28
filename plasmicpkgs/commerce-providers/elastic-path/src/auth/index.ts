@@ -22,5 +22,10 @@ export type {
 export { epAuthMiddleware } from "./ep-plugin/middleware";
 export { createCartRoutes } from "../cart/server-routes";
 export type { CartRoutes } from "../cart/server-routes";
+export { createEpProxyRoutes } from "./ep-plugin/proxy-routes";
+export type {
+  EpProxyRoutes,
+  CreateEpProxyRoutesOptions,
+} from "./ep-plugin/proxy-routes";
 export { extractEpProviderConfig } from "./extract-ep-provider-config";
 export type { EpProviderBundleConfig } from "./extract-ep-provider-config";

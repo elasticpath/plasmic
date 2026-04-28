@@ -51,6 +51,7 @@ export {
   epPlugin,
   epAuthMiddleware,
   createCartRoutes,
+  createEpProxyRoutes,
 } from "./auth";
 export type {
   EpAuth,
@@ -58,6 +59,8 @@ export type {
   EpSession,
   EpProviderBundleConfig,
   EpPluginOptions,
+  EpProxyRoutes,
+  CreateEpProxyRoutesOptions,
 } from "./auth";
 
 // Server-side custom functions for Studio Server Queries (PRD #262 / #272)
