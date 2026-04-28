@@ -36,6 +36,7 @@ import {
   trackPostgresPool,
 } from "@/wab/server/promstats";
 import { createRateLimiter } from "@/wab/server/rate-limit";
+import { createCmsScopeRateLimiter, createPreviewRateLimiter, createProjectScopeRateLimiter, createWriteRateLimiter } from "@/wab/server/ep-rate-limit";
 import { cmCors, cmCorsPreflight, isCmOriginAllowed } from "@/wab/server/cm-cors";
 import * as adminRoutes from "@/wab/server/routes/admin";
 import * as projectProvisioningRoutes from "@/wab/server/routes/project-provisioning";
@@ -624,6 +625,7 @@ function addMiddlewares(
       next();
     })
   );
+
   app.use(
     safeCast<ErrorRequestHandler>(
       async (err: Error, req: Request, res: Response, next: NextFunction) => {
@@ -731,6 +733,7 @@ function addOptionsRoutes(app: express.Application) {
 
 export function addCmsPublicRoutes(app: express.Application) {
   // "Public" CMS API, access via API auth
+  app.use("/api/v1/cms", createCmsScopeRateLimiter());
 
   createTsRestEndpoints(publicCmsReadsContract, publicCmsReadsServer, app, {
     globalMiddleware: [cors(), apiAuth, cachePublicCmsRead],
@@ -1060,11 +1063,13 @@ export function addCodegenOnlyRoutes(app: express.Application) {
   app.post(
     "/api/v1/projects/:projectId/code/components",
     apiAuth,
+    createWriteRateLimiter(),
     withNext(genCode)
   );
   app.post(
     "/api/v1/projects/:projectId/code/meta",
     apiAuth,
+    createWriteRateLimiter(),
     withNext(getProjectMeta)
   );
   app.get("/api/v1/localization/gen-texts", genTranslatableStrings);
@@ -1077,6 +1082,12 @@ export function addCodegenOnlyRoutes(app: express.Application) {
 
 // Loader routes: Production SDK traffic (high volume)
 export function addLoaderRoutes(app: express.Application) {
+  // Scope limiter covers all loader routes (published, versioned, preview).
+  // Preview routes additionally stack createPreviewRateLimiter() for a tighter
+  // per-identity budget — session-authenticated preview requests only hit that
+  // limiter; project-token-authenticated requests hit both.
+  app.use("/api/v1/loader", createProjectScopeRateLimiter());
+
   app.get(
     "/api/v1/loader/code/published",
     cors(),
@@ -1112,6 +1123,7 @@ export function addLoaderRoutes(app: express.Application) {
     "/api/v1/loader/code/preview",
     cors(),
     apiAuth,
+    createPreviewRateLimiter(),
     withNext(buildLatestLoaderAssets)
   );
   app.get("/api/v1/loader/chunks", cors(), getLoaderChunk);
@@ -1131,6 +1143,7 @@ export function addLoaderRoutes(app: express.Application) {
     "/api/v1/loader/repr-v2/preview/:projectId",
     cors(),
     apiAuth,
+    createPreviewRateLimiter(),
     buildLatestLoaderReprV2
   );
   app.get(
@@ -1149,6 +1162,7 @@ export function addLoaderRoutes(app: express.Application) {
     "/api/v1/loader/repr-v3/preview/:projectId",
     cors(),
     apiAuth,
+    createPreviewRateLimiter(),
     withNext(buildLatestLoaderReprV3)
   );
   app.get("/static/js/loader-hydrate.js", getHydrationScript);
@@ -1173,6 +1187,7 @@ export function addLoaderHtmlRoutes(app: express.Application) {
     "/api/v1/loader/html/preview/:projectId/:component",
     cors(),
     apiAuth,
+    createPreviewRateLimiter(),
     buildLatestLoaderHtml
   );
 }
@@ -1606,6 +1621,7 @@ export function addMainAppServerRoutes(
   app.post(
     "/api/v1/projects/:projectId/publish",
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
+    createWriteRateLimiter(),
     publishProject
   );
   app.post(
