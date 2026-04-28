@@ -35,7 +35,7 @@ import {
   incHttpRequestCount,
   trackPostgresPool,
 } from "@/wab/server/promstats";
-import { createPublicRateLimiter, createRateLimiter } from "@/wab/server/rate-limit";
+import { createRateLimiter } from "@/wab/server/rate-limit";
 import { createCmsScopeRateLimiter, createGeneralApiRateLimiter, createPreviewRateLimiter, createProjectScopeRateLimiter, createWriteRateLimiter } from "@/wab/server/ep-rate-limit";
 import { cmCors, cmCorsPreflight, isCmOriginAllowed } from "@/wab/server/cm-cors";
 import * as adminRoutes from "@/wab/server/routes/admin";
@@ -1208,7 +1208,7 @@ export function addCodegenRoutes(app: express.Application) {
 }
 
 export function addImgOptimizerRoutes(app: express.Application) {
-  app.use("/img-optimizer", createPublicRateLimiter());
+  app.use("/img-optimizer", createRateLimiter({ windowMs: 60 * 1000, limit: 60 }));
   // Image optimization endpoints
   app.get("/img-optimizer/v1/img", optimizeImageHandler);
   app.get("/img-optimizer/v1/img/:imageId", optimizeImageStaticHandler);
@@ -1237,7 +1237,7 @@ export function addMainAppServerRoutes(
   });
 
   const generalApiLimiter = createGeneralApiRateLimiter();
-  const publicLimiter = createPublicRateLimiter();
+  const publicLimiter = createRateLimiter({ windowMs: 60 * 1000, limit: 60 });
 
   app.use("/api/v1/projects", generalApiLimiter);
   app.use("/api/v1/teams", generalApiLimiter);
