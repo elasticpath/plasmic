@@ -466,6 +466,7 @@ export function addLoggingMiddleware(app: express.Application) {
           userAgent: req.get("user-agent"),
           contentLength: res.get("content-length"),
           duration: duration,
+          ...(res.locals.rateLimit ? { rateLimit: res.locals.rateLimit } : {}),
         }
       );
     });
