@@ -61,13 +61,22 @@ function normalizeHitToCurrentProduct(
     hit.attributes?.description ||
     "";
 
-  // Image: try multiple patterns
+  // Image: try multiple patterns. EP catalog-search hits don't denormalize
+  // file URLs by default (`relationships.main_image.data.id` is just a UUID),
+  // so for unconfigured catalogs imageUrl will be empty.
   const imageUrl =
     hit.ep_main_image_url ||
     hit.main_image_url ||
     hit.main_image?.link?.href ||
     (hit.ep_main_image && hit.ep_main_image.link?.href) ||
     "";
+
+  // 1x1 transparent gif — keeps the <img src> attribute non-empty so the
+  // browser doesn't issue a self-referential request (and React's
+  // empty-string warning stays silent) while letting the surrounding
+  // styles render the visual placeholder.
+  const TRANSPARENT_PIXEL =
+    "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
   // Price resolution — EP catalog search exposes prices in two shapes
   // depending on catalog config:
@@ -110,9 +119,12 @@ function normalizeHitToCurrentProduct(
     sku,
     description,
     path: `/${slug}`,
-    images: imageUrl
-      ? [{ url: imageUrl, alt: name }]
-      : [],
+    images: [
+      {
+        url: imageUrl || TRANSPARENT_PIXEL,
+        alt: name,
+      },
+    ],
     price: {
       value: priceValue,
       currencyCode: priceCurrency,
