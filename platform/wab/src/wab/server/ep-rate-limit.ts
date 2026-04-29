@@ -1,7 +1,8 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express";
-import type { EntityManager } from "typeorm";
+import { IsNull, type EntityManager } from "typeorm";
 import Redis from "ioredis";
 import { logger } from "@/wab/server/observability";
+import { TemporaryTeamApiToken } from "@/wab/server/entities/Entities";
 
 function parseEnvInt(value: string | undefined, defaultValue: number): number {
   const parsed = parseInt(value ?? String(defaultValue), 10);
@@ -37,6 +38,9 @@ function getRedisClient(): Redis | undefined {
       password: process.env.REDIS_AUTH_TOKEN,
       tls: process.env.REDIS_TLS === "false" ? undefined : {},
       lazyConnect: true,
+    });
+    _redisClient.on("error", (err) => {
+      logger().error("Redis client error", { err, host: process.env.REDIS_HOST });
     });
   }
   return _redisClient;
@@ -152,6 +156,68 @@ function resolveCmsScopeKeys(
   return resolveScopeKeys(redis, em, databaseIds, "cache:cms", CMS_SCOPE_QUERY);
 }
 
+// Resolves a team key from a temporary team API token (x-plasmic-api-session-token).
+// No caching — session tokens are low-frequency and have no stable entity ID to
+// use as a cache key without exposing the token value itself.
+async function resolveSessionTokenKey(
+  em: EntityManager,
+  sessionToken: string
+): Promise<string | null> {
+  const tempToken = await em.findOne(TemporaryTeamApiToken, {
+    where: { token: sessionToken, deletedAt: IsNull() },
+  });
+  return tempToken ? `rl:team:${tempToken.teamId}` : null;
+}
+
+// Resolves the rate limit bucket key(s) for a request regardless of auth method.
+// Tries all auth methods in priority order and returns on the first match:
+//   1. x-plasmic-api-project-tokens header + req.body.projectIdsAndTokens
+//      → workspace/team key (DB + Redis cache)
+//   2. x-plasmic-api-cms-tokens → workspace/team key (DB + Redis cache)
+//   3. x-plasmic-api-session-token / req.body.sessionToken
+//      → rl:team:{id} (DB lookup, no cache)
+//   4. req.apiTeam (team API token) → rl:team:{id}
+//   5. req.user (session / PAT)     → rl:user:{id}
+// Returns an empty set when no auth is present — the request is skipped.
+async function resolveRateLimitKeys(redis: Redis, req: Request): Promise<Set<string>> {
+  // Merge header tokens with body tokens (CLI sends projectIdsAndTokens in body)
+  const headerIds = parseTokenIds(
+    req.headers["x-plasmic-api-project-tokens"] as string | undefined
+  );
+  const bodyIds: string[] = (
+    req.body?.projectIdsAndTokens as
+      | { projectId: string }[]
+      | undefined
+  )?.map((t) => t.projectId) ?? [];
+  const projectIds = [...new Set([...headerIds, ...bodyIds])];
+
+  if (projectIds.length > 0) {
+    const keys = await resolveProjectScopeKeys(redis, req.noTxMgr, projectIds);
+    if (keys.size > 0) return keys;
+  }
+
+  const cmsIds = parseTokenIds(
+    req.headers["x-plasmic-api-cms-tokens"] as string | undefined
+  );
+  if (cmsIds.length > 0) {
+    const keys = await resolveCmsScopeKeys(redis, req.noTxMgr, cmsIds);
+    if (keys.size > 0) return keys;
+  }
+
+  const sessionToken =
+    (req.body?.sessionToken as string | undefined) ??
+    (req.headers["x-plasmic-api-session-token"] as string | undefined);
+  if (sessionToken) {
+    const key = await resolveSessionTokenKey(req.noTxMgr, sessionToken);
+    if (key) return new Set([key]);
+  }
+
+  const identityKey = resolveIdentityKey(req);
+  if (identityKey) return new Set([identityKey]);
+
+  return new Set();
+}
+
 // Increments all rate limit keys within their window and enforces the limit.
 // Each key is incremented via a Lua script that also sets the TTL on first use,
 // so INCR and EXPIRE are never split by a connection failure.
@@ -184,6 +250,14 @@ async function enforceRateLimit(
   res.setHeader("RateLimit-Limit", String(limit));
   res.setHeader("RateLimit-Remaining", String(Math.max(0, limit - maxCount)));
 
+  res.locals.rateLimit = keyList.map((key, i) => ({
+    key,
+    count: counts[i],
+    limit,
+    remaining: Math.max(0, limit - counts[i]),
+    windowSec,
+  }));
+
   if (counts.some((count) => count > limit)) {
     res.status(429).json({ error: "Too many requests, please try again later." });
     return true;
@@ -191,9 +265,10 @@ async function enforceRateLimit(
   return false;
 }
 
-// Shared factory for identity-keyed limiters (preview and write tiers).
-// Reads the limit from the given env var, falling back to defaultLimit.
-function createIdentityRateLimiter(
+// Shared factory for all rate limiters. Resolves the bucket key from whatever
+// auth method the request used — project tokens, CMS tokens, team token, or
+// session/PAT — so the same limit applies regardless of how you authenticate.
+function makeRateLimiter(
   envVar: string,
   defaultLimit: number
 ): (deps?: RateLimiterDeps) => RequestHandler {
@@ -207,12 +282,10 @@ function createIdentityRateLimiter(
       if (!redis) {
         return next();
       }
-      const key = resolveIdentityKey(req);
-      if (!key) {
-        return next();
-      }
       try {
-        const blocked = await enforceRateLimit(redis, res, new Set([key]), windowSec, limit);
+        const keys = await resolveRateLimitKeys(redis, req);
+        if (keys.size === 0) return next();
+        const blocked = await enforceRateLimit(redis, res, keys, windowSec, limit);
         if (blocked) return;
       } catch (err) {
         logger().error("Rate limiter failed open", { err });
@@ -222,111 +295,34 @@ function createIdentityRateLimiter(
   };
 }
 
-// Shared factory for project-token-keyed limiters (workspace/team scope).
-// Reads the limit from the given env var, falling back to defaultLimit.
-function makeProjectScopeLimiter(
-  envVar: string,
-  defaultLimit: number,
-  deps?: RateLimiterDeps
-): RequestHandler {
-  const redis = deps?.redis !== undefined ? deps.redis : getRedisClient();
-  const windowSec = deps?.windowSec ?? parseEnvInt(process.env.RATE_LIMIT_WINDOW_SEC, 60);
-  const limit = deps?.limit ?? parseEnvInt(process.env[envVar], defaultLimit);
-
-  return async (req: Request, res: Response, next: NextFunction) => {
-    if (!redis) {
-      return next();
-    }
-
-    const projectIds = parseTokenIds(
-      req.headers["x-plasmic-api-project-tokens"] as string | undefined
-    );
-    if (projectIds.length === 0) {
-      return next();
-    }
-
-    try {
-      const keys = await resolveProjectScopeKeys(redis, req.noTxMgr, projectIds);
-      if (keys.size === 0) {
-        return next();
-      }
-      const blocked = await enforceRateLimit(redis, res, keys, windowSec, limit);
-      if (blocked) return;
-    } catch (err) {
-      logger().error("Rate limiter failed open", { err });
-    }
-    next();
-  };
-}
-
-// Rate limiter for loader endpoints, keyed by workspace.id or team.id resolved
-// from x-plasmic-api-project-tokens. All workspaces/teams in a multi-project
-// request are incremented independently. Fails open if Redis is unavailable.
-export function createProjectScopeRateLimiter(deps?: RateLimiterDeps): RequestHandler {
-  return makeProjectScopeLimiter("RATE_LIMIT_PER_SCOPE", 6000, deps);
-}
-
-// Tighter workspace-keyed limiter for preview routes (project token auth).
-// Preview hits DB + codegen on every call — 10 RPS per workspace default.
-export function createProjectScopePreviewRateLimiter(deps?: RateLimiterDeps): RequestHandler {
-  return makeProjectScopeLimiter("RATE_LIMIT_PREVIEW_PER_SCOPE", 600, deps);
-}
-
-// Rate limiter for public CMS endpoints, keyed by workspace.id or team.id
-// resolved from x-plasmic-api-cms-tokens. Fails open if Redis is unavailable.
-export function createCmsScopeRateLimiter(deps?: RateLimiterDeps): RequestHandler {
-  const redis = deps?.redis !== undefined ? deps.redis : getRedisClient();
-  const windowSec = deps?.windowSec ?? parseEnvInt(process.env.RATE_LIMIT_WINDOW_SEC, 60);
-  const limit = deps?.limit ?? parseEnvInt(process.env.RATE_LIMIT_PER_SCOPE, 6000);
-
-  return async (req: Request, res: Response, next: NextFunction) => {
-    if (!redis) {
-      return next();
-    }
-
-    const databaseIds = parseTokenIds(
-      req.headers["x-plasmic-api-cms-tokens"] as string | undefined
-    );
-    if (databaseIds.length === 0) {
-      return next();
-    }
-
-    try {
-      const keys = await resolveCmsScopeKeys(redis, req.noTxMgr, databaseIds);
-      if (keys.size === 0) {
-        return next();
-      }
-      const blocked = await enforceRateLimit(redis, res, keys, windowSec, limit);
-      if (blocked) return;
-    } catch (err) {
-      logger().error("Rate limiter failed open", { err });
-    }
-    next();
-  };
-}
-
-// Preview routes bypass S3 cache and trigger codegen on every call — tighter per-identity budget.
-// Keyed by team API token → rl:team:{id}, session/PAT → rl:user:{id};
-// no resolved identity → skip (WAF handles unauthenticated traffic).
+// Rate limiter for loader and CMS endpoints, keyed by workspace.id or team.id.
+// All workspaces/teams in a multi-project request are incremented independently.
 // Fails open if Redis is unavailable.
-export const createPreviewRateLimiter = createIdentityRateLimiter(
-  "RATE_LIMIT_PREVIEW_PER_USER",
-  300
+export const createProjectScopeRateLimiter = makeRateLimiter(
+  "RATE_LIMIT_PER_SCOPE",
+  6000
+);
+
+export const createCmsScopeRateLimiter = makeRateLimiter(
+  "RATE_LIMIT_PER_SCOPE",
+  6000
+);
+
+// Preview routes bypass S3 cache and trigger codegen on every call — tighter budget.
+// Applies to all auth methods: project tokens, CMS tokens, team token, session/PAT.
+export const createPreviewRateLimiter = makeRateLimiter(
+  "RATE_LIMIT_PREVIEW_PER_SCOPE",
+  600
 );
 
 // General authenticated API endpoints — studio CRUD, teams, workspaces, data sources, etc.
-// Keyed by team API token → rl:team:{id}, session/PAT → rl:user:{id}.
-// Generous budget to cover normal studio usage; blocks scripted abuse.
-export const createGeneralApiRateLimiter = createIdentityRateLimiter(
+export const createGeneralApiRateLimiter = makeRateLimiter(
   "RATE_LIMIT_GENERAL_API_PER_USER",
   300
 );
 
-// Write/publish routes are expensive and low-frequency by design — much tighter per-identity budget.
-// Keyed by team API token → rl:team:{id}, session/PAT → rl:user:{id};
-// no resolved identity → skip (WAF handles unauthenticated traffic).
-// Fails open if Redis is unavailable.
-export const createWriteRateLimiter = createIdentityRateLimiter(
+// Write/publish routes are expensive and low-frequency by design — much tighter budget.
+export const createWriteRateLimiter = makeRateLimiter(
   "RATE_LIMIT_WRITE_PER_USER",
   60
 );
