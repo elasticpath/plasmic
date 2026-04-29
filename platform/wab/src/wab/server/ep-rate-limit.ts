@@ -1,7 +1,8 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express";
-import type { EntityManager } from "typeorm";
+import { IsNull, type EntityManager } from "typeorm";
 import Redis from "ioredis";
 import { logger } from "@/wab/server/observability";
+import { TemporaryTeamApiToken } from "@/wab/server/entities/Entities";
 
 function parseEnvInt(value: string | undefined, defaultValue: number): number {
   const parsed = parseInt(value ?? String(defaultValue), 10);
@@ -152,17 +153,41 @@ function resolveCmsScopeKeys(
   return resolveScopeKeys(redis, em, databaseIds, "cache:cms", CMS_SCOPE_QUERY);
 }
 
+// Resolves a team key from a temporary team API token (x-plasmic-api-session-token).
+// No caching — session tokens are low-frequency and have no stable entity ID to
+// use as a cache key without exposing the token value itself.
+async function resolveSessionTokenKey(
+  em: EntityManager,
+  sessionToken: string
+): Promise<string | null> {
+  const tempToken = await em.findOne(TemporaryTeamApiToken, {
+    where: { token: sessionToken, deletedAt: IsNull() },
+  });
+  return tempToken ? `rl:team:${tempToken.teamId}` : null;
+}
+
 // Resolves the rate limit bucket key(s) for a request regardless of auth method.
 // Tries all auth methods in priority order and returns on the first match:
-//   1. x-plasmic-api-project-tokens → workspace/team key (DB + Redis cache)
-//   2. x-plasmic-api-cms-tokens     → workspace/team key (DB + Redis cache)
-//   3. req.apiTeam (team API token) → rl:team:{id}
-//   4. req.user (session / PAT)     → rl:user:{id}
+//   1. x-plasmic-api-project-tokens header + req.body.projectIdsAndTokens
+//      → workspace/team key (DB + Redis cache)
+//   2. x-plasmic-api-cms-tokens → workspace/team key (DB + Redis cache)
+//   3. x-plasmic-api-session-token / req.body.sessionToken
+//      → rl:team:{id} (DB lookup, no cache)
+//   4. req.apiTeam (team API token) → rl:team:{id}
+//   5. req.user (session / PAT)     → rl:user:{id}
 // Returns an empty set when no auth is present — the request is skipped.
 async function resolveRateLimitKeys(redis: Redis, req: Request): Promise<Set<string>> {
-  const projectIds = parseTokenIds(
+  // Merge header tokens with body tokens (CLI sends projectIdsAndTokens in body)
+  const headerIds = parseTokenIds(
     req.headers["x-plasmic-api-project-tokens"] as string | undefined
   );
+  const bodyIds: string[] = (
+    req.body?.projectIdsAndTokens as
+      | { projectId: string }[]
+      | undefined
+  )?.map((t) => t.projectId) ?? [];
+  const projectIds = [...new Set([...headerIds, ...bodyIds])];
+
   if (projectIds.length > 0) {
     const keys = await resolveProjectScopeKeys(redis, req.noTxMgr, projectIds);
     if (keys.size > 0) return keys;
@@ -174,6 +199,14 @@ async function resolveRateLimitKeys(redis: Redis, req: Request): Promise<Set<str
   if (cmsIds.length > 0) {
     const keys = await resolveCmsScopeKeys(redis, req.noTxMgr, cmsIds);
     if (keys.size > 0) return keys;
+  }
+
+  const sessionToken =
+    (req.body?.sessionToken as string | undefined) ??
+    (req.headers["x-plasmic-api-session-token"] as string | undefined);
+  if (sessionToken) {
+    const key = await resolveSessionTokenKey(req.noTxMgr, sessionToken);
+    if (key) return new Set([key]);
   }
 
   const identityKey = resolveIdentityKey(req);

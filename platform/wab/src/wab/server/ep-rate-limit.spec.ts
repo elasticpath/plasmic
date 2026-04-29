@@ -3,6 +3,7 @@ import type { EntityManager } from "typeorm";
 import type Redis from "ioredis";
 import {
   createCmsScopeRateLimiter,
+  createGeneralApiRateLimiter,
   createPreviewRateLimiter,
   createProjectScopeRateLimiter,
   createWriteRateLimiter,
@@ -70,9 +71,13 @@ function createMockRedis(
 }
 
 function createMockEm(
-  rows: { id: string; workspaceId: string | null; teamId: string | null }[] = []
+  rows: { id: string; workspaceId: string | null; teamId: string | null }[] = [],
+  findOneResult: { teamId: string } | null = null
 ): EntityManager {
-  return { query: jest.fn().mockResolvedValue(rows) } as unknown as EntityManager;
+  return {
+    query: jest.fn().mockResolvedValue(rows),
+    findOne: jest.fn().mockResolvedValue(findOneResult),
+  } as unknown as EntityManager;
 }
 
 function makeProjectReq(
@@ -85,12 +90,33 @@ function makeProjectReq(
   } as unknown as Request;
 }
 
+function makeProjectBodyReq(
+  projectIdsAndTokens: { projectId: string; projectApiToken: string }[],
+  em: EntityManager = createMockEm()
+): Request {
+  return {
+    headers: {},
+    body: { projectIdsAndTokens },
+    noTxMgr: em,
+  } as unknown as Request;
+}
+
 function makeCmsReq(
   tokens: string | undefined,
   em: EntityManager = createMockEm()
 ): Request {
   return {
     headers: { "x-plasmic-api-cms-tokens": tokens },
+    noTxMgr: em,
+  } as unknown as Request;
+}
+
+function makeSessionTokenReq(
+  sessionToken: string,
+  em: EntityManager = createMockEm()
+): Request {
+  return {
+    headers: { "x-plasmic-api-session-token": sessionToken },
     noTxMgr: em,
   } as unknown as Request;
 }
@@ -721,7 +747,6 @@ describe("unified key resolver — all auth methods", () => {
     const next = jest.fn() as unknown as NextFunction;
     const { res } = makeRes();
 
-    // Request has both project token header and an authenticated user
     const req = {
       headers: { "x-plasmic-api-project-tokens": "proj1:token" },
       noTxMgr: em,
@@ -731,6 +756,91 @@ describe("unified key resolver — all auth methods", () => {
 
     expect(counters["rl:workspace:ws1"]).toBe(1);
     expect(counters["rl:user:user1"]).toBeUndefined();
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("body projectIdsAndTokens resolves to workspace key (CLI auth path)", async () => {
+    const { redis, counters } = createMockRedis();
+    const em = createMockEm([{ id: "proj1", workspaceId: "ws1", teamId: null }]);
+    const middleware = createGeneralApiRateLimiter({ redis, limit: 100 });
+    const next = jest.fn() as unknown as NextFunction;
+    const { res } = makeRes();
+
+    await middleware(
+      makeProjectBodyReq([{ projectId: "proj1", projectApiToken: "tok" }], em),
+      res,
+      next
+    );
+
+    expect(counters["rl:workspace:ws1"]).toBe(1);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("body and header project tokens are merged and deduplicated", async () => {
+    const { redis, counters } = createMockRedis();
+    const em = createMockEm([
+      { id: "proj1", workspaceId: "ws1", teamId: null },
+      { id: "proj2", workspaceId: "ws2", teamId: null },
+    ]);
+    const middleware = createProjectScopeRateLimiter({ redis, limit: 100 });
+    const next = jest.fn() as unknown as NextFunction;
+    const { res } = makeRes();
+
+    // proj1 in header, proj2 in body
+    const req = {
+      headers: { "x-plasmic-api-project-tokens": "proj1:tok1" },
+      body: { projectIdsAndTokens: [{ projectId: "proj2", projectApiToken: "tok2" }] },
+      noTxMgr: em,
+    } as unknown as Request;
+    await middleware(req, res, next);
+
+    expect(counters["rl:workspace:ws1"]).toBe(1);
+    expect(counters["rl:workspace:ws2"]).toBe(1);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("session token resolves to rl:team:{id}", async () => {
+    const { redis, counters } = createMockRedis();
+    const em = createMockEm([], { teamId: "team1" });
+    const middleware = createPreviewRateLimiter({ redis, limit: 100 });
+    const next = jest.fn() as unknown as NextFunction;
+    const { res } = makeRes();
+
+    await middleware(makeSessionTokenReq("sess-tok-abc", em), res, next);
+
+    expect(em.findOne).toHaveBeenCalledTimes(1);
+    expect(counters["rl:team:team1"]).toBe(1);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("session token: calls next() when token not found in DB", async () => {
+    const { redis, counters } = createMockRedis();
+    const em = createMockEm([], null); // findOne returns null
+    const middleware = createPreviewRateLimiter({ redis, limit: 100 });
+    const next = jest.fn() as unknown as NextFunction;
+    const { res } = makeRes();
+
+    await middleware(makeSessionTokenReq("unknown-tok", em), res, next);
+
+    expect(Object.keys(counters)).toHaveLength(0);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("body sessionToken resolves to rl:team:{id}", async () => {
+    const { redis, counters } = createMockRedis();
+    const em = createMockEm([], { teamId: "team2" });
+    const middleware = createWriteRateLimiter({ redis, limit: 100 });
+    const next = jest.fn() as unknown as NextFunction;
+    const { res } = makeRes();
+
+    const req = {
+      headers: {},
+      body: { sessionToken: "sess-body-tok" },
+      noTxMgr: em,
+    } as unknown as Request;
+    await middleware(req, res, next);
+
+    expect(counters["rl:team:team2"]).toBe(1);
     expect(next).toHaveBeenCalledTimes(1);
   });
 });
