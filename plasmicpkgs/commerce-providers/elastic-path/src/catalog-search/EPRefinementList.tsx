@@ -197,15 +197,21 @@ const EPRefinementListInner = React.forwardRef<
     toggleRefinement: (value: string) => refine(value),
   }));
 
-  const normalizedItems: RefinementItem[] = useMemo(
+  // Expose `toggle` as part of the per-item context so designers can wire
+  // a click in Studio (interaction → customFunction `$ctx.currentRefinement.toggle()`)
+  // without the component pre-rendering a button or <a>. Functions in
+  // DataProvider data are passed through React context untouched, so this
+  // costs nothing for designers who don't use it.
+  const normalizedItems = useMemo(
     () =>
       (items || []).map((item: any) => ({
         value: item.value,
         label: item.label,
         count: item.count,
         isRefined: item.isRefined,
+        toggle: () => refine(item.value),
       })),
-    [items]
+    [items, refine]
   );
 
   if (normalizedItems.length === 0) return null;
@@ -213,7 +219,7 @@ const EPRefinementListInner = React.forwardRef<
   return (
     <div className={className} data-ep-refinement-list="" aria-label={label}>
       <div role="list">
-        {normalizedItems.map((item, i) => (
+        {normalizedItems.map((item: any, i: number) => (
           <div key={item.value} role="listitem">
             <DataProvider name="currentRefinement" data={item}>
               <DataProvider name="currentRefinementIndex" data={i}>

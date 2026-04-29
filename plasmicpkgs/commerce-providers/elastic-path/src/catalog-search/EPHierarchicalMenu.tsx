@@ -180,17 +180,24 @@ const EPHierarchicalMenuInner = React.forwardRef<
     refineCategory: (value: string) => refine(value),
   }));
 
-  const flatItems = useMemo(
-    () => flattenHierarchicalItems(items || []),
-    [items]
-  );
+  // Expose `refine` on each category so designers can wire a click in
+  // Studio (interaction → customFunction `$ctx.currentCategory.refine()`)
+  // without the component pre-rendering a button. See EPRefinementList for
+  // the same pattern.
+  const flatItems = useMemo(() => {
+    const flat = flattenHierarchicalItems(items || []);
+    return flat.map((item) => ({
+      ...item,
+      refine: () => refine(item.value),
+    }));
+  }, [items, refine]);
 
   if (flatItems.length === 0) return null;
 
   return (
     <div className={className} data-ep-hierarchical-menu="">
       <div role="list">
-        {flatItems.map((item, i) => (
+        {flatItems.map((item: any, i: number) => (
           <div key={item.value} role="listitem">
             <DataProvider name="currentCategory" data={item}>
               {repeatedElement(i, children)}
