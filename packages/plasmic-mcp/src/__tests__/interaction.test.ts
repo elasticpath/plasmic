@@ -256,7 +256,7 @@ describe("addInteraction", () => {
     expect(handler.interactions[0].args[0].name).toBe("destination");
   });
 
-  it("treats {{...}}-wrapped destination as a JS expression", async () => {
+  it("stores {{$ctx.foo}}-wrapped destination as ObjectPath so codegen resolves it dynamically", async () => {
     const root = mkTag({ uuid: "root-1" });
     root.vsettings[0].attrs = {};
     const comp = mkComponent({ uuid: "comp-1", tplTree: root });
@@ -271,10 +271,11 @@ describe("addInteraction", () => {
     );
 
     const dest = root.vsettings[0].attrs.onClick.interactions[0].args[0].expr;
-    expect(dest.code).toBe("$ctx.currentProduct.path");
+    expect(dest._type).toBe("ObjectPath");
+    expect(dest.path).toEqual(["$ctx", "currentProduct", "path"]);
   });
 
-  it("treats $-prefixed destination as a JS expression", async () => {
+  it("stores $$ctx.foo destination as ObjectPath (single-$ marker stripped)", async () => {
     const root = mkTag({ uuid: "root-1" });
     root.vsettings[0].attrs = {};
     const comp = mkComponent({ uuid: "comp-1", tplTree: root });
@@ -289,7 +290,27 @@ describe("addInteraction", () => {
     );
 
     const dest = root.vsettings[0].attrs.onClick.interactions[0].args[0].expr;
-    expect(dest.code).toBe("$ctx.currentProduct.path");
+    expect(dest._type).toBe("ObjectPath");
+    expect(dest.path).toEqual(["$ctx", "currentProduct", "path"]);
+  });
+
+  it("falls back to CustomCode when wrapped expression isn't a simple member-access path", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {};
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await addInteraction(
+      api, "comp-1", "root-1", "onClick", "navigation",
+      { destination: "{{`/product/${$ctx.currentProduct.id}`}}" }
+    );
+
+    const dest = root.vsettings[0].attrs.onClick.interactions[0].args[0].expr;
+    expect(dest._type).toBe("CustomCode");
+    expect(dest.code).toBe("`/product/${$ctx.currentProduct.id}`");
   });
 
   it("JSON-stringifies a plain URL destination (existing behaviour)", async () => {
