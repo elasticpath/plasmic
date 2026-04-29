@@ -20,6 +20,20 @@ import type { CategoryItem } from "./design-time-data";
 
 type PreviewState = "auto" | "withData";
 
+// Defensive style — make every category item act as a clickable button
+// without forcing designers to wire onClick handlers themselves.
+const CATEGORY_ROW_STYLE: React.CSSProperties = {
+  display: "block",
+  width: "100%",
+  textAlign: "inherit",
+  background: "none",
+  border: "none",
+  padding: 0,
+  font: "inherit",
+  color: "inherit",
+  cursor: "pointer",
+};
+
 interface EPHierarchicalMenuProps {
   children?: React.ReactNode;
   attributes?: string;
@@ -142,11 +156,17 @@ const MockHierarchicalMenu = React.forwardRef<
     <div className={className} data-ep-hierarchical-menu="">
       <div role="list">
         {MOCK_CATEGORY_ITEMS.map((item, i) => (
-          <div key={item.value} role="listitem">
+          <button
+            key={item.value}
+            type="button"
+            role="listitem"
+            aria-pressed={item.isRefined}
+            style={CATEGORY_ROW_STYLE}
+          >
             <DataProvider name="currentCategory" data={item}>
               {repeatedElement(i, children)}
             </DataProvider>
-          </div>
+          </button>
         ))}
       </div>
     </div>
@@ -191,11 +211,18 @@ const EPHierarchicalMenuInner = React.forwardRef<
     <div className={className} data-ep-hierarchical-menu="">
       <div role="list">
         {flatItems.map((item, i) => (
-          <div key={item.value} role="listitem">
+          <button
+            key={item.value}
+            type="button"
+            role="listitem"
+            aria-pressed={item.isRefined}
+            onClick={() => refine(item.value)}
+            style={CATEGORY_ROW_STYLE}
+          >
             <DataProvider name="currentCategory" data={item}>
               {repeatedElement(i, children)}
             </DataProvider>
-          </div>
+          </button>
         ))}
       </div>
     </div>

@@ -21,6 +21,20 @@ import type { RefinementItem } from "./design-time-data";
 
 type PreviewState = "auto" | "withData";
 
+// Defensive style — make every refinement item act as a clickable button
+// without forcing designers to wire onClick handlers themselves.
+const REFINEMENT_ROW_STYLE: React.CSSProperties = {
+  display: "block",
+  width: "100%",
+  textAlign: "inherit",
+  background: "none",
+  border: "none",
+  padding: 0,
+  font: "inherit",
+  color: "inherit",
+  cursor: "pointer",
+};
+
 interface EPRefinementListProps {
   children?: React.ReactNode;
   attribute?: string;
@@ -157,13 +171,19 @@ const MockRefinementList = React.forwardRef<
     <div className={className} data-ep-refinement-list="" aria-label={label}>
       <div role="list">
         {MOCK_REFINEMENT_ITEMS.map((item, i) => (
-          <div key={item.value} role="listitem">
+          <button
+            key={item.value}
+            type="button"
+            role="listitem"
+            aria-pressed={item.isRefined}
+            style={REFINEMENT_ROW_STYLE}
+          >
             <DataProvider name="currentRefinement" data={item}>
               <DataProvider name="currentRefinementIndex" data={i}>
                 {repeatedElement(i, children)}
               </DataProvider>
             </DataProvider>
-          </div>
+          </button>
         ))}
       </div>
     </div>
@@ -214,13 +234,20 @@ const EPRefinementListInner = React.forwardRef<
     <div className={className} data-ep-refinement-list="" aria-label={label}>
       <div role="list">
         {normalizedItems.map((item, i) => (
-          <div key={item.value} role="listitem">
+          <button
+            key={item.value}
+            type="button"
+            role="listitem"
+            aria-pressed={item.isRefined}
+            onClick={() => refine(item.value)}
+            style={REFINEMENT_ROW_STYLE}
+          >
             <DataProvider name="currentRefinement" data={item}>
               <DataProvider name="currentRefinementIndex" data={i}>
                 {repeatedElement(i, children)}
               </DataProvider>
             </DataProvider>
-          </div>
+          </button>
         ))}
       </div>
     </div>

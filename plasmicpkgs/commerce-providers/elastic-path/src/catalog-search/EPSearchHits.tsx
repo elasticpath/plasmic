@@ -56,7 +56,24 @@ interface EPSearchHitsProps {
   className?: string;
   gridTemplateColumns?: string;
   gridGap?: string;
+  /**
+   * URL pattern for product cards. Each `{id}` / `{slug}` / `{sku}` token
+   * is replaced from the current hit. Set to "" to disable the link wrap
+   * (designers who want to handle navigation themselves inside the slot).
+   */
+  linkPattern?: string;
   previewState?: PreviewState;
+}
+
+function resolveHitLink(
+  pattern: string | undefined,
+  product: { id?: string; slug?: string; sku?: string }
+): string | undefined {
+  if (!pattern) return undefined;
+  return pattern
+    .replace("{id}", product.id ?? "")
+    .replace("{slug}", product.slug ?? "")
+    .replace("{sku}", product.sku ?? "");
 }
 
 /**
@@ -226,6 +243,13 @@ export const epSearchHitsMeta: CodeComponentMeta<EPSearchHitsProps> = {
       description: "CSS gap between hit cards.",
       defaultValue: DEFAULT_GRID_GAP,
     },
+    linkPattern: {
+      type: "string",
+      displayName: "Card Link Pattern",
+      description:
+        "URL pattern for each hit card. Tokens `{id}`, `{slug}`, `{sku}` are substituted from the current hit. Leave blank to disable the link wrap.",
+      defaultValue: "/product/{id}",
+    },
     previewState: {
       type: "choice",
       options: ["auto", "withData"],
@@ -246,6 +270,7 @@ export function EPSearchHits(props: EPSearchHitsProps) {
     className,
     gridTemplateColumns = DEFAULT_GRID_TEMPLATE_COLUMNS,
     gridGap = DEFAULT_GRID_GAP,
+    linkPattern = "/product/{id}",
     previewState = "auto",
   } = props;
 
@@ -257,25 +282,55 @@ export function EPSearchHits(props: EPSearchHitsProps) {
 
   if (useMock) {
     return (
-      <MockSearchHits className={className} gridStyle={gridStyle}>
+      <MockSearchHits
+        className={className}
+        gridStyle={gridStyle}
+        linkPattern={linkPattern}
+      >
         {children}
       </MockSearchHits>
     );
   }
 
   return (
-    <EPSearchHitsInner className={className} gridStyle={gridStyle}>
+    <EPSearchHitsInner
+      className={className}
+      gridStyle={gridStyle}
+      linkPattern={linkPattern}
+    >
       {children}
     </EPSearchHitsInner>
   );
+}
+
+function HitCard(props: {
+  product: { id?: string; slug?: string; sku?: string };
+  href?: string;
+  children?: React.ReactNode;
+}) {
+  const { href, children } = props;
+  const baseStyle: React.CSSProperties = {
+    display: "block",
+    color: "inherit",
+    textDecoration: "none",
+  };
+  if (href) {
+    return (
+      <a href={href} role="listitem" style={baseStyle}>
+        {children}
+      </a>
+    );
+  }
+  return <div role="listitem">{children}</div>;
 }
 
 function MockSearchHits(props: {
   children?: React.ReactNode;
   className?: string;
   gridStyle: React.CSSProperties;
+  linkPattern?: string;
 }) {
-  const { children, className, gridStyle } = props;
+  const { children, className, gridStyle, linkPattern } = props;
 
   const products = useMemo(
     () => MOCK_SEARCH_PRODUCTS.map(buildMockCurrentProduct),
@@ -292,13 +347,17 @@ function MockSearchHits(props: {
       style={gridStyle}
     >
       {products.map((product, i) => (
-        <div key={product.id} role="listitem">
+        <HitCard
+          key={product.id}
+          product={product}
+          href={resolveHitLink(linkPattern, product)}
+        >
           <DataProvider name="currentProduct" data={product}>
             <DataProvider name="currentProductIndex" data={i}>
               {repeatedElement(i, children)}
             </DataProvider>
           </DataProvider>
-        </div>
+        </HitCard>
       ))}
     </div>
   );
@@ -308,8 +367,9 @@ function EPSearchHitsInner(props: {
   children?: React.ReactNode;
   className?: string;
   gridStyle: React.CSSProperties;
+  linkPattern?: string;
 }) {
-  const { children, className, gridStyle } = props;
+  const { children, className, gridStyle, linkPattern } = props;
 
   const { useHits, useInstantSearch } = require("react-instantsearch");
   const { hits } = useHits();
@@ -340,13 +400,17 @@ function EPSearchHitsInner(props: {
     >
       {normalizedProducts.map(
         (product: ReturnType<typeof normalizeHitToCurrentProduct>, i: number) => (
-          <div key={product.id || i} role="listitem">
+          <HitCard
+            key={product.id || i}
+            product={product}
+            href={resolveHitLink(linkPattern, product)}
+          >
             <DataProvider name="currentProduct" data={product}>
               <DataProvider name="currentProductIndex" data={i}>
                 {repeatedElement(i, children)}
               </DataProvider>
             </DataProvider>
-          </div>
+          </HitCard>
         )
       )}
     </div>
