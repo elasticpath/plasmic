@@ -6,6 +6,16 @@ export { epGetProductList } from "./getProductList";
 export type { EpGetProductListInput } from "./getProductList";
 export { epGetRelatedProducts } from "./getRelatedProducts";
 export type { EpGetRelatedProductsInput } from "./getRelatedProducts";
+export {
+  epAddCartItem,
+  epRemoveCartItem,
+  epUpdateCartItem,
+} from "./cart-mutations";
+export type {
+  EpAddCartItemInput,
+  EpRemoveCartItemInput,
+  EpUpdateCartItemInput,
+} from "./cart-mutations";
 export { registerEpCustomFunctions } from "./register-custom-functions";
 export { buildEpCtx } from "./build-ep-ctx";
 export type {

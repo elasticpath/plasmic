@@ -25,14 +25,25 @@
  * allowed origins and reflects them on response.
  */
 import {
-  epGetProduct,
+  epAddCartItem,
   epGetCart,
+  epGetProduct,
   epGetProductList,
   epGetRelatedProducts,
+  epRemoveCartItem,
+  epUpdateCartItem,
+} from "../../ep-server-functions";
+import type {
+  EpAddCartItemInput,
+  EpRemoveCartItemInput,
+  EpUpdateCartItemInput,
 } from "../../ep-server-functions";
 import { withEpSession } from "../../ep-server-functions/session-context";
 import type { EpCtx } from "../../ep-server-functions/build-ep-ctx";
 import type { EpAuth } from "./create-ep-auth-better";
+import { persistCartId } from "./persist-cart-id";
+
+const MUTATION_FNS = new Set(["addCartItem", "updateCartItem", "removeCartItem"]);
 
 interface ProxyRouteContext {
   params: Promise<{ fn?: string }> | { fn?: string };
@@ -73,6 +84,11 @@ const FN_DISPATCH: Record<
     epGetRelatedProducts(
       args as { productId: string; relationshipSlug: string; limit?: number }
     ),
+  addCartItem: (args) => epAddCartItem(args as unknown as EpAddCartItemInput),
+  updateCartItem: (args) =>
+    epUpdateCartItem(args as unknown as EpUpdateCartItemInput),
+  removeCartItem: (args) =>
+    epRemoveCartItem(args as unknown as EpRemoveCartItemInput),
 };
 
 export interface CreateEpProxyRoutesOptions {
@@ -194,9 +210,28 @@ export function createEpProxyRoutes(
         );
       }
 
+      // For mutation dispatches, the function may have auto-created a
+      // cart. Detect a cartId mismatch between the input session and the
+      // returned cart, and forward the better-auth Set-Cookie headers
+      // that /ep/cart emits so the browser session catches up.
+      const setCookies: string[] = [];
+      if (MUTATION_FNS.has(fnName)) {
+        const resultCartId = (result as { id?: string } | null)?.id;
+        if (resultCartId && resultCartId !== epCtx.cartId) {
+          setCookies.push(
+            ...(await persistCartId(epAuth, request, resultCartId))
+          );
+        }
+      }
+
+      const headers = new Headers({
+        "Content-Type": "application/json",
+        ...cors,
+      });
+      for (const c of setCookies) headers.append("Set-Cookie", c);
       return new Response(JSON.stringify(result ?? null), {
         status: 200,
-        headers: { "Content-Type": "application/json", ...cors },
+        headers,
       });
     },
   };

@@ -15,6 +15,11 @@ import { epGetProduct } from "./getProduct";
 import { epGetCart } from "./getCart";
 import { epGetProductList } from "./getProductList";
 import { epGetRelatedProducts } from "./getRelatedProducts";
+import {
+  epAddCartItem,
+  epRemoveCartItem,
+  epUpdateCartItem,
+} from "./cart-mutations";
 
 interface Registerable {
   registerFunction: (
@@ -83,6 +88,37 @@ const EP_FUNCTIONS: EpFunctionSpec[] = [
       { name: "productId", type: "string", description: "Source product UUID." },
       { name: "relationshipSlug", type: "string", description: "EP custom-relationship slug, e.g. CRP_related_products." },
       { name: "limit", type: "number", description: "Page size." },
+    ],
+  },
+  {
+    fn: epAddCartItem,
+    name: "addCartItem",
+    description:
+      "Add an item to the current shopper's cart. Auto-creates a cart on the first add. Throws on backend error.",
+    params: [
+      { name: "productId", type: "string", description: "EP product UUID." },
+      { name: "quantity", type: "number", description: "Number of units to add." },
+      { name: "sku", type: "string", description: "Variant SKU (optional, overrides productId for SKU-based variants)." },
+      { name: "customInputs", type: "object", description: "Custom inputs (e.g. _selectedOptions, gift messages)." },
+    ],
+  },
+  {
+    fn: epUpdateCartItem,
+    name: "updateCartItem",
+    description:
+      "Update the quantity of a line item in the current cart. Throws when no cart exists.",
+    params: [
+      { name: "itemId", type: "string", description: "EP cart item UUID." },
+      { name: "quantity", type: "number", description: "New quantity." },
+    ],
+  },
+  {
+    fn: epRemoveCartItem,
+    name: "removeCartItem",
+    description:
+      "Remove a line item from the current cart. Throws when no cart exists.",
+    params: [
+      { name: "itemId", type: "string", description: "EP cart item UUID." },
     ],
   },
 ];
