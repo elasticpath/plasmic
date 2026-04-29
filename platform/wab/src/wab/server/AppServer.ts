@@ -36,7 +36,7 @@ import {
   trackPostgresPool,
 } from "@/wab/server/promstats";
 import { createRateLimiter } from "@/wab/server/rate-limit";
-import { createCmsScopeRateLimiter, createGeneralApiRateLimiter, createPreviewRateLimiter, createProjectScopePreviewRateLimiter, createProjectScopeRateLimiter, createWriteRateLimiter } from "@/wab/server/ep-rate-limit";
+import { createCmsScopeRateLimiter, createGeneralApiRateLimiter, createPreviewRateLimiter, createProjectScopeRateLimiter, createWriteRateLimiter } from "@/wab/server/ep-rate-limit";
 import { cmCors, cmCorsPreflight, isCmOriginAllowed } from "@/wab/server/cm-cors";
 import * as adminRoutes from "@/wab/server/routes/admin";
 import * as projectProvisioningRoutes from "@/wab/server/routes/project-provisioning";
@@ -1087,9 +1087,8 @@ export function addCodegenOnlyRoutes(app: express.Application) {
 // Loader routes: Production SDK traffic (high volume)
 export function addLoaderRoutes(app: express.Application) {
   // Scope limiter covers all loader routes (published, versioned, preview).
-  // Preview routes additionally stack createProjectScopePreviewRateLimiter()
-  // (tighter workspace-keyed budget for project-token requests) and
-  // createPreviewRateLimiter() (per-identity budget for session/team-token).
+  // Preview routes use createPreviewRateLimiter() which applies a tighter budget
+  // across all auth types via the unified key resolver.
   app.use("/api/v1/loader", createProjectScopeRateLimiter());
 
   app.get(
@@ -1127,7 +1126,6 @@ export function addLoaderRoutes(app: express.Application) {
     "/api/v1/loader/code/preview",
     cors(),
     apiAuth,
-    createProjectScopePreviewRateLimiter(),
     createPreviewRateLimiter(),
     withNext(buildLatestLoaderAssets)
   );
@@ -1148,7 +1146,6 @@ export function addLoaderRoutes(app: express.Application) {
     "/api/v1/loader/repr-v2/preview/:projectId",
     cors(),
     apiAuth,
-    createProjectScopePreviewRateLimiter(),
     createPreviewRateLimiter(),
     buildLatestLoaderReprV2
   );
@@ -1168,7 +1165,6 @@ export function addLoaderRoutes(app: express.Application) {
     "/api/v1/loader/repr-v3/preview/:projectId",
     cors(),
     apiAuth,
-    createProjectScopePreviewRateLimiter(),
     createPreviewRateLimiter(),
     withNext(buildLatestLoaderReprV3)
   );
@@ -1194,7 +1190,6 @@ export function addLoaderHtmlRoutes(app: express.Application) {
     "/api/v1/loader/html/preview/:projectId/:component",
     cors(),
     apiAuth,
-    createProjectScopePreviewRateLimiter(),
     createPreviewRateLimiter(),
     buildLatestLoaderHtml
   );
