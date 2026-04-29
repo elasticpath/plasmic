@@ -135,7 +135,9 @@ function normalizeHitToCurrentProduct(
     slug,
     sku,
     description,
-    path: `/${slug}`,
+    // Match the EP ProductDetail page route (`/product/[slug]`).
+    // Falls back to id-based URL when the hit lacks a slug.
+    path: slug ? `/product/${slug}` : `/product/${hit.objectID || hit.id || ""}`,
     images: [
       {
         url: imageUrl || TRANSPARENT_PIXEL,
