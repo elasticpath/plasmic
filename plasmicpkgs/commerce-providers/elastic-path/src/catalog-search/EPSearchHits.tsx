@@ -26,6 +26,16 @@ import type { Product } from "../types/product";
 
 type PreviewState = "auto" | "withData";
 
+// Default grid layout — applied as inline style so it survives Plasmic's
+// className filter (which strips display/grid props from code component
+// instances).
+const DEFAULT_HITS_GRID_STYLE: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+  gap: "24px",
+  width: "100%",
+};
+
 interface EPSearchHitsProps {
   children?: React.ReactNode;
   className?: string;
@@ -59,17 +69,36 @@ function normalizeHitToCurrentProduct(
     (hit.ep_main_image && hit.ep_main_image.link?.href) ||
     "";
 
-  // Price: try EP catalog search price structure
-  const priceObj =
+  // Price resolution — EP catalog search exposes prices in two shapes
+  // depending on catalog config:
+  //   1. `meta.display_price.without_tax`  → preferred; pre-formatted, currency-aware
+  //   2. `attributes.price[CURRENCY].amount` (in cents) → raw fallback
+  // We also keep the older `ep_price` / `price` paths for back-compat with
+  // search backends that flatten the price object onto the hit root.
+  const displayPrice =
+    hit.meta?.display_price?.without_tax ||
+    hit.meta?.display_price?.with_tax ||
+    null;
+  const attrPriceObj =
+    hit.attributes?.price?.[currencyCode] ||
+    hit.attributes?.price?.USD ||
+    null;
+  const flatPriceObj =
     hit.ep_price?.[currencyCode] ||
     hit.price?.[currencyCode] ||
     hit.ep_price?.USD ||
     hit.price?.USD ||
     null;
   const priceValue =
-    priceObj?.float_price ?? priceObj?.amount ?? hit.price?.value ?? 0;
-  const priceCurrency = currencyCode || "USD";
-  const formatted = formatCurrency(priceValue, priceCurrency);
+    displayPrice?.float_price ??
+    flatPriceObj?.float_price ??
+    flatPriceObj?.amount ??
+    (attrPriceObj?.amount != null ? attrPriceObj.amount / 100 : undefined) ??
+    hit.price?.value ??
+    0;
+  const priceCurrency = displayPrice?.currency || currencyCode || "USD";
+  const formatted =
+    displayPrice?.formatted || formatCurrency(priceValue, priceCurrency);
 
   // Highlight results from InstantSearch
   const highlighted = hit._highlightResult || hit._highlight || {};
@@ -201,7 +230,12 @@ function MockSearchHits(props: {
   if (products.length === 0) return null;
 
   return (
-    <div className={className} role="list" aria-label="Search results">
+    <div
+      className={className}
+      role="list"
+      aria-label="Search results"
+      style={DEFAULT_HITS_GRID_STYLE}
+    >
       {products.map((product, i) => (
         <div key={product.id} role="listitem">
           <DataProvider name="currentProduct" data={product}>
@@ -242,7 +276,12 @@ function EPSearchHitsInner(props: {
   if (normalizedProducts.length === 0) return null;
 
   return (
-    <div className={className} role="list" aria-label="Search results">
+    <div
+      className={className}
+      role="list"
+      aria-label="Search results"
+      style={DEFAULT_HITS_GRID_STYLE}
+    >
       {normalizedProducts.map(
         (product: ReturnType<typeof normalizeHitToCurrentProduct>, i: number) => (
           <div key={product.id || i} role="listitem">

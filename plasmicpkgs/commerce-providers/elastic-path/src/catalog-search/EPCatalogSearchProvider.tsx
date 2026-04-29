@@ -231,9 +231,15 @@ function EPCatalogSearchProviderInner(props: {
   const searchClient = useMemo(() => {
     if (!client) return null;
     try {
-      // Dynamic require — the adapter is a default export
+      // Dynamic require — the adapter is a default export.
+      // The published 0.0.5 build ships an esbuild __toESM(..., 1)
+      // double-wrap, so `mod.default` is `{ default: <class>, __esModule: true }`
+      // instead of the class itself. Unwrap defensively to handle both shapes.
+      const mod = require("@elasticpath/catalog-search-instantsearch-adapter");
       const CatalogSearchInstantSearchAdapter =
-        require("@elasticpath/catalog-search-instantsearch-adapter").default;
+        typeof mod.default === "function"
+          ? mod.default
+          : mod.default?.default ?? mod;
       const adapter = new CatalogSearchInstantSearchAdapter({
         client,
         additionalSearchParameters: {
