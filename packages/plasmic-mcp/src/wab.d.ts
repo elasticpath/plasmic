@@ -249,6 +249,7 @@ declare module "@/wab/shared/model/classes" {
   export function isKnownRawText(x: any): boolean;
   export function isKnownExprText(x: any): boolean;
   export function isKnownCustomCode(x: any): boolean;
+  export function isKnownFunctionExpr(x: any): boolean;
   export function isKnownRenderExpr(x: any): boolean;
   export function isKnownVarRef(x: any): boolean;
   export function isKnownObjectPath(x: any): boolean;

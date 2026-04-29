@@ -35,6 +35,7 @@ import {
   isKnownNodeMarker,
   isKnownNamedState,
   isKnownEventHandler,
+  isKnownFunctionExpr,
   RawText,
   CustomCode,
   ExprText,
@@ -6013,14 +6014,15 @@ export function listInteractions(
         }
       }
 
-      // Extract args
+      // Extract args. Plasmic discriminates by `typeTag` (not `_type`), so use
+      // the model's predicate guards rather than hand-rolled string compares.
       for (const arg of interaction.args ?? []) {
         const argExpr = arg.expr;
         if (isKnownCustomCode(argExpr)) {
           info.args[arg.name] = argExpr.code;
         } else if (isKnownObjectPath(argExpr)) {
           info.args[arg.name] = argExpr.path.join(".");
-        } else if (argExpr?._type === "FunctionExpr" && argExpr.bodyExpr) {
+        } else if (isKnownFunctionExpr(argExpr) && argExpr.bodyExpr) {
           if (isKnownCustomCode(argExpr.bodyExpr)) {
             info.args[arg.name] = argExpr.bodyExpr.code;
           }
@@ -6058,12 +6060,49 @@ function buildActionArgs(actionName: string, args: Record<string, string>, compo
       if (!destination) {
         throw new Error('Action "navigation" requires a "destination" arg (URL or expression).');
       }
-      nameArgs.push(new NameArg({
-        name: "destination",
-        expr: new CustomCode({ code: destination.startsWith('"') || destination.startsWith("'")
-          ? destination
-          : JSON.stringify(destination), fallback: null }),
-      }));
+      // Resolve the destination into either:
+      //   - an ObjectPath when the value is a simple `$ctx.foo.bar` style
+      //     reference. Plasmic codegen emits CustomCode in navigation
+      //     destinations as a string-coerced value (the `c={destination:"..."}`
+      //     form we observed at runtime), so dynamic context references
+      //     have to flow through ObjectPath to be resolved at render time.
+      //   - a JS expression (CustomCode `code`) for everything else.
+      // Accepted user input shapes (mirroring `update-attrs`):
+      //   1. `{{<expr>}}`          → unwrap, then route by content
+      //   2. `$<expr>`             → strip one `$`, then route by content
+      //   3. `"..."` / `'...'`     → string-literal expression as-is (URL-ish)
+      //   4. anything else         → JSON-stringify as a plain URL string
+      const PATH_PATTERN = /^\$(ctx|state|props|queries|pageCtx)(\.[A-Za-z_$][\w$]*)+$/;
+      const stripped = (() => {
+        if (destination.startsWith("{{") && destination.endsWith("}}")) {
+          return destination.slice(2, -2).trim();
+        }
+        if (destination.startsWith("$")) {
+          return destination.slice(1);
+        }
+        return null;
+      })();
+      if (stripped && PATH_PATTERN.test(stripped)) {
+        // Dotted member-access on $ctx / $state / etc. → ObjectPath.
+        // Plasmic resolves ObjectPath against the live data context at
+        // render time, so codegen emits a property access (not a
+        // string-quoted literal).
+        const path = stripped.split(".");
+        nameArgs.push(new NameArg({
+          name: "destination",
+          expr: new ObjectPath({ path, fallback: null }),
+        }));
+      } else {
+        const code =
+          stripped ??
+          (destination.startsWith('"') || destination.startsWith("'")
+            ? destination
+            : JSON.stringify(destination));
+        nameArgs.push(new NameArg({
+          name: "destination",
+          expr: new CustomCode({ code, fallback: null }),
+        }));
+      }
       break;
     }
 
