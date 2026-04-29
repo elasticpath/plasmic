@@ -29,16 +29,33 @@ type PreviewState = "auto" | "withData";
 // Default grid layout — applied as inline style so it survives Plasmic's
 // className filter (which strips display/grid props from code component
 // instances).
-const DEFAULT_HITS_GRID_STYLE: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-  gap: "24px",
-  width: "100%",
-};
+//
+// `align-self: stretch` keeps the grid full-width when its parent is a flex
+// container with `align-items: center` (a common Plasmic page layout).
+// Without it the grid collapses to its `min-content` (one column) because
+// flex defaults each child to `align-self: auto`.
+function buildHitsGridStyle(
+  gridTemplateColumns: string,
+  gap: string
+): React.CSSProperties {
+  return {
+    display: "grid",
+    gridTemplateColumns,
+    gap,
+    width: "100%",
+    alignSelf: "stretch",
+  };
+}
+
+const DEFAULT_GRID_TEMPLATE_COLUMNS =
+  "repeat(auto-fill, minmax(220px, 1fr))";
+const DEFAULT_GRID_GAP = "24px";
 
 interface EPSearchHitsProps {
   children?: React.ReactNode;
   className?: string;
+  gridTemplateColumns?: string;
+  gridGap?: string;
   previewState?: PreviewState;
 }
 
@@ -196,6 +213,19 @@ export const epSearchHitsMeta: CodeComponentMeta<EPSearchHitsProps> = {
         },
       ],
     },
+    gridTemplateColumns: {
+      type: "string",
+      displayName: "Grid Template Columns",
+      description:
+        "CSS grid-template-columns value applied to the hits container. Defaults to a responsive auto-fill. Plasmic strips display/grid styles set in the canvas Style panel from code components, so this prop is the supported way to override the layout.",
+      defaultValue: DEFAULT_GRID_TEMPLATE_COLUMNS,
+    },
+    gridGap: {
+      type: "string",
+      displayName: "Grid Gap",
+      description: "CSS gap between hit cards.",
+      defaultValue: DEFAULT_GRID_GAP,
+    },
     previewState: {
       type: "choice",
       options: ["auto", "withData"],
@@ -211,28 +241,41 @@ export const epSearchHitsMeta: CodeComponentMeta<EPSearchHitsProps> = {
 };
 
 export function EPSearchHits(props: EPSearchHitsProps) {
-  const { children, className, previewState = "auto" } = props;
+  const {
+    children,
+    className,
+    gridTemplateColumns = DEFAULT_GRID_TEMPLATE_COLUMNS,
+    gridGap = DEFAULT_GRID_GAP,
+    previewState = "auto",
+  } = props;
 
   const inEditor = !!usePlasmicCanvasContext();
   const useMock =
     previewState === "withData" || (previewState === "auto" && inEditor);
 
+  const gridStyle = buildHitsGridStyle(gridTemplateColumns, gridGap);
+
   if (useMock) {
     return (
-      <MockSearchHits className={className}>{children}</MockSearchHits>
+      <MockSearchHits className={className} gridStyle={gridStyle}>
+        {children}
+      </MockSearchHits>
     );
   }
 
   return (
-    <EPSearchHitsInner className={className}>{children}</EPSearchHitsInner>
+    <EPSearchHitsInner className={className} gridStyle={gridStyle}>
+      {children}
+    </EPSearchHitsInner>
   );
 }
 
 function MockSearchHits(props: {
   children?: React.ReactNode;
   className?: string;
+  gridStyle: React.CSSProperties;
 }) {
-  const { children, className } = props;
+  const { children, className, gridStyle } = props;
 
   const products = useMemo(
     () => MOCK_SEARCH_PRODUCTS.map(buildMockCurrentProduct),
@@ -246,7 +289,7 @@ function MockSearchHits(props: {
       className={className}
       role="list"
       aria-label="Search results"
-      style={DEFAULT_HITS_GRID_STYLE}
+      style={gridStyle}
     >
       {products.map((product, i) => (
         <div key={product.id} role="listitem">
@@ -264,8 +307,9 @@ function MockSearchHits(props: {
 function EPSearchHitsInner(props: {
   children?: React.ReactNode;
   className?: string;
+  gridStyle: React.CSSProperties;
 }) {
-  const { children, className } = props;
+  const { children, className, gridStyle } = props;
 
   const { useHits, useInstantSearch } = require("react-instantsearch");
   const { hits } = useHits();
@@ -292,7 +336,7 @@ function EPSearchHitsInner(props: {
       className={className}
       role="list"
       aria-label="Search results"
-      style={DEFAULT_HITS_GRID_STYLE}
+      style={gridStyle}
     >
       {normalizedProducts.map(
         (product: ReturnType<typeof normalizeHitToCurrentProduct>, i: number) => (

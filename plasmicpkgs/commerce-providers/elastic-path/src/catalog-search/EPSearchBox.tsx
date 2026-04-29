@@ -17,6 +17,7 @@ type PreviewState = "auto" | "withData";
 const DEFAULT_SEARCH_BOX_WRAPPER_STYLE: React.CSSProperties = {
   position: "relative",
   width: "100%",
+  alignSelf: "stretch",
   display: "flex",
   alignItems: "center",
 };
