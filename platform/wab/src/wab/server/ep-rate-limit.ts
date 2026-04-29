@@ -269,11 +269,18 @@ function makeRateLimiter(
 
     return async (req: Request, res: Response, next: NextFunction) => {
       if (!redis) {
+        logger().debug("Rate limiter skipped: Redis not configured", { envVar });
         return next();
       }
       try {
         const keys = await resolveRateLimitKeys(redis, req);
-        if (keys.size === 0) return next();
+        if (keys.size === 0) {
+          logger().debug("Rate limiter skipped: no auth identity resolved", {
+            envVar,
+            url: req.url,
+          });
+          return next();
+        }
         const blocked = await enforceRateLimit(redis, res, keys, windowSec, limit);
         if (blocked) return;
       } catch (err) {
