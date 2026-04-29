@@ -1,7 +1,7 @@
 {
   "manifest_version": "0.2",
   "name": "Visual Builder",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Edit Visual Builder projects with AI — design, build, and manage pages, components, and design systems.",
   "author": {
     "name": "Elastic Path"
