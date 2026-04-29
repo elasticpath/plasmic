@@ -14,6 +14,46 @@ import { Registerable } from "../registerable";
 
 type PreviewState = "auto" | "withData";
 
+const DEFAULT_SEARCH_BOX_WRAPPER_STYLE: React.CSSProperties = {
+  position: "relative",
+  width: "100%",
+  alignSelf: "stretch",
+  display: "flex",
+  alignItems: "center",
+};
+
+const DEFAULT_SEARCH_BOX_INPUT_STYLE: React.CSSProperties = {
+  width: "100%",
+  height: "44px",
+  padding: "0 44px 0 16px",
+  border: "1px solid #e7e5e4",
+  borderRadius: "8px",
+  backgroundColor: "#ffffff",
+  fontSize: "14px",
+  color: "#1c1917",
+  outline: "none",
+  fontFamily: "inherit",
+};
+
+const DEFAULT_SEARCH_BOX_CLEAR_BUTTON_STYLE: React.CSSProperties = {
+  position: "absolute",
+  right: "8px",
+  top: "50%",
+  transform: "translateY(-50%)",
+  width: "28px",
+  height: "28px",
+  border: "none",
+  borderRadius: "6px",
+  backgroundColor: "transparent",
+  color: "#a8a29e",
+  cursor: "pointer",
+  fontSize: "18px",
+  lineHeight: "1",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
+
 interface EPSearchBoxProps {
   className?: string;
   placeholder?: string;
@@ -79,17 +119,21 @@ export function EPSearchBox(props: EPSearchBoxProps) {
 
   if (useMock) {
     return (
-      <div className={className} data-ep-search-box="">
+      <div className={className} data-ep-search-box="" style={DEFAULT_SEARCH_BOX_WRAPPER_STYLE}>
         <input
           type="search"
           placeholder={placeholder}
           autoFocus={autoFocus}
           defaultValue="leather"
           readOnly
-          style={{ width: "100%" }}
+          style={DEFAULT_SEARCH_BOX_INPUT_STYLE}
         />
         {showClear && (
-          <button type="button" aria-label="Clear search">
+          <button
+            type="button"
+            aria-label="Clear search"
+            style={DEFAULT_SEARCH_BOX_CLEAR_BUTTON_STYLE}
+          >
             &times;
           </button>
         )}
@@ -159,7 +203,7 @@ function EPSearchBoxInner(props: {
   }, []);
 
   return (
-    <div className={className} data-ep-search-box="">
+    <div className={className} data-ep-search-box="" style={DEFAULT_SEARCH_BOX_WRAPPER_STYLE}>
       <input
         type="search"
         placeholder={placeholder}
@@ -169,7 +213,12 @@ function EPSearchBoxInner(props: {
         style={{ width: "100%" }}
       />
       {showClear && inputValue && (
-        <button type="button" aria-label="Clear search" onClick={handleClear}>
+        <button
+          type="button"
+          aria-label="Clear search"
+          onClick={handleClear}
+          style={DEFAULT_SEARCH_BOX_CLEAR_BUTTON_STYLE}
+        >
           &times;
         </button>
       )}

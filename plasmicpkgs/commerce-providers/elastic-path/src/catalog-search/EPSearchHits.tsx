@@ -26,9 +26,36 @@ import type { Product } from "../types/product";
 
 type PreviewState = "auto" | "withData";
 
+// Default grid layout — applied as inline style so it survives Plasmic's
+// className filter (which strips display/grid props from code component
+// instances).
+//
+// `align-self: stretch` keeps the grid full-width when its parent is a flex
+// container with `align-items: center` (a common Plasmic page layout).
+// Without it the grid collapses to its `min-content` (one column) because
+// flex defaults each child to `align-self: auto`.
+function buildHitsGridStyle(
+  gridTemplateColumns: string,
+  gap: string
+): React.CSSProperties {
+  return {
+    display: "grid",
+    gridTemplateColumns,
+    gap,
+    width: "100%",
+    alignSelf: "stretch",
+  };
+}
+
+const DEFAULT_GRID_TEMPLATE_COLUMNS =
+  "repeat(auto-fill, minmax(220px, 1fr))";
+const DEFAULT_GRID_GAP = "24px";
+
 interface EPSearchHitsProps {
   children?: React.ReactNode;
   className?: string;
+  gridTemplateColumns?: string;
+  gridGap?: string;
   previewState?: PreviewState;
 }
 
@@ -51,7 +78,9 @@ function normalizeHitToCurrentProduct(
     hit.attributes?.description ||
     "";
 
-  // Image: try multiple patterns
+  // Image: try multiple patterns. EP catalog-search hits don't denormalize
+  // file URLs by default (`relationships.main_image.data.id` is just a UUID),
+  // so for unconfigured catalogs imageUrl will be empty.
   const imageUrl =
     hit.ep_main_image_url ||
     hit.main_image_url ||
@@ -59,17 +88,43 @@ function normalizeHitToCurrentProduct(
     (hit.ep_main_image && hit.ep_main_image.link?.href) ||
     "";
 
-  // Price: try EP catalog search price structure
-  const priceObj =
+  // 1x1 transparent gif — keeps the <img src> attribute non-empty so the
+  // browser doesn't issue a self-referential request (and React's
+  // empty-string warning stays silent) while letting the surrounding
+  // styles render the visual placeholder.
+  const TRANSPARENT_PIXEL =
+    "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
+  // Price resolution — EP catalog search exposes prices in two shapes
+  // depending on catalog config:
+  //   1. `meta.display_price.without_tax`  → preferred; pre-formatted, currency-aware
+  //   2. `attributes.price[CURRENCY].amount` (in cents) → raw fallback
+  // We also keep the older `ep_price` / `price` paths for back-compat with
+  // search backends that flatten the price object onto the hit root.
+  const displayPrice =
+    hit.meta?.display_price?.without_tax ||
+    hit.meta?.display_price?.with_tax ||
+    null;
+  const attrPriceObj =
+    hit.attributes?.price?.[currencyCode] ||
+    hit.attributes?.price?.USD ||
+    null;
+  const flatPriceObj =
     hit.ep_price?.[currencyCode] ||
     hit.price?.[currencyCode] ||
     hit.ep_price?.USD ||
     hit.price?.USD ||
     null;
   const priceValue =
-    priceObj?.float_price ?? priceObj?.amount ?? hit.price?.value ?? 0;
-  const priceCurrency = currencyCode || "USD";
-  const formatted = formatCurrency(priceValue, priceCurrency);
+    displayPrice?.float_price ??
+    flatPriceObj?.float_price ??
+    flatPriceObj?.amount ??
+    (attrPriceObj?.amount != null ? attrPriceObj.amount / 100 : undefined) ??
+    hit.price?.value ??
+    0;
+  const priceCurrency = displayPrice?.currency || currencyCode || "USD";
+  const formatted =
+    displayPrice?.formatted || formatCurrency(priceValue, priceCurrency);
 
   // Highlight results from InstantSearch
   const highlighted = hit._highlightResult || hit._highlight || {};
@@ -80,10 +135,15 @@ function normalizeHitToCurrentProduct(
     slug,
     sku,
     description,
-    path: `/${slug}`,
-    images: imageUrl
-      ? [{ url: imageUrl, alt: name }]
-      : [],
+    // Match the EP ProductDetail page route (`/product/[slug]`).
+    // Falls back to id-based URL when the hit lacks a slug.
+    path: slug ? `/product/${slug}` : `/product/${hit.objectID || hit.id || ""}`,
+    images: [
+      {
+        url: imageUrl || TRANSPARENT_PIXEL,
+        alt: name,
+      },
+    ],
     price: {
       value: priceValue,
       currencyCode: priceCurrency,
@@ -155,6 +215,19 @@ export const epSearchHitsMeta: CodeComponentMeta<EPSearchHitsProps> = {
         },
       ],
     },
+    gridTemplateColumns: {
+      type: "string",
+      displayName: "Grid Template Columns",
+      description:
+        "CSS grid-template-columns value applied to the hits container. Defaults to a responsive auto-fill. Plasmic strips display/grid styles set in the canvas Style panel from code components, so this prop is the supported way to override the layout.",
+      defaultValue: DEFAULT_GRID_TEMPLATE_COLUMNS,
+    },
+    gridGap: {
+      type: "string",
+      displayName: "Grid Gap",
+      description: "CSS gap between hit cards.",
+      defaultValue: DEFAULT_GRID_GAP,
+    },
     previewState: {
       type: "choice",
       options: ["auto", "withData"],
@@ -170,28 +243,41 @@ export const epSearchHitsMeta: CodeComponentMeta<EPSearchHitsProps> = {
 };
 
 export function EPSearchHits(props: EPSearchHitsProps) {
-  const { children, className, previewState = "auto" } = props;
+  const {
+    children,
+    className,
+    gridTemplateColumns = DEFAULT_GRID_TEMPLATE_COLUMNS,
+    gridGap = DEFAULT_GRID_GAP,
+    previewState = "auto",
+  } = props;
 
   const inEditor = !!usePlasmicCanvasContext();
   const useMock =
     previewState === "withData" || (previewState === "auto" && inEditor);
 
+  const gridStyle = buildHitsGridStyle(gridTemplateColumns, gridGap);
+
   if (useMock) {
     return (
-      <MockSearchHits className={className}>{children}</MockSearchHits>
+      <MockSearchHits className={className} gridStyle={gridStyle}>
+        {children}
+      </MockSearchHits>
     );
   }
 
   return (
-    <EPSearchHitsInner className={className}>{children}</EPSearchHitsInner>
+    <EPSearchHitsInner className={className} gridStyle={gridStyle}>
+      {children}
+    </EPSearchHitsInner>
   );
 }
 
 function MockSearchHits(props: {
   children?: React.ReactNode;
   className?: string;
+  gridStyle: React.CSSProperties;
 }) {
-  const { children, className } = props;
+  const { children, className, gridStyle } = props;
 
   const products = useMemo(
     () => MOCK_SEARCH_PRODUCTS.map(buildMockCurrentProduct),
@@ -201,7 +287,12 @@ function MockSearchHits(props: {
   if (products.length === 0) return null;
 
   return (
-    <div className={className} role="list" aria-label="Search results">
+    <div
+      className={className}
+      role="list"
+      aria-label="Search results"
+      style={gridStyle}
+    >
       {products.map((product, i) => (
         <div key={product.id} role="listitem">
           <DataProvider name="currentProduct" data={product}>
@@ -218,8 +309,9 @@ function MockSearchHits(props: {
 function EPSearchHitsInner(props: {
   children?: React.ReactNode;
   className?: string;
+  gridStyle: React.CSSProperties;
 }) {
-  const { children, className } = props;
+  const { children, className, gridStyle } = props;
 
   const { useHits, useInstantSearch } = require("react-instantsearch");
   const { hits } = useHits();
@@ -242,7 +334,12 @@ function EPSearchHitsInner(props: {
   if (normalizedProducts.length === 0) return null;
 
   return (
-    <div className={className} role="list" aria-label="Search results">
+    <div
+      className={className}
+      role="list"
+      aria-label="Search results"
+      style={gridStyle}
+    >
       {normalizedProducts.map(
         (product: ReturnType<typeof normalizeHitToCurrentProduct>, i: number) => (
           <div key={product.id || i} role="listitem">

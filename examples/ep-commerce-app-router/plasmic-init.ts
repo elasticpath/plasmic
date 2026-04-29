@@ -10,6 +10,10 @@ export const PLASMIC = initPlasmicLoader({
   ],
   host: "http://localhost:3003",
   preview: true,
+  // Dev-only: bypass loader's in-process cache so MCP / Studio edits take
+  // effect on the next request without a Next dev restart. Trade: an extra
+  // wab fetch per request. Drop this for prod builds.
+  alwaysFresh: process.env.NODE_ENV !== "production",
   // Required to receive server-queries exec modules
   // (serverQueriesExecFuncFileName per page) in the bundle.
   platformOptions: { nextjs: { appDir: true } },

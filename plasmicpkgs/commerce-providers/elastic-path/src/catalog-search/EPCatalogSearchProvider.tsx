@@ -24,6 +24,16 @@ import type { CatalogSearchData } from "./design-time-data";
 
 type PreviewState = "auto" | "withData" | "loading" | "empty" | "error";
 
+// Defensive default — Plasmic strips display/grid styles from code component
+// instances, and centered flex-column page shells (the most common Plasmic
+// layout) collapse children to content-width unless the child explicitly
+// stretches. Without this, the entire catalog-search subtree renders at
+// max-content width regardless of how the surrounding page is configured.
+const DEFAULT_PROVIDER_WRAPPER_STYLE: React.CSSProperties = {
+  width: "100%",
+  alignSelf: "stretch",
+};
+
 interface EPCatalogSearchProviderProps {
   children?: React.ReactNode;
   errorContent?: React.ReactNode;
@@ -143,14 +153,14 @@ export function EPCatalogSearchProvider(props: EPCatalogSearchProviderProps) {
   if (inEditor) {
     if (previewState === "loading") {
       return (
-        <div className={className} data-ep-catalog-search-provider="">
+        <div className={className} style={DEFAULT_PROVIDER_WRAPPER_STYLE} data-ep-catalog-search-provider="">
           Loading...
         </div>
       );
     }
     if (previewState === "error") {
       return (
-        <div className={className} data-ep-catalog-search-provider="">
+        <div className={className} style={DEFAULT_PROVIDER_WRAPPER_STYLE} data-ep-catalog-search-provider="">
           {errorContent}
         </div>
       );
@@ -165,7 +175,7 @@ export function EPCatalogSearchProvider(props: EPCatalogSearchProviderProps) {
             query: "",
           }}
         >
-          <div className={className} data-ep-catalog-search-provider="">
+          <div className={className} style={DEFAULT_PROVIDER_WRAPPER_STYLE} data-ep-catalog-search-provider="">
             {children}
           </div>
         </DataProvider>
@@ -179,7 +189,7 @@ export function EPCatalogSearchProvider(props: EPCatalogSearchProviderProps) {
   if (useMock) {
     return (
       <DataProvider name="catalogSearchData" data={MOCK_CATALOG_SEARCH_DATA}>
-        <div className={className} data-ep-catalog-search-provider="">
+        <div className={className} style={DEFAULT_PROVIDER_WRAPPER_STYLE} data-ep-catalog-search-provider="">
           {children}
         </div>
       </DataProvider>
@@ -231,9 +241,15 @@ function EPCatalogSearchProviderInner(props: {
   const searchClient = useMemo(() => {
     if (!client) return null;
     try {
-      // Dynamic require — the adapter is a default export
+      // Dynamic require — the adapter is a default export.
+      // The published 0.0.5 build ships an esbuild __toESM(..., 1)
+      // double-wrap, so `mod.default` is `{ default: <class>, __esModule: true }`
+      // instead of the class itself. Unwrap defensively to handle both shapes.
+      const mod = require("@elasticpath/catalog-search-instantsearch-adapter");
       const CatalogSearchInstantSearchAdapter =
-        require("@elasticpath/catalog-search-instantsearch-adapter").default;
+        typeof mod.default === "function"
+          ? mod.default
+          : mod.default?.default ?? mod;
       const adapter = new CatalogSearchInstantSearchAdapter({
         client,
         additionalSearchParameters: {
@@ -252,7 +268,7 @@ function EPCatalogSearchProviderInner(props: {
 
   if (!searchClient) {
     return (
-      <div className={className} data-ep-catalog-search-provider="">
+      <div className={className} style={DEFAULT_PROVIDER_WRAPPER_STYLE} data-ep-catalog-search-provider="">
         {errorContent || (
           <div>
             Catalog Search is not available. Ensure the adapter is installed and
@@ -280,7 +296,7 @@ function EPCatalogSearchProviderInner(props: {
     >
       <Configure hitsPerPage={hitsPerPage} />
       <DataProvider name="catalogSearchData" data={catalogSearchData}>
-        <div className={className} data-ep-catalog-search-provider="">
+        <div className={className} style={DEFAULT_PROVIDER_WRAPPER_STYLE} data-ep-catalog-search-provider="">
           {children}
         </div>
       </DataProvider>
