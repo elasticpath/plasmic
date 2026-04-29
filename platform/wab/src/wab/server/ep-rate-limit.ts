@@ -39,6 +39,9 @@ function getRedisClient(): Redis | undefined {
       tls: process.env.REDIS_TLS === "false" ? undefined : {},
       lazyConnect: true,
     });
+    _redisClient.on("error", (err) => {
+      logger().error("Redis client error", { err, host: process.env.REDIS_HOST });
+    });
   }
   return _redisClient;
 }
