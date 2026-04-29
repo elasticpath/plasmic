@@ -35,6 +35,7 @@ import {
   isKnownNodeMarker,
   isKnownNamedState,
   isKnownEventHandler,
+  isKnownFunctionExpr,
   RawText,
   CustomCode,
   ExprText,
@@ -6013,14 +6014,15 @@ export function listInteractions(
         }
       }
 
-      // Extract args
+      // Extract args. Plasmic discriminates by `typeTag` (not `_type`), so use
+      // the model's predicate guards rather than hand-rolled string compares.
       for (const arg of interaction.args ?? []) {
         const argExpr = arg.expr;
         if (isKnownCustomCode(argExpr)) {
           info.args[arg.name] = argExpr.code;
         } else if (isKnownObjectPath(argExpr)) {
           info.args[arg.name] = argExpr.path.join(".");
-        } else if (argExpr?._type === "FunctionExpr" && argExpr.bodyExpr) {
+        } else if (isKnownFunctionExpr(argExpr) && argExpr.bodyExpr) {
           if (isKnownCustomCode(argExpr.bodyExpr)) {
             info.args[arg.name] = argExpr.bodyExpr.code;
           }
@@ -6058,11 +6060,31 @@ function buildActionArgs(actionName: string, args: Record<string, string>, compo
       if (!destination) {
         throw new Error('Action "navigation" requires a "destination" arg (URL or expression).');
       }
+      // The stored CustomCode `code` is emitted verbatim into the codegen
+      // navigate() call, so it must be a JS expression. Four accepted shapes:
+      //   1. `{{<expr>}}`          → use <expr> as a dynamic binding
+      //   2. `$<expr>`             → strip one `$` and use the rest as the
+      //                              expression (matches update-attrs:
+      //                              `$$ctx.foo` → `$ctx.foo`)
+      //   3. `"..."` / `'...'`     → already a string-literal expression
+      //   4. anything else         → treat as a plain URL string, JSON-stringify it
+      // Without (1)/(2) there was no way to bind navigation to `$ctx.*` data,
+      // and the value rendered as a literal "/$ctx.currentProduct.path".
+      const code = (() => {
+        if (destination.startsWith("{{") && destination.endsWith("}}")) {
+          return destination.slice(2, -2).trim();
+        }
+        if (destination.startsWith("$")) {
+          return destination.slice(1);
+        }
+        if (destination.startsWith('"') || destination.startsWith("'")) {
+          return destination;
+        }
+        return JSON.stringify(destination);
+      })();
       nameArgs.push(new NameArg({
         name: "destination",
-        expr: new CustomCode({ code: destination.startsWith('"') || destination.startsWith("'")
-          ? destination
-          : JSON.stringify(destination), fallback: null }),
+        expr: new CustomCode({ code, fallback: null }),
       }));
       break;
     }

@@ -256,6 +256,60 @@ describe("addInteraction", () => {
     expect(handler.interactions[0].args[0].name).toBe("destination");
   });
 
+  it("treats {{...}}-wrapped destination as a JS expression", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {};
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await addInteraction(
+      api, "comp-1", "root-1", "onClick", "navigation",
+      { destination: "{{$ctx.currentProduct.path}}" }
+    );
+
+    const dest = root.vsettings[0].attrs.onClick.interactions[0].args[0].expr;
+    expect(dest.code).toBe("$ctx.currentProduct.path");
+  });
+
+  it("treats $-prefixed destination as a JS expression", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {};
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await addInteraction(
+      api, "comp-1", "root-1", "onClick", "navigation",
+      { destination: "$$ctx.currentProduct.path" }
+    );
+
+    const dest = root.vsettings[0].attrs.onClick.interactions[0].args[0].expr;
+    expect(dest.code).toBe("$ctx.currentProduct.path");
+  });
+
+  it("JSON-stringifies a plain URL destination (existing behaviour)", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {};
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await addInteraction(
+      api, "comp-1", "root-1", "onClick", "navigation",
+      { destination: "/about" }
+    );
+
+    const dest = root.vsettings[0].attrs.onClick.interactions[0].args[0].expr;
+    expect(dest.code).toBe('"/about"');
+  });
+
   it("adds an updateVariable interaction with aliases", async () => {
     const root = mkTag({ uuid: "root-1" });
     root.vsettings[0].attrs = {};

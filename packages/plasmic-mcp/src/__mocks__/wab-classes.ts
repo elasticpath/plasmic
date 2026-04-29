@@ -16,6 +16,8 @@ export const isKnownExprText = (obj: any): boolean =>
   obj?._type === "ExprText";
 export const isKnownCustomCode = (obj: any): boolean =>
   obj?._type === "CustomCode";
+export const isKnownFunctionExpr = (obj: any): boolean =>
+  obj?._type === "FunctionExpr";
 export const isKnownRenderExpr = (obj: any): boolean =>
   obj?._type === "RenderExpr";
 export const isKnownVarRef = (obj: any): boolean => obj?._type === "VarRef";
