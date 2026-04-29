@@ -8,14 +8,16 @@ import registerComponent, {
 } from "@plasmicapp/host/registerComponent";
 import React, { useState } from "react";
 import { useFormContext } from "react-hook-form";
+import { mutate as swrMutate } from "swr";
 import type { Product } from "@plasmicpkgs/commerce";
-import useAddItem from "./cart/use-add-item";
 import { Registerable } from "./registerable";
 import { createLogger } from "./utils/logger";
 import {
   extractCartItemFromForm,
   validateAndParseQuantity,
 } from "./cart/utils/cartDataBuilder";
+import { callEpProxy } from "./ep-server-functions/proxy-fetch";
+import { epCartCacheKey } from "./cart-provider/cache-keys";
 
 const log = createLogger("EPAddToCartButton");
 
@@ -62,7 +64,6 @@ export function EPAddToCartButton(props: EPAddToCartButtonProps) {
 
   const product = useSelector("currentProduct") as Product | undefined;
   const form = useFormContext();
-  const addItem = useAddItem();
   const inEditor = !!usePlasmicCanvasContext();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -92,8 +93,6 @@ export function EPAddToCartButton(props: EPAddToCartButtonProps) {
 
     try {
       const formValues = form ? form.getValues() : {};
-      log.debug("Form values", formValues as Record<string, unknown>);
-
       const quantityValidation = validateAndParseQuantity(
         formValues["ProductQuantity"] ?? 1
       );
@@ -103,14 +102,34 @@ export function EPAddToCartButton(props: EPAddToCartButtonProps) {
       }
 
       const cartItem = extractCartItemFromForm(formValues, product, {});
-      log.debug("Cart item", { ...cartItem } as Record<string, unknown>);
+      const customInputs = cartItem.selectedOptions?.length
+        ? { _selectedOptions: cartItem.selectedOptions }
+        : undefined;
 
-      await addItem(cartItem);
+      await callEpProxy(
+        "addCartItem",
+        {
+          productId: cartItem.variantId || cartItem.productId || product.id,
+          quantity: cartItem.quantity ?? 1,
+          ...(customInputs ? { customInputs } : {}),
+          ...(cartItem.bundleConfiguration
+            ? { bundleConfiguration: cartItem.bundleConfiguration }
+            : {}),
+          ...(cartItem.locationId ? { location: cartItem.locationId } : {}),
+        },
+        null
+      );
+
+      // Refresh any EPCartProvider in the tree.
+      await swrMutate(epCartCacheKey());
+
       log.info("Item added to cart successfully");
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to add item to cart";
-      log.error("Add to cart failed", { error: message } as Record<string, unknown>);
+      log.error("Add to cart failed", {
+        error: message,
+      } as Record<string, unknown>);
       setError(message);
     } finally {
       setIsLoading(false);

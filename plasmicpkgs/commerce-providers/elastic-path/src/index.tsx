@@ -1,6 +1,7 @@
 import { registerCommerceProvider } from "./registerCommerceProvider";
 import { registerShopperContext } from "./shopper-context/registerShopperContext";
 import { registerEPAddToCartButton } from "./registerEPAddToCartButton";
+import { registerEPCartProvider } from "./cart-provider/EPCartProvider";
 import { registerEPBundleConfigurator } from "./registerEPBundleConfigurator";
 import { registerEPMultiLocationStock } from "./registerEPMultiLocationStock";
 import { registerEPProductVariantPicker } from "./registerEPProductVariantPicker";
@@ -56,6 +57,18 @@ import { Registerable } from "./registerable";
 export * from "./elastic-path";
 export * from "./registerCommerceProvider";
 export * from "./registerEPAddToCartButton";
+export {
+  EPCartProvider,
+  registerEPCartProvider,
+  epCartProviderMeta,
+} from "./cart-provider/EPCartProvider";
+export { useEpCart } from "./cart-provider/use-ep-cart";
+export type { UseEpCartReturn } from "./cart-provider/use-ep-cart";
+export {
+  epCartCacheKey,
+  EP_CART_CACHE_KEY,
+} from "./cart-provider/cache-keys";
+export type { EpCartCacheKey } from "./cart-provider/cache-keys";
 export * from "./registerEPBundleConfigurator";
 export * from "./registerEPProductVariantPicker";
 export * from "./registerCheckout";
@@ -82,6 +95,9 @@ export function registerAll(loader?: Registerable) {
   registerEPVariationPicker(loader);
   registerEPVariationOptionList(loader);
   registerEPVariationOptionTrigger(loader);
+
+  // Cart provider — exposes $ctx.cart to descendants
+  registerEPCartProvider(loader);
 
   // Add to cart
   registerEPAddToCartButton(loader);

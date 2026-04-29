@@ -90,3 +90,12 @@ export type {
   EpSessionContext,
   EpServerAuth,
 } from "./ep-server-functions";
+
+// SSR cart-seed helper (consumed in a Next root layout to prime the SWR
+// fallback so EPCartProvider has correct data on first paint).
+export { seedCartFallback } from "./cart-provider/seed-cart-fallback";
+export {
+  epCartCacheKey,
+  EP_CART_CACHE_KEY,
+} from "./cart-provider/cache-keys";
+export type { EpCartCacheKey } from "./cart-provider/cache-keys";
