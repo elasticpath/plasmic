@@ -39,6 +39,9 @@ function getRedisClient(): Redis | undefined {
       tls: process.env.REDIS_TLS === "false" ? undefined : {},
       lazyConnect: true,
     });
+    _redisClient.on("error", (err) => {
+      logger().error("Redis client error", { err, host: process.env.REDIS_HOST });
+    });
   }
   return _redisClient;
 }
@@ -246,6 +249,16 @@ async function enforceRateLimit(
   const maxCount = Math.max(...counts);
   res.setHeader("RateLimit-Limit", String(limit));
   res.setHeader("RateLimit-Remaining", String(Math.max(0, limit - maxCount)));
+
+  for (const [i, key] of keyList.entries()) {
+    logger().info("Rate limit bucket", {
+      key,
+      count: counts[i],
+      limit,
+      remaining: Math.max(0, limit - counts[i]),
+      windowSec,
+    });
+  }
 
   if (counts.some((count) => count > limit)) {
     res.status(429).json({ error: "Too many requests, please try again later." });
