@@ -419,12 +419,28 @@ describe("createCmsScopeRateLimiter", () => {
 // Identity request helpers
 // ---------------------------------------------------------------------------
 
-function makeUserReq(userId: string): Request {
-  return { user: { id: userId }, ip: "1.2.3.4" } as unknown as Request;
+function makeUserReq(
+  userId: string,
+  em: EntityManager = createMockEm()
+): Request {
+  return {
+    headers: {},
+    noTxMgr: em,
+    user: { id: userId },
+    ip: "1.2.3.4",
+  } as unknown as Request;
 }
 
-function makeTeamReq(teamId: string): Request {
-  return { apiTeam: { id: teamId }, ip: "1.2.3.4" } as unknown as Request;
+function makeTeamReq(
+  teamId: string,
+  em: EntityManager = createMockEm()
+): Request {
+  return {
+    headers: {},
+    noTxMgr: em,
+    apiTeam: { id: teamId },
+    ip: "1.2.3.4",
+  } as unknown as Request;
 }
 
 // ---------------------------------------------------------------------------
@@ -524,12 +540,12 @@ describe("createPreviewRateLimiter", () => {
     );
   });
 
-  it("falls back to default limit (300) when env var is not a valid number", async () => {
-    const original = process.env.RATE_LIMIT_PREVIEW_PER_USER;
-    process.env.RATE_LIMIT_PREVIEW_PER_USER = "notanumber";
+  it("falls back to default limit (600) when env var is not a valid number", async () => {
+    const original = process.env.RATE_LIMIT_PREVIEW_PER_SCOPE;
+    process.env.RATE_LIMIT_PREVIEW_PER_SCOPE = "notanumber";
     try {
-      // Seed counter at 300 so the next INCR returns 301 — above the default limit.
-      const { redis } = createMockRedis({}, { "rl:user:user1": 300 });
+      // Seed counter at 600 so the next INCR returns 601 — above the default limit.
+      const { redis } = createMockRedis({}, { "rl:user:user1": 600 });
       // Pass redis via deps but not limit — forces env var code path.
       const middleware = createPreviewRateLimiter({ redis });
       const next = jest.fn() as unknown as NextFunction;
@@ -538,11 +554,11 @@ describe("createPreviewRateLimiter", () => {
       await middleware(makeUserReq("user1"), res, next);
 
       // If NaN were used as the limit, count > NaN would be false and we'd pass through.
-      // Getting a 429 proves the default (300) was used instead.
+      // Getting a 429 proves the default (600) was used instead.
       expect(status).toHaveBeenCalledWith(429);
       expect(next).not.toHaveBeenCalled();
     } finally {
-      process.env.RATE_LIMIT_PREVIEW_PER_USER = original;
+      process.env.RATE_LIMIT_PREVIEW_PER_SCOPE = original;
     }
   });
 });
@@ -615,5 +631,106 @@ describe("createWriteRateLimiter", () => {
       "Rate limiter failed open",
       expect.objectContaining({ err: expect.any(Error) })
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cross-auth tests — every limiter must fire for every auth method
+// ---------------------------------------------------------------------------
+
+describe("unified key resolver — all auth methods", () => {
+  it("createPreviewRateLimiter fires for project token auth (workspace key)", async () => {
+    const { redis, counters } = createMockRedis();
+    const em = createMockEm([{ id: "proj1", workspaceId: "ws1", teamId: null }]);
+    const middleware = createPreviewRateLimiter({ redis, limit: 100 });
+    const next = jest.fn() as unknown as NextFunction;
+    const { res } = makeRes();
+
+    await middleware(makeProjectReq("proj1:token", em), res, next);
+
+    expect(counters["rl:workspace:ws1"]).toBe(1);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("createPreviewRateLimiter fires for CMS token auth (workspace key)", async () => {
+    const { redis, counters } = createMockRedis();
+    const em = createMockEm([{ id: "db1", workspaceId: "ws1", teamId: null }]);
+    const middleware = createPreviewRateLimiter({ redis, limit: 100 });
+    const next = jest.fn() as unknown as NextFunction;
+    const { res } = makeRes();
+
+    await middleware(makeCmsReq("db1:token", em), res, next);
+
+    expect(counters["rl:workspace:ws1"]).toBe(1);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("createProjectScopeRateLimiter fires for team token auth (team key)", async () => {
+    const { redis, counters } = createMockRedis();
+    const middleware = createProjectScopeRateLimiter({ redis, limit: 100 });
+    const next = jest.fn() as unknown as NextFunction;
+    const { res } = makeRes();
+
+    await middleware(makeTeamReq("team1"), res, next);
+
+    expect(counters["rl:team:team1"]).toBe(1);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("createProjectScopeRateLimiter fires for user session auth (user key)", async () => {
+    const { redis, counters } = createMockRedis();
+    const middleware = createProjectScopeRateLimiter({ redis, limit: 100 });
+    const next = jest.fn() as unknown as NextFunction;
+    const { res } = makeRes();
+
+    await middleware(makeUserReq("user1"), res, next);
+
+    expect(counters["rl:user:user1"]).toBe(1);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("createCmsScopeRateLimiter fires for project token auth", async () => {
+    const { redis, counters } = createMockRedis();
+    const em = createMockEm([{ id: "proj1", workspaceId: "ws2", teamId: null }]);
+    const middleware = createCmsScopeRateLimiter({ redis, limit: 100 });
+    const next = jest.fn() as unknown as NextFunction;
+    const { res } = makeRes();
+
+    await middleware(makeProjectReq("proj1:token", em), res, next);
+
+    expect(counters["rl:workspace:ws2"]).toBe(1);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("createCmsScopeRateLimiter fires for identity auth", async () => {
+    const { redis, counters } = createMockRedis();
+    const middleware = createCmsScopeRateLimiter({ redis, limit: 100 });
+    const next = jest.fn() as unknown as NextFunction;
+    const { res } = makeRes();
+
+    await middleware(makeTeamReq("team1"), res, next);
+
+    expect(counters["rl:team:team1"]).toBe(1);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("project token takes priority over req.user when both present", async () => {
+    const { redis, counters } = createMockRedis();
+    const em = createMockEm([{ id: "proj1", workspaceId: "ws1", teamId: null }]);
+    const middleware = createPreviewRateLimiter({ redis, limit: 100 });
+    const next = jest.fn() as unknown as NextFunction;
+    const { res } = makeRes();
+
+    // Request has both project token header and an authenticated user
+    const req = {
+      headers: { "x-plasmic-api-project-tokens": "proj1:token" },
+      noTxMgr: em,
+      user: { id: "user1" },
+    } as unknown as Request;
+    await middleware(req, res, next);
+
+    expect(counters["rl:workspace:ws1"]).toBe(1);
+    expect(counters["rl:user:user1"]).toBeUndefined();
+    expect(next).toHaveBeenCalledTimes(1);
   });
 });
