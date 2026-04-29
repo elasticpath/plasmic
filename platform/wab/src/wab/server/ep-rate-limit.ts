@@ -248,7 +248,7 @@ async function enforceRateLimit(
   res.setHeader("RateLimit-Remaining", String(Math.max(0, limit - maxCount)));
 
   for (const [i, key] of keyList.entries()) {
-    logger().info("Rate limit bucket", {
+    logger().debug("Rate limit bucket", {
       key,
       count: counts[i],
       limit,
