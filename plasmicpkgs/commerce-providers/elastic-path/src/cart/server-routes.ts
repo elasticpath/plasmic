@@ -32,6 +32,7 @@
  * headers that better-auth's nextCookies() plugin emits.
  */
 import type { EpAuth } from "../auth/ep-plugin/create-ep-auth-better";
+import { persistCartId } from "../auth/ep-plugin/persist-cart-id";
 
 interface CartRouteContext {
   params: Promise<{ path?: string[] }> | { path?: string[] };
@@ -73,51 +74,6 @@ async function callEp(
       ...((init?.headers as Record<string, string>) ?? {}),
     },
   });
-}
-
-/**
- * Persist an updated `epCartId` onto the better-auth session by calling
- * the plugin's /ep/cart endpoint internally. Returns the Set-Cookie
- * headers from that call so the cart-route response can forward them.
- */
-async function persistCartId(
-  epAuth: EpAuth,
-  request: Request,
-  cartId: string
-): Promise<string[]> {
-  const cookieHeader = request.headers.get("cookie") ?? "";
-  const incomingOrigin =
-    request.headers.get("origin") ??
-    new URL(request.url).origin;
-  const internalReq = new Request(
-    `${new URL(request.url).origin}/api/ep/ep/cart`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        // Forward the client's Origin (or the request's URL origin as
-        // fallback) so better-auth's trustedOrigins check passes for
-        // this server-to-server-style internal call. Without this the
-        // synthetic Request has no Origin header and better-auth
-        // rejects with 403 "Invalid origin".
-        Origin: incomingOrigin,
-        ...(cookieHeader ? { cookie: cookieHeader } : {}),
-      },
-      body: JSON.stringify({ cartId }),
-    }
-  );
-  let res: Response;
-  try {
-    res = await epAuth.handler.handler(internalReq);
-  } catch {
-    return [];
-  }
-  if (!res.ok) return [];
-  const setCookies: string[] = [];
-  res.headers.forEach((value: string, key: string) => {
-    if (key.toLowerCase() === "set-cookie") setCookies.push(value);
-  });
-  return setCookies;
 }
 
 function jsonResponse(

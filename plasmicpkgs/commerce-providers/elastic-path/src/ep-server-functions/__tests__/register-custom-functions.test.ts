@@ -44,6 +44,9 @@ describe("registerEpCustomFunctions", () => {
     ["getCart"],
     ["getProductList"],
     ["getRelatedProducts"],
+    ["addCartItem"],
+    ["updateCartItem"],
+    ["removeCartItem"],
   ])("registers ep.%s", (fnName) => {
     const registerFunction = jest.fn();
     const fakeLoader = { registerFunction };
