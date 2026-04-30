@@ -9,8 +9,6 @@ import { URL } from "url";
 const MAX_WIDTH = 4096;
 const MAX_HEIGHT = 4096;
 const DEFAULT_QUALITY = 75;
-const SUPPORTED_FORMATS = ["jpeg", "jpg", "png", "webp"] as const;
-type SupportedFormat = (typeof SUPPORTED_FORMATS)[number];
 
 const siteAssetsBucket = process.env.SITE_ASSETS_BUCKET as string;
 const siteAssetsBaseUrl = process.env.SITE_ASSETS_BASE_URL as string;
@@ -19,11 +17,11 @@ const siteAssetsBaseUrl = process.env.SITE_ASSETS_BASE_URL as string;
 // cache key from each spawning independent S3 fetches and Sharp jobs.
 const inFlightRequests = new Map<string, Promise<{ buffer: Buffer; contentType: string }>>();
 
-const s3Config: any = { endpoint: process.env.S3_ENDPOINT };
-// Use path-style URLs only for LocalStack (when endpoint contains localhost)
-if (process.env.S3_ENDPOINT?.includes("localhost")) {
-  s3Config.s3ForcePathStyle = true;
-}
+const s3Config: S3.Types.ClientConfiguration = {
+  endpoint: process.env.S3_ENDPOINT,
+  // Use path-style URLs only for LocalStack (when endpoint contains localhost)
+  ...(process.env.S3_ENDPOINT?.includes("localhost") && { s3ForcePathStyle: true }),
+};
 const s3 = new S3(s3Config);
 
 function generateCacheKey(params: OptimizeParams): string {
@@ -56,7 +54,9 @@ async function getCachedImage(cacheKey: string): Promise<{ buffer: Buffer; conte
     }
     return null;
   } catch (error) {
-    // Object doesn't exist or other error - we'll need to create it
+    if (error.code !== "NoSuchKey" && error.code !== "NotFound") {
+      console.error("[IMG-OPTIMIZER] S3 cache lookup failed:", error);
+    }
     return null;
   }
 }
@@ -225,15 +225,12 @@ async function optimizeImage(
   }
 
   // Apply format transformation
-  let outputFormat: SupportedFormat = "jpeg";
   let contentType = "image/jpeg";
 
   if (format === "webp") {
-    outputFormat = "webp";
     contentType = "image/webp";
     sharpInstance = sharpInstance.webp({ quality });
   } else if (metadata.format === "png") {
-    outputFormat = "png";
     contentType = "image/png";
     sharpInstance = sharpInstance.png({ quality, progressive: true });
   } else {
@@ -313,7 +310,10 @@ export async function optimizeImageHandler(req: Request, res: Response) {
     if (src) {
       try {
         const originalBuffer = await fetchImageBuffer(src as string);
-        const contentType = src.toString().toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+        const srcPath = new URL(src as string).pathname.toLowerCase();
+        const contentType = srcPath.endsWith(".png") ? "image/png"
+          : srcPath.endsWith(".webp") ? "image/webp"
+          : "image/jpeg";
 
         res.set({
           "Content-Type": contentType,
