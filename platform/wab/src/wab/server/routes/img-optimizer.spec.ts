@@ -274,20 +274,17 @@ describe("img-optimizer routes", () => {
 describe("fetchAndOptimizeSingleFlight", () => {
   const mockBuffer = Buffer.from("fake-image-data");
 
-  // 32-char hex key — required by extractS3Key's regex fallback
+  // 32-char hex key — satisfies extractS3Key's regex when siteAssetsBaseUrl is unset
   const params = {
     src: "https://test-assets.example.com/abcdef0123456789abcdef0123456789.jpg",
     width: 400,
     quality: 75,
   };
 
-  function makeS3Mock(getObjectResult: "success" | "fail") {
+  function makeS3Mock() {
     return {
       getObject: jest.fn().mockReturnValue({
-        promise:
-          getObjectResult === "success"
-            ? jest.fn().mockResolvedValue({ Body: mockBuffer, ContentType: "image/jpeg" })
-            : jest.fn().mockRejectedValue(new Error("S3 error")),
+        promise: jest.fn().mockResolvedValue({ Body: mockBuffer, ContentType: "image/jpeg" }),
       }),
       upload: jest.fn().mockReturnValue({
         promise: jest.fn().mockResolvedValue({ Location: "https://s3/cached" }),
@@ -295,14 +292,18 @@ describe("fetchAndOptimizeSingleFlight", () => {
     };
   }
 
-  beforeEach(() => {
-    jest.resetAllMocks();
+  // Load a fresh module instance so the S3 singleton is constructed with the
+  // current mock implementation. Must be called after configuring S3 mock.
+  function loadFn(): typeof import("./img-optimizer").fetchAndOptimizeSingleFlight {
+    let fn: typeof import("./img-optimizer").fetchAndOptimizeSingleFlight;
+    jest.isolateModules(() => {
+      fn = require("./img-optimizer").fetchAndOptimizeSingleFlight;
+    });
+    return fn!;
+  }
 
-    (S3 as jest.MockedClass<typeof S3>).mockImplementation(
-      () => makeS3Mock("success") as any
-    );
-
-    const mockSharpInstance = {
+  function setupSharpMock() {
+    const inst = {
       metadata: jest.fn().mockResolvedValue({ format: "jpeg", width: 800 }),
       resize: jest.fn().mockReturnThis(),
       jpeg: jest.fn().mockReturnThis(),
@@ -310,11 +311,17 @@ describe("fetchAndOptimizeSingleFlight", () => {
       png: jest.fn().mockReturnThis(),
       toBuffer: jest.fn().mockResolvedValue(mockBuffer),
     };
-    (sharp as unknown as jest.Mock).mockReturnValue(mockSharpInstance);
+    (sharp as unknown as jest.Mock).mockReturnValue(inst);
+  }
+
+  beforeEach(() => {
+    jest.resetAllMocks();
   });
 
   it("first caller gets coalesced: false, concurrent caller gets coalesced: true", async () => {
-    const { fetchAndOptimizeSingleFlight } = await import("./img-optimizer");
+    (S3 as jest.MockedClass<typeof S3>).mockImplementation(() => makeS3Mock() as any);
+    setupSharpMock();
+    const fetchAndOptimizeSingleFlight = loadFn();
 
     const [first, second] = await Promise.all([
       fetchAndOptimizeSingleFlight("coalescing-key", params),
@@ -327,22 +334,26 @@ describe("fetchAndOptimizeSingleFlight", () => {
   });
 
   it("removes the cacheKey from the map after a successful call", async () => {
-    const { fetchAndOptimizeSingleFlight } = await import("./img-optimizer");
+    (S3 as jest.MockedClass<typeof S3>).mockImplementation(() => makeS3Mock() as any);
+    setupSharpMock();
+    const fetchAndOptimizeSingleFlight = loadFn();
 
     await fetchAndOptimizeSingleFlight("cleanup-success-key", params);
     const second = await fetchAndOptimizeSingleFlight("cleanup-success-key", params);
 
-    // If the map entry had not been removed, the second call would be coalesced.
+    // If the entry were not removed, the second call would return coalesced: true.
     expect(second.coalesced).toBe(false);
   });
 
   it("removes the cacheKey from the map after a failed call", async () => {
-    // First S3 instance (source fetch) rejects; subsequent instances succeed.
-    (S3 as jest.MockedClass<typeof S3>)
-      .mockImplementationOnce(() => makeS3Mock("fail") as any)
-      .mockImplementation(() => makeS3Mock("success") as any);
-
-    const { fetchAndOptimizeSingleFlight } = await import("./img-optimizer");
+    const s3Mock = makeS3Mock();
+    // First getObject call rejects; default mock handles subsequent calls (success).
+    s3Mock.getObject.mockReturnValueOnce({
+      promise: jest.fn().mockRejectedValue(new Error("S3 error")),
+    });
+    (S3 as jest.MockedClass<typeof S3>).mockImplementation(() => s3Mock as any);
+    setupSharpMock();
+    const fetchAndOptimizeSingleFlight = loadFn();
 
     await expect(
       fetchAndOptimizeSingleFlight("cleanup-failure-key", params)

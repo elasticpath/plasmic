@@ -19,18 +19,12 @@ const siteAssetsBaseUrl = process.env.SITE_ASSETS_BASE_URL as string;
 // cache key from each spawning independent S3 fetches and Sharp jobs.
 const inFlightRequests = new Map<string, Promise<{ buffer: Buffer; contentType: string }>>();
 
-function createS3Client() {
-  const s3Config: any = {
-    endpoint: process.env.S3_ENDPOINT,
-  };
-
-  // Use path-style URLs only for LocalStack (when endpoint contains localhost)
-  if (process.env.S3_ENDPOINT && process.env.S3_ENDPOINT.includes('localhost')) {
-    s3Config.s3ForcePathStyle = true;
-  }
-
-  return new S3(s3Config);
+const s3Config: any = { endpoint: process.env.S3_ENDPOINT };
+// Use path-style URLs only for LocalStack (when endpoint contains localhost)
+if (process.env.S3_ENDPOINT?.includes("localhost")) {
+  s3Config.s3ForcePathStyle = true;
 }
+const s3 = new S3(s3Config);
 
 function generateCacheKey(params: OptimizeParams): string {
   // Create a deterministic cache key from optimization parameters
@@ -47,9 +41,6 @@ function generateCacheKey(params: OptimizeParams): string {
 
 async function getCachedImage(cacheKey: string): Promise<{ buffer: Buffer; contentType: string } | null> {
   try {
-    const s3 = createS3Client();
-
-    // Try to get the cached optimized image
     const response = await s3
       .getObject({
         Bucket: siteAssetsBucket,
@@ -75,8 +66,6 @@ async function uploadOptimizedImage(
   buffer: Buffer,
   contentType: string
 ): Promise<string> {
-  const s3 = createS3Client();
-
   const { Location } = await s3
     .upload({
       Bucket: siteAssetsBucket,
@@ -176,8 +165,6 @@ async function fetchImageBuffer(url: string): Promise<Buffer> {
   }
 
   try {
-    const s3 = createS3Client();
-
     const result = await s3
       .getObject({
         Bucket: siteAssetsBucket,
