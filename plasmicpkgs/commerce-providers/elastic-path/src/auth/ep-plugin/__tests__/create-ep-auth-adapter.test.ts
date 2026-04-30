@@ -78,7 +78,12 @@ describe("createEpAuth adapter (PRD #273)", () => {
     expect(typeof session.commitCookies).toBe("function");
   });
 
-  it("providerProps() returns serverToken when authenticated session exists", async () => {
+  it("providerProps() never serializes the EP access token (#282)", async () => {
+    // Security guarantee (#279 HIGH-3): the per-shopper EP access token
+    // must not be readable from page HTML. providerProps() is consumed by
+    // the catchall RSC page as `globalContextsProps[...] = providerProps()`
+    // and serialized into the document. Returning {} ensures no token
+    // surface remains.
     const epAuth = createEpAuth({
       clientId: EP_CLIENT_ID,
       host: EP_HOST,
@@ -91,7 +96,9 @@ describe("createEpAuth adapter (PRD #273)", () => {
       headers: {},
     });
 
-    expect(session.providerProps()).toEqual({ serverToken: FAKE_TOKEN });
+    expect(session.session?.accessToken).toBe(FAKE_TOKEN);
+    expect(session.providerProps()).toEqual({});
+    expect(JSON.stringify(session.providerProps())).not.toContain(FAKE_TOKEN);
   });
 
   it("commitCookies() emits the better-auth Set-Cookie headers", async () => {
