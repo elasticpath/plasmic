@@ -7,7 +7,9 @@ import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useState } from "react";
-import useRemoveItem from "../cart/use-remove-item";
+import { mutate as swrMutate } from "swr";
+import { callEpProxy } from "../ep-server-functions/proxy-fetch";
+import { epCartCacheKey } from "../cart-provider/cache-keys";
 import { Registerable } from "../registerable";
 import { createLogger } from "../utils/logger";
 
@@ -53,7 +55,6 @@ export function EPCartItemRemoveButton(props: EPCartItemRemoveButtonProps) {
   const currentItem = useSelector("currentCartItem") as
     | { id: string; name?: string }
     | undefined;
-  const removeItem = useRemoveItem();
   const inEditor = !!usePlasmicCanvasContext();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -67,7 +68,8 @@ export function EPCartItemRemoveButton(props: EPCartItemRemoveButtonProps) {
     if (!currentItem?.id || useMock) return;
     setIsLoading(true);
     try {
-      await removeItem({ id: currentItem.id });
+      await callEpProxy("removeCartItem", { itemId: currentItem.id }, null);
+      await swrMutate(epCartCacheKey());
       log.info("Item removed from cart", {
         itemId: currentItem.id,
       } as Record<string, unknown>);

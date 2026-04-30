@@ -7,7 +7,9 @@ import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useState, useCallback, useEffect, useRef } from "react";
-import useUpdateItem from "../cart/use-update-item";
+import { mutate as swrMutate } from "swr";
+import { callEpProxy } from "../ep-server-functions/proxy-fetch";
+import { epCartCacheKey } from "../cart-provider/cache-keys";
 import { Registerable } from "../registerable";
 import { createLogger } from "../utils/logger";
 import { MOCK_CART_LINE_ITEMS } from "../utils/design-time-data";
@@ -95,7 +97,6 @@ export function EPCartItemQuantityControl(
     | { id: string; quantity: number; locationSlug?: string }
     | undefined;
   const inEditor = !!usePlasmicCanvasContext();
-  const updateItem = useUpdateItem();
 
   const useMock = previewState !== "auto" || (!currentItem && inEditor);
 
@@ -131,11 +132,20 @@ export function EPCartItemQuantityControl(
       if (!currentItem?.id || useMock) return;
       setIsLoading(true);
       try {
-        await updateItem({
-          id: currentItem.id,
-          quantity: newQuantity,
-          ...(currentItem.locationSlug && { location: currentItem.locationSlug }),
-        } as { id: string; quantity: number; location?: string });
+        if (newQuantity < 1) {
+          await callEpProxy(
+            "removeCartItem",
+            { itemId: currentItem.id },
+            null
+          );
+        } else {
+          await callEpProxy(
+            "updateCartItem",
+            { itemId: currentItem.id, quantity: newQuantity },
+            null
+          );
+        }
+        await swrMutate(epCartCacheKey());
       } catch (err) {
         // Revert optimistic update on error
         setLocalQuantity(serverQuantity);
@@ -147,7 +157,7 @@ export function EPCartItemQuantityControl(
         >);
       }
     },
-    [currentItem?.id, updateItem, useMock, serverQuantity]
+    [currentItem?.id, useMock, serverQuantity]
   );
 
   const increment = useCallback(() => {

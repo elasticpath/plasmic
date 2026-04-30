@@ -6,7 +6,7 @@ import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useMemo, useState } from "react";
-import useCart from "../../cart/use-cart";
+import { useEpCart } from "../../cart-provider/use-ep-cart";
 import { DEFAULT_CURRENCY_CODE } from "../../const";
 import { Registerable } from "../../registerable";
 import type { CheckoutCartData } from "../../shopper-context/use-checkout-cart";
@@ -132,7 +132,7 @@ function EPCheckoutCartSummaryInternal(
     previewState = "auto",
   } = props;
 
-  const { data: cart } = useCart();
+  const { cart } = useEpCart();
   const inEditor = !!usePlasmicCanvasContext();
 
   const [internalExpanded, setInternalExpanded] = useState(true);

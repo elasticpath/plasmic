@@ -1,14 +1,18 @@
-import { GlobalContextMeta } from "@plasmicapp/host";
-import registerGlobalContext from "@plasmicapp/host/registerGlobalContext";
 import {
-  CartActionsProvider,
-  globalActionsRegistrations,
-} from "@plasmicpkgs/commerce";
+  GlobalActionDict,
+  GlobalActionsProvider,
+  GlobalContextMeta,
+} from "@plasmicapp/host";
+import registerGlobalContext from "@plasmicapp/host/registerGlobalContext";
+import { globalActionsRegistrations } from "@plasmicpkgs/commerce";
 import React from "react";
+import { mutate as swrMutate } from "swr";
 import { getCommerceProvider } from "./elastic-path";
 import { ElasticPathCredentials } from "./provider";
 import { Registerable } from "./registerable";
 import { ServerCartActionsProvider } from "./shopper-context/ServerCartActionsProvider";
+import { callEpProxy } from "./ep-server-functions/proxy-fetch";
+import { epCartCacheKey } from "./cart-provider/cache-keys";
 
 interface CommerceProviderProps extends ElasticPathCredentials {
   children?: React.ReactNode;
@@ -102,16 +106,81 @@ export function CommerceProviderComponent(props: CommerceProviderProps) {
     [creds, locale]
   );
 
-  const ActionsProvider = serverCartMode
-    ? ServerCartActionsProvider
-    : CartActionsProvider;
-
   return (
     <CommerceProvider>
-      <ActionsProvider globalContextName={globalContextName}>
-        {children}
-      </ActionsProvider>
+      {serverCartMode ? (
+        <ServerCartActionsProvider globalContextName={globalContextName}>
+          {children}
+        </ServerCartActionsProvider>
+      ) : (
+        <EpCartActionsProvider globalContextName={globalContextName}>
+          {children}
+        </EpCartActionsProvider>
+      )}
     </CommerceProvider>
+  );
+}
+
+interface EpCartActions extends GlobalActionDict {
+  addItem: (productId: string, variantId: string, quantity: number) => void;
+  updateItem: (lineItemId: string, quantity: number) => void;
+  removeItem: (lineItemId: string) => void;
+}
+
+/**
+ * Studio-facing cart global actions that route through the EP proxy
+ * (`/api/ep/proxy/[fn]`). Replaces the upstream `CartActionsProvider`
+ * from `@plasmicpkgs/commerce`, which depended on per-shopper-token
+ * client-side SDK calls.
+ */
+function EpCartActionsProvider(
+  props: React.PropsWithChildren<{ globalContextName: string }>
+) {
+  const actions: EpCartActions = React.useMemo(
+    () => ({
+      async addItem(productId, variantId, quantity) {
+        await callEpProxy(
+          "addCartItem",
+          { productId: variantId || productId, quantity },
+          null
+        );
+        await swrMutate(epCartCacheKey());
+      },
+      async updateItem(lineItemId, quantity) {
+        if (quantity < 1) {
+          await callEpProxy(
+            "removeCartItem",
+            { itemId: lineItemId },
+            null
+          );
+        } else {
+          await callEpProxy(
+            "updateCartItem",
+            { itemId: lineItemId, quantity },
+            null
+          );
+        }
+        await swrMutate(epCartCacheKey());
+      },
+      async removeItem(lineItemId) {
+        await callEpProxy(
+          "removeCartItem",
+          { itemId: lineItemId },
+          null
+        );
+        await swrMutate(epCartCacheKey());
+      },
+    }),
+    []
+  );
+
+  return (
+    <GlobalActionsProvider
+      contextName={props.globalContextName}
+      actions={actions}
+    >
+      {props.children}
+    </GlobalActionsProvider>
   );
 }
 
