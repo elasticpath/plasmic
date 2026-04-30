@@ -286,7 +286,7 @@ export async function optimizeImageHandler(req: Request, res: Response) {
     if (cachedImage) {
       res.set({
         "Content-Type": cachedImage.contentType,
-        "Cache-Control": "public, max-age=31536000", // 1 year
+        "Cache-Control": "public, max-age=31536000, immutable",
         "X-Cache": "HIT",
       });
       res.send(cachedImage.buffer);
@@ -296,7 +296,7 @@ export async function optimizeImageHandler(req: Request, res: Response) {
     const { buffer, contentType, coalesced } = await fetchAndOptimizeSingleFlight(cacheKey, params);
     res.set({
       "Content-Type": contentType,
-      "Cache-Control": "public, max-age=31536000", // 1 year
+      "Cache-Control": "public, max-age=31536000, immutable",
       "X-Cache": coalesced ? "COALESCED" : "MISS",
     });
     res.send(buffer);
