@@ -78,14 +78,15 @@ function normalizeHitToCurrentProduct(
     hit.attributes?.description ||
     "";
 
-  // Image: try multiple patterns. EP catalog-search hits don't denormalize
-  // file URLs by default (`relationships.main_image.data.id` is just a UUID),
-  // so for unconfigured catalogs imageUrl will be empty.
+  // Image: prefer the inlined `main_image` record that EPCatalogSearchProvider
+  // requests via `include: ["main_image"]` (adapter v0.1.0+ resolves the
+  // included block against each hit's relationship reference). Fallbacks
+  // cover catalogs that already denormalize a URL onto the hit root.
   const imageUrl =
+    hit.main_image?.link?.href ||
+    hit.ep_main_image?.link?.href ||
     hit.ep_main_image_url ||
     hit.main_image_url ||
-    hit.main_image?.link?.href ||
-    (hit.ep_main_image && hit.ep_main_image.link?.href) ||
     "";
 
   // 1x1 transparent gif — keeps the <img src> attribute non-empty so the

@@ -255,6 +255,13 @@ function EPCatalogSearchProviderInner(props: {
         additionalSearchParameters: {
           query_by: queryBy,
         },
+        // Inline the product image record onto each hit. Adapter v0.1.0+
+        // forwards this as `?include=main_image` on the catalog-search call
+        // and resolves `relationships.main_image` against the returned
+        // `included` block, so `hit.main_image.link.href` is populated and
+        // EPSearchHits can render real product images without a follow-up
+        // round-trip per hit.
+        include: ["main_image"],
       });
       return adapter.searchClient || adapter;
     } catch (e) {
