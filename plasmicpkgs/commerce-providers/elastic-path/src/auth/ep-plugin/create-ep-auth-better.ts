@@ -321,10 +321,6 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
             return h;
           },
           providerProps() {
-            // Security (#279 HIGH-3 / #282): the per-shopper EP access
-            // token must never be serialized into browser-readable HTML.
-            // Catalog reads use the SDK's anonymous-mint flow client-side;
-            // shopper-bound reads/writes go through the proxy route.
             return {};
           },
           commitCookies(res) {

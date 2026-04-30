@@ -78,12 +78,7 @@ describe("createEpAuth adapter (PRD #273)", () => {
     expect(typeof session.commitCookies).toBe("function");
   });
 
-  it("providerProps() never serializes the EP access token (#282)", async () => {
-    // Security guarantee (#279 HIGH-3): the per-shopper EP access token
-    // must not be readable from page HTML. providerProps() is consumed by
-    // the catchall RSC page as `globalContextsProps[...] = providerProps()`
-    // and serialized into the document. Returning {} ensures no token
-    // surface remains.
+  it("providerProps() never serializes the EP access token", async () => {
     const epAuth = createEpAuth({
       clientId: EP_CLIENT_ID,
       host: EP_HOST,

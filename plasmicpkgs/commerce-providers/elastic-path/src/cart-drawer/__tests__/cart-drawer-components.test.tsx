@@ -17,9 +17,6 @@
 
 // --- Mocks (hoisted by Jest before any other code) ---
 
-// Post-#282: components use `useEpCart` for reads and `callEpProxy` for
-// mutations. Legacy `useCart` / `useUpdateItem` / `useRemoveItem` hooks
-// are gone.
 const mockUseEpCart = jest.fn();
 jest.mock("../../cart-provider/use-ep-cart", () => ({
   useEpCart: (...args: any[]) => mockUseEpCart(...args),
@@ -30,8 +27,6 @@ jest.mock("../../ep-server-functions/proxy-fetch", () => ({
   callEpProxy: (...args: any[]) => mockCallEpProxy(...args),
 }));
 
-// SWR's `mutate` triggers cache revalidation after a successful proxy call.
-// Stubbed so tests don't fire real SWR wiring.
 jest.mock("swr", () => ({
   __esModule: true,
   default: jest.fn(),

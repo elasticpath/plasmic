@@ -1,17 +1,6 @@
-/**
- * EP auth bootstrap middleware (PRD #273).
- *
- * RSC pages can't write cookies in Next 15, so any anonymous-session
- * mint that happens during page render is in-memory only. This
- * middleware runs BEFORE the page, mints an anonymous EP session via
- * the better-auth handler, and persists the resulting cookies. After
- * this fires once, every subsequent request carries
- * `better-auth.session_token` + `better-auth.session_data`, and the
- * catchall page reads them via `epAuth.api.getSession({cookies})`.
- * The shopper's EP access token never reaches the browser; client-side
- * catalog reads use the SDK's anonymous-mint flow, and shopper-bound
- * calls go through the proxy route.
- */
+// RSC pages can't write cookies in Next 15, so any anonymous-session
+// mint that happens during page render is in-memory only. This
+// middleware runs BEFORE the page so the resulting Set-Cookie persists.
 import { epAuthMiddleware } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
 import { epAuth } from "@/lib/ep-auth";
 

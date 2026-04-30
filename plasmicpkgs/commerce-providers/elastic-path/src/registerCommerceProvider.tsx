@@ -127,12 +127,6 @@ interface EpCartActions extends GlobalActionDict {
   removeItem: (lineItemId: string) => void;
 }
 
-/**
- * Studio-facing cart global actions that route through the EP proxy
- * (`/api/ep/proxy/[fn]`). Replaces the upstream `CartActionsProvider`
- * from `@plasmicpkgs/commerce`, which depended on per-shopper-token
- * client-side SDK calls.
- */
 function EpCartActionsProvider(
   props: React.PropsWithChildren<{ globalContextName: string }>
 ) {

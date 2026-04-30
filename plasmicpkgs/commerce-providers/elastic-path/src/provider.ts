@@ -15,9 +15,6 @@ export interface ElasticPathCredentials {
 
 const log = createLogger("Provider");
 
-// Stub fetcher to satisfy the commerce package's Provider interface. Our
-// reads go through the SDK client directly (catalog) or through the proxy
-// route + SWR (cart), so this is never invoked.
 const createFetcher = (_creds: ElasticPathCredentials): Fetcher => {
   return async () => {
     log.warn(
