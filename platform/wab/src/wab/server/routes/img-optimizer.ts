@@ -15,6 +15,10 @@ type SupportedFormat = (typeof SUPPORTED_FORMATS)[number];
 const siteAssetsBucket = process.env.SITE_ASSETS_BUCKET as string;
 const siteAssetsBaseUrl = process.env.SITE_ASSETS_BASE_URL as string;
 
+// Per-process single-flight map: prevents concurrent requests for the same
+// cache key from each spawning independent S3 fetches and Sharp jobs.
+const inFlightRequests = new Map<string, Promise<{ buffer: Buffer; contentType: string }>>();
+
 function createS3Client() {
   const s3Config: any = {
     endpoint: process.env.S3_ENDPOINT,
@@ -262,15 +266,40 @@ async function optimizeImage(
   };
 }
 
+export async function fetchAndOptimizeSingleFlight(
+  cacheKey: string,
+  params: OptimizeParams
+): Promise<{ buffer: Buffer; contentType: string; coalesced: boolean }> {
+  if (inFlightRequests.has(cacheKey)) {
+    const result = await inFlightRequests.get(cacheKey)!;
+    return { ...result, coalesced: true };
+  }
+
+  const processingPromise = (async () => {
+    const imageBuffer = await fetchImageBuffer(params.src);
+    return optimizeImage(imageBuffer, params);
+  })();
+
+  inFlightRequests.set(cacheKey, processingPromise);
+
+  try {
+    const result = await processingPromise;
+    uploadOptimizedImage(cacheKey, result.buffer, result.contentType).catch((error) => {
+      console.error("[IMG-OPTIMIZER] Failed to cache image:", error);
+    });
+    return { ...result, coalesced: false };
+  } finally {
+    inFlightRequests.delete(cacheKey);
+  }
+}
+
 export async function optimizeImageHandler(req: Request, res: Response) {
   try {
     const params = validateParams(req.query);
     const cacheKey = generateCacheKey(params);
 
-    // Check if we already have this optimized image cached in S3
     const cachedImage = await getCachedImage(cacheKey);
     if (cachedImage) {
-      // Serve the cached image directly
       res.set({
         "Content-Type": cachedImage.contentType,
         "Cache-Control": "public, max-age=31536000", // 1 year
@@ -280,22 +309,11 @@ export async function optimizeImageHandler(req: Request, res: Response) {
       return;
     }
 
-    // Fetch the original image
-    const imageBuffer = await fetchImageBuffer(params.src);
-
-    // Optimize the image
-    const { buffer, contentType } = await optimizeImage(imageBuffer, params);
-
-    // Upload optimized image to S3 for caching (don't wait for it)
-    uploadOptimizedImage(cacheKey, buffer, contentType).catch((error) => {
-      console.error("[IMG-OPTIMIZER] Failed to cache image:", error);
-    });
-
-    // Serve the optimized image directly
+    const { buffer, contentType, coalesced } = await fetchAndOptimizeSingleFlight(cacheKey, params);
     res.set({
       "Content-Type": contentType,
       "Cache-Control": "public, max-age=31536000", // 1 year
-      "X-Cache": "MISS",
+      "X-Cache": coalesced ? "COALESCED" : "MISS",
     });
     res.send(buffer);
   } catch (error) {

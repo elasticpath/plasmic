@@ -3,7 +3,12 @@ process.env.SITE_ASSETS_BUCKET = "test-bucket";
 process.env.SITE_ASSETS_BASE_URL = "https://test-assets.example.com/";
 process.env.S3_ENDPOINT = "https://s3.amazonaws.com";
 
+jest.mock("aws-sdk/clients/s3");
+jest.mock("sharp");
+
 import { BadRequestError } from "@/wab/shared/ApiErrors/errors";
+import S3 from "aws-sdk/clients/s3";
+import sharp from "sharp";
 
 // Simple unit tests focused on core validation logic
 describe("img-optimizer routes", () => {
@@ -241,7 +246,7 @@ describe("img-optimizer routes", () => {
   describe("format validation", () => {
     it("should accept valid formats", () => {
       const validFormats = ["jpeg", "jpg", "png", "webp"];
-      
+
       validFormats.forEach(format => {
         expect(() => {
           if (!validFormats.includes(format)) {
@@ -253,7 +258,7 @@ describe("img-optimizer routes", () => {
 
     it("should reject invalid formats", () => {
       const invalidFormats = ["gif", "bmp", "tiff", "pdf"];
-      
+
       invalidFormats.forEach(format => {
         expect(() => {
           const validFormats = ["jpeg", "jpg", "png", "webp"];
@@ -263,5 +268,88 @@ describe("img-optimizer routes", () => {
         }).toThrow(BadRequestError);
       });
     });
+  });
+});
+
+describe("fetchAndOptimizeSingleFlight", () => {
+  const mockBuffer = Buffer.from("fake-image-data");
+
+  // 32-char hex key — required by extractS3Key's regex fallback
+  const params = {
+    src: "https://test-assets.example.com/abcdef0123456789abcdef0123456789.jpg",
+    width: 400,
+    quality: 75,
+  };
+
+  function makeS3Mock(getObjectResult: "success" | "fail") {
+    return {
+      getObject: jest.fn().mockReturnValue({
+        promise:
+          getObjectResult === "success"
+            ? jest.fn().mockResolvedValue({ Body: mockBuffer, ContentType: "image/jpeg" })
+            : jest.fn().mockRejectedValue(new Error("S3 error")),
+      }),
+      upload: jest.fn().mockReturnValue({
+        promise: jest.fn().mockResolvedValue({ Location: "https://s3/cached" }),
+      }),
+    };
+  }
+
+  beforeEach(() => {
+    jest.resetAllMocks();
+
+    (S3 as jest.MockedClass<typeof S3>).mockImplementation(
+      () => makeS3Mock("success") as any
+    );
+
+    const mockSharpInstance = {
+      metadata: jest.fn().mockResolvedValue({ format: "jpeg", width: 800 }),
+      resize: jest.fn().mockReturnThis(),
+      jpeg: jest.fn().mockReturnThis(),
+      webp: jest.fn().mockReturnThis(),
+      png: jest.fn().mockReturnThis(),
+      toBuffer: jest.fn().mockResolvedValue(mockBuffer),
+    };
+    (sharp as unknown as jest.Mock).mockReturnValue(mockSharpInstance);
+  });
+
+  it("first caller gets coalesced: false, concurrent caller gets coalesced: true", async () => {
+    const { fetchAndOptimizeSingleFlight } = await import("./img-optimizer");
+
+    const [first, second] = await Promise.all([
+      fetchAndOptimizeSingleFlight("coalescing-key", params),
+      fetchAndOptimizeSingleFlight("coalescing-key", params),
+    ]);
+
+    expect(first.coalesced).toBe(false);
+    expect(second.coalesced).toBe(true);
+    expect(second.buffer).toEqual(mockBuffer);
+  });
+
+  it("removes the cacheKey from the map after a successful call", async () => {
+    const { fetchAndOptimizeSingleFlight } = await import("./img-optimizer");
+
+    await fetchAndOptimizeSingleFlight("cleanup-success-key", params);
+    const second = await fetchAndOptimizeSingleFlight("cleanup-success-key", params);
+
+    // If the map entry had not been removed, the second call would be coalesced.
+    expect(second.coalesced).toBe(false);
+  });
+
+  it("removes the cacheKey from the map after a failed call", async () => {
+    // First S3 instance (source fetch) rejects; subsequent instances succeed.
+    (S3 as jest.MockedClass<typeof S3>)
+      .mockImplementationOnce(() => makeS3Mock("fail") as any)
+      .mockImplementation(() => makeS3Mock("success") as any);
+
+    const { fetchAndOptimizeSingleFlight } = await import("./img-optimizer");
+
+    await expect(
+      fetchAndOptimizeSingleFlight("cleanup-failure-key", params)
+    ).rejects.toThrow("S3 error");
+
+    // Map entry was cleaned up — retry gets a fresh attempt, not a dead promise.
+    const retry = await fetchAndOptimizeSingleFlight("cleanup-failure-key", params);
+    expect(retry.coalesced).toBe(false);
   });
 });
