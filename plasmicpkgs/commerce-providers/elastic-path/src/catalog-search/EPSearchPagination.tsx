@@ -32,14 +32,34 @@ export const epSearchPaginationMeta: CodeComponentMeta<EPSearchPaginationProps> 
   name: "plasmic-commerce-ep-search-pagination",
   displayName: "EP Search Pagination",
   description:
-    "Pagination controls for catalog search. Must be inside EP Catalog Search Provider.",
+    "Pagination provider. Drops a Prev button, page-indicator text, and Next button into the slot. Bind text to $ctx.searchPaginationData (currentPage, totalPages, hasNext, hasPrev) and wire button onClick to the prevPage/nextPage ref-actions; hide buttons when !hasPrev / !hasNext. Must be inside EP Catalog Search Provider.",
   props: {
     children: {
       type: "slot",
-      defaultValue: {
-        type: "text",
-        value: "Page 1 of 4",
-      },
+      defaultValue: [
+        {
+          type: "hbox",
+          styles: {
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "12px",
+          },
+          children: [
+            {
+              type: "button",
+              value: "Prev",
+            },
+            {
+              type: "text",
+              value: "Page 1 of 4",
+            },
+            {
+              type: "button",
+              value: "Next",
+            },
+          ],
+        },
+      ],
     },
     previewState: {
       type: "choice",
