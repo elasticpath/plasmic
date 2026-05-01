@@ -173,6 +173,25 @@ export const MOCK_CATALOG_SEARCH_DATA: CatalogSearchData = {
 };
 
 // ---------------------------------------------------------------------------
+// SearchFieldData — exposed by EPSearchBox to its slot children
+// ---------------------------------------------------------------------------
+
+export interface SearchFieldData {
+  /** The user's in-flight input value (controls the input element). */
+  value: string;
+  /** The query that has actually been refined against the search backend. */
+  displayValue: string;
+  /** True when value is empty — useful for hiding clear buttons. */
+  isEmpty: boolean;
+}
+
+export const MOCK_SEARCH_FIELD_DATA: SearchFieldData = {
+  value: "leather",
+  displayValue: "leather",
+  isEmpty: false,
+};
+
+// ---------------------------------------------------------------------------
 // RefinementItem — shape exposed per-iteration by EPRefinementList
 // ---------------------------------------------------------------------------
 

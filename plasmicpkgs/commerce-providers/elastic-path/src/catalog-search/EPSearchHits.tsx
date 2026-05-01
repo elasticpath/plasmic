@@ -292,6 +292,7 @@ function MockSearchHits(props: {
       className={className}
       role="list"
       aria-label="Search results"
+      data-ep-search-hits=""
       style={gridStyle}
     >
       {products.map((product, i) => (
@@ -339,6 +340,7 @@ function EPSearchHitsInner(props: {
       className={className}
       role="list"
       aria-label="Search results"
+      data-ep-search-hits=""
       style={gridStyle}
     >
       {normalizedProducts.map(

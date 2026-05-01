@@ -458,3 +458,120 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 - **EPSearchBox** / **EPSearchHits** / **EPSearchPagination** — Search UI
 - **EPRefinementList** / **EPHierarchicalMenu** / **EPRangeFilter** — Faceted filtering
 - **EPSearchStats** / **EPSearchSortBy** — Search metadata
+
+## Styling contract (catalog-search components)
+
+The catalog-search components ship behaviour, not appearance. Every visual
+choice — typography, colour, spacing, borders, focus state — is the
+designer's. The components do not impose a default look that the designer
+later has to override.
+
+The contract that every catalog-search component honours:
+
+1. **`className` lands on the visible interactive element.** The Plasmic
+   style panel binds to a single class per component instance. We forward
+   that class to the element designers actually want to style:
+
+   | Component | Element that receives `className` |
+   | --- | --- |
+   | `EPSearchBox` | n/a — provider only, no DOM (see below) |
+   | `EPCatalogSearchProvider` | the wrapper `<div data-ep-catalog-search-provider>` |
+   | `EPSearchHits` | the grid `<div data-ep-search-hits>` |
+   | `EPRefinementList` | the wrapper `<div data-ep-refinement-list>` |
+   | `EPHierarchicalMenu` | the wrapper `<div data-ep-hierarchical-menu>` |
+   | `EPRangeFilter` | the wrapper `<div data-ep-range-filter>` |
+   | `EPSearchPagination` | the wrapper `<div data-ep-search-pagination>` |
+   | `EPSearchStats` | the wrapper `<div data-ep-search-stats>` |
+   | `EPSearchSortBy` | the wrapper `<div data-ep-search-sort-by>` |
+
+2. **No inline `style` for appearance properties.** The components never set
+   `border`, `border-radius`, `padding`, `font-*`, `color`, `background`, or
+   `box-shadow` inline. CSS specificity goes class-wins-over-element, so
+   designer styles always reach the rendered DOM.
+
+3. **Inline `style` is permitted only for layout properties Plasmic strips.**
+   Plasmic's canvas filters out `display`/`grid-*`/`flex-*` styles set on a
+   code-component instance. `EPSearchHits` works around this by setting its
+   grid layout inline, and exposing the values as `gridTemplateColumns` /
+   `gridGap` props so designers can still control them.
+
+4. **The editor and the runtime render the same DOM.** No mock-only inline
+   styling that lies about runtime output — what the designer sees in the
+   Plasmic canvas is what the live site renders. Test coverage in
+   `__tests__/catalog-search-components.test.tsx` enforces this.
+
+### Structural CSS via `:where()`
+
+The components do need a small amount of structural CSS — for example,
+`position: relative` on the EPSearchBox wrapper so its absolute-positioned
+clear button can anchor. We ship that CSS once per page from
+`headless-styling.ts`, scoped via `:where()` so every selector has zero
+specificity and any designer class always wins.
+
+If you add a new catalog-search component, follow the same pattern:
+
+```tsx
+import { useHeadlessStyling } from "./headless-styling";
+
+export function EPNewSearchComponent({ className, ...props }) {
+  useHeadlessStyling();
+  return <div className={className} data-ep-new-search-component="">…</div>;
+}
+```
+
+Then add a contract test alongside the existing nine in
+`__tests__/catalog-search-components.test.tsx` via `describeHeadlessStylingContract`.
+The helper asserts (a) the className lands on the documented leaf, (b) no
+inline appearance styles are set anywhere in the rendered tree, and (c) the
+editor and runtime renders produce the same root tag.
+
+### Composing EPSearchBox
+
+`EPSearchBox` is a provider, not a renderer. It exposes search-field state
+to its slot children and otherwise renders nothing. The visible chrome —
+the `<input>`, the clear `<button>` — is owned by the designer. Drop a
+Plasmic-controlled input and button into the slot and wire them via
+`$ctx.searchFieldData` and the registered ref-actions.
+
+| What `EPSearchBox` exposes | Type | Use it for |
+| --- | --- | --- |
+| `$ctx.searchFieldData.value` | `string` | the controlled value of the input element |
+| `$ctx.searchFieldData.displayValue` | `string` | the query that has actually been refined (diverges from `value` during the debounce window) |
+| `$ctx.searchFieldData.isEmpty` | `boolean` | hide the clear button when nothing is typed |
+| `setValue(value: string)` ref-action | | call from the input's `onChange` interaction |
+| `clear()` ref-action | | call from the clear button's `onClick` interaction |
+
+Wiring a fresh EPSearchBox in Plasmic Studio:
+
+1. Drop an `<input>` (Plasmic's built-in tag, **not** a code component) into
+   the EPSearchBox slot. Style it freely from the style panel — appearance
+   reaches the live site because the input is a Plasmic-controlled tag.
+2. Set the input's `value` attribute to a dynamic value: `$ctx.searchFieldData.value`.
+3. Add an `onChange` interaction → custom function: `EP_SEARCH_BOX_REF.setValue(event.target.value)`,
+   where `EP_SEARCH_BOX_REF` is the ref to the parent EPSearchBox instance.
+4. Drop a `<button>` (also a Plasmic-controlled tag) for clear. Style it
+   freely.
+5. Add the button's `onClick` → custom function: `EP_SEARCH_BOX_REF.clear()`.
+6. Bind the button's visibility to `!$ctx.searchFieldData.isEmpty` so it
+   only shows when there's something to clear.
+
+Why this composition: Plasmic's codegen filters appearance styles
+(`padding`, `border`, `background`, `font-*`, `color`, `border-radius`,
+`box-shadow`) off any code-component instance — only the Plasmic-controlled
+tags (`input`, `button`, `div`, etc.) escape the filter. By making
+EPSearchBox a render-children-only provider, the visible chrome is owned
+by tags the designer fully controls. See PRD #308 for the long-form
+rationale.
+
+### Migration notes
+
+Before this contract was in place, `EPSearchBox` and `EPCatalogSearchProvider`
+shipped polished default styles inline. Designers who relied on those
+defaults will need to re-style the component from the Plasmic style panel
+after upgrading. The defaults were misleading — they appeared in the canvas
+preview but only some applied at runtime — so a clean reset is healthier
+than continuing to ship the lie.
+
+PRD #308 also moved EPSearchBox from a chrome-rendering component to a
+provider. Existing EPSearchBox instances will lose their input and clear
+button; re-author the slot per the wiring steps above.
