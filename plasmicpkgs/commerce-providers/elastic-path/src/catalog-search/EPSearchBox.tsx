@@ -1,94 +1,88 @@
 /**
- * EPSearchBox — debounced search input for catalog search.
+ * EPSearchBox — provider for catalog-search field state.
  *
- * Wraps `useSearchBox()` from react-instantsearch. At design time, renders
- * a static input with mock placeholder for visual editing.
+ * Renders no DOM. Wraps `useSearchBox()` from react-instantsearch and
+ * exposes `searchFieldData` ({ value, displayValue, isEmpty }) via
+ * DataProvider plus `setValue`/`clear` ref-actions.
+ *
+ * The visible chrome (input, clear button) is owned by the designer —
+ * they drop Plasmic-controlled `<input>` and `<button>` elements into
+ * this component's slot and bind them via `$ctx.searchFieldData` and
+ * the registered ref-actions. See PRD #308 for the full rationale.
  */
 
-import { usePlasmicCanvasContext } from "@plasmicapp/host";
+import { DataProvider, usePlasmicCanvasContext } from "@plasmicapp/host";
 import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import { Registerable } from "../registerable";
+import { MOCK_SEARCH_FIELD_DATA } from "./design-time-data";
+import type { SearchFieldData } from "./design-time-data";
 
 type PreviewState = "auto" | "withData";
 
-const DEFAULT_SEARCH_BOX_WRAPPER_STYLE: React.CSSProperties = {
-  position: "relative",
-  width: "100%",
-  alignSelf: "stretch",
-  display: "flex",
-  alignItems: "center",
-};
-
-const DEFAULT_SEARCH_BOX_INPUT_STYLE: React.CSSProperties = {
-  width: "100%",
-  height: "44px",
-  padding: "0 44px 0 16px",
-  border: "1px solid #e7e5e4",
-  borderRadius: "8px",
-  backgroundColor: "#ffffff",
-  fontSize: "14px",
-  color: "#1c1917",
-  outline: "none",
-  fontFamily: "inherit",
-};
-
-const DEFAULT_SEARCH_BOX_CLEAR_BUTTON_STYLE: React.CSSProperties = {
-  position: "absolute",
-  right: "8px",
-  top: "50%",
-  transform: "translateY(-50%)",
-  width: "28px",
-  height: "28px",
-  border: "none",
-  borderRadius: "6px",
-  backgroundColor: "transparent",
-  color: "#a8a29e",
-  cursor: "pointer",
-  fontSize: "18px",
-  lineHeight: "1",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-};
-
 interface EPSearchBoxProps {
-  className?: string;
-  placeholder?: string;
-  autoFocus?: boolean;
+  children?: React.ReactNode;
   debounceMs?: number;
-  showClear?: boolean;
   previewState?: PreviewState;
+  /**
+   * @deprecated Pre-PRD #308 prop. The new EPSearchBox is a provider with
+   * no DOM, so this value has no effect. Set the placeholder on the
+   * Plasmic input you drop into the slot. Kept here so existing project
+   * bundles stay valid against the registered metadata.
+   */
+  placeholder?: string;
+  /** @deprecated See `placeholder`. Set autoFocus on the slot's input. */
+  autoFocus?: boolean;
+  /** @deprecated See `placeholder`. Toggle visibility on the slot's clear button. */
+  showClear?: boolean;
+}
+
+interface EPSearchBoxActions {
+  setValue(value: string): void;
+  clear(): void;
 }
 
 export const epSearchBoxMeta: CodeComponentMeta<EPSearchBoxProps> = {
   name: "plasmic-commerce-ep-search-box",
   displayName: "EP Search Box",
   description:
-    "Search input with debounce for catalog search. Must be inside EP Catalog Search Provider.",
+    "Search field provider. Drops a Plasmic input and clear button into the slot, bind them to $ctx.searchFieldData (value, displayValue, isEmpty) and the setValue/clear ref-actions. Must be inside EP Catalog Search Provider.",
   props: {
-    placeholder: {
-      type: "string",
-      defaultValue: "Search products...",
-      displayName: "Placeholder",
-    },
-    autoFocus: {
-      type: "boolean",
-      defaultValue: false,
-      displayName: "Auto Focus",
+    children: {
+      type: "slot",
+      defaultValue: [
+        {
+          type: "vbox",
+          styles: { width: "100%" },
+          children: [
+            {
+              type: "input",
+              attrs: {
+                type: "search",
+                placeholder: "Search products...",
+              },
+            },
+            {
+              type: "button",
+              value: "Clear",
+            },
+          ],
+        },
+      ],
     },
     debounceMs: {
       type: "number",
       defaultValue: 300,
       displayName: "Debounce (ms)",
-      description: "Milliseconds to wait before triggering search",
-    },
-    showClear: {
-      type: "boolean",
-      defaultValue: true,
-      displayName: "Show Clear Button",
+      description: "Milliseconds to wait before refining the search",
     },
     previewState: {
       type: "choice",
@@ -97,21 +91,47 @@ export const epSearchBoxMeta: CodeComponentMeta<EPSearchBoxProps> = {
       displayName: "Preview State",
       advanced: true,
     },
-  },
+    // Deprecated — pre-PRD #308 props preserved so existing project bundles
+    // referencing these names stay valid against the new metadata. They have
+    // no runtime effect; set placeholder/autofocus/showclear on the Plasmic
+    // input or button you drop into the slot.
+    placeholder: {
+      type: "string",
+      advanced: true,
+      hidden: () => true,
+    },
+    autoFocus: {
+      type: "boolean",
+      advanced: true,
+      hidden: () => true,
+    },
+    showClear: {
+      type: "boolean",
+      advanced: true,
+      hidden: () => true,
+    },
+  } as any,
   importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
   importName: "EPSearchBox",
   parentComponentName: "plasmic-commerce-ep-catalog-search-provider",
+  providesData: true,
+  refActions: {
+    setValue: {
+      description: "Update the search field value",
+      argTypes: [{ name: "value", type: "string" }],
+    },
+    clear: {
+      description: "Clear the search field",
+      argTypes: [],
+    },
+  },
 };
 
-export function EPSearchBox(props: EPSearchBoxProps) {
-  const {
-    className,
-    placeholder = "Search products...",
-    autoFocus = false,
-    debounceMs = 300,
-    showClear = true,
-    previewState = "auto",
-  } = props;
+export const EPSearchBox = React.forwardRef<
+  EPSearchBoxActions,
+  EPSearchBoxProps
+>(function EPSearchBox(props, ref) {
+  const { children, debounceMs = 300, previewState = "auto" } = props;
 
   const inEditor = !!usePlasmicCanvasContext();
   const useMock =
@@ -119,112 +139,96 @@ export function EPSearchBox(props: EPSearchBoxProps) {
 
   if (useMock) {
     return (
-      <div className={className} data-ep-search-box="" style={DEFAULT_SEARCH_BOX_WRAPPER_STYLE}>
-        <input
-          type="search"
-          placeholder={placeholder}
-          autoFocus={autoFocus}
-          defaultValue="leather"
-          readOnly
-          style={DEFAULT_SEARCH_BOX_INPUT_STYLE}
-        />
-        {showClear && (
-          <button
-            type="button"
-            aria-label="Clear search"
-            style={DEFAULT_SEARCH_BOX_CLEAR_BUTTON_STYLE}
-          >
-            &times;
-          </button>
-        )}
-      </div>
+      <MockSearchBox ref={ref}>
+        {children}
+      </MockSearchBox>
     );
   }
 
   return (
-    <EPSearchBoxInner
-      className={className}
-      placeholder={placeholder}
-      autoFocus={autoFocus}
-      debounceMs={debounceMs}
-      showClear={showClear}
-    />
+    <EPSearchBoxInner ref={ref} debounceMs={debounceMs}>
+      {children}
+    </EPSearchBoxInner>
   );
-}
+});
 
-function EPSearchBoxInner(props: {
-  className?: string;
-  placeholder: string;
-  autoFocus: boolean;
-  debounceMs: number;
-  showClear: boolean;
-}) {
-  const { className, placeholder, autoFocus, debounceMs, showClear } = props;
+const MockSearchBox = React.forwardRef<
+  EPSearchBoxActions,
+  { children?: React.ReactNode }
+>(function MockSearchBox({ children }, ref) {
+  useImperativeHandle(ref, () => ({
+    setValue: () => {},
+    clear: () => {},
+  }));
 
-  // Import useSearchBox at runtime — requires InstantSearch context
+  return (
+    <DataProvider name="searchFieldData" data={MOCK_SEARCH_FIELD_DATA}>
+      {children}
+    </DataProvider>
+  );
+});
+
+const EPSearchBoxInner = React.forwardRef<
+  EPSearchBoxActions,
+  { children?: React.ReactNode; debounceMs: number }
+>(function EPSearchBoxInner({ children, debounceMs }, ref) {
   const { useSearchBox } = require("react-instantsearch");
-  const { query, refine, clear } = useSearchBox();
+  const { query: refinedQuery, refine, clear: refineClear } = useSearchBox();
 
-  const [inputValue, setInputValue] = useState(query);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [value, setValueState] = useState(refinedQuery ?? "");
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Sync external query changes to input
-  useEffect(() => {
-    setInputValue(query);
-  }, [query]);
-
-  const handleChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const value = e.target.value;
-      setInputValue(value);
-
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
+  const scheduleRefine = useCallback(
+    (next: string) => {
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
       }
-      timerRef.current = setTimeout(() => {
-        refine(value);
+      debounceTimer.current = setTimeout(() => {
+        refine(next);
       }, debounceMs);
     },
-    [refine, debounceMs]
+    [debounceMs, refine]
   );
 
-  const handleClear = useCallback(() => {
-    setInputValue("");
-    clear();
-  }, [clear]);
-
-  // Cleanup timer on unmount
   useEffect(() => {
     return () => {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
       }
     };
   }, []);
 
-  return (
-    <div className={className} data-ep-search-box="" style={DEFAULT_SEARCH_BOX_WRAPPER_STYLE}>
-      <input
-        type="search"
-        placeholder={placeholder}
-        autoFocus={autoFocus}
-        value={inputValue}
-        onChange={handleChange}
-        style={{ width: "100%" }}
-      />
-      {showClear && inputValue && (
-        <button
-          type="button"
-          aria-label="Clear search"
-          onClick={handleClear}
-          style={DEFAULT_SEARCH_BOX_CLEAR_BUTTON_STYLE}
-        >
-          &times;
-        </button>
-      )}
-    </div>
+  useImperativeHandle(
+    ref,
+    () => ({
+      setValue: (next: string) => {
+        setValueState(next);
+        scheduleRefine(next);
+      },
+      clear: () => {
+        if (debounceTimer.current) {
+          clearTimeout(debounceTimer.current);
+          debounceTimer.current = null;
+        }
+        setValueState("");
+        refineClear();
+      },
+    }),
+    [scheduleRefine, refineClear]
   );
-}
+
+  const data: SearchFieldData = {
+    value,
+    displayValue: refinedQuery ?? "",
+    isEmpty: value.length === 0,
+  };
+
+  return (
+    <DataProvider name="searchFieldData" data={data}>
+      {children}
+    </DataProvider>
+  );
+});
 
 export function registerEPSearchBox(
   loader?: Registerable,

@@ -153,6 +153,15 @@ jest.mock("@elasticpath/catalog-search-instantsearch-adapter", () => ({
 
 /* ---------- code under test (after mocks) ---------- */
 import { render } from "@testing-library/react";
+import { describeHeadlessStylingContract } from "./headless-styling-contract";
+
+function setEditorMode(inEditor: boolean) {
+  if (inEditor) {
+    mockUsePlasmicCanvasContext.mockReturnValue({});
+  } else {
+    mockUsePlasmicCanvasContext.mockReturnValue(null);
+  }
+}
 
 const {
   MOCK_SEARCH_PRODUCTS,
@@ -388,7 +397,7 @@ describe("EPCatalogSearchProvider", () => {
 });
 
 /* ================================================================
- * EPSearchBox tests
+ * EPSearchBox tests — provider with no DOM (PRD #308)
  * ================================================================ */
 describe("EPSearchBox", () => {
   beforeEach(() => {
@@ -396,40 +405,237 @@ describe("EPSearchBox", () => {
     mockUsePlasmicCanvasContext.mockReturnValue(null);
   });
 
-  it("should render mock search box in editor", () => {
+  it("provides searchFieldData with mock shape in editor", () => {
     mockUsePlasmicCanvasContext.mockReturnValue({});
 
     const { container } = render(
-      <EPSearchBox placeholder="Search..." />
+      <EPSearchBox>
+        <div>child</div>
+      </EPSearchBox>
     );
 
-    const input = container.querySelector("input");
-    expect(input).not.toBeNull();
-    expect(input!.getAttribute("placeholder")).toBe("Search...");
-    expect(input!.defaultValue).toBe("leather");
+    const provider = container.querySelector(
+      '[data-testid="data-provider-searchFieldData"]'
+    );
+    expect(provider).not.toBeNull();
+    const data = JSON.parse(
+      provider!.getAttribute("data-provider-data") || "{}"
+    );
+    expect(data.value).toBe("leather");
+    expect(data.displayValue).toBe("leather");
+    expect(data.isEmpty).toBe(false);
   });
 
-  it("should render clear button in editor when showClear=true", () => {
+  it("does not render mock chrome (no input or button in DOM) in editor", () => {
     mockUsePlasmicCanvasContext.mockReturnValue({});
 
     const { container } = render(
-      <EPSearchBox showClear={true} />
+      <EPSearchBox>
+        <div data-testid="user-content">user content</div>
+      </EPSearchBox>
     );
 
-    const clearButton = container.querySelector("button");
-    expect(clearButton).not.toBeNull();
+    expect(container.querySelector("input")).toBeNull();
+    expect(container.querySelector("button")).toBeNull();
+    expect(container.querySelector('[data-testid="user-content"]')).not.toBeNull();
   });
 
-  it("should not render clear button when showClear=false", () => {
-    mockUsePlasmicCanvasContext.mockReturnValue({});
+  it("setValue ref-action updates searchFieldData.value at runtime", () => {
+    mockUsePlasmicCanvasContext.mockReturnValue(null);
+    mockUseSearchBox.mockReturnValue({
+      query: "",
+      refine: jest.fn(),
+      clear: jest.fn(),
+    });
+
+    const ref = React.createRef<{
+      setValue: (v: string) => void;
+      clear: () => void;
+    }>();
+
+    const { container, rerender } = render(
+      <EPSearchBox ref={ref}>
+        <div>child</div>
+      </EPSearchBox>
+    );
+
+    require("react-dom/test-utils").act(() => {
+      ref.current!.setValue("boots");
+    });
+
+    rerender(
+      <EPSearchBox ref={ref}>
+        <div>child</div>
+      </EPSearchBox>
+    );
+
+    const provider = container.querySelector(
+      '[data-testid="data-provider-searchFieldData"]'
+    );
+    const data = JSON.parse(
+      provider!.getAttribute("data-provider-data") || "{}"
+    );
+    expect(data.value).toBe("boots");
+    expect(data.isEmpty).toBe(false);
+  });
+
+  it("setValue debounces refine() by debounceMs", () => {
+    jest.useFakeTimers();
+    mockUsePlasmicCanvasContext.mockReturnValue(null);
+    const refine = jest.fn();
+    mockUseSearchBox.mockReturnValue({
+      query: "",
+      refine,
+      clear: jest.fn(),
+    });
+
+    const ref = React.createRef<{
+      setValue: (v: string) => void;
+      clear: () => void;
+    }>();
+
+    render(
+      <EPSearchBox ref={ref} debounceMs={250}>
+        <div>child</div>
+      </EPSearchBox>
+    );
+
+    require("react-dom/test-utils").act(() => {
+      ref.current!.setValue("hat");
+    });
+
+    expect(refine).not.toHaveBeenCalled();
+
+    require("react-dom/test-utils").act(() => {
+      jest.advanceTimersByTime(250);
+    });
+
+    expect(refine).toHaveBeenCalledTimes(1);
+    expect(refine).toHaveBeenCalledWith("hat");
+
+    jest.useRealTimers();
+  });
+
+  it("clear ref-action resets value and calls useSearchBox().clear()", () => {
+    mockUsePlasmicCanvasContext.mockReturnValue(null);
+    const refine = jest.fn();
+    const clear = jest.fn();
+    mockUseSearchBox.mockReturnValue({
+      query: "boots",
+      refine,
+      clear,
+    });
+
+    const ref = React.createRef<{
+      setValue: (v: string) => void;
+      clear: () => void;
+    }>();
+
+    const { container, rerender } = render(
+      <EPSearchBox ref={ref}>
+        <div>child</div>
+      </EPSearchBox>
+    );
+
+    require("react-dom/test-utils").act(() => {
+      ref.current!.setValue("boots");
+    });
+
+    require("react-dom/test-utils").act(() => {
+      ref.current!.clear();
+    });
+
+    rerender(
+      <EPSearchBox ref={ref}>
+        <div>child</div>
+      </EPSearchBox>
+    );
+
+    expect(clear).toHaveBeenCalledTimes(1);
+
+    const provider = container.querySelector(
+      '[data-testid="data-provider-searchFieldData"]'
+    );
+    const data = JSON.parse(
+      provider!.getAttribute("data-provider-data") || "{}"
+    );
+    expect(data.value).toBe("");
+    expect(data.isEmpty).toBe(true);
+  });
+
+  it("displayValue reflects the refined query (diverges from in-flight value during debounce)", () => {
+    jest.useFakeTimers();
+    mockUsePlasmicCanvasContext.mockReturnValue(null);
+    mockUseSearchBox.mockReturnValue({
+      query: "leather",
+      refine: jest.fn(),
+      clear: jest.fn(),
+    });
+
+    const ref = React.createRef<{
+      setValue: (v: string) => void;
+      clear: () => void;
+    }>();
+
+    const { container, rerender } = render(
+      <EPSearchBox ref={ref} debounceMs={250}>
+        <div>child</div>
+      </EPSearchBox>
+    );
+
+    // User typed but debounce hasn't fired yet — displayValue still equals the
+    // last refined query, value reflects the new keystroke.
+    require("react-dom/test-utils").act(() => {
+      ref.current!.setValue("leath");
+    });
+
+    rerender(
+      <EPSearchBox ref={ref} debounceMs={250}>
+        <div>child</div>
+      </EPSearchBox>
+    );
+
+    const provider = container.querySelector(
+      '[data-testid="data-provider-searchFieldData"]'
+    );
+    const data = JSON.parse(
+      provider!.getAttribute("data-provider-data") || "{}"
+    );
+    expect(data.value).toBe("leath");
+    expect(data.displayValue).toBe("leather");
+
+    jest.useRealTimers();
+  });
+
+  it("previewState='withData' forces mock outside the editor", () => {
+    mockUsePlasmicCanvasContext.mockReturnValue(null);
 
     const { container } = render(
-      <EPSearchBox showClear={false} />
+      <EPSearchBox previewState="withData">
+        <div>child</div>
+      </EPSearchBox>
     );
 
-    const clearButton = container.querySelector("button");
-    expect(clearButton).toBeNull();
+    const provider = container.querySelector(
+      '[data-testid="data-provider-searchFieldData"]'
+    );
+    expect(provider).not.toBeNull();
+    const data = JSON.parse(
+      provider!.getAttribute("data-provider-data") || "{}"
+    );
+    expect(data.value).toBe("leather");
   });
+
+  it("meta exposes setValue and clear refActions and providesData", () => {
+    expect(epSearchBoxMeta.providesData).toBe(true);
+    expect(epSearchBoxMeta.refActions!.setValue).toBeDefined();
+    expect(epSearchBoxMeta.refActions!.setValue.argTypes).toEqual([
+      { name: "value", type: "string" },
+    ]);
+    expect(epSearchBoxMeta.refActions!.clear).toBeDefined();
+    expect(epSearchBoxMeta.refActions!.clear.argTypes).toEqual([]);
+  });
+
 });
 
 /* ================================================================
@@ -900,4 +1106,178 @@ describe("component registration", () => {
     );
     expect(epSearchSortByMeta.refActions!.setSort).toBeDefined();
   });
+});
+
+/* ================================================================
+ * Headless styling contract — applied to every catalog-search component.
+ * ================================================================ */
+
+describeHeadlessStylingContract({
+  componentName: "EPCatalogSearchProvider",
+  leafSelector: "[data-ep-catalog-search-provider]",
+  setEditorMode,
+  renderInEditor: ({ className }) => (
+    <EPCatalogSearchProvider className={className}>
+      <div>child</div>
+    </EPCatalogSearchProvider>
+  ),
+  renderAtRuntime: ({ className }) => {
+    setupCommerce();
+    return (
+      <EPCatalogSearchProvider className={className}>
+        <div>child</div>
+      </EPCatalogSearchProvider>
+    );
+  },
+});
+
+describeHeadlessStylingContract({
+  componentName: "EPSearchHits",
+  leafSelector: "[data-ep-search-hits]",
+  setEditorMode,
+  // gridStyle is the documented layout-property workaround for Plasmic's
+  // className-strip on display/grid CSS (see EPSearchHits.tsx). The contract
+  // already permits inline layout properties; appearance properties are
+  // checked. No allow-list entry is needed because nothing in the allow-list
+  // list (border, font, color, background) is set inline by EPSearchHits.
+  renderInEditor: ({ className }) => (
+    <EPSearchHits className={className}>
+      <div>card</div>
+    </EPSearchHits>
+  ),
+  renderAtRuntime: ({ className }) => {
+    mockUseHits.mockReturnValue({
+      hits: [
+        {
+          objectID: "ep-test-hit-1",
+          ep_name: "Test Product",
+          ep_slug: "test-product",
+          ep_price: { USD: { float_price: 9.99 } },
+        },
+      ],
+    });
+    return (
+      <EPSearchHits className={className}>
+        <div>card</div>
+      </EPSearchHits>
+    );
+  },
+});
+
+describeHeadlessStylingContract({
+  componentName: "EPRefinementList",
+  leafSelector: "[data-ep-refinement-list]",
+  setEditorMode,
+  renderInEditor: ({ className }) => (
+    <EPRefinementList attribute="brand" className={className}>
+      <div>row</div>
+    </EPRefinementList>
+  ),
+  renderAtRuntime: ({ className }) => {
+    mockUseRefinementList.mockReturnValue({
+      items: [
+        { value: "acme", label: "Acme", count: 3, isRefined: false },
+      ],
+      refine: jest.fn(),
+    });
+    return (
+      <EPRefinementList attribute="brand" className={className}>
+        <div>row</div>
+      </EPRefinementList>
+    );
+  },
+});
+
+describeHeadlessStylingContract({
+  componentName: "EPHierarchicalMenu",
+  leafSelector: "[data-ep-hierarchical-menu]",
+  setEditorMode,
+  renderInEditor: ({ className }) => (
+    <EPHierarchicalMenu className={className}>
+      <div>row</div>
+    </EPHierarchicalMenu>
+  ),
+  renderAtRuntime: ({ className }) => {
+    mockUseHierarchicalMenu.mockReturnValue({
+      items: [
+        {
+          value: "boots",
+          label: "Boots",
+          count: 5,
+          isRefined: false,
+          data: [],
+        },
+      ],
+      refine: jest.fn(),
+    });
+    return (
+      <EPHierarchicalMenu className={className}>
+        <div>row</div>
+      </EPHierarchicalMenu>
+    );
+  },
+});
+
+describeHeadlessStylingContract({
+  componentName: "EPRangeFilter",
+  leafSelector: "[data-ep-range-filter]",
+  setEditorMode,
+  renderInEditor: ({ className }) => (
+    <EPRangeFilter attribute="price.USD.float_price" className={className}>
+      <div>range</div>
+    </EPRangeFilter>
+  ),
+  renderAtRuntime: ({ className }) => (
+    <EPRangeFilter attribute="price.USD.float_price" className={className}>
+      <div>range</div>
+    </EPRangeFilter>
+  ),
+});
+
+describeHeadlessStylingContract({
+  componentName: "EPSearchPagination",
+  leafSelector: "[data-ep-search-pagination]",
+  setEditorMode,
+  renderInEditor: ({ className }) => (
+    <EPSearchPagination className={className}>
+      <div>page</div>
+    </EPSearchPagination>
+  ),
+  renderAtRuntime: ({ className }) => (
+    <EPSearchPagination className={className}>
+      <div>page</div>
+    </EPSearchPagination>
+  ),
+});
+
+describeHeadlessStylingContract({
+  componentName: "EPSearchStats",
+  leafSelector: "[data-ep-search-stats]",
+  setEditorMode,
+  renderInEditor: ({ className }) => (
+    <EPSearchStats className={className}>
+      <div>stats</div>
+    </EPSearchStats>
+  ),
+  renderAtRuntime: ({ className }) => (
+    <EPSearchStats className={className}>
+      <div>stats</div>
+    </EPSearchStats>
+  ),
+});
+
+describeHeadlessStylingContract({
+  componentName: "EPSearchSortBy",
+  leafSelector: "[data-ep-search-sort-by]",
+  setEditorMode,
+  renderInEditor: ({ className }) => (
+    <EPSearchSortBy className={className}>
+      <div>sort</div>
+    </EPSearchSortBy>
+  ),
+  renderAtRuntime: ({ className }) => (
+    <EPSearchSortBy className={className}>
+      <div>sort</div>
+    </EPSearchSortBy>
+  ),
 });
