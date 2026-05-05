@@ -19,6 +19,14 @@ export {
 } from "./EPSearchPagination";
 export { EPSearchStats, registerEPSearchStats } from "./EPSearchStats";
 export { EPSearchSortBy, registerEPSearchSortBy } from "./EPSearchSortBy";
+export {
+  EPClearRefinements,
+  registerEPClearRefinements,
+} from "./EPClearRefinements";
+export {
+  EPCurrentRefinements,
+  registerEPCurrentRefinements,
+} from "./EPCurrentRefinements";
 
 export type {
   CatalogSearchData,
@@ -28,4 +36,7 @@ export type {
   SearchPaginationData,
   SearchStatsData,
   SortByData,
+  ClearRefinementsData,
+  CurrentRefinementChip,
+  CurrentRefinementType,
 } from "./design-time-data";

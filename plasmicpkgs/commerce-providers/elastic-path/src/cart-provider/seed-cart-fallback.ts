@@ -1,4 +1,3 @@
-import { unstable_serialize } from "swr";
 import type { Cart } from "../types/cart";
 import { epGetCart } from "../ep-server-functions";
 import { epCartCacheKey } from "./cache-keys";
@@ -20,6 +19,7 @@ export async function seedCartFallback(): Promise<Record<string, Cart | null>> {
   } catch {
     cart = null;
   }
+  const { unstable_serialize } = require("swr") as typeof import("swr");
   const key = unstable_serialize(epCartCacheKey());
   return { [key]: cart };
 }
