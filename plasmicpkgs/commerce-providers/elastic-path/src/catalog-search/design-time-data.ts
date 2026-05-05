@@ -325,6 +325,77 @@ export const MOCK_SEARCH_STATS_DATA: SearchStatsData = {
 };
 
 // ---------------------------------------------------------------------------
+// ClearRefinementsData — shape exposed by EPClearRefinements
+// ---------------------------------------------------------------------------
+
+export interface ClearRefinementsData {
+  canRefine: boolean;
+  clear: () => void;
+}
+
+export const MOCK_CLEAR_REFINEMENTS_DATA: ClearRefinementsData = {
+  canRefine: true,
+  clear: () => {},
+};
+
+export const MOCK_CLEAR_REFINEMENTS_DATA_EMPTY: ClearRefinementsData = {
+  canRefine: false,
+  clear: () => {},
+};
+
+// ---------------------------------------------------------------------------
+// CurrentRefinementChip — shape exposed per-iteration by EPCurrentRefinements
+// ---------------------------------------------------------------------------
+
+export type CurrentRefinementType =
+  | "facet"
+  | "exclude"
+  | "disjunctive"
+  | "hierarchical"
+  | "numeric"
+  | "query"
+  | "tag";
+
+export interface CurrentRefinementChip {
+  attribute: string;
+  attributeLabel: string;
+  type: CurrentRefinementType;
+  value: string | number;
+  label: string;
+  operator?: string;
+  count?: number;
+  refine: () => void;
+}
+
+export const MOCK_CURRENT_REFINEMENT_CHIPS: CurrentRefinementChip[] = [
+  {
+    attribute: "brand",
+    attributeLabel: "Brand",
+    type: "facet",
+    value: "leather",
+    label: "Leather",
+    refine: () => {},
+  },
+  {
+    attribute: "price.USD.float_price",
+    attributeLabel: "Price",
+    type: "numeric",
+    value: 25,
+    label: "25",
+    operator: ">=",
+    refine: () => {},
+  },
+  {
+    attribute: "categories",
+    attributeLabel: "Categories",
+    type: "hierarchical",
+    value: "bags > leather",
+    label: "Bags > Leather",
+    refine: () => {},
+  },
+];
+
+// ---------------------------------------------------------------------------
 // SortByData — shape exposed by EPSearchSortBy
 // ---------------------------------------------------------------------------
 

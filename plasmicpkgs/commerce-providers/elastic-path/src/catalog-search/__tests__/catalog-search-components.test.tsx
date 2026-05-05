@@ -81,6 +81,20 @@ const mockUseSortBy = jest.fn().mockReturnValue({
   refine: jest.fn(),
 });
 
+const mockUseClearRefinements = jest.fn().mockReturnValue({
+  refine: jest.fn(),
+  canRefine: true,
+  hasRefinements: true,
+  createURL: jest.fn(),
+});
+
+const mockUseCurrentRefinements = jest.fn().mockReturnValue({
+  items: [],
+  canRefine: false,
+  refine: jest.fn(),
+  createURL: jest.fn(),
+});
+
 /* ---------- jest.mock calls ---------- */
 jest.mock("@plasmicapp/host", () => ({
   DataProvider: ({
@@ -138,6 +152,8 @@ jest.mock("react-instantsearch", () => ({
   usePagination: (...a: unknown[]) => mockUsePagination(...a),
   useStats: (...a: unknown[]) => mockUseStats(...a),
   useSortBy: (...a: unknown[]) => mockUseSortBy(...a),
+  useClearRefinements: (...a: unknown[]) => mockUseClearRefinements(...a),
+  useCurrentRefinements: (...a: unknown[]) => mockUseCurrentRefinements(...a),
   InstantSearch: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="instantsearch">{children}</div>
   ),
@@ -209,6 +225,18 @@ const { EPSearchStats, epSearchStatsMeta, registerEPSearchStats } =
 
 const { EPSearchSortBy, epSearchSortByMeta, registerEPSearchSortBy } =
   require("../EPSearchSortBy") as typeof import("../EPSearchSortBy");
+
+const {
+  EPClearRefinements,
+  epClearRefinementsMeta,
+  registerEPClearRefinements,
+} = require("../EPClearRefinements") as typeof import("../EPClearRefinements");
+
+const {
+  EPCurrentRefinements,
+  epCurrentRefinementsMeta,
+  registerEPCurrentRefinements,
+} = require("../EPCurrentRefinements") as typeof import("../EPCurrentRefinements");
 
 /* ---------- helpers ---------- */
 const mockClient = { baseUrl: "https://api.test.com" };
@@ -1017,6 +1045,378 @@ describe("EPSearchSortBy", () => {
 });
 
 /* ================================================================
+ * EPClearRefinements tests
+ * ================================================================ */
+describe("EPClearRefinements", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUsePlasmicCanvasContext.mockReturnValue(null);
+  });
+
+  it("publishes clearRefinementsData and triggers refine() on default child click", () => {
+    const refine = jest.fn();
+    mockUseClearRefinements.mockReturnValue({
+      refine,
+      canRefine: true,
+      hasRefinements: true,
+      createURL: jest.fn(),
+    });
+
+    const { container, getByText } = render(
+      <EPClearRefinements>
+        <button>Clear all</button>
+      </EPClearRefinements>
+    );
+
+    const provider = container.querySelector(
+      '[data-testid="data-provider-clearRefinementsData"]'
+    );
+    expect(provider).not.toBeNull();
+    const data = JSON.parse(
+      provider!.getAttribute("data-provider-data") || "{}"
+    );
+    expect(data.canRefine).toBe(true);
+
+    require("react-dom/test-utils").act(() => {
+      getByText("Clear all").click();
+    });
+    expect(refine).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders null when no refinements are active (canRefine=false)", () => {
+    mockUseClearRefinements.mockReturnValue({
+      refine: jest.fn(),
+      canRefine: false,
+      hasRefinements: false,
+      createURL: jest.fn(),
+    });
+
+    const { container } = render(
+      <EPClearRefinements>
+        <button>Clear all</button>
+      </EPClearRefinements>
+    );
+
+    expect(container.querySelector("[data-ep-clear-refinements]")).toBeNull();
+  });
+
+  it("composes designer-supplied onClick before the injected one (via bubble)", () => {
+    const calls: string[] = [];
+    const refine = jest.fn(() => calls.push("refine"));
+    mockUseClearRefinements.mockReturnValue({
+      refine,
+      canRefine: true,
+      hasRefinements: true,
+      createURL: jest.fn(),
+    });
+
+    const designerClick = () => calls.push("designer");
+
+    const { getByText } = render(
+      <EPClearRefinements>
+        <button onClick={designerClick}>Reset</button>
+      </EPClearRefinements>
+    );
+
+    require("react-dom/test-utils").act(() => {
+      getByText("Reset").click();
+    });
+    expect(calls).toEqual(["designer", "refine"]);
+  });
+
+  it("fail-open: multi-element children render unchanged but ctx is still published", () => {
+    mockUseClearRefinements.mockReturnValue({
+      refine: jest.fn(),
+      canRefine: true,
+      hasRefinements: true,
+      createURL: jest.fn(),
+    });
+
+    const { container } = render(
+      <EPClearRefinements>
+        <span>a</span>
+        <span>b</span>
+      </EPClearRefinements>
+    );
+
+    const provider = container.querySelector(
+      '[data-testid="data-provider-clearRefinementsData"]'
+    );
+    expect(provider).not.toBeNull();
+    expect(container.textContent).toContain("a");
+    expect(container.textContent).toContain("b");
+  });
+
+  it("renders mock data in editor without invoking the hook", () => {
+    mockUsePlasmicCanvasContext.mockReturnValue({});
+    const refine = jest.fn();
+    mockUseClearRefinements.mockReturnValue({
+      refine,
+      canRefine: true,
+      hasRefinements: true,
+      createURL: jest.fn(),
+    });
+
+    const { container } = render(
+      <EPClearRefinements>
+        <button>Clear all</button>
+      </EPClearRefinements>
+    );
+
+    const provider = container.querySelector(
+      '[data-testid="data-provider-clearRefinementsData"]'
+    );
+    expect(provider).not.toBeNull();
+    expect(mockUseClearRefinements).not.toHaveBeenCalled();
+  });
+
+  it("clear() ref-action triggers refine for non-child elements", () => {
+    const refine = jest.fn();
+    mockUseClearRefinements.mockReturnValue({
+      refine,
+      canRefine: true,
+      hasRefinements: true,
+      createURL: jest.fn(),
+    });
+
+    const ref = React.createRef<{ clear: () => void }>();
+    render(
+      <EPClearRefinements ref={ref}>
+        <button>Clear all</button>
+      </EPClearRefinements>
+    );
+
+    require("react-dom/test-utils").act(() => {
+      ref.current!.clear();
+    });
+    expect(refine).toHaveBeenCalledTimes(1);
+  });
+});
+
+/* ================================================================
+ * EPCurrentRefinements tests
+ * ================================================================ */
+describe("EPCurrentRefinements", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUsePlasmicCanvasContext.mockReturnValue(null);
+  });
+
+  it("returns null when no refinements are active", () => {
+    mockUseCurrentRefinements.mockReturnValue({
+      items: [],
+      canRefine: false,
+      refine: jest.fn(),
+      createURL: jest.fn(),
+    });
+
+    const { container } = render(
+      <EPCurrentRefinements>
+        <div>chip</div>
+      </EPCurrentRefinements>
+    );
+
+    expect(
+      container.querySelector("[data-ep-current-refinements]")
+    ).toBeNull();
+  });
+
+  it("flattens items into one chip per refinement and publishes per-iteration ctx", () => {
+    const refine = jest.fn();
+    mockUseCurrentRefinements.mockReturnValue({
+      items: [
+        {
+          attribute: "brand",
+          label: "Brand",
+          refinements: [
+            { attribute: "brand", type: "facet", value: "leather", label: "Leather" },
+            { attribute: "brand", type: "facet", value: "canvas", label: "Canvas" },
+          ],
+          refine,
+        },
+        {
+          attribute: "price.USD.float_price",
+          label: "Price",
+          refinements: [
+            {
+              attribute: "price.USD.float_price",
+              type: "numeric",
+              value: 25,
+              label: "25",
+              operator: ">=",
+            },
+          ],
+          refine,
+        },
+      ],
+      canRefine: true,
+      refine,
+      createURL: jest.fn(),
+    });
+
+    const { container } = render(
+      <EPCurrentRefinements>
+        <div>chip</div>
+      </EPCurrentRefinements>
+    );
+
+    const items = container.querySelectorAll('[role="listitem"]');
+    expect(items).toHaveLength(3);
+
+    const chipProviders = container.querySelectorAll(
+      '[data-testid="data-provider-currentRefinementChip"]'
+    );
+    expect(chipProviders).toHaveLength(3);
+    const first = JSON.parse(
+      chipProviders[0].getAttribute("data-provider-data") || "{}"
+    );
+    expect(first.attribute).toBe("brand");
+    expect(first.attributeLabel).toBe("Brand");
+    expect(first.type).toBe("facet");
+    expect(first.value).toBe("leather");
+    expect(first.label).toBe("Leather");
+
+    const numeric = JSON.parse(
+      chipProviders[2].getAttribute("data-provider-data") || "{}"
+    );
+    expect(numeric.type).toBe("numeric");
+    expect(numeric.operator).toBe(">=");
+    expect(numeric.value).toBe(25);
+  });
+
+  it("clicking a chip triggers refine bound to that specific refinement", () => {
+    const refineBrand = jest.fn();
+    const refinePrice = jest.fn();
+    mockUseCurrentRefinements.mockReturnValue({
+      items: [
+        {
+          attribute: "brand",
+          label: "Brand",
+          refinements: [
+            { attribute: "brand", type: "facet", value: "leather", label: "Leather" },
+          ],
+          refine: refineBrand,
+        },
+        {
+          attribute: "price.USD.float_price",
+          label: "Price",
+          refinements: [
+            {
+              attribute: "price.USD.float_price",
+              type: "numeric",
+              value: 25,
+              label: "25",
+              operator: ">=",
+            },
+          ],
+          refine: refinePrice,
+        },
+      ],
+      canRefine: true,
+      refine: jest.fn(),
+      createURL: jest.fn(),
+    });
+
+    const { container } = render(
+      <EPCurrentRefinements>
+        <button>×</button>
+      </EPCurrentRefinements>
+    );
+
+    const buttons = container.querySelectorAll("button");
+    expect(buttons).toHaveLength(2);
+
+    require("react-dom/test-utils").act(() => {
+      (buttons[1] as HTMLButtonElement).click();
+    });
+
+    expect(refineBrand).not.toHaveBeenCalled();
+    expect(refinePrice).toHaveBeenCalledTimes(1);
+    const arg = refinePrice.mock.calls[0][0];
+    expect(arg.attribute).toBe("price.USD.float_price");
+    expect(arg.value).toBe(25);
+  });
+
+  it("composes designer-supplied onClick before injected refine", () => {
+    const calls: string[] = [];
+    const refine = jest.fn(() => calls.push("refine"));
+    mockUseCurrentRefinements.mockReturnValue({
+      items: [
+        {
+          attribute: "brand",
+          label: "Brand",
+          refinements: [
+            { attribute: "brand", type: "facet", value: "leather", label: "Leather" },
+          ],
+          refine,
+        },
+      ],
+      canRefine: true,
+      refine,
+      createURL: jest.fn(),
+    });
+
+    const designerClick = () => calls.push("designer");
+
+    const { container } = render(
+      <EPCurrentRefinements>
+        <button onClick={designerClick}>×</button>
+      </EPCurrentRefinements>
+    );
+
+    require("react-dom/test-utils").act(() => {
+      (container.querySelector("button") as HTMLButtonElement).click();
+    });
+    expect(calls).toEqual(["designer", "refine"]);
+  });
+
+  it("renders mock chips in editor without invoking the hook", () => {
+    mockUsePlasmicCanvasContext.mockReturnValue({});
+    const { container } = render(
+      <EPCurrentRefinements>
+        <div>chip</div>
+      </EPCurrentRefinements>
+    );
+
+    const items = container.querySelectorAll('[role="listitem"]');
+    expect(items.length).toBeGreaterThan(0);
+    expect(mockUseCurrentRefinements).not.toHaveBeenCalled();
+  });
+
+  it("fail-open: multi-element repeated child renders without crashing, ctx still published", () => {
+    mockUseCurrentRefinements.mockReturnValue({
+      items: [
+        {
+          attribute: "brand",
+          label: "Brand",
+          refinements: [
+            { attribute: "brand", type: "facet", value: "leather", label: "Leather" },
+          ],
+          refine: jest.fn(),
+        },
+      ],
+      canRefine: true,
+      refine: jest.fn(),
+      createURL: jest.fn(),
+    });
+
+    const { container } = render(
+      <EPCurrentRefinements>
+        <span>a</span>
+        <span>b</span>
+      </EPCurrentRefinements>
+    );
+
+    const chipProviders = container.querySelectorAll(
+      '[data-testid="data-provider-currentRefinementChip"]'
+    );
+    expect(chipProviders).toHaveLength(1);
+    expect(container.textContent).toContain("a");
+    expect(container.textContent).toContain("b");
+  });
+});
+
+/* ================================================================
  * Component registration tests
  * ================================================================ */
 describe("component registration", () => {
@@ -1136,6 +1536,29 @@ describe("component registration", () => {
     const meta = (epSearchSortByMeta.props as any).indexName;
     expect(meta).toBeDefined();
     expect(meta.defaultValue).toBe("search");
+  });
+
+  it("EPClearRefinements meta exposes name, parent, providesData, refActions", () => {
+    expect(typeof registerEPClearRefinements).toBe("function");
+    expect(epClearRefinementsMeta.name).toBe(
+      "plasmic-commerce-ep-clear-refinements"
+    );
+    expect(epClearRefinementsMeta.parentComponentName).toBe(
+      "plasmic-commerce-ep-catalog-search-provider"
+    );
+    expect(epClearRefinementsMeta.providesData).toBe(true);
+    expect(epClearRefinementsMeta.refActions!.clear).toBeDefined();
+  });
+
+  it("EPCurrentRefinements meta exposes name, parent, providesData", () => {
+    expect(typeof registerEPCurrentRefinements).toBe("function");
+    expect(epCurrentRefinementsMeta.name).toBe(
+      "plasmic-commerce-ep-current-refinements"
+    );
+    expect(epCurrentRefinementsMeta.parentComponentName).toBe(
+      "plasmic-commerce-ep-catalog-search-provider"
+    );
+    expect(epCurrentRefinementsMeta.providesData).toBe(true);
   });
 });
 
@@ -1311,4 +1734,61 @@ describeHeadlessStylingContract({
       <div>sort</div>
     </EPSearchSortBy>
   ),
+});
+
+describeHeadlessStylingContract({
+  componentName: "EPClearRefinements",
+  leafSelector: "[data-ep-clear-refinements]",
+  setEditorMode,
+  renderInEditor: ({ className }) => (
+    <EPClearRefinements className={className}>
+      <button>Clear all</button>
+    </EPClearRefinements>
+  ),
+  renderAtRuntime: ({ className }) => {
+    mockUseClearRefinements.mockReturnValue({
+      refine: jest.fn(),
+      canRefine: true,
+      hasRefinements: true,
+      createURL: jest.fn(),
+    });
+    return (
+      <EPClearRefinements className={className}>
+        <button>Clear all</button>
+      </EPClearRefinements>
+    );
+  },
+});
+
+describeHeadlessStylingContract({
+  componentName: "EPCurrentRefinements",
+  leafSelector: "[data-ep-current-refinements]",
+  setEditorMode,
+  renderInEditor: ({ className }) => (
+    <EPCurrentRefinements className={className}>
+      <div>chip</div>
+    </EPCurrentRefinements>
+  ),
+  renderAtRuntime: ({ className }) => {
+    mockUseCurrentRefinements.mockReturnValue({
+      items: [
+        {
+          attribute: "brand",
+          label: "Brand",
+          refinements: [
+            { attribute: "brand", type: "facet", value: "leather", label: "Leather" },
+          ],
+          refine: jest.fn(),
+        },
+      ],
+      canRefine: true,
+      refine: jest.fn(),
+      createURL: jest.fn(),
+    });
+    return (
+      <EPCurrentRefinements className={className}>
+        <div>chip</div>
+      </EPCurrentRefinements>
+    );
+  },
 });

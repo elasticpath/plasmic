@@ -51,6 +51,8 @@ import { registerEPRangeFilter } from "./catalog-search/EPRangeFilter";
 import { registerEPSearchPagination } from "./catalog-search/EPSearchPagination";
 import { registerEPSearchStats } from "./catalog-search/EPSearchStats";
 import { registerEPSearchSortBy } from "./catalog-search/EPSearchSortBy";
+import { registerEPClearRefinements } from "./catalog-search/EPClearRefinements";
+import { registerEPCurrentRefinements } from "./catalog-search/EPCurrentRefinements";
 import { registerEPCatalogSearchProvider } from "./catalog-search/EPCatalogSearchProvider";
 import { Registerable } from "./registerable";
 
@@ -155,6 +157,8 @@ export function registerAll(loader?: Registerable) {
   registerEPHierarchicalMenu(loader);
   registerEPRangeFilter(loader);
   registerEPSearchPagination(loader);
+  registerEPClearRefinements(loader);
+  registerEPCurrentRefinements(loader);
   registerEPCatalogSearchProvider(loader);
 
   // Legacy monolithic bundle configurator

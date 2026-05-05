@@ -25,6 +25,11 @@ const STYLE_BLOCK = `
   width: 100%;
   align-self: stretch;
 }
+:where([data-ep-current-refinements]) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 `;
 
 let injected = false;
