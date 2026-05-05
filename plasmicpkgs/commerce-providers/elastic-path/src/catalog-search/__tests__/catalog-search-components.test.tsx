@@ -1120,6 +1120,23 @@ describe("component registration", () => {
     );
     expect(epSearchSortByMeta.refActions!.setSort).toBeDefined();
   });
+
+  it("EPSearchSortBy items default uses ergonomic field/direction shape", () => {
+    const items = (epSearchSortByMeta.props as any).items.defaultValue;
+    expect(items[0]).toEqual({ label: "Most Relevant" });
+    expect(items[1]).toEqual({
+      field: "price.USD.float_price",
+      direction: "asc",
+      label: "Price: Low to High",
+    });
+    expect(items.every((i: any) => "label" in i)).toBe(true);
+  });
+
+  it("EPSearchSortBy meta has indexName prop with default 'search'", () => {
+    const meta = (epSearchSortByMeta.props as any).indexName;
+    expect(meta).toBeDefined();
+    expect(meta.defaultValue).toBe("search");
+  });
 });
 
 /* ================================================================

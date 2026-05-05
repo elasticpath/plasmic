@@ -593,6 +593,51 @@ Wiring a fresh EPSearchPagination in Plasmic Studio:
 4. Wire the Next button's `onClick` → invoke ref-action `nextPage`. Bind
    its visibility to `$ctx.searchPaginationData.hasNext`.
 
+### Composing EPSearchSortBy
+
+`EPSearchSortBy` exposes the active sort and a `setSort` ref-action.
+The recommended slot pattern is a native `<select>`:
+
+| What `EPSearchSortBy` exposes | Type | Use it for |
+| --- | --- | --- |
+| `$ctx.sortByData.currentValue` | `string` | bind to the `<select>`'s `value` attribute |
+| `$ctx.sortByData.options` | `Array<{value, label}>` | normalised options as `useSortBy` sees them |
+| `setSort(value: string)` ref-action | | call from the `<select>`'s `onChange` |
+
+The `items` prop accepts two shapes:
+
+1. **Ergonomic (recommended)** — `{ field, direction, label }`:
+   ```js
+   [
+     { label: "Most Relevant" },                                                   // default/unsorted
+     { field: "price.USD.float_price", direction: "asc",  label: "Price: Low to High" },
+     { field: "price.USD.float_price", direction: "desc", label: "Price: High to Low" },
+     { field: "name", direction: "asc", label: "Name: A to Z" },
+   ]
+   ```
+   Components compose `${indexName}/sort/${field}:${direction}` internally —
+   the format the EP catalog-search-instantsearch-adapter parses. Field
+   names are Typesense field paths on the EP catalog index (`name`, `sku`,
+   `price.<currency>.float_price`, `created_at`, etc.).
+
+2. **Raw (escape hatch)** — `{ value, label }` where `value` is the full
+   indexName like `"search/sort/foo:asc"`. Use when you need to bypass
+   the composer.
+
+If the parent `EPCatalogSearchProvider` uses a non-default `indexName`,
+set the matching value on the `indexName` prop here too — otherwise the
+composed sort URLs target the wrong index.
+
+Wiring a fresh EPSearchSortBy in Plasmic Studio:
+
+1. Drop a `<select>` (Plasmic-controlled tag) into the slot.
+2. Bind its `value` attribute to `$ctx.sortByData?.currentValue`.
+3. Add `<option>` children for each sort entry — the option's `value`
+   attribute should match the composed `value` from `$ctx.sortByData.options`
+   (i.e. `$ctx.sortByData.options[N].value`), or hardcode if you know
+   the indexName.
+4. Wire the `<select>`'s `onChange` interaction → invoke ref-action
+   `setSort` on the EPSearchSortBy instance with arg `event.target.value`.
 ### Migration notes
 
 Before this contract was in place, `EPSearchBox` and `EPCatalogSearchProvider`
