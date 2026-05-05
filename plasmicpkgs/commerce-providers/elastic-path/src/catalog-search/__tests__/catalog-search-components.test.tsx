@@ -1095,6 +1095,20 @@ describe("component registration", () => {
     expect(epSearchPaginationMeta.refActions!.prevPage).toBeDefined();
   });
 
+  it("EPSearchPagination default slot ships hbox of [button, text, button]", () => {
+    const slot = (epSearchPaginationMeta.props as any).children;
+    expect(slot.type).toBe("slot");
+    const defaultValue = Array.isArray(slot.defaultValue)
+      ? slot.defaultValue[0]
+      : slot.defaultValue;
+    expect(defaultValue.type).toBe("hbox");
+    const kids = defaultValue.children as any[];
+    expect(kids).toHaveLength(3);
+    expect(kids[0].type).toBe("button");
+    expect(kids[1].type).toBe("text");
+    expect(kids[2].type).toBe("button");
+  });
+
   it("EPSearchStats meta should have correct name", () => {
     expect(epSearchStatsMeta.name).toBe("plasmic-commerce-ep-search-stats");
     expect(epSearchStatsMeta.providesData).toBe(true);

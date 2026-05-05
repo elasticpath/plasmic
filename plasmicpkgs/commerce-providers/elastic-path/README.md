@@ -563,6 +563,36 @@ EPSearchBox a render-children-only provider, the visible chrome is owned
 by tags the designer fully controls. See PRD #308 for the long-form
 rationale.
 
+### Composing EPSearchPagination
+
+`EPSearchPagination` follows the same provider pattern. The default slot
+ships an `hbox` with `Prev` button, page-indicator text, and `Next` button
+so a fresh drop renders working chrome shape — the designer wires the
+behaviour.
+
+| What `EPSearchPagination` exposes | Type | Use it for |
+| --- | --- | --- |
+| `$ctx.searchPaginationData.currentPage` | `number` | zero-indexed current page |
+| `$ctx.searchPaginationData.totalPages` | `number` | total page count |
+| `$ctx.searchPaginationData.hasPrev` | `boolean` | hide Prev button when false |
+| `$ctx.searchPaginationData.hasNext` | `boolean` | hide Next button when false |
+| `$ctx.searchPaginationData.pages` | `number[]` | page-number buttons array |
+| `goToPage(page: number)` ref-action | | call from a page-number button's `onClick` |
+| `prevPage()` ref-action | | call from the Prev button's `onClick` |
+| `nextPage()` ref-action | | call from the Next button's `onClick` |
+
+Wiring a fresh EPSearchPagination in Plasmic Studio:
+
+1. The default slot already contains a Prev button, a page text, and a
+   Next button — restyle them freely from the style panel.
+2. Replace the page-text content with a dynamic expression, e.g.
+   `` `Page ${$ctx.searchPaginationData.currentPage + 1} of ${$ctx.searchPaginationData.totalPages}` ``.
+3. Wire the Prev button's `onClick` → invoke ref-action `prevPage` on the
+   EPSearchPagination instance. Bind its visibility to
+   `$ctx.searchPaginationData.hasPrev`.
+4. Wire the Next button's `onClick` → invoke ref-action `nextPage`. Bind
+   its visibility to `$ctx.searchPaginationData.hasNext`.
+
 ### Migration notes
 
 Before this contract was in place, `EPSearchBox` and `EPCatalogSearchProvider`
