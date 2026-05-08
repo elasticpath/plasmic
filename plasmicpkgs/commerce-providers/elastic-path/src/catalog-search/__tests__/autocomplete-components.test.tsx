@@ -17,6 +17,9 @@ import React from "react";
 
 /* ---------- mock variables (declared before jest.mock) ---------- */
 const mockUsePlasmicCanvasContext = jest.fn();
+const mockUsePlasmicCanvasComponentInfo = jest.fn().mockReturnValue({
+  isSelected: false,
+});
 const mockRepeatedElement = jest.fn(
   (_idx: number, children: React.ReactNode) => children
 );
@@ -174,6 +177,8 @@ jest.mock("@plasmicapp/host", () => ({
   ),
   useSelector: jest.fn(),
   usePlasmicCanvasContext: () => mockUsePlasmicCanvasContext(),
+  usePlasmicCanvasComponentInfo: (...args: any[]) =>
+    mockUsePlasmicCanvasComponentInfo(...args),
   repeatedElement: (...args: any[]) => mockRepeatedElement(...args),
 }));
 
@@ -251,6 +256,10 @@ function setEditorMode(inEditor: boolean) {
   }
 }
 
+function setIsSelected(isSelected: boolean) {
+  mockUsePlasmicCanvasComponentInfo.mockReturnValue({ isSelected });
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   // mockClear leaves mockResolvedValueOnce queues intact across tests; reset
@@ -261,6 +270,7 @@ beforeEach(() => {
   });
   fakeAutocompleteInstances.length = 0;
   mockUsePlasmicCanvasContext.mockReturnValue(null);
+  mockUsePlasmicCanvasComponentInfo.mockReturnValue({ isSelected: false });
   mockUseSearchBox.mockReturnValue({
     query: "",
     refine: jest.fn(),
@@ -436,6 +446,72 @@ describe("EPSearchAutocompleteInput", () => {
 
     expect(fakeAutocompleteInstances[0].state.query).toBe("boot");
   });
+
+  it("injects the placeholder prop onto the slot input", () => {
+    setEditorMode(false);
+
+    const { container } = render(
+      <EPSearchAutocomplete>
+        <EPSearchAutocompleteInput placeholder="Find boots…">
+          <input type="search" data-testid="user-input" />
+        </EPSearchAutocompleteInput>
+      </EPSearchAutocomplete>
+    );
+
+    const input = container.querySelector(
+      '[data-testid="user-input"]'
+    ) as HTMLInputElement;
+    expect(input.getAttribute("placeholder")).toBe("Find boots…");
+  });
+
+  it("placeholder prop overrides any placeholder set on the slot child", () => {
+    setEditorMode(false);
+
+    const { container } = render(
+      <EPSearchAutocomplete>
+        <EPSearchAutocompleteInput placeholder="From component">
+          <input
+            type="search"
+            placeholder="From slot"
+            data-testid="user-input"
+          />
+        </EPSearchAutocompleteInput>
+      </EPSearchAutocomplete>
+    );
+
+    const input = container.querySelector(
+      '[data-testid="user-input"]'
+    ) as HTMLInputElement;
+    expect(input.getAttribute("placeholder")).toBe("From component");
+  });
+
+  it("preserves the slot's own placeholder when the prop is empty", () => {
+    setEditorMode(false);
+
+    const { container } = render(
+      <EPSearchAutocomplete>
+        <EPSearchAutocompleteInput placeholder="">
+          <input
+            type="search"
+            placeholder="From slot"
+            data-testid="user-input"
+          />
+        </EPSearchAutocompleteInput>
+      </EPSearchAutocomplete>
+    );
+
+    const input = container.querySelector(
+      '[data-testid="user-input"]'
+    ) as HTMLInputElement;
+    expect(input.getAttribute("placeholder")).toBe("From slot");
+  });
+
+  it("meta declares a default placeholder so freshly-dropped components show one", () => {
+    const placeholderProp = (epSearchAutocompleteInputMeta.props as any)
+      .placeholder;
+    expect(placeholderProp.type).toBe("string");
+    expect(placeholderProp.defaultValue).toBe("Search products...");
+  });
 });
 
 describeHeadlessStylingContract({
@@ -525,8 +601,29 @@ describe("EPSearchAutocompletePanel", () => {
     expect(closeButton!.tagName.toLowerCase()).toBe("button");
   });
 
-  it("editor mode renders the panel unconditionally with mock content", () => {
+  it("editor mode hides the panel when not selected and not pinned open", () => {
     setEditorMode(true);
+    setIsSelected(false);
+
+    const { container } = render(
+      <EPSearchAutocomplete>
+        <EPSearchAutocompletePanel>
+          <div data-testid="panel-content">panel</div>
+        </EPSearchAutocompletePanel>
+      </EPSearchAutocomplete>
+    );
+
+    expect(
+      container.querySelector('[data-testid="panel-content"]')
+    ).toBeNull();
+    expect(
+      container.querySelector("[data-ep-autocomplete-panel]")
+    ).toBeNull();
+  });
+
+  it("editor mode renders the panel when the component is selected in Studio", () => {
+    setEditorMode(true);
+    setIsSelected(true);
 
     const { container } = render(
       <EPSearchAutocomplete>
@@ -540,6 +637,61 @@ describe("EPSearchAutocompletePanel", () => {
       container.querySelector('[data-testid="panel-content"]')
     ).not.toBeNull();
   });
+
+  it("editor mode renders the panel when `open` override is true", () => {
+    setEditorMode(true);
+    setIsSelected(false);
+
+    const { container } = render(
+      <EPSearchAutocomplete>
+        <EPSearchAutocompletePanel open>
+          <div data-testid="panel-content">panel</div>
+        </EPSearchAutocompletePanel>
+      </EPSearchAutocomplete>
+    );
+
+    expect(
+      container.querySelector('[data-testid="panel-content"]')
+    ).not.toBeNull();
+  });
+
+  it("calls plasmicNotifyAutoOpenedContent when the panel auto-opens via selection", () => {
+    setEditorMode(true);
+    setIsSelected(true);
+    const notify = jest.fn();
+
+    render(
+      <EPSearchAutocomplete>
+        <EPSearchAutocompletePanel
+          plasmicNotifyAutoOpenedContent={notify}
+        >
+          <div>panel</div>
+        </EPSearchAutocompletePanel>
+      </EPSearchAutocomplete>
+    );
+
+    expect(notify).toHaveBeenCalled();
+  });
+
+  it("forwards __plasmic_selection_prop__ to usePlasmicCanvasComponentInfo", () => {
+    setEditorMode(true);
+    setIsSelected(true);
+    const selectionProp = { isSelected: true };
+
+    render(
+      <EPSearchAutocomplete>
+        <EPSearchAutocompletePanel
+          __plasmic_selection_prop__={selectionProp}
+        >
+          <div>panel</div>
+        </EPSearchAutocompletePanel>
+      </EPSearchAutocomplete>
+    );
+
+    expect(mockUsePlasmicCanvasComponentInfo).toHaveBeenCalledWith({
+      __plasmic_selection_prop__: selectionProp,
+    });
+  });
 });
 
 describeHeadlessStylingContract({
@@ -547,8 +699,11 @@ describeHeadlessStylingContract({
   leafSelector: "[data-ep-autocomplete-panel]",
   setEditorMode,
   renderInEditor: ({ className }) => (
+    // The panel only renders in canvas when selected or pinned open. The
+    // contract test cares about className forwarding, not visibility logic
+    // — `open` pins it visible regardless of selection state.
     <EPSearchAutocomplete>
-      <EPSearchAutocompletePanel className={className}>
+      <EPSearchAutocompletePanel className={className} open>
         <div>panel</div>
       </EPSearchAutocompletePanel>
     </EPSearchAutocomplete>

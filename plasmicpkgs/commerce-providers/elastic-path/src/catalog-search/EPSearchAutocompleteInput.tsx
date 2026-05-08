@@ -8,6 +8,13 @@
  * or non-element child, we fall back to rendering it untouched — the
  * onSubmit / selection paths still work via the surrounding panel + list.
  *
+ * Also exposes a top-level `placeholder` prop so designers can set the
+ * placeholder text from the right rail without drilling into slot attrs.
+ * autocomplete-core's `getInputProps()` does not return a `placeholder`
+ * key, so we inject it ourselves; designers who'd rather hard-code it on
+ * the slot child can leave the prop blank — `cloneElement` preserves the
+ * existing attr.
+ *
  * No DOM is owned by this component beyond what the slot provides.
  */
 
@@ -25,8 +32,11 @@ type PreviewState = "auto" | "withData";
 interface EPSearchAutocompleteInputProps {
   children?: React.ReactNode;
   className?: string;
+  placeholder?: string;
   previewState?: PreviewState;
 }
+
+const DEFAULT_PLACEHOLDER = "Search products...";
 
 export const epSearchAutocompleteInputMeta: CodeComponentMeta<EPSearchAutocompleteInputProps> =
   {
@@ -42,10 +52,16 @@ export const epSearchAutocompleteInputMeta: CodeComponentMeta<EPSearchAutocomple
             type: "input",
             attrs: {
               type: "search",
-              placeholder: "Search products...",
             },
           },
         ],
+      },
+      placeholder: {
+        type: "string",
+        displayName: "Placeholder",
+        defaultValue: DEFAULT_PLACEHOLDER,
+        description:
+          "Shown when the input is empty. Overrides any placeholder set directly on the slot input.",
       },
       previewState: {
         type: "choice",
@@ -63,7 +79,7 @@ export const epSearchAutocompleteInputMeta: CodeComponentMeta<EPSearchAutocomple
 export function EPSearchAutocompleteInput(
   props: EPSearchAutocompleteInputProps
 ) {
-  const { children, className } = props;
+  const { children, className, placeholder } = props;
   const ctx = useEPAutocompleteContextOptional();
 
   if (!ctx) {
@@ -74,22 +90,26 @@ export function EPSearchAutocompleteInput(
 
   const inputProps = ctx.getInputProps({});
   const child = React.Children.only(children as React.ReactElement);
+  const injected: Record<string, unknown> = {
+    ...inputProps,
+    className: [className, (child.props as any)?.className]
+      .filter(Boolean)
+      .join(" ") || undefined,
+    // Tell common password-manager extensions (1Password, LastPass,
+    // Bitwarden, Dashlane) to skip this input. Without these hints,
+    // some extensions stamp `caret-color: transparent !important` on
+    // the input to indicate autofill availability — which hides the
+    // user's typing caret on a search field where it doesn't belong.
+    "data-1p-ignore": "true",
+    "data-lpignore": "true",
+    "data-bwignore": "true",
+    "data-form-type": "other",
+  };
+  if (placeholder !== undefined && placeholder !== "") {
+    injected.placeholder = placeholder;
+  }
   const cloned = cloneWithInjectedHandlers(child, {
-    injected: {
-      ...inputProps,
-      className: [className, (child.props as any)?.className]
-        .filter(Boolean)
-        .join(" ") || undefined,
-      // Tell common password-manager extensions (1Password, LastPass,
-      // Bitwarden, Dashlane) to skip this input. Without these hints,
-      // some extensions stamp `caret-color: transparent !important` on
-      // the input to indicate autofill availability — which hides the
-      // user's typing caret on a search field where it doesn't belong.
-      "data-1p-ignore": "true",
-      "data-lpignore": "true",
-      "data-bwignore": "true",
-      "data-form-type": "other",
-    },
+    injected,
     compose: ["onChange", "onKeyDown", "onFocus", "onBlur"],
   });
 
