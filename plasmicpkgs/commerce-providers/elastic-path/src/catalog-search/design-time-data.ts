@@ -413,3 +413,51 @@ export const MOCK_SORT_BY_DATA: SortByData = {
     { value: "name:asc", label: "Name: A to Z" },
   ],
 };
+
+// ---------------------------------------------------------------------------
+// AutocompleteData — shape exposed by EPSearchAutocomplete provider
+// ---------------------------------------------------------------------------
+
+export interface AutocompleteSuggestionItem {
+  /** Raw suggestion text under the configured predictionsField. */
+  q: string;
+  /** Original adapter hit, preserved so designers can reach into highlight markup. */
+  _raw?: Record<string, unknown>;
+}
+
+export interface AutocompleteCollection {
+  sourceId: string;
+  items: AutocompleteSuggestionItem[];
+}
+
+export interface AutocompleteData {
+  /** Whether the panel should be rendered (mirrors autocomplete-core state). */
+  isOpen: boolean;
+  /** Current query string in the autocomplete input. */
+  query: string;
+  /** Per-source item collections — each source renders its own list. */
+  collections: AutocompleteCollection[];
+}
+
+export const MOCK_AUTOCOMPLETE_DATA: AutocompleteData = {
+  isOpen: true,
+  query: "leat",
+  collections: [
+    {
+      sourceId: "predictions",
+      items: [
+        { q: "leather bag" },
+        { q: "leather wallet" },
+        { q: "leather card holder" },
+      ],
+    },
+  ],
+};
+
+// Per-iteration context published by EPSearchAutocompleteList.
+export interface CurrentSuggestion {
+  item: AutocompleteSuggestionItem;
+  isHighlighted: boolean;
+  source: string;
+  query: string;
+}
