@@ -44,13 +44,20 @@
     "tsdx": "^0.14.1"
   },
   "peerDependencies": {
+    "@algolia/autocomplete-plugin-recent-searches": ">=1.17.0",
     "@plasmicapp/host": ">=1.0.0",
     "@plasmicapp/query": ">=0.1.0",
     "react": ">=16.8.0",
     "react-hook-form": ">=7.28.0",
     "swr": ">=1.0.0"
   },
+  "peerDependenciesMeta": {
+    "@algolia/autocomplete-plugin-recent-searches": {
+      "optional": true
+    }
+  },
   "dependencies": {
+    "@algolia/autocomplete-core": "^1.17.7",
     "@elasticpath/catalog-search-instantsearch-adapter": "0.1.0",
     "@epcc-sdk/sdks-shopper": "^0.0.43",
     "@hookform/resolvers": "^3.3.2",

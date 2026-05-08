@@ -27,6 +27,22 @@ export {
   EPCurrentRefinements,
   registerEPCurrentRefinements,
 } from "./EPCurrentRefinements";
+export {
+  EPSearchAutocomplete,
+  registerEPSearchAutocomplete,
+} from "./EPSearchAutocomplete";
+export {
+  EPSearchAutocompleteInput,
+  registerEPSearchAutocompleteInput,
+} from "./EPSearchAutocompleteInput";
+export {
+  EPSearchAutocompletePanel,
+  registerEPSearchAutocompletePanel,
+} from "./EPSearchAutocompletePanel";
+export {
+  EPSearchAutocompleteList,
+  registerEPSearchAutocompleteList,
+} from "./EPSearchAutocompleteList";
 
 export type {
   CatalogSearchData,
@@ -39,4 +55,8 @@ export type {
   ClearRefinementsData,
   CurrentRefinementChip,
   CurrentRefinementType,
+  AutocompleteData,
+  AutocompleteCollection,
+  AutocompleteSuggestionItem,
+  CurrentSuggestion,
 } from "./design-time-data";
