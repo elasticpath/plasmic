@@ -53,6 +53,7 @@ import { registerEPSearchStats } from "./catalog-search/EPSearchStats";
 import { registerEPSearchSortBy } from "./catalog-search/EPSearchSortBy";
 import { registerEPClearRefinements } from "./catalog-search/EPClearRefinements";
 import { registerEPCurrentRefinements } from "./catalog-search/EPCurrentRefinements";
+import { registerEPSearchEmpty } from "./catalog-search/EPSearchEmpty";
 import { registerEPSearchAutocomplete } from "./catalog-search/EPSearchAutocomplete";
 import { registerEPSearchAutocompleteInput } from "./catalog-search/EPSearchAutocompleteInput";
 import { registerEPSearchAutocompletePanel } from "./catalog-search/EPSearchAutocompletePanel";
@@ -163,6 +164,7 @@ export function registerAll(loader?: Registerable) {
   registerEPSearchPagination(loader);
   registerEPClearRefinements(loader);
   registerEPCurrentRefinements(loader);
+  registerEPSearchEmpty(loader);
   registerEPSearchAutocomplete(loader);
   registerEPSearchAutocompleteInput(loader);
   registerEPSearchAutocompletePanel(loader);

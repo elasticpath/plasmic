@@ -238,6 +238,12 @@ const {
   registerEPCurrentRefinements,
 } = require("../EPCurrentRefinements") as typeof import("../EPCurrentRefinements");
 
+const {
+  EPSearchEmpty,
+  epSearchEmptyMeta,
+  registerEPSearchEmpty,
+} = require("../EPSearchEmpty") as typeof import("../EPSearchEmpty");
+
 /* ---------- helpers ---------- */
 const mockClient = { baseUrl: "https://api.test.com" };
 const mockProvider = { locale: "en-US", client: mockClient };
@@ -1417,6 +1423,205 @@ describe("EPCurrentRefinements", () => {
 });
 
 /* ================================================================
+ * EPSearchEmpty — no-results state
+ * ================================================================ */
+describe("EPSearchEmpty", () => {
+  it("meta enforces parentComponentName, name, importName", () => {
+    expect(epSearchEmptyMeta.name).toBe("plasmic-commerce-ep-search-empty");
+    expect(epSearchEmptyMeta.parentComponentName).toBe(
+      "plasmic-commerce-ep-catalog-search-provider"
+    );
+    expect(epSearchEmptyMeta.importName).toBe("EPSearchEmpty");
+  });
+
+  it("runtime renders nothing when results === null (initial / pre-response)", () => {
+    setEditorMode(false);
+    mockUseInstantSearch.mockReturnValue({ results: null });
+
+    const { container } = render(
+      <EPSearchEmpty>
+        <div data-testid="empty-content">empty</div>
+      </EPSearchEmpty>
+    );
+
+    expect(
+      container.querySelector('[data-testid="empty-content"]')
+    ).toBeNull();
+    expect(container.querySelector("[data-ep-search-empty]")).toBeNull();
+  });
+
+  it("runtime renders nothing when results.nbHits > 0", () => {
+    setEditorMode(false);
+    mockUseInstantSearch.mockReturnValue({ results: { nbHits: 5 } });
+
+    const { container } = render(
+      <EPSearchEmpty>
+        <div data-testid="empty-content">empty</div>
+      </EPSearchEmpty>
+    );
+
+    expect(
+      container.querySelector('[data-testid="empty-content"]')
+    ).toBeNull();
+  });
+
+  it("runtime renders the wrapper + slot when results !== null && nbHits === 0", () => {
+    setEditorMode(false);
+    mockUseInstantSearch.mockReturnValue({ results: { nbHits: 0 } });
+
+    const { container } = render(
+      <EPSearchEmpty>
+        <div data-testid="empty-content">empty</div>
+      </EPSearchEmpty>
+    );
+
+    expect(
+      container.querySelector('[data-testid="empty-content"]')
+    ).not.toBeNull();
+    expect(container.querySelector("[data-ep-search-empty]")).not.toBeNull();
+  });
+
+  it("wrapper carries role='status' for assistive-tech announcement", () => {
+    setEditorMode(false);
+    mockUseInstantSearch.mockReturnValue({ results: { nbHits: 0 } });
+
+    const { container } = render(
+      <EPSearchEmpty>
+        <div>empty</div>
+      </EPSearchEmpty>
+    );
+
+    const wrapper = container.querySelector("[data-ep-search-empty]");
+    expect(wrapper?.getAttribute("role")).toBe("status");
+  });
+
+  it("editor mode renders the slot unconditionally (auto + inEditor)", () => {
+    setEditorMode(true);
+    // Even with results === null, the editor branch should render so
+    // designers see their layout.
+    mockUseInstantSearch.mockReturnValue({ results: null });
+
+    const { container } = render(
+      <EPSearchEmpty>
+        <div data-testid="empty-content">empty</div>
+      </EPSearchEmpty>
+    );
+
+    expect(
+      container.querySelector('[data-testid="empty-content"]')
+    ).not.toBeNull();
+    expect(container.querySelector("[data-ep-search-empty]")).not.toBeNull();
+  });
+
+  it("editor branch does not call useInstantSearch (Mock + Inner split keeps the hook out of canvas)", () => {
+    setEditorMode(true);
+    mockUseInstantSearch.mockClear();
+
+    render(
+      <EPSearchEmpty>
+        <div>empty</div>
+      </EPSearchEmpty>
+    );
+
+    expect(mockUseInstantSearch).not.toHaveBeenCalled();
+  });
+
+  it("previewState='withData' forces the wrapper to render at runtime regardless of result count", () => {
+    setEditorMode(false);
+    mockUseInstantSearch.mockReturnValue({ results: { nbHits: 12 } });
+
+    const { container } = render(
+      <EPSearchEmpty previewState="withData">
+        <div data-testid="empty-content">empty</div>
+      </EPSearchEmpty>
+    );
+
+    expect(
+      container.querySelector('[data-testid="empty-content"]')
+    ).not.toBeNull();
+    expect(container.querySelector("[data-ep-search-empty]")).not.toBeNull();
+  });
+
+  it("results flipping from non-zero to zero mounts Empty (regression: live filtering into nothing)", () => {
+    setEditorMode(false);
+    mockUseInstantSearch.mockReturnValue({ results: { nbHits: 5 } });
+
+    const { container, rerender } = render(
+      <EPSearchEmpty>
+        <div data-testid="empty-content">empty</div>
+      </EPSearchEmpty>
+    );
+
+    expect(
+      container.querySelector('[data-testid="empty-content"]')
+    ).toBeNull();
+
+    mockUseInstantSearch.mockReturnValue({ results: { nbHits: 0 } });
+    rerender(
+      <EPSearchEmpty>
+        <div data-testid="empty-content">empty</div>
+      </EPSearchEmpty>
+    );
+
+    expect(
+      container.querySelector('[data-testid="empty-content"]')
+    ).not.toBeNull();
+  });
+
+  it("results flipping from zero to non-zero unmounts Empty cleanly", () => {
+    setEditorMode(false);
+    mockUseInstantSearch.mockReturnValue({ results: { nbHits: 0 } });
+
+    const { container, rerender } = render(
+      <EPSearchEmpty>
+        <div data-testid="empty-content">empty</div>
+      </EPSearchEmpty>
+    );
+
+    expect(
+      container.querySelector('[data-testid="empty-content"]')
+    ).not.toBeNull();
+
+    mockUseInstantSearch.mockReturnValue({ results: { nbHits: 5 } });
+    rerender(
+      <EPSearchEmpty>
+        <div data-testid="empty-content">empty</div>
+      </EPSearchEmpty>
+    );
+
+    expect(
+      container.querySelector('[data-testid="empty-content"]')
+    ).toBeNull();
+    expect(container.querySelector("[data-ep-search-empty]")).toBeNull();
+  });
+
+  it("default slot tree ships heading + body copy with correct tags", () => {
+    const slot = (epSearchEmptyMeta.props as any).children.defaultValue;
+    expect(Array.isArray(slot)).toBe(true);
+    const vbox = slot[0];
+    expect(vbox.type).toBe("vbox");
+    const [heading, body] = vbox.children;
+    expect(heading.tag).toBe("h2");
+    expect(heading.value).toBe("No results found");
+    expect(body.tag).toBe("p");
+    expect(body.value).toBe(
+      "Try clearing your filters or searching for something else."
+    );
+  });
+
+  it("registerEPSearchEmpty calls registerComponent", () => {
+    const registerComponent = require("@plasmicapp/host/registerComponent")
+      .default;
+    registerComponent.mockClear();
+    registerEPSearchEmpty();
+    expect(registerComponent).toHaveBeenCalledWith(
+      EPSearchEmpty,
+      epSearchEmptyMeta
+    );
+  });
+});
+
+/* ================================================================
  * Component registration tests
  * ================================================================ */
 describe("component registration", () => {
@@ -1789,6 +1994,25 @@ describeHeadlessStylingContract({
       <EPCurrentRefinements className={className}>
         <div>chip</div>
       </EPCurrentRefinements>
+    );
+  },
+});
+
+describeHeadlessStylingContract({
+  componentName: "EPSearchEmpty",
+  leafSelector: "[data-ep-search-empty]",
+  setEditorMode,
+  renderInEditor: ({ className }) => (
+    <EPSearchEmpty className={className}>
+      <div>empty</div>
+    </EPSearchEmpty>
+  ),
+  renderAtRuntime: ({ className }) => {
+    mockUseInstantSearch.mockReturnValue({ results: { nbHits: 0 } });
+    return (
+      <EPSearchEmpty className={className}>
+        <div>empty</div>
+      </EPSearchEmpty>
     );
   },
 });
