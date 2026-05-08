@@ -447,6 +447,23 @@ describe("EPSearchAutocompleteInput", () => {
     expect(fakeAutocompleteInstances[0].state.query).toBe("boot");
   });
 
+  it("injects the default placeholder when the prop is undefined (existing instances)", () => {
+    setEditorMode(false);
+
+    const { container } = render(
+      <EPSearchAutocomplete>
+        <EPSearchAutocompleteInput>
+          <input type="search" data-testid="user-input" />
+        </EPSearchAutocompleteInput>
+      </EPSearchAutocomplete>
+    );
+
+    const input = container.querySelector(
+      '[data-testid="user-input"]'
+    ) as HTMLInputElement;
+    expect(input.getAttribute("placeholder")).toBe("Search products...");
+  });
+
   it("injects the placeholder prop onto the slot input", () => {
     setEditorMode(false);
 

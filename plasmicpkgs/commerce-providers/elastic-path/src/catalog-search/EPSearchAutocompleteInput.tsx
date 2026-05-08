@@ -79,7 +79,11 @@ export const epSearchAutocompleteInputMeta: CodeComponentMeta<EPSearchAutocomple
 export function EPSearchAutocompleteInput(
   props: EPSearchAutocompleteInputProps
 ) {
-  const { children, className, placeholder } = props;
+  // Default at the function-arg level so existing component instances
+  // (dropped before the `placeholder` prop existed) still pick up the
+  // default — Plasmic does not retroactively apply meta defaultValue.
+  // Designers who want no placeholder set the prop to "" explicitly.
+  const { children, className, placeholder = DEFAULT_PLACEHOLDER } = props;
   const ctx = useEPAutocompleteContextOptional();
 
   if (!ctx) {
