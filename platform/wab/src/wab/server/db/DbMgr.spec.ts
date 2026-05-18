@@ -534,7 +534,8 @@ describe("DbMgr.CMS", () => {
     }
 
     if (query.limit === undefined || query.limit === 0) {
-      const count = await db.countCmsRows(tableId, query, opts);
+      const table = await db.getCmsTableById(tableId);
+      const count = await db.countCmsRowsForTable(table, query, opts);
       expect(count).toEqual(expected.length);
     }
   };

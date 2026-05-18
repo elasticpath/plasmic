@@ -7151,8 +7151,12 @@ export class DbMgr implements MigrationDbMgr {
    * For consistency, we always return the most oldest table that has not been
    * deleted nor archived.
    */
-  async getCmsTableByIdentifier(dbId: CmsDatabaseId, identifier: string) {
-    await this.checkCmsDatabasePerms(dbId, "viewer");
+  async getCmsTableByIdentifier(
+    dbId: CmsDatabaseId,
+    identifier: string,
+    accessLevel: AccessLevel = "viewer"
+  ) {
+    await this.checkCmsDatabasePerms(dbId, accessLevel);
     return ensureFound(
       await this.cmsTables()
         .createQueryBuilder("t")
@@ -7557,16 +7561,29 @@ export class DbMgr implements MigrationDbMgr {
     if (query.limit && query.limit < 0) {
       throw new Error("limit field cannot be negative");
     }
-
     const table = await this.getCmsTableById(tableId);
     await this.checkCmsDatabasePerms(
       table.databaseId,
       opts.useDraft ? "content" : "viewer"
     );
+    return this.queryCmsRowsForTable(table, query, opts);
+  }
+
+  async queryCmsRowsForTable(
+    table: CmsTable,
+    query: ApiCmsQuery,
+    opts: { useDraft?: boolean } = {}
+  ) {
+    if (query.offset && query.offset < 0) {
+      throw new Error("offset field cannot be negative");
+    }
+    if (query.limit && query.limit < 0) {
+      throw new Error("limit field cannot be negative");
+    }
 
     let builder = this.cmsRows()
       .createQueryBuilder("r")
-      .where("r.tableId = :tableId", { tableId })
+      .where("r.tableId = :tableId", { tableId: table.id })
       .andWhere("r.deletedAt IS NULL");
 
     if (!opts.useDraft) {
@@ -7613,19 +7630,14 @@ export class DbMgr implements MigrationDbMgr {
     return await builder.getMany();
   }
 
-  async countCmsRows(
-    tableId: CmsTableId,
+  async countCmsRowsForTable(
+    table: CmsTable,
     query: Pick<ApiCmsQuery, "where">,
     opts: { useDraft?: boolean } = {}
   ) {
-    const table = await this.getCmsTableById(tableId);
-    await this.checkCmsDatabasePerms(
-      table.databaseId,
-      opts.useDraft ? "content" : "viewer"
-    );
     let builder = this.cmsRows()
       .createQueryBuilder("r")
-      .where("r.tableId = :tableId", { tableId })
+      .where("r.tableId = :tableId", { tableId: table.id })
       .andWhere("r.deletedAt IS NULL");
 
     if (!opts.useDraft) {

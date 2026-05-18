@@ -34,19 +34,35 @@ import { Request, Response } from "express-serve-static-core";
 import { differenceBy } from "lodash";
 
 const s = initServer();
+function unresolvedTemplateError(identifier: string) {
+  if (!/\{\{.*\}\}/.test(identifier)) {return null;}
+  return {
+    status: 400 as const,
+    body: {
+      error: {
+        statusCode: 400,
+        message: `Table identifier "${identifier}" contains unresolved template variables`,
+      },
+    },
+  };
+}
+
 export const publicCmsReadsServer = s.router(publicCmsReadsContract, {
   queryTable: async ({ params, query, req }) => {
+    const templateError = unresolvedTemplateError(params.tableIdentifier);
+    if (templateError) {return templateError;}
     const dbMgr = userDbMgr(req);
+    const useDraft = query.draft === "1";
     const table = await dbMgr.getCmsTableByIdentifier(
       params.dbId,
-      params.tableIdentifier
+      params.tableIdentifier,
+      useDraft ? "content" : "viewer"
     );
 
     const cmsQuery = query.q || {};
     const locale = fixLocale(query.locale ?? "");
-    const useDraft = query.draft === "1";
     const queryOpts = { useDraft };
-    const rows = await dbMgr.queryCmsRows(table.id, cmsQuery, queryOpts);
+    const rows = await dbMgr.queryCmsRowsForTable(table, cmsQuery, queryOpts);
 
     const rowCache = new CmsRowCache(dbMgr, queryOpts);
     rowCache.fill(table.id, rows);
@@ -142,15 +158,18 @@ export const publicCmsReadsServer = s.router(publicCmsReadsContract, {
     };
   },
   countTable: async ({ params, query, req }) => {
+    const templateError = unresolvedTemplateError(params.tableIdentifier);
+    if (templateError) {return templateError;}
     const dbMgr = userDbMgr(req);
+    const useDraft = query.draft === "1";
     const table = await dbMgr.getCmsTableByIdentifier(
       params.dbId,
-      params.tableIdentifier
+      params.tableIdentifier,
+      useDraft ? "content" : "viewer"
     );
 
     const cmsQuery = query.q || {};
-    const useDraft = query.draft === "1";
-    const count = await dbMgr.countCmsRows(table.id, cmsQuery, { useDraft });
+    const count = await dbMgr.countCmsRowsForTable(table, cmsQuery, { useDraft });
     return {
       status: 200,
       body: {
@@ -274,6 +293,12 @@ export async function publicCreateRows(req: Request, res: Response) {
   const mgr = userDbMgr(req);
   const dbId = req.params.dbId as CmsDatabaseId;
   const tableIdentifier = req.params.tableIdentifier;
+
+  const templateError = unresolvedTemplateError(tableIdentifier);
+  if (templateError) {
+    res.status(400).json(templateError.body);
+    return;
+  }
 
   const table = await mgr.getCmsTableByIdentifier(dbId, tableIdentifier);
   const db = await mgr.getCmsDatabaseById(dbId);
