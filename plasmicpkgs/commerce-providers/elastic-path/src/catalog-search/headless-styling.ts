@@ -30,6 +30,11 @@ const STYLE_BLOCK = `
   flex-wrap: wrap;
   gap: 8px;
 }
+:where([data-ep-search-empty]) {
+  width: 100%;
+  align-self: stretch;
+  text-align: center;
+}
 :where([data-ep-autocomplete-root]) {
   position: relative;
   width: 100%;

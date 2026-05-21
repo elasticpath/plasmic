@@ -27,6 +27,7 @@ export {
   EPCurrentRefinements,
   registerEPCurrentRefinements,
 } from "./EPCurrentRefinements";
+export { EPSearchEmpty, registerEPSearchEmpty } from "./EPSearchEmpty";
 export {
   EPSearchAutocomplete,
   registerEPSearchAutocomplete,
