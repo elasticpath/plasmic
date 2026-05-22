@@ -1691,6 +1691,7 @@ export function addMainAppServerRoutes(
   app.post(
     "/api/v1/teams",
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
+    adminOnly,
     withNext(teamRoutes.createTeam)
   );
   app.get(
@@ -1744,6 +1745,7 @@ export function addMainAppServerRoutes(
     "/api/v1/workspaces",
     cmCors,
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
+    adminOnly,
     createWorkspace
   );
   app.get("/api/v1/workspaces/:workspaceId", cmCors, getWorkspace);
