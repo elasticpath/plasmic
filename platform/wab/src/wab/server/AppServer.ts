@@ -1566,16 +1566,18 @@ export function addMainAppServerRoutes(
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
     withNext(listProjects)
   );
-  app.post("/api/v1/projects", cmCors, withNext(createProject));
+  app.post("/api/v1/projects", cmCors, adminOnly, withNext(createProject));
   app.post(
     "/api/v1/projects/create-project-with-hostless-packages",
+    adminOnly,
     withNext(createProjectWithHostlessPackages)
   );
-  app.post("/api/v1/projects/:projectId/clone", cmCors, createWriteRateLimiter(), withNext(cloneProject));
+  app.post("/api/v1/projects/:projectId/clone", cmCors, adminOnly, createWriteRateLimiter(), withNext(cloneProject));
   app.post(
     "/api/v1/templates/:projectId/clone",
     cmCors,
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
+    adminOnly,
     withNext(clonePublishedTemplate)
   );
   // Import includes capabilities to keep the project id, allow data source op issuing,
@@ -1691,6 +1693,7 @@ export function addMainAppServerRoutes(
   app.post(
     "/api/v1/teams",
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
+    adminOnly,
     withNext(teamRoutes.createTeam)
   );
   app.get(
@@ -1744,6 +1747,7 @@ export function addMainAppServerRoutes(
     "/api/v1/workspaces",
     cmCors,
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
+    adminOnly,
     createWorkspace
   );
   app.get("/api/v1/workspaces/:workspaceId", cmCors, getWorkspace);
