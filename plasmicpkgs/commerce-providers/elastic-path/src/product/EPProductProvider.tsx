@@ -137,6 +137,7 @@ export const epProductProviderMeta: CodeComponentMeta<EPProductProviderProps> =
           "Controls which state is rendered inside Studio / MCP preview. `auto` uses real data when available, falling back to a mock product.",
       },
     },
+    providesData: true,
     importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
     importName: "EPProductProvider",
   };
