@@ -43,6 +43,11 @@ import { registerEPProductGrid } from "./product-discovery/EPProductGrid";
 import { registerEPProductListProvider } from "./product-discovery/EPProductListProvider";
 import { registerEPRelatedProductsProvider } from "./product-discovery/EPRelatedProductsProvider";
 import { registerEPProductProvider } from "./product/EPProductProvider";
+import { registerEPProductExtensionsProvider } from "./product-extensions/composable/EPProductExtensionsProvider";
+import { registerEPProductExtensionTemplateList } from "./product-extensions/composable/EPProductExtensionTemplateList";
+import { registerEPProductExtensionTemplateField } from "./product-extensions/composable/EPProductExtensionTemplateField";
+import { registerEPProductExtensionFieldList } from "./product-extensions/composable/EPProductExtensionFieldList";
+import { registerEPProductExtensionField } from "./product-extensions/composable/EPProductExtensionField";
 import { registerEPSearchBox } from "./catalog-search/EPSearchBox";
 import { registerEPSearchHits } from "./catalog-search/EPSearchHits";
 import { registerEPRefinementList } from "./catalog-search/EPRefinementList";
@@ -89,6 +94,7 @@ export * from "./product-discovery";
 export * from "./catalog-search";
 export * from "./shopper-context";
 export * from "./shopper-context/server";
+export * from "./product-extensions";
 
 export function registerAll(loader?: Registerable) {
   // Global context
@@ -152,6 +158,14 @@ export function registerAll(loader?: Registerable) {
   registerEPProductListProvider(loader);
   registerEPRelatedProductsProvider(loader);
   registerEPProductProvider(loader);
+
+  // Product extensions — register field/leaf components first so they're
+  // available as default slot content in the parent components above them.
+  registerEPProductExtensionField(loader);
+  registerEPProductExtensionTemplateField(loader);
+  registerEPProductExtensionFieldList(loader);
+  registerEPProductExtensionTemplateList(loader);
+  registerEPProductExtensionsProvider(loader);
 
   // Catalog search — register leaf/field components first, then repeaters, then provider
   registerEPSearchBox(loader);
