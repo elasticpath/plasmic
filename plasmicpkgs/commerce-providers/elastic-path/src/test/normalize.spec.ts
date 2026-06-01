@@ -188,6 +188,68 @@ describe('normalize utilities', () => {
       expect(variant3?.options[1].values[0].label).toBe('Red');
     });
 
+    it('should inherit price + currency from first child when PXM parent has no display_price', () => {
+      // PXM "base-product" variation parents carry no display_price of their
+      // own; only the child variants do. Previously getProductPrice fell
+      // through to money(0) → {value:0, currencyCode:"USD"}, which broke
+      // non-USD stores. The parent should now inherit from the first child.
+      const parentWithoutPrice: ProductData = {
+        data: {
+          ...mockProductData.data!,
+          meta: {
+            ...mockProductData.data!.meta,
+            display_price: undefined,
+          },
+        },
+      };
+      const childrenChf: ProductListData = {
+        data: [
+          {
+            id: 'child-chf-1',
+            type: 'product',
+            attributes: { name: 'CHF child', status: 'live' },
+            meta: {
+              display_price: {
+                without_tax: { amount: 13500, currency: 'CHF' },
+              },
+            },
+          },
+        ],
+      };
+
+      const result = normalizeProduct(parentWithoutPrice, 'en-US', childrenChf);
+
+      expect(result.price.value).toBe(135); // 13500 cents
+      expect(result.price.currencyCode).toBe('CHF');
+    });
+
+    it('should fall back to money(0) when neither parent nor any child has a price', () => {
+      const parentWithoutPrice: ProductData = {
+        data: {
+          ...mockProductData.data!,
+          meta: {
+            ...mockProductData.data!.meta,
+            display_price: undefined,
+          },
+        },
+      };
+      const pricelessChildren: ProductListData = {
+        data: [
+          {
+            id: 'child-x',
+            type: 'product',
+            attributes: { name: 'No price child', status: 'live' },
+            meta: {},
+          },
+        ],
+      };
+
+      const result = normalizeProduct(parentWithoutPrice, 'en-US', pricelessChildren);
+
+      expect(result.price.value).toBe(0);
+      expect(result.price.currencyCode).toBe('USD');
+    });
+
     it('should handle missing variation_matrix gracefully', () => {
       const productWithoutMatrix: ProductData = {
         data: {

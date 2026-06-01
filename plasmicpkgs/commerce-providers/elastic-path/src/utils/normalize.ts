@@ -148,25 +148,32 @@ const normalizeProductImages = (product: ProductData) => {
   return images;
 };
 
-const getProductPrice = (product: ProductData) => {
-  // Try meta.display_price first (newer format)
+const getProductPrice = (
+  product: ProductData,
+  childProducts?: ProductListData
+) => {
+  // Primary: parent product carries its own display_price (simple products,
+  // or PXM groups where pricing is replicated up the tree).
   if (product.data?.meta?.display_price?.without_tax) {
     return money(
-      product.data?.meta?.display_price.without_tax.amount,
-      product.data?.meta?.display_price.without_tax.currency
+      product.data.meta.display_price.without_tax.amount,
+      product.data.meta.display_price.without_tax.currency
     );
   }
 
-  // Try meta.price array
-  if (product.data?.meta?.display_price?.without_tax) {
-    const price = product.data?.meta?.display_price?.without_tax;
-    return money(price.amount, price.currency);
-  }
-
-  // Try direct price array (legacy)
-  if (product.data?.meta?.display_price?.without_tax) {
-    const price = product.data?.meta?.display_price?.without_tax;
-    return money(price.amount, price.currency);
+  // Fallback: PXM variation parent ("base-product") products carry no
+  // display_price of their own — every variant child does. Inherit currency
+  // (and a representative amount) from the first child that has a price so
+  // that `Product.price.currencyCode` resolves to the right value instead of
+  // falling back to the money() default of USD.
+  const firstChildWithPrice = childProducts?.data?.find(
+    (c) => c?.meta?.display_price?.without_tax?.amount != null
+  );
+  if (firstChildWithPrice?.meta?.display_price?.without_tax) {
+    return money(
+      firstChildWithPrice.meta.display_price.without_tax.amount,
+      firstChildWithPrice.meta.display_price.without_tax.currency
+    );
   }
 
   return money(0);
@@ -199,7 +206,7 @@ export const normalizeProduct = (
   }
 
   // Build variants from child products if available
-  const parentPrice = getProductPrice(product);
+  const parentPrice = getProductPrice(product, childProducts);
 
   let variants: ProductVariant[] = [
     {
@@ -289,7 +296,7 @@ export const normalizeProduct = (
     slug,
     path: `/${slug}`,
     description,
-    price: getProductPrice(product),
+    price: getProductPrice(product, childProducts),
     images: normalizeProductImages(product),
     variants,
     options,
