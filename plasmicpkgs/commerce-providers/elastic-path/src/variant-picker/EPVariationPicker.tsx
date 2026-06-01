@@ -40,19 +40,8 @@ export const epVariationPickerMeta: CodeComponentMeta<EPVariationPickerProps> = 
       type: "slot",
       defaultValue: [
         {
-          type: "vbox",
-          styles: { gap: "8px", padding: "4px 0" },
-          children: [
-            {
-              type: "component",
-              name: "plasmic-commerce-ep-variation-field",
-              props: { field: "name" },
-            },
-            {
-              type: "component",
-              name: "plasmic-commerce-ep-variation-option-list",
-            },
-          ],
+          type: "component",
+          name: "plasmic-commerce-ep-variation-case",
         },
       ],
     },
@@ -142,30 +131,58 @@ export function EPVariationPicker(props: EPVariationPickerProps) {
   const [lastInitializedVariantId, setLastInitializedVariantId] = useState<
     string | undefined
   >(undefined);
+  const [claimedVariations, setClaimedVariations] = useState<Set<string>>(
+    () => new Set<string>()
+  );
 
-  // Initialize from resolved default variant ID
+  const registerClaim = useCallback((variationName: string) => {
+    setClaimedVariations((prev) => {
+      if (prev.has(variationName)) return prev;
+      const next = new Set(prev);
+      next.add(variationName);
+      return next;
+    });
+    return () => {
+      setClaimedVariations((prev) => {
+        if (!prev.has(variationName)) return prev;
+        const next = new Set(prev);
+        next.delete(variationName);
+        return next;
+      });
+    };
+  }, []);
+
+  // Initialize from resolved default variant ID — or fall back to first variant
+  // when none is supplied, so trigger highlights match the auto-selected variant
+  // exposed via the URL writer below.
   useEffect(() => {
-    if (
-      resolvedDefaultVariantId &&
-      resolvedDefaultVariantId !== lastInitializedVariantId &&
-      effectiveProduct?.variants
-    ) {
-      const targetVariant = effectiveProduct.variants.find(
-        (v) => v.id === resolvedDefaultVariantId
-      );
-      if (targetVariant) {
-        const initialValues: Record<string, string> = {};
-        targetVariant.options?.forEach((option) => {
-          const value = option.values?.[0]?.label;
-          if (value) {
-            initialValues[option.id] = value;
-          }
-        });
-        setSelectedValues(initialValues);
-        setLastInitializedVariantId(resolvedDefaultVariantId);
+    if (!effectiveProduct?.variants?.length) return;
+    if (Object.keys(selectedValues).length > 0) return;
+
+    const target = resolvedDefaultVariantId
+      ? effectiveProduct.variants.find((v) => v.id === resolvedDefaultVariantId)
+      : effectiveProduct.variants[0];
+    if (!target) return;
+    const targetId = String(target.id);
+    if (targetId === lastInitializedVariantId) return;
+
+    const initialValues: Record<string, string> = {};
+    target.options?.forEach((option) => {
+      const value = option.values?.[0]?.label;
+      if (value) {
+        initialValues[option.id] = value;
       }
-    }
-  }, [resolvedDefaultVariantId, effectiveProduct, lastInitializedVariantId]);
+    });
+    if (Object.keys(initialValues).length === 0) return;
+
+    setSelectedValues(initialValues);
+    setLastInitializedVariantId(targetId);
+  }, [
+    resolvedDefaultVariantId,
+    effectiveProduct,
+    lastInitializedVariantId,
+    selectedValues,
+  ]);
 
   const selectOption = useCallback(
     (variationId: string, optionLabel: string) => {
@@ -234,8 +251,10 @@ export function EPVariationPicker(props: EPVariationPickerProps) {
       selectedValues,
       selectOption,
       selectedVariant,
+      claimedVariations,
+      registerClaim,
     }),
-    [selectedValues, selectOption, selectedVariant]
+    [selectedValues, selectOption, selectedVariant, claimedVariations, registerClaim]
   );
 
   if (!variations || variations.length === 0) {

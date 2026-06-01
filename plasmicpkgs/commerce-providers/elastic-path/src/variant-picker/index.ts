@@ -1,5 +1,8 @@
 export { registerEPVariationPicker, EPVariationPicker } from "./EPVariationPicker";
+export { registerEPVariationCase, EPVariationCase } from "./EPVariationCase";
 export { registerEPVariationOptionList, EPVariationOptionList } from "./EPVariationOptionList";
+export { registerEPVariationOptionSelect, EPVariationOptionSelect } from "./EPVariationOptionSelect";
+export { registerEPVariationOptionRadioGroup, EPVariationOptionRadioGroup } from "./EPVariationOptionRadioGroup";
 export { registerEPVariationOptionTrigger, EPVariationOptionTrigger } from "./EPVariationOptionTrigger";
 export { registerEPVariationField, EPVariationField } from "./EPVariationField";
 export { registerEPVariationOptionField, EPVariationOptionField } from "./EPVariationOptionField";
