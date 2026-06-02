@@ -5,6 +5,8 @@ export interface VariationPickerContextValue {
   selectedValues: Record<string, string>;
   selectOption: (variationId: string, optionLabel: string) => void;
   selectedVariant: ProductVariant | undefined;
+  claimedVariations: ReadonlySet<string>;
+  registerClaim: (variationName: string) => () => void;
 }
 
 export const VariationPickerContext =

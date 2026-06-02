@@ -7,7 +7,10 @@ import { registerEPMultiLocationStock } from "./registerEPMultiLocationStock";
 import { registerEPProductVariantPicker } from "./registerEPProductVariantPicker";
 import { registerEPCheckout } from "./registerCheckout";
 import { registerEPVariationPicker } from "./variant-picker/EPVariationPicker";
+import { registerEPVariationCase } from "./variant-picker/EPVariationCase";
 import { registerEPVariationOptionList } from "./variant-picker/EPVariationOptionList";
+import { registerEPVariationOptionSelect } from "./variant-picker/EPVariationOptionSelect";
+import { registerEPVariationOptionRadioGroup } from "./variant-picker/EPVariationOptionRadioGroup";
 import { registerEPVariationOptionTrigger } from "./variant-picker/EPVariationOptionTrigger";
 import { registerEPVariationField } from "./variant-picker/EPVariationField";
 import { registerEPVariationOptionField } from "./variant-picker/EPVariationOptionField";
@@ -102,12 +105,15 @@ export function registerAll(loader?: Registerable) {
   registerShopperContext(loader);
 
   // New composable variant picker
-  // Register field components first so they're available as default slot content
+  // Register field/leaf components first so they're available as default slot content
   registerEPVariationField(loader);
   registerEPVariationOptionField(loader);
-  registerEPVariationPicker(loader);
-  registerEPVariationOptionList(loader);
   registerEPVariationOptionTrigger(loader);
+  registerEPVariationOptionList(loader);
+  registerEPVariationOptionSelect(loader);
+  registerEPVariationOptionRadioGroup(loader);
+  registerEPVariationCase(loader);
+  registerEPVariationPicker(loader);
 
   // Cart provider — exposes $ctx.cart to descendants
   registerEPCartProvider(loader);
