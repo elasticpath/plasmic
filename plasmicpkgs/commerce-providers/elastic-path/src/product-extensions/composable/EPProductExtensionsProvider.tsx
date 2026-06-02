@@ -13,7 +13,7 @@ import {
   MOCK_EXTENSIONS_DATA,
   MOCK_EXTENSION_TEMPLATES,
 } from "./design-time-data";
-import { normalizeExtensions } from "./format";
+import { extractRawExtensions, normalizeExtensions } from "./format";
 import type { ExtensionTemplate, ExtensionsData } from "./types";
 
 type PreviewState = "auto" | "withData" | "empty";
@@ -96,17 +96,9 @@ export function EPProductExtensionsProvider(
   const product = useSelector("currentProduct") as Product | undefined;
   const inEditor = !!usePlasmicCanvasContext();
 
-  // Pull the raw extensions blob from the product's rawData.
-  const rawExtensions = useMemo(() => {
-    const raw = (product as Product | undefined)?.rawData as
-      | { data?: { attributes?: { extensions?: Record<string, unknown> | null } } }
-      | undefined;
-    return raw?.data?.attributes?.extensions ?? null;
-  }, [product]);
-
   const liveTemplates = useMemo(
-    () => normalizeExtensions(rawExtensions),
-    [rawExtensions],
+    () => normalizeExtensions(extractRawExtensions(product)),
+    [product],
   );
 
   // Decide between live and mock data.

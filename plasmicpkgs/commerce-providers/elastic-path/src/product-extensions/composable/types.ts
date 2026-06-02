@@ -25,3 +25,9 @@ export interface ExtensionsData {
   templateCount: number;
   isEmpty: boolean;
 }
+
+/** A `{ label, value }` option for a Plasmic `choice` prop. */
+export interface ChoiceObject {
+  label: string;
+  value: string;
+}

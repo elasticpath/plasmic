@@ -51,6 +51,8 @@ import { registerEPProductExtensionTemplateList } from "./product-extensions/com
 import { registerEPProductExtensionTemplateField } from "./product-extensions/composable/EPProductExtensionTemplateField";
 import { registerEPProductExtensionFieldList } from "./product-extensions/composable/EPProductExtensionFieldList";
 import { registerEPProductExtensionField } from "./product-extensions/composable/EPProductExtensionField";
+import { registerEPProductField } from "./product-extensions/composable/EPProductField";
+import { registerEPProductExtensionValue } from "./product-extensions/composable/EPProductExtensionValue";
 import { registerEPSearchBox } from "./catalog-search/EPSearchBox";
 import { registerEPSearchHits } from "./catalog-search/EPSearchHits";
 import { registerEPRefinementList } from "./catalog-search/EPRefinementList";
@@ -172,6 +174,9 @@ export function registerAll(loader?: Registerable) {
   registerEPProductExtensionFieldList(loader);
   registerEPProductExtensionTemplateList(loader);
   registerEPProductExtensionsProvider(loader);
+  // Field-display components — pick one field by address (siblings to the iteration components above).
+  registerEPProductField(loader);
+  registerEPProductExtensionValue(loader);
 
   // Catalog search — register leaf/field components first, then repeaters, then provider
   registerEPSearchBox(loader);
