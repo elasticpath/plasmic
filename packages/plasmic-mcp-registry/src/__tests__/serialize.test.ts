@@ -108,6 +108,45 @@ describe("serializeComponentMeta", () => {
     expect(props.options).not.toHaveProperty("onSearch");
   });
 
+  it("degrades a choice prop with function options to a valid string control", () => {
+    const meta = {
+      name: "DynamicChoice",
+      props: {
+        template: {
+          type: "choice",
+          displayName: "Template",
+          description: "Pick a template",
+          advanced: false,
+          allowSearch: true,
+          options: (_props: unknown, _ctx: unknown) => [
+            { label: "Iso Standard", value: "products(iso-standard)" },
+          ],
+        },
+        kind: {
+          type: "choice",
+          options: ["a", "b"],
+          defaultValue: "a",
+        },
+      },
+    };
+
+    const result = serializeComponentMeta(meta);
+    const props = result.props as Record<string, Record<string, unknown>>;
+
+    // Function-options choice degrades to a string control (no invalid empty choice)
+    expect(props.template.type).toBe("string");
+    expect(props.template).not.toHaveProperty("options");
+    expect(props.template).not.toHaveProperty("allowSearch");
+    // Display metadata is preserved so the prop stays usable/labelled
+    expect(props.template.displayName).toBe("Template");
+    expect(props.template.description).toBe("Pick a template");
+
+    // Static (array) choice is untouched
+    expect(props.kind.type).toBe("choice");
+    expect(props.kind.options).toEqual(["a", "b"]);
+    expect(props.kind.defaultValue).toBe("a");
+  });
+
   it("handles meta with variants field preserved correctly", () => {
     const meta = {
       name: "VariantComp",
