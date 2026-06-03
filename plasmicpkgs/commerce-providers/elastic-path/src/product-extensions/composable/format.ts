@@ -96,12 +96,134 @@ export function formatDisplayValue(value: unknown): string {
   return String(value);
 }
 
+/** How a resolved value renders to a string; orthogonal to the field's address. */
+export type FormatSpec =
+  | "auto"
+  | "text"
+  | "currency"
+  | "date"
+  | "number"
+  | "raw";
+
+/** Fallback locale (hard-coded so SSR and CSR agree on Intl output). */
+export const DEFAULT_LOCALE = "en-US";
+
+/** Presence: null/undefined/blank/`[]`/`{}` are absent; `0` and `false` are present. */
+export function isPresent(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.keys(value as object).length > 0;
+  return true;
+}
+
+/** The single formatting primitive shared by both field components; every Intl path is guarded. */
+export function formatValue(
+  value: unknown,
+  format: FormatSpec = "auto",
+  locale: string = DEFAULT_LOCALE,
+  currency?: string,
+): string {
+  if (value === null || value === undefined) return "";
+  switch (format) {
+    case "raw":
+      return rawString(value);
+    case "text":
+      return formatDisplayValue(value);
+    case "number":
+      return formatNumber(value, locale);
+    case "currency":
+      return formatCurrency(value, locale, currency);
+    case "date":
+      return formatDate(value, locale);
+    case "auto":
+    default:
+      return formatAuto(value, locale);
+  }
+}
+
+function formatAuto(value: unknown, locale: string): string {
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "number") return formatNumber(value, locale);
+  return formatDisplayValue(value);
+}
+
+function rawString(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean")
+    return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "";
+  }
+}
+
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string" && value.trim() !== "") {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function formatNumber(value: unknown, locale: string): string {
+  const n = toFiniteNumber(value);
+  if (n === null) return formatDisplayValue(value);
+  try {
+    return new Intl.NumberFormat(locale).format(n);
+  } catch {
+    return String(n);
+  }
+}
+
+function formatCurrency(
+  value: unknown,
+  locale: string,
+  currency?: string,
+): string {
+  const n = toFiniteNumber(value);
+  if (n === null) return formatDisplayValue(value);
+  if (!currency) return formatNumber(value, locale);
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency,
+    }).format(n);
+  } catch {
+    return formatNumber(value, locale);
+  }
+}
+
+function formatDate(value: unknown, locale: string): string {
+  if (value === null || value === undefined || value === "") return "";
+  const date = value instanceof Date ? value : new Date(value as string | number);
+  if (Number.isNaN(date.getTime())) return formatDisplayValue(value);
+  try {
+    return new Intl.DateTimeFormat(locale).format(date);
+  } catch {
+    return date.toISOString();
+  }
+}
+
 function formatDisplayValueShallow(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "number") return String(value);
   if (typeof value === "string") return value;
   return "";
+}
+
+/** The single place that knows the EP `attributes.extensions` wire path. */
+export function extractRawExtensions(
+  product: unknown,
+): Record<string, unknown> | null {
+  const rawData = (product as { rawData?: unknown } | undefined)?.rawData as
+    | { data?: { attributes?: { extensions?: Record<string, unknown> | null } } }
+    | undefined;
+  return rawData?.data?.attributes?.extensions ?? null;
 }
 
 /**
