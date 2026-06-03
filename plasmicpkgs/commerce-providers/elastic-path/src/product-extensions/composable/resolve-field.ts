@@ -1,12 +1,12 @@
 import type { Product } from "../../types/product";
 import { getProductFieldLeaf } from "./field-catalog";
 import {
-  type FormatSpec,
   formatValue,
   humanizeFieldKey,
   inferType,
   isPresent,
 } from "./format";
+import type { FormatSpec } from "./format";
 import type { ExtensionFieldType, ExtensionTemplate } from "./types";
 
 /** The normalized view of one product field — the only shape the UI depends on. */
