@@ -17,6 +17,52 @@ const NON_SERIALIZABLE_TOP_LEVEL_FIELDS = new Set([
   "templates",
 ]);
 
+/** JSON-safe descriptor fields worth carrying over when degrading a prop. */
+const PRESERVED_PROP_FIELDS = [
+  "displayName",
+  "description",
+  "defaultValue",
+  "advanced",
+] as const;
+
+/**
+ * Degrade `choice` props whose `options` is a function to a plain `string`
+ * control.
+ *
+ * A Plasmic prop control function (dynamic, context-driven options fed via
+ * setControlContextData) cannot survive JSON transport: the JSON roundtrip
+ * drops the function, leaving a `choice` with no `options` — which is invalid
+ * and fatals downstream registration. Since a choice's stored value is a string
+ * key either way, a `string` control is the safe degraded form: MCP consumers
+ * can still read and write the value, and the live host meta (which keeps the
+ * function) still renders the dynamic dropdown in Studio. Static (array)
+ * options are left untouched.
+ */
+function degradeDynamicChoiceProps(props: unknown): unknown {
+  if (!props || typeof props !== "object") return props;
+  const result: Record<string, unknown> = {};
+  for (const [name, descriptor] of Object.entries(
+    props as Record<string, unknown>,
+  )) {
+    const d = descriptor as Record<string, unknown> | null;
+    if (
+      d &&
+      typeof d === "object" &&
+      d.type === "choice" &&
+      typeof d.options === "function"
+    ) {
+      const degraded: Record<string, unknown> = { type: "string" };
+      for (const key of PRESERVED_PROP_FIELDS) {
+        if (key in d && typeof d[key] !== "function") degraded[key] = d[key];
+      }
+      result[name] = degraded;
+    } else {
+      result[name] = descriptor;
+    }
+  }
+  return result;
+}
+
 /**
  * Strips non-serializable fields from a CodeComponentMeta.
  *
@@ -43,6 +89,12 @@ export function serializeComponentMeta(meta: unknown): SerializedComponentMeta {
     if (NON_SERIALIZABLE_TOP_LEVEL_FIELDS.has(key)) continue;
     if (typeof value === "function") continue;
     filtered[key] = value;
+  }
+
+  // Degrade dynamic (function-options) choice props before the roundtrip so
+  // they survive as valid `string` controls instead of invalid empty choices.
+  if (filtered.props) {
+    filtered.props = degradeDynamicChoiceProps(filtered.props);
   }
 
   // JSON roundtrip: strips remaining nested functions, Symbols, undefined.
@@ -85,6 +137,11 @@ export function serializeContextMeta(meta: unknown): SerializedContextMeta {
   for (const [key, value] of Object.entries(raw)) {
     if (typeof value === "function") continue;
     filtered[key] = value;
+  }
+
+  // Degrade dynamic (function-options) choice props to valid string controls.
+  if (filtered.props) {
+    filtered.props = degradeDynamicChoiceProps(filtered.props);
   }
 
   // JSON roundtrip: strips nested function callbacks in props and globalActions
