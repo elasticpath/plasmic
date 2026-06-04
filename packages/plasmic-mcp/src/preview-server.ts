@@ -228,6 +228,19 @@ function getStudioOrigin(): string {
   return auth.host.replace(/\/$/, "");
 }
 
+/**
+ * Origin that serves Plasmic's renderer assets — the lightweight renderer
+ * `host.html` and the `sub` / `react-web-bundle` / `live-frame` bundles. On
+ * plasmic.com SaaS this is the same as the Studio origin, but on a self-hosted
+ * Studio (e.g. Elastic Path's *.storefront.elasticpath.com) the auth host
+ * serves the full Studio SPA at /static/host.html — which has no renderer
+ * commit hash — so renderer assets must come from Plasmic's renderer CDN.
+ * Override via PLASMIC_RENDERER_ORIGIN.
+ */
+function getRendererOrigin(): string {
+  return (process.env.PLASMIC_RENDERER_ORIGIN || "https://host.plasmicdev.com").replace(/\/$/, "");
+}
+
 // ---------------------------------------------------------------------------
 // Host.html fetch
 // ---------------------------------------------------------------------------
@@ -243,8 +256,8 @@ function getStudioOrigin(): string {
  * into the iframe directly (browsers block cross-origin frame access).
  */
 async function fetchAndCacheHostHtml(): Promise<void> {
-  // Studio's host.html — used for the commit hash and as hostless fallback.
-  const studioHostUrl = `${getStudioOrigin()}/static/host.html`;
+  // Renderer host.html — used for the commit hash and as hostless fallback.
+  const studioHostUrl = `${getRendererOrigin()}/static/host.html`;
   try {
     const response = await fetch(studioHostUrl, { redirect: "follow" });
     if (!response.ok) {
@@ -1056,7 +1069,7 @@ async function handleStaticProxy(
   pathname: string,
   res: http.ServerResponse
 ): Promise<void> {
-  const targetUrl = `${getStudioOrigin()}${pathname}`;
+  const targetUrl = `${getRendererOrigin()}${pathname}`;
   try {
     const proxyRes = await fetch(targetUrl, { redirect: "follow" });
     if (!proxyRes.ok) {
@@ -1196,7 +1209,7 @@ async function handlePreview(
     ];
   }
 
-  const studioOrigin = getStudioOrigin();
+  const studioOrigin = getRendererOrigin();
 
   // Track the active app host origin so the catch-all proxy forwards
   // `/_next/*` etc. to the right upstream. The iframe loads the user's host
