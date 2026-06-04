@@ -5,9 +5,10 @@ import {
   humanizeFieldKey,
   inferType,
   isPresent,
-} from "./format";
+} from "../../utils/field-format";
 import type { FormatSpec } from "./format";
-import type { ExtensionFieldType, ExtensionTemplate } from "./types";
+import type { FormatSpec } from "../../utils/field-format";
+import type { ExtensionFieldType, ExtensionTemplate } from "../../types/extensions";
 
 /** The normalized view of one product field — the only shape the UI depends on. */
 export interface ResolvedField {

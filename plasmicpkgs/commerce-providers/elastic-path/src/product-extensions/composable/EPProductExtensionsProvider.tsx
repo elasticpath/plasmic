@@ -12,9 +12,9 @@ import { Product } from "../../types/product";
 import {
   MOCK_EXTENSIONS_DATA,
   MOCK_EXTENSION_TEMPLATES,
-} from "./design-time-data";
-import { extractRawExtensions, normalizeExtensions } from "./format";
-import type { ExtensionTemplate, ExtensionsData } from "./types";
+} from "../../utils/extensions-mock";
+import { extractRawExtensions, normalizeExtensions } from "../../utils/field-format";
+import type { ExtensionTemplate, ExtensionsData } from "../../types/extensions";
 
 type PreviewState = "auto" | "withData" | "empty";
 

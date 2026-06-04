@@ -1,5 +1,5 @@
-import type { FormatSpec } from "./format";
-import type { ChoiceObject, ExtensionTemplate } from "./types";
+import type { FormatSpec } from "../../utils/field-format";
+import type { ChoiceObject, ExtensionTemplate } from "../../types/extensions";
 
 /** A curated, addressable leaf of the normalized product (path is walked null-safely). */
 export interface ProductFieldLeaf {

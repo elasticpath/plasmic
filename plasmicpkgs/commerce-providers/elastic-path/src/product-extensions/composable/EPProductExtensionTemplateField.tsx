@@ -4,8 +4,8 @@ import registerComponent, {
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../../registerable";
-import { MOCK_EXTENSION_TEMPLATES } from "./design-time-data";
-import type { ExtensionTemplate } from "./types";
+import { MOCK_EXTENSION_TEMPLATES } from "../../utils/extensions-mock";
+import type { ExtensionTemplate } from "../../types/extensions";
 
 type TemplateFieldName = "slug" | "label" | "fieldCount";
 type PreviewState = "auto" | "withData";

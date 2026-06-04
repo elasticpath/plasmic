@@ -8,7 +8,7 @@ import {
   inferType,
   formatDisplayValue,
   normalizeExtensions,
-} from "../format";
+} from "../../../utils/field-format";
 
 describe("humanizeTemplateSlug", () => {
   it("strips the entity prefix and parens, title-cases the inner name", () => {

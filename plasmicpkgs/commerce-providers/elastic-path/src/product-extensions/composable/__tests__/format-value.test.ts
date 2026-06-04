@@ -8,7 +8,7 @@ import {
   extractRawExtensions,
   formatValue,
   isPresent,
-} from "../format";
+} from "../../../utils/field-format";
 
 describe("extractRawExtensions", () => {
   it("reads the EP wire path off a product's rawData", () => {

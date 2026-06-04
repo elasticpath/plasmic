@@ -1,4 +1,4 @@
-import type { ExtensionField, ExtensionFieldType, ExtensionTemplate } from "./types";
+import type { ExtensionField, ExtensionFieldType, ExtensionTemplate } from "../types/extensions";
 
 /**
  * Turn an EP extension template slug like `products(example-template-2)` into

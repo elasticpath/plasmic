@@ -8,7 +8,7 @@ import {
   SHOW_CHOICE_OPTIONS,
   buildLeafOptions,
 } from "./field-catalog";
-import type { FormatSpec } from "./format";
+import type { FormatSpec } from "../../utils/field-format";
 import { FieldDisplay, useResolvedField } from "./useResolvedField";
 
 type ShowFacet = "value" | "label";

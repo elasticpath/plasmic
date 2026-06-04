@@ -1,6 +1,6 @@
-import type { Product } from "../../types/product";
-import type { ExtensionTemplate, ExtensionsData } from "./types";
-import { normalizeExtensions } from "./format";
+import type { Product } from "../types/product";
+import type { ExtensionTemplate, ExtensionsData } from "../types/extensions";
+import { normalizeExtensions } from "./field-format";
 
 /**
  * Mock extensions payload used in Studio / MCP preview when no live product
