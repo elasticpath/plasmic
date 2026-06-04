@@ -1,6 +1,6 @@
 {
   "name": "@elasticpath/plasmic-mcp",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "MCP server for Plasmic Studio with embedded editing engine",
   "type": "module",
   "bin": {
@@ -50,7 +50,9 @@
     "mobx-utils": "^6.0.0",
     "moment": "^2.29.0",
     "nanoid": "^3.3.0",
+    "open": "^8.0.9",
     "parse-data-url": "^2.0.0",
+    "prompts": "^2.4.2",
     "regex": "^4.0.0",
     "regexp.execall": "^1.0.0",
     "semver": "^6.3.0",
@@ -68,11 +70,13 @@
     "@types/lodash": "^4.17.0",
     "@types/node": "^20.0.0",
     "esbuild": "^0.20.0",
-    "playwright": "^1.58.2",
     "tsx": "^4.20.0",
     "typescript": "^5.2.0",
     "vitest": "3.2.4",
     "yaml": "^2.7.0"
+  },
+  "optionalDependencies": {
+    "playwright": "^1.58.2"
   },
   "engines": {
     "node": ">=18.0.0"
