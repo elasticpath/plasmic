@@ -29,7 +29,11 @@ import { getAuth, writeAuth } from "./auth.js";
 import { acquireAuth } from "./auth-flow.js";
 import * as logger from "./logger.js";
 
-const VERSION = "0.1.4";
+// Injected at build time via esbuild `define` from package.json (see build.mjs).
+// Falls back to "dev" when run directly through tsx.
+declare const __MCP_VERSION__: string;
+const VERSION =
+  typeof __MCP_VERSION__ !== "undefined" ? __MCP_VERSION__ : "dev";
 
 const US_EAST_HOST = "https://useast.storefront.elasticpath.com";
 const EU_WEST_HOST = "https://euwest.storefront.elasticpath.com";
@@ -113,8 +117,9 @@ async function main() {
       await runAuth(options.host);
       break;
     case "version":
-      // Version goes to stdout (not stderr) since this is a user-facing command, not stdio transport
-      console.log(`@elasticpath/plasmic-mcp v${VERSION}`);
+      // Write straight to stdout: console.log is redirected to stderr at startup
+      // to protect the JSON-RPC transport, but this is a user-facing command.
+      process.stdout.write(`@elasticpath/plasmic-mcp v${VERSION}\n`);
       process.exit(0);
       break;
   }

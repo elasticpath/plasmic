@@ -6,6 +6,11 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const wabSrc = path.resolve(__dirname, "../../platform/wab/src");
 
+// Single source of truth for the version reported by `--version`.
+const pkgVersion = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, "package.json"), "utf-8")
+).version;
+
 /**
  * Resolve a path alias to an actual file, trying common extensions.
  */
@@ -116,6 +121,10 @@ const result = await esbuild.build({
 
   alias: {
     "mobx/dist/mobx.cjs.development.js": "mobx",
+  },
+
+  define: {
+    __MCP_VERSION__: JSON.stringify(pkgVersion),
   },
 
   plugins: [bundlePlugin],

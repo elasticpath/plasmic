@@ -23,7 +23,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     return { command: "serve", options: {} };
   }
 
-  if (args[0] === "--version" || args[0] === "-v") {
+  if (args[0] === "--version" || args[0] === "-v" || args[0] === "version") {
     return { command: "version", options: {} };
   }
 
