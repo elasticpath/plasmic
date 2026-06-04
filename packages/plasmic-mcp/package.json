@@ -1,6 +1,6 @@
 {
   "name": "@elasticpath/plasmic-mcp",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "MCP server for Plasmic Studio with embedded editing engine",
   "type": "module",
   "bin": {
