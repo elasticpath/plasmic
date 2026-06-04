@@ -9,14 +9,14 @@ import { MOCK_PRODUCT } from "./design-time-data";
 import {
   DEFAULT_LOCALE,
   extractRawExtensions,
-  type FormatSpec,
   normalizeExtensions,
 } from "./format";
+import type { FormatSpec } from "./format";
 import {
-  type ResolvedField,
   resolveExtensionField,
   resolveTopLevelField,
 } from "./resolve-field";
+import type { ResolvedField } from "./resolve-field";
 import type { ExtensionTemplate } from "./types";
 
 type ResolveArgs =
