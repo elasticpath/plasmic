@@ -9,13 +9,29 @@ MCP server for Plasmic Studio with an embedded editing engine. Create pages, edi
 - Node.js >= 18
 - A Plasmic project ID and API token
 
-### Environment Variables
+### Credentials
+
+The server resolves credentials in this order:
+
+1. **Environment variables** (below) — `PLASMIC_AUTH_USER` + `PLASMIC_AUTH_TOKEN` must be set together.
+2. **`.plasmic.auth` file** — looked up in the current working directory, then your home directory (`~/.plasmic.auth`).
 
 | Variable | Description |
 |----------|-------------|
 | `PLASMIC_AUTH_USER` | Your Plasmic account email |
 | `PLASMIC_AUTH_TOKEN` | Plasmic API token |
-| `PLASMIC_AUTH_HOST` | Plasmic Studio host URL (optional — defaults to production) |
+| `PLASMIC_AUTH_HOST` | Studio host URL — **required** when `PLASMIC_AUTH_USER`/`PLASMIC_AUTH_TOKEN` are set (e.g. `https://useast.storefront.elasticpath.com`) |
+| `PLASMIC_RENDERER_ORIGIN` | Origin serving Plasmic's renderer assets for live preview (optional — defaults to `https://host.plasmicdev.com`). Override only on self-hosted Studio. |
+
+### Authenticate via CLI
+
+Instead of env vars, run the interactive `auth` command. It prompts for your email and API token and writes them to `~/.plasmic.auth`:
+
+```bash
+npx @elasticpath/plasmic-mcp auth [--host <studio-url>]
+```
+
+`--host` defaults to the existing credentials' host, or US East if none. With a stored `.plasmic.auth`, the MCP entries below need no `env` block.
 
 ### Claude Code
 
