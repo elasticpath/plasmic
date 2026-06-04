@@ -5,19 +5,20 @@ import {
 } from "@plasmicapp/host";
 import React, { useMemo } from "react";
 import { Product } from "../../types/product";
-import { MOCK_PRODUCT } from "./design-time-data";
+import { MOCK_PRODUCT } from "../../utils/extensions-mock";
 import {
   DEFAULT_LOCALE,
   extractRawExtensions,
   normalizeExtensions,
-} from "./format";
+} from "../../utils/field-format";
 import type { FormatSpec } from "./format";
+import type { FormatSpec } from "../../utils/field-format";
 import {
   resolveExtensionField,
   resolveTopLevelField,
 } from "./resolve-field";
 import type { ResolvedField } from "./resolve-field";
-import type { ExtensionTemplate } from "./types";
+import type { ExtensionTemplate } from "../../types/extensions";
 
 type ResolveArgs =
   | {

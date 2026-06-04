@@ -10,8 +10,8 @@ import {
   buildFieldOptions,
   buildTemplateOptions,
 } from "./field-catalog";
-import type { FormatSpec } from "./format";
-import type { ExtensionTemplate } from "./types";
+import type { FormatSpec } from "../../utils/field-format";
+import type { ExtensionTemplate } from "../../types/extensions";
 import { FieldDisplay, useResolvedField } from "./useResolvedField";
 
 type ShowFacet = "value" | "label";

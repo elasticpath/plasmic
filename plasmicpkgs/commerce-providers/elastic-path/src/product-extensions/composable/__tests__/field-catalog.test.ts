@@ -9,7 +9,7 @@ import {
   buildTemplateOptions,
   getProductFieldLeaf,
 } from "../field-catalog";
-import { normalizeExtensions } from "../format";
+import { normalizeExtensions } from "../../../utils/field-format";
 
 describe("PRODUCT_FIELD_LEAVES", () => {
   it("has unique leaf ids", () => {

@@ -3,8 +3,8 @@
  * normalized templates) and an address, they return a ResolvedField. No React
  * or @plasmicapp/host involved.
  */
-import { MOCK_PRODUCT } from "../design-time-data";
-import { normalizeExtensions } from "../format";
+import { MOCK_PRODUCT } from "../../../utils/extensions-mock";
+import { normalizeExtensions } from "../../../utils/field-format";
 import {
   resolveExtensionField,
   resolveTopLevelField,

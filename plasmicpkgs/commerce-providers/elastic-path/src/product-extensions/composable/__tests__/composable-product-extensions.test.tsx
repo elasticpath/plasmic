@@ -59,7 +59,7 @@ const {
   EPProductExtensionFieldList,
 } = require("../EPProductExtensionFieldList");
 const { EPProductExtensionField } = require("../EPProductExtensionField");
-const { MOCK_EXTENSION_TEMPLATES } = require("../design-time-data");
+const { MOCK_EXTENSION_TEMPLATES } = require("../../../utils/extensions-mock");
 
 // ---------------------------------------------------------------------------
 // Helpers

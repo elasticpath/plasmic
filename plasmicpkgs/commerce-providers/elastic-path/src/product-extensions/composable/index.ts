@@ -41,7 +41,7 @@ export type {
   ExtensionsData,
   ExtensionFieldType,
   ChoiceObject,
-} from "./types";
+} from "../../types/extensions";
 export {
   normalizeExtensions,
   humanizeTemplateSlug,
@@ -51,8 +51,8 @@ export {
   formatValue,
   isPresent,
   DEFAULT_LOCALE,
-} from "./format";
-export type { FormatSpec } from "./format";
+} from "../../utils/field-format";
+export type { FormatSpec } from "../../utils/field-format";
 export {
   PRODUCT_FIELD_LEAVES,
   getProductFieldLeaf,

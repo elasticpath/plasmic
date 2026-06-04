@@ -28,11 +28,14 @@ import {
 import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
-import React from "react";
+import React, { useMemo } from "react";
 import { Registerable } from "../registerable";
 import useProduct from "./use-product";
 import { createLogger } from "../utils/logger";
 import type { Product } from "../types/product";
+import { extractRawExtensions, normalizeExtensions } from "../utils/field-format";
+import { buildExtensionsMap } from "../utils/extensions-map";
+import { MOCK_EXTENSION_TEMPLATES } from "../utils/extensions-mock";
 
 const log = createLogger("EPProductProvider");
 
@@ -218,11 +221,27 @@ export function EPProductProvider(props: EPProductProviderProps) {
     }
   })();
 
+  // Flat, null-safe map of the product's extensions, keyed by raw template
+  // slug (e.g. `products(iso-standard)`), published alongside currentProduct so
+  // designers bind `$ctx.productExtensions['<slug>'].<field>` instead of the
+  // raw `currentProduct.rawData.data.attributes.extensions[...]` chain.
+  // Design-time parity: this provider's own MOCK_PRODUCT carries no extensions,
+  // so fall back to the shared mock templates in canvas — keeping the map
+  // populated and consistent with the field dropdowns.
+  const productExtensions = useMemo(() => {
+    const live = normalizeExtensions(extractRawExtensions(dataProduct));
+    const templates =
+      inCanvas && live.length === 0 ? MOCK_EXTENSION_TEMPLATES : live;
+    return buildExtensionsMap(templates);
+  }, [dataProduct, inCanvas]);
+
   return (
     <DataProvider name="currentProduct" data={dataProduct}>
-      <div className={className} data-ep-product-provider="">
-        {content}
-      </div>
+      <DataProvider name="productExtensions" data={productExtensions}>
+        <div className={className} data-ep-product-provider="">
+          {content}
+        </div>
+      </DataProvider>
     </DataProvider>
   );
 }
