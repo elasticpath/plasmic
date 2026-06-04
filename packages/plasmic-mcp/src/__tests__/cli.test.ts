@@ -35,6 +35,16 @@ describe("parseArgs", () => {
     expect(result.command).toBe("version");
   });
 
+  it("parses -v flag", () => {
+    const result = parseArgs([...base, "-v"]);
+    expect(result.command).toBe("version");
+  });
+
+  it("parses bareword version command", () => {
+    const result = parseArgs([...base, "version"]);
+    expect(result.command).toBe("version");
+  });
+
   it("defaults to serve on unknown command", () => {
     const result = parseArgs([...base, "unknown-thing"]);
     expect(result.command).toBe("serve");
