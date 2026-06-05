@@ -261,6 +261,14 @@ export const MOCK_CART_DATA = {
   currencyCode: "USD",
 };
 
+/** Empty-cart variant of {@link MOCK_CART_DATA} for the design-time "empty" preview. */
+export const MOCK_EMPTY_CART_DATA = {
+  ...MOCK_CART_DATA,
+  lineItems: [],
+  itemCount: 0,
+  isEmpty: true,
+};
+
 // ---------------------------------------------------------------------------
 // Checkout cart mock data
 // ---------------------------------------------------------------------------

@@ -1,4 +1,5 @@
 export { EPCartDrawer, registerEPCartDrawer, registerEPCartInline } from "./EPCartDrawer";
+export { EPCartPopover, registerEPCartPopover } from "./EPCartPopover";
 export { EPCartDrawerTrigger, registerEPCartDrawerTrigger } from "./EPCartDrawerTrigger";
 export { EPCartItemList, registerEPCartItemList } from "./EPCartItemList";
 export { EPCartItemField, registerEPCartItemField } from "./EPCartItemField";

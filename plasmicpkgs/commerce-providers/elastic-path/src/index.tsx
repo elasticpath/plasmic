@@ -23,6 +23,7 @@ import { registerEPCartItemQuantityButton } from "./cart-drawer/EPCartItemQuanti
 import { registerEPCartItemQuantityControl } from "./cart-drawer/EPCartItemQuantityControl";
 import { registerEPCartItemList } from "./cart-drawer/EPCartItemList";
 import { registerEPCartDrawer, registerEPCartInline } from "./cart-drawer/EPCartDrawer";
+import { registerEPCartPopover } from "./cart-drawer/EPCartPopover";
 import { registerEPCartDrawerTrigger } from "./cart-drawer/EPCartDrawerTrigger";
 import { registerEPBundleProvider } from "./bundle/composable/EPBundleProvider";
 import { registerEPBundleComponentList } from "./bundle/composable/EPBundleComponentList";
@@ -133,6 +134,7 @@ export function registerAll(loader?: Registerable) {
   registerEPCartItemList(loader);
   registerEPCartDrawer(loader);
   registerEPCartInline(loader);
+  registerEPCartPopover(loader);
   registerEPCartDrawerTrigger(loader);
 
   // Composable bundle configurator

@@ -55,6 +55,7 @@ jest.mock("../../utils/getLocationSlug", () => ({
 // are controllable per-test via mockUseSelector and mockRepeatedElement.
 const mockUseSelector = jest.fn();
 const mockUsePlasmicCanvasContext = jest.fn();
+const mockUsePlasmicCanvasComponentInfo = jest.fn();
 const mockRepeatedElement = jest.fn(
   (_idx: number, children: React.ReactNode) => children
 );
@@ -69,6 +70,8 @@ jest.mock("@plasmicapp/host", () => ({
   }) => children,
   useSelector: (...args: any[]) => mockUseSelector(...args),
   usePlasmicCanvasContext: () => mockUsePlasmicCanvasContext(),
+  usePlasmicCanvasComponentInfo: (...args: any[]) =>
+    mockUsePlasmicCanvasComponentInfo(...args),
   repeatedElement: (...args: any[]) => mockRepeatedElement(...args),
 }));
 
@@ -446,6 +449,9 @@ describe("EPCartDrawer", () => {
   describe("editor mode", () => {
     beforeEach(() => {
       mockUsePlasmicCanvasContext.mockReturnValue({});
+      // Drawer mode renders in the canvas only when selected in the outline;
+      // default editor-mode tests to "selected" so they exercise the open panel.
+      mockUsePlasmicCanvasComponentInfo.mockReturnValue({ isSelected: true });
     });
 
     it("renders inline (no portal) in editor", () => {
@@ -460,6 +466,14 @@ describe("EPCartDrawer", () => {
       render(<EPCartDrawer><div>Mock content</div></EPCartDrawer>);
       // Should render children (mock cart is non-empty)
       expect(screen.getByText("Mock content")).toBeTruthy();
+    });
+
+    it("stays closed in the canvas until selected in the outline", () => {
+      mockUsePlasmicCanvasComponentInfo.mockReturnValue({ isSelected: false });
+      mockUseCart.mockReturnValue({ data: mockCart, error: null });
+      render(<EPCartDrawer><div>Hidden content</div></EPCartDrawer>);
+      // Not selected, no previewState, no isOpen → drawer renders nothing.
+      expect(screen.queryByText("Hidden content")).toBeNull();
     });
 
     it("shows loading preview state", () => {

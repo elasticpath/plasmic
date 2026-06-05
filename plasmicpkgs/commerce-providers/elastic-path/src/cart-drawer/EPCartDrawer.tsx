@@ -8,19 +8,27 @@ import registerComponent, {
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import ReactDOM from "react-dom";
 import useCart from "../cart/use-cart";
-import { FOCUS_TRAP_DELAY_MS } from "../const";
+import {
+  CART_BACKDROP_Z_INDEX,
+  CART_OVERLAY_Z_INDEX,
+  FOCUS_TRAP_DELAY_MS,
+} from "../const";
 import { useCommerce } from "../elastic-path";
 import { Registerable } from "../registerable";
 import { deriveCartData } from "../utils/cart-data";
 import { createLogger } from "../utils/logger";
-import { MOCK_CART_DATA } from "../utils/design-time-data";
+import { MOCK_CART_DATA, MOCK_EMPTY_CART_DATA } from "../utils/design-time-data";
 import { useDrawerOpen, setDrawerOpen } from "./CartDrawerContext";
+import {
+  OverlayEditorOpenProps,
+  useOverlayEditorOpen,
+} from "./use-overlay-editor-open";
 
 const log = createLogger("EPCartDrawer");
 
 type PreviewState = "auto" | "withItems" | "empty" | "loading" | "error";
 
-interface EPCartDrawerProps {
+interface EPCartDrawerProps extends OverlayEditorOpenProps {
   children?: React.ReactNode;
   emptyContent?: React.ReactNode;
   loadingContent?: React.ReactNode;
@@ -162,7 +170,7 @@ const BACKDROP_STYLES: React.CSSProperties = {
   left: 0,
   right: 0,
   bottom: 0,
-  zIndex: 9998,
+  zIndex: CART_BACKDROP_Z_INDEX,
   background: "rgba(0, 0, 0, 0.4)",
 };
 
@@ -174,7 +182,7 @@ function getDrawerPositionStyles(
     top: 0,
     bottom: 0,
     [side]: 0,
-    zIndex: 9999,
+    zIndex: CART_OVERLAY_Z_INDEX,
     overflowY: "auto",
   };
 }
@@ -201,6 +209,10 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
   const { providerRef } = useCommerce();
   const currencyDisplay = providerRef?.current?.currencyDisplay ?? "symbol";
   const inEditor = !!usePlasmicCanvasContext();
+  // Open the drawer in the Studio canvas when this node (or a descendant) is
+  // selected in the outline. The drawer has no trigger slot (its trigger is a
+  // separate EPCartDrawerTrigger component), so no slot needs excluding.
+  const autoOpenForEditing = useOverlayEditorOpen(props);
   const [drawerOpen] = useDrawerOpen();
   const drawerRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<Element | null>(null);
@@ -303,8 +315,17 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
   // Design-time: render inline so designer can see, select, and style.
   // The defaultStyles on the meta give the drawer its initial dimensions,
   // background, and padding — the designer can override via Plasmic Studio.
+  //
+  // Inline mode (the dedicated cart page) always renders. Drawer mode renders
+  // only when "open" for editing — selected in the outline (autoOpenForEditing),
+  // an explicit previewState, or a bound isOpen — so it doesn't clutter the
+  // canvas the rest of the time.
   // -----------------------------------------------------------------------
   if (inEditor) {
+    const editorOpen =
+      inline || previewState !== "auto" || autoOpenForEditing || isOpen;
+    if (!editorOpen) return null;
+
     if (previewState === "loading") {
       return (
         <div className={className} data-ep-cart-drawer="" data-side={side}>
@@ -321,10 +342,7 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
     }
     if (previewState === "empty") {
       return (
-        <DataProvider
-          name="cartData"
-          data={{ ...MOCK_CART_DATA, lineItems: [], itemCount: 0, isEmpty: true }}
-        >
+        <DataProvider name="cartData" data={MOCK_EMPTY_CART_DATA}>
           <div
             className={className}
             role="dialog"
