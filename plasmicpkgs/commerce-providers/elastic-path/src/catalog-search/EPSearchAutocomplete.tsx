@@ -296,13 +296,25 @@ const EPSearchAutocompleteInner = React.forwardRef<
     [hookOutput.setQuery, hookOutput.focus, hookOutput.clear]
   );
 
+  // clear/setQuery ride along in the data context (same pattern as
+  // EPRefinementList's per-item `toggle` and searchPaginationData.goTo) so
+  // designers can wire e.g. a clear-✕ via a customFunction interaction
+  // ($ctx.autocompleteData.clear()) without reaching the component ref.
   const publicData: AutocompleteData = useMemo(
     () => ({
       isOpen: !!hookOutput.state.isOpen,
       query: hookOutput.state.query ?? "",
       collections: hookOutput.collections,
+      clear: hookOutput.clear,
+      setQuery: hookOutput.setQuery,
     }),
-    [hookOutput.state.isOpen, hookOutput.state.query, hookOutput.collections]
+    [
+      hookOutput.state.isOpen,
+      hookOutput.state.query,
+      hookOutput.collections,
+      hookOutput.clear,
+      hookOutput.setQuery,
+    ]
   );
 
   return (

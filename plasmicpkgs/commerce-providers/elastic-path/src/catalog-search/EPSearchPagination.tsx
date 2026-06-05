@@ -176,12 +176,19 @@ const EPSearchPaginationInner = React.forwardRef<
     prevPage: handlePrevPage,
   }));
 
+  // goTo/next/prev ride along in the data context (same pattern as
+  // EPRefinementList's per-item `toggle`) so designers can wire clicks via
+  // customFunction interactions ($ctx.searchPaginationData.goTo(page))
+  // without reaching the component ref.
   const paginationData: SearchPaginationData = {
     currentPage: currentRefinement,
     totalPages: nbPages,
     hasNext: !isLastPage,
     hasPrev: !isFirstPage,
     pages,
+    goTo: handleGoToPage,
+    next: handleNextPage,
+    prev: handlePrevPage,
   };
 
   return (

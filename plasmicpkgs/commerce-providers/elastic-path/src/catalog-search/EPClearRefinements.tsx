@@ -26,6 +26,7 @@ interface EPClearRefinementsProps {
   children?: React.ReactNode;
   includedAttributes?: string[];
   excludedAttributes?: string[];
+  alwaysRender?: boolean;
   className?: string;
   previewState?: PreviewState;
 }
@@ -61,6 +62,13 @@ export const epClearRefinementsMeta: CodeComponentMeta<EPClearRefinementsProps> 
       description:
         "Attributes to leave alone when clearing. Mutually exclusive with Included Attributes.",
     },
+    alwaysRender: {
+      type: "boolean",
+      displayName: "Always Render",
+      description:
+        "Keep rendering children when there is nothing to clear (default hides them). Use for always-visible controls like an \"All results\" scope pill — style the active state off $ctx.clearRefinementsData.canRefine (false = no refinements = \"all\" is selected).",
+      defaultValue: false,
+    },
     previewState: {
       type: "choice",
       options: ["auto", "withData"],
@@ -89,6 +97,7 @@ export const EPClearRefinements = React.forwardRef<
     children,
     includedAttributes,
     excludedAttributes,
+    alwaysRender = false,
     className,
     previewState = "auto",
   } = props;
@@ -110,6 +119,7 @@ export const EPClearRefinements = React.forwardRef<
       ref={ref}
       includedAttributes={includedAttributes}
       excludedAttributes={excludedAttributes}
+      alwaysRender={alwaysRender}
       className={className}
     >
       {children}
@@ -147,10 +157,11 @@ const EPClearRefinementsInner = React.forwardRef<
     children?: React.ReactNode;
     includedAttributes?: string[];
     excludedAttributes?: string[];
+    alwaysRender?: boolean;
     className?: string;
   }
 >(function EPClearRefinementsInner(
-  { children, includedAttributes, excludedAttributes, className },
+  { children, includedAttributes, excludedAttributes, alwaysRender, className },
   ref
 ) {
   const { useClearRefinements } = require("react-instantsearch");
@@ -176,7 +187,9 @@ const EPClearRefinementsInner = React.forwardRef<
     if (canRefine) refine();
   }, [refine, canRefine]);
 
-  if (!canRefine) return null;
+  // Default behavior hides the control when there's nothing to clear;
+  // alwaysRender keeps it for always-visible "All results"-style pills.
+  if (!canRefine && !alwaysRender) return null;
 
   return (
     <DataProvider name="clearRefinementsData" data={data}>
