@@ -4,6 +4,11 @@
  * Wraps `useRefinementList()` from react-instantsearch. Headless — exposes
  * refinement items for designer to render with any Plasmic elements.
  * Supports toggleRefinement action via refActions.
+ *
+ * `singleSelect` switches the backing hook to `useMenu()` for radio-style
+ * facets (e.g. a single-choice "scope" filter): selecting a value REPLACES
+ * the current refinement instead of OR-combining, and re-selecting the
+ * refined value clears it (the "All" affordance).
  */
 
 import {
@@ -28,6 +33,8 @@ interface EPRefinementListProps {
   limit?: number;
   showMore?: boolean;
   searchable?: boolean;
+  singleSelect?: boolean;
+  itemGap?: string;
   className?: string;
   previewState?: PreviewState;
 }
@@ -83,6 +90,20 @@ export const epRefinementListMeta: CodeComponentMeta<EPRefinementListProps> = {
       description: "Allow searching within facet values",
       defaultValue: false,
     },
+    singleSelect: {
+      type: "boolean",
+      displayName: "Single Select",
+      description:
+        "Radio-style facet: selecting a value replaces the current refinement instead of combining (uses InstantSearch's menu widget). Re-selecting the refined value clears it. Searchable is ignored in this mode.",
+      defaultValue: false,
+    },
+    itemGap: {
+      type: "string",
+      displayName: "Item Gap",
+      description:
+        "Single-select mode lays items out as a wrapping flex ROW (pill style) with this gap. Ignored in multi-select mode (vertical list). Set inline because Plasmic strips layout styles from code-component instances.",
+      defaultValue: "9.5px",
+    },
     previewState: {
       type: "choice",
       options: ["auto", "withData"],
@@ -114,6 +135,8 @@ export const EPRefinementList = React.forwardRef<
     limit = 10,
     showMore = false,
     searchable = false,
+    singleSelect = false,
+    itemGap = "9.5px",
     className,
     previewState = "auto",
   } = props;
@@ -124,9 +147,34 @@ export const EPRefinementList = React.forwardRef<
 
   if (useMock) {
     return (
-      <MockRefinementList ref={ref} className={className} label={label}>
+      <MockRefinementList
+        ref={ref}
+        className={className}
+        label={label}
+        singleSelect={singleSelect}
+        itemGap={itemGap}
+      >
         {children}
       </MockRefinementList>
+    );
+  }
+
+  // Separate inner components — the backing InstantSearch hook differs
+  // (useMenu vs useRefinementList) and hooks cannot be picked conditionally
+  // within one component.
+  if (singleSelect) {
+    return (
+      <EPMenuListInner
+        ref={ref}
+        attribute={attribute || "brand"}
+        label={label}
+        limit={limit}
+        showMore={showMore}
+        itemGap={itemGap}
+        className={className}
+      >
+        {children}
+      </EPMenuListInner>
     );
   }
 
@@ -147,15 +195,36 @@ export const EPRefinementList = React.forwardRef<
 
 const MockRefinementList = React.forwardRef<
   EPRefinementListActions,
-  { children?: React.ReactNode; className?: string; label?: string }
->(function MockRefinementList({ children, className, label }, ref) {
+  {
+    children?: React.ReactNode;
+    className?: string;
+    label?: string;
+    singleSelect?: boolean;
+    itemGap?: string;
+  }
+>(function MockRefinementList(
+  { children, className, label, singleSelect, itemGap },
+  ref
+) {
   useImperativeHandle(ref, () => ({
     toggleRefinement: () => {},
   }));
 
+  // Mirror the runtime singleSelect layout (EPMenuListInner) so the Studio
+  // canvas matches the browser: a wrapping flex pill-row instead of the
+  // default vertical block list.
+  const listStyle: React.CSSProperties | undefined = singleSelect
+    ? { display: "flex", flexWrap: "wrap", gap: itemGap }
+    : undefined;
+
   return (
-    <div className={className} data-ep-refinement-list="" aria-label={label}>
-      <div role="list">
+    <div
+      className={className}
+      data-ep-refinement-list=""
+      {...(singleSelect ? { "data-single-select": "" } : {})}
+      aria-label={label}
+    >
+      <div role="list" style={listStyle}>
         {MOCK_REFINEMENT_ITEMS.map((item, i) => (
           <div key={item.value} role="listitem">
             <DataProvider name="currentRefinement" data={item}>
@@ -219,6 +288,78 @@ const EPRefinementListInner = React.forwardRef<
   return (
     <div className={className} data-ep-refinement-list="" aria-label={label}>
       <div role="list">
+        {normalizedItems.map((item: any, i: number) => (
+          <div key={item.value} role="listitem">
+            <DataProvider name="currentRefinement" data={item}>
+              <DataProvider name="currentRefinementIndex" data={i}>
+                {repeatedElement(i, children)}
+              </DataProvider>
+            </DataProvider>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+});
+
+const EPMenuListInner = React.forwardRef<
+  EPRefinementListActions,
+  {
+    children?: React.ReactNode;
+    attribute: string;
+    label?: string;
+    limit: number;
+    showMore: boolean;
+    itemGap?: string;
+    className?: string;
+  }
+>(function EPMenuListInner(
+  { children, attribute, label, limit, showMore, itemGap, className },
+  ref
+) {
+  const { useMenu } = require("react-instantsearch");
+  const { items, refine } = useMenu({
+    attribute,
+    limit,
+    showMore,
+    // Highest-count value first (e.g. the largest scope before smaller
+    // ones); name breaks ties deterministically.
+    sortBy: ["count:desc", "name:asc"],
+  });
+
+  useImperativeHandle(ref, () => ({
+    toggleRefinement: (value: string) => refine(value),
+  }));
+
+  // Same per-item shape as the multi-select path (value/label/count/
+  // isRefined/toggle) so designs can switch modes without rebinding.
+  const normalizedItems = useMemo(
+    () =>
+      (items || []).map((item: any) => ({
+        value: item.value,
+        label: item.label,
+        count: item.count,
+        isRefined: item.isRefined,
+        toggle: () => refine(item.value),
+      })),
+    [items, refine]
+  );
+
+  if (normalizedItems.length === 0) return null;
+
+  return (
+    <div
+      className={className}
+      data-ep-refinement-list=""
+      data-single-select=""
+      aria-label={label}
+    >
+      {/* Inline flex-row — Plasmic strips layout styles from code-component
+          instances, so the pill row is laid out here (gap via itemGap). */}
+      <div
+        role="list"
+        style={{ display: "flex", flexWrap: "wrap", gap: itemGap }}
+      >
         {normalizedItems.map((item: any, i: number) => (
           <div key={item.value} role="listitem">
             <DataProvider name="currentRefinement" data={item}>

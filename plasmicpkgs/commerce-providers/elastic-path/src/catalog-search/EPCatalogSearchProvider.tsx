@@ -31,6 +31,8 @@ interface EPCatalogSearchProviderProps {
   className?: string;
   indexName?: string;
   queryBy?: string;
+  baseFilter?: string;
+  highlightFullFields?: string;
   hitsPerPage?: number;
   enableUrlSync?: boolean;
   currencyCode?: string;
@@ -92,6 +94,20 @@ export const epCatalogSearchProviderMeta: CodeComponentMeta<EPCatalogSearchProvi
         description: "Fields to search (comma-separated)",
         defaultValue: "name,description",
       },
+      baseFilter: {
+        type: "string",
+        displayName: "Base Filter",
+        description:
+          'Typesense filter_by expression applied to EVERY search, combined (&&) with any facet refinements — e.g. "meta.product_types:!=child" to exclude variation children from hits. Leave empty for no base filter.',
+        defaultValue: "",
+      },
+      highlightFullFields: {
+        type: "string",
+        displayName: "Highlight Full Fields",
+        description:
+          'Comma-separated fields highlighted in full instead of snippeted (Typesense highlight_full_fields) — e.g. "name". Long fields like description are snippeted by default.',
+        defaultValue: "",
+      },
       hitsPerPage: {
         type: "number",
         displayName: "Hits Per Page",
@@ -134,6 +150,8 @@ export function EPCatalogSearchProvider(props: EPCatalogSearchProviderProps) {
     className,
     indexName = "search",
     queryBy = "name,description",
+    baseFilter = "",
+    highlightFullFields = "",
     hitsPerPage = 12,
     enableUrlSync = true,
     currencyCode = DEFAULT_CURRENCY_CODE,
@@ -194,6 +212,8 @@ export function EPCatalogSearchProvider(props: EPCatalogSearchProviderProps) {
     <EPCatalogSearchProviderInner
       indexName={indexName}
       queryBy={queryBy}
+      baseFilter={baseFilter}
+      highlightFullFields={highlightFullFields}
       hitsPerPage={hitsPerPage}
       enableUrlSync={enableUrlSync}
       currencyCode={currencyCode}
@@ -210,6 +230,8 @@ function EPCatalogSearchProviderInner(props: {
   errorContent?: React.ReactNode;
   indexName: string;
   queryBy: string;
+  baseFilter?: string;
+  highlightFullFields?: string;
   hitsPerPage: number;
   enableUrlSync: boolean;
   currencyCode: string;
@@ -220,6 +242,8 @@ function EPCatalogSearchProviderInner(props: {
     errorContent,
     indexName,
     queryBy,
+    baseFilter,
+    highlightFullFields,
     hitsPerPage,
     enableUrlSync,
     currencyCode,
@@ -247,6 +271,11 @@ function EPCatalogSearchProviderInner(props: {
         client,
         additionalSearchParameters: {
           query_by: queryBy,
+          // Typesense snippets long fields by default; fields listed here are
+          // highlighted in full (`<mark>`-wrapped) instead.
+          ...(highlightFullFields
+            ? { highlight_full_fields: highlightFullFields }
+            : {}),
         },
         // Inline the product image record onto each hit. Adapter v0.1.0+
         // forwards this as `?include=main_image` on the catalog-search call
@@ -264,7 +293,7 @@ function EPCatalogSearchProviderInner(props: {
       );
       return null;
     }
-  }, [client, queryBy]);
+  }, [client, queryBy, highlightFullFields]);
 
   if (!searchClient) {
     return (
@@ -294,7 +323,15 @@ function EPCatalogSearchProviderInner(props: {
       indexName={indexName}
       routing={enableUrlSync}
     >
-      <Configure hitsPerPage={hitsPerPage} />
+      {/* `filters` rides through the adapter's _adaptFilters, which always
+          joins it (&&) with facet refinements — unlike the adapter-level
+          `additionalSearchParameters.filter_by`, which is silently DROPPED
+          whenever InstantSearch generates its own filters (i.e. as soon as
+          any facet is refined). Must be Typesense filter_by syntax. */}
+      <Configure
+        hitsPerPage={hitsPerPage}
+        {...(baseFilter ? { filters: baseFilter } : {})}
+      />
       <DataProvider name="catalogSearchData" data={catalogSearchData}>
         <div className={className} data-ep-catalog-search-provider="">
           {children}

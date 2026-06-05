@@ -45,6 +45,11 @@ const mockUseRefinementList = jest.fn().mockReturnValue({
   refine: jest.fn(),
 });
 
+const mockUseMenu = jest.fn().mockReturnValue({
+  items: [],
+  refine: jest.fn(),
+});
+
 const mockUseHierarchicalMenu = jest.fn().mockReturnValue({
   items: [],
   refine: jest.fn(),
@@ -147,6 +152,7 @@ jest.mock("react-instantsearch", () => ({
   useHits: (...a: unknown[]) => mockUseHits(...a),
   useInstantSearch: (...a: unknown[]) => mockUseInstantSearch(...a),
   useRefinementList: (...a: unknown[]) => mockUseRefinementList(...a),
+  useMenu: (...a: unknown[]) => mockUseMenu(...a),
   useHierarchicalMenu: (...a: unknown[]) => mockUseHierarchicalMenu(...a),
   useRange: (...a: unknown[]) => mockUseRange(...a),
   usePagination: (...a: unknown[]) => mockUsePagination(...a),
@@ -157,7 +163,11 @@ jest.mock("react-instantsearch", () => ({
   InstantSearch: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="instantsearch">{children}</div>
   ),
-  Configure: () => null,
+  // Render props so tests can assert what the provider configures
+  // (hitsPerPage, the base `filters`, …).
+  Configure: (props: Record<string, unknown>) => (
+    <div data-testid="configure" data-configure={JSON.stringify(props)} />
+  ),
 }));
 
 jest.mock("@elasticpath/catalog-search-instantsearch-adapter", () => ({
@@ -427,6 +437,79 @@ describe("EPCatalogSearchProvider", () => {
     );
     expect(data.isSearchActive).toBe(false);
     expect(data.query).toBe("");
+  });
+
+  function getConfigureProps(container: HTMLElement) {
+    const el = container.querySelector('[data-testid="configure"]');
+    expect(el).not.toBeNull();
+    return JSON.parse(el!.getAttribute("data-configure") || "{}");
+  }
+
+  it("passes baseFilter to Configure as `filters` at runtime", () => {
+    // `filters` rides through the adapter's _adaptFilters, which always joins
+    // it with facet refinements — adapter-level filter_by would be dropped as
+    // soon as a facet is refined.
+    const { container } = render(
+      <EPCatalogSearchProvider baseFilter="meta.product_types:!=child">
+        <div>children</div>
+      </EPCatalogSearchProvider>
+    );
+
+    const props = getConfigureProps(container);
+    expect(props.filters).toBe("meta.product_types:!=child");
+    expect(props.hitsPerPage).toBe(12);
+  });
+
+  it("omits `filters` from Configure when baseFilter is empty", () => {
+    const { container } = render(
+      <EPCatalogSearchProvider>
+        <div>children</div>
+      </EPCatalogSearchProvider>
+    );
+
+    const props = getConfigureProps(container);
+    expect(props).not.toHaveProperty("filters");
+  });
+
+  it("forwards highlightFullFields to the adapter's search parameters", () => {
+    const AdapterMock = (
+      require("@elasticpath/catalog-search-instantsearch-adapter") as {
+        default: jest.Mock;
+      }
+    ).default;
+
+    render(
+      <EPCatalogSearchProvider highlightFullFields="name,description">
+        <div>children</div>
+      </EPCatalogSearchProvider>
+    );
+
+    expect(AdapterMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        additionalSearchParameters: expect.objectContaining({
+          highlight_full_fields: "name,description",
+        }),
+      })
+    );
+  });
+
+  it("does not send highlight_full_fields when unset", () => {
+    const AdapterMock = (
+      require("@elasticpath/catalog-search-instantsearch-adapter") as {
+        default: jest.Mock;
+      }
+    ).default;
+
+    render(
+      <EPCatalogSearchProvider>
+        <div>children</div>
+      </EPCatalogSearchProvider>
+    );
+
+    const args = AdapterMock.mock.calls[0][0];
+    expect(args.additionalSearchParameters).not.toHaveProperty(
+      "highlight_full_fields"
+    );
   });
 });
 
@@ -780,6 +863,106 @@ describe("EPSearchHits", () => {
     expect(data.name).toBe("British Product");
   });
 
+  /** Render one EP catalog-search shaped hit and return the normalized currentProduct. */
+  function renderHitAndGetCurrentProduct(
+    hit: Record<string, unknown>,
+    props: { productPathPrefix?: string } = {}
+  ) {
+    mockUsePlasmicCanvasContext.mockReturnValue(null);
+    mockUseSelector.mockReturnValue(undefined);
+    mockUseHits.mockReturnValue({ hits: [hit] });
+
+    const { container } = render(
+      <EPSearchHits {...props}>
+        <div>child</div>
+      </EPSearchHits>
+    );
+    const providerEl = container.querySelector(
+      '[data-testid="data-provider-currentProduct"]'
+    );
+    expect(providerEl).not.toBeNull();
+    return JSON.parse(providerEl!.getAttribute("data-provider-data") || "{}");
+  }
+
+  // The adapter spreads the EP search document onto the hit, so attributes
+  // (incl. extensions) live under hit.attributes.
+  const EP_HIT = {
+    objectID: "ep-hit-1",
+    attributes: {
+      name: "Sample Product",
+      slug: "sample-product",
+      sku: "sample-sku-001",
+      description: "A sample product description for testing.",
+      extensions: {
+        "products(specs)": {
+          reference: "SP-001",
+          product_kind: "standard",
+          lifecycle_status: "Published",
+        },
+      },
+    },
+  };
+
+  it("exposes template extensions resolved and under the PDP rawData contract", () => {
+    const data = renderHitAndGetCurrentProduct(EP_HIT);
+
+    // 1. direct binding: currentProduct.extensions["products(…)"].field
+    expect(
+      data.extensions["products(specs)"].lifecycle_status
+    ).toBe("Published");
+    // 2. PDP field components read rawData.data.attributes.extensions
+    //    (see extractRawExtensions in product-extensions/composable/format.ts)
+    expect(
+      data.rawData.data.attributes.extensions["products(specs)"]
+        .product_kind
+    ).toBe("standard");
+  });
+
+  it("defaults extensions to {} when the hit has none", () => {
+    const data = renderHitAndGetCurrentProduct({
+      objectID: "no-ext",
+      attributes: { name: "Plain", slug: "plain" },
+    });
+    expect(data.extensions).toEqual({});
+  });
+
+  it("builds path from productPathPrefix (trailing slash tolerated)", () => {
+    const withPrefix = renderHitAndGetCurrentProduct(EP_HIT, {
+      productPathPrefix: "/products/",
+    });
+    expect(withPrefix.path).toBe("/products/sample-product");
+
+    const withDefault = renderHitAndGetCurrentProduct(EP_HIT);
+    expect(withDefault.path).toBe("/product/sample-product");
+  });
+
+  it("recovers bare-keyed EP highlights from the raw Typesense hit", () => {
+    // EP keys highlights by the bare query_by names while the document nests
+    // fields under attributes — the adapter's document-driven walk drops
+    // them, so the normalizer reads _rawTypesenseHit.highlight directly.
+    const data = renderHitAndGetCurrentProduct({
+      ...EP_HIT,
+      _highlightResult: {
+        attributes: {
+          name: { value: "Sample Product", matchLevel: "none" },
+        },
+      },
+      _rawTypesenseHit: {
+        highlight: {
+          name: { value: "Sample <mark>Product</mark>" },
+          description: {
+            snippet: "a <mark>sample</mark> description",
+          },
+        },
+      },
+    });
+
+    expect(data._highlightedName).toBe("Sample <mark>Product</mark>");
+    expect(data._snippetedDescription).toBe(
+      "a <mark>sample</mark> description"
+    );
+  });
+
   it("should fall back to USD when catalogSearchData has no currencyCode", () => {
     mockUsePlasmicCanvasContext.mockReturnValue(null);
     mockUseSelector.mockReturnValue(undefined);
@@ -854,6 +1037,47 @@ describe("EPRefinementList", () => {
     expect(data.label).toBeTruthy();
     expect(typeof data.count).toBe("number");
     expect(typeof data.isRefined).toBe("boolean");
+  });
+
+  it("uses useMenu (replace semantics) when singleSelect — radio-style facets", () => {
+    mockUseMenu.mockReturnValue({
+      items: [
+        { value: "type-a", label: "type-a", count: 39, isRefined: true },
+        { value: "type-b", label: "type-b", count: 1, isRefined: false },
+      ],
+      refine: jest.fn(),
+    });
+
+    const { container } = render(
+      <EPRefinementList
+        attribute="extensions.products(specs).product_kind"
+        singleSelect
+      >
+        <div>child</div>
+      </EPRefinementList>
+    );
+
+    expect(mockUseMenu).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attribute: "extensions.products(specs).product_kind",
+      })
+    );
+    expect(mockUseRefinementList).not.toHaveBeenCalled();
+
+    // Same per-item shape as the multi-select path
+    const providerEl = container.querySelector(
+      '[data-testid="data-provider-currentRefinement"]'
+    );
+    const data = JSON.parse(
+      providerEl!.getAttribute("data-provider-data") || "{}"
+    );
+    expect(data.value).toBe("type-a");
+    expect(data.count).toBe(39);
+    expect(data.isRefined).toBe(true);
+
+    expect(
+      container.querySelector("[data-single-select]")
+    ).not.toBeNull();
   });
 
   it("should expose currentRefinementIndex in editor", () => {

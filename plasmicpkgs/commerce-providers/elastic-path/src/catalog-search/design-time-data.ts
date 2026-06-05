@@ -296,6 +296,10 @@ export interface SearchPaginationData {
   hasNext: boolean;
   hasPrev: boolean;
   pages: number[];
+  /** Wire clicks via customFunction interactions, e.g. $ctx.searchPaginationData.goTo(page). */
+  goTo?: (page: number) => void;
+  next?: () => void;
+  prev?: () => void;
 }
 
 export const MOCK_SEARCH_PAGINATION_DATA: SearchPaginationData = {
@@ -437,6 +441,9 @@ export interface AutocompleteData {
   query: string;
   /** Per-source item collections — each source renders its own list. */
   collections: AutocompleteCollection[];
+  /** Wire via customFunction interactions, e.g. $ctx.autocompleteData.clear(). */
+  clear?: () => void;
+  setQuery?: (value: string) => void;
 }
 
 export const MOCK_AUTOCOMPLETE_DATA: AutocompleteData = {

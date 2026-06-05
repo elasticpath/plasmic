@@ -22,6 +22,7 @@ import React, { useMemo } from "react";
 import { Registerable } from "../registerable";
 import { formatCurrency } from "../utils/formatCurrency";
 import { MOCK_SEARCH_PRODUCTS } from "./design-time-data";
+import { MOCK_EXTENSIONS_RAW } from "../utils/extensions-mock";
 import type { Product } from "../types/product";
 
 type PreviewState = "auto" | "withData";
@@ -51,11 +52,14 @@ const DEFAULT_GRID_TEMPLATE_COLUMNS =
   "repeat(auto-fill, minmax(220px, 1fr))";
 const DEFAULT_GRID_GAP = "24px";
 
+const DEFAULT_PRODUCT_PATH_PREFIX = "/product";
+
 interface EPSearchHitsProps {
   children?: React.ReactNode;
   className?: string;
   gridTemplateColumns?: string;
   gridGap?: string;
+  productPathPrefix?: string;
   previewState?: PreviewState;
 }
 
@@ -66,7 +70,8 @@ interface EPSearchHitsProps {
  */
 function normalizeHitToCurrentProduct(
   hit: Record<string, any>,
-  currencyCode: string
+  currencyCode: string,
+  productPathPrefix: string = DEFAULT_PRODUCT_PATH_PREFIX
 ) {
   const name = hit.ep_name || hit.name || hit.attributes?.name || "";
   const slug =
@@ -127,8 +132,54 @@ function normalizeHitToCurrentProduct(
   const formatted =
     displayPrice?.formatted || formatCurrency(priceValue, priceCurrency);
 
-  // Highlight results from InstantSearch
+  // Highlight results from InstantSearch.
+  //
+  // The EP catalog-search backend keys highlights by the BARE query_by field
+  // names (`name`, `description`) while the document nests them under
+  // `attributes.…` — the adapter's document-driven highlight walk therefore
+  // drops them from `_highlightResult`/`_snippetResult`. Recover from the
+  // raw Typesense hit (`highlight.<field>.{value,snippet}`), keeping the
+  // adapter paths as fallbacks for backends where they do line up.
   const highlighted = hit._highlightResult || hit._highlight || {};
+  const snippeted = hit._snippetResult || {};
+  const rawHighlight = hit._rawTypesenseHit?.highlight || {};
+  const highlightedName =
+    rawHighlight.name?.value ||
+    rawHighlight.name?.snippet ||
+    highlighted.ep_name?.value ||
+    highlighted.name?.value ||
+    highlighted.attributes?.name?.value ||
+    undefined;
+  const highlightedDescription =
+    rawHighlight.description?.value ||
+    highlighted.ep_description?.value ||
+    highlighted.description?.value ||
+    highlighted.attributes?.description?.value ||
+    undefined;
+  // Snippet = the shortened, `<mark>`-highlighted excerpt Typesense builds
+  // for long fields (e.g. a description/abstract snippet on a hit card).
+  const snippetedDescription =
+    rawHighlight.description?.snippet ||
+    snippeted.description?.value ||
+    snippeted.attributes?.description?.value ||
+    undefined;
+
+  // Template extensions — the catalog-search document carries the same
+  // `attributes.extensions` block as the shopper product API. Expose it
+  //   1. resolved on `extensions` for direct bindings
+  //      (`currentProduct.extensions["products(…)"].field`), and
+  //   2. under `rawData.data` so the PDP field components
+  //      (EPProductField / EPProductExtensionValue, which read
+  //      `rawData.data.attributes.extensions`) work inside hit cards
+  //      unchanged.
+  const extensions: Record<string, unknown> =
+    hit.attributes?.extensions || hit.extensions || {};
+
+  // Strip the trailing slash so both "/product" and "/product/" work.
+  const pathPrefix = (productPathPrefix || DEFAULT_PRODUCT_PATH_PREFIX).replace(
+    /\/+$/,
+    ""
+  );
 
   return {
     id: hit.objectID || hit.id || "",
@@ -136,9 +187,10 @@ function normalizeHitToCurrentProduct(
     slug,
     sku,
     description,
-    // Match the EP ProductDetail page route (`/product/[slug]`).
-    // Falls back to id-based URL when the hit lacks a slug.
-    path: slug ? `/product/${slug}` : `/product/${hit.objectID || hit.id || ""}`,
+    // PDP route — configurable via the `productPathPrefix` prop so storefronts
+    // with a different route shape (e.g. `/products`, `/en/products`) link
+    // correctly. Falls back to an id-based URL when the hit lacks a slug.
+    path: `${pathPrefix}/${slug || hit.objectID || hit.id || ""}`,
     images: [
       {
         url: imageUrl || TRANSPARENT_PIXEL,
@@ -151,11 +203,15 @@ function normalizeHitToCurrentProduct(
       formatted,
     },
     options: [] as Array<{ displayName: string; values: Array<{ label: string }> }>,
-    _highlightedName: highlighted.ep_name?.value || highlighted.name?.value || undefined,
-    _highlightedDescription:
-      highlighted.ep_description?.value ||
-      highlighted.description?.value ||
-      undefined,
+    extensions,
+    // The search document has the shopper-product shape ({attributes, id,
+    // meta, …}), so wrapping it as `{ data: hit }` matches the PDP's
+    // `rawData` contract (see extractRawExtensions in
+    // product-extensions/composable/format.ts).
+    rawData: { data: hit },
+    _highlightedName: highlightedName,
+    _highlightedDescription: highlightedDescription,
+    _snippetedDescription: snippetedDescription,
     _score: hit._score ?? hit._rankingInfo?.relevance ?? undefined,
     rawHit: hit,
   };
@@ -164,9 +220,19 @@ function normalizeHitToCurrentProduct(
 /**
  * Build currentProduct from mock Product (design-time).
  */
-function buildMockCurrentProduct(product: Product) {
+function buildMockCurrentProduct(
+  product: Product,
+  productPathPrefix: string = DEFAULT_PRODUCT_PATH_PREFIX
+) {
   const currencyCode = product.price.currencyCode ?? "USD";
   const formatted = formatCurrency(product.price.value, currencyCode);
+  const pathPrefix = (productPathPrefix || DEFAULT_PRODUCT_PATH_PREFIX).replace(
+    /\/+$/,
+    ""
+  );
+  // Same mock extensions as the PDP field components, so the cascading
+  // template/field dropdowns populate when authoring hit cards in the canvas.
+  const extensions = MOCK_EXTENSIONS_RAW;
 
   return {
     id: product.id,
@@ -174,7 +240,7 @@ function buildMockCurrentProduct(product: Product) {
     slug: product.slug ?? "",
     sku: product.sku ?? "",
     description: product.description,
-    path: product.path ?? `/${product.slug ?? ""}`,
+    path: product.path ?? `${pathPrefix}/${product.slug ?? ""}`,
     images: product.images,
     price: {
       value: product.price.value,
@@ -185,8 +251,11 @@ function buildMockCurrentProduct(product: Product) {
       displayName: opt.displayName,
       values: opt.values.map((v) => ({ label: v.label })),
     })),
+    extensions,
+    rawData: { data: { attributes: { extensions } } },
     _highlightedName: undefined,
     _highlightedDescription: undefined,
+    _snippetedDescription: undefined,
     _score: undefined,
     rawHit: {},
   };
@@ -229,6 +298,13 @@ export const epSearchHitsMeta: CodeComponentMeta<EPSearchHitsProps> = {
       description: "CSS gap between hit cards.",
       defaultValue: DEFAULT_GRID_GAP,
     },
+    productPathPrefix: {
+      type: "string",
+      displayName: "Product Path Prefix",
+      description:
+        "Route prefix used to build each hit's currentProduct.path link (prefix + '/' + slug). Set this to match the storefront's PDP route, e.g. \"/products\".",
+      defaultValue: DEFAULT_PRODUCT_PATH_PREFIX,
+    },
     previewState: {
       type: "choice",
       options: ["auto", "withData"],
@@ -249,6 +325,7 @@ export function EPSearchHits(props: EPSearchHitsProps) {
     className,
     gridTemplateColumns = DEFAULT_GRID_TEMPLATE_COLUMNS,
     gridGap = DEFAULT_GRID_GAP,
+    productPathPrefix = DEFAULT_PRODUCT_PATH_PREFIX,
     previewState = "auto",
   } = props;
 
@@ -260,14 +337,22 @@ export function EPSearchHits(props: EPSearchHitsProps) {
 
   if (useMock) {
     return (
-      <MockSearchHits className={className} gridStyle={gridStyle}>
+      <MockSearchHits
+        className={className}
+        gridStyle={gridStyle}
+        productPathPrefix={productPathPrefix}
+      >
         {children}
       </MockSearchHits>
     );
   }
 
   return (
-    <EPSearchHitsInner className={className} gridStyle={gridStyle}>
+    <EPSearchHitsInner
+      className={className}
+      gridStyle={gridStyle}
+      productPathPrefix={productPathPrefix}
+    >
       {children}
     </EPSearchHitsInner>
   );
@@ -277,12 +362,16 @@ function MockSearchHits(props: {
   children?: React.ReactNode;
   className?: string;
   gridStyle: React.CSSProperties;
+  productPathPrefix?: string;
 }) {
-  const { children, className, gridStyle } = props;
+  const { children, className, gridStyle, productPathPrefix } = props;
 
   const products = useMemo(
-    () => MOCK_SEARCH_PRODUCTS.map(buildMockCurrentProduct),
-    []
+    () =>
+      MOCK_SEARCH_PRODUCTS.map((p) =>
+        buildMockCurrentProduct(p, productPathPrefix)
+      ),
+    [productPathPrefix]
   );
 
   if (products.length === 0) return null;
@@ -312,8 +401,9 @@ function EPSearchHitsInner(props: {
   children?: React.ReactNode;
   className?: string;
   gridStyle: React.CSSProperties;
+  productPathPrefix?: string;
 }) {
-  const { children, className, gridStyle } = props;
+  const { children, className, gridStyle, productPathPrefix } = props;
 
   const { useHits, useInstantSearch } = require("react-instantsearch");
   const { hits } = useHits();
@@ -328,9 +418,9 @@ function EPSearchHitsInner(props: {
   const normalizedProducts = useMemo(
     () =>
       (hits || []).map((hit: Record<string, any>) =>
-        normalizeHitToCurrentProduct(hit, currencyCode)
+        normalizeHitToCurrentProduct(hit, currencyCode, productPathPrefix)
       ),
-    [hits, currencyCode]
+    [hits, currencyCode, productPathPrefix]
   );
 
   if (normalizedProducts.length === 0) return null;
