@@ -21,4 +21,6 @@ export interface EpServerAuth {
   accountId?: string;
   /** Locale for price formatting / content negotiation. Defaults to "en-US". */
   locale?: string;
+  /** ISO 4217 currency for the cart read (X-Moltin-Currency). Storefront-resolved. */
+  currency?: string;
 }

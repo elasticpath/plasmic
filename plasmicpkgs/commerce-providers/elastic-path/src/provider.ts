@@ -51,12 +51,16 @@ const createFetcher = (creds: ElasticPathCredentials): Fetcher => {
 export const getElasticPathProvider = (
   creds: ElasticPathCredentials,
   locale: string,
-  serverToken?: string
+  serverToken?: string,
+  currency?: string,
+  currencyDisplay: "symbol" | "code" = "symbol"
 ) => {
   const client = initElasticPathClient(creds, serverToken);
 
   return {
     locale,
+    currency,
+    currencyDisplay,
     cartCookie: ELASTICPATH_CART_COOKIE,
     cart: {
       useCart,
@@ -73,6 +77,10 @@ export const getElasticPathProvider = (
 
 export type ElasticPathProvider = {
   locale: string;
+  /** ISO 4217 currency for the cart read (X-Moltin-Currency). Storefront-resolved. */
+  currency?: string;
+  /** Money display preference threaded into cart-data formatting. */
+  currencyDisplay: "symbol" | "code";
   cartCookie: string;
   fetcher: Fetcher; // Required by commerce package interface
   client: Client;

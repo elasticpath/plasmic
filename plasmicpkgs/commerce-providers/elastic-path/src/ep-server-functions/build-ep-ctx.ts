@@ -20,6 +20,7 @@ export interface BuildEpCtxSessionInput {
   cartId?: string;
   accountId?: string;
   locale?: string;
+  currency?: string;
 }
 
 export interface EpCtx {
@@ -30,6 +31,7 @@ export interface EpCtx {
   cartId?: string;
   accountId?: string;
   locale?: string;
+  currency?: string;
 }
 
 export function buildEpCtx(
@@ -51,5 +53,6 @@ export function buildEpCtx(
     cartId: opts.session.cartId,
     accountId: opts.session.accountId,
     locale: opts.session.locale,
+    currency: opts.session.currency,
   };
 }

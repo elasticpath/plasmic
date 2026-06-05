@@ -112,6 +112,7 @@ describe("useCart handler.fetcher", () => {
       client: "mock-client",
       path: { cartID: "cart-abc" },
       query: { include: ["items"] },
+      headers: { "Accept-Language": "en-US" },
     });
     expect(result).toEqual({ id: "cart-abc", lineItems: [] });
   });
@@ -125,6 +126,25 @@ describe("useCart handler.fetcher", () => {
     await callFetcher();
 
     expect(mockNormalizeCart).toHaveBeenCalledWith(cartResp.data, "en-US");
+  });
+
+  it("sends X-Moltin-Currency + Accept-Language when the provider sets a currency", async () => {
+    mockGetCartId.mockReturnValue("cart-abc");
+    mockGetACart.mockResolvedValue(makeCartResponse("cart-abc"));
+    mockNormalizeCart.mockReturnValue({ id: "cart-abc", lineItems: [] });
+
+    await handler.fetcher({
+      input: {},
+      options: handler.fetchOptions,
+      fetch: jest.fn(),
+      provider: { locale: "en-GB", currency: "GBP", client: "mock-client" },
+    });
+
+    expect(mockGetACart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        headers: { "Accept-Language": "en-GB", "X-Moltin-Currency": "GBP" },
+      })
+    );
   });
 
   it("creates new cart when no cartId cookie exists", async () => {

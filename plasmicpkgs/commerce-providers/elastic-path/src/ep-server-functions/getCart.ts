@@ -1,5 +1,6 @@
 import { getACart } from "@epcc-sdk/sdks-shopper";
 import { normalizeCart } from "../utils/normalize";
+import { buildCartReadHeaders } from "../utils/cart-read-headers";
 import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession } from "./session-context";
 import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
@@ -41,6 +42,12 @@ export async function epGetCart(
       client,
       path: { cartID: auth.cartId },
       query: { include: ["items"] },
+      // SSR parity with the client cart read: re-price for the shopper's
+      // locale/currency at read time (headers omitted when unset).
+      headers: buildCartReadHeaders({
+        locale: auth.locale,
+        currency: auth.currency,
+      }),
     });
     if (!response.data) return null;
     return normalizeCart(response.data, auth.locale ?? "en-US");

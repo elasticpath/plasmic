@@ -27,6 +27,8 @@ interface EPAddToCartButtonProps {
   children?: React.ReactNode;
   className?: string;
   previewState?: PreviewState;
+  /** Fired after the item is successfully added to the cart. */
+  onAddedToCart?: () => void;
 }
 
 export const epAddToCartButtonMeta: CodeComponentMeta<EPAddToCartButtonProps> = {
@@ -53,6 +55,13 @@ export const epAddToCartButtonMeta: CodeComponentMeta<EPAddToCartButtonProps> = 
         "Force a preview state with sample data for design-time editing",
       advanced: true,
     },
+    onAddedToCart: {
+      type: "eventHandler" as const,
+      displayName: "On Added To Cart",
+      description:
+        "Fires after the item is successfully added to the cart. Wire to open a confirmation modal, toast, or drawer.",
+      argTypes: [],
+    },
   },
   importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
   importName: "EPAddToCartButton",
@@ -60,7 +69,7 @@ export const epAddToCartButtonMeta: CodeComponentMeta<EPAddToCartButtonProps> = 
 };
 
 export function EPAddToCartButton(props: EPAddToCartButtonProps) {
-  const { children, className, previewState = "auto" } = props;
+  const { children, className, previewState = "auto", onAddedToCart } = props;
 
   const product = useSelector("currentProduct") as Product | undefined;
   const form = useFormContext();
@@ -124,6 +133,11 @@ export function EPAddToCartButton(props: EPAddToCartButtonProps) {
       await swrMutate(epCartCacheKey());
 
       log.info("Item added to cart successfully");
+
+      // Notify consumers (e.g. open a confirmation modal). Fired only on a
+      // successful add — never when the add is aborted (no product / invalid
+      // quantity) or errors.
+      onAddedToCart?.();
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to add item to cart";

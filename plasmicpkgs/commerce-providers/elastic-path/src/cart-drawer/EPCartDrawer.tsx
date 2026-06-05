@@ -8,9 +8,10 @@ import registerComponent, {
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import ReactDOM from "react-dom";
 import useCart from "../cart/use-cart";
-import { DEFAULT_CURRENCY_CODE, FOCUS_TRAP_DELAY_MS } from "../const";
+import { FOCUS_TRAP_DELAY_MS } from "../const";
+import { useCommerce } from "../elastic-path";
 import { Registerable } from "../registerable";
-import { formatCurrency } from "../utils/formatCurrency";
+import { deriveCartData } from "../utils/cart-data";
 import { createLogger } from "../utils/logger";
 import { MOCK_CART_DATA } from "../utils/design-time-data";
 import { useDrawerOpen, setDrawerOpen } from "./CartDrawerContext";
@@ -197,6 +198,8 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
   } = props;
 
   const { data: cart, error: cartError } = useCart();
+  const { providerRef } = useCommerce();
+  const currencyDisplay = providerRef?.current?.currencyDisplay ?? "symbol";
   const inEditor = !!usePlasmicCanvasContext();
   const [drawerOpen] = useDrawerOpen();
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -281,25 +284,12 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
     };
   }, [isOpen, trapFocus, inEditor, inline]);
 
-  // Build enriched cart data for DataProvider
-  const cartData = useMemo(() => {
-    if (!cart) return null;
-    const currencyCode = cart.currency?.code ?? DEFAULT_CURRENCY_CODE;
-    return {
-      id: cart.id,
-      lineItems: cart.lineItems,
-      itemCount: cart.lineItems.reduce(
-        (sum, item) => sum + (item.quantity ?? 1),
-        0
-      ),
-      isEmpty: cart.lineItems.length === 0,
-      subtotalPrice: cart.subtotalPrice,
-      totalPrice: cart.totalPrice,
-      formattedSubtotal: formatCurrency(cart.subtotalPrice, currencyCode),
-      formattedTotal: formatCurrency(cart.totalPrice, currencyCode),
-      currencyCode,
-    };
-  }, [cart]);
+  // Build enriched cart data for DataProvider — formatted money honours the
+  // provider's currencyDisplay preference (symbol vs. ISO code prefix).
+  const cartData = useMemo(
+    () => deriveCartData(cart, { currencyDisplay }),
+    [cart, currencyDisplay]
+  );
 
   // --- Preview state handling ---
 

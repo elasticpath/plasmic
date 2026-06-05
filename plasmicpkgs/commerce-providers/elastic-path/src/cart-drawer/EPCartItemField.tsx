@@ -1,10 +1,15 @@
-import { useSelector, usePlasmicCanvasContext } from "@plasmicapp/host";
+import {
+  DataProvider,
+  useSelector,
+  usePlasmicCanvasContext,
+} from "@plasmicapp/host";
 import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../registerable";
 import { MOCK_CART_LINE_ITEMS } from "../utils/design-time-data";
+import { CartItemOption, formatOptionValues } from "../utils/option-values";
 
 type CartItemFieldName =
   | "name"
@@ -14,6 +19,7 @@ type CartItemFieldName =
   | "formattedListPrice"
   | "formattedLineTotal"
   | "options"
+  | "optionValues"
   | "productId"
   | "variantId"
   | "locationName"
@@ -25,6 +31,7 @@ type PreviewState = "auto" | "withData";
 
 interface EPCartItemFieldProps {
   field: CartItemFieldName;
+  children?: React.ReactNode;
   className?: string;
   previewState?: PreviewState;
 }
@@ -33,7 +40,7 @@ export const epCartItemFieldMeta: CodeComponentMeta<EPCartItemFieldProps> = {
   name: "plasmic-commerce-ep-cart-item-field",
   displayName: "EP Cart Item Field",
   description:
-    "Displays a field from the current cart item (name, price, quantity, etc.). Must be inside an EP Cart Item List.",
+    "Displays a field from the current cart item (name, price, quantity, options, …). Renders the value as text by default; drop children to fully compose the rendering against the resolved value ($ctx.resolvedValue / options / hasValue). Must be inside an EP Cart Item List.",
   props: {
     field: {
       type: "choice",
@@ -44,7 +51,8 @@ export const epCartItemFieldMeta: CodeComponentMeta<EPCartItemFieldProps> = {
         { label: "Formatted Price", value: "formattedPrice" },
         { label: "Formatted List Price", value: "formattedListPrice" },
         { label: "Formatted Line Total", value: "formattedLineTotal" },
-        { label: "Options", value: "options" },
+        { label: "Options (Name: Value)", value: "options" },
+        { label: "Option Values (Value / Value)", value: "optionValues" },
         { label: "Location Name", value: "locationName" },
         { label: "Location Slug", value: "locationSlug" },
         { label: "Stock Available", value: "stockAvailable" },
@@ -54,6 +62,13 @@ export const epCartItemFieldMeta: CodeComponentMeta<EPCartItemFieldProps> = {
       ],
       defaultValue: "name",
       displayName: "Field",
+    },
+    children: {
+      type: "slot",
+      displayName: "Children (custom render)",
+      description:
+        "Optional. When filled, you compose the rendering; descendants read $ctx.resolvedValue (string), $ctx.options ({name,value}[]), and $ctx.hasValue (boolean). Leave empty for the sensible default text.",
+      hidePlaceholder: true,
     },
     previewState: {
       type: "choice",
@@ -67,33 +82,75 @@ export const epCartItemFieldMeta: CodeComponentMeta<EPCartItemFieldProps> = {
   },
   importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
   importName: "EPCartItemField",
+  providesData: true,
 };
 
+/** Resolve the display string + structured options + presence for a field. */
+function resolveCartItemField(
+  item: Record<string, any>,
+  field: CartItemFieldName
+): { resolvedValue: string; options: CartItemOption[]; hasValue: boolean } {
+  const options = (item.options as CartItemOption[] | undefined) ?? [];
+
+  if (field === "options") {
+    const resolvedValue = options
+      .map((o) => `${o.name}: ${o.value}`)
+      .join(", ");
+    return { resolvedValue, options, hasValue: options.length > 0 };
+  }
+
+  if (field === "optionValues") {
+    const resolvedValue = formatOptionValues(options);
+    return { resolvedValue, options, hasValue: resolvedValue !== "" };
+  }
+
+  const raw = item[field];
+  const resolvedValue = raw == null ? "" : String(raw);
+  return { resolvedValue, options, hasValue: resolvedValue !== "" };
+}
+
 export function EPCartItemField(props: EPCartItemFieldProps) {
-  const { field, className, previewState = "auto" } = props;
+  const { field, children, className, previewState = "auto" } = props;
 
   const currentItem = useSelector("currentCartItem") as
     | Record<string, any>
     | undefined;
   const inEditor = !!usePlasmicCanvasContext();
 
-  const useMock =
-    previewState === "withData" || (!currentItem && inEditor);
-
+  const useMock = previewState === "withData" || (!currentItem && inEditor);
   const effectiveItem = useMock ? MOCK_CART_LINE_ITEMS[0] : currentItem;
 
   if (!effectiveItem) return null;
 
-  if (field === "options") {
-    const options = effectiveItem.options as
-      | { name: string; value: string }[]
-      | undefined;
-    const display = options?.map((o) => `${o.name}: ${o.value}`).join(", ");
-    return <span className={className}>{display ?? ""}</span>;
+  const { resolvedValue, options, hasValue } = resolveCartItemField(
+    effectiveItem,
+    field
+  );
+
+  // Slot filled → designer fully composes the rendering against the resolved
+  // value; the presence flag lets them gate surrounding markup themselves.
+  const hasChildren = React.Children.count(children) > 0;
+  if (hasChildren) {
+    return (
+      <DataProvider name="resolvedValue" data={resolvedValue}>
+        <DataProvider name="options" data={options}>
+          <DataProvider name="hasValue" data={hasValue}>
+            <div className={className} data-ep-cart-item-field="">
+              {children}
+            </div>
+          </DataProvider>
+        </DataProvider>
+      </DataProvider>
+    );
   }
 
-  const value = effectiveItem[field];
-  return <span className={className}>{value ?? ""}</span>;
+  // Default: render the resolved value as text (empty options → empty string,
+  // never "undefined" or stray separators).
+  return (
+    <span className={className} data-ep-cart-item-field="">
+      {resolvedValue}
+    </span>
+  );
 }
 
 export function registerEPCartItemField(

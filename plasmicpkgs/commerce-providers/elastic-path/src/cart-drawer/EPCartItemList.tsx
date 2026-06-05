@@ -10,7 +10,7 @@ import registerComponent, {
 import React, { useMemo } from "react";
 import { DEFAULT_CURRENCY_CODE, DEFAULT_LOW_STOCK_THRESHOLD } from "../const";
 import { Registerable } from "../registerable";
-import { formatCurrency } from "../utils/formatCurrency";
+import { CurrencyDisplay, formatCurrency } from "../utils/formatCurrency";
 import { createLogger } from "../utils/logger";
 import { useLocations } from "../inventory/use-locations";
 import { useStock } from "../inventory/use-stock";
@@ -114,7 +114,8 @@ function enrichLineItem(
   item: any,
   currencyCode: string,
   locationMap: Record<string, string>,
-  stockMap: Record<string, Record<string, number>>
+  stockMap: Record<string, Record<string, number>>,
+  currencyDisplay: CurrencyDisplay = "symbol"
 ): EnrichedCartItem {
   const price = item.variant?.price ?? item.price ?? 0;
   const listPrice = item.variant?.listPrice ?? item.listPrice ?? price;
@@ -152,10 +153,10 @@ function enrichLineItem(
     sku: item.variant?.sku ?? item.sku ?? "",
     price,
     listPrice,
-    formattedPrice: formatCurrency(price, currencyCode),
-    formattedListPrice: formatCurrency(listPrice, currencyCode),
+    formattedPrice: formatCurrency(price, currencyCode, currencyDisplay),
+    formattedListPrice: formatCurrency(listPrice, currencyCode, currencyDisplay),
     lineTotal,
-    formattedLineTotal: formatCurrency(lineTotal, currencyCode),
+    formattedLineTotal: formatCurrency(lineTotal, currencyCode, currencyDisplay),
     imageUrl: item.variant?.image?.url ?? "",
     imageAlt: item.variant?.image?.alt ?? item.name ?? "",
     options: item.options ?? [],
@@ -171,7 +172,7 @@ export function EPCartItemList(props: EPCartItemListProps) {
   const { children, className, maxItems, previewState = "auto" } = props;
 
   const cartData = useSelector("cartData") as
-    | { lineItems?: any[]; currencyCode?: string }
+    | { lineItems?: any[]; currencyCode?: string; currencyDisplay?: CurrencyDisplay }
     | undefined;
   const inEditor = !!usePlasmicCanvasContext();
 
@@ -243,8 +244,9 @@ export function EPCartItemList(props: EPCartItemListProps) {
     }
     if (!cartData?.lineItems) return [];
     const currencyCode = cartData.currencyCode ?? DEFAULT_CURRENCY_CODE;
+    const currencyDisplay = cartData.currencyDisplay ?? "symbol";
     return cartData.lineItems.map((item) =>
-      enrichLineItem(item, currencyCode, locationMap, stockMap)
+      enrichLineItem(item, currencyCode, locationMap, stockMap, currencyDisplay)
     );
   }, [useMock, cartData, locationMap, stockMap]);
 
