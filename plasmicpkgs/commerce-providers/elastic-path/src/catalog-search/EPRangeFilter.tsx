@@ -31,6 +31,7 @@ interface EPRangeFilterActions {
 export const epRangeFilterMeta: CodeComponentMeta<EPRangeFilterProps> = {
   name: "plasmic-commerce-ep-range-filter",
   displayName: "EP Range Filter",
+  section: "EP Catalog Search",
   description:
     "Numeric range filter (price, rating, etc.). Exposes rangeData with min/max for binding. Must be inside EP Catalog Search Provider.",
   props: {

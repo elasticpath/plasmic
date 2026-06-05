@@ -60,6 +60,7 @@ interface EPSearchSortByActions {
 export const epSearchSortByMeta: CodeComponentMeta<EPSearchSortByProps> = {
   name: "plasmic-commerce-ep-search-sort-by",
   displayName: "EP Search Sort By",
+  section: "EP Catalog Search",
   description:
     "Sort order selector for catalog search. Must be inside EP Catalog Search Provider. Bind a <select> in the slot to $ctx.sortByData and wire onChange to the setSort ref-action.",
   props: {

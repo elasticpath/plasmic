@@ -42,6 +42,7 @@ export const epSearchAutocompleteInputMeta: CodeComponentMeta<EPSearchAutocomple
   {
     name: "plasmic-commerce-ep-search-autocomplete-input",
     displayName: "EP Search Autocomplete Input",
+    section: "EP Catalog Search",
     description:
       "Input bridge for EP Search Autocomplete. Drop a Plasmic <input> into the slot and this component spreads value + onChange + keyboard handlers automatically. Must be inside EP Search Autocomplete.",
     props: {

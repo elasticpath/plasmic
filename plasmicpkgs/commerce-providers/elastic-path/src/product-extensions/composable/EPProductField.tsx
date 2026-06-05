@@ -8,7 +8,7 @@ import {
   SHOW_CHOICE_OPTIONS,
   buildLeafOptions,
 } from "./field-catalog";
-import type { FormatSpec } from "../../utils/field-format";
+import type { FormatSpec, HighlightMode } from "../../utils/field-format";
 import { FieldDisplay, useResolvedField } from "./useResolvedField";
 
 type ShowFacet = "value" | "label";
@@ -18,6 +18,7 @@ interface EPProductFieldProps {
   field?: string;
   show?: ShowFacet;
   format?: FormatSpec;
+  highlight?: HighlightMode;
   locale?: string;
   children?: React.ReactNode;
   notPresentContent?: React.ReactNode;
@@ -53,7 +54,20 @@ export const epProductFieldMeta: CodeComponentMeta<EPProductFieldProps> = {
       defaultValue: "auto",
       displayName: "Format",
       description:
-        "How to format the value. Auto uses the field's natural format (e.g. price → currency).",
+        "How to format the value. Auto uses the field's natural format (e.g. price → currency). Title case humanizes enum values (e.g. \"in_force\" → \"In Force\").",
+    },
+    highlight: {
+      type: "choice",
+      options: [
+        { label: "Off", value: "off" },
+        { label: "Auto (search hits)", value: "auto" },
+        { label: "On (always)", value: "on" },
+      ],
+      defaultValue: "off",
+      displayName: "Search highlight",
+      description:
+        "For Name/Description inside a search hit: render the <mark>-highlighted match when one exists (plain value otherwise — inert on a PDP). Only the backend's highlight markup is rendered as HTML, never the raw value. Other fields ignore this.",
+      advanced: true,
     },
     locale: {
       type: "string",
@@ -95,6 +109,7 @@ export function EPProductField(props: EPProductFieldProps) {
     field = "name",
     show = "value",
     format = "auto",
+    highlight = "off",
     locale,
     children,
     notPresentContent,
@@ -102,10 +117,11 @@ export function EPProductField(props: EPProductFieldProps) {
     previewState = "auto",
   } = props;
 
-  const { resolved, inEditor } = useResolvedField({
+  const { resolved, inEditor, highlightHtml } = useResolvedField({
     kind: "topLevel",
     leafId: field,
     format,
+    highlight,
     locale,
     forceMock: previewState === "withData",
   });
@@ -119,6 +135,7 @@ export function EPProductField(props: EPProductFieldProps) {
       className={className}
       inEditor={inEditor}
       dataAttr="data-ep-product-field"
+      highlightHtml={highlightHtml}
     />
   );
 }

@@ -216,6 +216,12 @@ const { EPRefinementList, epRefinementListMeta, registerEPRefinementList } =
   require("../EPRefinementList") as typeof import("../EPRefinementList");
 
 const {
+  EPSingleSelectFacet,
+  epSingleSelectFacetMeta,
+  registerEPSingleSelectFacet,
+} = require("../EPSingleSelectFacet") as typeof import("../EPSingleSelectFacet");
+
+const {
   EPHierarchicalMenu,
   epHierarchicalMenuMeta,
   registerEPHierarchicalMenu,
@@ -445,24 +451,38 @@ describe("EPCatalogSearchProvider", () => {
     return JSON.parse(el!.getAttribute("data-configure") || "{}");
   }
 
-  it("passes baseFilter to Configure as `filters` at runtime", () => {
+  it("passes baseFilter to Configure as `filters`, AND'd with the child exclusion", () => {
     // `filters` rides through the adapter's _adaptFilters, which always joins
     // it with facet refinements — adapter-level filter_by would be dropped as
-    // soon as a facet is refined.
+    // soon as a facet is refined. excludeVariationChildren defaults on, so the
+    // baseFilter is AND'd after the child exclusion (D3).
     const { container } = render(
-      <EPCatalogSearchProvider baseFilter="meta.product_types:!=child">
+      <EPCatalogSearchProvider baseFilter="lifecycle_status:=published">
+        <div>children</div>
+      </EPCatalogSearchProvider>
+    );
+
+    const props = getConfigureProps(container);
+    expect(props.filters).toBe(
+      "meta.product_types:!=child && lifecycle_status:=published"
+    );
+    expect(props.hitsPerPage).toBe(12);
+  });
+
+  it("excludeVariationChildren defaults on — emits the child filter even with no baseFilter (D3)", () => {
+    const { container } = render(
+      <EPCatalogSearchProvider>
         <div>children</div>
       </EPCatalogSearchProvider>
     );
 
     const props = getConfigureProps(container);
     expect(props.filters).toBe("meta.product_types:!=child");
-    expect(props.hitsPerPage).toBe(12);
   });
 
-  it("omits `filters` from Configure when baseFilter is empty", () => {
+  it("omits `filters` entirely when excludeVariationChildren is off and no baseFilter", () => {
     const { container } = render(
-      <EPCatalogSearchProvider>
+      <EPCatalogSearchProvider excludeVariationChildren={false}>
         <div>children</div>
       </EPCatalogSearchProvider>
     );
@@ -863,6 +883,53 @@ describe("EPSearchHits", () => {
     expect(data.name).toBe("British Product");
   });
 
+  it("publishes the tiered surface per hit: currentProduct.fields + productExtensions map (D1)", () => {
+    mockUsePlasmicCanvasContext.mockReturnValue(null);
+    mockUseSelector.mockImplementation((name: string) =>
+      name === "catalogSearchData" ? { currencyCode: "USD" } : undefined
+    );
+    mockUseHits.mockReturnValue({
+      hits: [
+        {
+          objectID: "hit-1",
+          attributes: {
+            name: "Standard 9001",
+            extensions: {
+              "products(iso-standard)": {
+                title: "Quality management",
+                product_kind: "publication",
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    const { container } = render(
+      <EPSearchHits primaryExtensionTemplate="products(iso-standard)">
+        <div>child</div>
+      </EPSearchHits>
+    );
+
+    // Tier 1 — fields flattened onto currentProduct, no slug bracket
+    const productEl = container.querySelector(
+      '[data-testid="data-provider-currentProduct"]'
+    );
+    const product = JSON.parse(
+      productEl!.getAttribute("data-provider-data") || "{}"
+    );
+    expect(product.fields.title).toBe("Quality management");
+    expect(product.fields.product_kind).toBe("publication");
+
+    // Tier 2 — per-hit slug-keyed productExtensions map is published
+    const extEl = container.querySelector(
+      '[data-testid="data-provider-productExtensions"]'
+    );
+    expect(extEl).not.toBeNull();
+    const ext = JSON.parse(extEl!.getAttribute("data-provider-data") || "{}");
+    expect(ext["products(iso-standard)"].title).toBe("Quality management");
+  });
+
   /** Render one EP catalog-search shaped hit and return the normalized currentProduct. */
   function renderHitAndGetCurrentProduct(
     hit: Record<string, unknown>,
@@ -1039,45 +1106,49 @@ describe("EPRefinementList", () => {
     expect(typeof data.isRefined).toBe("boolean");
   });
 
-  it("uses useMenu (replace semantics) when singleSelect — radio-style facets", () => {
-    mockUseMenu.mockReturnValue({
+  it("auto-wires each row as a toggle button (onClick refines, aria-pressed reflects state)", () => {
+    const refine = jest.fn();
+    mockUseRefinementList.mockReturnValue({
       items: [
-        { value: "type-a", label: "type-a", count: 39, isRefined: true },
-        { value: "type-b", label: "type-b", count: 1, isRefined: false },
+        { value: "acme", label: "Acme", count: 3, isRefined: true },
       ],
-      refine: jest.fn(),
+      refine,
     });
 
     const { container } = render(
-      <EPRefinementList
-        attribute="extensions.products(specs).product_kind"
-        singleSelect
-      >
-        <div>child</div>
+      <EPRefinementList attribute="brand">
+        <button type="button">row</button>
       </EPRefinementList>
     );
 
-    expect(mockUseMenu).toHaveBeenCalledWith(
-      expect.objectContaining({
-        attribute: "extensions.products(specs).product_kind",
-      })
-    );
-    expect(mockUseRefinementList).not.toHaveBeenCalled();
+    const row = container.querySelector('[role="button"]') as HTMLElement;
+    expect(row).not.toBeNull();
+    expect(row.getAttribute("aria-pressed")).toBe("true");
+    row.click();
+    expect(refine).toHaveBeenCalledWith("acme");
+  });
 
-    // Same per-item shape as the multi-select path
+  it("autoWire=false injects nothing — prior behaviour (toggle on context only)", () => {
+    const refine = jest.fn();
+    mockUseRefinementList.mockReturnValue({
+      items: [{ value: "acme", label: "Acme", count: 3, isRefined: false }],
+      refine,
+    });
+
+    const { container } = render(
+      <EPRefinementList attribute="brand" autoWire={false}>
+        <button type="button">row</button>
+      </EPRefinementList>
+    );
+
+    // no injected role; the slot button keeps its own semantics
+    const wrapper = container.querySelector('[role="listitem"]')!;
+    expect(wrapper.querySelector('[role="button"][aria-pressed]')).toBeNull();
+    // toggle still rides on the per-item context as the escape hatch
     const providerEl = container.querySelector(
       '[data-testid="data-provider-currentRefinement"]'
     );
-    const data = JSON.parse(
-      providerEl!.getAttribute("data-provider-data") || "{}"
-    );
-    expect(data.value).toBe("type-a");
-    expect(data.count).toBe(39);
-    expect(data.isRefined).toBe(true);
-
-    expect(
-      container.querySelector("[data-single-select]")
-    ).not.toBeNull();
+    expect(providerEl).not.toBeNull();
   });
 
   it("should expose currentRefinementIndex in editor", () => {
@@ -1093,6 +1164,142 @@ describe("EPRefinementList", () => {
       '[data-testid="data-provider-currentRefinementIndex"]'
     );
     expect(indexProviders.length).toBe(MOCK_REFINEMENT_ITEMS.length);
+  });
+});
+
+/* ================================================================
+ * EPSingleSelectFacet tests (ADR-0011 D5/D6)
+ * ================================================================ */
+describe("EPSingleSelectFacet", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUsePlasmicCanvasContext.mockReturnValue(null);
+  });
+
+  it("uses useMenu (replace semantics), not useRefinementList", () => {
+    mockUseMenu.mockReturnValue({
+      items: [
+        { value: "type-a", label: "type-a", count: 39, isRefined: true },
+        { value: "type-b", label: "type-b", count: 1, isRefined: false },
+      ],
+      refine: jest.fn(),
+    });
+
+    const { container } = render(
+      <EPSingleSelectFacet attribute="extensions.products(specs).product_kind">
+        <div>child</div>
+      </EPSingleSelectFacet>
+    );
+
+    expect(mockUseMenu).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attribute: "extensions.products(specs).product_kind",
+      })
+    );
+    expect(mockUseRefinementList).not.toHaveBeenCalled();
+
+    // per-item shape identical to EPRefinementList so slot content ports
+    const providerEl = container.querySelector(
+      '[data-testid="data-provider-currentRefinement"]'
+    );
+    const data = JSON.parse(
+      providerEl!.getAttribute("data-provider-data") || "{}"
+    );
+    expect(data.value).toBe("type-a");
+    expect(data.count).toBe(39);
+    expect(data.isRefined).toBe(true);
+    expect(data.isAllOption).toBe(false);
+
+    expect(container.querySelector('[role="radiogroup"]')).not.toBeNull();
+  });
+
+  it("auto-wires each row as a radio (aria-checked + click selects)", () => {
+    const refine = jest.fn();
+    mockUseMenu.mockReturnValue({
+      items: [
+        { value: "type-a", label: "type-a", count: 39, isRefined: true },
+      ],
+      refine,
+    });
+
+    const { container } = render(
+      <EPSingleSelectFacet attribute="kind">
+        <button type="button">opt</button>
+      </EPSingleSelectFacet>
+    );
+
+    const radio = container.querySelector('[role="radio"]') as HTMLElement;
+    expect(radio).not.toBeNull();
+    expect(radio.getAttribute("aria-checked")).toBe("true");
+    radio.click();
+    expect(refine).toHaveBeenCalledWith("type-a");
+  });
+
+  it("includeAllOption prepends an All pseudo-item: refined when nothing is, clears on toggle (D6)", () => {
+    const refine = jest.fn();
+    mockUseMenu.mockReturnValue({
+      items: [
+        { value: "type-a", label: "type-a", count: 39, isRefined: false },
+        { value: "type-b", label: "type-b", count: 1, isRefined: false },
+      ],
+      refine,
+    });
+
+    const { container } = render(
+      <EPSingleSelectFacet attribute="kind" includeAllOption allOptionLabel="All">
+        <div>opt</div>
+      </EPSingleSelectFacet>
+    );
+
+    const first = container.querySelector(
+      '[data-testid="data-provider-currentRefinement"]'
+    );
+    const allData = JSON.parse(first!.getAttribute("data-provider-data") || "{}");
+    expect(allData.isAllOption).toBe(true);
+    expect(allData.label).toBe("All");
+    // nothing refined → "All" is the active selection
+    expect(allData.isRefined).toBe(true);
+  });
+
+  it("the All option clears by re-selecting the refined value", () => {
+    const refine = jest.fn();
+    mockUseMenu.mockReturnValue({
+      items: [
+        { value: "type-a", label: "type-a", count: 39, isRefined: true },
+      ],
+      refine,
+    });
+
+    const { container } = render(
+      <EPSingleSelectFacet attribute="kind" includeAllOption>
+        <button type="button">opt</button>
+      </EPSingleSelectFacet>
+    );
+
+    // first radio is the All option — clicking it clears the current refinement
+    const allRadio = container.querySelector('[role="radio"]') as HTMLElement;
+    allRadio.click();
+    expect(refine).toHaveBeenCalledWith("type-a");
+  });
+
+  it("renders mock items in the editor", () => {
+    mockUsePlasmicCanvasContext.mockReturnValue({});
+    const { container } = render(
+      <EPSingleSelectFacet attribute="kind">
+        <div>opt</div>
+      </EPSingleSelectFacet>
+    );
+    const providers = container.querySelectorAll(
+      '[data-testid="data-provider-currentRefinement"]'
+    );
+    expect(providers.length).toBe(MOCK_REFINEMENT_ITEMS.length);
+  });
+
+  it("meta exposes select/clear refActions, providesData, and the section", () => {
+    expect(epSingleSelectFacetMeta.section).toBe("EP Catalog Search");
+    expect(epSingleSelectFacetMeta.providesData).toBe(true);
+    expect(epSingleSelectFacetMeta.refActions).toHaveProperty("select");
+    expect(epSingleSelectFacetMeta.refActions).toHaveProperty("clear");
   });
 });
 
@@ -1207,6 +1414,47 @@ describe("EPSearchPagination", () => {
     expect(data.hasNext).toBe(true);
     expect(data.hasPrev).toBe(false);
     expect(data.pages).toEqual([0, 1, 2, 3]);
+    // windowed page-item model present in the mock too (D4)
+    expect(Array.isArray(data.pageItems)).toBe(true);
+    expect(data.pageItems.map((i: any) => i.label)).toEqual([
+      "1",
+      "2",
+      "3",
+      "4",
+    ]);
+  });
+
+  it("exposes a windowed pageItems model at runtime (raw pages retained) (D4)", () => {
+    mockUsePlasmicCanvasContext.mockReturnValue(null);
+    mockUsePagination.mockReturnValue({
+      currentRefinement: 6,
+      nbPages: 20,
+      pages: [5, 6, 7],
+      refine: jest.fn(),
+      isFirstPage: false,
+      isLastPage: false,
+    });
+
+    const { container } = render(
+      <EPSearchPagination>
+        <div>Pagination UI</div>
+      </EPSearchPagination>
+    );
+
+    const data = JSON.parse(
+      container
+        .querySelector('[data-testid="data-provider-searchPaginationData"]')!
+        .getAttribute("data-provider-data") || "{}"
+    );
+    // raw pages retained alongside the model
+    expect(data.pages).toEqual([5, 6, 7]);
+    // first/last anchors + ellipsis sentinels
+    expect(data.pageItems[0]).toMatchObject({ label: "1", isFirst: true });
+    expect(data.pageItems[1].type).toBe("ellipsis");
+    expect(data.pageItems[data.pageItems.length - 1]).toMatchObject({
+      label: "20",
+      isLast: true,
+    });
   });
 });
 
@@ -2067,6 +2315,28 @@ describeHeadlessStylingContract({
       <EPRefinementList attribute="brand" className={className}>
         <div>row</div>
       </EPRefinementList>
+    );
+  },
+});
+
+describeHeadlessStylingContract({
+  componentName: "EPSingleSelectFacet",
+  leafSelector: "[data-ep-single-select-facet]",
+  setEditorMode,
+  renderInEditor: ({ className }) => (
+    <EPSingleSelectFacet attribute="brand" className={className}>
+      <div>opt</div>
+    </EPSingleSelectFacet>
+  ),
+  renderAtRuntime: ({ className }) => {
+    mockUseMenu.mockReturnValue({
+      items: [{ value: "acme", label: "Acme", count: 3, isRefined: false }],
+      refine: jest.fn(),
+    });
+    return (
+      <EPSingleSelectFacet attribute="brand" className={className}>
+        <div>opt</div>
+      </EPSingleSelectFacet>
     );
   },
 });

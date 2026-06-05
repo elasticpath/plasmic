@@ -34,6 +34,7 @@ interface EPHierarchicalMenuActions {
 export const epHierarchicalMenuMeta: CodeComponentMeta<EPHierarchicalMenuProps> = {
   name: "plasmic-commerce-ep-hierarchical-menu",
   displayName: "EP Hierarchical Menu",
+  section: "EP Catalog Search",
   description:
     "Category tree navigation for hierarchical facets. Repeats children per category item with refineCategory action. Must be inside EP Catalog Search Provider.",
   props: {

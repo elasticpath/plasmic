@@ -25,6 +25,17 @@ import { useHeadlessStyling } from "./headless-styling";
 
 type PreviewState = "auto" | "withData" | "loading" | "empty" | "error";
 
+/**
+ * Typesense filter excluding PXM variation children from hits. AND'd with the
+ * caller's baseFilter when excludeVariationChildren is on (the default).
+ */
+const EXCLUDE_VARIATION_CHILDREN_FILTER = "meta.product_types:!=child";
+
+/** AND-join non-empty Typesense filter_by clauses. */
+function combineFilters(...clauses: Array<string | undefined>): string {
+  return clauses.map((c) => (c || "").trim()).filter(Boolean).join(" && ");
+}
+
 interface EPCatalogSearchProviderProps {
   children?: React.ReactNode;
   errorContent?: React.ReactNode;
@@ -32,6 +43,7 @@ interface EPCatalogSearchProviderProps {
   indexName?: string;
   queryBy?: string;
   baseFilter?: string;
+  excludeVariationChildren?: boolean;
   highlightFullFields?: string;
   hitsPerPage?: number;
   enableUrlSync?: boolean;
@@ -43,27 +55,40 @@ export const epCatalogSearchProviderMeta: CodeComponentMeta<EPCatalogSearchProvi
   {
     name: "plasmic-commerce-ep-catalog-search-provider",
     displayName: "EP Catalog Search Provider",
+    section: "EP Catalog Search",
     description:
       "Root provider for Elastic Path Catalog Search. Wraps InstantSearch with the EP adapter. Place search components (EP Search Box, EP Search Hits, etc.) as children.",
     props: {
       children: {
         type: "slot",
+        // Batteries-included but unstyled scaffold (D8): a complete, working
+        // search built from the Tier-0 components — search box, scope facet,
+        // hits (with its own default field-component card), empty state, and
+        // pagination. Renders against mock data in the canvas, so a designer
+        // styles up from a correct structure instead of assembling from
+        // scratch. Generic (no ISO knowledge): set the scope facet's Attribute
+        // to your store's single-choice facet.
         defaultValue: [
           {
             type: "vbox",
+            styles: { gap: "16px" },
             children: [
               {
                 type: "component",
                 name: "plasmic-commerce-ep-search-box",
               },
               {
-                type: "hbox",
-                children: [
-                  {
-                    type: "component",
-                    name: "plasmic-commerce-ep-search-hits",
-                  },
-                ],
+                type: "component",
+                name: "plasmic-commerce-ep-single-select-facet",
+                props: { includeAllOption: true },
+              },
+              {
+                type: "component",
+                name: "plasmic-commerce-ep-search-hits",
+              },
+              {
+                type: "component",
+                name: "plasmic-commerce-ep-search-empty",
               },
               {
                 type: "component",
@@ -98,8 +123,15 @@ export const epCatalogSearchProviderMeta: CodeComponentMeta<EPCatalogSearchProvi
         type: "string",
         displayName: "Base Filter",
         description:
-          'Typesense filter_by expression applied to EVERY search, combined (&&) with any facet refinements — e.g. "meta.product_types:!=child" to exclude variation children from hits. Leave empty for no base filter.',
+          'Typesense filter_by expression applied to EVERY search, combined (&&) with any facet refinements and the Exclude Variation Children filter — e.g. "lifecycle_status:=published". Leave empty for no base filter.',
         defaultValue: "",
+      },
+      excludeVariationChildren: {
+        type: "boolean",
+        displayName: "Exclude Variation Children",
+        description:
+          "Hide PXM variation children from results (emits meta.product_types:!=child, AND'd with Base Filter). On by default — children almost never belong in hits. Turn off to include them.",
+        defaultValue: true,
       },
       highlightFullFields: {
         type: "string",
@@ -151,6 +183,7 @@ export function EPCatalogSearchProvider(props: EPCatalogSearchProviderProps) {
     indexName = "search",
     queryBy = "name,description",
     baseFilter = "",
+    excludeVariationChildren = true,
     highlightFullFields = "",
     hitsPerPage = 12,
     enableUrlSync = true,
@@ -213,6 +246,7 @@ export function EPCatalogSearchProvider(props: EPCatalogSearchProviderProps) {
       indexName={indexName}
       queryBy={queryBy}
       baseFilter={baseFilter}
+      excludeVariationChildren={excludeVariationChildren}
       highlightFullFields={highlightFullFields}
       hitsPerPage={hitsPerPage}
       enableUrlSync={enableUrlSync}
@@ -231,6 +265,7 @@ function EPCatalogSearchProviderInner(props: {
   indexName: string;
   queryBy: string;
   baseFilter?: string;
+  excludeVariationChildren?: boolean;
   highlightFullFields?: string;
   hitsPerPage: number;
   enableUrlSync: boolean;
@@ -243,6 +278,7 @@ function EPCatalogSearchProviderInner(props: {
     indexName,
     queryBy,
     baseFilter,
+    excludeVariationChildren,
     highlightFullFields,
     hitsPerPage,
     enableUrlSync,
@@ -311,6 +347,14 @@ function EPCatalogSearchProviderInner(props: {
   // Dynamic require to avoid hard dependency
   const { InstantSearch, Configure } = require("react-instantsearch");
 
+  // Exclude PXM variation children by default (D3), AND'd with the caller's
+  // baseFilter. Both ride through the adapter's _adaptFilters as InstantSearch
+  // `filters`, which is always joined (&&) with facet refinements.
+  const effectiveFilter = combineFilters(
+    excludeVariationChildren ? EXCLUDE_VARIATION_CHILDREN_FILTER : "",
+    baseFilter
+  );
+
   const catalogSearchData: CatalogSearchData = {
     isSearchActive: true,
     query: "",
@@ -330,7 +374,7 @@ function EPCatalogSearchProviderInner(props: {
           any facet is refined). Must be Typesense filter_by syntax. */}
       <Configure
         hitsPerPage={hitsPerPage}
-        {...(baseFilter ? { filters: baseFilter } : {})}
+        {...(effectiveFilter ? { filters: effectiveFilter } : {})}
       />
       <DataProvider name="catalogSearchData" data={catalogSearchData}>
         <div className={className} data-ep-catalog-search-provider="">

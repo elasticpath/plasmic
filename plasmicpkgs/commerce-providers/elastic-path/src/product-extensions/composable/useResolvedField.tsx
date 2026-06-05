@@ -10,9 +10,9 @@ import {
   DEFAULT_LOCALE,
   extractRawExtensions,
   normalizeExtensions,
+  resolveHighlightHtml,
 } from "../../utils/field-format";
-import type { FormatSpec } from "./format";
-import type { FormatSpec } from "../../utils/field-format";
+import type { FormatSpec, HighlightMode } from "../../utils/field-format";
 import {
   resolveExtensionField,
   resolveTopLevelField,
@@ -27,6 +27,8 @@ type ResolveArgs =
       format: FormatSpec;
       locale?: string;
       forceMock?: boolean;
+      /** Search-highlight rendering for `name`/`description`; default "off". */
+      highlight?: HighlightMode;
     }
   | {
       kind: "extension";
@@ -41,6 +43,12 @@ export interface UseResolvedFieldResult {
   resolved: ResolvedField;
   templates: ExtensionTemplate[];
   inEditor: boolean;
+  /**
+   * `<mark>`-wrapped highlight markup to render as HTML instead of the plain
+   * value, or `undefined` to render plainly. Only set for top-level
+   * `name`/`description` when `highlight` is on/auto and a variant exists.
+   */
+  highlightHtml?: string;
 }
 
 /** Shared host wiring for both field components: read the product, mock in the canvas, delegate to the pure resolvers. */
@@ -82,7 +90,20 @@ export function useResolvedField(args: ResolveArgs): UseResolvedFieldResult {
     args.kind === "extension" ? args.fieldKey : undefined,
   ]);
 
-  return { resolved, templates, inEditor };
+  const highlightHtml = useMemo(() => {
+    if (args.kind !== "topLevel" || !args.highlight || args.highlight === "off") {
+      return undefined;
+    }
+    return resolveHighlightHtml(product, args.leafId, args.highlight);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    args.kind,
+    args.kind === "topLevel" ? args.leafId : undefined,
+    args.kind === "topLevel" ? args.highlight : undefined,
+    product,
+  ]);
+
+  return { resolved, templates, inEditor, highlightHtml };
 }
 
 /** Inline scalar with no children; structural section gate with children. Canvas placeholder when unresolvable. */
@@ -94,9 +115,19 @@ export function FieldDisplay(props: {
   className?: string;
   inEditor: boolean;
   dataAttr: string;
+  /** When set, render this `<mark>` markup as HTML instead of the plain value. */
+  highlightHtml?: string;
 }) {
-  const { resolved, show, children, notPresentContent, className, inEditor, dataAttr } =
-    props;
+  const {
+    resolved,
+    show,
+    children,
+    notPresentContent,
+    className,
+    inEditor,
+    dataAttr,
+    highlightHtml,
+  } = props;
   const hasChildren = React.Children.count(children) > 0;
 
   if (hasChildren) {
@@ -115,6 +146,20 @@ export function FieldDisplay(props: {
   }
 
   if (resolved.hasValue) {
+    // Highlight markup (search hits) renders the value's `<mark>`-wrapped HTML
+    // in place of the plain text. Only `show === "value"` highlights — the
+    // humanized label is always plain. The markup comes from Typesense (the
+    // search backend), never designer input, so dangerouslySetInnerHTML is
+    // contained here rather than handed to designers as an `html:true` footgun.
+    if (highlightHtml != null && show !== "label") {
+      return (
+        <span
+          className={className}
+          {...{ [dataAttr]: "" }}
+          dangerouslySetInnerHTML={{ __html: highlightHtml }}
+        />
+      );
+    }
     return (
       <span className={className} {...{ [dataAttr]: "" }}>
         {show === "label" ? resolved.label : resolved.displayValue}

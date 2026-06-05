@@ -1,12 +1,26 @@
 /**
  * EPSearchHits — repeater for catalog search results.
  *
- * Wraps `useHits()` from react-instantsearch and normalizes each hit to
- * the unified `currentProduct` shape used by EPProductGrid (per D2/D4).
- * Designers can reuse the same card layouts across listing and search.
+ * Wraps `useHits()` from react-instantsearch and normalizes each hit through
+ * the shared `normalizeSearchHit` (ADR-0011 D7) to the unified `currentProduct`
+ * shape used across the PDP and EPProductGrid. Designers reuse the same card
+ * layouts and the same field components across listing and search.
  *
- * Search-specific extras (_highlightedName, _highlightedDescription, _score,
- * rawHit) are also available for advanced use.
+ * Per hit it publishes the tiered, progressively-disclosed data surface:
+ *   - Tier 0 — drop an `EPProductField` and pick a field from the dropdown
+ *     (resolves here via the `currentProduct.rawData` bridge).
+ *   - Tier 1 — `$ctx.currentProduct.fields.<key>`, the slug-free flattening of
+ *     the configured `primaryExtensionTemplate` (discoverable, null-safe).
+ *   - Tier 2 — `$ctx.productExtensions["<slug>"].field`, the ADR-0007 slug-keyed
+ *     Proxy map, scoped per hit.
+ *   - Tier 3 — raw `currentProduct.extensions` / `currentProduct.rawData`.
+ *
+ * Search-specific extras (`_highlightedName`, `_snippetedDescription`, `_score`,
+ * `rawHit`) ride along on `currentProduct` for advanced use.
+ *
+ * The mock (canvas) and runtime paths share one presentational render
+ * (`HitsList`) fed `NormalizedHit[]` — the data wrapper above owns the
+ * InstantSearch hook, the inner is pure (#305 headless styling contract, D9).
  */
 
 import {
@@ -20,9 +34,13 @@ import registerComponent, {
 } from "@plasmicapp/host/registerComponent";
 import React, { useMemo } from "react";
 import { Registerable } from "../registerable";
-import { formatCurrency } from "../utils/formatCurrency";
 import { MOCK_SEARCH_PRODUCTS } from "./design-time-data";
 import { MOCK_EXTENSIONS_RAW } from "../utils/extensions-mock";
+import {
+  DEFAULT_PRODUCT_PATH_PREFIX,
+  normalizeSearchHit,
+} from "../utils/normalize-hit";
+import type { NormalizedHit } from "../utils/normalize-hit";
 import type { Product } from "../types/product";
 
 type PreviewState = "auto" | "withData";
@@ -48,11 +66,8 @@ function buildHitsGridStyle(
   };
 }
 
-const DEFAULT_GRID_TEMPLATE_COLUMNS =
-  "repeat(auto-fill, minmax(220px, 1fr))";
+const DEFAULT_GRID_TEMPLATE_COLUMNS = "repeat(auto-fill, minmax(220px, 1fr))";
 const DEFAULT_GRID_GAP = "24px";
-
-const DEFAULT_PRODUCT_PATH_PREFIX = "/product";
 
 interface EPSearchHitsProps {
   children?: React.ReactNode;
@@ -60,226 +75,70 @@ interface EPSearchHitsProps {
   gridTemplateColumns?: string;
   gridGap?: string;
   productPathPrefix?: string;
+  primaryExtensionTemplate?: string;
   previewState?: PreviewState;
 }
 
 /**
- * Normalize an InstantSearch hit to the unified currentProduct shape.
- * The EP catalog search adapter surfaces various field name conventions;
- * this function tries multiple patterns.
+ * Build a search-hit-shaped record from a design-time mock Product so the
+ * canvas runs through the *same* `normalizeSearchHit` as runtime (mock == runtime
+ * shape, D9). Carries the shared mock extensions so the Tier-1 `fields` and the
+ * Tier-2 map populate when authoring hit cards in the canvas.
  */
-function normalizeHitToCurrentProduct(
-  hit: Record<string, any>,
-  currencyCode: string,
-  productPathPrefix: string = DEFAULT_PRODUCT_PATH_PREFIX
-) {
-  const name = hit.ep_name || hit.name || hit.attributes?.name || "";
-  const slug =
-    hit.ep_slug || hit.slug || hit.attributes?.slug || "";
-  const sku = hit.ep_sku || hit.sku || hit.attributes?.sku || "";
-  const description =
-    hit.ep_description ||
-    hit.description ||
-    hit.attributes?.description ||
-    "";
-
-  // Image: prefer the inlined `main_image` record that EPCatalogSearchProvider
-  // requests via `include: ["main_image"]` (adapter v0.1.0+ resolves the
-  // included block against each hit's relationship reference). Fallbacks
-  // cover catalogs that already denormalize a URL onto the hit root.
-  const imageUrl =
-    hit.main_image?.link?.href ||
-    hit.ep_main_image?.link?.href ||
-    hit.ep_main_image_url ||
-    hit.main_image_url ||
-    "";
-
-  // 1x1 transparent gif — keeps the <img src> attribute non-empty so the
-  // browser doesn't issue a self-referential request (and React's
-  // empty-string warning stays silent) while letting the surrounding
-  // styles render the visual placeholder.
-  const TRANSPARENT_PIXEL =
-    "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
-
-  // Price resolution — EP catalog search exposes prices in two shapes
-  // depending on catalog config:
-  //   1. `meta.display_price.without_tax`  → preferred; pre-formatted, currency-aware
-  //   2. `attributes.price[CURRENCY].amount` (in cents) → raw fallback
-  // We also keep the older `ep_price` / `price` paths for back-compat with
-  // search backends that flatten the price object onto the hit root.
-  const displayPrice =
-    hit.meta?.display_price?.without_tax ||
-    hit.meta?.display_price?.with_tax ||
-    null;
-  const attrPriceObj =
-    hit.attributes?.price?.[currencyCode] ||
-    hit.attributes?.price?.USD ||
-    null;
-  const flatPriceObj =
-    hit.ep_price?.[currencyCode] ||
-    hit.price?.[currencyCode] ||
-    hit.ep_price?.USD ||
-    hit.price?.USD ||
-    null;
-  const priceValue =
-    displayPrice?.float_price ??
-    flatPriceObj?.float_price ??
-    flatPriceObj?.amount ??
-    (attrPriceObj?.amount != null ? attrPriceObj.amount / 100 : undefined) ??
-    hit.price?.value ??
-    0;
-  const priceCurrency = displayPrice?.currency || currencyCode || "USD";
-  const formatted =
-    displayPrice?.formatted || formatCurrency(priceValue, priceCurrency);
-
-  // Highlight results from InstantSearch.
-  //
-  // The EP catalog-search backend keys highlights by the BARE query_by field
-  // names (`name`, `description`) while the document nests them under
-  // `attributes.…` — the adapter's document-driven highlight walk therefore
-  // drops them from `_highlightResult`/`_snippetResult`. Recover from the
-  // raw Typesense hit (`highlight.<field>.{value,snippet}`), keeping the
-  // adapter paths as fallbacks for backends where they do line up.
-  const highlighted = hit._highlightResult || hit._highlight || {};
-  const snippeted = hit._snippetResult || {};
-  const rawHighlight = hit._rawTypesenseHit?.highlight || {};
-  const highlightedName =
-    rawHighlight.name?.value ||
-    rawHighlight.name?.snippet ||
-    highlighted.ep_name?.value ||
-    highlighted.name?.value ||
-    highlighted.attributes?.name?.value ||
-    undefined;
-  const highlightedDescription =
-    rawHighlight.description?.value ||
-    highlighted.ep_description?.value ||
-    highlighted.description?.value ||
-    highlighted.attributes?.description?.value ||
-    undefined;
-  // Snippet = the shortened, `<mark>`-highlighted excerpt Typesense builds
-  // for long fields (e.g. a description/abstract snippet on a hit card).
-  const snippetedDescription =
-    rawHighlight.description?.snippet ||
-    snippeted.description?.value ||
-    snippeted.attributes?.description?.value ||
-    undefined;
-
-  // Template extensions — the catalog-search document carries the same
-  // `attributes.extensions` block as the shopper product API. Expose it
-  //   1. resolved on `extensions` for direct bindings
-  //      (`currentProduct.extensions["products(…)"].field`), and
-  //   2. under `rawData.data` so the PDP field components
-  //      (EPProductField / EPProductExtensionValue, which read
-  //      `rawData.data.attributes.extensions`) work inside hit cards
-  //      unchanged.
-  const extensions: Record<string, unknown> =
-    hit.attributes?.extensions || hit.extensions || {};
-
-  // Strip the trailing slash so both "/product" and "/product/" work.
-  const pathPrefix = (productPathPrefix || DEFAULT_PRODUCT_PATH_PREFIX).replace(
-    /\/+$/,
-    ""
-  );
-
+function mockProductToHit(product: Product): Record<string, any> {
   return {
-    id: hit.objectID || hit.id || "",
-    name,
-    slug,
-    sku,
-    description,
-    // PDP route — configurable via the `productPathPrefix` prop so storefronts
-    // with a different route shape (e.g. `/products`, `/en/products`) link
-    // correctly. Falls back to an id-based URL when the hit lacks a slug.
-    path: `${pathPrefix}/${slug || hit.objectID || hit.id || ""}`,
-    images: [
-      {
-        url: imageUrl || TRANSPARENT_PIXEL,
-        alt: name,
+    objectID: product.id,
+    attributes: {
+      name: product.name,
+      slug: product.slug ?? "",
+      sku: product.sku ?? "",
+      description: product.description,
+      extensions: MOCK_EXTENSIONS_RAW,
+    },
+    main_image: { link: { href: product.images[0]?.url } },
+    meta: {
+      display_price: {
+        without_tax: {
+          float_price: product.price.value,
+          currency: product.price.currencyCode ?? "USD",
+        },
       },
-    ],
-    price: {
-      value: priceValue,
-      currencyCode: priceCurrency,
-      formatted,
     },
-    options: [] as Array<{ displayName: string; values: Array<{ label: string }> }>,
-    extensions,
-    // The search document has the shopper-product shape ({attributes, id,
-    // meta, …}), so wrapping it as `{ data: hit }` matches the PDP's
-    // `rawData` contract (see extractRawExtensions in
-    // product-extensions/composable/format.ts).
-    rawData: { data: hit },
-    _highlightedName: highlightedName,
-    _highlightedDescription: highlightedDescription,
-    _snippetedDescription: snippetedDescription,
-    _score: hit._score ?? hit._rankingInfo?.relevance ?? undefined,
-    rawHit: hit,
-  };
-}
-
-/**
- * Build currentProduct from mock Product (design-time).
- */
-function buildMockCurrentProduct(
-  product: Product,
-  productPathPrefix: string = DEFAULT_PRODUCT_PATH_PREFIX
-) {
-  const currencyCode = product.price.currencyCode ?? "USD";
-  const formatted = formatCurrency(product.price.value, currencyCode);
-  const pathPrefix = (productPathPrefix || DEFAULT_PRODUCT_PATH_PREFIX).replace(
-    /\/+$/,
-    ""
-  );
-  // Same mock extensions as the PDP field components, so the cascading
-  // template/field dropdowns populate when authoring hit cards in the canvas.
-  const extensions = MOCK_EXTENSIONS_RAW;
-
-  return {
-    id: product.id,
-    name: product.name,
-    slug: product.slug ?? "",
-    sku: product.sku ?? "",
-    description: product.description,
-    path: product.path ?? `${pathPrefix}/${product.slug ?? ""}`,
-    images: product.images,
-    price: {
-      value: product.price.value,
-      currencyCode,
-      formatted,
-    },
-    options: product.options.map((opt) => ({
-      displayName: opt.displayName,
-      values: opt.values.map((v) => ({ label: v.label })),
-    })),
-    extensions,
-    rawData: { data: { attributes: { extensions } } },
-    _highlightedName: undefined,
-    _highlightedDescription: undefined,
-    _snippetedDescription: undefined,
-    _score: undefined,
-    rawHit: {},
   };
 }
 
 export const epSearchHitsMeta: CodeComponentMeta<EPSearchHitsProps> = {
   name: "plasmic-commerce-ep-search-hits",
   displayName: "EP Search Hits",
+  section: "EP Catalog Search",
   description:
-    "Repeats children for each search result. Exposes currentProduct (same shape as EP Product Grid) plus search-specific extras. Must be inside EP Catalog Search Provider.",
+    "Repeats children for each search result. Exposes currentProduct (same shape as the PDP) — drop EP Product Field, bind currentProduct.fields.<key>, or use $ctx.productExtensions — plus search extras. Must be inside EP Catalog Search Provider.",
   props: {
     children: {
       type: "slot",
+      // Batteries-included but unstyled (D8): a working card built from the
+      // Tier-0 field components. Renders against mock data with zero bindings,
+      // so a designer styles up from a correct structure. `highlight: auto`
+      // shows the <mark>-matched name/abstract in a real search hit.
       defaultValue: [
         {
           type: "vbox",
+          styles: { alignItems: "flex-start", gap: "4px" },
           children: [
             {
-              type: "text",
-              value: "Product Name",
+              type: "component",
+              name: "plasmic-commerce-ep-product-field",
+              props: { field: "name", highlight: "auto" },
             },
             {
-              type: "text",
-              value: "$0.00",
+              type: "component",
+              name: "plasmic-commerce-ep-product-field",
+              props: { field: "description", highlight: "auto" },
+            },
+            {
+              type: "component",
+              name: "plasmic-commerce-ep-product-field",
+              props: { field: "price" },
             },
           ],
         },
@@ -305,6 +164,13 @@ export const epSearchHitsMeta: CodeComponentMeta<EPSearchHitsProps> = {
         "Route prefix used to build each hit's currentProduct.path link (prefix + '/' + slug). Set this to match the storefront's PDP route, e.g. \"/products\".",
       defaultValue: DEFAULT_PRODUCT_PATH_PREFIX,
     },
+    primaryExtensionTemplate: {
+      type: "string",
+      displayName: "Primary Extension Template",
+      description:
+        'Raw template slug (e.g. "products(iso-standard)") whose fields flatten onto the discoverable, slug-free $ctx.currentProduct.fields.<key> namespace. Leave empty to skip — the slug-keyed $ctx.productExtensions map and raw extensions are always available.',
+      defaultValue: "",
+    },
     previewState: {
       type: "choice",
       options: ["auto", "withData"],
@@ -326,6 +192,7 @@ export function EPSearchHits(props: EPSearchHitsProps) {
     gridTemplateColumns = DEFAULT_GRID_TEMPLATE_COLUMNS,
     gridGap = DEFAULT_GRID_GAP,
     productPathPrefix = DEFAULT_PRODUCT_PATH_PREFIX,
+    primaryExtensionTemplate = "",
     previewState = "auto",
   } = props;
 
@@ -341,6 +208,7 @@ export function EPSearchHits(props: EPSearchHitsProps) {
         className={className}
         gridStyle={gridStyle}
         productPathPrefix={productPathPrefix}
+        primaryExtensionTemplate={primaryExtensionTemplate}
       >
         {children}
       </MockSearchHits>
@@ -352,29 +220,23 @@ export function EPSearchHits(props: EPSearchHitsProps) {
       className={className}
       gridStyle={gridStyle}
       productPathPrefix={productPathPrefix}
+      primaryExtensionTemplate={primaryExtensionTemplate}
     >
       {children}
     </EPSearchHitsInner>
   );
 }
 
-function MockSearchHits(props: {
+/** Pure presentational render shared by the mock and runtime data wrappers. */
+function HitsList(props: {
+  items: NormalizedHit[];
   children?: React.ReactNode;
   className?: string;
   gridStyle: React.CSSProperties;
-  productPathPrefix?: string;
 }) {
-  const { children, className, gridStyle, productPathPrefix } = props;
+  const { items, children, className, gridStyle } = props;
 
-  const products = useMemo(
-    () =>
-      MOCK_SEARCH_PRODUCTS.map((p) =>
-        buildMockCurrentProduct(p, productPathPrefix)
-      ),
-    [productPathPrefix]
-  );
-
-  if (products.length === 0) return null;
+  if (items.length === 0) return null;
 
   return (
     <div
@@ -384,11 +246,13 @@ function MockSearchHits(props: {
       data-ep-search-hits=""
       style={gridStyle}
     >
-      {products.map((product, i) => (
-        <div key={product.id} role="listitem">
+      {items.map(({ product, extensionsMap }, i) => (
+        <div key={product.id || i} role="listitem">
           <DataProvider name="currentProduct" data={product}>
-            <DataProvider name="currentProductIndex" data={i}>
-              {repeatedElement(i, children)}
+            <DataProvider name="productExtensions" data={extensionsMap}>
+              <DataProvider name="currentProductIndex" data={i}>
+                {repeatedElement(i, children)}
+              </DataProvider>
             </DataProvider>
           </DataProvider>
         </div>
@@ -397,17 +261,57 @@ function MockSearchHits(props: {
   );
 }
 
+function MockSearchHits(props: {
+  children?: React.ReactNode;
+  className?: string;
+  gridStyle: React.CSSProperties;
+  productPathPrefix: string;
+  primaryExtensionTemplate: string;
+}) {
+  const {
+    children,
+    className,
+    gridStyle,
+    productPathPrefix,
+    primaryExtensionTemplate,
+  } = props;
+
+  const items = useMemo(
+    () =>
+      MOCK_SEARCH_PRODUCTS.map((p) =>
+        normalizeSearchHit(
+          mockProductToHit(p),
+          p.price.currencyCode ?? "USD",
+          { productPathPrefix, primaryExtensionTemplate }
+        )
+      ),
+    [productPathPrefix, primaryExtensionTemplate]
+  );
+
+  return (
+    <HitsList items={items} className={className} gridStyle={gridStyle}>
+      {children}
+    </HitsList>
+  );
+}
+
 function EPSearchHitsInner(props: {
   children?: React.ReactNode;
   className?: string;
   gridStyle: React.CSSProperties;
-  productPathPrefix?: string;
+  productPathPrefix: string;
+  primaryExtensionTemplate: string;
 }) {
-  const { children, className, gridStyle, productPathPrefix } = props;
+  const {
+    children,
+    className,
+    gridStyle,
+    productPathPrefix,
+    primaryExtensionTemplate,
+  } = props;
 
-  const { useHits, useInstantSearch } = require("react-instantsearch");
+  const { useHits } = require("react-instantsearch");
   const { hits } = useHits();
-  const { indexUiState } = useInstantSearch();
 
   // Read currencyCode from parent EPCatalogSearchProvider's DataProvider context
   const catalogSearchData = useSelector("catalogSearchData") as
@@ -415,36 +319,21 @@ function EPSearchHitsInner(props: {
     | undefined;
   const currencyCode = catalogSearchData?.currencyCode || "USD";
 
-  const normalizedProducts = useMemo(
+  const items = useMemo(
     () =>
       (hits || []).map((hit: Record<string, any>) =>
-        normalizeHitToCurrentProduct(hit, currencyCode, productPathPrefix)
+        normalizeSearchHit(hit, currencyCode, {
+          productPathPrefix,
+          primaryExtensionTemplate,
+        })
       ),
-    [hits, currencyCode, productPathPrefix]
+    [hits, currencyCode, productPathPrefix, primaryExtensionTemplate]
   );
 
-  if (normalizedProducts.length === 0) return null;
-
   return (
-    <div
-      className={className}
-      role="list"
-      aria-label="Search results"
-      data-ep-search-hits=""
-      style={gridStyle}
-    >
-      {normalizedProducts.map(
-        (product: ReturnType<typeof normalizeHitToCurrentProduct>, i: number) => (
-          <div key={product.id || i} role="listitem">
-            <DataProvider name="currentProduct" data={product}>
-              <DataProvider name="currentProductIndex" data={i}>
-                {repeatedElement(i, children)}
-              </DataProvider>
-            </DataProvider>
-          </div>
-        )
-      )}
-    </div>
+    <HitsList items={items} className={className} gridStyle={gridStyle}>
+      {children}
+    </HitsList>
   );
 }
 

@@ -9,6 +9,10 @@ export {
   registerEPRefinementList,
 } from "./EPRefinementList";
 export {
+  EPSingleSelectFacet,
+  registerEPSingleSelectFacet,
+} from "./EPSingleSelectFacet";
+export {
   EPHierarchicalMenu,
   registerEPHierarchicalMenu,
 } from "./EPHierarchicalMenu";
@@ -61,3 +65,6 @@ export type {
   AutocompleteSuggestionItem,
   CurrentSuggestion,
 } from "./design-time-data";
+export type { SearchPageItem } from "./pagination-window";
+export type { NormalizedRefinementItem } from "./EPRefinementList";
+export type { SingleSelectFacetItem } from "./EPSingleSelectFacet";

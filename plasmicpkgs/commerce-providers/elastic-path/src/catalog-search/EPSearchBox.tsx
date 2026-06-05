@@ -53,6 +53,7 @@ interface EPSearchBoxActions {
 export const epSearchBoxMeta: CodeComponentMeta<EPSearchBoxProps> = {
   name: "plasmic-commerce-ep-search-box",
   displayName: "EP Search Box",
+  section: "EP Catalog Search",
   description:
     "Search field provider. Drops a Plasmic input and clear button into the slot, bind them to $ctx.searchFieldData (value, displayValue, isEmpty) and the setValue/clear ref-actions. Must be inside EP Catalog Search Provider.",
   props: {

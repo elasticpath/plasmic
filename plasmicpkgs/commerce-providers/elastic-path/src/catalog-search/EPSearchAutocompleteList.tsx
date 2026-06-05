@@ -42,6 +42,7 @@ export const epSearchAutocompleteListMeta: CodeComponentMeta<EPSearchAutocomplet
   {
     name: "plasmic-commerce-ep-search-autocomplete-list",
     displayName: "EP Search Autocomplete List",
+    section: "EP Catalog Search",
     description:
       "Repeats children once per autocomplete suggestion item. Click handlers and ARIA semantics are wired automatically. Use `sourceId` to scope the list to a single named source. Per-iteration $ctx.currentSuggestion exposes the item, isHighlighted, and source. Must be inside EP Search Autocomplete.",
     props: {

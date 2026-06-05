@@ -25,6 +25,7 @@ interface EPSearchStatsProps {
 export const epSearchStatsMeta: CodeComponentMeta<EPSearchStatsProps> = {
   name: "plasmic-commerce-ep-search-stats",
   displayName: "EP Search Stats",
+  section: "EP Catalog Search",
   description:
     "Exposes search statistics (result count, query, processing time). Must be inside EP Catalog Search Provider.",
   props: {

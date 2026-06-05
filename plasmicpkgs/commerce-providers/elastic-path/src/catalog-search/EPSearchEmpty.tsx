@@ -45,6 +45,7 @@ interface EPSearchEmptyProps {
 export const epSearchEmptyMeta: CodeComponentMeta<EPSearchEmptyProps> = {
   name: "plasmic-commerce-ep-search-empty",
   displayName: "EP Search Empty",
+  section: "EP Catalog Search",
   description:
     "Shown when a search returns zero results. Stays hidden during the initial load and during error states; only renders after a real response with no hits. Wire `dataCond: $ctx.searchStatsData.nbHits > 0` on EP Search Stats / Pagination if you want them hidden alongside it. Must be inside EP Catalog Search Provider.",
   props: {
