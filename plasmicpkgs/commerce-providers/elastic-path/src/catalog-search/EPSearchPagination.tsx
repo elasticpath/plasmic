@@ -13,12 +13,16 @@ import React, { useCallback, useImperativeHandle } from "react";
 import { Registerable } from "../registerable";
 import { MOCK_SEARCH_PAGINATION_DATA } from "./design-time-data";
 import type { SearchPaginationData } from "./design-time-data";
+import { buildPageItems } from "./pagination-window";
 
 type PreviewState = "auto" | "withData";
+
+const DEFAULT_WINDOW_SIZE = 7;
 
 interface EPSearchPaginationProps {
   children?: React.ReactNode;
   className?: string;
+  windowSize?: number;
   previewState?: PreviewState;
 }
 
@@ -31,8 +35,9 @@ interface EPSearchPaginationActions {
 export const epSearchPaginationMeta: CodeComponentMeta<EPSearchPaginationProps> = {
   name: "plasmic-commerce-ep-search-pagination",
   displayName: "EP Search Pagination",
+  section: "EP Catalog Search",
   description:
-    "Pagination provider. Drops a Prev button, page-indicator text, and Next button into the slot. Bind text to $ctx.searchPaginationData (currentPage, totalPages, hasNext, hasPrev) and wire button onClick to the prevPage/nextPage ref-actions; hide buttons when !hasPrev / !hasNext. Must be inside EP Catalog Search Provider.",
+    "Pagination provider. Drops a Prev button, page-indicator text, and Next button into the slot. Bind text to $ctx.searchPaginationData (currentPage, totalPages, hasNext, hasPrev) and wire button onClick to the prevPage/nextPage ref-actions; hide buttons when !hasPrev / !hasNext. For a numbered pager, dataRep over $ctx.searchPaginationData.pageItems (windowed, with ellipsis + each item's bound goTo). Must be inside EP Catalog Search Provider.",
   props: {
     children: {
       type: "slot",
@@ -60,6 +65,13 @@ export const epSearchPaginationMeta: CodeComponentMeta<EPSearchPaginationProps> 
           ],
         },
       ],
+    },
+    windowSize: {
+      type: "number",
+      displayName: "Window Size",
+      description:
+        "How many numbered page links to show around the current page in pageItems (first/last pages are always anchored, with ellipsis sentinels for the gaps).",
+      defaultValue: DEFAULT_WINDOW_SIZE,
     },
     previewState: {
       type: "choice",
@@ -93,7 +105,12 @@ export const EPSearchPagination = React.forwardRef<
   EPSearchPaginationActions,
   EPSearchPaginationProps
 >(function EPSearchPagination(props, ref) {
-  const { children, className, previewState = "auto" } = props;
+  const {
+    children,
+    className,
+    windowSize = DEFAULT_WINDOW_SIZE,
+    previewState = "auto",
+  } = props;
 
   const inEditor = !!usePlasmicCanvasContext();
   const useMock =
@@ -108,7 +125,11 @@ export const EPSearchPagination = React.forwardRef<
   }
 
   return (
-    <EPSearchPaginationInner ref={ref} className={className}>
+    <EPSearchPaginationInner
+      ref={ref}
+      className={className}
+      windowSize={windowSize}
+    >
       {children}
     </EPSearchPaginationInner>
   );
@@ -138,8 +159,8 @@ const MockSearchPagination = React.forwardRef<
 
 const EPSearchPaginationInner = React.forwardRef<
   EPSearchPaginationActions,
-  { children?: React.ReactNode; className?: string }
->(function EPSearchPaginationInner({ children, className }, ref) {
+  { children?: React.ReactNode; className?: string; windowSize: number }
+>(function EPSearchPaginationInner({ children, className, windowSize }, ref) {
   const { usePagination } = require("react-instantsearch");
   const {
     currentRefinement,
@@ -148,7 +169,7 @@ const EPSearchPaginationInner = React.forwardRef<
     refine,
     isFirstPage,
     isLastPage,
-  } = usePagination();
+  } = usePagination({ padding: Math.max(0, Math.floor((windowSize - 1) / 2)) });
 
   const handleGoToPage = useCallback(
     (page: number) => {
@@ -186,6 +207,8 @@ const EPSearchPaginationInner = React.forwardRef<
     hasNext: !isLastPage,
     hasPrev: !isFirstPage,
     pages,
+    // Windowed page-item model (D4) — each item carries its own bound goTo.
+    pageItems: buildPageItems(pages, nbPages, currentRefinement, handleGoToPage),
     goTo: handleGoToPage,
     next: handleNextPage,
     prev: handlePrevPage,

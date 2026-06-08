@@ -66,6 +66,7 @@ export const FORMAT_CHOICE_OPTIONS: ChoiceObject[] = [
   { label: "Currency", value: "currency" },
   { label: "Date", value: "date" },
   { label: "Number", value: "number" },
+  { label: "Title case", value: "titlecase" },
   { label: "Raw (unformatted)", value: "raw" },
 ];
 

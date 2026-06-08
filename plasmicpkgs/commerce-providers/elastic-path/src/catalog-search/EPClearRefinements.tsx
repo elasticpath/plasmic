@@ -38,6 +38,7 @@ interface EPClearRefinementsActions {
 export const epClearRefinementsMeta: CodeComponentMeta<EPClearRefinementsProps> = {
   name: "plasmic-commerce-ep-clear-refinements",
   displayName: "EP Clear Refinements",
+  section: "EP Catalog Search",
   description:
     "Drops a single button that clears all active filters in one click. Click + disabled state are wired automatically. Must be inside EP Catalog Search Provider.",
   props: {

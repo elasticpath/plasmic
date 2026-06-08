@@ -64,6 +64,7 @@ export const epSearchAutocompleteMeta: CodeComponentMeta<EPSearchAutocompletePro
   {
     name: "plasmic-commerce-ep-search-autocomplete",
     displayName: "EP Search Autocomplete",
+    section: "EP Catalog Search",
     description:
       "Provider for query-suggestion autocomplete, sourced from EP catalog-search's autocomplete endpoint. Compose with EP Search Autocomplete Input, Panel, and List children. Must be inside EP Catalog Search Provider.",
     props: {

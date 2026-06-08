@@ -7,6 +7,8 @@
  */
 
 import type { Product } from "../types/product";
+import { buildPageItems } from "./pagination-window";
+import type { SearchPageItem } from "./pagination-window";
 
 // ---------------------------------------------------------------------------
 // Search hit products — 6 sample products matching a "leather" query
@@ -295,7 +297,14 @@ export interface SearchPaginationData {
   totalPages: number;
   hasNext: boolean;
   hasPrev: boolean;
+  /** Raw windowed page numbers (0-indexed). Retained alongside pageItems. */
   pages: number[];
+  /**
+   * Windowed page-item model (ADR-0011 D4): ellipsis sentinels + first/last/
+   * current flags + a pre-bound per-item goTo. dataRep over this for a numbered
+   * pager without windowing math or a customFunction.
+   */
+  pageItems: SearchPageItem[];
   /** Wire clicks via customFunction interactions, e.g. $ctx.searchPaginationData.goTo(page). */
   goTo?: (page: number) => void;
   next?: () => void;
@@ -308,6 +317,7 @@ export const MOCK_SEARCH_PAGINATION_DATA: SearchPaginationData = {
   hasNext: true,
   hasPrev: false,
   pages: [0, 1, 2, 3],
+  pageItems: buildPageItems([0, 1, 2, 3], 4, 0, () => {}),
 };
 
 // ---------------------------------------------------------------------------

@@ -55,6 +55,7 @@ export const epSearchAutocompletePanelMeta: CodeComponentMeta<EPSearchAutocomple
   {
     name: "plasmic-commerce-ep-search-autocomplete-panel",
     displayName: "EP Search Autocomplete Panel",
+    section: "EP Catalog Search",
     description:
       "Panel wrapper for the autocomplete dropdown. In Studio, opens when selected; closed otherwise so it doesn't cover surrounding page content. Hosts the mobile close button (hidden on desktop via media query). Must be inside EP Search Autocomplete.",
     props: {

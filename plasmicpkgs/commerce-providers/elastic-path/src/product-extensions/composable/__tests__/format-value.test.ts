@@ -140,6 +140,21 @@ describe("formatValue", () => {
     });
   });
 
+  describe("titlecase", () => {
+    it("humanizes single-token enum values without a ternary (D3)", () => {
+      expect(formatValue("publication", "titlecase")).toBe("Publication");
+      expect(formatValue("in_force", "titlecase")).toBe("In Force");
+      expect(formatValue("lifecycle-status", "titlecase")).toBe(
+        "Lifecycle Status",
+      );
+    });
+
+    it("falls back to the plain display value for non-strings", () => {
+      expect(formatValue(42, "titlecase")).toBe("42");
+      expect(formatValue(true, "titlecase")).toBe("Yes");
+    });
+  });
+
   describe("auto inference", () => {
     it("renders booleans as Yes/No", () => {
       expect(formatValue(true, "auto")).toBe("Yes");

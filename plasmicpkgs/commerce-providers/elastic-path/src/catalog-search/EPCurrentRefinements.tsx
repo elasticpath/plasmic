@@ -41,6 +41,7 @@ interface EPCurrentRefinementsProps {
 export const epCurrentRefinementsMeta: CodeComponentMeta<EPCurrentRefinementsProps> = {
   name: "plasmic-commerce-ep-current-refinements",
   displayName: "EP Current Refinements",
+  section: "EP Catalog Search",
   description:
     "Chip row showing each active filter. Repeats children per refinement; click dismisses that refinement automatically. Hides itself when no filters are active. Must be inside EP Catalog Search Provider.",
   props: {

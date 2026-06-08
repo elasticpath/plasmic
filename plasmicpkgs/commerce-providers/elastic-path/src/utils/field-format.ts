@@ -103,7 +103,55 @@ export type FormatSpec =
   | "currency"
   | "date"
   | "number"
-  | "raw";
+  | "raw"
+  | "titlecase";
+
+/**
+ * Search highlight rendering for the `query_by` fields (`name`, `description`).
+ * - `off` — plain text only (the default; inert).
+ * - `auto` — render the `<mark>`-wrapped highlighted/snippet variant when the
+ *   current product carries one (i.e. it's a search hit), plain text otherwise
+ *   (inert on a PDP).
+ * - `on` — always render the highlight markup (no PDP heuristic); falls back to
+ *   plain text when no markup exists.
+ *
+ * In every mode the only thing rendered as HTML is the backend-supplied
+ * `<mark>` markup — never the raw field value. That keeps the `html:true`
+ * footgun out of the designer's hands (the reason highlight folds in here, per
+ * ADR-0011 D3).
+ */
+export type HighlightMode = "off" | "auto" | "on";
+
+/**
+ * Resolve the highlight markup for a top-level field, or `undefined` to render
+ * the plain value as text. Highlights only ever apply to the `query_by` fields,
+ * so any other leaf returns `undefined`. Reads the `SearchHitProduct` extras off
+ * the current product; absent on a PDP product, which makes both `auto` and
+ * `on` inert there (there is no markup to render).
+ */
+export function resolveHighlightHtml(
+  product: unknown,
+  leafId: string,
+  mode: HighlightMode,
+): string | undefined {
+  if (mode === "off") return undefined;
+  const p = product as
+    | {
+        _highlightedName?: string;
+        _highlightedDescription?: string;
+        _snippetedDescription?: string;
+      }
+    | undefined
+    | null;
+  if (leafId === "name") {
+    return p?._highlightedName;
+  }
+  if (leafId === "description") {
+    return p?._snippetedDescription || p?._highlightedDescription;
+  }
+  // Highlights only apply to the query_by fields.
+  return undefined;
+}
 
 /** Fallback locale (hard-coded so SSR and CSR agree on Intl output). */
 export const DEFAULT_LOCALE = "en-US";
@@ -136,10 +184,24 @@ export function formatValue(
       return formatCurrency(value, locale, currency);
     case "date":
       return formatDate(value, locale);
+    case "titlecase":
+      return formatTitlecase(value);
     case "auto":
     default:
       return formatAuto(value, locale);
   }
+}
+
+/**
+ * Title-case an enum-ish value for display — `"publication"` → "Publication",
+ * `"in_force"` → "In Force" — so single-token status/kind fields render
+ * without a ternary in the binding. Reuses `humanizeFieldKey` (splits on
+ * `-`/`_`/camelCase and title-cases). Non-strings fall through to the plain
+ * display value.
+ */
+function formatTitlecase(value: unknown): string {
+  if (typeof value === "string") return humanizeFieldKey(value);
+  return formatDisplayValue(value);
 }
 
 function formatAuto(value: unknown, locale: string): string {
