@@ -7,6 +7,7 @@ export { EPCartItemImage, registerEPCartItemImage } from "./EPCartItemImage";
 export { EPCartItemRemoveButton, registerEPCartItemRemoveButton } from "./EPCartItemRemoveButton";
 export { EPCartItemQuantityControl, registerEPCartItemQuantityControl } from "./EPCartItemQuantityControl";
 export { EPCartItemQuantityButton, registerEPCartItemQuantityButton } from "./EPCartItemQuantityButton";
+export { EPCartItemQuantitySelect, registerEPCartItemQuantitySelect } from "./EPCartItemQuantitySelect";
 export { EPCartField, registerEPCartField } from "./EPCartField";
 export {
   useDrawerOpen,

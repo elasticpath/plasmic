@@ -24,6 +24,7 @@ import { registerEPCartItemImage } from "./cart-drawer/EPCartItemImage";
 import { registerEPCartItemRemoveButton } from "./cart-drawer/EPCartItemRemoveButton";
 import { registerEPCartItemQuantityButton } from "./cart-drawer/EPCartItemQuantityButton";
 import { registerEPCartItemQuantityControl } from "./cart-drawer/EPCartItemQuantityControl";
+import { registerEPCartItemQuantitySelect } from "./cart-drawer/EPCartItemQuantitySelect";
 import { registerEPCartItemList } from "./cart-drawer/EPCartItemList";
 import { registerEPCartDrawer, registerEPCartInline } from "./cart-drawer/EPCartDrawer";
 import { registerEPCartPopover } from "./cart-drawer/EPCartPopover";
@@ -139,6 +140,7 @@ export function registerAll(loader?: Registerable) {
   registerEPCartItemRemoveButton(loader);
   registerEPCartItemQuantityButton(loader);
   registerEPCartItemQuantityControl(loader);
+  registerEPCartItemQuantitySelect(loader);
   registerEPCartItemList(loader);
   registerEPCartDrawer(loader);
   registerEPCartInline(loader);

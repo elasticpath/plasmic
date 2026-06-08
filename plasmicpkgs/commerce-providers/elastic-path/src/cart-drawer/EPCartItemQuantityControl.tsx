@@ -164,13 +164,29 @@ export function EPCartItemQuantityControl(
     doUpdate(newQty);
   }, [canDecrement, effectiveQuantity, doUpdate]);
 
+  const setQuantity = useCallback(
+    (next: number) => {
+      const clamped = Math.min(
+        maxQuantity,
+        Math.max(minQuantity, Math.trunc(next))
+      );
+      if (clamped === effectiveQuantity) return;
+      setLocalQuantity(clamped);
+      doUpdate(clamped);
+    },
+    [minQuantity, maxQuantity, effectiveQuantity, doUpdate]
+  );
+
   const contextValue: CartItemQuantityContextValue = {
     quantity: effectiveQuantity,
     isLoading: effectiveIsLoading,
     canDecrement,
     canIncrement,
+    minQuantity,
+    maxQuantity,
     increment,
     decrement,
+    setQuantity,
   };
 
   return (

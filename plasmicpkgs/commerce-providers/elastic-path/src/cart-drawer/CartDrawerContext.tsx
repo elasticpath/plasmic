@@ -51,8 +51,14 @@ export interface CartItemQuantityContextValue {
   isLoading: boolean;
   canDecrement: boolean;
   canIncrement: boolean;
+  /** The minimum allowed quantity (below this the item is removed, not set). */
+  minQuantity: number;
+  /** The maximum allowed quantity. */
+  maxQuantity: number;
   increment: () => void;
   decrement: () => void;
+  /** Set an explicit quantity (clamped to [minQuantity, maxQuantity]). */
+  setQuantity: (next: number) => void;
 }
 
 export const CartItemQuantityContext =
