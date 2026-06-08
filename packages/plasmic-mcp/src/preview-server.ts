@@ -17,6 +17,7 @@ import * as url from "node:url";
 import type { PlasmicApiClient } from "./api-client.js";
 import { getSession } from "./session.js";
 import { getAuth } from "./auth.js";
+import { deriveRendererOrigin } from "./renderer-origin.js";
 import {
   exportReactPresentational,
   exportProjectConfig,
@@ -81,6 +82,9 @@ let commitHash: string | null = null;
 
 /** Reference to the API client (kept for future use). */
 let apiClientRef: PlasmicApiClient | null = null;
+
+/** Renderer origin resolved at startup (see resolveRendererOrigin). */
+let cachedRendererOrigin: string | null = null;
 
 /** Cache of generated module content, keyed by filename. Served at /static/{filename}
  *  so SystemJS can fetch CSS/JS modules that the codegen output imports. */
@@ -150,9 +154,13 @@ export async function startPreviewServer(
 ): Promise<number> {
   await stopPreviewServer();
 
-  await fetchAndCacheHostHtml();
-
   apiClientRef = apiClient;
+
+  // Resolve the renderer origin before fetching host.html — fetchAndCacheHostHtml
+  // and the static proxy both read it.
+  await resolveRendererOrigin();
+
+  await fetchAndCacheHostHtml();
 
   return new Promise((resolve, reject) => {
     const srv = http.createServer(async (req, res) => {
@@ -202,6 +210,7 @@ export async function stopPreviewServer(): Promise<void> {
       activeAppHostOrigin = null;
       commitHash = null;
       apiClientRef = null;
+      cachedRendererOrigin = null;
       generatedModules.clear();
       resolve();
     });
@@ -213,6 +222,7 @@ export async function stopPreviewServer(): Promise<void> {
       activeAppHostOrigin = null;
       commitHash = null;
       apiClientRef = null;
+      cachedRendererOrigin = null;
       generatedModules.clear();
       resolve();
     }, 2000);
@@ -229,16 +239,42 @@ function getStudioOrigin(): string {
 }
 
 /**
+ * Resolve the renderer origin once and cache it. Priority: PLASMIC_RENDERER_ORIGIN
+ * env override → origin of the Studio `appConfig.defaultHostUrl` (the same value
+ * Studio's own getHostUrl() uses, so it tracks the deployment — including any
+ * environment/region prefix on a self-hosted host) → fallback.
+ */
+async function resolveRendererOrigin(): Promise<void> {
+  const envOverride = process.env.PLASMIC_RENDERER_ORIGIN;
+  let appConfigHostUrl: string | undefined;
+
+  if (!envOverride && apiClientRef) {
+    try {
+      const { config } = await apiClientRef.getAppConfig();
+      appConfigHostUrl = config?.defaultHostUrl as string | undefined;
+    } catch (err) {
+      console.error(
+        `[plasmic-mcp] Could not derive renderer origin from Studio app-config (${err}); ` +
+          `set PLASMIC_RENDERER_ORIGIN to override.`
+      );
+    }
+  }
+
+  cachedRendererOrigin = deriveRendererOrigin(envOverride, appConfigHostUrl);
+  console.error(`[plasmic-mcp] Renderer origin: ${cachedRendererOrigin}`);
+}
+
+/**
  * Origin that serves Plasmic's renderer assets — the lightweight renderer
- * `host.html` and the `sub` / `react-web-bundle` / `live-frame` bundles. On
- * plasmic.com SaaS this is the same as the Studio origin, but on a self-hosted
- * Studio (e.g. Elastic Path's *.storefront.elasticpath.com) the auth host
- * serves the full Studio SPA at /static/host.html — which has no renderer
- * commit hash — so renderer assets must come from Plasmic's renderer CDN.
- * Override via PLASMIC_RENDERER_ORIGIN.
+ * `host.html` and the `sub` / `react-web-bundle` / `live-frame` bundles.
+ * Populated by resolveRendererOrigin() at startup; before that resolves we
+ * fall back to the env override or default so the getter stays synchronous.
  */
 function getRendererOrigin(): string {
-  return (process.env.PLASMIC_RENDERER_ORIGIN || "https://host.plasmicdev.com").replace(/\/$/, "");
+  if (cachedRendererOrigin) {
+    return cachedRendererOrigin;
+  }
+  return deriveRendererOrigin(process.env.PLASMIC_RENDERER_ORIGIN, undefined);
 }
 
 // ---------------------------------------------------------------------------
