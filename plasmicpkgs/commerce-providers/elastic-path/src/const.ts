@@ -14,6 +14,14 @@ export const DEFAULT_DEBOUNCE_MS = 500
 /** Delay before focusing the cart drawer after open, allowing CSS transitions to complete. */
 export const FOCUS_TRAP_DELAY_MS = 50
 
+// --- Cart overlay stacking ---
+
+/** z-index for cart overlay surfaces (drawer panel, anchored popover panel). */
+export const CART_OVERLAY_Z_INDEX = 9999
+
+/** z-index for the cart drawer backdrop (sits just below {@link CART_OVERLAY_Z_INDEX}). */
+export const CART_BACKDROP_Z_INDEX = 9998
+
 // --- Stock threshold defaults ---
 
 /** Stock level at or below which items are considered "low stock". */

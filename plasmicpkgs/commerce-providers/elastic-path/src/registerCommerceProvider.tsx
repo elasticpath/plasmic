@@ -14,6 +14,8 @@ import { epProviderGetServerInfo } from "./auth/ep-provider-server-info";
 interface CommerceProviderProps extends ElasticPathCredentials {
   children?: React.ReactNode;
   locale?: string;
+  currency?: string;
+  currencyDisplay?: "symbol" | "code";
   customHost?: string;
   serverCartMode?: boolean;
   serverToken?: string;
@@ -52,6 +54,25 @@ export const commerceProviderMeta: any = {
       defaultValue: "en-US",
       description: "Locale for currency formatting and localization",
     },
+    currency: {
+      type: "string",
+      displayName: "Currency",
+      description:
+        "ISO 4217 currency code (e.g. USD, GBP, CHF) sent with the cart read so line prices and totals re-price for the active locale. Leave empty to use the cart's stored currency. Bind to your per-locale currency resolution.",
+      advanced: true,
+    },
+    currencyDisplay: {
+      type: "choice",
+      options: [
+        { label: "Symbol ($179.00)", value: "symbol" },
+        { label: "Code (USD 179.00)", value: "code" },
+      ],
+      defaultValue: "symbol",
+      displayName: "Currency Display",
+      description:
+        "How money renders across cart line prices and totals: a currency symbol or its ISO code prefix.",
+      advanced: true,
+    },
     serverCartMode: {
       type: "boolean",
       displayName: "Server Cart Mode",
@@ -80,6 +101,8 @@ export function CommerceProviderComponent(props: CommerceProviderProps) {
     host,
     customHost,
     locale = "en-US",
+    currency,
+    currencyDisplay = "symbol",
     serverCartMode = false,
     serverToken,
   } = props;
@@ -108,8 +131,8 @@ export function CommerceProviderComponent(props: CommerceProviderProps) {
   );
 
   const CommerceProvider = React.useMemo(
-    () => getCommerceProvider(creds, locale, serverToken),
-    [creds, locale, serverToken]
+    () => getCommerceProvider(creds, locale, serverToken, currency, currencyDisplay),
+    [creds, locale, serverToken, currency, currencyDisplay]
   );
 
   const ActionsProvider = serverCartMode

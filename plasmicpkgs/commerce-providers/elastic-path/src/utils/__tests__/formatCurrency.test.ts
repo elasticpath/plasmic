@@ -47,6 +47,22 @@ describe("formatCurrency", () => {
     const result = formatCurrency(-15.99, "USD");
     expect(result).toContain("15.99");
   });
+
+  it("renders the ISO code prefix with display 'code'", () => {
+    const result = formatCurrency(179, "USD", "code");
+    expect(result).toContain("USD");
+    expect(result).toContain("179");
+    expect(result).not.toContain("$");
+  });
+
+  it("keeps the symbol by default and for display 'symbol'", () => {
+    expect(formatCurrency(179, "USD")).toContain("$");
+    expect(formatCurrency(179, "USD", "symbol")).toContain("$");
+  });
+
+  it("falls back to a code prefix for an invalid currency with display 'code'", () => {
+    expect(formatCurrency(42.5, "INVALID", "code")).toBe("INVALID 42.50");
+  });
 });
 
 describe("formatCurrencyFromCents", () => {

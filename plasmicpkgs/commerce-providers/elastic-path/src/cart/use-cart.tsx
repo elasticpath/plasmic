@@ -13,6 +13,7 @@ import {
 } from "./cart-session";
 import { handleAPIError } from "../utils/errorHandling";
 import { getEPClient } from "../utils/getEPClient";
+import { buildCartReadHeaders } from "../utils/cart-read-headers";
 import { createLogger } from "../utils/logger";
 
 const log = createLogger("useCart");
@@ -32,6 +33,14 @@ export const handler: SWRHook<GetCartHook> = {
     const cartId = await getCartIdFromSession();
     let activeCart;
 
+    // Re-price the cart for the active locale/currency at read time. Headers
+    // are omitted when the provider doesn't supply a value (policy stays in
+    // the storefront).
+    const headers = buildCartReadHeaders({
+      locale: provider?.locale,
+      currency: (provider as { currency?: string })?.currency,
+    });
+
     try {
       if (cartId) {
         // Get existing cart with items included
@@ -41,6 +50,7 @@ export const handler: SWRHook<GetCartHook> = {
           query: {
             include: ["items"],
           },
+          headers,
         });
         activeCart = response.data;
 

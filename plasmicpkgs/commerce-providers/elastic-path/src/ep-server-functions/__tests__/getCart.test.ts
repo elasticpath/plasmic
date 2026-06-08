@@ -66,6 +66,23 @@ describe("epGetCart", () => {
     );
   });
 
+  it("sends locale + currency cart-read headers from the session (SSR parity)", async () => {
+    mockGetACart.mockResolvedValue({
+      data: { data: { id: "cart-id", type: "cart", attributes: {}, meta: {} }, included: { items: [] } },
+    });
+
+    await withEpSession(
+      { ...SESSION_BASE, cartId: "cart-id", locale: "en-GB", currency: "GBP" },
+      () => epGetCart()
+    );
+
+    expect(mockGetACart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        headers: { "Accept-Language": "en-GB", "X-Moltin-Currency": "GBP" },
+      })
+    );
+  });
+
   it("returns null when no cartId is on the ALS session (anonymous visitor)", async () => {
     const result = await withEpSession(SESSION_BASE, () => epGetCart());
 
