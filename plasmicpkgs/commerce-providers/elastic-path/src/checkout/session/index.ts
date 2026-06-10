@@ -86,6 +86,13 @@ export {
   registerEPStripePayment,
 } from "./EPStripePayment";
 
+// Stripe global context (publishableKey)
+export {
+  StripeProvider,
+  stripeProviderMeta,
+  registerStripeProvider,
+} from "./StripeProvider";
+
 // Adapters
 export { createCloverAdapter } from "./adapters/clover-adapter";
 export type { CloverAdapterConfig } from "./adapters/clover-adapter";

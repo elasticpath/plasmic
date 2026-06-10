@@ -16,6 +16,12 @@ export type {
   EpRemoveCartItemInput,
   EpUpdateCartItemInput,
 } from "./cart-mutations";
+export { epPlaceOrder, toCustomAttributes, normalizeAddress } from "./place-order";
+export type {
+  EpPlaceOrderInput,
+  EpPlaceOrderAddress,
+  EpPlaceOrderResult,
+} from "./place-order";
 export { registerEpCustomFunctions } from "./register-custom-functions";
 export { buildEpCtx } from "./build-ep-ctx";
 export type {

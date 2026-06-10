@@ -17,6 +17,11 @@ import { registerEPPaymentElements } from "./checkout/composable/EPPaymentElemen
 import { registerEPCheckoutProvider } from "./checkout/composable/EPCheckoutProvider";
 import { registerEPCheckoutStepIndicator } from "./checkout/composable/EPCheckoutStepIndicator";
 import { registerEPCheckoutButton } from "./checkout/composable/EPCheckoutButton";
+import { registerEPFormField } from "./checkout/composable/EPFormField";
+import { registerEPSelectField } from "./checkout/composable/EPSelectField";
+import { registerEPConsentCheckbox } from "./checkout/composable/EPConsentCheckbox";
+import { registerEPPlaceOrderButton } from "./checkout/composable/EPPlaceOrderButton";
+import { registerEPCheckoutFormProvider } from "./checkout/composable/EPCheckoutFormProvider";
 import { registerEPCheckoutSessionProvider } from "./checkout/session/EPCheckoutSessionProvider";
 import { registerEPCloverPayment } from "./checkout/session/EPCloverPayment";
 import { registerEPCloverCardNumber } from "./checkout/session/EPCloverCardNumber";
@@ -24,6 +29,7 @@ import { registerEPCloverCardExpiry } from "./checkout/session/EPCloverCardExpir
 import { registerEPCloverCardCVV } from "./checkout/session/EPCloverCardCVV";
 import { registerEPCloverCardPostalCode } from "./checkout/session/EPCloverCardPostalCode";
 import { registerEPStripePayment } from "./checkout/session/EPStripePayment";
+import { registerStripeProvider } from "./checkout/session/StripeProvider";
 import { Registerable } from "./registerable";
 
 export function registerEPCheckout(loader?: Registerable) {
@@ -52,6 +58,14 @@ export function registerEPCheckout(loader?: Registerable) {
   registerEPCheckoutStepIndicator(loader);
   registerEPCheckoutProvider(loader);
 
+  // Single-page checkout (leaf-first: field primitives + button before the
+  // form-state collector that wraps them)
+  registerEPFormField(loader);
+  registerEPSelectField(loader);
+  registerEPConsentCheckbox(loader);
+  registerEPPlaceOrderButton(loader);
+  registerEPCheckoutFormProvider(loader);
+
   // Session-based checkout components (leaf-first)
   registerEPCloverCardNumber(loader);
   registerEPCloverCardExpiry(loader);
@@ -59,6 +73,7 @@ export function registerEPCheckout(loader?: Registerable) {
   registerEPCloverCardPostalCode(loader);
   registerEPCloverPayment(loader);
   registerEPStripePayment(loader);
+  registerStripeProvider(loader);
   registerEPCheckoutSessionProvider(loader);
 }
 
@@ -90,6 +105,12 @@ export {
   registerEPCloverCardCVV,
   registerEPCloverCardPostalCode,
   registerEPStripePayment,
+  registerStripeProvider,
+  registerEPCheckoutFormProvider,
+  registerEPFormField,
+  registerEPSelectField,
+  registerEPConsentCheckbox,
+  registerEPPlaceOrderButton,
 };
 
 // Export component metas for advanced usage
@@ -171,3 +192,18 @@ export {
 export {
   epStripePaymentMeta,
 } from "./checkout/session/EPStripePayment";
+export {
+  epCheckoutFormProviderMeta,
+} from "./checkout/composable/EPCheckoutFormProvider";
+export {
+  epFormFieldMeta,
+} from "./checkout/composable/EPFormField";
+export {
+  epSelectFieldMeta,
+} from "./checkout/composable/EPSelectField";
+export {
+  epConsentCheckboxMeta,
+} from "./checkout/composable/EPConsentCheckbox";
+export {
+  epPlaceOrderButtonMeta,
+} from "./checkout/composable/EPPlaceOrderButton";

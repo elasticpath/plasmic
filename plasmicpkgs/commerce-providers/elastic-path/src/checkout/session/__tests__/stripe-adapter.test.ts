@@ -1,26 +1,27 @@
 /**
- * C-4.1: Stripe adapter tests
+ * Cart Payment Intent Adapter — server-side adapter that calls EP's
+ * `createCartPaymentIntent` with `gateway: "elastic_path_payments_stripe"`,
+ * `confirm: true`, and the client-supplied `confirmation_token`.
  *
- * Covers: PaymentIntent creation, confirmation with status check, metadata
- * validation (cross-session attack prevention), missing config, card declined,
- * StripeCardError handling, missing totals/orderId, and requires_action status.
+ * EP holds the Stripe credentials. The host app no longer talks to Stripe
+ * directly; the `stripe` npm package is no longer a runtime dependency.
+ *
+ * Slice 1 (this PR): cover the succeeded and failed branches. The
+ * `requires_action` (3DS) branch ships in slice 2.
  *
  * Note: esbuild does not hoist jest.mock(). We use require() to obtain the
  * mocked module reference so interception works regardless of import order.
  */
 
-// Mock the stripe module with a factory that returns a mock Stripe constructor
-const mockPaymentIntentsCreate = jest.fn();
-const mockPaymentIntentsRetrieve = jest.fn();
+jest.mock("@epcc-sdk/sdks-shopper", () => ({
+  createCartPaymentIntent: jest.fn(),
+  createShopperClient: jest.fn(() => ({ client: {} })),
+}));
 
-jest.mock("stripe", () => {
-  return jest.fn().mockImplementation(() => ({
-    paymentIntents: {
-      create: mockPaymentIntentsCreate,
-      retrieve: mockPaymentIntentsRetrieve,
-    },
-  }));
-}, { virtual: true });
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const epSdk = require("@epcc-sdk/sdks-shopper") as {
+  createCartPaymentIntent: jest.Mock;
+};
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { createStripeAdapter } = require("../adapters/stripe-adapter") as {
@@ -34,7 +35,9 @@ import type { CheckoutSession } from "../types";
 // ---------------------------------------------------------------------------
 
 const ADAPTER_CONFIG = {
-  secretKey: "sk_test_123456",
+  host: "https://api.test.elasticpath.com",
+  clientId: "test-client-id",
+  getClientCredentialsToken: jest.fn(async () => "admin-token-abc"),
 };
 
 function makeSession(overrides?: Partial<CheckoutSession>): CheckoutSession {
@@ -62,7 +65,13 @@ function makeSession(overrides?: Partial<CheckoutSession>): CheckoutSession {
     },
     selectedShippingRateId: "rate_1",
     availableShippingRates: [],
-    totals: { subtotal: 5000, tax: 500, shipping: 800, total: 6300, currency: "usd" },
+    totals: {
+      subtotal: 5000,
+      tax: 500,
+      shipping: 800,
+      total: 6300,
+      currency: "usd",
+    },
     payment: {
       gateway: "stripe",
       status: "idle",
@@ -70,215 +79,117 @@ function makeSession(overrides?: Partial<CheckoutSession>): CheckoutSession {
       gatewayMetadata: {},
       actionData: null,
     },
-    order: { id: "order_xyz", transactionId: "txn_123" },
+    order: null,
     expiresAt: Date.now() + 1800_000,
     ...overrides,
   };
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
+beforeEach(() => jest.clearAllMocks());
 
-describe("createStripeAdapter", () => {
-  const adapter = createStripeAdapter(ADAPTER_CONFIG);
-
-  beforeEach(() => jest.clearAllMocks());
-
-  describe("initializePayment", () => {
-    it("creates PaymentIntent and returns ready with clientToken", async () => {
-      mockPaymentIntentsCreate.mockResolvedValue({
-        id: "pi_test_001",
-        client_secret: "pi_test_001_secret_abc",
-        status: "requires_payment_method",
-      });
-
-      const result = await adapter.initializePayment(makeSession(), {});
-
-      expect(result.status).toBe("ready");
-      expect(result.clientToken).toBe("pi_test_001_secret_abc");
-      expect(result.gatewayMetadata).toEqual({ paymentIntentId: "pi_test_001" });
-      expect(result.gatewayOrderId).toBe("pi_test_001");
-      expect(mockPaymentIntentsCreate).toHaveBeenCalledWith({
-        amount: 6300,
-        currency: "usd",
-        automatic_payment_methods: { enabled: true },
-        metadata: {
-          order_id: "order_xyz",
-          source: "ep-checkout-session",
+describe("createStripeAdapter — Cart Payment Intent (EP-native)", () => {
+  describe("initializePayment (single-shot confirm)", () => {
+    it("posts EP createCartPaymentIntent with elastic_path_payments_stripe + purchase + confirm + token", async () => {
+      // EP returns the Stripe PaymentIntent nested under
+      // meta.payment_intent.payment_intent.
+      epSdk.createCartPaymentIntent.mockResolvedValue({
+        data: {
+          data: { id: "cart_abc", payment_intent_id: "pi_test_001" },
+          meta: {
+            payment_intent: {
+              payment_intent: { id: "pi_test_001", status: "succeeded" },
+            },
+          },
         },
       });
-    });
 
-    it("returns failed when client_secret is missing", async () => {
-      mockPaymentIntentsCreate.mockResolvedValue({
-        id: "pi_test_002",
-        client_secret: null,
-      });
-
-      const result = await adapter.initializePayment(makeSession(), {});
-
-      expect(result.status).toBe("failed");
-      expect(result.errorMessage).toBe("Failed to create payment intent");
-    });
-
-    it("returns failed with user-friendly message on StripeCardError", async () => {
-      const err = new Error("Your card has insufficient funds");
-      (err as any).type = "StripeCardError";
-      mockPaymentIntentsCreate.mockRejectedValue(err);
-
-      const result = await adapter.initializePayment(makeSession(), {});
-
-      expect(result.status).toBe("failed");
-      expect(result.errorMessage).toBe("Your card was declined");
-    });
-
-    it("returns failed with error message on generic Stripe error", async () => {
-      mockPaymentIntentsCreate.mockRejectedValue(
-        new Error("Stripe API rate limit exceeded")
-      );
-
-      const result = await adapter.initializePayment(makeSession(), {});
-
-      expect(result.status).toBe("failed");
-      expect(result.errorMessage).toBe("Stripe API rate limit exceeded");
-    });
-
-    it("returns failed when order ID is missing", async () => {
-      const session = makeSession({ order: null });
-      const result = await adapter.initializePayment(session, {});
-      expect(result.status).toBe("failed");
-      expect(result.errorMessage).toBe("No order ID in session");
-    });
-
-    it("returns failed when totals are missing", async () => {
-      const session = makeSession({ totals: null });
-      const result = await adapter.initializePayment(session, {});
-      expect(result.status).toBe("failed");
-      expect(result.errorMessage).toBe("Missing totals in session");
-    });
-
-    it("lowercases currency before sending to Stripe", async () => {
-      mockPaymentIntentsCreate.mockResolvedValue({
-        id: "pi_test_003",
-        client_secret: "pi_test_003_secret",
-      });
-
-      const session = makeSession({
-        totals: { subtotal: 100, tax: 0, shipping: 0, total: 100, currency: "USD" },
-      });
-      await adapter.initializePayment(session, {});
-
-      expect(mockPaymentIntentsCreate).toHaveBeenCalledWith(
-        expect.objectContaining({ currency: "usd" })
-      );
-    });
-  });
-
-  describe("confirmPayment", () => {
-    it("returns succeeded when PaymentIntent status is succeeded", async () => {
-      mockPaymentIntentsRetrieve.mockResolvedValue({
-        id: "pi_test_001",
-        status: "succeeded",
-        metadata: { order_id: "order_xyz" },
-      });
-
-      const result = await adapter.confirmPayment(makeSession(), {
-        paymentIntentId: "pi_test_001",
+      const adapter = createStripeAdapter(ADAPTER_CONFIG);
+      const result = await adapter.initializePayment(makeSession(), {
+        confirmation_token: "ctoken_abc",
       });
 
       expect(result.status).toBe("succeeded");
       expect(result.gatewayOrderId).toBe("pi_test_001");
-      expect(result.gatewayMetadata).toEqual({ paymentIntentId: "pi_test_001" });
-      expect(mockPaymentIntentsRetrieve).toHaveBeenCalledWith("pi_test_001");
-    });
-
-    it("returns failed when metadata order_id doesn't match session", async () => {
-      mockPaymentIntentsRetrieve.mockResolvedValue({
-        id: "pi_test_001",
-        status: "succeeded",
-        metadata: { order_id: "order_DIFFERENT" },
-      });
-
-      const result = await adapter.confirmPayment(makeSession(), {
+      expect(result.gatewayMetadata).toMatchObject({
         paymentIntentId: "pi_test_001",
       });
 
-      expect(result.status).toBe("failed");
-      expect(result.errorMessage).toBe("Payment intent does not match order");
+      expect(epSdk.createCartPaymentIntent).toHaveBeenCalledTimes(1);
+      const call = epSdk.createCartPaymentIntent.mock.calls[0][0];
+      expect(call.path).toEqual({ cartID: "cart_abc" });
+      // Token sent as an explicit Authorization header (not via the SDK client).
+      expect(call.headers.Authorization).toBe("Bearer admin-token-abc");
+      expect(call.body.data.gateway).toBe("elastic_path_payments_stripe");
+      expect(call.body.data.method).toBe("purchase");
+      // payment_method_types is intentionally omitted — it conflicts with
+      // automatic_payment_methods, which Stripe rejects.
+      expect(call.body.data.payment_method_types).toBeUndefined();
+      expect(call.body.data.options).toMatchObject({
+        confirm: true,
+        confirmation_token: "ctoken_abc",
+        automatic_payment_methods: { enabled: true },
+      });
     });
 
-    it("returns requires_action when PaymentIntent needs further action", async () => {
-      mockPaymentIntentsRetrieve.mockResolvedValue({
-        id: "pi_test_001",
-        status: "requires_action",
-        metadata: { order_id: "order_xyz" },
+    it("uses the admin token resolver before posting (request-scoped auth)", async () => {
+      epSdk.createCartPaymentIntent.mockResolvedValue({
+        data: {
+          data: {
+            payment_intent: { id: "pi_x", status: "succeeded" },
+          },
+        },
       });
 
-      const result = await adapter.confirmPayment(makeSession(), {
-        paymentIntentId: "pi_test_001",
+      const adapter = createStripeAdapter(ADAPTER_CONFIG);
+      await adapter.initializePayment(makeSession(), {
+        confirmation_token: "ctoken_abc",
       });
 
-      expect(result.status).toBe("requires_action");
-      expect(result.gatewayMetadata).toEqual({ paymentIntentId: "pi_test_001" });
+      expect(ADAPTER_CONFIG.getClientCredentialsToken).toHaveBeenCalledTimes(1);
     });
 
-    it("returns failed when PaymentIntent requires_payment_method", async () => {
-      mockPaymentIntentsRetrieve.mockResolvedValue({
-        id: "pi_test_001",
-        status: "requires_payment_method",
-        metadata: { order_id: "order_xyz" },
+    it("returns failed when EP responds with a non-succeeded status", async () => {
+      epSdk.createCartPaymentIntent.mockResolvedValue({
+        data: {
+          data: {
+            payment_intent: {
+              id: "pi_failed",
+              status: "requires_payment_method",
+            },
+          },
+        },
       });
 
-      const result = await adapter.confirmPayment(makeSession(), {
-        paymentIntentId: "pi_test_001",
-      });
-
-      expect(result.status).toBe("failed");
-      expect(result.errorMessage).toBe(
-        "Payment failed. Please try a different card."
-      );
-    });
-
-    it("returns failed with status message for unknown PaymentIntent status", async () => {
-      mockPaymentIntentsRetrieve.mockResolvedValue({
-        id: "pi_test_001",
-        status: "canceled",
-        metadata: { order_id: "order_xyz" },
-      });
-
-      const result = await adapter.confirmPayment(makeSession(), {
-        paymentIntentId: "pi_test_001",
-      });
-
-      expect(result.status).toBe("failed");
-      expect(result.errorMessage).toBe(
-        "Payment not completed. Status: canceled"
-      );
-    });
-
-    it("returns failed when paymentIntentId is missing", async () => {
-      const result = await adapter.confirmPayment(makeSession(), {});
-
-      expect(result.status).toBe("failed");
-      expect(result.errorMessage).toBe(
-        "Missing paymentIntentId for Stripe confirmation"
-      );
-    });
-
-    it("returns failed when Stripe retrieve throws", async () => {
-      mockPaymentIntentsRetrieve.mockRejectedValue(
-        new Error("No such payment_intent: pi_invalid")
-      );
-
-      const result = await adapter.confirmPayment(makeSession(), {
-        paymentIntentId: "pi_invalid",
+      const adapter = createStripeAdapter(ADAPTER_CONFIG);
+      const result = await adapter.initializePayment(makeSession(), {
+        confirmation_token: "ctoken_abc",
       });
 
       expect(result.status).toBe("failed");
-      expect(result.errorMessage).toBe(
-        "No such payment_intent: pi_invalid"
+      expect(result.errorMessage).toMatch(/requires_payment_method/);
+      expect(result.gatewayMetadata).toMatchObject({
+        paymentIntentId: "pi_failed",
+      });
+    });
+
+    it("returns failed when EP response is missing the payment_intent block", async () => {
+      epSdk.createCartPaymentIntent.mockResolvedValue({
+        data: { data: {} },
+      });
+
+      const adapter = createStripeAdapter(ADAPTER_CONFIG);
+      const result = await adapter.initializePayment(makeSession(), {
+        confirmation_token: "ctoken_abc",
+      });
+
+      expect(result.status).toBe("failed");
+    });
+
+    it("does not import the stripe npm package", () => {
+      const required = Object.keys(require.cache).filter((k) =>
+        k.includes("/node_modules/stripe/")
       );
+      expect(required).toEqual([]);
     });
   });
 });

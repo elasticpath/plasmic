@@ -192,15 +192,64 @@ describe("EPCheckoutSessionProvider", () => {
       expect(mockCreateSession).toHaveBeenCalledWith("cart-xyz");
     });
 
-    it("createSession does nothing when cartId is not provided", async () => {
+    it("createSession forwards undefined cartId — server resolves from better-auth session", async () => {
       const ref = React.createRef<any>();
       render(
-        <EPCheckoutSessionProvider ref={ref}>
+        <EPCheckoutSessionProvider ref={ref} autoCreate={false}>
           <span>content</span>
         </EPCheckoutSessionProvider>
       );
       await act(async () => {
         await ref.current.createSession();
+      });
+      expect(mockCreateSession).toHaveBeenCalledWith(undefined);
+    });
+
+    it("auto-creates a session on mount when none exists and autoCreate=true (default)", async () => {
+      // Override the mock for this one test: no session present.
+      useCheckoutSession.mockReturnValueOnce({
+        session: null,
+        isLoading: false,
+        error: null,
+        createSession: mockCreateSession,
+        updateSession: mockUpdateSession,
+        calculateShipping: mockCalcShipping,
+        placeOrder: mockPlaceOrder,
+        confirmPayment: mockConfirmPayment,
+        reset: mockReset,
+        refresh: mockRefresh,
+      });
+      await act(async () => {
+        render(
+          <EPCheckoutSessionProvider>
+            <span>content</span>
+          </EPCheckoutSessionProvider>
+        );
+      });
+      expect(mockCreateSession).toHaveBeenCalledTimes(1);
+      // Called with no cartId arg — server resolves from better-auth session.
+      expect(mockCreateSession).toHaveBeenCalledWith();
+    });
+
+    it("does NOT auto-create when autoCreate=false", async () => {
+      useCheckoutSession.mockReturnValueOnce({
+        session: null,
+        isLoading: false,
+        error: null,
+        createSession: mockCreateSession,
+        updateSession: mockUpdateSession,
+        calculateShipping: mockCalcShipping,
+        placeOrder: mockPlaceOrder,
+        confirmPayment: mockConfirmPayment,
+        reset: mockReset,
+        refresh: mockRefresh,
+      });
+      await act(async () => {
+        render(
+          <EPCheckoutSessionProvider autoCreate={false}>
+            <span>content</span>
+          </EPCheckoutSessionProvider>
+        );
       });
       expect(mockCreateSession).not.toHaveBeenCalled();
     });

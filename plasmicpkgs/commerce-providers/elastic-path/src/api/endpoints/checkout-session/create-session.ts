@@ -7,13 +7,14 @@
  * with the client-visible session shape plus Set-Cookie headers.
  */
 import { randomUUID } from "crypto";
-import { getACart } from "@epcc-sdk/sdks-shopper";
+import { getACart, createShopperClient } from "@epcc-sdk/sdks-shopper";
 import type {
   SessionRequest,
   SessionResponse,
   SessionHandlerContext,
   CheckoutSession,
   ClientCheckoutSession,
+  SessionTotals,
 } from "../../../checkout/session/types";
 import { hashCart } from "../../../checkout/session/cart-hash";
 import { createLogger } from "../../../utils/logger";
@@ -23,6 +24,26 @@ const log = createLogger("CreateSession");
 function toClientSession(s: CheckoutSession): ClientCheckoutSession {
   const { cartHash, ...rest } = s;
   return rest;
+}
+
+/**
+ * Derive session totals from an EP cart's `meta.display_price`. Returns null
+ * when the cart carries no price meta (e.g. an empty cart) — the Stripe
+ * Element then falls back to its default amount and /pay recomputes the total
+ * from the live cart anyway.
+ */
+function extractTotals(cartData: any): SessionTotals | null {
+  const dp = cartData?.meta?.display_price;
+  if (!dp) return null;
+  const total = dp.with_tax?.amount;
+  if (typeof total !== "number") return null;
+  return {
+    subtotal: dp.without_tax?.amount ?? total,
+    tax: dp.tax?.amount ?? 0,
+    shipping: 0,
+    total,
+    currency: dp.with_tax?.currency ?? "",
+  };
 }
 
 export async function handleCreateSession(
@@ -45,22 +66,29 @@ export async function handleCreateSession(
   const cartId = body.cartId as string;
   const ttl = ctx.sessionTtlSeconds ?? 1800;
 
-  // The EP SDK's Client<> type is complex; the settings-only object is the
-  // documented lightweight pattern used throughout this codebase.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const client = {
-    settings: {
-      application_id: ctx.epCredentials.clientId,
-      host: ctx.epCredentials.apiBaseUrl,
+  // Authenticated client to read the cart (compute hash + totals). Prefer the
+  // shopper token; fall back to the admin token when no shopper token is
+  // present. A tokenless client cannot read a private cart (→ EP 401).
+  let cartReadToken = ctx.shopperAccessToken ?? "";
+  if (!cartReadToken && ctx.getClientCredentialsToken) {
+    cartReadToken = await ctx.getClientCredentialsToken();
+  }
+  const { client } = createShopperClient(
+    { baseUrl: ctx.epCredentials.apiBaseUrl },
+    {
+      clientId: ctx.epCredentials.clientId,
+      storage: { get: () => cartReadToken, set: () => {} },
     },
-  } as any;
+  );
 
   let cartItems: Array<{ id: string; quantity: number; unit_price?: { amount?: number }; value?: { amount?: number } }> = [];
+  let totals: SessionTotals | null = null;
 
   try {
     const cartResponse = await getACart({ client, path: { cartID: cartId } });
     const items = (cartResponse.data as any)?.included?.items ?? (cartResponse.data as any)?.data?.items ?? [];
     cartItems = Array.isArray(items) ? items : [];
+    totals = extractTotals((cartResponse.data as any)?.data);
   } catch (err) {
     log.error("Failed to fetch cart from EP", {
       cartId,
@@ -79,6 +107,9 @@ export async function handleCreateSession(
   const sessionId = randomUUID();
   const now = Date.now();
 
+  const requiresShipping =
+    typeof body.requiresShipping === "boolean" ? body.requiresShipping : true;
+
   const session: CheckoutSession = {
     id: sessionId,
     status: "open",
@@ -89,7 +120,9 @@ export async function handleCreateSession(
     billingAddress: null,
     selectedShippingRateId: null,
     availableShippingRates: [],
-    totals: null,
+    totals,
+    requiresShipping,
+    customAttributes: {},
     payment: {
       gateway: null,
       status: "idle",

@@ -16,6 +16,7 @@ import registerComponent, {
 } from "@plasmicapp/host/registerComponent";
 import React, {
   useCallback,
+  useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -47,6 +48,13 @@ export interface EPCheckoutSessionProviderProps {
   apiBaseUrl?: string;
   previewState?: PreviewState;
   className?: string;
+  /**
+   * When true (default), the provider auto-creates a checkout session on
+   * first render if none exists. The server resolves `cartId` from the
+   * better-auth session, so designers don't have to thread it through
+   * Plasmic interactions.
+   */
+  autoCreate?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -57,7 +65,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
   any,
   EPCheckoutSessionProviderProps
 >(function EPCheckoutSessionRuntime(props, ref) {
-  const { children, apiBaseUrl = "/api" } = props;
+  const { children, apiBaseUrl = "/api", autoCreate = true } = props;
 
   const {
     session,
@@ -90,10 +98,8 @@ const EPCheckoutSessionRuntime = React.forwardRef<
   // RefActions
   const handleCreateSession = useCallback(
     async (cartId?: string) => {
-      if (!cartId) {
-        log.error("createSession called without cartId");
-        return;
-      }
+      // cartId is now optional — server resolves from the better-auth
+      // session when omitted.
       try {
         await createSession(cartId);
       } catch (err) {
@@ -104,6 +110,26 @@ const EPCheckoutSessionRuntime = React.forwardRef<
     },
     [createSession]
   );
+
+  // Auto-create on first render when no session exists.
+  const autoCreatedRef = useRef(false);
+  useEffect(() => {
+    if (!autoCreate) return;
+    if (isLoading) return;
+    // Create a fresh session when none exists OR the existing one is terminal
+    // (a finished/expired checkout must not block starting a new one — e.g.
+    // returning to /checkout with a new cart after completing an order).
+    const needsSession =
+      !session || session.status === "complete" || session.status === "expired";
+    if (!needsSession) return;
+    if (autoCreatedRef.current) return;
+    autoCreatedRef.current = true;
+    createSession().catch((err) => {
+      log.warn("Auto-create session failed", {
+        error: err instanceof Error ? err.message : String(err),
+      } as Record<string, unknown>);
+    });
+  }, [autoCreate, isLoading, session, createSession]);
 
   const handleUpdateSession = useCallback(
     async (data?: Record<string, unknown>) => {
@@ -130,25 +156,38 @@ const EPCheckoutSessionRuntime = React.forwardRef<
   }, [calcShippingFn]);
 
   const handlePlaceOrder = useCallback(async () => {
-    const gw = gatewayRef.current;
-    if (!gw) {
-      log.error(
-        "placeOrder called but no gateway registered. " +
-          "Place EPCloverPayment or EPStripePayment inside this provider."
-      );
-      return;
-    }
-
     try {
+      // Free orders (zero total) need no card / gateway — the server settles
+      // them with the manual gateway. Don't ask a registered gateway to
+      // tokenize (there's no card to read).
+      if (session?.totals?.total === 0) {
+        return await placeOrderFn({ gateway: "manual" });
+      }
+
+      const gw = gatewayRef.current;
+      if (!gw) {
+        log.error(
+          "placeOrder called but no gateway registered. " +
+            "Place EPCloverPayment or EPStripePayment inside this provider."
+        );
+        return {
+          success: false,
+          error: {
+            message: "No payment method available",
+            code: "NO_GATEWAY",
+          },
+        };
+      }
+
       // Ask the gateway component for its data (e.g. tokenize the card)
       const gwData = await gw.confirm();
-      await placeOrderFn({ gateway: gw.name, ...gwData });
+      return await placeOrderFn({ gateway: gw.name, ...gwData });
     } catch (err) {
-      log.error("placeOrder failed", {
-        error: err instanceof Error ? err.message : String(err),
-      } as Record<string, unknown>);
+      const message = err instanceof Error ? err.message : String(err);
+      log.error("placeOrder failed", { message } as Record<string, unknown>);
+      return { success: false, error: { message } };
     }
-  }, [placeOrderFn]);
+  }, [placeOrderFn, session]);
 
   const handleConfirmPayment = useCallback(
     async (confirmData?: Record<string, unknown>) => {
@@ -282,13 +321,22 @@ export const epCheckoutSessionProviderMeta: CodeComponentMeta<EPCheckoutSessionP
           "Show mock session data for design-time editing.",
         advanced: true,
       },
+      autoCreate: {
+        type: "boolean",
+        defaultValue: true,
+        displayName: "Auto-create Session",
+        description:
+          "Create a session on first render if none exists. Server resolves cartId from the better-auth session.",
+        advanced: true,
+      },
     },
     importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
     importName: "EPCheckoutSessionProvider",
     providesData: true,
     refActions: {
       createSession: {
-        description: "Create a new checkout session for a cart",
+        description:
+          "Create a new checkout session. cartId is optional — server resolves from the better-auth session when omitted.",
         argTypes: [{ name: "cartId", type: "string" }],
       },
       updateSession: {
