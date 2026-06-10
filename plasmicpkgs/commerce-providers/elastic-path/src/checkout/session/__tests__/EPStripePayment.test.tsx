@@ -161,8 +161,8 @@ describe("EPStripePayment", () => {
         <span>content</span>
       </EPStripePayment>
     );
-    // Mock form should be present (Card number label)
-    expect(container.textContent).toContain("Card number");
+    // Mock form sentinel is rendered in design-time
+    expect(container.querySelector("[data-ep-stripe-payment]")).toBeTruthy();
   });
 
   it("has correct component metadata", () => {

@@ -18,6 +18,7 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
   paymentSetup: jest.fn(),
   confirmPayment: jest.fn(),
   getShippingOptions: jest.fn(),
+  createShopperClient: jest.fn(() => ({ client: {} })),
 }));
 
 // We must use require() here (not ES import) to obtain the mocked module
@@ -60,7 +61,6 @@ function createMockCtx(
   return {
     epCredentials: {
       clientId: "test-client-id",
-      clientSecret: "test-client-secret",
       apiBaseUrl: "https://api.test.com",
     },
     adapterRegistry: {

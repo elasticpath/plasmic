@@ -30,6 +30,15 @@ export type { CloverAdapterConfig } from "./checkout/session/adapters/clover-ada
 export { createStripeAdapter } from "./checkout/session/adapters/stripe-adapter";
 export type { StripeAdapterConfig } from "./checkout/session/adapters/stripe-adapter";
 
+// Client-credentials token resolver (request-scoped, memoized per request).
+export {
+  createClientCredentialsTokenResolver,
+} from "./auth/ep-plugin/client-credentials-resolver";
+export type {
+  ClientCredentialsResolverConfig,
+  ClientCredentialsTokenResolver,
+} from "./auth/ep-plugin/client-credentials-resolver";
+
 // Types needed by consumer route files
 export type {
   SessionRequest,
@@ -72,6 +81,7 @@ export {
   epAddCartItem,
   epUpdateCartItem,
   epRemoveCartItem,
+  epPlaceOrder,
   registerEpCustomFunctions,
   buildEpCtx,
   withEpSession,
@@ -85,6 +95,9 @@ export type {
   EpAddCartItemInput,
   EpUpdateCartItemInput,
   EpRemoveCartItemInput,
+  EpPlaceOrderInput,
+  EpPlaceOrderAddress,
+  EpPlaceOrderResult,
   BuildEpCtxSessionInput,
   EpCtx,
   EpSessionContext,

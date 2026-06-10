@@ -12,17 +12,21 @@
 jest.mock("@epcc-sdk/sdks-shopper", () => ({
   getACart: jest.fn(),
   checkoutApi: jest.fn(),
-  paymentSetup: jest.fn(),
-  confirmPayment: jest.fn(),
-  getShippingOptions: jest.fn(),
+  confirmOrder: jest.fn(),
+  paymentSetup: jest.fn(() => ({ data: { data: { status: "paid" } } })),
+  updateACart: jest.fn(() => ({ data: { data: {} } })),
+  deleteACart: jest.fn(),
+  createShopperClient: jest.fn(() => ({ client: {} })),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const epSdk = require("@epcc-sdk/sdks-shopper") as {
   getACart: jest.Mock;
   checkoutApi: jest.Mock;
+  confirmOrder: jest.Mock;
   paymentSetup: jest.Mock;
-  confirmPayment: jest.Mock;
+  updateACart: jest.Mock;
+  deleteACart: jest.Mock;
 };
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -104,11 +108,15 @@ function createMockStore(session: CheckoutSession | null = null): SessionStore {
 }
 
 function createMockAdapter(
-  initResult: PaymentAdapterResult = { status: "ready" }
+  initResult: PaymentAdapterResult = {
+    status: "succeeded",
+    gatewayOrderId: "pi_default",
+    gatewayMetadata: { paymentIntentId: "pi_default" },
+  }
 ): PaymentAdapter {
   return {
     initializePayment: jest.fn().mockResolvedValue(initResult),
-    confirmPayment: jest.fn().mockResolvedValue({ status: "succeeded", gatewayOrderId: "gw-123" }),
+    confirmPayment: jest.fn().mockResolvedValue({ status: "succeeded" }),
   };
 }
 
@@ -127,11 +135,12 @@ function createMockCtx(
   return {
     epCredentials: {
       clientId: "test-id",
-      clientSecret: "test-secret",
       apiBaseUrl: "https://api.test.com",
     },
     adapterRegistry: createMockRegistry(adapter),
     sessionStore: createMockStore(session),
+    shopperAccessToken: "shopper-token",
+    getClientCredentialsToken: jest.fn(async () => "admin-token"),
     ...overrides,
   };
 }
@@ -174,13 +183,14 @@ describe("handlePay", () => {
   beforeEach(() => {
     epSdk.getACart.mockReset();
     epSdk.checkoutApi.mockReset();
-    epSdk.paymentSetup.mockReset();
-    epSdk.confirmPayment.mockReset();
+    epSdk.confirmOrder.mockReset();
+    epSdk.deleteACart.mockReset();
 
     // Default: all EP calls succeed
     epSdk.getACart.mockResolvedValue(makeCartResponse(CART_ITEMS) as any);
     epSdk.checkoutApi.mockResolvedValue(makeCheckoutResponse() as any);
-    epSdk.paymentSetup.mockResolvedValue(makePaymentSetupResponse() as any);
+    epSdk.confirmOrder.mockResolvedValue({ data: { data: { id: "order-1" } } } as any);
+    epSdk.deleteACart.mockResolvedValue({ data: undefined } as any);
   });
 
   // -------------------------------------------------------------------------
@@ -362,122 +372,6 @@ describe("handlePay", () => {
       expect((res.body as any).error.code).toBe("EP_ERROR");
     });
 
-    it("returns 502 when checkoutApi (cart→order) fails", async () => {
-      epSdk.checkoutApi.mockRejectedValue(new Error("Checkout failed"));
-
-      const res = await handlePay(
-        createMockReq({ gateway: "stripe" }),
-        createMockCtx(makeSession(), createMockAdapter())
-      );
-      expect(res.status).toBe(502);
-      expect((res.body as any).error.code).toBe("EP_ERROR");
-    });
-
-    it("returns 502 when checkoutApi response has no order ID", async () => {
-      epSdk.checkoutApi.mockResolvedValue({ data: { data: {} } } as any);
-
-      const res = await handlePay(
-        createMockReq({ gateway: "stripe" }),
-        createMockCtx(makeSession(), createMockAdapter())
-      );
-      expect(res.status).toBe(502);
-    });
-
-    it("returns 502 when paymentSetup (authorize) fails", async () => {
-      epSdk.paymentSetup.mockRejectedValue(new Error("Auth failed"));
-
-      const res = await handlePay(
-        createMockReq({ gateway: "stripe" }),
-        createMockCtx(makeSession(), createMockAdapter())
-      );
-      expect(res.status).toBe(502);
-      expect((res.body as any).error.code).toBe("EP_ERROR");
-    });
-
-    it("returns 502 when paymentSetup response has no transaction ID", async () => {
-      epSdk.paymentSetup.mockResolvedValue({ data: { data: {} } } as any);
-
-      const res = await handlePay(
-        createMockReq({ gateway: "stripe" }),
-        createMockCtx(makeSession(), createMockAdapter())
-      );
-      expect(res.status).toBe(502);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // Adapter result mapping
-  // -------------------------------------------------------------------------
-
-  describe("adapter result: 'ready'", () => {
-    it("returns 200 on successful adapter 'ready' result", async () => {
-      const res = await handlePay(
-        createMockReq({ gateway: "stripe" }),
-        createMockCtx(makeSession(), createMockAdapter({ status: "ready" }))
-      );
-      expect(res.status).toBe(200);
-    });
-
-    it("session status becomes 'processing' on 'ready'", async () => {
-      const res = await handlePay(
-        createMockReq({ gateway: "stripe" }),
-        createMockCtx(makeSession(), createMockAdapter({ status: "ready" }))
-      );
-      expect((res.body as any).data.session.status).toBe("processing");
-    });
-
-    it("payment.status becomes 'pending' on 'ready'", async () => {
-      const res = await handlePay(
-        createMockReq({ gateway: "stripe" }),
-        createMockCtx(makeSession(), createMockAdapter({ status: "ready" }))
-      );
-      expect((res.body as any).data.session.payment.status).toBe("pending");
-    });
-
-    it("session contains order id after successful checkout", async () => {
-      const res = await handlePay(
-        createMockReq({ gateway: "stripe" }),
-        createMockCtx(makeSession(), createMockAdapter({ status: "ready" }))
-      );
-      expect((res.body as any).data.session.order?.id).toBe("order-1");
-    });
-
-    it("adapter clientToken is propagated to session.payment.clientToken", async () => {
-      const adapter = createMockAdapter({
-        status: "ready",
-        clientToken: "pi_test_secret",
-      });
-      const res = await handlePay(
-        createMockReq({ gateway: "stripe" }),
-        createMockCtx(makeSession(), adapter)
-      );
-      expect((res.body as any).data.session.payment.clientToken).toBe("pi_test_secret");
-    });
-  });
-
-  describe("adapter result: 'requires_action'", () => {
-    it("returns 200 with requires_action payment status", async () => {
-      const adapter = createMockAdapter({
-        status: "requires_action",
-        actionData: { redirectUrl: "https://3ds.example.com" },
-      });
-      const res = await handlePay(
-        createMockReq({ gateway: "stripe" }),
-        createMockCtx(makeSession(), adapter)
-      );
-      expect(res.status).toBe(200);
-      expect((res.body as any).data.session.payment.status).toBe("requires_action");
-    });
-
-    it("actionData is set on payment for 'requires_action'", async () => {
-      const actionData = { redirectUrl: "https://3ds.example.com" };
-      const adapter = createMockAdapter({ status: "requires_action", actionData });
-      const res = await handlePay(
-        createMockReq({ gateway: "stripe" }),
-        createMockCtx(makeSession(), adapter)
-      );
-      expect((res.body as any).data.session.payment.actionData).toEqual(actionData);
-    });
   });
 
   describe("adapter result: 'failed'", () => {
@@ -534,145 +428,56 @@ describe("handlePay", () => {
   });
 
   // -------------------------------------------------------------------------
-  // EP order retry — reuse existing order on payment retry
-  // -------------------------------------------------------------------------
-
-  describe("EP order retry", () => {
-    it("skips checkoutApi when session already has an order (retry path)", async () => {
-      const session = makeSession({
-        order: { id: "existing-order", transactionId: "old-tx" },
-        totals: { subtotal: 8000, tax: 1000, shipping: 500, total: 9000, currency: "USD" },
-      });
-
-      const res = await handlePay(
-        createMockReq({ gateway: "stripe" }),
-        createMockCtx(session, createMockAdapter({ status: "ready" }))
-      );
-
-      expect(res.status).toBe(200);
-      // checkoutApi should NOT have been called — the order already exists
-      expect(epSdk.checkoutApi).not.toHaveBeenCalled();
-      // paymentSetup SHOULD have been called on the existing order
-      expect(epSdk.paymentSetup).toHaveBeenCalledWith(
-        expect.objectContaining({
-          path: { orderID: "existing-order" },
-        })
-      );
-    });
-
-    it("preserves existing totals on retry (no order meta to extract from)", async () => {
-      const existingTotals = { subtotal: 5000, tax: 500, shipping: 300, total: 5800, currency: "USD" };
-      const session = makeSession({
-        order: { id: "existing-order", transactionId: "old-tx" },
-        totals: existingTotals,
-      });
-
-      const res = await handlePay(
-        createMockReq({ gateway: "stripe" }),
-        createMockCtx(session, createMockAdapter({ status: "ready" }))
-      );
-
-      expect(res.status).toBe(200);
-      const returnedTotals = (res.body as any).data.session.totals;
-      expect(returnedTotals).toEqual(existingTotals);
-    });
-
-    it("uses new transactionId from re-authorization on retry", async () => {
-      epSdk.paymentSetup.mockResolvedValue(makePaymentSetupResponse("new-tx-retry") as any);
-
-      const session = makeSession({
-        order: { id: "existing-order", transactionId: "old-tx" },
-        totals: { subtotal: 8000, tax: 1000, shipping: 500, total: 9000, currency: "USD" },
-      });
-
-      const res = await handlePay(
-        createMockReq({ gateway: "stripe" }),
-        createMockCtx(session, createMockAdapter({ status: "ready" }))
-      );
-
-      expect(res.status).toBe(200);
-      expect(
-        (res.body as any).data.session.payment.gatewayMetadata.epTransactionId
-      ).toBe("new-tx-retry");
-      expect((res.body as any).data.session.order.id).toBe("existing-order");
-    });
-
-    it("still validates cart hash on retry", async () => {
-      const differentItems = [
-        { id: "item-1", quantity: 99, unit_price: { amount: 1500 } },
-      ];
-      epSdk.getACart.mockResolvedValue(makeCartResponse(differentItems) as any);
-
-      const session = makeSession({
-        order: { id: "existing-order", transactionId: "old-tx" },
-        totals: { subtotal: 8000, tax: 1000, shipping: 500, total: 9000, currency: "USD" },
-      });
-
-      const res = await handlePay(
-        createMockReq({ gateway: "stripe" }),
-        createMockCtx(session, createMockAdapter())
-      );
-
-      expect(res.status).toBe(409);
-      expect((res.body as any).error.code).toBe("CART_MISMATCH");
-    });
-
-    it("returns 502 when re-authorization fails on retry", async () => {
-      epSdk.paymentSetup.mockRejectedValue(new Error("Auth failed on retry"));
-
-      const session = makeSession({
-        order: { id: "existing-order", transactionId: "old-tx" },
-        totals: { subtotal: 8000, tax: 1000, shipping: 500, total: 9000, currency: "USD" },
-      });
-
-      const res = await handlePay(
-        createMockReq({ gateway: "stripe" }),
-        createMockCtx(session, createMockAdapter())
-      );
-
-      expect(res.status).toBe(502);
-      expect((res.body as any).error.code).toBe("EP_ERROR");
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // Response invariants
+  // Response invariants (slice 1: single-shot success path)
   // -------------------------------------------------------------------------
 
   describe("response invariants", () => {
     it("client session does NOT expose cartHash", async () => {
       const res = await handlePay(
-        createMockReq({ gateway: "stripe" }),
-        createMockCtx(makeSession(), createMockAdapter())
+        createMockReq({ gateway: "stripe", confirmation_token: "ct" }),
+        createMockCtx(
+          makeSession(),
+          createMockAdapter({
+            status: "succeeded",
+            gatewayOrderId: "pi_1",
+            gatewayMetadata: { paymentIntentId: "pi_1" },
+          })
+        )
       );
       const session = (res.body as any).data.session;
-      expect(Object.prototype.hasOwnProperty.call(session, "cartHash")).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(session, "cartHash")).toBe(
+        false
+      );
     });
 
     it("response includes Set-Cookie header on success", async () => {
       const res = await handlePay(
-        createMockReq({ gateway: "stripe" }),
-        createMockCtx(makeSession(), createMockAdapter())
+        createMockReq({ gateway: "stripe", confirmation_token: "ct" }),
+        createMockCtx(
+          makeSession(),
+          createMockAdapter({
+            status: "succeeded",
+            gatewayOrderId: "pi_1",
+            gatewayMetadata: { paymentIntentId: "pi_1" },
+          })
+        )
       );
       expect(res.headers?.["Set-Cookie"]).toBeDefined();
     });
 
     it("gateway name is stored on session.payment.gateway", async () => {
       const res = await handlePay(
-        createMockReq({ gateway: "stripe" }),
-        createMockCtx(makeSession(), createMockAdapter())
+        createMockReq({ gateway: "stripe", confirmation_token: "ct" }),
+        createMockCtx(
+          makeSession(),
+          createMockAdapter({
+            status: "succeeded",
+            gatewayOrderId: "pi_1",
+            gatewayMetadata: { paymentIntentId: "pi_1" },
+          })
+        )
       );
       expect((res.body as any).data.session.payment.gateway).toBe("stripe");
-    });
-
-    it("EP transactionId is stored in payment.gatewayMetadata", async () => {
-      const res = await handlePay(
-        createMockReq({ gateway: "stripe" }),
-        createMockCtx(makeSession(), createMockAdapter())
-      );
-      expect(
-        (res.body as any).data.session.payment.gatewayMetadata.epTransactionId
-      ).toBe("tx-1");
     });
   });
 });

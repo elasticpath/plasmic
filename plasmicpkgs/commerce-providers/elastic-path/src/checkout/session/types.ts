@@ -30,6 +30,8 @@ export type PaymentStatus =
 export interface SessionAddress {
   firstName: string;
   lastName: string;
+  /** Optional company / organization name (maps to EP `company_name`). */
+  company?: string;
   line1: string;
   line2?: string;
   city: string;
@@ -114,6 +116,22 @@ export interface CheckoutSession {
   totals: SessionTotals | null;
   payment: SessionPayment;
   order: SessionOrder | null;
+  /**
+   * Whether this checkout collects a shipping address + rate. Defaults to
+   * `true` (the multi-step shipping flow). Single-page / digital checkouts
+   * (e.g. downloadable products) set this `false`: the /pay handler then
+   * neither requires `shippingAddress`/`selectedShippingRateId` nor a
+   * shipping step, and the checkout body defaults shipping to billing.
+   */
+  requiresShipping?: boolean;
+  /**
+   * Arbitrary extra checkout fields and consent flags collected by the
+   * store's form (e.g. industry, VAT number, marketing opt-in). Persisted
+   * to the cart's `custom_attributes` immediately before `checkoutApi` so
+   * they travel with the order context. Reserved order fields
+   * (customer/billing/shipping) are NOT carried here.
+   */
+  customAttributes?: Record<string, string | number | boolean>;
   expiresAt: number; // epoch ms
 }
 
@@ -198,7 +216,6 @@ export interface SessionResponse {
 
 export interface EPCredentials {
   clientId: string;
-  clientSecret: string;
   apiBaseUrl: string;
 }
 
@@ -208,6 +225,18 @@ export interface SessionHandlerContext {
   sessionStore: SessionStore;
   /** Session TTL in seconds (default 1800 = 30 min). */
   sessionTtlSeconds?: number;
+  /**
+   * Shopper-scoped access token for read operations. Resolved per-request
+   * by the host app's checkout-context factory from the better-auth session.
+   */
+  shopperAccessToken?: string;
+  /**
+   * Request-scoped admin token resolver for EP operations that require
+   * `client_credentials` grant (createCartPaymentIntent, checkoutApi,
+   * confirmOrder, cart cleanup). Memoized within the request via closure.
+   * Never cached across requests.
+   */
+  getClientCredentialsToken?: () => Promise<string>;
 }
 
 // ---------------------------------------------------------------------------
@@ -225,6 +254,8 @@ export interface AdapterRegistry {
 
 export interface CreateSessionRequest {
   cartId: string;
+  /** Optional — see CheckoutSession.requiresShipping. Defaults to true. */
+  requiresShipping?: boolean;
 }
 
 export interface UpdateSessionRequest {
@@ -232,6 +263,8 @@ export interface UpdateSessionRequest {
   shippingAddress?: SessionAddress;
   billingAddress?: SessionAddress;
   selectedShippingRateId?: string;
+  requiresShipping?: boolean;
+  customAttributes?: Record<string, string | number | boolean>;
 }
 
 export interface PayRequest {

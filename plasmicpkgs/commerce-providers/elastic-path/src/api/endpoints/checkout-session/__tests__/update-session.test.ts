@@ -72,7 +72,6 @@ function createMockCtx(
   return {
     epCredentials: {
       clientId: "test-id",
-      clientSecret: "test-secret",
       apiBaseUrl: "https://api.test.com",
     },
     adapterRegistry: {

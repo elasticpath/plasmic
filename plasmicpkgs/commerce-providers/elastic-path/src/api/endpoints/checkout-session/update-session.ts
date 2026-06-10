@@ -77,6 +77,17 @@ export async function handleUpdateSession(
     ...(update.selectedShippingRateId !== undefined && {
       selectedShippingRateId: update.selectedShippingRateId,
     }),
+    ...(update.requiresShipping !== undefined && {
+      requiresShipping: update.requiresShipping,
+    }),
+    // customAttributes merge (not replace) so partial updates accumulate the
+    // extra fields + consent flags a single-page form collects.
+    ...(update.customAttributes !== undefined && {
+      customAttributes: {
+        ...(session.customAttributes ?? {}),
+        ...update.customAttributes,
+      },
+    }),
   };
 
   let setResult: { headers: Record<string, string> };

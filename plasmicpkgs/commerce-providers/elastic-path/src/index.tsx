@@ -178,6 +178,14 @@ export function registerAll(loader?: Registerable) {
   registerEPProductExtensionFieldList(loader);
   registerEPProductExtensionTemplateList(loader);
   registerEPProductExtensionsProvider(loader);
+
+  // Product extensions — register field/leaf components first so they're
+  // available as default slot content in the parent components above them.
+  registerEPProductExtensionField(loader);
+  registerEPProductExtensionTemplateField(loader);
+  registerEPProductExtensionFieldList(loader);
+  registerEPProductExtensionTemplateList(loader);
+  registerEPProductExtensionsProvider(loader);
   // Field-display components — pick one field by address (siblings to the iteration components above).
   registerEPProductField(loader);
   registerEPProductExtensionValue(loader);
