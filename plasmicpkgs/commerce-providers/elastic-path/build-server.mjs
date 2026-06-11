@@ -61,6 +61,10 @@ for (const file of CLIENT_ENTRY_FILES) {
   console.log(`✓ Prepended "use client" → ${file}`);
 }
 
+// NOTE: keep this re-export surface in lockstep with src/server.ts. tsdx only
+// emits .d.ts for the client entry's graph, so the server entry's declaration
+// is hand-mirrored here; a missing line means the runtime export works but has
+// no type, breaking consumer typechecks.
 const dts = `\
 export { handleCreateSession, handleGetSession, handleUpdateSession, handleCalculateShipping, handlePay, handleConfirm } from "./api/endpoints/checkout-session";
 export { CookieSessionStore } from "./checkout/session/cookie-store";
@@ -69,11 +73,13 @@ export { createCloverAdapter } from "./checkout/session/adapters/clover-adapter"
 export type { CloverAdapterConfig } from "./checkout/session/adapters/clover-adapter";
 export { createStripeAdapter } from "./checkout/session/adapters/stripe-adapter";
 export type { StripeAdapterConfig } from "./checkout/session/adapters/stripe-adapter";
-export type { SessionRequest, SessionResponse, SessionHandlerContext, EPCredentials, AdapterRegistry, SessionStore, PaymentAdapter } from "./checkout/session/types";
+export { createClientCredentialsTokenResolver } from "./auth/ep-plugin/client-credentials-resolver";
+export type { ClientCredentialsResolverConfig, ClientCredentialsTokenResolver } from "./auth/ep-plugin/client-credentials-resolver";
+export type { SessionRequest, SessionResponse, SessionHandlerContext, EPCredentials, AdapterRegistry, SessionStore, PaymentAdapter, CustomAttributeAllowList } from "./checkout/session/types";
 export { createEpAuth, createBetterEpAuth, extractEpProviderConfig, epPlugin, epAuthMiddleware, createCartRoutes, createEpProxyRoutes } from "./auth";
 export type { EpAuth, EpAuthConfig, EpSession, EpProviderBundleConfig, EpPluginOptions, EpProxyRoutes, CreateEpProxyRoutesOptions } from "./auth";
-export { epGetProduct, epGetCart, epGetProductList, epGetRelatedProducts, registerEpCustomFunctions, buildEpCtx } from "./ep-server-functions";
-export type { EpGetProductInput, EpGetCartInput, EpGetProductListInput, EpGetRelatedProductsInput, BuildEpCtxSessionInput, EpCtx, EpServerAuth } from "./ep-server-functions";
+export { epGetProduct, epGetCart, epGetProductList, epGetRelatedProducts, epAddCartItem, epUpdateCartItem, epRemoveCartItem, epPlaceOrder, registerEpCustomFunctions, buildEpCtx, withEpSession, getCurrentEpSession } from "./ep-server-functions";
+export type { EpGetProductInput, EpGetCartInput, EpGetProductListInput, EpGetRelatedProductsInput, EpAddCartItemInput, EpUpdateCartItemInput, EpRemoveCartItemInput, EpPlaceOrderInput, EpPlaceOrderAddress, EpPlaceOrderResult, BuildEpCtxSessionInput, EpCtx, EpSessionContext, EpServerAuth } from "./ep-server-functions";
 `;
 
 writeFileSync("dist/server.d.ts", dts);
