@@ -6,7 +6,6 @@ import {
   inferType,
   isPresent,
 } from "../../utils/field-format";
-import type { FormatSpec } from "./format";
 import type { FormatSpec } from "../../utils/field-format";
 import type { ExtensionFieldType, ExtensionTemplate } from "../../types/extensions";
 

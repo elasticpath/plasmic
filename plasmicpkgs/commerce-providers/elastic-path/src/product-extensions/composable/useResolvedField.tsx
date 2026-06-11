@@ -11,7 +11,6 @@ import {
   extractRawExtensions,
   normalizeExtensions,
 } from "../../utils/field-format";
-import type { FormatSpec } from "./format";
 import type { FormatSpec } from "../../utils/field-format";
 import {
   resolveExtensionField,
