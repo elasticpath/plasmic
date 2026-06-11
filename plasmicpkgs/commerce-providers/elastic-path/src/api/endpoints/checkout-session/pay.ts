@@ -38,6 +38,11 @@ import { hashCart } from "../../../checkout/session/cart-hash";
 import { buildGuestCheckoutBody } from "../../../checkout/session/checkout-body-builder";
 import { runCartCleanup } from "../../../checkout/session/cart-cleanup";
 import { persistOrderCustomFields } from "../../../checkout/session/order-custom-fields";
+import { filterAllowedCustomAttributes } from "../../../checkout/session/custom-attributes-allowlist";
+import {
+  resolveRequiresShipping,
+  cartHasPhysicalItem,
+} from "../../../checkout/session/cart-shipping";
 import {
   applyPaymentSucceeded,
   applyPaymentFailed,
@@ -55,26 +60,6 @@ const FREE_ORDER_METHOD = "purchase";
 function toClientSession(s: CheckoutSession): ClientCheckoutSession {
   const { cartHash, ...rest } = s;
   return rest;
-}
-
-/** Order total in EP minor units, summed across cart items. Prefers each
- * item's line `value.amount`; falls back to `unit_price.amount * quantity`.
- * Used to decide the free (== 0) vs paid (> 0) settlement path. */
-function cartItemsTotal(
-  items: Array<{
-    quantity?: number;
-    unit_price?: { amount?: number };
-    value?: { amount?: number };
-  }>
-): number {
-  return items.reduce((sum, it) => {
-    const line =
-      it.value?.amount ??
-      (it.unit_price?.amount != null
-        ? it.unit_price.amount * (it.quantity ?? 1)
-        : 0);
-    return sum + line;
-  }, 0);
 }
 
 /** Persist the session's extra fields + consent flags as cart custom
@@ -301,29 +286,31 @@ export async function handlePay(
     };
   }
 
-  // 2b. Validate required checkout fields. Shipping address + rate are only
-  //     required when the checkout collects shipping (requiresShipping !==
-  //     false) — digital / single-page checkouts skip them.
-  const requiresShipping = session.requiresShipping !== false;
-  const missingFields: string[] = [];
-  if (!session.customerInfo) missingFields.push("customerInfo");
-  if (!session.billingAddress) missingFields.push("billingAddress");
-  if (requiresShipping && !session.shippingAddress)
-    missingFields.push("shippingAddress");
-  if (requiresShipping && !session.selectedShippingRateId)
-    missingFields.push("selectedShippingRateId");
+  // 2b. Required-field validation is deferred to step 3a (after the cart
+  //     fetch), because whether shipping is required is server-authoritative —
+  //     inferred from the cart's physical items, not just the client flag — so
+  //     all missing fields (contact + shipping) are reported in one response.
 
-  if (missingFields.length > 0) {
-    return {
-      status: 400,
-      body: {
-        success: false,
-        error: {
-          message: `Missing required fields: ${missingFields.join(", ")}`,
-          code: "MISSING_FIELDS",
-        },
-      },
-    };
+  // 2c. Re-apply the customAttributes allow-list before any persistence
+  //     (defence in depth — updateSession already gated these on the way in).
+  //     Every downstream write (cart custom_attributes, order flow fields, on
+  //     both the paid and free branches) reads session.customAttributes, so
+  //     filtering once here gates them all. Fail closed: with no allow-list
+  //     configured, nothing persists.
+  {
+    const { allowed, dropped } = filterAllowedCustomAttributes(
+      session.customAttributes,
+      ctx.allowedCustomAttributeKeys
+    );
+    if (dropped.length > 0) {
+      // Keys only — never the values (they may be PII).
+      log.warn("Dropped customAttribute keys not on the allow-list", {
+        sessionId: session.id,
+        dropped: dropped.join(","),
+        allowListConfigured: ctx.allowedCustomAttributeKeys !== undefined,
+      } as Record<string, unknown>);
+    }
+    session = { ...session, customAttributes: allowed };
   }
 
   // 3. Re-fetch cart and compare hash
@@ -331,6 +318,7 @@ export async function handlePay(
   let freshCartItems: Array<{
     id: string;
     quantity: number;
+    product_id?: string;
     unit_price?: { amount?: number };
     value?: { amount?: number };
   }> = [];
@@ -398,6 +386,52 @@ export async function handlePay(
     }
   }
 
+  // 3a. Required-field validation + server-authoritative shipping requirement.
+  //     EP requires a shipping address on every checkout (the body builder
+  //     defaults it to billing), so a client could set requiresShipping:false
+  //     on a PHYSICAL cart and have the goods silently ship to billing. The
+  //     client flag may only ADD a requirement: if the cart has any physical
+  //     item, shipping is required regardless. We only pay for the product
+  //     lookup when the client tried to suppress shipping — the normal path
+  //     needs no extra call.
+  let cartHasPhysical = false;
+  if (session.requiresShipping === false) {
+    cartHasPhysical = await cartHasPhysicalItem({
+      host: ctx.epCredentials.apiBaseUrl,
+      clientId: ctx.epCredentials.clientId,
+      shopperAccessToken: ctx.shopperAccessToken,
+      productIds: freshCartItems.map((it) => it.product_id ?? "").filter(Boolean),
+    });
+    if (cartHasPhysical) {
+      log.warn("Physical cart overrode client requiresShipping:false", {
+        sessionId: session.id,
+      } as Record<string, unknown>);
+    }
+  }
+  const requiresShipping = resolveRequiresShipping(
+    session.requiresShipping,
+    cartHasPhysical
+  );
+  const missingFields: string[] = [];
+  if (!session.customerInfo) missingFields.push("customerInfo");
+  if (!session.billingAddress) missingFields.push("billingAddress");
+  if (requiresShipping && !session.shippingAddress)
+    missingFields.push("shippingAddress");
+  if (requiresShipping && !session.selectedShippingRateId)
+    missingFields.push("selectedShippingRateId");
+  if (missingFields.length > 0) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        error: {
+          message: `Missing required fields: ${missingFields.join(", ")}`,
+          code: "MISSING_FIELDS",
+        },
+      },
+    };
+  }
+
   // 3b. Admin client + persist the session's extra fields/consents as cart
   //     custom attributes (best-effort) before any checkout.
   const adminClient = await buildAdminEpClient(ctx);
@@ -407,11 +441,18 @@ export async function handlePay(
   //     reject a 0 charge, so EP best practice is to settle a free order with
   //     the manual gateway — no card, no PaymentIntent. Run it before any
   //     gateway/adapter requirement so a free checkout needs no payment UI.
-  // Prefer the authoritative cart-meta total; fall back to summing items only
-  // when meta is unavailable. A truly free cart has meta total 0.
-  const orderTotal =
-    cartMetaTotal !== null ? cartMetaTotal : cartItemsTotal(freshCartItems);
-  if (orderTotal === 0) {
+  //
+  //     The server is the SOLE authority on free-vs-paid. Settle for free ONLY
+  //     on the cart's authoritative `meta.display_price` total being present
+  //     AND exactly zero — i.e. an authoritative zero, never an *absence*. The
+  //     parsed-items sum is deliberately NOT consulted here (see the note
+  //     above the cart re-fetch): a paid cart whose items don't parse would
+  //     sum to 0 and route to free settlement, completing with no charge. When
+  //     the authoritative total is unavailable (cartMetaTotal === null) we fail
+  //     closed: we refuse to free-settle and fall through to the paid path,
+  //     which requires a gateway + a confirmed PaymentIntent. An unprovable-
+  //     free cart can therefore never settle for free.
+  if (cartMetaTotal === 0) {
     return await settleFreeOrder(req, ctx, session, adminClient, ttl);
   }
 
@@ -565,24 +606,39 @@ export async function handlePay(
     input: session.customAttributes,
   });
 
-  // 5b. confirmOrder — syncs the EP-side payment intent status to the order.
-  try {
-    await confirmOrder({
-      client: adminClient,
-      path: {
-        orderID: orderId,
+  // 5b. confirmOrder — syncs the gateway payment status onto the EP order. The
+  //     customer is ALREADY charged at this point, so a failure here must not
+  //     roll back the order — but it must not be swallowed either: it leaves a
+  //     charged-but-unreconciled order that has to be flagged for follow-up
+  //     (durable marker on the session + a response flag), not silently
+  //     reported as a clean success. We also require a real paymentID — firing
+  //     confirmOrder with `undefined` can never reconcile anything.
+  const paymentIntentId =
+    (adapterResult.gatewayOrderId as string | undefined) ??
+    (adapterResult.gatewayMetadata?.paymentIntentId as string | undefined);
+  let reconciliationError: string | null = null;
+  if (!paymentIntentId) {
+    reconciliationError = "missing gateway payment intent id";
+    log.error("Cannot reconcile order — no gateway payment intent id", {
+      orderId,
+    } as Record<string, unknown>);
+  } else {
+    try {
+      await confirmOrder({
+        client: adminClient,
         // The EP API requires the paymentID on this path. The PI id from the
         // adapter result is what EP returned as the cart's payment intent.
-        paymentID: (adapterResult.gatewayOrderId ??
-          (adapterResult.gatewayMetadata?.paymentIntentId as string)) as string,
-      } as any,
-      body: { data: {} } as any,
-    });
-  } catch (err) {
-    log.warn("confirmOrder failed (non-fatal — order is genuine)", {
-      orderId,
-      error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+        path: { orderID: orderId, paymentID: paymentIntentId } as any,
+        body: { data: {} } as any,
+      });
+    } catch (err) {
+      reconciliationError = err instanceof Error ? err.message : String(err);
+      log.error("confirmOrder failed — order charged but unreconciled", {
+        orderId,
+        paymentIntentId,
+        error: reconciliationError,
+      } as Record<string, unknown>);
+    }
   }
 
   // 5c. Cart cleanup — best-effort housekeeping
@@ -595,15 +651,18 @@ export async function handlePay(
     });
   }
 
-  // 5d. Mark complete and persist
+  // 5d. Mark complete and persist. When confirmOrder couldn't reconcile, carry
+  //     a durable `needsReconciliation` marker on the session so the
+  //     charged-but-unreconciled order is discoverable later.
   const completeSession = applyPaymentSucceeded(
     { ...session, payment: { ...session.payment, gateway } },
     {
       orderId,
-      paymentIntentId:
-        (adapterResult.gatewayOrderId as string) ??
-        ((adapterResult.gatewayMetadata?.paymentIntentId as string) ?? ""),
-      gatewayMetadata: adapterResult.gatewayMetadata,
+      paymentIntentId: paymentIntentId ?? "",
+      gatewayMetadata: {
+        ...(adapterResult.gatewayMetadata ?? {}),
+        ...(reconciliationError ? { needsReconciliation: true } : {}),
+      },
     }
   );
 
@@ -626,6 +685,7 @@ export async function handlePay(
   log.info("Pay handler completed", {
     sessionId: completeSession.id,
     orderId,
+    reconciliationPending: reconciliationError !== null,
   } as Record<string, unknown>);
 
   return {
@@ -633,6 +693,9 @@ export async function handlePay(
     body: {
       success: true,
       data: { session: toClientSession(completeSession) },
+      // Surface the charged-but-unreconciled state so the client / monitoring
+      // can act on it — the order is genuine and paid, but EP didn't confirm.
+      ...(reconciliationError ? { reconciliationPending: true } : {}),
     },
     headers: setResult.headers,
   };
