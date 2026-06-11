@@ -135,6 +135,15 @@ export interface CheckoutSession {
   expiresAt: number; // epoch ms
 }
 
+/**
+ * Allow-list of customAttribute keys a checkout may accept from the client.
+ * Either an explicit list of permitted keys, or the `"*"` sentinel to accept
+ * any key. Omitting it entirely fails closed (no custom attributes persist) —
+ * permissive behaviour must be opted into deliberately via `"*"`. See
+ * `filterAllowedCustomAttributes`.
+ */
+export type CustomAttributeAllowList = readonly string[] | "*";
+
 // ---------------------------------------------------------------------------
 // PaymentAdapter — implemented per gateway (Clover, Stripe)
 // ---------------------------------------------------------------------------
@@ -237,6 +246,20 @@ export interface SessionHandlerContext {
    * Never cached across requests.
    */
   getClientCredentialsToken?: () => Promise<string>;
+  /**
+   * Server-side allow-list of customAttribute keys this checkout may accept
+   * from the client (the non-reserved form fields + consent flags). EP
+   * persists any order-flow slug its flow defines, so without this gate a
+   * client could forge/overwrite ANY defined slug — including consent/audit
+   * fields the form never exposes — simply by sending it.
+   *
+   * Fail closed: when omitted, NO custom attributes are persisted. A consumer
+   * that intends to accept arbitrary keys must opt in explicitly with the
+   * `"*"` sentinel, so permissive behaviour is a deliberate, greppable choice.
+   * Reserved customer/billing/shipping fields travel a separate path and are
+   * unaffected.
+   */
+  allowedCustomAttributeKeys?: CustomAttributeAllowList;
 }
 
 // ---------------------------------------------------------------------------

@@ -13,6 +13,7 @@ import type {
   ClientCheckoutSession,
   UpdateSessionRequest,
 } from "../../../checkout/session/types";
+import { filterAllowedCustomAttributes } from "../../../checkout/session/custom-attributes-allowlist";
 import { createLogger } from "../../../utils/logger";
 
 const log = createLogger("UpdateSession");
@@ -69,6 +70,34 @@ export async function handleUpdateSession(
 
   const update = req.body as UpdateSessionRequest;
 
+  // customAttributes are client-supplied. Gate them against the server-side
+  // allow-list at this boundary so forged keys never enter session state.
+  // Fail closed: with no allow-list configured, nothing survives. (Defence in
+  // depth: /pay re-applies the same filter before the privileged EP writes.)
+  let nextCustomAttributes: CheckoutSession["customAttributes"] =
+    session.customAttributes;
+  if (update.customAttributes !== undefined) {
+    const merged = {
+      // Merge (not replace) so partial updates accumulate the extra fields +
+      // consent flags a single-page form collects.
+      ...(session.customAttributes ?? {}),
+      ...update.customAttributes,
+    };
+    const { allowed, dropped } = filterAllowedCustomAttributes(
+      merged,
+      ctx.allowedCustomAttributeKeys
+    );
+    nextCustomAttributes = allowed;
+    if (dropped.length > 0) {
+      // Keys only — never the values (they may be PII).
+      log.warn("Dropped customAttribute keys not on the allow-list", {
+        sessionId: session.id,
+        dropped: dropped.join(","),
+        allowListConfigured: ctx.allowedCustomAttributeKeys !== undefined,
+      } as Record<string, unknown>);
+    }
+  }
+
   const updated: CheckoutSession = {
     ...session,
     ...(update.customerInfo !== undefined && { customerInfo: update.customerInfo }),
@@ -80,13 +109,8 @@ export async function handleUpdateSession(
     ...(update.requiresShipping !== undefined && {
       requiresShipping: update.requiresShipping,
     }),
-    // customAttributes merge (not replace) so partial updates accumulate the
-    // extra fields + consent flags a single-page form collects.
     ...(update.customAttributes !== undefined && {
-      customAttributes: {
-        ...(session.customAttributes ?? {}),
-        ...update.customAttributes,
-      },
+      customAttributes: nextCustomAttributes,
     }),
   };
 

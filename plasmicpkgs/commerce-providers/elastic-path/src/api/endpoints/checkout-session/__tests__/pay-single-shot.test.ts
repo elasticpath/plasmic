@@ -267,8 +267,13 @@ describe("handlePay — single-shot guest happy path", () => {
 
 describe("handlePay — zero-total (free) order", () => {
   beforeEach(() => {
+    // A genuinely free cart reports an authoritative zero via
+    // meta.display_price — the only signal that routes to free settlement.
     epSdk.getACart.mockResolvedValue({
-      data: { included: { items: FREE_ITEMS } },
+      data: {
+        included: { items: FREE_ITEMS },
+        data: { meta: { display_price: { with_tax: { amount: 0, currency: "CHF" } } } },
+      },
     });
   });
 
@@ -305,7 +310,9 @@ describe("handlePay — zero-total (free) order", () => {
       makeSession({
         cartHash: hashCart(FREE_ITEMS),
         customAttributes: { language: "English", marketing: false },
-      })
+      }),
+      undefined,
+      { allowedCustomAttributeKeys: "*" }
     );
     await handlePay(createMockReq({}), ctx);
 
@@ -393,7 +400,8 @@ describe("handlePay — generalised fields", () => {
       makeSession({
         customAttributes: { industry: "Tech", marketingOptIn: true, vat: "" },
       }),
-      adapter
+      adapter,
+      { allowedCustomAttributeKeys: "*" }
     );
     await handlePay(
       createMockReq({ gateway: "stripe", confirmation_token: "ctoken_xyz" }),
@@ -414,7 +422,8 @@ describe("handlePay — generalised fields", () => {
       makeSession({
         customAttributes: { industry: "Tech", marketingOptIn: true, vat: "" },
       }),
-      adapter
+      adapter,
+      { allowedCustomAttributeKeys: "*" }
     );
     await handlePay(
       createMockReq({ gateway: "stripe", confirmation_token: "ctoken_xyz" }),
