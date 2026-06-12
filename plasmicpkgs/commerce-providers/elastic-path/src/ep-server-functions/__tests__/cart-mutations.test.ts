@@ -20,6 +20,7 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
   epAddCartItem,
+  epApplyCartAdjustment,
   epUpdateCartItem,
   epRemoveCartItem,
 } = require("../cart-mutations");
@@ -204,6 +205,64 @@ describe("epAddCartItem", () => {
         },
       })
     );
+  });
+});
+
+describe("epApplyCartAdjustment", () => {
+  it("writes a custom_item adjustment to the session cart and returns the normalized cart", async () => {
+    mockManageCarts.mockResolvedValue({});
+    mockGetACart.mockResolvedValue(CART_RESPONSE);
+
+    const result = await withEpSession(
+      { ...SESSION_BASE, cartId: "cart-id", locale: "en-US", currency: "USD" },
+      () =>
+        epApplyCartAdjustment({
+          label: "Handling fee",
+          amountMinor: 500,
+          kind: "handling",
+        })
+    );
+
+    expect(result.id).toBe("cart-id");
+    expect(mockManageCarts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { cartID: "cart-id" },
+        body: {
+          data: expect.objectContaining({
+            type: "custom_item",
+            name: "Handling fee",
+            quantity: 1,
+            price: { amount: 500, includes_tax: true },
+            custom_inputs: { kind: "handling" },
+          }),
+        },
+      })
+    );
+  });
+
+  it("throws when called without an active EP session", async () => {
+    await expect(
+      epApplyCartAdjustment({ label: "Fee", amountMinor: 500, kind: "fee" })
+    ).rejects.toThrow(/no EP session/i);
+    expect(mockManageCarts).not.toHaveBeenCalled();
+  });
+
+  it("throws when the session has no cartId (nothing to adjust)", async () => {
+    await expect(
+      withEpSession(SESSION_BASE, () =>
+        epApplyCartAdjustment({ label: "Fee", amountMinor: 500, kind: "fee" })
+      )
+    ).rejects.toThrow(/no cart/i);
+    expect(mockManageCarts).not.toHaveBeenCalled();
+  });
+
+  it("propagates the primitive's bound rejection (negative amount) without writing", async () => {
+    await expect(
+      withEpSession({ ...SESSION_BASE, cartId: "cart-id" }, () =>
+        epApplyCartAdjustment({ label: "Discount", amountMinor: -100, kind: "fee" })
+      )
+    ).rejects.toThrow(/non-negative integer/i);
+    expect(mockManageCarts).not.toHaveBeenCalled();
   });
 });
 

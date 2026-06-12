@@ -17,6 +17,7 @@ import { epGetProductList } from "./getProductList";
 import { epGetRelatedProducts } from "./getRelatedProducts";
 import {
   epAddCartItem,
+  epApplyCartAdjustment,
   epRemoveCartItem,
   epUpdateCartItem,
 } from "./cart-mutations";
@@ -34,6 +35,12 @@ interface EpFunctionSpec {
   fn: (...args: any[]) => any;
   name: string;
   description: string;
+  /**
+   * When true, registers the function as a mutation (a Studio Server Query
+   * the designer invokes to *change* state, not to read it). Cart writes set
+   * this so Studio surfaces them as actions rather than data sources.
+   */
+  isMutation?: boolean;
   /**
    * Flat parameter schema. Each entry corresponds to a top-level key in
    * the Studio Server Query `args` editor. Designers bind each value to
@@ -103,6 +110,19 @@ const EP_FUNCTIONS: EpFunctionSpec[] = [
     ],
   },
   {
+    fn: epApplyCartAdjustment,
+    name: "applyCartAdjustment",
+    isMutation: true,
+    description:
+      "Add a labelled, bounded adjustment line (fee/handling/shipping) to the current cart, computed server-side. The EP cart re-prices and the new total is what checkout charges; a shopper cannot forge or remove it. amountMinor is in minor currency units (e.g. cents) and must be ≥ 0.",
+    params: [
+      { name: "label", type: "string", description: 'Line label shown in the cart, e.g. "Handling fee".' },
+      { name: "amountMinor", type: "number", description: "Adjustment amount in minor currency units (e.g. cents). Must be ≥ 0." },
+      { name: "kind", type: "string", description: 'Adjustment family: "fee", "handling", or "shipping".' },
+      { name: "quantity", type: "number", description: "Units of the adjustment (optional, default 1)." },
+    ],
+  },
+  {
     fn: epUpdateCartItem,
     name: "updateCartItem",
     description:
@@ -148,6 +168,7 @@ export function registerEpCustomFunctions(loader: Registerable): void {
       importPath: IMPORT_PATH,
       description: spec.description,
       params: spec.params,
+      ...(spec.isMutation !== undefined && { isMutation: spec.isMutation }),
     });
   }
 }

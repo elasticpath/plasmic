@@ -45,6 +45,7 @@ describe("registerEpCustomFunctions", () => {
     ["getProductList"],
     ["getRelatedProducts"],
     ["addCartItem"],
+    ["applyCartAdjustment"],
     ["updateCartItem"],
     ["removeCartItem"],
   ])("registers ep.%s", (fnName) => {
@@ -92,6 +93,34 @@ describe("registerEpCustomFunctions", () => {
     expect(params).toEqual([
       expect.objectContaining({ name: "id", type: "string" }),
     ]);
+  });
+
+  it("registers ep.applyCartAdjustment as a mutation with a flat money-bearing param schema", () => {
+    const registerFunction = jest.fn();
+    registerEpCustomFunctions({ registerFunction } as any);
+
+    const call = registerFunction.mock.calls.find(
+      (args) => args[1]?.name === "applyCartAdjustment"
+    );
+    expect(call).toBeDefined();
+    const meta = call![1];
+    // Designers discover/invoke it as a mutation Server Query (PRD #371 story 12).
+    expect(meta.isMutation).toBe(true);
+    const paramNames: string[] = (meta.params ?? []).map(
+      (p: { name: string }) => p.name
+    );
+    expect(paramNames).toEqual(["label", "amountMinor", "kind", "quantity"]);
+  });
+
+  it("only applyCartAdjustment is flagged isMutation among the read functions", () => {
+    const registerFunction = jest.fn();
+    registerEpCustomFunctions({ registerFunction } as any);
+
+    const reads = ["getProduct", "getCart", "getProductList", "getRelatedProducts"];
+    for (const name of reads) {
+      const call = registerFunction.mock.calls.find((a) => a[1]?.name === name);
+      expect(call![1].isMutation).toBeUndefined();
+    }
   });
 
   it("adapted function reassembles flat positional args into the input object", () => {

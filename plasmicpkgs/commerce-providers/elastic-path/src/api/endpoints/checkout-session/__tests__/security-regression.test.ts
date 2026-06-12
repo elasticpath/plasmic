@@ -598,6 +598,139 @@ describe("server-authoritative requiresShipping (#369)", () => {
 });
 
 // ===========================================================================
+// 1e. Studio extension API — applyCartAdjustment money integrity (#371).
+//     A tenant designer can inject a labelled fee into the EP cart from a
+//     server query (ep.applyCartAdjustment → a custom_item line). The trust
+//     invariant (ADR "EP cart is the sole authority for charged amounts"):
+//     the injected money is charged BECAUSE the order is built from the EP
+//     cart, the authoritative total governs free-vs-paid (never a client
+//     number), the cart-hash pins the line set against post-session tampering,
+//     and the public shopper route can neither inject nor strip a money line.
+//
+//     These assertions exercise the checkout boundary that *consumes* an
+//     injected adjustment; the bounds on the injection itself (amountMinor ≥ 0,
+//     etc.) are unit-tested in ep-server-functions/__tests__/custom-cart-item.
+// ===========================================================================
+
+describe("applyCartAdjustment money integrity (#371)", () => {
+  // A product line + a storefront-injected custom_item fee line. The cart's
+  // authoritative total already reflects the fee (5000 + 500).
+  const FEE_LINE = { id: "adj-fee-1", quantity: 1, unit_price: { amount: 500 } };
+  const ITEMS_WITH_FEE = [...PRICED_ITEMS, FEE_LINE];
+
+  it("charges the EP-cart total INCLUDING the adjustment: the order is built from the fee-bearing cart", async () => {
+    const adapter = createMockAdapter();
+    // The cart that /pay re-reads carries the fee line and a total that includes it.
+    epSdk.getACart.mockResolvedValue(cartResponseWithTotal(5900, ITEMS_WITH_FEE));
+    // Session was created against the same line set (fee included) — hashes match.
+    const ctx = createMockCtx(
+      makeSession({ cartHash: hashCart(ITEMS_WITH_FEE) }),
+      adapter
+    );
+
+    const res = await handlePay(
+      createMockReq({ gateway: "stripe", confirmation_token: "ctok" }),
+      ctx
+    );
+
+    expect(res.status).toBe(200);
+    expect((res.body as any).data.session.status).toBe("complete");
+    // Paid path (non-zero authoritative total), NOT free settlement.
+    expect(adapter.initializePayment).toHaveBeenCalledTimes(1);
+    expect(epSdk.paymentSetup).not.toHaveBeenCalled();
+    // The order is created from the EP cart that holds the fee line — so the
+    // injected money is what gets charged.
+    expect(epSdk.checkoutApi).toHaveBeenCalledTimes(1);
+    expect(epSdk.checkoutApi.mock.calls[0][0].path.cartID).toBe("cart-abc");
+  });
+
+  it("ignores a client-forged amount in the pay body — the cart's authoritative total governs free-vs-paid", async () => {
+    const adapter = createMockAdapter();
+    epSdk.getACart.mockResolvedValue(cartResponseWithTotal(5900, ITEMS_WITH_FEE));
+    const ctx = createMockCtx(
+      makeSession({ cartHash: hashCart(ITEMS_WITH_FEE) }),
+      adapter
+    );
+
+    // A shopper tries to zero out the charge via the request body.
+    const res = await handlePay(
+      createMockReq({
+        gateway: "stripe",
+        confirmation_token: "ctok",
+        amount: 0,
+        total: 0,
+        amountMinor: 0,
+      }),
+      ctx
+    );
+
+    expect(res.status).toBe(200);
+    // The forged zero did NOT route to free settlement; the cart total wins.
+    expect(epSdk.paymentSetup).not.toHaveBeenCalled();
+    expect(adapter.initializePayment).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects with 409 when a cart line is added/removed after session creation (can't forge or strip an adjustment behind the session's back)", async () => {
+    const adapter = createMockAdapter();
+    // Session was created against the cart the shopper reviewed (NO fee line)…
+    const ctx = createMockCtx(
+      makeSession({ cartHash: hashCart(PRICED_ITEMS) }),
+      adapter
+    );
+    // …but the live cart's line set has since changed (a fee line appeared).
+    epSdk.getACart.mockResolvedValue(cartResponseWithTotal(5900, ITEMS_WITH_FEE));
+
+    const res = await handlePay(
+      createMockReq({ gateway: "stripe", confirmation_token: "ctok" }),
+      ctx
+    );
+
+    // Cart-hash mismatch: no charge, no order — the line set is pinned at
+    // session creation, so an adjustment must be applied before/at session
+    // create (or the session re-synced), never slipped in unnoticed.
+    expect(res.status).toBe(409);
+    expect((res.body as any).error.code).toBe("CART_MISMATCH");
+    expect(adapter.initializePayment).not.toHaveBeenCalled();
+    expect(epSdk.checkoutApi).not.toHaveBeenCalled();
+  });
+
+  it("the public update-session route cannot inject a money adjustment into the session", async () => {
+    const ctx = createMockCtx(makeSession({ customAttributes: {} }), undefined, {
+      allowedCustomAttributeKeys: ["industry"],
+    });
+
+    // A shopper posts forged money-bearing fields to the public route.
+    const res = await handleUpdateSession(
+      createMockReq({
+        label: "Forged discount",
+        amountMinor: -9999,
+        kind: "fee",
+        customItem: { type: "custom_item", price: { amount: -9999 } },
+        items: [{ type: "custom_item" }],
+        total: 0,
+      }),
+      ctx
+    );
+
+    expect(res.status).toBe(200);
+    const stored = (res.body as any).data.session;
+    // None of the forged money fields enter the session — update-session is a
+    // fixed allow-list (selections, addresses, gated customAttributes) and
+    // carries no authoritative amount.
+    expect(stored.amountMinor).toBeUndefined();
+    expect(stored.customItem).toBeUndefined();
+    expect(stored.items).toBeUndefined();
+    expect(stored.total).toBeUndefined();
+    expect(stored.label).toBeUndefined();
+    // No cart write happened on this public route.
+    expect(epSdk.updateACart).not.toHaveBeenCalled();
+    // And the persisted session is unchanged where it counts (same cart).
+    const persisted = (ctx.sessionStore.set as jest.Mock).mock.calls[0][1];
+    expect(persisted.cartId).toBe("cart-abc");
+  });
+});
+
+// ===========================================================================
 // 2. Token-leak boundary — admin / shopper tokens must never reflect into a
 //    response. Covers every checkout-session route, including #368's new
 //    branches (the order-custom-fields write, which carries the admin token in
