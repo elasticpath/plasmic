@@ -8,10 +8,17 @@ const epSdk = require("@epcc-sdk/sdks-shopper") as {
   getByContextAllProducts: jest.Mock;
 };
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { resolveRequiresShipping, cartHasPhysicalItem } = require("../cart-shipping") as {
+const { resolveRequiresShipping, cartHasPhysicalItem, resolveShippingRate } = require("../cart-shipping") as {
   resolveRequiresShipping: typeof import("../cart-shipping").resolveRequiresShipping;
   cartHasPhysicalItem: typeof import("../cart-shipping").cartHasPhysicalItem;
+  resolveShippingRate: typeof import("../cart-shipping").resolveShippingRate;
 };
+
+const RATES = [
+  { id: "rate-standard", name: "Standard", amount: 500, currency: "CHF", serviceLevel: "standard", carrier: "DHL" },
+  { id: "rate-express", name: "Express", amount: 1500, currency: "CHF", serviceLevel: "express", carrier: "DHL" },
+  { id: "rate-free", name: "Free", amount: 0, currency: "CHF", serviceLevel: "economy" },
+];
 
 function productsResponse(commodityTypes: string[]) {
   return {
@@ -99,5 +106,65 @@ describe("cartHasPhysicalItem", () => {
     expect(
       await cartHasPhysicalItem({ ...LOOKUP, productIds: ["a", "b"] })
     ).toBe(true);
+  });
+});
+
+describe("resolveShippingRate", () => {
+  // The authoritative-mutation core: the client selects an id; the SERVER owns
+  // the amount. The amount must come from the server-computed `availableRates`,
+  // never the client.
+  it("returns the server-computed rate (with its amount) for a valid selection", () => {
+    const rate = resolveShippingRate(RATES, "rate-express");
+    expect(rate).toBe(RATES[1]);
+    expect(rate.amount).toBe(1500); // sourced from the server list, not the input id
+  });
+
+  it("resolves a 0-amount rate (free shipping is a legitimate server rate)", () => {
+    expect(resolveShippingRate(RATES, "rate-free").amount).toBe(0);
+  });
+
+  it("selects the correct rate among several", () => {
+    expect(resolveShippingRate(RATES, "rate-standard").amount).toBe(500);
+  });
+
+  // ── security: a forged / un-offered id cannot resolve to a price ──
+  it("throws for a rateId not in the server-computed set (forged/un-offered)", () => {
+    expect(() => resolveShippingRate(RATES, "rate-hacked")).toThrow(
+      /not an available shipping rate/i
+    );
+  });
+
+  it("throws when no rates have been computed (empty list) — fail closed", () => {
+    expect(() => resolveShippingRate([], "rate-express")).toThrow(
+      /no shipping rates available/i
+    );
+  });
+
+  it("throws when availableRates is undefined/null — fail closed", () => {
+    expect(() => resolveShippingRate(undefined, "rate-express")).toThrow(
+      /no shipping rates available/i
+    );
+    expect(() => resolveShippingRate(null, "rate-express")).toThrow(
+      /no shipping rates available/i
+    );
+  });
+
+  it("throws for a blank or missing rateId", () => {
+    expect(() => resolveShippingRate(RATES, "")).toThrow(/rateId is required/i);
+    expect(() => resolveShippingRate(RATES, "   ")).toThrow(/rateId is required/i);
+    expect(() => resolveShippingRate(RATES, undefined as never)).toThrow(
+      /rateId is required/i
+    );
+  });
+
+  it("throws when the matched rate has a non-numeric amount (malformed trusted source)", () => {
+    const bad = [{ id: "rate-x", name: "X", amount: "free" as never, currency: "CHF", serviceLevel: "std" }];
+    expect(() => resolveShippingRate(bad, "rate-x")).toThrow(/non-numeric amount/i);
+  });
+
+  it("does not mutate the input rate object", () => {
+    const before = JSON.stringify(RATES[1]);
+    resolveShippingRate(RATES, "rate-express");
+    expect(JSON.stringify(RATES[1])).toBe(before);
   });
 });
