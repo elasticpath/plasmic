@@ -9,6 +9,7 @@ import type { Cart } from "../types/cart";
 import { normalizeCart } from "../utils/normalize";
 import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession } from "./session-context";
+import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
 import {
   addCustomCartItem,
   type CartAdjustmentKind,
@@ -153,6 +154,22 @@ export async function epApplyCartAdjustment(
   input: EpApplyCartAdjustmentInput
 ): Promise<Cart> {
   const auth = getCurrentEpSession();
+
+  // Browser path (element interaction / Studio canvas): there is no
+  // AsyncLocalStorage session in the browser, so route through the consumer's
+  // EP proxy. The proxy re-establishes `withEpSession` server-side (credentials
+  // + cartId from cookies) and runs this same write with real auth — keeping
+  // the credentialed cart write server-only. Mirrors epGetCart's fallback.
+  // This is what makes the mutation invokable from a designer's onClick action.
+  if (!isUsableAuth(auth) && shouldUseProxy()) {
+    return callEpProxy<Cart>("applyCartAdjustment", {
+      label: input.label,
+      amountMinor: input.amountMinor,
+      kind: input.kind,
+      ...(input.quantity !== undefined ? { quantity: input.quantity } : {}),
+    });
+  }
+
   if (!isUsableAuth(auth)) {
     throw new Error("epApplyCartAdjustment: no EP session");
   }
