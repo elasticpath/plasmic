@@ -17,9 +17,20 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
   getACart: (...args: unknown[]) => mockGetACart(...args),
 }));
 
+// Proxy fallback is the browser path. Default `shouldUseProxy` to false so the
+// server-side tests below exercise the direct (ALS-session) path; the one
+// browser-path test flips it on.
+const mockShouldUseProxy = jest.fn(() => false);
+const mockCallEpProxy = jest.fn();
+jest.mock("../proxy-fetch", () => ({
+  shouldUseProxy: () => mockShouldUseProxy(),
+  callEpProxy: (...args: unknown[]) => mockCallEpProxy(...args),
+}));
+
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
   epAddCartItem,
+  epApplyCartAdjustment,
   epUpdateCartItem,
   epRemoveCartItem,
 } = require("../cart-mutations");
@@ -56,6 +67,9 @@ beforeEach(() => {
   mockUpdateACartItem.mockReset();
   mockDeleteACartItem.mockReset();
   mockGetACart.mockReset();
+  mockShouldUseProxy.mockReset();
+  mockShouldUseProxy.mockReturnValue(false);
+  mockCallEpProxy.mockReset();
 });
 
 describe("epAddCartItem", () => {
@@ -204,6 +218,115 @@ describe("epAddCartItem", () => {
         },
       })
     );
+  });
+});
+
+describe("epApplyCartAdjustment", () => {
+  it("writes a custom_item adjustment to the session cart and returns the normalized cart", async () => {
+    mockManageCarts.mockResolvedValue({});
+    mockGetACart.mockResolvedValue(CART_RESPONSE);
+
+    const result = await withEpSession(
+      { ...SESSION_BASE, cartId: "cart-id", locale: "en-US", currency: "USD" },
+      () =>
+        epApplyCartAdjustment({
+          label: "Handling fee",
+          amountMinor: 500,
+          kind: "handling",
+        })
+    );
+
+    expect(result.id).toBe("cart-id");
+    expect(mockManageCarts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { cartID: "cart-id" },
+        body: {
+          data: expect.objectContaining({
+            type: "custom_item",
+            name: "Handling fee",
+            quantity: 1,
+            price: { amount: 500, includes_tax: true },
+            custom_inputs: { kind: "handling" },
+          }),
+        },
+      })
+    );
+  });
+
+  it("throws when called without an active EP session", async () => {
+    await expect(
+      epApplyCartAdjustment({ label: "Fee", amountMinor: 500, kind: "fee" })
+    ).rejects.toThrow(/no EP session/i);
+    expect(mockManageCarts).not.toHaveBeenCalled();
+  });
+
+  it("throws when the session has no cartId (nothing to adjust)", async () => {
+    await expect(
+      withEpSession(SESSION_BASE, () =>
+        epApplyCartAdjustment({ label: "Fee", amountMinor: 500, kind: "fee" })
+      )
+    ).rejects.toThrow(/no cart/i);
+    expect(mockManageCarts).not.toHaveBeenCalled();
+  });
+
+  it("propagates the primitive's bound rejection (negative amount) without writing", async () => {
+    await expect(
+      withEpSession({ ...SESSION_BASE, cartId: "cart-id" }, () =>
+        epApplyCartAdjustment({ label: "Discount", amountMinor: -100, kind: "fee" })
+      )
+    ).rejects.toThrow(/non-negative integer/i);
+    expect(mockManageCarts).not.toHaveBeenCalled();
+  });
+
+  it("routes to the consumer proxy (no direct write) when invoked in the browser with no ALS session", async () => {
+    // Browser path: no withEpSession scope, but shouldUseProxy() is true.
+    mockShouldUseProxy.mockReturnValue(true);
+    const proxiedCart = { id: "cart-id", lineItems: [], totalPrice: 5 };
+    mockCallEpProxy.mockResolvedValue(proxiedCart);
+
+    const result = await epApplyCartAdjustment({
+      label: "Handling fee",
+      amountMinor: 500,
+      kind: "handling",
+      quantity: 2,
+    });
+
+    // It delegated to the proxy with the flat input, and did NOT touch the SDK
+    // directly (the credentialed write happens server-side inside the proxy).
+    expect(mockCallEpProxy).toHaveBeenCalledWith("applyCartAdjustment", {
+      label: "Handling fee",
+      amountMinor: 500,
+      kind: "handling",
+      quantity: 2,
+    });
+    expect(mockManageCarts).not.toHaveBeenCalled();
+    expect(result).toBe(proxiedCart);
+  });
+
+  it("omits quantity from the proxy payload when not supplied", async () => {
+    mockShouldUseProxy.mockReturnValue(true);
+    mockCallEpProxy.mockResolvedValue({ id: "cart-id" });
+
+    await epApplyCartAdjustment({ label: "Fee", amountMinor: 500, kind: "fee" });
+
+    expect(mockCallEpProxy).toHaveBeenCalledWith("applyCartAdjustment", {
+      label: "Fee",
+      amountMinor: 500,
+      kind: "fee",
+    });
+  });
+
+  it("does NOT use the proxy on the server (ALS session present) — writes directly", async () => {
+    mockShouldUseProxy.mockReturnValue(true); // even if true, a real session wins
+    mockManageCarts.mockResolvedValue({});
+    mockGetACart.mockResolvedValue(CART_RESPONSE);
+
+    await withEpSession({ ...SESSION_BASE, cartId: "cart-id" }, () =>
+      epApplyCartAdjustment({ label: "Fee", amountMinor: 500, kind: "fee" })
+    );
+
+    expect(mockCallEpProxy).not.toHaveBeenCalled();
+    expect(mockManageCarts).toHaveBeenCalled();
   });
 });
 

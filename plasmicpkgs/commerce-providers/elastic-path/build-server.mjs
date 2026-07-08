@@ -78,8 +78,8 @@ export type { ClientCredentialsResolverConfig, ClientCredentialsTokenResolver } 
 export type { SessionRequest, SessionResponse, SessionHandlerContext, EPCredentials, AdapterRegistry, SessionStore, PaymentAdapter, CustomAttributeAllowList } from "./checkout/session/types";
 export { createEpAuth, createBetterEpAuth, extractEpProviderConfig, epPlugin, epAuthMiddleware, createCartRoutes, createEpProxyRoutes } from "./auth";
 export type { EpAuth, EpAuthConfig, EpSession, EpProviderBundleConfig, EpPluginOptions, EpProxyRoutes, CreateEpProxyRoutesOptions } from "./auth";
-export { epGetProduct, epGetCart, epGetProductList, epGetRelatedProducts, epAddCartItem, epUpdateCartItem, epRemoveCartItem, epPlaceOrder, registerEpCustomFunctions, buildEpCtx, withEpSession, getCurrentEpSession } from "./ep-server-functions";
-export type { EpGetProductInput, EpGetCartInput, EpGetProductListInput, EpGetRelatedProductsInput, EpAddCartItemInput, EpUpdateCartItemInput, EpRemoveCartItemInput, EpPlaceOrderInput, EpPlaceOrderAddress, EpPlaceOrderResult, BuildEpCtxSessionInput, EpCtx, EpSessionContext, EpServerAuth } from "./ep-server-functions";
+export { epGetProduct, epGetCart, epGetProductList, epGetRelatedProducts, epAddCartItem, epApplyCartAdjustment, epUpdateCartItem, epRemoveCartItem, epPlaceOrder, addCustomCartItem, CART_ADJUSTMENT_KINDS, registerEpCustomFunctions, buildEpCtx, withEpSession, getCurrentEpSession } from "./ep-server-functions";
+export type { EpGetProductInput, EpGetCartInput, EpGetProductListInput, EpGetRelatedProductsInput, EpAddCartItemInput, EpApplyCartAdjustmentInput, EpUpdateCartItemInput, EpRemoveCartItemInput, EpPlaceOrderInput, EpPlaceOrderAddress, EpPlaceOrderResult, AddCustomCartItemInput, CartAdjustmentKind, BuildEpCtxSessionInput, EpCtx, EpSessionContext, EpServerAuth } from "./ep-server-functions";
 `;
 
 writeFileSync("dist/server.d.ts", dts);

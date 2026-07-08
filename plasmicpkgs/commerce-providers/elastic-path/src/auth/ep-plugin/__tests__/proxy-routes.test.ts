@@ -21,6 +21,7 @@ vi.mock("../../../ep-server-functions/cart-mutations", () => ({
   epAddCartItem: vi.fn(),
   epUpdateCartItem: vi.fn(),
   epRemoveCartItem: vi.fn(),
+  epApplyCartAdjustment: vi.fn(),
 }));
 
 // Imported AFTER vi.mock so the proxy picks up the mocked module.

@@ -8,14 +8,21 @@ export { epGetRelatedProducts } from "./getRelatedProducts";
 export type { EpGetRelatedProductsInput } from "./getRelatedProducts";
 export {
   epAddCartItem,
+  epApplyCartAdjustment,
   epRemoveCartItem,
   epUpdateCartItem,
 } from "./cart-mutations";
 export type {
   EpAddCartItemInput,
+  EpApplyCartAdjustmentInput,
   EpRemoveCartItemInput,
   EpUpdateCartItemInput,
 } from "./cart-mutations";
+export { addCustomCartItem, CART_ADJUSTMENT_KINDS } from "./custom-cart-item";
+export type {
+  AddCustomCartItemInput,
+  CartAdjustmentKind,
+} from "./custom-cart-item";
 export { epPlaceOrder, toCustomAttributes, normalizeAddress } from "./place-order";
 export type {
   EpPlaceOrderInput,
