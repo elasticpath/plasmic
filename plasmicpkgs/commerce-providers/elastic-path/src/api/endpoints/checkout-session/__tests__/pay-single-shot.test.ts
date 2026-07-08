@@ -22,6 +22,8 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
   updateACart: jest.fn(),
   updateAnOrder: jest.fn(),
   deleteACart: jest.fn(),
+  manageCarts: jest.fn(),
+  deleteACartItem: jest.fn(),
   createShopperClient: jest.fn(() => ({ client: {} })),
 }));
 
@@ -34,6 +36,8 @@ const epSdk = require("@epcc-sdk/sdks-shopper") as {
   updateACart: jest.Mock;
   updateAnOrder: jest.Mock;
   deleteACart: jest.Mock;
+  manageCarts: jest.Mock;
+  deleteACartItem: jest.Mock;
 };
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -81,7 +85,9 @@ function makeSession(overrides: Partial<CheckoutSession> = {}): CheckoutSession 
       postcode: "12345",
     },
     selectedShippingRateId: "rate-standard",
-    availableShippingRates: [],
+    availableShippingRates: [
+      { id: "rate-standard", name: "Standard", amount: 500, currency: "USD", serviceLevel: "standard" },
+    ],
     totals: null,
     payment: {
       gateway: null,
@@ -152,8 +158,13 @@ function createMockReq(body: Record<string, unknown> = {}): SessionRequest {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // Normalizable cart (inner data + meta) so the shipping re-assertion's
+  // cart re-read doesn't throw; non-zero meta total → paid path.
   epSdk.getACart.mockResolvedValue({
-    data: { included: { items: CART_ITEMS } },
+    data: {
+      included: { items: CART_ITEMS },
+      data: { id: "cart-abc", meta: { display_price: { with_tax: { amount: 5400, currency: "USD" } } } },
+    },
   });
   epSdk.checkoutApi.mockResolvedValue({
     data: { data: { id: "order-1" } },
@@ -163,6 +174,8 @@ beforeEach(() => {
   epSdk.updateACart.mockResolvedValue({ data: { data: {} } });
   epSdk.updateAnOrder.mockResolvedValue({ data: { data: { id: "order-1" } } });
   epSdk.deleteACart.mockResolvedValue({ data: undefined });
+  epSdk.manageCarts.mockResolvedValue({});
+  epSdk.deleteACartItem.mockResolvedValue({});
 });
 
 const FREE_ITEMS = [

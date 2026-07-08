@@ -6,7 +6,7 @@
  * server-computed amount. It is the credentialed *write* half of the
  * authoritative-mutation template (see ADR-0013): the amount it writes never
  * comes from the client — it comes from the resolved rate, which the server
- * derived from `getShippingOptions`.
+ * computed via `ctx.shippingRateResolver`.
  *
  * Idempotent: a cart has at most ONE shipping line. Re-selecting a rate
  * REPLACES the line (clear-then-write), never stacks. Lines are marked with a

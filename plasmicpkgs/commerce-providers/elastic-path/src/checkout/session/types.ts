@@ -247,6 +247,26 @@ export interface SessionHandlerContext {
    */
   getClientCredentialsToken?: () => Promise<string>;
   /**
+   * Server-computed shipping-rate resolver (#374 / #371). Wired by the
+   * consuming app at route setup — the same shape as `getClientCredentialsToken`
+   * — so a tenant's server-side logic (e.g. a carrier-rate fetch authored as a
+   * Studio server query) feeds the checkout session without living in the
+   * shared host or calling a (non-existent) EP shipping-rates endpoint.
+   *
+   * `handleCalculateShipping` invokes it and persists the result into
+   * `session.availableShippingRates`. Because it runs SERVER-side, the amounts
+   * it returns are trusted by `resolveShippingRate` and the /pay re-assertion —
+   * the client only ever *selects* a rate id, never supplies an amount, and a
+   * rate list is NEVER accepted from the browser (see ADR-0013).
+   *
+   * Omitting it means the store does not support server-computed shipping:
+   * `handleCalculateShipping` returns an empty rate list, and a checkout that
+   * requires shipping fails closed at /pay (no resolvable rate).
+   */
+  shippingRateResolver?: (
+    session: CheckoutSession
+  ) => Promise<SessionShippingRate[]> | SessionShippingRate[];
+  /**
    * Server-side allow-list of customAttribute keys this checkout may accept
    * from the client (the non-reserved form fields + consent flags). EP
    * persists any order-flow slug its flow defines, so without this gate a

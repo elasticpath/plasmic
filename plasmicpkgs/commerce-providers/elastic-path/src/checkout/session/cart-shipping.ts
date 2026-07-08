@@ -37,8 +37,8 @@ export function resolveRequiresShipping(
  * This is the authoritative-mutation core for shipping (see ADR-0013): the
  * client may only *select* — it picks a rate id — while the SERVER owns the
  * amount. `availableRates` MUST be the server-computed list produced by
- * `calculate-shipping` (`getShippingOptions`), never a client-supplied list, so
- * a forged or un-offered `rateId` cannot resolve to a price. The returned rate
+ * `calculate-shipping` (via `ctx.shippingRateResolver`), never a client-supplied
+ * list, so a forged or un-offered `rateId` cannot resolve to a price. The returned rate
  * is what the credentialed cart write (`setShippingLine`) and the checkout
  * re-assertion in `handlePay` both use; neither ever trusts a client amount.
  *

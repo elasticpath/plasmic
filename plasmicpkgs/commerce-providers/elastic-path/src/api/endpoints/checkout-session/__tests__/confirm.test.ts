@@ -15,7 +15,6 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
   checkoutApi: jest.fn(),
   paymentSetup: jest.fn(),
   confirmPayment: jest.fn(),
-  getShippingOptions: jest.fn(),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires

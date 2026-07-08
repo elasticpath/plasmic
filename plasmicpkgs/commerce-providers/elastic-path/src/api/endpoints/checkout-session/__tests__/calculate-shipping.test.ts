@@ -1,34 +1,22 @@
 /**
  * A-10.6: handleCalculateShipping tests
  *
- * Covers: success path (shipping rates returned and stored), no session (410),
- * missing shipping address (400), EP API failure (502), store error (500),
- * rate normalization, and client session shape (cartHash stripped).
+ * Rates are sourced from a SERVER-side `ctx.shippingRateResolver` (#374 / #371)
+ * — never an EP endpoint and never a client-supplied list — so the amounts are
+ * trusted by `resolveShippingRate` and the /pay re-assertion.
+ *
+ * Covers: no session (410), missing shipping address (400), success (rates
+ * resolved + stored + returned), empty rates, resolver-not-configured
+ * (graceful empty), resolver failure (502), and store errors (500).
  */
 
-jest.mock("@epcc-sdk/sdks-shopper", () => ({
-  getACart: jest.fn(),
-  checkoutApi: jest.fn(),
-  paymentSetup: jest.fn(),
-  confirmPayment: jest.fn(),
-  getShippingOptions: jest.fn(),
-}));
-
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const epSdk = require("@epcc-sdk/sdks-shopper") as {
-  getShippingOptions: jest.Mock;
-};
-
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { handleCalculateShipping } = require("../calculate-shipping") as {
-  handleCalculateShipping: typeof import("../calculate-shipping").handleCalculateShipping;
-};
-
+import { handleCalculateShipping } from "../calculate-shipping";
 import type {
   SessionHandlerContext,
   SessionRequest,
   CheckoutSession,
   SessionAddress,
+  SessionShippingRate,
 } from "../../../../checkout/session/types";
 
 // ---------------------------------------------------------------------------
@@ -45,6 +33,29 @@ const SHIPPING_ADDRESS: SessionAddress = {
   country: "US",
   postcode: "62701",
 };
+
+const RATES: SessionShippingRate[] = [
+  {
+    id: "rate-1",
+    name: "Standard Shipping",
+    description: "5-7 business days",
+    amount: 599,
+    currency: "USD",
+    deliveryTime: "5-7 days",
+    serviceLevel: "standard",
+    carrier: "USPS",
+  },
+  {
+    id: "rate-2",
+    name: "Express Shipping",
+    description: "2-3 business days",
+    amount: 1299,
+    currency: "USD",
+    deliveryTime: "2-3 days",
+    serviceLevel: "express",
+    carrier: "FedEx",
+  },
+];
 
 function makeSession(overrides: Partial<CheckoutSession> = {}): CheckoutSession {
   return {
@@ -93,18 +104,13 @@ function createMockCtx(
       getAdapter: jest.fn().mockReturnValue(undefined),
     },
     sessionStore: createMockStore(session),
+    shippingRateResolver: jest.fn().mockResolvedValue(RATES),
     ...overrides,
   };
 }
 
 function createMockReq(body: Record<string, unknown> = {}): SessionRequest {
   return { body, headers: {}, cookies: {} };
-}
-
-function makeShippingResponse(options: unknown[] = []) {
-  return {
-    data: { data: options },
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -114,7 +120,6 @@ function makeShippingResponse(options: unknown[] = []) {
 describe("handleCalculateShipping", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    epSdk.getShippingOptions.mockReset();
   });
 
   describe("no session", () => {
@@ -143,33 +148,6 @@ describe("handleCalculateShipping", () => {
   });
 
   describe("success path", () => {
-    const SHIPPING_OPTIONS = [
-      {
-        id: "rate-1",
-        name: "Standard Shipping",
-        description: "5-7 business days",
-        price: { amount: 599, currency: "USD" },
-        delivery_time: "5-7 days",
-        service_level: "standard",
-        carrier: "USPS",
-      },
-      {
-        id: "rate-2",
-        name: "Express Shipping",
-        description: "2-3 business days",
-        price: { amount: 1299, currency: "USD" },
-        delivery_time: "2-3 days",
-        service_level: "express",
-        carrier: "FedEx",
-      },
-    ];
-
-    beforeEach(() => {
-      epSdk.getShippingOptions.mockResolvedValue(
-        makeShippingResponse(SHIPPING_OPTIONS) as any
-      );
-    });
-
     it("returns 200 on success", async () => {
       const res = await handleCalculateShipping(
         createMockReq(),
@@ -179,34 +157,39 @@ describe("handleCalculateShipping", () => {
       expect((res.body as any).success).toBe(true);
     });
 
-    it("returns normalized shipping rates in the session", async () => {
+    it("returns the resolver's rates in the session", async () => {
       const res = await handleCalculateShipping(
         createMockReq(),
         createMockCtx(makeSession())
       );
       const session = (res.body as any).data.session;
-      expect(session.availableShippingRates).toHaveLength(2);
+      expect(session.availableShippingRates).toEqual(RATES);
     });
 
-    it("normalizes rate fields correctly", async () => {
+    it("invokes the resolver with the current session", async () => {
+      const resolver = jest.fn().mockResolvedValue(RATES);
+      const session = makeSession({ cartId: "my-cart-123" });
+      await handleCalculateShipping(
+        createMockReq(),
+        createMockCtx(session, { shippingRateResolver: resolver })
+      );
+      expect(resolver).toHaveBeenCalledTimes(1);
+      const passed = resolver.mock.calls[0][0] as CheckoutSession;
+      expect(passed.cartId).toBe("my-cart-123");
+      expect(passed.shippingAddress).toEqual(SHIPPING_ADDRESS);
+    });
+
+    it("accepts a synchronous resolver", async () => {
+      const resolver = jest.fn().mockReturnValue(RATES);
       const res = await handleCalculateShipping(
         createMockReq(),
-        createMockCtx(makeSession())
+        createMockCtx(makeSession(), { shippingRateResolver: resolver })
       );
-      const rates = (res.body as any).data.session.availableShippingRates;
-      expect(rates[0]).toEqual({
-        id: "rate-1",
-        name: "Standard Shipping",
-        description: "5-7 business days",
-        amount: 599,
-        currency: "USD",
-        deliveryTime: "5-7 days",
-        serviceLevel: "standard",
-        carrier: "USPS",
-      });
+      expect(res.status).toBe(200);
+      expect((res.body as any).data.session.availableShippingRates).toEqual(RATES);
     });
 
-    it("stores updated session with rates via sessionStore.set", async () => {
+    it("stores the updated session with rates via sessionStore.set", async () => {
       const store = createMockStore(makeSession());
       await handleCalculateShipping(
         createMockReq(),
@@ -214,7 +197,7 @@ describe("handleCalculateShipping", () => {
       );
       expect(store.set).toHaveBeenCalledTimes(1);
       const persisted: CheckoutSession = store.set.mock.calls[0][1];
-      expect(persisted.availableShippingRates).toHaveLength(2);
+      expect(persisted.availableShippingRates).toEqual(RATES);
     });
 
     it("response includes Set-Cookie header", async () => {
@@ -233,142 +216,66 @@ describe("handleCalculateShipping", () => {
       const session = (res.body as any).data.session;
       expect(Object.prototype.hasOwnProperty.call(session, "cartHash")).toBe(false);
     });
-
-    it("passes EP client with correct credentials", async () => {
-      await handleCalculateShipping(
-        createMockReq(),
-        createMockCtx(makeSession())
-      );
-      expect(epSdk.getShippingOptions).toHaveBeenCalledTimes(1);
-      const callArgs = epSdk.getShippingOptions.mock.calls[0][0];
-      expect(callArgs.client.settings.application_id).toBe("test-id");
-      expect(callArgs.client.settings.host).toBe("https://api.test.com");
-    });
-
-    it("passes the session cartId as path parameter", async () => {
-      await handleCalculateShipping(
-        createMockReq(),
-        createMockCtx(makeSession({ cartId: "my-cart-123" }))
-      );
-      const callArgs = epSdk.getShippingOptions.mock.calls[0][0];
-      expect(callArgs.path.cartID).toBe("my-cart-123");
-    });
-
-    it("converts session address to EP address format", async () => {
-      await handleCalculateShipping(
-        createMockReq(),
-        createMockCtx(makeSession())
-      );
-      const callArgs = epSdk.getShippingOptions.mock.calls[0][0];
-      const addr = callArgs.body.data.shipping_address;
-      expect(addr.first_name).toBe("Jane");
-      expect(addr.last_name).toBe("Doe");
-      expect(addr.line_1).toBe("123 Main St");
-      expect(addr.city).toBe("Springfield");
-      expect(addr.country).toBe("US");
-      expect(addr.postcode).toBe("62701");
-    });
   });
 
-  describe("empty shipping options", () => {
-    it("returns empty availableShippingRates when EP returns no options", async () => {
-      epSdk.getShippingOptions.mockResolvedValue(
-        makeShippingResponse([]) as any
-      );
+  describe("empty rates", () => {
+    it("returns empty availableShippingRates when the resolver returns none", async () => {
       const res = await handleCalculateShipping(
         createMockReq(),
-        createMockCtx(makeSession())
+        createMockCtx(makeSession(), {
+          shippingRateResolver: jest.fn().mockResolvedValue([]),
+        })
       );
+      expect(res.status).toBe(200);
       expect((res.body as any).data.session.availableShippingRates).toEqual([]);
     });
 
-    it("handles missing data array from EP gracefully", async () => {
-      epSdk.getShippingOptions.mockResolvedValue({ data: {} } as any);
+    it("coerces a non-array resolver result to an empty list", async () => {
       const res = await handleCalculateShipping(
         createMockReq(),
-        createMockCtx(makeSession())
+        createMockCtx(makeSession(), {
+          shippingRateResolver: jest.fn().mockResolvedValue(undefined as any),
+        })
       );
       expect(res.status).toBe(200);
       expect((res.body as any).data.session.availableShippingRates).toEqual([]);
     });
   });
 
-  describe("rate field defaults", () => {
-    it("uses description as name fallback", async () => {
-      epSdk.getShippingOptions.mockResolvedValue(
-        makeShippingResponse([
-          { id: "r1", description: "Ground", price: { amount: 500, currency: "USD" } },
-        ]) as any
-      );
+  describe("resolver not configured", () => {
+    it("returns 200 with empty rates when no resolver is wired", async () => {
       const res = await handleCalculateShipping(
         createMockReq(),
-        createMockCtx(makeSession())
+        createMockCtx(makeSession(), { shippingRateResolver: undefined })
       );
-      const rate = (res.body as any).data.session.availableShippingRates[0];
-      expect(rate.name).toBe("Ground");
-    });
-
-    it("defaults name to 'Shipping' when both name and description are absent", async () => {
-      epSdk.getShippingOptions.mockResolvedValue(
-        makeShippingResponse([
-          { id: "r1", price: { amount: 0, currency: "USD" } },
-        ]) as any
-      );
-      const res = await handleCalculateShipping(
-        createMockReq(),
-        createMockCtx(makeSession())
-      );
-      const rate = (res.body as any).data.session.availableShippingRates[0];
-      expect(rate.name).toBe("Shipping");
-    });
-
-    it("defaults amount to 0 when price is missing", async () => {
-      epSdk.getShippingOptions.mockResolvedValue(
-        makeShippingResponse([{ id: "r1", name: "Free" }]) as any
-      );
-      const res = await handleCalculateShipping(
-        createMockReq(),
-        createMockCtx(makeSession())
-      );
-      const rate = (res.body as any).data.session.availableShippingRates[0];
-      expect(rate.amount).toBe(0);
-    });
-
-    it("defaults currency to USD when price.currency is missing", async () => {
-      epSdk.getShippingOptions.mockResolvedValue(
-        makeShippingResponse([{ id: "r1", name: "Basic", price: { amount: 100 } }]) as any
-      );
-      const res = await handleCalculateShipping(
-        createMockReq(),
-        createMockCtx(makeSession())
-      );
-      const rate = (res.body as any).data.session.availableShippingRates[0];
-      expect(rate.currency).toBe("USD");
-    });
-
-    it("defaults serviceLevel to 'standard'", async () => {
-      epSdk.getShippingOptions.mockResolvedValue(
-        makeShippingResponse([{ id: "r1", name: "Basic" }]) as any
-      );
-      const res = await handleCalculateShipping(
-        createMockReq(),
-        createMockCtx(makeSession())
-      );
-      const rate = (res.body as any).data.session.availableShippingRates[0];
-      expect(rate.serviceLevel).toBe("standard");
+      expect(res.status).toBe(200);
+      expect((res.body as any).data.session.availableShippingRates).toEqual([]);
     });
   });
 
-  describe("EP API failure", () => {
-    it("returns 502 when getShippingOptions throws", async () => {
-      epSdk.getShippingOptions.mockRejectedValue(new Error("EP timeout"));
+  describe("resolver failure", () => {
+    it("returns 502 when the resolver throws", async () => {
       const res = await handleCalculateShipping(
         createMockReq(),
-        createMockCtx(makeSession())
+        createMockCtx(makeSession(), {
+          shippingRateResolver: jest.fn().mockRejectedValue(new Error("carrier timeout")),
+        })
       );
       expect(res.status).toBe(502);
       expect((res.body as any).success).toBe(false);
-      expect((res.body as any).error.code).toBe("EP_ERROR");
+      expect((res.body as any).error.code).toBe("SHIPPING_ERROR");
+    });
+
+    it("does NOT persist a session when the resolver throws", async () => {
+      const store = createMockStore(makeSession());
+      await handleCalculateShipping(
+        createMockReq(),
+        createMockCtx(null, {
+          sessionStore: store,
+          shippingRateResolver: jest.fn().mockRejectedValue(new Error("carrier timeout")),
+        })
+      );
+      expect(store.set).not.toHaveBeenCalled();
     });
   });
 
@@ -384,10 +291,7 @@ describe("handleCalculateShipping", () => {
       expect((res.body as any).error.code).toBe("STORE_ERROR");
     });
 
-    it("returns 500 when sessionStore.set throws after successful EP call", async () => {
-      epSdk.getShippingOptions.mockResolvedValue(
-        makeShippingResponse([{ id: "r1", name: "Standard" }]) as any
-      );
+    it("returns 500 when sessionStore.set throws after resolving rates", async () => {
       const store = createMockStore(makeSession());
       store.set.mockRejectedValue(new Error("Encrypt error"));
       const res = await handleCalculateShipping(

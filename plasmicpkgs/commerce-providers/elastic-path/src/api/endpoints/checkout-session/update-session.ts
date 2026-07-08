@@ -14,6 +14,7 @@ import type {
   UpdateSessionRequest,
 } from "../../../checkout/session/types";
 import { filterAllowedCustomAttributes } from "../../../checkout/session/custom-attributes-allowlist";
+import { applyShippingSelection } from "../../../checkout/session/apply-shipping-selection";
 import { createLogger } from "../../../utils/logger";
 
 const log = createLogger("UpdateSession");
@@ -129,6 +130,28 @@ export async function handleUpdateSession(
         error: { message: "Failed to store session", code: "STORE_ERROR" },
       },
     };
+  }
+
+  // When the shopper picks a shipping rate (an id only — never an amount), write
+  // the SERVER-resolved cost into the cart credentialed so the cart shows it
+  // before pay. Best-effort: this is a UX convenience, NOT the integrity
+  // boundary — /pay re-asserts the shipping line authoritatively (ADR-0013), so
+  // a write hiccup here is non-fatal and a forged/un-offered id simply fails to
+  // resolve (no line written). Skip when no rates have been computed yet
+  // (selection before calculate-shipping): nothing to resolve against.
+  if (
+    update.selectedShippingRateId !== undefined &&
+    updated.availableShippingRates.length > 0
+  ) {
+    try {
+      await applyShippingSelection(ctx, updated);
+    } catch (err) {
+      log.warn("Could not write shipping line on selection (deferred to /pay)", {
+        sessionId: updated.id,
+        rateId: updated.selectedShippingRateId,
+        error: err instanceof Error ? err.message : String(err),
+      } as Record<string, unknown>);
+    }
   }
 
   log.info("Session updated", {

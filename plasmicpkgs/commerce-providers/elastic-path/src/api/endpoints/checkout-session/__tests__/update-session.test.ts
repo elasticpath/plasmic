@@ -13,12 +13,25 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
   checkoutApi: jest.fn(),
   paymentSetup: jest.fn(),
   confirmPayment: jest.fn(),
-  getShippingOptions: jest.fn(),
+  manageCarts: jest.fn(),
+  deleteACartItem: jest.fn(),
+  createShopperClient: jest.fn(() => ({ client: {} })),
 }));
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const epSdk = require("@epcc-sdk/sdks-shopper") as {
+  getACart: jest.Mock;
+  manageCarts: jest.Mock;
+  deleteACartItem: jest.Mock;
+};
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { handleUpdateSession } = require("../update-session") as {
   handleUpdateSession: typeof import("../update-session").handleUpdateSession;
+};
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { EP_SHIPPING_LINE_SKU } = require("../../../../checkout/session/set-shipping-line") as {
+  EP_SHIPPING_LINE_SKU: string;
 };
 import type {
   SessionHandlerContext,
@@ -26,6 +39,7 @@ import type {
   CheckoutSession,
   SessionAddress,
   SessionCustomerInfo,
+  SessionShippingRate,
 } from "../../../../checkout/session/types";
 
 // ---------------------------------------------------------------------------
@@ -265,5 +279,93 @@ describe("handleUpdateSession", () => {
         "rate-existing"
       );
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Shipping selection → credentialed cart write (slice #3a).
+//   Picking a rate id writes the SERVER-resolved cost into the cart so it shows
+//   before pay. Best-effort: never the integrity boundary (pay re-asserts), so
+//   it must not turn a valid update into a 4xx/5xx.
+// ---------------------------------------------------------------------------
+
+const RATES: SessionShippingRate[] = [
+  { id: "rate-standard", name: "Standard", amount: 500, currency: "CHF", serviceLevel: "standard" },
+  { id: "rate-express", name: "Express", amount: 1500, currency: "CHF", serviceLevel: "express" },
+];
+
+function cartFetch(items: Array<Record<string, unknown>> = []) {
+  return {
+    data: {
+      data: { id: "cart-abc", type: "cart", meta: { display_price: { with_tax: { amount: 8000, currency: "CHF" } } } },
+      included: { items },
+    },
+  };
+}
+
+describe("handleUpdateSession — shipping selection write", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    epSdk.getACart.mockResolvedValue(cartFetch([]));
+    epSdk.manageCarts.mockResolvedValue({});
+    epSdk.deleteACartItem.mockResolvedValue({});
+  });
+
+  function ctxWithAdmin(session: CheckoutSession) {
+    return createMockCtx(session, {
+      getClientCredentialsToken: jest.fn(async () => "ADMIN-TOKEN"),
+    });
+  }
+
+  it("writes the resolved shipping line when a rate is selected and rates exist", async () => {
+    const res = await handleUpdateSession(
+      createMockReq({ selectedShippingRateId: "rate-express" }),
+      ctxWithAdmin(makeSession({ availableShippingRates: RATES }))
+    );
+
+    expect(res.status).toBe(200);
+    expect(epSdk.manageCarts).toHaveBeenCalledTimes(1);
+    const body = epSdk.manageCarts.mock.calls[0][0].body.data;
+    expect(body.sku).toBe(EP_SHIPPING_LINE_SKU);
+    expect(body.price.amount).toBe(1500); // server amount for the selected id
+  });
+
+  it("does NOT write when no rates have been computed yet (selection before calculate-shipping)", async () => {
+    const res = await handleUpdateSession(
+      createMockReq({ selectedShippingRateId: "rate-express" }),
+      ctxWithAdmin(makeSession({ availableShippingRates: [] }))
+    );
+    expect(res.status).toBe(200);
+    expect(epSdk.manageCarts).not.toHaveBeenCalled();
+  });
+
+  it("does NOT write when the update carries no shipping selection", async () => {
+    const res = await handleUpdateSession(
+      createMockReq({ customerInfo: CUSTOMER_INFO }),
+      ctxWithAdmin(makeSession({ availableShippingRates: RATES }))
+    );
+    expect(res.status).toBe(200);
+    expect(epSdk.manageCarts).not.toHaveBeenCalled();
+  });
+
+  it("still returns 200 (best-effort) when the selected id is forged / un-offered — no line written", async () => {
+    const res = await handleUpdateSession(
+      createMockReq({ selectedShippingRateId: "rate-hacked" }),
+      ctxWithAdmin(makeSession({ availableShippingRates: RATES }))
+    );
+    // The selection is still stored; the write simply can't resolve a price.
+    expect(res.status).toBe(200);
+    expect((res.body as any).data.session.selectedShippingRateId).toBe("rate-hacked");
+    expect(epSdk.manageCarts).not.toHaveBeenCalled();
+  });
+
+  it("still returns 200 (best-effort) when the EP cart write fails — deferred to /pay", async () => {
+    epSdk.manageCarts.mockRejectedValue(new Error("EP cart write rejected"));
+    const res = await handleUpdateSession(
+      createMockReq({ selectedShippingRateId: "rate-standard" }),
+      ctxWithAdmin(makeSession({ availableShippingRates: RATES }))
+    );
+    expect(res.status).toBe(200);
+    expect((res.body as any).data.session.selectedShippingRateId).toBe("rate-standard");
   });
 });

@@ -43,6 +43,12 @@ import {
   resolveRequiresShipping,
   cartHasPhysicalItem,
 } from "../../../checkout/session/cart-shipping";
+import { buildAdminEpClient } from "../../../checkout/session/admin-client";
+import {
+  applyShippingSelection,
+  ShippingResolutionError,
+} from "../../../checkout/session/apply-shipping-selection";
+import { EP_SHIPPING_LINE_SKU } from "../../../checkout/session/set-shipping-line";
 import {
   applyPaymentSucceeded,
   applyPaymentFailed,
@@ -93,23 +99,6 @@ function buildShopperEpClient(ctx: SessionHandlerContext) {
       clientId: ctx.epCredentials.clientId,
       storage: {
         get: () => ctx.shopperAccessToken ?? "",
-        set: () => {},
-      },
-    }
-  );
-  return client;
-}
-
-async function buildAdminEpClient(ctx: SessionHandlerContext) {
-  const token = ctx.getClientCredentialsToken
-    ? await ctx.getClientCredentialsToken()
-    : "";
-  const { client } = createShopperClient(
-    { baseUrl: ctx.epCredentials.apiBaseUrl },
-    {
-      clientId: ctx.epCredentials.clientId,
-      storage: {
-        get: () => token,
         set: () => {},
       },
     }
@@ -318,6 +307,7 @@ export async function handlePay(
   let freshCartItems: Array<{
     id: string;
     quantity: number;
+    sku?: string;
     product_id?: string;
     unit_price?: { amount?: number };
     value?: { amount?: number };
@@ -337,7 +327,14 @@ export async function handlePay(
       (cartResponse.data as any)?.included?.items ??
       (cartResponse.data as any)?.data?.items ??
       [];
-    freshCartItems = Array.isArray(items) ? items : [];
+    // Exclude the storefront-managed shipping line (sentinel SKU) from BOTH the
+    // hash and the physical-item lookup. It is server-written (during selection
+    // and re-asserted at pay), not a shopper item, so its presence/absence must
+    // never trip the cart-mismatch 409 — otherwise every shipping selection
+    // would 409 at pay (the create-session hash predates the line).
+    freshCartItems = (Array.isArray(items) ? items : []).filter(
+      (it: { sku?: string }) => it?.sku !== EP_SHIPPING_LINE_SKU
+    );
     const metaAmount = (cartResponse.data as any)?.data?.meta?.display_price
       ?.with_tax?.amount;
     if (typeof metaAmount === "number") cartMetaTotal = metaAmount;
@@ -436,6 +433,90 @@ export async function handlePay(
   //     custom attributes (best-effort) before any checkout.
   const adminClient = await buildAdminEpClient(ctx);
   await persistCustomAttributes(adminClient, session.cartId, session);
+
+  // 3b-bis. [Slice #4] Re-assert the authoritative shipping line — the durable
+  //   guarantee (ADR-0013). The cart is shopper-mutable, so the shipping line
+  //   written at selection time can be lowered or stripped before pay.
+  //
+  //   FAIL CLOSED on requiresShipping: when shipping is required the charge MUST
+  //   include a server-resolved shipping amount, so a resolvable rate has to
+  //   back it. step 3a already requires selectedShippingRateId here; this
+  //   additionally requires that id to resolve against the server-computed
+  //   availableShippingRates. If the rates were never computed, or the selected
+  //   id is not among them, the selection is irreconcilable → 409 (recalculate
+  //   shipping). We must NOT merely skip when rates are empty: a physical cart
+  //   reaching pay without computed rates would otherwise charge no shipping at
+  //   all (a free ship). The amount is always server-owned — the client never
+  //   supplies it.
+  //
+  //   On success we re-resolve and re-write the line (idempotent) so the charge
+  //   reflects EXACTLY the server amount, never a tampered cart line. The charge
+  //   is computed by EP from this cart (the adapter creates the PaymentIntent /
+  //   the free-settlement checkout reads it), so the re-write must land BEFORE
+  //   both. (Digital / requiresShipping:false checkouts skip this entirely —
+  //   there is no shipping to assert.)
+  if (requiresShipping) {
+    try {
+      await applyShippingSelection(ctx, session, { client: adminClient });
+    } catch (err) {
+      if (err instanceof ShippingResolutionError) {
+        log.warn("Selected shipping rate no longer resolvable at pay", {
+          sessionId: session.id,
+          error: err.message,
+        } as Record<string, unknown>);
+        return {
+          status: 409,
+          body: {
+            success: false,
+            error: {
+              message:
+                "Selected shipping rate is no longer available; recalculate shipping",
+              code: "SHIPPING_RATE_UNRESOLVABLE",
+            },
+          },
+        };
+      }
+      log.error("Failed to re-assert shipping line before pay", {
+        cartId: session.cartId,
+        error: err instanceof Error ? err.message : String(err),
+      } as Record<string, unknown>);
+      return {
+        status: 502,
+        body: {
+          success: false,
+          error: { message: "Failed to apply shipping", code: "EP_ERROR" },
+        },
+      };
+    }
+
+    // Re-asserting shipping changes the cart total, so recompute the
+    // authoritative total from the re-priced cart before the free-vs-paid
+    // decision — else a stripped line that had zeroed the total would route a
+    // genuinely-paid (shipping-bearing) cart to free settlement. Fail closed:
+    // if we can't read the authoritative total back, refuse rather than risk a
+    // free settlement.
+    try {
+      const reread = await getACart({
+        client: shopperClient,
+        path: { cartID: session.cartId },
+      });
+      const metaAmount = (reread.data as any)?.data?.meta?.display_price
+        ?.with_tax?.amount;
+      cartMetaTotal = typeof metaAmount === "number" ? metaAmount : null;
+    } catch (err) {
+      log.error("Failed to re-read cart total after shipping re-assertion", {
+        cartId: session.cartId,
+        error: err instanceof Error ? err.message : String(err),
+      } as Record<string, unknown>);
+      return {
+        status: 502,
+        body: {
+          success: false,
+          error: { message: "Failed to fetch cart", code: "EP_ERROR" },
+        },
+      };
+    }
+  }
 
   // 3c. Free-order (zero-total) branch. Stripe and other third-party gateways
   //     reject a 0 charge, so EP best practice is to settle a free order with

@@ -17,7 +17,6 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
   checkoutApi: jest.fn(),
   paymentSetup: jest.fn(),
   confirmPayment: jest.fn(),
-  getShippingOptions: jest.fn(),
   createShopperClient: jest.fn(() => ({ client: {} })),
 }));
 
