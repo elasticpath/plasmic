@@ -1,6 +1,6 @@
 {
   "name": "@elasticpath/plasmic-ep-commerce-elastic-path",
-  "version": "0.0.3",
+  "version": "0.1.0",
   "description": "Plasmic registration calls for elastic path commerce provider",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -9,13 +9,12 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/plasmic-ep-commerce-elastic-path.esm.js",
-      "require": "./dist/index.js",
-      "default": "./dist/index.js"
+      "require": "./dist/index.js"
     },
     "./server": {
       "types": "./dist/server.d.ts",
-      "require": "./dist/server.js",
-      "default": "./dist/server.js"
+      "import": "./dist/server.mjs",
+      "require": "./dist/server.js"
     }
   },
   "files": [
@@ -27,7 +26,8 @@
     "test": "TEST_CWD=`pwd` yarn --cwd=../../.. test --passWithNoTests && yarn test:vitest",
     "test:vitest": "vitest run",
     "lint": "tsdx lint",
-    "prepublishOnly": "npm run build",
+    "prepublishOnly": "npm run build && npx --yes publint --pack npm",
+    "verify:package": "npx --yes publint --pack npm && npx --yes @arethetypeswrong/cli --pack",
     "size": "size-limit",
     "analyze": "size-limit --why"
   },
@@ -47,6 +47,7 @@
     "@algolia/autocomplete-plugin-recent-searches": ">=1.17.0",
     "@plasmicapp/host": ">=1.0.0",
     "@plasmicapp/query": ">=0.1.0",
+    "next": ">=14.0.0",
     "react": ">=16.8.0",
     "react-hook-form": ">=7.28.0",
     "swr": ">=1.0.0"
@@ -59,7 +60,7 @@
   "dependencies": {
     "@algolia/autocomplete-core": "^1.17.7",
     "@elasticpath/catalog-search-instantsearch-adapter": "0.1.0",
-    "@epcc-sdk/sdks-shopper": "^0.0.43",
+    "@epcc-sdk/sdks-shopper": "^0.1.0",
     "@hookform/resolvers": "^3.3.2",
     "@plasmicpkgs/commerce": "0.0.232",
     "@stripe/react-stripe-js": "^2.4.0",

@@ -22,17 +22,25 @@ const external = [
   "fs",
 ];
 
-// Bundle server entry
-buildSync({
-  entryPoints: ["src/server.ts"],
-  outfile: "dist/server.js",
-  bundle: true,
-  platform: "node",
-  format: "cjs",
-  target: "node16",
-  external,
-  sourcemap: true,
-});
+// Bundle server entry in both CJS and ESM so the "./server" subpath resolves
+// natively under both `require` and `import` (Next/Turbopack/raw-Node), instead
+// of relying on CJS-interop fallthrough. All deps/peers (next, stripe, crypto,
+// …) are externalized so no framework runtime is inlined into the bundle.
+for (const [format, outfile] of [
+  ["cjs", "dist/server.js"],
+  ["esm", "dist/server.mjs"],
+]) {
+  buildSync({
+    entryPoints: ["src/server.ts"],
+    outfile,
+    bundle: true,
+    platform: "node",
+    format,
+    target: "node16",
+    external,
+    sourcemap: true,
+  });
+}
 
 // Generate declaration file by re-exporting from tsdx-generated .d.ts files.
 // tsc would try to type-check all transitive sources, which may fail on

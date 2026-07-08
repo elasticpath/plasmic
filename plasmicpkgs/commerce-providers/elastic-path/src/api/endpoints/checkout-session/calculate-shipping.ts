@@ -1,11 +1,19 @@
 /**
  * A-4.4: Calculate Shipping Rates
  *
- * Calls EP getShippingOptions using the session's cartId and stored shipping
- * address, transforms the response into SessionShippingRate[], persists the
- * updated session, and returns it to the client.
+ * Sources the session's available shipping rates from the SERVER-side
+ * `ctx.shippingRateResolver` (#374 / #371) — a tenant's own server logic (e.g. a
+ * carrier-rate fetch authored as a Studio server query), wired at route setup.
+ * EP has no shopper "shipping options / rates" endpoint, and a rate list is
+ * NEVER accepted from the browser, so the resolved amounts are trusted by
+ * `resolveShippingRate` and the /pay re-assertion (the client only *selects* a
+ * rate id — see ADR-0013).
+ *
+ * Persists the resolved rates into `session.availableShippingRates` and returns
+ * the updated session. When no resolver is wired the store does not support
+ * server-computed shipping: the rate list is empty and a shipping-required
+ * checkout fails closed at /pay.
  */
-import { getShippingOptions } from "@epcc-sdk/sdks-shopper";
 import type {
   SessionRequest,
   SessionResponse,
@@ -14,7 +22,6 @@ import type {
   ClientCheckoutSession,
   SessionShippingRate,
 } from "../../../checkout/session/types";
-import { toEPAddress } from "../../../checkout/session/address-utils";
 import { createLogger } from "../../../utils/logger";
 
 const log = createLogger("CalculateShipping");
@@ -69,63 +76,28 @@ export async function handleCalculateShipping(
     };
   }
 
-  const client = {
-    settings: {
-      application_id: ctx.epCredentials.clientId,
-      host: ctx.epCredentials.apiBaseUrl,
-    },
-  } as any;
-
-  const epAddress = toEPAddress(session.shippingAddress);
-
+  // Source the rates from the tenant's server-side resolver. No resolver wired
+  // → the store doesn't offer server-computed shipping (empty list). The
+  // resolver owns the SessionShippingRate shape; we only defend against a
+  // non-array result so downstream (resolveShippingRate) always sees a list.
   let shippingRates: SessionShippingRate[] = [];
-  try {
-    const shippingResponse = await getShippingOptions({
-      client,
-      path: { cartID: session.cartId },
-      body: {
-        data: {
-          shipping_address: {
-            first_name: epAddress.first_name,
-            last_name: epAddress.last_name,
-            line_1: epAddress.line_1,
-            line_2: epAddress.line_2 || "",
-            city: epAddress.city,
-            county: epAddress.county || "",
-            country: epAddress.country,
-            postcode: epAddress.postcode,
-          },
+  if (ctx.shippingRateResolver) {
+    try {
+      const resolved = await ctx.shippingRateResolver(session);
+      shippingRates = Array.isArray(resolved) ? resolved : [];
+    } catch (err) {
+      log.error("Shipping rate resolver failed", {
+        cartId: session.cartId,
+        error: err instanceof Error ? err.message : String(err),
+      } as Record<string, unknown>);
+      return {
+        status: 502,
+        body: {
+          success: false,
+          error: { message: "Failed to retrieve shipping options", code: "SHIPPING_ERROR" },
         },
-      },
-    });
-
-    const rawOptions = (shippingResponse.data as any)?.data ?? [];
-    shippingRates = Array.isArray(rawOptions)
-      ? rawOptions.map(
-          (option: any): SessionShippingRate => ({
-            id: option.id,
-            name: option.name || option.description || "Shipping",
-            description: option.description || undefined,
-            amount: option.price?.amount ?? 0,
-            currency: option.price?.currency ?? "USD",
-            deliveryTime: option.delivery_time || undefined,
-            serviceLevel: option.service_level || "standard",
-            carrier: option.carrier || undefined,
-          })
-        )
-      : [];
-  } catch (err) {
-    log.error("Failed to fetch shipping options from EP", {
-      cartId: session.cartId,
-      error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
-    return {
-      status: 502,
-      body: {
-        success: false,
-        error: { message: "Failed to retrieve shipping options", code: "EP_ERROR" },
-      },
-    };
+      };
+    }
   }
 
   const updated: CheckoutSession = {

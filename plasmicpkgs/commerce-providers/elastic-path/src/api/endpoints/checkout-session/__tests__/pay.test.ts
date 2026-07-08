@@ -16,6 +16,8 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
   paymentSetup: jest.fn(() => ({ data: { data: { status: "paid" } } })),
   updateACart: jest.fn(() => ({ data: { data: {} } })),
   deleteACart: jest.fn(),
+  manageCarts: jest.fn(() => ({})),
+  deleteACartItem: jest.fn(() => ({})),
   createShopperClient: jest.fn(() => ({ client: {} })),
 }));
 
@@ -27,6 +29,8 @@ const epSdk = require("@epcc-sdk/sdks-shopper") as {
   paymentSetup: jest.Mock;
   updateACart: jest.Mock;
   deleteACart: jest.Mock;
+  manageCarts: jest.Mock;
+  deleteACartItem: jest.Mock;
 };
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -84,7 +88,9 @@ function makeSession(overrides: Partial<CheckoutSession> = {}): CheckoutSession 
     shippingAddress: ADDRESS,
     billingAddress: ADDRESS,
     selectedShippingRateId: "rate-standard",
-    availableShippingRates: [],
+    availableShippingRates: [
+      { id: "rate-standard", name: "Standard", amount: 500, currency: "USD", serviceLevel: "standard" },
+    ],
     totals: null,
     payment: {
       gateway: null,
@@ -150,7 +156,14 @@ function createMockReq(body: Record<string, unknown> = {}): SessionRequest {
 }
 
 function makeCartResponse(items: unknown[] = []) {
-  return { data: { included: { items } } };
+  // Normalizable (inner data + meta) so the shipping re-assertion's cart re-read
+  // succeeds; non-zero meta total routes to the paid path.
+  return {
+    data: {
+      included: { items },
+      data: { id: "cart-abc", meta: { display_price: { with_tax: { amount: 5400, currency: "USD" } } } },
+    },
+  };
 }
 
 function makeCheckoutResponse(orderId = "order-1") {
@@ -185,6 +198,8 @@ describe("handlePay", () => {
     epSdk.checkoutApi.mockReset();
     epSdk.confirmOrder.mockReset();
     epSdk.deleteACart.mockReset();
+    epSdk.manageCarts.mockReset().mockResolvedValue({} as any);
+    epSdk.deleteACartItem.mockReset().mockResolvedValue({} as any);
 
     // Default: all EP calls succeed
     epSdk.getACart.mockResolvedValue(makeCartResponse(CART_ITEMS) as any);

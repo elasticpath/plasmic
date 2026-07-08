@@ -32,7 +32,8 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
   updateACart: jest.fn(),
   updateAnOrder: jest.fn(),
   deleteACart: jest.fn(),
-  getShippingOptions: jest.fn(),
+  manageCarts: jest.fn(),
+  deleteACartItem: jest.fn(),
   getByContextAllProducts: jest.fn(),
   createShopperClient: jest.fn(() => ({ client: {} })),
 }));
@@ -47,7 +48,8 @@ const epSdk = require("@epcc-sdk/sdks-shopper") as {
   updateACart: jest.Mock;
   updateAnOrder: jest.Mock;
   deleteACart: jest.Mock;
-  getShippingOptions: jest.Mock;
+  manageCarts: jest.Mock;
+  deleteACartItem: jest.Mock;
   getByContextAllProducts: jest.Mock;
 };
 
@@ -123,6 +125,14 @@ function cartResponseWithTotal(
   };
 }
 
+// A shipping cart's default state is realistic: the selected rate id exists in
+// the server-computed available set (a selection is made FROM that list). The
+// handler fails closed if shipping is required but no rate resolves, so tests
+// that complete a shipping order must carry the computed rate, not an empty set.
+const DEFAULT_RATES = [
+  { id: "rate-standard", name: "Standard", amount: 500, currency: "CHF", serviceLevel: "standard", carrier: "DHL" },
+];
+
 function makeSession(overrides: Partial<CheckoutSession> = {}): CheckoutSession {
   return {
     id: "sess-sec",
@@ -147,7 +157,7 @@ function makeSession(overrides: Partial<CheckoutSession> = {}): CheckoutSession 
       postcode: "12345",
     },
     selectedShippingRateId: "rate-standard",
-    availableShippingRates: [],
+    availableShippingRates: DEFAULT_RATES,
     totals: null,
     payment: {
       gateway: null,
@@ -228,8 +238,9 @@ beforeEach(() => {
   epSdk.updateACart.mockResolvedValue({ data: { data: {} } });
   epSdk.updateAnOrder.mockResolvedValue({ data: { data: { id: "order-1" } } });
   epSdk.deleteACart.mockResolvedValue({ data: undefined });
-  epSdk.getShippingOptions.mockResolvedValue({ data: { data: [] } });
   epSdk.getByContextAllProducts.mockResolvedValue({ data: { data: [] } });
+  epSdk.manageCarts.mockResolvedValue({});
+  epSdk.deleteACartItem.mockResolvedValue({});
 });
 
 // ===========================================================================
@@ -252,7 +263,9 @@ describe("free-vs-paid server authority (#369)", () => {
       data: { included: { items: UNPARSEABLE_ITEMS } },
     });
     const ctx = createMockCtx(
-      makeSession({ cartHash: hashCart(UNPARSEABLE_ITEMS) })
+      // requiresShipping:false isolates this from the shipping re-assertion —
+      // the assertion under test is the free-vs-paid authority, not shipping.
+      makeSession({ cartHash: hashCart(UNPARSEABLE_ITEMS), requiresShipping: false })
     );
     // A free checkout sends no gateway / confirmation_token.
     const res = await handlePay(createMockReq({}), ctx);
@@ -273,7 +286,10 @@ describe("free-vs-paid server authority (#369)", () => {
     // exactly 0 → it still settles for free with no card.
     const FREE_ITEMS = [{ id: "free-1", quantity: 1 }];
     epSdk.getACart.mockResolvedValue(cartResponseWithTotal(0, FREE_ITEMS));
-    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS) }));
+    // A genuinely free order is digital here (no shipping to assert).
+    const ctx = createMockCtx(
+      makeSession({ cartHash: hashCart(FREE_ITEMS), requiresShipping: false })
+    );
 
     const res = await handlePay(createMockReq({}), ctx);
 
@@ -598,7 +614,211 @@ describe("server-authoritative requiresShipping (#369)", () => {
 });
 
 // ===========================================================================
-// 1e. Studio extension API — applyCartAdjustment money integrity (#371).
+// 1e. Authoritative shipping re-assertion (setShippingLine slice #4).
+//     The cart is shopper-mutable, so a shipping line written during checkout
+//     can be lowered or stripped before pay. handlePay re-resolves the selected
+//     rate server-side (from session.availableShippingRates — the client cannot
+//     supply an amount) and re-writes the line BEFORE the charge, so the
+//     charged shipping is always the server's recomputation, never the cart
+//     line as-found (ADR-0013).
+// ===========================================================================
+
+const SHIPPING_RATES = [
+  { id: "rate-standard", name: "Standard", amount: 500, currency: "CHF", serviceLevel: "standard", carrier: "DHL" },
+  { id: "rate-express", name: "Express", amount: 1500, currency: "CHF", serviceLevel: "express", carrier: "DHL" },
+];
+const SHIP_SKU = "__ep_shipping";
+
+/** Cart fetch carrying the given items + an authoritative meta total. */
+function cartFetch(items: Array<Record<string, unknown>>, total: number) {
+  return {
+    data: {
+      included: { items },
+      data: { meta: { display_price: { with_tax: { amount: total, currency: "CHF" } } } },
+    },
+  };
+}
+
+describe("authoritative shipping re-assertion (setShippingLine #4)", () => {
+  it("re-writes a TAMPERED (lowered) shipping line to the server amount before charging", async () => {
+    // The shopper lowered their shipping line to 1 minor unit. The hash still
+    // matches (the managed line is excluded from the hash), so no 409 fires —
+    // the re-assertion is what must defend the charge.
+    const tampered = [
+      ...PRICED_ITEMS,
+      { id: "ship-old", sku: SHIP_SKU, quantity: 1, unit_price: { amount: 1 } },
+    ];
+    epSdk.getACart.mockResolvedValue(cartFetch(tampered, 5401));
+    const adapter = createMockAdapter();
+    const ctx = createMockCtx(
+      makeSession({
+        cartHash: hashCart(PRICED_ITEMS), // managed line excluded → unchanged
+        availableShippingRates: SHIPPING_RATES,
+        selectedShippingRateId: "rate-standard",
+      }),
+      adapter
+    );
+
+    const res = await handlePay(
+      createMockReq({ gateway: "stripe", confirmation_token: "ctok" }),
+      ctx
+    );
+
+    expect(res.status).toBe(200);
+    expect((res.body as any).data.session.status).toBe("complete");
+    // The tampered line was cleared...
+    expect(epSdk.deleteACartItem).toHaveBeenCalledWith(
+      expect.objectContaining({ path: { cartID: "cart-abc", cartitemID: "ship-old" } })
+    );
+    // ...and replaced with the SERVER amount for the selected id (500), not 1.
+    const written = epSdk.manageCarts.mock.calls[0][0].body.data;
+    expect(written.sku).toBe(SHIP_SKU);
+    expect(written.price.amount).toBe(500);
+    // The charge runs against the re-written cart.
+    expect(adapter.initializePayment).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores any client-supplied shipping amount — only the selected rate id is honoured", async () => {
+    epSdk.getACart.mockResolvedValue(cartFetch(PRICED_ITEMS, 5400));
+    const adapter = createMockAdapter();
+    const ctx = createMockCtx(
+      makeSession({
+        availableShippingRates: SHIPPING_RATES,
+        selectedShippingRateId: "rate-express",
+      }),
+      adapter
+    );
+
+    // A hostile client stuffs a cheap shipping amount into the pay body.
+    const res = await handlePay(
+      createMockReq({
+        gateway: "stripe",
+        confirmation_token: "ctok",
+        shippingAmount: 1,
+        amount: 1,
+        price: { amount: 1 },
+      }),
+      ctx
+    );
+
+    expect(res.status).toBe(200);
+    // The written shipping amount is the SERVER rate (1500), never the client 1.
+    expect(epSdk.manageCarts.mock.calls[0][0].body.data.price.amount).toBe(1500);
+  });
+
+  it("never free-ships: a stripped line on a free-product cart is re-asserted and routed to the paid path", async () => {
+    // Free product, shipping line stripped → the cart's authoritative total is
+    // 0 at fetch. Without re-assertion this would settle for FREE via the
+    // manual gateway. Re-asserting shipping makes the total non-zero, so it
+    // must route to the paid path (gateway required) — never a free order.
+    const FREE_ITEMS = [{ id: "free-1", quantity: 1 }];
+    let call = 0;
+    epSdk.getACart.mockImplementation(async () => {
+      call += 1;
+      // Call 1 = pay's hash/total fetch (stripped → total 0).
+      if (call === 1) return cartFetch(FREE_ITEMS, 0);
+      // Subsequent reads (setCartShippingLine + the post-reassert recompute)
+      // see the re-written shipping line → non-zero total.
+      return cartFetch(
+        [...FREE_ITEMS, { id: "ship-new", sku: SHIP_SKU, quantity: 1, unit_price: { amount: 500 } }],
+        500
+      );
+    });
+    const adapter = createMockAdapter();
+    const ctx = createMockCtx(
+      makeSession({
+        cartHash: hashCart(FREE_ITEMS),
+        availableShippingRates: SHIPPING_RATES,
+        selectedShippingRateId: "rate-standard",
+      }),
+      adapter
+    );
+
+    // A free checkout attempt sends no gateway.
+    const res = await handlePay(createMockReq({}), ctx);
+
+    // Shipping was re-written...
+    expect(epSdk.manageCarts).toHaveBeenCalledTimes(1);
+    expect(epSdk.manageCarts.mock.calls[0][0].body.data.price.amount).toBe(500);
+    // ...and the cart did NOT settle for free: no manual settlement, no order.
+    expect(epSdk.paymentSetup).not.toHaveBeenCalled();
+    expect(epSdk.checkoutApi).not.toHaveBeenCalled();
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect((res.body as any).data?.session?.status).not.toBe("complete");
+  });
+
+  it("409s when the selected rate is no longer offered (irreconcilable), never charging", async () => {
+    epSdk.getACart.mockResolvedValue(cartFetch(PRICED_ITEMS, 5400));
+    const adapter = createMockAdapter();
+    const ctx = createMockCtx(
+      makeSession({
+        availableShippingRates: SHIPPING_RATES,
+        selectedShippingRateId: "rate-gone", // not in the server-computed set
+      }),
+      adapter
+    );
+
+    const res = await handlePay(
+      createMockReq({ gateway: "stripe", confirmation_token: "ctok" }),
+      ctx
+    );
+
+    expect(res.status).toBe(409);
+    expect((res.body as any).error.code).toBe("SHIPPING_RATE_UNRESOLVABLE");
+    // No write, no charge, no order.
+    expect(epSdk.manageCarts).not.toHaveBeenCalled();
+    expect(adapter.initializePayment).not.toHaveBeenCalled();
+    expect(epSdk.checkoutApi).not.toHaveBeenCalled();
+  });
+
+  it("fails closed (409) when shipping is required but no rates were ever computed — never a free ship", async () => {
+    // VULN-001 regression: a shipping-required cart that reaches pay without
+    // calculate-shipping having run (availableShippingRates empty) must NOT
+    // silently skip the shipping charge. The selection cannot resolve → 409,
+    // and nothing is charged.
+    epSdk.getACart.mockResolvedValue(cartFetch(PRICED_ITEMS, 5400));
+    const adapter = createMockAdapter();
+    const ctx = createMockCtx(
+      makeSession({ availableShippingRates: [], selectedShippingRateId: "rate-standard" }),
+      adapter
+    );
+
+    const res = await handlePay(
+      createMockReq({ gateway: "stripe", confirmation_token: "ctok" }),
+      ctx
+    );
+
+    expect(res.status).toBe(409);
+    expect((res.body as any).error.code).toBe("SHIPPING_RATE_UNRESOLVABLE");
+    expect(epSdk.manageCarts).not.toHaveBeenCalled();
+    expect(adapter.initializePayment).not.toHaveBeenCalled();
+    expect(epSdk.checkoutApi).not.toHaveBeenCalled();
+  });
+
+  it("does not leak the admin token through the shipping re-assertion write", async () => {
+    epSdk.getACart.mockResolvedValue(cartFetch(PRICED_ITEMS, 5400));
+    const adapter = createMockAdapter();
+    const ctx = createMockCtx(
+      makeSession({
+        availableShippingRates: SHIPPING_RATES,
+        selectedShippingRateId: "rate-standard",
+      }),
+      adapter
+    );
+
+    const res = await handlePay(
+      createMockReq({ gateway: "stripe", confirmation_token: "ctok" }),
+      ctx
+    );
+
+    expect(res.status).toBe(200);
+    expect(epSdk.manageCarts).toHaveBeenCalledTimes(1); // the credentialed write ran
+    expectNoTokenLeak(res);
+  });
+});
+
+// ===========================================================================
+// 1f. Studio extension API — applyCartAdjustment money integrity (#371).
 //     A tenant designer can inject a labelled fee into the EP cart from a
 //     server query (ep.applyCartAdjustment → a custom_item line). The trust
 //     invariant (ADR "EP cart is the sole authority for charged amounts"):
@@ -780,7 +1000,11 @@ describe("token-leak boundary — no admin/shopper token in any response", () =>
     const FREE_ITEMS = [{ id: "free-1", quantity: 1 }];
     epSdk.getACart.mockResolvedValue(cartResponseWithTotal(0, FREE_ITEMS));
     const ctx = createMockCtx(
-      makeSession({ cartHash: hashCart(FREE_ITEMS), customAttributes: { ...EXTRAS } }),
+      makeSession({
+        cartHash: hashCart(FREE_ITEMS),
+        customAttributes: { ...EXTRAS },
+        requiresShipping: false,
+      }),
       undefined,
       { allowedCustomAttributeKeys: "*" }
     );
@@ -833,7 +1057,6 @@ describe("token-leak boundary — no admin/shopper token in any response", () =>
   });
 
   it("calculate-shipping() never reflects a token", async () => {
-    epSdk.getShippingOptions.mockResolvedValue({ data: { data: [] } });
     const ctx = createMockCtx(makeSession());
     const res = await handleCalculateShipping(createMockReq({}), ctx);
     expect(res.status).toBe(200);
