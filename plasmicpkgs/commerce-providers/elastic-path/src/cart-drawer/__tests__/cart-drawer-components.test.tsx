@@ -17,10 +17,23 @@
 
 // --- Mocks (hoisted by Jest before any other code) ---
 
+// Cart data flows through the proxy-backed `useEpCart` hook (shared "ep-cart"
+// SWR key). Tests still configure `mockUseCart` with the SWR-style
+// `{ data, error }` shape; the mock maps it to useEpCart's
+// `{ cart, isLoading, error, refresh }` return so the ~18 call sites are
+// unchanged.
 const mockUseCart = jest.fn();
-jest.mock("../../cart/use-cart", () => ({
+jest.mock("../../cart-provider/use-ep-cart", () => ({
   __esModule: true,
-  default: mockUseCart,
+  useEpCart: () => {
+    const r = mockUseCart() ?? {};
+    return {
+      cart: r.data ?? null,
+      isLoading: !r.data && !r.error,
+      error: r.error ?? null,
+      refresh: jest.fn(),
+    };
+  },
 }));
 
 const mockUseUpdateItem = jest.fn();

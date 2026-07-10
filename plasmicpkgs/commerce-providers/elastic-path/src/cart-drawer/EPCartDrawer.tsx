@@ -7,7 +7,7 @@ import registerComponent, {
 } from "@plasmicapp/host/registerComponent";
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import ReactDOM from "react-dom";
-import useCart from "../cart/use-cart";
+import { useEpCart } from "../cart-provider/use-ep-cart";
 import {
   CART_BACKDROP_Z_INDEX,
   CART_OVERLAY_Z_INDEX,
@@ -205,7 +205,7 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
     inline = false,
   } = props;
 
-  const { data: cart, error: cartError } = useCart();
+  const { cart, error: cartError } = useEpCart();
   const { providerRef } = useCommerce();
   const currencyDisplay = providerRef?.current?.currencyDisplay ?? "symbol";
   const inEditor = !!usePlasmicCanvasContext();

@@ -6,7 +6,7 @@ import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import useCart from "../cart/use-cart";
+import { useEpCart } from "../cart-provider/use-ep-cart";
 import { useCommerce } from "../elastic-path";
 import { Registerable } from "../registerable";
 import { deriveCartData } from "../utils/cart-data";
@@ -171,7 +171,7 @@ export function EPCartPopover(props: EPCartPopoverProps) {
     previewState = "auto",
   } = props;
 
-  const { data: cart, error: cartError } = useCart();
+  const { cart, error: cartError } = useEpCart();
   const { providerRef } = useCommerce();
   const currencyDisplay = providerRef?.current?.currencyDisplay ?? "symbol";
   const inEditor = !!usePlasmicCanvasContext();
