@@ -6,7 +6,7 @@ import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
-import useCart from "../cart/use-cart";
+import { useEpCart } from "../cart-provider/use-ep-cart";
 import { Registerable } from "../registerable";
 import { MOCK_CART_LINE_ITEMS } from "../utils/design-time-data";
 import { useDrawerOpen, setDrawerOpen } from "./CartDrawerContext";
@@ -63,7 +63,7 @@ export function EPCartDrawerTrigger(props: EPCartDrawerTriggerProps) {
     previewState = "auto",
   } = props;
 
-  const { data: cart } = useCart();
+  const { cart } = useEpCart();
   const inEditor = !!usePlasmicCanvasContext();
   const [isOpen] = useDrawerOpen();
 
