@@ -199,7 +199,7 @@ export function executeDataSourceOperationWithCurrentUserHandler(
     }
 
     if (!currentUserInfo.isAuthorized) {
-      logger().error(
+      logger().warn(
         `App: ${currentUserInfo.appId} (User: ${currentUserInfo.appUserEmail}) (ExtId: ${currentUserInfo.appUserExternalId}) (RoleId: ${currentUserInfo.appRoleId}) is not authorized to perform operation requiring (RoleId: ${op.roleId})`
       );
       res.status(401).json({

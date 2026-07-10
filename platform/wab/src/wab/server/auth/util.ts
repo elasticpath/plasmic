@@ -57,8 +57,8 @@ export async function verifyClientCredentials(
   try {
     await verifier.verifyAccessToken(token, info.aud);
   } catch (err) {
-    logger().error(
-      `Failed to verify client credentials for ${whiteLabelName}: ${token}: ${err}`
+    logger().warn(
+      `Failed to verify client credentials for ${whiteLabelName}: ${err}`
     );
     throw new ForbiddenError(`Invalid client token: ${err.userMessage}`);
   }

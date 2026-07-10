@@ -15,7 +15,7 @@ export const parseComponentProps = (rawComponentProps?: any) => {
     }
     return componentProps;
   } catch (e) {
-    throw new Error("Invalid componentProps value");
+    throw new BadRequestError("Invalid componentProps value");
   }
 };
 

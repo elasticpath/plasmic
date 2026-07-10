@@ -92,9 +92,7 @@ export async function customEPCCCookieAuth(
       next();
     });
   } catch (err) {
-    logger().error(
-      `Failed to verify JWT in cookie: ${err}`
-    );
+    logger().warn(`Failed to verify JWT in cookie: ${err}`);
     throw new UnauthorizedError(`Invalid authentication token`);
   }
 }

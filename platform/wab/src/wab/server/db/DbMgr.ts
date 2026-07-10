@@ -7556,10 +7556,10 @@ export class DbMgr implements MigrationDbMgr {
     opts: { useDraft?: boolean } = {}
   ) {
     if (query.offset && query.offset < 0) {
-      throw new Error("offset field cannot be negative");
+      throw new BadRequestError("offset field cannot be negative");
     }
     if (query.limit && query.limit < 0) {
-      throw new Error("limit field cannot be negative");
+      throw new BadRequestError("limit field cannot be negative");
     }
     const table = await this.getCmsTableById(tableId);
     await this.checkCmsDatabasePerms(
@@ -7575,10 +7575,10 @@ export class DbMgr implements MigrationDbMgr {
     opts: { useDraft?: boolean } = {}
   ) {
     if (query.offset && query.offset < 0) {
-      throw new Error("offset field cannot be negative");
+      throw new BadRequestError("offset field cannot be negative");
     }
     if (query.limit && query.limit < 0) {
-      throw new Error("limit field cannot be negative");
+      throw new BadRequestError("limit field cannot be negative");
     }
 
     let builder = this.cmsRows()
