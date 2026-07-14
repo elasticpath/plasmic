@@ -144,6 +144,20 @@ describe("EP Fork Integrity", () => {
       expect(appServer).toContain("cmCors");
       expect(appServer).toContain("customEPCCCookieAuth");
     });
+
+    // CM reads/writes these for the Visual Builder config surfaces; without
+    // cmCors they fall back to wildcard CORS and break credentialed requests.
+    it("applies cmCors to the CM-called teams and project-meta routes", () => {
+      const appServer = readFile(
+        "platform/wab/src/wab/server/AppServer.ts"
+      );
+      expect(appServer).toContain('app.options("/api/v1/teams"');
+      expect(appServer).toContain('app.options("/api/v1/teams/*"');
+      expect(appServer).toMatch(/"\/api\/v1\/teams\/:teamId",\s*cmCors/);
+      expect(appServer).toMatch(
+        /"\/api\/v1\/projects\/:projectId\/meta",\s*cmCors/
+      );
+    });
   });
 
   describe("EP grant-revoke email bypass", () => {
