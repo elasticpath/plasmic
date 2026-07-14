@@ -725,6 +725,8 @@ function addOptionsRoutes(app: express.Application) {
   app.options("/api/v1/workspaces", cmCorsPreflight());
   app.options("/api/v1/workspaces/*", cmCorsPreflight());
   app.options("/api/v1/personal-workspace", cmCorsPreflight());
+  app.options("/api/v1/teams", cmCorsPreflight());
+  app.options("/api/v1/teams/*", cmCorsPreflight());
 
   // Data sources CORS preflight handlers for Commerce Manager
   app.options("/api/v1/data-source/sources", cmCorsPreflight());
@@ -1587,6 +1589,7 @@ export function addMainAppServerRoutes(
   );
   app.get(
     "/api/v1/projects/:projectId/meta",
+    cmCors,
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
     getProjectMeta
   );
@@ -1696,6 +1699,7 @@ export function addMainAppServerRoutes(
   );
   app.get(
     "/api/v1/teams/:teamId",
+    cmCors,
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
     teamRoutes.getTeamById
   );
@@ -1710,7 +1714,7 @@ export function addMainAppServerRoutes(
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
     teamRoutes.getTeamWorkspaces
   );
-  app.put("/api/v1/teams/:teamId", withNext(teamRoutes.updateTeam));
+  app.put("/api/v1/teams/:teamId", cmCors, withNext(teamRoutes.updateTeam));
   app.delete(
     "/api/v1/teams/:teamId",
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
