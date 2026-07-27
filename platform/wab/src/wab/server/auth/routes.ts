@@ -56,6 +56,7 @@ import {
 } from "@/wab/shared/common";
 import { isGoogleAuthRequiredEmailDomain } from "@/wab/shared/devflag-utils";
 import { getPublicUrl } from "@/wab/shared/urls";
+import { captureException } from "@/wab/server/observability/datadog";
 import { NextFunction, Request, Response } from "express-serve-static-core";
 import fs from "fs";
 import passport from "passport";
@@ -591,6 +592,7 @@ async function handleOauthCallback(
             logger().warn(
               `${logPrefix} could not auth due to error: ${errName}`
             );
+            captureException(err);
             res.send(callbackHtml(errName));
             return;
           }
@@ -910,6 +912,7 @@ export async function airtableCallback(
           if (err) {
             const errName = `${err}`;
             logger().warn(`could not airtable auth due to error: ${errName}`);
+            captureException(err);
             res.send(callbackHtml(errName));
             return;
           }
@@ -957,6 +960,7 @@ export async function googleSheetsCallback(
           if (err) {
             const errName = `${err}`;
             logger().warn(`could not google-sheets due to error: ${errName}`);
+            captureException(err);
             res.send(callbackHtml(errName));
             return;
           }
