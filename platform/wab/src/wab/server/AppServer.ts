@@ -1998,7 +1998,7 @@ export function addMainAppServerRoutes(
  * Really, we only want this to run after our normal route handlers, and not
  * transform errors thrown in (e.g.) our passport.deserializeUser handler.
  */
-function addEndErrorHandlers(app: express.Application) {
+export function addEndErrorHandlers(app: express.Application) {
   // This transforms certain known errors into proper response codes and JSON.
   // This is only called if there was previously a next(error).
   app.use(
