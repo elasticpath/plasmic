@@ -1998,7 +1998,7 @@ export function addMainAppServerRoutes(
  * Really, we only want this to run after our normal route handlers, and not
  * transform errors thrown in (e.g.) our passport.deserializeUser handler.
  */
-function addEndErrorHandlers(app: express.Application) {
+export function addEndErrorHandlers(app: express.Application) {
   // This transforms certain known errors into proper response codes and JSON.
   // This is only called if there was previously a next(error).
   app.use(
@@ -2009,14 +2009,24 @@ function addEndErrorHandlers(app: express.Application) {
         res: Response,
         _next: NextFunction
       ) => {
-        // Too noisy in CI to print AuthError all the time
-        if (!(origErr instanceof AuthError)) {
-          if (isApiError(origErr) && origErr.statusCode < 500) {
-            logger().warn(`${origErr.name} - ${origErr.message}`);
+        // Normalize first so severity is decided on the error's real status
+        // code, not on however the throw site happened to construct it.
+        const err = isApiError(origErr) ? origErr : transformErrors(origErr);
+
+        // Too noisy in CI to print AuthError all the time. Known-benign
+        // client aborts (e.g. "Query runner already released") are skipped
+        // entirely rather than logged.
+        const isIgnorable =
+          err instanceof AuthError ||
+          shouldIgnoreErrorByMessage(err.message || "") ||
+          isStampedIgnoreError(origErr);
+        if (!isIgnorable) {
+          if (isApiError(err) && err.statusCode < 500) {
+            logger().warn(`${err.name} - ${err.message}`);
           } else {
             logger().error(
-              `${origErr.name ?? "Unhandled server error"} - ${origErr.message}`,
-              { stack: origErr.stack }
+              `${err.name ?? "Unhandled server error"} - ${err.message}`,
+              { stack: err.stack }
             );
           }
         }
@@ -2033,7 +2043,6 @@ function addEndErrorHandlers(app: express.Application) {
           res.set("Access-Control-Allow-Credentials", "true");
         }
 
-        const err = isApiError(origErr) ? origErr : transformErrors(origErr);
         if (isApiError(err)) {
           res
             .status(err.statusCode)

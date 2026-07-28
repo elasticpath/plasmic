@@ -74,7 +74,7 @@ export async function login(req: Request, res: Response, next: NextFunction) {
       (err: Error, user: User, _info: IVerifyOptions) =>
         (async () => {
           if (err || !user) {
-            logger().error(`could not log in ${user}, ${err}`);
+            logger().warn(`could not log in ${user}, ${err}`);
             res.json(
               ensureType<LoginResponse>({
                 status: false,
@@ -586,10 +586,10 @@ async function handleOauthCallback(
       strategy,
       async (err: Error, user: User, info: IVerifyOptions) =>
         (async () => {
-          logger().error(`${logPrefix} AUTH CALLBACK`, { err, user, info });
+          logger().info(`${logPrefix} AUTH CALLBACK`, { err, user, info });
           if (err || !user) {
             const errName = `${err}`;
-            logger().error(
+            logger().warn(
               `${logPrefix} could not auth due to error: ${errName}`
             );
             captureException(err);
@@ -908,10 +908,10 @@ export async function airtableCallback(
       "airtable",
       async (err: Error, row: { id: string }, info: IVerifyOptions) =>
         (async () => {
-          logger().error(`AUTH CALLBACK`, { err, row, info });
+          logger().info(`AUTH CALLBACK`, { err, row, info });
           if (err) {
             const errName = `${err}`;
-            logger().error(`could not airtable auth due to error: ${errName}`);
+            logger().warn(`could not airtable auth due to error: ${errName}`);
             captureException(err);
             res.send(callbackHtml(errName));
             return;
@@ -956,10 +956,10 @@ export async function googleSheetsCallback(
       "google-sheets",
       async (err: Error, row: { id: string }, info: IVerifyOptions) =>
         (async () => {
-          logger().error(`AUTH CALLBACK`, { err, row, info });
+          logger().info(`AUTH CALLBACK`, { err, row, info });
           if (err) {
             const errName = `${err}`;
-            logger().error(`could not google-sheets due to error: ${errName}`);
+            logger().warn(`could not google-sheets due to error: ${errName}`);
             captureException(err);
             res.send(callbackHtml(errName));
             return;
