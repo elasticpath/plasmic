@@ -15,13 +15,16 @@ import {
   createAdapterRegistry,
   createClientCredentialsTokenResolver,
   createStripeAdapter,
+  resolveAuthSecret,
   type SessionHandlerContext,
 } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
 import { epAuth, getEpProviderConfig } from "./ep-auth";
 
-const SESSION_SECRET =
-  process.env.CHECKOUT_SESSION_SECRET ??
-  "dev-secret-min-48-chars-long-enough-for-better-auth-jwe-cache";
+// No fallback: in production this throws rather than encrypting checkout
+// sessions under a value that shipped in public example code.
+const SESSION_SECRET = resolveAuthSecret(process.env.CHECKOUT_SESSION_SECRET, {
+  label: "CHECKOUT_SESSION_SECRET",
+});
 
 const sessionStore = new CookieSessionStore(SESSION_SECRET);
 

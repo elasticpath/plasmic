@@ -20,11 +20,22 @@ import { PLASMIC } from "@/plasmic-init";
  *
  * Env vars consulted:
  *   - CHECKOUT_SESSION_SECRET — used as the better-auth JWE secret AND the
- *     checkout-session HMAC secret. Required in production.
+ *     checkout-session HMAC secret. Required in production: the package's
+ *     production guard refuses to construct without it, so there is
+ *     deliberately no fallback value here to copy into a deployment.
  */
-const SECRET =
-  process.env.CHECKOUT_SESSION_SECRET ??
-  "dev-secret-min-48-chars-long-enough-for-better-auth-jwe-cache";
+const SECRET = process.env.CHECKOUT_SESSION_SECRET;
+
+/**
+ * Host patterns the EP API may be reached at. Defined once and passed to
+ * every host check — `createBetterEpAuth`, `extractEpProviderConfig` and
+ * `buildEpCtx` each apply it independently, so setting it in only one place
+ * leaves the others on the package default. Elastic Path Self Managed
+ * Commerce deployments set EP_HOST_ALLOWLIST to their own host.
+ */
+export const EP_HOST_ALLOWLIST = process.env.EP_HOST_ALLOWLIST?.split(",")
+  .map((h) => h.trim())
+  .filter(Boolean);
 
 export const epAuth = createBetterEpAuth({
   clientId: "bootstrap-placeholder",
@@ -32,15 +43,13 @@ export const epAuth = createBetterEpAuth({
   secret: SECRET,
   baseURL: process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3456",
   basePath: "/api/ep",
+  hostAllowlist: EP_HOST_ALLOWLIST,
   resolveConfig: async () => {
     const config = await getEpProviderConfig();
     if (!config) return null;
     return { clientId: config.clientId, host: config.host };
   },
-  checkout: {
-    sessionSecret:
-      process.env.CHECKOUT_SESSION_SECRET ?? "dev-secret-min-16-chars",
-  },
+  ...(SECRET ? { checkout: { sessionSecret: SECRET } } : {}),
 });
 
 /**
@@ -62,7 +71,9 @@ export function getEpProviderConfig(): Promise<EpProviderBundleConfig | null> {
       const pages = await PLASMIC.fetchPages();
       if (pages.length === 0) return null;
       const data = await PLASMIC.maybeFetchComponentData(pages[0].path);
-      return extractEpProviderConfig(data);
+      return extractEpProviderConfig(data, {
+        hostAllowlist: EP_HOST_ALLOWLIST,
+      });
     })();
   }
   return _configPromise;
