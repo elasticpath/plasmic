@@ -8,6 +8,11 @@
  * - package.json (for npm install --production)
  *
  * Then packs it into a .mcpb file using @anthropic-ai/mcpb.
+ *
+ * package.json is the single source of truth for the version. Claude Desktop
+ * reads manifest.json, so a manifest version that drifts behind package.json
+ * makes every build claim the same version and leaves no way to tell which
+ * code a user has installed.
  */
 
 import { execSync } from "child_process";
@@ -22,10 +27,27 @@ const staging = path.resolve(__dirname, "dist/mcpb-staging");
 fs.rmSync(staging, { recursive: true, force: true });
 fs.mkdirSync(path.join(staging, "server"), { recursive: true });
 
-// Copy manifest
-fs.copyFileSync(
-  path.resolve(__dirname, "manifest.json"),
-  path.join(staging, "manifest.json")
+// Copy the manifest, taking the version from package.json.
+const pkgVersion = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, "package.json"), "utf-8")
+).version;
+const manifest = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, "manifest.json"), "utf-8")
+);
+
+if (manifest.version !== pkgVersion) {
+  // npm ships manifest.json too (see the `files` field), so the committed copy
+  // must be corrected as well — the staged override only fixes the .mcpb.
+  console.warn(
+    `⚠ manifest.json version ${manifest.version} != package.json ${pkgVersion}; ` +
+      `using ${pkgVersion}. Update manifest.json to match.`
+  );
+}
+manifest.version = pkgVersion;
+
+fs.writeFileSync(
+  path.join(staging, "manifest.json"),
+  JSON.stringify(manifest, null, 2) + "\n"
 );
 
 // Copy built server bundle (without shebang — Claude Desktop runs it via node directly)
@@ -46,22 +68,6 @@ execSync("npm install --omit=dev --ignore-scripts --no-optional --legacy-peer-de
   stdio: "pipe",
 });
 
-// Remove devDependencies artifacts and unnecessary files to reduce size
-const nmPath = path.join(staging, "node_modules");
-const cleanPatterns = [
-  "**/.github",
-  "**/test",
-  "**/tests",
-  "**/__tests__",
-  "**/docs",
-  "**/example",
-  "**/examples",
-  "**/*.map",
-  "**/*.ts.map",
-  "**/CHANGELOG.md",
-  "**/HISTORY.md",
-];
-
 // Remove package.json from staging (not needed in final bundle)
 fs.unlinkSync(path.join(staging, "package.json"));
 // Remove package-lock.json if created
@@ -78,4 +84,4 @@ execSync(`npx @anthropic-ai/mcpb pack "${staging}" "${output}"`, {
 // Clean staging
 fs.rmSync(staging, { recursive: true, force: true });
 
-console.log(`\n✓ Built ${output}`);
+console.log(`\n✓ Built ${output} (version ${pkgVersion})`);
