@@ -115,6 +115,45 @@ describe("epAuthMiddleware (PRD #273)", () => {
     );
   });
 
+  it("recognises the session by cookie name, not by a substring of the header", async () => {
+    // A value that merely mentions the cookie names must not read as a
+    // session — the previous `cookieHeader.includes(...)` check let any
+    // unrelated cookie suppress the bootstrap.
+    const epAuth = buildEpAuth();
+    const middleware = epAuthMiddleware(epAuth);
+
+    const req = new Request("http://localhost:3456/product/abc", {
+      headers: {
+        cookie:
+          "referrer=better-auth.session_token; note=better-auth.session_data",
+      },
+    });
+    const res = await middleware(req);
+
+    const setCookies: string[] = [];
+    res.headers.forEach((value: string, key: string) => {
+      if (key.toLowerCase() === "set-cookie") setCookies.push(value);
+    });
+    expect(setCookies.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("recognises secure-prefixed and chunked session cookies", async () => {
+    const epAuth = buildEpAuth();
+    const middleware = epAuthMiddleware(epAuth);
+
+    const req = new Request("http://localhost:3456/product/abc", {
+      headers: {
+        cookie:
+          "__Secure-better-auth.session_token=tok; " +
+          "__Secure-better-auth.session_data.0=aaa; " +
+          "__Secure-better-auth.session_data.1=bbb",
+      },
+    });
+    await middleware(req);
+
+    expect((globalThis.fetch as any).mock.calls.length).toBe(0);
+  });
+
   it("skips mint on request paths matching the auth handler basePath", async () => {
     // /api/ep/* requests are the auth handler itself — middleware must
     // not bootstrap mid-flight or it'd loop.
