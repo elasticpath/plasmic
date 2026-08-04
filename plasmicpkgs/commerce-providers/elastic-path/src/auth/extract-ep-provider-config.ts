@@ -16,8 +16,16 @@
  * needs to resolve a server session. If Plasmic's codegen output changes
  * shape in a future release, the regex stops matching and
  * `extractEpProviderConfig` returns `null`, letting callers fall through to
- * whatever defaults / env vars they prefer.
+ * whatever defaults / env vars they prefer. Both that miss and an
+ * allowlist rejection are logged where they happen, because the downstream
+ * fallback chain otherwise turns either one into a silent
+ * `bootstrap-placeholder` session that fails much later and elsewhere.
  */
+import {
+  DEFAULT_HOST_ALLOWLIST,
+  isAllowedEpHost,
+  reportRejectedEpHost,
+} from "./host-allowlist";
 
 export interface EpProviderBundleConfig {
   /** clientId configured on the EP Provider global context */
@@ -67,14 +75,32 @@ function extractProp(
   return raw;
 }
 
+export interface ExtractEpProviderConfigOptions {
+  /**
+   * Host patterns the EP API may be reached at. Defaults to Elastic Path's
+   * own domains plus loopback; Self Managed Commerce deployments must list
+   * their host here.
+   */
+  hostAllowlist?: readonly string[];
+}
+
 export function extractEpProviderConfig(
-  prefetchedData: ServerBundleLike | null | undefined
+  prefetchedData: ServerBundleLike | null | undefined,
+  opts?: ExtractEpProviderConfigOptions
 ): EpProviderBundleConfig | null {
+  const hostAllowlist = opts?.hostAllowlist ?? DEFAULT_HOST_ALLOWLIST;
   const allMods: BundleModule[] = [
     ...(prefetchedData?.bundle?.modules?.server ?? []),
     ...(prefetchedData?.bundle?.modules?.browser ?? []),
   ];
-  if (allMods.length === 0) return null;
+  if (allMods.length === 0) {
+    console.error(
+      "[ep-commerce] extractEpProviderConfig: the Plasmic bundle carried no " +
+        "modules, so no EP Provider config could be read. Check that " +
+        "prefetchedData was fetched for a page in the project."
+    );
+    return null;
+  }
 
   // Prefer modules that match a project's globalContextsProviderFileName, but
   // fall back to scanning all server modules — some projects place context
@@ -109,6 +135,15 @@ export function extractEpProviderConfig(
           : undefined;
     if (!resolvedHost) continue;
 
+    if (!isAllowedEpHost(resolvedHost, hostAllowlist)) {
+      reportRejectedEpHost(
+        resolvedHost,
+        "extractEpProviderConfig",
+        hostAllowlist
+      );
+      continue;
+    }
+
     return {
       clientId,
       host: resolvedHost,
@@ -116,5 +151,10 @@ export function extractEpProviderConfig(
     };
   }
 
+  console.error(
+    "[ep-commerce] extractEpProviderConfig: no usable EP Provider config " +
+      "found in the Plasmic bundle. Confirm the project has an EP Commerce " +
+      "Provider global context configured in Studio with a clientId and host."
+  );
   return null;
 }

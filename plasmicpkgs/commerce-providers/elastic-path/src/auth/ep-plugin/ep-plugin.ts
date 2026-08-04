@@ -10,6 +10,11 @@
 import { createAuthEndpoint } from "better-auth/api";
 import { setSessionCookie, getCookieCache } from "better-auth/cookies";
 import type { BetterAuthPlugin } from "better-auth";
+import {
+  DEFAULT_HOST_ALLOWLIST,
+  isAllowedEpHost,
+  reportRejectedEpHost,
+} from "../host-allowlist";
 
 export interface EpPluginOptions {
   /**
@@ -30,6 +35,12 @@ export interface EpPluginOptions {
   resolveConfig?: () => Promise<
     { clientId?: string; host?: string } | null | undefined
   >;
+  /**
+   * Host patterns `resolveConfig` may return. A host outside the list is
+   * logged and discarded in favour of the static `host` above, so a
+   * tampered bundle cannot redirect token minting.
+   */
+  hostAllowlist?: readonly string[];
 }
 
 interface EpAnonymousTokenResponse {
@@ -78,6 +89,14 @@ async function resolveConfigFor(options: EpPluginOptions) {
   const resolved = options.resolveConfig
     ? await options.resolveConfig().catch(() => null)
     : null;
+  const allowlist = options.hostAllowlist ?? DEFAULT_HOST_ALLOWLIST;
+  if (resolved?.host && !isAllowedEpHost(resolved.host, allowlist)) {
+    reportRejectedEpHost(resolved.host, "epPlugin.resolveConfig", allowlist);
+    // Drop the whole pair, never just the host: a clientId is only valid
+    // against the host it was resolved with, and pairing a resolved
+    // clientId with the static bootstrap host makes every token mint 401.
+    return { clientId: options.clientId, host: options.host };
+  }
   return {
     clientId: resolved?.clientId ?? options.clientId,
     host: resolved?.host ?? options.host,

@@ -25,11 +25,22 @@
 import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
 import { epPlugin } from "./ep-plugin";
+import { DEFAULT_HOST_ALLOWLIST } from "../host-allowlist";
+import {
+  assertNonSentinelSecret,
+  resolveAuthSecret,
+} from "./production-guard";
 
 export interface CreateEpAuthBetterInput {
   clientId: string;
   host: string;
-  secret: string;
+  /**
+   * JWE secret for the session cookie. Read it straight from the
+   * environment — `undefined` is accepted so a missing variable surfaces
+   * as this package's production guard rather than a type error that
+   * tempts a hardcoded fallback.
+   */
+  secret?: string;
   basePath?: string;
   baseURL?: string;
   /**
@@ -42,6 +53,13 @@ export interface CreateEpAuthBetterInput {
    * both the localhost and 127.0.0.1 variants of `baseURL`.
    */
   trustedOrigins?: string[];
+  /**
+   * Host patterns the EP API may be reached at. Guards the host resolved
+   * per-request by `resolveConfig`, so a tampered or misconfigured bundle
+   * cannot redirect shopper token minting elsewhere. Self Managed Commerce
+   * deployments must list their own host.
+   */
+  hostAllowlist?: string[];
   cartMergeStrategy?: "merge" | "replace" | "prompt";
   checkout?: { sessionSecret: string };
   adapters?: { stripe?: { secretKey: string }; clover?: any };
@@ -68,6 +86,33 @@ function defaultTrustedOrigins(baseURL: string): string[] {
     }
   } catch {
     // Non-URL baseURL — leave the set as-is.
+  }
+  return [...out];
+}
+
+/**
+ * Mirrors better-auth's own `getTrustedOrigins`: the configured list, plus
+ * the baseURL origin, plus `BETTER_AUTH_TRUSTED_ORIGINS`. Without this the
+ * exposed list would be a strict subset of what better-auth actually
+ * accepts, and ADR-0001's single-trust-list guarantee would not hold —
+ * an explicit `trustedOrigins` replaces the defaults, but better-auth
+ * re-adds the deployment's own origin regardless.
+ */
+function resolveTrustedOrigins(
+  configured: string[] | undefined,
+  baseURL: string
+): string[] {
+  const out = new Set<string>(configured ?? defaultTrustedOrigins(baseURL));
+  try {
+    out.add(new URL(baseURL).origin);
+  } catch {
+    // Non-URL baseURL — better-auth will not derive an origin either.
+  }
+  for (const origin of (process.env.BETTER_AUTH_TRUSTED_ORIGINS ?? "").split(
+    ","
+  )) {
+    const trimmed = origin.trim();
+    if (trimmed) out.add(trimmed);
   }
   return [...out];
 }
@@ -107,6 +152,18 @@ export interface EpAuth {
   handler: any;
   config: {
     basePath: string;
+    /**
+     * The resolved origin trust list — the single list every origin check
+     * reads (ADR-0001), including the proxy's CORS reflection and the
+     * origin gate on state-changing routes.
+     */
+    trustedOrigins: string[];
+    /**
+     * The resolved EP API host allowlist. Pass it to
+     * `extractEpProviderConfig` / `buildEpCtx` so every host check in the
+     * deployment reads the same list.
+     */
+    hostAllowlist: readonly string[];
     cartMergeStrategy: "merge" | "replace" | "prompt";
     checkout?: { sessionSecret: string };
     adapters?: { stripe?: { secretKey: string }; clover?: any };
@@ -172,20 +229,20 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
       "checkout.sessionSecret must be at least 16 characters"
     );
   }
+  assertNonSentinelSecret(input.checkout?.sessionSecret, {
+    label: "createEpAuth checkout.sessionSecret",
+  });
   if (!input.clientId) {
     throw new Error("clientId is required");
   }
-  if (!input.secret) {
-    throw new Error("secret is required");
-  }
+  const secret = resolveAuthSecret(input.secret, { label: "createEpAuth" });
 
   const basePath = input.basePath ?? "/api/ep";
   const baseURL = input.baseURL ?? "http://localhost";
-  const trustedOrigins =
-    input.trustedOrigins ?? defaultTrustedOrigins(baseURL);
+  const trustedOrigins = resolveTrustedOrigins(input.trustedOrigins, baseURL);
 
   const auth = betterAuth({
-    secret: input.secret,
+    secret,
     baseURL,
     basePath,
     trustedOrigins,
@@ -193,6 +250,7 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
       epPlugin({
         clientId: input.clientId,
         host: input.host,
+        hostAllowlist: input.hostAllowlist,
         resolveConfig: input.resolveConfig,
       }),
       // `nextCookies()` MUST be the last plugin in the array per
@@ -212,7 +270,9 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
   });
 
   const config = Object.freeze({
-    basePath: input.basePath ?? "/api/ep",
+    basePath,
+    trustedOrigins,
+    hostAllowlist: input.hostAllowlist ?? DEFAULT_HOST_ALLOWLIST,
     cartMergeStrategy: input.cartMergeStrategy ?? "merge",
     checkout: input.checkout,
     adapters: input.adapters,
