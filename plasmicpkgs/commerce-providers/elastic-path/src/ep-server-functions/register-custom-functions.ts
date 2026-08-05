@@ -23,18 +23,9 @@ import {
 } from "./cart-mutations";
 
 /**
- * Duck-type for "something that can register custom functions" — a Plasmic
- * loader, or a test double.
- *
- * Deliberately permissive on `meta`. Two tighter shapes were tried and both
- * broke `next build` for consumers calling `registerEpCustomFunctions(PLASMIC)`:
- * a hand-written `Record<string, unknown>` is not assignable from the
- * loader's `CustomFunctionMeta<F>`; and borrowing `typeof registerFunction`
- * from `@plasmicapp/host` fails too, because `CustomFunctionMeta` is
- * re-declared in both `@plasmicapp/host` and `@plasmicapp/loader-react` and
- * TypeScript treats the copies as unrelated ("two different types with this
- * name exist"). Only a signature that ignores the metadata's identity
- * accepts every loader.
+ * Permissive on `meta` by necessity: `CustomFunctionMeta` is re-declared in
+ * both @plasmicapp/host and @plasmicapp/loader-react and TypeScript treats
+ * the copies as unrelated, so any stricter shape rejects some loader.
  */
 interface Registerable {
   registerFunction: (fn: any, meta: any) => void;

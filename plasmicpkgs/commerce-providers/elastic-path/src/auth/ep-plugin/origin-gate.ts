@@ -1,17 +1,7 @@
 /**
- * Origin gate — the CSRF layer on state-changing routes.
- *
- * Semantics follow Go's `CrossOriginProtection`: safe methods always pass;
- * unsafe methods pass when the browser reports a same-origin (or
- * browser-initiated) fetch; cross-site requests must present an Origin the
- * deployment trusts; requests carrying no browser origin signal at all are
- * treated as non-browser clients and pass. This is request *rejection*, and
- * is distinct from CORS, which only governs response readability.
- *
- * The trust list is better-auth's `trustedOrigins` and nothing else
- * (ADR-0001), and pattern entries keep better-auth's meaning: patterns
- * containing `://` match the full origin, bare patterns match the host, and
- * a pattern without wildcards must equal the origin.
+ * Origin gate — the CSRF layer on state-changing routes, following Go's
+ * `CrossOriginProtection`. Request rejection, distinct from CORS (response
+ * readability). Trust list is better-auth's `trustedOrigins` (ADR-0001).
  */
 import { hasWildcard, matchesGlob } from "../../utils/glob-pattern";
 
@@ -45,10 +35,8 @@ export function matchesOriginPattern(origin: string, pattern: string): boolean {
 }
 
 /**
- * Go's `CrossOriginProtection` compares the Origin against the request's own
- * Host before consulting any allowlist, so a same-origin request stays
- * same-origin even when the deployment's origin is absent from the trust
- * list. A cross-site attacker cannot forge this: the browser sets Origin.
+ * Go compares Origin to the request's own Host before the allowlist, so a
+ * same-origin request passes even if the deployment's origin is unlisted.
  */
 function originMatchesRequestHost(request: Request, origin: string): boolean {
   const originHost = parseUrl(origin)?.host?.toLowerCase();
@@ -69,10 +57,7 @@ export function isTrustedOrigin(
   );
 }
 
-/**
- * `true` when the request may proceed. Exported for tests and for callers
- * that want to gate without producing a response.
- */
+/** `true` when the request may proceed. */
 export function passesOriginGate(
   request: Request,
   trustedOrigins: readonly string[] | undefined
@@ -83,8 +68,7 @@ export function passesOriginGate(
   if (site === "same-origin" || site === "none") return true;
 
   const origin = request.headers.get("origin");
-  // No Sec-Fetch-Site and no Origin: not a browser, so there is no
-  // ambient-credential attack to defend against.
+  // Neither signal: not a browser, so no ambient credentials to abuse.
   if (!site && !origin) return true;
   if (!origin) return false;
 

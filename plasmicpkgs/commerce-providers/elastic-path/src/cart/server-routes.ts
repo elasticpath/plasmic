@@ -37,12 +37,9 @@ import { persistCartId } from "../auth/ep-plugin/persist-cart-id";
 import { parseCookieHeader } from "../utils/cookie-header";
 
 /**
- * Next 15 always hands route handlers a promised `params`, and its build-time
- * route validator structurally diffs this type against
- * `{ params: Promise<SegmentParams> }` — a `Promise<T> | T` union fails that
- * check and breaks `next build` for every TypeScript consumer. `await`
- * still accepts a plain object at runtime, so callers that pass one
- * directly keep working.
+ * Promise-only: Next 15's route validator diffs against
+ * `{ params: Promise<SegmentParams> }` and a union fails it. `await` still
+ * accepts a plain object at runtime.
  */
 interface CartRouteContext {
   params: Promise<{ path?: string[] }>;

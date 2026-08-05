@@ -1,28 +1,14 @@
 /**
- * Production guards.
- *
- * Keyed on `NODE_ENV === "production"` with no opt-out flag — preview
- * deployments are deliberately held to production standards. Guards throw
- * at factory construction so a misconfigured deployment fails on boot
- * rather than serving forgeable sessions, but they stand down during
- * `next build` (`NEXT_PHASE === "phase-production-build"`) so
- * build-once/inject-env-at-runtime pipelines still build; the throw then
- * lands on the first server that actually has to serve.
+ * Production guards. Enforced everywhere except `development`/`test`, and
+ * stood down during `next build` so build-then-inject-env pipelines still
+ * build — the throw then lands on the first request served.
  */
 
-/**
- * Placeholder used when no secret is configured outside production. It is
- * itself a sentinel, so a deployment that reaches production still carrying
- * it is rejected.
- */
+/** Itself a sentinel, so it cannot survive into production. */
 export const DEV_FALLBACK_SECRET =
   "ep-dev-insecure-secret-not-for-production-0000000000";
 
-/**
- * Public placeholders that have shipped in example code. A copied sentinel
- * in production makes session cookies forgeable, so these are rejected
- * outright rather than merely warned about.
- */
+/** Public placeholders shipped in example code. */
 export const DEV_SECRET_SENTINELS: readonly string[] = [
   "dev-secret-min-48-chars-long-enough-for-better-auth-jwe-cache",
   "dev-secret-min-16-chars",
@@ -35,12 +21,7 @@ export function isProduction(): boolean {
   return process.env.NODE_ENV === "production";
 }
 
-/**
- * The only environments treated as non-production. Everything else — an
- * unset `NODE_ENV`, `staging`, a bespoke value — is held to production
- * standards, because a deployment serving real shoppers under an
- * unrecognised `NODE_ENV` is the case a `=== "production"` test misses.
- */
+/** Fail closed: an unset or bespoke NODE_ENV counts as production. */
 const DEV_ENVIRONMENTS = new Set(["development", "test"]);
 
 export function isTrustedDevEnvironment(): boolean {
@@ -68,10 +49,7 @@ function describeSecretProblem(secret: string | undefined): string | null {
   return null;
 }
 
-/**
- * Throws in production when `secret` is missing, a known sentinel, or too
- * short. Elsewhere the same finding is a warning.
- */
+/** Throws in production on a missing, sentinel, or too-short secret. */
 export function assertProductionSecret(
   secret: string | undefined,
   opts: { label: string }
@@ -87,13 +65,7 @@ export function assertProductionSecret(
   console.warn(`[ep-commerce] ${message}`);
 }
 
-/**
- * Sentinel check only, for secrets that carry their own length rule.
- * `checkout.sessionSecret` keeps its ≥16-character minimum, but a published
- * placeholder there makes checkout sessions forgeable just as surely as it
- * does auth sessions — and the sentinel list contains the very value the
- * example used to pass for it.
- */
+/** Sentinel check only, for secrets that keep their own length rule. */
 export function assertNonSentinelSecret(
   secret: string | undefined,
   opts: { label: string }
@@ -108,10 +80,7 @@ export function assertNonSentinelSecret(
   console.warn(`[ep-commerce] ${message}`);
 }
 
-/**
- * Runs {@link assertProductionSecret} and returns a usable secret, falling
- * back to {@link DEV_FALLBACK_SECRET} where the guard did not throw.
- */
+/** Asserts, then returns the secret or the dev fallback. */
 export function resolveAuthSecret(
   secret: string | undefined,
   opts: { label: string }

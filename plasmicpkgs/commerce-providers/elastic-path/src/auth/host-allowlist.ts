@@ -1,25 +1,18 @@
 /**
- * Host allowlist for the Elastic Path API endpoint.
+ * Host allowlist for the Elastic Path API endpoint. The host arrives from
+ * the Plasmic bundle, so an unchecked value redirects shopper token minting.
  *
- * The API host arrives from the Plasmic loader bundle rather than from the
- * deployment's own environment, so it is attacker-influenceable in the same
- * way any remotely-sourced config is. Every shopper token mint targets that
- * host, which makes an unchecked value a credential-exfiltration path.
- *
- * Normalization mirrors better-auth's public `matchesHostPattern` — strip
- * scheme, strip path, lowercase both sides — plus a port strip, so
- * `epcc.internal:8080` matches an `epcc.internal` entry. The function is
- * reimplemented rather than imported because this module is reachable from
- * Jest-side tests and better-auth is ESM-only.
+ * Normalization mirrors better-auth's `matchesHostPattern` plus a port
+ * strip; reimplemented because Jest-side tests reach this and better-auth
+ * is ESM-only.
  */
 import { hasWildcard, matchesGlob } from "../utils/glob-pattern";
 import { isProduction } from "./ep-plugin/production-guard";
 
 /**
- * Elastic Path Composable Commerce regions plus the integration environment,
- * which is served from Fastly and so is listed by exact host rather than by
- * wildcard. Elastic Path Self Managed Commerce hosts are not knowable here
- * and must be supplied by the deployment via `hostAllowlist`.
+ * Composable Commerce regions plus the integration host, which is on Fastly
+ * so it is listed exactly rather than by wildcard. Self Managed Commerce
+ * hosts must come from `hostAllowlist`.
  */
 export const DEFAULT_HOST_ALLOWLIST: readonly string[] = [
   "*.elasticpath.com",
@@ -27,11 +20,7 @@ export const DEFAULT_HOST_ALLOWLIST: readonly string[] = [
   "epcc-integration.global.ssl.fastly.net",
 ];
 
-/**
- * Permitted outside production only. A bundle that can name the API host can
- * otherwise point token minting at any local port — the exact tampering path
- * this module exists to close.
- */
+/** Outside production only — otherwise a bundle could aim at any local port. */
 const LOOPBACK_HOSTS: readonly string[] = ["localhost", "127.0.0.1", "::1"];
 
 /** Strip scheme, path, port, and case, so comparisons are like-for-like. */
@@ -65,11 +54,7 @@ export function isAllowedEpHost(
   });
 }
 
-/**
- * Logs the rejection at the point of failure — naming the host and the
- * option that fixes it — so a blocked host never presents downstream as the
- * generic "no EP Provider config" fallback.
- */
+/** Logs at the point of failure so a rejection is never silent downstream. */
 export function reportRejectedEpHost(
   host: string,
   source: string,

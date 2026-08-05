@@ -48,10 +48,7 @@ export async function buildCheckoutContext(
     process.env.EP_HOST ??
     "https://useast.api.elasticpath.com";
 
-  // Read the better-auth session to pull shopper token + cart id.
-  // `cookies` is where the session actually lives — passing only `headers`
-  // (and a raw Headers object at that) meant this read nothing and
-  // bootstrapped a fresh anonymous session on every checkout request.
+  // The session lives in cookies; passing only headers reads nothing.
   const cookieStore = await cookies();
   const session = await epAuth.api
     .getSession({
@@ -62,10 +59,6 @@ export async function buildCheckoutContext(
     })
     .catch(() => null);
 
-  // Public EpSession shape: `session.session.accessToken` / `session.cart.id`.
-  // The `epAccessToken` / `epCartId` names are the internal better-auth
-  // fields and are never exposed here, so the previous `as any` reads were
-  // always undefined.
   const shopperAccessToken = session?.session?.accessToken ?? "";
   const epCartId = session?.cart?.id ?? null;
 
