@@ -50,8 +50,9 @@ import { isTrustedDevEnvironment } from "./production-guard";
 
 const MUTATION_FNS = new Set(["addCartItem", "updateCartItem", "removeCartItem"]);
 
+/** Promised `params` only — see the note on `CartRouteContext`. */
 interface ProxyRouteContext {
-  params: Promise<{ fn?: string }> | { fn?: string };
+  params: Promise<{ fn?: string }>;
 }
 
 interface SessionShape {
@@ -122,10 +123,7 @@ export function createEpProxyRoutes(epAuth: EpAuth): EpProxyRoutes {
       if (gate) return gate;
 
       const cors = corsHeaders(request);
-      const params =
-        context.params instanceof Promise
-          ? await context.params
-          : context.params;
+      const params = await context.params;
       const fnName = params.fn ?? "";
       const dispatch = FN_DISPATCH[fnName];
       if (!dispatch) {

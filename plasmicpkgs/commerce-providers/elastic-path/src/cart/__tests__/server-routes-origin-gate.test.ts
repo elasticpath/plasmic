@@ -27,7 +27,7 @@ describe("createCartRoutes origin gate", () => {
         Origin: "http://evil.test",
         "Sec-Fetch-Site": "cross-site",
       }),
-      { params: { path: [] } }
+      { params: Promise.resolve({ path: [] }) }
     );
 
     expect(res.status).not.toBe(403);
@@ -38,7 +38,7 @@ describe("createCartRoutes origin gate", () => {
     const { routes, getSession } = buildRoutes();
     const res = await routes.handle(
       request("POST", { "Sec-Fetch-Site": "same-origin" }),
-      { params: { path: ["items"] } }
+      { params: Promise.resolve({ path: ["items"] }) }
     );
 
     expect(res.status).not.toBe(403);
@@ -52,7 +52,7 @@ describe("createCartRoutes origin gate", () => {
         "Sec-Fetch-Site": "cross-site",
         Origin: "https://preview.vercel.app",
       }),
-      { params: { path: ["items"] } }
+      { params: Promise.resolve({ path: ["items"] }) }
     );
 
     expect(res.status).not.toBe(403);
@@ -66,7 +66,7 @@ describe("createCartRoutes origin gate", () => {
         "Sec-Fetch-Site": "cross-site",
         Origin: "http://evil.test",
       }),
-      { params: { path: ["items"] } }
+      { params: Promise.resolve({ path: ["items"] }) }
     );
 
     expect(res.status).toBe(403);
@@ -78,16 +78,29 @@ describe("createCartRoutes origin gate", () => {
     const { routes } = buildRoutes();
     const res = await routes.handle(
       request("DELETE", { Origin: "http://evil.test" }),
-      { params: { path: ["items", "item-1"] } }
+      { params: Promise.resolve({ path: ["items", "item-1"] }) }
     );
 
     expect(res.status).toBe(403);
   });
 
+  it("still accepts a plain (non-promised) params object at runtime", async () => {
+    // `params` is typed Promise-only so Next 15's build-time route validator
+    // accepts the handler, but `await` means a caller passing the object
+    // directly — Next 14 style, or a test — keeps working.
+    const { routes, getSession } = buildRoutes();
+    const res = await routes.handle(request("GET"), {
+      params: { path: [] },
+    } as any);
+
+    expect(res.status).not.toBe(403);
+    expect(getSession).toHaveBeenCalled();
+  });
+
   it("lets non-browser clients through when neither signal is present", async () => {
     const { routes, getSession } = buildRoutes();
     const res = await routes.handle(request("POST"), {
-      params: { path: ["items"] },
+      params: Promise.resolve({ path: ["items"] }),
     });
 
     expect(res.status).not.toBe(403);

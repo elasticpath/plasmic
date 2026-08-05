@@ -36,8 +36,16 @@ import { enforceOriginGate } from "../auth/ep-plugin/origin-gate";
 import { persistCartId } from "../auth/ep-plugin/persist-cart-id";
 import { parseCookieHeader } from "../utils/cookie-header";
 
+/**
+ * Next 15 always hands route handlers a promised `params`, and its build-time
+ * route validator structurally diffs this type against
+ * `{ params: Promise<SegmentParams> }` — a `Promise<T> | T` union fails that
+ * check and breaks `next build` for every TypeScript consumer. `await`
+ * still accepts a plain object at runtime, so callers that pass one
+ * directly keep working.
+ */
 interface CartRouteContext {
-  params: Promise<{ path?: string[] }> | { path?: string[] };
+  params: Promise<{ path?: string[] }>;
 }
 
 interface SessionShape {
@@ -109,10 +117,7 @@ export function createCartRoutes(epAuth: EpAuth): CartRoutes {
         );
       }
 
-      const params =
-        context.params instanceof Promise
-          ? await context.params
-          : context.params;
+      const params = await context.params;
       const path = params.path ?? [];
       const method = request.method;
 

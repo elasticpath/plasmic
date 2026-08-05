@@ -132,7 +132,7 @@ describe("createEpProxyRoutes", () => {
       }
     );
     const proxyResp = await proxy.handle(proxyReq, {
-      params: { fn: "addCartItem" },
+      params: Promise.resolve({ fn: "addCartItem" }),
     });
 
     expect(proxyResp.status).toBe(200);
@@ -184,7 +184,7 @@ describe("createEpProxyRoutes", () => {
       }
     );
     const proxyResp = await proxy.handle(proxyReq, {
-      params: { fn: "addCartItem" },
+      params: Promise.resolve({ fn: "addCartItem" }),
     });
 
     expect(proxyResp.status).toBe(200);
@@ -303,7 +303,7 @@ describe("createEpProxyRoutes origin gate", () => {
         },
         body: JSON.stringify({ productId: "p", quantity: 1 }),
       }),
-      { params: { fn: "addCartItem" } }
+      { params: Promise.resolve({ fn: "addCartItem" }) }
     );
 
     expect(res.status).toBe(403);
@@ -342,7 +342,7 @@ describe("createEpProxyRoutes error sanitization", () => {
         },
         body: JSON.stringify({ productId: "p", quantity: 1 }),
       }),
-      { params: { fn: "addCartItem" } }
+      { params: Promise.resolve({ fn: "addCartItem" }) }
     );
   }
 
