@@ -32,6 +32,7 @@ import { PlasmicApiClient } from "./api-client.js";
 import { getAuth } from "./auth.js";
 import { requireAuth } from "./auth-guard.js";
 import { requireSession, setSession } from "./session.js";
+import { VERSION } from "./version.js";
 import { loadProject } from "./model-loader.js";
 import { listPackages, addPackage, removePackage, upgradePackage, listAvailablePackages, listPackageComponents } from "./package-manager.js";
 import { syncFromDevHost, clearRegistryCache, recordVariantMetadataSync } from "./devhost-sync.js";
@@ -381,7 +382,7 @@ function handleMutationError(label: string, err: unknown, callId?: string) {
 export function createServer(): McpServer {
   const server = new McpServer({
     name: "plasmic",
-    version: "0.1.0",
+    version: VERSION,
   }, {
     capabilities: {
       logging: {},
@@ -1125,7 +1126,7 @@ export function createServer(): McpServer {
           case "health-check": {
             const healthResult: Record<string, unknown> = {
               status: "ok",
-              version: "0.1.0",
+              version: VERSION,
               authenticated: apiClient !== null,
             };
             if (auth) {
