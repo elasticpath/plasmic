@@ -31,14 +31,17 @@
 /**
  * Minimal interface for a PLASMIC-like object that has registration methods.
  * We don't import the full loader types to avoid a dependency on @plasmicapp/loader-*.
+ *
+ * Methods with `any` params, not properties with `unknown`: property syntax
+ * is contravariant under `strictFunctionTypes`, so no real loader satisfied
+ * the constraint.
  */
 interface PlasmicLike {
-  registerComponent: (component: unknown, meta: unknown) => void;
-  registerGlobalContext?: (component: unknown, meta: unknown) => void;
-  registerFunction?: (fn: unknown, meta: unknown) => void;
-  registerToken?: (token: unknown) => void;
-  registerTrait?: (trait: string, meta: unknown) => void;
-  [key: string]: unknown;
+  registerComponent(component: any, meta: any): void;
+  registerGlobalContext?(component: any, meta: any): void;
+  registerFunction?(fn: any, meta: any): void;
+  registerToken?(token: any): void;
+  registerTrait?(trait: string, meta: any): void;
 }
 
 interface HostRegistration {
