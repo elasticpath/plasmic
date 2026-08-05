@@ -28,12 +28,7 @@ import { parseArgs } from "./cli.js";
 import { getAuth, writeAuth } from "./auth.js";
 import { acquireAuth } from "./auth-flow.js";
 import * as logger from "./logger.js";
-
-// Injected at build time via esbuild `define` from package.json (see build.mjs).
-// Falls back to "dev" when run directly through tsx.
-declare const __MCP_VERSION__: string;
-const VERSION =
-  typeof __MCP_VERSION__ !== "undefined" ? __MCP_VERSION__ : "dev";
+import { VERSION } from "./version.js";
 
 const US_EAST_HOST = "https://useast.storefront.elasticpath.com";
 const EU_WEST_HOST = "https://euwest.storefront.elasticpath.com";
