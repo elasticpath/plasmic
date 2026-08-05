@@ -7,10 +7,13 @@ import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useState, useCallback, useEffect, useRef } from "react";
-import useUpdateItem from "../cart/use-update-item";
+import { mutate as swrMutate } from "swr";
 import { Registerable } from "../registerable";
 import { createLogger } from "../utils/logger";
 import { MOCK_CART_LINE_ITEMS } from "../utils/design-time-data";
+import { callEpProxy } from "../ep-server-functions/proxy-fetch";
+import { epCartCacheKey } from "../cart-provider/cache-keys";
+import type { Cart } from "../types/cart";
 import {
   CartItemQuantityContext,
   CartItemQuantityContextValue,
@@ -92,30 +95,72 @@ export function EPCartItemQuantityControl(
   } = props;
 
   const currentItem = useSelector("currentCartItem") as
-    | { id: string; quantity: number; locationSlug?: string }
+    | {
+        id: string;
+        quantity: number;
+        locationSlug?: string;
+        stockAvailable?: number | null;
+      }
     | undefined;
   const inEditor = !!usePlasmicCanvasContext();
-  const updateItem = useUpdateItem();
 
   const useMock = previewState !== "auto" || (!currentItem && inEditor);
 
   const mockQuantity =
     previewState === "minReached" ? minQuantity : MOCK_CART_LINE_ITEMS[0].quantity;
 
-  const serverQuantity = useMock ? mockQuantity : (currentItem?.quantity ?? 1);
+  const serverQuantity = useMock
+    ? mockQuantity
+    : Number(currentItem?.quantity ?? 1);
 
   const [localQuantity, setLocalQuantity] = useState(serverQuantity);
   const [isLoading, setIsLoading] = useState(false);
+  // After a stock-rejection from EP on an *increment*, remember the highest
+  // qty that succeeded so we stop offering + even when stockAvailable isn't
+  // on the line item.
+  const [stockCap, setStockCap] = useState<number | null>(null);
+  const inFlightRef = useRef(false);
+  const quantityRef = useRef(serverQuantity);
+  const itemIdRef = useRef(currentItem?.id);
+  // Keep the location slug across SWR refreshes that may briefly omit it —
+  // multilocation updates require it on every write.
+  const locationRef = useRef<string | undefined>(
+    currentItem?.locationSlug?.trim() || undefined
+  );
+  quantityRef.current = localQuantity;
+  if (currentItem?.locationSlug?.trim()) {
+    locationRef.current = currentItem.locationSlug.trim();
+  }
 
   // Sync local state when server data changes (after mutation resolves)
   const prevServerQuantity = useRef(serverQuantity);
   useEffect(() => {
     if (prevServerQuantity.current !== serverQuantity) {
       setLocalQuantity(serverQuantity);
-      setIsLoading(false);
+      quantityRef.current = serverQuantity;
+      if (!inFlightRef.current) {
+        setIsLoading(false);
+      }
       prevServerQuantity.current = serverQuantity;
     }
   }, [serverQuantity]);
+
+  // New line-item identity → reset busy + stock-cap state.
+  useEffect(() => {
+    if (itemIdRef.current !== currentItem?.id) {
+      itemIdRef.current = currentItem?.id;
+      inFlightRef.current = false;
+      setIsLoading(false);
+      setStockCap(null);
+      locationRef.current = currentItem?.locationSlug?.trim() || undefined;
+      if (currentItem?.quantity != null) {
+        const q = Number(currentItem.quantity);
+        setLocalQuantity(q);
+        quantityRef.current = q;
+        prevServerQuantity.current = q;
+      }
+    }
+  }, [currentItem?.id, currentItem?.quantity, currentItem?.locationSlug]);
 
   const effectiveIsLoading = useMock
     ? previewState === "loading"
@@ -123,58 +168,116 @@ export function EPCartItemQuantityControl(
 
   const effectiveQuantity = useMock ? mockQuantity : localQuantity;
 
+  // Prefer live stock from the line item; fall back to a cap learned from
+  // an EP "not enough stock" rejection on a prior increment.
+  const stockAvailable =
+    typeof currentItem?.stockAvailable === "number"
+      ? currentItem.stockAvailable
+      : null;
+  const effectiveMax = Math.min(
+    maxQuantity,
+    stockAvailable ?? stockCap ?? maxQuantity
+  );
+
   const canDecrement = effectiveQuantity > minQuantity;
-  const canIncrement = effectiveQuantity < maxQuantity;
+  const canIncrement = effectiveQuantity < effectiveMax;
 
   const doUpdate = useCallback(
     async (newQuantity: number) => {
-      if (!currentItem?.id || useMock) return;
+      const itemId = itemIdRef.current ?? currentItem?.id;
+      if (!itemId || useMock) return;
+      if (inFlightRef.current) return;
+      // Snapshot the last known-good qty before this write. Optimistic UI
+      // already moved quantityRef to newQuantity.
+      const previousQty = prevServerQuantity.current;
+      const location =
+        locationRef.current ||
+        currentItem?.locationSlug?.trim() ||
+        undefined;
+      inFlightRef.current = true;
       setIsLoading(true);
       try {
-        await updateItem({
-          id: currentItem.id,
+        const updated = await callEpProxy<Cart>("updateCartItem", {
+          itemId,
           quantity: newQuantity,
-          ...(currentItem.locationSlug && { location: currentItem.locationSlug }),
-        } as { id: string; quantity: number; location?: string });
+          ...(location ? { location } : {}),
+        });
+        await swrMutate(epCartCacheKey(), updated, { revalidate: false });
+        setLocalQuantity(newQuantity);
+        quantityRef.current = newQuantity;
+        prevServerQuantity.current = newQuantity;
       } catch (err) {
-        // Revert optimistic update on error
-        setLocalQuantity(serverQuantity);
         const message =
           err instanceof Error ? err.message : "Failed to update quantity";
         log.error("Quantity update failed", { error: message } as Record<
           string,
           unknown
         >);
+
+        const revertTo = Math.max(minQuantity, Number(previousQty) || minQuantity);
+        setLocalQuantity(revertTo);
+        quantityRef.current = revertTo;
+        prevServerQuantity.current = revertTo;
+
+        // Only freeze + when an increment was rejected for stock — a
+        // decrement can also surface the same EP message when location is
+        // missing, and that must not permanently disable +.
+        if (/stock/i.test(message) && newQuantity > previousQty) {
+          setStockCap(revertTo);
+        }
+
+        // Refresh cart so UI matches EP after a failed write.
+        try {
+          await swrMutate(epCartCacheKey());
+        } catch {
+          // ignore revalidation errors
+        }
+      } finally {
+        inFlightRef.current = false;
+        setIsLoading(false);
       }
     },
-    [currentItem?.id, updateItem, useMock, serverQuantity]
+    [
+      currentItem?.id,
+      currentItem?.locationSlug,
+      useMock,
+      minQuantity,
+    ]
   );
 
   const increment = useCallback(() => {
-    if (!canIncrement) return;
-    const newQty = effectiveQuantity + 1;
+    if (inFlightRef.current) return;
+    const current = quantityRef.current;
+    if (current >= effectiveMax) return;
+    const newQty = current + 1;
     setLocalQuantity(newQty);
-    doUpdate(newQty);
-  }, [canIncrement, effectiveQuantity, doUpdate]);
+    quantityRef.current = newQty;
+    void doUpdate(newQty);
+  }, [effectiveMax, doUpdate]);
 
   const decrement = useCallback(() => {
-    if (!canDecrement) return;
-    const newQty = effectiveQuantity - 1;
+    if (inFlightRef.current) return;
+    const current = quantityRef.current;
+    if (current <= minQuantity) return;
+    const newQty = current - 1;
     setLocalQuantity(newQty);
-    doUpdate(newQty);
-  }, [canDecrement, effectiveQuantity, doUpdate]);
+    quantityRef.current = newQty;
+    void doUpdate(newQty);
+  }, [minQuantity, doUpdate]);
 
   const setQuantity = useCallback(
     (next: number) => {
+      if (inFlightRef.current) return;
       const clamped = Math.min(
-        maxQuantity,
-        Math.max(minQuantity, Math.trunc(next))
+        effectiveMax,
+        Math.max(minQuantity, Math.trunc(Number(next)))
       );
-      if (clamped === effectiveQuantity) return;
+      if (clamped === quantityRef.current) return;
       setLocalQuantity(clamped);
-      doUpdate(clamped);
+      quantityRef.current = clamped;
+      void doUpdate(clamped);
     },
-    [minQuantity, maxQuantity, effectiveQuantity, doUpdate]
+    [minQuantity, effectiveMax, doUpdate]
   );
 
   const contextValue: CartItemQuantityContextValue = {
@@ -183,7 +286,7 @@ export function EPCartItemQuantityControl(
     canDecrement,
     canIncrement,
     minQuantity,
-    maxQuantity,
+    maxQuantity: effectiveMax,
     increment,
     decrement,
     setQuantity,

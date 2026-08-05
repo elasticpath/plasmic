@@ -818,6 +818,16 @@ For each Server Query in the Plasmic UI:
 
 Then bind the consuming component's `product` / `cart` / `products` prop (advanced section) to `$q.<queryName>.data`.
 
+### Add to Cart errors (`$ctx.addToCartState.error`)
+
+`EPAddToCartButton` exposes `{ isLoading, isDisabled, error }` via the DataProvider named `addToCartState`. On a proxy or Elastic Path failure, `error` is a non-empty string.
+
+Designers must bind their own text, banner, visibility condition, or other UI to `$ctx.addToCartState.error`. The component does **not** render a default error banner or toast. Existing designs only show an error where that binding exists.
+
+Use the component's **error** preview state in Studio to design the bound UI.
+
+Quantity and remove failures are **not** designer-facing in this release: quantity updates revert the displayed value and log; remove failures leave the item in the cart and log.
+
 ### Required Next.js setup
 
 1. **`platformOptions: { nextjs: { appDir: true } }`** in `plasmic-init.ts`. Without this the loader fetches the Pages Router bundle which omits `serverQueriesExecFuncFileName` per-page metadata.
