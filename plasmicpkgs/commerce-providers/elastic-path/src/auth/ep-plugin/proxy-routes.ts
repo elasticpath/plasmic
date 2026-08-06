@@ -18,11 +18,7 @@
  *   export const POST = routes.handle;
  *   export const OPTIONS = routes.options;
  *
- * CORS: when Studio (`localhost:3003`) previews against a consumer at
- * a different origin (`localhost:3456`), browsers preflight OPTIONS
- * and require explicit `Access-Control-Allow-Credentials` + matching
- * `Access-Control-Allow-Origin`. The factory accepts a list of
- * allowed origins and reflects them on response.
+ * CORS reflects the auth instance's resolved `trustedOrigins` (ADR-0001).
  */
 import {
   epAddCartItem,
@@ -40,13 +36,17 @@ import type {
 } from "../../ep-server-functions";
 import { withEpSession } from "../../ep-server-functions/session-context";
 import type { EpCtx } from "../../ep-server-functions/build-ep-ctx";
+import { parseCookieHeader } from "../../utils/cookie-header";
 import type { EpAuth } from "./create-ep-auth-better";
+import { enforceOriginGate, isTrustedOrigin } from "./origin-gate";
 import { persistCartId } from "./persist-cart-id";
+import { isTrustedDevEnvironment } from "./production-guard";
 
 const MUTATION_FNS = new Set(["addCartItem", "updateCartItem", "removeCartItem"]);
 
+/** Promised `params` only — see the note on `CartRouteContext`. */
 interface ProxyRouteContext {
-  params: Promise<{ fn?: string }> | { fn?: string };
+  params: Promise<{ fn?: string }>;
 }
 
 interface SessionShape {
@@ -59,18 +59,6 @@ interface SessionShape {
   } | null;
   cart: { id: string } | null;
   user?: { accountId?: string } | null;
-}
-
-function parseCookies(cookieHeader: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const part of cookieHeader.split(";")) {
-    const eq = part.indexOf("=");
-    if (eq < 0) continue;
-    const name = part.slice(0, eq).trim();
-    if (!name) continue;
-    out[name] = decodeURIComponent(part.slice(eq + 1).trim());
-  }
-  return out;
 }
 
 const FN_DISPATCH: Record<
@@ -91,34 +79,17 @@ const FN_DISPATCH: Record<
     epRemoveCartItem(args as unknown as EpRemoveCartItemInput),
 };
 
-export interface CreateEpProxyRoutesOptions {
-  /**
-   * Origins permitted to call the proxy with credentials. Defaults to
-   * common Studio dev origins (`http://localhost:3003`, `http://127.0.0.1:3003`).
-   * In production, set this to whatever Studio host the team uses.
-   */
-  allowedOrigins?: string[];
-}
-
 export interface EpProxyRoutes {
   handle: (request: Request, context: ProxyRouteContext) => Promise<Response>;
   options: (request: Request) => Response;
 }
 
-const DEFAULT_ALLOWED_ORIGINS = [
-  "http://localhost:3003",
-  "http://127.0.0.1:3003",
-];
-
-export function createEpProxyRoutes(
-  epAuth: EpAuth,
-  opts?: CreateEpProxyRoutesOptions
-): EpProxyRoutes {
-  const allowed = new Set(opts?.allowedOrigins ?? DEFAULT_ALLOWED_ORIGINS);
+export function createEpProxyRoutes(epAuth: EpAuth): EpProxyRoutes {
+  const trustedOrigins = epAuth.config.trustedOrigins;
 
   function corsHeaders(request: Request): Record<string, string> {
     const origin = request.headers.get("origin");
-    if (origin && allowed.has(origin)) {
+    if (origin && isTrustedOrigin(origin, trustedOrigins)) {
       return {
         "Access-Control-Allow-Origin": origin,
         "Access-Control-Allow-Credentials": "true",
@@ -139,11 +110,11 @@ export function createEpProxyRoutes(
     },
 
     async handle(request, context) {
+      const gate = enforceOriginGate(request, trustedOrigins);
+      if (gate) return gate;
+
       const cors = corsHeaders(request);
-      const params =
-        context.params instanceof Promise
-          ? await context.params
-          : context.params;
+      const params = await context.params;
       const fnName = params.fn ?? "";
       const dispatch = FN_DISPATCH[fnName];
       if (!dispatch) {
@@ -161,7 +132,7 @@ export function createEpProxyRoutes(
         unknown
       >;
 
-      const cookies = parseCookies(request.headers.get("cookie") ?? "");
+      const cookies = parseCookieHeader(request.headers.get("cookie") ?? "");
       const sessionResult = (await epAuth.api.getSession({
         cookies,
         headers: Object.fromEntries(request.headers.entries()),
@@ -198,11 +169,21 @@ export function createEpProxyRoutes(
       try {
         result = await withEpSession(epCtx, () => dispatch(args));
       } catch (err) {
+        const correlationId = crypto.randomUUID();
+        console.error(
+          `[ep-commerce] proxy dispatch_failed fn=${fnName} correlationId=${correlationId}`,
+          err
+        );
         return new Response(
-          JSON.stringify({
-            error: "dispatch_failed",
-            message: (err as Error)?.message,
-          }),
+          JSON.stringify(
+            isTrustedDevEnvironment()
+              ? {
+                  error: "dispatch_failed",
+                  correlationId,
+                  message: (err as Error)?.message,
+                }
+              : { error: "dispatch_failed", correlationId }
+          ),
           {
             status: 500,
             headers: { "Content-Type": "application/json", ...cors },

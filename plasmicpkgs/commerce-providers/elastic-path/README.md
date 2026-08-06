@@ -15,6 +15,11 @@ export const epAuth = createEpAuth({
   clientId: "your-ep-client-id",
   host: "https://useast.api.elasticpath.com",
 
+  // Session cookie secret. Read it straight from the environment — no `!`
+  // and no fallback: a missing value must fail loudly in production, not
+  // silently become a guessable key.
+  secret: process.env.CHECKOUT_SESSION_SECRET,
+
   // Optional: checkout session encryption
   checkout: { sessionSecret: process.env.CHECKOUT_SESSION_SECRET! },
 
@@ -208,7 +213,29 @@ export default function Page({
 # .env.local — only genuine secrets, no EP credentials
 CHECKOUT_SESSION_SECRET=your-32-char-secret-key-here
 STRIPE_SECRET_KEY=sk_test_...
+
+# Optional: extra origins permitted to act as the shopper. One list feeds
+# auth, the proxy's CORS reflection and the origin gate — add your Studio
+# origin here for cross-origin preview.
+BETTER_AUTH_TRUSTED_ORIGINS=https://studio.example.com
 ```
+
+In production `createEpAuth` refuses to serve when the secret is missing, is
+a known example placeholder, or is under 32 characters. Anything other than
+`NODE_ENV=development` / `test` counts as production, so preview deployments
+are held to the same bar; the check stands down during `next build` so
+build-then-inject-env pipelines still build.
+
+Two options tighten the deployment further:
+
+| Option | Default | Use when |
+| --- | --- | --- |
+| `trustedOrigins` | the app's own origin | another origin must act as the shopper (e.g. Studio preview) |
+| `hostAllowlist` | Elastic Path Composable Commerce regions, the integration host, and loopback outside production | the EP API lives elsewhere — Elastic Path Self Managed Commerce |
+
+`hostAllowlist` is applied independently by `createEpAuth`,
+`extractEpProviderConfig` and `buildEpCtx`, so pass the same list to all
+three rather than only to the factory.
 
 ## Architecture
 

@@ -58,12 +58,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function buildAuth() {
+function buildAuth(trustedOrigins?: string[]) {
   return createEpAuth({
     clientId: EP_CLIENT_ID,
     host: EP_HOST,
     secret: SECRET,
     baseURL: "http://localhost:3000",
+    ...(trustedOrigins ? { trustedOrigins } : {}),
   });
 }
 
@@ -131,7 +132,7 @@ describe("createEpProxyRoutes", () => {
       }
     );
     const proxyResp = await proxy.handle(proxyReq, {
-      params: { fn: "addCartItem" },
+      params: Promise.resolve({ fn: "addCartItem" }),
     });
 
     expect(proxyResp.status).toBe(200);
@@ -183,7 +184,7 @@ describe("createEpProxyRoutes", () => {
       }
     );
     const proxyResp = await proxy.handle(proxyReq, {
-      params: { fn: "addCartItem" },
+      params: Promise.resolve({ fn: "addCartItem" }),
     });
 
     expect(proxyResp.status).toBe(200);
@@ -193,5 +194,178 @@ describe("createEpProxyRoutes", () => {
       if (k.toLowerCase() === "set-cookie") setCookies.push(v);
     });
     expect(setCookies.join(";")).not.toContain("session_data=");
+  });
+});
+
+describe("createEpProxyRoutes CORS", () => {
+  function preflight(auth: any, origin: string) {
+    return createEpProxyRoutes(auth).options(
+      new Request("http://localhost:3000/api/ep/proxy/getCart", {
+        method: "OPTIONS",
+        headers: { Origin: origin },
+      })
+    );
+  }
+
+  it("reflects an origin that better-auth already trusts", () => {
+    const auth = buildAuth();
+    expect(
+      preflight(auth, "http://localhost:3000").headers.get(
+        "Access-Control-Allow-Origin"
+      )
+    ).toBe("http://localhost:3000");
+    expect(
+      preflight(auth, "http://127.0.0.1:3000").headers.get(
+        "Access-Control-Allow-Origin"
+      )
+    ).toBe("http://127.0.0.1:3000");
+  });
+
+  it("no longer reflects the old hardcoded Studio default", () => {
+    expect(
+      preflight(buildAuth(), "http://localhost:3003").headers.get(
+        "Access-Control-Allow-Origin"
+      )
+    ).toBeNull();
+  });
+
+  it("reflects a Studio origin once it is added to trustedOrigins", () => {
+    const auth = buildAuth([
+      "http://localhost:3000",
+      "http://localhost:3003",
+    ]);
+    const res = preflight(auth, "http://localhost:3003");
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe(
+      "http://localhost:3003"
+    );
+    expect(res.headers.get("Access-Control-Allow-Credentials")).toBe("true");
+    expect(res.headers.get("Vary")).toBe("Origin");
+  });
+
+  it("keeps the baseURL origin reflectable even when trustedOrigins is overridden", () => {
+    const auth = buildAuth(["http://localhost:3003"]);
+    expect(auth.config.trustedOrigins).toContain("http://localhost:3000");
+    expect(
+      preflight(auth, "http://localhost:3000").headers.get(
+        "Access-Control-Allow-Origin"
+      )
+    ).toBe("http://localhost:3000");
+  });
+
+  it("picks up BETTER_AUTH_TRUSTED_ORIGINS the way better-auth does", () => {
+    const prior = process.env.BETTER_AUTH_TRUSTED_ORIGINS;
+    process.env.BETTER_AUTH_TRUSTED_ORIGINS =
+      "https://studio.elasticpathdev.com, https://second.example.com";
+    try {
+      const auth = buildAuth();
+      expect(
+        preflight(auth, "https://studio.elasticpathdev.com").headers.get(
+          "Access-Control-Allow-Origin"
+        )
+      ).toBe("https://studio.elasticpathdev.com");
+      expect(auth.config.trustedOrigins).toContain(
+        "https://second.example.com"
+      );
+    } finally {
+      if (prior === undefined) delete process.env.BETTER_AUTH_TRUSTED_ORIGINS;
+      else process.env.BETTER_AUTH_TRUSTED_ORIGINS = prior;
+    }
+  });
+
+  it("honours wildcard trustedOrigins entries", () => {
+    const auth = buildAuth(["http://localhost:3000", "https://*.vercel.app"]);
+    expect(
+      preflight(auth, "https://preview-42.vercel.app").headers.get(
+        "Access-Control-Allow-Origin"
+      )
+    ).toBe("https://preview-42.vercel.app");
+    expect(
+      preflight(auth, "https://vercel.app.evil.test").headers.get(
+        "Access-Control-Allow-Origin"
+      )
+    ).toBeNull();
+  });
+});
+
+describe("createEpProxyRoutes origin gate", () => {
+  it("rejects a cross-site mutation from an untrusted origin", async () => {
+    const proxy = createEpProxyRoutes(buildAuth() as any);
+    const res = await proxy.handle(
+      new Request("http://localhost:3000/api/ep/proxy/addCartItem", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "http://evil.test",
+          "Sec-Fetch-Site": "cross-site",
+        },
+        body: JSON.stringify({ productId: "p", quantity: 1 }),
+      }),
+      { params: Promise.resolve({ fn: "addCartItem" }) }
+    );
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "untrusted_origin" });
+    expect(cartMutations.epAddCartItem as any).not.toHaveBeenCalled();
+  });
+});
+
+describe("createEpProxyRoutes error sanitization", () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+
+  afterEach(() => {
+    (process.env as any).NODE_ENV = originalNodeEnv;
+  });
+
+  async function dispatchFailure(): Promise<Response> {
+    const auth = buildAuth();
+    const anonResp = await (auth.handler.api as any).epAnonymous({
+      body: {},
+      headers: new Headers(),
+      asResponse: true,
+    });
+    (cartMutations.epAddCartItem as any).mockRejectedValue(
+      new Error("EP 500 at https://internal.ep.svc/v2/carts — token tok-secret")
+    );
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const proxy = createEpProxyRoutes(auth as any);
+    return proxy.handle(
+      new Request("http://localhost:3000/api/ep/proxy/addCartItem", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "http://localhost:3000",
+          cookie: cookiesFromResponse(anonResp),
+        },
+        body: JSON.stringify({ productId: "p", quantity: 1 }),
+      }),
+      { params: Promise.resolve({ fn: "addCartItem" }) }
+    );
+  }
+
+  it("withholds the message in production and logs it instead", async () => {
+    (process.env as any).NODE_ENV = "production";
+    const res = await dispatchFailure();
+
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error).toBe("dispatch_failed");
+    expect(body.message).toBeUndefined();
+    expect(body.correlationId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+    );
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining(body.correlationId),
+      expect.any(Error)
+    );
+  });
+
+  it("keeps the message outside production", async () => {
+    (process.env as any).NODE_ENV = "development";
+    const body = await (await dispatchFailure()).json();
+
+    expect(body.error).toBe("dispatch_failed");
+    expect(body.message).toContain("EP 500");
+    expect(body.correlationId).toBeTruthy();
   });
 });

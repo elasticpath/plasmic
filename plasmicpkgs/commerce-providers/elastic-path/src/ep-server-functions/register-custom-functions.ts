@@ -22,11 +22,10 @@ import {
   epUpdateCartItem,
 } from "./cart-mutations";
 
+// `meta` stays `any`: CustomFunctionMeta is re-declared in both
+// @plasmicapp/host and loader-react, so any stricter shape rejects a loader.
 interface Registerable {
-  registerFunction: (
-    fn: (...args: unknown[]) => unknown,
-    meta: Record<string, unknown>
-  ) => void;
+  registerFunction: (fn: any, meta: any) => void;
 }
 
 const IMPORT_PATH = "@elasticpath/plasmic-ep-commerce-elastic-path/server";

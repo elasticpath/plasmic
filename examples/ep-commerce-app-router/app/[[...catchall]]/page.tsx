@@ -8,7 +8,7 @@ import {
 } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
 import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
-import { epAuth } from "@/lib/ep-auth";
+import { epAuth, EP_HOST_ALLOWLIST } from "@/lib/ep-auth";
 
 export const revalidate = 60;
 
@@ -46,22 +46,6 @@ export default async function PlasmicLoaderPage({
     ),
   });
 
-  // Next 15 forbids cookie writes in plain RSC pages. Swallow — the
-  // `/api/ep/*` handler persists cookies on the next request.
-  try {
-    session.commitCookies({
-      appendHeader(_name: string, value: string) {
-        const [nameVal] = value.split(";");
-        const [cookieName, ...rest] = nameVal.split("=");
-        cookieStore.set(cookieName.trim(), rest.join("=").trim(), {
-          httpOnly: true,
-          sameSite: "lax",
-          path: "/",
-          maxAge: 2592000,
-        });
-      },
-    });
-  } catch {}
 
   // ---------------------------------------------------------------------------
   // Build EP session context + run Studio Server Queries (PRD #262 / #272)
@@ -72,6 +56,7 @@ export default async function PlasmicLoaderPage({
       cartId: session.cart?.id ?? undefined,
       accountId: session.user?.accountId ?? undefined,
     },
+    hostAllowlist: EP_HOST_ALLOWLIST,
   });
 
   const queryCtx = {

@@ -32,10 +32,14 @@
  * headers that better-auth's nextCookies() plugin emits.
  */
 import type { EpAuth } from "../auth/ep-plugin/create-ep-auth-better";
+import { enforceOriginGate } from "../auth/ep-plugin/origin-gate";
 import { persistCartId } from "../auth/ep-plugin/persist-cart-id";
+import { parseCookieHeader } from "../utils/cookie-header";
 
+// Promise-only: a union fails Next 15's route validator. `await` still
+// accepts a plain object at runtime.
 interface CartRouteContext {
-  params: Promise<{ path?: string[] }> | { path?: string[] };
+  params: Promise<{ path?: string[] }>;
 }
 
 interface SessionShape {
@@ -46,18 +50,6 @@ interface SessionShape {
     expires: number;
   } | null;
   cart: { id: string } | null;
-}
-
-function parseCookies(cookieHeader: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const part of cookieHeader.split(";")) {
-    const eq = part.indexOf("=");
-    if (eq < 0) continue;
-    const name = part.slice(0, eq).trim();
-    if (!name) continue;
-    out[name] = decodeURIComponent(part.slice(eq + 1).trim());
-  }
-  return out;
 }
 
 async function callEp(
@@ -102,7 +94,10 @@ export interface CartRoutes {
 export function createCartRoutes(epAuth: EpAuth): CartRoutes {
   return {
     async handle(request, context) {
-      const cookies = parseCookies(request.headers.get("cookie") ?? "");
+      const gate = enforceOriginGate(request, epAuth.config.trustedOrigins);
+      if (gate) return gate;
+
+      const cookies = parseCookieHeader(request.headers.get("cookie") ?? "");
       const sessionResult = (await epAuth.api.getSession({
         cookies,
         headers: Object.fromEntries(request.headers.entries()),
@@ -116,10 +111,7 @@ export function createCartRoutes(epAuth: EpAuth): CartRoutes {
         );
       }
 
-      const params =
-        context.params instanceof Promise
-          ? await context.params
-          : context.params;
+      const params = await context.params;
       const path = params.path ?? [];
       const method = request.method;
 

@@ -15,13 +15,15 @@ import {
   createAdapterRegistry,
   createClientCredentialsTokenResolver,
   createStripeAdapter,
+  resolveAuthSecret,
   type SessionHandlerContext,
 } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
+import { cookies } from "next/headers";
 import { epAuth, getEpProviderConfig } from "./ep-auth";
 
-const SESSION_SECRET =
-  process.env.CHECKOUT_SESSION_SECRET ??
-  "dev-secret-min-48-chars-long-enough-for-better-auth-jwe-cache";
+const SESSION_SECRET = resolveAuthSecret(process.env.CHECKOUT_SESSION_SECRET, {
+  label: "CHECKOUT_SESSION_SECRET",
+});
 
 const sessionStore = new CookieSessionStore(SESSION_SECRET);
 
@@ -44,14 +46,18 @@ export async function buildCheckoutContext(
     process.env.EP_HOST ??
     "https://useast.api.elasticpath.com";
 
-  // Read the better-auth session to pull shopper token + epCartId.
+  const cookieStore = await cookies();
   const session = await epAuth.api
-    .getSession({ headers: request.headers })
+    .getSession({
+      cookies: Object.fromEntries(
+        cookieStore.getAll().map((c) => [c.name, c.value])
+      ),
+      headers: Object.fromEntries(request.headers.entries()),
+    })
     .catch(() => null);
 
-  const shopperAccessToken =
-    (session?.session as any)?.epAccessToken ?? "";
-  const epCartId = (session?.session as any)?.epCartId ?? null;
+  const shopperAccessToken = session?.session?.accessToken ?? "";
+  const epCartId = session?.cart?.id ?? null;
 
   // Per-request admin-token resolver. Built only when EP_CLIENT_SECRET is
   // present; absence cleanly disables admin-side EP calls (Stripe gateway

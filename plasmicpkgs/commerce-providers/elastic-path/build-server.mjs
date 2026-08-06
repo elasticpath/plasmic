@@ -84,8 +84,8 @@ export type { StripeAdapterConfig } from "./checkout/session/adapters/stripe-ada
 export { createClientCredentialsTokenResolver } from "./auth/ep-plugin/client-credentials-resolver";
 export type { ClientCredentialsResolverConfig, ClientCredentialsTokenResolver } from "./auth/ep-plugin/client-credentials-resolver";
 export type { SessionRequest, SessionResponse, SessionHandlerContext, EPCredentials, AdapterRegistry, SessionStore, PaymentAdapter, CustomAttributeAllowList } from "./checkout/session/types";
-export { createEpAuth, createBetterEpAuth, extractEpProviderConfig, epPlugin, epAuthMiddleware, createCartRoutes, createEpProxyRoutes } from "./auth";
-export type { EpAuth, EpAuthConfig, EpSession, EpProviderBundleConfig, EpPluginOptions, EpProxyRoutes, CreateEpProxyRoutesOptions } from "./auth";
+export { createEpAuth, createBetterEpAuth, extractEpProviderConfig, epPlugin, epAuthMiddleware, createCartRoutes, createEpProxyRoutes, enforceOriginGate, isTrustedOrigin, passesOriginGate, assertProductionSecret, resolveAuthSecret, DEFAULT_HOST_ALLOWLIST, isAllowedEpHost } from "./auth";
+export type { EpAuth, EpAuthConfig, EpSession, EpProviderBundleConfig, ExtractEpProviderConfigOptions, EpPluginOptions, EpProxyRoutes } from "./auth";
 export { epGetProduct, epGetCart, epGetProductList, epGetRelatedProducts, epAddCartItem, epApplyCartAdjustment, epUpdateCartItem, epRemoveCartItem, epPlaceOrder, addCustomCartItem, CART_ADJUSTMENT_KINDS, registerEpCustomFunctions, buildEpCtx, withEpSession, getCurrentEpSession } from "./ep-server-functions";
 export type { EpGetProductInput, EpGetCartInput, EpGetProductListInput, EpGetRelatedProductsInput, EpAddCartItemInput, EpApplyCartAdjustmentInput, EpUpdateCartItemInput, EpRemoveCartItemInput, EpPlaceOrderInput, EpPlaceOrderAddress, EpPlaceOrderResult, AddCustomCartItemInput, CartAdjustmentKind, BuildEpCtxSessionInput, EpCtx, EpSessionContext, EpServerAuth } from "./ep-server-functions";
 `;
