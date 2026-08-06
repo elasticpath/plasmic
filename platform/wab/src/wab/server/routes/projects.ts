@@ -2087,8 +2087,8 @@ export async function prefillPkgVersion(
   } catch (err) {
     await req.con.transaction(async (entMgr) => {
       logger().error(
-        { err, error_message: err instanceof Error ? err.message : String(err) },
         `Error pre-filling ${projectId}@${pkgVersion.version}; marking as pre-filled anyway`,
+        { err, error_message: err instanceof Error ? err.message : String(err) }
       );
       const superMgr = new DbMgr(entMgr, SUPER_USER);
       await superMgr.updatePkgVersion(
