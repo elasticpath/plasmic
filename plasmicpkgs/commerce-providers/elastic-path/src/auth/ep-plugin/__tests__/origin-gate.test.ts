@@ -151,10 +151,6 @@ describe("passesOriginGate", () => {
   });
 
   it("passes a same-origin request whose own origin is absent from the trust list", () => {
-    // Go's CrossOriginProtection compares Origin against the request's Host
-    // before consulting any allowlist. An explicit `trustedOrigins` replaces
-    // the defaults, so the deployment's own origin can legitimately be
-    // missing from the list while the request is still same-origin.
     const studioOnly = ["https://studio.example.com"];
     expect(
       passesOriginGate(

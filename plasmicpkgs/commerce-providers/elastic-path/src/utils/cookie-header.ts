@@ -1,5 +1,3 @@
-/** Server-side Cookie header parsing. Browser access is in ./cookies.ts. */
-
 const SECURE_PREFIX = "__Secure-";
 
 export function parseCookieHeader(

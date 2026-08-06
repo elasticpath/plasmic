@@ -1,13 +1,3 @@
-/**
- * ADR-0001 makes `epAuth.config.trustedOrigins` the one origin trust list:
- * the proxy's CORS reflection and the origin gate both read it. That only
- * holds if the list agrees with what better-auth itself accepts.
- *
- * A superset is the dangerous direction — the proxy would set CORS headers
- * and the gate would pass a request that better-auth then rejects mid-flight,
- * which is the silent cart-id-persistence 403 the ADR exists to remove. So
- * rather than re-asserting our own resolution, this asks better-auth.
- */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createEpAuth } from "../create-ep-auth-better";
 
@@ -44,14 +34,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-/**
- * better-auth's own resolved trust list, straight off its context.
- *
- * Deliberately not probed through the request handler: better-auth sets
- * `skipOriginCheck` to true whenever `isTest()` (create-context.mjs), so
- * under Vitest its handler accepts every origin and any assertion made that
- * way would pass vacuously.
- */
+// Read off the context, not the handler: better-auth disables origin
+// checks under isTest(), so a handler probe would pass vacuously.
 async function betterAuthTrustedOrigins(auth: any): Promise<string[]> {
   const ctx = await auth.handler.$context;
   return ctx.trustedOrigins;
@@ -66,22 +50,16 @@ describe("config.trustedOrigins parity with better-auth", () => {
       host: EP_HOST,
       secret: "z".repeat(48),
       baseURL: "http://localhost:3456",
-      // Deliberately omits the baseURL origin: an explicit list replaces the
-      // defaults, but better-auth re-adds its own origin regardless.
       trustedOrigins: ["http://localhost:3003"],
     });
 
     const theirs = new Set(await betterAuthTrustedOrigins(auth));
     const ours = new Set(auth.config.trustedOrigins);
 
-    // Advertising an origin better-auth rejects is the split-brain ADR-0001
-    // removes: the proxy would send CORS headers and the gate would pass a
-    // request that then 403s at the auth boundary.
     expect(
       [...ours].filter((o) => !theirs.has(o)),
       "origins we advertise that better-auth does not trust"
     ).toEqual([]);
-    // The reverse gap is milder but still breaks the single-list promise.
     expect(
       [...theirs].filter((o) => !ours.has(o)),
       "origins better-auth trusts that we do not advertise"

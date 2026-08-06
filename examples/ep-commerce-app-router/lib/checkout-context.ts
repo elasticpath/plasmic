@@ -21,8 +21,6 @@ import {
 import { cookies } from "next/headers";
 import { epAuth, getEpProviderConfig } from "./ep-auth";
 
-// No fallback: in production this throws rather than encrypting checkout
-// sessions under a value that shipped in public example code.
 const SESSION_SECRET = resolveAuthSecret(process.env.CHECKOUT_SESSION_SECRET, {
   label: "CHECKOUT_SESSION_SECRET",
 });
@@ -48,7 +46,6 @@ export async function buildCheckoutContext(
     process.env.EP_HOST ??
     "https://useast.api.elasticpath.com";
 
-  // The session lives in cookies; passing only headers reads nothing.
   const cookieStore = await cookies();
   const session = await epAuth.api
     .getSession({

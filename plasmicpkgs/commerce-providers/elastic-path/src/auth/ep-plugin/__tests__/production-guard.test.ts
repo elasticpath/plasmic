@@ -130,7 +130,6 @@ describe("assertNonSentinelSecret", () => {
         label: "checkout.sessionSecret",
       })
     ).toThrow(/public example placeholder/);
-    // Short but unique is the checkout secret's own ≥16 rule, not this guard's.
     expect(() =>
       assertNonSentinelSecret("a-unique-17-chars", {
         label: "checkout.sessionSecret",

@@ -116,9 +116,6 @@ describe("epAuthMiddleware (PRD #273)", () => {
   });
 
   it("recognises the session by cookie name, not by a substring of the header", async () => {
-    // A value that merely mentions the cookie names must not read as a
-    // session — the previous `cookieHeader.includes(...)` check let any
-    // unrelated cookie suppress the bootstrap.
     const epAuth = buildEpAuth();
     const middleware = epAuthMiddleware(epAuth);
 

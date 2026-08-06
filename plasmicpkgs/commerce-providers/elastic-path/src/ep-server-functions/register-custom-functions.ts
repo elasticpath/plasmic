@@ -22,11 +22,8 @@ import {
   epUpdateCartItem,
 } from "./cart-mutations";
 
-/**
- * Permissive on `meta` by necessity: `CustomFunctionMeta` is re-declared in
- * both @plasmicapp/host and @plasmicapp/loader-react and TypeScript treats
- * the copies as unrelated, so any stricter shape rejects some loader.
- */
+// `meta` stays `any`: CustomFunctionMeta is re-declared in both
+// @plasmicapp/host and loader-react, so any stricter shape rejects a loader.
 interface Registerable {
   registerFunction: (fn: any, meta: any) => void;
 }

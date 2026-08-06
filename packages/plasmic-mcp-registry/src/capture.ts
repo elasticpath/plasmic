@@ -32,9 +32,8 @@
  * Minimal interface for a PLASMIC-like object that has registration methods.
  * We don't import the full loader types to avoid a dependency on @plasmicapp/loader-*.
  *
- * Methods with `any` params, not properties with `unknown`: property syntax
- * is contravariant under `strictFunctionTypes`, so no real loader satisfied
- * the constraint.
+ * Methods with `any` params: property syntax is contravariant under
+ * strictFunctionTypes, which no real loader satisfies.
  */
 interface PlasmicLike {
   registerComponent(component: any, meta: any): void;

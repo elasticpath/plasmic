@@ -46,8 +46,6 @@ export default async function PlasmicLoaderPage({
     ),
   });
 
-  // No cookie writes here: Next forbids them in plain RSC pages, so session
-  // bootstrap belongs to `epAuthMiddleware`, which runs before this page.
 
   // ---------------------------------------------------------------------------
   // Build EP session context + run Studio Server Queries (PRD #262 / #272)

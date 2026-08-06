@@ -20,19 +20,10 @@ import { PLASMIC } from "@/plasmic-init";
  *
  * Env vars consulted:
  *   - CHECKOUT_SESSION_SECRET — used as the better-auth JWE secret AND the
- *     checkout-session HMAC secret. Required in production: the package's
- *     production guard refuses to construct without it, so there is
- *     deliberately no fallback value here to copy into a deployment.
+ *     checkout-session HMAC secret. Required in production.
  */
 const SECRET = process.env.CHECKOUT_SESSION_SECRET;
 
-/**
- * Host patterns the EP API may be reached at. Defined once and passed to
- * every host check — `createBetterEpAuth`, `extractEpProviderConfig` and
- * `buildEpCtx` each apply it independently, so setting it in only one place
- * leaves the others on the package default. Elastic Path Self Managed
- * Commerce deployments set EP_HOST_ALLOWLIST to their own host.
- */
 export const EP_HOST_ALLOWLIST = process.env.EP_HOST_ALLOWLIST?.split(",")
   .map((h) => h.trim())
   .filter(Boolean);

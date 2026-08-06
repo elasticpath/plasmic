@@ -38,7 +38,6 @@ export function buildEpCtx(
   prefetchedData: unknown,
   opts: {
     session: BuildEpCtxSessionInput;
-    /** Host patterns the EP API may be reached at. */
     hostAllowlist?: readonly string[];
   }
 ): EpCtx {

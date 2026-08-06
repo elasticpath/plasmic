@@ -85,9 +85,6 @@ describe("createCartRoutes origin gate", () => {
   });
 
   it("still accepts a plain (non-promised) params object at runtime", async () => {
-    // `params` is typed Promise-only so Next 15's build-time route validator
-    // accepts the handler, but `await` means a caller passing the object
-    // directly — Next 14 style, or a test — keeps working.
     const { routes, getSession } = buildRoutes();
     const res = await routes.handle(request("GET"), {
       params: { path: [] },

@@ -36,11 +36,8 @@ import { enforceOriginGate } from "../auth/ep-plugin/origin-gate";
 import { persistCartId } from "../auth/ep-plugin/persist-cart-id";
 import { parseCookieHeader } from "../utils/cookie-header";
 
-/**
- * Promise-only: Next 15's route validator diffs against
- * `{ params: Promise<SegmentParams> }` and a union fails it. `await` still
- * accepts a plain object at runtime.
- */
+// Promise-only: a union fails Next 15's route validator. `await` still
+// accepts a plain object at runtime.
 interface CartRouteContext {
   params: Promise<{ path?: string[] }>;
 }

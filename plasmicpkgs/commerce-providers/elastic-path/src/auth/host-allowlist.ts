@@ -1,18 +1,13 @@
-/**
- * The EP API host comes from the Plasmic bundle, so an unchecked value
- * redirects shopper token minting.
- */
+// The EP API host comes from the Plasmic bundle, so it is untrusted input.
 import { hasWildcard, matchesGlob } from "../utils/glob-pattern";
 import { isProduction } from "./ep-plugin/production-guard";
 
-/** The integration host is on Fastly, so it is listed exactly. */
 export const DEFAULT_HOST_ALLOWLIST: readonly string[] = [
   "*.elasticpath.com",
   "elasticpath.com",
   "epcc-integration.global.ssl.fastly.net",
 ];
 
-/** Outside production only. */
 const LOOPBACK_HOSTS: readonly string[] = ["localhost", "127.0.0.1", "::1"];
 
 function normalizeHost(value: string): string | null {

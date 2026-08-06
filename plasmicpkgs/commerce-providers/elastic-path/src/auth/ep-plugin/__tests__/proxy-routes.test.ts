@@ -208,7 +208,6 @@ describe("createEpProxyRoutes CORS", () => {
   }
 
   it("reflects an origin that better-auth already trusts", () => {
-    // baseURL http://localhost:3000 implies both loopback spellings.
     const auth = buildAuth();
     expect(
       preflight(auth, "http://localhost:3000").headers.get(
@@ -244,8 +243,6 @@ describe("createEpProxyRoutes CORS", () => {
   });
 
   it("keeps the baseURL origin reflectable even when trustedOrigins is overridden", () => {
-    // better-auth re-adds the baseURL origin to its own effective list, so
-    // the exposed list has to as well or ADR-0001's one-list claim breaks.
     const auth = buildAuth(["http://localhost:3003"]);
     expect(auth.config.trustedOrigins).toContain("http://localhost:3000");
     expect(

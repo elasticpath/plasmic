@@ -1,8 +1,5 @@
-/**
- * Origin gate — the CSRF layer on state-changing routes, following Go's
- * `CrossOriginProtection`. Request rejection, distinct from CORS (response
- * readability). Trust list is better-auth's `trustedOrigins` (ADR-0001).
- */
+// CSRF gate following Go's CrossOriginProtection. Rejects requests; CORS
+// only governs response readability.
 import { hasWildcard, matchesGlob } from "../../utils/glob-pattern";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -32,7 +29,6 @@ export function matchesOriginPattern(origin: string, pattern: string): boolean {
   return origin.startsWith(pattern);
 }
 
-/** Go checks Origin against the request's Host before the allowlist. */
 function originMatchesRequestHost(request: Request, origin: string): boolean {
   const originHost = parseUrl(origin)?.host?.toLowerCase();
   if (!originHost) return false;
@@ -62,7 +58,6 @@ export function passesOriginGate(
   if (site === "same-origin" || site === "none") return true;
 
   const origin = request.headers.get("origin");
-  // Not a browser: no ambient credentials to abuse.
   if (!site && !origin) return true;
   if (!origin) return false;
 
