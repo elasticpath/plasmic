@@ -84,6 +84,7 @@ import {
   hasVisibilitySetting,
 } from "@/wab/shared/visibility-utils";
 import { Menu, Tooltip, notification } from "antd";
+import { ok } from "neverthrow";
 import React from "react";
 
 export function makeSelectableMenu(viewCtx: ViewCtx, node: Selectable) {
@@ -476,9 +477,9 @@ export function makeTplMenu(
           <Menu.Item
             key="open-dedicated-arena"
             onClick={() =>
-              studioCtx.change(({ success }) => {
+              studioCtx.change(() => {
                 studioCtx.switchToComponentArena(tpl.component);
-                return success();
+                return ok();
               })
             }
           >
@@ -517,7 +518,7 @@ export function makeTplMenu(
     }
 
     if (!forMultipleTpls && isTplTextBlock(tpl)) {
-      pushEdit(makeTplTextMenu(makeTplTextOps(viewCtx, tpl)));
+      pushEdit(makeTplTextMenu(makeTplTextOps(viewCtx, tpl), viewCtx));
     }
 
     if (!forMultipleTpls && isTplContainer(tpl) && !contentEditorMode) {

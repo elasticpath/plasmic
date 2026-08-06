@@ -1,7 +1,9 @@
 {
   "name": "@plasmicpkgs/plasmic-contentful",
-  "version": "0.0.192",
-  "description": "Plasmic Contentful components.",
+  "version": "0.0.206",
+  "description": "Plasmic code components for fetching and rendering Contentful content.",
+  "homepage": "https://www.plasmic.app",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/plasmicapp/plasmic.git",
@@ -24,10 +26,10 @@
     "dist"
   ],
   "scripts": {
-    "build": "yarn build:types && yarn build:index",
-    "build:types": "yarn tsc",
+    "build": "pnpm build:types && pnpm build:index",
+    "build:types": "tsc",
     "build:index": "node ../../build.mjs ./src/index.tsx",
-    "test": "TEST_CWD=`pwd` yarn --cwd=../.. test --passWithNoTests",
+    "test": "TEST_CWD=`pwd` pnpm -w test --passWithNoTests",
     "prepublishOnly": "npm run build",
     "postpublish": "bash ../../scripts/publish-api-doc-model.sh"
   },
@@ -42,10 +44,10 @@
     }
   ],
   "devDependencies": {
-    "@plasmicapp/host": "2.0.1",
-    "@plasmicapp/query": "0.1.84",
-    "@plasmicpkgs/contentful": "0.0.16",
-    "@types/dlv": "^1.1.2",
+    "@plasmicapp/host": "2.0.15",
+    "@plasmicapp/query": "0.1.87",
+    "@plasmicpkgs/contentful": "0.0.30",
+    "@types/dlv": "^1.1.5",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "react": "^18.2.0",

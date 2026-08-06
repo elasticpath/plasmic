@@ -1,13 +1,12 @@
 import { expect } from "@playwright/test";
 import { test } from "../fixtures/test";
 
-import bundles from "../../cypress/bundles";
+import bundles from "../bundles";
 import { goToProject } from "../utils/studio-utils";
 
 const BUNDLE_NAME = "state-management";
 
-// Interactions not working properly in playwright test
-test.describe.skip("state-management-custom-interactions", () => {
+test.describe("state-management-custom-interactions", () => {
   let projectId: string;
   test.beforeEach(async ({ apiClient, page }) => {
     projectId = await apiClient.importProjectFromTemplate(bundles[BUNDLE_NAME]);
@@ -25,37 +24,25 @@ test.describe.skip("state-management-custom-interactions", () => {
 
   test("can create page navigation and custom function interactions", async ({
     models,
-    page,
   }) => {
     await models.studio.switchArena("page navigation interactions");
     await models.studio.waitStudioLoaded();
 
-    const contentFrame = models.studio.frame
-      .locator("iframe")
-      .first()
-      .contentFrame();
-
-    await contentFrame.locator("text=Go to page1").click({ force: true });
-
+    await models.studio.selectInCanvasByText(/^Go to page1$/, "button");
     await models.studio.rightPanel.addNavigationInteraction("onClick", {
       destination: "/page1",
     });
 
-    await contentFrame
-      .locator("text=Go to page2")
-      .first()
-      .click({ force: true });
-
+    await models.studio.selectInCanvasByText(/^Go to page2$/, "button");
     await models.studio.rightPanel.addNavigationInteraction("onClick", {
       destination: "`/page2/foo`",
       isDynamicValue: true,
     });
-    await page.waitForTimeout(100_000);
 
-    await contentFrame
-      .locator("text=Go to page2 (dynamic value)")
-      .click({ force: true });
-
+    await models.studio.selectInCanvasByText(
+      "Go to page2 (dynamic value)",
+      "button"
+    );
     await models.studio.rightPanel.addNavigationInteraction("onClick", {
       destination: "`/page2/${$state.count}`",
       isDynamicValue: true,
@@ -85,13 +72,7 @@ test.describe.skip("state-management-custom-interactions", () => {
     await models.studio.switchArena("custom function interactions");
     await models.studio.waitStudioLoaded();
 
-    const contentFrame2 = models.studio.frame
-      .locator("iframe")
-      .nth(1)
-      .contentFrame();
-
-    await contentFrame2.locator("text=custom increment").click({ force: true });
-
+    await models.studio.selectInCanvasByText("custom increment", "button");
     await models.studio.rightPanel.addComplexInteraction("onClick", [
       {
         actionName: "customFunction",

@@ -427,7 +427,8 @@
           "defaultSlotContents": {},
           "variants": {},
           "__type": "CodeComponentMeta",
-          "refActions": []
+          "refActions": [],
+          "subtreePrefetchingConfig": null
         },
         "5xd_u-JP1gew": {
           "uuid": "WxYff_NPVJvK",
@@ -700,7 +701,8 @@
           "defaultSlotContents": {},
           "variants": {},
           "__type": "CodeComponentMeta",
-          "refActions": []
+          "refActions": [],
+          "subtreePrefetchingConfig": null
         },
         "f2E7_tNnXWGs": {
           "uuid": "wzTkMnXfRlz9",
@@ -1410,7 +1412,7 @@
           "defaultExport": false,
           "namespace": "math",
           "params": [],
-          "isQuery": false,
+          "isQuery": true,
           "__type": "CustomFunction",
           "displayName": null,
           "isMutation": false
@@ -1421,7 +1423,7 @@
           "defaultExport": true,
           "namespace": "math",
           "params": [],
-          "isQuery": false,
+          "isQuery": true,
           "__type": "CustomFunction",
           "displayName": null,
           "isMutation": false
@@ -1432,7 +1434,7 @@
           "defaultExport": false,
           "namespace": null,
           "params": [],
-          "isQuery": false,
+          "isQuery": true,
           "__type": "CustomFunction",
           "displayName": null,
           "isMutation": false
@@ -1532,7 +1534,7 @@
         }
       },
       "deps": [],
-      "version": "257-add-custom-function-is-mutation"
+      "version": "258-add-code-component-subtree-prefetching-config"
     }
   ]
 ]

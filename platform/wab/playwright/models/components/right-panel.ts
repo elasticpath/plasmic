@@ -438,6 +438,47 @@ export class RightPanel extends BaseModel {
     await variantRow.click();
   }
 
+  /**
+   * Reset all targeted variants on the current component back to base.
+   * Switches to the Component Data tab first, since variant rows are only
+   * visible there.
+   */
+  async resetVariants() {
+    await this.switchToComponentDataTab();
+    const baseVariant = this.frame
+      .locator('[data-test-class="variant-row"]')
+      .filter({ hasText: "Base" });
+    if (await baseVariant.isVisible()) {
+      await baseVariant.click();
+    } else {
+      const activeVariants = this.frame.locator(
+        '[data-test-class="variant-pin-button-deactivate"]'
+      );
+      const count = await activeVariants.count();
+      for (let i = 0; i < count; i++) {
+        await activeVariants.nth(0).click();
+      }
+    }
+  }
+
+  /**
+   * Deselect (i.e. stop targeting) a specific variant within a variant group.
+   * No-op if the variant isn't currently targeted.
+   */
+  async deselectVariant(groupName: string, variantName: string) {
+    await this.switchToComponentDataTab();
+    const variantGroup = this.frame
+      .locator('[data-test-class="variants-section"]')
+      .filter({ hasText: groupName });
+    const variant = variantGroup
+      .locator('[data-test-class="variant-row"]')
+      .filter({ hasText: variantName })
+      .locator('button[data-test-class="variant-record-button-stop"]');
+    if (await variant.isVisible()) {
+      await variant.click();
+    }
+  }
+
   async addComponentProp(
     propName: string,
     propType: string,
@@ -464,6 +505,117 @@ export class RightPanel extends BaseModel {
     await this.propSubmitButton.click();
   }
 
+  /**
+   * Creates a choice or multiChoice component prop with the given options.
+   */
+  async addChoiceComponentProp(opts: {
+    propName: string;
+    propType?: "choice" | "multiChoice";
+    options: string[];
+    defaultValue?: string | string[];
+    previewValue?: string | string[];
+  }) {
+    await this.switchToComponentDataTab();
+    await this.addPropButton.click();
+    await this.selectPropType(opts.propType ?? "choice");
+    await this.propNameInput.fill(opts.propName);
+
+    for (let i = 0; i < opts.options.length; i++) {
+      await this.frame
+        .locator('[data-test-id="component-prop-choices-add-btn"]')
+        .click();
+      const itemInput = this.frame
+        .locator(`[data-test-id="component-prop-choices-${i}"]`)
+        .getByRole("textbox")
+        .first();
+      await itemInput.fill(opts.options[i]);
+      await itemInput.press("Enter");
+    }
+
+    if (opts.defaultValue !== undefined) {
+      await this.selectChoiceValue(
+        this.frame.locator('[data-test-id="default-value"]'),
+        opts.defaultValue
+      );
+    }
+    if (opts.previewValue !== undefined) {
+      await this.selectChoiceValue(
+        this.frame.locator('[data-test-id="preview-value"]'),
+        opts.previewValue
+      );
+    }
+
+    await this.propSubmitButton.click();
+  }
+
+  /**
+   * Selects value(s) in a single/multi-choice editor
+   */
+  async selectChoiceValue(container: Locator, value: string | string[]) {
+    const values = Array.isArray(value) ? value : [value];
+    const anyOptionVisible = () =>
+      this.frame
+        .getByRole("option")
+        .first()
+        .isVisible()
+        .catch(() => false);
+
+    await container.first().click();
+    await this.page.waitForTimeout(200);
+    if (!(await anyOptionVisible())) {
+      await container.locator("input").first().click();
+      await this.page.waitForTimeout(200);
+    }
+
+    for (const v of values) {
+      await this.frame
+        .getByRole("option", { name: v, exact: true })
+        .first()
+        .click();
+      await this.page.waitForTimeout(200);
+    }
+
+    // A still-open (multi-select) dropdown overlays the controls below it.
+    // Tab out to close it (avoids Escape, which could close the modal).
+    await this.page.keyboard.press("Tab");
+    await this.page.waitForTimeout(200);
+  }
+
+  /**
+   * Renames an allowed value (by index) in the open choice prop modal.
+   */
+  async renameChoiceComponentPropOption(index: number, value: string) {
+    const itemInput = this.frame
+      .locator(`[data-test-id="component-prop-choices-${index}"]`)
+      .getByRole("textbox")
+      .last();
+    await itemInput.fill(value);
+    await itemInput.press("Enter");
+  }
+
+  /**
+   * Removes an allowed value (by index) in the open choice prop modal.
+   */
+  async removeChoiceComponentPropOption(index: number) {
+    await this.frame
+      .locator(`[data-test-id="component-prop-choices-${index}-remove"]`)
+      .last()
+      .click({ force: true });
+  }
+
+  async submitPropModal() {
+    await this.propSubmitButton.first().click();
+    await this.propSubmitButton.waitFor({ state: "detached", timeout: 5000 });
+  }
+
+  /**
+   * Sets a choice value on a component instance prop.
+   */
+  async setInstanceChoiceValue(propName: string, value: string | string[]) {
+    const propRow = await this.getPropEditorRow(propName);
+    await this.selectChoiceValue(propRow, value);
+  }
+
   async switchToSettingsTab() {
     await this.settingsTabButton.click();
   }
@@ -477,6 +629,22 @@ export class RightPanel extends BaseModel {
 
   async expandHtmlAttributesSection() {
     await this.htmlAttributesSection.click();
+  }
+
+  /**
+   * Expands the "Show more" toggle in the component props section so that
+   * advanced props become visible.
+   */
+  async expandComponentPropsSection() {
+    const showExtraContent = this.frame.locator(
+      '#component-props-section [data-test-id="show-extra-content"]'
+    );
+    if (
+      (await showExtraContent.getAttribute("data-show-extra-content")) !==
+      "true"
+    ) {
+      await showExtraContent.click();
+    }
   }
 
   async getPropEditorRowsCount() {
@@ -537,7 +705,11 @@ export class RightPanel extends BaseModel {
 
   async openComponentPropModal(propName: string) {
     await this.switchToComponentDataTab();
-    await this.frame.getByText(propName).click({ button: "right" });
+    await this.frame
+      .locator('[data-test-id="props-section"]')
+      .getByText(propName, { exact: true })
+      .first()
+      .click({ button: "right" });
     await this.frame.getByText("Configure prop").click();
   }
 
@@ -637,17 +809,40 @@ export class RightPanel extends BaseModel {
     }
   }
 
-  async addVariantGroup(groupName: string) {
+  async addVariantGroup(
+    groupName: string,
+    firstVariantName?: string,
+    opts?: { multi?: boolean }
+  ) {
     await this.addVariantGroupButton.click();
 
     await this.page.waitForTimeout(500);
 
-    const singleOption = this.frame
+    // The add-group dropdown offers "single-select" and "multi-select" options.
+    const option = this.frame
       .locator(".ant-dropdown-menu")
-      .getByText("single");
-    await singleOption.click({ force: true });
+      .getByText(opts?.multi ? "multi" : "single");
+    await option.click({ force: true });
 
     await this.page.keyboard.type(groupName);
+    await this.page.keyboard.press("Enter");
+    if (firstVariantName) {
+      await this.page.keyboard.type(firstVariantName);
+      await this.page.keyboard.press("Enter");
+    }
+  }
+
+  /**
+   * Adds a standalone "toggle" variant
+   */
+  async addToggleVariant(variantName: string) {
+    await this.addVariantGroupButton.click();
+    await this.page.waitForTimeout(500);
+    await this.frame
+      .locator(".ant-dropdown-menu")
+      .getByText("toggle")
+      .click({ force: true });
+    await this.page.keyboard.type(variantName);
     await this.page.keyboard.press("Enter");
   }
 
@@ -655,13 +850,32 @@ export class RightPanel extends BaseModel {
     const variantGroupWidget = this.frame
       .locator('[data-test-class="variants-section"]')
       .filter({ hasText: groupName });
-    const addVariantButton = variantGroupWidget.locator(
-      '[data-test-class="add-variant-button"]'
-    );
-    await addVariantButton.click();
+    if ((await variantGroupWidget.count()) > 0) {
+      const addVariantButton = variantGroupWidget.locator(
+        '[data-test-class="add-variant-button"]'
+      );
+      await addVariantButton.click();
 
-    await this.page.keyboard.type(variantName);
-    await this.page.keyboard.press("Enter");
+      await this.page.keyboard.type(variantName);
+      await this.page.keyboard.press("Enter");
+    } else {
+      await this.addVariantGroup(groupName, variantName);
+    }
+  }
+
+  /**
+   * Flips a variant group between single- and multi-select via its context menu
+   * ("Change type to single-select" / "…multi-select").
+   */
+  async toggleVariantGroupMultiSelect(groupName: string) {
+    await this.switchToComponentDataTab();
+    await this.frame
+      .locator('[data-test-class="variants-section"]')
+      .filter({ hasText: groupName })
+      .getByText(groupName, { exact: true })
+      .first()
+      .click({ button: "right" });
+    await this.frame.getByText("Change type to").click();
   }
 
   async configureProjectAppHost(page: string) {
@@ -731,10 +945,17 @@ export class RightPanel extends BaseModel {
         variable?: string[];
         operation?: string;
         value?: string;
+        startIndex?: string;
+        deleteCount?: string;
         arguments?: Record<string, string>;
         eventRef?: string;
         customFunction?: string;
+        customFunctionOpCode?: string;
       };
+      dynamicArgs?: Record<string, string>;
+      /** For customFunctionOp interactions, runs while the bottom modal is open
+       *  Useful for asserting the editor's data context. */
+      assertCustomFunctionOpModal?: (modal: Locator) => Promise<void>;
       mode?: "always" | "never" | "when";
       conditionalExpr?: string;
     }>
@@ -818,6 +1039,31 @@ export class RightPanel extends BaseModel {
         await this.insertMonacoCode(interaction.args.customFunction);
       }
 
+      for (const argName of ["startIndex", "deleteCount"] as const) {
+        const argValue = interaction.args[argName];
+        if (argValue) {
+          await this.setDataPlasmicProp(argName, argValue);
+        }
+      }
+
+      if (interaction.dynamicArgs) {
+        for (const [argName, argValue] of Object.entries(
+          interaction.dynamicArgs
+        )) {
+          const input = this.frame.locator(`[data-plasmic-prop="${argName}"]`);
+          await input.click({ button: "right" });
+          await this.useDynamicValueButton.click();
+          await this.insertMonacoCode(argValue);
+        }
+      }
+
+      if (interaction.args.customFunctionOpCode) {
+        await this.configureCustomFunctionOpAsCustomCode(
+          interaction.args.customFunctionOpCode,
+          interaction.assertCustomFunctionOpModal
+        );
+      }
+
       if (interaction.mode) {
         const modeButton = this.frame.locator(
           `[data-plasmic-prop="mode-${interaction.mode}"]`
@@ -831,6 +1077,44 @@ export class RightPanel extends BaseModel {
       }
     }
     await this.closeSidebarButton.click();
+  }
+
+  /**
+   * After the "customFunctionOp" action is selected in the actions dropdown,
+   * opens the bottom modal, switches to "Custom code query…", pastes the given
+   * code, and saves.
+   *
+   * Optionally runs `assertWhileOpen` against the modal locator after the code
+   * is in place but before Save — for tests that need to inspect the modal's
+   * data context (e.g. confirm $steps is visible).
+   */
+  private async configureCustomFunctionOpAsCustomCode(
+    code: string,
+    assertWhileOpen?: (modal: Locator) => Promise<void>
+  ) {
+    await this.frame
+      .locator('[data-plasmic-prop="data-source-open-modal-btn"]')
+      .click();
+
+    const modal = this.frame.locator(
+      '[data-test-id="server-query-bottom-modal"]'
+    );
+    await modal.getByText("Select...").click();
+    await this.frame.locator('[data-key="__custom_code__"]').click();
+
+    const editor = modal.locator("div.react-monaco-editor-container");
+    await editor.click();
+    await editor.locator(".view-lines").waitFor({ state: "visible" });
+
+    await this.page.evaluate((c) => navigator.clipboard.writeText(c), code);
+    await this.page.keyboard.press("ControlOrMeta+V");
+
+    if (assertWhileOpen) {
+      await assertWhileOpen(modal);
+    }
+
+    await modal.locator("button").getByText("Save").click();
+    await modal.waitFor({ state: "hidden" });
   }
 
   async addNavigationInteraction(
@@ -975,7 +1259,7 @@ export class RightPanel extends BaseModel {
         await this.setSelectByLabel(key, value[key]);
       } else if (key === "options") {
         for (const option of value[key]) {
-          await this.addItemToArrayProp(key, { text: option });
+          await this.addItemToArrayProp(key, { label: option, value: option });
         }
       } else {
         await this.setDataPlasmicProp(key, value[key]);
@@ -988,11 +1272,22 @@ export class RightPanel extends BaseModel {
   async addItemToArrayProp(prop: string, value: Record<string, any>) {
     const addBtn = this.frame.locator(`[data-test-id="${prop}-add-btn"]`);
     await addBtn.click();
-    await this.page.waitForTimeout(200);
+    await this.page.waitForTimeout(300);
 
+    // Each select/radio option opens as a new frame pushed on the popover stack,
+    // on top of the parent form editor. Its fields render as the last data-plasmic-prop
+    // inputs, which setDataPlasmicProp targets via `.last()`.
     for (const key in value) {
       await this.setDataPlasmicProp(key, value[key]);
     }
+
+    // Go back to the parent frame via the back button (pops one frame)
+    // so the next item can be added.
+    await this.frame
+      .locator('[data-test-id="back-popover-frame"]')
+      .last()
+      .click();
+    await this.page.waitForTimeout(300);
   }
 
   async removeItemFromArrayProp(prop: string, index: number) {
@@ -1320,6 +1615,12 @@ export class RightPanel extends BaseModel {
     await this.frame
       .locator('[data-test-id="data-picker"]')
       .waitFor({ state: "detached", timeout: 2000 });
+  }
+
+  async closeDataPicker() {
+    const picker = this.frame.locator('[data-test-id="data-picker"]');
+    await picker.getByRole("button", { name: "Cancel" }).click();
+    await picker.waitFor({ state: "detached", timeout: 5000 });
   }
 
   async clickDataPlasmicProp(propName: string) {

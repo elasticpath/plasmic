@@ -1086,7 +1086,7 @@ async function importFullProjectData(
   if (tmpBranch) {
     await mgr.deleteBranch(tmpBranch.id);
   }
-  await mgr.maybeUpdateCommitGraphForProject(newProject.id, (graph) => {
+  await mgr.updateCommitGraphForProject(newProject.id, (graph) => {
     graph.branches = Object.fromEntries(
       withoutNils(
         Object.entries(projectData.commitGraph.branches).map(
@@ -1572,10 +1572,6 @@ export async function getProjectRev(req: Request, res: Response) {
     owner = await mgr.tryGetUserById(project.createdById);
   }
   const latestRevisionSynced = await getLatestRevisionSynced(mgr, projectId);
-  // Make sure this revision bundle is up to date.
-  if (!dontMigrateProject) {
-    await getMigratedBundle(rev);
-  }
 
   const appAuthConfig = await mgr.getPublicAppAuthConfig(projectId);
   const hasAppAuth = !!appAuthConfig;
@@ -1998,8 +1994,9 @@ export async function listUnpublishedProjectRevisions(
     : undefined;
 
   const pkg = await mgr.getPkgByProjectId(projectId);
+  // tryGetPkgVersion to avoid throwing when the branch has no published pkg version yet
   const latest = pkg
-    ? await mgr.getPkgVersion(pkg.id, undefined, undefined, {
+    ? await mgr.tryGetPkgVersion(pkg.id, undefined, undefined, {
         branchId,
       })
     : null;
@@ -2237,7 +2234,7 @@ export async function getPkgVersionPublishStatus(req: Request, res: Response) {
         }
       } catch (e) {
         // if we catch an error while decoding the url, we are going to consider that
-        // that the redirection is succesful The exception is going to be sent to
+        // that the redirection is successful The exception is going to be sent to
         // sentry
         isRedirectingToLatest = true;
         captureException(e);
@@ -2367,7 +2364,7 @@ export async function revertToVersion(req: Request, res: Response) {
     });
 
     // Update commit graph
-    await mgr.maybeUpdateCommitGraphForProject(projectId, (dag) => {
+    await mgr.updateCommitGraphForProject(projectId, (dag) => {
       dag.branches[branchId ?? MainBranchId] = pkgVersion.id;
     });
 
@@ -2638,13 +2635,17 @@ export async function genCode(req: Request, res: Response) {
 
   const metadata = parseMetadata(req.body.metadata);
 
-  req.analytics.track("Codegen", {
-    projectId: project.id,
-    projectName: project.name,
-    numComponents: output.components.length,
-    ...exportOpts,
-    ...metadata,
-  });
+  req.analytics.track(
+    "Codegen",
+    {
+      projectId: project.id,
+      projectName: project.name,
+      numComponents: output.components.length,
+      ...exportOpts,
+      ...metadata,
+    },
+    { sampleThreshold: 0.1 }
+  );
   res.json({
     ...output,
     // convert the nameInIdToUuid from map to string array.
@@ -2864,11 +2865,11 @@ export async function updateProjectData(req: Request, res: Response) {
           codeComponentsOnly: false,
         });
 
-        if (maybeError.result.isError) {
-          throw new BadRequestError(maybeError.result.error.message);
+        if (maybeError.isErr()) {
+          throw new BadRequestError(maybeError.error.message);
         }
 
-        const { tpl, warnings: componentWarnings } = maybeError.result.value;
+        const { tpl, warnings: componentWarnings } = maybeError.value;
         componentWarnings.forEach((err) =>
           warnings.push({
             message:

@@ -267,7 +267,8 @@
           "defaultSlotContents": {},
           "variants": {},
           "refActions": [],
-          "__type": "CodeComponentMeta"
+          "__type": "CodeComponentMeta",
+          "subtreePrefetchingConfig": null
         },
         "WqjHW25E3Ph7": {
           "uuid": "zV5XzenkSzC3",
@@ -540,7 +541,8 @@
           "defaultSlotContents": {},
           "variants": {},
           "refActions": [],
-          "__type": "CodeComponentMeta"
+          "__type": "CodeComponentMeta",
+          "subtreePrefetchingConfig": null
         },
         "BhSNXn0nWujo": {
           "uuid": "JGNVjCuw1cxA",
@@ -1223,22 +1225,22 @@
           "__type": "Site"
         },
         "TEST_IID_1": {
+          "__type": "ImageAsset",
           "uuid": "u9DOhqrilfSv",
           "name": "logo.png",
           "type": "picture",
           "dataUri": "https://site-assets.plasmic.app/93f3368d6745a86b3a0d36fbf933480c.png",
           "width": 128,
           "height": 128,
-          "aspectRatio": null,
-          "__type": "ImageAsset"
+          "aspectRatio": null
         },
         "ref_TEST_IID_1": {
-          "asset": { "__ref": "TEST_IID_1" },
-          "__type": "ImageAssetRef"
+          "__type": "ImageAssetRef",
+          "asset": { "__ref": "TEST_IID_1" }
         }
       },
       "deps": [],
-      "version": "257-add-custom-function-is-mutation"
+      "version": "258-add-code-component-subtree-prefetching-config"
     }
   ]
 ]

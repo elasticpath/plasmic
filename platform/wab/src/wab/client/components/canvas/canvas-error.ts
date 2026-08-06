@@ -18,6 +18,7 @@ import {
   isKnownComponent,
   TplNode,
 } from "@/wab/shared/model/classes";
+import { isPlasmicUndefinedDataErrorPromise } from "@plasmicapp/data-sources";
 import { debounce } from "lodash";
 import { computedFn } from "mobx-utils";
 import type React from "react";
@@ -59,6 +60,11 @@ export const mkCanvasErrorBoundary = computedFn(
         this.componentDidMountOrUpdate();
       }
 
+      // Stable reference so the rerender-queue Set dedupes by identity.
+      private resetError = () => {
+        this.setState({ error: null });
+      };
+
       private componentDidMountOrUpdate() {
         // Upon mount or update, if we're currently rendering an error,
         // we add a listener for whenever a re-render happens, and forces
@@ -83,20 +89,14 @@ export const mkCanvasErrorBoundary = computedFn(
         // re-renders the canvas.
         if (
           this.state.error &&
-          (this.state.error as any)?.plasmicType !== "PlasmicUndefinedDataError"
+          !isPlasmicUndefinedDataErrorPromise(this.state.error)
         ) {
           // PlasmicUndefinedDataErrors are pending-query sentinels: they should
           // propagate to a React Suspense boundary (or be swallowed gracefully
           // by withErrorDisplayFallback). Registering a rerender observer for
           // them creates an infinite loop — the observer resets state.error,
           // the re-render re-throws the same pending promise, and so on.
-          viewCtx.addRerenderObserver(() => {
-            // On next re-render, we unset the error so that we can
-            // try rendering children again
-            this.setState({
-              error: null,
-            });
-          });
+          viewCtx.addRerenderObserver(this.resetError);
         }
       }
 
@@ -104,10 +104,7 @@ export const mkCanvasErrorBoundary = computedFn(
         const r = react.createElement;
         const { ctx, children, nodeOrComponent, nodeProps } = this.props;
         if (this.state.error != null) {
-          if (
-            (this.state.error as any)?.plasmicType ===
-            "PlasmicUndefinedDataError"
-          ) {
+          if (isPlasmicUndefinedDataErrorPromise(this.state.error)) {
             throw this.state.error;
           }
 
@@ -168,7 +165,7 @@ export function withErrorDisplayFallback<T>(
   try {
     return fn();
   } catch (error: any) {
-    if (error?.plasmicType === "PlasmicUndefinedDataError") {
+    if (isPlasmicUndefinedDataErrorPromise(error)) {
       if (opts.hasLoadingBoundary) {
         // There is a React Suspense boundary above us — let it handle the
         // pending-query promise so it can show a loading fallback.

@@ -8,9 +8,12 @@
 !/.gitignore
 !**/package.json
 !**/plasmic.json
+!**/jsconfig.json
 !**/tsconfig.json
+!**/*.css
 !**/*.js
 !**/*.jsx
+!**/*.mjs
 !**/*.ts
 !**/*.tsx
 

@@ -67,10 +67,7 @@ import {
   xpickBy,
   xpickExists,
 } from "@/wab/shared/common";
-import {
-  collectUsedAnimationSequences,
-  getAnimationSequenceIdentifier,
-} from "@/wab/shared/core/animation-sequences";
+import { getAnimationSequenceIdentifier } from "@/wab/shared/core/animation-sequences";
 import { BackgroundLayer, bgClipTextTag } from "@/wab/shared/core/bg-styles";
 import {
   isCodeComponent,
@@ -95,6 +92,7 @@ import {
 import {
   GeneralUsageSummary,
   isHostLessPackage,
+  localAnimationSequences,
 } from "@/wab/shared/core/sites";
 import {
   ALWAYS_RESOLVE_MIXIN_PROPS,
@@ -390,7 +388,14 @@ export function makeDefaultStylesRuleBodyFor(
     .join("\n");
 }
 
-// Tags that support setting default styles.
+/**
+ * Base "tag" that is the root of all themable tags (the default typography).
+ * Obviously not a real tag, but it represents all elements.
+ * In some places, we split a selector into tag and pseudo-class parts,
+ * so this just works for selectors like ":hover".
+ */
+export const BASE_THEMEABLE_TAG = "";
+/** Tags that support setting default styles. */
 export const THEMABLE_TAGS = [
   "a",
   "blockquote",
@@ -409,11 +414,38 @@ export const THEMABLE_TAGS = [
   "pre",
   "strong",
   "ul",
-];
+] as const;
 
-function isStylePropApplicable(tpl: TplNode, prop: string) {
+export type ThemableTag =
+  | typeof BASE_THEMEABLE_TAG
+  | (typeof THEMABLE_TAGS)[number];
+
+/** Represents a ThemeStyle in Theme.styles or a Theme.defaultStyle. */
+export interface DefaultStyle {
+  style: Mixin;
+  selector: string;
+}
+
+export function getDefaultStyleTagAndPseudoClass(
+  defaultStyle: DefaultStyle
+): [ThemableTag, string | undefined] {
+  if (defaultStyle.selector) {
+    return defaultStyle.selector.split(":").map((part) => part.trim()) as [
+      ThemableTag,
+      string | undefined
+    ];
+  } else {
+    return [BASE_THEMEABLE_TAG, undefined];
+  }
+}
+
+export function getDefaultStyleTag(defaultStyle: DefaultStyle): ThemableTag {
+  return getDefaultStyleTagAndPseudoClass(defaultStyle)[0];
+}
+
+export function isStylePropApplicable(tpl: TplNode, prop: string) {
   if (isTplTag(tpl)) {
-    if (THEMABLE_TAGS.includes(tpl.tag)) {
+    if ((THEMABLE_TAGS as readonly string[]).includes(tpl.tag)) {
       // All themable tags can have any style, as all styles are
       // available anyway in the theme controls
       return true;
@@ -1022,8 +1054,48 @@ export function generateKeyframesRule(
   )} {\n${keyframeRules}\n}`;
 }
 
+const ANIM_CSS_VAR_REGEX = /^var\(--anim-([^)]+)\)$/;
+
 /**
- * Generates CSS animation properties from an Animation array using shorthand syntax
+ * If `value` is a `var(--anim-<uuid>)` reference, return the uuid;
+ * otherwise return null.
+ */
+export function tryGetAnimationSequenceUuidFromCssVar(
+  value: string
+): string | null {
+  const match = value.match(ANIM_CSS_VAR_REGEX);
+  return match ? match[1] : null;
+}
+
+/**
+ * Internal CSS variable that holds the keyframe identifier for a given
+ * AnimationSequence. uuid-keyed used by Plasmic-generated `animation:` rules.
+ */
+export function makeAnimationKeyframeCssVarName(
+  animationSequence: AnimationSequence
+) {
+  return `--anim-${animationSequence.uuid}`;
+}
+
+/**
+ * User-facing CSS variable alias for an AnimationSequence; keyed by the
+ * sequence's name so users can reference an animation in their own CSS as
+ * `var(--plasmic-anim-<name>)`. Mirrors the token convention
+ * (`--token-<uuid>` internal + `--plasmic-token-<name>` alias).
+ */
+export function makePlasmicAnimationCssVarName(
+  animationSequence: AnimationSequence
+) {
+  return `--plasmic-anim-${toVarName(animationSequence.name)}`;
+}
+
+/**
+ * Wraps each animation's keyframe name in `var(--plsmc-anim-<uuid>)`. The
+ * indirection is required for css-modules: pure-mode rewrites bare
+ * identifiers inside `animation:` and would point to a non-existent local
+ * keyframe, but it leaves identifiers inside `var(...)` unchanged. The CSS var
+ * is declared on `.plasmic_default_styles` inside `plasmic.css` (a non-module file),
+ * so the keyframe name itself isn't auto-scoped due to css-modules.
  */
 export function generateAnimationPropValue(animations: Animation[]) {
   if (animations.length === 0) {
@@ -1032,24 +1104,41 @@ export function generateAnimationPropValue(animations: Animation[]) {
 
   return showCssAnimations(
     animations.map((anim) => ({
-      name: getAnimationSequenceIdentifier(anim.sequence),
+      name: `var(${makeAnimationKeyframeCssVarName(anim.sequence)})`,
       ...anim,
     }))
   );
 }
 
 /**
- * Generates CSS @keyframes rules for all animation sequences used in a site
+ * Builds the project's animation declarations destined for `plasmic.css`:
+ * the @keyframes blocks for each local animation sequence, plus a pair of
+ * CSS vars per sequence — `--anim-<uuid>` (internal, used by Plasmic codegen)
+ * and `--plasmic-anim-<name>` (user-facing alias, mirrors the token pattern).
+ *
+ * Lives inside `.plasmic_default_styles` (where var consumers can reach them).
  */
-export function makeAnimationKeyframesRules(
+export function makeProjectAnimationsBlocks(
   site: Site,
   resolver?: CssVarResolver
-): string {
-  const animationSequences = collectUsedAnimationSequences(site);
-
-  return animationSequences
-    .map((sequence) => generateKeyframesRule(sequence, resolver))
+): { keyframes: string; varDecls: string } {
+  const localSequences = localAnimationSequences(site);
+  if (localSequences.length === 0) {
+    return { keyframes: "", varDecls: "" };
+  }
+  const keyframes = localSequences
+    .map((seq) => generateKeyframesRule(seq, resolver))
     .join("\n");
+  const varDecls = localSequences
+    .flatMap((seq) => {
+      const internalVar = makeAnimationKeyframeCssVarName(seq);
+      return [
+        `${internalVar}: ${getAnimationSequenceIdentifier(seq)};`,
+        `${makePlasmicAnimationCssVarName(seq)}: var(${internalVar});`,
+      ];
+    })
+    .join("\n");
+  return { keyframes, varDecls };
 }
 
 export function hasClassnameOverride(tag?: string) {
@@ -2801,11 +2890,6 @@ type TokenUsage =
   | TokenUsageByComponentProp
   | TokenUsageByComponentPropFallback;
 
-export interface DefaultStyle {
-  style: Mixin;
-  selector?: string;
-}
-
 export function changeTokenUsage(
   site: Site,
   token: StyleToken,
@@ -2946,6 +3030,7 @@ export function extractTokenUsages(
     if (findUsagesInRs(theme.defaultStyle.rs)) {
       usingThemes.add({
         style: theme.defaultStyle,
+        selector: BASE_THEMEABLE_TAG,
       });
     }
     for (const style of theme.styles) {

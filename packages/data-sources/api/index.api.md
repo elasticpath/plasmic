@@ -56,6 +56,15 @@ export function deriveFieldConfigs<T extends BaseFieldConfig>(specifiedFieldsPar
 // @public @deprecated (undocumented)
 export function executePlasmicDataOp<T extends SingleRowResult | ManyRowsResult>(op: DataOp, opts?: ExecuteOpts): Promise<T>;
 
+// @public
+export function executePlasmicQueries(rootNode: QueryComponentNode, env: InitialQueryExecutionContext): Promise<ExecutePlasmicQueriesResult>;
+
+// @public @deprecated (undocumented)
+export function executeServerQuery<F extends (...args: any[]) => any>(_query?: any): Promise<{
+    data: ReturnType<F>;
+    isLoading: boolean;
+}>;
+
 // @public @deprecated (undocumented)
 export function Fetcher(props: FetcherProps): React_2.ReactElement | null;
 
@@ -71,6 +80,9 @@ export interface FetcherProps extends DataOpConfig {
     // (undocumented)
     queries?: Record<string, any>;
 }
+
+// @public (undocumented)
+export function isPlasmicUndefinedDataErrorPromise(x: any): x is PlasmicUndefinedDataErrorPromise;
 
 // @public @deprecated (undocumented)
 export function makeCacheKey(dataOp: DataOp, opts?: {
@@ -93,6 +105,9 @@ export interface ManyRowsResult<T = any> {
     total?: number;
 }
 
+// @public
+export function matchesQueryCacheKey(cacheKey: string, invalidationKey: string): boolean;
+
 // @public @deprecated (undocumented)
 export function normalizeData(rawData: unknown): NormalizedData | undefined;
 
@@ -113,9 +128,9 @@ export interface Pagination {
 }
 
 // @internal (undocumented)
-export interface PlasmicQuery<F extends (...args: unknown[]) => Promise<unknown> = (...args: unknown[]) => Promise<unknown>> {
+export interface PlasmicQuery<F extends (...args: any[]) => Promise<unknown> = (...args: any[]) => Promise<unknown>> {
     // (undocumented)
-    execParams: () => Parameters<F>;
+    args: ContextFn<Parameters<F>>;
     // (undocumented)
     fn: F;
     // (undocumented)
@@ -130,6 +145,14 @@ export interface PlasmicQueryResult<T = unknown> {
     key: string | null;
 }
 
+// @public (undocumented)
+export interface PlasmicUndefinedDataErrorPromise extends Promise<any> {
+    // (undocumented)
+    message: string;
+    // (undocumented)
+    plasmicType: "PlasmicUndefinedDataError";
+}
+
 // @internal (undocumented)
 export interface QueryComponentNode {
     // (undocumented)
@@ -137,15 +160,33 @@ export interface QueryComponentNode {
     // (undocumented)
     propsContext: Record<string, ContextFn<unknown>>;
     // (undocumented)
-    queries: Record<string, SerializedServerQuery>;
+    queries: Record<string, PlasmicQuery>;
+    stateSpecs: $StateSpec[];
     // (undocumented)
     type: "component";
 }
+
+// @internal
+export type QueryExecutionContext = {
+    $ctx: Record<string, unknown>;
+    $props: Record<string, unknown>;
+    $state: Record<string, unknown>;
+    $q: Record<string, PlasmicQueryResult>;
+};
 
 // @public @deprecated (undocumented)
 export type QueryResult = Partial<ManyRowsResult<any>> & {
     error?: any;
     isLoading?: boolean;
+};
+
+// @public
+export function _safeExecResult<T>(tryData: () => T): {
+    data: T;
+} | {
+    promise: PlasmicUndefinedDataErrorPromise;
+} | {
+    error: unknown;
 };
 
 // @public @deprecated (undocumented)
@@ -182,9 +223,12 @@ export class _StatefulQueryResult<T = unknown> implements PlasmicQueryResult<T> 
     removeListener(listener: _StateListener<T>): void;
     // (undocumented)
     reset(): void;
+    // (undocumented)
     resolvePromise(key: string, data: T): void;
     // (undocumented)
     settable: SettablePromise<T>;
+    // (undocumented)
+    toJSON(): _StatefulQueryState<T>;
 }
 
 // @internal (undocumented)
@@ -238,14 +282,8 @@ export interface TableSchema {
     schema?: string;
 }
 
-// @public
-export function unstable_executePlasmicQueries(rootNode: QueryComponentNode, options: QueryExecutionInitialContext): Promise<ExecutePlasmicQueriesResult>;
-
-// @internal
-export function unstable_usePlasmicQueries(tree: QueryComponentNode, $props: Record<string, unknown>, $ctx: Record<string, unknown>, $state?: Record<string, unknown>): Record<string, PlasmicQueryResult>;
-
-// @internal
-export function unstable_wrapDollarQueriesForMetadata<T extends Record<string, PlasmicQueryResult>>($queries: T, ifUndefined?: (promise: PlasmicUndefinedDataErrorPromise) => unknown, ifError?: (err: unknown) => unknown): T;
+// @public (undocumented)
+export function throwIfPlasmicUndefinedDataError(err: unknown): void;
 
 // @public @deprecated (undocumented)
 export function useNormalizedData(rawData: unknown): NormalizedData | undefined;
@@ -261,8 +299,14 @@ export function usePlasmicDataOp<T extends SingleRowResult | ManyRowsResult, E =
     noUndefinedDataProxy?: boolean;
 }): ClientQueryResult<T["data"]>;
 
-// @public @deprecated (undocumented)
+// @public
 export function usePlasmicInvalidate(): (invalidatedKeys: string[] | null | undefined) => Promise<any[] | undefined>;
+
+// @internal
+export function usePlasmicQueries(tree: QueryComponentNode, env: ClientQueryExecutionContext): Record<string, PlasmicQueryResult>;
+
+// @internal
+export function wrapPlasmicQueriesForMetadata<T extends Record<string, PlasmicQueryResult>>(queries: T, ifUndefined?: (promise: PlasmicUndefinedDataErrorPromise) => unknown, ifError?: (err: unknown) => unknown): T;
 
 // (No @packageDocumentation comment for this package)
 

@@ -1,11 +1,13 @@
+import { pickTraceCarrier } from "@/wab/server/util/apm-util";
 import {
   getCodegenPublicUrl,
   getDataUrl,
   getLoaderInternalUrl,
 } from "@/wab/shared/urls";
+import { context, propagation } from "@opentelemetry/api";
 import {
-  extractPlasmicQueryDataFromElement,
   GlobalVariantSpec,
+  extractPlasmicQueryDataFromElement,
   initPlasmicLoader,
   renderToString,
 } from "@plasmicapp/loader-react";
@@ -40,17 +42,21 @@ export async function genLoaderHtmlBundle(opts: {
   // instead of the default data.plasmic.app.
   (globalThis as any).__PLASMIC_DATA_HOST = getDataUrl();
 
+  const publicCodegenUrl = getCodegenPublicUrl();
+  const internalCodegenUrl = getLoaderInternalUrl();
+
   const loader = initPlasmicLoader({
-    projects: [
-      {
-        id: projectId,
-        version,
-        token: projectToken,
-      },
-    ],
-    preview: !version,
-    host: getLoaderInternalUrl(),
-  });
+  projects: [
+    {
+      id: projectId,
+      version,
+      token: projectToken,
+    },
+  ],
+  preview: !version,
+  apiHost: internalCodegenUrl,
+  cdnHost: internalCodegenUrl,
+});
 
   const data = await loader.fetchComponentData({
     name: component,
@@ -102,7 +108,7 @@ export async function genLoaderHtmlBundle(opts: {
     hydrate &&
       React.createElement("script", {
         async: true,
-        src: `${getCodegenPublicUrl()}/static/js/loader-hydrate.js`,
+        src: `${publicCodegenUrl}/static/js/loader-hydrate.js`,
       })
   );
 
@@ -121,7 +127,10 @@ async function main(argv = process.argv) {
     console.info = () => {};
     console.debug = () => {};
     const args = JSON.parse(argv[2]);
-    const { html } = await genLoaderHtmlBundle(args);
+    const { html } = await context.with(
+      propagation.extract(context.active(), pickTraceCarrier(process.env)),
+      () => genLoaderHtmlBundle(args)
+    );
     // Node will wait for the contents to finish writing before exiting, so we don't need to wait on a callback.
     // This is actually safer and simpler than, say, using fs.writeSync(), which does a partial write and requires retrying.
     process.stdout.write(html);

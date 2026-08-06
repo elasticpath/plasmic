@@ -1,3 +1,4 @@
+import { WIError } from "@/wab/client/web-importer/errors";
 import { SpecificityWithPosition } from "@/wab/client/web-importer/specificity";
 import { VariantGroupType } from "@/wab/shared/Variants";
 
@@ -38,8 +39,12 @@ export interface WIVariantSettings {
 }
 
 export interface WIBase {
-  type: "container" | "text" | "svg" | "component";
+  type: "container" | "text" | "svg" | "component" | "slot-target";
   tag: string;
+  /**
+   * Source HTML locator for each WI node to enrich WIErrors raised during parsing.
+   */
+  path: string;
   attrs: Record<string, string>;
   variantSettings: WIVariantSettings[];
 }
@@ -64,8 +69,20 @@ export interface WISVG extends WIBase {
 export interface WIComponent extends WIBase {
   type: "component";
   component: string;
+  /**
+   * Optional projectId of the source project dependency.
+   * When omitted, a local site will be used for lookup.
+   */
+  depProjectId?: string;
   props: Record<string, any>;
   slots: Record<string, WIElement[]>;
+}
+
+/** A slot definition (`<slot-target name>`); children are the default contents. */
+export interface WISlotTarget extends WIBase {
+  type: "slot-target";
+  name: string;
+  defaultChildren: WIElement[];
 }
 
 /** A fragment is a transparent wrapper — only its children are pasted. */
@@ -74,7 +91,13 @@ export interface WIFragment {
   children: WIElement[];
 }
 
-export type WIElement = WIContainer | WIText | WISVG | WIComponent | WIFragment;
+export type WIElement =
+  | WIContainer
+  | WIText
+  | WISVG
+  | WIComponent
+  | WISlotTarget
+  | WIFragment;
 
 export interface WIKeyFrame {
   percentage: number;
@@ -89,17 +112,13 @@ export interface WIAnimationSequence {
   keyframes: WIKeyFrame[];
 }
 
-export interface WIKeyFrame {
-  percentage: number;
-  /** Css style props/values in correct format supported by Plasmic and that is not considered a site invariant such as color, paddingTop, paddingRight */
-  safeStyles: WISafeStyles;
-  /** Css style props/values that are not safe. */
-  unsafeStyles: WIUnsafeStyles;
-}
-
-export interface WIAnimationSequence {
-  name: string;
-  keyframes: WIKeyFrame[];
+/** Result payload of parsing an HTML string into a web-importer tree. */
+export interface WITree {
+  wiTree: WIElement;
+  fontDefinitions: string[];
+  animationSequences: WIAnimationSequence[];
+  /** Partial errors collected while parsing HTML. */
+  errors: WIError[];
 }
 
 export const getWIVariantKey = (variant: WIVariant) => {

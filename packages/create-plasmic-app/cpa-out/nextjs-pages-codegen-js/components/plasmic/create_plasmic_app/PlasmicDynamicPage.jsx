@@ -17,10 +17,10 @@ import {
   deriveRenderOpts
 } from "@plasmicapp/react-web";
 import { useDataEnv } from "@plasmicapp/react-web/lib/host";
+import { unstable_usePlasmicQueries } from "@plasmicapp/react-web/lib/data-sources";
 import RandomDynamicPageButton from "../../RandomDynamicPageButton"; // plasmic-import: Q23H1_1M_P/component
 import { _useStyleTokens } from "./PlasmicStyleTokensProvider"; // plasmic-import: 47tFXWjN2C4NyHFGGpaYQ3/styleTokensProvider
 import "@plasmicapp/react-web/lib/plasmic.css";
-import projectcss from "./plasmic.module.css"; // plasmic-import: 47tFXWjN2C4NyHFGGpaYQ3/projectcss
 import sty from "./PlasmicDynamicPage.module.css"; // plasmic-import: AO44A-w7hh/css
 
 const emptyProxy = new Proxy(() => "", {
@@ -55,6 +55,38 @@ export const PlasmicDynamicPage__ArgProps = new Array();
 
 const $$ = {};
 
+export const serverQueryTree = {
+  type: "component",
+  queries: {
+    sha256: {
+      id: "custom-code:krgWtF9Kkesx",
+      fn: async ({ $q, $props, $ctx, $state }) => {
+        console.log("Running SHA-256");
+        const data = new TextEncoder().encode($ctx.params.slug);
+        const hash = await crypto.subtle.digest("SHA-256", data);
+        return [...new Uint8Array(hash)]
+          .map(b => b.toString(16).padStart(2, "0"))
+          .join("-");
+      },
+      args: ({ $q, $props, $ctx, $state }) => {
+        return [
+          {
+            $ctx: {
+              params: $ctx["params"]
+            },
+            $props: {},
+            $q: {},
+            $state: {}
+          }
+        ];
+      }
+    }
+  },
+  propsContext: {},
+  stateSpecs: [],
+  children: []
+};
+
 function useNextRouter() {
   try {
     return useRouter();
@@ -82,8 +114,9 @@ function PlasmicDynamicPage__RenderFunc(props) {
   const $ctx = useDataEnv?.() || {};
   const refsRef = React.useRef({});
   const $refs = refsRef.current;
+  const $q = unstable_usePlasmicQueries(serverQueryTree, $ctx, $props, null);
   const pageMetadata = generateDynamicMetadata(
-    wrapQueriesWithLoadingProxy({}),
+    wrapQueriesWithLoadingProxy($q),
     $ctx
   );
   const styleTokensClassNames = _useStyleTokens();
@@ -97,17 +130,17 @@ function PlasmicDynamicPage__RenderFunc(props) {
         }
       `}</style>
 
-      <div className={projectcss.plasmic_page_wrapper}>
+      <div className={"plasmic_page_wrapper"}>
         <div
           data-plasmic-name={"root"}
           data-plasmic-override={overrides.root}
           data-plasmic-root={true}
           data-plasmic-for-node={forNode}
           className={classNames(
-            projectcss.all,
-            projectcss.root_reset,
-            projectcss.plasmic_default_styles,
-            projectcss.plasmic_mixins,
+            "all",
+            "root_reset_47tFXWjN2C4NyHFGGpaYQ3",
+            "plasmic_default_styles",
+            "plasmic_mixins",
             styleTokensClassNames,
             sty.root
           )}
@@ -115,34 +148,34 @@ function PlasmicDynamicPage__RenderFunc(props) {
           <section
             data-plasmic-name={"section"}
             data-plasmic-override={overrides.section}
-            className={classNames(projectcss.all, sty.section)}
+            className={classNames("all", sty.section)}
           >
-            <h1
-              data-plasmic-name={"h1"}
-              data-plasmic-override={overrides.h1}
+            <h2
+              data-plasmic-name={"h2"}
+              data-plasmic-override={overrides.h2}
               className={classNames(
-                projectcss.all,
-                projectcss.h1,
-                projectcss.__wab_text,
-                sty.h1
+                "all",
+                "h2",
+                "h2__47tFX",
+                "__wab_text",
+                sty.h2
               )}
             >
-              <React.Fragment>
-                {(() => {
-                  try {
-                    return $ctx.params.slug;
-                  } catch (e) {
-                    if (
-                      e instanceof TypeError ||
-                      e?.plasmicType === "PlasmicUndefinedDataError"
-                    ) {
-                      return "Page 1";
-                    }
-                    throw e;
-                  }
-                })()}
-              </React.Fragment>
-            </h1>
+              <React.Fragment>{$ctx.params.slug}</React.Fragment>
+            </h2>
+            <span
+              data-plasmic-name={"span"}
+              data-plasmic-override={overrides.span}
+              className={classNames(
+                "all",
+                "span",
+                "span__47tFX",
+                "__wab_text",
+                sty.span
+              )}
+            >
+              <React.Fragment>{`SHA-256(${$ctx.params.slug}): ${$q.sha256.data}`}</React.Fragment>
+            </span>
             <RandomDynamicPageButton
               data-plasmic-name={"randomDynamicPageButton"}
               data-plasmic-override={overrides.randomDynamicPageButton}
@@ -159,9 +192,10 @@ function PlasmicDynamicPage__RenderFunc(props) {
 }
 
 const PlasmicDescendants = {
-  root: ["root", "section", "h1", "randomDynamicPageButton"],
-  section: ["section", "h1", "randomDynamicPageButton"],
-  h1: ["h1"],
+  root: ["root", "section", "h2", "span", "randomDynamicPageButton"],
+  section: ["section", "h2", "span", "randomDynamicPageButton"],
+  h2: ["h2"],
+  span: ["span"],
   randomDynamicPageButton: ["randomDynamicPageButton"]
 };
 
@@ -198,7 +232,8 @@ export const PlasmicDynamicPage = Object.assign(
   {
     // Helper components rendering sub-elements
     section: makeNodeComponent("section"),
-    h1: makeNodeComponent("h1"),
+    h2: makeNodeComponent("h2"),
+    span: makeNodeComponent("span"),
     randomDynamicPageButton: makeNodeComponent("randomDynamicPageButton"),
     // Metadata about props expected for PlasmicDynamicPage
     internalVariantProps: PlasmicDynamicPage__VariantProps,

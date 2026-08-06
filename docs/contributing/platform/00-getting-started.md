@@ -110,7 +110,11 @@ NODE_ENV=development
 
 ### 2. Installing dependencies
 
-Run `yarn install` twice -- once in the root folder, and second time in the `./platform/wab`
+Run `pnpm install` in the root folder, then `yarn install` in `./platform/wab`
+
+#### Configuring Git and Git hooks
+
+The root `pnpm install` also sets up the repository's Git hooks through Husky. In a fresh Git worktree, run it at the worktree root before your first commit. The generated, gitignored `.husky/_` directory is absent until the install runs, so Git silently skips the hooks.
 
 ### 3. Seeding the database
 
@@ -125,15 +129,15 @@ yarn seed
 In the project root directory, run:
 
 ```
-yarn setup-all && yarn bootstrap
+pnpm setup-all && pnpm bootstrap
 ```
 
 ### 5. Starting dev servers
 
-Run all servers in GNU screens:
+Run all servers (frontend, backend, and watchers):
 
 ```
-yarn dev
+pnpm dev
 ```
 
 ## Using the app

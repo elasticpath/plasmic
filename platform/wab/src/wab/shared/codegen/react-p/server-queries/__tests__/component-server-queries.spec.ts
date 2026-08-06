@@ -1,4 +1,5 @@
 import { Bundle } from "@/wab/shared/bundler";
+import { mkCodeComponent } from "@/wab/shared/code-components/code-components";
 import _advancedBundle from "@/wab/shared/codegen/react-p/server-queries/__tests__/bundles/advanced-component-server-queries.json";
 import _simpleBundle from "@/wab/shared/codegen/react-p/server-queries/__tests__/bundles/simple-component-server-queries.json";
 import { collectComponentServerQueries } from "@/wab/shared/codegen/react-p/server-queries/collect";
@@ -10,7 +11,11 @@ import {
   ServerVisibilityContextNode,
 } from "@/wab/shared/codegen/react-p/server-queries/types";
 import { ServerQueryWithOperation } from "@/wab/shared/codegen/react-p/server-queries/utils";
+import { SerializerBaseContext } from "@/wab/shared/codegen/react-p/types";
+import { ComponentType, mkComponent } from "@/wab/shared/core/components";
 import { ExprCtx } from "@/wab/shared/core/exprs";
+import { createSite } from "@/wab/shared/core/sites";
+import { mkTplComponentX, mkTplTagX } from "@/wab/shared/core/tpls";
 import { DEVFLAGS } from "@/wab/shared/devflags";
 import { Component, Site } from "@/wab/shared/model/classes";
 import { generateSiteFromBundle } from "@/wab/shared/tests/site-tests-utils";
@@ -84,6 +89,12 @@ describe("Component server queries", () => {
     projectFlags: DEVFLAGS,
     inStudio: false,
   };
+  const ctx = {
+    exprCtx,
+    exportOpts: { shouldTransformWritableStates: false },
+    fakeTpls: [],
+    projectFlags: DEVFLAGS,
+  } as unknown as SerializerBaseContext;
 
   describe("collectComponentServerQueries for simple component instance", () => {
     const site = generateSiteFromBundle(_simpleBundle as [string, Bundle][]);
@@ -214,22 +225,85 @@ describe("Component server queries", () => {
         exprCtx,
       });
 
-      const serializedCode = serializeServerQueryTree(tree, exprCtx);
+      const serializedCode = serializeServerQueryTree(tree, ctx);
 
       // The serialized output should be JS code
       expect(serializedCode).toContain("fn: $$.fetch");
       // args should be a function expression
-      expect(serializedCode).toContain("args: ({ $q, $props, $ctx, $state })");
+      expect(serializedCode).toContain("args: ({ $q, $props, $ctx, $state }");
       // Should have a repeated node
       expect(serializedCode).toContain('type: "repeated"');
       // collectionExpr should be a function
       expect(serializedCode).toContain(
-        "collectionExpr: ({ $q, $props, $ctx, $state })"
+        "collectionExpr: ({ $q, $props, $ctx, $state"
       );
       // Children of repeated nodes should destructure item vars
       expect(serializedCode).toContain("{ currentItem, currentIndex }");
       // Should have a visibility node for the ExtraData conditional section
       expect(serializedCode).toContain('type: "visibility"');
+    });
+  });
+
+  describe("code component subtreePrefetchingConfig", () => {
+    function mkSiteWithCodeComponentInstance(
+      subtreePrefetchingConfig?: boolean
+    ) {
+      const site = createSite();
+      const codeComponent = mkCodeComponent(
+        "TestCodeComponent",
+        {
+          importPath: "./test-code-component",
+          props: {},
+          ...(subtreePrefetchingConfig !== undefined
+            ? { subtreePrefetchingConfig }
+            : {}),
+        } as any,
+        {}
+      );
+      const page = mkComponent({
+        name: "TestPage",
+        type: ComponentType.Page,
+        tplTree: (baseVariant) =>
+          mkTplTagX("div", { baseVariant }, [
+            mkTplComponentX({ component: codeComponent, baseVariant }),
+          ]),
+      });
+      site.components.push(codeComponent, page);
+      return { site, page, codeComponent };
+    }
+
+    function collectCodeComponentNode(site: Site, page: Component) {
+      const tree = collectComponentServerQueries({
+        site,
+        component: page,
+        exprCtx,
+      });
+      const node = tree.rootNode.children.find(
+        (c) => c.type === "codeComponent"
+      );
+      expect(node).toBeDefined();
+      return node;
+    }
+
+    it("registration subtreePrefetchingConfig=false is synced to the model and emitted in the tree", () => {
+      const { site, page, codeComponent } =
+        mkSiteWithCodeComponentInstance(false);
+      expect(codeComponent.codeComponentMeta?.subtreePrefetchingConfig).toBe(
+        false
+      );
+
+      const node = collectCodeComponentNode(site, page);
+      expect(node!.subtreePrefetchingConfig).toBe(false);
+    });
+
+    it("defaults subtreePrefetchingConfig to true when unset in the registration", () => {
+      const { site, page, codeComponent } = mkSiteWithCodeComponentInstance();
+      expect(
+        codeComponent.codeComponentMeta?.subtreePrefetchingConfig
+      ).toBeNull();
+
+      const node = collectCodeComponentNode(site, page);
+      expect(node!.subtreePrefetchingConfig).toBe(true);
     });
   });
 });

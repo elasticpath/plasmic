@@ -1,23 +1,10 @@
+import { validateTplRemoval } from "@/wab/client/operations/utils/validate-tpl-removal";
 import { $$$ } from "@/wab/shared/TplQuery";
 import { VariantTplMgr } from "@/wab/shared/VariantTplMgr";
 import { redistributeColumnsSizes } from "@/wab/shared/columns-utils";
-import { getComponentDisplayName } from "@/wab/shared/core/components";
 import { isTagListContainer } from "@/wab/shared/core/rich-text-util";
-import {
-  findImplicitStatesOfNodesInTree,
-  findImplicitUsages,
-  getStateDisplayName,
-  isStateUsedInExpr,
-} from "@/wab/shared/core/states";
 import * as Tpls from "@/wab/shared/core/tpls";
-import {
-  Component,
-  Site,
-  State,
-  TplNode,
-  isKnownTplRef,
-} from "@/wab/shared/model/classes";
-import L from "lodash";
+import { Component, Site, TplNode } from "@/wab/shared/model/classes";
 
 export type DeleteTplResult =
   | { result: "deleted" }
@@ -39,7 +26,8 @@ export type DeleteTplResult =
  * Delete TplNodes from a component.
  *
  * Validates that the deletion is safe (no referenced states or tplRefs),
- * then permanently removes elements from the tree.
+ * then permanently removes elements from the tree, including parent list
+ * containers that become empty (see {@link computeTplsToDelete}).
  *
  * @param tpls - TplNodes to delete.
  * @param opts
@@ -63,73 +51,24 @@ export function deleteTpl(
     return { result: "error", message: "Cannot remove the root element." };
   }
 
-  // Implicit state validation
-  const removedImplicitStates: State[] = [];
-  for (const tpl of tpls) {
-    removedImplicitStates.push(
-      ...findImplicitStatesOfNodesInTree(component, tpl)
-    );
+  const tplsToDelete = computeTplsToDelete(tpls);
+  const error = validateTplRemoval(tplsToDelete, component, site);
+  if (error) {
+    return {
+      result: "error",
+      message: error.message,
+      referencingNode: error.referencingNode,
+    };
   }
 
-  for (const state of removedImplicitStates) {
-    // Check if state is referenced within the component (excluding deleted subtrees)
-    const refs = Tpls.findExprsInTree(component.tplTree, tpls).filter(
-      ({ expr }) => isStateUsedInExpr(state, expr)
-    );
-    if (refs.length > 0) {
-      const maybeNode = refs.find((r) => r.node)?.node;
-      return {
-        result: "error",
-        message: `It contains variable "${getStateDisplayName(
-          state
-        )}" which is referenced in the current component.`,
-        referencingNode: maybeNode,
-      };
+  for (const tpl of tplsToDelete) {
+    // Skip if deleted already
+    if (!Tpls.tryGetTplOwnerComponent(tpl)) {
+      continue;
     }
 
-    // Check cross-component references
-    const implicitUsages = findImplicitUsages(site, state);
-    if (implicitUsages.length > 0) {
-      const components = L.uniq(implicitUsages.map((usage) => usage.component));
-      return {
-        result: "error",
-        message: `Cannot remove element: it contains variable "${getStateDisplayName(
-          state
-        )}" which is referenced in ${components
-          .map((c) => getComponentDisplayName(c))
-          .join(", ")}.`,
-      };
-    }
-  }
-
-  // TplRef validation
-  for (const { expr, node: maybeNode } of Tpls.findExprsInComponent(
-    component
-  )) {
-    if (isKnownTplRef(expr) && tpls.includes(expr.tpl)) {
-      return {
-        result: "error",
-        message:
-          "It is referenced by another element in an invoke action element interaction.",
-        referencingNode: maybeNode,
-      };
-    }
-  }
-
-  // Permanent deletion
-  for (const tpl of tpls) {
     const parent = tpl.parent;
     $$$(tpl).remove({ deep: true });
-
-    // Remove list containers when they become empty (i.e., their latest
-    // item is removed).
-    if (
-      Tpls.isTplTag(parent) &&
-      isTagListContainer(parent.tag) &&
-      parent.children.length === 0
-    ) {
-      $$$(parent).remove({ deep: true });
-    }
 
     // Redistribute column sizes when deleting from a columns layout
     if (parent && Tpls.isTplColumns(parent)) {
@@ -138,4 +77,32 @@ export function deleteTpl(
   }
 
   return { result: "deleted" };
+}
+
+/**
+ * Deleting some tpls cascades to their parents.
+ *
+ * - list items cascade to list containers if they become empty
+ */
+export function computeTplsToDelete(tpls: TplNode[]): TplNode[] {
+  const toDelete = new Set<TplNode>(tpls);
+  for (const tpl of tpls) {
+    const parent = tpl.parent;
+
+    if (
+      parent &&
+      // is not already in toDelete
+      !toDelete.has(parent) &&
+      // has a parent (is not the root)
+      parent.parent &&
+      // is a list container
+      Tpls.isTplTag(parent) &&
+      isTagListContainer(parent.tag) &&
+      // will be empty
+      parent.children.every((child) => toDelete.has(child))
+    ) {
+      toDelete.add(parent);
+    }
+  }
+  return [...toDelete];
 }

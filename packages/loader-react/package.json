@@ -1,7 +1,8 @@
 {
   "name": "@plasmicapp/loader-react",
-  "version": "2.0.2",
+  "version": "2.0.18",
   "description": "Plasmic loader SDK for React",
+  "homepage": "https://www.plasmic.app",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -42,16 +43,16 @@
     "react-server-conditional.d.ts"
   ],
   "engines": {
-    "node": ">=12"
+    "node": ">=18"
   },
   "scripts": {
-    "build": "yarn build:types && yarn build:index && yarn build:react-server",
-    "build:types": "yarn tsc",
+    "build": "pnpm build:types && pnpm build:index && pnpm build:react-server",
+    "build:types": "tsc",
     "build:index": "node ../../build.mjs ./src/index.ts --use-client",
     "build:react-server": "node ../../build.mjs ./src/react-server.ts",
     "yalcp": "yalc publish --push",
-    "test": "TEST_CWD=`pwd` yarn --cwd=../.. test",
-    "coverage": "TEST_CWD=`pwd` yarn --cwd=../.. test --coverage --passWithNoTests",
+    "test": "TEST_CWD=`pwd` pnpm -w test",
+    "coverage": "TEST_CWD=`pwd` pnpm -w test --coverage --passWithNoTests",
     "lint": "eslint",
     "prepublishOnly": "npm run build",
     "postpublish": "bash ../../scripts/publish-api-doc-model.sh",
@@ -59,19 +60,19 @@
     "analyze": "size-limit --why"
   },
   "dependencies": {
-    "@plasmicapp/data-sources-context": "0.1.23",
-    "@plasmicapp/host": "2.0.1",
-    "@plasmicapp/loader-core": "2.0.0",
-    "@plasmicapp/loader-fetcher": "2.0.0",
-    "@plasmicapp/loader-splits": "1.0.70",
-    "@plasmicapp/prepass": "1.0.24",
-    "@plasmicapp/query": "0.1.84",
+    "@plasmicapp/data-sources-context": "0.1.25",
+    "@plasmicapp/host": "2.0.15",
+    "@plasmicapp/loader-core": "2.0.4",
+    "@plasmicapp/loader-fetcher": "2.0.4",
+    "@plasmicapp/loader-splits": "1.0.75",
+    "@plasmicapp/prepass": "1.0.27",
+    "@plasmicapp/query": "0.1.87",
     "pascalcase": "^1.0.0",
     "server-only": "0.0.1"
   },
   "devDependencies": {
     "@types/node": "^22",
-    "@types/pascalcase": "^1.0.0",
+    "@types/pascalcase": "^1.0.3",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "react": "18.3.1",

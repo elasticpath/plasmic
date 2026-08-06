@@ -6,7 +6,7 @@ import { Matcher } from "@/wab/client/components/view-common";
 import { Icon } from "@/wab/client/components/widgets/Icon";
 import { useRefMap } from "@/wab/client/hooks/useRefMap";
 import PlasmicIcon__Bolt from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__Bolt";
-import SplitIcon from "@/wab/client/plasmic/plasmic_kit_left_pane/icons/PlasmicIcon__Icon";
+import SplitIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__SplitSvg";
 import {
   DefaultVariantsDrawerProps,
   PlasmicVariantsDrawer,
@@ -53,7 +53,7 @@ interface VariantsDrawerProps extends DefaultVariantsDrawerProps {
   onClearVariants?: () => void;
   onTargetVariant?: (variant: Variant) => void;
   onRemoveVariant?: (variant: Variant) => void;
-  component?: Component;
+  component: Component;
 }
 
 export const VariantsDrawer = observer(VariantsDrawer_);
@@ -80,7 +80,7 @@ function VariantsDrawer_({
   const variantsListRef = useRef<HTMLDivElement>(null);
 
   const allVariants = getAllVariantsForTpl({
-    component: component!,
+    component,
     tpl: focusedTpl,
     site: studioCtx.site,
   });

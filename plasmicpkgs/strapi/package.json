@@ -1,7 +1,9 @@
 {
   "name": "@plasmicpkgs/strapi",
-  "version": "0.0.19",
-  "description": "Plasmic registration for Strapi",
+  "version": "0.0.34",
+  "description": "Custom functions for querying Strapi content from Plasmic data queries.",
+  "homepage": "https://www.plasmic.app",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/plasmicapp/plasmic.git",
@@ -24,10 +26,10 @@
     "dist"
   ],
   "scripts": {
-    "build": "yarn build:types && yarn build:index",
-    "build:types": "yarn tsc",
+    "build": "pnpm build:types && pnpm build:index",
+    "build:types": "tsc",
     "build:index": "node ../../build.mjs ./src/index.ts",
-    "test": "TEST_CWD=`pwd` yarn --cwd=../.. test",
+    "test": "TEST_CWD=`pwd` pnpm -w test",
     "prepublishOnly": "npm run build",
     "postpublish": "bash ../../scripts/publish-api-doc-model.sh"
   },
@@ -35,7 +37,7 @@
     "qs": "^6.11.0"
   },
   "devDependencies": {
-    "@plasmicapp/host": "2.0.1",
+    "@plasmicapp/host": "2.0.15",
     "@react-awesome-query-builder/core": "^6.6.15",
     "@types/json-logic-js": "^2.0.8",
     "@types/qs": "^6.9.7",

@@ -38,7 +38,7 @@ export function userImgUrl(siteInstSubdomain?, fileId?) {
   }
 }
 
-export const globalStatic = (path) => urljoin(getPublicUrl(), "static", path);
+export const globalStatic = (path) => urljoin(getStaticBaseUrl(), path);
 
 export function placeholderImgUrl(isIcon?: boolean) {
   return isIcon
@@ -59,8 +59,20 @@ export function getPublicUrl() {
   return ensureTruthy(PUBLIC_URL!).replace(/\/$/, "");
 }
 
+export function getStaticUrl() {
+  return process.env.STATIC_URL || getPublicUrl();
+}
+
+export function getStaticBaseUrl() {
+  return getStaticUrl() + "/static";
+}
+
 export function getCodegenUrl() {
   return process.env.CODEGEN_HOST || getPublicUrl();
+}
+
+export function getCodegenOriginUrl() {
+  return process.env.CODEGEN_ORIGIN_HOST || getCodegenUrl();
 }
 
 /**

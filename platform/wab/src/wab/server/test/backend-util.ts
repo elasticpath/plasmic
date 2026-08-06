@@ -3,7 +3,7 @@ import { closeDbConnections, ensureDbConnection, MIGRATION_POOL_NAME } from "@/w
 import { getConnectionManager } from "typeorm";
 import { register } from "prom-client";
 import { initDb } from "@/wab/server/db/DbInitUtil";
-import { DbMgr, normalActor, SUPER_USER } from "@/wab/server/db/DbMgr";
+import { DbMgr, SUPER_USER, normalActor } from "@/wab/server/db/DbMgr";
 import { Project, User } from "@/wab/server/entities/Entities";
 import { ensure, range } from "@/wab/shared/common";
 import getPort from "get-port";
@@ -160,6 +160,7 @@ export async function createBackend(
         mailUserOps: "",
         mailBcc: "",
         terminationGracePeriodMs: 5000,
+        keepAliveTimeoutMs: 60000,
         genericWorkerPoolSize: 1,
         loaderWorkerPoolSize: 1,
       });
@@ -167,9 +168,20 @@ export async function createBackend(
       return {
         host: `http://localhost:${port}`,
         cleanup: async () => {
-          server.close();
-          await closeDbConnections();
-          register.clear();
+          try {
+            await new Promise<void>((resolve, reject) => {
+              server.close((err) => {
+                if (err) {
+                  reject(err);
+                } else {
+                  resolve();
+                }
+              });
+            });
+          } finally {
+            await closeDbConnections();
+            register.clear();
+          }
         },
       };
     }

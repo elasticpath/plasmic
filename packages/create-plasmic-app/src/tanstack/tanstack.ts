@@ -10,7 +10,12 @@ import { makeCustomRoot_file_router_codegen } from "./templates/file-router/root
 
 export const tanstackStrategy: CPAStrategy = {
   create: async (args) => {
-    const { projectPath } = args;
+    const { projectPath, template } = args;
+    if (template) {
+      console.warn(
+        `Warning: Ignoring template '${template}' (argument is not supported by TanStack).`
+      );
+    }
 
     /* create-tsrouter-app package receives the projectName as an argument, when we provide a fullProjectPath, it creates
     package.json with name having the fullProjectPath causing illegal characters in the name field error.
@@ -29,7 +34,17 @@ export const tanstackStrategy: CPAStrategy = {
     const parentDir = path.dirname(fullProjectPath);
     process.chdir(parentDir);
 
-    const createCommand = `npx create-tsrouter-app@latest ${projectName} --template file-router --add-ons start`;
+    const createCommand = [
+      `npx create-tsrouter-app@latest ${projectName}`,
+      "--framework React",
+      "--router-only",
+      "--no-toolchain",
+      "--package-manager yarn",
+      "--git",
+      "--no-intent",
+      "--no-examples",
+      "--yes",
+    ].join(" ");
 
     await spawnOrFail(createCommand);
 

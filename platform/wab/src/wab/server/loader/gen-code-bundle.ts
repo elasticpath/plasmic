@@ -6,6 +6,10 @@ import {
   VersionToSync,
 } from "@/wab/server/loader/resolve-projects";
 import { logger } from "@/wab/server/observability";
+import {
+  loaderBundleCacheCounter,
+  loaderCodegenCacheCounter,
+} from "@/wab/server/promstats";
 import { withSpan, withTimeSpent } from "@/wab/server/util/apm-util";
 import {
   tryGetS3CacheEntry,
@@ -41,8 +45,10 @@ import { getConnection } from "typeorm";
  * 18 - started returning list of component refs in codegen response to handle errors
  * 19 - fix css class name generation
  * 20 - style token overrides
+ * 21 - cached outputs with appDir=true include removed imports
+ * 22 - placeholder render modules and css are no longer emitted for non-hostless code components
  */
-export const LOADER_CACHE_BUST = "20";
+export const LOADER_CACHE_BUST = "22";
 
 /**
  * This represents the version of the loader API wire format; should reflect the
@@ -62,6 +68,7 @@ export async function genPublishedLoaderCodeBundle(
   dbMgr: DbMgr,
   pool: PlasmicWorkerPool,
   opts: {
+    source: "prefill" | "live";
     platform?: string;
     platformOptions: ExportPlatformOptions;
     projectVersions: Record<string, VersionToSync>;
@@ -104,6 +111,7 @@ export async function genPublishedLoaderCodeBundle(
     allProjectVersions,
     pool,
     {
+      source: opts.source,
       platform: opts.platform,
       platformOptions: opts.platformOptions,
       loaderVersion: opts.loaderVersion,
@@ -120,6 +128,7 @@ export async function genLatestLoaderCodeBundle(
   dbMgr: DbMgr,
   pool: PlasmicWorkerPool,
   opts: {
+    source: "prefill" | "live";
     platform?: string;
     platformOptions: ExportPlatformOptions;
     projectIdsBranches: { id: string; branchName: string | undefined }[];
@@ -153,6 +162,7 @@ export async function genLatestLoaderCodeBundle(
     allProjectVersions,
     pool,
     {
+      source: opts.source,
       platform: opts.platform,
       platformOptions: opts.platformOptions,
       loaderVersion: opts.loaderVersion,
@@ -171,6 +181,7 @@ async function genLoaderCodeBundleForProjectVersions(
   projectVersions: Record<string, VersionToSync>,
   pool: PlasmicWorkerPool,
   opts: {
+    source: "prefill" | "live";
     platform?: string;
     platformOptions: ExportPlatformOptions;
     mode: "production" | "development";
@@ -230,35 +241,47 @@ async function genLoaderCodeBundleForProjectVersions(
               });
               return result;
             } else {
-              return await upsertS3CacheEntry<
-                [
-                  CachedCodegenOutputBundle,
-                  Record<string, string[]>,
-                  ComponentReference[]
-                ]
-              >({
-                bucket: LOADER_ASSETS_BUCKET,
-                key: makeCodegenBucketPath({
-                  projectId,
-                  version: v.version,
-                  indirect: v.indirect,
-                  exportOpts,
-                }),
-                compute: async () => {
-                  const { result, spentTime } = await withTimeSpent(() =>
-                    codegenProject(projectId, v.version, v.indirect)
-                  );
-                  logger().info("loader-codegen-project", {
-                    project_id: projectId,
-                    project_version: v.version,
-                    indirect: v.indirect,
-                    duration_ms: spentTime,
-                  });
-                  return result;
-                },
-                serialize: (obj) => JSON.stringify(obj),
-                deserialize: (str) => JSON.parse(str),
+              const codegenKey = makeCodegenBucketPath({
+                projectId,
+                version: v.version,
+                indirect: v.indirect,
+                exportOpts,
               });
+              const { data: codegenResult, cacheHit: codegenCacheHit } =
+                await upsertS3CacheEntry<
+                  [
+                    CachedCodegenOutputBundle,
+                    Record<string, string[]>,
+                    ComponentReference[]
+                  ]
+                >({
+                  bucket: LOADER_ASSETS_BUCKET,
+                  key: codegenKey,
+                  compute: async () => {
+                    const { result, spentTime } = await withTimeSpent(() =>
+                      codegenProject(projectId, v.version, v.indirect)
+                    );
+                    logger().info("loader-codegen-project", {
+                      project_id: projectId,
+                      project_version: v.version,
+                      indirect: v.indirect,
+                      duration_ms: spentTime,
+                    });
+                    return result;
+                  },
+                  serialize: (obj) => JSON.stringify(obj),
+                  deserialize: (str) => JSON.parse(str),
+                });
+              loaderCodegenCacheCounter.inc({
+                result: codegenCacheHit ? "hit" : "miss",
+                source: opts.source,
+              });
+              if (!codegenCacheHit && opts.source === "live") {
+                logger().info(
+                  `Loader codegen cache miss for live request: ${codegenKey}`
+                );
+              }
+              return codegenResult;
             }
           })
         ),
@@ -318,13 +341,23 @@ async function genLoaderCodeBundleForProjectVersions(
           browserOnly: opts.browserOnly,
           exportOpts,
         });
-        const bundle = await upsertS3CacheEntry({
-          bucket: LOADER_ASSETS_BUCKET,
-          key: bundleKey,
-          compute: bundleProjects,
-          serialize: (obj) => JSON.stringify(obj),
-          deserialize: (str) => JSON.parse(str),
+        const { data: bundle, cacheHit: bundleCacheHit } =
+          await upsertS3CacheEntry({
+            bucket: LOADER_ASSETS_BUCKET,
+            key: bundleKey,
+            compute: bundleProjects,
+            serialize: (obj) => JSON.stringify(obj),
+            deserialize: (str) => JSON.parse(str),
+          });
+        loaderBundleCacheCounter.inc({
+          result: bundleCacheHit ? "hit" : "miss",
+          source: opts.source,
         });
+        if (!bundleCacheHit && opts.source === "live") {
+          logger().info(
+            `Loader bundle cache miss for live request: ${bundleKey}`
+          );
+        }
         bundle.bundleKey = bundleKey;
         return bundle;
       } else {
@@ -386,9 +419,8 @@ function makeExportOpts(opts: {
     platform: (opts.platform ??
       LOADER_CODEGEN_OPTS_DEFAULTS.platform) as ExportOpts["platform"],
     platformOptions: opts.platformOptions,
-    defaultExportHostLessComponents: opts.loaderVersion > 2 ? false : true,
-    useComponentSubstitutionApi: opts.loaderVersion >= 6 ? true : false,
-    useGlobalVariantsSubstitutionApi: opts.loaderVersion >= 7 ? true : false,
+    useComponentSubstitutionApi: true,
+    useGlobalVariantsSubstitutionApi: true,
     useCodeComponentHelpersRegistry: opts.loaderVersion >= 10 ? true : false,
     ...(opts.i18nKeyScheme && {
       localization: {

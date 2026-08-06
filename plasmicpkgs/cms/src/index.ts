@@ -69,20 +69,25 @@ const hostParam = {
 
 const cmsIdParam = {
   type: "string",
+  displayName: "CMS ID",
   description: "ID of the CMS.",
+  required: true,
   helpText:
     "Find the CMS ID on the [Plasmic CMS settings page](https://docs.plasmic.app/learn/plasmic-cms-api-reference/#find-your-cms-ids-public-token-and-secret-token)",
 } as const;
 
 const cmsPublicTokenParam = {
   type: "string",
+  displayName: "CMS public token",
   description: "Public token of the CMS.",
+  required: true,
   helpText:
     "Find the public token on the [Plasmic CMS settings page](https://docs.plasmic.app/learn/plasmic-cms-api-reference/#find-your-cms-ids-public-token-and-secret-token)",
 } as const;
 
 const tableIdParam = {
   type: "choice",
+  required: true,
   options: (_args: unknown, ctx: FnContext) => {
     if (!ctx?.tables) {
       return [];
@@ -109,6 +114,7 @@ const selectParam = {
 
 const whereLogicParam = {
   type: "queryBuilder",
+  displayName: "Filter",
   description: "Filter fetched entries. Defaults to fetch all entries.",
   config: ([opts]: [(CMSTableOpts | undefined)?], ctx: FnContext) => {
     const tableId = opts?.tableId;
@@ -133,7 +139,7 @@ const orderByParam = {
 } as const;
 
 const orderDirectionParam = {
-  label: "Direction",
+  displayName: "Direction",
   type: "choice",
   options: [
     {

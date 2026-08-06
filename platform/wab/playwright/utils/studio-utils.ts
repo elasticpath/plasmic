@@ -69,42 +69,83 @@ export async function getComponentUuid(
   return null;
 }
 
-function clone<T>(obj: T): T {
-  return JSON.parse(JSON.stringify(obj));
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function resolveFormItem(root: FrameLocator, item: ExpectedFormItem) {
+  // Anchor the form item by the `name` attribute on its control if possible,
+  // it's stable across simple/advanced modes. Some Plume controls (Select, Select w/slot)
+  // don't expose `name`, so fall back to matching the form-item label.
+  const byName = root
+    .locator(".ant-form-item")
+    .filter({ has: root.locator(`[name="${item.name}"]`) })
+    .first();
+  if ((await byName.count()) > 0) {
+    return byName;
+  }
+  return root
+    .locator(".ant-form-item")
+    .filter({
+      has: root
+        .locator(".ant-form-item-label label")
+        .filter({ hasText: new RegExp(escapeRegex(item.label), "i") }),
+    })
+    .first();
 }
 
 export async function checkFormValues(
   expectedFormItems: ExpectedFormItem[],
   root: FrameLocator
 ) {
-  for (const item of clone(expectedFormItems)) {
+  for (const item of expectedFormItems) {
+    const formItem = await resolveFormItem(root, item);
     if (item.type !== "Checkbox") {
-      const labelByText = root.locator(`text=${item.label}`).first();
-      await expect(labelByText).toBeVisible({ timeout: 15000 });
+      // The label may be composite ("Text Item\nText Item 2") in advanced mode
+      // so we just assert containment (not exact match).
+      // Case-insensitive since bundle labels can differ in casing from the field name.
+      const containsRegex = new RegExp(escapeRegex(item.label), "i");
+      await expect(
+        formItem.locator(".ant-form-item-label label")
+      ).toContainText(containsRegex, { timeout: 15000 });
     }
-    if (item.value) {
-      const valueStr = String(item.value);
+    if (item.value == null) {
+      continue;
+    }
+    const valueStr = String(item.value);
 
-      if (item.type === "Text Area") {
-        const textarea = root.locator(`textarea[name="${item.name}"]`);
-        await expect(textarea).toHaveValue(valueStr);
-      } else if (item.type === "Select") {
-        // Handle Select type
-      } else if (item.type === "Checkbox") {
-        const checkbox = root.locator(
-          `input[type="checkbox"][name="${item.name}"]`
-        );
-        await expect(checkbox).toBeChecked();
-      } else if (item.type === "Radio Group") {
+    switch (item.type) {
+      case "Text Area":
         await expect(
-          root.locator(`input[type="radio"][value="${item.value}"]`)
+          formItem.locator(`textarea[name="${item.name}"]`)
+        ).toHaveValue(valueStr);
+        break;
+      case "Checkbox":
+        await expect(
+          formItem.locator(`input[type="checkbox"][name="${item.name}"]`)
         ).toBeChecked();
-      } else if (item.type === "DatePicker") {
-        // Handle DatePicker type
-      } else {
-        const input = root.locator(`input[name="${item.name}"]`);
-        await expect(input).toHaveValue(valueStr);
+        break;
+      case "Radio Group":
+        await expect(
+          formItem.locator(`input[type="radio"][value="${item.value}"]`)
+        ).toBeChecked();
+        break;
+      case "Select": {
+        // Plume Select doesn't have.ant-select-selection-item.
+        // Skip the check rather than failing the whole test.
+        const selection = formItem.locator(".ant-select-selection-item");
+        if ((await selection.count()) > 0) {
+          await expect(selection).toHaveText(valueStr);
+        }
+        break;
       }
+      case "DatePicker":
+        // Not currently asserted; left as a no-op for parity.
+        break;
+      default:
+        await expect(
+          formItem.locator(`input[name="${item.name}"]`)
+        ).toHaveValue(valueStr);
     }
   }
 }
@@ -117,7 +158,7 @@ export async function updateFormValuesInLiveMode(
   },
   root: FrameLocator
 ) {
-  const { inputs = {}, selects: _selects = {}, radios = {} } = newValues;
+  const { inputs = {}, selects = {}, radios = {} } = newValues;
 
   for (const key in inputs) {
     let input = root.locator(`input[name="${key}"]`);
@@ -143,6 +184,22 @@ export async function updateFormValuesInLiveMode(
     }
 
     await input.fill(valueToType);
+  }
+
+  for (const key in selects) {
+    // Open the antd Select for this field and pick the option by its text. Anchor the form
+    // with the hidden control input via id=<field name>.
+    const formItem = root
+      .locator(".ant-form-item")
+      .filter({ has: root.locator(`[id="${key}"]`) })
+      .first();
+    await formItem.locator(".ant-select-selector").click();
+    // Options render in a portal, so match within the whole frame.
+    await root
+      .locator(".ant-select-item-option")
+      .filter({ hasText: new RegExp(`^${escapeRegex(String(selects[key]))}$`) })
+      .first()
+      .click();
   }
 
   for (const key in radios) {

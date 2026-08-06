@@ -19,6 +19,7 @@ import { LabelWithDetailedTooltip } from "@/wab/client/components/widgets/LabelW
 import LabeledListItem from "@/wab/client/components/widgets/LabeledListItem";
 import PlusIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__Plus";
 import { useStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
+import { mkModelUiId } from "@/wab/client/studio-ctx/ui/studio-ui-ids";
 import { ViewCtx } from "@/wab/client/studio-ctx/view-ctx";
 import {
   SERVER_QUERY_LOWER,
@@ -43,6 +44,7 @@ import {
 import { renameServerQueryAndFixExprs } from "@/wab/shared/refactoring";
 import { Menu, notification } from "antd";
 import { observer } from "mobx-react";
+import { ok } from "neverthrow";
 import React from "react";
 
 const ServerQueryRow = observer(
@@ -53,11 +55,16 @@ const ServerQueryRow = observer(
   }) => {
     const { component, query, viewCtx } = props;
     const studioCtx = viewCtx.studioCtx;
-    const exprCtx: ExprCtx = {
-      projectFlags: studioCtx.projectFlags(),
-      component,
-      inStudio: true,
-    };
+    const projectFlags = studioCtx.projectFlags();
+    // Identity-stable for useServerQueryOp's memo deps.
+    const exprCtx: ExprCtx = React.useMemo(
+      () => ({
+        projectFlags,
+        component,
+        inStudio: true,
+      }),
+      [projectFlags, component]
+    );
     const schema = viewCtx.customFunctionsSchema();
     const tpl = viewCtx.currentCtxTplRoot();
 
@@ -73,7 +80,6 @@ const ServerQueryRow = observer(
         tpl,
         schema,
         exprCtx,
-        filterMode: "query"
       });
     };
 
@@ -81,12 +87,12 @@ const ServerQueryRow = observer(
       newOp: ServerQueryOp,
       opExprName?: string
     ) => {
-      await studioCtx.change(({ success }) => {
+      await studioCtx.change(() => {
         query.op = newOp;
         if (opExprName && opExprName !== query.name) {
           renameServerQueryAndFixExprs(component, query, opExprName);
         }
-        return success();
+        return ok();
       });
       serverQueryModal.close();
     };
@@ -100,11 +106,11 @@ const ServerQueryRow = observer(
           <Menu.Item
             onClick={() =>
               spawn(
-                studioCtx.change(({ success }) => {
+                studioCtx.change(() => {
                   studioCtx
                     .tplMgr()
                     .duplicateComponentServerQuery(component, query);
-                  return success();
+                  return ok();
                 })
               )
             }
@@ -123,16 +129,18 @@ const ServerQueryRow = observer(
       );
     };
     const title = `Query data results for "${query.name}"`;
-    const env = omitQueryFromEnv(
-      viewCtx.getCanvasEnvForTpl(tpl, {
-        forDataRepCollection: true,
-      }),
-      query
-    );
+    let env: Record<string, any> | undefined = viewCtx.getCanvasEnvForTpl(tpl, {
+      forDataRepCollection: true,
+    });
+    if (env) {
+      env = omitQueryFromEnv(env, query);
+    }
+    const currGlobalThis = viewCtx.canvasCtx.win();
 
     return (
       <WithContextMenu overlay={menu}>
         <LabeledListItem
+          uiId={mkModelUiId(query)}
           label={query.name}
           menu={menu}
           onClick={() => openServerQueryModal()}
@@ -146,6 +154,7 @@ const ServerQueryRow = observer(
                   env={env}
                   title={title}
                   exprCtx={exprCtx}
+                  currGlobalThis={currGlobalThis}
                 />
               ) : isKnownCustomCode(query.op) ? (
                 <CustomCodePreview
@@ -176,7 +185,7 @@ function ServerQueriesSection_(props: {
 
   const handleAddBlankQuery = () => {
     spawn(
-      studioCtx.change(({ success }) => {
+      studioCtx.change(() => {
         const serverQuery = new ComponentServerQuery({
           uuid: mkShortId(),
           name: studioCtx.tplMgr().getUniqueServerQueryName(component, "Query"),
@@ -184,7 +193,7 @@ function ServerQueriesSection_(props: {
         });
 
         component.serverQueries.push(serverQuery);
-        return success();
+        return ok();
       })
     );
   };
@@ -194,7 +203,7 @@ function ServerQueriesSection_(props: {
     sourceQuery: ComponentServerQuery
   ) => {
     spawn(
-      studioCtx.change(({ success }) => {
+      studioCtx.change(() => {
         const { copied, componentVarRefs } = studioCtx
           .tplMgr()
           .copyServerQueryWithDependencies(
@@ -225,7 +234,7 @@ function ServerQueriesSection_(props: {
                 )} that may not exist or differ in this component.`
               : undefined,
         });
-        return success();
+        return ok();
       })
     );
   };

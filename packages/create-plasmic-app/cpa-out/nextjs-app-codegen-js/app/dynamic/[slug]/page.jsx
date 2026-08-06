@@ -5,12 +5,29 @@ import { PageParamsProvider as PageParamsProvider__ } from "@plasmicapp/host";
 import {
   PlasmicDynamicPageServer,
   makeAppRouterPageCtx,
-  generateDynamicMetadata
+  generateDynamicMetadata,
+  serverQueryTree
 } from "../../../components/plasmic/create_plasmic_app/PlasmicDynamicPageServer";
+import { unstable_executePlasmicQueries } from "@plasmicapp/react-web/lib/data-sources";
+// Uncomment and populate to statically pre-render this route at build time.
+// Each entry should be an object whose keys match the dynamic segments in the route path.
+// See https://nextjs.org/docs/app/api-reference/functions/generate-static-params
+//
+// export async function generateStaticParams() {
+//   return [];
+// }
+
+const $$ = {};
+
+const metadataQueryTree = { ...serverQueryTree, children: [] };
 
 export async function generateMetadata({ params, searchParams }, parent) {
   const ctx = await makeAppRouterPageCtx({ params, searchParams });
-  const metadata = generateDynamicMetadata({}, ctx);
+  const { queries: $q } = await unstable_executePlasmicQueries(
+    metadataQueryTree,
+    { $props: {}, $ctx: ctx }
+  );
+  const metadata = generateDynamicMetadata($q, ctx);
   return { ...(await parent), ...metadata };
 }
 
@@ -31,13 +48,14 @@ async function DynamicPage({ params, searchParams }) {
   // variant context providers. These wrappers may be moved to
   // Next.js Custom App component
   // (https://nextjs.org/docs/advanced-features/custom-app).
+  const ctx = await makeAppRouterPageCtx({ params, searchParams });
   return (
     <PageParamsProvider__
-      route="/dynamic/[slug]"
-      params={await params}
-      query={await searchParams}
+      route={ctx.pageRoute}
+      params={ctx.params}
+      query={ctx.query}
     >
-      <PlasmicDynamicPageServer />
+      <PlasmicDynamicPageServer params={params} searchParams={searchParams} />
     </PageParamsProvider__>
   );
 }

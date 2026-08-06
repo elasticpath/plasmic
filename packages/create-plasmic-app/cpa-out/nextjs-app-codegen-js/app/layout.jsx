@@ -1,6 +1,6 @@
+import "../components/plasmic/create_plasmic_app/plasmic.css"; // plasmic-import: 47tFXWjN2C4NyHFGGpaYQ3/projectcss
 import '@/app/globals.css'
-import { PlasmicRootProvider } from "@plasmicapp/react-web";
-import Link from "next/link";
+import { ClientPlasmicRootProvider } from "@/plasmic-init-client";
 
 export default function RootLayout({
   children,
@@ -8,9 +8,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <PlasmicRootProvider Link={Link}>
+        <ClientPlasmicRootProvider>
           {children}
-        </PlasmicRootProvider>
+        </ClientPlasmicRootProvider>
       </body>
     </html>
   );

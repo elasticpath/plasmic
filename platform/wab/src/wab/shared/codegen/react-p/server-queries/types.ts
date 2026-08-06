@@ -1,5 +1,5 @@
 import { ServerQueryWithOperation } from "@/wab/shared/codegen/react-p/server-queries/utils";
-import { Component, Site } from "@/wab/shared/model/classes";
+import { Component, Site, State } from "@/wab/shared/model/classes";
 
 /**
  * A string with JavaScript code to be evaluated at runtime.
@@ -9,7 +9,7 @@ export type DynamicExprCode = string;
 
 /**
  * Corresponds to <DataProvider name="..." data={...}> or code components
- * that provide data context via serverRendering registration.
+ * that provide data context via subtree prefetching registration.
  */
 export interface ServerDataProviderContextNode {
   type: "dataProvider";
@@ -54,26 +54,26 @@ export interface ServerComponentNode {
   component: Component;
   // Server queries from this component, to be executed
   queries: ServerQueryWithOperation[];
+  // Component states, serialized to $StateSpec[] to build $state before evaluating queries.
+  states: State[];
   // Maps prop name to expression code. May reference $props, $ctx, $queries from parent.
   propsContext: Record<string, DynamicExprCode>;
   children: ServerNode[];
 }
 
 /**
- * Code component that may have special server rendering behavior. Register with
- * serverRendering: boolean to control whether they should be server rendered.
+ * Code component whose subtree query prefetching can be disabled.
  */
 export interface ServerCodeComponentNode {
   type: "codeComponent";
   component: Component;
   propsContext: Record<string, DynamicExprCode>;
-  /** Whether the code component should be server rendered. */
-  serverRenderingConfig?: ServerRenderingConfig;
+  /** Whether Plasmic should prefetch queries in this component's subtree. */
+  subtreePrefetchingConfig: SubtreePrefetchingConfig;
   children: ServerNode[];
 }
 
-// Configures how a code component behaves during server rendering.
-export type ServerRenderingConfig = boolean;
+export type SubtreePrefetchingConfig = boolean;
 
 /**
  * Union type of all possible server node types
@@ -101,14 +101,4 @@ export interface ServerQueryTree {
 export interface ServerQueryCollectionContext {
   site: Site;
   componentMap: Map<string, Component>;
-  // Code component registrations with serverRendering configs
-  codeComponentMeta: Map<Component, CodeComponentServerMeta>;
-}
-
-/**
- * Metadata about a code component's server rendering behavior
- */
-export interface CodeComponentServerMeta {
-  // Whether the component should be server rendered
-  serverRendering?: ServerRenderingConfig;
 }
