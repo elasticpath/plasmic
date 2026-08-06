@@ -8,7 +8,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@elasticpath/plasmic-ep-commerce-elastic-path": "0.0.3",
+    "@elasticpath/plasmic-ep-commerce-elastic-path": "0.1.0",
     "@elasticpath/plasmic-mcp-registry": "file:../packages/plasmic-mcp-registry",
     "@plasmicapp/loader-nextjs": "2.0.21",
     "@plasmicpkgs/cms": "0.0.36",
