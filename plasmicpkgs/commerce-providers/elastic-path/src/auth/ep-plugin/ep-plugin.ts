@@ -10,6 +10,11 @@
 import { createAuthEndpoint } from "better-auth/api";
 import { setSessionCookie, getCookieCache } from "better-auth/cookies";
 import type { BetterAuthPlugin } from "better-auth";
+import {
+  DEFAULT_HOST_ALLOWLIST,
+  isAllowedEpHost,
+  reportRejectedEpHost,
+} from "../host-allowlist";
 
 export interface EpPluginOptions {
   /**
@@ -30,6 +35,7 @@ export interface EpPluginOptions {
   resolveConfig?: () => Promise<
     { clientId?: string; host?: string } | null | undefined
   >;
+  hostAllowlist?: readonly string[];
 }
 
 interface EpAnonymousTokenResponse {
@@ -78,6 +84,12 @@ async function resolveConfigFor(options: EpPluginOptions) {
   const resolved = options.resolveConfig
     ? await options.resolveConfig().catch(() => null)
     : null;
+  const allowlist = options.hostAllowlist ?? DEFAULT_HOST_ALLOWLIST;
+  if (resolved?.host && !isAllowedEpHost(resolved.host, allowlist)) {
+    reportRejectedEpHost(resolved.host, "epPlugin.resolveConfig", allowlist);
+    // clientId is only valid against the host it was resolved with.
+    return { clientId: options.clientId, host: options.host };
+  }
   return {
     clientId: resolved?.clientId ?? options.clientId,
     host: resolved?.host ?? options.host,

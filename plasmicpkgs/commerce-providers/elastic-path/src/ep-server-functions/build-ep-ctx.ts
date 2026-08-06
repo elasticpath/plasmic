@@ -36,9 +36,14 @@ export interface EpCtx {
 
 export function buildEpCtx(
   prefetchedData: unknown,
-  opts: { session: BuildEpCtxSessionInput }
+  opts: {
+    session: BuildEpCtxSessionInput;
+    hostAllowlist?: readonly string[];
+  }
 ): EpCtx {
-  const config = extractEpProviderConfig(prefetchedData as any);
+  const config = extractEpProviderConfig(prefetchedData as any, {
+    hostAllowlist: opts.hostAllowlist,
+  });
   if (!config) {
     throw new Error(
       "buildEpCtx: EP Provider config not found in prefetchedData. " +

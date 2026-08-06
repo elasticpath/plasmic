@@ -23,9 +23,22 @@ export { epAuthMiddleware } from "./ep-plugin/middleware";
 export { createCartRoutes } from "../cart/server-routes";
 export type { CartRoutes } from "../cart/server-routes";
 export { createEpProxyRoutes } from "./ep-plugin/proxy-routes";
-export type {
-  EpProxyRoutes,
-  CreateEpProxyRoutesOptions,
-} from "./ep-plugin/proxy-routes";
+export type { EpProxyRoutes } from "./ep-plugin/proxy-routes";
+export {
+  enforceOriginGate,
+  isTrustedOrigin,
+  passesOriginGate,
+} from "./ep-plugin/origin-gate";
+export {
+  assertProductionSecret,
+  resolveAuthSecret,
+} from "./ep-plugin/production-guard";
+export {
+  DEFAULT_HOST_ALLOWLIST,
+  isAllowedEpHost,
+} from "./host-allowlist";
 export { extractEpProviderConfig } from "./extract-ep-provider-config";
-export type { EpProviderBundleConfig } from "./extract-ep-provider-config";
+export type {
+  EpProviderBundleConfig,
+  ExtractEpProviderConfigOptions,
+} from "./extract-ep-provider-config";

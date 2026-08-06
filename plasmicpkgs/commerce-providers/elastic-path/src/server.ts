@@ -61,15 +61,22 @@ export {
   epAuthMiddleware,
   createCartRoutes,
   createEpProxyRoutes,
+  enforceOriginGate,
+  isTrustedOrigin,
+  passesOriginGate,
+  assertProductionSecret,
+  resolveAuthSecret,
+  DEFAULT_HOST_ALLOWLIST,
+  isAllowedEpHost,
 } from "./auth";
 export type {
   EpAuth,
   EpAuthConfig,
   EpSession,
   EpProviderBundleConfig,
+  ExtractEpProviderConfigOptions,
   EpPluginOptions,
   EpProxyRoutes,
-  CreateEpProxyRoutesOptions,
 } from "./auth";
 
 // Server-side custom functions for Studio Server Queries (PRD #262 / #272)

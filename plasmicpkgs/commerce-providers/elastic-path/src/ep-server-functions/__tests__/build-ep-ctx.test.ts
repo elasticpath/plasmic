@@ -5,7 +5,7 @@ const EP_PROVIDER_MODULE = `
 function E(r){
   return g.createElement(e, {
     clientId:o&&"clientId"in o?o.clientId:"cid-abc",
-    customHost:o&&"customHost"in o?o.customHost:"https://custom.ep.com",
+    customHost:o&&"customHost"in o?o.customHost:"https://epcc-integration.global.ssl.fastly.net",
     host:o&&"host"in o?o.host:"custom",
     serverCartMode:o&&"serverCartMode"in o?o.serverCartMode:!0
   });
@@ -32,7 +32,7 @@ describe("buildEpCtx", () => {
     expect(ctx).toEqual(
       expect.objectContaining({
         clientId: "cid-abc",
-        host: "https://custom.ep.com",
+        host: "https://epcc-integration.global.ssl.fastly.net",
         serverCartMode: true,
         accessToken: "tok-abc",
       })
@@ -46,7 +46,45 @@ describe("buildEpCtx", () => {
     expect(ctx.cartId).toBeUndefined();
     expect(ctx.accountId).toBeUndefined();
     expect(ctx.clientId).toBe("cid-abc");
-    expect(ctx.host).toBe("https://custom.ep.com");
+    expect(ctx.host).toBe("https://epcc-integration.global.ssl.fastly.net");
+  });
+
+  it("rejects a host outside the allowlist, and accepts it once the deployment opts in", () => {
+    const smcData = {
+      bundle: {
+        projects: [{ globalContextsProviderFileName: "global__p.js" }],
+        modules: {
+          server: [
+            {
+              type: "code",
+              fileName: "global__p.js",
+              code: EP_PROVIDER_MODULE.replace(
+                "https://epcc-integration.global.ssl.fastly.net",
+                "https://commerce.selfmanaged.example"
+              ),
+            },
+          ],
+        },
+      },
+    };
+    const errorSpy = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+
+    expect(() =>
+      buildEpCtx(smcData, { session: { accessToken: "tok" } })
+    ).toThrow(/EP Provider config not found/);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("commerce.selfmanaged.example")
+    );
+
+    const ctx = buildEpCtx(smcData, {
+      session: { accessToken: "tok" },
+      hostAllowlist: ["commerce.selfmanaged.example"],
+    });
+    expect(ctx.host).toBe("https://commerce.selfmanaged.example");
+
+    errorSpy.mockRestore();
   });
 
   it("throws a clear error when prefetchedData has no EP Provider config", () => {

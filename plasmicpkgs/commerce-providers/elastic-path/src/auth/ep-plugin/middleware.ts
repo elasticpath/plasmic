@@ -30,6 +30,7 @@
  */
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { hasCookie, parseCookieHeader } from "../../utils/cookie-header";
 import type { EpAuth } from "./create-ep-auth-better";
 
 /**
@@ -51,9 +52,10 @@ export function epAuthMiddleware(epAuth: EpAuth) {
     }
 
     const cookieHeader = request.headers.get("cookie") ?? "";
+    const cookies = parseCookieHeader(cookieHeader);
     if (
-      cookieHeader.includes("better-auth.session_token") &&
-      cookieHeader.includes("better-auth.session_data")
+      hasCookie(cookies, "better-auth.session_token") &&
+      hasCookie(cookies, "better-auth.session_data")
     ) {
       // Already has a session — pass through unchanged.
       return NextResponse.next();

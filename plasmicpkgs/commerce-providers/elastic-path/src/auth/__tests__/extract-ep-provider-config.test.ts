@@ -106,6 +106,74 @@ describe("extractEpProviderConfig", () => {
     expect(config?.clientId).toBe("oVC2dwzwVi0sCbov7voN63H8gami9do0TLm3GaVKAJ");
   });
 
+  describe("host allowlist", () => {
+    const smcModule = EP_PROVIDER_MODULE_CUSTOM_HOST.replace(
+      "https://epcc-integration.global.ssl.fastly.net",
+      "https://commerce.selfmanaged.example"
+    );
+    const bundleWith = (code: string) => ({
+      bundle: {
+        projects: [{ globalContextsProviderFileName: "global__proj.js" }],
+        modules: {
+          server: [{ type: "code", fileName: "global__proj.js", code }],
+        },
+      },
+    });
+
+    let errorSpy: jest.SpyInstance;
+    beforeEach(() => {
+      errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    });
+    afterEach(() => errorSpy.mockRestore());
+
+    it("accepts the Elastic Path regions and the integration host by default", () => {
+      expect(
+        extractEpProviderConfig(bundleWith(EP_PROVIDER_MODULE_PREDEFINED_HOST))
+          ?.host
+      ).toBe("https://useast.api.elasticpath.com");
+      expect(
+        extractEpProviderConfig(bundleWith(EP_PROVIDER_MODULE_CUSTOM_HOST))?.host
+      ).toBe("https://epcc-integration.global.ssl.fastly.net");
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+
+    it("rejects an unlisted host and says so, naming the host and the option", () => {
+      expect(extractEpProviderConfig(bundleWith(smcModule))).toBeNull();
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("commerce.selfmanaged.example")
+      );
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("hostAllowlist")
+      );
+    });
+
+    it("accepts a Self Managed Commerce host once it is allowlisted", () => {
+      expect(
+        extractEpProviderConfig(bundleWith(smcModule), {
+          hostAllowlist: ["commerce.selfmanaged.example"],
+        })?.host
+      ).toBe("https://commerce.selfmanaged.example");
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+
+    it("honours wildcard entries", () => {
+      expect(
+        extractEpProviderConfig(bundleWith(smcModule), {
+          hostAllowlist: ["*.selfmanaged.example"],
+        })?.host
+      ).toBe("https://commerce.selfmanaged.example");
+    });
+
+    it("logs rather than silently returning null when nothing matches the regex", () => {
+      expect(
+        extractEpProviderConfig(bundleWith("function noop(){}"))
+      ).toBeNull();
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("no usable EP Provider config")
+      );
+    });
+  });
+
   it("returns null when clientId is an empty string (EP Provider not configured)", () => {
     const unconfigured = `
       function E(r){

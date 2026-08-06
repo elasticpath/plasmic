@@ -25,11 +25,16 @@
 import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
 import { epPlugin } from "./ep-plugin";
+import { DEFAULT_HOST_ALLOWLIST } from "../host-allowlist";
+import {
+  assertNonSentinelSecret,
+  resolveAuthSecret,
+} from "./production-guard";
 
 export interface CreateEpAuthBetterInput {
   clientId: string;
   host: string;
-  secret: string;
+  secret?: string;
   basePath?: string;
   baseURL?: string;
   /**
@@ -42,6 +47,7 @@ export interface CreateEpAuthBetterInput {
    * both the localhost and 127.0.0.1 variants of `baseURL`.
    */
   trustedOrigins?: string[];
+  hostAllowlist?: string[];
   cartMergeStrategy?: "merge" | "replace" | "prompt";
   checkout?: { sessionSecret: string };
   adapters?: { stripe?: { secretKey: string }; clover?: any };
@@ -68,6 +74,24 @@ function defaultTrustedOrigins(baseURL: string): string[] {
     }
   } catch {
     // Non-URL baseURL — leave the set as-is.
+  }
+  return [...out];
+}
+
+/** Mirrors better-auth's own getTrustedOrigins (ADR-0001). */
+function resolveTrustedOrigins(
+  configured: string[] | undefined,
+  baseURL: string
+): string[] {
+  const out = new Set<string>(configured ?? defaultTrustedOrigins(baseURL));
+  try {
+    out.add(new URL(baseURL).origin);
+  } catch {}
+  for (const origin of (process.env.BETTER_AUTH_TRUSTED_ORIGINS ?? "").split(
+    ","
+  )) {
+    const trimmed = origin.trim();
+    if (trimmed) out.add(trimmed);
   }
   return [...out];
 }
@@ -107,6 +131,8 @@ export interface EpAuth {
   handler: any;
   config: {
     basePath: string;
+    trustedOrigins: string[];
+    hostAllowlist: readonly string[];
     cartMergeStrategy: "merge" | "replace" | "prompt";
     checkout?: { sessionSecret: string };
     adapters?: { stripe?: { secretKey: string }; clover?: any };
@@ -172,20 +198,20 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
       "checkout.sessionSecret must be at least 16 characters"
     );
   }
+  assertNonSentinelSecret(input.checkout?.sessionSecret, {
+    label: "createEpAuth checkout.sessionSecret",
+  });
   if (!input.clientId) {
     throw new Error("clientId is required");
   }
-  if (!input.secret) {
-    throw new Error("secret is required");
-  }
+  const secret = resolveAuthSecret(input.secret, { label: "createEpAuth" });
 
   const basePath = input.basePath ?? "/api/ep";
   const baseURL = input.baseURL ?? "http://localhost";
-  const trustedOrigins =
-    input.trustedOrigins ?? defaultTrustedOrigins(baseURL);
+  const trustedOrigins = resolveTrustedOrigins(input.trustedOrigins, baseURL);
 
   const auth = betterAuth({
-    secret: input.secret,
+    secret,
     baseURL,
     basePath,
     trustedOrigins,
@@ -193,6 +219,7 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
       epPlugin({
         clientId: input.clientId,
         host: input.host,
+        hostAllowlist: input.hostAllowlist,
         resolveConfig: input.resolveConfig,
       }),
       // `nextCookies()` MUST be the last plugin in the array per
@@ -212,7 +239,9 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
   });
 
   const config = Object.freeze({
-    basePath: input.basePath ?? "/api/ep",
+    basePath,
+    trustedOrigins,
+    hostAllowlist: input.hostAllowlist ?? DEFAULT_HOST_ALLOWLIST,
     cartMergeStrategy: input.cartMergeStrategy ?? "merge",
     checkout: input.checkout,
     adapters: input.adapters,
