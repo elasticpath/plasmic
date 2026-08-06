@@ -48,6 +48,61 @@ After editing this file, run `cd platform/loader-bundle-env && yarn install` and
 EP dependency to preserve:
 - `"@elasticpath/plasmic-ep-commerce-elastic-path": "^0.0.3"` in dependencies
 
+**`platform/wab/src/wab/server/AppServer.ts` (additional, post-April)**
+
+- EP Redis rate limiters from `@/wab/server/ep-rate-limit`: `createGeneralApiRateLimiter`,
+  `createCmsScopeRateLimiter`, `createProjectScopeRateLimiter`, `createWriteRateLimiter`,
+  `createPreviewRateLimiter` — applied across API route groups. These coexist with any
+  upstream rate limiting (e.g. `authedSensitiveRateLimiter`); keep both.
+- `adminOnly` middleware on resource-creation endpoints (#331).
+
+**`platform/wab/src/wab/server/workers/prefill-cloudfront.ts`**
+
+EP feature to preserve in full: 3-phase resolve → generate → **CloudFront invalidation**
+(`CreateInvalidationCommand`, `CLOUDFRONT_DISTRIBUTION_ID`), structured `loader-prefill-*`
+log events, success/failure counters. Upstream has no equivalent — never let an upstream
+refactor of this function drop the invalidation phase.
+
+**`platform/wab/src/wab/shared/urls.ts` + `loader/gen-html-bundle.ts` + `routes/loader.ts`**
+
+EP URL split for the Service Connect topology: `getLoaderInternalUrl()` (internal
+service-to-service), `getCodegenPublicUrl()` (browser-facing), `getDataUrl()` +
+`__PLASMIC_DATA_HOST` SSR-prepass global. Upstream keeps reshaping its own URL helpers
+here (`getCodegenUrl`/`getCodegenOriginUrl`) — keep all of them, they serve different needs.
+
+**`platform/wab/src/wab/server/util/{apm-util,s3-util,ep-s3-cache,server-timing}.ts`, `routes/loader.ts`**
+
+EP perf/observability cluster: `recordTiming` (Server-Timing headers), early S3 cache
+check (`tryGetS3CacheEntry`), `htmlPreviewSemaphore` + `timedProxy` +
+`runWithServerTiming`. Collides regularly with upstream's OTel/metrics work in the same
+functions — layer upstream's additions inside EP's wrappers, don't choose sides.
+
+**Sentry → Datadog (fork-wide)**
+
+EP replaced `Sentry.captureException`/`captureMessage` with
+`@/wab/server/observability/datadog` equivalents. Upstream error-handling refactors
+(e.g. the ts-failable→neverthrow migration) reintroduce Sentry calls — translate them
+back to Datadog on every merge.
+
+**Package manager: root stays yarn**
+
+Upstream migrated the monorepo root to pnpm (2026-07). EP keeps `yarn@1.x` at root:
+preserve `workspaces` (including `packages/plasmic-mcp`, `packages/plasmic-mcp-registry`),
+`resolutions`, and yarn-based scripts. Upstream's `pnpm-workspace.yaml`/`pnpm-lock.yaml`
+can land as inert files. Watch for pnpm-only `workspace:`/`catalog:` protocols appearing
+in package manifests — those would break yarn and force the migration decision.
+
+### Bundle migration renumbering (recurring)
+
+EP holds `255-fix-ep-addtocart-import-path.ts`; upstream numbers its own migrations
+without it, so every upstream migration N arrives as EP's N+1. Procedure (used in PR #256
+April 2026 and PR #313 August 2026):
+
+1. Keep EP's numbering as-is; copy each new upstream migration in at +1.
+2. Update `migrations-list.txt` (integrity test asserts unique numbers).
+3. Take upstream's side of all conflicted test-bundle JSONs, then globally rename the
+   version string (e.g. `257-<new-migration>` → `258-<new-migration>`) across fixtures.
+
 ### EP-only files (not in upstream)
 
 If upstream somehow conflicts with these, always keep our version entirely:
