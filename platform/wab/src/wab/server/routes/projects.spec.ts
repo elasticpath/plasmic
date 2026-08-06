@@ -95,6 +95,7 @@ describe("updateProjectData", () => {
           defaultSlotContents: {},
           variants: {},
           refActions: [],
+          subtreePrefetchingConfig: null,
         }),
       });
 

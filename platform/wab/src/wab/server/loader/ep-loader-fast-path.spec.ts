@@ -43,6 +43,7 @@ describe("genPublishedLoaderCodeBundle fast-path", () => {
   const mockResolveProjectDeps = resolveProjectDeps as jest.Mock;
 
   const baseOpts = {
+    source: "live" as const,
     platformOptions: {},
     projectVersions: { proj123: { version: "1.0.0", indirect: false } },
     loaderVersion: 10,
