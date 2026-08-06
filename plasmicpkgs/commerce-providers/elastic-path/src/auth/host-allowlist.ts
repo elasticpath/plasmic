@@ -1,33 +1,23 @@
 /**
- * Host allowlist for the Elastic Path API endpoint. The host arrives from
- * the Plasmic bundle, so an unchecked value redirects shopper token minting.
- *
- * Normalization mirrors better-auth's `matchesHostPattern` plus a port
- * strip; reimplemented because Jest-side tests reach this and better-auth
- * is ESM-only.
+ * The EP API host comes from the Plasmic bundle, so an unchecked value
+ * redirects shopper token minting.
  */
 import { hasWildcard, matchesGlob } from "../utils/glob-pattern";
 import { isProduction } from "./ep-plugin/production-guard";
 
-/**
- * Composable Commerce regions plus the integration host, which is on Fastly
- * so it is listed exactly rather than by wildcard. Self Managed Commerce
- * hosts must come from `hostAllowlist`.
- */
+/** The integration host is on Fastly, so it is listed exactly. */
 export const DEFAULT_HOST_ALLOWLIST: readonly string[] = [
   "*.elasticpath.com",
   "elasticpath.com",
   "epcc-integration.global.ssl.fastly.net",
 ];
 
-/** Outside production only — otherwise a bundle could aim at any local port. */
+/** Outside production only. */
 const LOOPBACK_HOSTS: readonly string[] = ["localhost", "127.0.0.1", "::1"];
 
-/** Strip scheme, path, port, and case, so comparisons are like-for-like. */
 function normalizeHost(value: string): string | null {
   const withoutScheme = value.trim().replace(/^[a-zA-Z][\w+.-]*:\/\//, "");
   const hostOnly = withoutScheme.split("/")[0];
-  // IPv6 literals keep their brackets; everything else drops a :port suffix.
   const withoutPort = hostOnly.startsWith("[")
     ? hostOnly.replace(/^\[([^\]]*)\](?::\d+)?$/, "$1")
     : hostOnly.replace(/:\d+$/, "");
@@ -54,7 +44,6 @@ export function isAllowedEpHost(
   });
 }
 
-/** Logs at the point of failure so a rejection is never silent downstream. */
 export function reportRejectedEpHost(
   host: string,
   source: string,

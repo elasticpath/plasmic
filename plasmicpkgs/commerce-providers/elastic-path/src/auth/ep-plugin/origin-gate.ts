@@ -26,18 +26,13 @@ export function matchesOriginPattern(origin: string, pattern: string): boolean {
     }
     return url ? matchesGlob(url.host, pattern) : false;
   }
-  // Non-wildcard: http(s) and scheme-less values compare as origins;
-  // custom schemes (Electron shells and the like) compare by prefix.
   if (!url || url.protocol === "http:" || url.protocol === "https:") {
     return url !== null && url.origin !== "null" && pattern === url.origin;
   }
   return origin.startsWith(pattern);
 }
 
-/**
- * Go compares Origin to the request's own Host before the allowlist, so a
- * same-origin request passes even if the deployment's origin is unlisted.
- */
+/** Go checks Origin against the request's Host before the allowlist. */
 function originMatchesRequestHost(request: Request, origin: string): boolean {
   const originHost = parseUrl(origin)?.host?.toLowerCase();
   if (!originHost) return false;
@@ -57,7 +52,6 @@ export function isTrustedOrigin(
   );
 }
 
-/** `true` when the request may proceed. */
 export function passesOriginGate(
   request: Request,
   trustedOrigins: readonly string[] | undefined
@@ -68,7 +62,7 @@ export function passesOriginGate(
   if (site === "same-origin" || site === "none") return true;
 
   const origin = request.headers.get("origin");
-  // Neither signal: not a browser, so no ambient credentials to abuse.
+  // Not a browser: no ambient credentials to abuse.
   if (!site && !origin) return true;
   if (!origin) return false;
 
@@ -77,7 +71,6 @@ export function passesOriginGate(
   return isTrustedOrigin(origin, trustedOrigins);
 }
 
-/** Returns a 403 response when the gate rejects, or `null` to continue. */
 export function enforceOriginGate(
   request: Request,
   trustedOrigins: readonly string[] | undefined

@@ -16,10 +16,7 @@
  * needs to resolve a server session. If Plasmic's codegen output changes
  * shape in a future release, the regex stops matching and
  * `extractEpProviderConfig` returns `null`, letting callers fall through to
- * whatever defaults / env vars they prefer. Both that miss and an
- * allowlist rejection are logged where they happen, because the downstream
- * fallback chain otherwise turns either one into a silent
- * `bootstrap-placeholder` session that fails much later and elsewhere.
+ * whatever defaults / env vars they prefer.
  */
 import {
   DEFAULT_HOST_ALLOWLIST,
@@ -76,11 +73,6 @@ function extractProp(
 }
 
 export interface ExtractEpProviderConfigOptions {
-  /**
-   * Host patterns the EP API may be reached at. Defaults to Elastic Path's
-   * own domains plus loopback; Self Managed Commerce deployments must list
-   * their host here.
-   */
   hostAllowlist?: readonly string[];
 }
 

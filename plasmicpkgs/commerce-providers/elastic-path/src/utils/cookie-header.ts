@@ -1,15 +1,5 @@
-/**
- * Server-side `Cookie:` header parsing, shared by the auth middleware and
- * the cart / proxy route handlers. Browser-side cookie access lives in
- * `./cookies.ts` (js-cookie) and is not interchangeable with this.
- */
+/** Server-side Cookie header parsing. Browser access is in ./cookies.ts. */
 
-/**
- * better-auth writes its cookies under a `__Secure-` prefix whenever the
- * deployment is served over HTTPS, and splits oversized `session_data`
- * payloads into `<name>.0`, `<name>.1`, … chunks. Presence checks that
- * compare names literally miss both forms.
- */
 const SECURE_PREFIX = "__Secure-";
 
 export function parseCookieHeader(
@@ -25,8 +15,6 @@ export function parseCookieHeader(
     try {
       out[name] = decodeURIComponent(raw);
     } catch {
-      // Malformed percent-encoding — keep the raw value rather than
-      // throwing a 500 out of a route handler.
       out[name] = raw;
     }
   }
@@ -40,7 +28,7 @@ export function readCookie(
   return cookies[name] ?? cookies[`${SECURE_PREFIX}${name}`];
 }
 
-/** True when `name` is present directly, `__Secure-` prefixed, or chunked. */
+/** Matches `name`, `__Secure-name`, and better-auth's `name.0` chunks. */
 export function hasCookie(
   cookies: Record<string, string>,
   name: string

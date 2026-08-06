@@ -18,13 +18,7 @@
  *   export const POST = routes.handle;
  *   export const OPTIONS = routes.options;
  *
- * CORS: when Studio previews against a consumer at a different origin,
- * browsers preflight OPTIONS and require explicit
- * `Access-Control-Allow-Credentials` + matching
- * `Access-Control-Allow-Origin`. The reflected list is the auth
- * instance's resolved `trustedOrigins` — the one origin trust list
- * (ADR-0001) — so cross-origin Studio use is a single knob and the proxy
- * can never accept an origin better-auth would reject mid-mutation.
+ * CORS reflects the auth instance's resolved `trustedOrigins` (ADR-0001).
  */
 import {
   epAddCartItem,
@@ -116,9 +110,6 @@ export function createEpProxyRoutes(epAuth: EpAuth): EpProxyRoutes {
     },
 
     async handle(request, context) {
-      // The proxy dispatches cart mutations, so it needs the same CSRF
-      // gate as the cart routes — CORS only governs who may read the
-      // reply, not who may provoke the write.
       const gate = enforceOriginGate(request, trustedOrigins);
       if (gate) return gate;
 
@@ -178,9 +169,6 @@ export function createEpProxyRoutes(epAuth: EpAuth): EpProxyRoutes {
       try {
         result = await withEpSession(epCtx, () => dispatch(args));
       } catch (err) {
-        // The failure detail stays server-side: dispatch errors carry EP
-        // API responses and internal hostnames. The correlationId is the
-        // only handle the caller gets for matching up the log line.
         const correlationId = crypto.randomUUID();
         console.error(
           `[ep-commerce] proxy dispatch_failed fn=${fnName} correlationId=${correlationId}`,

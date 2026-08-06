@@ -1,10 +1,4 @@
-/**
- * Glob matching for origin and host allowlists, reproducing the semantics
- * better-auth applies to `trustedOrigins` entries: `*` and `?` stand in for
- * any run of / any single character that is not a path separator.
- * better-auth's own matcher is internal to the library, so the behaviour is
- * mirrored here rather than imported.
- */
+/** Mirrors better-auth's trustedOrigins glob semantics; its matcher is internal. */
 
 const REGEXP_SPECIALS = /[\\^$.*+?()[\]{}|]/g;
 
