@@ -1,7 +1,7 @@
 {
   "name": "@plasmicpkgs/commerce",
   "version": "0.0.256",
-  "description": "Plasmic code components for building ecommerce storefronts — product lists, carts, and checkout.",
+  "description": "Plasmic code components for building ecommerce storefronts \u2014 product lists, carts, and checkout.",
   "homepage": "https://www.plasmic.app",
   "repository": {
     "type": "git",
@@ -18,7 +18,7 @@
   "scripts": {
     "build": "tsdx build",
     "start": "tsdx watch",
-    "test": "TEST_CWD=`pwd` pnpm -w test --passWithNoTests",
+    "test": "TEST_CWD=`pwd` yarn --cwd=../../.. test --passWithNoTests",
     "lint": "tsdx lint",
     "prepublishOnly": "npm run build",
     "size": "size-limit",

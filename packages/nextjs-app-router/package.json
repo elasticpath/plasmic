@@ -21,13 +21,13 @@
     "node": ">=16"
   },
   "scripts": {
-    "build": "pnpm build:types && pnpm build:index && pnpm build:react-server && pnpm build:with-dev-server",
+    "build": "yarn build:types && yarn build:index && yarn build:react-server && yarn build:with-dev-server",
     "build:types": "tsc",
     "build:index": "node ../../build.mjs ./src/index.ts --use-client",
     "build:with-dev-server": "esbuild --format=cjs --target=node18 --bundle --outfile=./dist/with-plasmic-prepass.cjs.js --platform=node ./src/with-dev-server.mts",
     "build:react-server": "node ../../build.mjs ./src/react-server.ts",
-    "test": "pnpm -w test",
-    "coverage": "pnpm -w test --coverage --passWithNoTests",
+    "test": "yarn --cwd=../.. test",
+    "coverage": "yarn --cwd=../.. test --coverage --passWithNoTests",
     "lint": "eslint"
   },
   "dependencies": {

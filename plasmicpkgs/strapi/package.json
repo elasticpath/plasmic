@@ -26,10 +26,10 @@
     "dist"
   ],
   "scripts": {
-    "build": "pnpm build:types && pnpm build:index",
+    "build": "yarn build:types && yarn build:index",
     "build:types": "tsc",
     "build:index": "node ../../build.mjs ./src/index.ts",
-    "test": "TEST_CWD=`pwd` pnpm -w test",
+    "test": "TEST_CWD=`pwd` yarn --cwd=../.. test",
     "prepublishOnly": "npm run build",
     "postpublish": "bash ../../scripts/publish-api-doc-model.sh"
   },
