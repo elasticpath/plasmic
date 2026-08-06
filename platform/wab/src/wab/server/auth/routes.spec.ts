@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { DbMgr, SUPER_USER } from "@/wab/server/db/DbMgr";
+import { DbMgr, SUPER_USER, normalActor } from "@/wab/server/db/DbMgr";
 import { Permission, Team } from "@/wab/server/entities/Entities";
 import { SharedApiTester } from "@/wab/server/test/api-tester";
 import { createBackend, createDatabase } from "@/wab/server/test/backend-util";
@@ -145,8 +145,11 @@ describe("auth", () => {
     });
 
     it("rejects passwords that are too long", async () => {
+      const email = `${Date.now()}@example.com`;
+      // EP's invitation gate runs before password validation.
+      await createPendingInvitation(email);
       const signUpParams = {
-        email: `${Date.now()}@example.com`,
+        email,
         password: "SuperStrongPassword!!" + "a".repeat(MAX_PASSWORD_LENGTH),
         firstName: "GivenName",
         lastName: "FamilyName",
@@ -257,8 +260,10 @@ describe("auth", () => {
       await api.dispose();
       api = new SharedApiTester(baseURL);
       await api.refreshCsrfToken();
+      const email = `${Date.now()}@example.com`;
+      await createPendingInvitation(email);
       await api.signUp({
-        email: `${Date.now()}@example.com`,
+        email,
         password: "SuperStrongPassword!!",
         firstName: "GivenName",
         lastName: "FamilyName",
@@ -283,8 +288,10 @@ describe("auth", () => {
     });
 
     it("rejects more than the max grants per request", async () => {
+      const email = `${Date.now()}@example.com`;
+      await createPendingInvitation(email);
       await api.signUp({
-        email: `${Date.now()}@example.com`,
+        email,
         password: "SuperStrongPassword!!",
         firstName: "GivenName",
         lastName: "FamilyName",
@@ -325,9 +332,10 @@ describe("auth", () => {
       const dbUser = await sudoDbMgr.getUserById(api.user()!.id);
       await sudoDbMgr.markEmailAsVerified(dbUser);
 
-      // Create a non-personal team.
-      const teamResponse = await api.createTeam("Example team");
-      const team = teamResponse.team;
+      // Create a non-personal team directly via DbMgr — POST /api/v1/teams is
+      // admin-gated on the EP fork, and this test is about deleteSelf.
+      const userDbMgr = new DbMgr(con.createEntityManager(), normalActor(dbUser.id));
+      const team = await userDbMgr.createTeam("Example team");
 
       // User should have 2 teams now, one personal, one non-personal.
       await expect(api.listTeams()).resolves.toMatchObject({

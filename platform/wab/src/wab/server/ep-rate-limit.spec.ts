@@ -125,7 +125,9 @@ function makeRes(): { res: Response; setHeader: jest.Mock; status: jest.Mock; js
   const json = jest.fn();
   const status = jest.fn().mockReturnValue({ json });
   const setHeader = jest.fn();
-  const res = { setHeader, status, json } as unknown as Response;
+  // Express always provides res.locals; the middleware writes bucket state to
+  // res.locals.rateLimit, so the mock must carry it too.
+  const res = { setHeader, status, json, locals: {} } as unknown as Response;
   return { res, setHeader, status, json };
 }
 
