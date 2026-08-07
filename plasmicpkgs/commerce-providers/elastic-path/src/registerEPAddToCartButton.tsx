@@ -115,15 +115,19 @@ export function EPAddToCartButton(props: EPAddToCartButtonProps) {
         ? { _selectedOptions: cartItem.selectedOptions }
         : undefined;
 
-      await callEpProxy("addCartItem", {
-        productId: cartItem.variantId || cartItem.productId || product.id,
-        quantity: cartItem.quantity ?? 1,
-        ...(customInputs ? { customInputs } : {}),
-        ...(cartItem.bundleConfiguration
-          ? { bundleConfiguration: cartItem.bundleConfiguration }
-          : {}),
-        ...(cartItem.locationId ? { location: cartItem.locationId } : {}),
-      });
+      await callEpProxy(
+        "addCartItem",
+        {
+          productId: cartItem.variantId || cartItem.productId || product.id,
+          quantity: cartItem.quantity ?? 1,
+          ...(customInputs ? { customInputs } : {}),
+          ...(cartItem.bundleConfiguration
+            ? { bundleConfiguration: cartItem.bundleConfiguration }
+            : {}),
+          ...(cartItem.locationId ? { location: cartItem.locationId } : {}),
+        },
+        null
+      );
 
       // Refresh any EPCartProvider in the tree.
       await swrMutate(epCartCacheKey());

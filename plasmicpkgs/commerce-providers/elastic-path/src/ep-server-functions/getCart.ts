@@ -30,8 +30,7 @@ export async function epGetCart(
   if (!isUsableAuth(auth) && shouldUseProxy()) {
     return callEpProxy<ReturnType<typeof normalizeCart> | null>(
       "getCart",
-      {},
-      null
+      {}
     );
   }
 

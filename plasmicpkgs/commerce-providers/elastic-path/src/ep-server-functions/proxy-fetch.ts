@@ -2,7 +2,7 @@
  * Browser-side proxy fetch for the EP server functions.
  *
  * Why this exists: in Studio canvas (and the data-query "Configure"
- * preview panel) the registered `ep*` server functions run in a browser
+ * preview panel) the registered `ep*` functions run in a browser
  * context with no AsyncLocalStorage session and no reachable
  * EPCommerceProvider client (the picker preview runs in the Studio
  * main frame, separate from the canvas iframe). To still resolve real
@@ -62,63 +62,15 @@ function resolveProxyUrl(fnName: string): string {
     : `${PROXY_PATH}/${fnName}`;
 }
 
-async function readProxyErrorMessage(
-  res: Response,
-  fnName: string
-): Promise<string> {
-  const fallback = `ep proxy ${fnName} failed (${res.status})`;
-  try {
-    const body = (await res.json()) as {
-      message?: string;
-      error?: string | { message?: string };
-    };
-    if (typeof body.message === "string" && body.message.trim()) {
-      return body.message;
-    }
-    if (typeof body.error === "string" && body.error.trim()) {
-      return body.error;
-    }
-    if (
-      body.error &&
-      typeof body.error === "object" &&
-      typeof body.error.message === "string" &&
-      body.error.message.trim()
-    ) {
-      return body.error.message;
-    }
-  } catch {
-    // ignore parse failures — use status fallback
-  }
-  return fallback;
-}
-
 /**
  * Calls `<fnName>` via the consumer's EP proxy route with the supplied
- * args as the JSON body.
- *
- * Soft vs hard failure:
- * - When `fallback` is **passed** (including `null`), network / non-2xx /
- *   parse errors return that value — used by read paths (`getCart`,
- *   `getProduct`, …) that prefer empty UI over throwing.
- * - When `fallback` is **omitted**, failures throw so mutation callers
- *   (add to cart, place order, adjustments) surface the real error.
+ * args as the JSON body. Returns the parsed JSON on success, or
+ * `fallback` on any failure (network error, non-2xx, parse error).
  */
-export function callEpProxy<T>(
+export async function callEpProxy<T>(
   fnName: string,
   args: Record<string, unknown>,
   fallback?: T
-): Promise<T> {
-  // Detect "fallback was passed" via `arguments` on a sync wrapper —
-  // `arguments` is illegal inside async functions under our TS target.
-  const softFail = arguments.length >= 3;
-  return callEpProxyImpl(fnName, args, softFail, fallback as T);
-}
-
-async function callEpProxyImpl<T>(
-  fnName: string,
-  args: Record<string, unknown>,
-  softFail: boolean,
-  fallback: T
 ): Promise<T> {
   const url = resolveProxyUrl(fnName);
   let res: Response;
@@ -129,23 +81,15 @@ async function callEpProxyImpl<T>(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(args),
     });
-  } catch (err) {
-    if (softFail) return fallback;
-    throw err instanceof Error
-      ? err
-      : new Error(`ep proxy ${fnName}: network error`);
+  } catch {
+    return (fallback ?? null) as T;
   }
   if (!res.ok) {
-    const message = await readProxyErrorMessage(res, fnName);
-    if (softFail) return fallback;
-    throw new Error(message);
+    return (fallback ?? null) as T;
   }
   try {
     return (await res.json()) as T;
-  } catch (err) {
-    if (softFail) return fallback;
-    throw err instanceof Error
-      ? err
-      : new Error(`ep proxy ${fnName}: invalid JSON response`);
+  } catch {
+    return (fallback ?? null) as T;
   }
 }

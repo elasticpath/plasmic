@@ -356,10 +356,8 @@ const normalizeLineItem = (
     options,
   };
 
-  // Carry through the location slug from the EP cart item response.
-  // Read via a wide cast — the shopper SDK response type omits `location`
-  // on CartItemResponse even though EP returns it for multilocation lines.
-  const locationSlug = (epItem as { location?: string }).location;
+  // Carry through the location slug from the EP cart item response
+  const locationSlug = epItem.location;
   if (locationSlug) {
     lineItem.locationSlug = locationSlug;
   }

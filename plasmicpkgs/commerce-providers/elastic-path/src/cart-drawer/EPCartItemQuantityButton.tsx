@@ -57,11 +57,7 @@ export function EPCartItemQuantityButton(
   const quantityCtx = useCartItemQuantity();
   const inEditor = !!usePlasmicCanvasContext();
 
-  // Limit-reached only — do NOT native-disable while loading. Studio often
-  // wraps this button in a chrome box; a native `disabled` button stops
-  // receiving clicks, and subsequent clicks hit the inert wrapper instead.
-  // Loading is enforced inside increment/decrement via an in-flight guard.
-  const isLimitDisabled =
+  const isDisabled =
     previewState === "disabled"
       ? true
       : previewState === "enabled"
@@ -70,16 +66,8 @@ export function EPCartItemQuantityButton(
           ? !(quantityCtx?.canIncrement ?? true)
           : !(quantityCtx?.canDecrement ?? true);
 
-  const isBusy = previewState === "auto" && !!quantityCtx?.isLoading;
-  const isDisabled = isLimitDisabled;
-
-  const handleClick = (
-    e: React.MouseEvent<HTMLButtonElement> | React.MouseEvent<HTMLElement>
-  ) => {
-    // Clicks may land on nested text nodes from the Studio slot.
-    e.preventDefault();
-    e.stopPropagation();
-    if (isLimitDisabled || isBusy || !quantityCtx) return;
+  const handleClick = () => {
+    if (isDisabled || !quantityCtx) return;
     if (action === "increment") {
       quantityCtx.increment();
     } else {
@@ -88,21 +76,25 @@ export function EPCartItemQuantityButton(
   };
 
   return (
-    <button
-      type="button"
+    <div
       className={className}
       onClick={handleClick}
-      disabled={isLimitDisabled && !inEditor}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          handleClick();
+        }
+      }}
       aria-label={
         action === "increment" ? "Increase quantity" : "Decrease quantity"
       }
-      aria-disabled={isDisabled || isBusy || undefined}
-      aria-busy={isBusy || undefined}
+      aria-disabled={isDisabled}
       data-disabled={isDisabled || undefined}
-      data-loading={isBusy || undefined}
     >
       {children}
-    </button>
+    </div>
   );
 }
 

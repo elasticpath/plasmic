@@ -7,11 +7,9 @@ import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useState } from "react";
-import { mutate as swrMutate } from "swr";
+import useRemoveItem from "../cart/use-remove-item";
 import { Registerable } from "../registerable";
 import { createLogger } from "../utils/logger";
-import { callEpProxy } from "../ep-server-functions/proxy-fetch";
-import { epCartCacheKey } from "../cart-provider/cache-keys";
 
 const log = createLogger("EPCartItemRemoveButton");
 
@@ -55,6 +53,7 @@ export function EPCartItemRemoveButton(props: EPCartItemRemoveButtonProps) {
   const currentItem = useSelector("currentCartItem") as
     | { id: string; name?: string }
     | undefined;
+  const removeItem = useRemoveItem();
   const inEditor = !!usePlasmicCanvasContext();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -65,11 +64,10 @@ export function EPCartItemRemoveButton(props: EPCartItemRemoveButtonProps) {
     : isLoading;
 
   const handleRemove = async () => {
-    if (!currentItem?.id || useMock || effectiveIsLoading) return;
+    if (!currentItem?.id || useMock) return;
     setIsLoading(true);
     try {
-      await callEpProxy("removeCartItem", { itemId: currentItem.id });
-      await swrMutate(epCartCacheKey());
+      await removeItem({ id: currentItem.id });
       log.info("Item removed from cart", {
         itemId: currentItem.id,
       } as Record<string, unknown>);
@@ -90,16 +88,23 @@ export function EPCartItemRemoveButton(props: EPCartItemRemoveButtonProps) {
       name="removeItemState"
       data={{ isLoading: effectiveIsLoading }}
     >
-      <button
-        type="button"
+      <div
         className={className}
         onClick={handleRemove}
-        disabled={effectiveIsLoading || (!currentItem && !inEditor && !useMock)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            handleRemove();
+          }
+        }}
         aria-label={`Remove ${currentItem?.name ?? "item"} from cart`}
+        aria-disabled={effectiveIsLoading}
         data-loading={effectiveIsLoading || undefined}
       >
         {children}
-      </button>
+      </div>
     </DataProvider>
   );
 }

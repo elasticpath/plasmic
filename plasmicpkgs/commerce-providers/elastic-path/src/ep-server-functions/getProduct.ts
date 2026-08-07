@@ -35,7 +35,7 @@ export async function epGetProduct({
   // route so the call uses the better-auth session cookie just like
   // SSR does, without exposing tokens to the browser bundle.
   if (!isUsableAuth(auth) && shouldUseProxy()) {
-    return callEpProxy<Product | null>("getProduct", { id }, null);
+    return callEpProxy<Product | null>("getProduct", { id });
   }
 
   if (!isUsableAuth(auth)) return null;

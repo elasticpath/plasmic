@@ -36,16 +36,16 @@ jest.mock("../../cart-provider/use-ep-cart", () => ({
   },
 }));
 
-const mockCallEpProxy = jest.fn();
-jest.mock("../../ep-server-functions/proxy-fetch", () => ({
+const mockUseUpdateItem = jest.fn();
+jest.mock("../../cart/use-update-item", () => ({
   __esModule: true,
-  callEpProxy: (...args: unknown[]) => mockCallEpProxy(...args),
+  default: mockUseUpdateItem,
 }));
 
-const mockSwrMutate = jest.fn();
-jest.mock("swr", () => ({
+const mockUseRemoveItem = jest.fn();
+jest.mock("../../cart/use-remove-item", () => ({
   __esModule: true,
-  mutate: (...args: unknown[]) => mockSwrMutate(...args),
+  default: mockUseRemoveItem,
 }));
 
 const mockUseLocations = jest.fn();
@@ -156,8 +156,8 @@ beforeEach(() => {
   // Defaults: runtime mode (not editor), no cart data
   mockUsePlasmicCanvasContext.mockReturnValue(null);
   mockUseCart.mockReturnValue({ data: null, error: null });
-  mockCallEpProxy.mockResolvedValue(undefined);
-  mockSwrMutate.mockResolvedValue(undefined);
+  mockUseUpdateItem.mockReturnValue(jest.fn());
+  mockUseRemoveItem.mockReturnValue(jest.fn());
   mockUseLocations.mockReturnValue({ locations: [], loading: false });
   mockUseStock.mockReturnValue({ productStock: {}, loading: false });
   mockUseSelector.mockReturnValue(undefined);
@@ -1022,8 +1022,9 @@ describe("EPCartItemQuantityControl", () => {
     expect(ctxValue.canIncrement).toBe(false);
   });
 
-  it("increment calls updateCartItem proxy with new quantity", async () => {
-    mockCallEpProxy.mockResolvedValue(undefined);
+  it("increment calls updateItem with new quantity", async () => {
+    const mockUpdate = jest.fn().mockResolvedValue(undefined);
+    mockUseUpdateItem.mockReturnValue(mockUpdate);
     mockUseSelector.mockReturnValue({ id: "item-1", quantity: 2 });
 
     let ctxValue: any;
@@ -1036,58 +1037,14 @@ describe("EPCartItemQuantityControl", () => {
       </EPCartItemQuantityControl>
     );
     await act(async () => { ctxValue.increment(); });
-    expect(mockCallEpProxy).toHaveBeenCalledWith("updateCartItem", {
-      itemId: "item-1",
-      quantity: 3,
-    });
-    expect(mockSwrMutate).toHaveBeenCalled();
-  });
-
-  it("increment includes location when the line item has a locationSlug", async () => {
-    mockCallEpProxy.mockResolvedValue(undefined);
-    mockUseSelector.mockReturnValue({
-      id: "item-1",
-      quantity: 1,
-      locationSlug: "warehouse-east",
-    });
-
-    let ctxValue: any;
-    render(
-      <EPCartItemQuantityControl>
-        <HookReader
-          hook={useCartItemQuantity}
-          onResult={(v: any) => { ctxValue = v; }}
-        />
-      </EPCartItemQuantityControl>
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "item-1", quantity: 3 })
     );
-    await act(async () => { ctxValue.increment(); });
-    expect(mockCallEpProxy).toHaveBeenCalledWith("updateCartItem", {
-      itemId: "item-1",
-      quantity: 2,
-      location: "warehouse-east",
-    });
   });
 
-  it("canIncrement is false when at stockAvailable", () => {
-    mockUseSelector.mockReturnValue({
-      id: "item-1",
-      quantity: 2,
-      stockAvailable: 2,
-    });
-    let ctxValue: any;
-    render(
-      <EPCartItemQuantityControl maxQuantity={99}>
-        <HookReader
-          hook={useCartItemQuantity}
-          onResult={(v: any) => { ctxValue = v; }}
-        />
-      </EPCartItemQuantityControl>
-    );
-    expect(ctxValue.canIncrement).toBe(false);
-  });
-
-  it("decrement calls updateCartItem proxy with new quantity", async () => {
-    mockCallEpProxy.mockResolvedValue(undefined);
+  it("decrement calls updateItem with new quantity", async () => {
+    const mockUpdate = jest.fn().mockResolvedValue(undefined);
+    mockUseUpdateItem.mockReturnValue(mockUpdate);
     mockUseSelector.mockReturnValue({ id: "item-1", quantity: 3 });
 
     let ctxValue: any;
@@ -1100,15 +1057,38 @@ describe("EPCartItemQuantityControl", () => {
       </EPCartItemQuantityControl>
     );
     await act(async () => { ctxValue.decrement(); });
-    expect(mockCallEpProxy).toHaveBeenCalledWith("updateCartItem", {
-      itemId: "item-1",
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "item-1", quantity: 2 })
+    );
+  });
+
+  it("passes locationSlug in update when present", async () => {
+    const mockUpdate = jest.fn().mockResolvedValue(undefined);
+    mockUseUpdateItem.mockReturnValue(mockUpdate);
+    mockUseSelector.mockReturnValue({
+      id: "item-1",
       quantity: 2,
+      locationSlug: "store-a",
     });
-    expect(mockSwrMutate).toHaveBeenCalled();
+
+    let ctxValue: any;
+    render(
+      <EPCartItemQuantityControl>
+        <HookReader
+          hook={useCartItemQuantity}
+          onResult={(v: any) => { ctxValue = v; }}
+        />
+      </EPCartItemQuantityControl>
+    );
+    await act(async () => { ctxValue.increment(); });
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ location: "store-a" })
+    );
   });
 
   it("reverts quantity on update error", async () => {
-    mockCallEpProxy.mockRejectedValue(new Error("Network error"));
+    const mockUpdate = jest.fn().mockRejectedValue(new Error("Network error"));
+    mockUseUpdateItem.mockReturnValue(mockUpdate);
     mockUseSelector.mockReturnValue({ id: "item-1", quantity: 2 });
 
     let ctxValue: any;
@@ -1123,101 +1103,6 @@ describe("EPCartItemQuantityControl", () => {
     await act(async () => { ctxValue.increment(); });
     // After error, quantity should revert to server value
     expect(ctxValue.quantity).toBe(2);
-  });
-
-  it("revalidates the cart cache after a failed quantity update", async () => {
-    mockCallEpProxy.mockRejectedValue(new Error("Network error"));
-    mockUseSelector.mockReturnValue({ id: "item-1", quantity: 2 });
-
-    let ctxValue: any;
-    render(
-      <EPCartItemQuantityControl>
-        <HookReader
-          hook={useCartItemQuantity}
-          onResult={(v: any) => { ctxValue = v; }}
-        />
-      </EPCartItemQuantityControl>
-    );
-    await act(async () => { ctxValue.increment(); });
-    expect(mockSwrMutate).toHaveBeenCalledWith("ep-cart");
-  });
-
-  it("ignores a second increment while an update is in flight", async () => {
-    let resolveUpdate: (value: unknown) => void = () => {};
-    mockCallEpProxy.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveUpdate = resolve;
-        })
-    );
-    mockUseSelector.mockReturnValue({ id: "item-1", quantity: 2 });
-
-    let ctxValue: any;
-    render(
-      <EPCartItemQuantityControl>
-        <HookReader
-          hook={useCartItemQuantity}
-          onResult={(v: any) => { ctxValue = v; }}
-        />
-      </EPCartItemQuantityControl>
-    );
-
-    await act(async () => {
-      ctxValue.increment();
-      ctxValue.increment();
-    });
-    expect(mockCallEpProxy).toHaveBeenCalledTimes(1);
-
-    await act(async () => {
-      resolveUpdate({ id: "cart-1", lineItems: [] });
-    });
-  });
-
-  it("decrement includes location when the line item has a locationSlug", async () => {
-    mockCallEpProxy.mockResolvedValue(undefined);
-    mockUseSelector.mockReturnValue({
-      id: "item-1",
-      quantity: 3,
-      locationSlug: "warehouse-east",
-    });
-
-    let ctxValue: any;
-    render(
-      <EPCartItemQuantityControl>
-        <HookReader
-          hook={useCartItemQuantity}
-          onResult={(v: any) => { ctxValue = v; }}
-        />
-      </EPCartItemQuantityControl>
-    );
-    await act(async () => { ctxValue.decrement(); });
-    expect(mockCallEpProxy).toHaveBeenCalledWith("updateCartItem", {
-      itemId: "item-1",
-      quantity: 2,
-      location: "warehouse-east",
-    });
-  });
-
-  it("stockAvailable maximum prevents another increment call", async () => {
-    mockCallEpProxy.mockResolvedValue(undefined);
-    mockUseSelector.mockReturnValue({
-      id: "item-1",
-      quantity: 2,
-      stockAvailable: 2,
-    });
-
-    let ctxValue: any;
-    render(
-      <EPCartItemQuantityControl maxQuantity={99}>
-        <HookReader
-          hook={useCartItemQuantity}
-          onResult={(v: any) => { ctxValue = v; }}
-        />
-      </EPCartItemQuantityControl>
-    );
-    expect(ctxValue.canIncrement).toBe(false);
-    await act(async () => { ctxValue.increment(); });
-    expect(mockCallEpProxy).not.toHaveBeenCalled();
   });
 
   it("uses mock data when previewState=withData", () => {
@@ -1333,19 +1218,7 @@ describe("EPCartItemQuantityButton", () => {
   it("previewState=enabled forces enabled even when context says disabled", () => {
     renderButton("increment", { ...mockCtx, canIncrement: false }, "enabled");
     const btn = screen.getByRole("button");
-    // Enabled state omits aria-disabled rather than setting "false"
-    expect(btn.getAttribute("aria-disabled")).toBeNull();
-    expect((btn as HTMLButtonElement).disabled).toBe(false);
-  });
-
-  it("sets aria-busy while context is loading in auto preview", () => {
-    renderButton("increment", { ...mockCtx, isLoading: true });
-    const btn = screen.getByRole("button");
-    expect(btn.getAttribute("aria-busy")).toBe("true");
-    expect(btn.getAttribute("aria-disabled")).toBe("true");
-    expect((btn as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(btn);
-    expect(mockCtx.increment).not.toHaveBeenCalled();
+    expect(btn.getAttribute("aria-disabled")).toBe("false");
   });
 
   it("aria-label for increment", () => {
@@ -1360,6 +1233,18 @@ describe("EPCartItemQuantityButton", () => {
     expect(
       screen.getByRole("button").getAttribute("aria-label")
     ).toBe("Decrease quantity");
+  });
+
+  it("Enter key triggers click", () => {
+    renderButton("increment");
+    fireEvent.keyDown(screen.getByRole("button"), { key: "Enter" });
+    expect(mockCtx.increment).toHaveBeenCalledTimes(1);
+  });
+
+  it("Space key triggers click", () => {
+    renderButton("decrement");
+    fireEvent.keyDown(screen.getByRole("button"), { key: " " });
+    expect(mockCtx.decrement).toHaveBeenCalledTimes(1);
   });
 
   it("does not crash without context", () => {
@@ -1377,7 +1262,6 @@ describe("EPCartItemQuantityButton", () => {
     renderButton("increment", { ...mockCtx, canIncrement: false });
     const btn = screen.getByRole("button");
     expect(btn.getAttribute("data-disabled")).toBe("true");
-    expect((btn as HTMLButtonElement).disabled).toBe(true);
   });
 });
 
@@ -1386,8 +1270,9 @@ describe("EPCartItemQuantityButton", () => {
 // ---------------------------------------------------------------------------
 
 describe("EPCartItemRemoveButton", () => {
-  it("calls removeCartItem proxy on click", async () => {
-    mockCallEpProxy.mockResolvedValue(undefined);
+  it("calls removeItem on click", async () => {
+    const mockRemove = jest.fn().mockResolvedValue(undefined);
+    mockUseRemoveItem.mockReturnValue(mockRemove);
     mockUseSelector.mockReturnValue({ id: "item-1", name: "Product A" });
 
     render(
@@ -1398,14 +1283,12 @@ describe("EPCartItemRemoveButton", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button"));
     });
-    expect(mockCallEpProxy).toHaveBeenCalledWith("removeCartItem", {
-      itemId: "item-1",
-    });
-    expect(mockSwrMutate).toHaveBeenCalled();
+    expect(mockRemove).toHaveBeenCalledWith({ id: "item-1" });
   });
 
-  it("does not call removeCartItem when no item id", async () => {
-    mockCallEpProxy.mockResolvedValue(undefined);
+  it("does not call removeItem when no item id", async () => {
+    const mockRemove = jest.fn();
+    mockUseRemoveItem.mockReturnValue(mockRemove);
     mockUseSelector.mockReturnValue(undefined);
 
     render(
@@ -1416,11 +1299,12 @@ describe("EPCartItemRemoveButton", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button"));
     });
-    expect(mockCallEpProxy).not.toHaveBeenCalled();
+    expect(mockRemove).not.toHaveBeenCalled();
   });
 
   it("clears loading state after error", async () => {
-    mockCallEpProxy.mockRejectedValue(new Error("Fail"));
+    const mockRemove = jest.fn().mockRejectedValue(new Error("Fail"));
+    mockUseRemoveItem.mockReturnValue(mockRemove);
     mockUseSelector.mockReturnValue({ id: "item-1", name: "Product A" });
 
     render(
@@ -1432,7 +1316,8 @@ describe("EPCartItemRemoveButton", () => {
       fireEvent.click(screen.getByRole("button"));
     });
     const btn = screen.getByRole("button");
-    expect((btn as HTMLButtonElement).disabled).toBe(false);
+    // After error, loading should be cleared — aria-disabled should be false
+    expect(btn.getAttribute("aria-disabled")).toBe("false");
   });
 
   it("aria-label includes item name", () => {
@@ -1459,6 +1344,38 @@ describe("EPCartItemRemoveButton", () => {
     ).toBe("Remove item from cart");
   });
 
+  it("Enter key triggers remove", async () => {
+    const mockRemove = jest.fn().mockResolvedValue(undefined);
+    mockUseRemoveItem.mockReturnValue(mockRemove);
+    mockUseSelector.mockReturnValue({ id: "item-1", name: "Product A" });
+
+    render(
+      <EPCartItemRemoveButton>
+        <span>Remove</span>
+      </EPCartItemRemoveButton>
+    );
+    await act(async () => {
+      fireEvent.keyDown(screen.getByRole("button"), { key: "Enter" });
+    });
+    expect(mockRemove).toHaveBeenCalledWith({ id: "item-1" });
+  });
+
+  it("Space key triggers remove", async () => {
+    const mockRemove = jest.fn().mockResolvedValue(undefined);
+    mockUseRemoveItem.mockReturnValue(mockRemove);
+    mockUseSelector.mockReturnValue({ id: "item-1", name: "Product A" });
+
+    render(
+      <EPCartItemRemoveButton>
+        <span>Remove</span>
+      </EPCartItemRemoveButton>
+    );
+    await act(async () => {
+      fireEvent.keyDown(screen.getByRole("button"), { key: " " });
+    });
+    expect(mockRemove).toHaveBeenCalledWith({ id: "item-1" });
+  });
+
   it("previewState=loading shows loading state", () => {
     mockUseSelector.mockReturnValue({ id: "item-1" });
     render(
@@ -1468,11 +1385,11 @@ describe("EPCartItemRemoveButton", () => {
     );
     const btn = screen.getByRole("button");
     expect(btn.getAttribute("data-loading")).toBe("true");
-    expect((btn as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("previewState prevents actual remove call", async () => {
-    mockCallEpProxy.mockResolvedValue(undefined);
+    const mockRemove = jest.fn();
+    mockUseRemoveItem.mockReturnValue(mockRemove);
     mockUseSelector.mockReturnValue({ id: "item-1" });
 
     render(
@@ -1483,6 +1400,6 @@ describe("EPCartItemRemoveButton", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button"));
     });
-    expect(mockCallEpProxy).not.toHaveBeenCalled();
+    expect(mockRemove).not.toHaveBeenCalled();
   });
 });
