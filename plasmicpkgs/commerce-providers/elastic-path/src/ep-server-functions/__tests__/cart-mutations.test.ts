@@ -61,6 +61,54 @@ const CART_RESPONSE = {
   },
 };
 
+const CART_WITH_ITEM_RESPONSE = {
+  data: {
+    data: {
+      id: "cart-id",
+      type: "cart",
+      attributes: { name: "Cart" },
+      meta: {
+        display_price: {
+          with_tax: { amount: 5000, currency: "USD", formatted: "$50.00" },
+          without_tax: { amount: 5000, currency: "USD", formatted: "$50.00" },
+        },
+      },
+    },
+    included: {
+      items: [
+        {
+          id: "li-1",
+          type: "cart_item",
+          product_id: "prod-1",
+          name: "Test",
+          quantity: 1,
+          unit_price: { amount: 1000, currency: "USD" },
+        },
+      ],
+    },
+  },
+};
+
+function mockSuccessfulAdd(cartId = "cart-id") {
+  mockManageCarts.mockResolvedValue({
+    data: {
+      data: { id: cartId },
+      included: { items: [{ id: "li-1" }] },
+    },
+  });
+  const base =
+    cartId === "cart-id"
+      ? CART_WITH_ITEM_RESPONSE
+      : {
+          ...CART_WITH_ITEM_RESPONSE,
+          data: {
+            ...CART_WITH_ITEM_RESPONSE.data,
+            data: { ...CART_WITH_ITEM_RESPONSE.data.data, id: cartId },
+          },
+        };
+  mockGetACart.mockResolvedValue(base);
+}
+
 beforeEach(() => {
   mockManageCarts.mockReset();
   mockCreateACart.mockReset();
@@ -74,8 +122,7 @@ beforeEach(() => {
 
 describe("epAddCartItem", () => {
   it("adds an item to the cart carried by the ALS session and returns the normalized cart", async () => {
-    mockManageCarts.mockResolvedValue({});
-    mockGetACart.mockResolvedValue(CART_RESPONSE);
+    mockSuccessfulAdd();
 
     const result = await withEpSession(
       { ...SESSION_BASE, cartId: "cart-id" },
@@ -84,6 +131,7 @@ describe("epAddCartItem", () => {
 
     expect(result).not.toBeNull();
     expect(result.id).toBe("cart-id");
+    expect(result.lineItems).toHaveLength(1);
     expect(mockManageCarts).toHaveBeenCalledWith(
       expect.objectContaining({
         path: { cartID: "cart-id" },
@@ -110,14 +158,7 @@ describe("epAddCartItem", () => {
     mockCreateACart.mockResolvedValue({
       data: { data: { id: "new-cart-id", type: "cart" } },
     });
-    mockManageCarts.mockResolvedValue({});
-    mockGetACart.mockResolvedValue({
-      ...CART_RESPONSE,
-      data: {
-        ...CART_RESPONSE.data,
-        data: { ...CART_RESPONSE.data.data, id: "new-cart-id" },
-      },
-    });
+    mockSuccessfulAdd("new-cart-id");
 
     const result = await withEpSession(SESSION_BASE, () =>
       epAddCartItem({ productId: "prod-1", quantity: 1 })
@@ -144,9 +185,37 @@ describe("epAddCartItem", () => {
     ).rejects.toThrow(/out of stock/);
   });
 
+  it("throws when manageCarts soft-fails with { error } (throwOnError defaults false)", async () => {
+    mockManageCarts.mockResolvedValue({
+      error: {
+        errors: [{ detail: "The product is not available for purchase" }],
+      },
+    });
+
+    await expect(
+      withEpSession({ ...SESSION_BASE, cartId: "cart-id" }, () =>
+        epAddCartItem({ productId: "prod-1", quantity: 1 })
+      )
+    ).rejects.toThrow(/not available for purchase/);
+    expect(mockGetACart).not.toHaveBeenCalled();
+  });
+
+  it("throws when manageCarts succeeds but the re-fetched cart has no line items", async () => {
+    mockManageCarts.mockResolvedValue({
+      data: { data: { id: "cart-id" }, included: { items: [] } },
+      response: { status: 201 },
+    });
+    mockGetACart.mockResolvedValue(CART_RESPONSE); // included.items: []
+
+    await expect(
+      withEpSession({ ...SESSION_BASE, cartId: "cart-id" }, () =>
+        epAddCartItem({ productId: "prod-1", quantity: 1 })
+      )
+    ).rejects.toThrow(/cart still empty after add/);
+  });
+
   it("uses sku rather than productId when the input provides a sku (variant selection)", async () => {
-    mockManageCarts.mockResolvedValue({});
-    mockGetACart.mockResolvedValue(CART_RESPONSE);
+    mockSuccessfulAdd();
 
     await withEpSession({ ...SESSION_BASE, cartId: "cart-id" }, () =>
       epAddCartItem({ productId: "prod-1", quantity: 1, sku: "SKU-RED-LG" })
@@ -169,8 +238,7 @@ describe("epAddCartItem", () => {
   });
 
   it("forwards customInputs (variant labels, gift messages) onto the cart item", async () => {
-    mockManageCarts.mockResolvedValue({});
-    mockGetACart.mockResolvedValue(CART_RESPONSE);
+    mockSuccessfulAdd();
 
     await withEpSession({ ...SESSION_BASE, cartId: "cart-id" }, () =>
       epAddCartItem({
@@ -194,8 +262,7 @@ describe("epAddCartItem", () => {
   });
 
   it("forwards bundleConfiguration and location for EP-specific cart-item shapes", async () => {
-    mockManageCarts.mockResolvedValue({});
-    mockGetACart.mockResolvedValue(CART_RESPONSE);
+    mockSuccessfulAdd();
 
     const bundle = { selected: { components: { kit: { sku: "X" } } } };
 
@@ -333,7 +400,18 @@ describe("epApplyCartAdjustment", () => {
 describe("epUpdateCartItem", () => {
   it("updates an item's quantity on the session cart and returns the normalized cart", async () => {
     mockUpdateACartItem.mockResolvedValue({});
-    mockGetACart.mockResolvedValue(CART_RESPONSE);
+    // First getACart resolves location from the existing line; second is the
+    // post-update normalized fetch.
+    mockGetACart
+      .mockResolvedValueOnce({
+        data: {
+          data: { id: "cart-id" },
+          included: {
+            items: [{ id: "item-1", type: "cart_item", quantity: 1 }],
+          },
+        },
+      })
+      .mockResolvedValueOnce(CART_RESPONSE);
 
     const result = await withEpSession(
       { ...SESSION_BASE, cartId: "cart-id" },
@@ -354,6 +432,68 @@ describe("epUpdateCartItem", () => {
     );
   });
 
+  it("includes location on update when provided (multi-location stock)", async () => {
+    mockUpdateACartItem.mockResolvedValue({});
+    mockGetACart.mockResolvedValue(CART_RESPONSE);
+
+    await withEpSession({ ...SESSION_BASE, cartId: "cart-id" }, () =>
+      epUpdateCartItem({
+        itemId: "item-1",
+        quantity: 2,
+        location: "warehouse-east",
+      })
+    );
+
+    expect(mockUpdateACartItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: {
+          data: expect.objectContaining({
+            location: "warehouse-east",
+            quantity: 2,
+          }),
+        },
+      })
+    );
+    // Caller supplied location — no pre-read of the cart for location.
+    expect(mockGetACart).toHaveBeenCalledTimes(1);
+  });
+
+  it("resolves location from the existing cart line when the caller omits it", async () => {
+    mockUpdateACartItem.mockResolvedValue({});
+    mockGetACart
+      .mockResolvedValueOnce({
+        data: {
+          data: { id: "cart-id" },
+          included: {
+            items: [
+              {
+                id: "item-1",
+                type: "cart_item",
+                quantity: 2,
+                location: "store-downtown",
+              },
+            ],
+          },
+        },
+      })
+      .mockResolvedValueOnce(CART_RESPONSE);
+
+    await withEpSession({ ...SESSION_BASE, cartId: "cart-id" }, () =>
+      epUpdateCartItem({ itemId: "item-1", quantity: 1 })
+    );
+
+    expect(mockUpdateACartItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: {
+          data: expect.objectContaining({
+            location: "store-downtown",
+            quantity: 1,
+          }),
+        },
+      })
+    );
+  });
+
   it("throws when called without an active EP session", async () => {
     await expect(
       epUpdateCartItem({ itemId: "item-1", quantity: 1 })
@@ -367,6 +507,25 @@ describe("epUpdateCartItem", () => {
       )
     ).rejects.toThrow(/no cart/i);
     expect(mockUpdateACartItem).not.toHaveBeenCalled();
+  });
+  it("throws when updateACartItem soft-fails with { error }", async () => {
+    mockGetACart.mockResolvedValue({
+      data: {
+        data: { id: "cart-id" },
+        included: { items: [{ id: "item-1", type: "cart_item", quantity: 1 }] },
+      },
+    });
+    mockUpdateACartItem.mockResolvedValue({
+      error: { errors: [{ detail: "quantity exceeds stock" }] },
+    });
+
+    await expect(
+      withEpSession({ ...SESSION_BASE, cartId: "cart-id" }, () =>
+        epUpdateCartItem({ itemId: "item-1", quantity: 99 })
+      )
+    ).rejects.toThrow(/quantity exceeds stock/);
+    // Location pre-read happens; post-update cart fetch must not.
+    expect(mockGetACart).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -399,5 +558,18 @@ describe("epRemoveCartItem", () => {
       withEpSession(SESSION_BASE, () => epRemoveCartItem({ itemId: "item-1" }))
     ).rejects.toThrow(/no cart/i);
     expect(mockDeleteACartItem).not.toHaveBeenCalled();
+  });
+
+  it("throws when deleteACartItem soft-fails with { error }", async () => {
+    mockDeleteACartItem.mockResolvedValue({
+      error: { errors: [{ detail: "cart item not found" }] },
+    });
+
+    await expect(
+      withEpSession({ ...SESSION_BASE, cartId: "cart-id" }, () =>
+        epRemoveCartItem({ itemId: "item-1" })
+      )
+    ).rejects.toThrow(/cart item not found/);
+    expect(mockGetACart).not.toHaveBeenCalled();
   });
 });

@@ -93,8 +93,7 @@ describe("EPAddToCartButton", () => {
 
     expect(mockCallEpProxy).toHaveBeenCalledWith(
       "addCartItem",
-      expect.objectContaining({ productId: "variant-1", quantity: 2 }),
-      null
+      expect.objectContaining({ productId: "variant-1", quantity: 2 })
     );
   });
 
@@ -146,6 +145,68 @@ describe("EPAddToCartButton", () => {
     });
 
     expect(readState().error).toMatch(/out of stock/);
+  });
+
+  it("clears a previous addToCartState.error when a new attempt begins", async () => {
+    setUp();
+    mockCallEpProxy.mockRejectedValueOnce(new Error("out of stock"));
+
+    render(<EPAddToCartButton>Add</EPAddToCartButton>);
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Add"));
+    });
+    expect(readState().error).toMatch(/out of stock/);
+
+    let resolveProxy: (v: unknown) => void = () => {};
+    mockCallEpProxy.mockImplementation(
+      () => new Promise((resolve) => { resolveProxy = resolve; })
+    );
+
+    fireEvent.click(screen.getByText("Add"));
+    // setError(null) runs before the proxy await — designers see a cleared
+    // $ctx.addToCartState.error for the new attempt.
+    expect(readState().error).toBeNull();
+    expect(readState().isLoading).toBe(true);
+
+    await act(async () => {
+      resolveProxy({ id: "cart-1", lineItems: [] });
+    });
+    expect(readState().error).toBeNull();
+  });
+
+  it("does not call onAddedToCart when the mutation fails", async () => {
+    setUp();
+    const onAddedToCart = jest.fn();
+    mockCallEpProxy.mockRejectedValue(new Error("out of stock"));
+
+    render(
+      <EPAddToCartButton onAddedToCart={onAddedToCart}>Add</EPAddToCartButton>
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Add"));
+    });
+
+    expect(readState().error).toMatch(/out of stock/);
+    expect(onAddedToCart).not.toHaveBeenCalled();
+  });
+
+  it("calls onAddedToCart after a successful mutation", async () => {
+    setUp();
+    const onAddedToCart = jest.fn();
+    mockCallEpProxy.mockResolvedValue({ id: "cart-1", lineItems: [] });
+
+    render(
+      <EPAddToCartButton onAddedToCart={onAddedToCart}>Add</EPAddToCartButton>
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Add"));
+    });
+
+    expect(onAddedToCart).toHaveBeenCalledTimes(1);
+    expect(readState().error).toBeNull();
   });
 
   it("previewState='loading' forces isLoading=true regardless of runtime state", () => {
