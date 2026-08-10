@@ -15,7 +15,7 @@ import { epCartCacheKey } from "../cart-provider/cache-keys";
 
 const log = createLogger("EPCartItemRemoveButton");
 
-type PreviewState = "auto" | "enabled" | "loading";
+type PreviewState = "auto" | "enabled" | "loading" | "error";
 
 interface EPCartItemRemoveButtonProps {
   children?: React.ReactNode;
@@ -36,7 +36,7 @@ export const epCartItemRemoveButtonMeta: CodeComponentMeta<EPCartItemRemoveButto
       },
       previewState: {
         type: "choice",
-        options: ["auto", "enabled", "loading"],
+        options: ["auto", "enabled", "loading", "error"],
         defaultValue: "auto",
         displayName: "Preview State",
         description:
@@ -58,14 +58,21 @@ export function EPCartItemRemoveButton(props: EPCartItemRemoveButtonProps) {
   const inEditor = !!usePlasmicCanvasContext();
 
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const useMock = previewState !== "auto";
   const effectiveIsLoading = useMock
     ? previewState === "loading"
     : isLoading;
+  const effectiveError = useMock
+    ? previewState === "error"
+      ? "Sample error message"
+      : null
+    : error;
 
   const handleRemove = async () => {
     if (!currentItem?.id || useMock || effectiveIsLoading) return;
+    setError(null);
     setIsLoading(true);
     try {
       await callEpProxy("removeCartItem", { itemId: currentItem.id });
@@ -80,6 +87,7 @@ export function EPCartItemRemoveButton(props: EPCartItemRemoveButtonProps) {
         string,
         unknown
       >);
+      setError(message);
     } finally {
       setIsLoading(false);
     }
@@ -88,7 +96,7 @@ export function EPCartItemRemoveButton(props: EPCartItemRemoveButtonProps) {
   return (
     <DataProvider
       name="removeItemState"
-      data={{ isLoading: effectiveIsLoading }}
+      data={{ isLoading: effectiveIsLoading, error: effectiveError }}
     >
       <button
         type="button"
