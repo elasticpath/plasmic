@@ -62,34 +62,69 @@ function resolveProxyUrl(fnName: string): string {
     : `${PROXY_PATH}/${fnName}`;
 }
 
-async function readProxyErrorMessage(
+interface ProxyErrorInfo {
+  message: string;
+  code?: string;
+  correlationId?: string;
+}
+
+/**
+ * Reads the machine-readable `code` a thrown proxy error carries, or
+ * `undefined` for errors from elsewhere. Branch on this rather than on message
+ * text — the proxy route withholds `message` in production.
+ */
+export function epProxyErrorCode(err: unknown): string | undefined {
+  if (!err || typeof err !== "object") return undefined;
+  const code = (err as { code?: unknown }).code;
+  return typeof code === "string" && code ? code : undefined;
+}
+
+function proxyError(info: ProxyErrorInfo): Error {
+  const err = new Error(info.message) as Error & {
+    code?: string;
+    correlationId?: string;
+  };
+  if (info.code) err.code = info.code;
+  if (info.correlationId) err.correlationId = info.correlationId;
+  return err;
+}
+
+async function readProxyError(
   res: Response,
   fnName: string
-): Promise<string> {
-  const fallback = `ep proxy ${fnName} failed (${res.status})`;
+): Promise<ProxyErrorInfo> {
+  const info: ProxyErrorInfo = {
+    message: `ep proxy ${fnName} failed (${res.status})`,
+  };
   try {
     const body = (await res.json()) as {
       message?: string;
+      code?: string;
+      correlationId?: string;
       error?: string | { message?: string };
     };
+    if (typeof body.code === "string" && body.code.trim()) {
+      info.code = body.code;
+    }
+    if (typeof body.correlationId === "string" && body.correlationId.trim()) {
+      info.correlationId = body.correlationId;
+    }
     if (typeof body.message === "string" && body.message.trim()) {
-      return body.message;
-    }
-    if (typeof body.error === "string" && body.error.trim()) {
-      return body.error;
-    }
-    if (
+      info.message = body.message;
+    } else if (typeof body.error === "string" && body.error.trim()) {
+      info.message = body.error;
+    } else if (
       body.error &&
       typeof body.error === "object" &&
       typeof body.error.message === "string" &&
       body.error.message.trim()
     ) {
-      return body.error.message;
+      info.message = body.error.message;
     }
   } catch {
     // ignore parse failures — use status fallback
   }
-  return fallback;
+  return info;
 }
 
 /**
@@ -136,9 +171,8 @@ async function callEpProxyImpl<T>(
       : new Error(`ep proxy ${fnName}: network error`);
   }
   if (!res.ok) {
-    const message = await readProxyErrorMessage(res, fnName);
     if (softFail) return fallback;
-    throw new Error(message);
+    throw proxyError(await readProxyError(res, fnName));
   }
   try {
     return (await res.json()) as T;
