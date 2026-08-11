@@ -1483,6 +1483,73 @@ describe("EPCartItemQuantityControl", () => {
       "Sample error message"
     );
   });
+
+  it("maps insufficient_stock to shopper-facing quantityControl.error", async () => {
+    mockCallEpProxy.mockRejectedValue(
+      Object.assign(new Error("dispatch_failed"), {
+        code: "insufficient_stock",
+      })
+    );
+    mockUseSelector.mockReturnValue({ id: "item-1", quantity: 2 });
+
+    let ctxValue: any;
+    render(
+      <EPCartItemQuantityControl>
+        <HookReader
+          hook={useCartItemQuantity}
+          onResult={(v: any) => { ctxValue = v; }}
+        />
+      </EPCartItemQuantityControl>
+    );
+    await act(async () => { ctxValue.increment(); });
+    expect(ctxValue.quantity).toBe(2);
+    expect(readProviderState("quantityControl").error).toMatch(/enough stock/i);
+    expect(readProviderState("quantityControl").error).not.toMatch(
+      /dispatch_failed/
+    );
+  });
+
+  it("maps no_session to shopper-facing quantityControl.error", async () => {
+    mockCallEpProxy.mockRejectedValue(
+      Object.assign(new Error("no_session"), { code: "no_session" })
+    );
+    mockUseSelector.mockReturnValue({ id: "item-1", quantity: 2 });
+
+    let ctxValue: any;
+    render(
+      <EPCartItemQuantityControl>
+        <HookReader
+          hook={useCartItemQuantity}
+          onResult={(v: any) => { ctxValue = v; }}
+        />
+      </EPCartItemQuantityControl>
+    );
+    await act(async () => { ctxValue.increment(); });
+    expect(readProviderState("quantityControl").error).toMatch(/session expired/i);
+    expect(ctxValue.quantity).toBe(2);
+    expect(mockSwrMutate).toHaveBeenCalledWith("ep-cart");
+  });
+
+  it("never surfaces dispatch_failed on quantityControl.error", async () => {
+    mockCallEpProxy.mockRejectedValue(
+      Object.assign(new Error("dispatch_failed"), { code: "dispatch_failed" })
+    );
+    mockUseSelector.mockReturnValue({ id: "item-1", quantity: 2 });
+
+    let ctxValue: any;
+    render(
+      <EPCartItemQuantityControl>
+        <HookReader
+          hook={useCartItemQuantity}
+          onResult={(v: any) => { ctxValue = v; }}
+        />
+      </EPCartItemQuantityControl>
+    );
+    await act(async () => { ctxValue.increment(); });
+    const error = readProviderState("quantityControl").error as string;
+    expect(error).not.toMatch(/dispatch_failed/);
+    expect(error).toMatch(/couldn't update the quantity/i);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1792,6 +1859,45 @@ describe("EPCartItemRemoveButton", () => {
     expect(readProviderState("removeItemState").error).toBe(
       "Sample error message"
     );
+  });
+
+  it("maps no_session to shopper-facing removeItemState.error", async () => {
+    mockCallEpProxy.mockRejectedValue(
+      Object.assign(new Error("no_session"), { code: "no_session" })
+    );
+    mockUseSelector.mockReturnValue({ id: "item-1", name: "Product A" });
+
+    render(
+      <EPCartItemRemoveButton>
+        <span>Remove</span>
+      </EPCartItemRemoveButton>
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button"));
+    });
+    expect(readProviderState("removeItemState").error).toMatch(
+      /session expired/i
+    );
+    expect(mockSwrMutate).not.toHaveBeenCalled();
+  });
+
+  it("never surfaces dispatch_failed on removeItemState.error", async () => {
+    mockCallEpProxy.mockRejectedValue(
+      Object.assign(new Error("dispatch_failed"), { code: "dispatch_failed" })
+    );
+    mockUseSelector.mockReturnValue({ id: "item-1", name: "Product A" });
+
+    render(
+      <EPCartItemRemoveButton>
+        <span>Remove</span>
+      </EPCartItemRemoveButton>
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button"));
+    });
+    const error = readProviderState("removeItemState").error as string;
+    expect(error).not.toMatch(/dispatch_failed/);
+    expect(error).toMatch(/couldn't remove this item/i);
   });
 
   it("ignores a second click while remove is loading", async () => {

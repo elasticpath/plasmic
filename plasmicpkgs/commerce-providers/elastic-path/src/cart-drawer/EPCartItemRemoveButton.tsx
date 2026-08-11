@@ -10,10 +10,17 @@ import React, { useState } from "react";
 import { mutate as swrMutate } from "swr";
 import { Registerable } from "../registerable";
 import { createLogger } from "../utils/logger";
-import { callEpProxy } from "../ep-server-functions/proxy-fetch";
+import {
+  callEpProxy,
+  epProxyErrorCode,
+} from "../ep-server-functions/proxy-fetch";
+import { cartMutationErrorCopy } from "../ep-server-functions/cart-mutation-error-copy";
 import { epCartCacheKey } from "../cart-provider/cache-keys";
 
 const log = createLogger("EPCartItemRemoveButton");
+
+const GENERIC_REMOVE_ERROR =
+  "We couldn't remove this item. Please try again.";
 
 type PreviewState = "auto" | "enabled" | "loading" | "error";
 
@@ -83,11 +90,11 @@ export function EPCartItemRemoveButton(props: EPCartItemRemoveButtonProps) {
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to remove item";
-      log.error("Remove failed", { error: message } as Record<
-        string,
-        unknown
-      >);
-      setError(message);
+      log.error("Remove failed", {
+        error: message,
+        code: epProxyErrorCode(err),
+      } as Record<string, unknown>);
+      setError(cartMutationErrorCopy(err, GENERIC_REMOVE_ERROR));
     } finally {
       setIsLoading(false);
     }

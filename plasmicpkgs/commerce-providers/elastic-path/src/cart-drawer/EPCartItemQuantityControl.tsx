@@ -15,6 +15,7 @@ import {
   callEpProxy,
   epProxyErrorCode,
 } from "../ep-server-functions/proxy-fetch";
+import { cartMutationErrorCopy } from "../ep-server-functions/cart-mutation-error-copy";
 import { epCartCacheKey } from "../cart-provider/cache-keys";
 import type { Cart } from "../types/cart";
 import {
@@ -23,6 +24,9 @@ import {
 } from "./CartDrawerContext";
 
 const log = createLogger("EPCartItemQuantityControl");
+
+const GENERIC_QUANTITY_ERROR =
+  "We couldn't update the quantity. Please try again.";
 
 type PreviewState = "auto" | "withData" | "loading" | "minReached" | "error";
 
@@ -226,11 +230,11 @@ export function EPCartItemQuantityControl(
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Failed to update quantity";
-        log.error("Quantity update failed", { error: message } as Record<
-          string,
-          unknown
-        >);
-        setError(message);
+        log.error("Quantity update failed", {
+          error: message,
+          code: epProxyErrorCode(err),
+        } as Record<string, unknown>);
+        setError(cartMutationErrorCopy(err, GENERIC_QUANTITY_ERROR));
 
         const revertTo = Math.max(minQuantity, Number(previousQty) || minQuantity);
         setLocalQuantity(revertTo);
