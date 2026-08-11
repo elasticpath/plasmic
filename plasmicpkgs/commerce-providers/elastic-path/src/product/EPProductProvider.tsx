@@ -8,6 +8,10 @@
  * that read `useSelector("currentProduct")` (EPProductVariantPicker,
  * EPAddToCartButton, EPStockProvider, …) keep working unchanged.
  *
+ * Also mounts a react-hook-form `FormProvider` (same role as commerce
+ * Product Box) so location / variant / quantity selections share form
+ * state with Add To Cart — without it, EPLocationPicker clicks are no-ops.
+ *
  * Data fetching uses the SWR-backed `useProduct` hook, which runs through
  * `useMutablePlasmicQueryData`. When the surrounding Next.js route calls
  * `extractPlasmicQueryData(<PlasmicComponent/>)` before rendering, the
@@ -28,7 +32,8 @@ import {
 import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
+import { FormProvider, useForm } from "react-hook-form";
 import { Registerable } from "../registerable";
 import useProduct from "./use-product";
 import { createLogger } from "../utils/logger";
@@ -235,12 +240,21 @@ export function EPProductProvider(props: EPProductProviderProps) {
     return buildExtensionsMap(templates);
   }, [dataProduct, inCanvas]);
 
+  // Same contract as commerce `ProductProvider`: descendants (location
+  // picker, ATC, variant pickers) read/write via react-hook-form context.
+  const formMethods = useForm();
+  useEffect(() => {
+    formMethods.reset();
+  }, [dataProduct?.id, formMethods]);
+
   return (
     <DataProvider name="currentProduct" data={dataProduct}>
       <DataProvider name="productExtensions" data={productExtensions}>
-        <div className={className} data-ep-product-provider="">
-          {content}
-        </div>
+        <FormProvider {...formMethods}>
+          <div className={className} data-ep-product-provider="">
+            {content}
+          </div>
+        </FormProvider>
       </DataProvider>
     </DataProvider>
   );
