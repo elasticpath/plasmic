@@ -200,4 +200,52 @@ describe("extractEpProviderConfig", () => {
       })
     ).toBeNull();
   });
+
+  it("prefers EP customHost when CMS/Strapi host defaults appear first in the same module", () => {
+    // Mirrors Studio codegen: one global__*.js nests CMS + Strapi + EP.
+    // extractProp("host") alone would pick data.plasmic.app and reject it.
+    const sharedGlobalContexts = `
+function E(r){
+  let e=$(),cms=Cms(),strapi=St(),ep=Ep(),
+    {children:s,cmsProps:l,strapiProps:m,commerceProviderComponentProps:o}=r;
+  return g.createElement(cms,{
+    databaseId:l&&"databaseId"in l?l.databaseId:void 0,
+    host:l&&"host"in l?l.host:"https://data.plasmic.app"
+  },g.createElement(strapi,{
+    host:m&&"host"in m?m.host:"https://graceful-belief.strapiapp.com/"
+  },g.createElement(ep,{
+    clientId:o&&"clientId"in o?o.clientId:"b6ratpsgidekICtcXjPWPODbGHckKfXWNNXnTivqQR",
+    customHost:o&&"customHost"in o?o.customHost:"https://epcc-integration.global.ssl.fastly.net",
+    host:o&&"host"in o?o.host:"custom",
+    serverCartMode:o&&"serverCartMode"in o?o.serverCartMode:!0
+  },s)));
+}
+`;
+    const errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      expect(
+        extractEpProviderConfig({
+          bundle: {
+            projects: [{ globalContextsProviderFileName: "global__proj.js" }],
+            modules: {
+              server: [
+                {
+                  type: "code",
+                  fileName: "global__proj.js",
+                  code: sharedGlobalContexts,
+                },
+              ],
+            },
+          },
+        })
+      ).toEqual({
+        clientId: "b6ratpsgidekICtcXjPWPODbGHckKfXWNNXnTivqQR",
+        host: "https://epcc-integration.global.ssl.fastly.net",
+        serverCartMode: true,
+      });
+      expect(errorSpy).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
 });

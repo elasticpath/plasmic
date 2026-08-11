@@ -12,11 +12,17 @@
  * for every prop. We scan the server bundle modules and regex-extract the
  * EP-Provider-specific props (clientId / host / customHost / serverCartMode).
  *
- * This is intentionally narrow — it only reads the four props the storefront
- * needs to resolve a server session. If Plasmic's codegen output changes
- * shape in a future release, the regex stops matching and
- * `extractEpProviderConfig` returns `null`, letting callers fall through to
- * whatever defaults / env vars they prefer.
+ * Global-contexts modules often nest several providers in one file (Plasmic
+ * CMS, Strapi, Shopify, EP, …). Each contributes its own `host:` default —
+ * CMS uses `https://data.plasmic.app` — so we must not take the first `host`
+ * match. Prefer EP's `host === "custom"` + `customHost`, else any allowlisted
+ * host string.
+ *
+ * This is intentionally narrow — it only reads the props the storefront needs
+ * to resolve a server session. If Plasmic's codegen output changes shape in a
+ * future release, the regex stops matching and `extractEpProviderConfig`
+ * returns `null`, letting callers fall through to whatever defaults / env
+ * vars they prefer.
  */
 import {
   DEFAULT_HOST_ALLOWLIST,
@@ -51,17 +57,18 @@ type ServerBundleLike = {
   };
 };
 
-function extractProp(
-  code: string,
-  propName: string
-): string | boolean | undefined {
+function propRegex(propName: string): RegExp {
   // Match: <propName>:<ident>&&"<propName>"in <ident>?<ident>.<propName>:VALUE
   // where VALUE is "string-literal" | !0 | !1 | void 0 | number.
-  const re = new RegExp(
-    `${propName}\\s*:\\s*\\w+\\s*&&\\s*"${propName}"\\s*in\\s+\\w+\\s*\\?\\s*\\w+\\.${propName}\\s*:\\s*("((?:\\\\.|[^"\\\\])*)"|!0|!1|void\\s*0|-?\\d+(?:\\.\\d+)?)`
+  return new RegExp(
+    `${propName}\\s*:\\s*\\w+\\s*&&\\s*"${propName}"\\s*in\\s+\\w+\\s*\\?\\s*\\w+\\.${propName}\\s*:\\s*("((?:\\\\.|[^"\\\\])*)"|!0|!1|void\\s*0|-?\\d+(?:\\.\\d+)?)`,
+    "g"
   );
-  const m = code.match(re);
-  if (!m) return undefined;
+}
+
+function parsePropMatch(
+  m: RegExpExecArray
+): string | boolean | undefined {
   const raw = m[1];
   if (raw === "!0") return true;
   if (raw === "!1") return false;
@@ -70,6 +77,66 @@ function extractProp(
   if (m[2] !== undefined) return m[2].replace(/\\"/g, '"').replace(/\\\\/g, "\\");
   // numeric
   return raw;
+}
+
+function extractProp(
+  code: string,
+  propName: string
+): string | boolean | undefined {
+  const re = propRegex(propName);
+  const m = re.exec(code);
+  if (!m) return undefined;
+  return parsePropMatch(m);
+}
+
+function extractAllProps(
+  code: string,
+  propName: string
+): Array<string | boolean> {
+  const re = propRegex(propName);
+  const out: Array<string | boolean> = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(code)) !== null) {
+    const v = parsePropMatch(m);
+    if (v !== undefined) out.push(v);
+  }
+  return out;
+}
+
+/**
+ * Resolve the EP API host from a global-contexts module that may also
+ * embed other providers (Plasmic CMS, Strapi, Shopify, …). Those each
+ * contribute their own `host:` default — CMS defaults to
+ * `https://data.plasmic.app` — so taking the first `host` match picks
+ * the wrong one. Prefer the EP shape (`host === "custom"` + `customHost`)
+ * or any allowlisted host string.
+ */
+function resolveEpHost(
+  code: string,
+  hostAllowlist: readonly string[]
+): string | undefined {
+  const customHost = extractProp(code, "customHost");
+  const hosts = extractAllProps(code, "host").filter(
+    (v): v is string => typeof v === "string"
+  );
+
+  if (
+    hosts.includes("custom") &&
+    typeof customHost === "string" &&
+    customHost !== ""
+  ) {
+    return customHost;
+  }
+
+  for (const host of hosts) {
+    if (host !== "custom" && isAllowedEpHost(host, hostAllowlist)) {
+      return host;
+    }
+  }
+
+  // Fall back to the first concrete host so callers still get the
+  // allowlist rejection log naming the ignored value.
+  return hosts.find((h) => h !== "custom");
 }
 
 export interface ExtractEpProviderConfigOptions {
@@ -113,18 +180,8 @@ export function extractEpProviderConfig(
     const code = mod.code ?? "";
     const clientId = extractProp(code, "clientId");
     if (typeof clientId !== "string" || clientId === "") continue;
-    const hostChoice = extractProp(code, "host");
-    const customHost = extractProp(code, "customHost");
     const serverCartMode = extractProp(code, "serverCartMode");
-
-    const resolvedHost =
-      hostChoice === "custom"
-        ? typeof customHost === "string" && customHost !== ""
-          ? customHost
-          : undefined
-        : typeof hostChoice === "string"
-          ? hostChoice
-          : undefined;
+    const resolvedHost = resolveEpHost(code, hostAllowlist);
     if (!resolvedHost) continue;
 
     if (!isAllowedEpHost(resolvedHost, hostAllowlist)) {
