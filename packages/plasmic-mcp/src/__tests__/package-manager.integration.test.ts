@@ -29,7 +29,7 @@
  * - extractTransitiveHostLessPackages walks real dependency trees with
  *   real ProjectDependency instances.
  *
- * Fixture: platform/wab/cypress/bundles/active-screen-variant-group.json
+ * Fixture: platform/wab/playwright/bundles/active-screen-variant-group.json
  */
 
 import {
@@ -44,6 +44,7 @@ import {
 } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
+import { migrateFixtureBundle } from "./migrate-fixture-bundle.js";
 
 // ---------------------------------------------------------------------------
 // Partial mocks — only unbundleProjectDependency and upgradeProjectDeps.
@@ -103,7 +104,7 @@ beforeAll(async () => {
   // Load the real Plasmic bundle fixture
   const fixturePath = resolve(
     __dirname,
-    "../../../../platform/wab/cypress/bundles/active-screen-variant-group.json"
+    "../../../../platform/wab/playwright/bundles/active-screen-variant-group.json"
   );
   const fixtureData = JSON.parse(readFileSync(fixturePath, "utf-8"));
   const [[depProjectId, depBundleJson], [_mainProjectId, mainBundleJson]] =
@@ -119,16 +120,19 @@ beforeAll(async () => {
   // Unbundle fixture into real MobX-observed model instances
   bundler = new FastBundler(meta, classesModule);
 
+  // The fixture is a raw bundle; a real project load returns a migrated one.
   const depBundle =
     typeof depBundleJson === "string"
       ? JSON.parse(depBundleJson)
       : depBundleJson;
+  await migrateFixtureBundle(depBundle);
   bundler.unbundle(depBundle, depProjectId);
 
   const mainBundle =
     typeof mainBundleJson === "string"
       ? JSON.parse(mainBundleJson)
       : mainBundleJson;
+  await migrateFixtureBundle(mainBundle);
   const result = bundler.unbundle(mainBundle, mainProjectId);
 
   // Extract Site from unbundled result

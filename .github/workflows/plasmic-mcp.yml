@@ -4,8 +4,15 @@ on:
   workflow_dispatch:
   push:
     branches: [master]
+    # build.mjs compiles wab source into the MCP bundle via the @/ alias, so a
+    # change under platform/wab can break the MCP with nothing under
+    # packages/plasmic-mcp touched. Gating on this package alone let the #313
+    # upstream merge land a broken dev-host ingestion path — see issue #406.
     paths:
       - 'packages/plasmic-mcp/**'
+      - 'platform/wab/src/wab/shared/**'
+      - 'platform/wab/src/wab/commons/**'
+      - 'platform/wab/playwright/bundles/**'
       - '.github/workflows/plasmic-mcp.yml'
     tags:
       - 'plasmic-mcp-v*'
@@ -13,6 +20,9 @@ on:
     branches: [master]
     paths:
       - 'packages/plasmic-mcp/**'
+      - 'platform/wab/src/wab/shared/**'
+      - 'platform/wab/src/wab/commons/**'
+      - 'platform/wab/playwright/bundles/**'
       - '.github/workflows/plasmic-mcp.yml'
 
 jobs:

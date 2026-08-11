@@ -17,7 +17,7 @@
  * `platform/wab/src/wab/server/code-components/code-components.ts:311-326`.
  */
 
-import { failable } from "ts-failable";
+import type { Result } from "neverthrow";
 import {
   CodeComponentsRegistry,
   syncCodeComponents,
@@ -139,22 +139,26 @@ export async function ingestDevHostComponents(
   // them to Studio via the normal incremental-save / socket path.
   // Accumulate changes across all calls so the caller can save+broadcast
   // atomically.
+  // Studio's `SiteCtx.change` contract is
+  // `(f: () => Result<void, E>) => Promise<Result<void, E>>` — `f` takes no
+  // arguments and already returns a neverthrow `Result`, so we invoke it and
+  // hand the `Result` straight back for Studio to `yield*`.
   const recordedChangesList: RecordedChanges[] = [];
   const ctxChange = opts?.tracker
-    ? async (f: any) => {
+    ? async (f: () => Result<void, unknown>) => {
         const tracker = opts.tracker!;
-        let result: any;
+        let result: Result<void, unknown>;
         const recorded = tracker.withRecording(() => {
-          result = failable((args: any) => f(args));
+          result = f();
         });
         if (recorded.changes.length > 0 || recorded.removedInsts.length > 0) {
           recordedChangesList.push(recorded);
         }
-        return result;
+        return result!;
       }
     : // No tracker (test path / no-op context): run the mutation without
       // recording. Incremental save + live sync don't apply in this mode.
-      async (f: any) => failable((args: any) => f(args));
+      async (f: () => Result<void, unknown>) => f();
 
   const ctx: any = {
     site,
@@ -191,8 +195,9 @@ export async function ingestDevHostComponents(
     });
   }
 
-  if ((syncResult as any)?.result?.isError) {
-    const err = (syncResult as any).result.error;
+  const syncOutcome = syncResult as Result<void, any> | undefined;
+  if (syncOutcome?.isErr()) {
+    const err = syncOutcome.error;
     return {
       ...result,
       fatalError: {

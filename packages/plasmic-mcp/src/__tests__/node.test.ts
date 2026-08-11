@@ -10,6 +10,7 @@
  */
 
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
+import { ok, err } from "neverthrow";
 
 import {
   updateText,
@@ -1373,9 +1374,7 @@ describe("edit-tools", () => {
 
       // Studio's elementSchemaToTpl returns a failable with a tpl
       const newTpl = mkTag({ uuid: "new-child-1", tag: "div" });
-      mockElementSchemaToTpl.mockReturnValue({
-        result: { isError: false, value: { tpl: newTpl, warnings: [] } },
-      });
+      mockElementSchemaToTpl.mockReturnValue(ok({ tpl: newTpl, warnings: [] }));
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -1411,9 +1410,7 @@ describe("edit-tools", () => {
       const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
       const newTpl = mkTag({ uuid: "new-child-1" });
-      mockElementSchemaToTpl.mockReturnValue({
-        result: { isError: false, value: { tpl: newTpl, warnings: [] } },
-      });
+      mockElementSchemaToTpl.mockReturnValue(ok({ tpl: newTpl, warnings: [] }));
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -1447,9 +1444,7 @@ describe("edit-tools", () => {
       const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
       const newTpl = mkTag({ uuid: "new-child-1" });
-      mockElementSchemaToTpl.mockReturnValue({
-        result: { isError: false, value: { tpl: newTpl, warnings: [] } },
-      });
+      mockElementSchemaToTpl.mockReturnValue(ok({ tpl: newTpl, warnings: [] }));
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -1489,9 +1484,7 @@ describe("edit-tools", () => {
       const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
       const newTpl = mkTag({ uuid: "new-1" });
-      mockElementSchemaToTpl.mockReturnValue({
-        result: { isError: false, value: { tpl: newTpl, warnings: [] } },
-      });
+      mockElementSchemaToTpl.mockReturnValue(ok({ tpl: newTpl, warnings: [] }));
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -1519,9 +1512,7 @@ describe("edit-tools", () => {
       const root = mkTag({ uuid: "root-1", children: [container] });
       const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
-      mockElementSchemaToTpl.mockReturnValue({
-        result: { isError: true, error: { message: "Bad schema" } },
-      });
+      mockElementSchemaToTpl.mockReturnValue(err({ message: "Bad schema" }));
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -1544,9 +1535,7 @@ describe("edit-tools", () => {
       const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
       const newTpl = mkTag({ uuid: "new-1", tag: "div" });
-      mockElementSchemaToTpl.mockReturnValue({
-        result: { isError: false, value: { tpl: newTpl, warnings: [] } },
-      });
+      mockElementSchemaToTpl.mockReturnValue(ok({ tpl: newTpl, warnings: [] }));
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -1571,9 +1560,7 @@ describe("edit-tools", () => {
       const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
       const newTpl = mkTag({ uuid: "new-1", tag: "div" });
-      mockElementSchemaToTpl.mockReturnValue({
-        result: { isError: false, value: { tpl: newTpl, warnings: [] } },
-      });
+      mockElementSchemaToTpl.mockReturnValue(ok({ tpl: newTpl, warnings: [] }));
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -1599,9 +1586,7 @@ describe("edit-tools", () => {
       const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
       const newTpl = mkTag({ uuid: "new-1", tag: "div" });
-      mockElementSchemaToTpl.mockReturnValue({
-        result: { isError: false, value: { tpl: newTpl, warnings: [] } },
-      });
+      mockElementSchemaToTpl.mockReturnValue(ok({ tpl: newTpl, warnings: [] }));
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -1623,9 +1608,7 @@ describe("edit-tools", () => {
       const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
       const newTpl = mkTag({ uuid: "new-1", tag: "div" });
-      mockElementSchemaToTpl.mockReturnValue({
-        result: { isError: false, value: { tpl: newTpl, warnings: [] } },
-      });
+      mockElementSchemaToTpl.mockReturnValue(ok({ tpl: newTpl, warnings: [] }));
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -1650,9 +1633,7 @@ describe("edit-tools", () => {
       const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
       const newTpl = mkTag({ uuid: "new-1", tag: "div" });
-      mockElementSchemaToTpl.mockReturnValue({
-        result: { isError: false, value: { tpl: newTpl, warnings: [] } },
-      });
+      mockElementSchemaToTpl.mockReturnValue(ok({ tpl: newTpl, warnings: [] }));
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -1679,9 +1660,7 @@ describe("edit-tools", () => {
       const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
       const newTpl = mkTag({ uuid: "new-1", tag: "div" });
-      mockElementSchemaToTpl.mockReturnValue({
-        result: { isError: false, value: { tpl: newTpl, warnings: [] } },
-      });
+      mockElementSchemaToTpl.mockReturnValue(ok({ tpl: newTpl, warnings: [] }));
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -1706,9 +1685,7 @@ describe("edit-tools", () => {
       const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
       const newTpl = mkTag({ uuid: "new-1", tag: "div" });
-      mockElementSchemaToTpl.mockReturnValue({
-        result: { isError: false, value: { tpl: newTpl, warnings: [] } },
-      });
+      mockElementSchemaToTpl.mockReturnValue(ok({ tpl: newTpl, warnings: [] }));
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -1730,9 +1707,7 @@ describe("edit-tools", () => {
       const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
       const newTpl = mkTag({ uuid: "new-1", tag: "div" });
-      mockElementSchemaToTpl.mockReturnValue({
-        result: { isError: false, value: { tpl: newTpl, warnings: [] } },
-      });
+      mockElementSchemaToTpl.mockReturnValue(ok({ tpl: newTpl, warnings: [] }));
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -1754,9 +1729,7 @@ describe("edit-tools", () => {
       const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
       const parentTpl = mkTag({ uuid: "new-1", tag: "div" });
-      mockElementSchemaToTpl.mockReturnValue({
-        result: { isError: false, value: { tpl: parentTpl, warnings: [] } },
-      });
+      mockElementSchemaToTpl.mockReturnValue(ok({ tpl: parentTpl, warnings: [] }));
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -1808,9 +1781,7 @@ describe("edit-tools", () => {
         componentName: "Card",
         componentUuid: "card-uuid",
       });
-      mockElementSchemaToTpl.mockReturnValue({
-        result: { isError: false, value: { tpl: newTplComp, warnings: [] } },
-      });
+      mockElementSchemaToTpl.mockReturnValue(ok({ tpl: newTplComp, warnings: [] }));
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -1836,9 +1807,7 @@ describe("edit-tools", () => {
       const root = mkTag({ uuid: "root-1", children: [container] });
       const owningComp = mkComponent({ uuid: "comp-1", tplTree: root });
 
-      mockElementSchemaToTpl.mockReturnValue({
-        result: { isError: true, error: { message: 'Unknown component "NonExistent"' } },
-      });
+      mockElementSchemaToTpl.mockReturnValue(err({ message: 'Unknown component "NonExistent"' }));
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -1894,7 +1863,7 @@ describe("edit-tools", () => {
         componentName: "Card",
         componentUuid: "card-uuid",
       });
-      mockElementSchemaToTpl.mockReturnValue({ result: { isError: false, value: { tpl: newTplComp, warnings: [] } } });
+      mockElementSchemaToTpl.mockReturnValue(ok({ tpl: newTplComp, warnings: [] }));
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -1954,7 +1923,7 @@ describe("edit-tools", () => {
         componentName: "EPButton",
         componentUuid: "btn-uuid",
       });
-      mockElementSchemaToTpl.mockReturnValue({ result: { isError: false, value: { tpl: newTplComp, warnings: [] } } });
+      mockElementSchemaToTpl.mockReturnValue(ok({ tpl: newTplComp, warnings: [] }));
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -2008,7 +1977,7 @@ describe("edit-tools", () => {
         componentName: "Card",
         componentUuid: "card-uuid",
       });
-      mockElementSchemaToTpl.mockReturnValue({ result: { isError: false, value: { tpl: newTplComp, warnings: [] } } });
+      mockElementSchemaToTpl.mockReturnValue(ok({ tpl: newTplComp, warnings: [] }));
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -2071,7 +2040,7 @@ describe("edit-tools", () => {
         componentName: "AccordionItem",
         componentUuid: "item-uuid",
       });
-      mockElementSchemaToTpl.mockReturnValue({ result: { isError: false, value: { tpl: newTplComp, warnings: [] } } });
+      mockElementSchemaToTpl.mockReturnValue(ok({ tpl: newTplComp, warnings: [] }));
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} }, args: [] }];
@@ -2149,7 +2118,7 @@ describe("edit-tools", () => {
         componentName: "AccordionItem",
         componentUuid: "item-uuid",
       });
-      mockElementSchemaToTpl.mockReturnValue({ result: { isError: false, value: { tpl: newTplComp, warnings: [] } } });
+      mockElementSchemaToTpl.mockReturnValue(ok({ tpl: newTplComp, warnings: [] }));
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} }, args: [] }];
@@ -2204,7 +2173,7 @@ describe("edit-tools", () => {
         componentName: "AccordionItem",
         componentUuid: "item-uuid",
       });
-      mockElementSchemaToTpl.mockReturnValue({ result: { isError: false, value: { tpl: newTplComp, warnings: [] } } });
+      mockElementSchemaToTpl.mockReturnValue(ok({ tpl: newTplComp, warnings: [] }));
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} } }];
@@ -2274,8 +2243,8 @@ describe("edit-tools", () => {
         vsettings: [{ rs: { values: {} } }],
       };
       mockElementSchemaToTpl
-        .mockReturnValueOnce({ result: { isError: false, value: { tpl: newTplComp, warnings: [] } } })
-        .mockReturnValueOnce({ result: { isError: false, value: { tpl: defaultTextTpl, warnings: [] } } });
+        .mockReturnValueOnce(ok({ tpl: newTplComp, warnings: [] }))
+        .mockReturnValueOnce(ok({ tpl: defaultTextTpl, warnings: [] }));
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} }, args: [] }];
@@ -2367,9 +2336,9 @@ describe("edit-tools", () => {
         vsettings: [{ rs: { values: {} } }],
       };
       mockElementSchemaToTpl
-        .mockReturnValueOnce({ result: { isError: false, value: { tpl: newTplComp, warnings: [] } } })
-        .mockReturnValueOnce({ result: { isError: false, value: { tpl: bodyTextTpl, warnings: [] } } })
-        .mockReturnValueOnce({ result: { isError: false, value: { tpl: headerTextTpl, warnings: [] } } });
+        .mockReturnValueOnce(ok({ tpl: newTplComp, warnings: [] }))
+        .mockReturnValueOnce(ok({ tpl: bodyTextTpl, warnings: [] }))
+        .mockReturnValueOnce(ok({ tpl: headerTextTpl, warnings: [] }));
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} }, args: [] }];
@@ -2468,8 +2437,8 @@ describe("edit-tools", () => {
         vsettings: [{ rs: { values: {} } }],
       };
       mockElementSchemaToTpl
-        .mockReturnValueOnce({ result: { isError: false, value: { tpl: newTplComp, warnings: [] } } })
-        .mockReturnValueOnce({ result: { isError: false, value: { tpl: childTextTpl, warnings: [] } } });
+        .mockReturnValueOnce(ok({ tpl: newTplComp, warnings: [] }))
+        .mockReturnValueOnce(ok({ tpl: childTextTpl, warnings: [] }));
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} }, args: [] }];
@@ -2544,8 +2513,8 @@ describe("edit-tools", () => {
         vsettings: [{ rs: { values: {} } }],
       };
       mockElementSchemaToTpl
-        .mockReturnValueOnce({ result: { isError: false, value: { tpl: newTplComp, warnings: [] } } })
-        .mockReturnValueOnce({ result: { isError: false, value: { tpl: defaultTextTpl, warnings: [] } } });
+        .mockReturnValueOnce(ok({ tpl: newTplComp, warnings: [] }))
+        .mockReturnValueOnce(ok({ tpl: defaultTextTpl, warnings: [] }));
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} }, args: [] }];
@@ -2611,7 +2580,7 @@ describe("edit-tools", () => {
         componentUuid: "card-uuid",
       });
       newTplComp.component = cardComp;
-      mockElementSchemaToTpl.mockReturnValue({ result: { isError: false, value: { tpl: newTplComp, warnings: [] } } });
+      mockElementSchemaToTpl.mockReturnValue(ok({ tpl: newTplComp, warnings: [] }));
       mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
         if (!tpl.vsettings || tpl.vsettings.length === 0) {
           tpl.vsettings = [{ rs: { values: {} }, args: [] }];
@@ -4301,7 +4270,7 @@ describe("addChild with slot targeting", () => {
     const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
     const newTpl = mkTag({ uuid: "new-header-1" });
-    mockElementSchemaToTpl.mockReturnValue({ result: { isError: false, value: { tpl: newTpl, warnings: [] } } });
+    mockElementSchemaToTpl.mockReturnValue(ok({ tpl: newTpl, warnings: [] }));
     mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
       return tpl.vsettings[0];
     });
@@ -4344,7 +4313,7 @@ describe("addChild with slot targeting", () => {
     const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
     const newTpl = mkTag({ uuid: "new-header-2" });
-    mockElementSchemaToTpl.mockReturnValue({ result: { isError: false, value: { tpl: newTpl, warnings: [] } } });
+    mockElementSchemaToTpl.mockReturnValue(ok({ tpl: newTpl, warnings: [] }));
     mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
       return tpl.vsettings[0];
     });
@@ -4381,7 +4350,7 @@ describe("addChild with slot targeting", () => {
     const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
     const newTpl = mkTag({ uuid: "new-first" });
-    mockElementSchemaToTpl.mockReturnValue({ result: { isError: false, value: { tpl: newTpl, warnings: [] } } });
+    mockElementSchemaToTpl.mockReturnValue(ok({ tpl: newTpl, warnings: [] }));
     mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
       return tpl.vsettings[0];
     });
@@ -4418,7 +4387,7 @@ describe("addChild with slot targeting", () => {
     const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
     const newTpl = mkTag({ uuid: "inserted-middle" });
-    mockElementSchemaToTpl.mockReturnValue({ result: { isError: false, value: { tpl: newTpl, warnings: [] } } });
+    mockElementSchemaToTpl.mockReturnValue(ok({ tpl: newTpl, warnings: [] }));
     mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
       return tpl.vsettings[0];
     });
@@ -4450,7 +4419,7 @@ describe("addChild with slot targeting", () => {
     const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
     const newTpl = mkTag({ uuid: "new-default" });
-    mockElementSchemaToTpl.mockReturnValue({ result: { isError: false, value: { tpl: newTpl, warnings: [] } } });
+    mockElementSchemaToTpl.mockReturnValue(ok({ tpl: newTpl, warnings: [] }));
     mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
       return tpl.vsettings[0];
     });
@@ -4481,7 +4450,7 @@ describe("addChild with slot targeting", () => {
     const comp = mkComponent({ uuid: "comp-1", tplTree: root });
 
     const newTpl = mkTag({ uuid: "new-explicit" });
-    mockElementSchemaToTpl.mockReturnValue({ result: { isError: false, value: { tpl: newTpl, warnings: [] } } });
+    mockElementSchemaToTpl.mockReturnValue(ok({ tpl: newTpl, warnings: [] }));
     mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => {
       return tpl.vsettings[0];
     });

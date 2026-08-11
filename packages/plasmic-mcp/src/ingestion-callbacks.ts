@@ -2,13 +2,17 @@
  * Collects warnings surfaced by Studio's `syncCodeComponents` during a
  * dev-host ingestion pass and translates them into a JSON-response-shaped
  * `IngestionResult`. Fatal errors (e.g. `DuplicateCodeComponentError`,
- * `CodeComponentRegistrationTypeError`) come from the failable return of
+ * `CodeComponentRegistrationTypeError`) come from the `Result` returned by
  * `syncCodeComponents` itself — this callback surface only handles the
  * non-fatal, "tell the user what happened but keep going" cases that
  * Studio's UI would pop as antd notifications.
+ *
+ * Studio `yield*`s these callbacks inside `safeTry`, so each must return
+ * `Promise<Result<void, never>>` — see `CodeComponentSyncCallbackFns` in
+ * `@/wab/shared/code-components/code-components`.
  */
 
-import { failableAsync } from "ts-failable";
+import { ok } from "neverthrow";
 
 export interface IngestionWarning {
   code: string;
@@ -43,41 +47,39 @@ export function createIngestionCallbacks(): {
       result.removedComponents.length = 0;
     },
 
-    onMissingCodeComponents: (
+    onMissingCodeComponents: async (
       _ctx: unknown,
       missingComponents: Array<{ name: string }>,
       missingContexts: Array<{ name: string }>
-    ) =>
-      failableAsync<void, never>(async ({ success }) => {
-        for (const c of missingComponents) {
-          push({
-            code: "missing-component",
-            componentName: c.name,
-            message: `Code component "${c.name}" is referenced by the project but no longer registered on the dev host.`,
-          });
-        }
-        for (const c of missingContexts) {
-          push({
-            code: "missing-context",
-            componentName: c.name,
-            message: `Context "${c.name}" is referenced by the project but no longer registered on the dev host.`,
-          });
-        }
-        return success();
-      }),
+    ) => {
+      for (const c of missingComponents) {
+        push({
+          code: "missing-component",
+          componentName: c.name,
+          message: `Code component "${c.name}" is referenced by the project but no longer registered on the dev host.`,
+        });
+      }
+      for (const c of missingContexts) {
+        push({
+          code: "missing-context",
+          componentName: c.name,
+          message: `Context "${c.name}" is referenced by the project but no longer registered on the dev host.`,
+        });
+      }
+      return ok(undefined);
+    },
 
-    onInvalidReactVersion: (
+    onInvalidReactVersion: async (
       _ctx: unknown,
       pkgInfo: { name: string; minimumReactVersion?: string }
-    ) =>
-      failableAsync<void, never>(async ({ success }) => {
-        push({
-          code: "invalid-react-version",
-          componentName: pkgInfo.name,
-          message: `Package "${pkgInfo.name}" requires React >= ${pkgInfo.minimumReactVersion ?? "unknown"}.`,
-        });
-        return success();
-      }),
+    ) => {
+      push({
+        code: "invalid-react-version",
+        componentName: pkgInfo.name,
+        message: `Package "${pkgInfo.name}" requires React >= ${pkgInfo.minimumReactVersion ?? "unknown"}.`,
+      });
+      return ok(undefined);
+    },
 
     onInvalidComponentImportNames: (componentNames: string[]) => {
       for (const name of componentNames) {
