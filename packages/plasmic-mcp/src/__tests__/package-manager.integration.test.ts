@@ -120,7 +120,6 @@ beforeAll(async () => {
   // Unbundle fixture into real MobX-observed model instances
   bundler = new FastBundler(meta, classesModule);
 
-  // The fixture is a raw bundle; a real project load returns a migrated one.
   const depBundle =
     typeof depBundleJson === "string"
       ? JSON.parse(depBundleJson)

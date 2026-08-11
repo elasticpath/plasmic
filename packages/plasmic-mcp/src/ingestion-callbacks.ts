@@ -6,10 +6,7 @@
  * `syncCodeComponents` itself — this callback surface only handles the
  * non-fatal, "tell the user what happened but keep going" cases that
  * Studio's UI would pop as antd notifications.
- *
- * Studio `yield*`s these callbacks inside `safeTry`, so each must return
- * `Promise<Result<void, never>>` — see `CodeComponentSyncCallbackFns` in
- * `@/wab/shared/code-components/code-components`.
+
  */
 
 import { ok } from "neverthrow";

@@ -81,7 +81,6 @@ beforeAll(async () => {
   // Unbundle the fixture
   const bundler = new FastBundler(meta, classesModule);
 
-  // The fixture is a raw bundle; a real project load returns a migrated one.
   const depBundle =
     typeof depBundleJson === "string"
       ? JSON.parse(depBundleJson)

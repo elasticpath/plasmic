@@ -139,10 +139,6 @@ export async function ingestDevHostComponents(
   // them to Studio via the normal incremental-save / socket path.
   // Accumulate changes across all calls so the caller can save+broadcast
   // atomically.
-  // Studio's `SiteCtx.change` contract is
-  // `(f: () => Result<void, E>) => Promise<Result<void, E>>` — `f` takes no
-  // arguments and already returns a neverthrow `Result`, so we invoke it and
-  // hand the `Result` straight back for Studio to `yield*`.
   const recordedChangesList: RecordedChanges[] = [];
   const ctxChange = opts?.tracker
     ? async (f: () => Result<void, unknown>) => {

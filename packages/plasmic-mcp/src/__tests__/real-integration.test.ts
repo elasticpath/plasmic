@@ -58,8 +58,6 @@ beforeAll(async () => {
   const [[depProjectId, depBundleJson], [mainProjectId, mainBundleJson]] =
     fixtureData;
   fixtureProjectId = mainProjectId;
-  // The mock below stands in for a project-load response, and the server only
-  // ever returns migrated bundles — see migrate-fixture-bundle.ts.
   fixtureBundleJson = await migrateFixtureEntry(mainBundleJson);
   fixtureDepPkgs = [
     { id: depProjectId, model: await migrateFixtureEntry(depBundleJson) },

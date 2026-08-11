@@ -1,30 +1,14 @@
 /**
- * Brings a raw upstream bundle fixture up to the current model.
+ * Brings a raw upstream bundle fixture up to the current model, the way
+ * `getMigratedBundle` would before a real project load returns one.
  *
- * The integration tests mock `fetch` and serve `platform/wab/playwright/bundles/*.json`
- * as if it were a project-load response. A real server never returns a raw bundle —
- * `getMigratedBundle` runs the migration chain first — so without this the fixture is
- * whatever model version upstream last committed it at (currently
- * `252-add-animations`) and unbundling fails as soon as a migration adds a required
- * field. Migration 258 adding `CodeComponentMeta.subtreePrefetchingConfig` is what
- * first exposed this.
+ * Only `bundled` migrations are applied: those are the ones that may change the
+ * model, while `unbundled` ones need a `MigrationDbMgr` and a real entity and by
+ * contract leave the model alone.
  *
- * We can't reuse `BundleMigrator.getAllMigrations()`: it enumerates with
- * `fs.readdir` + a dynamic `require()` of `.ts` files, which Vite cannot resolve.
- * Enumeration is re-done here; the migration functions themselves are upstream's,
- * imported and run unmodified.
- *
- * Enumeration deliberately reads the directory rather than using
- * `import.meta.glob` — a glob puts all 258 migrations in Vite's module graph, and
- * ten of the older ones import `server/entities/Entities`, which the integration
- * config's stub rules don't cover (they only stub relative escapes out of
- * `wab/shared/` and `wab/commons/`, not within `wab/server/`). Importing only the
- * handful of pending migrations keeps those out of the graph entirely.
- *
- * Only `bundled` migrations are applied. Per BundleMigrator's own contract, those are
- * the migrations that may change the model, while `unbundled` ones "should not update
- * the model" — they rewrite data and need a `MigrationDbMgr` plus a real
- * `PkgVersion`/`ProjectRevision` entity. Model compatibility is all a fixture needs.
+ * Enumeration is re-done here rather than reusing `BundleMigrator` because that
+ * uses a dynamic `require()` of `.ts` files, which Vite cannot resolve. The
+ * migration functions themselves are upstream's, run unmodified.
  */
 
 import { readFileSync, readdirSync } from "fs";
@@ -49,11 +33,9 @@ const migrationSorter = new Intl.Collator(undefined, {
 });
 
 /**
- * Reads the declared `MIGRATION_TYPE` without importing the module. Unbundled
- * migrations are skipped anyway, and importing them is not free: EP's
- * `255-fix-ep-addtocart-import-path` pulls in `unbundleSite`, whose transitive
- * graph reaches `server/entities/Entities.ts`, which does a CJS `require()` of a
- * `.ts` file that Vite leaves untouched and Node cannot resolve.
+ * Read the type without importing: some unbundled migrations reach
+ * `server/entities/Entities.ts`, which CJS-`require`s a `.ts` file Vite leaves
+ * untouched and Node cannot resolve.
  */
 function declaredMigrationType(file: string): string | undefined {
   const src = readFileSync(join(MIGRATIONS_DIR, file), "utf-8");
