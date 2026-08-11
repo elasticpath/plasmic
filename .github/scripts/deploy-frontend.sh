@@ -128,7 +128,7 @@ echo "✅ Build configuration patched"
 
 # Build frontend
 step "Step 6: Building frontend"
-NODE_ENV=production PUBLIC_URL=${FRONTEND_URL} yarn build
+NODE_ENV=production PUBLIC_URL=${FRONTEND_URL} STATIC_URL=${FRONTEND_URL} yarn build
 echo "✅ Frontend built successfully"
 ls -lh build/
 
