@@ -10,6 +10,8 @@ const mockUsePlasmicCanvasContext = jest.fn();
 const mockUseFormContext = jest.fn();
 
 jest.mock("./ep-server-functions/proxy-fetch", () => ({
+  // `epProxyErrorCode` is pure — exercise the real one.
+  ...jest.requireActual("./ep-server-functions/proxy-fetch"),
   callEpProxy: (...a: unknown[]) => mockCallEpProxy(...a),
   shouldUseProxy: () => true,
 }));
@@ -133,10 +135,43 @@ describe("EPAddToCartButton", () => {
     });
   });
 
-  it("populates addToCartState.error with the structured error from the proxy", async () => {
+  it("maps a coded insufficient_stock rejection to shopper-facing copy", async () => {
     setUp();
-    const err = Object.assign(new Error("out of stock"), { code: "OUT_OF_STOCK" });
-    mockCallEpProxy.mockRejectedValue(err);
+    mockCallEpProxy.mockRejectedValue(
+      Object.assign(new Error("dispatch_failed"), {
+        code: "insufficient_stock",
+      })
+    );
+
+    render(<EPAddToCartButton>Add</EPAddToCartButton>);
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Add"));
+    });
+
+    expect(readState().error).toMatch(/enough stock/i);
+  });
+
+  it("never surfaces the dispatch_failed token to shoppers", async () => {
+    setUp();
+    mockCallEpProxy.mockRejectedValue(
+      Object.assign(new Error("dispatch_failed"), { code: "dispatch_failed" })
+    );
+
+    render(<EPAddToCartButton>Add</EPAddToCartButton>);
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Add"));
+    });
+
+    const error = readState().error as string;
+    expect(error).not.toMatch(/dispatch_failed/);
+    expect(error).toMatch(/couldn't add this item/i);
+  });
+
+  it("passes through a locally-raised error message unchanged", async () => {
+    setUp();
+    mockCallEpProxy.mockRejectedValue(new Error("out of stock"));
 
     render(<EPAddToCartButton>Add</EPAddToCartButton>);
 

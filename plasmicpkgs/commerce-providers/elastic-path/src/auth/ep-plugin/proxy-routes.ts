@@ -44,6 +44,22 @@ import { isTrustedDevEnvironment } from "./production-guard";
 
 const MUTATION_FNS = new Set(["addCartItem", "updateCartItem", "removeCartItem"]);
 
+/**
+ * Maps a dispatch failure to a stable code. `message` is withheld in
+ * production, so the code is the only failure detail a browser caller can
+ * branch on there.
+ */
+function classifyDispatchError(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  if (/not enough stock|insufficient stock/i.test(message)) {
+    return "insufficient_stock";
+  }
+  if (/no cart on session|no EP session/i.test(message)) {
+    return "no_session";
+  }
+  return "dispatch_failed";
+}
+
 /** Promised `params` only — see the note on `CartRouteContext`. */
 interface ProxyRouteContext {
   params: Promise<{ fn?: string }>;
@@ -140,10 +156,18 @@ export function createEpProxyRoutes(epAuth: EpAuth): EpProxyRoutes {
 
       const session = sessionResult.session;
       if (!session?.accessToken) {
-        // No session at all — the caller isn't a recognised shopper.
-        // Return a soft 200 with the function's empty/null shape so the
-        // browser-side caller's fallback chain treats it like SSR's
-        // "no session" case.
+        // Reads soft-fail to the function's empty shape, matching SSR's
+        // "no session" case. Mutations must not: a 200 body is
+        // indistinguishable from a successful write.
+        if (MUTATION_FNS.has(fnName)) {
+          return new Response(
+            JSON.stringify({ error: "no_session", code: "no_session" }),
+            {
+              status: 401,
+              headers: { "Content-Type": "application/json", ...cors },
+            }
+          );
+        }
         return new Response("null", {
           status: 200,
           headers: { "Content-Type": "application/json", ...cors },
@@ -174,15 +198,17 @@ export function createEpProxyRoutes(epAuth: EpAuth): EpProxyRoutes {
           `[ep-commerce] proxy dispatch_failed fn=${fnName} correlationId=${correlationId}`,
           err
         );
+        const code = classifyDispatchError(err);
         return new Response(
           JSON.stringify(
             isTrustedDevEnvironment()
               ? {
                   error: "dispatch_failed",
+                  code,
                   correlationId,
                   message: (err as Error)?.message,
                 }
-              : { error: "dispatch_failed", correlationId }
+              : { error: "dispatch_failed", code, correlationId }
           ),
           {
             status: 500,

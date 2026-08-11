@@ -11,7 +11,10 @@ import { mutate as swrMutate } from "swr";
 import { Registerable } from "../registerable";
 import { createLogger } from "../utils/logger";
 import { MOCK_CART_LINE_ITEMS } from "../utils/design-time-data";
-import { callEpProxy } from "../ep-server-functions/proxy-fetch";
+import {
+  callEpProxy,
+  epProxyErrorCode,
+} from "../ep-server-functions/proxy-fetch";
 import { epCartCacheKey } from "../cart-provider/cache-keys";
 import type { Cart } from "../types/cart";
 import {
@@ -205,12 +208,18 @@ export function EPCartItemQuantityControl(
       setError(null);
       setIsLoading(true);
       try {
-        const updated = await callEpProxy<Cart>("updateCartItem", {
+        const updated = await callEpProxy<Cart | null>("updateCartItem", {
           itemId,
           quantity: newQuantity,
           ...(location ? { location } : {}),
         });
-        await swrMutate(epCartCacheKey(), updated, { revalidate: false });
+        // Seeding the cache with an empty result would blank the cart, since
+        // `revalidate: false` leaves nothing to correct it. Revalidate instead.
+        if (updated) {
+          await swrMutate(epCartCacheKey(), updated, { revalidate: false });
+        } else {
+          await swrMutate(epCartCacheKey());
+        }
         setLocalQuantity(newQuantity);
         quantityRef.current = newQuantity;
         prevServerQuantity.current = newQuantity;
@@ -229,9 +238,13 @@ export function EPCartItemQuantityControl(
         prevServerQuantity.current = revertTo;
 
         // Only freeze + when an increment was rejected for stock — a
-        // decrement can also surface the same EP message when location is
-        // missing, and that must not permanently disable +.
-        if (/stock/i.test(message) && newQuantity > previousQty) {
+        // decrement can also fail that way when location is missing, and that
+        // must not permanently disable +. Branch on the code, not the message:
+        // the proxy withholds messages in production.
+        if (
+          epProxyErrorCode(err) === "insufficient_stock" &&
+          newQuantity > previousQty
+        ) {
           setStockCap(revertTo);
         }
 

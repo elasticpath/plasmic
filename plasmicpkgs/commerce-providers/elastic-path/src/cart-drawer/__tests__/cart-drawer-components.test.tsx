@@ -39,6 +39,8 @@ jest.mock("../../cart-provider/use-ep-cart", () => ({
 const mockCallEpProxy = jest.fn();
 jest.mock("../../ep-server-functions/proxy-fetch", () => ({
   __esModule: true,
+  // `epProxyErrorCode` is pure — exercise the real one.
+  ...jest.requireActual("../../ep-server-functions/proxy-fetch"),
   callEpProxy: (...args: unknown[]) => mockCallEpProxy(...args),
 }));
 
@@ -1154,6 +1156,116 @@ describe("EPCartItemQuantityControl", () => {
     );
     await act(async () => { ctxValue.increment(); });
     expect(mockSwrMutate).toHaveBeenCalledWith("ep-cart");
+  });
+
+  it("caps further increments when the proxy reports insufficient_stock", async () => {
+    mockCallEpProxy.mockRejectedValue(
+      Object.assign(new Error("dispatch_failed"), {
+        code: "insufficient_stock",
+      })
+    );
+    mockUseSelector.mockReturnValue({ id: "item-1", quantity: 2 });
+
+    let ctxValue: any;
+    render(
+      <EPCartItemQuantityControl>
+        <HookReader
+          hook={useCartItemQuantity}
+          onResult={(v: any) => { ctxValue = v; }}
+        />
+      </EPCartItemQuantityControl>
+    );
+    await act(async () => { ctxValue.increment(); });
+
+    expect(ctxValue.quantity).toBe(2);
+    expect(ctxValue.canIncrement).toBe(false);
+    expect(ctxValue.maxQuantity).toBe(2);
+  });
+
+  it("does not cap increments for a failure unrelated to stock", async () => {
+    mockCallEpProxy.mockRejectedValue(
+      Object.assign(new Error("dispatch_failed"), { code: "dispatch_failed" })
+    );
+    mockUseSelector.mockReturnValue({ id: "item-1", quantity: 2 });
+
+    let ctxValue: any;
+    render(
+      <EPCartItemQuantityControl>
+        <HookReader
+          hook={useCartItemQuantity}
+          onResult={(v: any) => { ctxValue = v; }}
+        />
+      </EPCartItemQuantityControl>
+    );
+    await act(async () => { ctxValue.increment(); });
+
+    expect(ctxValue.canIncrement).toBe(true);
+  });
+
+  it("does not cap increments when a decrement is rejected for stock", async () => {
+    mockCallEpProxy.mockRejectedValue(
+      Object.assign(new Error("dispatch_failed"), {
+        code: "insufficient_stock",
+      })
+    );
+    mockUseSelector.mockReturnValue({ id: "item-1", quantity: 3 });
+
+    let ctxValue: any;
+    render(
+      <EPCartItemQuantityControl>
+        <HookReader
+          hook={useCartItemQuantity}
+          onResult={(v: any) => { ctxValue = v; }}
+        />
+      </EPCartItemQuantityControl>
+    );
+    await act(async () => { ctxValue.decrement(); });
+
+    expect(ctxValue.canIncrement).toBe(true);
+  });
+
+  it("seeds the cart cache with the mutation result", async () => {
+    const updatedCart = { id: "cart-1", lineItems: [{ id: "item-1" }] };
+    mockCallEpProxy.mockResolvedValue(updatedCart);
+    mockUseSelector.mockReturnValue({ id: "item-1", quantity: 2 });
+
+    let ctxValue: any;
+    render(
+      <EPCartItemQuantityControl>
+        <HookReader
+          hook={useCartItemQuantity}
+          onResult={(v: any) => { ctxValue = v; }}
+        />
+      </EPCartItemQuantityControl>
+    );
+    await act(async () => { ctxValue.increment(); });
+
+    expect(mockSwrMutate).toHaveBeenCalledWith("ep-cart", updatedCart, {
+      revalidate: false,
+    });
+  });
+
+  it("revalidates rather than seeding an empty mutation result", async () => {
+    mockCallEpProxy.mockResolvedValue(null);
+    mockUseSelector.mockReturnValue({ id: "item-1", quantity: 2 });
+
+    let ctxValue: any;
+    render(
+      <EPCartItemQuantityControl>
+        <HookReader
+          hook={useCartItemQuantity}
+          onResult={(v: any) => { ctxValue = v; }}
+        />
+      </EPCartItemQuantityControl>
+    );
+    await act(async () => { ctxValue.increment(); });
+
+    expect(mockSwrMutate).toHaveBeenCalledWith("ep-cart");
+    expect(mockSwrMutate).not.toHaveBeenCalledWith(
+      "ep-cart",
+      null,
+      expect.anything()
+    );
   });
 
   it("ignores a second increment while an update is in flight", async () => {
