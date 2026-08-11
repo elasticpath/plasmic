@@ -1,4 +1,4 @@
-import { expect } from "@playwright/test";
+import { expect, type ConsoleMessage } from "@playwright/test";
 import { test } from "../fixtures/test";
 import { goToProject, waitForFrameToLoad } from "../utils/studio-utils";
 
@@ -90,7 +90,7 @@ test.describe("host-app", () => {
     await models.studio.waitStudioLoaded();
 
     await models.studio.leftPanel.switchToTreeTab();
-    // TODO - Cypress uses ["root", "badge"], figure out discrepancy (another below)
+    // TODO - Cypress used ["root", "badge"], figure out discrepancy (another below)
     await models.studio.leftPanel.selectTreeNode(["free box", "badge"]);
 
     await expect(models.studio.frame.getByText("Plasmician")).toBeVisible();
@@ -129,10 +129,34 @@ test.describe("host-app", () => {
 
     await models.studio.rightPanel.checkNoErrors();
 
+    const consoleLogs: string[] = [];
+    const consoleListener = (msg: ConsoleMessage) => {
+      if (msg.type() === "log") {
+        consoleLogs.push(msg.text());
+      }
+    };
+    page.on("console", consoleListener);
     await goToProject(page, `/projects/${projectId}`);
 
-    await models.studio.rightPanel.checkNoErrors();
-    await models.studio.waitForSave();
+    try {
+      await models.studio.rightPanel.checkNoErrors();
+      await models.studio.waitForSave();
+      await expect
+        .poll(
+          () =>
+            consoleLogs.some((text) =>
+              text.includes("Save result is SkipUpToDate")
+            ),
+          { timeout: 15000 }
+        )
+        .toBe(true);
+    } finally {
+      page.off("console", consoleListener);
+    }
+
+    expect(
+      consoleLogs.some((text) => text.includes("Save result is Success"))
+    ).toBe(false);
 
     await models.studio.rightPanel.configureProjectAppHost(
       "plasmic-host-updated-old-host"

@@ -51,7 +51,7 @@ export async function generateMetadata(
     return parent${ifTs(jsOrTs, ` as Promise<Metadata>`)};
   }
   const pageMeta = componentData.entryCompMetas[0];
-  const metadata = await PLASMIC.unstable__generateMetadata(componentData, {
+  const metadata = await PLASMIC.getPlasmicMetadata(componentData, {
     params: pageMeta.params ?? {},
     query: {},
   });
@@ -68,7 +68,7 @@ export default async function PlasmicLoaderPage({
     notFound();
   }
   const pageMeta = componentData.entryCompMetas[0];
-  const prefetchedQueryData = await PLASMIC.unstable__getServerQueriesData(
+  const prefetchedQueryData = await PLASMIC.getPlasmicQueriesData(
     componentData,
     {
       pagePath,
@@ -83,6 +83,7 @@ export default async function PlasmicLoaderPage({
       prefetchedQueryData={prefetchedQueryData}
       pageParams={pageMeta.params}
       pageRoute={pageMeta.path}
+      trackQueryParams
     >
       <PlasmicComponent component={pageMeta.displayName} />
     </ClientPlasmicRootProvider>

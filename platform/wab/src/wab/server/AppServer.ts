@@ -30,6 +30,7 @@ import { initAnalyticsFactory, logger } from "@/wab/server/observability";
 import { runWithRequestId } from "@/wab/server/observability/PinoLogger";
 import {
   DEFAULT_HISTOGRAM_BUCKETS,
+  METRICS_PATH_ID_MASK,
   WabPromLiveRequestsGauge,
   getTemplatedEndpointFromExpressRoutePath,
   incHttpRequestCount,
@@ -485,7 +486,7 @@ export function addPromMetricsMiddleware(app: express.Application) {
   app.use(
     safeCast<RequestHandler>(async (req: Request, res, next) => {
       // Live requests for all routes after this middleware will be tracked.
-      const liveRequestsGauge = new WabPromLiveRequestsGauge(app.get("name"));
+      const liveRequestsGauge = new WabPromLiveRequestsGauge(name);
       liveRequestsGauge.onReqStart(req);
       // 'close' event is emitted in all HTTP request scenarios
       // https://nodejs.org/api/http.html#httprequesturl-options-callback
@@ -506,20 +507,15 @@ export function addPromMetricsMiddleware(app: express.Application) {
       customLabels: {
         route: null,
         projectId: null,
-        // Also keep track of url for codegen, as the set of
-        // urls codegen uses is reasonably small
-        ...(name === "codegen" && {
-          url: null,
-        }),
       },
       includeMethod: true,
       includeStatusCode: true,
       includePath: true,
+      urlValueParser: {
+        extraMasks: [METRICS_PATH_ID_MASK],
+      },
       transformLabels: (labels, req, _res) => {
         labels.route = req.route?.path;
-        if (name === "codegen") {
-          labels.url = req.originalUrl;
-        }
         Object.assign(labels, req.promLabels ?? {});
       },
       promClient: {
@@ -902,7 +898,10 @@ export function addAppAuthRoutes(app: express.Application) {
   app.post("/api/v1/app-auth/user", cors(), withNext(upsertEndUser));
 }
 
-export function addEndUserManagementRoutes(app: express.Application) {
+export function addEndUserManagementRoutes(
+  app: express.Application,
+  authedSensitiveRateLimiter: RequestHandler
+) {
   app.use("/api/v1/end-user", createGeneralApiRateLimiter());
   /**
    * App auth config
@@ -942,6 +941,7 @@ export function addEndUserManagementRoutes(app: express.Application) {
   app.get("/api/v1/end-user/app/:projectId/access-rules", listAppAccessRules);
   app.post(
     "/api/v1/end-user/app/:projectId/access-rules",
+    authedSensitiveRateLimiter,
     withNext(createAccessRules)
   );
   app.put(
@@ -1220,7 +1220,8 @@ export function addMainAppServerRoutes(
   app: express.Application,
   config: Config
 ) {
-  // Rate limit for forgetPassword and signUp routes.
+  // Rate limiter for unauthenticated routes such as login, sign-up, and
+  // password reset. Keyed by client IP, since there is no authenticated actor.
   // Currently using in-memory storage, can be improved to use
   // redis/postgres.
   const sensitiveRateLimiter = createRateLimiter({
@@ -1231,6 +1232,23 @@ export function addMainAppServerRoutes(
         config.production || req.get("x-plasmic-test-rate-limit") === "true";
       return !shouldRateLimit;
     },
+    keyGenerator: (req) => req.ip ?? "anonymous",
+  });
+
+  // Rate limiter for authenticated routes such as sharing/inviting via
+  // grant-revoke. Keyed by the authenticated actor (falling back to IP) so it
+  // can't be sidestepped by rotating IPs and doesn't penalize a shared office
+  // IP. Must run after the auth middleware so req.user / req.apiTeam are set.
+  const authedSensitiveRateLimiter = createRateLimiter({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    limit: 30,
+    skip: (req) => {
+      const shouldRateLimit =
+        config.production || req.get("x-plasmic-test-rate-limit") === "true";
+      return !shouldRateLimit;
+    },
+    keyGenerator: (req) =>
+      req.user?.id ?? req.apiTeam?.id ?? req.ip ?? "anonymous",
   });
 
   app.use((req, res, next) => {
@@ -1725,6 +1743,7 @@ export function addMainAppServerRoutes(
   app.post(
     "/api/v1/grant-revoke",
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
+    authedSensitiveRateLimiter,
     teamRoutes.changeResourcePermissions
   );
   app.get("/api/v1/feature-tiers", teamRoutes.listCurrentFeatureTiers);
@@ -1825,7 +1844,7 @@ export function addMainAppServerRoutes(
   );
 
   /**
-   * Fake data for demos and cypress tests.
+   * Fake data for demos and playwright tests.
    */
   app.get("/api/v1/demodata/tweets", getFakeTweets);
   app.get("/api/v1/demodata/tasks", getFakeTasks);
@@ -1973,7 +1992,7 @@ export function addMainAppServerRoutes(
   /**
    * End user management
    */
-  addEndUserManagementRoutes(app);
+  addEndUserManagementRoutes(app, authedSensitiveRateLimiter);
 
   if (typeof jest === "undefined") {
     // Do not create the interval in unit tests, because it keeps running and

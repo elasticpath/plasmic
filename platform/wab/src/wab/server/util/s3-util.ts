@@ -5,6 +5,7 @@ import {
   tryGetS3CacheEntry,
 } from "@/wab/server/util/ep-s3-cache";
 import { withTiming } from "@/wab/server/util/server-timing";
+import { withSpan } from "@/wab/server/util/apm-util";
 import { ensureInstance } from "@/wab/shared/common";
 import S3 from "aws-sdk/clients/s3";
 import path from "path";
@@ -17,7 +18,7 @@ export async function upsertS3CacheEntry<T>(opts: {
   compute: () => Promise<T>;
   serialize: (obj: T) => string;
   deserialize: (str: string) => T;
-}) {
+}): Promise<{ data: T; cacheHit: boolean }> {
   const { bucket, key, compute: f, serialize, deserialize } = opts;
   const s3 = getS3Client();
   const shortKey = key.split("/").slice(-1)[0].slice(0, 24);
@@ -35,7 +36,7 @@ export async function upsertS3CacheEntry<T>(opts: {
     const data = await withTiming(`s3-deserialize-${shortKey}`, async () =>
       deserialize(serialized)
     );
-    return data;
+    return { data, cacheHit: true };
   } catch (err) {
     if (err.code === "TimeoutError") {
       throw err;
@@ -45,7 +46,9 @@ export async function upsertS3CacheEntry<T>(opts: {
       bucket,
       key,
     });
-    const content = await withTiming(`s3-compute-${shortKey}`, f);
+    const content = await withSpan("s3-cache-compute", async () => {
+      return await withTiming(`s3-compute-${shortKey}`, f);
+    });
     const serialized = serialize(content);
     try {
       await withTiming(`s3-put-${shortKey}`, () =>
@@ -57,7 +60,7 @@ export async function upsertS3CacheEntry<T>(opts: {
       }
       logger().error("Unable to add content to S3", e as any);
     }
-    return content;
+    return { data: content, cacheHit: false };
   }
 }
 

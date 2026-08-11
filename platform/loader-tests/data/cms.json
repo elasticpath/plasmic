@@ -79,7 +79,7 @@
           "namespace": "plasmicCms",
           "displayName": "Fetch Plasmic CMS Tables",
           "params": [{ "__ref": "ZPs_dwvFX5_p" }],
-          "isQuery": false,
+          "isQuery": true,
           "__type": "CustomFunction",
           "isMutation": false
         },
@@ -90,7 +90,7 @@
           "namespace": "plasmicCms",
           "displayName": "Fetch Plasmic CMS Content",
           "params": [{ "__ref": "S4LIBX3WBzAo" }],
-          "isQuery": false,
+          "isQuery": true,
           "__type": "CustomFunction",
           "isMutation": false
         },
@@ -101,7 +101,7 @@
           "namespace": "plasmicCms",
           "displayName": "Fetch Plasmic CMS Count",
           "params": [{ "__ref": "A1R6GFP9IBGW" }],
-          "isQuery": false,
+          "isQuery": true,
           "__type": "CustomFunction",
           "isMutation": false
         },
@@ -149,7 +149,7 @@
         }
       },
       "deps": [],
-      "version": "257-add-custom-function-is-mutation"
+      "version": "258-add-code-component-subtree-prefetching-config"
     }
   ],
   [
@@ -884,7 +884,8 @@
           "defaultSlotContents": {},
           "variants": {},
           "refActions": [],
-          "__type": "CodeComponentMeta"
+          "__type": "CodeComponentMeta",
+          "subtreePrefetchingConfig": null
         },
         "khEQQCCtLtty": {
           "type": { "__ref": "oIrTXJV4NvU8" },
@@ -1039,7 +1040,8 @@
           "defaultSlotContents": {},
           "variants": {},
           "refActions": [],
-          "__type": "CodeComponentMeta"
+          "__type": "CodeComponentMeta",
+          "subtreePrefetchingConfig": null
         },
         "ggDfBlVyNtoe": { "name": "text", "__type": "Text" },
         "QTUB5qGSvZI-": {
@@ -2119,7 +2121,7 @@
         }
       },
       "deps": ["fab02607-a7c5-462d-a6f7-735890794fea"],
-      "version": "257-add-custom-function-is-mutation"
+      "version": "258-add-code-component-subtree-prefetching-config"
     }
   ]
 ]

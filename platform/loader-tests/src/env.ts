@@ -19,8 +19,6 @@ export function getEnvVar(variable: keyof typeof DEFAULT_ENV): string {
 }
 
 export const LOADER_NEXTJS_TEMPLATES = [
-  // latest (v2) loader has a peer dependency on Next >= 14
-  { loaderVersion: "latest", template: "template-pages", nextVersion: "^14" },
   // Next.js 12 forces moduleResolution:"node" in tsconfig during build, which
   // is deprecated in TS6. ignoreDeprecations silences it for this old combo.
   {
@@ -30,10 +28,49 @@ export const LOADER_NEXTJS_TEMPLATES = [
     tsConfigOverrides: { ignoreDeprecations: "6.0" },
   },
   {
+    loaderVersion: "^1",
+    template: "template-pages",
+    nextVersion: "^13",
+  },
+  // PLA-13076: This combo is failing
+  // {
+  //   loaderVersion: "^1",
+  //   template: "template-app",
+  //   nextVersion: "^13",
+  // },
+  // latest (v2) loader has a peer dependency on Next >= 14
+  {
+    loaderVersion: "latest",
+    template: "template-pages",
+    nextVersion: "^14",
+  },
+  {
     loaderVersion: "latest",
     template: "template-app",
     reactVersion: "latest",
+    nextVersion: "14",
+  },
+  {
+    loaderVersion: "latest",
+    template: "template-app",
+    reactVersion: "latest",
+    nextVersion: "15",
+  },
+  {
+    loaderVersion: "latest",
+    template: "template-pages",
     nextVersion: "^15",
+  },
+  {
+    loaderVersion: "latest",
+    template: "template-pages",
+    nextVersion: "latest",
+  },
+  {
+    loaderVersion: "latest",
+    template: "template-app",
+    reactVersion: "latest",
+    nextVersion: "latest",
   },
 ];
 
@@ -57,10 +94,10 @@ export const LOADER_REACT_VERSIONS = [
   { reactVersion: "^18", loaderReactVersion: "latest" },
 ];
 
+// Used only by the heavy snapshot specs (plasmic-website-2023, nextjs-website).
+// Per-version loader behavior is covered by other specs that use LOADER_NEXTJS_VERSIONS.
 export const LOADER_NEXTJS_VERSIONS_EXHAUSTIVE = [
   ...LOADER_NEXTJS_VERSIONS,
-  { loaderVersion: "latest", reactVersion: "^18", nextVersion: "^13" },
-  { loaderVersion: "latest", reactVersion: "^18", nextVersion: "^14" },
   { loaderVersion: "latest", reactVersion: "^18", nextVersion: "^15" },
 ];
 

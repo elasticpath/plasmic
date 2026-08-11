@@ -53,6 +53,7 @@ import {
   isKnownVarRef,
   isKnownVirtualRenderExpr,
   Marker,
+  MultiChoice,
   NodeMarker,
   ObjectPath,
   Param,
@@ -74,6 +75,7 @@ import {
   StyleMarker,
   StyleScopeClassNamePropType,
   TargetType,
+  TemplatedString,
   TplComponent,
   TplNode,
   TplSlot,
@@ -93,8 +95,9 @@ import {
   TAG_TO_HTML_ATTRIBUTES,
   TAG_TO_HTML_INTERFACE,
 } from "@/wab/component-metas/tag-to-html-interface";
+import type { ProjectId } from "@/wab/shared/ApiSchema";
 import { isAdvancedProp } from "@/wab/shared/code-components/code-components";
-import { toVarName } from "@/wab/shared/codegen/util";
+import { makeShortProjectId, toVarName } from "@/wab/shared/codegen/util";
 import {
   assert,
   check,
@@ -128,6 +131,7 @@ import {
 } from "@/wab/shared/core/components";
 import * as Exprs from "@/wab/shared/core/exprs";
 import {
+  flattenTemplatedStringToString,
   isRealCodeExpr,
   isRealCodeExprEnsuringType,
   tryExtractJson,
@@ -144,8 +148,10 @@ import {
 } from "@/wab/shared/core/style-props";
 import * as styles from "@/wab/shared/core/styles";
 import { getCssInitial } from "@/wab/shared/css";
-import { CanvasEnv, evalCodeWithEnv } from "@/wab/shared/eval";
+import type { EffectiveVariantSetting } from "@/wab/shared/effective-variant-setting";
+import { CanvasEnv, tryEvalExpr } from "@/wab/shared/eval";
 import {
+  makeDataTokenIdentifier,
   parseExpr,
   pathToDisplayString,
   pathToString,
@@ -1058,7 +1064,7 @@ export function checkTplIntegrity(
     return `[${path.map((tpl) => summarizeTpl(tpl)).join(" > ")}]`;
   }
   function rec(path: TplNode[]) {
-    const tpl = ensure(L.last(path), "Path should atleast have root");
+    const tpl = ensure(L.last(path), "Path should at least have root");
     switchType(tpl)
       .when([TplTag, TplComponent], (_tpl) => {
         const children = $$$(_tpl).children().toArrayOfTplNodes();
@@ -1272,7 +1278,7 @@ export function fixParentPointers(root: TplNode) {
   walkTpls(root, {
     pre(tpl, path) {
       if (tpl !== root) {
-        tpl.parent = ensure(L.last(path), "Path should atleast have root");
+        tpl.parent = ensure(L.last(path), "Path should at least have root");
       }
     },
   });
@@ -1576,8 +1582,8 @@ export function cloneType<T extends Type>(type_: T): T {
   return switchType<Type>(type)
     .when([Scalar, Img, HrefType], () => typeFactory[type.name]())
     .when([AnyType, QueryData, TargetType], () => typeFactory[type.name]())
-    .when(Choice, (t) =>
-      typeFactory.choice(
+    .when([Choice, MultiChoice], (t) =>
+      typeFactory[t.name](
         isArrayOfLiterals(t.options)
           ? t.options
           : t.options.map((op) => ({
@@ -1941,6 +1947,73 @@ export function isTplPicture(tpl: TplNode): tpl is TplPictureTag {
   return isTplImage(tpl) && tpl.tag === "img";
 }
 
+export type TplType =
+  | "text"
+  | "heading"
+  | "image"
+  | "link"
+  | "input"
+  | "passwordInput"
+  | "button"
+  | "textarea"
+  | "slot"
+  | "component"
+  | "freeContainer"
+  | "vertStack"
+  | "horizStack"
+  | "grid"
+  | "contentLayout";
+
+export function getTplType(
+  node: TplNode | SlotSelection,
+  vs?: EffectiveVariantSetting
+): TplType {
+  if (node instanceof SlotSelection || isTplSlot(node)) {
+    return "slot";
+  } else if (isTplComponent(node)) {
+    return "component";
+  } else if (isTplImage(node)) {
+    return "image";
+  } else if (isTplTag(node)) {
+    if (node.tag === "img") {
+      return "image";
+    } else if (node.tag === "a") {
+      return "link";
+    } else if (node.tag === "input") {
+      if (
+        vs &&
+        vs.attrs.type &&
+        Exprs.tryExtractLit(vs.attrs.type) === "password"
+      ) {
+        return "passwordInput";
+      }
+      return "input";
+    } else if (node.tag === "button") {
+      return "button";
+    } else if (["h1", "h2", "h3", "h4", "h5", "h6"].includes(node.tag)) {
+      return "heading";
+    } else if (isTplTextBlock(node)) {
+      return "text";
+    } else if (node.tag === "textarea") {
+      return "textarea";
+    } else if (vs) {
+      switch (getRshContainerType(vs.rshWithTheme())) {
+        case ContainerLayoutType.free:
+          return "freeContainer";
+        case ContainerLayoutType.flexColumn:
+          return "vertStack";
+        case ContainerLayoutType.flexRow:
+          return "horizStack";
+        case ContainerLayoutType.grid:
+          return "grid";
+        case ContainerLayoutType.contentLayout:
+          return "contentLayout";
+      }
+    }
+  }
+  return "freeContainer";
+}
+
 export function isTplOther(tplNode: TplNode): tplNode is TplContainerTag {
   if (!isTplTag(tplNode)) {
     return false;
@@ -2014,9 +2087,14 @@ export function getRichTextContent(text: RichText, viewCtx: ViewCtx) {
   }
   if (isKnownExprText(text)) {
     assert(
-      isKnownCustomCode(text.expr) || isKnownObjectPath(text.expr),
-      "Text expression is not CustomCode nor ObjectPath"
+      isKnownCustomCode(text.expr) ||
+        isKnownObjectPath(text.expr) ||
+        isKnownTemplatedString(text.expr),
+      "Text expression is not CustomCode, ObjectPath, or TemplatedString"
     );
+    if (isKnownTemplatedString(text.expr)) {
+      return flattenTemplatedStringToString(text.expr);
+    }
     return isKnownCustomCode(text.expr)
       ? text.expr.code
       : pathToDisplayString(text.expr.path, viewCtx.site, viewCtx.siteInfo.id);
@@ -2025,13 +2103,25 @@ export function getRichTextContent(text: RichText, viewCtx: ViewCtx) {
 }
 
 /**
- * Converts a RichText element to an empty ExprText.
- *
- * If present, sets the original text as the fallback.
+ * Converts a RichText element to an ExprText. Inline sub-nodes (with text block parent)
+ * get a TemplatedString; top-level blocks get an ObjectPath with original text as fallback.
  */
 export function convertTextToDynamic(
-  text: RichText | null | undefined
+  text: RichText | null | undefined,
+  parent: TplNode | TplSlot | undefined | null
 ): ExprText {
+  if (isTplTextBlock(parent)) {
+    const staticText =
+      isKnownRawText(text) && text.text !== "Enter some text" ? text.text : "";
+    const codePill = new ObjectPath({
+      path: ["undefined"],
+      fallback: undefined,
+    });
+    return new ExprText({
+      expr: new TemplatedString({ text: [staticText, codePill, ""] }),
+      html: false,
+    });
+  }
   return new ExprText({
     expr: new ObjectPath({
       path: ["undefined"],
@@ -2041,6 +2131,25 @@ export function convertTextToDynamic(
         text.text !== "Enter some text"
           ? Exprs.codeLit(text.text)
           : undefined,
+    }),
+    html: false,
+  });
+}
+
+/** Builds an ExprText bound to the given data token. */
+export function mkDataTokenExprText(
+  tokenProjectId: ProjectId,
+  tokenName: string
+): ExprText {
+  return new ExprText({
+    expr: new ObjectPath({
+      path: [
+        makeDataTokenIdentifier(
+          makeShortProjectId(tokenProjectId),
+          toVarName(tokenName)
+        ),
+      ],
+      fallback: undefined,
     }),
     html: false,
   });
@@ -2075,6 +2184,22 @@ export function getTplOwnerComponent(tpl: TplNode) {
 
 export function tryGetTplOwnerComponent(tpl: TplNode) {
   return TPLROOT_TO_COMPONENT.get(ensureKnownTplNode($$$(tpl).root().one()));
+}
+
+export function tryGetTplByUuid(
+  component: Component,
+  uuid: string
+): TplNode | undefined {
+  return flattenTpls(component.tplTree).find((t) => t.uuid === uuid);
+}
+
+export function tryGetTplByName(
+  component: Component,
+  name: string
+): TplNode | undefined {
+  return flattenTpls(component.tplTree)
+    .filter(isTplNamable)
+    .find((t) => t.name === name);
 }
 
 export function trackComponentRoot(component: Component) {
@@ -2820,6 +2945,7 @@ export function addFallbacksToCodeExpressions(
   newToOldTpl: <T extends TplNode>(t: T) => T,
   root: TplTag | TplComponent
 ) {
+  const warnings: string[] = [];
   flattenTpls(root).forEach((node) => {
     for (const { expr } of findExprsInNode(node)) {
       if (
@@ -2840,14 +2966,23 @@ export function addFallbacksToCodeExpressions(
           continue;
         }
 
-        const evaluatedExpr = evalCodeWithEnv(
+        const { val: evaluatedExpr, err } = tryEvalExpr(
           isKnownCustomCode(expr) ? expr.code : pathToString(expr.path),
           canvasEnv
         );
+        if (err) {
+          warnings.push(
+            `Error extracting fallback in ${
+              summarizeTplPath(node) || summarizeTpl(node)
+            }, it was omitted from the new component. Check the console for errors.`
+          );
+          continue;
+        }
         expr.fallback = Exprs.codeLit(evaluatedExpr);
       }
     }
   });
+  return warnings;
 }
 
 export function fixTplRefEpxrs(

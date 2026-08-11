@@ -7,6 +7,81 @@ import { noopFn } from "../utils";
 import { executePlasmicQueries } from "./server";
 import { ContextFn, QueryComponentNode } from "./types";
 
+// ─── regression: synchronous fn return value ────────────────────────────────
+//
+// Bug: executePlasmicQuery called $query.loadingPromise(key, query.fn(...args))
+// directly. If query.fn returns a plain value (not a Promise), loadingPromise
+// received it as the `promise` argument and called `value.then(...)`, which
+// throws TypeError for non-thenable values. The TypeError was swallowed by
+// .catch(() => {}), leaving the query permanently in "loading" state and the
+// cache empty.
+//
+// Fix: wrap query.fn(...args) in Promise.resolve() so that synchronous return
+// values are promoted to resolved Promises before entering loadingPromise.
+
+describe("regression: synchronous fn return value", () => {
+  it("resolves a query whose fn returns synchronously (non-Promise)", async () => {
+    const syncFn = (name: unknown) => `hello-${name}`;
+
+    const rootNode: QueryComponentNode = {
+      type: "component",
+      queries: {
+        greeting: {
+          id: "greetFn",
+          fn: syncFn as any,
+          args: () => ["world"],
+        },
+      },
+      propsContext: {},
+      stateSpecs: [],
+      children: [],
+    };
+
+    const result = await executePlasmicQueries(rootNode, {
+      $props: {},
+      $ctx: {},
+    });
+
+    // Without Promise.resolve(): syncFn returns "hello-world", loadingPromise calls
+    // "hello-world".then(...) → TypeError, query stays in "loading", cache is {}.
+    expect(result.cache).toEqual({ '$q.$.greetFn.$.["world"]': "hello-world" });
+  });
+
+  it("resolves a dependent query whose upstream fn returns synchronously", async () => {
+    const syncFirst = () => "first-value";
+    const syncSecond = (dep: unknown) => `second-got-${dep}`;
+
+    const rootNode: QueryComponentNode = {
+      type: "component",
+      queries: {
+        first: {
+          id: "firstFn",
+          fn: syncFirst as any,
+          args: () => [],
+        },
+        second: {
+          id: "secondFn",
+          fn: syncSecond as any,
+          args: ({ $q }) => [$q.first.data],
+        },
+      },
+      propsContext: {},
+      stateSpecs: [],
+      children: [],
+    };
+
+    const result = await executePlasmicQueries(rootNode, {
+      $props: {},
+      $ctx: {},
+    });
+
+    expect(result.cache).toEqual({
+      "$q.$.firstFn.$.[]": "first-value",
+      '$q.$.secondFn.$.["first-value"]': "second-got-first-value",
+    });
+  });
+});
+
 const asyncFunc = async (...args: unknown[]) => `${args[0]}-done`;
 
 function makeTestRootNodeWithFn(
@@ -40,6 +115,7 @@ function makeTestRootNodeWithFn(
       queryOrder.map((key) => [key, allQueries[key]])
     ),
     propsContext: {},
+    stateSpecs: [],
     children: [],
   };
 }
@@ -60,11 +136,12 @@ describe("executePlasmicQueries (flat-style via tree)", () => {
           $ctx: {},
         });
         expect(result.cache).toEqual({
-          'depFn:["dep1-param"]': "dep1-param-done",
-          'depFn:["dep2-param"]': "dep2-param-done",
-          'depFn:["dep3-param","dep1-param-done","dep2-param-done"]':
+          '$q.$.depFn.$.["dep1-param"]': "dep1-param-done",
+          '$q.$.depFn.$.["dep2-param"]': "dep2-param-done",
+          '$q.$.depFn.$.["dep3-param","dep1-param-done","dep2-param-done"]':
             "dep3-param-done",
-          'resultFn:["result-param","dep3-param-done"]': "result-param-done",
+          '$q.$.resultFn.$.["result-param","dep3-param-done"]':
+            "result-param-done",
         });
       });
 
@@ -83,10 +160,10 @@ describe("executePlasmicQueries (flat-style via tree)", () => {
           $ctx: {},
         });
         expect(result.cache).toEqual({
-          'depFn:["dep1-param"]': null,
-          'depFn:["dep2-param"]': false,
-          'depFn:["dep3-param",null,false]': 0,
-          'resultFn:["result-param",0]': "",
+          '$q.$.depFn.$.["dep1-param"]': null,
+          '$q.$.depFn.$.["dep2-param"]': false,
+          '$q.$.depFn.$.["dep3-param",null,false]': 0,
+          '$q.$.resultFn.$.["result-param",0]': "",
         });
       });
 
@@ -123,6 +200,7 @@ describe("executePlasmicQueries (tree)", () => {
         },
       },
       propsContext: {},
+      stateSpecs: [],
       children: [],
     };
 
@@ -147,6 +225,7 @@ describe("executePlasmicQueries (tree)", () => {
         item: { id: "getItem", fn: getItem, args: ({ $q }) => [$q.list.data] },
       },
       propsContext: {},
+      stateSpecs: [],
       children: [],
     };
 
@@ -157,12 +236,12 @@ describe("executePlasmicQueries (tree)", () => {
 
     expect(Object.keys(cache)).toHaveLength(2);
     expect(queries.list).toEqual({
-      key: "getList:[]",
+      key: "$q.$.getList.$.[]",
       data: ["a", "b", "c"],
       isLoading: false,
     });
     expect(queries.item).toEqual({
-      key: 'getItem:[["a","b","c"]]',
+      key: '$q.$.getItem.$.[["a","b","c"]]',
       data: { count: 3 },
       isLoading: false,
     });
@@ -175,6 +254,7 @@ describe("executePlasmicQueries (tree)", () => {
       type: "component",
       queries: {},
       propsContext: {},
+      stateSpecs: [],
       children: [
         {
           type: "visibility",
@@ -190,6 +270,7 @@ describe("executePlasmicQueries (tree)", () => {
                 },
               },
               propsContext: {},
+              stateSpecs: [],
               children: [],
             },
           ],
@@ -215,6 +296,7 @@ describe("executePlasmicQueries (tree)", () => {
         },
       },
       propsContext: {},
+      stateSpecs: [],
       children: [
         {
           type: "visibility",
@@ -230,6 +312,7 @@ describe("executePlasmicQueries (tree)", () => {
                 },
               },
               propsContext: {},
+              stateSpecs: [],
               children: [],
             },
           ],
@@ -254,6 +337,7 @@ describe("executePlasmicQueries (tree)", () => {
       type: "component",
       queries: {},
       propsContext: {},
+      stateSpecs: [],
       children: [
         {
           type: "repeated",
@@ -274,6 +358,7 @@ describe("executePlasmicQueries (tree)", () => {
                 currentItem: ({ $scopedItemVars }) =>
                   $scopedItemVars.currentItem,
               },
+              stateSpecs: [],
               children: [],
             },
           ],
@@ -309,6 +394,7 @@ describe("executePlasmicQueries (tree)", () => {
         films: { id: "getFilms", fn: getFilms, args: () => [] },
       },
       propsContext: {},
+      stateSpecs: [],
       children: [
         {
           type: "repeated",
@@ -336,6 +422,7 @@ describe("executePlasmicQueries (tree)", () => {
                 currentItem: ({ $scopedItemVars }) =>
                   $scopedItemVars.currentItem,
               },
+              stateSpecs: [],
               children: [],
             },
           ],
@@ -352,7 +439,7 @@ describe("executePlasmicQueries (tree)", () => {
     expect(Object.keys(result.cache)).toHaveLength(5);
 
     const summaryEntries = Object.entries(result.cache).filter(([k]) =>
-      k.startsWith("getSummary")
+      k.includes(".$.getSummary.$.")
     );
     expect(summaryEntries).toHaveLength(2);
     expect(summaryEntries.map(([, v]) => v)).toEqual(
@@ -371,6 +458,7 @@ describe("executePlasmicQueries (tree)", () => {
       type: "component",
       queries: {},
       propsContext: {},
+      stateSpecs: [],
       children: [
         {
           type: "repeated",
@@ -399,6 +487,7 @@ describe("executePlasmicQueries (tree)", () => {
                   propsContext: {
                     item: ({ $scopedItemVars }) => $scopedItemVars.item,
                   },
+                  stateSpecs: [],
                   children: [],
                 },
               ],
@@ -429,6 +518,7 @@ describe("executePlasmicQueries (tree)", () => {
       type: "component",
       queries: {},
       propsContext: {},
+      stateSpecs: [],
       children: [
         {
           type: "dataProvider",
@@ -445,6 +535,7 @@ describe("executePlasmicQueries (tree)", () => {
                 },
               },
               propsContext: {},
+              stateSpecs: [],
               children: [],
             },
           ],
@@ -489,6 +580,7 @@ describe("executePlasmicQueries (tree)", () => {
           },
         },
         propsContext: {},
+        stateSpecs: [],
         children: [
           {
             type: "component",
@@ -507,6 +599,7 @@ describe("executePlasmicQueries (tree)", () => {
             propsContext: {
               passedProp: ({ $props }) => $props.userId,
             },
+            stateSpecs: [],
             children: [],
           },
         ],
@@ -521,11 +614,11 @@ describe("executePlasmicQueries (tree)", () => {
 
       expect(Object.keys(result.cache)).toHaveLength(4);
       const nestedEntry = Object.entries(result.cache).find(([k]) =>
-        k.startsWith("fetchNested:")
+        k.includes(".$.fetchNested.$.")
       );
       expect(nestedEntry?.[1]).toEqual({ nested: 999 });
       const dependentEntry = Object.entries(result.cache).find(([k]) =>
-        k.startsWith("fetchNestedDependent")
+        k.includes(".$.fetchNestedDependent.$.")
       );
       expect(dependentEntry?.[1]).toEqual({ dependent: 999 });
     });
@@ -541,7 +634,10 @@ describe("executePlasmicQueries (tree)", () => {
       nestedDependentFn = nestedDependentMock;
 
       await expect(
-        executePlasmicQueries(rootNode, { $props: { userId: 999 }, $ctx: {} })
+        executePlasmicQueries(rootNode, {
+          $props: { userId: 999 },
+          $ctx: {},
+        })
       ).rejects.toBe(nestedDependentError);
 
       expect(nestedDependentMock).toHaveBeenCalledTimes(1);
@@ -549,17 +645,18 @@ describe("executePlasmicQueries (tree)", () => {
     });
   });
 
-  it("codeComponent with serverRenderingConfig=false skips all children", async () => {
+  it("codeComponent with subtreePrefetchingConfig=false skips all children", async () => {
     const fetchData = async () => ({ data: "should not run" });
 
     const rootNode: QueryComponentNode = {
       type: "component",
       queries: {},
       propsContext: {},
+      stateSpecs: [],
       children: [
         {
           type: "codeComponent",
-          serverRenderingConfig: false,
+          subtreePrefetchingConfig: false,
           propsContext: {},
           children: [
             {
@@ -572,6 +669,7 @@ describe("executePlasmicQueries (tree)", () => {
                 },
               },
               propsContext: {},
+              stateSpecs: [],
               children: [],
             },
           ],
@@ -593,6 +691,7 @@ describe("executePlasmicQueries (tree)", () => {
       type: "component",
       queries: {},
       propsContext: {},
+      stateSpecs: [],
       children: [
         {
           type: "codeComponent",
@@ -612,6 +711,7 @@ describe("executePlasmicQueries (tree)", () => {
               propsContext: {
                 propFromCode: ({ $props }) => $props.passedProp,
               },
+              stateSpecs: [],
               children: [],
             },
           ],
@@ -638,6 +738,7 @@ describe("executePlasmicQueries (tree)", () => {
         },
       },
       propsContext: {},
+      stateSpecs: [],
       children: [
         {
           type: "component",
@@ -649,6 +750,7 @@ describe("executePlasmicQueries (tree)", () => {
             },
           },
           propsContext: {},
+          stateSpecs: [],
           children: [],
         },
       ],
@@ -666,5 +768,228 @@ describe("executePlasmicQueries (tree)", () => {
       isLoading: false,
     });
     expect(result.queries["childQuery"]).toBeUndefined();
+  });
+});
+
+describe("executePlasmicQueries (stateSpecs)", () => {
+  it("resolves initVal, initFunc using $props/$ctx/$q, nested paths, sibling refs, and state→query chains", async () => {
+    // Covers in one scenario:
+    // - initVal driving a query arg
+    // - initFunc reading $props and $ctx
+    // - nested state paths
+    // - sibling state reference
+    // - state initFunc reading $q (blocked until query resolves)
+    // - state → query: another query's args depend on such a state
+    // - per-component stateSpecs on a child component, isolated from root
+    const listIds = async () => ["a", "b", "c"];
+    const fetchTenant = async (t: unknown) => ({ t });
+    const fetchRange = async (lo: unknown, hi: unknown) => ({ lo, hi });
+    const fetchItems = async (ids: unknown) => ({
+      count: (ids as string[]).length,
+      ids,
+    });
+    const fetchCount = async (n: unknown) => ({ n });
+    const fetchChildLabel = async (label: unknown) => ({ label });
+    const fetchChildSize = async (n: unknown) => ({ size: n });
+    const childList = async () => ["x", "y", "z"];
+
+    const rootNode: QueryComponentNode = {
+      type: "component",
+      queries: {
+        // Resolves immediately (no deps) — unblocks $state.selectedIds.
+        listIds: { id: "listIds", fn: listIds, args: () => [] },
+        // Uses initialized state that references $props/$ctx.
+        tenantQuery: {
+          id: "fetchTenant",
+          fn: fetchTenant,
+          args: ({ $state }) => [$state.tenant],
+        },
+        // Uses nested state: one initVal, one sibling-dependent initFunc.
+        rangeQuery: {
+          id: "fetchRange",
+          fn: fetchRange,
+          args: ({ $state }) => [
+            ($state.filters as any).minPrice,
+            ($state.filters as any).maxPrice,
+          ],
+        },
+        // Uses state whose initFunc reads $q.listIds (state → query chain).
+        fetchItems: {
+          id: "fetchItems",
+          fn: fetchItems,
+          args: ({ $state }) => [$state.selectedIds],
+        },
+        // Uses state that references another query-dependent state
+        fetchCount: {
+          id: "fetchCount",
+          fn: fetchCount,
+          args: ({ $state }) => [$state.selectedCount],
+        },
+      },
+      propsContext: {},
+      stateSpecs: [
+        {
+          path: "tenant",
+          type: "private",
+          initFunc: ({ $props, $ctx }) => `${$ctx.region}/${$props.userId}`,
+        },
+        { path: "filters.minPrice", type: "private", initVal: 10 },
+        {
+          path: "filters.maxPrice",
+          type: "private",
+          initFunc: ({ $state }) =>
+            (($state as any).filters.minPrice as number) * 10,
+        },
+        {
+          path: "selectedIds",
+          type: "private",
+          initFunc: ({ $q }) => $q.listIds.data as string[],
+        },
+        {
+          path: "selectedCount",
+          type: "private",
+          initFunc: ({ $state }) =>
+            (($state as any).selectedIds as string[]).length,
+        },
+      ],
+      children: [
+        // Child component with its own stateSpecs. Its $state is isolated from parent
+        // (so $state.tenant is not visible here) and resolves against the child $props/$q.
+        {
+          type: "component",
+          queries: {
+            // Resolves immediately — unblocks the child's derived state.
+            childList: { id: "childList", fn: childList, args: () => [] },
+            // Child state initFunc reads child's $props.passedUser.
+            childLabel: {
+              id: "fetchChildLabel",
+              fn: fetchChildLabel,
+              args: ({ $state }) => [$state.label],
+            },
+            // Child state → child $q chain.
+            childSize: {
+              id: "fetchChildSize",
+              fn: fetchChildSize,
+              args: ({ $state }) => [$state.size],
+            },
+          },
+          propsContext: {
+            passedUser: ({ $props }) => $props.userId,
+          },
+          stateSpecs: [
+            {
+              path: "label",
+              type: "private",
+              initFunc: ({ $props }) => `child-of-${$props.passedUser}`,
+            },
+            {
+              path: "size",
+              type: "private",
+              initFunc: ({ $q }) => ($q.childList.data as string[]).length,
+            },
+          ],
+          children: [],
+        },
+      ],
+    };
+
+    const result = await executePlasmicQueries(rootNode, {
+      $props: { userId: 7 },
+      $ctx: { region: "us-east" },
+    });
+
+    expect(result.cache).toEqual({
+      "$q.$.listIds.$.[]": ["a", "b", "c"],
+      '$q.$.fetchTenant.$.["us-east/7"]': { t: "us-east/7" },
+      "$q.$.fetchRange.$.[10,100]": { lo: 10, hi: 100 },
+      '$q.$.fetchItems.$.[["a","b","c"]]': { count: 3, ids: ["a", "b", "c"] },
+      "$q.$.fetchCount.$.[3]": { n: 3 },
+      "$q.$.childList.$.[]": ["x", "y", "z"],
+      '$q.$.fetchChildLabel.$.["child-of-7"]': { label: "child-of-7" },
+      "$q.$.fetchChildSize.$.[3]": { size: 3 },
+    });
+  });
+
+  it("propagates rejection from a query that a state initFunc depends on", async () => {
+    const failingListIds = async () => {
+      throw new Error("listIds-fail");
+    };
+    const fetchItems = vi.fn(async (ids: unknown) => ({ ids }));
+
+    const rootNode: QueryComponentNode = {
+      type: "component",
+      queries: {
+        listIds: { id: "listIds", fn: failingListIds, args: () => [] },
+        fetchItems: {
+          id: "fetchItems",
+          fn: fetchItems,
+          args: ({ $state }) => [$state.selectedIds],
+        },
+      },
+      propsContext: {},
+      stateSpecs: [
+        {
+          path: "selectedIds",
+          type: "private",
+          initFunc: ({ $q }) => $q.listIds.data as string[],
+        },
+      ],
+      children: [],
+    };
+
+    const queryData = executePlasmicQueries(rootNode, {
+      $props: {},
+      $ctx: {},
+    });
+    queryData.catch(noopFn);
+    await expect(queryData).rejects.toThrow();
+
+    // fetchItems never runs since params depend on state backed by a failed query.
+    expect(fetchItems).not.toHaveBeenCalled();
+  });
+
+  it("does NOT expose root $state to child component queries", async () => {
+    const rootRead = vi.fn(async (val: unknown) => ({ read: val }));
+    const childRead = vi.fn(async (val: unknown) => ({ read: val }));
+
+    const rootNode: QueryComponentNode = {
+      type: "component",
+      queries: {
+        rootQuery: {
+          id: "rootRead",
+          fn: rootRead,
+          args: ({ $state }) => [$state.value],
+        },
+      },
+      propsContext: {},
+      stateSpecs: [{ path: "value", type: "private", initVal: "from-root" }],
+      children: [
+        {
+          type: "component",
+          queries: {
+            childQuery: {
+              id: "childRead",
+              fn: childRead,
+              args: ({ $state }) => [$state.value],
+            },
+          },
+          propsContext: {},
+          stateSpecs: [],
+          children: [],
+        },
+      ],
+    };
+
+    const result = await executePlasmicQueries(rootNode, {
+      $props: {},
+      $ctx: {},
+    });
+
+    expect(rootRead).toHaveBeenCalledWith("from-root");
+    expect(childRead).toHaveBeenCalledWith(undefined);
+    expect(result.cache).toEqual({
+      '$q.$.rootRead.$.["from-root"]': { read: "from-root" },
+      '$q.$.childRead.$.["ρ:UNDEFINED"]': { read: undefined },
+    });
   });
 });

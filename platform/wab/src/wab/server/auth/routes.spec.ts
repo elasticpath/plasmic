@@ -1,8 +1,9 @@
 /** @jest-environment node */
-import { DbMgr, SUPER_USER } from "@/wab/server/db/DbMgr";
+import { DbMgr, SUPER_USER, normalActor } from "@/wab/server/db/DbMgr";
 import { Permission, Team } from "@/wab/server/entities/Entities";
 import { SharedApiTester } from "@/wab/server/test/api-tester";
 import { createBackend, createDatabase } from "@/wab/server/test/backend-util";
+import { MAX_PASSWORD_LENGTH } from "@/wab/shared/password-policy";
 import {
   BadRequestError,
   PreconditionFailedError,
@@ -10,6 +11,7 @@ import {
 } from "@/wab/shared/ApiErrors/errors";
 import type { DataSource } from "typeorm";
 import * as uuid from "uuid";
+import { MAX_GRANTS_PER_REQUEST, TeamId } from "@/wab/shared/ApiSchema";
 
 describe("auth", () => {
   let api: SharedApiTester;
@@ -142,6 +144,30 @@ describe("auth", () => {
       });
     });
 
+    it("rejects passwords that are too long", async () => {
+      const email = `${Date.now()}@example.com`;
+      // EP's invitation gate runs before password validation.
+      await createPendingInvitation(email);
+      const signUpParams = {
+        email,
+        password: "SuperStrongPassword!!" + "a".repeat(MAX_PASSWORD_LENGTH),
+        firstName: "GivenName",
+        lastName: "FamilyName",
+      };
+      expect(await api.signUp(signUpParams)).toEqual({
+        status: false,
+        reason: "PasswordTooLongError",
+      });
+
+      signUpParams.password = signUpParams.password.slice(
+        0,
+        MAX_PASSWORD_LENGTH
+      );
+      expect(await api.signUp(signUpParams)).toMatchObject({
+        status: true,
+      });
+    });
+
     it("rejects if email already used", async () => {
       const email = `${Date.now()}@example.com`;
       await createPendingInvitation(email);
@@ -229,6 +255,67 @@ describe("auth", () => {
     });
   });
 
+  describe("grantRevoke", () => {
+    it("is rate limited per user", async () => {
+      await api.dispose();
+      api = new SharedApiTester(baseURL);
+      await api.refreshCsrfToken();
+      const email = `${Date.now()}@example.com`;
+      await createPendingInvitation(email);
+      await api.signUp({
+        email,
+        password: "SuperStrongPassword!!",
+        firstName: "GivenName",
+        lastName: "FamilyName",
+      });
+      const dbUser = await sudoDbMgr.getUserById(api.user()!.id);
+      await sudoDbMgr.markEmailAsVerified(dbUser);
+
+      api.setBaseHeader("x-plasmic-test-rate-limit", "true");
+
+      for (let i = 0; i < 35; ++i) {
+        try {
+          await api.grantRevoke({ grants: [], revokes: [] });
+          expect(i).toBeLessThan(30);
+        } catch (error: unknown) {
+          if (error instanceof Error && error.message.includes("429")) {
+            expect(i).toBeGreaterThanOrEqual(30);
+          } else {
+            throw error;
+          }
+        }
+      }
+    });
+
+    it("rejects more than the max grants per request", async () => {
+      const email = `${Date.now()}@example.com`;
+      await createPendingInvitation(email);
+      await api.signUp({
+        email,
+        password: "SuperStrongPassword!!",
+        firstName: "GivenName",
+        lastName: "FamilyName",
+      });
+      const dbUser = await sudoDbMgr.getUserById(api.user()!.id);
+      await sudoDbMgr.markEmailAsVerified(dbUser);
+
+      // The cap is enforced before any resource resolution, so the teamId
+      // doesn't need to reference a real team.
+      const grants = Array.from(
+        { length: MAX_GRANTS_PER_REQUEST + 1 },
+        (_, i) => ({
+          email: `recipient-${i}@example.com`,
+          teamId: "fake-team" as TeamId,
+          accessLevel: "editor" as const,
+        })
+      );
+
+      await expect(api.grantRevoke({ grants, revokes: [] })).rejects.toThrow(
+        BadRequestError
+      );
+    });
+  });
+
   describe("deleteSelf", () => {
     it("works", async () => {
       const email = `${Date.now()}@example.com`;
@@ -245,9 +332,10 @@ describe("auth", () => {
       const dbUser = await sudoDbMgr.getUserById(api.user()!.id);
       await sudoDbMgr.markEmailAsVerified(dbUser);
 
-      // Create a non-personal team.
-      const teamResponse = await api.createTeam("Example team");
-      const team = teamResponse.team;
+      // Create a non-personal team directly via DbMgr — POST /api/v1/teams is
+      // admin-gated on the EP fork, and this test is about deleteSelf.
+      const userDbMgr = new DbMgr(con.createEntityManager(), normalActor(dbUser.id));
+      const team = await userDbMgr.createTeam("Example team");
 
       // User should have 2 teams now, one personal, one non-personal.
       await expect(api.listTeams()).resolves.toMatchObject({

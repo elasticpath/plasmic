@@ -1,6 +1,7 @@
 import { expect, Page } from "@playwright/test";
 import { PageModels, test } from "../fixtures/test";
 import { setDynamicVisibility } from "../utils/auto-open-utils";
+import { pasteIntoMonaco } from "../utils/key-utils";
 import { goToProject } from "../utils/studio-utils";
 
 const MOCK_API_URL = "https://mock-api-for-server-queries.test";
@@ -86,20 +87,23 @@ async function copyQueryFromPage(
 ) {
   await models.studio.rightPanel.addServerQueryButton.click();
 
-  await models.studio.frame
+  // Hover to open antd nested submenus. Clicking can race with submenu open/close
+  // and leave the menu collapsed before the leaf is clickable.
+  const copyFromTitle = models.studio.frame
     .locator(".ant-dropdown-menu-submenu-title")
-    .filter({ hasText: "Copy from..." })
-    .click();
+    .filter({ hasText: "Copy from..." });
+  await copyFromTitle.hover();
 
-  await models.studio.frame
+  const sourcePageTitle = models.studio.frame
     .locator(".ant-dropdown-menu-submenu-title")
-    .filter({ hasText: sourcePage })
-    .click();
+    .filter({ hasText: sourcePage });
+  await sourcePageTitle.hover();
 
-  await models.studio.frame
+  const queryItem = models.studio.frame
     .locator(".ant-dropdown-menu-item")
-    .getByText(queryName, { exact: true })
-    .click();
+    .getByText(queryName, { exact: true });
+  await queryItem.waitFor({ state: "visible" });
+  await queryItem.click();
 }
 
 /**
@@ -173,9 +177,6 @@ test.describe("server queries", () => {
     projectId = await apiClient.setupNewProject({
       name: "custom-code-server-queries",
     });
-    await page
-      .context()
-      .grantPermissions(["clipboard-read", "clipboard-write"]);
     await goToProject(
       page,
       `/projects/${projectId}?serverQueries=true&dataTokens=true`
@@ -223,12 +224,10 @@ test.describe("server queries", () => {
     await test.step('Create "Greeting" query with data token from inspector', async () => {
       const codeEditor = await openNewCustomCodeQuery(models, "Greeting");
 
-      await page.evaluate(() =>
-        navigator.clipboard.writeText(
-          "await new Promise(resolve => setTimeout(() => {\n  resolve(`Welcome to ${ }`)\n}, 2000))"
-        )
+      await pasteIntoMonaco(
+        codeEditor,
+        "await new Promise(resolve => setTimeout(() => {\n  resolve(`Welcome to ${ }`)\n}, 2000))"
       );
-      await page.keyboard.press("ControlOrMeta+V");
 
       // Position cursor between ${ and } to insert the data token there
       for (let i = 0; i < 14; i++) {
@@ -260,7 +259,7 @@ test.describe("server queries", () => {
     await assertQuerySummary("greeting");
 
     await test.step('Create "Full Greeting" query with $q reference from inspector', async () => {
-      await openNewCustomCodeQuery(models, "Full Greeting");
+      const codeEditor = await openNewCustomCodeQuery(models, "Full Greeting");
 
       // Insert $q.greeting.data from the data context inspector
       await serverQueryModal.locator('[data-insert-path="$q"]').click();
@@ -275,10 +274,9 @@ test.describe("server queries", () => {
         .filter({ hasText: "Insert" })
         .click();
 
-      // Type the rest of the expression
       await page.keyboard.press("End");
-      await page.keyboard.type(' + ", enjoy your stay!', { delay: 5 });
-      await page.keyboard.press("ArrowRight");
+      // Use synthetic paste so Monaco doesn't auto-close the inner `"`.
+      await pasteIntoMonaco(codeEditor, ' + ", enjoy your stay!"');
 
       await serverQueryModal.locator("button").getByText("Execute").click();
       await expect(previewResult).toContainText(
@@ -339,12 +337,8 @@ test.describe("server queries", () => {
       );
       await dataPicker.waitFor({ state: "visible" });
 
-      // Select fullGreeting2 > data — this verifies the duplicated
-      // query is available in the data picker
-      await models.studio.rightPanel.selectPathInDataPicker([
-        "fullGreeting2",
-        "data",
-      ]);
+      // Select fullGreeting2 to verify the duplicated query is available in the picker.
+      await models.studio.rightPanel.selectPathInDataPicker(["fullGreeting2"]);
 
       // Verify the text element shows the query result on the canvas
       await expect(
@@ -500,6 +494,241 @@ test.describe("server queries", () => {
         "Copied query: Todos 2",
         "References component state (extra), props (filter), context (suffix) that may not exist or differ"
       );
+    });
+  });
+
+  test("param required validation, removal, and reset to default", async ({
+    apiClient,
+    page,
+    models,
+  }) => {
+    // The graphql function registers a flattened object param whose fields
+    // exercise everything under test: `url` (required, no default), `request`
+    // (required, no default), and `method` (optional, defaults to "POST").
+    projectId = await apiClient.setupProjectWithHostlessPackages({
+      name: "server-queries-graphql-params",
+      hostLessPackagesInfo: {
+        name: "graphql",
+        npmPkg: ["@plasmicpkgs/graphql"],
+      },
+    });
+    await goToProject(page, `/projects/${projectId}?serverQueries=true`);
+
+    const GRAPHQL_MOCK_URL = "https://mock-graphql-for-server-queries.test";
+    const receivedMethods: string[] = [];
+    await page.route(GRAPHQL_MOCK_URL, async (route) => {
+      receivedMethods.push(route.request().method());
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: { hello: "world" } }),
+      });
+    });
+
+    await models.studio.leftPanel.createNewPage("GraphQL Page");
+    await models.studio.rightPanel.clickPageData();
+
+    const serverQueryModal = models.studio.serverQueryBottomModal;
+    const previewResult = serverQueryModal.locator(".code-preview-inner");
+    const executeButton = serverQueryModal
+      .locator("button")
+      .getByText("Execute");
+
+    // First query in the project, so the add button creates it directly.
+    await models.studio.rightPanel.addServerQueryButton.click();
+    await models.studio.rightPanel.serverQueriesSection
+      .locator(`[data-plasmic-role="labeled-item"]`)
+      .last()
+      .click();
+    await serverQueryModal
+      .locator(`[data-test-id="query-name"] input`)
+      .fill("gqlQuery");
+
+    const urlRow = serverQueryModal.locator(
+      '[data-test-id="prop-editor-row-url"]'
+    );
+    const methodRow = serverQueryModal.locator(
+      '[data-test-id="prop-editor-row-method"]'
+    );
+    const requestRow = serverQueryModal.locator(
+      '[data-test-id="prop-editor-row-request"]'
+    );
+    const urlInput = urlRow.locator('[data-plasmic-prop="url"]');
+    const invalidArgIcons = serverQueryModal.locator(".invalid-arg-icon");
+    const setIndicator = (row: typeof urlRow) =>
+      row.locator('[class*="DefinedIndicator--set"]');
+
+    await test.step("required params are labeled; method seeded with its default", async () => {
+      await expect(urlRow.locator(".required-prop")).toBeVisible();
+      await expect(requestRow.locator(".required-prop")).toBeVisible();
+      await expect(methodRow.locator(".required-prop")).toHaveCount(0);
+
+      // method has a registered defaultValue ("POST"), so it starts set
+      // (with a defined indicator), while url starts unset.
+      await expect(methodRow).toContainText("POST");
+      await expect(setIndicator(methodRow)).toBeVisible();
+      await expect(setIndicator(urlRow)).toHaveCount(0);
+    });
+
+    await test.step("executing with missing required params is blocked with validation errors", async () => {
+      await executeButton.click();
+      await expect(
+        serverQueryModal.getByText("Fix validation errors")
+      ).toBeVisible();
+      await expect(
+        serverQueryModal.getByText("These parameters have invalid values:")
+      ).toBeVisible();
+      await expect(serverQueryModal.getByText("URL: Required")).toBeVisible();
+      await expect(
+        serverQueryModal.getByText("Request: Required")
+      ).toBeVisible();
+      await expect(invalidArgIcons).toHaveCount(2);
+      expect(receivedMethods).toEqual([]);
+    });
+
+    await test.step("filling a required param clears its validation error on next execute", async () => {
+      await urlInput.click();
+      await models.studio.page.keyboard.type(GRAPHQL_MOCK_URL);
+      await models.studio.page.keyboard.press("Enter");
+      await expect(setIndicator(urlRow)).toBeVisible();
+
+      await executeButton.click();
+      await expect(
+        serverQueryModal.getByText("This parameter has an invalid value:")
+      ).toBeVisible();
+      await expect(
+        serverQueryModal.getByText("Request: Required")
+      ).toBeVisible();
+      await expect(
+        serverQueryModal.getByText("URL: Required")
+      ).not.toBeVisible();
+      await expect(invalidArgIcons).toHaveCount(1);
+    });
+
+    await test.step("removing a param without defaultValue unsets it", async () => {
+      await urlInput.click({ button: "right" });
+      await models.studio.frame
+        .locator(".ant-dropdown-menu-item")
+        .filter({ hasText: "Remove URL param" })
+        .click();
+      await expect(urlInput).toContainText("unset");
+      await expect(setIndicator(urlRow)).toHaveCount(0);
+
+      // Restore it for the final execute.
+      await urlInput.click();
+      await models.studio.page.keyboard.type(GRAPHQL_MOCK_URL);
+      await models.studio.page.keyboard.press("Enter");
+      await expect(setIndicator(urlRow)).toBeVisible();
+    });
+
+    await test.step("removing a param with defaultValue resets it to the default", async () => {
+      await methodRow.locator('[data-plasmic-prop="method"]').click();
+      await models.studio.frame.locator(`[data-key="'GET'"]`).click();
+      await expect(methodRow).toContainText("GET");
+
+      await methodRow
+        .getByText("Method", { exact: true })
+        .click({ button: "right" });
+      await models.studio.frame
+        .locator(".ant-dropdown-menu-item")
+        .filter({ hasText: "Remove Method param" })
+        .click();
+      await expect(methodRow).toContainText("POST");
+      await expect(setIndicator(methodRow)).toBeVisible();
+    });
+
+    await test.step("query executes once all required params are set", async () => {
+      // Set `request` as a dynamic value to avoid the GraphiQL editor UI.
+      await requestRow
+        .getByText("Request", { exact: true })
+        .click({ button: "right" });
+      await models.studio.frame.getByText("Use dynamic value").click();
+      await models.studio.rightPanel.insertMonacoCode(
+        '({ query: "query { hello }" })'
+      );
+      await expect(setIndicator(requestRow)).toBeVisible();
+
+      await executeButton.click();
+      await expect(previewResult).toContainText("statusCode: 200");
+      await expect(
+        serverQueryModal.getByText("Fix validation errors")
+      ).not.toBeVisible();
+      await expect(invalidArgIcons).toHaveCount(0);
+
+      // The reset `method` default actually flowed through to the request.
+      expect([...new Set(receivedMethods)]).toEqual(["POST"]);
+
+      await serverQueryModal.locator("button").getByText("Save").click();
+      await serverQueryModal.waitFor({ state: "hidden" });
+    });
+  });
+
+  test("Use Data Query interaction runs custom code with await", async ({
+    apiClient,
+    page,
+    models,
+  }) => {
+    projectId = await apiClient.setupNewProject({
+      name: "use-data-query-interaction-await",
+    });
+    await page
+      .context()
+      .grantPermissions(["clipboard-read", "clipboard-write"]);
+    await generateMocks(page);
+    await goToProject(page, `/projects/${projectId}?serverQueries=true`);
+
+    await models.studio.leftPanel.createNewPage("Await Page");
+
+    // State the second interaction will write into, so live mode has something
+    // to assert against.
+    await models.studio.rightPanel.clickPageData();
+    await models.studio.rightPanel.addState({
+      name: "todoTitle",
+      variableType: "text",
+      accessType: "private",
+      initialValue: "",
+    });
+
+    // Button that triggers the interaction.
+    await models.studio.leftPanel.switchToTreeTab();
+    await models.studio.leftPanel.insertNode("Button");
+
+    await models.studio.rightPanel.addComplexInteraction("onClick", [
+      {
+        actionName: "customFunctionOp",
+        args: {
+          customFunctionOpCode: `const res = await fetch("${MOCK_API_URL}/todos/1");\nres.json()`,
+        },
+      },
+      {
+        actionName: "customFunctionOp",
+        args: {
+          customFunctionOpCode: "$steps.customCodeQuery.title.toUpperCase()",
+        },
+        assertCustomFunctionOpModal: async (modal) => {
+          await expect(
+            modal.locator('[data-insert-path="$steps"]')
+          ).toBeVisible();
+        },
+      },
+      {
+        actionName: "updateVariable",
+        args: {
+          variable: ["todoTitle"],
+          operation: "newValue",
+          value: "$steps.customCodeQuery2",
+        },
+      },
+    ]);
+
+    // Text bound to the state, so we can assert the runtime result.
+    await models.studio.leftPanel.switchToTreeTab();
+    await models.studio.leftPanel.insertNode("Text");
+    await bindTextContent(models, "$state.todoTitle");
+
+    await models.studio.withinLiveMode(async (liveFrame) => {
+      await liveFrame.getByRole("button").click();
+      await expect(liveFrame.getByText("BUY MILK")).toBeVisible();
     });
   });
 });

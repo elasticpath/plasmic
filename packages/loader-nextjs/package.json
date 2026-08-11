@@ -1,7 +1,8 @@
 {
-  "version": "2.0.2",
+  "version": "2.0.21",
   "name": "@plasmicapp/loader-nextjs",
   "description": "Plasmic loader SDK for Next.js",
+  "homepage": "https://www.plasmic.app",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -51,7 +52,7 @@
   },
   "scripts": {
     "build": "yarn build:types && yarn build:index && yarn build:edge && yarn build:react-server",
-    "build:types": "yarn tsc",
+    "build:types": "tsc",
     "build:index": "node ../../build.mjs ./src/index.tsx --use-client",
     "build:edge": "node ../../build.mjs ./src/edge.ts --no-esm",
     "build:react-server": "node ../../build.mjs ./src/react-server.tsx",
@@ -75,11 +76,10 @@
     }
   ],
   "dependencies": {
-    "@plasmicapp/loader-core": "2.0.0",
-    "@plasmicapp/loader-edge": "1.0.76",
-    "@plasmicapp/loader-react": "2.0.2",
-    "@plasmicapp/nextjs-app-router": "1.0.22",
-    "@plasmicapp/watcher": "1.0.84",
+    "@plasmicapp/loader-core": "2.0.4",
+    "@plasmicapp/loader-edge": "1.0.81",
+    "@plasmicapp/loader-react": "2.0.18",
+    "@plasmicapp/watcher": "1.0.86",
     "server-only": "0.0.1"
   },
   "devDependencies": {

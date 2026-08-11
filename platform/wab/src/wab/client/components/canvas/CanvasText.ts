@@ -25,8 +25,9 @@ import type {
   ViewCtx,
 } from "@/wab/client/studio-ctx/view-ctx";
 import { useForceUpdate } from "@/wab/client/useForceUpdate";
-import { cx, ensureInstance, spawn } from "@/wab/shared/common";
+import { cx, ensureInstance, mkShortId, spawn } from "@/wab/shared/common";
 import {
+  asCode,
   ExprCtx,
   getCodeExpressionWithFallback,
 } from "@/wab/shared/core/exprs";
@@ -35,6 +36,7 @@ import {
   isTagListContainer,
   listContainerTags,
   normalizeMarkers,
+  renderRichTextChildren,
   textInlineTags,
 } from "@/wab/shared/core/rich-text-util";
 import {
@@ -50,6 +52,7 @@ import {
   CustomCode,
   ensureKnownRawText,
   ensureKnownTplTag,
+  isKnownTemplatedString,
   Marker,
   ObjectPath,
   TplNode,
@@ -85,6 +88,7 @@ type RichTextProps = {
 
 export type ShortcutFnOpts = {
   prompt: (opts: ReactPromptOpts) => Promise<string | undefined>;
+  vc: ViewCtx;
 };
 
 // ShortcutFn is a function that is triggered by a shortcut.
@@ -154,7 +158,11 @@ function wrapInInlineTag(
     }
     const { children, attrs } = props;
 
-    const element = mkTplTagElement(tag, attrs, children);
+    // Pre-generate a uuid so the slate node and tpl match. Otherwise saveText clones the tpl
+    // with a new uuid and the next render's initialValue differs from slate, resetting
+    // cursor placement.
+    const uuid = mkShortId();
+    const element = mkTplTagElement(tag, attrs, children, uuid);
     wrapOrInsertTplTag(editor, element, sub);
   };
 }
@@ -849,10 +857,13 @@ function mkExprTextProps(
   if (!isExprText(effectiveVs.text)) {
     throw new Error("mkExprTextProps expects ValTag with ExprText");
   }
-  const expr = getCodeExpressionWithFallback(
-    ensureInstance(effectiveVs.text.expr, CustomCode, ObjectPath),
-    exprCtx
-  );
+  const textExpr = effectiveVs.text.expr;
+  const expr = isKnownTemplatedString(textExpr)
+    ? asCode(textExpr, exprCtx).code
+    : getCodeExpressionWithFallback(
+        ensureInstance(textExpr, CustomCode, ObjectPath),
+        exprCtx
+      );
   const content = evalCodeWithEnv(expr, env);
   if (content && typeof content === "object") {
     throw new Error(
@@ -891,7 +902,7 @@ export const mkCanvasText = computedFn(
           [inline]
         );
 
-        const shortcutOpts: ShortcutFnOpts = { prompt: reactPrompt };
+        const shortcutOpts: ShortcutFnOpts = { prompt: reactPrompt, vc };
 
         // Called on both value and selection changes
         const onSlateChange = react.useCallback(() => {
@@ -956,19 +967,20 @@ export const mkCanvasText = computedFn(
         // differences in the initialValue passed to this component.
         // This might happen when syncing the bundle from server, switching
         // variants, etc.
+        //
+        // Compare against the editor's current children so when model save is triggered by
+        // the editor, the new initialValue matches slate and we skip the reset.
         const forceUpdate = useForceUpdate(react);
-        const prevInitialValueRef = react.useRef(initialValue);
         react.useEffect(() => {
-          if (!isEqual(prevInitialValueRef.current, initialValue)) {
+          if (!isEqual(editor.children, initialValue)) {
             // A different initialValue has been specified; reset editor value
-            prevInitialValueRef.current = initialValue;
             // Directly mutate the children.
             // Slate will adjust the selection automatically if necessary.
             editor.children = initialValue;
             // editor.children mutation won't trigger a re-render, so force it.
             forceUpdate();
           }
-        }, [initialValue, prevInitialValueRef, editor]);
+        }, [initialValue, editor]);
 
         if (isExprText(effectiveVs.text)) {
           // If node.text is a custom code expression, there's no need to use Slate.
@@ -1268,6 +1280,97 @@ const mkTextChild = computedFn(
         () => renderTplNode(node, ctx),
         `mkTextChild(${node.uuid})`
       ),
+  { keepAlive: true }
+);
+
+// Builds read-only React children for RawText. Unlike codegen, plain-text runs are wrapped
+// in <span> to mirror Slate's renderLeaf shape (Studio hover/click/selection logic relies
+// on it). Canvas text uses `white-space: pre-wrap`, so <br/> insertion isn't needed.
+function renderRawTextChildren(
+  react: typeof React,
+  rawText: ReturnType<typeof ensureKnownRawText>,
+  ctx: RenderingCtx
+): React.ReactNode[] {
+  const spanClassName = defaultStyleClassNames(
+    studioDefaultStylesClassNameBase,
+    { tag: "span", projectId: canvasProjectId }
+  ).join(" ");
+
+  return renderRichTextChildren<React.ReactNode>(
+    rawText,
+    {
+      text: (text, key) => react.createElement("span", { key }, text),
+      styledRun: (text, cssRules, className, key) =>
+        react.createElement("span", { key, className, style: cssRules }, text),
+      nodeMarker: (tpl, key) => {
+        const childTpl = ensureKnownTplTag(tpl);
+        return react.createElement(mkTextChild(ctx.viewCtx), {
+          key,
+          node: childTpl,
+          ctx: {
+            ...ctx,
+            inline: isTagInline(childTpl.tag),
+            valKey: ctx.valKey + "." + childTpl.uuid,
+          },
+        });
+      },
+    },
+    { spanClassName }
+  );
+}
+
+// Read-only version of mkCanvasText: renders content as plain React elements.
+// mkRichText uses this when not editing to avoid initializing Slate
+export const mkReadOnlyCanvasText = computedFn(
+  (react: typeof React) =>
+    function ReadOnlyCanvasText({
+      node,
+      inline,
+      ctx,
+      effectiveVs,
+    }: Pick<RichTextProps, "node" | "inline" | "ctx" | "effectiveVs">) {
+      return mkUseCanvasObserver(ctx.sub, ctx.viewCtx)(
+        () =>
+          withErrorDisplayFallback(
+            react,
+            ctx,
+            node,
+            () => {
+              const className = mkClassName(node, inline);
+              const tag = inline ? "span" : "div";
+
+              if (isExprText(effectiveVs.text)) {
+                const exprTextProps = mkExprTextProps(
+                  node,
+                  effectiveVs,
+                  ctx.env,
+                  {
+                    projectFlags: ctx.projectFlags,
+                    component: ctx.ownerComponent ?? null,
+                    inStudio: true,
+                  }
+                );
+                return react.createElement(tag, {
+                  className,
+                  style: DEFAULT_TEXT_STYLE,
+                  ...exprTextProps,
+                });
+              }
+
+              const rawText = ensureKnownRawText(effectiveVs.text);
+              return react.createElement(tag, {
+                className,
+                style: DEFAULT_TEXT_STYLE,
+                children: renderRawTextChildren(react, rawText, ctx),
+              });
+            },
+            {
+              hasLoadingBoundary: ctx.env.$ctx[hasLoadingBoundaryKey],
+            }
+          ),
+        `mkReadOnlyCanvasText(${node.uuid})`
+      );
+    },
   { keepAlive: true }
 );
 

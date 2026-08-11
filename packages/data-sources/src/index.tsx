@@ -1,16 +1,27 @@
-export { usePlasmicQueries as unstable_usePlasmicQueries } from "./serverQueries/client";
+export {
+  isPlasmicUndefinedDataErrorPromise,
+  throwIfPlasmicUndefinedDataError,
+} from "./common";
+export type { PlasmicUndefinedDataErrorPromise } from "./common";
+export { usePlasmicInvalidate } from "./hooks/usePlasmicDataOp";
+export { usePlasmicQueries } from "./serverQueries/client";
 export {
   StatefulQueryResult as _StatefulQueryResult,
-  wrapDollarQueriesForMetadata as unstable_wrapDollarQueriesForMetadata,
+  safeExecResult as _safeExecResult,
+  wrapPlasmicQueriesForMetadata,
   type StateListener as _StateListener,
   type StatefulQueryState as _StatefulQueryState,
 } from "./serverQueries/common";
-export { makeQueryCacheKey } from "./serverQueries/makeQueryCacheKey";
-export { executePlasmicQueries as unstable_executePlasmicQueries } from "./serverQueries/server";
+export {
+  makeQueryCacheKey,
+  matchesQueryCacheKey,
+} from "./serverQueries/makeQueryCacheKey";
+export { executePlasmicQueries } from "./serverQueries/server";
 export type {
   PlasmicQuery,
   PlasmicQueryResult,
   QueryComponentNode,
+  QueryExecutionContext,
 } from "./serverQueries/types";
 
 // exports below are deprecated and will be removed in major version bump
@@ -29,8 +40,8 @@ export {
   makeCacheKey,
   usePlasmicDataMutationOp,
   usePlasmicDataOp,
-  usePlasmicInvalidate,
 } from "./hooks/usePlasmicDataOp";
+export { executeServerQuery } from "./serverQueries/server";
 export type {
   ClientQueryResult,
   DataOp,

@@ -8,21 +8,26 @@ import {
   isStyleVariant,
   mkVariantSetting,
 } from "@/wab/shared/Variants";
-import { tuple } from "@/wab/shared/common";
+import { mkShortId, tuple } from "@/wab/shared/common";
 import {
   ComponentType,
   extractComponent,
   getFolderComponentDisplayName,
   mkComponent,
 } from "@/wab/shared/core/components";
-import { tryExtractJson } from "@/wab/shared/core/exprs";
+import { customCode, tryExtractJson } from "@/wab/shared/core/exprs";
 import { createSite } from "@/wab/shared/core/sites";
 import { mkTplTagX } from "@/wab/shared/core/tpls";
+import { CanvasEnv } from "@/wab/shared/eval";
 import {
+  ComponentDataQuery,
+  ComponentServerQuery,
   RuleSet,
   TplTag,
   Variant,
   VariantSetting,
+  isKnownCustomCode,
+  isKnownObjectPath,
   isKnownVariantsRef,
 } from "@/wab/shared/model/classes";
 import { assertSiteInvariants } from "@/wab/shared/site-invariants";
@@ -195,7 +200,7 @@ describe("extractComponent", () => {
   };
 
   it("should extract necessary variants", () => {
-    const tpl = extractComponent({
+    const { tplComponent: tpl } = extractComponent({
       site,
       name: "Inner",
       containingComponent: component,
@@ -224,7 +229,7 @@ describe("extractComponent", () => {
       "large",
       "small",
     ]);
-    const [newBase, newHover, ccHoverPressed, newPrivateInputHover] =
+    const [newBase, newHover, ccHoverPressed, _newPrivateInputHover] =
       inner.variants;
     const [newPrimary, newSecondary] = inner.variantGroups[0].variants;
     const [newLarge, newSmall] = inner.variantGroups[1].variants;
@@ -355,6 +360,125 @@ describe("extractComponent", () => {
     ]);
 
     assertSiteInvariants(site);
+  });
+
+  it("passes server query references ($q) and data query references ($queries) as props", () => {
+    const localSite = createSite();
+    const localTplMgr = new TplMgr({ site: localSite });
+    const localComponent = localTplMgr.addComponent({
+      name: "QueryHost",
+      type: ComponentType.Plain,
+    });
+    const localBase = getBaseVariant(localComponent);
+
+    // Add a server query and a data query directly on the model.
+    const serverQuery = new ComponentServerQuery({
+      uuid: mkShortId(),
+      name: "myServerQuery",
+      op: undefined,
+    });
+    localComponent.serverQueries.push(serverQuery);
+    const dataQuery = new ComponentDataQuery({
+      uuid: mkShortId(),
+      name: "myDataQuery",
+      op: undefined,
+    });
+    localComponent.dataQueries.push(dataQuery);
+
+    const localTree = mkTplTagX("div", {
+      baseVariant: localBase,
+      attrs: {
+        title: customCode("$q.myServerQuery.data + $queries.myDataQuery.data"),
+      },
+    });
+    $$$(localComponent.tplTree).append(localTree);
+
+    const { tplComponent: tpl } = extractComponent({
+      site: localSite,
+      name: "QueryExtracted",
+      containingComponent: localComponent,
+      tpl: localTree,
+      tplMgr: localTplMgr,
+      getCanvasEnvForTpl: () => undefined,
+    });
+    localTplMgr.attachComponent(tpl.component);
+
+    const inner = tpl.component;
+
+    // The extracted component have props for each referenced query.
+    const propNames = inner.params.map((p) => p.variable.name);
+    expect(propNames).toContain("myServerQuery");
+    expect(propNames).toContain("myDataQuery");
+
+    // The new TplComponent pass $q.<name> and $queries.<name> as the corresponding args.
+    const argByParam = Object.fromEntries(
+      tpl.vsettings[0].args.map((arg) =>
+        tuple(arg.param.variable.name, arg.expr)
+      )
+    );
+    const serverArg = argByParam["myServerQuery"];
+    expect(isKnownObjectPath(serverArg)).toBe(true);
+    expect(isKnownObjectPath(serverArg) && serverArg.path).toEqual([
+      "$q",
+      "myServerQuery",
+    ]);
+    const dataArg = argByParam["myDataQuery"];
+    expect(isKnownObjectPath(dataArg)).toBe(true);
+    expect(isKnownObjectPath(dataArg) && dataArg.path).toEqual([
+      "$queries",
+      "myDataQuery",
+    ]);
+
+    // Inside the extracted component, $q.<name> and $queries.<name> should be
+    // rewritten to $props.<name>.
+    const titleExpr = (inner.tplTree as TplTag).vsettings[0].attrs.title;
+    expect(isKnownCustomCode(titleExpr)).toBe(true);
+    if (isKnownCustomCode(titleExpr)) {
+      expect(titleExpr.code).not.toContain("$q.");
+      expect(titleExpr.code).not.toContain("$queries.");
+      expect(titleExpr.code).toContain("$props.myServerQuery");
+      expect(titleExpr.code).toContain("$props.myDataQuery");
+    }
+
+    // The original server query and data query remain on the containing
+    // component (only the references are rewritten on the inner tree).
+    expect(localComponent.serverQueries).toContain(serverQuery);
+    expect(localComponent.dataQueries).toContain(dataQuery);
+
+    assertSiteInvariants(localSite);
+  });
+
+  it("warns and omits fallback when extracting fallback fails", () => {
+    const localSite = createSite();
+    const localTplMgr = new TplMgr({ site: localSite });
+    const localComponent = localTplMgr.addComponent({
+      name: "FallbackTest",
+      type: ComponentType.Plain,
+    });
+    const localBase = getBaseVariant(localComponent);
+    const localTree = mkTplTagX("div", {
+      baseVariant: localBase,
+      attrs: { title: customCode("$ctx.bad.val") },
+    });
+    $$$(localComponent.tplTree).append(localTree);
+    const consoleErrorSpy = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+
+    const { tplComponent: tpl, warnings } = extractComponent({
+      site: localSite,
+      name: "Extracted",
+      containingComponent: localComponent,
+      tpl: localTree,
+      tplMgr: localTplMgr,
+      getCanvasEnvForTpl: () => ({ $ctx: {} } as CanvasEnv),
+    });
+    consoleErrorSpy.mockRestore();
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("Error extracting fallback in");
+    const titleExpr = tpl.component.tplTree.vsettings[0].attrs.title;
+    expect(isKnownCustomCode(titleExpr) && titleExpr.fallback).toBeUndefined();
   });
 });
 

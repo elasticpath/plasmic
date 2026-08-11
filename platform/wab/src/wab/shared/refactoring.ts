@@ -1,6 +1,5 @@
 import { computeDataTokenValue } from "@/wab/commons/DataToken";
 import { ProjectId } from "@/wab/shared/ApiSchema";
-import { customFunctionId } from "@/wab/shared/code-components/code-components";
 import {
   jsLiteral,
   makeShortProjectId,
@@ -8,6 +7,7 @@ import {
 } from "@/wab/shared/codegen/util";
 import { assert, isPrefixArray, uniqueName } from "@/wab/shared/common";
 import * as Exprs from "@/wab/shared/core/exprs";
+import { customFunctionId } from "@/wab/shared/core/query-ids";
 import {
   findRecursiveImplicitStates,
   getStateVarName,
@@ -120,6 +120,22 @@ export function isDataTokenUsedInExpr(
 }
 
 /**
+ * Returns boolean indicating whether `expr` reads the result of
+ * `interaction` via `$steps.<name>`.
+ */
+export function isInteractionResultUsedInExpr(
+  interaction: Interaction,
+  expr: Expr | null | undefined
+): boolean {
+  if (!expr) {
+    return false;
+  }
+  const info = parseExpr(expr);
+  const varName = toVarName(interaction.interactionName);
+  return info.usedDollarVarKeys.$steps.has(varName);
+}
+
+/**
  * Updates `expr` replacing `oldObject`.`oldVarName` with
  * `newObject`.`newVarName`.
  */
@@ -196,33 +212,19 @@ export function replaceVarWithPropInCodeExprs(
 }
 
 /**
- * Iterate over tpl tree renaming `$queries.queryVarName` to
- * `$props.propVarName` in all custom code expressions.
+ * Iterate over tpl tree renaming `<varType>.<varName>` (e.g.
+ * `$state.<varName>`, `$queries.<varName>`, or `$q.<varName>`) to
+ * `$props.<propVarName>` in all custom code expressions.
  */
-export function replaceQueryWithPropInCodeExprs(
+export function replaceDollarVarWithPropInCodeExprs(
   tree: TplNode,
-  queryVarName: string,
+  varType: "$state" | "$queries" | "$q",
+  varName: string,
   propVarName: string
 ) {
   Tpls.flattenTpls(tree).forEach((node) => {
     for (const { expr } of Tpls.findExprsInNode(node)) {
-      renameObjectInExpr(expr, "$queries", "$props", queryVarName, propVarName);
-    }
-  });
-}
-
-/**
- * Iterate over tpl tree renaming `$state.varName` to
- * `$props.propVarName` in all custom code expressions.
- */
-export function replaceStateWithPropInCodeExprs(
-  tree: TplNode,
-  stateVarName: string,
-  propVarName: string
-) {
-  Tpls.flattenTpls(tree).forEach((node) => {
-    for (const { expr } of Tpls.findExprsInNode(node)) {
-      renameObjectInExpr(expr, "$state", "$props", stateVarName, propVarName);
+      renameObjectInExpr(expr, varType, "$props", varName, propVarName);
     }
   });
 }
@@ -340,7 +342,9 @@ export function renameInteractionAndFixExprs(
     interaction.parent.interactions
       .filter((it) => it !== interaction)
       .map((it) => it.interactionName),
-    newName
+    newName,
+    // $steps results are keyed by toVarName(interactionName)
+    { normalize: toVarName }
   );
 
   const eventHandler = interaction.parent;

@@ -15,6 +15,7 @@ import { LabelWithDetailedTooltip } from "@/wab/client/components/widgets/LabelW
 import { LabeledListItem } from "@/wab/client/components/widgets/LabeledListItem";
 import PlusIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__Plus";
 import { RightTabKey, useStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
+import { mkModelUiId } from "@/wab/client/studio-ctx/ui/studio-ui-ids";
 import { ViewCtx } from "@/wab/client/studio-ctx/view-ctx";
 import { DATA_QUERY_LOWER, DATA_QUERY_PLURAL_CAP } from "@/wab/shared/Labels";
 import { addEmptyQuery } from "@/wab/shared/TplMgr";
@@ -37,6 +38,7 @@ import { PlasmicDataSourceContextProvider } from "@plasmicapp/react-web";
 import { Menu } from "antd";
 import { autorun } from "mobx";
 import { observer } from "mobx-react";
+import { ok } from "neverthrow";
 import React from "react";
 
 const DataQueryRow = observer(
@@ -60,12 +62,12 @@ const DataQueryRow = observer(
       newOp: DataSourceOpExpr,
       opExprName?: string
     ) => {
-      await studioCtx.change(({ success }) => {
+      await studioCtx.change(() => {
         query.op = newOp;
         if (opExprName && opExprName !== query.name) {
           renameQueryAndFixExprs(component, query, opExprName);
         }
-        return success();
+        return ok();
       });
       dataSourceModal.close();
     };
@@ -128,6 +130,7 @@ const DataQueryRow = observer(
     return (
       <WithContextMenu overlay={menu}>
         <LabeledListItem
+          uiId={mkModelUiId(query)}
           label={query.name}
           menu={menu}
           onClick={() => openDataSourceModal()}
@@ -171,10 +174,10 @@ function ComponentQueriesSection_(props: {
 
   const handleAddDataQuery = () => {
     spawn(
-      studioCtx.change(({ success }) => {
+      studioCtx.change(() => {
         const query = addEmptyQuery(component);
         studioCtx.newlyAddedQuery = query;
-        return success();
+        return ok();
       })
     );
   };
@@ -189,7 +192,7 @@ function ComponentQueriesSection_(props: {
           }
         >
           {DATA_QUERY_PLURAL_CAP}
-          {isDeprecated ? " (DEPRECATED)" : ""}
+          {isDeprecated ? " (legacy)" : ""}
         </LabelWithDetailedTooltip>
       }
       emptyBody={component.dataQueries.length === 0 && tplFetchers.length === 0}

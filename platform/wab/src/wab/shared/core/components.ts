@@ -30,6 +30,7 @@ import {
   mkVariant,
   mkVariantSetting,
   splitVariantCombo,
+  variantGroupToLinkedPropType,
 } from "@/wab/shared/Variants";
 import {
   findAllDataSourceOpExprForComponent,
@@ -146,6 +147,7 @@ import {
   TemplatedString,
   TplComponent,
   TplNode,
+  TplSlot,
   TplTag,
   Type,
   Var,
@@ -182,8 +184,7 @@ import {
 import { typeFactory } from "@/wab/shared/model/model-util";
 import {
   isParamUsedInExpr,
-  replaceQueryWithPropInCodeExprs,
-  replaceStateWithPropInCodeExprs,
+  replaceDollarVarWithPropInCodeExprs,
   replaceVarWithPropInCodeExprs,
 } from "@/wab/shared/refactoring";
 import { naturalSort } from "@/wab/shared/sort";
@@ -446,6 +447,7 @@ export interface ComponentCloneResult {
   subCompResults: ComponentCloneResult[];
   oldToNewTpls: Map<TplNode, TplNode>;
   oldToNewComponentQuery: Map<ComponentDataQuery, ComponentDataQuery>;
+  oldToNewComponentServerQuery: Map<ComponentServerQuery, ComponentServerQuery>;
 }
 
 export function cloneCodeComponentHelpers(
@@ -496,6 +498,7 @@ export function cloneCodeComponentMeta(
         isAttachment: codeMeta.isAttachment,
         providesData: codeMeta.providesData,
         isRepeatable: codeMeta.isRepeatable,
+        subtreePrefetchingConfig: codeMeta.subtreePrefetchingConfig,
         hasRef: codeMeta.hasRef,
         styleSections: codeMeta.styleSections,
         helpers: cloneCodeComponentHelpers(codeMeta.helpers),
@@ -747,6 +750,10 @@ export function cloneComponent(
     ComponentDataQuery,
     ComponentDataQuery
   >();
+  const oldToNewComponentServerQuery = new Map<
+    ComponentServerQuery,
+    ComponentServerQuery
+  >();
 
   const component = mkRawComponent({
     name,
@@ -773,7 +780,11 @@ export function cloneComponent(
       oldToNewComponentQuery.set(componentDataQuery, cloned);
       return cloned;
     }),
-    serverQueries: fromComponent.serverQueries.map(cloneComponentServerQuery),
+    serverQueries: fromComponent.serverQueries.map((componentServerQuery) => {
+      const cloned = cloneComponentServerQuery(componentServerQuery);
+      oldToNewComponentServerQuery.set(componentServerQuery, cloned);
+      return cloned;
+    }),
     figmaMappings: fromComponent.figmaMappings.map(
       (c) => new FigmaComponentMapping({ ...c })
     ),
@@ -789,6 +800,9 @@ export function cloneComponent(
         .when(TplNode, (tpl) => oldToNewTpls.get(tpl))
         .when(ComponentDataQuery, (refQuery) =>
           oldToNewComponentQuery.get(refQuery)
+        )
+        .when(ComponentServerQuery, (refQuery) =>
+          oldToNewComponentServerQuery.get(refQuery)
         )
         .result();
       if (maybeCloned) {
@@ -954,6 +968,7 @@ export function cloneComponent(
     subCompResults,
     oldToNewTpls,
     oldToNewComponentQuery,
+    oldToNewComponentServerQuery,
   };
 }
 
@@ -1003,7 +1018,12 @@ export function findPropUsages(component: Component, prop: Param) {
 export function findObjectsUsedInExprs(
   component: Component,
   tpl: TplTag | TplComponent
-): { params: Param[]; queries: ComponentDataQuery[]; vars: string[] } {
+): {
+  params: Param[];
+  queries: ComponentDataQuery[];
+  serverQueries: ComponentServerQuery[];
+  vars: string[];
+} {
   const infos: ParsedExprInfo[] = [];
   Tpls.flattenTpls(tpl).forEach((node) => {
     if (!Tpls.isTplVariantable(node)) {
@@ -1036,8 +1056,17 @@ export function findObjectsUsedInExprs(
           )
         )
       );
+  const serverQueries = info.usesUnknownDollarVarKeys.$q
+    ? component.serverQueries
+    : uniq(
+        filterFalsy(
+          [...info.usedDollarVarKeys.$q].map((key) =>
+            getComponentServerQueryByVarName(component, key)
+          )
+        )
+      );
 
-  return { params, queries, vars: [...info.usedFreeVars] };
+  return { params, queries, serverQueries, vars: [...info.usedFreeVars] };
 }
 
 export function extractComponent({
@@ -1062,7 +1091,7 @@ export function extractComponent({
   resurfaceParams?: boolean;
   tplMgr: TplMgr;
   getCanvasEnvForTpl: (node: TplNode) => CanvasEnv | undefined;
-}) {
+}): { tplComponent: TplComponent; warnings: string[] } {
   // First, clone the tpl.  After cloning, the Tpl nodes are new, but they are still
   // referencing Variants from the old component.
   const clonedTpl = Tpls.clone(tpl) as TplTag | TplComponent;
@@ -1490,6 +1519,7 @@ export function extractComponent({
     params: paramsUsedInExprs,
     vars: varsUsedInExprs,
     queries: queriesUsedInExprs,
+    serverQueries: serverQueriesUsedInExprs,
   } = findObjectsUsedInExprs(containingComponent, clonedTpl);
   for (const containingParam of paramsUsedInExprs) {
     if (
@@ -1553,38 +1583,49 @@ export function extractComponent({
       })
     );
     if (isKnownStateParam(containingParam)) {
-      replaceStateWithPropInCodeExprs(
+      replaceDollarVarWithPropInCodeExprs(
         component.tplTree,
+        "$state",
         toVarName(containingParam.variable.name),
         toVarName(newParam.variable.name)
       );
     }
   }
-  for (const query of queriesUsedInExprs) {
+  const passDollarVarAsProp = (
+    varType: "$queries" | "$q",
+    queryName: string
+  ) => {
     const newParam = Lang.mkParam({
-      name: tplMgr.getUniqueParamName(component, query.name),
+      name: tplMgr.getUniqueParamName(component, queryName),
       type: typeFactory.any(),
       paramType: "prop",
     });
     component.params.push(newParam);
     jsNamesOfParamsAlreadyExtracted.add(toVarName(newParam.variable.name));
     const vs = ensureVariantSetting(tplComponent, [containingBaseVariant]);
-    // Pass $queries.<name> into extracted component $props.<name>.
+    // Pass <varType>.<name> into extracted component $props.<name>.
     vs.args.push(
       new Arg({
         param: newParam,
         expr: new ObjectPath({
-          path: ["$queries", toVarName(query.name)],
+          path: [varType, toVarName(queryName)],
           fallback: undefined,
         }),
       })
     );
-    // Refactor usages of $queries.<name> to $props.<name>.
-    replaceQueryWithPropInCodeExprs(
+    // Refactor usages of <varType>.<name> to $props.<name>.
+    replaceDollarVarWithPropInCodeExprs(
       component.tplTree,
-      toVarName(query.name),
+      varType,
+      toVarName(queryName),
       toVarName(newParam.variable.name)
     );
+  };
+  for (const query of queriesUsedInExprs) {
+    passDollarVarAsProp("$queries", query.name);
+  }
+  for (const query of serverQueriesUsedInExprs) {
+    passDollarVarAsProp("$q", query.name);
   }
 
   // Create props for dataRep vars that are being used in tree rooted in tpl.
@@ -1626,7 +1667,7 @@ export function extractComponent({
     );
   }
 
-  Tpls.addFallbacksToCodeExpressions(
+  const warnings = Tpls.addFallbacksToCodeExpressions(
     getCanvasEnvForTpl,
     <T extends TplNode>(_tpl: T): T => {
       return ensure(
@@ -1651,8 +1692,7 @@ export function extractComponent({
       }
     );
   }
-
-  return tplComponent;
+  return { tplComponent, warnings };
 }
 
 export function isHostLessCodeComponent(component: Component) {
@@ -1876,6 +1916,35 @@ export function addSlotParam(
   return slotParam;
 }
 
+/**
+ * Creates and wires a slot param on `component` for each given TplSlot,
+ * replacing whatever param the slot carried (e.g. a detached placeholder
+ * from an HTML import, or the source component's param on a copied slot).
+ * Always creates a fresh param — a duplicated slot must not share its
+ * source's param — with the slot name uniquified per component.
+ *
+ * The slots must either be detached (about to be inserted into
+ * `component`'s tree) or live in that tree already; slots owned by another
+ * component are rejected.
+ */
+export function attachNewSlotParamsToComponent(
+  site: Site,
+  component: Component,
+  slots: TplSlot[]
+) {
+  for (const slot of slots) {
+    const owner = Tpls.tryGetTplOwnerComponent(slot);
+    assert(
+      !owner || owner === component,
+      () =>
+        `TplSlot "${slot.param.variable.name}" belongs to component "${owner?.name}", not "${component.name}"`
+    );
+    const slotParam = addSlotParam(site, component, slot.param.variable.name);
+    writeable(slotParam).tplSlot = slot;
+    writeable(slot).param = slotParam;
+  }
+}
+
 export function isVariantGroupParam(
   component: Component,
   param: DeepReadonly<Param>
@@ -2067,6 +2136,14 @@ export function getComponentDataQueryByVarName(
   return component.dataQueries.find((q) => toVarName(q.name) === name);
 }
 
+export function getComponentServerQueryByVarName(
+  component: Component,
+  name: string
+) {
+  name = toVarName(name);
+  return component.serverQueries.find((q) => toVarName(q.name) === name);
+}
+
 export function getVariantGroupByVarName(component: Component, name: string) {
   name = toVarName(name);
   return component.variantGroups.find(
@@ -2076,6 +2153,26 @@ export function getVariantGroupByVarName(component: Component, name: string) {
 
 export function findVariantGroupForParam(component: Component, param: Param) {
   return component.variantGroups.find((g) => g.param === param);
+}
+
+export function getComponentForVariantGroup(
+  site: Site,
+  group: VariantGroup
+): Component | undefined {
+  return site.components.find((c) => c.variantGroups.some((g) => g === group));
+}
+
+/**
+ * A param's real type. A variant group's param stores a placeholder type
+ * instead of the choice/multiChoice/bool that mirrors its variants, so we
+ * return that mirror; other params already hold their real type.
+ */
+export function getRealParamType(
+  component: Component,
+  param: Param
+): Param["type"] {
+  const group = findVariantGroupForParam(component, param);
+  return group ? variantGroupToLinkedPropType(group) : param.type;
 }
 
 export function findStateForParam(component: Component, param: Param) {
@@ -2516,6 +2613,23 @@ export function getDefaultComponent(site: Site, kind: DefaultComponentKind) {
   const defaultComponent = tryGetDefaultComponent(site, kind);
   assert(defaultComponent, `Missing default component of the kind "${kind}"`);
   return defaultComponent;
+}
+
+export function tryGetComponentByUuid(
+  site: Site,
+  uuid: string
+): Component | undefined {
+  return site.components.find((c) => c.uuid === uuid);
+}
+
+export function tryGetComponentByName(
+  site: Site,
+  name: string,
+  opts: { plasmicOnly?: boolean } = {}
+): Component | undefined {
+  return site.components.find(
+    (c) => c.name === name && (!opts.plasmicOnly || isPlasmicComponent(c))
+  );
 }
 
 export function getAllComponentsInTopologicalOrder(site: Site) {

@@ -25,7 +25,7 @@ import {
 } from "@/wab/server/loader/resolve-projects";
 import { logger } from "@/wab/server/observability";
 import { superDbMgr, userDbMgr } from "@/wab/server/routes/util";
-import { withSpan } from "@/wab/server/util/apm-util";
+import { TraceCarrier, withSpan } from "@/wab/server/util/apm-util";
 import {
   getServerTimingHeader,
   runWithServerTiming,
@@ -47,10 +47,12 @@ import { tplToPlasmicElements } from "@/wab/shared/element-repr/gen-element-repr
 import { LocalizationKeyScheme } from "@/wab/shared/localization";
 import { toJson } from "@/wab/shared/model/model-tree-util";
 import {
+  getCodegenOriginUrl,
   getCodegenPublicUrl,
   getLoaderInternalUrl,
 } from "@/wab/shared/urls";
 import { Semaphore } from "async-mutex";
+import { context, propagation } from "@opentelemetry/api";
 import S3 from "aws-sdk/clients/s3";
 import execa from "execa";
 import { Request, Response } from "express-serve-static-core";
@@ -110,6 +112,11 @@ function getLoaderVersion(req: Request) {
 }
 
 function getLoaderOptions(req: Request) {
+  const projectIdSpecs = ensureArray(req.query.projectId) as string[];
+  if (projectIdSpecs.length === 0) {
+    throw new BadRequestError("At least one projectId must be specified");
+  }
+
   return {
     platform:
       req.query.platform === "nextjs" || req.query.platform === "gatsby"
@@ -117,7 +124,7 @@ function getLoaderOptions(req: Request) {
         : "react",
     nextjsAppDir: req.query.nextjsAppDir === "true",
     browserOnly: req.query.browserOnly === "true",
-    projectIdSpecs: ensureArray(req.query.projectId) as string[],
+    projectIdSpecs,
     loaderVersion: getLoaderVersion(req),
     i18nKeyScheme: req.query.i18nKeyScheme as LocalizationKeyScheme | undefined,
     i18nTagPrefix: req.query.i18nTagPrefix as string | undefined,
@@ -272,6 +279,7 @@ export async function buildVersionedLoaderAssets(req: Request, res: Response) {
       timedMgr,
       req.workerpool,
       makeGenPublishedLoaderCodeBundleOpts({
+        source: "live",
         platform,
         appDir: nextjsAppDir,
         projectVersions: Object.fromEntries(
@@ -320,6 +328,7 @@ export async function buildVersionedLoaderAssets(req: Request, res: Response) {
  * same opts
  */
 export function makeGenPublishedLoaderCodeBundleOpts(opts: {
+  source: "prefill" | "live";
   projectVersions: Record<string, VersionToSync>;
   platform: string | undefined;
   appDir: boolean | undefined;
@@ -332,6 +341,7 @@ export function makeGenPublishedLoaderCodeBundleOpts(opts: {
   skipHead?: boolean;
 }): Parameters<typeof genPublishedLoaderCodeBundle>[2] {
   const {
+    source,
     platform,
     appDir,
     projectVersions,
@@ -341,6 +351,7 @@ export function makeGenPublishedLoaderCodeBundleOpts(opts: {
     skipHead,
   } = opts;
   return {
+    source,
     platform,
     platformOptions: {
       nextjs: {
@@ -432,6 +443,7 @@ export async function buildLatestLoaderAssets(req: Request, res: Response) {
   });
 
   const result = await genLatestLoaderCodeBundle(mgr, req.workerpool, {
+    source: "live",
     platform,
     platformOptions: {
       nextjs: {
@@ -657,25 +669,58 @@ export async function genLoaderHtmlBundleSandboxed(
   });
   try {
     return await withSpan("genLoaderHtmlBundleSandboxed", async () => {
-    const cmd = `node -r esbuild-register src/wab/server/loader/gen-html-bundle.ts`;
+    const cmd = [
+      "node",
+      "-r",
+      "esbuild-register",
+      "src/wab/server/loader/gen-html-bundle.ts",
+    ];
+    const payload = JSON.stringify(args);
     const renderStart = Date.now();
+
+    // prettier-ignore
+    const bwrapArgs = [
+      "--clearenv",
+      "--setenv", "CODEGEN_HOST", getLoaderInternalUrl(),
+      "--setenv", "CODEGEN_ORIGIN_HOST", getCodegenOriginUrl(),
+      "--unshare-user",
+      "--unshare-pid",
+      "--unshare-ipc",
+      "--unshare-uts",
+      "--unshare-cgroup",
+      "--ro-bind", "/lib", "/lib",
+      "--ro-bind", "/usr", "/usr",
+      "--ro-bind", "/etc", "/etc",
+      "--ro-bind", "/run", "/run",
+      "--ro-bind-try", "/otel-auto-instrumentation-nodejs", "/otel-auto-instrumentation-nodejs",
+    ];
+
+    // Allowlist the env the OTel auto-instrumentation needs, plus the trace
+    // carrier. Pushed as discrete --setenv triples because values like
+    // NODE_OPTIONS and OTEL_RESOURCE_ATTRIBUTES can contain spaces.
+    for (const [k, v] of Object.entries(process.env)) {
+      if (v !== undefined && (k === "NODE_OPTIONS" || k.startsWith("OTEL_"))) {
+        bwrapArgs.push("--setenv", k, v);
+      }
+    }
+    const traceCarrier: TraceCarrier = {};
+    propagation.inject(context.active(), traceCarrier);
+    for (const [k, v] of Object.entries(traceCarrier)) {
+      if (v !== undefined) {
+        bwrapArgs.push("--setenv", k, v);
+      }
+    }
+
+    if (process.env.BWRAP_ARGS) {
+      bwrapArgs.push(...process.env.BWRAP_ARGS.split(/\s+/g));
+    }
+
+    bwrapArgs.push("--chdir", process.cwd(), ...cmd, payload);
+
     const { stdout, stderr, exitCode } =
       process.env.DISABLE_BWRAP === "1"
-        ? await execa(
-            "node",
-            [...cmd.split(/\s+/g).slice(1), JSON.stringify(args)],
-            { reject: false }
-          )
-        : await execa(
-            `bwrap`,
-            [
-              ...`--clearenv --setenv CODEGEN_HOST ${getLoaderInternalUrl()} --unshare-user --unshare-pid --unshare-ipc --unshare-uts --unshare-cgroup --ro-bind /lib /lib --ro-bind /usr /usr --ro-bind /etc /etc --ro-bind /run /run ${
-                process.env.BWRAP_ARGS || ""
-              } --chdir ${process.cwd()} ${cmd}`.split(/\s+/g),
-              JSON.stringify(args),
-            ],
-            { reject: false }
-          );
+        ? await execa(cmd[0], [...cmd.slice(1), payload], { reject: false })
+        : await execa("bwrap", bwrapArgs, { reject: false });
     logger().info("html-preview-subprocess-done", {
       htmlPreviewRenderMs: Date.now() - renderStart,
       htmlPreviewExitCode: exitCode,
@@ -949,10 +994,6 @@ export function checkEtagSkippable(req: Request, res: Response, etag: string) {
     logger().info("Etag mechanism is disabled");
     return false;
   }
-  if (req.headers["x-plasmic-uptime-check"]) {
-    // Never skip uptime checks
-    return false;
-  }
 
   // Always set the same ETag, even for 304 Not Modified, so that it'll be used
   // next time as well.
@@ -964,6 +1005,11 @@ export function checkEtagSkippable(req: Request, res: Response, etag: string) {
   // disable request collapsing that cloudfront does for simultaneous
   // requests.
   res.setHeader("Cache-Control", "max-age=5");
+
+  if (req.headers["x-plasmic-uptime-check"]) {
+    // Never skip uptime checks, but still set cache headers above
+    return false;
+  }
 
   if (req.headers["if-none-match"] === etag) {
     // We got a match!  We can skip codegen.
@@ -991,15 +1037,19 @@ function trackLoaderCodegenEvent(
   }
 ) {
   const { versionType, platform } = opts;
-  req.analytics.track("Codegen", {
-    newCompScheme: "blackbox",
-    projectId: projects.map((p) => p.id).join(","),
-    projectName: projects.map((p) => p.name).join(","),
-    source: "loader2",
-    scheme: "loader2",
-    platform,
-    versionType,
-  });
+  req.analytics.track(
+    "Codegen",
+    {
+      newCompScheme: "blackbox",
+      projectId: projects.map((p) => p.id).join(","),
+      projectName: projects.map((p) => p.name).join(","),
+      source: "loader2",
+      scheme: "loader2",
+      platform,
+      versionType,
+    },
+    { sampleThreshold: 0.1 }
+  );
 }
 
 const getHydrationScriptInfo = () => {

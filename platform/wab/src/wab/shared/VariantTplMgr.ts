@@ -1,5 +1,5 @@
 import { ReplaceKey } from "@/wab/commons/types";
-import { RSH } from "@/wab/shared/RuleSetHelpers";
+import { RSH, ReadonlyIRuleSetHelpersX } from "@/wab/shared/RuleSetHelpers";
 import { getAncestorTplSlot, isSlotVar } from "@/wab/shared/SlotUtils";
 import { TplMgr, ensureBaseVariant } from "@/wab/shared/TplMgr";
 import { $$$ } from "@/wab/shared/TplQuery";
@@ -711,6 +711,19 @@ export class VariantTplMgr {
   }
 
   /**
+   * Returns the ruleset helper tpl effectively has for the given VariantCombo.
+   */
+  effectiveRsh(
+    tpl: TplNode,
+    variantCombo?: VariantCombo
+  ): ReadonlyIRuleSetHelpersX {
+    return this.effectiveVariantSetting(
+      tpl,
+      variantCombo
+    ).rshWithThemeAndParentStyle();
+  }
+
+  /**
    * Returns the EffectiveVariantSetting for the target `tpl` for the currently-targeted
    * VariantCombo (ignoring pinned variants)
    */
@@ -731,8 +744,10 @@ export class VariantTplMgr {
     const baseVariant = this.getBaseVariantForNewNode();
     const tpl = mkTplComponentX({ ...props, baseVariant });
     const exp = RSH(this.ensureBaseVariantSetting(tpl).rs, tpl);
-    exp.set("max-width", "100%");
-    if (isCodeComponent(props.component)) {
+    if (!exp.has("max-width")) {
+      exp.set("max-width", "100%");
+    }
+    if (isCodeComponent(props.component) && !exp.has("object-fit")) {
       exp.set("object-fit", "cover");
     }
     this.initializeVariantsForNewTpl(tpl);

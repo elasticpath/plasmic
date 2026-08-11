@@ -22,6 +22,7 @@ import {
   userDbMgr,
 } from "@/wab/server/routes/util";
 import { mkApiWorkspace } from "@/wab/server/routes/workspaces";
+import { BadRequestError } from "@/wab/shared/ApiErrors/errors";
 import {
   ApiPermission,
   ApiTeam,
@@ -38,6 +39,7 @@ import {
   ListTeamProjectsResponse,
   ListTeamWorkspacesResponse,
   ListTeamsResponse,
+  MAX_GRANTS_PER_REQUEST,
   MayTriggerPaywall,
   PurgeUserFromTeamRequest,
   Revoke,
@@ -220,6 +222,11 @@ export async function changeResourcePermissions(req: Request, res: Response) {
     const mgr = userDbMgr(req);
     const { grants, revokes, requireSignUp } =
       uncheckedCast<GrantRevokeRequest>(req.body);
+    if (grants.length > MAX_GRANTS_PER_REQUEST) {
+      throw new BadRequestError(
+        `Cannot grant access to more than ${MAX_GRANTS_PER_REQUEST} recipients at a time.`
+      );
+    }
     const host = req.config.host;
     const resourcesById: Record<string, Team | Workspace | Project> = {};
     const emailsToSend: {

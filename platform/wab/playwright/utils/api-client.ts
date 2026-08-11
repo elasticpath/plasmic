@@ -223,7 +223,10 @@ export class ApiClient {
       return tokens.tokens[0].token;
     }
 
-    const tokenResponse = await this.request.put("/api/v1/settings/apitokens");
+    const csrf = await this.getCsrf();
+    const tokenResponse = await this.request.put("/api/v1/settings/apitokens", {
+      headers: { "X-CSRF-Token": csrf },
+    });
     const tokenData = await tokenResponse.json();
     return tokenData.token.token;
   }
@@ -396,7 +399,7 @@ export class ApiClient {
     let bundle: any;
 
     if (typeof templateNameOrBundle === "string") {
-      const bundles = require("../../cypress/bundles");
+      const bundles = require("../bundles");
       bundle =
         bundles.default?.[templateNameOrBundle] ||
         bundles[templateNameOrBundle];

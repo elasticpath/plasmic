@@ -13,6 +13,7 @@ export interface Config {
   mailBcc?: string;
   port?: number;
   terminationGracePeriodMs: number;
+  keepAliveTimeoutMs: number;
   genericWorkerPoolSize: number;
   loaderWorkerPoolSize: number;
 }
@@ -30,6 +31,7 @@ const DEFAULT_CONFIG: Config = {
   adminEmails:
     process.env.NODE_ENV !== "production" ? ["admin@admin.example.com"] : [],
   terminationGracePeriodMs: 5500,
+  keepAliveTimeoutMs: 60000,
   genericWorkerPoolSize: 1,
   loaderWorkerPoolSize: 1,
 };
@@ -58,6 +60,11 @@ function parseConfigFromEnv(): Config {
     rawTerminationGracePeriodMs != null
       ? parseInt(rawTerminationGracePeriodMs, 10)
       : undefined;
+  const rawKeepAliveTimeoutMs = process.env["SERVER_KEEP_ALIVE_TIMEOUT"];
+  const keepAliveTimeoutMs =
+    rawKeepAliveTimeoutMs != null
+      ? parseInt(rawKeepAliveTimeoutMs, 10)
+      : undefined;
 
   const envConfig = {
     host: process.env["HOST"],
@@ -72,6 +79,7 @@ function parseConfigFromEnv(): Config {
         )
       : undefined,
     terminationGracePeriodMs: terminationGracePeriodMs,
+    keepAliveTimeoutMs: keepAliveTimeoutMs,
     genericWorkerPoolSize: process.env["GENERIC_WORKER_POOL_SIZE"]
       ? parseInt(process.env["GENERIC_WORKER_POOL_SIZE"], 10)
       : undefined,

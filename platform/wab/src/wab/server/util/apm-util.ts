@@ -4,6 +4,41 @@ import { recordTiming } from "@/wab/server/util/server-timing";
 import { Properties } from "@/wab/shared/observability/Properties";
 import { trace } from "@opentelemetry/api";
 
+/**
+ * Carrier object used to propagate OpenTelemetry trace context across
+ * process/thread boundaries (e.g. worker pool, bwrap subprocesses) via
+ * `propagation.inject` / `propagation.extract`.
+ */
+export interface TraceCarrier {
+  traceparent?: string;
+  tracestate?: string;
+  baggage?: string;
+  [key: string]: string | undefined;
+}
+
+/**
+ * Keys that may hold OpenTelemetry trace context when propagated
+ */
+const TRACE_CARRIER_KEYS = ["traceparent", "tracestate", "baggage"] as const;
+
+/**
+ * Builds a {@link TraceCarrier} containing only the trace-context keys found
+ * in `source` (e.g. `process.env`), so we can call `propagation.extract`
+ * without leaking the rest of the environment into the carrier.
+ */
+export function pickTraceCarrier(
+  source: Record<string, string | undefined>
+): TraceCarrier {
+  const carrier: TraceCarrier = {};
+  for (const key of TRACE_CARRIER_KEYS) {
+    const value = source[key];
+    if (value !== undefined) {
+      carrier[key] = value;
+    }
+  }
+  return carrier;
+}
+
 export async function withSpan<T>(
   name: string,
   f: () => Promise<T>,
@@ -19,16 +54,21 @@ export async function withSpan<T>(
   const tracer = trace.getTracer("app");
   return tracer.startActiveSpan(name, async (span) => {
     try {
-      return await f();
-    } finally {
+      const result = await f();
       const durationMs = new Date().getTime() - start;
-      const suffix = msg ? `: ${msg}` : "";
       logger().info(`${name} took ${durationMs}ms${suffix}`, {
         operation_name: name,
         duration_ms: durationMs,
         ...payload,
       });
-      recordTiming(name, durationMs);
+      return result;
+    } catch (err) {
+      logger().error(
+        `span "${name}" failed in ${new Date().getTime() - start}ms${suffix}`
+      );
+      throw err;
+    } finally {
+      recordTiming(name, new Date().getTime() - start);
       promTimer.end();
       span.end();
     }

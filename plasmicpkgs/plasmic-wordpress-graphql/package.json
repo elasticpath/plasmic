@@ -1,7 +1,14 @@
 {
   "name": "@plasmicpkgs/plasmic-wordpress-graphql",
-  "version": "0.0.160",
+  "version": "0.0.174",
   "description": "Plasmic Wordpress GraphQL components.",
+  "homepage": "https://www.plasmic.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/plasmicapp/plasmic.git",
+    "directory": "plasmicpkgs/plasmic-wordpress-graphql"
+  },
+  "license": "MIT",
   "main": "dist/index.js",
   "typings": "dist/index.d.ts",
   "module": "dist/plasmic-wordpress-graphql.esm.js",
@@ -34,9 +41,9 @@
     }
   ],
   "devDependencies": {
-    "@plasmicapp/host": "2.0.1",
+    "@plasmicapp/host": "2.0.15",
     "@plasmicapp/query": "0.1.83",
-    "@types/dlv": "^1.1.2",
+    "@types/dlv": "^1.1.5",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "husky": "^7.0.4",

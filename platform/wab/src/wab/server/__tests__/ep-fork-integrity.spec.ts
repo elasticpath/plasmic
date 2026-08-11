@@ -188,6 +188,179 @@ describe("EP Fork Integrity", () => {
     });
   });
 
+  describe("EP rate limiting", () => {
+    it("ep-rate-limit module and tests exist", () => {
+      expect(fileExists("platform/wab/src/wab/server/ep-rate-limit.ts")).toBe(
+        true
+      );
+      expect(
+        fileExists("platform/wab/src/wab/server/ep-rate-limit.spec.ts")
+      ).toBe(true);
+    });
+
+    it("AppServer wires the EP rate limiters", () => {
+      const appServer = readFile("platform/wab/src/wab/server/AppServer.ts");
+      expect(appServer).toContain("createGeneralApiRateLimiter");
+      expect(appServer).toContain("createPreviewRateLimiter");
+    });
+  });
+
+  describe("EP admin-only resource creation gates", () => {
+    it("AppServer applies adminOnly middleware", () => {
+      const appServer = readFile("platform/wab/src/wab/server/AppServer.ts");
+      expect(appServer).toContain("adminOnly");
+    });
+  });
+
+  describe("EP CloudFront invalidation on publish", () => {
+    it("prefill worker invalidates published CDN paths", () => {
+      const prefill = readFile(
+        "platform/wab/src/wab/server/workers/prefill-cloudfront.ts"
+      );
+      expect(prefill).toContain("CreateInvalidationCommand");
+      expect(prefill).toContain("CLOUDFRONT_DISTRIBUTION_ID");
+    });
+
+    it("wab depends on the CloudFront SDK", () => {
+      const pkgJson = readJson("platform/wab/package.json");
+      expect(
+        pkgJson.dependencies["@aws-sdk/client-cloudfront"]
+      ).toBeDefined();
+    });
+  });
+
+  describe("EP loader URL split (Service Connect topology)", () => {
+    it("urls.ts keeps the internal/public/data URL functions", () => {
+      const urls = readFile("platform/wab/src/wab/shared/urls.ts");
+      expect(urls).toContain("getLoaderInternalUrl");
+      expect(urls).toContain("getCodegenPublicUrl");
+      expect(urls).toContain("getDataUrl");
+    });
+
+    it("gen-html-bundle sets the SSR prepass data host", () => {
+      const genHtml = readFile(
+        "platform/wab/src/wab/server/loader/gen-html-bundle.ts"
+      );
+      expect(genHtml).toContain("__PLASMIC_DATA_HOST");
+    });
+  });
+
+  describe("EP loader performance instrumentation", () => {
+    it("server-timing module and ep-s3-cache exist", () => {
+      expect(
+        fileExists("platform/wab/src/wab/server/util/server-timing.ts")
+      ).toBe(true);
+      expect(fileExists("platform/wab/src/wab/server/util/ep-s3-cache.ts")).toBe(
+        true
+      );
+    });
+
+    it("apm-util records Server-Timing entries", () => {
+      const apmUtil = readFile(
+        "platform/wab/src/wab/server/util/apm-util.ts"
+      );
+      expect(apmUtil).toContain("recordTiming");
+    });
+
+    it("s3-util keeps the early S3 cache check", () => {
+      const s3Util = readFile("platform/wab/src/wab/server/util/s3-util.ts");
+      expect(s3Util).toContain("tryGetS3CacheEntry");
+    });
+
+    it("versioned loader route keeps semaphore and Server-Timing", () => {
+      const loader = readFile(
+        "platform/wab/src/wab/server/routes/loader.ts"
+      );
+      expect(loader).toContain("htmlPreviewSemaphore");
+      expect(loader).toContain("runWithServerTiming");
+    });
+  });
+
+  describe("EP Datadog observability (no Sentry regression)", () => {
+    it("datadog observability module exists", () => {
+      expect(
+        fileExists("platform/wab/src/wab/server/observability/datadog.ts")
+      ).toBe(true);
+    });
+
+    // Upstream error-handling refactors tend to reintroduce Sentry calls in
+    // these files; EP migrated them to Datadog.
+    const migratedFiles = [
+      "platform/wab/src/wab/server/github/pages.ts",
+      "platform/wab/src/wab/server/cdn/images.ts",
+      "platform/wab/src/wab/server/routes/data-source.ts",
+    ];
+    for (const file of migratedFiles) {
+      it(`${path.basename(file)} does not import Sentry`, () => {
+        expect(readFile(file)).not.toContain("@sentry/");
+      });
+    }
+  });
+
+  describe("EP bundle migrations", () => {
+    it("EP migration 255-fix-ep-addtocart-import-path is present and listed", () => {
+      expect(
+        fileExists(
+          "platform/wab/src/wab/server/bundle-migrations/255-fix-ep-addtocart-import-path.ts"
+        )
+      ).toBe(true);
+      const list = readFile(
+        "platform/wab/src/wab/server/db/migrations-list.txt"
+      );
+      expect(list).toContain("255-fix-ep-addtocart-import-path.ts");
+    });
+
+    it("migration numbers are unique (renumbering collisions resolved)", () => {
+      const list = readFile(
+        "platform/wab/src/wab/server/db/migrations-list.txt"
+      );
+      const numbers = list
+        .split("\n")
+        .filter((line) => line.includes("bundle-migrations/"))
+        .map((line) => line.match(/bundle-migrations\/(\d+)-/)?.[1])
+        .filter((n): n is string => !!n);
+      expect(new Set(numbers).size).toBe(numbers.length);
+    });
+  });
+
+  describe("EP monorepo tooling (yarn, MCP workspaces)", () => {
+    const rootPkg = readJson("package.json");
+
+    it("root stays on yarn", () => {
+      expect(rootPkg.packageManager).toMatch(/^yarn@/);
+    });
+
+    it("workspaces include the MCP packages", () => {
+      expect(rootPkg.workspaces).toContain("packages/plasmic-mcp");
+      expect(rootPkg.workspaces).toContain("packages/plasmic-mcp-registry");
+    });
+  });
+
+  describe("EP wab runtime dependencies", () => {
+    const pkgJson = readJson("platform/wab/package.json");
+    const epDeps = ["dd-trace", "ioredis", "passport-jwt"];
+
+    for (const dep of epDeps) {
+      it(`includes ${dep}`, () => {
+        expect(pkgJson.dependencies[dep]).toBeDefined();
+      });
+    }
+
+    it("start-backend uses the EP pm2 ecosystem config", () => {
+      expect(pkgJson.scripts["start-backend"]).toContain(
+        "ecosystem.config.js"
+      );
+      expect(fileExists("platform/wab/ecosystem.config.js")).toBe(true);
+    });
+  });
+
+  describe("EP branding", () => {
+    it("DbInit seeds the Elastic Path logo", () => {
+      const dbInit = readFile("platform/wab/src/wab/server/db/DbInit.ts");
+      expect(dbInit).toContain("developer.elasticpath.com/logo");
+    });
+  });
+
   describe("EP Dockerfiles", () => {
     it("WAB Dockerfile exists", () => {
       expect(fileExists("platform/wab/Dockerfile")).toBe(true);

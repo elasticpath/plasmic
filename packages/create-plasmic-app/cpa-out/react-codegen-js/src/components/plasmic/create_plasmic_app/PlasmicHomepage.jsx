@@ -20,7 +20,7 @@ import RandomDynamicPageButton from "../../RandomDynamicPageButton"; // plasmic-
 import { _useGlobalVariants } from "./plasmic"; // plasmic-import: 47tFXWjN2C4NyHFGGpaYQ3/projectModule
 import { _useStyleTokens } from "./PlasmicStyleTokensProvider"; // plasmic-import: 47tFXWjN2C4NyHFGGpaYQ3/styleTokensProvider
 import "@plasmicapp/react-web/lib/plasmic.css";
-import projectcss from "./plasmic.module.css"; // plasmic-import: 47tFXWjN2C4NyHFGGpaYQ3/projectcss
+import "./plasmic.css"; // plasmic-import: 47tFXWjN2C4NyHFGGpaYQ3/projectcss
 import sty from "./PlasmicHomepage.module.css"; // plasmic-import: 6uuAAE1jiCew/css
 
 const emptyProxy = new Proxy(() => "", {
@@ -78,17 +78,17 @@ function PlasmicHomepage__RenderFunc(props) {
   const styleTokensClassNames = _useStyleTokens();
   return (
     <React.Fragment>
-      <div className={projectcss.plasmic_page_wrapper}>
+      <div className={"plasmic_page_wrapper"}>
         <div
           data-plasmic-name={"root"}
           data-plasmic-override={overrides.root}
           data-plasmic-root={true}
           data-plasmic-for-node={forNode}
           className={classNames(
-            projectcss.all,
-            projectcss.root_reset,
-            projectcss.plasmic_default_styles,
-            projectcss.plasmic_mixins,
+            "all",
+            "root_reset_47tFXWjN2C4NyHFGGpaYQ3",
+            "plasmic_default_styles",
+            "plasmic_mixins",
             styleTokensClassNames,
             sty.root
           )}
@@ -96,68 +96,31 @@ function PlasmicHomepage__RenderFunc(props) {
           <section
             data-plasmic-name={"section"}
             data-plasmic-override={overrides.section}
-            className={classNames(projectcss.all, sty.section)}
+            className={classNames("all", sty.section)}
           >
             <h1
               data-plasmic-name={"h1"}
               data-plasmic-override={overrides.h1}
               className={classNames(
-                projectcss.all,
-                projectcss.h1,
-                projectcss.h1__47tFX,
-                projectcss.__wab_text,
+                "all",
+                "h1",
+                "h1__47tFX",
+                "__wab_text",
                 sty.h1
               )}
             >
-              {"create-plasmic-app"}
+              {hasVariant(globalVariants, "screen", "desktopOnly")
+                ? "create-plasmic-app"
+                : "cpa"}
             </h1>
             <div
               data-plasmic-name={"text"}
               data-plasmic-override={overrides.text}
-              className={classNames(
-                projectcss.all,
-                projectcss.__wab_text,
-                sty.text
-              )}
+              className={classNames("all", "__wab_text", sty.text)}
             >
-              {hasVariant(globalVariants, "screen", "desktopOnly") ? (
-                <React.Fragment>
-                  <React.Fragment>
-                    {
-                      "This project is used by run-cpa.ts in the create-plasmic-app repo.\n\nrun-cpa.ts runs create-plasmic-app for many combinations of args (e.g. nextjs + appDir + loader + typescript) to check for changes in generated files. Any changes to this project will result in lots of changes to the generated files. "
-                    }
-                  </React.Fragment>
-                  <span
-                    className={
-                      "plasmic_default__all plasmic_default__span plasmic_default__span__47tFX"
-                    }
-                    style={{ fontWeight: 700 }}
-                  >
-                    {"Therefore, please avoid changing this project."}
-                  </span>
-                </React.Fragment>
-              ) : (
-                <React.Fragment>
-                  <React.Fragment>
-                    {
-                      "If you haven't already done so, go back and learn the basics by going through the Plasmic Levels tutorial.\n\nIt's always easier to start from examples! Add a new page using a template\u2014do this from the list of pages in the top left (the gray + button).\n\nOr press the big blue + button to start dragging items into this page.\n\nIntegrate this project into your codebase\u2014press the "
-                    }
-                  </React.Fragment>
-                  <span
-                    className={
-                      "plasmic_default__all plasmic_default__span plasmic_default__span__47tFX"
-                    }
-                    style={{ fontWeight: 700 }}
-                  >
-                    {"Code"}
-                  </span>
-                  <React.Fragment>
-                    {
-                      " button in the top right and follow the quickstart instructions.\n\nJoin our Slack community (icon in bottom left) for help any time."
-                    }
-                  </React.Fragment>
-                </React.Fragment>
-              )}
+              {
+                "This project is used by run-cpa.ts in the create-plasmic-app repo.\n\n\nrun-cpa.ts runs create-plasmic-app for many combinations of args (e.g. nextjs + appDir + loader + typescript) to check for changes in generated files. Any changes to this project will result in lots of changes to the generated files. Therefore, please avoid changing this project.\n"
+              }
             </div>
             <RandomDynamicPageButton
               data-plasmic-name={"randomDynamicPageButton"}
