@@ -309,6 +309,54 @@ describe("createEpProxyRoutes origin gate", () => {
   });
 });
 
+/**
+ * A missing cookie does NOT reach this branch — `getSession` bootstraps an
+ * anonymous session first. It is reached when that mint also fails, so the
+ * session is stubbed directly rather than via mint internals.
+ */
+describe("createEpProxyRoutes no-session handling", () => {
+  function unauthenticatedRequest(fn: string, body: unknown) {
+    const proxy = createEpProxyRoutes({
+      config: { trustedOrigins: ["http://localhost:3000"] },
+      api: { getSession: vi.fn(async () => ({ session: null, cart: null })) },
+    } as any);
+    return proxy.handle(
+      new Request(`http://localhost:3000/api/ep/proxy/${fn}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "http://localhost:3000",
+        },
+        body: JSON.stringify(body),
+      }),
+      { params: Promise.resolve({ fn }) }
+    );
+  }
+
+  it.each(["addCartItem", "updateCartItem", "removeCartItem"])(
+    "rejects %s with 401 rather than a soft 200",
+    async (fn) => {
+      const res = await unauthenticatedRequest(fn, { itemId: "i1", quantity: 2 });
+
+      expect(res.status).toBe(401);
+      expect(await res.json()).toMatchObject({ code: "no_session" });
+    }
+  );
+
+  it("does not dispatch the mutation when there is no session", async () => {
+    await unauthenticatedRequest("addCartItem", { productId: "p", quantity: 1 });
+
+    expect(cartMutations.epAddCartItem).not.toHaveBeenCalled();
+  });
+
+  it("still soft-fails reads with a 200 null body", async () => {
+    const res = await unauthenticatedRequest("getCart", {});
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toBeNull();
+  });
+});
+
 describe("createEpProxyRoutes error sanitization", () => {
   const originalNodeEnv = process.env.NODE_ENV;
 
@@ -316,7 +364,9 @@ describe("createEpProxyRoutes error sanitization", () => {
     (process.env as any).NODE_ENV = originalNodeEnv;
   });
 
-  async function dispatchFailure(): Promise<Response> {
+  async function dispatchFailure(
+    opts: { error?: Error } = {}
+  ): Promise<Response> {
     const auth = buildAuth();
     const anonResp = await (auth.handler.api as any).epAnonymous({
       body: {},
@@ -324,7 +374,10 @@ describe("createEpProxyRoutes error sanitization", () => {
       asResponse: true,
     });
     (cartMutations.epAddCartItem as any).mockRejectedValue(
-      new Error("EP 500 at https://internal.ep.svc/v2/carts — token tok-secret")
+      opts.error ??
+        new Error(
+          "EP 500 at https://internal.ep.svc/v2/carts — token tok-secret"
+        )
     );
     vi.spyOn(console, "error").mockImplementation(() => {});
 
@@ -367,5 +420,25 @@ describe("createEpProxyRoutes error sanitization", () => {
     expect(body.error).toBe("dispatch_failed");
     expect(body.message).toContain("EP 500");
     expect(body.correlationId).toBeTruthy();
+  });
+
+  it("classifies a generic failure as dispatch_failed", async () => {
+    (process.env as any).NODE_ENV = "production";
+    const body = await (await dispatchFailure()).json();
+
+    expect(body.code).toBe("dispatch_failed");
+  });
+
+  it("carries insufficient_stock through production sanitization", async () => {
+    (process.env as any).NODE_ENV = "production";
+    const res = await dispatchFailure({
+      error: new Error(
+        "epUpdateCartItem: There is not enough stock to add this item"
+      ),
+    });
+
+    const body = await res.json();
+    expect(body.message).toBeUndefined();
+    expect(body.code).toBe("insufficient_stock");
   });
 });

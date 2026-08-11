@@ -14,7 +14,7 @@ const mockFetch = jest.fn();
 (globalThis as any).fetch = mockFetch;
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { callEpProxy } = require("../proxy-fetch");
+const { callEpProxy, epProxyErrorCode } = require("../proxy-fetch");
 
 beforeEach(() => {
   mockFetch.mockReset();
@@ -106,5 +106,71 @@ describe("callEpProxy", () => {
     });
 
     await expect(callEpProxy("getProductList", {}, [])).resolves.toEqual([]);
+  });
+});
+
+describe("callEpProxy error codes", () => {
+  it("attaches the code and correlationId from the error body", async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({
+        error: "dispatch_failed",
+        code: "insufficient_stock",
+        correlationId: "abc-123",
+      }),
+    });
+
+    const err = await callEpProxy("updateCartItem", { itemId: "i1" }).catch(
+      (e: unknown) => e
+    );
+
+    expect(epProxyErrorCode(err)).toBe("insufficient_stock");
+    expect((err as { correlationId?: string }).correlationId).toBe("abc-123");
+  });
+
+  it("exposes the code even when production withholds the message", async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({
+        error: "dispatch_failed",
+        code: "insufficient_stock",
+        correlationId: "abc-123",
+      }),
+    });
+
+    const err = await callEpProxy("updateCartItem", { itemId: "i1" }).catch(
+      (e: unknown) => e
+    );
+
+    expect((err as Error).message).toBe("dispatch_failed");
+    expect(epProxyErrorCode(err)).toBe("insufficient_stock");
+  });
+
+  it("surfaces no_session as a code on a 401 mutation rejection", async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: async () => ({ error: "no_session", code: "no_session" }),
+    });
+
+    const err = await callEpProxy("addCartItem", { productId: "p1" }).catch(
+      (e: unknown) => e
+    );
+
+    expect(epProxyErrorCode(err)).toBe("no_session");
+  });
+
+  it("returns undefined for errors that carry no code", async () => {
+    mockFetch.mockRejectedValue(new Error("Failed to fetch"));
+
+    const err = await callEpProxy("addCartItem", { productId: "p1" }).catch(
+      (e: unknown) => e
+    );
+
+    expect(epProxyErrorCode(err)).toBeUndefined();
+    expect(epProxyErrorCode(new Error("plain"))).toBeUndefined();
+    expect(epProxyErrorCode(undefined)).toBeUndefined();
   });
 });
