@@ -10,12 +10,19 @@ import React, { useState } from "react";
 import { mutate as swrMutate } from "swr";
 import { Registerable } from "../registerable";
 import { createLogger } from "../utils/logger";
-import { callEpProxy } from "../ep-server-functions/proxy-fetch";
+import {
+  callEpProxy,
+  epProxyErrorCode,
+} from "../ep-server-functions/proxy-fetch";
+import { cartMutationErrorCopy } from "../ep-server-functions/cart-mutation-error-copy";
 import { epCartCacheKey } from "../cart-provider/cache-keys";
 
 const log = createLogger("EPCartItemRemoveButton");
 
-type PreviewState = "auto" | "enabled" | "loading";
+const GENERIC_REMOVE_ERROR =
+  "We couldn't remove this item. Please try again.";
+
+type PreviewState = "auto" | "enabled" | "loading" | "error";
 
 interface EPCartItemRemoveButtonProps {
   children?: React.ReactNode;
@@ -36,7 +43,7 @@ export const epCartItemRemoveButtonMeta: CodeComponentMeta<EPCartItemRemoveButto
       },
       previewState: {
         type: "choice",
-        options: ["auto", "enabled", "loading"],
+        options: ["auto", "enabled", "loading", "error"],
         defaultValue: "auto",
         displayName: "Preview State",
         description:
@@ -58,14 +65,21 @@ export function EPCartItemRemoveButton(props: EPCartItemRemoveButtonProps) {
   const inEditor = !!usePlasmicCanvasContext();
 
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const useMock = previewState !== "auto";
   const effectiveIsLoading = useMock
     ? previewState === "loading"
     : isLoading;
+  const effectiveError = useMock
+    ? previewState === "error"
+      ? "Sample error message"
+      : null
+    : error;
 
   const handleRemove = async () => {
     if (!currentItem?.id || useMock || effectiveIsLoading) return;
+    setError(null);
     setIsLoading(true);
     try {
       await callEpProxy("removeCartItem", { itemId: currentItem.id });
@@ -76,10 +90,11 @@ export function EPCartItemRemoveButton(props: EPCartItemRemoveButtonProps) {
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to remove item";
-      log.error("Remove failed", { error: message } as Record<
-        string,
-        unknown
-      >);
+      log.error("Remove failed", {
+        error: message,
+        code: epProxyErrorCode(err),
+      } as Record<string, unknown>);
+      setError(cartMutationErrorCopy(err, GENERIC_REMOVE_ERROR));
     } finally {
       setIsLoading(false);
     }
@@ -88,7 +103,7 @@ export function EPCartItemRemoveButton(props: EPCartItemRemoveButtonProps) {
   return (
     <DataProvider
       name="removeItemState"
-      data={{ isLoading: effectiveIsLoading }}
+      data={{ isLoading: effectiveIsLoading, error: effectiveError }}
     >
       <button
         type="button"
