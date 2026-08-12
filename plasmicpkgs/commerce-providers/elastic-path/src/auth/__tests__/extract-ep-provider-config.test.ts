@@ -203,7 +203,6 @@ describe("extractEpProviderConfig", () => {
 
   it("prefers EP customHost when CMS/Strapi host defaults appear first in the same module", () => {
     // Mirrors Studio codegen: one global__*.js nests CMS + Strapi + EP.
-    // extractProp("host") alone would pick data.plasmic.app and reject it.
     const sharedGlobalContexts = `
 function E(r){
   let e=$(),cms=Cms(),strapi=St(),ep=Ep(),
@@ -247,5 +246,117 @@ function E(r){
     } finally {
       errorSpy.mockRestore();
     }
+  });
+
+  describe("props are scoped to one provider", () => {
+    const bundleWith = (code: string) => ({
+      bundle: {
+        projects: [{ globalContextsProviderFileName: "global__proj.js" }],
+        modules: {
+          server: [{ type: "code", fileName: "global__proj.js", code }],
+        },
+      },
+    });
+
+    let errorSpy: jest.SpyInstance;
+    beforeEach(() => {
+      errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    });
+    afterEach(() => errorSpy.mockRestore());
+
+    it("does not adopt a neighbour's host when EP is Custom with customHost blank", () => {
+      // customHost is a hidden prop — selecting Custom and not typing a URL is
+      // an easy mistake, and localhost is allowlisted outside production.
+      const blankCustomHost = `
+function E(r){
+  let {children:s,strapiProps:m,commerceProviderComponentProps:o}=r;
+  return g.createElement(strapi,{
+    host:m&&"host"in m?m.host:"http://localhost:1337"
+  },g.createElement(ep,{
+    clientId:o&&"clientId"in o?o.clientId:"EP_REAL_CLIENT_ID",
+    customHost:o&&"customHost"in o?o.customHost:"",
+    host:o&&"host"in o?o.host:"custom"
+  },s));
+}
+`;
+      expect(extractEpProviderConfig(bundleWith(blankCustomHost))).toBeNull();
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("no usable EP Provider config")
+      );
+      expect(errorSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining("localhost:1337")
+      );
+    });
+
+    it("keeps EP's region host when another provider is the one set to Custom", () => {
+      const foreignCustom = `
+function E(r){
+  let {children:s,commerceProviderComponentProps:o,otherProps:p}=r;
+  return g.createElement(ep,{
+    clientId:o&&"clientId"in o?o.clientId:"EP_REAL_CLIENT_ID",
+    host:o&&"host"in o?o.host:"https://useast.api.elasticpath.com",
+    serverCartMode:o&&"serverCartMode"in o?o.serverCartMode:!0
+  },g.createElement(other,{
+    customHost:p&&"customHost"in p?p.customHost:"https://someone-elses.example.com",
+    host:p&&"host"in p?p.host:"custom"
+  },s));
+}
+`;
+      expect(extractEpProviderConfig(bundleWith(foreignCustom))).toEqual({
+        clientId: "EP_REAL_CLIENT_ID",
+        host: "https://useast.api.elasticpath.com",
+        serverCartMode: true,
+      });
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+
+    it("does not pair another provider's clientId with EP's host", () => {
+      const foreignClientIdFirst = `
+function E(r){
+  let {children:s,ctProps:c,commerceProviderComponentProps:o}=r;
+  return g.createElement(commercetools,{
+    clientId:c&&"clientId"in c?c.clientId:"FOREIGN_CLIENT_ID",
+    host:c&&"host"in c?c.host:"https://api.europe-west1.gcp.commercetools.com"
+  },g.createElement(ep,{
+    clientId:o&&"clientId"in o?o.clientId:"EP_REAL_CLIENT_ID",
+    customHost:o&&"customHost"in o?o.customHost:"https://epcc-integration.global.ssl.fastly.net",
+    host:o&&"host"in o?o.host:"custom",
+    serverCartMode:o&&"serverCartMode"in o?o.serverCartMode:!0
+  },s));
+}
+`;
+      expect(extractEpProviderConfig(bundleWith(foreignClientIdFirst))).toEqual({
+        clientId: "EP_REAL_CLIENT_ID",
+        host: "https://epcc-integration.global.ssl.fastly.net",
+        serverCartMode: true,
+      });
+      // The commercetools host is rejected on the way past, but the storefront
+      // works, so the operator must not be told anything is wrong.
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+
+    it("names the provider's own host when its host is rejected", () => {
+      // The rejection message tells the operator to allowlist the host it
+      // names, so naming a neighbour's host talks them into pointing the
+      // storefront at that neighbour.
+      const cmsFirstUnlisted = `
+function E(r){
+  let {children:s,cmsProps:l,commerceProviderComponentProps:o}=r;
+  return g.createElement(cms,{
+    host:l&&"host"in l?l.host:"https://data.plasmic.app"
+  },g.createElement(ep,{
+    clientId:o&&"clientId"in o?o.clientId:"EP_REAL_CLIENT_ID",
+    host:o&&"host"in o?o.host:"https://commerce.selfmanaged.example"
+  },s));
+}
+`;
+      expect(extractEpProviderConfig(bundleWith(cmsFirstUnlisted))).toBeNull();
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("commerce.selfmanaged.example")
+      );
+      expect(errorSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining("data.plasmic.app")
+      );
+    });
   });
 });
