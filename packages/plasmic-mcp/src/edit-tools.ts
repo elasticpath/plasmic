@@ -2942,11 +2942,11 @@ function plasmicElementToTpl(
     baseVariant,
   });
 
-  if (result.result.isError) {
-    throw new Error(result.result.error.message);
+  if (result.isErr()) {
+    throw new Error(result.error.message);
   }
 
-  const { tpl, warnings } = result.result.value;
+  const { tpl, warnings } = result.value;
 
   for (const w of warnings) {
     console.error(`[plasmic-mcp] Warning: ${w.message}`);
@@ -3091,10 +3091,10 @@ function applyRegistryEnrichments(
             codeComponentsOnly: false,
             baseVariant,
           });
-          if (result.result.isError) {
-            throw new Error(result.result.error.message);
+          if (result.isErr()) {
+            throw new Error(result.error.message);
           }
-          return result.result.value.tpl;
+          return result.value.tpl;
         });
 
         const renderExpr = new RenderExpr({ tpl: defaultTpls });
@@ -4076,7 +4076,7 @@ export async function extractToComponent(
   let instanceNode: any;
 
   const changes = tracker.withRecording(() => {
-    instanceNode = wabExtractComponent({
+    const extracted = wabExtractComponent({
       site,
       name: uniqueName,
       tpl,
@@ -4085,6 +4085,10 @@ export async function extractToComponent(
       tplMgr,
       getCanvasEnvForTpl: () => undefined,
     });
+    for (const w of extracted.warnings ?? []) {
+      console.error(`[plasmic-mcp] Warning: ${w}`);
+    }
+    instanceNode = extracted.tplComponent;
     newComponent = instanceNode.component;
     tplMgr.attachComponent(newComponent);
   });

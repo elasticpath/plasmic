@@ -24,7 +24,7 @@ const __dirname = dirname(__filename);
 
 const FIXTURE_PATH = resolve(
   __dirname,
-  "../../../../platform/wab/cypress/bundles/active-screen-variant-group.json"
+  "../../../../platform/wab/playwright/bundles/active-screen-variant-group.json"
 );
 
 /** Resolved path to the MCP server entry point for integration mode */

@@ -5,7 +5,7 @@
  * use REAL FastBundler.unbundle(), TplMgr, ChangeRecorder, and MobX-observed
  * class instances. Only global.fetch and browser packages are stubbed.
  *
- * Fixture: platform/wab/cypress/bundles/active-screen-variant-group.json
+ * Fixture: platform/wab/playwright/bundles/active-screen-variant-group.json
  * — a real Plasmic project bundle with a Homepage page, TplTag nodes,
  * TplComponent instances, variants, RawText, and styles. Includes a
  * dependency package that is loaded before the main project.
@@ -24,6 +24,7 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
+import { migrateFixtureEntry } from "./migrate-fixture-bundle.js";
 
 // ---------------------------------------------------------------------------
 // Fixture & Fetch Mock
@@ -44,21 +45,23 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-beforeAll(() => {
+beforeAll(async () => {
   // Load the real Plasmic bundle fixture.
   // Format: [[depProjectId, depBundle], [mainProjectId, mainBundle]]
   // Entry 0 = dependency package (code component definitions)
   // Entry 1 = main project (Homepage page with real TplTag tree)
   const fixturePath = resolve(
     __dirname,
-    "../../../../platform/wab/cypress/bundles/active-screen-variant-group.json"
+    "../../../../platform/wab/playwright/bundles/active-screen-variant-group.json"
   );
   const fixtureData = JSON.parse(readFileSync(fixturePath, "utf-8"));
   const [[depProjectId, depBundleJson], [mainProjectId, mainBundleJson]] =
     fixtureData;
   fixtureProjectId = mainProjectId;
-  fixtureBundleJson = mainBundleJson;
-  fixtureDepPkgs = [{ id: depProjectId, model: depBundleJson }];
+  fixtureBundleJson = await migrateFixtureEntry(mainBundleJson);
+  fixtureDepPkgs = [
+    { id: depProjectId, model: await migrateFixtureEntry(depBundleJson) },
+  ];
 
   // Set auth env vars (auth.ts reads these before falling back to .plasmic.auth file)
   process.env.PLASMIC_AUTH_HOST = "https://studio.example.com";
