@@ -15,6 +15,7 @@ import {
   callEpProxy,
   epProxyErrorCode,
 } from "../ep-server-functions/proxy-fetch";
+import { cartMutationErrorCopy } from "../ep-server-functions/cart-mutation-error-copy";
 import { epCartCacheKey } from "../cart-provider/cache-keys";
 import type { Cart } from "../types/cart";
 import {
@@ -24,7 +25,10 @@ import {
 
 const log = createLogger("EPCartItemQuantityControl");
 
-type PreviewState = "auto" | "withData" | "loading" | "minReached";
+const GENERIC_QUANTITY_ERROR =
+  "We couldn't update the quantity. Please try again.";
+
+type PreviewState = "auto" | "withData" | "loading" | "minReached" | "error";
 
 interface EPCartItemQuantityControlProps {
   children?: React.ReactNode;
@@ -73,7 +77,7 @@ export const epCartItemQuantityControlMeta: CodeComponentMeta<EPCartItemQuantity
       },
       previewState: {
         type: "choice",
-        options: ["auto", "withData", "loading", "minReached"],
+        options: ["auto", "withData", "loading", "minReached", "error"],
         defaultValue: "auto",
         displayName: "Preview State",
         description:
@@ -118,6 +122,7 @@ export function EPCartItemQuantityControl(
 
   const [localQuantity, setLocalQuantity] = useState(serverQuantity);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   // After a stock-rejection from EP on an *increment*, remember the highest
   // qty that succeeded so we stop offering + even when stockAvailable isn't
   // on the line item.
@@ -148,12 +153,13 @@ export function EPCartItemQuantityControl(
     }
   }, [serverQuantity]);
 
-  // New line-item identity → reset busy + stock-cap state.
+  // New line-item identity → reset busy + stock-cap + error state.
   useEffect(() => {
     if (itemIdRef.current !== currentItem?.id) {
       itemIdRef.current = currentItem?.id;
       inFlightRef.current = false;
       setIsLoading(false);
+      setError(null);
       setStockCap(null);
       locationRef.current = currentItem?.locationSlug?.trim() || undefined;
       if (currentItem?.quantity != null) {
@@ -168,6 +174,11 @@ export function EPCartItemQuantityControl(
   const effectiveIsLoading = useMock
     ? previewState === "loading"
     : isLoading;
+  const effectiveError = useMock
+    ? previewState === "error"
+      ? "Sample error message"
+      : null
+    : error;
 
   const effectiveQuantity = useMock ? mockQuantity : localQuantity;
 
@@ -198,6 +209,7 @@ export function EPCartItemQuantityControl(
         currentItem?.locationSlug?.trim() ||
         undefined;
       inFlightRef.current = true;
+      setError(null);
       setIsLoading(true);
       try {
         const updated = await callEpProxy<Cart | null>("updateCartItem", {
@@ -218,10 +230,11 @@ export function EPCartItemQuantityControl(
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Failed to update quantity";
-        log.error("Quantity update failed", { error: message } as Record<
-          string,
-          unknown
-        >);
+        log.error("Quantity update failed", {
+          error: message,
+          code: epProxyErrorCode(err),
+        } as Record<string, unknown>);
+        setError(cartMutationErrorCopy(err, GENERIC_QUANTITY_ERROR));
 
         const revertTo = Math.max(minQuantity, Number(previousQty) || minQuantity);
         setLocalQuantity(revertTo);
@@ -314,6 +327,7 @@ export function EPCartItemQuantityControl(
           isLoading: effectiveIsLoading,
           canDecrement,
           canIncrement,
+          error: effectiveError,
         }}
       >
         <div className={className}>{children}</div>

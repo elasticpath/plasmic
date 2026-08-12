@@ -20,33 +20,13 @@ import {
   callEpProxy,
   epProxyErrorCode,
 } from "./ep-server-functions/proxy-fetch";
+import { cartMutationErrorCopy } from "./ep-server-functions/cart-mutation-error-copy";
 import { epCartCacheKey } from "./cart-provider/cache-keys";
 
 const log = createLogger("EPAddToCartButton");
 
 const GENERIC_ADD_TO_CART_ERROR =
   "We couldn't add this item to your cart. Please try again.";
-
-const ADD_TO_CART_ERROR_COPY: Record<string, string> = {
-  insufficient_stock:
-    "There isn't enough stock to add that quantity. Try a smaller amount.",
-  no_session: "Your session expired. Refresh the page and try again.",
-};
-
-/**
- * Resolves copy for `$ctx.addToCartState.error`, which designers bind to
- * storefront UI. A coded proxy failure never reaches a shopper verbatim —
- * `dispatch_failed` is all that survives production sanitization. Locally
- * raised errors have authored messages and pass through.
- */
-function addToCartErrorCopy(err: unknown): string {
-  const code = epProxyErrorCode(err);
-  if (code) {
-    return ADD_TO_CART_ERROR_COPY[code] ?? GENERIC_ADD_TO_CART_ERROR;
-  }
-  const raw = err instanceof Error ? err.message.trim() : "";
-  return raw || GENERIC_ADD_TO_CART_ERROR;
-}
 
 type PreviewState = "auto" | "enabled" | "loading" | "error";
 
@@ -168,7 +148,7 @@ export function EPAddToCartButton(props: EPAddToCartButtonProps) {
         error: message,
         code: epProxyErrorCode(err),
       } as Record<string, unknown>);
-      setError(addToCartErrorCopy(err));
+      setError(cartMutationErrorCopy(err, GENERIC_ADD_TO_CART_ERROR));
     } finally {
       setIsLoading(false);
     }

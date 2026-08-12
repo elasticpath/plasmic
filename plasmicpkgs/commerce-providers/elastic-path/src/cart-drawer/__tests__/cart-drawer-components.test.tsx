@@ -78,11 +78,20 @@ const mockRepeatedElement = jest.fn(
 jest.mock("@plasmicapp/host", () => ({
   DataProvider: ({
     children,
+    data,
+    name,
   }: {
     children: React.ReactNode;
     name: string;
     data: any;
-  }) => children,
+  }) => (
+    <div
+      data-testid={`data-provider-${name}`}
+      data-state={JSON.stringify(data)}
+    >
+      {children}
+    </div>
+  ),
   useSelector: (...args: any[]) => mockUseSelector(...args),
   usePlasmicCanvasContext: () => mockUsePlasmicCanvasContext(),
   usePlasmicCanvasComponentInfo: (...args: any[]) =>
@@ -147,6 +156,11 @@ function HookReader({ hook, onResult }: { hook: () => any; onResult: (v: any) =>
   const result = hook();
   onResult(result);
   return null;
+}
+
+function readProviderState(name: string) {
+  const node = screen.getByTestId(`data-provider-${name}`);
+  return JSON.parse(node.dataset.state ?? "{}");
 }
 
 // --- Shared setup ---
@@ -1373,6 +1387,169 @@ describe("EPCartItemQuantityControl", () => {
     );
     expect(ctxValue.canDecrement).toBe(false);
   });
+
+  it("exposes quantityControl.error as null initially", () => {
+    mockUseSelector.mockReturnValue({ id: "item-1", quantity: 2 });
+    render(
+      <EPCartItemQuantityControl>
+        <span>qty</span>
+      </EPCartItemQuantityControl>
+    );
+    expect(readProviderState("quantityControl").error).toBeNull();
+  });
+
+  it("populates quantityControl.error on update failure and still rolls back", async () => {
+    mockCallEpProxy.mockRejectedValue(new Error("Network error"));
+    mockUseSelector.mockReturnValue({ id: "item-1", quantity: 2 });
+
+    let ctxValue: any;
+    render(
+      <EPCartItemQuantityControl>
+        <HookReader
+          hook={useCartItemQuantity}
+          onResult={(v: any) => { ctxValue = v; }}
+        />
+      </EPCartItemQuantityControl>
+    );
+    await act(async () => { ctxValue.increment(); });
+    expect(ctxValue.quantity).toBe(2);
+    expect(readProviderState("quantityControl").error).toBe("Network error");
+    expect(mockSwrMutate).toHaveBeenCalledWith("ep-cart");
+  });
+
+  it("clears quantityControl.error when a new attempt begins", async () => {
+    mockCallEpProxy.mockRejectedValueOnce(new Error("Network error"));
+    mockUseSelector.mockReturnValue({ id: "item-1", quantity: 2 });
+
+    let ctxValue: any;
+    render(
+      <EPCartItemQuantityControl>
+        <HookReader
+          hook={useCartItemQuantity}
+          onResult={(v: any) => { ctxValue = v; }}
+        />
+      </EPCartItemQuantityControl>
+    );
+    await act(async () => { ctxValue.increment(); });
+    expect(readProviderState("quantityControl").error).toBe("Network error");
+
+    let resolveUpdate: (value: unknown) => void = () => {};
+    mockCallEpProxy.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveUpdate = resolve;
+        })
+    );
+
+    // Start a new attempt without awaiting the hanging proxy — designers
+    // should see a cleared error as soon as the attempt begins.
+    act(() => {
+      ctxValue.increment();
+    });
+    expect(readProviderState("quantityControl").error).toBeNull();
+    expect(readProviderState("quantityControl").isLoading).toBe(true);
+
+    await act(async () => {
+      resolveUpdate({ id: "cart-1", lineItems: [] });
+    });
+    expect(readProviderState("quantityControl").error).toBeNull();
+  });
+
+  it("leaves quantityControl.error null after a successful update", async () => {
+    mockCallEpProxy.mockResolvedValue({ id: "cart-1", lineItems: [] });
+    mockUseSelector.mockReturnValue({ id: "item-1", quantity: 2 });
+
+    let ctxValue: any;
+    render(
+      <EPCartItemQuantityControl>
+        <HookReader
+          hook={useCartItemQuantity}
+          onResult={(v: any) => { ctxValue = v; }}
+        />
+      </EPCartItemQuantityControl>
+    );
+    await act(async () => { ctxValue.increment(); });
+    expect(readProviderState("quantityControl").error).toBeNull();
+  });
+
+  it("previewState=error exposes a sample quantityControl.error", () => {
+    mockUseSelector.mockReturnValue(undefined);
+    render(
+      <EPCartItemQuantityControl previewState="error">
+        <span>qty</span>
+      </EPCartItemQuantityControl>
+    );
+    expect(readProviderState("quantityControl").error).toBe(
+      "Sample error message"
+    );
+  });
+
+  it("maps insufficient_stock to shopper-facing quantityControl.error", async () => {
+    mockCallEpProxy.mockRejectedValue(
+      Object.assign(new Error("dispatch_failed"), {
+        code: "insufficient_stock",
+      })
+    );
+    mockUseSelector.mockReturnValue({ id: "item-1", quantity: 2 });
+
+    let ctxValue: any;
+    render(
+      <EPCartItemQuantityControl>
+        <HookReader
+          hook={useCartItemQuantity}
+          onResult={(v: any) => { ctxValue = v; }}
+        />
+      </EPCartItemQuantityControl>
+    );
+    await act(async () => { ctxValue.increment(); });
+    expect(ctxValue.quantity).toBe(2);
+    expect(readProviderState("quantityControl").error).toMatch(/enough stock/i);
+    expect(readProviderState("quantityControl").error).not.toMatch(
+      /dispatch_failed/
+    );
+  });
+
+  it("maps no_session to shopper-facing quantityControl.error", async () => {
+    mockCallEpProxy.mockRejectedValue(
+      Object.assign(new Error("no_session"), { code: "no_session" })
+    );
+    mockUseSelector.mockReturnValue({ id: "item-1", quantity: 2 });
+
+    let ctxValue: any;
+    render(
+      <EPCartItemQuantityControl>
+        <HookReader
+          hook={useCartItemQuantity}
+          onResult={(v: any) => { ctxValue = v; }}
+        />
+      </EPCartItemQuantityControl>
+    );
+    await act(async () => { ctxValue.increment(); });
+    expect(readProviderState("quantityControl").error).toMatch(/session expired/i);
+    expect(ctxValue.quantity).toBe(2);
+    expect(mockSwrMutate).toHaveBeenCalledWith("ep-cart");
+  });
+
+  it("never surfaces dispatch_failed on quantityControl.error", async () => {
+    mockCallEpProxy.mockRejectedValue(
+      Object.assign(new Error("dispatch_failed"), { code: "dispatch_failed" })
+    );
+    mockUseSelector.mockReturnValue({ id: "item-1", quantity: 2 });
+
+    let ctxValue: any;
+    render(
+      <EPCartItemQuantityControl>
+        <HookReader
+          hook={useCartItemQuantity}
+          onResult={(v: any) => { ctxValue = v; }}
+        />
+      </EPCartItemQuantityControl>
+    );
+    await act(async () => { ctxValue.increment(); });
+    const error = readProviderState("quantityControl").error as string;
+    expect(error).not.toMatch(/dispatch_failed/);
+    expect(error).toMatch(/couldn't update the quantity/i);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1596,5 +1773,155 @@ describe("EPCartItemRemoveButton", () => {
       fireEvent.click(screen.getByRole("button"));
     });
     expect(mockCallEpProxy).not.toHaveBeenCalled();
+  });
+
+  it("exposes removeItemState.error as null initially", () => {
+    mockUseSelector.mockReturnValue({ id: "item-1", name: "Product A" });
+    render(
+      <EPCartItemRemoveButton>
+        <span>Remove</span>
+      </EPCartItemRemoveButton>
+    );
+    expect(readProviderState("removeItemState").error).toBeNull();
+  });
+
+  it("populates removeItemState.error on failure and does not refresh the cart", async () => {
+    mockCallEpProxy.mockRejectedValue(new Error("Fail"));
+    mockUseSelector.mockReturnValue({ id: "item-1", name: "Product A" });
+
+    render(
+      <EPCartItemRemoveButton>
+        <span>Remove</span>
+      </EPCartItemRemoveButton>
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button"));
+    });
+    expect(readProviderState("removeItemState").error).toBe("Fail");
+    expect(mockSwrMutate).not.toHaveBeenCalled();
+  });
+
+  it("clears removeItemState.error when a new attempt begins", async () => {
+    mockCallEpProxy.mockRejectedValueOnce(new Error("Fail"));
+    mockUseSelector.mockReturnValue({ id: "item-1", name: "Product A" });
+
+    render(
+      <EPCartItemRemoveButton>
+        <span>Remove</span>
+      </EPCartItemRemoveButton>
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button"));
+    });
+    expect(readProviderState("removeItemState").error).toBe("Fail");
+
+    let resolveRemove: (value: unknown) => void = () => {};
+    mockCallEpProxy.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveRemove = resolve;
+        })
+    );
+
+    fireEvent.click(screen.getByRole("button"));
+    expect(readProviderState("removeItemState").error).toBeNull();
+    expect(readProviderState("removeItemState").isLoading).toBe(true);
+
+    await act(async () => {
+      resolveRemove(undefined);
+    });
+    expect(readProviderState("removeItemState").error).toBeNull();
+  });
+
+  it("leaves removeItemState.error null after a successful remove", async () => {
+    mockCallEpProxy.mockResolvedValue(undefined);
+    mockUseSelector.mockReturnValue({ id: "item-1", name: "Product A" });
+
+    render(
+      <EPCartItemRemoveButton>
+        <span>Remove</span>
+      </EPCartItemRemoveButton>
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button"));
+    });
+    expect(readProviderState("removeItemState").error).toBeNull();
+    expect(mockSwrMutate).toHaveBeenCalled();
+  });
+
+  it("previewState=error exposes a sample removeItemState.error", () => {
+    mockUseSelector.mockReturnValue({ id: "item-1" });
+    render(
+      <EPCartItemRemoveButton previewState="error">
+        <span>Remove</span>
+      </EPCartItemRemoveButton>
+    );
+    expect(readProviderState("removeItemState").error).toBe(
+      "Sample error message"
+    );
+  });
+
+  it("maps no_session to shopper-facing removeItemState.error", async () => {
+    mockCallEpProxy.mockRejectedValue(
+      Object.assign(new Error("no_session"), { code: "no_session" })
+    );
+    mockUseSelector.mockReturnValue({ id: "item-1", name: "Product A" });
+
+    render(
+      <EPCartItemRemoveButton>
+        <span>Remove</span>
+      </EPCartItemRemoveButton>
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button"));
+    });
+    expect(readProviderState("removeItemState").error).toMatch(
+      /session expired/i
+    );
+    expect(mockSwrMutate).not.toHaveBeenCalled();
+  });
+
+  it("never surfaces dispatch_failed on removeItemState.error", async () => {
+    mockCallEpProxy.mockRejectedValue(
+      Object.assign(new Error("dispatch_failed"), { code: "dispatch_failed" })
+    );
+    mockUseSelector.mockReturnValue({ id: "item-1", name: "Product A" });
+
+    render(
+      <EPCartItemRemoveButton>
+        <span>Remove</span>
+      </EPCartItemRemoveButton>
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button"));
+    });
+    const error = readProviderState("removeItemState").error as string;
+    expect(error).not.toMatch(/dispatch_failed/);
+    expect(error).toMatch(/couldn't remove this item/i);
+  });
+
+  it("ignores a second click while remove is loading", async () => {
+    let resolveRemove: (value: unknown) => void = () => {};
+    mockCallEpProxy.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveRemove = resolve;
+        })
+    );
+    mockUseSelector.mockReturnValue({ id: "item-1", name: "Product A" });
+
+    render(
+      <EPCartItemRemoveButton>
+        <span>Remove</span>
+      </EPCartItemRemoveButton>
+    );
+
+    fireEvent.click(screen.getByRole("button"));
+    fireEvent.click(screen.getByRole("button"));
+    expect(mockCallEpProxy).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveRemove(undefined);
+    });
   });
 });
