@@ -11,6 +11,9 @@
  * Also mounts a react-hook-form `FormProvider` (same role as commerce
  * Product Box) so location / variant / quantity selections share form
  * state with Add To Cart — without it, EPLocationPicker clicks are no-ops.
+ * Product id changes remount the form scope via `key` (no parent
+ * `reset()` effect — that would wipe child mount effects that seed
+ * `SelectedLocationSlug` from `?location=`).
  *
  * Data fetching uses the SWR-backed `useProduct` hook, which runs through
  * `useMutablePlasmicQueryData`. When the surrounding Next.js route calls
@@ -32,7 +35,7 @@ import {
 import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
-import React, { useEffect, useMemo } from "react";
+import React, { useMemo } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { Registerable } from "../registerable";
 import useProduct from "./use-product";
@@ -43,6 +46,17 @@ import { buildExtensionsMap } from "../utils/extensions-map";
 import { MOCK_EXTENSION_TEMPLATES } from "../utils/extensions-mock";
 
 const log = createLogger("EPProductProvider");
+
+/**
+ * Fresh `useForm` per mount. Keyed by product id at the call site so a
+ * product change remounts before child effects run — same contract as
+ * commerce `ProductProvider` (`contexts.tsx`), without a parent `reset()`
+ * that would clear values seeded in those child effects.
+ */
+function ProductFormScope({ children }: { children: React.ReactNode }) {
+  const methods = useForm();
+  return <FormProvider {...methods}>{children}</FormProvider>;
+}
 
 /**
  * Design-time mock used inside Studio / MCP preview when no canvas product
@@ -240,21 +254,14 @@ export function EPProductProvider(props: EPProductProviderProps) {
     return buildExtensionsMap(templates);
   }, [dataProduct, inCanvas]);
 
-  // Same contract as commerce `ProductProvider`: descendants (location
-  // picker, ATC, variant pickers) read/write via react-hook-form context.
-  const formMethods = useForm();
-  useEffect(() => {
-    formMethods.reset();
-  }, [dataProduct?.id, formMethods]);
-
   return (
     <DataProvider name="currentProduct" data={dataProduct}>
       <DataProvider name="productExtensions" data={productExtensions}>
-        <FormProvider {...formMethods}>
+        <ProductFormScope key={dataProduct?.id}>
           <div className={className} data-ep-product-provider="">
             {content}
           </div>
-        </FormProvider>
+        </ProductFormScope>
       </DataProvider>
     </DataProvider>
   );
