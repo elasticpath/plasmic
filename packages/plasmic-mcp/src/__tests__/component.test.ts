@@ -1739,7 +1739,7 @@ describe("extractToComponent", () => {
       component: newComp,
       vsettings: [],
     };
-    mockExtractComponent.mockReturnValue(tplComponentInstance);
+    mockExtractComponent.mockReturnValue({ tplComponent: tplComponentInstance, warnings: [] });
 
     const result = await extractToComponent(api, "comp-1", "child-1", "HeroSection");
 
@@ -1767,9 +1767,9 @@ describe("extractToComponent", () => {
     setupSession(comp);
 
     const newComp = { uuid: "nc-uuid", name: "Card", params: [], states: [] };
-    mockExtractComponent.mockReturnValue({
+    mockExtractComponent.mockReturnValue({ tplComponent: {
       _type: "TplComponent", uuid: "inst-uuid", component: newComp, vsettings: [],
-    });
+    }, warnings: [] });
 
     const result = await extractToComponent(api, "comp-1", "child-1", "Card");
 
@@ -1786,9 +1786,9 @@ describe("extractToComponent", () => {
 
     mockGetUniqueComponentName.mockReturnValue("Section 2");
     const newComp = { uuid: "nc-uuid", name: "Section 2", params: [], states: [] };
-    mockExtractComponent.mockReturnValue({
+    mockExtractComponent.mockReturnValue({ tplComponent: {
       _type: "TplComponent", uuid: "inst-uuid", component: newComp, vsettings: [],
-    });
+    }, warnings: [] });
 
     const result = await extractToComponent(api, "comp-1", "child-1", "Section");
 
@@ -1851,9 +1851,9 @@ describe("extractToComponent", () => {
     setupSession(comp);
 
     const newComp = { uuid: "nc-uuid", name: "Section", params: [], states: [] };
-    mockExtractComponent.mockReturnValue({
+    mockExtractComponent.mockReturnValue({ tplComponent: {
       _type: "TplComponent", uuid: "inst-uuid", component: newComp, vsettings: [],
-    });
+    }, warnings: [] });
 
     await extractToComponent(api, "comp-1", "child-1", "Section");
 

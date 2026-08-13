@@ -13,7 +13,7 @@
  * - listVariants() and resolveVariant() traverse real model structures.
  *   Synced variant data must be compatible with these real traversals.
  *
- * Fixture: platform/wab/cypress/bundles/active-screen-variant-group.json
+ * Fixture: platform/wab/playwright/bundles/active-screen-variant-group.json
  * (same as real-integration.test.ts)
  */
 
@@ -27,6 +27,7 @@ import {
 } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
+import { migrateFixtureBundle } from "./migrate-fixture-bundle.js";
 
 // ---------------------------------------------------------------------------
 // Module references (dynamically imported after MobX initialization)
@@ -55,7 +56,7 @@ beforeAll(async () => {
   // Load the real Plasmic bundle fixture
   const fixturePath = resolve(
     __dirname,
-    "../../../../platform/wab/cypress/bundles/active-screen-variant-group.json"
+    "../../../../platform/wab/playwright/bundles/active-screen-variant-group.json"
   );
   const fixtureData = JSON.parse(readFileSync(fixturePath, "utf-8"));
   const [[depProjectId, depBundleJson], [mainProjectId, mainBundleJson]] =
@@ -84,12 +85,14 @@ beforeAll(async () => {
     typeof depBundleJson === "string"
       ? JSON.parse(depBundleJson)
       : depBundleJson;
+  await migrateFixtureBundle(depBundle);
   bundler.unbundle(depBundle, depProjectId);
 
   const mainBundle =
     typeof mainBundleJson === "string"
       ? JSON.parse(mainBundleJson)
       : mainBundleJson;
+  await migrateFixtureBundle(mainBundle);
   const result = bundler.unbundle(mainBundle, mainProjectId);
 
   // Narrow to Site
