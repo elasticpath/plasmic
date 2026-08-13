@@ -45,7 +45,19 @@ export async function queryEntries(
   deps: QueryEntriesDeps = defaultDeps(opts)
 ): Promise<unknown[]> {
   const request = buildEntriesRequest(opts);
-  const res = await deps.request(request);
+
+  // A transport that never reached Elastic Path throws rather than returning a
+  // status, so it would otherwise bypass the mapper entirely and surface as a
+  // bare "fetch failed" with nothing to act on.
+  let res: Awaited<ReturnType<EpRequestPort>>;
+  try {
+    res = await deps.request(request);
+  } catch (err) {
+    throw new Error(
+      `Could not reach ${opts.host} to read Custom API "${opts.customApi}": ` +
+        `${err instanceof Error ? err.message : String(err)}`
+    );
+  }
 
   if (res.status < 200 || res.status >= 300) {
     throw mapEntriesError(res, { customApi: opts.customApi });

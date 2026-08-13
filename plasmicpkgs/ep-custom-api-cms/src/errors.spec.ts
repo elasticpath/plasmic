@@ -20,6 +20,12 @@ describe("mapEntriesError", () => {
 
     expect(err.message).toContain("faqs");
     expect(err.message).toMatch(/role policy/i);
+    // Hedged deliberately: a live probe read a Custom API's entries with an
+    // implicit token and no role policy knowingly configured, so a missing
+    // policy is the likely cause rather than an established one. Stating it as
+    // fact would send an administrator to configure something that may already
+    // be in place.
+    expect(err.message).toMatch(/most often|likely/i);
   });
 
   it("passes through Elastic Path's own detail when it rejects the filter", () => {

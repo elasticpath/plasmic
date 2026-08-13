@@ -60,11 +60,13 @@ export function buildEntriesRequest(opts: EntriesRequestOpts): EpRequest {
     query.sort = sort === UNSORTED ? "null" : sort;
   }
 
-  if (typeof opts.limit === "number") {
-    query["page[limit]"] = opts.limit;
+  // Number.isFinite rather than a typeof check: a number param bound to a
+  // dynamic expression can arrive as NaN or Infinity, and both are "number".
+  if (Number.isFinite(opts.limit)) {
+    query["page[limit]"] = opts.limit as number;
   }
-  if (typeof opts.offset === "number") {
-    query["page[offset]"] = opts.offset;
+  if (Number.isFinite(opts.offset)) {
+    query["page[offset]"] = opts.offset as number;
   }
 
   return {

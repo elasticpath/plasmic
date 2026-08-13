@@ -77,6 +77,26 @@ describe("queryEntries over its real transport", () => {
     ]);
   });
 
+  // A number param bound to a dynamic expression can evaluate to NaN, and
+  // typeof NaN is "number", so a naive check forwards it.
+  it("omits a limit that is not a finite number", async () => {
+    const queryEntries = registeredQuery("queryEntries");
+
+    await queryEntries({
+      host: "https://euwest.api.elasticpath.com",
+      clientId: "client-for-nan-test",
+      customApi: "faqs",
+      limit: Number.NaN,
+    });
+
+    const entriesRequests = requested.filter((url) =>
+      url.includes("/v2/extensions/")
+    );
+    expect(entriesRequests).toEqual([
+      "https://euwest.api.elasticpath.com/v2/extensions/faqs?page[total_method]=observed",
+    ]);
+  });
+
   // The guarantee that used to live on the builder, now asserted where the host
   // actually reaches the wire.
   it("tolerates a host pasted with a trailing slash", async () => {

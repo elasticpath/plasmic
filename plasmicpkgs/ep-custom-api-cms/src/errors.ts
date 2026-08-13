@@ -47,8 +47,9 @@ export function mapEntriesError(
   }
   if (res.status === 403) {
     return new Error(
-      `Elastic Path refused to read Custom API "${ctx.customApi}". Its entries are not readable by shoppers: ` +
-        `grant a Custom API role policy for the shopper role with list and read permissions on "${ctx.customApi}".`
+      `Elastic Path refused to read Custom API "${ctx.customApi}". Most often the store has not exposed its ` +
+        `entries to shoppers — check for a Custom API role policy granting the shopper role list and read ` +
+        `permissions on "${ctx.customApi}", and that the client id belongs to that store.`
     );
   }
   if (res.status === 404) {
