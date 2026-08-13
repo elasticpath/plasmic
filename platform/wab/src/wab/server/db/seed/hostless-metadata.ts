@@ -24,6 +24,7 @@ const COMMERCE_DEPENDENTS = [
 const NPM_PKG_OVERRIDES: Record<string, string> = {
   // All packages default to @plasmicpkgs/{name}.
   // Add overrides here only if a package is published under a different npm scope.
+  "ep-custom-api-cms": "@elasticpath/plasmic-ep-custom-api-cms",
 };
 
 export function getDeps(pkgName: string): string[] {

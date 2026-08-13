@@ -55,4 +55,17 @@ describe("queryEntries registration", () => {
   it("imports the function from the name this package publishes under", () => {
     expect(metaFor("queryEntries").importPath).toBe(pkg.name);
   });
+
+  // The canvas package entry calls register with no arguments and relies on the
+  // host's global registry, the same as every sibling package does.
+  it("registers into the host's registry when no loader is supplied", () => {
+    (globalThis as any).__PlasmicFunctionsRegistry = [];
+
+    registerAll();
+
+    const names = ((globalThis as any).__PlasmicFunctionsRegistry as any[]).map(
+      (r) => r.meta.name
+    );
+    expect(names).toContain("queryEntries");
+  });
 });

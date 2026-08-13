@@ -63,6 +63,53 @@ describe("EP Fork Integrity", () => {
     });
   });
 
+  describe("canvas-packages registers the EP Custom API CMS loader", () => {
+    it("ep-custom-api-cms registration file exists", () => {
+      expect(
+        fileExists("platform/canvas-packages/src/ep-custom-api-cms.ts")
+      ).toBe(true);
+    });
+
+    it("canvas-packages package.json includes the loader dependency", () => {
+      const pkgJson = readJson("platform/canvas-packages/package.json");
+      expect(
+        pkgJson.dependencies["@elasticpath/plasmic-ep-custom-api-cms"] ||
+          pkgJson.devDependencies["@elasticpath/plasmic-ep-custom-api-cms"]
+      ).toBeDefined();
+    });
+
+    it("hostlessList includes the loader, so a hostless project is created for it", () => {
+      const hostlessList: string[] = readJson(
+        "platform/canvas-packages/hostlessList.json"
+      );
+      expect(hostlessList).toContain("ep-custom-api-cms");
+    });
+
+    it("hostless metadata maps the loader to its published Elastic Path name", () => {
+      // Without this override the seed derives "@plasmicpkgs/ep-custom-api-cms",
+      // which is not a package that exists, and generated code imports it.
+      const metadata = readFile(
+        "platform/wab/src/wab/server/db/seed/hostless-metadata.ts"
+      );
+      expect(metadata).toContain(
+        '"ep-custom-api-cms": "@elasticpath/plasmic-ep-custom-api-cms"'
+      );
+    });
+  });
+
+  describe("EP Custom API CMS loader package exists", () => {
+    it("package directory exists", () => {
+      expect(fileExists("plasmicpkgs/ep-custom-api-cms/package.json")).toBe(
+        true
+      );
+    });
+
+    it("has correct package name", () => {
+      const pkgJson = readJson("plasmicpkgs/ep-custom-api-cms/package.json");
+      expect(pkgJson.name).toBe("@elasticpath/plasmic-ep-custom-api-cms");
+    });
+  });
+
   describe("EP commerce provider package exists", () => {
     it("elastic-path commerce provider directory exists", () => {
       expect(

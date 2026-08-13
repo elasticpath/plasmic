@@ -67,5 +67,6 @@
   "wordpress",
   "strapi",
   "contentful",
-  "cms"
+  "cms",
+  "ep-custom-api-cms"
 ]

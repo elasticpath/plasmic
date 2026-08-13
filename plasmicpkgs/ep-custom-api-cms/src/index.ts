@@ -6,6 +6,7 @@
  * network, and so a caller that already holds a configured client can supply
  * it rather than having a second one built.
  */
+import registerFunction from "@plasmicapp/host/registerFunction";
 import { epRequestPort } from "./client";
 import { mapEntriesError } from "./errors";
 import {
@@ -127,10 +128,15 @@ const ENTRY_QUERY_FIELDS = {
   },
 } as const;
 
-export function registerAll(loader: {
+export function registerAll(loader?: {
   registerFunction: (fn: any, meta: any) => void;
 }) {
-  loader.registerFunction(queryEntries, {
+  // A loader is passed when a host app registers explicitly; the canvas package
+  // entry passes nothing and relies on the host's global registry.
+  const register = (fn: any, meta: any) =>
+    loader ? loader.registerFunction(fn, meta) : registerFunction(fn, meta);
+
+  register(queryEntries, {
     name: "queryEntries",
     namespace: "epCms",
     displayName: "Query Custom API Entries",

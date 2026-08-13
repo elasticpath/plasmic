@@ -34,7 +34,11 @@
   "dependencies": {
     "@epcc-sdk/sdks-shopper": "^0.1.0"
   },
+  "peerDependencies": {
+    "@plasmicapp/host": ">=1.0.211"
+  },
   "devDependencies": {
+    "@plasmicapp/host": "2.0.15",
     "@types/node": "^17.0.45"
   }
 }
