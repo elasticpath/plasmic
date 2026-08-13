@@ -8,13 +8,13 @@
     "start": "next start"
   },
   "dependencies": {
-    "@elasticpath/plasmic-ep-commerce-elastic-path": "file:../../plasmicpkgs/commerce-providers/elastic-path",
-    "@elasticpath/plasmic-mcp-registry": "file:../../packages/plasmic-mcp-registry",
+    "@elasticpath/plasmic-ep-commerce-elastic-path": "*",
+    "@elasticpath/plasmic-mcp-registry": "*",
     "@epcc-sdk/sdks-shopper": "^0.1.0",
-    "@plasmicapp/loader-nextjs": "file:../../packages/loader-nextjs",
-    "@plasmicapp/nextjs-app-router": "file:../../packages/nextjs-app-router",
-    "@plasmicapp/host": "file:../../packages/host",
-    "@plasmicpkgs/commerce": "file:../../plasmicpkgs/commerce-providers/commerce",
+    "@plasmicapp/loader-nextjs": "*",
+    "@plasmicapp/nextjs-app-router": "*",
+    "@plasmicapp/host": "*",
+    "@plasmicpkgs/commerce": "*",
     "next": "^15.5.9",
     "react": "^19",
     "react-dom": "^19"

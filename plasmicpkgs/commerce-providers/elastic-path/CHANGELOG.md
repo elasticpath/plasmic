@@ -40,11 +40,18 @@ now returns `{}`.
 export const { GET, POST } = createEpAuthRoutes(epAuth);
 ```
 
-better-auth's `/get-session` returns the whole session record, and this package
-keeps the shopper's EP access token on it — so the raw handler hands that token
-to any same-origin script for the cost of one fetch. `createEpAuthRoutes` strips
-`epAccessToken`, `epClientId` and `epHost` from that response. `epCartId` stays:
-it is not a credential, and the checkout components read it.
+Every endpoint on the auth handler returns the session record, and the session
+carries the shopper's EP credentials — the anonymous access token on all of
+them, plus the account-management token once a shopper logs in. The raw handler
+hands those to any same-origin script for the cost of one fetch; `/ep/refresh`
+returns a freshly rotated token and `/ep/anonymous` needs no cookie at all.
+
+`createEpAuthRoutes` filters the session on every response down to an allowlist:
+`id`, `userId`, `expiresAt`, `createdAt`, `updatedAt`, `epCartId`, `epExpires`.
+A field added to the session later is withheld by default. `epCartId` is kept
+because the checkout components read it and it is not a credential; the
+better-auth session id is not, because it lives in an HttpOnly cookie
+specifically so scripts cannot read it.
 
 `serverToken` and `serverCartMode` remain in the registered prop schema, hidden
 and ignored. Registered props on a hostless package are append-only; removing

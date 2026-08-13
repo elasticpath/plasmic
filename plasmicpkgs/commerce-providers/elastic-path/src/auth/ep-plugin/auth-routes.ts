@@ -1,5 +1,5 @@
 /**
- * Mounts the EP auth handler, redacting credentials from `/get-session`.
+ * Mounts the EP auth handler, redacting credentials from every response.
  *
  *   // app/api/ep/[...path]/route.ts
  *   import { createEpAuthRoutes } from
@@ -8,19 +8,32 @@
  *
  *   export const { GET, POST } = createEpAuthRoutes(epAuth);
  *
- * better-auth's `/get-session` returns the whole session record, and this
- * package stores the shopper's EP access token on it. Mounting
- * better-auth's `toNextJsHandler` directly therefore hands that token to
- * any same-origin script for the cost of one fetch — the same exposure
- * the `serverToken` prop used to create, in pull form rather than push.
+ * Every endpoint on this handler returns the session record, and the
+ * session carries the shopper's EP credentials — the anonymous access
+ * token on all of them, plus the account-management token once a shopper
+ * logs in. Mounting better-auth's `toNextJsHandler` directly therefore
+ * hands those to any same-origin script for the cost of one fetch.
+ * `/ep/refresh` is the sharpest: it rotates the token and returns the new
+ * value, and `/ep/anonymous` needs no cookie at all.
  *
- * `epCartId` survives: it is not a credential, and the checkout
- * components read it from here.
+ * The session is filtered to an allowlist rather than stripped of known
+ * credential fields, so a field added to the session later is withheld by
+ * default instead of leaking until someone notices.
  */
 import { toNextJsHandler } from "better-auth/next-js";
 import type { EpAuth } from "./create-ep-auth-better";
 
-const REDACTED_FIELDS = ["epAccessToken", "epClientId", "epHost"];
+// `token` is deliberately absent: it is the better-auth session id, which
+// lives in an HttpOnly cookie precisely so scripts cannot read it.
+const SESSION_ALLOWLIST = [
+  "id",
+  "userId",
+  "expiresAt",
+  "createdAt",
+  "updatedAt",
+  "epCartId",
+  "epExpires",
+];
 
 function redactSessionPayload(payload: any): any {
   if (!payload || typeof payload !== "object") return payload;
@@ -28,18 +41,10 @@ function redactSessionPayload(payload: any): any {
   if (!session || typeof session !== "object") return payload;
 
   const kept: Record<string, unknown> = {};
-  for (const key of Object.keys(session)) {
-    if (REDACTED_FIELDS.indexOf(key) === -1) kept[key] = session[key];
+  for (const key of SESSION_ALLOWLIST) {
+    if (key in session) kept[key] = session[key];
   }
   return { ...payload, session: kept };
-}
-
-function isGetSession(request: Request): boolean {
-  try {
-    return new URL(request.url).pathname.endsWith("/get-session");
-  } catch {
-    return false;
-  }
 }
 
 function withRedaction(
@@ -47,7 +52,7 @@ function withRedaction(
 ): (request: Request) => Promise<Response> {
   return async (request: Request) => {
     const response = await handler(request);
-    if (!isGetSession(request) || !response.ok) return response;
+    if (!response.ok) return response;
 
     const cloned = response.clone();
     let payload: any;
@@ -57,10 +62,15 @@ function withRedaction(
       return response;
     }
 
+    // Rebuilding shrinks the body, so a copied Content-Length would
+    // overstate it — a truncated read rather than an error.
+    const headers = new Headers(response.headers);
+    headers.delete("content-length");
+
     return new Response(JSON.stringify(redactSessionPayload(payload)), {
       status: response.status,
       statusText: response.statusText,
-      headers: response.headers,
+      headers,
     });
   };
 }

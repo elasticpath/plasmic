@@ -56,21 +56,38 @@ import { epAuth } from "@/lib/ep-auth";
 
 const handlers = createEpAuthRoutes(epAuth);
 
+export const config = { api: { bodyParser: false } };
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const method = req.method?.toUpperCase() as "GET" | "POST";
   const fn = handlers[method];
   if (!fn) return res.status(405).end();
 
-  const response = await fn({
-    url: `http://localhost${req.url}`,
-    cookies: req.cookies as Record<string, string>,
-    headers: req.headers as Record<string, string>,
-    json: () => Promise.resolve(req.body),
-  });
+  // The handlers take a WHATWG Request, so rebuild one from the Node req.
+  const url = `${process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000"}${req.url}`;
+  const body =
+    method === "GET"
+      ? undefined
+      : await new Promise<string>((resolve) => {
+          let raw = "";
+          req.on("data", (chunk) => (raw += chunk));
+          req.on("end", () => resolve(raw));
+        });
 
-  // Forward response headers (Set-Cookie for token refresh)
-  response.headers.forEach((value, key) => res.setHeader(key, value));
-  res.status(response.status).json(await response.json());
+  const response = await fn(
+    new Request(url, {
+      method,
+      headers: req.headers as Record<string, string>,
+      body,
+    })
+  );
+
+  // Set-Cookie must be forwarded as a list — setHeader would collapse it.
+  res.setHeader("Set-Cookie", response.headers.getSetCookie());
+  response.headers.forEach((value, key) => {
+    if (key.toLowerCase() !== "set-cookie") res.setHeader(key, value);
+  });
+  res.status(response.status).send(await response.text());
 }
 ```
 
@@ -253,6 +270,13 @@ a credential.
 Browser-side catalog reads go through the Elastic Path SDK client, which mints
 its own anonymous token from the public `clientId` and holds it in memory —
 never localStorage, never a cookie.
+
+**`next dev` is an exception.** Next's RSC debug instrumentation serializes a
+server component's local variables — including the EP session — into the flight
+payload, so the access token is readable in the page source under `next dev`.
+It is absent from `next build` output, and nothing this package does can
+suppress it. Treat a dev server as carrying a live shopper credential: don't
+run one on a shared host or against production Elastic Path credentials.
 
 ### API Routes
 
