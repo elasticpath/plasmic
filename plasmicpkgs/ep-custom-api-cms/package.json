@@ -1,0 +1,40 @@
+{
+  "name": "@elasticpath/plasmic-ep-custom-api-cms",
+  "version": "0.1.0",
+  "description": "Query Elastic Path Commerce Extensions Custom API entries from Plasmic data queries.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elasticpath/plasmic.git",
+    "directory": "plasmicpkgs/ep-custom-api-cms"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "module": "./dist/index.esm.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.esm.js",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "yarn build:types && yarn build:index",
+    "build:types": "tsc",
+    "build:index": "node ../../build.mjs ./src/index.ts",
+    "test": "TEST_CWD=`pwd` yarn --cwd=../.. test",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@epcc-sdk/sdks-shopper": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^17.0.45"
+  }
+}

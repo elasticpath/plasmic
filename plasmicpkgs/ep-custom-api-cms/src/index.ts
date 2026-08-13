@@ -6,6 +6,7 @@
  * network, and so a caller that already holds a configured client can supply
  * it rather than having a second one built.
  */
+import { epRequestPort } from "./client";
 import { mapEntriesError } from "./errors";
 import { buildEntriesRequest, EntriesRequestOpts, EpRequest } from "./request";
 
@@ -23,9 +24,19 @@ export interface QueryEntriesDeps {
  * repeater. Custom fields arrive flat on each entry; `created_at` and
  * `updated_at` live under `meta.timestamps`.
  */
+/**
+ * The transport a query uses when none is injected. Studio supplies only the
+ * query's own arguments, so the store connection is derived from those.
+ */
+export function defaultDeps(
+  opts: EntriesRequestOpts & { clientId: string }
+): QueryEntriesDeps {
+  return { request: epRequestPort({ host: opts.host, clientId: opts.clientId }) };
+}
+
 export async function queryEntries(
-  opts: EntriesRequestOpts,
-  deps: QueryEntriesDeps
+  opts: EntriesRequestOpts & { clientId: string },
+  deps: QueryEntriesDeps = defaultDeps(opts)
 ): Promise<unknown[]> {
   const request = buildEntriesRequest(opts);
   const res = await deps.request(request);
