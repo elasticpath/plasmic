@@ -29,6 +29,7 @@ import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useMemo } from "react";
+import { FormProvider, useForm } from "react-hook-form";
 import { Registerable } from "../registerable";
 import useProduct from "./use-product";
 import { createLogger } from "../utils/logger";
@@ -38,6 +39,11 @@ import { buildExtensionsMap } from "../utils/extensions-map";
 import { MOCK_EXTENSION_TEMPLATES } from "../utils/extensions-mock";
 
 const log = createLogger("EPProductProvider");
+
+function ProductFormScope({ children }: { children: React.ReactNode }) {
+  const methods = useForm();
+  return <FormProvider {...methods}>{children}</FormProvider>;
+}
 
 /**
  * Design-time mock used inside Studio / MCP preview when no canvas product
@@ -238,9 +244,11 @@ export function EPProductProvider(props: EPProductProviderProps) {
   return (
     <DataProvider name="currentProduct" data={dataProduct}>
       <DataProvider name="productExtensions" data={productExtensions}>
-        <div className={className} data-ep-product-provider="">
-          {content}
-        </div>
+        <ProductFormScope key={dataProduct?.id}>
+          <div className={className} data-ep-product-provider="">
+            {content}
+          </div>
+        </ProductFormScope>
       </DataProvider>
     </DataProvider>
   );
