@@ -40,10 +40,10 @@ export const epAuth = createEpAuth({
 
 ```ts
 // app/api/ep/[...path]/route.ts
-import { toNextJsHandler } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
+import { createEpAuthRoutes } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
 import { epAuth } from "@/lib/ep-auth";
 
-export const { GET, POST, PATCH, DELETE } = toNextJsHandler(epAuth);
+export const { GET, POST } = createEpAuthRoutes(epAuth);
 ```
 
 **Pages Router:**
@@ -51,13 +51,13 @@ export const { GET, POST, PATCH, DELETE } = toNextJsHandler(epAuth);
 ```ts
 // pages/api/ep/[...path].ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { toNextJsHandler } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
+import { createEpAuthRoutes } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
 import { epAuth } from "@/lib/ep-auth";
 
-const handlers = toNextJsHandler(epAuth);
+const handlers = createEpAuthRoutes(epAuth);
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const method = req.method?.toUpperCase() as "GET" | "POST" | "PATCH" | "DELETE";
+  const method = req.method?.toUpperCase() as "GET" | "POST";
   const fn = handlers[method];
   if (!fn) return res.status(405).end();
 
@@ -256,26 +256,40 @@ never localStorage, never a cookie.
 
 ### API Routes
 
-The catch-all handler (`toNextJsHandler`) provides:
+`createEpAuthRoutes(epAuth)` mounts the auth handler:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `{basePath}/ep/anonymous` | Mint an anonymous session |
+| POST | `{basePath}/ep/refresh` | Rotate the EP token |
+| POST | `{basePath}/ep/cart` | Persist `epCartId` on the session |
+| POST | `{basePath}/ep/account/login` | Persist account fields |
+| GET | `{basePath}/get-session` | Read the session, minus EP credentials |
+
+`createCartRoutes(epAuth)` mounts the cart routes:
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `{basePath}/cart` | Get cart contents |
 | POST | `{basePath}/cart/items` | Add item to cart |
-| PATCH | `{basePath}/cart/items/:id` | Update item quantity |
+| PUT | `{basePath}/cart/items/:id` | Update item quantity |
 | DELETE | `{basePath}/cart/items/:id` | Remove item from cart |
 
-Every response includes `accountStatus: "authenticated" | "expired" | "anonymous"`.
+Mount the auth handler through `createEpAuthRoutes`, never better-auth's
+`toNextJsHandler` directly: better-auth's `/get-session` returns the whole
+session record, and this package keeps the shopper's EP access token on it.
 
 ### Cookie Architecture
 
-| Cookie | Contents | Max-Age | Purpose |
-|--------|----------|---------|---------|
-| `ep_token` | base64 JSON (token + credentials) | 30 days | Implicit token, self-refreshes |
-| `ep_account` | base64 JSON (account info) | Until expiry | Account auth (logged-in shopper) |
-| `ep_cart` | Cart UUID string | 30 days | Cart identity |
+| Cookie | Contents | Purpose |
+|--------|----------|---------|
+| `better-auth.session_token` | Signed session id | Session identity |
+| `better-auth.session_data` | JWE — EP access token, client id, host, cart id | Everything the server needs to act as the shopper |
 
-All cookies: `HttpOnly; SameSite=Lax; Path=/`. `Secure` in production.
+Both are `HttpOnly; SameSite=Lax; Path=/`, `Secure` in production. The EP
+access token, the account fields and the cart id all live inside the encrypted
+`session_data` payload — there is no separate `ep_token`, `ep_account` or
+`ep_cart` cookie.
 
 ### Server-Side Rendering
 
@@ -295,7 +309,7 @@ The API follows [Better Auth](https://better-auth.com/) conventions:
 |-------------|-------------|
 | `createEpAuth()` | `betterAuth()` |
 | `epAuth.api.getSession(req)` | `auth.api.getSession(req)` |
-| `toNextJsHandler(epAuth)` | `toNextJsHandler(auth)` |
+| `createEpAuthRoutes(epAuth)` | `toNextJsHandler(auth)` |
 | `session.user` / `session.session` | `session.user` / `session.session` |
 
 ## Studio Server Queries (SSR)

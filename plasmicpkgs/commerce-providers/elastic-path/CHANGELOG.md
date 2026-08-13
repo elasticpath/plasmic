@@ -32,6 +32,20 @@ the public `clientId`.
 `session.providerProps()` into `PlasmicClientRootProvider`. `providerProps()`
 now returns `{}`.
 
+**Mount the auth handler with `createEpAuthRoutes`**, not better-auth's
+`toNextJsHandler`:
+
+```ts
+// app/api/ep/[...path]/route.ts
+export const { GET, POST } = createEpAuthRoutes(epAuth);
+```
+
+better-auth's `/get-session` returns the whole session record, and this package
+keeps the shopper's EP access token on it — so the raw handler hands that token
+to any same-origin script for the cost of one fetch. `createEpAuthRoutes` strips
+`epAccessToken`, `epClientId` and `epHost` from that response. `epCartId` stays:
+it is not a credential, and the checkout components read it.
+
 `serverToken` and `serverCartMode` remain in the registered prop schema, hidden
 and ignored. Registered props on a hostless package are append-only; removing
 one breaks hostless publishing for every package. Everywhere else the flag is
