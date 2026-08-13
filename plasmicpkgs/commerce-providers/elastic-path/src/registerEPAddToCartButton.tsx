@@ -36,6 +36,14 @@ interface EPAddToCartButtonProps {
   previewState?: PreviewState;
   /** Fired after the item is successfully added to the cart. */
   onAddedToCart?: () => void;
+  /** @deprecated Inert. Use EPStockProvider / EPStockField. */
+  enableStockCheck?: boolean;
+  /** @deprecated Inert. Use EPLocationPicker. */
+  locationId?: string;
+  /** @deprecated Inert. Use EPLocationPicker. */
+  locationSlug?: string;
+  /** @deprecated Inert. Use EPStockField. */
+  showStockStatus?: boolean;
 }
 
 export const epAddToCartButtonMeta: CodeComponentMeta<EPAddToCartButtonProps> = {
@@ -68,6 +76,28 @@ export const epAddToCartButtonMeta: CodeComponentMeta<EPAddToCartButtonProps> = 
       description:
         "Fires after the item is successfully added to the cart. Wire to open a confirmation modal, toast, or drawer.",
       argTypes: [],
+    },
+    // Inert. Hostless publishing rejects removing a published prop.
+    enableStockCheck: {
+      type: "boolean",
+      hidden: () => true,
+      description:
+        "Deprecated and ignored. Use EP Stock Provider / EP Stock Field.",
+    },
+    locationId: {
+      type: "string",
+      hidden: () => true,
+      description: "Deprecated and ignored. Use EP Location Picker.",
+    },
+    locationSlug: {
+      type: "string",
+      hidden: () => true,
+      description: "Deprecated and ignored. Use EP Location Picker.",
+    },
+    showStockStatus: {
+      type: "boolean",
+      hidden: () => true,
+      description: "Deprecated and ignored. Use EP Stock Field.",
     },
   },
   importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
