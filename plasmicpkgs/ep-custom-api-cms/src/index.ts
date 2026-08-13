@@ -11,7 +11,9 @@ import { EpClientCredentials, epRequestPort } from "./client";
 import { mapEntriesError } from "./errors";
 import {
   buildEntriesRequest,
+  buildEntryRequest,
   EntriesRequestOpts,
+  EntryRequestOpts,
   EpRequest,
   UNSORTED,
 } from "./request";
@@ -25,46 +27,66 @@ export interface QueryEntriesDeps {
 }
 
 /**
- * Fetches the entries of one Custom API. Returns the entries themselves —
- * Elastic Path's envelope is unwrapped, so the result binds straight to a
- * repeater. Custom fields arrive flat on each entry; `created_at` and
- * `updated_at` live under `meta.timestamps`.
- */
-/**
  * The transport a query uses when none is injected. Studio supplies only the
  * query's own arguments, so the store connection is derived from those.
  */
-export function defaultDeps(
-  opts: EntriesRequestOpts & EpClientCredentials
-): QueryEntriesDeps {
+export function defaultDeps(opts: EpClientCredentials): QueryEntriesDeps {
   return { request: epRequestPort({ host: opts.host, clientId: opts.clientId }) };
 }
 
-export async function queryEntries(
-  opts: EntriesRequestOpts & EpClientCredentials,
-  deps: QueryEntriesDeps = defaultDeps(opts)
-): Promise<unknown[]> {
-  const request = buildEntriesRequest(opts);
-
-  // A transport that never reached Elastic Path throws rather than returning a
-  // status, so it would otherwise bypass the mapper entirely and surface as a
-  // bare "fetch failed" with nothing to act on.
+/**
+ * Every read goes through here, so both failure modes are handled in one place:
+ * a transport that never reached Elastic Path throws rather than returning a
+ * status, and would otherwise surface as a bare "fetch failed" with nothing to
+ * act on, while an HTTP failure carries a status the mapper turns into something
+ * a designer can fix. Returns Elastic Path's `data` payload, unwrapped.
+ */
+async function read(
+  request: EpRequest,
+  deps: QueryEntriesDeps,
+  ctx: { host: string; customApi: string; entry?: string }
+): Promise<unknown> {
   let res: Awaited<ReturnType<EpRequestPort>>;
   try {
     res = await deps.request(request);
   } catch (err) {
     throw new Error(
-      `Could not reach ${opts.host} to read Custom API "${opts.customApi}": ` +
+      `Could not reach ${ctx.host} to read Custom API "${ctx.customApi}": ` +
         `${err instanceof Error ? err.message : String(err)}`
     );
   }
 
   if (res.status < 200 || res.status >= 300) {
-    throw mapEntriesError(res, { customApi: opts.customApi });
+    throw mapEntriesError(res, { customApi: ctx.customApi, entry: ctx.entry });
   }
 
-  const data = (res.body as { data?: unknown } | undefined)?.data;
+  return (res.body as { data?: unknown } | undefined)?.data;
+}
+
+/**
+ * Fetches the entries of one Custom API. Returns the entries themselves —
+ * Elastic Path's envelope is unwrapped, so the result binds straight to a
+ * repeater. Custom fields arrive flat on each entry; `created_at` and
+ * `updated_at` live under `meta.timestamps`.
+ */
+export async function queryEntries(
+  opts: EntriesRequestOpts & EpClientCredentials,
+  deps: QueryEntriesDeps = defaultDeps(opts)
+): Promise<unknown[]> {
+  const data = await read(buildEntriesRequest(opts), deps, opts);
   return Array.isArray(data) ? data : [];
+}
+
+/**
+ * Fetches one entry, addressed by its id or by the value of the Custom API's
+ * url-slug field. Returns the entry itself so a detail page binds directly to
+ * its fields; a missing entry is an error rather than an empty render.
+ */
+export async function getEntry(
+  opts: EntryRequestOpts & EpClientCredentials,
+  deps: QueryEntriesDeps = defaultDeps(opts)
+): Promise<unknown> {
+  return (await read(buildEntryRequest(opts), deps, opts)) ?? null;
 }
 
 export const MODULE_PATH = "@elasticpath/plasmic-ep-custom-api-cms";
@@ -140,6 +162,22 @@ const ENTRY_QUERY_FIELDS = {
   },
 } as const;
 
+/** Same store connection, then the one entry to read. */
+const ENTRY_FIELDS = {
+  host: ENTRY_QUERY_FIELDS.host,
+  clientId: ENTRY_QUERY_FIELDS.clientId,
+  customApi: ENTRY_QUERY_FIELDS.customApi,
+  entry: {
+    type: "string",
+    displayName: "Entry",
+    description:
+      "The entry's id, or the value of the Custom API's url-slug field where it defines one.",
+    helpText:
+      "On a dynamic page, bind this to the route parameter — for example the page's slug.",
+    required: true,
+  },
+} as const;
+
 export function registerAll(loader?: {
   registerFunction: (fn: any, meta: any) => void;
 }) {
@@ -162,6 +200,24 @@ export function registerAll(loader?: {
         type: "object",
         display: "flatten",
         fields: ENTRY_QUERY_FIELDS,
+      },
+    ],
+  });
+
+  register(getEntry, {
+    name: "getEntry",
+    namespace: "epCms",
+    displayName: "Get Custom API Entry",
+    description:
+      "Fetch a single entry from an Elastic Path Commerce Extensions Custom API.",
+    importPath: MODULE_PATH,
+    isQuery: true,
+    params: [
+      {
+        name: "opts",
+        type: "object",
+        display: "flatten",
+        fields: ENTRY_FIELDS,
       },
     ],
   });

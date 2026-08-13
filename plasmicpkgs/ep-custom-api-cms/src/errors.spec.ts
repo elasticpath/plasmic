@@ -81,6 +81,21 @@ describe("mapEntriesError", () => {
     expect(err.message).toMatch(/no Custom API/i);
   });
 
+  it("names the entry when a single-entry read cannot find it", () => {
+    const err = mapEntriesError(
+      {
+        status: 404,
+        body: {
+          errors: [{ status: "404", detail: "Custom API Entry not found." }],
+        },
+      },
+      { customApi: "faqs", entry: "shipping-to-canada" }
+    );
+
+    expect(err.message).toContain("shipping-to-canada");
+    expect(err.message).toContain("faqs");
+  });
+
   it("suggests narrowing the query when Elastic Path times it out", () => {
     const err = mapEntriesError(
       {

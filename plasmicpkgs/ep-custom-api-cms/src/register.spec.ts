@@ -56,6 +56,23 @@ describe("queryEntries registration", () => {
     expect(metaFor("queryEntries").importPath).toBe(pkg.name);
   });
 
+  // Characterisation: the outer transport spec required getEntry to be
+  // registered under that name, but nothing asserted the arguments Studio
+  // renders for it.
+  it("declares the single-entry query's arguments, ending with the entry", () => {
+    const meta = metaFor("getEntry");
+
+    expect(meta.namespace).toBe("epCms");
+    expect(meta.isQuery).toBe(true);
+    expect(meta.importPath).toBe(pkg.name);
+    expect(Object.keys(meta.params[0].fields)).toEqual([
+      "host",
+      "clientId",
+      "customApi",
+      "entry",
+    ]);
+  });
+
   // The canvas package entry calls register with no arguments and relies on the
   // host's global registry, the same as every sibling package does.
   it("registers into the host's registry when no loader is supplied", () => {

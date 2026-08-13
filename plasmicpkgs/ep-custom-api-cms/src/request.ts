@@ -35,6 +35,32 @@ export interface EpRequest {
   query: Record<string, string | number>;
 }
 
+export interface EntryRequestOpts {
+  customApi: string;
+  /**
+   * The entry's id, or the value of its url-slug field where the Custom API
+   * defines one — Elastic Path addresses entries by that value instead of the
+   * id once such a field exists, so both are the same path segment.
+   */
+  entry: string;
+}
+
+export function buildEntryRequest(opts: EntryRequestOpts): EpRequest {
+  const customApi = opts.customApi.trim();
+  if (!customApi) {
+    throw new Error("No Custom API named — set the Custom API slug on this query.");
+  }
+
+  const entry = opts.entry.trim();
+  if (!entry) {
+    throw new Error(
+      "No entry identified — bind this query to an entry id or url slug, usually the page's route parameter."
+    );
+  }
+
+  return { url: `/v2/extensions/${customApi}/${entry}`, query: {} };
+}
+
 export function buildEntriesRequest(opts: EntriesRequestOpts): EpRequest {
   const customApi = opts.customApi.trim();
   if (!customApi) {

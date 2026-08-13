@@ -41,7 +41,6 @@ describe("defaultDeps", () => {
     const deps = defaultDeps({
       host: "https://euwest.api.elasticpath.com",
       clientId: "abc123",
-      customApi: "faqs",
     });
 
     expect(typeof deps.request).toBe("function");

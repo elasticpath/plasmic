@@ -12,6 +12,12 @@ export interface EpErrorResponse {
 
 export interface EntriesErrorContext {
   customApi: string;
+  /**
+   * Set for a single-entry read. A 404 then has two possible causes — an unknown
+   * Custom API or an unknown entry — and the designer needs to know which
+   * identifier to go and check.
+   */
+  entry?: string;
 }
 
 /**
@@ -53,6 +59,14 @@ export function mapEntriesError(
     );
   }
   if (res.status === 404) {
+    if (ctx.entry) {
+      const detail = firstDetail(res.body);
+      return new Error(
+        `Custom API "${ctx.customApi}" has no entry "${ctx.entry}"` +
+          (detail ? ` (${detail})` : "") +
+          ". Check the identifier this query is bound to — an entry id, or the value of the Custom API's url-slug field."
+      );
+    }
     return new Error(
       `This store has no Custom API with the slug "${ctx.customApi}". ` +
         "Check the slug in Commerce Manager under Commerce Extensions — it is the slug, not the display name."
