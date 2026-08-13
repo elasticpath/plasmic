@@ -67,10 +67,8 @@ export const commerceProviderMeta: any = {
         "How money renders across cart line prices and totals: a currency symbol or its ISO code prefix.",
       advanced: true,
     },
-    // Retired props. Registered props on a hostless package are
-    // append-only — removing one makes updateHostlessPackage throw and
-    // takes down hostless publishing for every package, not just this
-    // one. Both are hidden and ignored by the component.
+    // Retired, but hostless prop schemas are append-only: removing one
+    // breaks hostless publishing for every package.
     serverCartMode: {
       type: "boolean",
       hidden: () => true,
@@ -100,8 +98,6 @@ export function CommerceProviderComponent(props: CommerceProviderProps) {
   } = props;
 
   if (!clientId) {
-    // Cart and checkout run through the server routes, which don't need
-    // a client ID — only the catalog reads do.
     return (
       <ServerCartActionsProvider globalContextName={globalContextName}>
         {children}

@@ -91,10 +91,6 @@ describe("createEpAuth adapter (PRD #273)", () => {
       headers: {},
     });
 
-    // The session itself carries the token — the point is that
-    // providerProps(), which the catchall page hands to
-    // globalContextsProps and Plasmic serializes into page HTML,
-    // does not.
     expect(session.session?.accessToken).toBe(FAKE_TOKEN);
     expect(session.providerProps()).toEqual({});
     expect(JSON.stringify(session.providerProps())).not.toContain(FAKE_TOKEN);

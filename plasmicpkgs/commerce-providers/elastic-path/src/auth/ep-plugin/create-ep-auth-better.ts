@@ -349,8 +349,7 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
             }
             return h;
           },
-          // Never carries the EP access token: whatever this returns is
-          // serialized into the page HTML via globalContextsProps.
+          // Serialized into page HTML via globalContextsProps.
           providerProps() {
             return {};
           },

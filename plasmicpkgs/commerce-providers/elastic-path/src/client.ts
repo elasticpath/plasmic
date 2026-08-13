@@ -2,19 +2,10 @@ import { createShopperClient, configureClient } from "@epcc-sdk/sdks-shopper";
 import { ElasticPathCredentials } from './provider';
 
 /**
- * In-memory StorageAdapter for the EP shopper SDK.
- *
- * The SDK's default storage adapters write to either localStorage or a
- * regular cookie — both of which leak credentials into JS-readable storage
- * (the localStorage adapter writes `_store_ep_credentials`; the cookie
- * adapter writes a non-HttpOnly cookie). A memory adapter keeps the
- * storage tier inside the JS heap instead.
- *
- * Starting empty, the SDK auto-mints its own anonymous token from the
- * public clientId and caches it in memory for the lifetime of the page.
- * This client serves catalog reads only; cart and checkout run through
- * the server routes, where the better-auth session cookie is the
- * authoritative shopper identity.
+ * The SDK's default storage adapters write credentials to localStorage or
+ * a non-HttpOnly cookie. Keeping them in the JS heap instead means the
+ * anonymous token the SDK mints for catalog reads leaves no persistent
+ * client-side trace.
  */
 function memoryStorageAdapter() {
   let current: string | undefined;

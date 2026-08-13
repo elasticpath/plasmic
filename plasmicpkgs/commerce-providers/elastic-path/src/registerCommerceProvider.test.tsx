@@ -27,9 +27,6 @@ describe("CommerceProviderComponent", () => {
 });
 
 describe("commerceProviderMeta", () => {
-  // Registered props on a hostless package are append-only: removing one
-  // makes updateHostlessPackage throw and takes down hostless publishing
-  // for every package. Retired props stay registered and hidden.
   it.each(["serverToken", "serverCartMode"])(
     "keeps the retired %s prop registered and hidden",
     (propName) => {
