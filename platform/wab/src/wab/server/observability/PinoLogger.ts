@@ -67,12 +67,21 @@ export class PinoLogger implements Logger {
 
   private log(
     level: "info" | "error" | "warn" | "debug",
-    message: string,
+    message: string | Error,
     payload?: Record<string, any>
   ) {
     const { requestId } = requestStorage.getStore() ?? {};
+    // An Error arrives here whenever a caller does `logger().error(err)` — the
+    // `err` of a `.catch` is `any`, so the string signature doesn't stop it.
+    // Error.message and .stack are non-enumerable, so serializing one as-is
+    // drops the text and emits only `{"name":"..."}`.
+    const err = message instanceof Error ? message : undefined;
+    const text = err ? err.message || err.name : (message as string);
     const logEntry = {
-      message,
+      message: text,
+      ...(err
+        ? { error: { name: err.name, message: err.message, stack: err.stack } }
+        : {}),
       ...(requestId ? { x_request_id: requestId } : {}),
       ...payload,
     };
@@ -81,7 +90,7 @@ export class PinoLogger implements Logger {
 
     const span = trace.getSpan(context.active());
     if (span) {
-      span.addEvent(message, {
+      span.addEvent(text, {
         level,
         ...payload,
       });
