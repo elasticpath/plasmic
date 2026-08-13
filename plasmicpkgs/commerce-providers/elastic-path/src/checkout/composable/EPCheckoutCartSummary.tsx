@@ -6,11 +6,11 @@ import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useMemo, useState } from "react";
-import useCart from "../../cart/use-cart";
-import { DEFAULT_CURRENCY_CODE } from "../../const";
 import { Registerable } from "../../registerable";
-import type { CheckoutCartData } from "../../shopper-context/use-checkout-cart";
-import { formatCurrency } from "../../utils/formatCurrency";
+import {
+  useCheckoutCart,
+  type CheckoutCartData,
+} from "../../shopper-context/use-checkout-cart";
 import { createLogger } from "../../utils/logger";
 import { MOCK_CHECKOUT_CART_DATA } from "../../utils/design-time-data";
 
@@ -27,9 +27,9 @@ interface EPCheckoutCartSummaryProps {
   onExpandedChange?: (expanded: boolean) => void;
   previewState?: PreviewState;
   /**
-   * Optional external cart data from useCheckoutCart() server-route hook.
-   * When provided, skips the internal EP SDK cart fetch entirely.
-   * This is a code-only prop — not exposed in Plasmic Studio meta.
+   * Optional external cart data from useCheckoutCart(). When provided,
+   * skips the internal cart fetch entirely. This is a code-only prop —
+   * not exposed in Plasmic Studio meta.
    */
   cartData?: CheckoutCartData;
 }
@@ -132,7 +132,7 @@ function EPCheckoutCartSummaryInternal(
     previewState = "auto",
   } = props;
 
-  const { data: cart } = useCart();
+  const { data: cart } = useCheckoutCart();
   const inEditor = !!usePlasmicCanvasContext();
 
   const [internalExpanded, setInternalExpanded] = useState(true);
@@ -144,51 +144,10 @@ function EPCheckoutCartSummaryInternal(
     onExpandedChange?.(next);
   };
 
-  const cartData = useMemo(() => {
-    if (!cart) return null;
-    const currencyCode = cart.currency?.code ?? DEFAULT_CURRENCY_CODE;
-    const items = cart.lineItems.map((item: any) => ({
-      id: item.id,
-      name: item.name ?? "",
-      quantity: item.quantity ?? 1,
-      price: item.variant?.price ?? item.price ?? 0,
-      formattedPrice: formatCurrency(
-        item.variant?.price ?? item.price ?? 0,
-        currencyCode
-      ),
-      imageUrl: item.variant?.image?.url ?? "",
-      sku: item.variant?.sku ?? item.sku ?? "",
-      options: item.options ?? [],
-    }));
-
-    const subtotal = cart.subtotalPrice ?? 0;
-    const total = cart.totalPrice ?? 0;
-    const tax = (cart as any).taxTotal ?? 0;
-    const shipping = (cart as any).shippingTotal ?? 0;
-
-    return {
-      id: cart.id,
-      items,
-      itemCount: items.reduce(
-        (sum: number, i: any) => sum + (i.quantity ?? 1),
-        0
-      ),
-      subtotal,
-      tax,
-      shipping,
-      total,
-      formattedSubtotal: formatCurrency(subtotal, currencyCode),
-      formattedTax: formatCurrency(tax, currencyCode),
-      formattedShipping: formatCurrency(shipping, currencyCode),
-      formattedTotal: formatCurrency(total, currencyCode),
-      currencyCode,
-      showImages,
-      hasPromo: false,
-      promoCode: null as string | null,
-      promoDiscount: 0,
-      formattedPromoDiscount: null as string | null,
-    };
-  }, [cart, showImages]);
+  const cartData = useMemo(
+    () => (cart ? { ...cart, showImages } : null),
+    [cart, showImages]
+  );
 
   const useMock =
     previewState === "withItems" ||

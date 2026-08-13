@@ -102,15 +102,10 @@ export default async function Page({ params }: { params: { catchall?: string[] }
     ),
   });
 
-  // SSR: extract query data with server token injected
+  // SSR: extract query data. The session stays server-side — it is never
+  // handed to globalContextsProps, which Plasmic serializes into the HTML.
   const queryData = await extractPlasmicQueryData(
-    <PlasmicRootProvider
-      loader={PLASMIC}
-      prefetchedData={plasmicData}
-      globalContextsProps={{
-        "plasmic-commerce-elastic-path-provider": session.providerProps(),
-      }}
-    >
+    <PlasmicRootProvider loader={PLASMIC} prefetchedData={plasmicData}>
       <PlasmicComponent component={pagePath} />
     </PlasmicRootProvider>
   );
@@ -127,9 +122,6 @@ export default async function Page({ params }: { params: { catchall?: string[] }
       loader={PLASMIC}
       prefetchedData={plasmicData}
       prefetchedQueryData={queryData}
-      globalContextsProps={{
-        "plasmic-commerce-elastic-path-provider": session.providerProps(),
-      }}
     >
       <PlasmicComponent component={pagePath} />
     </PlasmicRootProvider>
@@ -161,15 +153,10 @@ export const getServerSideProps: GetServerSideProps = async ({ req, res, params 
     cookies: req.cookies as Record<string, string>,
   });
 
-  // SSR: extract query data with server token injected
+  // SSR: extract query data. The session stays server-side — it is never
+  // handed to globalContextsProps, which Plasmic serializes into the HTML.
   const queryData = await extractPlasmicQueryData(
-    <PlasmicRootProvider
-      loader={PLASMIC}
-      prefetchedData={plasmicData}
-      globalContextsProps={{
-        "plasmic-commerce-elastic-path-provider": session.providerProps(),
-      }}
-    >
+    <PlasmicRootProvider loader={PLASMIC} prefetchedData={plasmicData}>
       <PlasmicComponent component={pagePath} />
     </PlasmicRootProvider>
   );
@@ -243,20 +230,29 @@ three rather than only to the factory.
 
 ```
 First visit:
-  page.tsx → epAuth.api.getSession() → OAuth with clientId → serverToken
-  → EP Provider (prepass) → product data SSRs
+  page.tsx → epAuth.api.getSession() → OAuth with clientId → access token
+  → buildEpCtx() → withEpSession() → Server Queries SSR product data
   → commitCookies() → httpOnly ep_token cookie set
 
 Returning visit:
-  page.tsx → epAuth.api.getSession() → reads ep_token cookie → serverToken
-  → EP Provider (prepass) → product data SSRs → zero OAuth calls
+  page.tsx → epAuth.api.getSession() → reads ep_token cookie → access token
+  → buildEpCtx() → withEpSession() → Server Queries SSR → zero OAuth calls
 ```
 
-The access token never reaches the browser. It flows through:
-1. Server-side `getSession()` → httpOnly cookie
-2. `providerProps()` → `globalContextsProps` (server-only, not serialized to HTML)
-3. EP Provider `getServerInfo` → `providedContexts` (server prepass only)
-4. Product components `getServerInfo` → `ops.readContext("ep-server-token")`
+The access token never reaches the browser. It stays on the server:
+1. `getSession()` reads or mints it, then writes it to an httpOnly cookie
+2. `buildEpCtx()` puts it on an `EpCtx`, which `withEpSession()` publishes
+   through AsyncLocalStorage
+3. Server Queries and the `/api/ep` proxy routes read it via
+   `getCurrentEpSession()` and call Elastic Path directly
+
+`providerProps()` returns `{}`. Whatever it returned would be handed to
+`globalContextsProps` and serialized into the page HTML, so it never carries
+a credential.
+
+Browser-side catalog reads go through the Elastic Path SDK client, which mints
+its own anonymous token from the public `clientId` and holds it in memory —
+never localStorage, never a cookie.
 
 ### API Routes
 
@@ -283,14 +279,13 @@ All cookies: `HttpOnly; SameSite=Lax; Path=/`. `Secure` in production.
 
 ### Server-Side Rendering
 
-Product components implement `getServerInfo` for the Loader v2 RSC-native path:
+Product data server-renders through Studio Server Queries against the EP custom
+functions — see [Studio Server Queries (SSR)](#studio-server-queries-ssr) below.
+`buildEpCtx()` + `withEpSession()` carry the session; each `ep.*` function reads
+it via `getCurrentEpSession()`.
 
-- **EP Provider** → provides `ep-server-token` and `ep-host` contexts
-- **EPProductProvider** → fetches single product via EP catalog API
-- **EPProductListProvider** → fetches paginated product list
-- **EPRelatedProductsProvider** → fetches related products
-
-Data flows through `ops.fetchData()` → SWR cache → `prefetchedQueryData` → client hydration. Product data SSRs for SEO. Token never enters the cache.
+Data flows into `prefetchedQueryData` → client hydration. Product data SSRs for
+SEO. The token never enters the cache.
 
 ### Better Auth Alignment
 
@@ -429,13 +424,13 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 ## Components
 
 ### Core
-- **EP Provider** — Global context: `clientId`, `host`, `locale`, `serverCartMode`, `serverToken`
+- **EP Provider** — Global context: `clientId`, `host`, `locale`, `currency`
 - **Shopper Context** — Global context: `cartId`, `accountId`, `basePath` overrides
 
 ### Product Display
-- **EPProductProvider** — Single product data (with `getServerInfo` for SSR)
-- **EPProductListProvider** — Paginated product listing (with `getServerInfo`)
-- **EPRelatedProductsProvider** — Related products (with `getServerInfo`)
+- **EPProductProvider** — Single product data
+- **EPProductListProvider** — Paginated product listing
+- **EPRelatedProductsProvider** — Related products
 - **EPProductGrid** — Repeater for product list items
 
 ### Cart

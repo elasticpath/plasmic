@@ -24,7 +24,7 @@ const makePrefetchedData = () => ({
 });
 
 describe("buildEpCtx", () => {
-  it("returns clientId, host, and serverCartMode resolved from the Plasmic bundle", () => {
+  it("returns clientId and host resolved from the Plasmic bundle", () => {
     const ctx = buildEpCtx(makePrefetchedData(), {
       session: { accessToken: "tok-abc" },
     });
@@ -33,7 +33,6 @@ describe("buildEpCtx", () => {
       expect.objectContaining({
         clientId: "cid-abc",
         host: "https://epcc-integration.global.ssl.fastly.net",
-        serverCartMode: true,
         accessToken: "tok-abc",
       })
     );

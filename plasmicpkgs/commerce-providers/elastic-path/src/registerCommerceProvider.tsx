@@ -1,15 +1,11 @@
 import { GlobalContextMeta } from "@plasmicapp/host";
 import registerGlobalContext from "@plasmicapp/host/registerGlobalContext";
-import {
-  CartActionsProvider,
-  globalActionsRegistrations,
-} from "@plasmicpkgs/commerce";
+import { globalActionsRegistrations } from "@plasmicpkgs/commerce";
 import React from "react";
 import { getCommerceProvider } from "./elastic-path";
 import { ElasticPathCredentials } from "./provider";
 import { Registerable } from "./registerable";
 import { ServerCartActionsProvider } from "./shopper-context/ServerCartActionsProvider";
-import { epProviderGetServerInfo } from "./auth/ep-provider-server-info";
 
 interface CommerceProviderProps extends ElasticPathCredentials {
   children?: React.ReactNode;
@@ -17,8 +13,6 @@ interface CommerceProviderProps extends ElasticPathCredentials {
   currency?: string;
   currencyDisplay?: "symbol" | "code";
   customHost?: string;
-  serverCartMode?: boolean;
-  serverToken?: string;
 }
 
 const globalContextName = "plasmic-commerce-elastic-path-provider";
@@ -73,23 +67,23 @@ export const commerceProviderMeta: any = {
         "How money renders across cart line prices and totals: a currency symbol or its ISO code prefix.",
       advanced: true,
     },
+    // Retired props. Registered props on a hostless package are
+    // append-only — removing one makes updateHostlessPackage throw and
+    // takes down hostless publishing for every package, not just this
+    // one. Both are hidden and ignored by the component.
     serverCartMode: {
       type: "boolean",
-      displayName: "Server Cart Mode",
-      description:
-        "When enabled, cart operations use server routes instead of client-side EP SDK. No client ID is needed for cart operations.",
-      advanced: true,
-      defaultValue: false,
+      hidden: () => true,
+      description: "Retired. Cart operations always use server routes.",
     },
     serverToken: {
       type: "string",
       hidden: () => true,
       description:
-        "Server-resolved EP access token. Set programmatically via session.providerProps(), never shown in Studio.",
+        "Retired. The shopper's EP access token never reaches the browser.",
     },
   },
   ...{ globalActions: globalActionsRegistrations },
-  getServerInfo: epProviderGetServerInfo,
   importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
   importName: "CommerceProviderComponent",
 };
@@ -103,23 +97,15 @@ export function CommerceProviderComponent(props: CommerceProviderProps) {
     locale = "en-US",
     currency,
     currencyDisplay = "symbol",
-    serverCartMode = false,
-    serverToken,
   } = props;
 
   if (!clientId) {
-    if (serverCartMode) {
-      return (
-        <ServerCartActionsProvider globalContextName={globalContextName}>
-          {children}
-        </ServerCartActionsProvider>
-      );
-    }
+    // Cart and checkout run through the server routes, which don't need
+    // a client ID — only the catalog reads do.
     return (
-      <div>
-        Please set your Elastic Path Client ID in the Elastic Path Provider
-        settings.
-      </div>
+      <ServerCartActionsProvider globalContextName={globalContextName}>
+        {children}
+      </ServerCartActionsProvider>
     );
   }
 
@@ -131,19 +117,15 @@ export function CommerceProviderComponent(props: CommerceProviderProps) {
   );
 
   const CommerceProvider = React.useMemo(
-    () => getCommerceProvider(creds, locale, serverToken, currency, currencyDisplay),
-    [creds, locale, serverToken, currency, currencyDisplay]
+    () => getCommerceProvider(creds, locale, currency, currencyDisplay),
+    [creds, locale, currency, currencyDisplay]
   );
-
-  const ActionsProvider = serverCartMode
-    ? ServerCartActionsProvider
-    : CartActionsProvider;
 
   return (
     <CommerceProvider>
-      <ActionsProvider globalContextName={globalContextName}>
+      <ServerCartActionsProvider globalContextName={globalContextName}>
         {children}
-      </ActionsProvider>
+      </ServerCartActionsProvider>
     </CommerceProvider>
   );
 }

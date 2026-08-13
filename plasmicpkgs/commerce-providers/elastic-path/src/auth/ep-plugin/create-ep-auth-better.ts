@@ -349,9 +349,10 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
             }
             return h;
           },
+          // Never carries the EP access token: whatever this returns is
+          // serialized into the page HTML via globalContextsProps.
           providerProps() {
-            if (!sessionData) return {};
-            return { serverToken: sessionData.accessToken };
+            return {};
           },
           commitCookies(res) {
             for (const cookie of pendingSetCookies) {
