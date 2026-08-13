@@ -3,18 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3456",
     "build": "next build",
     "start": "next start"
   },
   "dependencies": {
-    "@elasticpath/plasmic-ep-commerce-elastic-path": "*",
-    "@elasticpath/plasmic-mcp-registry": "*",
+    "@elasticpath/plasmic-ep-commerce-elastic-path": "^0.2.1",
+    "@elasticpath/plasmic-mcp-registry": "^0.2.1",
     "@epcc-sdk/sdks-shopper": "^0.1.0",
-    "@plasmicapp/loader-nextjs": "*",
-    "@plasmicapp/nextjs-app-router": "*",
-    "@plasmicapp/host": "*",
-    "@plasmicpkgs/commerce": "*",
+    "@plasmicapp/loader-nextjs": "^2.0.22",
+    "@plasmicapp/nextjs-app-router": "^1.0.30",
+    "@plasmicapp/host": "^2.0.16",
+    "@plasmicpkgs/commerce": "^0.0.257",
     "next": "^15.5.9",
     "react": "^19",
     "react-dom": "^19"

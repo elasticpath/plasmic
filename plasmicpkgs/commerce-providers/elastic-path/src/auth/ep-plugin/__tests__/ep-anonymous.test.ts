@@ -193,4 +193,26 @@ describe("/ep/anonymous endpoint (PRD #273)", () => {
     );
     expect(String(calledInit.body)).toContain(`client_id=${EP_CLIENT_ID}`);
   });
+
+  it("does not derive the session token from the readable user id", async () => {
+    const auth = betterAuth({
+      secret: SECRET,
+      baseURL: "http://localhost",
+      basePath: "/api/ep",
+      plugins: [epPlugin({ clientId: EP_CLIENT_ID, host: EP_HOST })],
+    });
+
+    const result = await (auth.api as any).epAnonymous({
+      body: {},
+      asResponse: true,
+    });
+    const { session, user } = await result.json();
+
+    // user.id and user.email are handed to the storefront; the session token
+    // is the cookie's non-secret half. Deriving one from the other would
+    // publish it.
+    expect(session.token).not.toContain(user.id.replace("anon-", ""));
+    expect(session.id).not.toContain(session.token);
+    expect(user.email).not.toContain(session.token);
+  });
 });

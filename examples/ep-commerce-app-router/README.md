@@ -4,6 +4,10 @@ Reference storefront for `@elasticpath/plasmic-ep-commerce-elastic-path`. It
 mirrors a real consumer install: the Plasmic and Elastic Path packages resolve
 from the registry, not from this monorepo.
 
+> **Requires an unreleased package version.** This app uses
+> `createEpAuthRoutes`, added in 0.2.1. Until that publishes, `yarn install`
+> cannot resolve the dependency — use the local-source workflow below.
+
 ## Running it
 
 ```bash
@@ -12,9 +16,10 @@ yarn install
 yarn dev                            # http://localhost:3456
 ```
 
-The port matters. `lib/ep-auth.ts` defaults `baseURL` to `http://localhost:3456`,
-and the origin gate rejects cart mutations from an origin that isn't trusted. To
-serve elsewhere, set `NEXT_PUBLIC_BASE_URL`.
+`yarn dev` serves 3456 deliberately. `lib/ep-auth.ts` defaults `baseURL` to
+`http://localhost:3456`, and the origin gate rejects cart mutations from an
+origin that isn't trusted — so a different port means silently failing writes.
+To serve elsewhere, set `NEXT_PUBLIC_BASE_URL` to match.
 
 `plasmic-init.ts` points `host` at the Plasmic instance serving the project, so
 that instance has to be reachable — a local `platform/wab` on `:3003` for local
