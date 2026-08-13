@@ -8,7 +8,12 @@
  */
 import { epRequestPort } from "./client";
 import { mapEntriesError } from "./errors";
-import { buildEntriesRequest, EntriesRequestOpts, EpRequest } from "./request";
+import {
+  buildEntriesRequest,
+  EntriesRequestOpts,
+  EpRequest,
+  UNSORTED,
+} from "./request";
 
 export type EpRequestPort = (
   req: EpRequest
@@ -49,6 +54,79 @@ export async function queryEntries(
   return Array.isArray(data) ? data : [];
 }
 
+export const MODULE_PATH = "@elasticpath/plasmic-ep-custom-api-cms";
+
+/**
+ * Studio renders these as the query's editor. Two are worth explaining: the
+ * Custom API is a slug rather than a display name, because there is no
+ * dropdown to pick from (ADR-0001), and sorting is limited to the three
+ * attributes Elastic Path can order entries by — custom fields are not
+ * sortable, so an alphabetical list has to be ordered in the page.
+ */
+const ENTRY_QUERY_FIELDS = {
+  host: {
+    type: "choice",
+    displayName: "Region host",
+    description: "The Elastic Path API host for the store's region.",
+    options: [
+      { label: "EU West", value: "https://euwest.api.elasticpath.com" },
+      { label: "US East", value: "https://useast.api.elasticpath.com" },
+    ],
+    defaultValue: "https://euwest.api.elasticpath.com",
+    required: true,
+  },
+  clientId: {
+    type: "string",
+    displayName: "Client ID",
+    description: "The store's client id. Not a secret — no client secret is needed.",
+    helpText:
+      "Find it in Commerce Manager under System > Application Keys. Only the client id is used; this query never takes a client secret.",
+    required: true,
+  },
+  customApi: {
+    type: "string",
+    displayName: "Custom API",
+    description: "The slug of the Custom API to read entries from.",
+    helpText:
+      "Find it in Commerce Manager under Commerce Extensions — it is the slug, not the display name.",
+    required: true,
+  },
+  filter: {
+    type: "string",
+    displayName: "Filter",
+    description:
+      "An Elastic Path filter expression, for example eq(status,published) or like(title,*sale*). Combine conditions with a colon.",
+  },
+  sort: {
+    type: "choice",
+    displayName: "Sort by",
+    description:
+      "Elastic Path can only sort entries by these attributes; custom fields are not sortable.",
+    options: [
+      { label: "Newest created first", value: "-created_at" },
+      { label: "Oldest created first", value: "created_at" },
+      { label: "Recently updated first", value: "-updated_at" },
+      { label: "Least recently updated first", value: "updated_at" },
+      { label: "Entry ID, ascending", value: "id" },
+      { label: "Entry ID, descending", value: "-id" },
+      { label: "Unsorted (fastest)", value: UNSORTED },
+    ],
+    defaultValueHint: "Newest created first",
+  },
+  limit: {
+    type: "number",
+    displayName: "Limit",
+    description: "Entries to fetch, up to 100.",
+    defaultValueHint: "The store's page-length setting, commonly 25",
+  },
+  offset: {
+    type: "number",
+    displayName: "Offset",
+    description: "Entries to skip, for a load-more or next-page control.",
+    defaultValueHint: 0,
+  },
+} as const;
+
 export function registerAll(loader: {
   registerFunction: (fn: any, meta: any) => void;
 }) {
@@ -56,7 +134,17 @@ export function registerAll(loader: {
     name: "queryEntries",
     namespace: "epCms",
     displayName: "Query Custom API Entries",
-    importPath: "@elasticpath/plasmic-ep-custom-api-cms",
+    description:
+      "Fetch entries from an Elastic Path Commerce Extensions Custom API.",
+    importPath: MODULE_PATH,
     isQuery: true,
+    params: [
+      {
+        name: "opts",
+        type: "object",
+        display: "flatten",
+        fields: ENTRY_QUERY_FIELDS,
+      },
+    ],
   });
 }
