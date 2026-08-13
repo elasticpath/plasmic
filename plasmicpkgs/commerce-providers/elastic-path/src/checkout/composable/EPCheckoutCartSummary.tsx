@@ -7,10 +7,8 @@ import registerComponent, {
 } from "@plasmicapp/host/registerComponent";
 import React, { useMemo, useState } from "react";
 import { Registerable } from "../../registerable";
-import {
-  useCheckoutCart,
-  type CheckoutCartData,
-} from "../../shopper-context/use-checkout-cart";
+import { useCheckoutCart } from "../../shopper-context/use-checkout-cart";
+import type { CheckoutCartData } from "../../shopper-context/use-checkout-cart";
 import { createLogger } from "../../utils/logger";
 import { MOCK_CHECKOUT_CART_DATA } from "../../utils/design-time-data";
 
