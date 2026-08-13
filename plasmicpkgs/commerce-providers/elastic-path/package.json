@@ -1,6 +1,6 @@
 {
   "name": "@elasticpath/plasmic-ep-commerce-elastic-path",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Plasmic registration calls for elastic path commerce provider",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
