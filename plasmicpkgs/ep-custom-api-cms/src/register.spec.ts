@@ -1,5 +1,5 @@
 import pkg from "../package.json";
-import { registerAll } from "./index";
+import { registerAll, sampleFieldsContext } from "./index";
 
 function metaFor(name: string) {
   const registered: Array<[unknown, any]> = [];
@@ -54,6 +54,21 @@ describe("queryEntries registration", () => {
   // carries, and one nothing else in the suite would notice.
   it("imports the function from the name this package publishes under", () => {
     expect(metaFor("queryEntries").importPath).toBe(pkg.name);
+  });
+
+  it("hints the filter with the fields sampled for the editor", () => {
+    const meta = metaFor("queryEntries");
+    const { defaultValueHint } = meta.params[0].fields.filter;
+
+    const hint = defaultValueHint([{ customApi: "faqs" }], {
+      fields: [{ name: "question", type: "string" }],
+    });
+
+    expect(hint).toContain("question (string)");
+  });
+
+  it("wires the editor's field sampling to the entries query", () => {
+    expect(metaFor("queryEntries").fnContext).toBe(sampleFieldsContext);
   });
 
   // Characterisation: the outer transport spec required getEntry to be

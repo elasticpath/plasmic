@@ -9,6 +9,7 @@
 import registerFunction from "@plasmicapp/host/registerFunction";
 import { EpClientCredentials, epRequestPort } from "./client";
 import { mapEntriesError } from "./errors";
+import { fieldsFromSample, filterHint, SampledField } from "./fields";
 import {
   buildEntriesRequest,
   buildEntryRequest,
@@ -89,6 +90,41 @@ export async function getEntry(
   return (await read(buildEntryRequest(opts), deps, opts)) ?? null;
 }
 
+/**
+ * Design-time only: samples one entry so the filter's hint can name the fields
+ * a designer can filter on. Keyed by the store and Custom API alone, so typing
+ * a filter or changing a limit does not re-sample.
+ *
+ * Studio calls the registered function with the query's arguments only, so this
+ * receives the same shape and takes its deps the same way the queries do.
+ */
+export function sampleFieldsContext(
+  opts?: Partial<EntriesRequestOpts & EpClientCredentials>,
+  deps?: QueryEntriesDeps
+): { dataKey: string; fetcher: () => Promise<{ fields: SampledField[] }> } {
+  const { host, clientId, customApi } = opts ?? {};
+  if (!host || !clientId || !customApi) {
+    return { dataKey: "", fetcher: async () => ({ fields: [] }) };
+  }
+
+  return {
+    dataKey: `epCms/sample/${host}/${clientId}/${customApi}`,
+    fetcher: async () => {
+      try {
+        const entries = await queryEntries(
+          { host, clientId, customApi, limit: 1 },
+          deps ?? defaultDeps({ host, clientId })
+        );
+        return { fields: fieldsFromSample(entries) };
+      } catch {
+        // Best-effort: a Custom API the store has not exposed, or a store that
+        // is unreachable, must leave the query editable rather than erroring.
+        return { fields: [] };
+      }
+    },
+  };
+}
+
 export const MODULE_PATH = "@elasticpath/plasmic-ep-custom-api-cms";
 
 /**
@@ -131,6 +167,11 @@ const ENTRY_QUERY_FIELDS = {
     displayName: "Filter",
     description:
       "An Elastic Path filter expression, for example eq(status,published) or like(title,*sale*). Combine conditions with a colon.",
+    // The hint is the only channel that can carry sampled data — helpText and
+    // description are static strings in the registration contract — so the
+    // field names land where the designer is typing the filter.
+    defaultValueHint: (_args: unknown, ctx?: { fields?: SampledField[] }) =>
+      filterHint(ctx?.fields ?? []),
   },
   sort: {
     type: "choice",
@@ -202,6 +243,7 @@ export function registerAll(loader?: {
         fields: ENTRY_QUERY_FIELDS,
       },
     ],
+    fnContext: sampleFieldsContext,
   });
 
   register(getEntry, {
