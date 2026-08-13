@@ -1,12 +1,4 @@
-/**
- * @jest-environment jsdom
- *
- * Regression for FormProvider on EPProductProvider: child mount effects that
- * seed form values (e.g. EPStockProvider copying `?location=` into
- * SelectedLocationSlug) must survive. A parent `useEffect` + `reset()` runs
- * after child effects and would wipe them; keyed ProductFormScope remounts
- * instead.
- */
+/** @jest-environment jsdom */
 
 import React, { useEffect } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -52,10 +44,6 @@ const PRODUCT_B = {
   slug: "product-b",
 };
 
-/**
- * Mirrors EPStockProvider's mount seed: set SelectedLocationSlug once when
- * empty. Uses stable setValue/getValues deps (not the whole form object).
- */
 function SeedLocationFromMount() {
   const { setValue, getValues, watch } = useFormContext();
   useEffect(() => {
@@ -113,9 +101,6 @@ describe("EPProductProvider FormProvider", () => {
       </EPProductProvider>
     );
 
-    // New ProductFormScope → empty form → mount effect seeds again.
-    // If the old form instance were reused, "stamped" would still be there
-    // and the empty-guard would skip seeding.
     await waitFor(() => {
       expect(screen.getByTestId("seeded-slug").textContent).toBe("from-url");
     });

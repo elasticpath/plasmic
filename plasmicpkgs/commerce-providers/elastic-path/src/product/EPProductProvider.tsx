@@ -8,13 +8,6 @@
  * that read `useSelector("currentProduct")` (EPProductVariantPicker,
  * EPAddToCartButton, EPStockProvider, …) keep working unchanged.
  *
- * Also mounts a react-hook-form `FormProvider` (same role as commerce
- * Product Box) so location / variant / quantity selections share form
- * state with Add To Cart — without it, EPLocationPicker clicks are no-ops.
- * Product id changes remount the form scope via `key` (no parent
- * `reset()` effect — that would wipe child mount effects that seed
- * `SelectedLocationSlug` from `?location=`).
- *
  * Data fetching uses the SWR-backed `useProduct` hook, which runs through
  * `useMutablePlasmicQueryData`. When the surrounding Next.js route calls
  * `extractPlasmicQueryData(<PlasmicComponent/>)` before rendering, the
@@ -47,12 +40,6 @@ import { MOCK_EXTENSION_TEMPLATES } from "../utils/extensions-mock";
 
 const log = createLogger("EPProductProvider");
 
-/**
- * Fresh `useForm` per mount. Keyed by product id at the call site so a
- * product change remounts before child effects run — same contract as
- * commerce `ProductProvider` (`contexts.tsx`), without a parent `reset()`
- * that would clear values seeded in those child effects.
- */
 function ProductFormScope({ children }: { children: React.ReactNode }) {
   const methods = useForm();
   return <FormProvider {...methods}>{children}</FormProvider>;
