@@ -9,6 +9,7 @@
  *     read it server-side instead of trusting the client).
  *   - adapterRegistry with Stripe registered when EP_CLIENT_SECRET is set.
  *   - sessionStore (cookie-based JWE).
+ *   - shippingRateResolver: one static example rate (demo only).
  */
 import {
   CookieSessionStore,
@@ -26,6 +27,8 @@ const SESSION_SECRET = resolveAuthSecret(process.env.CHECKOUT_SESSION_SECRET, {
 });
 
 const sessionStore = new CookieSessionStore(SESSION_SECRET);
+
+const EXAMPLE_STANDARD_SHIPPING_AMOUNT_MINOR = 599;
 
 export interface RequestCheckoutContext {
   ctx: SessionHandlerContext;
@@ -90,6 +93,19 @@ export async function buildCheckoutContext(
     sessionStore,
     shopperAccessToken,
     getClientCredentialsToken,
+    // Example/demo pricing only. Production hosts must replace this with real
+    // server-side rate logic (carrier API, EP rules, etc.).
+    shippingRateResolver: (checkoutSession) => [
+      {
+        id: "example-standard",
+        name: "Standard Shipping",
+        description: "Example rate — replace in production",
+        amount: EXAMPLE_STANDARD_SHIPPING_AMOUNT_MINOR,
+        currency: checkoutSession.totals.currency || "USD",
+        deliveryTime: "5-7 days",
+        serviceLevel: "standard",
+      },
+    ],
   };
 
   return { ctx, epCartId };
