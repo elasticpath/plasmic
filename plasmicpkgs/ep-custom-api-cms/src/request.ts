@@ -11,7 +11,6 @@
 export const UNSORTED = "unsorted";
 
 export interface EntriesRequestOpts {
-  host: string;
   customApi: string;
   /**
    * Elastic Path filter expression, passed through verbatim. The grammar is
@@ -68,11 +67,11 @@ export function buildEntriesRequest(opts: EntriesRequestOpts): EpRequest {
     query["page[offset]"] = opts.offset;
   }
 
-  // Designers paste the host from a browser bar, trailing slash included.
-  const host = opts.host.replace(/\/+$/, "");
-
   return {
-    url: `${host}/v2/extensions/${customApi}`,
+    // Host-relative by design. The store host belongs to the transport's base
+    // URL and appears in exactly one place; an absolute URL here is appended to
+    // that base rather than replacing it, which puts the host in twice.
+    url: `/v2/extensions/${customApi}`,
     query,
   };
 }

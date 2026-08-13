@@ -7,7 +7,7 @@
  * it rather than having a second one built.
  */
 import registerFunction from "@plasmicapp/host/registerFunction";
-import { epRequestPort } from "./client";
+import { EpClientCredentials, epRequestPort } from "./client";
 import { mapEntriesError } from "./errors";
 import {
   buildEntriesRequest,
@@ -35,13 +35,13 @@ export interface QueryEntriesDeps {
  * query's own arguments, so the store connection is derived from those.
  */
 export function defaultDeps(
-  opts: EntriesRequestOpts & { clientId: string }
+  opts: EntriesRequestOpts & EpClientCredentials
 ): QueryEntriesDeps {
   return { request: epRequestPort({ host: opts.host, clientId: opts.clientId }) };
 }
 
 export async function queryEntries(
-  opts: EntriesRequestOpts & { clientId: string },
+  opts: EntriesRequestOpts & EpClientCredentials,
   deps: QueryEntriesDeps = defaultDeps(opts)
 ): Promise<unknown[]> {
   const request = buildEntriesRequest(opts);

@@ -61,9 +61,12 @@ describe("epCms.queryEntries", () => {
         question: "Do you ship to Canada?",
       },
     ]);
+    // Host-relative: the store host reaches the wire through the transport's
+    // base URL, not through this path. See query-entries.transport.spec.ts for
+    // the assertion on the fully-composed URL.
     expect(requests).toEqual([
       {
-        url: "https://euwest.api.elasticpath.com/v2/extensions/faqs",
+        url: "/v2/extensions/faqs",
         query: { "page[total_method]": "observed" },
       },
     ]);

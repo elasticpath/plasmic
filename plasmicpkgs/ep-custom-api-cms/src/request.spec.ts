@@ -2,29 +2,23 @@ import { buildEntriesRequest } from "./request";
 
 describe("buildEntriesRequest", () => {
   it("refuses to build a request when no Custom API is named", () => {
-    expect(() =>
-      buildEntriesRequest({
-        host: "https://euwest.api.elasticpath.com",
-        customApi: "",
-      })
-    ).toThrow(/Custom API/);
+    expect(() => buildEntriesRequest({ customApi: "" })).toThrow(/Custom API/);
   });
 
+  // The host belongs to the transport's base URL, never to the path this
+  // builds — emitting an absolute URL here made the SDK concatenate the host
+  // twice, which is what the earlier version of this expectation enshrined.
+  // A host pasted with a trailing slash is covered at the transport seam in
+  // query-entries.transport.spec.ts, since that is where the host now lives.
   it("addresses the extension endpoint by slug and always asks for the cheap total", () => {
-    expect(
-      buildEntriesRequest({
-        host: "https://euwest.api.elasticpath.com",
-        customApi: "faqs",
-      })
-    ).toEqual({
-      url: "https://euwest.api.elasticpath.com/v2/extensions/faqs",
+    expect(buildEntriesRequest({ customApi: "faqs" })).toEqual({
+      url: "/v2/extensions/faqs",
       query: { "page[total_method]": "observed" },
     });
   });
 
   it("passes the filter through exactly as the designer wrote it", () => {
     const req = buildEntriesRequest({
-      host: "https://euwest.api.elasticpath.com",
       customApi: "faqs",
       filter: "like(question,*Canada*)",
     });
@@ -36,11 +30,7 @@ describe("buildEntriesRequest", () => {
   });
 
   it("sends the chosen sort attribute", () => {
-    const req = buildEntriesRequest({
-      host: "https://euwest.api.elasticpath.com",
-      customApi: "faqs",
-      sort: "-updated_at",
-    });
+    const req = buildEntriesRequest({ customApi: "faqs", sort: "-updated_at" });
 
     expect(req.query).toEqual({
       "page[total_method]": "observed",
@@ -49,11 +39,7 @@ describe("buildEntriesRequest", () => {
   });
 
   it("disables ordering when the designer picks unsorted", () => {
-    const req = buildEntriesRequest({
-      host: "https://euwest.api.elasticpath.com",
-      customApi: "faqs",
-      sort: "unsorted",
-    });
+    const req = buildEntriesRequest({ customApi: "faqs", sort: "unsorted" });
 
     expect(req.query).toEqual({
       "page[total_method]": "observed",
@@ -63,7 +49,6 @@ describe("buildEntriesRequest", () => {
 
   it("pages with the limit and offset the designer set", () => {
     const req = buildEntriesRequest({
-      host: "https://euwest.api.elasticpath.com",
       customApi: "faqs",
       limit: 10,
       offset: 20,
@@ -74,14 +59,5 @@ describe("buildEntriesRequest", () => {
       "page[limit]": 10,
       "page[offset]": 20,
     });
-  });
-
-  it("builds one clean URL from a host pasted with a trailing slash", () => {
-    const req = buildEntriesRequest({
-      host: "https://euwest.api.elasticpath.com/",
-      customApi: "faqs",
-    });
-
-    expect(req.url).toBe("https://euwest.api.elasticpath.com/v2/extensions/faqs");
   });
 });

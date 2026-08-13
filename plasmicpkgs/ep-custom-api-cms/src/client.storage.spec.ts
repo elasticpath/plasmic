@@ -9,6 +9,7 @@
  * adapter were removed, which is the vacuous version of it.
  */
 import { epRequestPort } from "./client";
+import { buildEntriesRequest } from "./request";
 
 describe("epRequestPort against the real SDK", () => {
   const realFetch = global.fetch;
@@ -67,12 +68,16 @@ describe("epRequestPort against the real SDK", () => {
       clientId: "abc123",
     });
 
-    await port({
-      url: "https://euwest.api.elasticpath.com/v2/extensions/faqs",
-      query: {},
-    });
+    // Routed through the real builder, and matched on the whole URL. Selecting
+    // the call with `includes` let a malformed URL satisfy this test, which is
+    // how a doubled host survived here undetected.
+    await port(buildEntriesRequest({ customApi: "faqs" }));
 
-    const entriesCall = calls.find((c) => c.url.includes("/v2/extensions/faqs"));
+    const entriesCall = calls.find(
+      (c) =>
+        c.url ===
+        "https://euwest.api.elasticpath.com/v2/extensions/faqs?page[total_method]=observed"
+    );
     expect(entriesCall).toBeDefined();
     expect(entriesCall!.headers.authorization).toBe("Bearer minted-token");
     expect(setItem).not.toHaveBeenCalled();
