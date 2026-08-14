@@ -51,7 +51,6 @@ export interface CreateEpAuthBetterInput {
   cartMergeStrategy?: "merge" | "replace" | "prompt";
   checkout?: { sessionSecret: string };
   adapters?: { stripe?: { secretKey: string }; clover?: any };
-  epClientSecret?: string;
   /**
    * Per-request resolver for clientId/host. Lets the consumer pull
    * config from the Plasmic loader bundle on each call instead of
@@ -136,7 +135,6 @@ export interface EpAuth {
     cartMergeStrategy: "merge" | "replace" | "prompt";
     checkout?: { sessionSecret: string };
     adapters?: { stripe?: { secretKey: string }; clover?: any };
-    epClientSecret?: string;
   };
 }
 
@@ -245,7 +243,6 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
     cartMergeStrategy: input.cartMergeStrategy ?? "merge",
     checkout: input.checkout,
     adapters: input.adapters,
-    epClientSecret: input.epClientSecret,
   });
 
   return {
