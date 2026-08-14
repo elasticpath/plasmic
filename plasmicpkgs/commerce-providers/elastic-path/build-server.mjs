@@ -42,6 +42,17 @@ for (const [format, outfile] of [
   });
 }
 
+// Next ships no "exports" map, so Node's ESM resolver cannot resolve a bare
+// `next/server` — only CJS lookup can, which makes `import ".../server"` fail
+// on a clean install. Point the ESM build at the file itself. CJS is left
+// alone: `require("next/server")` resolves fine.
+const esmPath = "dist/server.mjs";
+const esm = readFileSync(esmPath, "utf8").replace(
+  /(from\s*|import\(\s*)(["'])next\/([A-Za-z0-9-]+)\2/g,
+  (_m, lead, q, sub) => `${lead}${q}next/${sub}.js${q}`
+);
+writeFileSync(esmPath, esm);
+
 // Generate declaration file by re-exporting from tsdx-generated .d.ts files.
 // tsc would try to type-check all transitive sources, which may fail on
 // third-party type mismatches. Since tsdx already produced correct .d.ts
