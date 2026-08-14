@@ -5,7 +5,7 @@ mirrors a real consumer install: the Plasmic and Elastic Path packages resolve
 from the registry, not from this monorepo.
 
 > **Requires an unreleased package version.** This app uses
-> `createEpAuthRoutes`, added in 0.2.1. Until that publishes, `yarn install`
+> `createEpAuthRoutes`, added in 0.3.0. Until 0.3.0 publishes, `yarn install`
 > cannot resolve the dependency — use the local-source workflow below.
 
 ## Running it
