@@ -73,19 +73,10 @@ export default async function PlasmicLoaderPage({
     PLASMIC.unstable__getServerQueriesData(prefetchedData, queryCtx)
   );
 
-  // The `$dev` suffix matches `registerWithDevMeta`'s convention in
-  // plasmic-register-dev-meta.ts. When registering for production
-  // (without dev-meta), drop the suffix here too so the component name
-  // matches what's actually registered.
-  const globalContextsProps = {
-    "plasmic-commerce-elastic-path-provider$dev": session.providerProps(),
-  };
-
   return (
     <PlasmicClientRootProvider
       prefetchedData={prefetchedData}
       prefetchedQueryData={prefetchedQueryData}
-      globalContextsProps={globalContextsProps}
       pageParams={pageMeta.params}
       pageQuery={queryCtx.query}
     >

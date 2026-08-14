@@ -78,7 +78,7 @@ describe("createEpAuth adapter (PRD #273)", () => {
     expect(typeof session.commitCookies).toBe("function");
   });
 
-  it("providerProps() returns serverToken when authenticated session exists", async () => {
+  it("providerProps() never serializes the EP access token", async () => {
     const epAuth = createEpAuth({
       clientId: EP_CLIENT_ID,
       host: EP_HOST,
@@ -91,7 +91,9 @@ describe("createEpAuth adapter (PRD #273)", () => {
       headers: {},
     });
 
-    expect(session.providerProps()).toEqual({ serverToken: FAKE_TOKEN });
+    expect(session.session?.accessToken).toBe(FAKE_TOKEN);
+    expect(session.providerProps()).toEqual({});
+    expect(JSON.stringify(session.providerProps())).not.toContain(FAKE_TOKEN);
   });
 
   it("commitCookies() emits the better-auth Set-Cookie headers", async () => {

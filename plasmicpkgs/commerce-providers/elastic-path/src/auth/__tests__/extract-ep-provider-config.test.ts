@@ -62,7 +62,6 @@ describe("extractEpProviderConfig", () => {
     expect(config).toEqual({
       clientId: "oVC2dwzwVi0sCbov7voN63H8gami9do0TLm3GaVKAJ",
       host: "https://epcc-integration.global.ssl.fastly.net",
-      serverCartMode: true,
     });
   });
 
@@ -84,7 +83,6 @@ describe("extractEpProviderConfig", () => {
     expect(config).toEqual({
       clientId: "abc123",
       host: "https://useast.api.elasticpath.com",
-      serverCartMode: false,
     });
   });
 
@@ -240,7 +238,6 @@ function E(r){
       ).toEqual({
         clientId: "b6ratpsgidekICtcXjPWPODbGHckKfXWNNXnTivqQR",
         host: "https://epcc-integration.global.ssl.fastly.net",
-        serverCartMode: true,
       });
       expect(errorSpy).not.toHaveBeenCalled();
     } finally {
@@ -305,7 +302,6 @@ function E(r){
       expect(extractEpProviderConfig(bundleWith(foreignCustom))).toEqual({
         clientId: "EP_REAL_CLIENT_ID",
         host: "https://useast.api.elasticpath.com",
-        serverCartMode: true,
       });
       expect(errorSpy).not.toHaveBeenCalled();
     });
@@ -328,7 +324,6 @@ function E(r){
       expect(extractEpProviderConfig(bundleWith(foreignClientIdFirst))).toEqual({
         clientId: "EP_REAL_CLIENT_ID",
         host: "https://epcc-integration.global.ssl.fastly.net",
-        serverCartMode: true,
       });
       // The commercetools host is rejected on the way past, but the storefront
       // works, so the operator must not be told anything is wrong.

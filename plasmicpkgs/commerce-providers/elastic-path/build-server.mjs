@@ -42,6 +42,17 @@ for (const [format, outfile] of [
   });
 }
 
+// Next ships no "exports" map, so Node's ESM resolver cannot resolve a bare
+// `next/server` — only CJS lookup can, which makes `import ".../server"` fail
+// on a clean install. Point the ESM build at the file itself. CJS is left
+// alone: `require("next/server")` resolves fine.
+const esmPath = "dist/server.mjs";
+const esm = readFileSync(esmPath, "utf8").replace(
+  /(from\s*|import\(\s*)(["'])next\/([A-Za-z0-9-]+)\2/g,
+  (_m, lead, q, sub) => `${lead}${q}next/${sub}.js${q}`
+);
+writeFileSync(esmPath, esm);
+
 // Generate declaration file by re-exporting from tsdx-generated .d.ts files.
 // tsc would try to type-check all transitive sources, which may fail on
 // third-party type mismatches. Since tsdx already produced correct .d.ts
@@ -84,7 +95,7 @@ export type { StripeAdapterConfig } from "./checkout/session/adapters/stripe-ada
 export { createClientCredentialsTokenResolver } from "./auth/ep-plugin/client-credentials-resolver";
 export type { ClientCredentialsResolverConfig, ClientCredentialsTokenResolver } from "./auth/ep-plugin/client-credentials-resolver";
 export type { SessionRequest, SessionResponse, SessionHandlerContext, EPCredentials, AdapterRegistry, SessionStore, PaymentAdapter, CustomAttributeAllowList } from "./checkout/session/types";
-export { createEpAuth, createBetterEpAuth, extractEpProviderConfig, epPlugin, epAuthMiddleware, createCartRoutes, createEpProxyRoutes, enforceOriginGate, isTrustedOrigin, passesOriginGate, assertProductionSecret, resolveAuthSecret, DEFAULT_HOST_ALLOWLIST, isAllowedEpHost } from "./auth";
+export { createEpAuth, createBetterEpAuth, extractEpProviderConfig, epPlugin, epAuthMiddleware, createEpAuthRoutes, createCartRoutes, createEpProxyRoutes, enforceOriginGate, isTrustedOrigin, passesOriginGate, assertProductionSecret, resolveAuthSecret, DEFAULT_HOST_ALLOWLIST, isAllowedEpHost } from "./auth";
 export type { EpAuth, EpAuthConfig, EpSession, EpProviderBundleConfig, ExtractEpProviderConfigOptions, EpPluginOptions, EpProxyRoutes } from "./auth";
 export { epGetProduct, epGetCart, epGetProductList, epGetRelatedProducts, epAddCartItem, epApplyCartAdjustment, epUpdateCartItem, epRemoveCartItem, epPlaceOrder, addCustomCartItem, CART_ADJUSTMENT_KINDS, registerEpCustomFunctions, buildEpCtx, withEpSession, getCurrentEpSession } from "./ep-server-functions";
 export type { EpGetProductInput, EpGetCartInput, EpGetProductListInput, EpGetRelatedProductsInput, EpAddCartItemInput, EpApplyCartAdjustmentInput, EpUpdateCartItemInput, EpRemoveCartItemInput, EpPlaceOrderInput, EpPlaceOrderAddress, EpPlaceOrderResult, AddCustomCartItemInput, CartAdjustmentKind, BuildEpCtxSessionInput, EpCtx, EpSessionContext, EpServerAuth } from "./ep-server-functions";

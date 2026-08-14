@@ -30,7 +30,7 @@ describe("browser-bundle safety — module loads without async_hooks", () => {
       // running; ep.* functions just fail-soft because they read undefined).
       expect(mod.getCurrentEpSession()).toBeUndefined();
       const result = mod.withEpSession(
-        { accessToken: "tok", host: "h", clientId: "c", serverCartMode: false },
+        { accessToken: "tok", host: "h", clientId: "c" },
         () => "ran"
       );
       expect(result).toBe("ran");
@@ -44,7 +44,6 @@ describe("withEpSession / getCurrentEpSession", () => {
       accessToken: "tok-1",
       host: "https://api.ep.com",
       clientId: "cid-1",
-      serverCartMode: false,
     };
 
     const observed = await withEpSession(session, async () => {
@@ -66,13 +65,11 @@ describe("withEpSession / getCurrentEpSession", () => {
       accessToken: "tok-A",
       host: "https://api.ep.com",
       clientId: "cid-A",
-      serverCartMode: false,
     };
     const sessionB: any = {
       accessToken: "tok-B",
       host: "https://api.ep.com",
       clientId: "cid-B",
-      serverCartMode: false,
     };
 
     // Force interleaving: each callback yields to the event loop multiple

@@ -349,9 +349,9 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
             }
             return h;
           },
+          // Serialized into page HTML via globalContextsProps.
           providerProps() {
-            if (!sessionData) return {};
-            return { serverToken: sessionData.accessToken };
+            return {};
           },
           commitCookies(res) {
             for (const cookie of pendingSetCookies) {

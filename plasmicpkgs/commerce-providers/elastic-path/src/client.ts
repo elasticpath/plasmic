@@ -2,45 +2,26 @@ import { createShopperClient, configureClient } from "@epcc-sdk/sdks-shopper";
 import { ElasticPathCredentials } from './provider';
 
 /**
- * In-memory StorageAdapter for the EP shopper SDK.
- *
- * The SDK's default storage adapters write to either localStorage or a
- * regular cookie — both of which leak credentials into JS-readable storage
- * (the localStorage adapter writes `_store_ep_credentials`; the cookie
- * adapter writes a non-HttpOnly cookie). Neither matches our auth model:
- * EP credentials live in better-auth's HttpOnly JWE `session_data` cookie
- * and reach the SDK via the `serverToken` prop on EPCommerceProvider.
- *
- * Using a memory adapter for ALL paths (preloaded when `serverToken` is
- * known, empty otherwise) keeps the storage tier inside the JS heap. When
- * empty, the SDK auto-mints an anonymous token and caches it in memory
- * for the lifetime of the page — never written to localStorage.
- *
- * The trade-off: a CLIENT-side mint may still happen when serverToken
- * isn't set yet (e.g., a brief gap during hydration). That mint is a
- * network round-trip but leaves no persistent client-side trace. The
- * better-auth session cookie remains the authoritative shopper identity.
+ * The SDK's default storage adapters write credentials to localStorage or
+ * a non-HttpOnly cookie. Keeping them in the JS heap instead means the
+ * anonymous token the SDK mints for catalog reads leaves no persistent
+ * client-side trace.
  */
-function memoryStorageAdapter(initial?: string) {
-  let current: string | undefined = initial && initial.length > 0 ? initial : undefined;
+function memoryStorageAdapter() {
+  let current: string | undefined;
   return {
     get: () => current,
     set: (t?: string) => { current = t; },
   };
 }
 
-const initElasticPathClient = (creds: ElasticPathCredentials, serverToken?: string) => {
+const initElasticPathClient = (creds: ElasticPathCredentials) => {
   const config = {
     baseUrl: creds.host || "https://euwest.api.elasticpath.com",
   };
   const authOpts = {
     clientId: creds.clientId,
-    // Always in-memory. NEVER localStorage. The serverToken (when
-    // present) is the better-auth session's anonymous EP access token,
-    // sourced from the `serverToken` prop on the global-context
-    // CommerceProvider component (set via globalContextsProps in the
-    // RSC catchall page).
-    storage: memoryStorageAdapter(serverToken),
+    storage: memoryStorageAdapter(),
   };
 
   // Configure the SDK's GLOBAL singleton too. Some package-internal
