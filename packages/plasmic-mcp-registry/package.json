@@ -1,6 +1,6 @@
 {
   "name": "@elasticpath/plasmic-mcp-registry",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Reads all five Plasmic globalThis registries and serializes metadata for HTTP transport",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
