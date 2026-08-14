@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
 ### Breaking
 
@@ -31,6 +31,10 @@ the public `clientId`.
 **Removed from the storefront** — drop the `globalContextsProps` entry that fed
 `session.providerProps()` into `PlasmicClientRootProvider`. `providerProps()`
 now returns `{}`.
+
+**Removed `epClientSecret`** from `createEpAuth`'s config. It was accepted and
+stored but never read. Drop it from your `createEpAuth` call; nothing replaces
+it.
 
 **Mount the auth handler with `createEpAuthRoutes`**, not better-auth's
 `toNextJsHandler`:
