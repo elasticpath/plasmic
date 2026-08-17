@@ -10,7 +10,7 @@ import type {
   Product,
   ProductOption,
   ProductVariant,
-} from "@plasmicpkgs/commerce";
+} from "../types/product";
 import type {
   StockLocationData,
   ProductStockSummary,
@@ -22,7 +22,6 @@ import type {
 
 export const MOCK_VARIATION_OPTIONS: ProductOption[] = [
   {
-    __typename: "MultipleChoiceOption",
     id: "sample-color",
     displayName: "Sample Color",
     values: [
@@ -32,7 +31,6 @@ export const MOCK_VARIATION_OPTIONS: ProductOption[] = [
     ],
   },
   {
-    __typename: "MultipleChoiceOption",
     id: "sample-size",
     displayName: "Sample Size",
     values: [

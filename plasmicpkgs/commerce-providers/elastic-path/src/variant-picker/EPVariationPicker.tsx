@@ -7,7 +7,7 @@ import {
 import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
-import type { Product, ProductOption, ProductVariant } from "@plasmicpkgs/commerce";
+import type { Product, ProductOption, ProductVariant } from "../types/product";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useFormContext } from "react-hook-form";
 import { Registerable } from "../registerable";

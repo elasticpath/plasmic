@@ -9,7 +9,7 @@ import registerComponent, {
 import React, { useState } from "react";
 import { useFormContext } from "react-hook-form";
 import { mutate as swrMutate } from "swr";
-import type { Product } from "@plasmicpkgs/commerce";
+import type { Product } from "./types/product";
 import { Registerable } from "./registerable";
 import { createLogger } from "./utils/logger";
 import {

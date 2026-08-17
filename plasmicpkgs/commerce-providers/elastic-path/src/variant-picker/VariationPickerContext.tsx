@@ -1,5 +1,5 @@
 import React, { useContext } from "react";
-import type { ProductVariant } from "@plasmicpkgs/commerce";
+import type { ProductVariant } from "../types/product";
 
 export interface VariationPickerContextValue {
   selectedValues: Record<string, string>;

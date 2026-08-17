@@ -7,7 +7,7 @@ import {
 import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
-import type { Product } from "@plasmicpkgs/commerce";
+import type { Product } from "../types/product";
 import React, { useEffect, useMemo } from "react";
 import { useFormContext } from "react-hook-form";
 import { DEFAULT_LOW_STOCK_THRESHOLD } from "../const";

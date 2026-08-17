@@ -1,34 +1,49 @@
-import { CartType as Core } from '@plasmicpkgs/commerce'
+export type SelectedOption = {
+  id?: string;
+  name: string;
+  value: string;
+};
 
-export type SelectedOption = Core.SelectedOption;
-export type LineItem = Core.LineItem;
-export type ProductVariant = Core.ProductVariant;
-export type CartItemBody = Core.CartItemBody;
+export type CartItemBody = {
+  variantId: string;
+  productId?: string;
+  quantity?: number;
+};
 
-/**
- * Extend core cart types for EP-specific functionality
- */
+/** The subset of variant data a cart line carries; see normalizeLineItem. */
+export type CartLineVariant = {
+  id: string;
+  name: string;
+  sku: string;
+  price: number;
+  listPrice: number;
+  requiresShipping: boolean;
+  image?: { url: string; alt?: string };
+};
 
-export type Cart = Core.Cart & {
-  lineItems: Core.LineItem[]
-  url?: string
-}
+export type LineItem = {
+  id: string;
+  variantId: string;
+  productId: string;
+  name: string;
+  quantity: number;
+  /** Human-friendly path derived from the product id. */
+  path: string;
+  variant: CartLineVariant;
+  options?: SelectedOption[];
+};
 
-// Use the core CartTypes directly for compatibility
-export type CartTypes = Core.CartTypes
-
-export type CartHooks = Core.CartHooks<CartTypes>
-
-export type GetCartHook = CartHooks['getCart']
-export type AddItemHook = CartHooks['addItem']
-export type UpdateItemHook = CartHooks['updateItem']
-export type RemoveItemHook = CartHooks['removeItem']
-
-export type CartSchema = Core.CartSchema<CartTypes>
-
-export type CartHandlers = Core.CartHandlers<CartTypes>
-
-export type GetCartHandler = CartHandlers['getCart']
-export type AddItemHandler = CartHandlers['addItem']
-export type UpdateItemHandler = CartHandlers['updateItem']
-export type RemoveItemHandler = CartHandlers['removeItem']
+export type Cart = {
+  id: string;
+  customerId?: string;
+  email?: string;
+  createdAt: string;
+  currency: { code: string };
+  taxesIncluded: boolean;
+  lineItems: LineItem[];
+  /** Sum of all item prices, excluding duties, taxes, shipping and discounts. */
+  lineItemsSubtotalPrice: number;
+  subtotalPrice: number;
+  totalPrice: number;
+  url?: string;
+};

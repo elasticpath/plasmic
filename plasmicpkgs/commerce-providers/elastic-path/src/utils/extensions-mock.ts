@@ -33,8 +33,6 @@ export const MOCK_PRODUCT: Product = {
   name: "Sample Product",
   description:
     "This is a placeholder product shown only at design time. Bind a real product (or productId) to fetch live data.",
-  descriptionHtml:
-    "<p>This is a placeholder product shown only at design time.</p>",
   slug: "sample-product",
   sku: "MOCK-SKU",
   images: [

@@ -13,7 +13,6 @@ const baseCart: Cart = {
   lineItemsSubtotalPrice: 0,
   subtotalPrice: 0,
   totalPrice: 0,
-  discounts: [],
 };
 
 describe("deriveCartContext", () => {

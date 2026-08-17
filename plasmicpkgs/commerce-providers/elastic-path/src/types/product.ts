@@ -1,30 +1,49 @@
-import { ProductTypes as Core } from '@plasmicpkgs/commerce'
-import type { ProductData } from '@epcc-sdk/sdks-shopper'
+import type { ProductData } from "@epcc-sdk/sdks-shopper";
 
-export type ProductImage = Core.ProductImage;
-
-export type ProductPrice = Core.ProductPrice;
-
-export type ProductOption = Core.ProductOption;
-
-export type ProductOptionValues = Core.ProductOptionValues;
-
-export type ProductVariant = Core.ProductVariant;
-
-export type Product = Core.Product & {
-  rawData?: ProductData;
+export type ProductImage = {
+  url: string;
+  alt?: string;
 };
 
-export type SearchProductsBody = Core.SearchProductsBody;
+export type ProductPrice = {
+  value: number;
+  currencyCode?: string;
+};
 
-export type ProductTypes = Core.ProductTypes;
+export type ProductOptionValues = {
+  label: string;
+  hexColors?: string[];
+};
 
-export type SearchProductsHook = Core.SearchProductsHook;
+export type ProductOption = {
+  id: string;
+  displayName: string;
+  values: ProductOptionValues[];
+};
 
-export type ProductsSchema = Core.ProductsSchema;
+export type ProductVariant = {
+  id: string | number;
+  name: string;
+  options: ProductOption[];
+  price?: number;
+  availableForSale?: boolean;
+};
 
-export type GetAllProductPathsOperation = Core.GetAllProductPathsOperation;
-
-export type GetAllProductsOperation = Core.GetAllProductsOperation;
-
-export type GetProductOperation = Core.GetProductOperation;
+/**
+ * Field names here are a saved-binding contract: EPProductProvider pushes this
+ * object through DataProvider, so designers reach them as `$ctx.currentProduct.*`.
+ * Renaming one breaks published storefronts with no build or test failure.
+ */
+export type Product = {
+  id: string;
+  name: string;
+  description: string;
+  sku?: string;
+  slug?: string;
+  path?: string;
+  images: ProductImage[];
+  variants: ProductVariant[];
+  price: ProductPrice;
+  options: ProductOption[];
+  rawData?: ProductData;
+};

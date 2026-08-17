@@ -581,7 +581,6 @@ describe("buildCurrentProduct", () => {
       variants: [],
       options: [
         {
-          __typename: "MultipleChoiceOption" as const,
           id: "color",
           displayName: "Color",
           values: [{ label: "Red" }, { label: "Blue" }],

@@ -2,9 +2,6 @@ import type { Client } from "@epcc-sdk/sdks-shopper";
 import { Fetcher } from "@plasmicpkgs/commerce";
 import { ELASTICPATH_CART_COOKIE } from "./const";
 import { handler as useProduct } from "./product/use-product";
-import { handler as useSearch } from "./product/use-search";
-import { handler as useBrands } from "./site/use-brands";
-import { handler as useCategories } from "./site/use-categories";
 import initElasticPathClient from "./client";
 import { createLogger } from "./utils/logger";
 
@@ -45,8 +42,7 @@ export const getElasticPathProvider = (
     cartCookie: ELASTICPATH_CART_COOKIE,
     fetcher: createFetcher(creds), // Required by commerce package interface
     client, // Pass the Elastic Path client for direct SDK usage
-    products: { useProduct, useSearch },
-    site: { useCategories, useBrands },
+    products: { useProduct },
   };
 };
 
@@ -60,11 +56,6 @@ export type ElasticPathProvider = {
   fetcher: Fetcher; // Required by commerce package interface
   client: Client;
   products: {
-    useSearch: typeof useSearch;
     useProduct: typeof useProduct;
-  };
-  site: {
-    useCategories: typeof useCategories;
-    useBrands: typeof useBrands;
   };
 };
