@@ -13,6 +13,7 @@ import {
   loadDepPackages,
   unbundlePkgVersion,
 } from "@/wab/server/db/DbBundleLoader";
+import { getSerializableConnectionOptions } from "@/wab/server/db/DbCon";
 import {
   DbMgr,
   ProjectRevisionError,
@@ -181,14 +182,14 @@ import {
 import fetch from "node-fetch";
 import * as Prettier from "prettier";
 import type { SetRequired } from "type-fest";
-import { EntityManager, MigrationExecutor, getConnection } from "typeorm";
+import { EntityManager, MigrationExecutor } from "typeorm";
 
 export function mkApiProject(project: Project): ApiProject {
   const team = project.workspace?.team
     ? mkApiTeam(project.workspace.team)
     : null;
   return {
-    ...omit(project, "workspace"),
+    ...omit(project, "workspace", "secretApiToken"),
     workspaceName: project.workspace?.name || null,
     parentTeamId: team?.parentTeamId || null,
     teamId: project.workspace?.teamId || null,
@@ -1703,8 +1704,13 @@ export async function updateProject(req: Request, res: Response) {
       },
       data.regenerateSecretApiToken
     );
+    // Only return the secret token to callers who asked to regenerate it, which
+    // requires "editor". Returning it on every update would leak it to "content"
+    // collaborators who renames the project.
     const regeneratedSecretApiToken: string | undefined =
-      project.secretApiToken ?? undefined;
+      data.regenerateSecretApiToken
+        ? project.secretApiToken ?? undefined
+        : undefined;
 
     req.promLabels.projectId = project.id;
     const apiProject = mkApiProject(project);
@@ -2622,7 +2628,7 @@ export async function genCode(req: Request, res: Response) {
     req.workerpool.exec("codegen", [
       {
         scheme,
-        connectionOptions: getConnection().options,
+        connectionOptions: getSerializableConnectionOptions(),
         projectId: project.id,
         exportOpts: exportOpts,
         componentIdOrNames: req.body.componentIdOrNames,

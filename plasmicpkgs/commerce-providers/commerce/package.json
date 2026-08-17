@@ -1,7 +1,12 @@
 {
   "name": "@plasmicpkgs/commerce",
+<<<<<<< HEAD
   "version": "0.0.256",
   "description": "Plasmic code components for building ecommerce storefronts \u2014 product lists, carts, and checkout.",
+=======
+  "version": "0.0.258",
+  "description": "Plasmic code components for building ecommerce storefronts — product lists, carts, and checkout.",
+>>>>>>> upstream/master
   "homepage": "https://www.plasmic.app",
   "repository": {
     "type": "git",
@@ -25,7 +30,7 @@
     "analyze": "size-limit --why"
   },
   "devDependencies": {
-    "@plasmicapp/host": "2.0.15",
+    "@plasmicapp/host": "2.0.17",
     "@plasmicapp/query": "0.1.87",
     "@types/debounce": "^1.2.4",
     "@types/js-cookie": "^3.0.6",

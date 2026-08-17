@@ -1,5 +1,5 @@
 {
-  "version": "2.0.4",
+  "version": "2.0.5",
   "description": "Core runtime for fetching and evaluating Plasmic component bundles, shared by the Plasmic loader SDKs.",
   "homepage": "https://www.plasmic.app",
   "repository": {
@@ -29,7 +29,11 @@
     "build:types": "tsc",
     "build:index": "node ../../build.mjs ./src/index.ts",
     "yalcp": "yalc publish --push",
+<<<<<<< HEAD
     "test": "TEST_CWD=`pwd` yarn --cwd=../.. test",
+=======
+    "test": "vitest run",
+>>>>>>> upstream/master
     "lint": "eslint",
     "prepublishOnly": "npm run build",
     "postpublish": "bash ../../scripts/publish-api-doc-model.sh",
@@ -45,10 +49,12 @@
     }
   ],
   "devDependencies": {
-    "@types/node": "^20.19.43"
+    "@types/node": "^20.19.43",
+    "vite": "8.1.5",
+    "vitest": "4.1.10"
   },
   "dependencies": {
-    "@plasmicapp/loader-fetcher": "2.0.4"
+    "@plasmicapp/loader-fetcher": "2.0.5"
   },
   "gitHead": "fa53f7d79f0e26d8b061102fda0c06788da6f8a7"
 }

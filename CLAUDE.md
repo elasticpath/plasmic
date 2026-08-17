@@ -7,7 +7,7 @@ This is root directory of the monorepo. Most development will be done in individ
 - package.json - common devDependencies where we want to use the same version everywhere
 - build.mjs - common build script for `packages/`
 - .eslintrc.js - shared eslint lint configuration
-- jest.config.js - shared jest unit test configuration
+- vitest.root.ts - shared Vitest unit test configuration for `packages/` and `plasmicpkgs/`
 - knip.ts - checks for unused dependencies, run with `knip:deps`
 
 ## Key directories
@@ -24,7 +24,7 @@ Plasmic is an open-source visual web builder. This monorepo contains:
 - Infra: Docker, k8s, Terraform
 - Package Managers: asdf, npm, yarn, pnpm
 - Languages: Node.js, TypeScript
-- Libraries: React, MobX, TypeORM, Jest, Playwright, Storybook
+- Libraries: React, MobX, TypeORM, Vitest, Playwright, Storybook
 
 ## Instructions for AI assistant
 

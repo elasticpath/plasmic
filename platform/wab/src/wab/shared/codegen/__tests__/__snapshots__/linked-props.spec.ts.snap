@@ -1,6 +1,6 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`linked props example: codegen should codegen correct contents 1`] = `
+exports[`linked props example: codegen > should codegen correct contents 1`] = `
 "
 --- Inner.tsx ---
 
@@ -1749,6 +1749,19 @@ column-gap: var(--mixin-EIkPCv9qHHvg_column-gap);
   font-size: inherit;
   font-style: inherit;
   font-weight: inherit;
+  color: inherit;
+  text-transform: inherit; }
+    
+
+      :where(.plasmic_default__b) {   font-family: inherit;
+  line-height: inherit;
+  font-size: inherit;
+  color: inherit;
+  text-transform: inherit; }
+      :where(.__wab_expr_html_text b) {   white-space: inherit;
+  font-family: inherit;
+  line-height: inherit;
+  font-size: inherit;
   color: inherit;
   text-transform: inherit; }
     

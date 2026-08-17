@@ -1,5 +1,5 @@
 {
-  "version": "1.0.81",
+  "version": "1.0.82",
   "description": "Edge-runtime helpers for applying Plasmic A/B tests and content splits in middleware.",
   "homepage": "https://www.plasmic.app",
   "repository": {
@@ -29,8 +29,13 @@
     "build:types": "tsc",
     "build:index": "node ../../build.mjs ./src/index.ts",
     "yalcp": "yalc publish --push",
+<<<<<<< HEAD
     "test": "TEST_CWD=`pwd` yarn --cwd=../.. test --passWithNoTests",
     "coverage": "TEST_CWD=`pwd` yarn --cwd=../.. test --coverage --passWithNoTests",
+=======
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
+>>>>>>> upstream/master
     "lint": "eslint",
     "prepublishOnly": "npm run build",
     "postpublish": "bash ../../scripts/publish-api-doc-model.sh",
@@ -46,10 +51,13 @@
     }
   ],
   "dependencies": {
-    "@plasmicapp/loader-splits": "1.0.75"
+    "@plasmicapp/loader-splits": "1.0.76"
   },
   "devDependencies": {
-    "@plasmicapp/loader-fetcher": "2.0.4"
+    "@plasmicapp/loader-fetcher": "2.0.5",
+    "@vitest/coverage-v8": "4.1.10",
+    "vite": "8.1.5",
+    "vitest": "4.1.10"
   },
   "publishConfig": {
     "access": "public"

@@ -1,9 +1,13 @@
+<<<<<<< HEAD
 /** @jest-environment node */
 import { DbMgr, SUPER_USER, normalActor } from "@/wab/server/db/DbMgr";
 import { Permission, Team } from "@/wab/server/entities/Entities";
+=======
+/** @vitest-environment node */
+import { DbMgr, SUPER_USER } from "@/wab/server/db/DbMgr";
+>>>>>>> upstream/master
 import { SharedApiTester } from "@/wab/server/test/api-tester";
 import { createBackend, createDatabase } from "@/wab/server/test/backend-util";
-import { MAX_PASSWORD_LENGTH } from "@/wab/shared/password-policy";
 import {
   BadRequestError,
   PreconditionFailedError,
@@ -12,6 +16,7 @@ import {
 import type { DataSource } from "typeorm";
 import * as uuid from "uuid";
 import { MAX_GRANTS_PER_REQUEST, TeamId } from "@/wab/shared/ApiSchema";
+import { MAX_PASSWORD_LENGTH } from "@/wab/shared/password-policy";
 
 describe("auth", () => {
   let api: SharedApiTester;

@@ -1,4 +1,3 @@
-import { OperationResult } from "@/wab/client/operations/common";
 import {
   validateStateAccessType,
   validateStateInitialValue,
@@ -17,6 +16,7 @@ import {
   getStateVarName,
   updateStateAccessType,
 } from "@/wab/shared/core/states";
+import { GenericError } from "@/wab/shared/error-handling";
 import {
   Component,
   Expr,
@@ -26,8 +26,9 @@ import {
 } from "@/wab/shared/model/classes";
 import { convertVariableTypeToWabType } from "@/wab/shared/model/model-util";
 import { uniq } from "lodash";
+import { Result, err, ok } from "neverthrow";
 
-export type UpdateComponentStateResult = OperationResult<{}>;
+export type UpdateComponentStateResult = Result<void, GenericError>;
 
 export interface ComponentStateChanges {
   name?: string;
@@ -50,10 +51,6 @@ export interface ComponentStateChanges {
  *   initial value references `$`-vars.
  * - initialValue: any expression; null clears the initial value.
  *   Statically-known values are validated against the variable type.
- *
- * Implicit states only support accessType changes (that is how a child
- * element's state gets exposed from the component); variant-group states are
- * managed through variant group operations instead.
  */
 export function updateComponentState(
   state: State,
@@ -69,16 +66,17 @@ export function updateComponentState(
   const stateName = getStateVarName(state);
 
   if (isCodeComponent(component)) {
-    return {
-      result: "error",
+    return err({
       message: `Component "${component.name}" is a code component; its states are managed by its code registration.`,
-    };
+    });
   }
-  if (isKnownVariantGroupState(state)) {
-    return {
-      result: "error",
-      message: `State "${stateName}" backs a variant group; manage it through variant group operations.`,
-    };
+  if (
+    isKnownVariantGroupState(state) &&
+    (name !== undefined || variableType !== undefined)
+  ) {
+    return err({
+      message: `State "${stateName}" backs a variant group; only its access type and initial value can be changed.`,
+    });
   }
   if (
     name === undefined &&
@@ -86,10 +84,7 @@ export function updateComponentState(
     accessType === undefined &&
     initialValue === undefined
   ) {
-    return {
-      result: "error",
-      message: `No changes provided for state "${stateName}".`,
-    };
+    return err({ message: `No changes provided for state "${stateName}".` });
   }
 
   if (
@@ -98,14 +93,13 @@ export function updateComponentState(
       variableType !== undefined ||
       initialValue !== undefined)
   ) {
-    return {
-      result: "error",
+    return err({
       message: `State "${stateName}" is an implicit state of element "${state.tplNode.name}"; only its access type can be changed.`,
-    };
+    });
   }
 
   if (name !== undefined && !name.trim()) {
-    return { result: "error", message: "State name cannot be empty." };
+    return err({ message: "State name cannot be empty." });
   }
 
   if (initialValue !== undefined && initialValue !== null) {
@@ -113,10 +107,11 @@ export function updateComponentState(
     if (staticValue !== undefined) {
       const invalidMessage = validateStateInitialValue(
         variableType ?? state.variableType,
-        staticValue
+        staticValue,
+        component.variantGroups.find((vg) => vg.linkedState === state)
       );
       if (invalidMessage) {
-        return { result: "error", message: invalidMessage };
+        return err({ message: invalidMessage });
       }
     }
   }
@@ -125,12 +120,11 @@ export function updateComponentState(
       findImplicitUsages(site, state).map((usage) => usage.component)
     );
     if (referencingComponents.length > 0) {
-      return {
-        result: "error",
+      return err({
         message: `Variable is referenced in ${referencingComponents
           .map((c) => getComponentDisplayName(c))
           .join(", ")}.`,
-      };
+      });
     }
   }
   // Only an accessType change or an incoming initial value can produce the
@@ -147,7 +141,7 @@ export function updateComponentState(
       finalDefaultExpr
     );
     if (invalidMessage) {
-      return { result: "error", message: invalidMessage };
+      return err({ message: invalidMessage });
     }
   }
 
@@ -167,5 +161,5 @@ export function updateComponentState(
   if (accessType !== undefined && accessType !== state.accessType) {
     updateStateAccessType(site, component, state, accessType);
   }
-  return { result: "success" };
+  return ok(undefined);
 }

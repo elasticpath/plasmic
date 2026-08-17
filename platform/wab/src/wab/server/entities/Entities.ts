@@ -1699,6 +1699,3 @@ export class TeamDiscourseInfo extends Base<"TeamDiscourseInfo"> {
   @Column({ nullable: false, type: "integer" })
   groupId: number;
 }
-
-// Import any additional database tables
-require("./CustomEntities");

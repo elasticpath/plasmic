@@ -4,7 +4,10 @@ import {
   calcOffset,
   insertBySpec,
 } from "@/wab/client/Dnd";
-import { showError } from "@/wab/client/ErrorNotifications";
+import {
+  notifyReferencingNode,
+  showError,
+} from "@/wab/client/ErrorNotifications";
 import { readClipboardPlasmicData } from "@/wab/client/clipboard/common";
 import {
   AnimationClip,
@@ -12,6 +15,7 @@ import {
   PasteStyleProps,
   StyleClip,
   TplClip,
+  isEmptyStyleClip,
   isStyleClip,
   isTplClip,
   isTplsClip,
@@ -150,10 +154,6 @@ import * as exprs from "@/wab/shared/core/exprs";
 import { codeLit } from "@/wab/shared/core/exprs";
 import { mkImageAssetRef } from "@/wab/shared/core/image-assets";
 import {
-  isTagInline,
-  isTagListContainer,
-} from "@/wab/shared/core/rich-text-util";
-import {
   SQ,
   SelQuery,
   Selectable,
@@ -163,6 +163,7 @@ import { siteFinalStyleTokensAllDeps } from "@/wab/shared/core/site-style-tokens
 import {
   allAnimationSequences,
   allGlobalVariants,
+  allMixins,
   isTplAttachedToSite,
 } from "@/wab/shared/core/sites";
 import { SlotSelection } from "@/wab/shared/core/slots";
@@ -221,6 +222,7 @@ import {
   isStandardSide,
   sideToOrient,
 } from "@/wab/shared/geom";
+import { isTagInline, isTagListContainer } from "@/wab/shared/html";
 import {
   ContainerLayoutType,
   ContainerType,
@@ -1104,8 +1106,8 @@ export class ViewOps {
       component,
       tplMgr: this.tplMgr(),
     });
-    if (result.result === "error") {
-      notification.error({ message: result.message });
+    if (result.isErr()) {
+      notification.error({ message: result.error.message });
     }
   }
 
@@ -1838,7 +1840,7 @@ export class ViewOps {
           vtm,
         });
 
-        if (deleteResult.result === "deleted" && nextFocus) {
+        if (deleteResult.isOk() && nextFocus) {
           if (nextFocus instanceof SlotSelection) {
             this.viewCtx().setStudioFocusBySelectable(nextFocus);
           } else {
@@ -1854,28 +1856,13 @@ export class ViewOps {
         }
       });
 
-      if (deleteResult?.result === "error") {
-        const key = common.mkUuid();
-        const refNode = deleteResult.referencingNode;
-        notification.error({
-          key,
-          message: "Cannot remove element",
-          description: (
-            <>
-              {deleteResult.message}{" "}
-              {refNode ? (
-                <a
-                  onClick={() => {
-                    this.viewCtx().setStudioFocusByTpl(refNode);
-                    notification.close(key);
-                  }}
-                >
-                  [Go to reference]
-                </a>
-              ) : null}
-            </>
-          ),
-        });
+      if (deleteResult?.isErr()) {
+        notifyReferencingNode(
+          "Cannot remove element",
+          deleteResult.error.message,
+          deleteResult.error.referencingNode,
+          this.studioCtx()
+        );
       }
     }
   }
@@ -2191,12 +2178,24 @@ export class ViewOps {
     }
 
     const vs = this.viewCtx().variantTplMgr().effectiveVariantSetting(tpl);
-    const exp = vs.rshWithoutMixins();
-    // const vs2 = this.viewCtx().variantTplMgr().ensureCurrentVariantSetting(tpl);
+    const directExp = vs.rshWithoutMixins();
+    const ownExp = vs.rsh();
+    const inheritedExp = vs.rshWithParentStyleWithoutMixins();
 
     const styleProps = cssProps || defaultCopyableStyleNames;
+    // Copy the element's own styles, plus values inherited from ancestors, but only
+    // for props the element doesn't style directly or via its mixins.
     const props = Object.fromEntries(
-      common.withoutNilTuples(styleProps.map((p) => tuple(p, exp.getRaw(p))))
+      common.withoutNilTuples(
+        styleProps.map((p) =>
+          tuple(
+            p,
+            ownExp.getRaw(p) != null
+              ? directExp.getRaw(p)
+              : inheritedExp.getRaw(p)
+          )
+        )
+      )
     );
     const mixinUuids = vs.rs.mixins.map((m) => m.uuid);
 
@@ -2227,8 +2226,20 @@ export class ViewOps {
     const clip = this.copyStyleHelper(tpl, cssProps);
 
     console.log("Copied styles", clip?.cssProps);
-    if (clip) {
-      this.clipboard().copy(clip);
+    if (!clip) {
+      notification.warn({
+        message: "Cannot copy styles from this element",
+      });
+      return;
+    }
+
+    this.clipboard().copy(clip);
+    // Warn the user if there was nothing to copy.
+    if (isEmptyStyleClip(clip)) {
+      notification.info({
+        message: "This element has no styles of its own to copy",
+        description: "Its appearance comes from the project theme.",
+      });
     }
   }
 
@@ -2303,6 +2314,12 @@ export class ViewOps {
       ? L.pick(clip.cssProps, cssProps)
       : clip.cssProps;
 
+    const site = this.viewCtx().site;
+
+    // Tracks whether the paste did anything, so we can warn the user instead
+    // of appearing to be broken.
+    let appliedCount = 0;
+
     const { valid } = validateStylesForTpl(
       propsToCopy,
       targetTpl,
@@ -2310,24 +2327,26 @@ export class ViewOps {
       this.viewCtx().studioCtx.codeComponentsRegistry
     );
     exp.merge(valid);
+    appliedCount += Object.keys(valid).length;
 
-    // Resolve UUIDs to Mixin instances
+    // Resolve UUIDs to Mixin instances from the site or direct dependencies.
     if (clip.mixinUuids?.length) {
-      const site = this.viewCtx().site;
+      const availableMixins = allMixins(site, { includeDeps: "direct" });
       const mixinsToAdd = clip.mixinUuids
-        .map((uuid) => site.mixins.find((m) => m.uuid === uuid))
+        .map((uuid) => availableMixins.find((m) => m.uuid === uuid))
         .filter((m): m is Mixin => m !== undefined);
 
       if (mixinsToAdd.length > 0) {
-        vs.rs.mixins = L.uniqBy(
+        const newMixins = L.uniqBy(
           [...vs.rs.mixins, ...mixinsToAdd],
           (m) => m.name
         );
+        appliedCount += newMixins.length - vs.rs.mixins.length;
+        vs.rs.mixins = newMixins;
       }
     }
 
     // Resolve animation sequence UUIDs and create Animation instances
-    const site = this.viewCtx().site;
     const allAnimSequences = allAnimationSequences(site, {
       includeDeps: "direct",
     });
@@ -2355,10 +2374,21 @@ export class ViewOps {
 
     if (animationsToAdd.length > 0) {
       // Merge new animations with existing ones, deduplicating by sequence
-      vs.rs.animations = L.uniqBy(
+      const newAnimations = L.uniqBy(
         [...(vs.rs.animations ?? []), ...animationsToAdd],
         (a) => a.sequence.uuid
       );
+      appliedCount += newAnimations.length - (vs.rs.animations?.length ?? 0);
+      vs.rs.animations = newAnimations;
+    }
+
+    if (appliedCount === 0) {
+      notification.warn({
+        message: "No styles were pasted",
+        description:
+          "The copied styles are empty, or none of them can be applied to this element.",
+      });
+      return false;
     }
 
     return true;
@@ -3273,11 +3303,11 @@ export class ViewOps {
           this.viewCtx()
         ),
       });
-      if (extractResult.result === "error") {
-        this.notifyCannotExtractComponent(extractResult);
+      if (extractResult.isErr()) {
+        this.notifyCannotExtractComponent(extractResult.error);
         return;
       }
-      const { tplComponent, warnings } = extractResult;
+      const { tplComponent, warnings } = extractResult.value;
       this.viewCtx().selectNewTpl(tplComponent, true);
       if (tplComponent.component.name !== resp.name) {
         this.studioCtx().maybeWarnComponentRenaming(
@@ -3330,11 +3360,11 @@ export class ViewOps {
       });
     });
 
-    if (extractResult?.result === "success") {
+    if (extractResult?.isOk()) {
       // Segment track
       trackEvent("Create component", {
         projectName: this.studioCtx().siteInfo.name,
-        componentName: extractResult.tplComponent.component.name,
+        componentName: extractResult.value.tplComponent.component.name,
         type: "component",
         action: "extract-tpl-to-component",
       });
@@ -3571,7 +3601,7 @@ export class ViewOps {
       opts
     );
     assert(
-      result.result === "success",
+      result.isOk(),
       "Should be able to insert newParent as parent of newNode"
     );
   }
@@ -4592,26 +4622,12 @@ export class ViewOps {
     message: string;
     referencingNode?: TplNode | null;
   }) {
-    const key = common.mkUuid();
-    notification.error({
-      key,
-      message: "Cannot extract component",
-      description: (
-        <>
-          {error.message}{" "}
-          {error.referencingNode ? (
-            <a
-              onClick={() => {
-                this.viewCtx().setStudioFocusByTpl(error.referencingNode!);
-                notification.close(key);
-              }}
-            >
-              [Go to reference]
-            </a>
-          ) : null}
-        </>
-      ),
-    });
+    notifyReferencingNode(
+      "Cannot extract component",
+      error.message,
+      error.referencingNode,
+      this.studioCtx()
+    );
   }
 }
 
