@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useMutablePlasmicQueryData } from "@plasmicapp/query";
 import { listLocations } from "@epcc-sdk/sdks-shopper";
 import { SWR_DEDUPING_INTERVAL_LONG } from "../const";
-import { useCommerce } from "../elastic-path";
+import { useEpCommerce } from "../shopper-context/EpCommerceContext";
 import type { Location, UseLocationsOptions } from "./types";
 import { createLogger } from "../utils/logger";
 
@@ -12,8 +12,8 @@ export function useLocations({
   type,
   enabled = true,
 }: UseLocationsOptions = {}) {
-  const commerce = useCommerce();
-  const client = commerce.providerRef.current?.client;
+  const commerce = useEpCommerce();
+  const client = commerce?.client;
 
   const queryKey = enabled && client
     ? ["ep-locations", type ?? "__all__"]

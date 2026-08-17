@@ -18,9 +18,8 @@ import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useCallback, useImperativeHandle, useMemo } from "react";
-import { useCommerce } from "../elastic-path";
+import { useEpCommerce } from "../shopper-context/EpCommerceContext";
 import { Registerable } from "../registerable";
-import { getEPClient } from "../utils/getEPClient";
 import {
   AutocompleteData,
   MOCK_AUTOCOMPLETE_DATA,
@@ -261,9 +260,8 @@ const EPSearchAutocompleteInner = React.forwardRef<
 >(function EPSearchAutocompleteInner(props, ref) {
   const { children, className, ...stateConfig } = props;
 
-  const { providerRef } = useCommerce();
-  const provider = providerRef?.current;
-  const epClient = getEPClient(provider);
+  const commerce = useEpCommerce();
+  const epClient = commerce?.client;
 
   const postMultiSearch = useCallback(
     async (body: MultiSearchBody): Promise<MultiSearchResponse> => {

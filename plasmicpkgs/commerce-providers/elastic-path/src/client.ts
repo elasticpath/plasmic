@@ -1,5 +1,9 @@
 import { createShopperClient, configureClient } from "@epcc-sdk/sdks-shopper";
-import { ElasticPathCredentials } from './provider';
+
+export interface ElasticPathCredentials {
+  clientId: string;
+  host?: string;
+}
 
 /**
  * The SDK's default storage adapters write credentials to localStorage or

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useMutablePlasmicQueryData } from "@plasmicapp/query";
 import { getByContextAllProducts } from "@epcc-sdk/sdks-shopper";
 import { SWR_DEDUPING_INTERVAL_SHORT } from "../const";
-import { useCommerce } from "../elastic-path";
+import { useEpCommerce } from "../shopper-context/EpCommerceContext";
 import { ComponentProduct } from "./types";
 import { handleAPIError } from "../utils/errorHandling";
 import { createLogger } from "../utils/logger";
@@ -36,8 +36,8 @@ export function useBundleOptionProducts({
   parentProducts = {},
   enabled = true,
 }: UseBundleOptionProductsOptions) {
-  const commerce = useCommerce();
-  const client = commerce.providerRef.current?.client;
+  const commerce = useEpCommerce();
+  const client = commerce?.client;
 
   // Compute all product IDs to fetch (direct options + parent product children)
   // Sorted for stable SWR deduplication key

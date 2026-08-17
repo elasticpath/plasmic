@@ -7,7 +7,7 @@ import registerComponent, {
 } from "@plasmicapp/host/registerComponent";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEpCart } from "../cart-provider/use-ep-cart";
-import { useCommerce } from "../elastic-path";
+import { useEpCommerce } from "../shopper-context/EpCommerceContext";
 import { Registerable } from "../registerable";
 import { deriveCartData } from "../utils/cart-data";
 import { MOCK_CART_DATA, MOCK_EMPTY_CART_DATA } from "../utils/design-time-data";
@@ -172,8 +172,8 @@ export function EPCartPopover(props: EPCartPopoverProps) {
   } = props;
 
   const { cart, error: cartError } = useEpCart();
-  const { providerRef } = useCommerce();
-  const currencyDisplay = providerRef?.current?.currencyDisplay ?? "symbol";
+  const commerce = useEpCommerce();
+  const currencyDisplay = commerce?.currencyDisplay ?? "symbol";
   const inEditor = !!usePlasmicCanvasContext();
   // Open the panel in the Studio canvas when this component (or a descendant)
   // is selected in the outline — unless the trigger slot itself is selected.

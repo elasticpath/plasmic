@@ -1,6 +1,6 @@
 import { ProductData, configureByContextProduct } from "@epcc-sdk/sdks-shopper";
 import { useCallback, useState } from "react";
-import { useCommerce } from "../elastic-path";
+import { useEpCommerce } from "../shopper-context/EpCommerceContext";
 import { BundleConfiguration } from "./types";
 
 interface UseBundleConfigurationOptions {
@@ -19,7 +19,7 @@ export function useBundleConfiguration({
   const [configuredBundle, setConfiguredBundle] = useState<ProductData | null>(
     null
   );
-  const commerce = useCommerce();
+  const commerce = useEpCommerce();
 
   const configureBundleSelection = useCallback(
     async (selectedOptions: Record<string, Record<string, number>>) => {
@@ -27,10 +27,14 @@ export function useBundleConfiguration({
       setError(null);
 
       try {
+        if (!commerce) {
+          throw new Error("No Elastic Path Provider is configured");
+        }
+
         // The SDK types say BigInt but the serializer can't handle it
         // Pass numbers directly and let the SDK handle it
         const response = await configureByContextProduct({
-          client: commerce.providerRef.current.client,
+          client: commerce.client,
           path: { product_id: bundleId },
           body: {
             data: {

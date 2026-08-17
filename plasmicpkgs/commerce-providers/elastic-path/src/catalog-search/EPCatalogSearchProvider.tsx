@@ -15,10 +15,9 @@ import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useMemo } from "react";
-import { useCommerce } from "../elastic-path";
+import { useEpCommerce } from "../shopper-context/EpCommerceContext";
 import { Registerable } from "../registerable";
 import { DEFAULT_CURRENCY_CODE } from "../const";
-import { getEPClient } from "../utils/getEPClient";
 import { MOCK_CATALOG_SEARCH_DATA } from "./design-time-data";
 import type { CatalogSearchData } from "./design-time-data";
 import { useHeadlessStyling } from "./headless-styling";
@@ -250,9 +249,8 @@ function EPCatalogSearchProviderInner(props: {
     className,
   } = props;
 
-  const { providerRef } = useCommerce();
-  const provider = providerRef?.current;
-  const client = getEPClient(provider);
+  const commerce = useEpCommerce();
+  const client = commerce?.client;
 
   // Create the search client from the EP adapter
   const searchClient = useMemo(() => {

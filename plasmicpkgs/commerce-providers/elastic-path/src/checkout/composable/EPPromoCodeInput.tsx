@@ -11,7 +11,7 @@ import {
   deleteAPromotionViaPromotionCode,
 } from "@epcc-sdk/sdks-shopper";
 import { Registerable } from "../../registerable";
-import { useCommerce } from "../../elastic-path";
+import { useEpCommerce } from "../../shopper-context/EpCommerceContext";
 import { getCartIdFromSession } from "../../cart/cart-session";
 import { useShopperFetch } from "../../shopper-context/useShopperFetch";
 import { createLogger } from "../../utils/logger";
@@ -272,8 +272,8 @@ function EPPromoCodeInputUI(props: EPPromoCodeInputProps & {
 function EPPromoCodeInputClient(props: EPPromoCodeInputProps) {
   const { onApply, onRemove, onError } = props;
 
-  const commerce = useCommerce();
-  const client = commerce.providerRef.current?.client;
+  const commerce = useEpCommerce();
+  const client = commerce?.client;
 
   const [code, setCode] = useState("");
   const [state, setState] = useState<PromoState>("idle");

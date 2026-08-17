@@ -62,7 +62,6 @@
     "@elasticpath/catalog-search-instantsearch-adapter": "0.1.0",
     "@epcc-sdk/sdks-shopper": "^0.1.0",
     "@hookform/resolvers": "^3.3.2",
-    "@plasmicpkgs/commerce": "~0.0.256",
     "@stripe/react-stripe-js": "^2.4.0",
     "@stripe/stripe-js": "^2.4.0",
     "@types/react": "^18.0.27",

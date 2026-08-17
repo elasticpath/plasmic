@@ -1,11 +1,38 @@
 import { GlobalContextMeta } from "@plasmicapp/host";
 import registerGlobalContext from "@plasmicapp/host/registerGlobalContext";
-import { globalActionsRegistrations } from "@plasmicpkgs/commerce";
 import React from "react";
-import { getCommerceProvider } from "./elastic-path";
-import { ElasticPathCredentials } from "./provider";
+import { ElasticPathCredentials } from "./client";
 import { Registerable } from "./registerable";
+import { EpCommerceProvider } from "./shopper-context/EpCommerceContext";
 import { ServerCartActionsProvider } from "./shopper-context/ServerCartActionsProvider";
+
+/**
+ * Action and parameter names are a saved-binding contract: renaming one breaks
+ * every designer interaction already bound to it.
+ */
+const globalActionsRegistrations = {
+  addItem: {
+    displayName: "Add item to cart",
+    parameters: [
+      { name: "productId", displayName: "Product Id", type: "string" },
+      { name: "variantId", displayName: "Variant Id", type: "string" },
+      { name: "quantity", displayName: "Quantity", type: "number" },
+    ],
+  },
+  updateItem: {
+    displayName: "Update item in cart",
+    parameters: [
+      { name: "lineItemId", displayName: "Line Item Id", type: "string" },
+      { name: "quantity", displayName: "New Quantity", type: "number" },
+    ],
+  },
+  removeItem: {
+    displayName: "Remove item from cart",
+    parameters: [
+      { name: "lineItemId", displayName: "Line Item Id", type: "string" },
+    ],
+  },
+} as const;
 
 interface CommerceProviderProps extends ElasticPathCredentials {
   children?: React.ReactNode;
@@ -97,32 +124,26 @@ export function CommerceProviderComponent(props: CommerceProviderProps) {
     currencyDisplay = "symbol",
   } = props;
 
+  const cartActions = (
+    <ServerCartActionsProvider globalContextName={globalContextName}>
+      {children}
+    </ServerCartActionsProvider>
+  );
+
   if (!clientId) {
-    return (
-      <ServerCartActionsProvider globalContextName={globalContextName}>
-        {children}
-      </ServerCartActionsProvider>
-    );
+    return cartActions;
   }
 
-  const resolvedHost = host === "custom" ? customHost : host;
-
-  const creds = React.useMemo(
-    () => ({ clientId, host: resolvedHost }),
-    [clientId, resolvedHost]
-  );
-
-  const CommerceProvider = React.useMemo(
-    () => getCommerceProvider(creds, locale, currency, currencyDisplay),
-    [creds, locale, currency, currencyDisplay]
-  );
-
   return (
-    <CommerceProvider>
-      <ServerCartActionsProvider globalContextName={globalContextName}>
-        {children}
-      </ServerCartActionsProvider>
-    </CommerceProvider>
+    <EpCommerceProvider
+      clientId={clientId}
+      host={host === "custom" ? customHost : host}
+      locale={locale}
+      currency={currency}
+      currencyDisplay={currencyDisplay}
+    >
+      {cartActions}
+    </EpCommerceProvider>
   );
 }
 

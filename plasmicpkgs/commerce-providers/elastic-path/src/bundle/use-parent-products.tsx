@@ -3,7 +3,7 @@ import { useMutablePlasmicQueryData } from "@plasmicapp/query";
 import { getByContextAllProducts, getByContextChildProducts } from "@epcc-sdk/sdks-shopper";
 import type { ProductAttributes, Variation, VariationOption } from "@epcc-sdk/sdks-shopper";
 import { SWR_DEDUPING_INTERVAL_SHORT } from "../const";
-import { useCommerce } from "../elastic-path";
+import { useEpCommerce } from "../shopper-context/EpCommerceContext";
 import { ComponentProduct } from "./types";
 import { handleAPIError } from "../utils/errorHandling";
 import { createLogger } from "../utils/logger";
@@ -52,8 +52,8 @@ export function useParentProducts({
   components,
   enabled = true,
 }: UseParentProductsOptions) {
-  const commerce = useCommerce();
-  const client = commerce.providerRef.current?.client;
+  const commerce = useEpCommerce();
+  const client = commerce?.client;
 
   // Stable sorted key from component option IDs for SWR deduplication
   const sortedProductIds = useMemo(() => {

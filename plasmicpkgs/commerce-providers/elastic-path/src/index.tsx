@@ -73,8 +73,17 @@ import { registerEPSearchAutocompleteList } from "./catalog-search/EPSearchAutoc
 import { registerEPCatalogSearchProvider } from "./catalog-search/EPCatalogSearchProvider";
 import { Registerable } from "./registerable";
 
-export * from "./elastic-path";
 export * from "./registerCommerceProvider";
+export {
+  EpCommerceProvider,
+  getEpCommerceContext,
+  useEpCommerce,
+} from "./shopper-context/EpCommerceContext";
+export type {
+  CurrencyDisplay,
+  EpCommerce,
+  EpCommerceProviderProps,
+} from "./shopper-context/EpCommerceContext";
 export * from "./registerEPAddToCartButton";
 export {
   EPCartProvider,
