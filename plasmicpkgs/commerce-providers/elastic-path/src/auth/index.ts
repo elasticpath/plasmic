@@ -20,6 +20,7 @@ export type {
   CreateEpAuthBetterInput as EpAuthConfig,
 } from "./ep-plugin/create-ep-auth-better";
 export { epAuthMiddleware } from "./ep-plugin/middleware";
+export { createEpAuthRoutes } from "./ep-plugin/auth-routes";
 export { createCartRoutes } from "../cart/server-routes";
 export type { CartRoutes } from "../cart/server-routes";
 export { createEpProxyRoutes } from "./ep-plugin/proxy-routes";

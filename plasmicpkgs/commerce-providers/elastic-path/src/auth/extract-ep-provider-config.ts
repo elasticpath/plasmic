@@ -10,8 +10,8 @@
  *     <propName>:<ident>&&"<propName>"in <ident>?<ident>.<propName>:<DEFAULT>
  *
  * for every prop. We scan the server bundle modules and regex-extract the
- * EP-Provider-specific props (clientId / host / customHost / serverCartMode),
- * grouped per provider — see `propRegex` for how the grouping works.
+ * EP-Provider-specific props (clientId / host / customHost), grouped per
+ * provider — see `propRegex` for how the grouping works.
  *
  * This is intentionally narrow — it only reads the props the storefront needs
  * to resolve a server session. If Plasmic's codegen output changes shape in a
@@ -30,8 +30,6 @@ export interface EpProviderBundleConfig {
   clientId: string;
   /** Resolved API host — `customHost` when `host === "custom"`, else `host` */
   host: string;
-  /** `serverCartMode` flag from the EP Provider */
-  serverCartMode: boolean;
 }
 
 type BundleModule = {
@@ -110,12 +108,11 @@ interface ProviderCandidate {
   clientId: string;
   host: PropValue;
   customHost: PropValue;
-  serverCartMode: PropValue;
 }
 
 /**
  * One candidate per props identifier carrying a non-empty `clientId`. Reading
- * all four props off the same identifier is what keeps a neighbouring
+ * all three props off the same identifier is what keeps a neighbouring
  * provider's host, clientId or customHost from being paired with EP's.
  * Candidates that aren't EP (another commerce provider also registers a
  * `clientId`) fail the host allowlist downstream.
@@ -133,7 +130,6 @@ function collectProviderCandidates(code: string): ProviderCandidate[] {
   const customHosts = hostOccurrences.some((o) => o.value === "custom")
     ? firstByIdent(scanProp(code, "customHost"))
     : new Map<string, PropValue>();
-  const serverCartModes = firstByIdent(scanProp(code, "serverCartMode"));
 
   const seen = new Set<string>();
   const candidates: ProviderCandidate[] = [];
@@ -144,7 +140,6 @@ function collectProviderCandidates(code: string): ProviderCandidate[] {
       clientId: value,
       host: hosts.get(ident),
       customHost: customHosts.get(ident),
-      serverCartMode: serverCartModes.get(ident),
     });
   }
   return candidates;
@@ -214,7 +209,6 @@ export function extractEpProviderConfig(
       return {
         clientId: candidate.clientId,
         host: resolvedHost,
-        serverCartMode: candidate.serverCartMode === true,
       };
     }
   }

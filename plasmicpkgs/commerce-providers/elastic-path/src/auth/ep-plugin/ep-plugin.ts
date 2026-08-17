@@ -117,7 +117,10 @@ function buildAnonymousSnapshot(
   const session = {
     id: `sess-${anonymousId}`,
     userId: user.id,
-    token: anonymousId,
+    // Independent of anonymousId: the user id and email are readable by the
+    // storefront, and deriving the cookie's session token from them would
+    // publish it.
+    token: generateAnonymousId(),
     expiresAt: new Date((now + tokenData.expires_in) * 1000),
     ipAddress: null,
     userAgent: null,

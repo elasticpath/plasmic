@@ -28,7 +28,6 @@ const SESSION_BASE = {
   accessToken: "tok",
   host: "https://api.ep.com",
   clientId: "cid",
-  serverCartMode: false,
 };
 
 const ORDER_RESPONSE = (amount: number) => ({

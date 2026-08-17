@@ -6,10 +6,9 @@
  * middleware runs BEFORE the page, mints an anonymous EP session via
  * the better-auth handler, and persists the resulting cookies. After
  * this fires once, every subsequent request carries
- * `better-auth.session_token` + `better-auth.session_data`, the
- * catchall page reads them via `epAuth.api.getSession({cookies})`,
- * and the client-side EP SDK receives the same `serverToken` via
- * globalContextsProps — no localStorage fallback.
+ * `better-auth.session_token` + `better-auth.session_data`, and the
+ * catchall page reads them via `epAuth.api.getSession({cookies})`. The
+ * token stays server-side from there.
  */
 import { epAuthMiddleware } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
 import { epAuth } from "@/lib/ep-auth";

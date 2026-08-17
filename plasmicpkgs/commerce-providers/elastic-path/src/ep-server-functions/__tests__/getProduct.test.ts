@@ -27,7 +27,6 @@ const TEST_SESSION = {
   accessToken: "token-abc",
   host: "https://api.test.elasticpath.com",
   clientId: "client-xyz",
-  serverCartMode: false,
 };
 
 beforeEach(() => {

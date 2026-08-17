@@ -27,7 +27,6 @@ export interface EpCtx {
   accessToken: string;
   host: string;
   clientId: string;
-  serverCartMode: boolean;
   cartId?: string;
   accountId?: string;
   locale?: string;
@@ -54,7 +53,6 @@ export function buildEpCtx(
     accessToken: opts.session.accessToken ?? "",
     host: config.host,
     clientId: config.clientId,
-    serverCartMode: config.serverCartMode,
     cartId: opts.session.cartId,
     accountId: opts.session.accountId,
     locale: opts.session.locale,

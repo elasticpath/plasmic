@@ -44,33 +44,41 @@ describe("withPlasmicRegistry", () => {
     vi.restoreAllMocks();
   });
 
-  it("auto-detects @plasmicpkgs/* packages from dependencies", () => {
+  // Externalising a Plasmic package makes Node require() it, which resolves a
+  // second React whose dispatcher Next never sets during SSR — hooks then read
+  // null mid-render. `capture.ts` reaches @plasmicapp/host via eval("require")
+  // instead, so nothing needs externalising and both pattern lists are empty.
+  it("does not externalize @plasmicpkgs/* packages", () => {
     const result = withPlasmicRegistry({});
-    expect(result.serverExternalPackages).toContain("@plasmicpkgs/commerce");
-    expect(result.serverExternalPackages).toContain("@plasmicpkgs/fetch");
-    expect(result.serverExternalPackages).toContain(
+    expect(result.serverExternalPackages).not.toContain(
+      "@plasmicpkgs/commerce"
+    );
+    expect(result.serverExternalPackages).not.toContain("@plasmicpkgs/fetch");
+    expect(result.serverExternalPackages).not.toContain(
       "@plasmicpkgs/plasmic-basic-components"
     );
   });
 
-  it("auto-detects @elasticpath/plasmic-* packages", () => {
+  it("does not externalize @elasticpath/plasmic-* packages", () => {
     const result = withPlasmicRegistry({});
-    expect(result.serverExternalPackages).toContain(
+    expect(result.serverExternalPackages).not.toContain(
       "@elasticpath/plasmic-mcp-registry"
     );
-    expect(result.serverExternalPackages).toContain(
+    expect(result.serverExternalPackages).not.toContain(
       "@elasticpath/plasmic-other"
     );
   });
 
-  it("auto-detects @plasmicapp/host", () => {
+  it("does not externalize @plasmicapp/host", () => {
     const result = withPlasmicRegistry({});
-    expect(result.serverExternalPackages).toContain("@plasmicapp/host");
+    expect(result.serverExternalPackages).not.toContain("@plasmicapp/host");
   });
 
-  it("detects packages from devDependencies", () => {
+  it("does not externalize packages found only in devDependencies", () => {
     const result = withPlasmicRegistry({});
-    expect(result.serverExternalPackages).toContain("@plasmicpkgs/graphql");
+    expect(result.serverExternalPackages).not.toContain(
+      "@plasmicpkgs/graphql"
+    );
   });
 
   it("does not include non-Plasmic packages", () => {
@@ -100,9 +108,7 @@ describe("withPlasmicRegistry", () => {
 
   it("handles empty config input", () => {
     const result = withPlasmicRegistry({});
-    expect(result.serverExternalPackages).toBeDefined();
-    expect(Array.isArray(result.serverExternalPackages)).toBe(true);
-    expect(result.serverExternalPackages!.length).toBeGreaterThan(0);
+    expect(result.serverExternalPackages).toEqual([]);
   });
 
   it("handles no config argument (defaults to empty)", () => {
@@ -166,40 +172,25 @@ describe("withPlasmicRegistry", () => {
     expect(typeof returned.externals[0]).toBe("function");
   });
 
-  it("webpack externals externalizes Plasmic packages on server", () => {
+  it("webpack externals defers every request on server builds", () => {
     const result = withPlasmicRegistry({});
     const webpackConfig = { externals: [] as unknown[] };
     (result.webpack as Function)(webpackConfig, { isServer: true });
 
     const externalsFn = webpackConfig.externals[0] as Function;
 
-    // @plasmicpkgs/* should be externalized
-    const cb1 = vi.fn();
-    externalsFn({ request: "@plasmicpkgs/commerce" }, cb1);
-    expect(cb1).toHaveBeenCalledWith(null, "commonjs @plasmicpkgs/commerce");
-
-    // @elasticpath/plasmic-* should be externalized
-    const cb2 = vi.fn();
-    externalsFn(
-      { request: "@elasticpath/plasmic-ep-commerce-elastic-path" },
-      cb2
-    );
-    expect(cb2).toHaveBeenCalledWith(
-      null,
-      "commonjs @elasticpath/plasmic-ep-commerce-elastic-path"
-    );
-
-    // @plasmicapp/host should NOT be webpack-externalized (it's a real
-    // node_modules package — serverExternalPackages handles it, and webpack
-    // externals would break SSR by loading a separate React instance)
-    const cb3 = vi.fn();
-    externalsFn({ request: "@plasmicapp/host" }, cb3);
-    expect(cb3).toHaveBeenCalledWith();
-
-    // Non-Plasmic packages should NOT be externalized
-    const cb4 = vi.fn();
-    externalsFn({ request: "react" }, cb4);
-    expect(cb4).toHaveBeenCalledWith();
+    // Calling back with no arguments leaves the request to webpack, which
+    // bundles it — the behaviour SSR depends on.
+    for (const request of [
+      "@plasmicpkgs/commerce",
+      "@elasticpath/plasmic-ep-commerce-elastic-path",
+      "@plasmicapp/host",
+      "react",
+    ]) {
+      const cb = vi.fn();
+      externalsFn({ request }, cb);
+      expect(cb).toHaveBeenCalledWith();
+    }
   });
 
   it("webpack externals does not modify client builds", () => {

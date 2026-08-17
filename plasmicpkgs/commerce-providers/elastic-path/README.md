@@ -40,10 +40,10 @@ export const epAuth = createEpAuth({
 
 ```ts
 // app/api/ep/[...path]/route.ts
-import { toNextJsHandler } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
+import { createEpAuthRoutes } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
 import { epAuth } from "@/lib/ep-auth";
 
-export const { GET, POST, PATCH, DELETE } = toNextJsHandler(epAuth);
+export const { GET, POST } = createEpAuthRoutes(epAuth);
 ```
 
 **Pages Router:**
@@ -51,26 +51,43 @@ export const { GET, POST, PATCH, DELETE } = toNextJsHandler(epAuth);
 ```ts
 // pages/api/ep/[...path].ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { toNextJsHandler } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
+import { createEpAuthRoutes } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
 import { epAuth } from "@/lib/ep-auth";
 
-const handlers = toNextJsHandler(epAuth);
+const handlers = createEpAuthRoutes(epAuth);
+
+export const config = { api: { bodyParser: false } };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const method = req.method?.toUpperCase() as "GET" | "POST" | "PATCH" | "DELETE";
+  const method = req.method?.toUpperCase() as "GET" | "POST";
   const fn = handlers[method];
   if (!fn) return res.status(405).end();
 
-  const response = await fn({
-    url: `http://localhost${req.url}`,
-    cookies: req.cookies as Record<string, string>,
-    headers: req.headers as Record<string, string>,
-    json: () => Promise.resolve(req.body),
-  });
+  // The handlers take a WHATWG Request, so rebuild one from the Node req.
+  const url = `${process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000"}${req.url}`;
+  const body =
+    method === "GET"
+      ? undefined
+      : await new Promise<string>((resolve) => {
+          let raw = "";
+          req.on("data", (chunk) => (raw += chunk));
+          req.on("end", () => resolve(raw));
+        });
 
-  // Forward response headers (Set-Cookie for token refresh)
-  response.headers.forEach((value, key) => res.setHeader(key, value));
-  res.status(response.status).json(await response.json());
+  const response = await fn(
+    new Request(url, {
+      method,
+      headers: req.headers as Record<string, string>,
+      body,
+    })
+  );
+
+  // Set-Cookie must be forwarded as a list — setHeader would collapse it.
+  res.setHeader("Set-Cookie", response.headers.getSetCookie());
+  response.headers.forEach((value, key) => {
+    if (key.toLowerCase() !== "set-cookie") res.setHeader(key, value);
+  });
+  res.status(response.status).send(await response.text());
 }
 ```
 
@@ -102,15 +119,10 @@ export default async function Page({ params }: { params: { catchall?: string[] }
     ),
   });
 
-  // SSR: extract query data with server token injected
+  // SSR: extract query data. The session stays server-side — it is never
+  // handed to globalContextsProps, which Plasmic serializes into the HTML.
   const queryData = await extractPlasmicQueryData(
-    <PlasmicRootProvider
-      loader={PLASMIC}
-      prefetchedData={plasmicData}
-      globalContextsProps={{
-        "plasmic-commerce-elastic-path-provider": session.providerProps(),
-      }}
-    >
+    <PlasmicRootProvider loader={PLASMIC} prefetchedData={plasmicData}>
       <PlasmicComponent component={pagePath} />
     </PlasmicRootProvider>
   );
@@ -127,9 +139,6 @@ export default async function Page({ params }: { params: { catchall?: string[] }
       loader={PLASMIC}
       prefetchedData={plasmicData}
       prefetchedQueryData={queryData}
-      globalContextsProps={{
-        "plasmic-commerce-elastic-path-provider": session.providerProps(),
-      }}
     >
       <PlasmicComponent component={pagePath} />
     </PlasmicRootProvider>
@@ -161,15 +170,10 @@ export const getServerSideProps: GetServerSideProps = async ({ req, res, params 
     cookies: req.cookies as Record<string, string>,
   });
 
-  // SSR: extract query data with server token injected
+  // SSR: extract query data. The session stays server-side — it is never
+  // handed to globalContextsProps, which Plasmic serializes into the HTML.
   const queryData = await extractPlasmicQueryData(
-    <PlasmicRootProvider
-      loader={PLASMIC}
-      prefetchedData={plasmicData}
-      globalContextsProps={{
-        "plasmic-commerce-elastic-path-provider": session.providerProps(),
-      }}
-    >
+    <PlasmicRootProvider loader={PLASMIC} prefetchedData={plasmicData}>
       <PlasmicComponent component={pagePath} />
     </PlasmicRootProvider>
   );
@@ -243,54 +247,83 @@ three rather than only to the factory.
 
 ```
 First visit:
-  page.tsx → epAuth.api.getSession() → OAuth with clientId → serverToken
-  → EP Provider (prepass) → product data SSRs
+  page.tsx → epAuth.api.getSession() → OAuth with clientId → access token
+  → buildEpCtx() → withEpSession() → Server Queries SSR product data
   → commitCookies() → httpOnly ep_token cookie set
 
 Returning visit:
-  page.tsx → epAuth.api.getSession() → reads ep_token cookie → serverToken
-  → EP Provider (prepass) → product data SSRs → zero OAuth calls
+  page.tsx → epAuth.api.getSession() → reads ep_token cookie → access token
+  → buildEpCtx() → withEpSession() → Server Queries SSR → zero OAuth calls
 ```
 
-The access token never reaches the browser. It flows through:
-1. Server-side `getSession()` → httpOnly cookie
-2. `providerProps()` → `globalContextsProps` (server-only, not serialized to HTML)
-3. EP Provider `getServerInfo` → `providedContexts` (server prepass only)
-4. Product components `getServerInfo` → `ops.readContext("ep-server-token")`
+The access token never reaches the browser. It stays on the server:
+1. `getSession()` reads or mints it, then writes it to an httpOnly cookie
+2. `buildEpCtx()` puts it on an `EpCtx`, which `withEpSession()` publishes
+   through AsyncLocalStorage
+3. Server Queries and the `/api/ep` proxy routes read it via
+   `getCurrentEpSession()` and call Elastic Path directly
+
+`providerProps()` returns `{}`. Whatever it returned would be handed to
+`globalContextsProps` and serialized into the page HTML, so it never carries
+a credential.
+
+Browser-side catalog reads go through the Elastic Path SDK client, which mints
+its own anonymous token from the public `clientId` and holds it in memory —
+never localStorage, never a cookie.
+
+**`next dev` is an exception.** Next's RSC debug instrumentation serializes a
+server component's local variables — including the EP session — into the flight
+payload, so the access token is readable in the page source under `next dev`.
+It is absent from `next build` output, and nothing this package does can
+suppress it. Treat a dev server as carrying a live shopper credential: don't
+run one on a shared host or against production Elastic Path credentials.
 
 ### API Routes
 
-The catch-all handler (`toNextJsHandler`) provides:
+`createEpAuthRoutes(epAuth)` mounts the auth handler:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `{basePath}/ep/anonymous` | Mint an anonymous session |
+| POST | `{basePath}/ep/refresh` | Rotate the EP token |
+| POST | `{basePath}/ep/cart` | Persist `epCartId` on the session |
+| POST | `{basePath}/ep/account/login` | Persist account fields |
+| GET | `{basePath}/get-session` | Read the session, minus EP credentials |
+
+`createCartRoutes(epAuth)` mounts the cart routes:
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `{basePath}/cart` | Get cart contents |
 | POST | `{basePath}/cart/items` | Add item to cart |
-| PATCH | `{basePath}/cart/items/:id` | Update item quantity |
+| PUT | `{basePath}/cart/items/:id` | Update item quantity |
 | DELETE | `{basePath}/cart/items/:id` | Remove item from cart |
 
-Every response includes `accountStatus: "authenticated" | "expired" | "anonymous"`.
+Mount the auth handler through `createEpAuthRoutes`, never better-auth's
+`toNextJsHandler` directly: better-auth's `/get-session` returns the whole
+session record, and this package keeps the shopper's EP access token on it.
 
 ### Cookie Architecture
 
-| Cookie | Contents | Max-Age | Purpose |
-|--------|----------|---------|---------|
-| `ep_token` | base64 JSON (token + credentials) | 30 days | Implicit token, self-refreshes |
-| `ep_account` | base64 JSON (account info) | Until expiry | Account auth (logged-in shopper) |
-| `ep_cart` | Cart UUID string | 30 days | Cart identity |
+| Cookie | Contents | Purpose |
+|--------|----------|---------|
+| `better-auth.session_token` | Signed session id | Session identity |
+| `better-auth.session_data` | JWE — EP access token, client id, host, cart id | Everything the server needs to act as the shopper |
 
-All cookies: `HttpOnly; SameSite=Lax; Path=/`. `Secure` in production.
+Both are `HttpOnly; SameSite=Lax; Path=/`, `Secure` in production. The EP
+access token, the account fields and the cart id all live inside the encrypted
+`session_data` payload — there is no separate `ep_token`, `ep_account` or
+`ep_cart` cookie.
 
 ### Server-Side Rendering
 
-Product components implement `getServerInfo` for the Loader v2 RSC-native path:
+Product data server-renders through Studio Server Queries against the EP custom
+functions — see [Studio Server Queries (SSR)](#studio-server-queries-ssr) below.
+`buildEpCtx()` + `withEpSession()` carry the session; each `ep.*` function reads
+it via `getCurrentEpSession()`.
 
-- **EP Provider** → provides `ep-server-token` and `ep-host` contexts
-- **EPProductProvider** → fetches single product via EP catalog API
-- **EPProductListProvider** → fetches paginated product list
-- **EPRelatedProductsProvider** → fetches related products
-
-Data flows through `ops.fetchData()` → SWR cache → `prefetchedQueryData` → client hydration. Product data SSRs for SEO. Token never enters the cache.
+Data flows into `prefetchedQueryData` → client hydration. Product data SSRs for
+SEO. The token never enters the cache.
 
 ### Better Auth Alignment
 
@@ -300,7 +333,7 @@ The API follows [Better Auth](https://better-auth.com/) conventions:
 |-------------|-------------|
 | `createEpAuth()` | `betterAuth()` |
 | `epAuth.api.getSession(req)` | `auth.api.getSession(req)` |
-| `toNextJsHandler(epAuth)` | `toNextJsHandler(auth)` |
+| `createEpAuthRoutes(epAuth)` | `toNextJsHandler(auth)` |
 | `session.user` / `session.session` | `session.user` / `session.session` |
 
 ## Studio Server Queries (SSR)
@@ -429,13 +462,13 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 ## Components
 
 ### Core
-- **EP Provider** — Global context: `clientId`, `host`, `locale`, `serverCartMode`, `serverToken`
+- **EP Provider** — Global context: `clientId`, `host`, `locale`, `currency`
 - **Shopper Context** — Global context: `cartId`, `accountId`, `basePath` overrides
 
 ### Product Display
-- **EPProductProvider** — Single product data (with `getServerInfo` for SSR)
-- **EPProductListProvider** — Paginated product listing (with `getServerInfo`)
-- **EPRelatedProductsProvider** — Related products (with `getServerInfo`)
+- **EPProductProvider** — Single product data
+- **EPProductListProvider** — Paginated product listing
+- **EPRelatedProductsProvider** — Related products
 - **EPProductGrid** — Repeater for product list items
 
 ### Cart

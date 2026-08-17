@@ -1,39 +1,42 @@
 /** @jest-environment jsdom */
 import React from "react";
 import { render, screen } from "@testing-library/react";
-import { CommerceProviderComponent } from "./registerCommerceProvider";
+import {
+  CommerceProviderComponent,
+  commerceProviderMeta,
+} from "./registerCommerceProvider";
 
 describe("CommerceProviderComponent", () => {
-  it("shows error message when no clientId and serverCartMode is off", () => {
+  it("renders children without a clientId", () => {
     render(
       <CommerceProviderComponent clientId="">
-        <span>child</span>
-      </CommerceProviderComponent>
-    );
-    expect(
-      screen.getByText(/Please set your Elastic Path Client ID/)
-    ).toBeTruthy();
-    expect(screen.queryByText("child")).toBeNull();
-  });
-
-  it("renders children in serverCartMode without clientId", () => {
-    render(
-      <CommerceProviderComponent clientId="" serverCartMode>
         <span>server-cart-child</span>
       </CommerceProviderComponent>
     );
     expect(screen.getByText("server-cart-child")).toBeTruthy();
-    expect(
-      screen.queryByText(/Please set your Elastic Path Client ID/)
-    ).toBeNull();
   });
 
-  it("renders children in serverCartMode when clientId is undefined", () => {
+  it("renders children when clientId is undefined", () => {
     render(
-      <CommerceProviderComponent serverCartMode>
+      <CommerceProviderComponent {...({} as { clientId: string })}>
         <span>no-creds</span>
       </CommerceProviderComponent>
     );
     expect(screen.getByText("no-creds")).toBeTruthy();
+  });
+});
+
+describe("commerceProviderMeta", () => {
+  it.each(["serverToken", "serverCartMode"])(
+    "keeps the retired %s prop registered and hidden",
+    (propName) => {
+      const prop = commerceProviderMeta.props[propName];
+      expect(prop).toBeDefined();
+      expect(prop.hidden()).toBe(true);
+    }
+  );
+
+  it("declares no getServerInfo bridge", () => {
+    expect(commerceProviderMeta.getServerInfo).toBeUndefined();
   });
 });

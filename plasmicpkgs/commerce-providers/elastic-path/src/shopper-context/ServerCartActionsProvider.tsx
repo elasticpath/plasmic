@@ -11,12 +11,9 @@ interface ServerCartActions extends GlobalActionDict {
 }
 
 /**
- * Provides global cart actions (addItem, updateItem, removeItem) using
- * server-route hooks from shopper-context instead of the deprecated
- * client-side EP SDK hooks.
- *
- * Drop-in replacement for CartActionsProvider from @plasmicpkgs/commerce
- * when serverCartMode is enabled.
+ * Replaces CartActionsProvider from @plasmicpkgs/commerce, which drives
+ * its hooks from the browser. Cart mutations need the shopper's
+ * credentials, which never leave the server.
  */
 export function ServerCartActionsProvider(
   props: React.PropsWithChildren<{ globalContextName: string }>

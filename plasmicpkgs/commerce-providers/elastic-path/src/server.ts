@@ -51,14 +51,15 @@ export type {
 } from "./checkout/session/types";
 
 // Auth — better-auth-backed (PRD #273). Mount the handler via
-// `toNextJsHandler` from `better-auth/next-js`, NOT a helper exported
-// from this package.
+// `createEpAuthRoutes`, not better-auth's `toNextJsHandler` directly:
+// the raw handler's /get-session returns the shopper's EP access token.
 export {
   createEpAuth,
   createBetterEpAuth,
   extractEpProviderConfig,
   epPlugin,
   epAuthMiddleware,
+  createEpAuthRoutes,
   createCartRoutes,
   createEpProxyRoutes,
   enforceOriginGate,
