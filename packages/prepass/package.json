@@ -1,6 +1,6 @@
 {
   "name": "@plasmicapp/prepass",
-  "version": "1.0.27",
+  "version": "1.0.28",
   "description": "Server-side prepass that fake-renders a React tree to prefetch all @plasmicapp/query data requirements.",
   "homepage": "https://www.plasmic.app",
   "repository": {
@@ -21,8 +21,13 @@
     "build": "yarn build:types && yarn build:index",
     "build:types": "tsc --emitDeclarationOnly",
     "build:index": "esbuild --format=cjs --outfile=./dist/index.cjs.js ./src/index.tsx && esbuild --format=esm --outfile=./dist/index.esm.js ./src/index.tsx",
+<<<<<<< HEAD
     "test": "TEST_CWD=`pwd` yarn --cwd=../.. test",
     "coverage": "TEST_CWD=`pwd` yarn --cwd=../.. test --coverage --passWithNoTests",
+=======
+    "test": "TEST_CWD=`pwd` pnpm -w test --passWithNoTests",
+    "coverage": "TEST_CWD=`pwd` pnpm -w test --coverage --passWithNoTests",
+>>>>>>> upstream/master
     "lint": "eslint",
     "prepublishOnly": "npm run build"
   },

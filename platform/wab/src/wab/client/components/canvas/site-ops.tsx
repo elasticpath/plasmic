@@ -1,3 +1,4 @@
+import { notifyReferencingNode } from "@/wab/client/ErrorNotifications";
 import { AppCtx } from "@/wab/client/app-ctx";
 import { FrameClip } from "@/wab/client/clipboard/local";
 import { RenameArenaProps } from "@/wab/client/commands/arena/renameArena";
@@ -70,6 +71,7 @@ import {
   flattenComponent,
   getComponentsUsingImageAsset,
 } from "@/wab/shared/cached-selectors";
+import { ServerQueryOp } from "@/wab/shared/codegen/react-p/server-queries/utils";
 import { toVarName } from "@/wab/shared/codegen/util";
 import { arrayRemove } from "@/wab/shared/collections";
 import {
@@ -175,6 +177,8 @@ import { getPlumeEditorPlugin } from "@/wab/shared/plume/plume-registry";
 import {
   flattenDataTokenUsage,
   isQueryUsedInExpr,
+  isServerQueryUsedInExpr,
+  renameServerQueryAndFixExprs,
 } from "@/wab/shared/refactoring";
 import {
   FrameSize,
@@ -190,7 +194,7 @@ import {
 } from "@/wab/shared/visibility-utils";
 import { notification } from "antd";
 import L from "lodash";
-import { ok } from "neverthrow";
+import { err, ok } from "neverthrow";
 import React from "react";
 
 /**
@@ -841,8 +845,8 @@ export class SiteOps {
       this.studioCtx,
       this.tplMgr
     );
-    if (result.result === "error") {
-      notification.error({ message: result.message });
+    if (result.isErr()) {
+      notification.error({ message: result.error.message });
     }
   }
 
@@ -1099,14 +1103,14 @@ export class SiteOps {
       component,
       tplMgr: this.tplMgr,
     });
-    if (result.result === "error") {
+    if (result.isErr()) {
       notification.error({
         message: update.accessType
           ? `Cannot set access type to "${update.accessType}"`
           : update.initialValue !== undefined
           ? "Cannot set initial value"
           : "Cannot update variable",
-        description: result.message,
+        description: result.error.message,
       });
     }
   }
@@ -1116,29 +1120,13 @@ export class SiteOps {
       site: this.site,
       component,
     });
-    if (result.result === "error") {
-      const viewCtx = this.studioCtx.focusedViewCtx();
-      const refNode = result.referencingNode;
-      const key = mkUuid();
-      notification.error({
-        key,
-        message: "Cannot delete variable",
-        description: (
-          <>
-            {result.message}{" "}
-            {viewCtx?.component === component && refNode ? (
-              <a
-                onClick={() => {
-                  viewCtx.setStudioFocusByTpl(refNode);
-                  notification.close(key);
-                }}
-              >
-                [Go to reference]
-              </a>
-            ) : null}
-          </>
-        ),
-      });
+    if (result.isErr()) {
+      notifyReferencingNode(
+        "Cannot delete variable",
+        result.error.message,
+        result.error.referencingNode,
+        this.studioCtx
+      );
       return false;
     }
     return true;
@@ -1186,12 +1174,34 @@ export class SiteOps {
     );
   }
 
+  /**
+   * Replace a server query op and/or renames it, fixing `$q` references.
+   */
+  async updateComponentServerQuery(
+    component: Component,
+    query: ComponentServerQuery,
+    update: { op?: ServerQueryOp; name?: string }
+  ) {
+    return this.studioCtx.change(() => {
+      if (update.op) {
+        query.op = update.op;
+      }
+      if (update.name && update.name !== query.name) {
+        renameServerQueryAndFixExprs(component, query, update.name);
+      }
+      return ok();
+    });
+  }
+
+  /**
+   * Removes a server query, or refuses with readable error if referenced as `$q.<name>`.
+   */
   async removeComponentServerQuery(
     component: Component,
     query: ComponentServerQuery
   ) {
     const refs = findExprsInComponent(component).filter(({ expr }) =>
-      isQueryUsedInExpr(query.name, expr)
+      isServerQueryUsedInExpr(query.name, expr)
     );
     if (refs.length > 0) {
       const viewCtx = this.studioCtx.focusedViewCtx();
@@ -1216,10 +1226,19 @@ export class SiteOps {
           </>
         ),
       });
-      return;
+      return err(
+        new Error(
+          `Cannot delete ${SERVER_QUERY_LOWER} "${query.name}" (uuid ${
+            query.uuid
+          }) while it is still referenced as $q.${toVarName(
+            query.name
+          )} in this component. Re-point or remove those references first, ` +
+            `then delete.`
+        )
+      );
     }
 
-    await this.studioCtx.changeObserved(
+    return this.studioCtx.changeObserved(
       () => [],
       () => {
         this.tplMgr.removeComponentServerQuery(component, query);
@@ -1237,19 +1256,19 @@ export class SiteOps {
       this.tplMgr
     );
 
-    if (result.result === "error" && !result.cancelled) {
+    if (result.isErr() && !result.error.cancelled) {
       const key = mkUuid();
-      if (result.variantGroupRefs) {
+      if (result.error.variantGroupRefs) {
         this.notifyVariantGroupReferenced(
           component,
-          result.variantGroupRefs,
+          result.error.variantGroupRefs,
           "Cannot delete variant group"
         );
       } else {
         notification.error({
           key,
           message: "Cannot delete variant group",
-          description: result.message,
+          description: result.error.message,
         });
       }
     }
@@ -1264,12 +1283,12 @@ export class SiteOps {
       this.tplMgr
     );
 
-    if (result.result === "error" && !result.cancelled) {
+    if (result.isErr() && !result.error.cancelled) {
       const key = mkUuid();
       notification.error({
         key,
         message: "Cannot delete variant group",
-        description: result.message,
+        description: result.error.message,
       });
     }
   }
@@ -1285,19 +1304,19 @@ export class SiteOps {
       { behaviour: "confirm-if-referenced" }
     );
 
-    if (result.result === "error" && !result.cancelled) {
+    if (result.isErr() && !result.error.cancelled) {
       const key = mkUuid();
-      if (result.variantGroupRefs) {
+      if (result.error.variantGroupRefs) {
         this.notifyVariantGroupReferenced(
           component,
-          result.variantGroupRefs,
+          result.error.variantGroupRefs,
           "Cannot delete variant"
         );
       } else {
         notification.error({
           key,
           message: "Cannot delete variant",
-          description: result.message,
+          description: result.error.message,
         });
       }
       return;
@@ -1376,13 +1395,13 @@ export class SiteOps {
       this.tplMgr
     );
 
-    if (result.result === "error") {
-      if (!result.cancelled) {
+    if (result.isErr()) {
+      if (!result.error.cancelled) {
         const key = mkUuid();
         notification.error({
           key,
           message: "Cannot delete variant group",
-          description: result.message,
+          description: result.error.message,
         });
       }
       return;

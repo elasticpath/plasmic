@@ -815,9 +815,11 @@ export class ViewCtx extends WithDbCtx {
       this.setEditingTextContext(null);
 
       // While rich-text editing, the focus will be on the frame. We reset
-      // it to document.body when done.
-      if (document.activeElement && document.activeElement !== document.body) {
-        (document.activeElement as HTMLElement).blur();
+      // it to document.body when done. This runs async (queued change), so
+      // only blur frames — the user may have already focused e.g. a side
+      // pane input, and we must not steal its focus.
+      if (document.activeElement instanceof HTMLIFrameElement) {
+        document.activeElement.blur();
       }
     });
   }
@@ -1275,6 +1277,11 @@ export class ViewCtx extends WithDbCtx {
   private async syncInternal(optss: ViewCtxSyncArgs[]) {
     const opts = this.mergeEvalArgs(optss);
     const doEval = async () => {
+      if (this._isDisposed) {
+        // The queue may still hold syncs scheduled before disposal.
+        // csEvaluator is gone by now, so there's nothing left to evaluate.
+        return;
+      }
       console.log(
         `${this.tplMgr().describeArenaFrame(this.arenaFrame())}: Eval ${
           opts.asap ? "sync" : "async"

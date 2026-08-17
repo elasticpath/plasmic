@@ -509,7 +509,15 @@ export interface ApiProject extends ApiEntityBase {
   extraData: ProjectExtraData | null;
   readableByPublic: boolean;
   isUserStarter?: boolean;
+<<<<<<< HEAD
   isOrgStarter?: boolean;
+=======
+  /**
+   * Declared as `never` so that any attempt to build `ApiProject` by spreading
+   * `Project` fails to compile.
+   */
+  secretApiToken?: never;
+>>>>>>> upstream/master
 }
 
 export interface ApiProjectMeta
@@ -1550,6 +1558,7 @@ export type CheckDomainStatus =
       isAnyPlasmicDomain: boolean;
       isCorrectlyConfigured?: boolean;
       configuredBy?: string;
+      configCheckFailed?: boolean;
     };
 
 export interface CheckDomainRequest {
@@ -1667,8 +1676,12 @@ export type SetDomainStatus =
   | "DomainInvalid"
   | "DomainUsedElsewhereInPlasmic"
   | "DomainUsedElsewhereInVercel"
+  | "VercelAuthError"
   | "OtherDomainError"
   | "DomainUpdated";
+
+/** What was being done to a domain when it failed. */
+export type SetDomainOperation = "register" | "remove";
 
 export interface SetSubdomainForProjectRequest {
   subdomain?: string;
@@ -1684,8 +1697,16 @@ export interface SetCustomDomainForProjectRequest {
   projectId: ProjectId;
 }
 
+/** What happened to one domain. */
+export interface SetDomainOutcome {
+  status: SetDomainStatus;
+  vercelErrorCode?: string;
+  operation?: SetDomainOperation;
+}
+
 export interface SetCustomDomainForProjectResponse {
-  status: { [domain: string]: SetDomainStatus };
+  /** Keyed by domain, or by "" when the outcome isn't about a specific domain. */
+  domains: { [domain: string]: SetDomainOutcome };
 }
 export type ApiAnalyticsProjectMeta = {
   pages: Array<{

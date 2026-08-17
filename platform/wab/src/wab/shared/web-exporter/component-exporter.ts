@@ -43,6 +43,7 @@ import {
   ImageAssetRef,
   Interaction,
   ObjectPath,
+  PageHref,
   RuleSet,
   Site,
   StyleTokenRef,
@@ -51,6 +52,7 @@ import {
   TplNode,
   TplSlot,
   TplTag,
+  VarRef,
   Variant,
   VariantSetting,
   isKnownCollectionExpr,
@@ -59,11 +61,13 @@ import {
   isKnownExprText,
   isKnownFunctionArg,
   isKnownFunctionExpr,
+  isKnownImageAssetRef,
   isKnownObjectPath,
   isKnownPageHref,
   isKnownPropParam,
   isKnownRawText,
   isKnownRenderExpr,
+  isKnownStyleTokenRef,
   isKnownTemplatedString,
   isKnownTplRef,
   isKnownVarRef,
@@ -74,6 +78,7 @@ import {
   isBoolType,
   isNumType,
   isOptionsType,
+  normalizeToChoiceObjects,
 } from "@/wab/shared/model/model-util";
 import {
   TplVisibility,
@@ -140,6 +145,7 @@ function serializeExprValue(expr: Expr): JsonValue | undefined {
         ? jsonValue
         : exprToInterpolatedString(valueExpr);
     })
+    .when([VarRef, PageHref], (refExpr) => exprToInterpolatedString(refExpr))
     .elseUnsafe(() => undefined);
 }
 
@@ -498,8 +504,11 @@ function buildComponentProps(component: Component): PropJson[] {
   return component.params
     .filter((param) => isKnownPropParam(param))
     .map((param) => {
+      // Options are stored either as plain values or as {label, value}
+      // objects; read always shows the labeled form so the tools have one
+      // shape to write back.
       const options = isOptionsType(param.type)
-        ? (param.type.options as string[])
+        ? normalizeToChoiceObjects(param.type.options)
         : undefined;
       const prop: PropJson = {
         __type: "Prop",
@@ -511,7 +520,7 @@ function buildComponentProps(component: Component): PropJson[] {
         prop.options = options;
       }
       if (param.defaultExpr) {
-        const defaultValue = serializeExprValue(param.defaultExpr);
+        const defaultValue = buildExprValueJson(component, param.defaultExpr);
         if (defaultValue !== undefined) {
           prop.default = defaultValue;
         }
@@ -582,6 +591,20 @@ export function buildExprJson(
       code: isKnownCustomCode(expr.bodyExpr)
         ? stripParens(expr.bodyExpr.code)
         : undefined,
+    };
+  }
+  if (isKnownImageAssetRef(expr)) {
+    return {
+      __type: "ImageAssetRef",
+      uuid: expr.asset.uuid,
+      name: expr.asset.name,
+    };
+  }
+  if (isKnownStyleTokenRef(expr)) {
+    return {
+      __type: "StyleTokenRef",
+      uuid: expr.token.uuid,
+      name: expr.token.name,
     };
   }
   return undefined;

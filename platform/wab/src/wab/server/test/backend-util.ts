@@ -84,12 +84,15 @@ export async function getTeamAndWorkspace(db1: DbMgr) {
 
 /**
  * In CI, creates DB with random name and drops DB in cleanup.
- * In non-CI, creates DB with wab_dev_<name> and doesn't drop in cleanup,
- * allowing you to inspect the database after the test.
+ * In non-CI, creates DB with wab_dev_<name><worker> and doesn't drop in
+ * cleanup, allowing you to inspect the database after the test. The worker
+ * suffix keeps test files running in parallel off each other's database.
  */
 export async function createDatabase(name = "test") {
   const isCI = !!process.env.CI;
-  const dbname = isCI ? dbNameGen(name) : `wab_dev_${name}`;
+  const dbname = isCI
+    ? dbNameGen(name)
+    : `wab_dev_${name}${process.env.VITEST_POOL_ID ?? ""}`;
   const sucon = await ensureDbConnection(
     "postgresql://superwab@localhost/postgres",
     "super"
@@ -97,7 +100,15 @@ export async function createDatabase(name = "test") {
   await sucon.query("select 1");
   await sucon.query(`drop database if exists ${dbname} with (force);`);
   await sucon.query(`create database ${dbname} owner wab;`);
-  await sucon.query(`grant pg_signal_backend to wab;`);
+  // pg_auth_members is a cluster-wide catalog, so parallel workers issuing this
+  // same grant race on its unique index. Losing the race means it's granted.
+  try {
+    await sucon.query(`grant pg_signal_backend to wab;`);
+  } catch (e) {
+    if (e.code !== "23505") {
+      throw e;
+    }
+  }
   const dburi = `postgresql://wab@localhost/${dbname}`;
   const con = await ensureDbConnection(dburi, dbname);
   // Also create migration-pool pointing at the same test DB — needed by

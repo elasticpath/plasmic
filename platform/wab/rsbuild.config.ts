@@ -24,10 +24,14 @@ import {
 const commitHash = execSync("git rev-parse HEAD").toString().slice(0, 6);
 const buildEnv = process.env.NODE_ENV ?? "production";
 const isProd = buildEnv === "production";
+// Interface to listen on, shared with the other servers in the dev stack.
+const bindHost: string = process.env.BIND_HOST ?? "0.0.0.0";
 const port: number = process.env.PORT ? +process.env.PORT : 3003;
 const backendPort: number = process.env.BACKEND_PORT
   ? +process.env.BACKEND_PORT
   : 3004;
+// Where to reach the backend, which is not necessarily where it binds.
+const backendHost: string = process.env.BACKEND_HOST ?? "localhost";
 const publicUrl: string =
   process.env.PUBLIC_URL ?? (isProd ? homepage : `http://localhost:${port}`);
 const staticUrl: string = process.env.STATIC_URL ?? publicUrl;
@@ -36,7 +40,9 @@ console.log(`Starting rsbuild...
 - commitHash: ${commitHash}
 - buildEnv: ${buildEnv}
 - publicUrl: ${publicUrl}
+- bindHost: ${bindHost}
 - port: ${port}
+- backendHost: ${backendHost}
 - backendPort: ${backendPort}
 `);
 
@@ -131,10 +137,11 @@ export default defineConfig({
     writeToDisk: publicUrl.includes("localhost") ? true : false,
   },
   server: {
+    host: bindHost,
     port,
     proxy: {
       "/api": {
-        target: `http://localhost:${backendPort}`,
+        target: `http://${backendHost}:${backendPort}`,
         ws: true,
       },
     },
@@ -246,7 +253,6 @@ export default defineConfig({
             NODE_ENV: REQUIRED_VAR,
             COMMITHASH: commitHash,
             STATIC_URL: OPTIONAL_VAR,
-            INTERCOM_APP_ID: OPTIONAL_VAR,
             POSTHOG_API_KEY: OPTIONAL_VAR,
             POSTHOG_HOST: OPTIONAL_VAR,
             POSTHOG_REVERSE_PROXY_HOST: OPTIONAL_VAR,

@@ -1,6 +1,6 @@
 {
   "name": "@plasmicpkgs/plasmic-wordpress-graphql",
-  "version": "0.0.174",
+  "version": "0.0.177",
   "description": "Plasmic Wordpress GraphQL components.",
   "homepage": "https://www.plasmic.app",
   "repository": {
@@ -41,8 +41,8 @@
     }
   ],
   "devDependencies": {
-    "@plasmicapp/host": "2.0.15",
-    "@plasmicapp/query": "0.1.83",
+    "@plasmicapp/host": "2.0.17",
+    "@plasmicapp/query": "0.1.87",
     "@types/dlv": "^1.1.5",
     "@types/react": "^18",
     "@types/react-dom": "^18",

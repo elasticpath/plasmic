@@ -21,7 +21,6 @@ import {
 } from "@/wab/client/studio-ctx/ui/studio-ui-ids";
 import { ViewCtx } from "@/wab/client/studio-ctx/view-ctx";
 import { getAncestorTplSlot } from "@/wab/shared/SlotUtils";
-import { isStandaloneVariantGroup } from "@/wab/shared/Variants";
 import { StudioPropType } from "@/wab/shared/code-components/code-components";
 import { toVarName } from "@/wab/shared/codegen/util";
 import { assert, ensure, isNonNil } from "@/wab/shared/common";
@@ -64,7 +63,6 @@ import {
   Site,
   State,
   TplNode,
-  VariantGroup,
   isKnownNamedState,
 } from "@/wab/shared/model/classes";
 import { getPlumeEditorPlugin } from "@/wab/shared/plume/plume-registry";
@@ -209,23 +207,6 @@ export function getItemChildColumns(
   return mkListColumn(item.value, getItemPath(item), opts);
 }
 
-/**
- * Formats an error into a readable message for display in the picker.
- */
-export function formatErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  if (typeof error === "string") {
-    return error;
-  }
-  try {
-    return JSON.stringify(error, null, 2) ?? String(error);
-  } catch {
-    return String(error);
-  }
-}
-
 /** Column shown after selecting `value` at `path`: its fields, or none for a leaf. */
 function mkListColumn(
   value: any,
@@ -278,12 +259,6 @@ export function evalExpr(path: (string | number)[], data: Record<string, any>) {
   } catch {
     return undefined;
   }
-}
-
-export function getExpectedValuesForVariantGroup(group: VariantGroup) {
-  return isStandaloneVariantGroup(group)
-    ? `true, false, "${toVarName(group.variants[0].name)}"`
-    : group.variants.map((v) => `"${toVarName(v.name)}"`).join(", ");
 }
 
 export function prepareEnvForDataPicker(
