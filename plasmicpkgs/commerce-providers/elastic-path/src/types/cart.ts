@@ -1,5 +1,5 @@
 import type {
-  CartIncluded,
+  CartItemObject,
   CartResponse as EpCart,
 } from "@epcc-sdk/sdks-shopper";
 import type { FormattedPrice } from "../utils/price";
@@ -12,7 +12,9 @@ export type SelectedOption = {
 };
 
 type EpCartMeta = NonNullable<EpCart["meta"]>;
-type EpCartItem = NonNullable<CartIncluded["items"]>[number];
+/** EP's cart line. The union `CartIncluded["items"]` also covers custom and
+ * subscription items; a storefront line is always this one. */
+type EpCartItem = CartItemObject;
 
 export type CartMeta = Omit<EpCartMeta, "display_price"> & {
   display_price?: {
@@ -35,6 +37,7 @@ export type CartItem = EpCartItem & {
     display_price?: {
       with_tax?: CartItemPricePair;
       without_tax?: CartItemPricePair;
+      without_discount?: CartItemPricePair;
       discount?: CartItemPricePair;
       tax?: CartItemPricePair;
     };

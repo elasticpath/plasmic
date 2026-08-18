@@ -4,6 +4,7 @@ import registerComponent, {
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../registerable";
+import type { CartItem } from "../types/cart";
 import { MOCK_CART_LINE_ITEMS } from "../utils/design-time-data";
 
 type PreviewState = "auto" | "withData";
@@ -62,9 +63,7 @@ export function EPCartItemImage(props: EPCartItemImageProps) {
     previewState = "auto",
   } = props;
 
-  const currentItem = useSelector("currentCartItem") as
-    | { imageUrl?: string; imageAlt?: string }
-    | undefined;
+  const currentItem = useSelector("currentCartItem") as CartItem | undefined;
   const inEditor = !!usePlasmicCanvasContext();
 
   const useMock =
@@ -72,8 +71,8 @@ export function EPCartItemImage(props: EPCartItemImageProps) {
 
   const effectiveItem = useMock ? MOCK_CART_LINE_ITEMS[0] : currentItem;
 
-  const imageUrl = effectiveItem?.imageUrl;
-  const imageAlt = effectiveItem?.imageAlt || "";
+  const imageUrl = effectiveItem?.image?.href;
+  const imageAlt = effectiveItem?.name || "";
 
   if (!imageUrl) {
     return (

@@ -4,11 +4,13 @@ import registerComponent, {
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../registerable";
+import type { Cart } from "../types/cart";
 import { MOCK_CART_DATA } from "../utils/design-time-data";
 
 type CartFieldName =
   | "itemCount"
   | "formattedSubtotal"
+  | "formattedTax"
   | "formattedTotal"
   | "currencyCode"
   | "isEmpty";
@@ -32,6 +34,7 @@ export const epCartFieldMeta: CodeComponentMeta<EPCartFieldProps> = {
       options: [
         { label: "Item Count", value: "itemCount" },
         { label: "Formatted Subtotal", value: "formattedSubtotal" },
+        { label: "Formatted Tax", value: "formattedTax" },
         { label: "Formatted Total", value: "formattedTotal" },
         { label: "Currency Code", value: "currencyCode" },
         { label: "Is Empty", value: "isEmpty" },
@@ -53,21 +56,45 @@ export const epCartFieldMeta: CodeComponentMeta<EPCartFieldProps> = {
   importName: "EPCartField",
 };
 
+/**
+ * Resolves a saved field choice against the cart.
+ *
+ * The choice *values* are the binding contract, so they stay stable while the
+ * paths behind them move with Elastic Path's shape.
+ */
+function cartFieldValue(cart: Cart, field: CartFieldName): unknown {
+  const price = cart.meta?.display_price;
+  switch (field) {
+    case "itemCount":
+      return cart.itemCount;
+    case "formattedSubtotal":
+      return price?.without_tax?.formatted;
+    case "formattedTax":
+      return price?.tax?.formatted;
+    case "formattedTotal":
+      return price?.with_tax?.formatted ?? price?.without_tax?.formatted;
+    case "currencyCode":
+      return price?.without_tax?.currency ?? price?.with_tax?.currency;
+    case "isEmpty":
+      return cart.itemCount === 0;
+  }
+}
+
 export function EPCartField(props: EPCartFieldProps) {
   const { field, className, previewState = "auto" } = props;
 
-  const cartData = useSelector("cartData") as Record<string, any> | undefined;
+  const cart = useSelector("cart") as Cart | undefined;
   const inEditor = !!usePlasmicCanvasContext();
 
-  const useMock =
-    previewState === "withData" || (!cartData && inEditor);
+  const useMock = previewState === "withData" || (!cart && inEditor);
 
-  const effectiveData = useMock ? MOCK_CART_DATA : cartData;
+  const effectiveData = useMock ? MOCK_CART_DATA : cart;
 
   if (!effectiveData) return null;
 
-  const value = effectiveData[field];
-  const display = typeof value === "boolean" ? String(value) : value;
+  const value = cartFieldValue(effectiveData, field);
+  const display =
+    typeof value === "boolean" ? String(value) : (value as React.ReactNode);
 
   return <span className={className}>{display ?? ""}</span>;
 }
