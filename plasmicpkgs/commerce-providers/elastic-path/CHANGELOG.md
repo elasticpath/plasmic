@@ -1,5 +1,76 @@
 # Changelog
 
+## 0.4.0
+
+### Breaking
+
+Products and carts are now Elastic Path's own response shapes, augmented rather
+than normalized (ADR-0002). Elastic Path's API documentation is the binding
+reference: what the docs describe is what `$ctx.currentProduct` and `$ctx.cart`
+carry. Every saved binding that reached into the old Shopify-lineage shape
+needs repointing.
+
+| Was | Now |
+| --- | --- |
+| `currentProduct.name` | `currentProduct.attributes.name` |
+| `currentProduct.description` / `.sku` / `.slug` | `currentProduct.attributes.*` |
+| `currentProduct.price.value` | `currentProduct.meta.display_price.without_tax.float_price` |
+| `currentProduct.price.currencyCode` | `currentProduct.meta.display_price.without_tax.currency` |
+| `currentProduct.options` | `currentProduct.variations` |
+| `currentProduct.variants` | `currentProduct.childProducts` |
+| `currentProduct.path` | removed — build it from `attributes.slug` |
+| `cart.lineItems` | `cart.items` |
+| `cart.subtotalPrice` / `.totalPrice` | `cart.meta.display_price.without_tax` / `.with_tax` |
+| `cart.currency.code` | `cart.meta.display_price.without_tax.currency` |
+| `$ctx.cartData` | `$ctx.cart` |
+| `$ctx.checkoutCartData` | `$ctx.cart` |
+| `currentVariationOption.label` | `currentVariationOption.name` |
+| `currentCartItem.imageUrl` | `currentCartItem.image.href` |
+| search hit `currentProduct.path` / `._highlightedName` | `$ctx.currentHit.path` / `.highlightedName` |
+
+`EPProductField`, `EPCartField` and `EPCartItemField` selections survive: the
+saved choice values are unchanged and only the paths behind them moved.
+`EPCartItemField`'s "Variant ID" choice is removed — it always held the same
+value as "Product ID".
+
+Also removed: `hexColors` on variation options (Elastic Path has no colour
+there, and it was only ever populated by the design-time mock), `CartItemBody`,
+`ExtendedCartItem`, `deriveCartData`, `buildCurrentProduct`, `CheckoutCartData`,
+and five uncalled functions in `cartDataBuilder`.
+
+### Money
+
+Prices carry Elastic Path's own `formatted` string, and `currencyDisplay`
+defaults to a new `"platform"` value that renders it — so a store's Commerce
+Manager formatting is honoured. `"symbol"` and `"code"` keep the previous
+`Intl` behaviour.
+
+`amount / 100` is gone. Decimals come from the currency's real exponent, so
+zero-decimal currencies (JPY `amount: 5000` → `¥5,000`) are correct where they
+previously rendered 100x too small.
+
+### Fixed
+
+- A cart's subtotal, tax and total were one tax-inclusive number assigned to
+  all three. Elastic Path reports them separately and they now stay separate.
+- Money formatting used `Intl.NumberFormat(undefined, …)`, so the server
+  formatted with Node's locale and the browser with its own — the visible
+  symptom was `US$20.00` against Elastic Path's own `$20.00`. Every `Intl` call
+  now takes an explicit locale, and the four checkout sites that hardcoded
+  `en-US` read the provider's locale.
+- Server-rendered product lists joined no images: `epGetProductList` and
+  `epGetRelatedProducts` passed the response where the locale goes and the
+  locale where the `included` block goes.
+- A base product's price was inherited from whichever child Elastic Path
+  happened to return first. It is now `priceFrom`, the lowest.
+- Variations ignored the merchandiser's `sort_order`, which Elastic Path
+  documents as the display-order contract.
+- The variation picker matched child products on option display names, so
+  renaming an option in Commerce Manager silently stopped resolving a child.
+  It matches on option ids.
+- An empty cart rendered "Loading cart…", being indistinguishable from a cart
+  that had not loaded. `EPCartProvider` gains `loading`/`error`/`empty` slots.
+
 ## 0.3.0
 
 ### Breaking
