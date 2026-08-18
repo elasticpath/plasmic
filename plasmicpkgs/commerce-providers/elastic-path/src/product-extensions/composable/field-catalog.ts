@@ -13,32 +13,63 @@ export interface ProductFieldLeaf {
 
 /** The curated top-level leaf set; add a leaf here to surface a new field in the dropdown. */
 export const PRODUCT_FIELD_LEAVES: ProductFieldLeaf[] = [
-  { id: "name", label: "Name", path: ["name"], defaultFormat: "text" },
+  {
+    id: "name",
+    label: "Name",
+    path: ["attributes", "name"],
+    defaultFormat: "text",
+  },
   {
     id: "description",
     label: "Description",
-    path: ["description"],
+    path: ["attributes", "description"],
     defaultFormat: "text",
   },
-  { id: "sku", label: "SKU", path: ["sku"], defaultFormat: "text" },
-  { id: "slug", label: "Slug", path: ["slug"], defaultFormat: "text" },
+  { id: "sku", label: "SKU", path: ["attributes", "sku"], defaultFormat: "text" },
+  {
+    id: "slug",
+    label: "Slug",
+    path: ["attributes", "slug"],
+    defaultFormat: "text",
+  },
   {
     id: "price",
     label: "Price (formatted)",
-    path: ["price", "value"],
+    // float_price, never amount — amount is 4999 where float_price is 49.99.
+    path: ["meta", "display_price", "without_tax", "float_price"],
     defaultFormat: "currency",
-    currencyPath: ["price", "currencyCode"],
+    currencyPath: ["meta", "display_price", "without_tax", "currency"],
+  },
+  {
+    id: "priceWithTax",
+    label: "Price incl. tax (formatted)",
+    path: ["meta", "display_price", "with_tax", "float_price"],
+    defaultFormat: "currency",
+    currencyPath: ["meta", "display_price", "with_tax", "currency"],
+  },
+  {
+    id: "priceFormatted",
+    label: "Price (Elastic Path formatted)",
+    path: ["meta", "display_price", "without_tax", "formatted"],
+    defaultFormat: "raw",
+  },
+  {
+    id: "priceFrom",
+    label: "Price from (lowest child)",
+    path: ["priceFrom", "float_price"],
+    defaultFormat: "currency",
+    currencyPath: ["priceFrom", "currency"],
   },
   {
     id: "priceValue",
     label: "Price (raw number)",
-    path: ["price", "value"],
+    path: ["meta", "display_price", "without_tax", "float_price"],
     defaultFormat: "number",
   },
   {
     id: "currencyCode",
     label: "Currency code",
-    path: ["price", "currencyCode"],
+    path: ["meta", "display_price", "without_tax", "currency"],
     defaultFormat: "text",
   },
   {

@@ -68,7 +68,7 @@ describe("epGetProduct", () => {
 
     expect(result).not.toBeNull();
     expect(result?.id).toBe("test-product-id");
-    expect(result?.name).toBe("Test Product");
+    expect(result?.attributes?.name).toBe("Test Product");
     expect(mockGetByContextProduct).toHaveBeenCalledTimes(1);
     expect(mockGetByContextProduct).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -178,7 +178,7 @@ describe("epGetProduct", () => {
     );
 
     expect(result).not.toBeNull();
-    expect(result?.name).toBe("From ALS");
+    expect(result?.attributes?.name).toBe("From ALS");
   });
 
   it("fetches parent and attaches __initialVariantId when id points at a child variant", async () => {
@@ -224,7 +224,7 @@ describe("epGetProduct", () => {
 
     expect(result).not.toBeNull();
     expect(result?.id).toBe("parent-id");
-    expect(result?.name).toBe("Parent Product");
+    expect(result?.attributes?.name).toBe("Parent Product");
     expect((result as { __initialVariantId?: string }).__initialVariantId).toBe(
       "child-id"
     );

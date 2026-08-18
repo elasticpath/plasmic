@@ -149,7 +149,10 @@ export function EPAddToCartButton(props: EPAddToCartButtonProps) {
 
       await callEpProxy(
         "addCartItem",
-        extractCartItemFromForm(formValues, product, {})
+        extractCartItemFromForm(formValues, product, {}) as unknown as Record<
+          string,
+          unknown
+        >
       );
 
       // Refresh any EPCartProvider in the tree.

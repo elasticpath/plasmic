@@ -15,40 +15,12 @@ describe("productValidation", () => {
       });
     });
 
-    it("returns error when product has no raw data", () => {
-      const product = { rawData: undefined } as Product;
-      const result = validateBundleProduct(product);
-      
-      expect(result).toEqual({
-        isValid: false,
-        isBundle: false,
-        components: {},
-        errorMessage: "Product data not available"
-      });
-    });
-
-    it("returns error when product data is missing", () => {
-      const product = { rawData: { data: null } } as Product;
-      const result = validateBundleProduct(product);
-      
-      expect(result).toEqual({
-        isValid: false,
-        isBundle: false,
-        components: {},
-        errorMessage: "Product data not available"
-      });
-    });
-
     it("returns error when product is not a bundle", () => {
       const product = {
-        rawData: {
-          data: {
             meta: {
               product_types: ["simple"]
             }
-          }
-        }
-      } as Product;
+          } as Product;
       
       const result = validateBundleProduct(product);
       
@@ -74,9 +46,7 @@ describe("productValidation", () => {
         }
       };
 
-      const product = {
-        rawData: { data: bundleData }
-      } as Product;
+      const product = bundleData as unknown as Product;
       
       const result = validateBundleProduct(product);
       
@@ -97,9 +67,7 @@ describe("productValidation", () => {
         attributes: {}
       };
 
-      const product = {
-        rawData: { data: bundleData }
-      } as Product;
+      const product = bundleData as unknown as Product;
       
       const result = validateBundleProduct(product);
       
@@ -113,13 +81,9 @@ describe("productValidation", () => {
 
     it("handles product with missing meta", () => {
       const product = {
-        rawData: {
-          data: {
             id: "product-123"
             // no meta
-          }
-        }
-      } as Product;
+          } as Product;
       
       const result = validateBundleProduct(product);
       

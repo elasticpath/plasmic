@@ -4,6 +4,7 @@ import {
   validateAndParseQuantity,
 } from '../cartDataBuilder';
 import type { BundleConfiguration } from '@epcc-sdk/sdks-shopper';
+import type { Product } from '../../../types/product';
 
 describe('cartDataBuilder', () => {
   const mockBundleConfig: BundleConfiguration = {
@@ -74,7 +75,7 @@ describe('cartDataBuilder', () => {
           SelectedLocationSlug: 'warehouse-north',
           BundleConfiguration: mockBundleConfig,
         },
-        product,
+        product as unknown as Product,
         {}
       );
 
@@ -96,13 +97,13 @@ describe('cartDataBuilder', () => {
         variations: [],
         childProducts: [{ id: 'child-s' }, { id: 'child-m' }],
       };
-      expect(extractCartItemFromForm({}, withChildren, {}).productId).toBe(
+      expect(extractCartItemFromForm({}, withChildren as unknown as Product, {}).productId).toBe(
         'child-s'
       );
 
       const simple = { id: 'prod-1', variations: [], childProducts: [] };
-      expect(extractCartItemFromForm({}, simple, {}).productId).toBe('prod-1');
-      expect(extractCartItemFromForm({}, simple, {}).quantity).toBe(1);
+      expect(extractCartItemFromForm({}, simple as unknown as Product, {}).productId).toBe('prod-1');
+      expect(extractCartItemFromForm({}, simple as unknown as Product, {}).quantity).toBe(1);
     });
 
   describe('validateAndParseQuantity', () => {
