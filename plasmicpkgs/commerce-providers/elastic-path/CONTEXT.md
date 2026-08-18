@@ -114,14 +114,16 @@ shipping charges — never `applyCartAdjustment` with `kind: "shipping"`.
 
 ### Product & cart shapes
 
-**Display price**:
-Elastic Path's own price object — integer amount in the currency's lowest
+**Formatted price**:
+Elastic Path's own price leaf — integer amount in the currency's lowest
 denomination, ISO currency code, the display-ready `formatted` string, and
 the decimal `float_price`. Elastic Path omits the decimal on cart and line
 prices; this package fills it in, derived from that currency's own exponent
 and never a fixed hundredth, so zero-decimal currencies (JPY) are correct.
 Every price the package publishes carries all four. `formatted` is the
 preferred read — it is what Commerce Manager was configured to produce.
+Elastic Path's *display price* is the block holding the with-tax and
+without-tax pair, not the leaf itself.
 _Avoid_: Money, ProductPrice, price value, cents
 
 **Base product**:

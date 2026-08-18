@@ -1,49 +1,65 @@
-import type { ProductData } from "@epcc-sdk/sdks-shopper";
+import type { Product as EpProduct } from "@epcc-sdk/sdks-shopper";
+import type { FormattedPrice } from "../utils/price";
+
+type EpProductMeta = NonNullable<EpProduct["meta"]>;
 
 export type ProductImage = {
   url: string;
   alt?: string;
 };
 
-export type ProductPrice = {
-  value: number;
-  currencyCode?: string;
-};
-
-export type ProductOptionValues = {
-  label: string;
-  hexColors?: string[];
-};
-
-export type ProductOption = {
+/** One choice within a variation, e.g. "Large" under "Size". */
+export type VariationOption = {
   id: string;
-  displayName: string;
-  values: ProductOptionValues[];
+  name: string;
+  description?: string;
+  sortOrder?: number;
 };
 
-export type ProductVariant = {
-  id: string | number;
+/** An option group a shopper chooses from to select a child product. */
+export type Variation = {
+  id: string;
   name: string;
-  options: ProductOption[];
-  price?: number;
-  availableForSale?: boolean;
+  sortOrder?: number;
+  options: VariationOption[];
+};
+
+/** A purchasable product selected by one combination of variation options. */
+export type ChildProduct = {
+  id: string;
+  name: string;
+  sku?: string;
+  price?: FormattedPrice;
+  /** The variation options that select this child, from `meta.variation_matrix`. */
+  optionIds: string[];
+  images: ProductImage[];
+};
+
+type CompletedDisplayPrice = {
+  with_tax?: FormattedPrice;
+  without_tax?: FormattedPrice;
+};
+
+export type ProductMeta = Omit<
+  EpProductMeta,
+  "display_price" | "original_display_price"
+> & {
+  display_price?: CompletedDisplayPrice;
+  original_display_price?: CompletedDisplayPrice;
 };
 
 /**
- * Field names here are a saved-binding contract: EPProductProvider pushes this
- * object through DataProvider, so designers reach them as `$ctx.currentProduct.*`.
- * Renaming one breaks published storefronts with no build or test failure.
+ * Elastic Path's product, augmented with only what a Studio binding expression
+ * cannot compute. See docs/adr/0002-augmented-ep-shapes-not-normalized.md.
  */
-export type Product = {
-  id: string;
-  name: string;
-  description: string;
-  sku?: string;
-  slug?: string;
-  path?: string;
+export type Product = Omit<EpProduct, "meta"> & {
+  meta?: ProductMeta;
+  /** Joined from `relationships` and the response's `included` block. */
   images: ProductImage[];
-  variants: ProductVariant[];
-  price: ProductPrice;
-  options: ProductOption[];
-  rawData?: ProductData;
+  /** `meta.variations`, in the merchandiser's sort order. */
+  variations: Variation[];
+  /** Flattened out of `meta.variation_matrix`. */
+  childProducts: ChildProduct[];
+  /** Base products only: the lowest price among the children. */
+  priceFrom?: FormattedPrice;
 };

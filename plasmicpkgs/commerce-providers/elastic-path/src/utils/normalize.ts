@@ -2,19 +2,21 @@ import type {
   CartEntityResponse,
   CartIncluded,
   CartItemObject,
+  Product as EpProduct,
   Product as ElasticPathProduct,
   ProductData,
   ProductListData,
-  Variation,
+  Variation as EpVariation,
   VariationOption,
 } from "@epcc-sdk/sdks-shopper";
 import { Cart, LineItem } from "../types/cart";
 import {
+  ChildProduct,
   Product,
-  ProductOption,
-  ProductOptionValues,
-  ProductVariant,
+  ProductMeta,
+  Variation,
 } from "../types/product";
+import { completePrice, FormattedPrice } from "./price";
 import { dedup } from "./common";
 
 // Variation matrix is a nested object mapping option IDs to child product IDs
@@ -175,128 +177,89 @@ const getProductPrice = (
   return money(0);
 };
 
+/**
+ * A base product carries no `display_price` of its own — every child does.
+ * The lowest of them is the "from" price a variation family displays.
+ */
+const lowestChildPrice = (
+  childProducts?: ProductListData
+): FormattedPrice | undefined =>
+  (childProducts?.data ?? [])
+    .map((child) => completePrice(child.meta?.display_price?.without_tax))
+    .filter((price): price is FormattedPrice => !!price)
+    .sort((a, b) => a.amount - b.amount)[0];
+
+const normalizeChildProducts = (
+  product: ProductData,
+  childProducts?: ProductListData
+): ChildProduct[] => {
+  const matrix = product.data?.meta?.variation_matrix as
+    | VariationMatrixEntry
+    | undefined;
+
+  return (childProducts?.data ?? []).map((child) => ({
+    id: child.id!,
+    name: child.attributes?.name || "",
+    sku: child.attributes?.sku,
+    price: completePrice(child.meta?.display_price?.without_tax),
+    optionIds:
+      (child.id && matrix
+        ? getOptionsFromSkuId(child.id, matrix)
+        : undefined) ?? [],
+    images: [],
+  }));
+};
+
+/** Ascending by the merchandiser's `sort_order`; anything without one sorts last. */
+const bySortOrder = <T extends { sort_order?: number | null }>(items: T[]): T[] =>
+  [...items].sort(
+    (a, b) => (a.sort_order ?? Infinity) - (b.sort_order ?? Infinity)
+  );
+
+const normalizeVariations = (variations: EpVariation[] | undefined): Variation[] =>
+  bySortOrder(variations ?? []).map((variation) => ({
+    id: variation.id!,
+    name: variation.name!,
+    sortOrder: variation.sort_order ?? undefined,
+    options: bySortOrder(variation.options ?? []).map((option) => ({
+      id: option.id!,
+      name: option.name!,
+      description: option.description,
+      sortOrder: option.sort_order ?? undefined,
+    })),
+  }));
+
+const completeDisplayPrice = (
+  displayPrice: { with_tax?: any; without_tax?: any } | undefined
+) =>
+  displayPrice && {
+    ...displayPrice,
+    with_tax: completePrice(displayPrice.with_tax),
+    without_tax: completePrice(displayPrice.without_tax),
+  };
+
+const completeMeta = (meta: EpProduct["meta"]): ProductMeta | undefined =>
+  meta && {
+    ...meta,
+    display_price: completeDisplayPrice(meta.display_price),
+    original_display_price: completeDisplayPrice(meta.original_display_price),
+  };
+
 export const normalizeProduct = (
   product: ProductData,
   locale: string,
   childProducts?: ProductListData
 ): Product => {
-  const name = product.data?.attributes?.name || "";
-  const slug = product.data?.attributes?.slug || "";
-  const description = product.data?.attributes?.description || "";
-  const sku = product.data?.attributes?.sku || "";
-
-  // Build options from variations metadata
-  const options: ProductOption[] = [];
-  if (product.data?.meta?.variations) {
-    product.data?.meta.variations.forEach((variation) => {
-      options.push({
-        id: variation.id!,
-        displayName: variation.name!,
-        values:
-          variation.options?.map((opt) => ({
-            label: opt.name!,
-          })) ?? ([] as ProductOptionValues[]),
-      });
-    });
-  }
-
-  // Build variants from child products if available
-  const parentPrice = getProductPrice(product, childProducts);
-
-  let variants: ProductVariant[] = [
-    {
-      id: product.data!.id!,
-      name: name,
-      price: parentPrice.value,
-      availableForSale: false, // Parent products are never available for sale
-      options: [],
-    },
-  ];
-
-  if (childProducts?.data && childProducts.data.length > 0) {
-    // Replace with actual child product variants
-    variants = childProducts.data.map((childProduct) => {
-      const childPrice = childProduct.meta?.display_price?.without_tax
-        ? money(
-            childProduct.meta.display_price.without_tax.amount,
-            childProduct.meta.display_price.without_tax.currency
-          )
-        : money(0);
-
-      // Map variation values from child product
-      const variantOptions: ProductOption[] = [];
-
-      // The variation_matrix is on the parent product, not the child
-      // It maps variation combinations to child product IDs
-
-      if (
-        product.data?.meta?.variation_matrix &&
-        product.data?.meta?.variations
-      ) {
-        // Find the variation combination for this child product
-        // The variation_matrix maps combinations like "size:small,color:brown" to child IDs
-        const childId = childProduct.id;
-
-        if (!childId) {
-          return {
-            id: "",
-            name: childProduct.attributes?.name || "",
-            price: childPrice.value,
-            options: [],
-          };
-        }
-
-        // Find the option IDs for this child product
-        const optionIds = getOptionsFromSkuId(
-          childId,
-          product.data.meta.variation_matrix as VariationMatrixEntry
-        );
-
-        if (
-          optionIds &&
-          optionIds.length > 0 &&
-          product.data?.meta?.variations
-        ) {
-          variantOptions.push(
-            ...buildVariantOptions(optionIds, product.data.meta.variations)
-          );
-        }
-      }
-
-      // Use the raw amount value directly if display_price is already formatted
-      const rawPrice =
-        childProduct.meta?.display_price?.without_tax?.amount || 0;
-      const formattedPrice =
-        typeof rawPrice === "number"
-          ? rawPrice / 100
-          : parseFloat(rawPrice) || 0;
-
-      // Determine availability based on status and price
-      const isLive = childProduct.attributes?.status === "live";
-      const hasPrice = formattedPrice > 0;
-
-      return {
-        id: childProduct.id!,
-        name: childProduct.attributes?.name || "",
-        price: formattedPrice,
-        availableForSale: isLive && hasPrice,
-        options: variantOptions,
-      };
-    });
-  }
-
+  const data = product.data ?? {};
   return {
-    id: product.data!.id!,
-    name,
-    slug,
-    path: `/${slug}`,
-    description,
-    price: getProductPrice(product, childProducts),
+    ...data,
+    meta: completeMeta(data.meta),
     images: normalizeProductImages(product),
-    variants,
-    options,
-    // Store raw product data for components that need it (like bundle configurator)
-    rawData: product,
+    variations: normalizeVariations(data.meta?.variations),
+    childProducts: normalizeChildProducts(product, childProducts),
+    ...(data.meta?.display_price
+      ? {}
+      : { priceFrom: lowestChildPrice(childProducts) }),
   };
 };
 
