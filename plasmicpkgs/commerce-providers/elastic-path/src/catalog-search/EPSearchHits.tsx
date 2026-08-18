@@ -20,9 +20,7 @@ import registerComponent, {
 } from "@plasmicapp/host/registerComponent";
 import React, { useMemo } from "react";
 import { Registerable } from "../registerable";
-import { formatCurrency } from "../utils/formatCurrency";
 import { MOCK_SEARCH_PRODUCTS } from "./design-time-data";
-import { MOCK_EXTENSIONS_RAW } from "../utils/extensions-mock";
 import type { Product } from "../types/product";
 import { completePrice } from "../utils/price";
 
