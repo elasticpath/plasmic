@@ -3,7 +3,8 @@
  *
  * Reads `productGridData.products` from a parent DataProvider (D4) and renders
  * children once per product via `repeatedElement()`. Each iteration exposes
- * `currentProduct` (with `price.formatted` per D2) and `currentProductIndex`.
+ * `currentProduct` — the same Elastic Path product shape a product page
+ * binds — and `currentProductIndex`.
  *
  * No `parentComponentName` restriction (D5) — works inside both
  * EPProductListProvider and EPRelatedProductsProvider.
@@ -20,7 +21,6 @@ import registerComponent, {
 } from "@plasmicapp/host/registerComponent";
 import React, { useMemo } from "react";
 import { Registerable } from "../registerable";
-import { formatCurrency } from "../utils/formatCurrency";
 import { MOCK_PRODUCTS } from "./design-time-data";
 import type { Product } from "../types/product";
 
@@ -30,48 +30,6 @@ interface EPProductGridProps {
   children?: React.ReactNode;
   className?: string;
   previewState?: PreviewState;
-}
-
-export interface CurrentProduct {
-  id: string;
-  name: string;
-  slug: string;
-  sku: string;
-  description: string;
-  path: string;
-  images: Array<{ url: string; alt?: string }>;
-  price: {
-    value: number;
-    currencyCode: string;
-    formatted: string;
-  };
-  options: Array<{ displayName: string; values: Array<{ label: string }> }>;
-  rawData?: unknown;
-}
-
-export function buildCurrentProduct(product: Product): CurrentProduct {
-  const currencyCode = product.price.currencyCode ?? "USD";
-  const formatted = formatCurrency(product.price.value, currencyCode);
-
-  return {
-    id: product.id,
-    name: product.name,
-    slug: product.slug ?? "",
-    sku: product.sku ?? "",
-    description: product.description,
-    path: product.path ?? `/${product.slug ?? ""}`,
-    images: product.images,
-    price: {
-      value: product.price.value,
-      currencyCode,
-      formatted,
-    },
-    options: product.options.map((opt) => ({
-      displayName: opt.displayName,
-      values: opt.values.map((v) => ({ label: v.label })),
-    })),
-    rawData: (product as any).rawData,
-  };
 }
 
 export const epProductGridMeta: CodeComponentMeta<EPProductGridProps> = {
@@ -133,18 +91,15 @@ export function EPProductGrid(props: EPProductGridProps) {
 
   return (
     <div className={className} role="list" aria-label="Product grid">
-      {products.map((product, i) => {
-        const currentProduct = buildCurrentProduct(product);
-        return (
-          <div key={product.id} role="listitem">
-            <DataProvider name="currentProduct" data={currentProduct}>
-              <DataProvider name="currentProductIndex" data={i}>
-                {repeatedElement(i, children)}
-              </DataProvider>
+      {products.map((product, i) => (
+        <div key={product.id} role="listitem">
+          <DataProvider name="currentProduct" data={product}>
+            <DataProvider name="currentProductIndex" data={i}>
+              {repeatedElement(i, children)}
             </DataProvider>
-          </div>
-        );
-      })}
+          </DataProvider>
+        </div>
+      ))}
     </div>
   );
 }

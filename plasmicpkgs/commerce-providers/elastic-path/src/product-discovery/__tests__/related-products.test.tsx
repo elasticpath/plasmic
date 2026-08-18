@@ -99,6 +99,7 @@ const {
 } = require("../design-time-data") as typeof import("../design-time-data");
 
 import type { Product } from "../../types/product";
+import { mockProduct } from "../../utils/design-time-data";
 
 /* ---------- helpers ---------- */
 const mockClient = { baseUrl: "https://api.test.com" };
@@ -244,15 +245,13 @@ describe("useRelatedProducts", () => {
 
   it("should return products and totalCount from fetched data", () => {
     const mockProducts: Product[] = [
-      {
-        id: "rp1",
-        name: "Related Product 1",
-        description: "desc",
-        price: { value: 25, currencyCode: "USD" },
-        images: [],
-        variants: [],
-        options: [],
-      },
+      mockProduct({
+  id: "rp1",
+  name: "Related Product 1",
+  description: "desc",
+  amount: 2500,
+  currency: "USD",
+}),
     ];
 
     mockUseMutablePlasmicQueryData.mockReturnValue({
@@ -270,7 +269,7 @@ describe("useRelatedProducts", () => {
     );
 
     expect(result.current.products).toHaveLength(1);
-    expect(result.current.products[0].name).toBe("Related Product 1");
+    expect(result.current.products[0].attributes?.name).toBe("Related Product 1");
     expect(result.current.totalCount).toBe(3);
     expect(result.current.isLoading).toBe(false);
   });
@@ -651,24 +650,20 @@ describe("EPRelatedProductsProvider", () => {
 
   it("should render children with productGridData when products are available", () => {
     const testProducts: Product[] = [
-      {
-        id: "rp-1",
-        name: "Related 1",
-        description: "",
-        price: { value: 30, currencyCode: "USD" },
-        images: [],
-        variants: [],
-        options: [],
-      },
-      {
-        id: "rp-2",
-        name: "Related 2",
-        description: "",
-        price: { value: 40, currencyCode: "USD" },
-        images: [],
-        variants: [],
-        options: [],
-      },
+      mockProduct({
+  id: "rp-1",
+  name: "Related 1",
+  description: "",
+  amount: 3000,
+  currency: "USD",
+}),
+      mockProduct({
+  id: "rp-2",
+  name: "Related 2",
+  description: "",
+  amount: 4000,
+  currency: "USD",
+}),
     ];
 
     mockUseMutablePlasmicQueryData.mockReturnValue({
@@ -798,11 +793,12 @@ describe("related products design-time data", () => {
   it("should have valid product shapes", () => {
     for (const product of MOCK_RELATED_PRODUCTS) {
       expect(product.id).toBeTruthy();
-      expect(product.name).toBeTruthy();
-      expect(product.slug).toBeTruthy();
-      expect(product.path).toMatch(/^\//);
-      expect(typeof product.price.value).toBe("number");
-      expect(product.price.currencyCode).toBe("USD");
+      expect(product.attributes?.name).toBeTruthy();
+      expect(product.attributes?.slug).toBeTruthy();
+            expect(typeof product.meta?.display_price?.without_tax?.float_price).toBe(
+        "number"
+      );
+      expect(product.meta?.display_price?.without_tax?.currency).toBe("USD");
       expect(product.images.length).toBeGreaterThan(0);
     }
   });

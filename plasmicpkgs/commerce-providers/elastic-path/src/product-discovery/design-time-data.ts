@@ -6,120 +6,87 @@
  */
 
 import type { Product } from "../types/product";
+import { mockProduct } from "../utils/design-time-data";
 
 // ---------------------------------------------------------------------------
 // Product mock data — 6 sample products
 // ---------------------------------------------------------------------------
 
-export const MOCK_PRODUCTS: Product[] = [
-  {
+export const MOCK_PRODUCTS: Product[
+
+] = [
+  mockProduct({
     id: "sample-pd-001",
     name: "Sample Leather Weekender Bag",
     slug: "sample-leather-weekender-bag",
-    path: "/sample-leather-weekender-bag",
-    description: "A hand-crafted full-grain leather weekender bag with brass hardware.",
+    description:
+      "A hand-crafted full-grain leather weekender bag with brass hardware.",
+    amount: 18999,
+    currency: "USD",
     images: [
-      {
-        url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
-        alt: "Sample Leather Weekender Bag",
-      },
+      { url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png", alt: "Sample Leather Weekender Bag" },
     ],
-    variants: [
-      { id: "sample-pd-001", name: "Sample Leather Weekender Bag", price: 189.99, options: [] },
-    ],
-    price: { value: 189.99, currencyCode: "USD" },
-    options: [],
-  },
-  {
+  }),
+  mockProduct({
     id: "sample-pd-002",
     name: "Sample Merino Wool Scarf",
     slug: "sample-merino-wool-scarf",
-    path: "/sample-merino-wool-scarf",
-    description: "Ultra-soft merino wool scarf in a classic herringbone weave.",
+    description:
+      "Ultra-soft merino wool scarf in a classic herringbone weave.",
+    amount: 6499,
+    currency: "USD",
     images: [
-      {
-        url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
-        alt: "Sample Merino Wool Scarf",
-      },
+      { url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png", alt: "Sample Merino Wool Scarf" },
     ],
-    variants: [
-      { id: "sample-pd-002", name: "Sample Merino Wool Scarf", price: 64.99, options: [] },
-    ],
-    price: { value: 64.99, currencyCode: "USD" },
-    options: [],
-  },
-  {
+  }),
+  mockProduct({
     id: "sample-pd-003",
     name: "Sample Canvas Backpack",
     slug: "sample-canvas-backpack",
-    path: "/sample-canvas-backpack",
-    description: "Waxed canvas backpack with padded laptop compartment and leather straps.",
+    description:
+      "Waxed canvas backpack with padded laptop compartment and leather straps.",
+    amount: 12900,
+    currency: "USD",
     images: [
-      {
-        url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
-        alt: "Sample Canvas Backpack",
-      },
+      { url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png", alt: "Sample Canvas Backpack" },
     ],
-    variants: [
-      { id: "sample-pd-003", name: "Sample Canvas Backpack", price: 129.0, options: [] },
-    ],
-    price: { value: 129.0, currencyCode: "USD" },
-    options: [],
-  },
-  {
+  }),
+  mockProduct({
     id: "sample-pd-004",
     name: "Sample Silk Pocket Square",
     slug: "sample-silk-pocket-square",
-    path: "/sample-silk-pocket-square",
-    description: "Hand-rolled Italian silk pocket square with geometric print.",
+    description:
+      "Hand-rolled Italian silk pocket square with geometric print.",
+    amount: 3999,
+    currency: "USD",
     images: [
-      {
-        url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
-        alt: "Sample Silk Pocket Square",
-      },
+      { url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png", alt: "Sample Silk Pocket Square" },
     ],
-    variants: [
-      { id: "sample-pd-004", name: "Sample Silk Pocket Square", price: 39.99, options: [] },
-    ],
-    price: { value: 39.99, currencyCode: "USD" },
-    options: [],
-  },
-  {
+  }),
+  mockProduct({
     id: "sample-pd-005",
     name: "Sample Suede Chelsea Boots",
     slug: "sample-suede-chelsea-boots",
-    path: "/sample-suede-chelsea-boots",
-    description: "Italian suede Chelsea boots with Goodyear welt construction.",
+    description:
+      "Italian suede Chelsea boots with Goodyear welt construction.",
+    amount: 24900,
+    currency: "USD",
     images: [
-      {
-        url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
-        alt: "Sample Suede Chelsea Boots",
-      },
+      { url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png", alt: "Sample Suede Chelsea Boots" },
     ],
-    variants: [
-      { id: "sample-pd-005", name: "Sample Suede Chelsea Boots", price: 249.0, options: [] },
-    ],
-    price: { value: 249.0, currencyCode: "USD" },
-    options: [],
-  },
-  {
+  }),
+  mockProduct({
     id: "sample-pd-006",
     name: "Sample Linen Dress Shirt",
     slug: "sample-linen-dress-shirt",
-    path: "/sample-linen-dress-shirt",
-    description: "Breathable linen dress shirt with mother-of-pearl buttons.",
+    description:
+      "Breathable linen dress shirt with mother-of-pearl buttons.",
+    amount: 8999,
+    currency: "USD",
     images: [
-      {
-        url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
-        alt: "Sample Linen Dress Shirt",
-      },
+      { url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png", alt: "Sample Linen Dress Shirt" },
     ],
-    variants: [
-      { id: "sample-pd-006", name: "Sample Linen Dress Shirt", price: 89.99, options: [] },
-    ],
-    price: { value: 89.99, currencyCode: "USD" },
-    options: [],
-  },
+  }),
 ];
 
 // ---------------------------------------------------------------------------
@@ -162,79 +129,57 @@ export const MOCK_PRODUCT_GRID_DATA: ProductGridData = {
 // Related products mock data — 4 distinct products for Phase 3
 // ---------------------------------------------------------------------------
 
-export const MOCK_RELATED_PRODUCTS: Product[] = [
-  {
+export const MOCK_RELATED_PRODUCTS: Product[
+
+] = [
+  mockProduct({
     id: "sample-rp-001",
     name: "Sample Leather Belt",
     slug: "sample-leather-belt",
-    path: "/sample-leather-belt",
-    description: "Full-grain leather belt with brushed nickel buckle.",
+    description:
+      "Full-grain leather belt with brushed nickel buckle.",
+    amount: 5999,
+    currency: "USD",
     images: [
-      {
-        url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
-        alt: "Sample Leather Belt",
-      },
+      { url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png", alt: "Sample Leather Belt" },
     ],
-    variants: [
-      { id: "sample-rp-001", name: "Sample Leather Belt", price: 59.99, options: [] },
-    ],
-    price: { value: 59.99, currencyCode: "USD" },
-    options: [],
-  },
-  {
+  }),
+  mockProduct({
     id: "sample-rp-002",
     name: "Sample Travel Organizer",
     slug: "sample-travel-organizer",
-    path: "/sample-travel-organizer",
-    description: "Compact leather travel organizer with zippered compartments.",
+    description:
+      "Compact leather travel organizer with zippered compartments.",
+    amount: 7999,
+    currency: "USD",
     images: [
-      {
-        url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
-        alt: "Sample Travel Organizer",
-      },
+      { url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png", alt: "Sample Travel Organizer" },
     ],
-    variants: [
-      { id: "sample-rp-002", name: "Sample Travel Organizer", price: 79.99, options: [] },
-    ],
-    price: { value: 79.99, currencyCode: "USD" },
-    options: [],
-  },
-  {
+  }),
+  mockProduct({
     id: "sample-rp-003",
     name: "Sample Luggage Tag",
     slug: "sample-luggage-tag",
-    path: "/sample-luggage-tag",
-    description: "Personalized leather luggage tag with brass hardware.",
+    description:
+      "Personalized leather luggage tag with brass hardware.",
+    amount: 2499,
+    currency: "USD",
     images: [
-      {
-        url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
-        alt: "Sample Luggage Tag",
-      },
+      { url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png", alt: "Sample Luggage Tag" },
     ],
-    variants: [
-      { id: "sample-rp-003", name: "Sample Luggage Tag", price: 24.99, options: [] },
-    ],
-    price: { value: 24.99, currencyCode: "USD" },
-    options: [],
-  },
-  {
+  }),
+  mockProduct({
     id: "sample-rp-004",
     name: "Sample Toiletry Bag",
     slug: "sample-toiletry-bag",
-    path: "/sample-toiletry-bag",
-    description: "Water-resistant waxed canvas toiletry bag with leather trim.",
+    description:
+      "Water-resistant waxed canvas toiletry bag with leather trim.",
+    amount: 4499,
+    currency: "USD",
     images: [
-      {
-        url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
-        alt: "Sample Toiletry Bag",
-      },
+      { url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png", alt: "Sample Toiletry Bag" },
     ],
-    variants: [
-      { id: "sample-rp-004", name: "Sample Toiletry Bag", price: 44.99, options: [] },
-    ],
-    price: { value: 44.99, currencyCode: "USD" },
-    options: [],
-  },
+  }),
 ];
 
 export const MOCK_RELATED_PRODUCT_GRID_DATA: ProductGridData = {

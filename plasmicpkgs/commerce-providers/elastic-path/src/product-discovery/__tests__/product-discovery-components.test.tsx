@@ -88,7 +88,7 @@ import { render } from "@testing-library/react";
 import { renderHook } from "@testing-library/react";
 
 const { useProductList } = require("../use-product-list") as typeof import("../use-product-list");
-const { EPProductGrid, buildCurrentProduct, epProductGridMeta } =
+const { EPProductGrid, epProductGridMeta } =
   require("../EPProductGrid") as typeof import("../EPProductGrid");
 const { epProductListProviderMeta, registerEPProductListProvider } =
   require("../EPProductListProvider") as typeof import("../EPProductListProvider");
@@ -98,6 +98,7 @@ const { MOCK_PRODUCTS, MOCK_PRODUCT_GRID_DATA } =
   require("../design-time-data") as typeof import("../design-time-data");
 
 import type { Product } from "../../types/product";
+import { mockProduct } from "../../utils/design-time-data";
 
 /* ---------- helpers ---------- */
 const mockClient = { baseUrl: "https://api.test.com" };
@@ -195,15 +196,13 @@ describe("useProductList", () => {
 
   it("should return products and totalCount from fetched data", () => {
     const mockProducts: Product[] = [
-      {
-        id: "p1",
-        name: "Test Product",
-        description: "desc",
-        price: { value: 10, currencyCode: "USD" },
-        images: [],
-        variants: [],
-        options: [],
-      },
+      mockProduct({
+  id: "p1",
+  name: "Test Product",
+  description: "desc",
+  amount: 1000,
+  currency: "USD",
+}),
     ];
 
     mockUseMutablePlasmicQueryData.mockReturnValue({
@@ -218,7 +217,7 @@ describe("useProductList", () => {
     );
 
     expect(result.current.products).toHaveLength(1);
-    expect(result.current.products[0].name).toBe("Test Product");
+    expect(result.current.products[0].attributes?.name).toBe("Test Product");
     expect(result.current.totalCount).toBe(42);
     expect(result.current.isLoading).toBe(false);
   });
@@ -435,24 +434,20 @@ describe("EPProductGrid", () => {
 
   it("should render products from parent DataProvider", () => {
     const testProducts: Product[] = [
-      {
-        id: "test-1",
-        name: "Test Product 1",
-        description: "desc",
-        price: { value: 29.99, currencyCode: "USD" },
-        images: [],
-        variants: [],
-        options: [],
-      },
-      {
-        id: "test-2",
-        name: "Test Product 2",
-        description: "desc",
-        price: { value: 49.99, currencyCode: "USD" },
-        images: [],
-        variants: [],
-        options: [],
-      },
+      mockProduct({
+  id: "test-1",
+  name: "Test Product 1",
+  description: "desc",
+  amount: 2999,
+  currency: "USD",
+}),
+      mockProduct({
+  id: "test-2",
+  name: "Test Product 2",
+  description: "desc",
+  amount: 4999,
+  currency: "USD",
+}),
     ];
 
     mockUseSelector.mockReturnValue({ products: testProducts });
@@ -467,17 +462,16 @@ describe("EPProductGrid", () => {
     expect(listItems.length).toBe(2);
   });
 
-  it("should expose currentProduct with formatted price via DataProvider", () => {
+  it("publishes the Elastic Path product as currentProduct", () => {
     const testProducts: Product[] = [
-      {
-        id: "price-test",
-        name: "Price Test Product",
-        description: "Testing price formatting",
-        price: { value: 29.99, currencyCode: "USD" },
-        images: [{ url: "https://example.com/img.png", alt: "test" }],
-        variants: [],
-        options: [],
-      },
+      mockProduct({
+  id: "price-test",
+  name: "Price Test Product",
+  description: "Testing price formatting",
+  amount: 2999,
+  currency: "USD",
+  images: [{ url: "https://example.com/img.png", alt: "test" }],
+}),
     ];
 
     mockUseSelector.mockReturnValue({ products: testProducts });
@@ -497,33 +491,31 @@ describe("EPProductGrid", () => {
       providerEl!.getAttribute("data-provider-data") || "{}"
     );
     expect(data.id).toBe("price-test");
-    expect(data.name).toBe("Price Test Product");
-    expect(data.price.value).toBe(29.99);
-    expect(data.price.currencyCode).toBe("USD");
-    expect(data.price.formatted).toBeTruthy();
-    expect(data.price.formatted).toContain("29.99");
+    expect(data.attributes.name).toBe("Price Test Product");
+    expect(data.meta.display_price.without_tax).toEqual({
+      amount: 2999,
+      currency: "USD",
+      float_price: 29.99,
+      formatted: "$29.99",
+    });
   });
 
   it("should expose currentProductIndex via DataProvider", () => {
     const testProducts: Product[] = [
-      {
-        id: "idx-0",
-        name: "First",
-        description: "",
-        price: { value: 10, currencyCode: "USD" },
-        images: [],
-        variants: [],
-        options: [],
-      },
-      {
-        id: "idx-1",
-        name: "Second",
-        description: "",
-        price: { value: 20, currencyCode: "USD" },
-        images: [],
-        variants: [],
-        options: [],
-      },
+      mockProduct({
+  id: "idx-0",
+  name: "First",
+  description: "",
+  amount: 1000,
+  currency: "USD",
+}),
+      mockProduct({
+  id: "idx-1",
+  name: "Second",
+  description: "",
+  amount: 2000,
+  currency: "USD",
+}),
     ];
 
     mockUseSelector.mockReturnValue({ products: testProducts });
@@ -561,68 +553,6 @@ describe("EPProductGrid", () => {
   });
 });
 
-/* ---------- buildCurrentProduct tests ---------- */
-describe("buildCurrentProduct", () => {
-  it("should compute formatted price", () => {
-    const product: Product = {
-      id: "format-test",
-      name: "Format Test",
-      slug: "format-test",
-      path: "/format-test",
-      description: "test",
-      price: { value: 189.99, currencyCode: "USD" },
-      images: [{ url: "https://example.com/img.png", alt: "test" }],
-      variants: [],
-      options: [
-        {
-          id: "color",
-          displayName: "Color",
-          values: [{ label: "Red" }, { label: "Blue" }],
-        },
-      ],
-    };
-
-    const result = buildCurrentProduct(product);
-
-    expect(result.id).toBe("format-test");
-    expect(result.name).toBe("Format Test");
-    expect(result.slug).toBe("format-test");
-    expect(result.path).toBe("/format-test");
-    expect(result.description).toBe("test");
-    expect(result.price.value).toBe(189.99);
-    expect(result.price.currencyCode).toBe("USD");
-    expect(result.price.formatted).toContain("189.99");
-    expect(result.images).toHaveLength(1);
-    expect(result.options).toHaveLength(1);
-    expect(result.options[0].displayName).toBe("Color");
-    expect(result.options[0].values).toEqual([
-      { label: "Red" },
-      { label: "Blue" },
-    ]);
-  });
-
-  it("should handle product with no options or images", () => {
-    const product: Product = {
-      id: "minimal",
-      name: "Minimal",
-      description: "",
-      price: { value: 0, currencyCode: "GBP" },
-      images: [],
-      variants: [],
-      options: [],
-    };
-
-    const result = buildCurrentProduct(product);
-
-    expect(result.price.value).toBe(0);
-    expect(result.price.currencyCode).toBe("GBP");
-    expect(result.images).toEqual([]);
-    expect(result.options).toEqual([]);
-    expect(result.slug).toBe("");
-    expect(result.path).toBe("/");
-  });
-});
-
 /* ---------- Design-time data tests ---------- */
 describe("design-time-data", () => {
   it("should have 6 mock products", () => {
@@ -632,11 +562,12 @@ describe("design-time-data", () => {
   it("should have valid product shapes", () => {
     for (const product of MOCK_PRODUCTS) {
       expect(product.id).toBeTruthy();
-      expect(product.name).toBeTruthy();
-      expect(product.slug).toBeTruthy();
-      expect(product.path).toMatch(/^\//);
-      expect(typeof product.price.value).toBe("number");
-      expect(product.price.currencyCode).toBe("USD");
+      expect(product.attributes?.name).toBeTruthy();
+      expect(product.attributes?.slug).toBeTruthy();
+            expect(typeof product.meta?.display_price?.without_tax?.float_price).toBe(
+        "number"
+      );
+      expect(product.meta?.display_price?.without_tax?.currency).toBe("USD");
       expect(product.images.length).toBeGreaterThan(0);
     }
   });

@@ -6,7 +6,12 @@
  * designers can style every scenario.
  */
 
-import type { ChildProduct, Product, Variation } from "../types/product";
+import type {
+  ChildProduct,
+  Product,
+  ProductImage,
+  Variation,
+} from "../types/product";
 import type {
   StockLocationData,
   ProductStockSummary,
@@ -15,6 +20,51 @@ import type {
 // ---------------------------------------------------------------------------
 // Variation mock data
 // ---------------------------------------------------------------------------
+
+/**
+ * Builds a design-time product in Elastic Path's own shape, so mocks and real
+ * responses bind identically in canvas.
+ */
+export function mockProduct(spec: {
+  id: string;
+  name: string;
+  slug?: string;
+  sku?: string;
+  description?: string;
+  /** Minor units, as Elastic Path reports them. */
+  amount?: number;
+  currency?: string;
+  formatted?: string;
+  images?: ProductImage[];
+  variations?: Variation[];
+  childProducts?: ChildProduct[];
+}): Product {
+  const currency = spec.currency ?? "USD";
+  const amount = spec.amount ?? 0;
+  return {
+    id: spec.id,
+    type: "product",
+    attributes: {
+      name: spec.name,
+      slug: spec.slug,
+      sku: spec.sku,
+      description: spec.description,
+    },
+    meta: {
+      display_price: {
+        without_tax: {
+          amount,
+          currency,
+          float_price: amount / 100,
+          formatted: spec.formatted ?? `$${(amount / 100).toFixed(2)}`,
+        },
+      },
+    },
+    images: spec.images ?? [],
+    variations: spec.variations ?? [],
+    childProducts: spec.childProducts ?? [],
+  };
+}
 
 export const MOCK_VARIATIONS: Variation[] = [
   {
