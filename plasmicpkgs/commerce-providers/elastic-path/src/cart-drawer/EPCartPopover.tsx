@@ -170,7 +170,7 @@ export function EPCartPopover(props: EPCartPopoverProps) {
     previewState = "auto",
   } = props;
 
-  const { cart, error: cartError } = useEpCart();
+  const { cart, error: cartError, isLoading: cartLoading } = useEpCart();
   const commerce = useEpCommerce();
   const currencyDisplay = commerce?.currencyDisplay ?? "symbol";
   const inEditor = !!usePlasmicCanvasContext();
@@ -255,7 +255,7 @@ export function EPCartPopover(props: EPCartPopoverProps) {
       panelContent = errorContent;
     } else if (inEditor && previewState === "empty") {
       panelContent = emptyContent;
-    } else if (!cart && !cartError && !useMock) {
+    } else if (cartLoading && !useMock) {
       panelContent = loadingContent;
     } else if (cartError) {
       panelContent = errorContent;

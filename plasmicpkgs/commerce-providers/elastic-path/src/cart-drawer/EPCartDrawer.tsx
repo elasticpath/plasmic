@@ -204,7 +204,7 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
     inline = false,
   } = props;
 
-  const { cart, error: cartError } = useEpCart();
+  const { cart, error: cartError, isLoading: cartLoading } = useEpCart();
   const commerce = useEpCommerce();
   const currencyDisplay = commerce?.currencyDisplay ?? "symbol";
   const inEditor = !!usePlasmicCanvasContext();
@@ -373,7 +373,7 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
   if (inline) {
     const isEmpty = (effectiveCartData?.itemCount ?? 0) === 0;
     let content: React.ReactNode;
-    if (!cart && !cartError && !useMock) {
+    if (cartLoading && !useMock) {
       content = loadingContent;
     } else if (cartError) {
       content = errorContent;
@@ -404,7 +404,7 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
 
   // Determine which content to show inside the drawer panel
   let drawerContent: React.ReactNode;
-  if (!cart && !cartError && !useMock) {
+  if (cartLoading && !useMock) {
     drawerContent = loadingContent;
   } else if (cartError) {
     drawerContent = errorContent;
