@@ -41,6 +41,8 @@ import type {
   SessionRequest,
   CheckoutSession,
 } from "../../../../checkout/session/types";
+import { hashCart } from "../../../../checkout/session/cart-hash";
+import { EP_SHIPPING_LINE_SKU } from "../../../../checkout/session/set-shipping-line";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -240,6 +242,61 @@ describe("handleCreateSession", () => {
       const storedSession: CheckoutSession = store.set.mock.calls[0][1];
       expect(typeof storedSession.cartHash).toBe("string");
       expect(storedSession.cartHash.length).toBe(64); // SHA-256 hex
+    });
+
+    it("requests include: ['items'] so EP returns cart lines", async () => {
+      await handleCreateSession(
+        createMockReq({ cartId: "cart-abc" }),
+        createMockCtx()
+      );
+      expect(epSdk.getACart).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: { cartID: "cart-abc" },
+          query: { include: ["items"] },
+        })
+      );
+    });
+
+    it("excludes the managed shipping line from the cart hash", async () => {
+      const shopperItems = [
+        {
+          id: "item-1",
+          type: "cart_item",
+          sku: "sandle",
+          product_id: "prod-sandle",
+          quantity: 1,
+          unit_price: { amount: 1400 },
+        },
+      ];
+      epSdk.getACart.mockResolvedValue(
+        makeCartResponse([
+          ...shopperItems,
+          {
+            id: "ship-1",
+            type: "custom_item",
+            sku: EP_SHIPPING_LINE_SKU,
+            quantity: 1,
+            unit_price: { amount: 599 },
+          },
+        ]) as any
+      );
+      const store = createMockStore();
+      await handleCreateSession(
+        createMockReq({ cartId: "cart-abc" }),
+        createMockCtx({ sessionStore: store })
+      );
+      const storedSession: CheckoutSession = store.set.mock.calls[0][1];
+      expect(storedSession.cartHash).toBe(hashCart(shopperItems));
+      expect(storedSession.cartHash).not.toBe(
+        hashCart([
+          ...shopperItems,
+          {
+            id: "ship-1",
+            quantity: 1,
+            unit_price: { amount: 599 },
+          },
+        ])
+      );
     });
   });
 

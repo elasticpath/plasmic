@@ -17,6 +17,7 @@ import type {
   SessionTotals,
 } from "../../../checkout/session/types";
 import { hashCart } from "../../../checkout/session/cart-hash";
+import { EP_SHIPPING_LINE_SKU } from "../../../checkout/session/set-shipping-line";
 import { createLogger } from "../../../utils/logger";
 
 const log = createLogger("CreateSession");
@@ -85,9 +86,20 @@ export async function handleCreateSession(
   let totals: SessionTotals | null = null;
 
   try {
-    const cartResponse = await getACart({ client, path: { cartID: cartId } });
-    const items = (cartResponse.data as any)?.included?.items ?? (cartResponse.data as any)?.data?.items ?? [];
-    cartItems = Array.isArray(items) ? items : [];
+    const cartResponse = await getACart({
+      client,
+      path: { cartID: cartId },
+      query: { include: ["items"] },
+    });
+    const items =
+      (cartResponse.data as any)?.included?.items ??
+      (cartResponse.data as any)?.data?.items ??
+      [];
+    // Match /pay: drop the storefront-managed shipping line so selecting a
+    // rate cannot 409 the cart-hash check.
+    cartItems = (Array.isArray(items) ? items : []).filter(
+      (it: { sku?: string }) => it?.sku !== EP_SHIPPING_LINE_SKU
+    );
     totals = extractTotals((cartResponse.data as any)?.data);
   } catch (err) {
     log.error("Failed to fetch cart from EP", {
